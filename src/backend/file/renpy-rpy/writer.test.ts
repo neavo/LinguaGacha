@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { type Item, create_item } from "../../../domain/item";
-import { build_skeleton, scan_double_quoted_literals, sha1_hex } from "./lexer";
+import { build_skeleton, scan_string_literals, sha1_hex } from "./lexer";
 import type { RenpyBlockKind, RenpySlot } from "./types";
 import { RenpyWriter } from "./writer";
 
@@ -155,9 +155,7 @@ it("同值源码保持原切片，正文与姓名编辑采用普通字符串编�
       [1, "a  b\n"],
     ]),
   );
-  expect(
-    scan_double_quoted_literals(changed).map((literal) => [literal.raw, literal.value]),
-  ).toEqual([
+  expect(scan_string_literals(changed).map((literal) => [literal.raw, literal.value])).toEqual([
     [false, "新'名"],
     [false, "a  b\n"],
   ]);
@@ -177,7 +175,7 @@ function build_apply_item(
 ): Item {
   const kind = options.kind ?? "LABEL";
   const target_rest = lines[1]?.replace(/^[ \t]+/u, "") ?? "";
-  const target_literals = scan_double_quoted_literals(target_rest);
+  const target_literals = scan_string_literals(target_rest);
   return create_item({
     status: "PROCESSED",
     src: "old",

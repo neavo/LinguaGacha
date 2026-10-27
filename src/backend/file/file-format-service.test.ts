@@ -431,9 +431,12 @@ describe("FileFormatService", () => {
       source_files: [{ path: "script.rpy", file_type: "RENPY_RPY" }],
     });
 
-    expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(
-      '"爱丽丝" "你好"',
+    const output = await service.parse_asset(
+      "script.rpy",
+      fs.readFileSync(path.join(temp_dir.path, "script.rpy")),
     );
+    if (output.kind !== "items") throw new Error("Expected RenPy items");
+    expect(output.items).toMatchObject([{ dst: "你好", name_dst: "爱丽丝" }]);
   });
 });
 

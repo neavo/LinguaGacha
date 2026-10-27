@@ -2,7 +2,7 @@ import {
   build_skeleton,
   normalize_speaker_token,
   normalize_ws,
-  scan_double_quoted_literals,
+  scan_string_literals,
   split_indent,
   strip_comment_prefix,
 } from "./lexer";
@@ -91,7 +91,7 @@ export function parse_statement(
     stmt_kind = "TARGET";
   }
 
-  const literals = scan_double_quoted_literals(code);
+  const literals = scan_string_literals(code);
   const strict_key = build_skeleton(code, literals);
   const relaxed_key =
     block_kind === "LABEL" ? normalize_ws(normalize_speaker_token(strict_key)) : strict_key;

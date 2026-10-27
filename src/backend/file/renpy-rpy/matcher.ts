@@ -1,113 +1,51 @@
 import { build_skeleton, normalize_speaker_token, normalize_ws } from "./lexer";
 import type { RenpyStatementNode, RenpyTranslateBlock } from "./types";
 
-/**
- * Character(...) 内的字符串属于角色名，括号后的连续字符串才是对白组。
- */
-export function find_character_name_lit_index(stmt: RenpyStatementNode): number | null {
-  const stripped = stmt.code.trimStart();
-  if (!stripped.startsWith("Character(")) {
-    return null;
-  }
-  const open_pos = stmt.code.indexOf("(");
-  const close_pos = find_matching_paren(stmt, open_pos);
-  if (close_pos === null) {
-    return null;
-  }
-  const index = stmt.literals.findIndex(
-    (literal) => open_pos < literal.start_col && literal.start_col < close_pos,
-  );
-  return index >= 0 ? index : null;
-}
+const SAY_SUFFIX_KEYWORDS = new Set(["with", "nointeract", "id"]);
 
-/**
- * 跳过字符串字面量匹配括号，避免 Character(")") 误关括号。
- */
-export function find_matching_paren(stmt: RenpyStatementNode, open_pos: number): number | null {
-  if (open_pos < 0) {
-    return null;
-  }
-  let literal_index = 0;
-  let depth = 0;
-  let code_index = open_pos;
-  while (code_index < stmt.code.length) {
+/** 顶层字符串才可能是正文；调用、括号和下标中的字符串属于 who 表达式。 */
+export function find_dialogue(
+  stmt: RenpyStatementNode,
+): { index: number; who_end: number } | undefined {
+  let depth = 0,
+    literal_index = 0,
+    who_end: number | undefined;
+  const top: number[] = [];
+  for (let at = 0; at < stmt.code.length; at++) {
     const literal = stmt.literals[literal_index];
-    if (literal !== undefined && code_index === literal.start_col) {
-      code_index = literal.end_col;
-      literal_index += 1;
+    if (literal && at === literal.start_col) {
+      if (depth === 0) top.push(literal_index);
+      at = literal.end_col - 1;
+      literal_index++;
       continue;
     }
-    const char = stmt.code[code_index];
-    if (char === "(") {
-      depth += 1;
-    } else if (char === ")") {
-      depth -= 1;
-      if (depth === 0) {
-        return code_index;
-      }
+    if (stmt.code[at] === "#") break;
+    // who 可带调用或属性链；其后的顶层单词是角色属性，不属于 Python 表达式。
+    if (depth === 0 && who_end === undefined && /\s/u.test(stmt.code[at]!)) {
+      const before = stmt.code.slice(0, at).trimEnd();
+      const after = stmt.code.slice(at).trimStart();
+      if (before && !before.endsWith(".") && !/^(?:\.|\(|\[)/u.test(after)) who_end = at;
     }
-    code_index += 1;
+    if ("([{".includes(stmt.code[at]!)) depth++;
+    if (")]}".includes(stmt.code[at]!)) depth--;
   }
-  return null;
-}
-
-/**
- * 对白组只接受中间全是空白的连续字符串，尾随函数参数不参与翻译槽位。
- */
-export function find_dialogue_string_group(
-  stmt: RenpyStatementNode,
-  character_name_index: number | null = null,
-): number[] {
-  if (stmt.literals.length === 0) {
-    return [];
-  }
-  const start_col = get_dialogue_start_col(stmt, character_name_index);
-  if (start_col === null) {
-    return [];
-  }
-  const start_index = find_first_string_after_col(stmt, start_col);
-  if (start_index === null) {
-    return [];
-  }
-  const result = [start_index];
-  for (let index = start_index + 1; index < stmt.literals.length; index += 1) {
-    const previous = stmt.literals[index - 1];
-    const current = stmt.literals[index];
-    if (previous === undefined || current === undefined) {
-      break;
+  const first = top[0];
+  if (first === undefined) return undefined;
+  const literal = stmt.literals[first]!;
+  // 裸姓名与正文之间允许角色属性；with 等尾随关键字仍属于旁白后缀。
+  if (!stmt.code.slice(0, literal.start_col).trim()) {
+    const second = top[1];
+    if (second !== undefined) {
+      const attributes = stmt.code.slice(literal.end_col, stmt.literals[second]!.start_col).trim();
+      if (
+        /^[\s\p{ID_Continue}@-]*$/u.test(attributes) &&
+        !attributes.split(/\s+/u).some((word) => SAY_SUFFIX_KEYWORDS.has(word))
+      )
+        return { index: second, who_end: literal.end_col };
     }
-    if (stmt.code.slice(previous.end_col, current.start_col).trim() !== "") {
-      break;
-    }
-    result.push(index);
+    return { index: first, who_end: 0 };
   }
-  return result;
-}
-
-/**
- * 从指定列后寻找首个字符串，用于 Character(...) 后对白定位。
- */
-export function find_first_string_after_col(
-  stmt: RenpyStatementNode,
-  start_col: number,
-): number | null {
-  const index = stmt.literals.findIndex((literal) => literal.start_col >= start_col);
-  return index >= 0 ? index : null;
-}
-
-/**
- * Character(...) 的角色名和后续对白不能被当成同一个连续字符串组。
- */
-function get_dialogue_start_col(
-  stmt: RenpyStatementNode,
-  character_name_index: number | null,
-): number | null {
-  if (character_name_index === null) {
-    return 0;
-  }
-  const open_pos = stmt.code.indexOf("(");
-  const close_pos = find_matching_paren(stmt, open_pos);
-  return close_pos === null ? null : close_pos + 1;
+  return { index: first, who_end: who_end ?? literal.start_col };
 }
 
 /**
@@ -126,16 +64,13 @@ function build_statement_match_signature(stmt: RenpyStatementNode): {
     };
   }
   const match_end_col = find_label_match_end_col(stmt);
-  if (match_end_col >= stmt.code.length) {
-    return {
-      string_count: stmt.string_count,
-      strict_key: stmt.strict_key,
-      relaxed_key: stmt.relaxed_key,
-    };
-  }
   const matched_code = stmt.code.slice(0, match_end_col);
   const matched_literals = stmt.literals.filter((literal) => literal.end_col <= match_end_col);
-  const strict_key = build_skeleton(matched_code, matched_literals);
+  // 写回可将原始姓名字面量转为普通 Python 字面量，配对不依赖前缀。
+  const strict_key = build_skeleton(
+    matched_code,
+    matched_literals.map((literal) => ({ ...literal, raw: false })),
+  );
   return {
     string_count: matched_literals.length,
     strict_key,
@@ -147,12 +82,8 @@ function build_statement_match_signature(stmt: RenpyStatementNode): {
  * label 匹配终点落在对白字面量末尾，防止 PushMove("x") 参与字符串数量校验。
  */
 function find_label_match_end_col(stmt: RenpyStatementNode): number {
-  const name_index = find_character_name_lit_index(stmt);
-  const dialogue_group = find_dialogue_string_group(stmt, name_index);
-  const dialogue_index = dialogue_group.at(-1);
-  return dialogue_index === undefined
-    ? stmt.code.length
-    : (stmt.literals[dialogue_index]?.end_col ?? stmt.code.length);
+  const dialogue = find_dialogue(stmt);
+  return dialogue ? stmt.literals[dialogue.index]!.end_col : stmt.code.length;
 }
 
 /**
@@ -175,7 +106,7 @@ function speakers_are_compatible(
  */
 function get_statement_speaker_token(stmt: RenpyStatementNode): string | null {
   const stripped = stmt.code.trimStart();
-  if (stripped.startsWith('"') || stripped.startsWith("Character(")) {
+  if (/^(?:[ru]*['"(]|(?:Character|_)\s*\()/iu.test(stripped)) {
     return null;
   }
   return stmt.code.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\b/u)?.[1] ?? null;

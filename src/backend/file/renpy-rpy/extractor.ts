@@ -1,12 +1,9 @@
+import { PythonSession, PythonSyntaxError } from "../renpy/python-syntax";
+import { read_speaker_expression } from "../renpy/speaker";
 import { type Item, create_item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import { is_translatable_text, looks_like_resource_reference, sha1_hex } from "./lexer";
-import {
-  find_character_name_lit_index,
-  find_dialogue_string_group,
-  match_template_to_target,
-  pair_old_new,
-} from "./matcher";
+import { find_dialogue, match_template_to_target, pair_old_new } from "./matcher";
 import {
   RENPY_EXTRA_VERSION,
   type RenpyDocument,
@@ -22,7 +19,8 @@ export class RenpyExtractor {
   /**
    * 遍历 translate 块并保持按文件路径、行号排序的用户可见条目顺序。
    */
-  public extract(document: RenpyDocument, rel_path: string): Item[] {
+  public async extract(document: RenpyDocument, rel_path: string): Promise<Item[]> {
+    using session = await PythonSession.create();
     const items: Item[] = [];
     for (const block of document.blocks) {
       if (block.kind === "PYTHON" || block.kind === "OTHER") {
@@ -42,7 +40,7 @@ export class RenpyExtractor {
         if (template_stmt === undefined || target_stmt === undefined) {
           continue;
         }
-        const item = this.build_item(block, template_stmt, target_stmt, rel_path);
+        const item = await this.build_item(block, template_stmt, target_stmt, rel_path, session);
         if (item !== null) {
           items.push(item);
         }
@@ -58,31 +56,30 @@ export class RenpyExtractor {
   /**
    * 从模板槽位和目标槽位构造单条 Item，src 为空时直接丢弃。
    */
-  public build_item(
+  private async build_item(
     block: RenpyTranslateBlock,
     template_stmt: RenpyStatementNode,
     target_stmt: RenpyStatementNode,
     rel_path: string,
-  ): Item | null {
-    const slots = this.select_slots(block, template_stmt);
-    if (slots.length === 0) {
-      return null;
-    }
-    const name_slot = slots.find((slot) => slot.role === "NAME");
+    session: PythonSession,
+  ): Promise<Item | null> {
+    const name = block.kind === "LABEL" ? await this.read_name(template_stmt, session) : undefined;
+    const slots =
+      block.kind === "STRINGS"
+        ? this.select_slots_for_strings(template_stmt)
+        : this.select_slots_for_label(template_stmt, name?.slot);
     const text_slot = slots.find((slot) => slot.role === "DIALOGUE" || slot.role === "STRING");
     if (text_slot === undefined) {
       return null;
     }
 
-    const src = this.get_literal_value(template_stmt, text_slot.lit_index);
+    const src = template_stmt.literals[text_slot.lit_index]?.value ?? "";
     if (src === "") {
       return null;
     }
-    const dst = this.get_literal_value(target_stmt, text_slot.lit_index);
-    const name_src =
-      name_slot === undefined ? null : this.get_literal_value(template_stmt, name_slot.lit_index);
-    const target_name =
-      name_slot === undefined ? "" : this.get_literal_value(target_stmt, name_slot.lit_index);
+    const dst = target_stmt.literals[text_slot.lit_index]?.value ?? "";
+    const name_src = name?.value ?? null;
+    const target_name = name ? ((await this.read_name(target_stmt, session))?.value ?? "") : "";
     const name_dst = target_name === "" || target_name === name_src ? null : target_name;
 
     return create_item({
@@ -101,22 +98,9 @@ export class RenpyExtractor {
   }
 
   /**
-   * 槽位选择按块类型分发，strings 和 label 不共享推断规则。
-   */
-  public select_slots(block: RenpyTranslateBlock, template_stmt: RenpyStatementNode): RenpySlot[] {
-    if (block.kind === "STRINGS") {
-      return this.select_slots_for_strings(template_stmt);
-    }
-    if (block.kind === "LABEL") {
-      return this.select_slots_for_label(template_stmt);
-    }
-    return [];
-  }
-
-  /**
    * strings 块只翻译 old 的第一个字符串，new 行仅作为写回目标。
    */
-  public select_slots_for_strings(stmt: RenpyStatementNode): RenpySlot[] {
+  private select_slots_for_strings(stmt: RenpyStatementNode): RenpySlot[] {
     if (!stmt.code.trim().startsWith("old ") || stmt.literals.length === 0) {
       return [];
     }
@@ -127,50 +111,45 @@ export class RenpyExtractor {
     return [{ role: "STRING", lit_index: 0 }];
   }
 
-  /**
-   * label 块从 Character(...) 或连续字符串中识别姓名与对白，尾随参数字符串不入槽。
-   */
-  public select_slots_for_label(stmt: RenpyStatementNode): RenpySlot[] {
-    if (stmt.literals.length === 0) {
-      return [];
+  /** 姓名使用 Python 解码，正文继续使用 Ren’Py 文本解码。 */
+  private async read_name(
+    stmt: RenpyStatementNode,
+    session: PythonSession,
+  ): Promise<{ value: string; slot: RenpySlot } | undefined> {
+    const dialogue = find_dialogue(stmt);
+    if (!dialogue?.who_end) return undefined;
+    const input = { source: stmt.code.slice(0, dialogue.who_end).trimEnd(), mode: "eval" as const };
+    try {
+      const facts = await session.analyze(input);
+      const { name } = await read_speaker_expression(input, facts, session);
+      if (!name?.value) return undefined;
+      const first = stmt.literals.findIndex((literal) => literal.start_col === name.start);
+      const last = stmt.literals.findIndex((literal) => literal.end_col === name.end);
+      if (first < 0 || last < first) return undefined;
+      return {
+        value: name.value,
+        slot: { role: "NAME", lit_index: first, ...(last > first ? { end_lit_index: last } : {}) },
+      };
+    } catch (error) {
+      // 未支持的 who 表达式只失去姓名，正文仍有独立语法边界。
+      if (!(error instanceof PythonSyntaxError)) throw error;
+      return undefined;
     }
-    let name_index = find_character_name_lit_index(stmt);
-    const dialogue_group = find_dialogue_string_group(stmt, name_index);
-    if (dialogue_group.length === 0) {
-      return [];
-    }
-    const dialogue_index = dialogue_group.at(-1) ?? 0;
-    if (name_index === null && dialogue_group.length >= 2) {
-      name_index = dialogue_group.at(-2) ?? null;
-    }
-
-    const dialogue_value = stmt.literals[dialogue_index]?.value ?? "";
-    if (looks_like_resource_reference(dialogue_value) || !is_translatable_text(dialogue_value)) {
-      return [];
-    }
-
-    const slots: RenpySlot[] = [];
-    if (name_index !== null) {
-      const name_value = stmt.literals[name_index]?.value ?? "";
-      if (!looks_like_resource_reference(name_value) && is_translatable_text(name_value)) {
-        slots.push({ role: "NAME", lit_index: name_index });
-      }
-    }
-    slots.push({ role: "DIALOGUE", lit_index: dialogue_index });
-    return slots;
   }
 
-  /**
-   * 字面量越界时返回空串，调用方据此丢弃无法安全表达的条目。
-   */
-  public get_literal_value(stmt: RenpyStatementNode, lit_index: number): string {
-    return stmt.literals[lit_index]?.value ?? "";
+  /** label 块按顶层正文边界选槽，姓名位置来自共享表达式规则。 */
+  private select_slots_for_label(stmt: RenpyStatementNode, name?: RenpySlot): RenpySlot[] {
+    const dialogue = find_dialogue(stmt);
+    if (!dialogue) return [];
+    const value = stmt.literals[dialogue.index]!.value;
+    if (looks_like_resource_reference(value) || !is_translatable_text(value)) return [];
+    return [...(name ? [name] : []), { role: "DIALOGUE", lit_index: dialogue.index }];
   }
 
   /**
    * extra_field 保存块、配对、槽位和摘要，写回器不再猜测目标字符串位置。
    */
-  public build_extra_field(
+  private build_extra_field(
     block: RenpyTranslateBlock,
     template_stmt: RenpyStatementNode,
     target_stmt: RenpyStatementNode,
@@ -189,7 +168,7 @@ export class RenpyExtractor {
           template_line: template_stmt.line_no,
           target_line: target_stmt.line_no,
         },
-        slots: slots.map((slot) => ({ role: slot.role, lit_index: slot.lit_index })),
+        slots: slots.map((slot) => ({ ...slot })),
         digest: {
           template_raw_sha1: sha1_hex(template_stmt.raw_line),
           template_raw_rstrip_sha1: sha1_hex(template_stmt.raw_line.trimEnd()),

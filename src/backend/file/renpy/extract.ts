@@ -1,4 +1,5 @@
 import { splice } from "../shared/splice";
+import { read_speaker_expression, static_character_name } from "./speaker";
 import type { ScriptDiagnostic } from "../file-format-types";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -69,13 +70,51 @@ export type RenpyScript = {
   warnings: ScriptDiagnostic[];
   extraction_complete: boolean;
   python2: boolean;
+  names: Map<string, string>; // 当前正文写入组到当前姓名写入组，不持久化。
 };
 
-/** 旧界面的字节串按 UTF-8 解码，候选保持玩家实际看到的替换字符。 */
+/** 早期 Ren’Py 引擎界面脚本的字节串按 UTF-8 解码，保留玩家实际看到的替换字符。 */
 const display_text = (node: PickleNode): string => {
   const scalar = resolve_node(node).value;
   return Buffer.isBuffer(scalar) ? scalar.toString("utf8") : node_string(node);
 };
+
+/** 从早期 Ren’Py 引擎保存的 Python AST 读取静态属性链，不执行游戏代码。 */
+function legacy_reference(node: PickleNode | undefined): string {
+  if (!node) return "";
+  const fields = attributes(node);
+  if (class_name(node) === "_ast.Name") return text(fields.get("id"));
+  if (class_name(node) === "_ast.Attribute")
+    return legacy_reference(fields.get("value")) + "." + text(fields.get("attr"));
+  return "";
+}
+
+/** 参数展开会使姓名绑定或 dynamic 值不确定。 */
+function legacy_has_expansion(fields: ReadonlyMap<string, PickleNode>): boolean {
+  return (
+    [fields.get("starargs"), fields.get("kwargs")].some(
+      (node) => node !== undefined && resolve_node(node).kind !== "none",
+    ) ||
+    children(fields.get("args")).some((arg) => class_name(arg) === "_ast.Starred") ||
+    children(fields.get("keywords")).some((entry) => value(attributes(entry).get("arg")) === null)
+  );
+}
+
+/** 早期 Ren’Py 引擎的 Python AST 中，普通字符串或单参数标记调用才提供明确姓名。 */
+function legacy_name_literal(node: PickleNode | undefined): boolean {
+  if (!node) return false;
+  if (class_name(node) === "_ast.Str") return true;
+  const fields = attributes(node);
+  const args = children(fields.get("args"));
+  return (
+    class_name(node) === "_ast.Call" &&
+    legacy_reference(fields.get("func")) === "_" &&
+    args.length === 1 &&
+    class_name(args[0]!) === "_ast.Str" &&
+    children(fields.get("keywords")).length === 0 &&
+    !legacy_has_expansion(fields)
+  );
+}
 
 /** 消费边与源码区间共同确定写入位置，字段名不参与共享边判定。 */
 const coordinate_key = (coordinate: RenpyCoordinate) =>
@@ -186,6 +225,7 @@ export async function extract_script(
   const candidates = new Map<string, RenpyCandidate>(),
     required = new Map<string, Set<string>>(),
     strings: RenpyString[] = [],
+    names = new Map<string, RenpyCoordinate[]>(),
     warnings: ScriptDiagnostic[] = [];
   const excluded = script_excluded(slots);
   const identities = script_identities(slots, excluded);
@@ -234,13 +274,14 @@ export async function extract_script(
         candidate.coordinates.push(coordinate);
       candidates.set(key, candidate);
     };
-    /** 旧界面保存 Python AST，按调用位置区分显示字符串和程序值。 */
+    /** 读取早期 Ren’Py 引擎界面脚本保存的 Python AST，按调用位置区分显示字符串和程序值。 */
     const legacy = (
       edge: PickleNode,
       record: RenpyCode,
       field: string,
       display = false,
       ancestors = new Set<PickleNode>(),
+      name_usage?: boolean, // 外层动态姓名的 code 资格不能被内部 _() 覆盖。
     ) => {
       const node = resolve_node(edge);
       if (ancestors.has(node)) return;
@@ -258,7 +299,7 @@ export async function extract_script(
             field,
             string,
             display_text(string),
-            display ? "display" : "code",
+            (name_usage ?? display) ? "display" : "code",
             record.line,
           );
         }
@@ -269,6 +310,38 @@ export async function extract_script(
           function_fields = func ? attributes(func) : new Map<string, PickleNode>();
         const name = text(function_fields.get("attr") ?? function_fields.get("id"));
         const args = children(fields.get("args"));
+        const keywords = children(fields.get("keywords"));
+        /** 从早期引擎 AST 的参数节点恢复标准调用绑定。 */
+        const argument = (name: string, index?: number) => {
+          const keyword = keywords.find((entry) => text(attributes(entry).get("arg")) === name);
+          return keyword
+            ? attributes(keyword).get("value")
+            : index === undefined
+              ? undefined
+              : args[index];
+        };
+        const dynamic = argument("dynamic"),
+          kind = argument("kind", 1);
+        const is_none = (node: PickleNode) =>
+          legacy_reference(node) === "None" ||
+          (class_name(node) === "_ast.NameConstant" &&
+            value(attributes(node).get("value")) === null);
+        const static_name = static_character_name(
+          legacy_reference(func),
+          !dynamic
+            ? undefined
+            : legacy_reference(dynamic) === "False" ||
+                (class_name(dynamic) === "_ast.NameConstant" &&
+                  value(attributes(dynamic).get("value")) === false)
+              ? false
+              : "unknown",
+          !!kind && !is_none(kind),
+          legacy_has_expansion(fields),
+        );
+        const character_name_usage =
+          static_name === undefined
+            ? undefined
+            : static_name && legacy_name_literal(argument("name", 0));
         args.forEach((arg, index) =>
           legacy(
             arg,
@@ -276,15 +349,29 @@ export async function extract_script(
             field + ".args." + index,
             index === 0 && LEGACY_DISPLAY_CALLS.includes(name),
             next,
+            name_usage ?? (index === 0 ? character_name_usage : undefined),
+          ),
+        );
+        keywords.forEach((keyword, index) =>
+          legacy(
+            keyword,
+            record,
+            field + ".keywords." + index,
+            false,
+            next,
+            name_usage ??
+              (text(attributes(keyword).get("arg")) === "name" ? character_name_usage : undefined),
           ),
         );
         for (const [key, child] of fields)
-          if (key !== "args") legacy(child, record, field + "." + key, false, next);
+          if (key !== "args" && key !== "keywords")
+            legacy(child, record, field + "." + key, false, next, name_usage);
       } else {
         node.children.forEach((child, index) =>
-          legacy(child, record, field + "." + index, display, next),
+          legacy(child, record, field + "." + index, display, next, name_usage),
         );
-        for (const [key, child] of fields) legacy(child, record, field + "." + key, display, next);
+        for (const [key, child] of fields)
+          legacy(child, record, field + "." + key, display, next, name_usage);
       }
     };
     for (const record of records.filter((entry) => entry.slot === slot.slot && !entry.translated)) {
@@ -305,8 +392,23 @@ export async function extract_script(
         extraction_complete = false;
         warnings.push(code_diagnostic(record, diagnostic));
       }
+      const speaker = await read_speaker_expression(record, tokens, session);
+      if (record.field === "who") {
+        const key = JSON.stringify([record.owner, record.slot]),
+          entries = names.get(key) ?? [];
+        entries.push({
+          slot: record.slot,
+          edge: record.edge.start,
+          field: record.field,
+          ...(speaker.name ? { start: speaker.name.start, end: speaker.name.end } : {}),
+        });
+        names.set(key, entries);
+      }
       for (const token of tokens.constants) {
-        const usage = string_usage(token, record.display);
+        const usage =
+          record.field === "who" && speaker.name?.start === token.start
+            ? "display"
+            : (speaker.usages.get(token.start) ?? string_usage(token, record.display));
         if (!token.writable || (token.dynamic && usage !== "code")) {
           extraction_complete = false;
           warnings.push(
@@ -378,6 +480,37 @@ export async function extract_script(
     }
   }
   const grouped = write_groups([...candidates.values()], required, slots, warnings);
+  const coordinates = new Map(
+    grouped.candidates.flatMap((candidate) =>
+      candidate.coordinates.map((coordinate) => [coordinate_key(coordinate), candidate] as const),
+    ),
+  );
+  const dialogue_names = new Map<string, string>();
+  for (const dialogue of grouped.candidates) {
+    if (dialogue.usage !== "say") continue;
+    const targets = dialogue.owners.flatMap((owner) =>
+      slots.flatMap((slot) => {
+        const entries = names.get(JSON.stringify([owner, slot.slot]));
+        return entries
+          ? entries.map((coordinate) =>
+              coordinate.start === undefined
+                ? undefined
+                : coordinates.get(coordinate_key(coordinate)),
+            )
+          : [undefined];
+      }),
+    );
+    const name = targets[0];
+    // 姓名的全部消费者必须正好属于当前正文组，避免不同对白争写共享姓名。
+    if (
+      name &&
+      targets.every((target) => target === name) &&
+      name.owners.length === dialogue.owners.length &&
+      name.owners.every((owner) => dialogue.owners.includes(owner)) &&
+      name.coordinates.every((coordinate) => coordinate.field === "who")
+    )
+      dialogue_names.set(dialogue.key, name.key);
+  }
   return {
     bytes,
     digest: createHash("sha256").update(bytes).digest("hex"),
@@ -387,6 +520,7 @@ export async function extract_script(
     strings,
     warnings,
     python2,
+    names: dialogue_names,
   };
 }
 

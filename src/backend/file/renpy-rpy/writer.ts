@@ -1,3 +1,4 @@
+import { encode_python } from "../renpy/python";
 import { read_translation_for_generation } from "../shared/translation-generation-text";
 import type { Item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
@@ -5,7 +6,7 @@ import { read_item_name_text, resolve_output_item_name } from "../../../shared/i
 import {
   build_skeleton,
   escape_renpy_string,
-  scan_double_quoted_literals,
+  scan_string_literals,
   sha1_hex,
   split_indent,
   strip_comment_prefix,
@@ -56,7 +57,7 @@ export class RenpyWriter {
     }
 
     const [target_indent, target_rest] = split_indent(target_raw);
-    const target_literals = scan_double_quoted_literals(target_rest);
+    const target_literals = scan_string_literals(target_rest);
     const target_skeleton = build_skeleton(target_rest, target_literals);
     if (sha1_hex(target_skeleton) !== extra.target_skeleton_sha1) {
       return false;
@@ -81,6 +82,7 @@ export class RenpyWriter {
     lines[extra.target_line - 1] = `${target_indent}${this.replace_literals_by_index(
       base_code,
       replacements,
+      extra.slots,
     )}`;
     return true;
   }
@@ -99,7 +101,8 @@ export class RenpyWriter {
       if (
         !Number.isInteger(slot.lit_index) ||
         slot.lit_index < 0 ||
-        slot.lit_index >= source_targets.length
+        slot.lit_index >= source_targets.length ||
+        (slot.end_lit_index !== undefined && slot.end_lit_index >= source_targets.length)
       ) {
         continue;
       }
@@ -129,8 +132,12 @@ export class RenpyWriter {
   /**
    * 按字面量序号替换，未命中的字符串保持原样，尾随函数参数因此不会被正文覆盖。
    */
-  public replace_literals_by_index(code: string, replacements: Map<number, string>): string {
-    const literals = scan_double_quoted_literals(code);
+  public replace_literals_by_index(
+    code: string,
+    replacements: Map<number, string>,
+    slots: readonly RenpySlot[] = [],
+  ): string {
+    const literals = scan_string_literals(code);
     if (literals.length === 0) {
       return code;
     }
@@ -138,10 +145,22 @@ export class RenpyWriter {
     const parts: string[] = [];
     let cursor = 0;
     literals.forEach((literal, index) => {
+      const slot = slots.find(
+        (slot) =>
+          slot.role === "NAME" &&
+          slot.lit_index <= index &&
+          index <= (slot.end_lit_index ?? slot.lit_index),
+      );
       parts.push(code.slice(cursor, literal.start_col));
-      const replacement = replacements.get(index);
-      // 同值结果保留源码写法；实际编辑统一写为普通双引号并去掉原始前缀。
-      if (replacement === undefined || replacement === literal.value) {
+      // 相邻姓名字面量保留数量，导出后的模板配对和旧槽位仍可使用。
+      const replacement =
+        slot && slot.lit_index !== index && replacements.has(slot.lit_index)
+          ? ""
+          : replacements.get(index);
+      // 姓名使用 Python 编码。正文同值时保留源码，修改时使用 Ren’Py 编码。
+      if (replacement !== undefined && slot) {
+        parts.push(encode_python(replacement));
+      } else if (replacement === undefined || replacement === literal.value) {
         parts.push(code.slice(literal.start_col, literal.end_col));
       } else {
         parts.push(`"${escape_renpy_string(replacement)}"`);
@@ -186,7 +205,15 @@ export class RenpyWriter {
       const slot = read_json_record(raw_slot);
       const role = this.normalize_slot_role(slot["role"]);
       const lit_index = typeof slot["lit_index"] === "number" ? Math.trunc(slot["lit_index"]) : NaN;
-      return role === null || !Number.isInteger(lit_index) ? [] : [{ role, lit_index }];
+      const end = slot["end_lit_index"];
+      if (
+        role === null ||
+        !Number.isInteger(lit_index) ||
+        (end !== undefined &&
+          (typeof end !== "number" || !Number.isInteger(end) || end < lit_index))
+      )
+        return [];
+      return [{ role, lit_index, ...(typeof end === "number" ? { end_lit_index: end } : {}) }];
     });
     const block_kind = this.normalize_block_kind(block["kind"]);
     const template_line =

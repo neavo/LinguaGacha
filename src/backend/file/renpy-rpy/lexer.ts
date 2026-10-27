@@ -82,18 +82,20 @@ export function escape_renpy_string(text: string): string {
   });
 }
 
-/** 扫描单行双引号字面量及 r 前缀，保存整个源码范围；未闭合字面量拒绝扫描。 */
-export function scan_double_quoted_literals(code: string): RenpyStringLiteral[] {
+/** 扫描单行字符串字面量及 Python 前缀，保存整个源码范围；未闭合字面量拒绝扫描。 */
+export function scan_string_literals(code: string): RenpyStringLiteral[] {
   const literals: RenpyStringLiteral[] = [];
   let index = 0;
   while (index < code.length) {
-    if (code[index] !== '"') {
+    if (code[index] === "#") break;
+    if (code[index] !== '"' && code[index] !== "'") {
       index += 1;
       continue;
     }
-    const raw =
-      code[index - 1] === "r" && (index === 1 || !/[\p{ID_Continue}]/u.test(code[index - 2]!));
-    const start_col = raw ? index - 1 : index;
+    const quote = code[index];
+    const prefix = /(?:^|[^\p{ID_Continue}])([rubf]*)$/iu.exec(code.slice(0, index))?.[1] ?? "";
+    const raw = /r/iu.test(prefix);
+    const start_col = index - prefix.length;
     const content_start = ++index;
     let closed = false; // 结尾是被转义的引号时也不能当作已闭合。
     while (index < code.length) {
@@ -101,7 +103,7 @@ export function scan_double_quoted_literals(code: string): RenpyStringLiteral[] 
         index += 2;
         continue;
       }
-      if (code[index] === '"') {
+      if (code[index] === quote) {
         const inner = code.slice(content_start, index);
         literals.push({
           start_col,
@@ -124,7 +126,7 @@ export function scan_double_quoted_literals(code: string): RenpyStringLiteral[] 
  */
 export function build_skeleton(
   code: string,
-  literals: RenpyStringLiteral[] = scan_double_quoted_literals(code),
+  literals: RenpyStringLiteral[] = scan_string_literals(code),
 ): string {
   if (literals.length === 0) {
     return normalize_ws(code);

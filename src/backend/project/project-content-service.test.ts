@@ -1356,6 +1356,7 @@ describe("ProjectContentService", () => {
           filename: pickle_string("game/dialogue.rpy"),
           linenumber: opcode(0x4b, line),
           what: pickle_string(text),
+          who: pickle_string("'Alice'"),
         }),
       );
     // 程序标识拼接必须允许整个资产参与重置。
@@ -1410,7 +1411,16 @@ describe("ProjectContentService", () => {
       "Existing dialogue",
     ]);
     expect(read_json_record(read_json_record(existing.extra_field)["renpy"])["key"]).toBe(old_key);
-    const old_items = [{ ...existing, id: 1, dst: "已有译文", status: "PROCESSED" as const }];
+    const old_items = [
+      {
+        ...existing,
+        id: 1,
+        dst: "已有译文",
+        name_src: null,
+        name_dst: null,
+        status: "PROCESSED" as const,
+      },
+    ];
     try {
       await database.transaction(lg_path, (writer) => {
         writer.add_asset(lg_path, file, Buffer.from(content), "RENPY", null);
@@ -1434,6 +1444,8 @@ describe("ProjectContentService", () => {
       expect(
         exported.candidates.find((item) => item.text === "已有译文")?.coordinates,
       ).toMatchObject([{ slot: 1 }, { slot: 2 }]);
+      await service.reset_files({ rel_paths: [file], expected_section_revisions: { items: 0 } });
+      expect((await database.get_all_items(lg_path))[0]!.name_src).toBeNull();
       await service.reset_translation({ mode: "all" });
       const reset = await database.get_all_items(lg_path);
       expect(reset.map(({ src, dst, status }) => ({ src, dst, status }))).toEqual(
@@ -1444,6 +1456,11 @@ describe("ProjectContentService", () => {
         ]),
       );
       expect(reset).toHaveLength(3);
+      expect(
+        reset
+          .filter((item) => item.src === "Existing dialogue" || item.src === "Recovered dialogue")
+          .map((item) => item.name_src),
+      ).toEqual(["Alice", "Alice"]);
       await database.close();
       expect(await database.get_all_items(lg_path)).toEqual(reset);
     } finally {

@@ -40,7 +40,7 @@ export class RenpyRpyFormat {
         throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }
       const lines = split_text_lines_for_items(await decode_text_content(original));
-      const normalized_items = build_items_for_writeback(rel_path, lines, group);
+      const normalized_items = await build_items_for_writeback(rel_path, lines, group);
       const prepared_items = normalized_items.sort(
         (left, right) => get_item_target_line(left) - get_item_target_line(right),
       );

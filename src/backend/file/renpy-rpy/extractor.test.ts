@@ -1,3 +1,5 @@
+import path from "node:path";
+import { configure_python_parser } from "../renpy/python-syntax";
 import { describe, expect, it } from "vitest";
 
 import type { Item } from "../../../domain/item";
@@ -5,8 +7,8 @@ import { RenpyExtractor } from "./extractor";
 import { parse_document } from "./parser";
 
 describe("RenPy extractor", () => {
-  it("源文件仅修改译名时也导入为完成，同名保留无需判为缺译", () => {
-    const items = extract([
+  it("源文件仅修改译名时也导入为完成，同名保留无需判为缺译", async () => {
+    const items = await extract([
       "translate schinese start:",
       '    # "Alice" "Hello"',
       '    "爱丽丝" "Hello"',
@@ -19,8 +21,8 @@ describe("RenPy extractor", () => {
     ]);
   });
 
-  it("把 strings 与 label 配对转换为稳定项目条目", () => {
-    const items = extract([
+  it("把 strings 与 label 配对转换为稳定项目条目", async () => {
+    const items = await extract([
       "translate schinese strings:",
       '    old "START"',
       '    new "开始"',
@@ -51,8 +53,8 @@ describe("RenPy extractor", () => {
     });
   });
 
-  it("Character 参数与尾随字符串不会混入姓名和对白槽", () => {
-    const [item] = extract([
+  it("Character 参数与尾随字符串不会混入姓名和对白槽", async () => {
+    const [item] = await extract([
       "translate schinese start:",
       '    # Character("Man") "Hello" (cb_name="mr")',
       '    Character("Man") "你好" (cb_name="卡雷")',
@@ -68,8 +70,8 @@ describe("RenPy extractor", () => {
     );
   });
 
-  it("完整资源引用不生成 Item，带正文的引用仍保留", () => {
-    const items = extract([
+  it("完整资源引用不生成 Item，带正文的引用仍保留", async () => {
+    const items = await extract([
       "translate schinese strings:",
       '    old "https://example.com/guide"',
       '    new ""',
@@ -82,6 +84,8 @@ describe("RenPy extractor", () => {
 });
 
 /** 从脚本行经过真实解析器生成测试条目。 */
-function extract(lines: string[]): Item[] {
+function extract(lines: string[]): Promise<Item[]> {
   return new RenpyExtractor().extract(parse_document(lines), "script.rpy");
 }
+
+configure_python_parser(path.resolve("build/resources/workspace"));
