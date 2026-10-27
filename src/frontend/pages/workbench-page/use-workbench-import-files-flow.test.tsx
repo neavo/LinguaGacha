@@ -536,10 +536,7 @@ describe("useWorkbenchImportFilesFlow", () => {
         });
         expect(push_toast).not.toHaveBeenCalled();
       } else {
-        expect(push_toast).toHaveBeenCalledExactlyOnceWith(
-          "success",
-          "app.source_operation.success",
-        );
+        expect(push_toast).toHaveBeenCalledExactlyOnceWith("success", "app.data_refresh.success");
         expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
         expect(error_toast).not.toHaveBeenCalled();
       }

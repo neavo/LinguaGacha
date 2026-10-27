@@ -609,6 +609,7 @@ describe("useBatchTranslationTask", () => {
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/translation/reset", {
       mode: "all",
     });
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "app.data_refresh.success");
     expect(runtime_fixture.current.refresh_batch_translation).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_batch_translation).toHaveBeenCalledWith();
   });

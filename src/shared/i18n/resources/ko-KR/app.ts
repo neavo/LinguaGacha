@@ -2,9 +2,9 @@ import type { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ko_kr_app = {
-  source_operation: {
-    success: "원본 처리 성공 …",
-    failed: "원본 처리 실패 …",
+  data_refresh: {
+    success: "데이터 새로고침 성공 …",
+    failed: "데이터 새로고침 실패 …",
   },
   godot_pack_order: {
     title: "리소스 팩 우선순위",

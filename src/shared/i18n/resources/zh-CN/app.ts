@@ -1,9 +1,9 @@
 import type { LanguageCode } from "../../../../domain/language";
 
 export const zh_cn_app = {
-  source_operation: {
-    success: "来源处理成功 …",
-    failed: "来源处理失败 …",
+  data_refresh: {
+    success: "数据刷新成功 …",
+    failed: "数据刷新失败 …",
   },
   godot_pack_order: {
     title: "资源包优先级",

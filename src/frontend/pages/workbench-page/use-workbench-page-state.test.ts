@@ -523,6 +523,10 @@ describe("useWorkbenchPageState", () => {
       expected_section_revisions: { files: 1, items: 2 },
     });
     expect(latest_state?.dialog_state.kind).toBeNull();
+    expect(toast_fixture.current.push_toast).toHaveBeenLastCalledWith(
+      "success",
+      "app.data_refresh.success",
+    );
   });
 
   it("选择不继承会直接提交 import-files", async () => {

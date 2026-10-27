@@ -278,7 +278,7 @@ export function useWorkbenchImportFilesFlow(
         await request_add_files_from_paths(pending_request.source_paths);
         return;
       }
-      options.push_toast("success", options.t("app.source_operation.success"));
+      options.push_toast("success", options.t("app.data_refresh.success"));
       set_pending_import_files_request(null);
       options.set_dialog_state(close_dialog_state());
     },
