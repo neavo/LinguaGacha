@@ -30,7 +30,7 @@
   - 10秒で字幕1本、1分で小説1冊、5分でゲーム1本
 - 対話を通じてさまざまなタスクを自動で完了する内蔵 `AGENT` モード　`👈👈 独自の強み`
   - 技術的な知識は不要。ゲームは翻訳後すぐにプレイ可能
-  - 主要エンジンに対応 - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
+  - 主要エンジンを網羅 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
@@ -72,14 +72,14 @@
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Advanced Features](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
 - Engine Best Practices
-  - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Best Practices for High-Quality Translation of Godot Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
+  - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
+  - [Best Practices for High-Quality Translation of Tyrano Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
   - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
   - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Community Notes
   - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
-- You are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
 | 種類 | 形式 | 説明 |
@@ -89,9 +89,10 @@
 | Markdown | `.md` | - |
 | `KV-JSON` ゲームテキスト | `.json` | 出力元 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` ゲームテキスト | `.json` | 出力元 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
+| `Godot` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[Godot ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
 | `RenPy` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RenPy ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
-| `Godot 4` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[Godot ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
-| `WOLFRPG 3` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[WOLFRPG ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
+| `Tyrano` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[Tyrano ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)] |
+| `WOLFRPG` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[WOLFRPG ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
 | `RPGMAKER MV/MZ` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RPGMAKER ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
 | `RPGMAKER XP/VX/VXAce` ゲームファイル | `.exe` またはゲームフォルダー | ガイド [[RPGMAKER ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
 | `.rpy` ゲームテキスト | `.rpy` | `👈 サポート終了予定` |
@@ -99,14 +100,9 @@
 | `.trans` プロジェクトファイル | `.trans` | 出力元 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 サポート終了予定` |
 
 ## 最近の更新 📅
-- 20261027 v0.131.1
-  - ゲームエンジンの互換性を改善 [#1036](../../issues/1036) [#1037](../../issues/1037)
-  - 修正と改善 [#1034](../../issues/1034) [#1035](../../issues/1035)
-
 - 20261026 v0.131.0
-  - `RenPy` ゲームのネイティブサポート [#1022](../../issues/1022)
-  - ゲームエンジンの互換性を改善 [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
-  - 修正と改善 [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
+  - `Tyrano` ゲームのネイティブサポート [#1046](../../issues/1046)
+  - 修正と改善 [#1039](../../issues/1039) [#1041](../../issues/1041) [#1042](../../issues/1042) [#1043](../../issues/1043)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

@@ -31,7 +31,7 @@
   - Subtitles in ten seconds, a novel in one minute, a game in five minutes
 - Built-in `AGENT` mode that automatically completes various tasks through conversation `👈👈 Exclusive Feature`
   - No technical knowledge required: translate and play
-  - Covers major engines: `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
+  - Covers all major engines: `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
@@ -73,14 +73,14 @@
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Advanced Features](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
 - Engine Best Practices
-  - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Best Practices for High-Quality Translation of Godot Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
+  - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
+  - [Best Practices for High-Quality Translation of Tyrano Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
   - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
   - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Community Notes
   - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
-- You are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
 | Type | Format | Notes |
@@ -90,9 +90,10 @@
 | Markdown | `.md` | - |
 | `KV-JSON` game text | `.json` | Source: [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` game text | `.json` | Source: [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
+| `Godot` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of Godot Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
 | `RenPy` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RenPy Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
-| `Godot 4` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of Godot Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
-| `WOLFRPG 3` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of WOLFRPG Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
+| `Tyrano` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of Tyrano Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)] |
+| `WOLFRPG` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of WOLFRPG Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
 | `RPGMAKER MV/MZ` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RPGMAKER Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
 | `RPGMAKER XP/VX/VXAce` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RPGMAKER Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
 | `.rpy` game text | `.rpy` | `👈 Support ending soon` |
@@ -100,14 +101,9 @@
 | `.trans` project files | `.trans` | Source: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Support ending soon` |
 
 ## Recent Updates 📅
-- 20261027 v0.131.1
-  - Game engine compatibility improvements [#1036](../../issues/1036) [#1037](../../issues/1037)
-  - Fixes and improvements [#1034](../../issues/1034) [#1035](../../issues/1035)
-
 - 20261026 v0.131.0
-  - Native support for `RenPy` games [#1022](../../issues/1022)
-  - Game engine compatibility improvements [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
-  - Fixes and improvements [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
+  - Native support for `Tyrano` games [#1046](../../issues/1046)
+  - Fixes and improvements [#1039](../../issues/1039) [#1041](../../issues/1041) [#1042](../../issues/1042) [#1043](../../issues/1043)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)

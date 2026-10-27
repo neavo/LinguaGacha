@@ -27,7 +27,7 @@
   - 十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
 - 内置 `AGENT` 模式，通过对话自动完成各种任务　`👈👈 独家绝技`
   - 无需任何技术知识，游戏即翻即玩
-  - 主流引擎覆盖 - `RenPy` `Godot` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
+  - 主流引擎全覆盖 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
@@ -69,14 +69,14 @@
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)
   - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)　　[高级功能](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeatures)
 - 引擎实践
-  - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [高质量翻译 Godot 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
+  - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
+  - [高质量翻译 Tyrano 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyrano)
   - [高质量翻译 WOLFRPG 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [高质量翻译 RPGMAKER 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - 社区经验
   - [无复杂加密 kirikiri 引擎机翻笔记](https://github.com/neavo/LinguaGacha/discussions/181)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍
-- 也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
 | 类型 | 格式 | 说明 |
@@ -86,9 +86,10 @@
 | Markdown | `.md` | - |
 | `KV-JSON` 游戏文本 | `.json` | 来源 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
 | `Message-JSON` 游戏文本 | `.json` | 来源 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
+| `Godot` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 Godot 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)] |
 | `RenPy` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RenPy 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
-| `Godot 4` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 Godot 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)] |
-| `WOLFRPG 3` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 WOLFRPG 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)] |
+| `Tyrano` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 Tyrano 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyrano)] |
+| `WOLFRPG` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 WOLFRPG 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)] |
 | `RPGMAKER MV/MZ` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RPGMAKER 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
 | `RPGMAKER XP/VX/VXAce` 游戏文件 | `.exe` 或 游戏目录 | 教程 [[高质量翻译 RPGMAKER 游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
 | `.rpy` 游戏文本 | `.rpy` | `👈 即将停止支持` |
@@ -96,14 +97,9 @@
 | `.trans` 项目文件 | `.trans` | 来源 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 即将停止支持` |
 
 ## 近期更新 📅
-- 20261027 v0.131.1
-  - 游戏引擎兼容性优化 [#1036](../../issues/1036) [#1037](../../issues/1037)
-  - 修复与改进 [#1034](../../issues/1034) [#1035](../../issues/1035)
-
 - 20261026 v0.131.0
-  - 原生 `RenPy` 游戏支持 [#1022](../../issues/1022)
-  - 游戏引擎兼容性优化 [#1025](../../issues/1025) [#1026](../../issues/1026) [#1028](../../issues/1028)
-  - 修复与改进 [#1018](../../issues/1018) [#1019](../../issues/1019) [#1020](../../issues/1020) [#1021](../../issues/1021) [#1024](../../issues/1024) [#1027](../../issues/1027) [#1028](../../issues/1028)
+  - 原生 `Tyrano` 游戏支持 [#1046](../../issues/1046)
+  - 修复与改进 [#1039](../../issues/1039) [#1041](../../issues/1041) [#1042](../../issues/1042) [#1043](../../issues/1043)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]
