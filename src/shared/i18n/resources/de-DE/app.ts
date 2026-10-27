@@ -205,10 +205,10 @@ export const de_de_app = {
   },
   prompt: {
     source: "Ausgangstext",
-    builder_control_character_samples: "Steuerzeichen-Beispiele:",
+    builder_control_character_samples: "Steuerzeichen-Beispiele (unverändert beibehalten):",
     builder_glossary_header:
-      "Glossar <Originalbegriff> -> <Übersetzter Begriff> #<Begriffsinformation>:",
-    builder_input: "Eingabe:",
+      "Glossar (je nach Kontext und Begriffshinweis anwenden) <Originalbegriff> -> <Übersetzter Begriff> #<Begriffshinweis>:",
+    builder_input: "Eingabe (jeden Eintrag übersetzen, Zeilenumbrüche im Eintrag beibehalten):",
     builder_preceding_context: "Vorheriger Kontext (nur als Referenz):",
     builder_following_context: "Folgender Kontext (nur als Referenz):",
   },

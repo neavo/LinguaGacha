@@ -195,9 +195,10 @@ export const en_us_app = {
   },
   prompt: {
     source: "Source",
-    builder_control_character_samples: "Control Characters Samples:",
-    builder_glossary_header: "Glossary <Original Term> -> <Translated Term> #<Term Information>:",
-    builder_input: "Input:",
+    builder_control_character_samples: "Control character samples (keep as-is):",
+    builder_glossary_header:
+      "Glossary (apply per context and Term Note) <Original Term> -> <Translated Term> #<Term Note>:",
+    builder_input: "Input (translate each entry, keep in-entry line breaks):",
     builder_preceding_context: "Preceding context (for reference only):",
     builder_following_context: "Following context (for reference only):",
   },

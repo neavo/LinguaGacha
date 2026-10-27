@@ -5,6 +5,6 @@ export const zh_cn_glossary_page = {
   },
   fields: {
     translation: "译文",
-    description: "描述",
+    info: "说明",
   },
 } as const;

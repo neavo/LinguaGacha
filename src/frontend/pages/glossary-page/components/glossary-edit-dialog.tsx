@@ -76,14 +76,14 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                 />
               </div>
 
-              <div className="glossary-page__dialog-section glossary-page__dialog-section--description">
+              <div className="glossary-page__dialog-section glossary-page__dialog-section--info">
                 <span className="glossary-page__dialog-section-title font-medium">
-                  {t("glossary_page.fields.description")}
+                  {t("glossary_page.fields.info")}
                 </span>
                 <AppEditor
                   class_name="glossary-page__dialog-editor"
                   value={props.entry.info}
-                  aria_label={t("glossary_page.fields.description")}
+                  aria_label={t("glossary_page.fields.info")}
                   read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {

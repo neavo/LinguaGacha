@@ -78,7 +78,7 @@
   gap: 10px;
 }
 
-.glossary-page__dialog-section--description {
+.glossary-page__dialog-section--info {
   grid-column: 1 / -1;
 }
 
@@ -148,8 +148,8 @@
 .glossary-page__table-source-cell,
 .glossary-page__table-translation-head,
 .glossary-page__table-translation-cell,
-.glossary-page__table-description-head,
-.glossary-page__table-description-cell {
+.glossary-page__table-info-head,
+.glossary-page__table-info-cell {
   text-align: left;
 }
 

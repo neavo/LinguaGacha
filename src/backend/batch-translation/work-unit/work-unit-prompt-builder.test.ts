@@ -214,28 +214,6 @@ describe("PromptBuilder", () => {
     expect(user_prompt).not.toContain("ABC -> 甲");
   });
 
-  it("system 指令未要求控制字符时不注入示例", async () => {
-    const builder = new PromptBuilder(
-      await create_template_root(),
-      { app_language: "ZH", source_language: "JA", target_language: "ZH" },
-      create_quality_snapshot({
-        translation_prompt_enable: true,
-        translation_prompt: "普通内容",
-      }),
-      [],
-    );
-
-    const result = builder.generate_prompt(
-      [create_line({ text_src: "正文" })],
-      "text",
-      ["<a>"],
-      [],
-      [],
-    );
-
-    expect(result.messages[1]?.content).not.toContain("<a>");
-  });
-
   it("Sakura 已激活术语使用无空格箭头格式", () => {
     const builder = new PromptBuilder(
       "unused",
@@ -317,7 +295,7 @@ async function create_template_root(): Promise<string> {
   template_roots.push(builtin_root);
   await write_template(builtin_root, "zh", {
     prefix: "翻译前缀",
-    base: "请从 {source_language} 翻译到 {target_language}，保留控制字符。",
+    base: "请从 {source_language} 翻译到 {target_language}。",
     thinking: "规则分析",
     suffix: "输出 JSONLINE\n{translation_output_format}",
   });

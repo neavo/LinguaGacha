@@ -8,6 +8,6 @@ export const ja_jp_glossary_page = {
   },
   fields: {
     translation: "訳文",
-    description: "説明",
+    info: "説明",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

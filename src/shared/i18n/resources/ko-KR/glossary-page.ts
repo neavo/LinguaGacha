@@ -7,6 +7,6 @@ export const ko_kr_glossary_page = {
   },
   fields: {
     translation: "번역문",
-    description: "설명",
+    info: "설명",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;
