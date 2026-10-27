@@ -192,9 +192,10 @@ export const ko_kr_app = {
   },
   prompt: {
     source: "원문",
-    builder_control_character_samples: "제어 문자 예시:",
-    builder_glossary_header: "용어집 <원문 용어> -> <번역 용어> #<용어 정보>:",
-    builder_input: "입력:",
+    builder_control_character_samples: "제어 문자 예시 (그대로 유지):",
+    builder_glossary_header:
+      "용어집 (문맥과 용어 설명에 따라 적용) <원문 용어> -> <번역 용어> #<용어 설명>:",
+    builder_input: "입력 (항목별로 번역하고 항목 내 줄바꿈 유지):",
     builder_preceding_context: "앞 문맥 (참고용):",
     builder_following_context: "뒤 문맥 (참고용):",
   },

@@ -9,6 +9,6 @@ export const en_us_glossary_page = {
   },
   fields: {
     translation: "Translation",
-    description: "Description",
+    info: "Note",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

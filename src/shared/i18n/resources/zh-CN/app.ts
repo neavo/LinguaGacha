@@ -191,9 +191,10 @@ export const zh_cn_app = {
   },
   prompt: {
     source: "原文",
-    builder_control_character_samples: "控制字符示例：",
-    builder_glossary_header: "术语表 <术语原文> -> <术语译文> #<术语信息>:",
-    builder_input: "输入：",
+    builder_control_character_samples: "控制字符示例（原样保留）：",
+    builder_glossary_header:
+      "术语表（根据语境与术语说明采用）<术语原文> -> <术语译文> #<术语说明>:",
+    builder_input: "输入（逐条翻译，保留条内换行）：",
     builder_preceding_context: "参考前文（仅供参考）：",
     builder_following_context: "参考后文（仅供参考）：",
   },

@@ -84,7 +84,7 @@ export class PromptBuilder {
       this.build_context(precedings, "app.prompt.builder_preceding_context"),
       this.build_context(followings, "app.prompt.builder_following_context"),
       this.build_glossary(" -> "),
-      this.build_control_characters_samples(instruction_text, samples),
+      this.build_control_characters_samples(samples),
     ].filter((section) => section !== "");
     return {
       messages: [
@@ -178,22 +178,11 @@ export class PromptBuilder {
   }
 
   /**
-   * 控制字符示例只在系统提示词明确要求控制符时加入
+   * 示例表头自带保留要求，有示例就注入
    */
-  private build_control_characters_samples(main: string, samples: string[]): string {
+  private build_control_characters_samples(samples: string[]): string {
     const unique_samples = [...new Set(samples.map((sample) => sample.trim()).filter(Boolean))];
     if (unique_samples.length === 0) {
-      return "";
-    }
-    const main_lower = main.toLowerCase();
-    if (
-      !(
-        main.includes("控制符") ||
-        main.includes("控制字符") ||
-        main_lower.includes("control code") ||
-        main_lower.includes("control character")
-      )
-    ) {
       return "";
     }
     return `${this.t("app.prompt.builder_control_character_samples")}\n${unique_samples.join(", ")}`;

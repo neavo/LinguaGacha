@@ -117,11 +117,11 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       {
         kind: "data",
         id: "info",
-        title: t("glossary_page.fields.description"),
+        title: t("glossary_page.fields.info"),
         align: "left",
         sortable: {},
-        head_class_name: "glossary-page__table-description-head",
-        cell_class_name: "glossary-page__table-description-cell",
+        head_class_name: "glossary-page__table-info-head",
+        cell_class_name: "glossary-page__table-info-cell",
         render_cell: (payload) => (
           <span className="glossary-page__table-text">{payload.row.entry.info}</span>
         ),

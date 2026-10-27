@@ -200,9 +200,9 @@ export const ja_jp_app = {
   },
   prompt: {
     source: "原文",
-    builder_control_character_samples: "制御文字の例：",
-    builder_glossary_header: "用語集 <原語> -> <訳語> #<用語情報>:",
-    builder_input: "入力：",
+    builder_control_character_samples: "制御文字の例（そのまま保持）：",
+    builder_glossary_header: "用語集（文脈と用語説明に応じて採用）<原語> -> <訳語> #<用語説明>:",
+    builder_input: "入力（項目ごとに翻訳し、項目内の改行を保持）：",
     builder_preceding_context: "前の文脈（参照のみ）：",
     builder_following_context: "後の文脈（参照のみ）：",
   },
