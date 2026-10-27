@@ -77,6 +77,18 @@ import { wolf_font_outputs } from "../../wolfrpg/font";
 import { mv_mz_font_outputs } from "../../rpgmaker-mv-mz/font";
 import { godot_font_outputs } from "../../godot/font";
 import { read_godot_projections } from "../../godot/readable";
+import {
+  build_tyrano_metadata,
+  collect_tyrano_files,
+  discover_tyrano_source,
+  is_tyrano_root,
+  tyrano_path,
+  type TyranoSource,
+} from "../../tyrano/source";
+import { stage_tyrano_source } from "../../tyrano/prepare";
+import { create_tyrano_adapter } from "../../tyrano/tyrano-format";
+import { read_tyrano_metadata, tyrano_default_status } from "../../tyrano/item";
+import { collect_tyrano_fonts, tyrano_font_outputs } from "../../tyrano/font";
 
 type GameSources = {
   RENPY: RenpySource;
@@ -84,6 +96,7 @@ type GameSources = {
   WOLFRPG: WolfSource;
   RPGMAKER_MV_MZ: RPGMakerSource;
   RPGMAKER_RGSS: RGSSSource;
+  TYRANO: TyranoSource;
 };
 export type GameSource = {
   [K in GameFileType]: Readonly<{ kind: "game"; file_type: K; game: GameSources[K] }>;
@@ -372,6 +385,22 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
       collect: collect_godot_fonts,
       outputs: (_game, files, font) => godot_font_outputs(files.data, files.fonts, font.bytes),
     },
+  }),
+  TYRANO: register("TYRANO", {
+    includes_additional_file: (game, name) =>
+      name.toLowerCase().startsWith(tyrano_path(game, "data/").toLowerCase()), // 应用 `data` 外是引擎、第三方库与 Electron 运行时。
+    discover: discover_tyrano_source,
+    is_root: is_tyrano_root,
+    source_path: (game) => game.root,
+    identity: (game) => game.root,
+    needs_stage: (game) => game.archive !== null,
+    stage: stage_tyrano_source,
+    collect: collect_tyrano_files,
+    build_metadata: build_tyrano_metadata,
+    create_adapter: create_tyrano_adapter,
+    read_metadata: read_tyrano_metadata,
+    default_status: tyrano_default_status,
+    font: { collect: collect_tyrano_fonts, outputs: tyrano_font_outputs },
   }),
 };
 

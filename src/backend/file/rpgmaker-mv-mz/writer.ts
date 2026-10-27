@@ -3,7 +3,7 @@ import { read_rpgmaker_metadata } from "./item";
 import type { Item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
-import { decode_javascript_string, encode_javascript_string } from "./javascript";
+import { decode_javascript_string, encode_javascript_string } from "../shared/javascript";
 import { RPGMakerJsonCodec } from "./json-codec";
 import { type RPGMakerLocation, type RPGMakerRootLocation, type JsonPath } from "./types";
 

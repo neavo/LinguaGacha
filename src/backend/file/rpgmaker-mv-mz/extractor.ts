@@ -2,9 +2,8 @@ import { create_item, type Item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import type { SourceFileParseWarning } from "../file-format-types";
 import { rpgmaker_default_status } from "./item";
-import { read_javascript_strings } from "./javascript";
+import { read_javascript_strings, SOURCE_CONTEXT_MAX_LENGTH } from "../shared/javascript";
 import {
-  SOURCE_CONTEXT_MAX_LENGTH,
   type JsonPath,
   type RPGMakerLocation,
   type RPGMakerMetadata,

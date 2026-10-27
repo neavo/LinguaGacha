@@ -35,6 +35,7 @@ export const ITEM_FILE_TYPES = [
   "RPGMAKER_MV_MZ",
   "RPGMAKER_RGSS",
   "GODOT",
+  "TYRANO",
   "KVJSON",
   "MESSAGEJSON",
 ] as const;

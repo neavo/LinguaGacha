@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { create_rpgmaker_mv_mz_adapter } from "./rpgmaker-format";
-import { read_javascript_strings } from "./javascript";
+import { read_javascript_strings } from "../shared/javascript";
 import { create_item } from "../../../domain/item";
 
 const members = await create_rpgmaker_mv_mz_adapter().create_members(new Map());

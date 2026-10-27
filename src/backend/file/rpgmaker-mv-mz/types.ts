@@ -28,4 +28,3 @@ export type RPGMakerMetadata = {
   location: RPGMakerLocation;
   source_context?: string; // 上下文固定为导入原稿，与翻译用途独立。
 };
-export const SOURCE_CONTEXT_MAX_LENGTH = 1200; // 限制条目重复保存的原稿量。

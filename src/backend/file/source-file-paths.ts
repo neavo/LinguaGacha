@@ -17,6 +17,7 @@ export const GAME_ASSET_EXTENSIONS = Object.freeze({
   RPGMAKER_MV_MZ: ".rpgmaker",
   RPGMAKER_RGSS: ".rpgmaker",
   WOLFRPG: ".wolfrpg",
+  TYRANO: ".tyrano",
 } satisfies Record<GameFileType, string>);
 
 /** 译文输出位置：游戏移除最后一个合法资产后缀作为独占目录，其余格式保留资产路径。 */
