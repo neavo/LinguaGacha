@@ -1770,10 +1770,26 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
             }),
         )
       )["sectionRevisions"];
-    await services.project.content.reset_files({
+    const before_reset = (await revision()) as Record<string, number>;
+    await expect(
+      services.project.content.reset_files({
+        rel_paths: ["book.pdf"],
+        expected_section_revisions: { ...before_reset, pdf: (before_reset.pdf ?? 0) + 1 },
+      }),
+    ).rejects.toMatchObject({ code: "data.revision_conflict" });
+    expect((await read_document()).pages[0]).toMatchObject(draft);
+    const reset = await services.project.content.reset_files({
       rel_paths: ["book.pdf"],
-      expected_section_revisions: (await revision())!,
+      expected_section_revisions: before_reset,
     });
+    expect(reset.changes[0]).toMatchObject({
+      source: "project_reset_files",
+      updatedSections: ["items", "pdf"],
+    });
+    const after_reset = (await revision()) as Record<string, number>;
+    expect(after_reset.files).toBe(before_reset.files);
+    expect(after_reset.items).toBe((before_reset.items ?? 0) + 1);
+    expect(after_reset.pdf).toBe((before_reset.pdf ?? 0) + 1);
     expect(
       (await read_document()).pages.every(
         (page) => page.translation === null && !page.reviewed && page.notes === "",

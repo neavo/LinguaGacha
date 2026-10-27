@@ -330,7 +330,7 @@ describe("ProjectContentService", () => {
       fs.renameSync(root, root + "-moved");
       await service.reset_files({
         rel_paths: ["wolf.wolfrpg"],
-        expected_section_revisions: { items: 2 },
+        expected_section_revisions: { files: 2, items: 2 },
       });
       expect(
         (await database.get_all_items(lg_path)).map(({ src, status }) => ({ src, status })),
@@ -363,7 +363,7 @@ describe("ProjectContentService", () => {
       fs.renameSync(root, root + "-unavailable");
       await service.reset_files({
         rel_paths: ["renpy.renpy"],
-        expected_section_revisions: { items: 1 },
+        expected_section_revisions: { files: 1, items: 1 },
       });
       expect(
         (await database.get_all_items(lg_path)).map(({ src, status }) => ({ src, status })),
@@ -442,7 +442,7 @@ describe("ProjectContentService", () => {
       fs.renameSync(root, root + "-moved");
       await service.reset_files({
         rel_paths: ["packed.rpgmaker"],
-        expected_section_revisions: { items: 1 },
+        expected_section_revisions: { files: 1, items: 1 },
       });
       expect(
         (await database.read_asset_content(lg_path, "packed.rpgmaker"))!.equals(Buffer.from("old")),
@@ -1206,6 +1206,121 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
+  it("文件重置从资产重建目标，保留其他文件和累计统计，并拒绝陈旧修订", async () => {
+    const { database, service, lg_path } = await create_service();
+    try {
+      await database.transaction(lg_path, (writer) => {
+        writer.add_asset(lg_path, "a.txt", Buffer.from("新正文"), "TXT", null, 0);
+        writer.add_asset(lg_path, "b.txt", Buffer.from("另一文件"), "TXT", null, 1);
+        writer.set_items(lg_path, [
+          create_persistent_item({
+            item_id: 10,
+            src: "编辑过的原文",
+            dst: "旧译文",
+            name_src: "旧姓名",
+            status: "PROCESSED",
+          }),
+          create_persistent_item({
+            item_id: 11,
+            file_path: "b.txt",
+            src: "保留正文",
+            dst: "保留译文",
+            status: "PROCESSED",
+          }),
+        ]);
+        writer.set_meta(lg_path, "translation_extras", { total_tokens: 100, time: 12 });
+      });
+      const before = await database.get_all_items(lg_path);
+      await expect(
+        service.reset_files({
+          rel_paths: ["a.txt"],
+          expected_section_revisions: { files: 1, items: 0 },
+        }),
+      ).rejects.toMatchObject({ code: "data.revision_conflict" });
+      expect(await database.get_all_items(lg_path)).toEqual(before);
+      const ack = await service.reset_files({
+        rel_paths: ["a.txt"],
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      const items = await database.get_all_items(lg_path);
+      expect(items.find((item) => item.file_path === "b.txt")).toEqual(
+        before.find((item) => item.file_path === "b.txt"),
+      );
+      expect(items.find((item) => item.file_path === "a.txt")).toMatchObject({
+        id: 12,
+        src: "新正文",
+        dst: "",
+        name_src: null,
+        status: "NONE",
+      });
+      expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
+        total_tokens: 100,
+        time: 12,
+        total_line: 2,
+        processed_line: 1,
+        line: 1,
+      });
+      expect(ack.changes[0]).toMatchObject({
+        updatedSections: ["items"],
+        sectionRevisions: { items: 1 },
+      });
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("文件重置只替换完整解析结果，空结果清除旧条目", async () => {
+    const { database, service, lg_path } = await create_service();
+    try {
+      await database.transaction(lg_path, (writer) => {
+        writer.add_asset(lg_path, "a.txt", Buffer.from(""), "TXT", null, 0);
+        writer.add_asset(lg_path, "b.txt", Buffer.from("正文"), "TXT", null, 1);
+        writer.set_items(lg_path, [
+          create_persistent_item({ item_id: 1, dst: "旧译文", status: "PROCESSED" }),
+          create_persistent_item({
+            item_id: 2,
+            file_path: "b.txt",
+            dst: "保留译文",
+            status: "PROCESSED",
+          }),
+        ]);
+      });
+      const before = await database.get_all_items(lg_path);
+      const parse = FileFormatService.prototype.parse_asset;
+      vi.spyOn(FileFormatService.prototype, "parse_asset").mockImplementation(function (
+        this: FileFormatService,
+        ...args
+      ) {
+        if (args[0] === "b.txt")
+          return Promise.resolve({
+            kind: "items",
+            file_type: "TXT",
+            items: [],
+            extraction_complete: false,
+          });
+        return parse.apply(this, args);
+      });
+      await service.reset_files({
+        rel_paths: ["a.txt", "b.txt"],
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(await database.get_all_items(lg_path)).toEqual([
+        before.find((item) => item.file_path === "b.txt"),
+      ]);
+      await expect(
+        service.reset_files({
+          rel_paths: ["b.txt"],
+          expected_section_revisions: { files: 0, items: 1 },
+        }),
+      ).rejects.toMatchObject({ code: "file.parse_failed" });
+      expect(await database.get_all_items(lg_path)).toEqual([
+        before.find((item) => item.file_path === "b.txt"),
+      ]);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("全部重置重建条目并发布全量失效", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
@@ -1444,10 +1559,16 @@ describe("ProjectContentService", () => {
       expect(
         exported.candidates.find((item) => item.text === "已有译文")?.coordinates,
       ).toMatchObject([{ slot: 1 }, { slot: 2 }]);
-      await service.reset_files({ rel_paths: [file], expected_section_revisions: { items: 0 } });
-      expect((await database.get_all_items(lg_path))[0]!.name_src).toBeNull();
+      await service.reset_files({
+        rel_paths: [file],
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      const file_reset = await database.get_all_items(lg_path);
       await service.reset_translation({ mode: "all" });
       const reset = await database.get_all_items(lg_path);
+      expect(file_reset.map(({ id: _id, ...item }) => item)).toEqual(
+        reset.map(({ id: _id, ...item }) => item),
+      );
       expect(reset.map(({ src, dst, status }) => ({ src, dst, status }))).toEqual(
         expect.arrayContaining([
           { src: "Existing dialogue", dst: "", status: "NONE" },
@@ -2115,7 +2236,7 @@ describe("ProjectContentService", () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
     await database.transaction(lg_path, (writer) =>
-      writer.add_asset(lg_path, "a.txt", Buffer.from("a"), "TXT", null, 0),
+      writer.add_asset(lg_path, "a.txt", Buffer.from("新"), "TXT", null, 0),
     );
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -2130,7 +2251,7 @@ describe("ProjectContentService", () => {
     );
     await service.reset_files({
       rel_paths: ["a.txt"],
-      expected_section_revisions: { items: 0 },
+      expected_section_revisions: { files: 0, items: 0 },
     });
 
     expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({

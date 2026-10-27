@@ -499,6 +499,32 @@ describe("useWorkbenchPageState", () => {
     );
   });
 
+  it("文件重置失败保留确认弹窗并可重试", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: { getState: () => create_project_store_state({}) },
+    };
+    enqueue_api_response("/api/workbench/file/reset", () => {
+      throw new Error("failed");
+    });
+    enqueue_api_response("/api/workbench/file/reset", create_project_write_result());
+    await render_hook();
+    act(() => latest_state?.request_reset_file("old.txt"));
+    expect(latest_state?.dialog_state.kind).toBe("reset-file");
+    await act(async () => {
+      await latest_state?.confirm_dialog();
+    });
+    expect(latest_state?.dialog_state).toMatchObject({ kind: "reset-file", submitting: false });
+    await act(async () => {
+      await latest_state?.confirm_dialog();
+    });
+    expect(api_fetch).toHaveBeenCalledWith("/api/workbench/file/reset", {
+      rel_paths: ["old.txt"],
+      expected_section_revisions: { files: 1, items: 2 },
+    });
+    expect(latest_state?.dialog_state.kind).toBeNull();
+  });
+
   it("选择不继承会直接提交 import-files", async () => {
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
       canceled: false,

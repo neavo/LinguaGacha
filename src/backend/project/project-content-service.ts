@@ -19,7 +19,7 @@ import {
   type BatchTranslationProgress,
 } from "../../domain/batch-translation";
 import { inherit_completed_translations } from "./project-translation-inheritance";
-import { build_project_file_records, type ProjectFileRecord } from "./project-file-records";
+import type { ProjectFileRecord } from "./project-file-records";
 import type { PDFDocument } from "../../shared/pdf";
 import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
@@ -32,7 +32,10 @@ import {
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectWriteStore, type ProjectAssetWrite } from "./project-write-store";
-import { require_project_expected_section_revisions } from "./project-write-request";
+import {
+  require_project_expected_section_revisions,
+  type ProjectExpectedSectionRevisions,
+} from "./project-write-request";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "./project-session-state";
 import {
@@ -404,37 +407,23 @@ export class ProjectContentService {
       }
       const snapshot = await this.read_project_write_snapshot(project_path);
       this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
-      const rel_path_set = new Set(rel_paths);
-      const items = this.public_item_record(snapshot.public_items_by_id.values());
-      for (const item of Object.values(items)) {
-        if (!rel_path_set.has(item.file_path)) {
-          continue;
-        }
-        item.dst = "";
-        item.name_dst = null;
-        item.status = FileFormatService.default_status(item);
-      }
-      const settings = await this.read_project_write_settings(project_path);
-      const write_output = await this.compute_prefilter_output({
-        project_path,
-        files: snapshot.files,
-        items,
-        settings,
-      });
-      const pdf_paths = rel_paths.filter(
-        (file_path) => snapshot.files[file_path]?.file_type === "PDF",
+      const targets = new Set(rel_paths);
+      const records = snapshot.asset_records.filter((record) => targets.has(record.path));
+      const expected = require_project_expected_section_revisions(
+        request["expected_section_revisions"],
       );
-      return await this.write_store.replace_project_items_and_files({
-        projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
-        revisionSections: pdf_paths.length ? ["items", "pdf"] : ["items"],
+      const revisionSections: Array<"files" | "items" | "pdf"> = ["files", "items"];
+      if (
+        records.some(
+          (record) => record.file_type === "PDF" || snapshot.pdf_paths.includes(record.path),
+        )
+      )
+        revisionSections.push("pdf");
+      await this.write_store.check_section_revisions(project_path, expected, revisionSections);
+      return await this.rebuild_assets(project_path, snapshot, records, {
         source: "project_reset_files",
-        resetPDFPaths: pdf_paths,
-        updatedSections: ["items"],
-        items: build_project_item_persistent_records(write_output.items),
-        meta: this.build_prefilter_reset_meta(settings, write_output),
+        expectedSectionRevisions: expected,
+        revisionSections,
       });
     });
   }
@@ -587,41 +576,9 @@ export class ProjectContentService {
     ]);
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
-        const assets = await this.reparse_all_assets(project_path);
-        const settings = await this.read_project_write_settings(project_path);
         const snapshot = await this.read_project_write_snapshot(project_path);
-        // 重建条目分配全新身份；旧行号不承担跨解析版本的内容匹配责任。
-        let next_item_id = this.next_item_id_seed(snapshot.public_items_by_id);
-        const reset_items = [...assets.values()].flat().map((item) =>
-          this.normalize_public_item({
-            ...item,
-            id: ++next_item_id,
-          }),
-        );
-        const files = build_project_file_records(snapshot.asset_records);
-        const write_output = await this.compute_prefilter_output({
-          project_path,
-          files,
-          items: this.public_item_record(reset_items),
-          settings,
-          progress: normalize_batch_translation_progress(undefined),
-        });
-        // 失败资产不再进入预过滤，保留条目身份、译文及状态。
-        for (const item of snapshot.public_items_by_id.values())
-          if (!assets.has(item.file_path)) write_output.items[String(item.item_id)] = item;
-        write_output.translation_extras = build_translation_extras_from_items({
-          progress: normalize_batch_translation_progress(undefined),
-          items: Object.values(write_output.items),
-        });
-        return await this.write_store.replace_project_items_and_files({
-          projectPath: project_path,
-          requireExpectedSectionRevisions: false,
-          revisionSections: ["items"],
+        return await this.rebuild_assets(project_path, snapshot, snapshot.asset_records, {
           source: "translation_reset",
-          resetPDFPaths: snapshot.pdf_paths.filter((file) => assets.has(file)),
-          updatedSections: ["items"],
-          items: build_project_item_persistent_records(write_output.items),
-          meta: this.build_prefilter_reset_meta(settings, write_output),
         });
       }
       if (mode === "failed") {
@@ -921,8 +878,64 @@ export class ProjectContentService {
     });
   }
 
+  /** 重建成功的资产，保留其他资产的条目，并在同一事务提交最终事实。 */
+  private async rebuild_assets(
+    project_path: string,
+    snapshot: ProjectWriteSnapshot,
+    records: ProjectAssetRecord[],
+    command:
+      | { source: "translation_reset" }
+      | {
+          source: "project_reset_files";
+          expectedSectionRevisions: ProjectExpectedSectionRevisions;
+          revisionSections: Array<"files" | "items" | "pdf">;
+        },
+  ): Promise<ProjectWriteResult> {
+    const assets = await this.reparse_assets(project_path, records);
+    const settings = await this.read_project_write_settings(project_path);
+    const progress =
+      command.source === "translation_reset"
+        ? normalize_batch_translation_progress(undefined)
+        : await this.read_translation_progress(project_path);
+    let next_item_id = this.next_item_id_seed(snapshot.public_items_by_id); // 新身份不沿用旧解析结果的行号。
+    const reset_items = [...assets.values()]
+      .flat()
+      .map((item) => this.normalize_public_item({ ...item, id: ++next_item_id }));
+    const write_output = await this.compute_prefilter_output({
+      project_path,
+      files: snapshot.files,
+      items: this.public_item_record(reset_items),
+      settings,
+      progress,
+    });
+    // 重复协调与 MTool 优化以文件为界，未重建文件无需重新预过滤。
+    for (const item of snapshot.public_items_by_id.values())
+      if (!assets.has(item.file_path)) write_output.items[String(item.item_id)] = item;
+    write_output.translation_extras = build_translation_extras_from_items({
+      progress,
+      items: Object.values(write_output.items),
+    });
+    return await this.write_store.replace_project_items_and_files({
+      projectPath: project_path,
+      ...(command.source === "translation_reset"
+        ? { requireExpectedSectionRevisions: false as const, revisionSections: ["items" as const] }
+        : {
+            expectedSectionRevisions: command.expectedSectionRevisions,
+            revisionSections: command.revisionSections,
+          }),
+      source: command.source,
+      resetPDFPaths: snapshot.pdf_paths.filter((file) => assets.has(file)),
+      updatedSections: ["items"],
+      items: build_project_item_persistent_records(write_output.items),
+      meta: this.build_prefilter_reset_meta(settings, write_output),
+    });
+  }
+
   /** 逐资产重建，只交付完整结果供同一事务替换。没有资产完整解析时失败。 */
-  private async reparse_all_assets(project_path: string): Promise<Map<string, Item[]>> {
+  private async reparse_assets(
+    project_path: string,
+    records: ProjectAssetRecord[],
+  ): Promise<Map<string, Item[]>> {
     const format_service = await this.create_format_service(project_path);
     const assets = new Map<string, Item[]>();
     const failures: SourceFileFailure[] = [];
@@ -930,7 +943,6 @@ export class ProjectContentService {
     const additional_files = read_project_additional_files(
       await this.database.get_all_meta(project_path),
     );
-    const records = await this.database.get_all_asset_records(project_path);
     for (const record of records) {
       try {
         const content = await this.database.read_asset_content(project_path, record.path);

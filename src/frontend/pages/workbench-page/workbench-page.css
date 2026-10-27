@@ -128,9 +128,7 @@
 }
 
 .workbench-page__table-progress-head,
-.workbench-page__table-progress-cell,
-.workbench-page__table-action-head,
-.workbench-page__table-action-cell {
+.workbench-page__table-progress-cell {
   text-align: center;
 }
 
@@ -162,17 +160,4 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.workbench-page__row-action {
-  color: var(--foreground);
-  border-radius: var(--ui-radius-pill);
-}
-
-.workbench-page__row-action[data-slot="button"] {
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-  min-height: 20px;
-  padding: 0;
 }

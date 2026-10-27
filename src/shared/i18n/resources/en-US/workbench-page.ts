@@ -12,7 +12,6 @@ export const en_us_workbench_page = {
     agent: "AGENT",
     agent_only: "Translation is only available with AGENT",
     agent_recommended: "We recommend using AGENT for translation",
-    actions: "Actions",
   },
   feedback: {
     add_file_loading_toast: "Adding files …",
@@ -22,7 +21,7 @@ export const en_us_workbench_page = {
   action: {
     add_file: "Add",
     close_project: "Close",
-    reset: "Reset Translation",
+    reset: "Reset File Data",
     translation_task: "Translation",
     start_translation: "Start Translation",
     reset_task_all: "Reset All Data",
@@ -38,7 +37,7 @@ export const en_us_workbench_page = {
       do_not_fill: "Do Not Fill",
     },
     reset: {
-      description: "Confirm resetting this file's translation status …?",
+      description: "Confirm resetting the selected file and all of its translation entries …?",
     },
     delete: {
       description: "Confirm deleting the selected file and all of its translation entries …?",

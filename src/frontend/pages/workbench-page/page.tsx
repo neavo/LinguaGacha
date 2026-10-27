@@ -43,7 +43,6 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
           anchor_entry_id={workbench_state.anchor_entry_id}
           readonly={workbench_state.readonly}
           on_selection_change={workbench_state.apply_table_selection}
-          on_prepare_entry_action={workbench_state.prepare_entry_action}
           on_reset={workbench_state.request_reset_file}
           on_reorder={workbench_state.request_reorder_entries}
         />
