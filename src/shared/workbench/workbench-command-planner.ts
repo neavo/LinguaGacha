@@ -101,7 +101,7 @@ export function create_workbench_reset_file_plan(args: {
     updatedSections: sections,
     requestBody: {
       rel_paths: [target_rel_path],
-      expected_section_revisions: build_expected_revisions(args.state, sections),
+      expected_section_revisions: build_expected_revisions(args.state, ["files", ...sections]),
     },
   };
 }

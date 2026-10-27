@@ -116,8 +116,24 @@ describe("workbench command planner", () => {
     expect(plan.requestBody).toEqual({
       rel_paths: ["old.txt"],
       expected_section_revisions: {
+        files: 1,
         items: 2,
       },
+    });
+  });
+
+  it("PDF 文件重置校验文件、条目与 PDF 修订，只更新条目和 PDF", () => {
+    const plan = create_workbench_reset_file_plan({
+      state: {
+        files: [{ rel_path: "book.pdf", file_type: "PDF" }],
+        section_revisions: { files: 1, items: 2, pdf: 3 },
+      },
+      rel_path: "book.pdf",
+    });
+    expect(plan.updatedSections).toEqual(["items", "pdf"]);
+    expect(plan.requestBody).toEqual({
+      rel_paths: ["book.pdf"],
+      expected_section_revisions: { files: 1, items: 2, pdf: 3 },
     });
   });
 

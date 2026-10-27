@@ -11,7 +11,6 @@ export const ja_jp_workbench_page = {
     agent: "AGENT",
     agent_only: "AGENT でのみ翻訳できます",
     agent_recommended: "翻訳には AGENT の使用をおすすめします",
-    actions: "操作",
   },
   feedback: {
     add_file_loading_toast: "ファイルを追加中 …",
@@ -22,7 +21,7 @@ export const ja_jp_workbench_page = {
   action: {
     add_file: "追加",
     close_project: "プロジェクトを閉じる",
-    reset: "翻訳状態をリセット",
+    reset: "ファイルデータをリセット",
     translation_task: "翻訳",
     start_translation: "翻訳を開始",
     reset_task_all: "すべてのデータをリセット",
@@ -38,7 +37,7 @@ export const ja_jp_workbench_page = {
       do_not_fill: "埋めない",
     },
     reset: {
-      description: "このファイルの翻訳状態をリセットしますか …?",
+      description: "選択したファイルと、そのすべての翻訳項目をリセットしますか …?",
     },
     delete: {
       description: "選択したファイルと、そのすべての翻訳項目を削除しますか …?",

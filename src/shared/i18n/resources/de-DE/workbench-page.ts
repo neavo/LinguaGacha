@@ -12,7 +12,6 @@ export const de_de_workbench_page = {
     agent: "AGENT",
     agent_only: "Übersetzung nur mit AGENT möglich",
     agent_recommended: "Wir empfehlen AGENT für die Übersetzung",
-    actions: "Aktionen",
   },
   feedback: {
     add_file_loading_toast: "Dateien werden hinzugefügt …",
@@ -23,7 +22,7 @@ export const de_de_workbench_page = {
   action: {
     add_file: "Hinzufügen",
     close_project: "Schließen",
-    reset: "Übersetzung zurücksetzen",
+    reset: "Dateidaten zurücksetzen",
     translation_task: "Übersetzung",
     start_translation: "Übersetzung starten",
     reset_task_all: "Alle Daten zurücksetzen",
@@ -41,7 +40,8 @@ export const de_de_workbench_page = {
       do_not_fill: "Nicht füllen",
     },
     reset: {
-      description: "Übersetzungsstatus dieser Datei wirklich zurücksetzen …?",
+      description:
+        "Ausgewählte Datei und alle zugehörigen Übersetzungseinträge wirklich zurücksetzen …?",
     },
     delete: {
       description:

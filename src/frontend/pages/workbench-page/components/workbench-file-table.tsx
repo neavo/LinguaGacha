@@ -1,18 +1,14 @@
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
-import { CircleEllipsis } from "lucide-react";
+import { Recycle } from "lucide-react";
 import { type JSX, useMemo, useState } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
-import {
-  WorkbenchTableActionMenu,
-  WorkbenchTableContextMenuItems,
-} from "@frontend/pages/workbench-page/components/workbench-table-action-menu";
+import { AppContextMenuGroup, AppContextMenuItem } from "@frontend/widgets/app-context-menu";
 import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
 import type { LocaleKey } from "@shared/i18n";
 import { is_game_file_type } from "@shared/project-source-formats";
 import { Badge } from "@frontend/shadcn/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { AppButton } from "@frontend/widgets/app-button";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
@@ -28,7 +24,6 @@ type WorkbenchFileTableProps = {
   anchor_entry_id: string | null;
   readonly: boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
-  on_prepare_entry_action: (entry_id: string) => void;
   on_reset: (entry_id: string) => void;
   on_reorder: (ordered_entry_ids: string[]) => Promise<void>;
 };
@@ -153,44 +148,8 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           );
         },
       },
-      {
-        kind: "data",
-        id: "action",
-        title: t("workbench_page.table.actions"),
-        width: 108,
-        align: "center",
-        head_class_name: "workbench-page__table-action-head",
-        cell_class_name: "workbench-page__table-action-cell",
-        render_cell: (payload) => {
-          if (payload.presentation === "overlay") {
-            return (
-              <AppButton
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                disabled
-                tabIndex={-1}
-                aria-hidden="true"
-                className="workbench-page__row-action"
-              >
-                <CircleEllipsis data-icon="inline-start" />
-              </AppButton>
-            );
-          }
-
-          return (
-            <WorkbenchTableActionMenu
-              disabled={props.readonly}
-              on_prepare_open={() => {
-                props.on_prepare_entry_action(payload.row_id);
-              }}
-              on_reset={() => props.on_reset(payload.row_id)}
-            />
-          );
-        },
-      },
     ];
-  }, [props.on_prepare_entry_action, props.on_reset, props.readonly, t]);
+  }, [t]);
 
   return (
     <Card variant="table" className="workbench-page__table-card">
@@ -210,10 +169,15 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           reorder_disabled={props.readonly}
           render_row_context_menu_items={(payload) => {
             return (
-              <WorkbenchTableContextMenuItems
-                disabled={props.readonly}
-                on_reset={() => props.on_reset(payload.row_id)}
-              />
+              <AppContextMenuGroup>
+                <AppContextMenuItem
+                  disabled={props.readonly}
+                  onClick={() => props.on_reset(payload.row_id)}
+                >
+                  <Recycle data-icon="inline-start" />
+                  {t("workbench_page.action.reset")}
+                </AppContextMenuItem>
+              </AppContextMenuGroup>
             );
           }}
           box_selection_enabled

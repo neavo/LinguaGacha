@@ -9,7 +9,6 @@ export const zh_cn_workbench_page = {
     agent: "AGENT",
     agent_only: "仅能使用 AGENT 翻译",
     agent_recommended: "建议使用 AGENT 翻译",
-    actions: "操作",
   },
   feedback: {
     add_file_loading_toast: "正在添加文件 …",
@@ -19,7 +18,7 @@ export const zh_cn_workbench_page = {
   action: {
     add_file: "添加",
     close_project: "关闭工程",
-    reset: "重置翻译状态",
+    reset: "重置文件数据",
     translation_task: "翻译",
     start_translation: "开始翻译",
     reset_task_all: "重置所有数据",
@@ -35,7 +34,7 @@ export const zh_cn_workbench_page = {
       do_not_fill: "不填充",
     },
     reset: {
-      description: "是否确认重置该文件的翻译状态 …?",
+      description: "是否确认重置所选文件及其所有翻译条目 …?",
     },
     delete: {
       description: "是否确认删除所选文件及其所有翻译条目 …?",
