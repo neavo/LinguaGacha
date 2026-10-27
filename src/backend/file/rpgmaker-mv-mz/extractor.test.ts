@@ -1,4 +1,4 @@
-import { SOURCE_CONTEXT_MAX_LENGTH } from "./types";
+import { SOURCE_CONTEXT_MAX_LENGTH } from "../shared/javascript";
 import { expect, it } from "vitest";
 import { create_rpgmaker_extractor } from "./extractor";
 import { read_json_record } from "../../../domain/json";

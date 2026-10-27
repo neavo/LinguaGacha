@@ -1,8 +1,9 @@
 import { createRequire } from "node:module";
 import path from "node:path";
-import { SOURCE_CONTEXT_MAX_LENGTH } from "./types";
 import type * as Oxc from "oxc-parser";
 import type { ScriptDiagnostic } from "../file-format-types";
+
+export const SOURCE_CONTEXT_MAX_LENGTH = 1200; // 限制条目重复保存的原稿量。
 
 /** 字符串范围相对于完整脚本，供译文写回和上下文展示共用。 */
 export type JavascriptString = {
@@ -29,7 +30,7 @@ const CONTEXT_NODE_TYPES = new Set([
 let parser_require = createRequire(import.meta.url); // 发行目录拥有原生解析器绑定。
 
 /** 组合根提供发行运行目录，原生绑定按标准 Node 规则加载。 */
-export function configure_rpgmaker_parser(directory: string): void {
+export function configure_javascript_parser(directory: string): void {
   parser_require = createRequire(path.join(directory, "package.json"));
 }
 

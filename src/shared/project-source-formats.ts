@@ -75,15 +75,6 @@ export const PROJECT_SOURCE_FORMATS = [
     description_keys: [],
   },
   {
-    source_kind: "game",
-    id: "renpy",
-    file_type: "RENPY",
-    support_status: "supported",
-    extension: ".exe",
-    title_key: "project_page.formats.renpy",
-    description_keys: [],
-  },
-  {
     source_kind: "file",
     id: "json",
     support_status: "supported",
@@ -94,6 +85,24 @@ export const PROJECT_SOURCE_FORMATS = [
       "project_page.formats.sextractor",
       "project_page.formats.vntextpatch",
     ],
+  },
+  {
+    source_kind: "game",
+    id: "renpy",
+    file_type: "RENPY",
+    support_status: "supported",
+    extension: ".exe",
+    title_key: "project_page.formats.renpy",
+    description_keys: [],
+  },
+  {
+    source_kind: "game",
+    id: "tyrano",
+    file_type: "TYRANO",
+    support_status: "supported",
+    extension: ".exe",
+    title_key: "project_page.formats.tyrano",
+    description_keys: [],
   },
   {
     source_kind: "game",
@@ -190,6 +199,7 @@ export const GAME_FILE_TYPES = [
   "RPGMAKER_RGSS",
   "GODOT",
   "RENPY",
+  "TYRANO",
 ] as const;
 export type GameFileType = (typeof GAME_FILE_TYPES)[number];
 

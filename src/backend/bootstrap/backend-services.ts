@@ -3,7 +3,7 @@ import { configure_python_parser } from "../file/renpy/python-syntax";
 import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
 import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
-import { configure_rpgmaker_parser } from "../file/rpgmaker-mv-mz/javascript";
+import { configure_javascript_parser } from "../file/shared/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";
 import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
 import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
@@ -155,7 +155,7 @@ export class BackendServices {
    */
   public constructor(options: BackendServicesOptions) {
     if (options.workspaceRuntimeDirectory) {
-      configure_rpgmaker_parser(options.workspaceRuntimeDirectory);
+      configure_javascript_parser(options.workspaceRuntimeDirectory);
       configure_rgss_parser(options.workspaceRuntimeDirectory);
       configure_python_parser(options.workspaceRuntimeDirectory);
     }
