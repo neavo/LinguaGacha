@@ -15,6 +15,7 @@ import { BackendResources } from "../../../bootstrap/backend-resources";
 import { BackendServices } from "../../../bootstrap/backend-services";
 import { AgentWorkspaceService } from "../service";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
+import app_package from "../../../../../package.json";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -674,6 +675,17 @@ it("页面更新模块在部署工作区解析记录并判定目标", async () =
     console.log(JSON.stringify(missing.rejected));
   `);
   expect(output_content(result.stdout)).toMatchObject([{ reason: "target_missing", line: 2 }]);
+});
+
+it("模型说明列出的预装包都能在权限模式下导入", async () => {
+  const result = await run(`
+    const failed = [];
+    for (const name of ${JSON.stringify(app_package.workspaceRuntimePackages.agent)}) {
+      try { await import(name); } catch { failed.push(name); }
+    }
+    console.log(JSON.stringify(failed));
+  `);
+  expect(output_content(result.stdout)).toEqual([]);
 });
 
 it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退出", async () => {

@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 import { deploy_workspace_dependencies } from "./workspace-dependencies.mjs";
 
 // 两次 npm 查询及独立 Node 导入共享全量测试的进程启动预算。
-it("独立部署保留嵌套版本和包资源，重建移除旧依赖", async () => {
+it("独立部署合并全部分组，保留嵌套版本和包资源，重建移除旧依赖", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "lg-workspace-dependencies-"));
   const root = path.join(directory, "source");
   const output = path.join(directory, "runtime");
@@ -15,7 +15,7 @@ it("独立部署保留嵌套版本和包资源，重建移除旧依赖", async (
     const manifest = {
       name: "fixture",
       private: true,
-      workspacePackages: ["alpha", "beta"],
+      workspaceRuntimePackages: { agent: ["alpha"], backend: ["alpha", "beta"] },
       dependencies: { alpha: "1.0.0", beta: "1.0.0", unused: "1.0.0" },
     };
     await writeFile(path.join(root, "package.json"), JSON.stringify(manifest));
@@ -82,7 +82,7 @@ it("独立部署保留嵌套版本和包资源，重建移除旧依赖", async (
       JSON.parse(await readFile(path.join(output, "package.json"), "utf8")).dependencies,
     ).toEqual({ alpha: "1.0.0", beta: "1.0.0" });
 
-    manifest.workspacePackages = ["alpha"];
+    manifest.workspaceRuntimePackages.backend = ["alpha"];
     await writeFile(path.join(root, "package.json"), JSON.stringify(manifest));
     await deploy_workspace_dependencies(root, output);
     await expect(
