@@ -14,6 +14,7 @@ import {
 } from "../../../test/renpy-fixture";
 import { expect, it } from "vitest";
 import { extract_script, patch_script } from "./extract";
+import { encode_python } from "./python";
 import { attributes, class_name, node_string, resolve_node, pickle_string } from "./pickle";
 
 /** 菜单身份保持独立，选项容器可由用例共享。 */
@@ -60,25 +61,64 @@ it("跨槽位转换的回退对白身份合并后可双槽位写回", async () =
   });
 });
 
-it("程序拼接字面量可独立写回，动态显示片段仍阻止完整提取", async () => {
+it("动态片段和 f-string 归为 code，文字编码写回，源码译文原样写回", async () => {
   using session = await PythonSession.create();
-  const script = await extract_script(code_fixture('asset = prefix + " suffix"'), false, session);
-  expect(script.extraction_complete).toBe(true);
-  expect(script.candidates).toMatchObject([{ text: " suffix", usage: "code" }]);
+  const script = await extract_script(
+    code_fixture('a = Text(text=prefix + " suffix")\nb = f"Hi {name}" "!"'),
+    false,
+    session,
+  );
+  expect(
+    script.candidates.map(({ text, usage, write_mode }) => ({ text, usage, write_mode })),
+  ).toEqual([
+    { text: " suffix", usage: "code", write_mode: "text" },
+    { text: 'f"Hi {name}" "!"', usage: "code", write_mode: "source" },
+  ]);
+  const [fragment, formatted] = script.candidates;
+  // 源码译文改动了插值表达式，写回原样替换。
   const output = await patch_script(
     script,
-    [{ candidate: script.candidates[0]!, text: " changed" }],
+    [
+      { candidate: fragment!, text: " 后缀" },
+      { candidate: formatted!, text: 'f"嗨 {nickname!r}"' },
+    ],
     [],
     session,
   );
   expect(script_codes({ slots: read_compiled(output) })[0]?.source).toBe(
-    'asset = prefix + u" changed"',
+    `a = Text(text=prefix + ${encode_python(" 后缀")})\nb = f"嗨 {nickname!r}"`,
   );
-  for (const source of ['renpy.say(None, prefix + "text")', 'Text(text=prefix + "text")']) {
-    const display = await extract_script(code_fixture(source), false, session);
-    expect(display.extraction_complete).toBe(false);
-    expect(display.candidates).toEqual([]);
-    expect(display.warnings[0]?.message).toContain("Dynamic Python string");
+  await expect(
+    patch_script(script, [{ candidate: { ...formatted!, text: 'f"Hi"' }, text: "x" }], [], session),
+  ).rejects.toThrow("code span changed");
+});
+
+it("各槽位的同一问题合并为一条诊断，语法错误与提取遗漏分别归类", async () => {
+  using session = await PythonSession.create();
+  const python = (source: string) =>
+    object(
+      "Python",
+      dictionary({
+        name: tuple(pickle_string("game/test.rpy"), opcode(0x4b, 1), opcode(0x4b, 1)),
+        code: object(
+          "PyCode",
+          tuple(opcode(0x4b, 1), pickle_string(source), tuple(), pickle_string("exec")),
+        ),
+      }),
+    );
+  for (const [source, code] of [
+    ["x = b'bytes'", "script_extraction_incomplete"],
+    ["x = (", "script_syntax_error"],
+  ] as const) {
+    const script = await extract_script(
+      compiled_slots([[python(source)], [python(source)]]),
+      false,
+      session,
+    );
+    expect(script.extraction_complete).toBe(false);
+    expect(script.warnings).toEqual([
+      expect.objectContaining({ code, message: expect.stringContaining("slot 1, 2") }),
+    ]);
   }
 });
 

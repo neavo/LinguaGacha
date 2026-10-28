@@ -52,7 +52,6 @@ export async function read_speaker_expression(
       }
       return facts.constants.find(
         (token) =>
-          token.writable &&
           !token.dynamic &&
           token.start === node.startIndex - offset &&
           token.end === node.endIndex - offset,

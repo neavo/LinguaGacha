@@ -277,12 +277,16 @@ export function code_line(code: RenpyCode, offset: number): number | null {
   if (code.line === null) return null;
   return code.line + (code.source?.slice(0, offset).split("\n").length ?? 1) - 1;
 }
-/** 原源码偏移始终保留。编译坐标缺失时不制造文件行列。 */
-export function code_diagnostic(code: RenpyCode, diagnostic: PythonDiagnostic): ScriptDiagnostic {
+/** 原源码偏移始终保留。编译坐标缺失时不制造文件行列。各槽位的同一问题合并时列出全部槽位。 */
+export function code_diagnostic(
+  code: RenpyCode,
+  diagnostic: PythonDiagnostic,
+  slots: readonly number[] = [code.slot],
+): ScriptDiagnostic {
   const line = code_line(code, diagnostic.start);
   const before = code.source?.slice(0, diagnostic.start) ?? "";
   return {
-    message: `${code.filename ?? "<unknown>"}:${line ?? "?"} / ${code.owner} / slot ${code.slot} / ${code.field}@${code.edge?.start ?? code.legacy?.start}: [${diagnostic.start}, ${diagnostic.end}) ${diagnostic.reason}`,
+    message: `${code.filename ?? "<unknown>"}:${line ?? "?"} / ${code.owner} / slot ${slots.join(", ")} / ${code.field}: [${diagnostic.start}, ${diagnostic.end}) ${diagnostic.reason}`,
     line,
     column:
       line === null || !before.includes("\n") ? null : before.length - before.lastIndexOf("\n"),
@@ -440,6 +444,7 @@ export function script_codes(
 function legacy_facts(root: PickleNode): PythonFacts {
   const facts = {
     constants: [],
+    formatted: [],
     assignments: [],
     references: [] as string[],
     bare_references: [] as string[],

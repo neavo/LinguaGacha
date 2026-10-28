@@ -22,7 +22,11 @@ export type ScriptDiagnostic = Readonly<{
 export type SourceFileParseWarning = Readonly<{
   stage?: SourceDiagnostic["stage"];
   error?: SourceDiagnostic["error"];
-  code: "script_syntax_error" | "internal_file_parse_failed" | "source_preparation_failed";
+  code:
+    | "script_syntax_error"
+    | "script_extraction_incomplete" // 语法有效，但字符串无法解码或无法建立完整写回组。
+    | "internal_file_parse_failed"
+    | "source_preparation_failed";
   rel_path: string;
   internal_file_path?: string;
   location?: string; // 格式私有定位在日志边界转成可读位置。

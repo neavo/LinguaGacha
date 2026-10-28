@@ -26,10 +26,9 @@ export type PythonConstant = Readonly<{
   call: string;
   argument: PythonArgument | undefined;
   whole: boolean;
-  dynamic: boolean;
-  writable: boolean; // 完整字面量具有独立替换范围，插值内部片段除外。
-  percent: boolean; // 字符串是 `%` 格式化的左操作数。
+  dynamic: boolean; // 字面量与参数或整个表达式之间隔着 `%` 左操作数以外的运算，值只是运行时文本的片段。
 }>;
+export type PythonSpan = Readonly<{ start: number; end: number }>; // 扣除临时包装后的源码 UTF-16 区间。
 export type PythonAssignment = Readonly<{
   target: string;
   root: boolean;
@@ -41,6 +40,7 @@ export type PythonAssignment = Readonly<{
 export type PythonValue = string | number | boolean | null | readonly PythonValue[] | undefined;
 export type PythonFacts = Readonly<{
   constants: readonly PythonConstant[];
+  formatted: readonly PythonSpan[]; // 完整 f-string 或含 f-string 的隐式拼接，其中嵌套的字符串不进入 `constants`。
   assignments: readonly PythonAssignment[];
   references: readonly string[];
   bare_references: readonly string[];
@@ -106,6 +106,12 @@ function token(node: Node): PythonLiteral {
     prefix,
     body: node.text.slice(start.text.length, -end.text.length),
   };
+}
+/** f-string 在运行时求值插值，隐式拼接只要含一段 f-string 就整体按源码处理。 */
+function formatted(node: Node): boolean {
+  return node.type === "string"
+    ? /f/iu.test(node.firstNamedChild!.text) // `string_start` 只含前缀和引号。
+    : node.namedChildren.some((child) => child.type === "string" && formatted(child));
 }
 /** 只读取已支持的字面量结构，未知表达式不求值。 */
 export function python_value(node: Node | null, python2 = false, bytes = false): PythonValue {
@@ -243,8 +249,10 @@ export class PythonSession {
           assignments: PythonAssignment[] = [],
           references: string[] = [],
           bare_references: string[] = [],
-          diagnostics: PythonDiagnostic[] = [];
-        let expression_value: PythonFacts["expression"];
+          diagnostics: PythonDiagnostic[] = [],
+          formatted_spans: PythonSpan[] = [];
+        let expression_value: PythonFacts["expression"],
+          formatted_end = -1; // 前序遍历中最近一段 f-string 的终点，其内部节点都在此之前。
         if (input.mode === "eval") {
           const wrapper = root.namedChildren[0]?.namedChildren[0];
           const expression = wrapper ? python_children(wrapper)[0] : undefined;
@@ -290,9 +298,15 @@ export class PythonSession {
           }
           if (
             !["string", "concatenated_string"].includes(node.type) ||
+            node.startIndex < formatted_end ||
             node.parent?.type === "concatenated_string"
           )
             continue;
+          if (formatted(node)) {
+            formatted_spans.push({ start: node.startIndex - offset, end: node.endIndex - offset });
+            formatted_end = node.endIndex;
+            continue;
+          }
           let value: PythonValue;
           try {
             value = python_value(node, python2);
@@ -306,17 +320,19 @@ export class PythonSession {
             continue;
           }
           if (typeof value !== "string") continue;
-          // 外层表达式提供参数用途，字面量自身的范围负责独立写回。
+          // 括号与二元运算链的顶端是字面量的用途位置。动态判断只看这段链，外层运算不影响完整参数。
           let expression = node,
-            percent = false;
+            dynamic = false;
           while (
             expression.parent?.type === "parenthesized_expression" ||
             expression.parent?.type === "binary_operator"
           ) {
-            percent ||=
-              expression.parent.childForFieldName("operator")?.text === "%" &&
-              expression.parent.childForFieldName("left")?.id === expression.id;
-            expression = expression.parent;
+            const parent = expression.parent;
+            dynamic ||=
+              parent.type === "binary_operator" &&
+              (parent.childForFieldName("operator")?.text !== "%" ||
+                parent.childForFieldName("left")?.id !== expression.id);
+            expression = parent;
           }
           const parent = expression.parent;
           const keyword =
@@ -329,23 +345,6 @@ export class PythonSession {
             args?.type === "argument_list"
               ? python_name(args.parent?.childForFieldName("function") ?? null)
               : "";
-          // 插值容器影响替换边界，二元表达式影响翻译语义，两者分别记录。
-          let writable = true,
-            dynamic = false;
-          for (
-            let child = node;
-            child.parent && child.parent.id !== root.id;
-            child = child.parent
-          ) {
-            const ancestor = child.parent;
-            if (["interpolation", "string"].includes(ancestor.type)) writable = false;
-            if (
-              ancestor.type === "binary_operator" &&
-              (ancestor.childForFieldName("operator")?.text !== "%" ||
-                ancestor.childForFieldName("left")?.id !== child.id)
-            )
-              dynamic = true;
-          }
           constants.push({
             start: node.startIndex - offset,
             end: node.endIndex - offset,
@@ -373,12 +372,11 @@ export class PythonSession {
               expression.parent?.type === "expression_statement" &&
               expression.parent.parent?.id === root.id,
             dynamic,
-            writable,
-            percent,
           });
         }
         return {
           constants,
+          formatted: formatted_spans,
           assignments,
           references,
           bare_references,

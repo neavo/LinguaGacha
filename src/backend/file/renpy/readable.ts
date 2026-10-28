@@ -30,7 +30,8 @@ const text = (edge: PickleNode | undefined): string => {
 
 /**
  * 每个编译脚本写出近似脚本 `x.rpyc.reference.rpy` 与字符串映射 `x.rpyc.reference.json`。
- * `strings[].key` 与条目的 `renpy.key` 相同。`line` 是字符串在近似脚本中的实际行，`source_line` 是原始 `.rpy` 的行。
+ * `strings[].key` 与条目的 `renpy.key` 相同，`write_mode` 说明原文和译文是文字还是 Python 源码。
+ * `line` 是字符串在近似脚本中的实际行，`source_line` 是原始 `.rpy` 的行。
  * 同一原始行有多条语句时，近似脚本顺延后面的语句，两者因此不同。
  */
 export async function* read_renpy_projections(
@@ -66,6 +67,7 @@ export async function* read_renpy_projections(
                 key: candidate.key,
                 text: candidate.text,
                 usage: candidate.usage,
+                write_mode: candidate.write_mode,
                 line: writer.line_of(candidate, slot.slot),
                 source_line: candidate.line,
               })),
