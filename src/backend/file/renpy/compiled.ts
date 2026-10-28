@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { deflateSync, inflateSync } from "node:zlib";
-import {
-  PICKLE_MAX_BYTES,
-  unframe_pickle,
-  read_pickle,
-  read_pickle_async,
-  type PickleGraph,
-} from "./pickle";
+import { PICKLE_MAX_BYTES, unframe_pickle, read_pickle, type PickleGraph } from "./pickle";
 
 const MAGIC = "RENPY RPC2",
   HEADER_SIZE = 46,
@@ -54,32 +48,30 @@ function compressed_slots(input: Uint8Array): { slot: number; compressed: Buffer
 function inflate_slot(compressed: Buffer): Buffer {
   return inflateSync(compressed, { maxOutputLength: PICKLE_MAX_BYTES });
 }
-/** 统一返回未分帧坐标，协议 5 的后续写回无需维护帧长度。 */
-export function read_compiled(input: Uint8Array): CompiledSlot[] {
-  return compressed_slots(input).map(({ slot, compressed }) => {
-    const inflated = inflate_slot(compressed),
-      graph = read_pickle(inflated);
-    const data = unframe_pickle(inflated, graph.frames);
-    return { slot, data, graph: graph.frames.length ? read_pickle(data) : graph };
-  });
-}
-/** 准备线程复用同一协议解析器，并在解析期间处理取消消息。 */
-export async function read_compiled_async(
+/** 统一返回未分帧坐标，协议 5 的后续写回无需维护帧长度。解析期间处理取消消息。 */
+export async function read_compiled(
   input: Uint8Array,
   signal?: AbortSignal,
 ): Promise<CompiledSlot[]> {
   const result: CompiledSlot[] = [];
   for (const { slot, compressed } of compressed_slots(input)) {
     const inflated = inflate_slot(compressed),
-      graph = await read_pickle_async(inflated, signal);
+      graph = await read_pickle(inflated, signal);
     const data = unframe_pickle(inflated, graph.frames);
     result.push({
       slot,
       data,
-      graph: graph.frames.length ? await read_pickle_async(data, signal) : graph,
+      graph: graph.frames.length ? await read_pickle(data, signal) : graph,
     });
   }
   return result;
+}
+/** 只读取最后一个槽位的协议图，不去帧也不建立写回坐标，供只消费节点内容的读取使用。 */
+export async function read_compiled_values(
+  input: Uint8Array,
+  signal?: AbortSignal,
+): Promise<PickleGraph> {
+  return read_pickle(inflate_slot(compressed_slots(input).at(-1)!.compressed), signal);
 }
 /** 新尾部摘要使引擎丢弃基于旧编译内容建立的界面缓存。 */
 export function write_compiled(

@@ -9,7 +9,13 @@ export type PreparedSource = Readonly<{
   source_complete: boolean;
   directory_changed: boolean;
   diagnostics: readonly SourceDiagnostic[];
+  read?: PreparedRead; // 缺省表示准备阶段未解析，流水线解析固化后的原稿。
 }>;
+/** 准备阶段已对固化原稿完成的解析。失败对象只在当前后端调用链内传递。 */
+export type PreparedRead = Readonly<
+  | { ok: true; result: Extract<FileFormatReadResult, { kind: "items" }> }
+  | { ok: false; error: unknown }
+>;
 
 /** 解析器语法诊断供后端日志定位，位置按脚本内 UTF-16 列计数。 */
 export type ScriptDiagnostic = Readonly<{

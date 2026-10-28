@@ -8,13 +8,14 @@ import {
   code_fixture,
   compiled_fixture,
   create_renpy_fixture,
+  import_metadata,
 } from "../../../test/renpy-fixture";
 import { font_fixture } from "../../../test/font-fixture";
 import { GameFontService } from "../game-font-service";
 import { GamePrepareWorker } from "../shared/game/prepare-worker";
 import { GameFormat } from "../shared/game/format";
 import { create_renpy_adapter } from "./renpy-format";
-import { build_renpy_metadata, collect_renpy_files, discover_renpy_source } from "./source";
+import { collect_renpy_files, discover_renpy_source } from "./source";
 import {
   RENPY_FONT_FILE,
   RENPY_LANGUAGE_FILE,
@@ -84,7 +85,7 @@ it.each([false, true])("产品入口合并归档与字体事务，译文先写=%
       "demo.renpy",
       [...data.keys()].join("\n"),
       undefined,
-      await build_renpy_metadata(game, { data, complete: true }, native),
+      await import_metadata(game, data, native),
     );
     await format.write_to_path([], {
       paths: { translated_path: temp.path, bilingual_path: temp.path },

@@ -1,5 +1,4 @@
 import { PythonSession, PythonSyntaxError } from "../renpy/python-syntax";
-import { read_speaker_expression } from "../renpy/speaker";
 import { type Item, create_item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import { is_translatable_text, looks_like_resource_reference, sha1_hex } from "./lexer";
@@ -120,8 +119,7 @@ export class RenpyExtractor {
     if (!dialogue?.who_end) return undefined;
     const input = { source: stmt.code.slice(0, dialogue.who_end).trimEnd(), mode: "eval" as const };
     try {
-      const facts = await session.analyze(input);
-      const { name } = await read_speaker_expression(input, facts, session);
+      const { name } = (await session.analyze(input)).speaker;
       if (!name?.value) return undefined;
       const first = stmt.literals.findIndex((literal) => literal.start_col === name.start);
       const last = stmt.literals.findIndex((literal) => literal.end_col === name.end);

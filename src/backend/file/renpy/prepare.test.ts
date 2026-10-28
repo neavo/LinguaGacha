@@ -1,11 +1,9 @@
-import { PythonSession } from "./python-syntax";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { create_renpy_fixture, archive_fixture, code_fixture } from "../../../test/renpy-fixture";
-import { extract_script } from "./extract";
-import { script_codes } from "./script";
+import { read_member } from "./member";
 import { discover_renpy_source } from "./source";
 import { stage_renpy_source } from "./prepare";
 import { write_game_directory } from "../shared/game/directory";
@@ -85,7 +83,6 @@ it("嵌套归档保持非活动，准备拒绝将它激活", async () => {
 it.each(["init", "early"] as const)(
   "%s 强制归档在原执行位置适配，并覆盖被遮蔽的散装资源",
   async (context) => {
-    using session = await PythonSession.create();
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-force-"));
     const native = create_renpy_fixture(temp.path);
     native.write_file_sync(
@@ -103,13 +100,9 @@ it.each(["init", "early"] as const)(
     );
     expect(native.read_text_file(path.join(temp.path, "game/resource.txt"))).toBe("archive");
     expect(
-      script_codes(
-        await extract_script(
-          native.read_file(path.join(temp.path, "game/script.rpyc")),
-          false,
-          session,
-        ),
-      ).map((code) => code.source),
+      (
+        await read_member(native.read_file(path.join(temp.path, "game/script.rpyc")), false)
+      ).codes.map((code) => code.source),
     ).toContain("config.force_archives = False\n");
     await write_game_directory(temp.path, native, (staging) =>
       stage_renpy_source({ game, staging }, native).then((prepared) => prepared.changes),
@@ -162,7 +155,6 @@ it("普通 Python 资源与业务对象引用保持原字节", async () => {
 });
 
 it("缩进初始化中的多行加载声明正确写回，注释和字符串不参与加载声明", async () => {
-  using session = await PythonSession.create();
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-indented-"));
   const native = create_renpy_fixture(temp.path);
   native.write_file_sync(
@@ -174,9 +166,9 @@ it("缩进初始化中的多行加载声明正确写回，注释和字符串不�
   const game = (await discover_renpy_source(temp.path, native))!;
   const staging = path.join(temp.path, "stage");
   await stage_renpy_source({ game, staging }, native);
-  const output = script_codes(
-    await extract_script(native.read_file(path.join(staging, "game/script.rpyc")), false, session),
-  );
+  const output = (
+    await read_member(native.read_file(path.join(staging, "game/script.rpyc")), false)
+  ).codes;
   expect(output[0]?.source).toBe(
     "    # config.searchpath = []\n    note = 'config.file_open_callback'\n    config.force_archives = False\n",
   );

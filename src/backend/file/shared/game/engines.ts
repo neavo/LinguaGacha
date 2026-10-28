@@ -4,7 +4,7 @@ import {
   is_renpy_root,
   collect_renpy_files,
   collect_renpy_fonts,
-  build_renpy_metadata,
+  prepare_renpy_import,
   type RenpySource,
 } from "../../renpy/source";
 import { renpy_font_outputs } from "../../renpy/font";
@@ -31,6 +31,8 @@ import type { GameFiles, GameFormatAdapter } from "./format";
 import type { ReadableFile, ProjectionFailure } from "./readable";
 import {
   collect_game_source_files,
+  type GameImport,
+  type GameImportSources,
   type GameSourceData,
   type GameSourceFiles,
   type PreparedGameFiles,
@@ -132,14 +134,14 @@ interface EngineDefinition<G> {
     report?: ProjectionFailure,
     signal?: AbortSignal,
   ): AsyncIterable<ReadableFile>;
-  /** 固化离线解析需要的语义，来源遗漏由格式按实际依赖解释。 */
-  build_metadata?(
+  /** 新建导入消费本次快照，固化离线解析需要的语义并交付已完成的读取。来源遗漏由格式按实际依赖解释。 */
+  prepare_import?(
     game: G,
-    sources: Readonly<{ data: GameSourceData; complete: boolean }>,
+    sources: GameImportSources,
     fs: NativeFs,
     signal?: AbortSignal,
     report?: (diagnostic: SourceDiagnostic) => void,
-  ): Promise<Uint8Array>;
+  ): Promise<GameImport>;
   font?: {
     /** 字体工具单独收集配置与字体，避免触发文本提取。 */
     collect(
@@ -170,7 +172,7 @@ function register<K extends GameFileType>(
       throw new Error("Mismatched game engine: " + source.file_type);
     return source.game as GameSources[K];
   };
-  const { font, build_metadata, ...definition } = engine;
+  const { font, prepare_import, ...definition } = engine;
   return {
     ...definition,
     // 能力缺省表示不支持字体修改，准入与执行共用同一声明。
@@ -186,14 +188,14 @@ function register<K extends GameFileType>(
           font.outputs(game(source), files, selected),
       },
     }),
-    ...(build_metadata && {
-      build_metadata: (
+    ...(prepare_import && {
+      prepare_import: (
         source: GameSource,
-        sources: Readonly<{ data: GameSourceData; complete: boolean }>,
+        sources: GameImportSources,
         fs: NativeFs,
         signal?: AbortSignal,
         report?: (diagnostic: SourceDiagnostic) => void,
-      ) => build_metadata(game(source), sources, fs, signal, report),
+      ) => prepare_import(game(source), sources, fs, signal, report),
     }),
     async discover(input, fs, signal) {
       const found = await engine.discover(input, fs, signal);
@@ -219,7 +221,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     needs_stage: () => true,
     stage: stage_renpy_source,
     collect: collect_renpy_files,
-    build_metadata: build_renpy_metadata,
+    prepare_import: prepare_renpy_import,
     create_adapter: create_renpy_adapter,
     read_metadata: read_renpy_metadata,
     default_status: renpy_default_status,
@@ -396,7 +398,7 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     needs_stage: (game) => game.archive !== null,
     stage: stage_tyrano_source,
     collect: collect_tyrano_files,
-    build_metadata: build_tyrano_metadata,
+    prepare_import: async (game) => ({ metadata: build_tyrano_metadata(game) }),
     create_adapter: create_tyrano_adapter,
     read_metadata: read_tyrano_metadata,
     default_status: tyrano_default_status,

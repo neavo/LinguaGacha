@@ -1,5 +1,3 @@
-import assert from "node:assert/strict";
-
 /** 常量语义不确定时允许局部跳过，调用方仍须传播资源与程序错误。 */
 export class PythonDecodeError extends Error {}
 /** 用可局部跳过的解码错误报告不支持的字面量。 */
@@ -84,9 +82,8 @@ export function decode_python(token: PythonLiteral, python2 = false): string {
       },
     );
 }
-/** ASCII 转义同时适用于 Python 2 与 Python 3，避免源码编码影响译文。 */
+/** ASCII 转义同时适用于 Python 2 与 Python 3，避免源码编码影响译文。控制字符（含 NUL）写作转义。 */
 export function encode_python(text: string): string {
-  assert(!text.includes("\0"), "Python translation contains NUL");
   return (
     'u"' +
     [...text]

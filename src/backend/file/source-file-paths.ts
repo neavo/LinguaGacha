@@ -133,11 +133,15 @@ export function sort_game_paths(names: Iterable<string>): string[] {
   });
 }
 
-/** 包括祖先目录在内拒绝链接和文件占用，检查也能捕获悬空链接。 */
-export function assert_regular_path(target: string, fs: NativeFs): void {
+/**
+ * 包括祖先目录在内拒绝链接和文件占用，检查也能捕获悬空链接。
+ * `verified` 只属于调用方的一个只读阶段，同阶段内已核对的祖先不再回溯；不得跨阶段或跨操作复用。
+ */
+export function assert_regular_path(target: string, fs: NativeFs, verified?: Set<string>): void {
+  if (verified?.has(target)) return;
   const parent = path.dirname(target);
   if (parent === target) return; // 卷根没有可替换的游戏目录项。
-  assert_regular_path(parent, fs);
+  assert_regular_path(parent, fs, verified);
   try {
     const stat = fs.lstat(target);
     if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory()))
@@ -146,6 +150,7 @@ export function assert_regular_path(target: string, fs: NativeFs): void {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return; // 新成员尚未落盘。
     throw error;
   }
+  verified?.add(target);
 }
 /** 收集已有文件时拒绝链接，避免读取越过游戏根目录。 */
 export function collect_existing_files(

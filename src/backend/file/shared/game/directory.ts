@@ -153,10 +153,11 @@ export async function write_game_directory(
     );
     const existing_targets = new Set<string>();
     const directory_entries = new Map<string, Map<string, string | null>>();
+    const preflight = new Set<string>(); // 预检阶段不修改目录，共同祖先只核对一次。
     for (const name of [...ordered_directories, ...targets]) {
       await checkpoint();
       const target = path.join(root, name);
-      assert_regular_path(target, fs);
+      assert_regular_path(target, fs, preflight);
       let parent = root;
       for (const part of name.split("/")) {
         if (fs.exists(parent)) {
@@ -186,9 +187,10 @@ export async function write_game_directory(
         }
       }
     }
+    const staged = new Set<string>(); // 暂存树归本次事务所有，核对期间不再变化。
     for (const name of plan.writes) {
       await checkpoint();
-      assert_regular_path(path.join(staging, name), fs);
+      assert_regular_path(path.join(staging, name), fs, staged);
       if (!fs.stat(path.join(staging, name)).isFile())
         throw new Error("Missing staged file: " + name);
     }

@@ -23,7 +23,6 @@ import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
 import { create_renpy_fixture, compiled_fixture } from "../../test/renpy-fixture";
 import { read_renpy_metadata } from "./renpy/item";
 import { read_renpy_format_metadata } from "./renpy/profile";
-import { create_renpy_adapter } from "./renpy/renpy-format";
 
 it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留离线语义", async (failure) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-partial-context-"));
@@ -39,6 +38,8 @@ it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留
   const original = await service.prepare_source(entry);
   const original_parsed = await service.parse_asset(entry.rel_path, original.content, "RENPY");
   if (original_parsed.kind !== "items") throw new Error("Expected Ren’Py items");
+  // 首次导入直接交付联合分析结果，与离线解析同一份固化原稿的结果一致。
+  expect(original.read).toEqual({ ok: true, result: original_parsed });
   const display = original_parsed.items.find(
     (item) => read_renpy_metadata(item.extra_field).usage === "say",
   )!;
@@ -58,27 +59,29 @@ it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留
   );
   const parsed = await service.parse_asset(entry.rel_path, prepared.content, "RENPY");
   if (parsed.kind !== "items") throw new Error("Expected Ren’Py items");
+  expect(prepared.read).toEqual({ ok: true, result: parsed });
   expect(parsed.extraction_complete).toBe(failure !== "script");
   expect(parsed.items.some((item) => read_renpy_metadata(item.extra_field).usage === "say")).toBe(
     failure !== "script",
   );
-  const handler = await create_renpy_adapter().create_members(input);
-  const write = handler.prepare_export!([{ ...display, status: "PROCESSED", dst: "译文" }]);
+  expect(metadata.old_substitutions).toBe(true);
+  const output = path.join(temp.path, "out");
+  const context = {
+    paths: { translated_path: output, bilingual_path: output },
+    source_files: [{ path: entry.rel_path, file_type: "RENPY" }],
+    asset_reader: () => Buffer.from(prepared.content),
+  };
+  const write = service.write_items([{ ...display, status: "PROCESSED", dst: "译文" }], context);
   if (failure === "script") {
     await expect(write).rejects.toThrow("Incomplete Ren'Py string table");
-    expect(metadata.old_substitutions).toBeNull();
     expect(metadata.common).toBeNull();
     const code = parsed.items.find(
       (item) => read_renpy_metadata(item.extra_field).usage === "code",
     )!;
-    const independent = await create_renpy_adapter().create_members(input);
     await expect(
-      independent.prepare_export!([{ ...code, status: "PROCESSED", dst: "代码译文" }]),
-    ).resolves.toBeInstanceOf(Map);
-  } else {
-    await expect(write).resolves.toBeInstanceOf(Map);
-    expect(metadata.old_substitutions).toBe(true);
-  }
+      service.write_items([{ ...code, status: "PROCESSED", dst: "代码译文" }], context),
+    ).resolves.toBeUndefined();
+  } else await expect(write).resolves.toBeUndefined();
 });
 
 /**

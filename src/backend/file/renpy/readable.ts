@@ -1,3 +1,4 @@
+import { create_checkpoint } from "./checkpoint";
 import assert from "node:assert/strict";
 import { GAME_METADATA_MEMBER, type GameFiles } from "../shared/game/format";
 import {
@@ -7,6 +8,7 @@ import {
   type ReadableFile,
 } from "../shared/game/readable";
 import { extract_script, type RenpyCandidate } from "./extract";
+import { read_member } from "./member";
 import { attributes, class_name, resolve_node, type PickleNode } from "./pickle";
 import { read_renpy_format_metadata } from "./profile";
 import { PythonSession } from "./python-syntax";
@@ -42,21 +44,24 @@ export async function* read_renpy_projections(
   const member = files.get(GAME_METADATA_MEMBER);
   assert(member, "Missing Ren'Py format metadata; import the game again");
   const metadata = read_renpy_format_metadata(await member.async("uint8array"));
+  using session = await PythonSession.create();
   for (const [file, entry] of files) {
     signal?.throwIfAborted();
     if (file === GAME_METADATA_MEMBER) continue;
     yield* write_projection(
       file,
       async () => {
-        using session = await PythonSession.create();
-        const bytes = await entry.async("uint8array");
-        signal?.throwIfAborted();
-        const script = await extract_script(bytes, metadata.python_major === 2, session);
+        const member = await read_member(
+          await entry.async("uint8array"),
+          metadata.python_major === 2,
+          signal,
+        );
+        const script = await extract_script(member, session, signal);
         for (const warning of script.warnings) report?.(file, new Error(warning.message));
-        const slot = script.slots[0]!;
-        const writer = new ScriptWriter();
+        const slot = member.slots[0]!;
+        const writer = new ScriptWriter(signal);
         for (const statement of children(children(slot.graph.root)[1]))
-          render(writer, statement, 0);
+          await render(writer, statement, 0);
         return [
           [file + ".reference.rpy", writer.lines.join("\n") + "\n"],
           [
@@ -78,6 +83,7 @@ export async function* read_renpy_projections(
       report,
       signal,
     );
+    session.clear();
   }
 }
 
@@ -87,6 +93,12 @@ type Part = string | Code | null; // 一行中的片段，`null` 表示省略。
 
 /** 输出行游标：已知行号在游标之后时补空行对齐，否则顺延到下一行，顺序永不改变。 */
 class ScriptWriter {
+  public readonly checkpoint: () => Promise<void> | undefined;
+  /** 整份投影共用批次预算，嵌套语句沿用同一取消信号。 */
+  public constructor(public readonly signal?: AbortSignal) {
+    this.checkpoint = create_checkpoint(signal);
+  }
+
   public readonly lines: string[] = []; // 近似脚本的输出行。
   public strings: string | null = null; // 连续的 `TranslateString` 共用一个 `translate … strings:` 头。
   private readonly anchors = new Map<number, { line: number; edge: PickleNode }>(); // 消费边偏移 → 其源码首行在视图中的行。
@@ -157,7 +169,9 @@ const quoted = (edge: PickleNode | undefined): Part =>
   edge ? { edge, text: JSON.stringify(text(edge)), line: null } : '""';
 
 /** 字段名以真实节点为准，缺失字段直接省略。未知类写出类名，并继续下钻语句块。 */
-function render(writer: ScriptWriter, edge: PickleNode, depth: number): void {
+async function render(writer: ScriptWriter, edge: PickleNode, depth: number): Promise<void> {
+  const pause = writer.checkpoint();
+  if (pause) await pause;
   const node = resolve_node(edge),
     full_name = class_name(node),
     cls = full_name.replace(/^renpy\.(?:ast|sl2\.slast)\./u, ""),
@@ -212,35 +226,37 @@ function render(writer: ScriptWriter, edge: PickleNode, depth: number): void {
     }
     case "Menu": {
       writer.write(line, depth, "menu", ...argument_parts(field("arguments")), ":");
-      const lines = menu_item_lines(node);
+      const lines = await menu_item_lines(node, writer.signal);
       const item_arguments = children(field("item_arguments"));
-      children(field("items")).forEach((item, index) => {
+      for (const [index, item] of children(field("items")).entries()) {
         const [label, condition, body] = children(item);
         const head = [quoted(label), ...argument_parts(item_arguments[index])];
-        if (!body || resolve_node(body).kind !== "list")
-          return void writer.write(lines[index]!, depth + 1, ...head);
+        if (!body || resolve_node(body).kind !== "list") {
+          writer.write(lines[index]!, depth + 1, ...head);
+          continue;
+        }
         const guard = code_of(condition);
         if (!guard || guard.text === "True") writer.write(lines[index]!, depth + 1, ...head, ":");
         else writer.write(lines[index]!, depth + 1, ...head, " if ", guard, ":");
-        render_block(writer, body, depth + 2);
-      });
+        await render_block(writer, body, depth + 2);
+      }
       return;
     }
     case "If":
     case "SLIf":
     case "SLShowIf":
-      children(field("entries")).forEach((entry, index) => {
+      for (const [index, entry] of children(field("entries")).entries()) {
         const [condition, body] = children(entry);
         const guard =
           condition && resolve_node(condition).kind !== "none" ? code_of(condition) : null;
-        const lines = body ? block_lines(body) : null;
+        const lines = body ? await block_lines(body, writer.signal) : null;
         const at = index === 0 ? line : lines && lines[0] - 1;
         if (index === 0)
           writer.write(at, depth, cls === "SLShowIf" ? "showif " : "if ", guard, ":");
         else if (guard === null || guard.text === "True") writer.write(at, depth, "else:");
         else writer.write(at, depth, "elif ", guard, ":");
-        render_block(writer, body, depth + 1);
-      });
+        await render_block(writer, body, depth + 1);
+      }
       return;
     case "While":
       writer.write(line, depth, "while ", code_of(field("condition")), ":");
@@ -400,16 +416,20 @@ function render(writer: ScriptWriter, edge: PickleNode, depth: number): void {
       return;
     default:
       writer.write(line, depth, "# " + full_name);
-      block("block");
+      await block("block");
       return block("children");
   }
 }
 
 /** 语句块可以是语句列表，也可以是单个节点（如 `SLBlock`）。 */
-function render_block(writer: ScriptWriter, edge: PickleNode | undefined, depth: number): void {
+async function render_block(
+  writer: ScriptWriter,
+  edge: PickleNode | undefined,
+  depth: number,
+): Promise<void> {
   const node = edge && resolve_node(edge);
-  if (node?.kind === "list") for (const child of node.children) render(writer, child, depth);
-  else if (node?.kind === "object") render(writer, node, depth);
+  if (node?.kind === "list") for (const child of node.children) await render(writer, child, depth);
+  else if (node?.kind === "object") await render(writer, node, depth);
 }
 
 /** `ArgumentInfo` 写作调用参数列表，缺失时为空。 */
@@ -436,7 +456,7 @@ function argument_parts(edge: PickleNode | undefined): Part[] {
 }
 
 /** SL2 关键字属性写作 `key value`。 */
-function keywords(fields: Map<string, PickleNode>): Part[][] {
+function keywords(fields: ReadonlyMap<string, PickleNode>): Part[][] {
   return children(fields.get("keyword")).map((pair) => {
     const [key, expression] = children(pair);
     return [`${text(key)} `, code_of(expression)];
@@ -444,7 +464,11 @@ function keywords(fields: Map<string, PickleNode>): Part[][] {
 }
 
 /** SL2 块的关键字属性逐行写出，子节点同一缩进。 */
-function screen_body(writer: ScriptWriter, fields: Map<string, PickleNode>, depth: number): void {
+async function screen_body(
+  writer: ScriptWriter,
+  fields: ReadonlyMap<string, PickleNode>,
+  depth: number,
+): Promise<void> {
   for (const parts of keywords(fields)) writer.write(null, depth, ...parts);
-  for (const child of children(fields.get("children"))) render(writer, child, depth);
+  for (const child of children(fields.get("children"))) await render(writer, child, depth);
 }

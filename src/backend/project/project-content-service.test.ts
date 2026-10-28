@@ -2,6 +2,7 @@ import { GameDirectoryOperations } from "../file/shared/game/game-directory-oper
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import {
   create_renpy_fixture,
+  extract_fixture,
   compiled_slots,
   object,
   dictionary,
@@ -9,8 +10,6 @@ import {
   opcode,
 } from "../../test/renpy-fixture";
 import { pickle_string } from "../file/renpy/pickle";
-import { PythonSession } from "../file/renpy/python-syntax";
-import { extract_script } from "../file/renpy/extract";
 import { create_renpy_adapter } from "../file/renpy/renpy-format";
 import { GameFormat } from "../file/shared/game/format";
 import { NativeFs } from "../../native/native-fs";
@@ -336,6 +335,43 @@ describe("ProjectContentService", () => {
         (await database.get_all_items(lg_path)).map(({ src, status }) => ({ src, status })),
       ).toEqual(baseline.map(({ src, status }) => ({ src, status })));
     } finally {
+      await database.close();
+    }
+  });
+  it("重置解析结束后关闭工程，保留已有条目与修订", async () => {
+    const { database, service, runtime_gate, lg_path } = await create_service();
+    const root = project_path("renpy");
+    create_renpy_fixture(root);
+    let stopping: Promise<void> | undefined;
+    try {
+      const preview = await service.preview_import_files({ source_paths: [root] });
+      await service.import_files({
+        files: preview.files!,
+        conflict_action: "replace",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      const original = await database.get_all_items(lg_path);
+      const meta = await database.get_all_meta(lg_path);
+      const parse = FileFormatService.prototype.parse_asset;
+      vi.spyOn(FileFormatService.prototype, "parse_asset").mockImplementationOnce(async function (
+        this: FileFormatService,
+        ...args: Parameters<typeof parse>
+      ) {
+        const result = await parse.apply(this, args);
+        stopping = runtime_gate.stop_project_writes();
+        return result;
+      });
+      await expect(
+        service.reset_files({
+          rel_paths: ["renpy.renpy"],
+          expected_section_revisions: { files: 1, items: 1 },
+        }),
+      ).rejects.toMatchObject({ code: "runtime.disposed" });
+      await stopping;
+      expect(await database.get_all_items(lg_path)).toEqual(original);
+      expect(await database.get_all_meta(lg_path)).toEqual(meta);
+    } finally {
+      await stopping;
       await database.close();
     }
   });
@@ -1550,11 +1586,8 @@ describe("ProjectContentService", () => {
         source_files: [{ path: file, file_type: "RENPY" }],
         asset_reader: (path) => database.read_asset_content(lg_path, path),
       });
-      using session = await PythonSession.create();
-      const exported = await extract_script(
+      const exported = await extract_fixture(
         fs.readFileSync(path.join(output, "dialogue", member)),
-        false,
-        session,
       );
       expect(
         exported.candidates.find((item) => item.text === "已有译文")?.coordinates,

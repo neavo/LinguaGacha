@@ -152,12 +152,18 @@ export class SourceFileParsePipeline {
           source_complete: prepared.source_complete,
         };
         file_drafts.push(draft);
-        const parsed = await this.format_service.parse_asset(
-          entry.rel_path,
-          content,
-          file_type,
-          prepared.additional_files,
-        );
+        // 准备阶段已解析时直接消费；失败沿用解析失败通道，可靠原稿已在上方登记。
+        const { read } = prepared;
+        if (read && !read.ok) throw read.error;
+        const parsed = read
+          ? read.result
+          : await this.format_service.parse_asset(
+              entry.rel_path,
+              content,
+              file_type,
+              prepared.additional_files,
+              signal,
+            );
         if (parsed.kind === "items") warnings.push(...(parsed.warnings ?? []));
         Object.assign(draft, {
           ...(parsed.kind === "items" && parsed.game_engine !== undefined

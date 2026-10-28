@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { read_json_record } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
-import { GAME_METADATA_MEMBER, type GameFormatAdapter } from "../shared/game/format";
+import { GAME_METADATA_MEMBER, type GameMemberAdapter } from "../shared/game/format";
 import { read_tyrano_metadata } from "./item";
 import { read_tyrano_member, render_tyrano_member } from "./member";
 import { TYRANO_PARSERS, type SceneSyntax, type TyranoParser } from "./scene";
 
 /** 每次容器操作从元数据读定解析语义，成员只按自身内容提取和写回。 */
-export function create_tyrano_adapter(): GameFormatAdapter {
+export function create_tyrano_adapter(): GameMemberAdapter {
   return {
+    scope: "member",
     file_type: "TYRANO",
     has_metadata: true,
     internal_path: (item) => read_tyrano_metadata(item.extra_field).internal_file_path,

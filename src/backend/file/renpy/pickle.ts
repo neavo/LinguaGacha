@@ -1,5 +1,4 @@
 import type { Edit } from "../shared/splice";
-import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 
 export const PICKLE_MAX_BYTES = 64 * 1024 * 1024;
@@ -37,11 +36,16 @@ export type PickleGraph = {
   nodes: PickleNode[];
   frames: { start: number; end: number }[];
 };
+/** 协议校验位于逐指令热路径，只在失败时构造错误；`node:assert` 的可变参数调用会逐次分配。 */
+function check(condition: boolean, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+const UTF8 = new TextDecoder("utf-8", { fatal: true }); // 严格解码器无状态，热路径复用同一实例。
 
 /** GLOBAL 与 REDUCE 只保存数据记录，永远不加载模块或执行构造器。 */
 function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
   const data = Buffer.from(input);
-  assert(data.length <= PICKLE_MAX_BYTES, "Pickle exceeds size limit");
+  check(data.length <= PICKLE_MAX_BYTES, "Pickle exceeds size limit");
   let position = 0;
   const mark = Symbol("mark"),
     stack: (PickleNode | typeof mark)[] = [];
@@ -49,27 +53,35 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
     nodes: PickleNode[] = [];
   const frames: { start: number; end: number }[] = [];
   let frame_end: number | undefined;
+  // 定长读取直接按偏移取值，只有失败时才构造错误消息。
+  const truncated = () => new Error("Truncated Pickle at " + position);
   const take = (length: number): Buffer => {
-    assert(
-      Number.isSafeInteger(length) && length >= 0 && position + length <= data.length,
-      "Truncated Pickle at " + position,
-    );
+    if (!(Number.isSafeInteger(length) && length >= 0 && position + length <= data.length))
+      throw truncated();
     const bytes = data.subarray(position, position + length);
     position += length;
     return bytes;
   };
-  const byte = () => take(1)[0]!;
-  const uint = () => take(4).readUInt32LE();
+  const byte = (): number => {
+    if (position >= data.length) throw truncated();
+    return data[position++]!;
+  };
+  const uint = (): number => {
+    if (position + 4 > data.length) throw truncated();
+    const value = data.readUInt32LE(position);
+    position += 4;
+    return value;
+  };
   const line = () => {
     const end = data.indexOf(10, position);
-    assert(end >= position, "Unterminated Pickle line");
+    check(end >= position, "Unterminated Pickle line");
     return take(end - position + 1)
       .subarray(0, -1)
       .toString("utf8");
   };
   const pop = (): PickleNode => {
     const value = stack.pop();
-    assert(value !== undefined && value !== mark, "Invalid Pickle stack");
+    check(value !== undefined && value !== mark, "Invalid Pickle stack");
     return value;
   };
   const top = () => {
@@ -79,7 +91,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
   };
   const marked = (): PickleNode[] => {
     const index = stack.lastIndexOf(mark);
-    assert(index >= 0, "Missing Pickle MARK");
+    check(index >= 0, "Missing Pickle MARK");
     const values = stack.splice(index + 1) as PickleNode[];
     stack.pop();
     return values;
@@ -90,7 +102,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
     start: number,
     children: PickleNode[] = [],
   ): PickleNode => {
-    assert(nodes.length < MAX_NODES, "Pickle exceeds node limit");
+    check(nodes.length < MAX_NODES, "Pickle exceeds node limit");
     const node: PickleNode = { kind, value, start, end: position, children };
     nodes.push(node);
     stack.push(node);
@@ -98,24 +110,24 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
   };
   const append = (values: PickleNode[], kinds: PickleNode["kind"][]) => {
     const node = resolve_node(top());
-    assert(kinds.includes(node.kind), "Invalid Pickle container");
-    if (node.kind === "dict") assert(values.length % 2 === 0, "Invalid Pickle pairs");
+    check(kinds.includes(node.kind), "Invalid Pickle container");
+    if (node.kind === "dict") check(values.length % 2 === 0, "Invalid Pickle pairs");
     node.children.push(...values);
   };
   for (let count = 0; position < data.length; count++) {
-    assert(count < MAX_OPERATIONS, "Pickle exceeds operation limit");
+    check(count < MAX_OPERATIONS, "Pickle exceeds operation limit");
     if (count > 0 && count % COMPUTE_STEP === 0) yield;
     if (frame_end === position) frame_end = undefined;
     const start = position,
       op = byte();
     switch (op) {
       case 0x80:
-        assert(byte() <= 5, "Unsupported Pickle protocol");
+        check(byte() <= 5, "Unsupported Pickle protocol");
         break;
       case 0x95: {
-        assert(frame_end === undefined, "Nested Pickle FRAME");
+        check(frame_end === undefined, "Nested Pickle FRAME");
         const length = Number(take(8).readBigUInt64LE());
-        assert(
+        check(
           Number.isSafeInteger(length) && position + length <= data.length,
           "Invalid Pickle FRAME",
         );
@@ -124,8 +136,8 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
         break;
       }
       case 0x2e:
-        assert(stack.length === 1 && position === data.length, "Invalid Pickle STOP");
-        assert(frame_end === undefined || position === frame_end, "Truncated Pickle FRAME");
+        check(stack.length === 1 && position === data.length, "Invalid Pickle STOP");
+        check(frame_end === undefined || position === frame_end, "Truncated Pickle FRAME");
         return { root: pop(), nodes, frames };
       case 0x28:
         stack.push(mark);
@@ -147,7 +159,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
         push("number", take(2).readUInt16LE(), start);
         break;
       case 0x4a:
-        push("number", take(4).readInt32LE(), start);
+        push("number", uint() | 0, start);
         break;
       case 0x47:
         push("number", take(8).readDoubleBE(), start);
@@ -155,7 +167,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
       case 0x8a:
       case 0x8b: {
         const bytes = take(op === 0x8a ? byte() : uint());
-        assert(bytes.length <= 1024, "Pickle integer exceeds limit");
+        check(bytes.length <= 1024, "Pickle integer exceeds limit");
         let value = 0n;
         for (let i = bytes.length - 1; i >= 0; i--) value = (value << 8n) | BigInt(bytes[i]!);
         if ((bytes.at(-1) ?? 0) & 128) value -= 1n << BigInt(bytes.length * 8);
@@ -164,11 +176,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
       }
       case 0x58:
       case 0x8c:
-        push(
-          "unicode",
-          new TextDecoder("utf-8", { fatal: true }).decode(take(op === 0x58 ? uint() : byte())),
-          start,
-        );
+        push("unicode", UTF8.decode(take(op === 0x58 ? uint() : byte())), start);
         break;
       case 0x55:
       case 0x43:
@@ -194,7 +202,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
       case 0x71:
       case 0x72: {
         const id = op === 0x94 ? memo.size : op === 0x71 ? byte() : uint();
-        assert(!memo.has(id), "Duplicate Pickle memo");
+        check(!memo.has(id), "Duplicate Pickle memo");
         const node = top();
         memo.set(id, node);
         node.memo_end = position;
@@ -203,7 +211,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
       case 0x68:
       case 0x6a: {
         const target = memo.get(op === 0x68 ? byte() : uint());
-        assert(target, "Unknown Pickle reference");
+        check(target !== undefined, "Unknown Pickle reference");
         push("ref", null, start).target = target;
         break;
       }
@@ -247,7 +255,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
         break;
       case 0x64: {
         const values = marked();
-        assert(values.length % 2 === 0);
+        check(values.length % 2 === 0, "Invalid Pickle pairs");
         push("dict", null, start, values);
         break;
       }
@@ -259,7 +267,7 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
       }
       case 0x75: {
         const values = marked();
-        assert(values.length % 2 === 0);
+        check(values.length % 2 === 0, "Invalid Pickle pairs");
         append(values, ["dict", "object"]);
         break;
       }
@@ -275,29 +283,19 @@ function* parse_pickle(input: Uint8Array): Generator<void, PickleGraph> {
       case 0x62: {
         const state = pop(),
           node = resolve_node(top());
-        assert(node.kind === "object", "Invalid Pickle BUILD");
+        check(node.kind === "object", "Invalid Pickle BUILD");
         node.state = state;
         break;
       }
       default:
         throw new Error(`Unsupported Pickle opcode 0x${op.toString(16)} at ${start}`);
     }
-    assert(frame_end === undefined || position <= frame_end, "Pickle opcode crosses FRAME");
+    check(frame_end === undefined || position <= frame_end, "Pickle opcode crosses FRAME");
   }
   throw new Error("Missing Pickle STOP");
 }
-/** 同进程读取与准备线程共用解析状态机，避免维护两套协议实现。 */
-export function read_pickle(input: Uint8Array): PickleGraph {
-  const parser = parse_pickle(input);
-  let result = parser.next();
-  while (!result.done) result = parser.next();
-  return result.value;
-}
-/** 准备 worker 在指令边界让出，使取消消息能在大索引解析期间进入。 */
-export async function read_pickle_async(
-  input: Uint8Array,
-  signal?: AbortSignal,
-): Promise<PickleGraph> {
+/** 解析在有界指令批次后让出，使取消消息能在大索引解析期间进入。 */
+export async function read_pickle(input: Uint8Array, signal?: AbortSignal): Promise<PickleGraph> {
   const parser = parse_pickle(input);
   for (;;) {
     signal?.throwIfAborted();
@@ -315,21 +313,20 @@ export function resolve_node(node: PickleNode): PickleNode {
 /** 协议字符串使用严格 UTF-8，旧界面显示字节由提取层单独解释。 */
 export function node_string(node: PickleNode): string {
   const value = resolve_node(node).value;
-  assert(typeof value === "string" || Buffer.isBuffer(value), "Expected Pickle string");
-  return typeof value === "string"
-    ? value
-    : new TextDecoder("utf-8", { fatal: true }).decode(value);
+  check(typeof value === "string" || Buffer.isBuffer(value), "Expected Pickle string");
+  return typeof value === "string" ? value : UTF8.decode(value);
 }
 /** 类名来自序列化记录，读取过程不实例化该类。 */
 export function class_name(node: PickleNode): string {
   node = resolve_node(node);
   return node.cls ? node_string(node.cls) : "";
 }
+const NO_ATTRIBUTES: ReadonlyMap<string, PickleNode> = new Map(); // 标量与无状态节点共用，避免逐节点分配。
 /** BUILD 可同时保存普通属性与 slots 属性，两者合成字段视图。 */
-export function attributes(node: PickleNode): Map<string, PickleNode> {
+export function attributes(node: PickleNode): ReadonlyMap<string, PickleNode> {
   const state = resolve_node(node).state;
+  if (!state) return NO_ATTRIBUTES;
   const result = new Map<string, PickleNode>();
-  if (!state) return result;
   const resolved = resolve_node(state);
   const dictionaries = resolved.kind === "tuple" ? resolved.children.map(resolve_node) : [resolved];
   for (const dictionary of dictionaries)
