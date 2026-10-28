@@ -109,17 +109,22 @@
       "uuid": "^14.0.2"
     }
   },
-  "workspacePackages": [
-    "chardet",
-    "exceljs",
-    "iconv-lite",
-    "jszip",
-    "mupdf",
-    "oxc-parser",
-    "remark-gfm",
-    "remark-parse",
-    "unified",
-    "@ruby/prism",
-    "web-tree-sitter"
-  ]
+  "workspaceRuntimePackages": {
+    "agent": [
+      "chardet",
+      "exceljs",
+      "iconv-lite",
+      "jszip",
+      "mupdf",
+      "remark-gfm",
+      "remark-parse",
+      "unified"
+    ],
+    "backend": [
+      "@ruby/prism",
+      "mupdf",
+      "oxc-parser",
+      "web-tree-sitter"
+    ]
+  }
 }

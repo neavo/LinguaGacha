@@ -28,7 +28,7 @@ export function create_agent_workspace_run_tool(options: {
       "- 每次调用启动独立 Node.js 进程，跨调用的数据通过文件交接。",
       `- 每次执行的脚本与输出由宿主自动保存到 \`${AGENT_WORKSPACE_RUN_ROOT}/\`。`,
       "- 当前工作目录（`cwd`）是工作区根目录，文件相对路径从这里解析，脚本内的相对 `import` 从脚本文件所在目录解析。",
-      `- 预装包：${app_package.workspacePackages.join("、")}，通过标准 import 使用。`,
+      `- 预装包：${app_package.workspaceRuntimePackages.agent.join("、")}，通过标准 import 使用。`,
       "  - `@lg/workspace/item-contexts` 提供 `queryItemContexts`，用于取得条目的邻近语境。",
       "  - `@lg/text` 提供与应用共用的字面匹配能力。",
       "  - `@lg/pdf` 提供与正式输出共用的文档模板。",

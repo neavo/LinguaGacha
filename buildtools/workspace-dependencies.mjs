@@ -18,7 +18,8 @@ export async function deploy_workspace_dependencies(root, output) {
     throw new Error(`Workspace output overlaps its source: ${output}`);
 
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-  const names = manifest.workspacePackages;
+  // 后端与 Agent 共用同一运行目录，部署覆盖全部分组。
+  const names = Object.values(manifest.workspaceRuntimePackages).flat();
   const selected = `:root > :is(${names.map((name) => `[name=${JSON.stringify(name)}]`).join(",")})`;
   const { stdout } = await execa("npm", ["query", `${selected}, ${selected} *`, "--json"], {
     cwd: root,
