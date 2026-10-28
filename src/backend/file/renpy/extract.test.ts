@@ -57,7 +57,6 @@ it("各槽位的同一问题合并为一条诊断，语法错误与提取遗漏�
     ["x = (", "script_syntax_error"],
   ] as const) {
     const script = await extract_fixture(compiled_slots([[python(source)], [python(source)]]));
-    expect(script.extraction_complete).toBe(false);
     expect(script.warnings).toEqual([
       expect.objectContaining({
         code,
@@ -118,7 +117,7 @@ it.each([
 ])("姓名参数的默认资格只取决于当前 Character 调用：%s", async (expression, usage) => {
   const script = await extract_fixture(code_fixture(`a = ${expression}`));
   expect(script.candidates).toMatchObject([{ text: "Name", usage }]);
-  expect(script.extraction_complete).toBe(true);
+  expect(script.warnings).toEqual([]);
 });
 
 it.each([

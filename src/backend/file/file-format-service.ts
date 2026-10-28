@@ -252,10 +252,24 @@ export class FileFormatService {
     const result: DiscoveredSource[] = [];
     for (const entry of entries) {
       const resolved = await discover_source(entry.source_path, this.native_fs, signal);
+      const file_type = entry.file_type ?? resolved.file_type;
+      // 游戏容器只能由同一引擎的来源形成，身份不符时来源无法交付目标资产的原稿。
+      const mismatched =
+        resolved.source.kind !== "failure" &&
+        file_type !== resolved.file_type &&
+        (is_game_file_type(file_type) || resolved.source.kind === "game");
       result.push({
         ...resolved,
         rel_path: entry.rel_path,
-        file_type: entry.file_type ?? resolved.file_type,
+        file_type,
+        ...(mismatched && {
+          source: {
+            kind: "failure",
+            error: new AppError("file.invalid_structure", {
+              public_details: { file: entry.rel_path },
+            }),
+          },
+        }),
       });
     }
     assert_source_identities(result, this.native_fs);
@@ -376,8 +390,7 @@ export class FileFormatService {
       let captured:
         | { content: Uint8Array; additional_files: readonly string[]; read?: PreparedRead }
         | undefined;
-      let source_complete = true,
-        directory_changed = false;
+      let directory_changed = false;
       let archive_error: unknown;
       try {
         await prepare_game_source(
@@ -391,12 +404,12 @@ export class FileFormatService {
               prepared.changes !== null &&
               (prepared.changes.writes.length > 0 || Boolean(prepared.changes.removes?.length));
             const files = new Map(prepared.sources.files);
-            source_complete = true;
+            let members_complete = true; // 只追踪本次原稿收集的读取遗漏。
             const sources = {
               ...prepared.sources,
               files,
               on_read_failure: (diagnostic: SourceDiagnostic) => {
-                source_complete = false;
+                members_complete = false;
                 if (!diagnostics.some((existing) => existing.member === diagnostic.member))
                   diagnostics.push(diagnostic);
                 if (diagnostic.member) files.set(diagnostic.member, null);
@@ -404,7 +417,7 @@ export class FileFormatService {
             };
             try {
               const translation = await engine.collect(source, this.native_fs, signal, sources);
-              const translation_complete = source_complete; // 附加原稿的遗漏不改变格式的跨成员语义。
+              const translation_complete = members_complete; // 附加原稿的遗漏不改变格式的跨成员语义。
               const collected = collect_game_import_files(
                 source.game.root,
                 translation,
@@ -467,12 +480,11 @@ export class FileFormatService {
           cause: archive_error,
           public_details: { directory_changed },
         });
-      return { ...captured, source_complete, directory_changed, diagnostics };
+      return { ...captured, directory_changed, diagnostics };
     }
     return {
       content: this.native_fs.read_file(entry.source_path),
       additional_files: [],
-      source_complete: true,
       directory_changed: false,
       diagnostics: [],
     };

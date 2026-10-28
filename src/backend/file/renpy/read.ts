@@ -21,7 +21,7 @@ export const RENPY_SCRIPT_MEMBER = /^game\/.*\.rpym?c$/u; // 附加原稿与元�
 
 /** 跨成员保留的纯值摘要。完整编译图、代码上下文和写回坐标随成员释放。 */
 export type RenpySummary = Readonly<
-  Pick<RenpyScript, "digest" | "strings" | "warnings" | "extraction_complete" | "names"> & {
+  Pick<RenpyScript, "digest" | "strings" | "warnings" | "names"> & {
     candidates: readonly Pick<RenpyCandidate, "key" | "text" | "usage">[];
   }
 >;
@@ -171,7 +171,6 @@ export function renpy_read_results(
       name: file,
       ok: true,
       read: {
-        extraction_complete: script.extraction_complete && table_complete,
         items: script.candidates
           .filter(
             (candidate) =>
@@ -210,7 +209,6 @@ export function renpy_read_results(
     name: GAME_METADATA_MEMBER,
     ok: true,
     read: {
-      extraction_complete: table_complete && metadata.common !== null,
       warnings: [],
       items: (table_complete ? (metadata.common ?? []) : [])
         .filter((original) => !table.has(table_key(null, original)))

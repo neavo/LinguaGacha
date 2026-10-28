@@ -22,11 +22,7 @@ export function create_rpgmaker_mv_mz_adapter(): GameMemberAdapter {
           return read_rpgmaker_json(JSON.parse(source), file);
         const extractor = create_rpgmaker_extractor(file);
         extractor.script(source, { kind: "field", path: [] }); // 空路径指向整个 JS 原稿。
-        return {
-          items: extractor.items,
-          warnings: extractor.warnings,
-          extraction_complete: extractor.extraction_complete,
-        };
+        return { items: extractor.items, warnings: extractor.warnings };
       },
       /** 完成译文按持久定位写回，数值字面量沿用本次原稿记录。 */
       render: async (content, file, items) => {

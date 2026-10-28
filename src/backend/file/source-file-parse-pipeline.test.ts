@@ -46,7 +46,7 @@ it("MV/MZ 配置解析失败仍保留原稿和其他有效条目", async () => {
   );
   expect(result.failures).toEqual([]);
   expect(result.directory_changes).toEqual([]);
-  expect(result.file_drafts).toMatchObject([{ source_complete: true, extraction_complete: false }]);
+  expect(result.file_drafts).toHaveLength(1);
   expect(result.file_drafts[0]!.parsed_items.some((item) => item.src === "可靠原文")).toBe(true);
   const container = await read_game_container(result.file_drafts[0]!.content, "game.rpgmaker");
   expect(await container.members.get("data/System.json")!.async("string")).toBe("{");
@@ -276,7 +276,6 @@ describe("SourceFileParsePipeline", () => {
     expect(result.failures).toEqual([]);
     expect(result.file_drafts).toEqual([
       expect.objectContaining({
-        source_path: source_file,
         rel_path: "nested/target.txt",
         file_type: "TXT",
         parsed_items: [
@@ -359,6 +358,36 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
   ).toEqual({ currencyUnit: "游戏1译" });
 });
 
+it.each(["before", "during"])("取消发生在解析 %s 时向上传播，不交付零条目草稿", async (phase) => {
+  const service = create_format_service();
+  const controller = new AbortController();
+  const reason = new Error("cancel parse");
+  const parse =
+    phase === "during"
+      ? vi.spyOn(service, "parse_asset").mockImplementationOnce(async () => {
+          controller.abort(reason);
+          throw reason;
+        })
+      : undefined;
+  if (phase === "before") controller.abort(reason);
+  try {
+    await expect(
+      new SourceFileParsePipeline(service).parse_asset_draft(
+        {
+          source_path: "source.txt",
+          rel_path: "saved.txt",
+          file_type: "TXT",
+          content: Buffer.from("原文"),
+          additional_files: [],
+        },
+        controller.signal,
+      ),
+    ).rejects.toBe(reason);
+  } finally {
+    parse?.mockRestore();
+  }
+});
+
 it.each([true, false])("准备阶段已解析时直接消费结果，读取失败仍保留可靠原稿：%s", async (ok) => {
   const content = Buffer.from("reliable original");
   const error = new Error("joint analysis failed");
@@ -368,13 +397,12 @@ it.each([true, false])("准备阶段已解析时直接消费结果，读取失�
     prepare_source: async () => ({
       content,
       additional_files: [],
-      source_complete: true,
       directory_changed: false,
       diagnostics: [],
       read: ok
         ? {
             ok: true,
-            result: { kind: "items", file_type: "RENPY", items: [item], extraction_complete: true },
+            result: { kind: "items", file_type: "RENPY", items: [item] },
           }
         : { ok: false, error },
     }),
@@ -389,8 +417,6 @@ it.each([true, false])("准备阶段已解析时直接消费结果，读取失�
     },
   ]);
   expect(parse_asset).not.toHaveBeenCalled();
-  expect(result.file_drafts).toMatchObject([
-    { content, extraction_complete: ok, parsed_items: ok ? [item] : [] },
-  ]);
+  expect(result.file_drafts).toMatchObject([{ content, parsed_items: ok ? [item] : [] }]);
   expect(result.failures.map((failure) => failure.error)).toEqual(ok ? [] : [error]);
 });

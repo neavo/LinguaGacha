@@ -196,7 +196,6 @@ export async function read_rgss_data(
   scripts: boolean,
 ) {
   const warnings: SourceFileParseWarning[] = [];
-  let extraction_complete = true;
   type Candidate = { src: string; location: RGSSLocation; default_text: boolean };
   const candidates: Candidate[] = [];
   const name = DATABASE_FILE_PATTERN.exec(file)?.[1] ?? ""; // 子目录同名文件不触发数据库字段规则。
@@ -235,7 +234,6 @@ export async function read_rgss_data(
       const source = read_container(locations.slots, container, version);
       const parsed = await read_ruby_strings(source);
       if (!parsed.ok) {
-        extraction_complete = false;
         warnings.push({
           code: "script_syntax_error",
           rel_path: file,
@@ -247,7 +245,6 @@ export async function read_rgss_data(
       for (const { src, ...span } of parsed.strings)
         add(src, { kind: "ruby", container, span }, false);
     } catch (error) {
-      extraction_complete = false;
       warnings.push({
         code: "internal_file_parse_failed",
         rel_path: file,
@@ -402,7 +399,7 @@ export async function read_rgss_data(
       extra_field,
     });
   });
-  return { items, warnings, extraction_complete };
+  return { items, warnings };
 }
 
 /** 所有定位、编码和冲突先形成计划，通过后才修改原稿对象。 */

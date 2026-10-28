@@ -257,8 +257,7 @@ export class ProjectContentService {
           const target_key = normalize_project_asset_path(file.rel_path).toLowerCase();
           const existing_record = existing_record_by_key.get(target_key);
           const target_rel_path = existing_record?.path ?? file.rel_path;
-          if (existing_record !== undefined && (!file.extraction_complete || !file.source_complete))
-            continue;
+          // 替换按资产完整重建，新原稿只搭配本次提取的条目，避免混合新旧坐标。
           if (existing_record !== undefined) {
             for (const [item_id, item] of next_items.entries()) {
               if (item.file_path === target_rel_path) {
@@ -296,9 +295,7 @@ export class ProjectContentService {
           });
         }
         if (imported_files.length === 0)
-          throw no_processed_targets_error(
-            parse_result.file_drafts.length > 0 || parse_result.failures.length > 0,
-          );
+          throw no_processed_targets_error(parse_result.failures.length > 0);
 
         const settings = await this.read_project_write_settings(project_path);
         let write_output = await this.compute_prefilter_output({
@@ -323,7 +320,7 @@ export class ProjectContentService {
           });
         }
 
-        // 未能替换的已有资产保留条目身份、译文及状态，不参与本次预过滤。
+        // 未取得原稿的已有资产保留条目身份、译文及状态，不参与本次预过滤。
         const imported_paths = new Set(imported_files.map((file) => file.target_rel_path));
         const preserved_paths = new Set(
           import_commands.flatMap((file) => {
@@ -888,7 +885,7 @@ export class ProjectContentService {
     });
   }
 
-  /** 重建成功的资产，保留其他资产的条目，并在同一事务提交最终事实。 */
+  /** 按资产完整重建取得原稿的资产，保留其他资产的条目，并在同一事务提交最终事实。 */
   private async rebuild_assets(
     project_path: string,
     snapshot: ProjectWriteSnapshot,
@@ -943,13 +940,13 @@ export class ProjectContentService {
     });
   }
 
-  /** 逐资产重建，只交付完整结果供同一事务替换。没有资产完整解析时失败。 */
+  /** 逐资产从保存的原稿重建，接纳规则与导入一致。没有资产取得原稿时失败。 */
   private async reparse_assets(
     project_path: string,
     records: ProjectAssetRecord[],
     signal?: AbortSignal,
   ): Promise<Map<string, Item[]>> {
-    const format_service = await this.create_format_service(project_path);
+    const pipeline = new SourceFileParsePipeline(await this.create_format_service(project_path));
     const assets = new Map<string, Item[]>();
     const failures: SourceFileFailure[] = [];
     const warnings: SourceFileParseWarning[] = [];
@@ -958,45 +955,37 @@ export class ProjectContentService {
     );
     for (const record of records) {
       signal?.throwIfAborted();
+      let content: Uint8Array | null;
       try {
-        const content = await this.database.read_asset_content(project_path, record.path);
+        content = await this.database.read_asset_content(project_path, record.path);
         if (content === null) {
           throw new AppErrors.AppError("file.not_found", {
             diagnostic_context: { asset_path: record.path },
           });
         }
+        // PDF 独立文档由 `resetPDFPaths` 重置，无需重新提取。
         if ((await this.database.read_pdf_document(project_path, record.path)) !== null) {
           assets.set(record.path, []);
           continue;
         }
-        const parsed = await format_service.parse_asset(
-          record.path,
-          content,
-          record.file_type,
-          additional_files[record.path],
-          signal,
-        );
-        signal?.throwIfAborted();
-        if (parsed.kind === "items") {
-          warnings.push(...(parsed.warnings ?? []));
-          if (parsed.extraction_complete === false) {
-            // 不完整结果不参与替换；已有具体诊断时无需再生成笼统错误。
-            if (!parsed.warnings?.length)
-              failures.push({
-                source_path: record.path,
-                rel_path: record.path,
-                error: new AppErrors.AppError("file.parse_failed", {
-                  public_details: { file: record.path },
-                }),
-              });
-            continue;
-          }
-          assets.set(record.path, parsed.items);
-        }
       } catch (error) {
-        if (signal?.aborted) throw error; // 取消不能归为单个资产的解析失败。
+        if (signal?.aborted) throw error; // 取消不能归为单个资产的读取失败。
         failures.push({ source_path: record.path, rel_path: record.path, error });
+        continue; // 未取得原稿的资产保留已有条目。
       }
+      const parsed = await pipeline.parse_asset_draft(
+        {
+          source_path: record.path,
+          rel_path: record.path,
+          file_type: record.file_type,
+          content,
+          additional_files: additional_files[record.path] ?? [],
+        },
+        signal,
+      );
+      assets.set(record.path, parsed.draft.parsed_items);
+      warnings.push(...parsed.warnings);
+      if (parsed.failure) failures.push(parsed.failure);
     }
     this.log_source_diagnostics(failures, warnings);
     if (!assets.size) throw no_processed_targets_error(records.length > 0);

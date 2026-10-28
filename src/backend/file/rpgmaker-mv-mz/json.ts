@@ -43,9 +43,8 @@ const ACTOR_TEXT_CODES = new Set<number>([
 export function read_rpgmaker_json(
   root: JsonValue,
   rel_path: string,
-): { items: Item[]; warnings: SourceFileParseWarning[]; extraction_complete: boolean } {
-  const extractor = create_rpgmaker_extractor(rel_path);
-  const { items, warnings, add, expand, script } = extractor;
+): { items: Item[]; warnings: SourceFileParseWarning[] } {
+  const { items, warnings, add, expand, script } = create_rpgmaker_extractor(rel_path);
   const file = DATABASE_FILE_PATTERN.exec(rel_path)?.[1] ?? ""; // 子目录同名文件不触发数据库字段规则。
   // 默认翻译字段整段保存并向下传播资格，其余字符串可能是插件 JSON，展开后保留为默认排除条目。
   function walk(value: JsonValue, target: JsonPath, default_text = false): void {
@@ -165,7 +164,7 @@ export function read_rpgmaker_json(
     }
   }
   walk(root, []);
-  return { items, warnings, extraction_complete: extractor.extraction_complete };
+  return { items, warnings };
 }
 
 /** 事件列表需与普通对象数组区分，嵌套移动路线也沿用指令结构。 */

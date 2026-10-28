@@ -42,8 +42,8 @@ it("用途决定默认状态，ASCII 程序参数与宏参数引用不进入条�
     "#Akane",
     "[bg storage=room.jpg time=1000]",
   ].join("\n");
-  const { items, extraction_complete } = read(source, MODERN);
-  expect(extraction_complete).toBe(true);
+  const { items, warnings } = read(source, MODERN);
+  expect(warnings).toEqual([]);
   expect(items.map((item) => [item.src, usage(item), item.status])).toEqual([
     ["あかね", "parameter", "RULE_SKIPPED"],
     ["アカネ", "name", "RULE_SKIPPED"],

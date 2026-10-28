@@ -51,7 +51,9 @@ it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留
     return read(file);
   });
   const prepared = await service.prepare_source(entry).finally(() => unavailable.mockRestore());
-  expect(prepared.source_complete).toBe(false);
+  expect(prepared.diagnostics).toContainEqual(
+    expect.objectContaining({ member: "game/" + path.basename(missing) }),
+  );
   fs.renameSync(root, path.join(temp.path, "offline"));
   const { input } = await read_game_container(prepared.content, entry.rel_path, true);
   const metadata = read_renpy_format_metadata(
@@ -60,7 +62,6 @@ it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留
   const parsed = await service.parse_asset(entry.rel_path, prepared.content, "RENPY");
   if (parsed.kind !== "items") throw new Error("Expected Ren’Py items");
   expect(prepared.read).toEqual({ ok: true, result: parsed });
-  expect(parsed.extraction_complete).toBe(failure !== "script");
   expect(parsed.items.some((item) => read_renpy_metadata(item.extra_field).usage === "say")).toBe(
     failure !== "script",
   );
@@ -133,7 +134,6 @@ it.each(["member", "commit"])("Godot %s 失败仍归档可靠原稿，胜出资�
     (await service.collect_source_file_entries([temp.path]))[0]!,
   );
   expect(prepared.directory_changed).toBe(false);
-  expect(prepared.source_complete).toBe(failure === "commit");
   expect(native.read_file(pack)).toEqual(original);
   const container = await read_game_container(prepared.content, "game.godot");
   expect(container.members.has("project.binary")).toBe(true);
@@ -533,6 +533,9 @@ it("正式导入容器使用当前数据，不在游戏目录生成备份", asyn
   const names = (await game_files!.async("string")).split("\n");
   expect(names).toContain("www/img/a.png");
   expect(names).not.toContain("www/img/a.png_");
+  expect(await members.get("www/data/System.json")!.async("string")).toContain(
+    '"hasEncryptedImages":false',
+  );
   expect([...members.keys()].some((name) => name.includes("fonts/"))).toBe(false);
   native.write_file_sync(path.join(temp.path, "www/data/System.json"), '{"gameTitle":"changed"}');
   const changed = await service.prepare_source(entry);
@@ -570,7 +573,6 @@ it.each(["read", "existing-read"])("导入 %s 失败保留准备结果并允许�
     return read(file);
   });
   await expect(service.prepare_source(entry)).resolves.toMatchObject({
-    source_complete: false,
     directory_changed: phase === "read",
     diagnostics: expect.arrayContaining([expect.objectContaining({ stage: "read" })]),
   });

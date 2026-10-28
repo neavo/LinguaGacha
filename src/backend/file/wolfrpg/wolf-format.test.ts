@@ -128,7 +128,9 @@ it("缺少核心配对保留独立成员条目，损坏地图报告局部失败"
   await expect(
     service.parse_asset("game.zip", await zip.generateAsync({ type: "uint8array" }), "WOLFRPG"),
   ).resolves.toMatchObject({
-    extraction_complete: false,
+    warnings: expect.arrayContaining([
+      expect.objectContaining({ code: "internal_file_parse_failed" }),
+    ]),
     items: expect.arrayContaining([expect.objectContaining({ file_type: "WOLFRPG" })]),
   });
 });
