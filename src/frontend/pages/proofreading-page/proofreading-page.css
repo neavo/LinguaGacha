@@ -717,7 +717,8 @@
 }
 .proofreading-page__file-options {
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .proofreading-page__file-tree {
   position: relative;
@@ -734,7 +735,7 @@
 .proofreading-page__file-row {
   display: flex;
   align-items: center;
-  min-width: min-content;
+  min-width: 0;
   min-height: 32px;
   gap: 8px;
   padding: 0 8px;
@@ -783,7 +784,7 @@ button.proofreading-page__file-body:hover > .app-badge {
 }
 .proofreading-page__file-name {
   flex: 1;
-  min-width: 64px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

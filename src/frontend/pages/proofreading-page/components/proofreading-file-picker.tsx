@@ -18,6 +18,7 @@ import {
 
 const FILE_ROW_HEIGHT = 32; // 固定行高同时供占位高度与滚动定位使用。
 const FILE_TREE_INDENT = 16;
+const FILE_TREE_MAX_INDENT = "25%"; // 深层目录保留名称与操作控件的空间。
 const FILE_TREE_VIEWPORT_HEIGHT = 480;
 const FILE_TREE_OVERSCAN = 6;
 
@@ -81,7 +82,7 @@ export function ProofreadingFilePicker(props: {
               aria-level={depth + 1}
               style={{
                 height: FILE_ROW_HEIGHT,
-                paddingLeft: depth * FILE_TREE_INDENT,
+                paddingLeft: `min(${depth * FILE_TREE_INDENT}px, ${FILE_TREE_MAX_INDENT})`,
                 transform: `translateY(${virtual_row.start}px)`,
               }}
             >
