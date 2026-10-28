@@ -4,7 +4,7 @@ import { read_bytes, copy_range, write_bytes, type BinaryFileHandle } from "../s
 import { validate_game_path, assert_game_path_spellings } from "../source-file-paths";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
 import {
-  read_pickle_async,
+  read_pickle,
   resolve_node,
   node_string,
   PICKLE_MAX_BYTES,
@@ -33,7 +33,7 @@ export async function read_archive(
     "Invalid RPA index offset",
   );
   assert(size - offset <= PICKLE_MAX_BYTES, "RPA index exceeds size limit");
-  const graph = await read_pickle_async(
+  const graph = await read_pickle(
     inflateSync(await read_bytes(handle, offset, size - offset), {
       maxOutputLength: PICKLE_MAX_BYTES,
     }),

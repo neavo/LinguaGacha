@@ -1,14 +1,15 @@
 import path from "node:path";
 import { AppError } from "../../../shared/error";
-import type { GameFormatAdapter } from "../shared/game/format";
+import type { GameMemberAdapter } from "../shared/game/format";
 import { read_rgss_game, RGSS_VERSIONS } from "./source";
 import { read_rgss_metadata } from "./item";
 import { decode, encode } from "./marshal";
 import { read_rgss_data, write_rgss_data } from "./data";
 
 /** 每次容器操作创建独立上下文，成员处理器拥有解析与渲染。 */
-export function create_rpgmaker_rgss_adapter(): GameFormatAdapter {
+export function create_rpgmaker_rgss_adapter(): GameMemberAdapter {
   return {
+    scope: "member",
     file_type: "RPGMAKER_RGSS",
     internal_path: (item) => read_rgss_metadata(item.extra_field).internal_file_path,
     create_members: async (files) => {

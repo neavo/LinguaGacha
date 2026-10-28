@@ -1,4 +1,4 @@
-import type { GameFormatAdapter } from "../shared/game/format";
+import type { GameMemberAdapter } from "../shared/game/format";
 import path from "node:path";
 import { AppError } from "../../../shared/error";
 import { decode_text_content } from "../../../shared/utils/text-tool";
@@ -9,8 +9,9 @@ import { write_rpgmaker_items } from "./writer";
 import { RPGMakerJsonCodec } from "./json-codec";
 
 /** 成员处理器只解释内容和持久定位。 */
-export function create_rpgmaker_mv_mz_adapter(): GameFormatAdapter {
+export function create_rpgmaker_mv_mz_adapter(): GameMemberAdapter {
   return {
+    scope: "member",
     file_type: "RPGMAKER_MV_MZ",
     internal_path: (item) => read_rpgmaker_metadata(item.extra_field).internal_file_path,
     create_members: async () => ({

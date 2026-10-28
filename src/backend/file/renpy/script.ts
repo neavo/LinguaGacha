@@ -1,11 +1,6 @@
+import { create_checkpoint } from "./checkpoint";
 import assert from "node:assert/strict";
-import {
-  PythonSyntaxError,
-  type PythonMode,
-  type PythonFacts,
-  type PythonSession,
-  type PythonDiagnostic,
-} from "./python-syntax";
+import type { PythonMode, PythonFacts, PythonSession, PythonDiagnostic } from "./python-syntax";
 import { attributes, class_name, node_string, resolve_node, type PickleNode } from "./pickle";
 import type { CompiledSlot } from "./compiled";
 import type { ScriptDiagnostic } from "../file-format-types";
@@ -19,6 +14,11 @@ export const node_children = (node: PickleNode | undefined): PickleNode[] =>
   node ? resolve_node(node).children : [];
 /** 缺失文本字段为空，已有字段仍执行协议字符串校验。 */
 export const node_text = (node: PickleNode | undefined): string => (node ? node_string(node) : "");
+/** 早期 Ren’Py 引擎界面脚本的字节串按 UTF-8 解码，保留玩家实际看到的替换字符。 */
+export const display_text = (node: PickleNode): string => {
+  const scalar = resolve_node(node).value;
+  return Buffer.isBuffer(scalar) ? scalar.toString("utf8") : node_string(node);
+};
 
 /** 新旧身份字段采用同一口径，翻译包装后缀不创建新的语句身份。 */
 export function statement_identity(node: PickleNode): string | null {
@@ -54,30 +54,42 @@ export function statement_identity(node: PickleNode): string | null {
 }
 
 /** 其他语言子图不提供基础语言身份或候选，`next` 可指向块外语句。 */
-export function script_excluded(slots: readonly CompiledSlot[]): ReadonlySet<PickleNode> {
+export async function script_excluded(
+  slots: readonly Pick<CompiledSlot, "graph">[],
+  signal?: AbortSignal,
+): Promise<ReadonlySet<PickleNode>> {
+  const checkpoint = create_checkpoint(signal);
   const excluded = new Set<PickleNode>();
-  /** 共享节点只遍历一次，避免翻译块中的引用环重复展开。 */
-  const mark = (edge: PickleNode): void => {
-    const node = resolve_node(edge);
-    if (excluded.has(node)) return;
-    excluded.add(node);
-    for (const child of script_children(node)) mark(child);
-  };
+  const pending: PickleNode[] = [];
   for (const slot of slots)
-    for (const node of slot.graph.nodes)
-      if (node.kind === "object" && class_name(node) === "renpy.ast.Translate") {
-        const fields = attributes(node);
-        const block = fields.get("block");
-        if (node_value(fields.get("language")) !== null && block) mark(block);
-      }
+    for (const node of slot.graph.nodes) {
+      const pause = checkpoint();
+      if (pause) await pause;
+      if (node.kind !== "object" || class_name(node) !== "renpy.ast.Translate") continue;
+      const fields = attributes(node),
+        block = fields.get("block");
+      if (node_value(fields.get("language")) !== null && block) pending.push(block);
+    }
+  // 显式栈让深层与循环子图共用同一批次预算。
+  while (pending.length) {
+    const pause = checkpoint();
+    if (pause) await pause;
+    const node = resolve_node(pending.pop()!);
+    if (excluded.has(node)) continue;
+    excluded.add(node);
+    for (const child of script_children(node)) pending.push(child);
+  }
   return excluded;
 }
 
 /** 仅协调跨槽位唯一对应的回退身份，独立 `TranslateSay` 的旧键保持稳定。 */
-export function script_identities(
+export async function script_identities(
   slots: readonly CompiledSlot[],
-  excluded = script_excluded(slots),
-): ReadonlyMap<PickleNode, string> {
+  excluded?: ReadonlySet<PickleNode>,
+  signal?: AbortSignal,
+): Promise<ReadonlyMap<PickleNode, string>> {
+  const checkpoint = create_checkpoint(signal);
+  excluded ??= await script_excluded(slots, signal);
   const identities = new Map<PickleNode, string>();
   // 同位置、同正文的全部对白共同参与判定，完整身份和重复节点会阻止协调。
   const dialogues = new Map<
@@ -86,12 +98,14 @@ export function script_identities(
   >();
   for (const slot of slots)
     for (const node of slot.graph.nodes) {
+      const pause = checkpoint();
+      if (pause) await pause;
+      if (node.kind !== "object") continue; // 只有对象节点承载语句身份，标量和引用直接跳过。
       const identity = statement_identity(node);
       if (identity !== null) identities.set(node, identity);
       const cls = class_name(node),
         fields = attributes(node);
       if (
-        node.kind !== "object" ||
         excluded.has(node) ||
         !["renpy.ast.Say", "renpy.ast.TranslateSay"].includes(cls) ||
         node_value(fields.get("language")) !== null
@@ -112,6 +126,8 @@ export function script_identities(
       dialogues.set(key, group);
     }
   for (const group of dialogues.values()) {
+    const pause = checkpoint();
+    if (pause) await pause;
     if (
       !group.every((entry) => entry.fallback) ||
       new Set(group.map((entry) => entry.slot)).size !== group.length ||
@@ -160,7 +176,7 @@ export function statement_line(node: PickleNode): number | null {
   return typeof line === "number" ? line : null;
 }
 /** Define 的命名空间与变量名可能分开序列化。 */
-export function definition_target(fields: Map<string, PickleNode>): string {
+export function definition_target(fields: ReadonlyMap<string, PickleNode>): string {
   const store = node_text(fields.get("store"));
   return (
     (store && store !== "store" ? store.replace(/^store\./u, "") + "." : "") +
@@ -180,12 +196,18 @@ export function script_children(node: PickleNode): PickleNode[] {
 }
 
 /** 语句子树中的最小与最大行号，不跟随 `next` 执行链。 */
-export function block_lines(edge: PickleNode): [first: number, last: number] | null {
+export async function block_lines(
+  edge: PickleNode,
+  signal?: AbortSignal,
+): Promise<[first: number, last: number] | null> {
+  const checkpoint = create_checkpoint(signal);
   let first = Infinity,
     last = -Infinity;
   const seen = new Set<PickleNode>(),
     pending = [edge];
   while (pending.length) {
+    const pause = checkpoint();
+    if (pause) await pause;
     const node = resolve_node(pending.pop()!);
     if (seen.has(node)) continue;
     seen.add(node);
@@ -199,26 +221,43 @@ export function block_lines(edge: PickleNode): [first: number, last: number] | n
   return first <= last ? [first, last] : null;
 }
 /** 菜单项不保存行号：选项正文位于其子块首行之前，无子块的标题正文紧跟上一项。 */
-export function menu_item_lines(menu: PickleNode): (number | null)[] {
+export async function menu_item_lines(
+  menu: PickleNode,
+  signal?: AbortSignal,
+): Promise<(number | null)[]> {
+  const checkpoint = create_checkpoint(signal);
+  const result: (number | null)[] = [];
   let previous = statement_line(menu);
-  return node_children(attributes(menu).get("items")).map((item) => {
+  for (const item of node_children(attributes(menu).get("items"))) {
+    const pause = checkpoint();
+    if (pause) await pause;
     const block = node_children(item)[2];
-    const lines = block ? block_lines(block) : null;
-    const result = lines ? lines[0] - 1 : previous === null ? null : previous + 1;
-    previous = lines ? lines[1] : result;
-    return result;
-  });
+    const lines = block ? await block_lines(block, signal) : null;
+    const line = lines ? lines[0] - 1 : previous === null ? null : previous + 1;
+    previous = lines ? lines[1] : line;
+    result.push(line);
+  }
+  return result;
 }
 
+export type RenpyConsumers = (
+  edge: PickleNode,
+  signal?: AbortSignal,
+) => Promise<ReadonlySet<string>>;
+
 /** 反向索引容器消费者。标量 GET 保持独立边，容器 GET 才共享子字段。 */
-export function script_consumers(
+export async function script_consumers(
   root: PickleNode,
   statements: ReadonlyMap<PickleNode, string>,
-): (edge: PickleNode) => ReadonlySet<string> {
+  signal?: AbortSignal,
+): Promise<RenpyConsumers> {
+  const checkpoint = create_checkpoint(signal);
   const parents = new Map<PickleNode, Set<PickleNode>>();
   const pending = [root],
     visited = new Set<PickleNode>();
   while (pending.length) {
+    const pause = checkpoint();
+    if (pause) await pause;
     const node = pending.pop()!;
     if (visited.has(node)) continue;
     visited.add(node);
@@ -232,13 +271,16 @@ export function script_consumers(
     }
   }
   const cache = new Map<PickleNode, ReadonlySet<string>>();
-  return (edge) => {
+  return async (edge, signal) => {
+    const checkpoint = create_checkpoint(signal);
     const cached = cache.get(edge);
     if (cached) return cached;
     const owners = new Set<string>(),
       seen = new Set<PickleNode>(),
       pending = [edge];
     while (pending.length) {
+      const pause = checkpoint();
+      if (pause) await pause;
       const node = pending.pop()!;
       if (seen.has(node)) continue;
       seen.add(node);
@@ -253,6 +295,13 @@ export function script_consumers(
 }
 
 type RenpyPhase = "top" | "init" | "runtime";
+/** 这些语句保持外层执行阶段，其余 `renpy.ast` 语句在运行时执行。 */
+const INIT_PHASE_CLASSES = new Set([
+  "renpy.ast.Python",
+  "renpy.ast.Define",
+  "renpy.ast.PyCode",
+  "renpy.ast.PyExpr",
+]);
 export type RenpyCode = Readonly<{
   mode: PythonMode;
   slot: number;
@@ -303,22 +352,46 @@ function code_mode(node: PickleNode): PythonMode {
   return mode;
 }
 /** 编译结构只在此处解释，记录保留每个槽位、语句和消费边的实际上下文。 */
-export function script_codes(
+export async function script_codes(
   script: { slots: readonly CompiledSlot[] },
-  identities = script_identities(script.slots),
-): RenpyCode[] {
+  identities?: ReadonlyMap<PickleNode, string>,
+  signal?: AbortSignal,
+): Promise<RenpyCode[]> {
+  const checkpoint = create_checkpoint(signal);
+  identities ??= await script_identities(script.slots, undefined, signal);
   const result: RenpyCode[] = [];
   for (const slot of script.slots) {
     type Context = Omit<RenpyCode, "source" | "mode" | "slot" | "edge" | "legacy">;
     const seen = new Map<PickleNode, Set<string>>();
-    const visit = (edge: PickleNode, context: Context): void => {
+    const pending: { edge: PickleNode; context: Context }[] = [
+      {
+        edge: slot.graph.root,
+        context: {
+          owner: "<script>",
+          field: "",
+          phase: "top",
+          priority: 0,
+          early: false,
+          target: "",
+          display: false,
+          translated: false,
+          filename: null,
+          line: null,
+        },
+      },
+    ];
+    while (pending.length) {
+      const pause = checkpoint();
+      if (pause) await pause;
+      const { edge, context } = pending.pop()!;
       const node = resolve_node(edge),
         cls = class_name(node),
         fields = attributes(node);
       const identity = identities.get(node);
-      let current = { ...context };
-      if (identity !== undefined)
-        current = { ...current, owner: identity, field: "", target: "", display: false };
+      const current =
+        identity === undefined
+          ? { ...context }
+          : { ...context, owner: identity, field: "", target: "", display: false };
       const filename = node_text(fields.get("filename")),
         line = node_value(fields.get("linenumber"));
       if (filename) current.filename = filename;
@@ -328,19 +401,15 @@ export function script_codes(
         current.early = cls === "renpy.ast.EarlyPython";
         const priority = node_value(fields.get("priority"));
         current.priority = current.early ? 0 : typeof priority === "number" ? priority : null;
-      } else if (
-        cls.startsWith("renpy.ast.") &&
-        !["renpy.ast.Python", "renpy.ast.Define", "renpy.ast.PyCode", "renpy.ast.PyExpr"].includes(
-          cls,
-        )
-      )
+      } else if (cls.startsWith("renpy.ast.") && !INIT_PHASE_CLASSES.has(cls))
         current.phase = "runtime";
       if (cls === "renpy.ast.Translate" && node_value(fields.get("language")) !== null)
         current.translated = true;
       const compiled = cls === "renpy.ast.PyCode" || is_pyexpr(node);
       const scalar = node.kind === "unicode" || node.kind === "bytes";
       // 同一容器可有多个消费者。同一消费者的循环和别名只访问一次。
-      const key = JSON.stringify([
+      // 身份为 JSON、目标与字段来自 Python 名称，都不含 NUL，可作为无歧义的分隔符。
+      const key = [
         current.owner,
         current.phase,
         current.priority,
@@ -350,9 +419,9 @@ export function script_codes(
         current.display,
         scalar ? edge.start : null,
         compiled || scalar ? current.field : null,
-      ]);
+      ].join("\0");
       const contexts = seen.get(node) ?? new Set<string>();
-      if (contexts.has(key)) return;
+      if (contexts.has(key)) continue;
       contexts.add(key);
       seen.set(node, contexts);
       if (
@@ -381,13 +450,17 @@ export function script_codes(
           filename: location_file || current.filename,
           line: location_line ?? current.line,
         });
-        return;
+        continue;
       }
+      const next: { edge: PickleNode; context: Context }[] = [];
       const descend = (child: PickleNode, field: string, extra: Partial<Context> = {}) =>
-        visit(child, {
-          ...current,
-          field: current.field ? current.field + "." + field : field,
-          ...extra,
+        next.push({
+          edge: child,
+          context: {
+            ...current,
+            field: current.field ? current.field + "." + field : field,
+            ...extra,
+          },
         });
       if (cls === "renpy.ast.Define" || cls === "renpy.ast.Default") {
         const code = fields.get("code"),
@@ -424,34 +497,25 @@ export function script_codes(
       }
       if (node.args) descend(node.args, "args");
       if (fields.size === 0 && node.state) descend(node.state, "state");
-    };
-    visit(slot.graph.root, {
-      owner: "<script>",
-      field: "",
-      phase: "top",
-      priority: 0,
-      early: false,
-      target: "",
-      display: false,
-      translated: false,
-      filename: null,
-      line: null,
-    });
+      // 反向入栈保持原先深度优先的候选顺序。
+      for (let index = next.length - 1; index >= 0; index--) pending.push(next[index]!);
+    }
   }
   return result;
 }
 /** 早期 Ren’Py 引擎保存的 Python AST 直接提供加载访问事实，不创建伪源码。 */
-function legacy_facts(root: PickleNode): PythonFacts {
+async function legacy_facts(root: PickleNode, signal?: AbortSignal): Promise<PythonFacts> {
+  const checkpoint = create_checkpoint(signal);
   const facts = {
     constants: [],
     formatted: [],
     assignments: [],
     references: [] as string[],
-    bare_references: [] as string[],
     diagnostics: [],
     expression: undefined,
+    speaker: { name: undefined, usages: new Map() },
   };
-  const seen = new Map<PickleNode, Set<boolean>>();
+  const seen = new Set<PickleNode>();
   const name = (node: PickleNode | undefined): string => {
     if (!node) return "";
     const fields = attributes(node);
@@ -460,24 +524,18 @@ function legacy_facts(root: PickleNode): PythonFacts {
       return name(fields.get("value")) + "." + node_text(fields.get("attr"));
     return "";
   };
-  const visit = (edge: PickleNode, attribute = false) => {
-    const node = resolve_node(edge);
-    const contexts = seen.get(node) ?? new Set<boolean>();
-    if (contexts.has(attribute)) return;
-    contexts.add(attribute);
-    seen.set(node, contexts);
+  const pending = [root];
+  while (pending.length) {
+    const pause = checkpoint();
+    if (pause) await pause;
+    const node = resolve_node(pending.pop()!);
+    if (seen.has(node)) continue;
+    seen.add(node);
     const reference = name(node);
-    if (reference) {
-      facts.references.push(reference);
-      if (!attribute) facts.bare_references.push(reference);
-    }
-    for (const child of node.children) visit(child);
-    for (const [key, child] of attributes(node))
-      visit(child, class_name(node) === "_ast.Attribute" && key === "value");
-    if (node.args) visit(node.args);
-    if (attributes(node).size === 0 && node.state) visit(node.state);
-  };
-  visit(root);
+    if (reference) facts.references.push(reference);
+    const children = script_children(node);
+    for (let index = children.length - 1; index >= 0; index--) pending.push(children[index]!);
+  }
   return facts;
 }
 /** 语法事实与语句提供的赋值目标关联，范围仍属于未经改写的表达式。 */
@@ -489,7 +547,7 @@ export async function analyze_code(
 ): Promise<PythonFacts> {
   const facts =
     code.source === null
-      ? legacy_facts(code.legacy)
+      ? await legacy_facts(code.legacy, signal)
       : await session.analyze({ source: code.source, mode: code.mode }, python2, signal);
   if (!code.target || !facts.expression) return facts;
   return {
@@ -500,19 +558,4 @@ export async function analyze_code(
       { target: code.target, root: true, operation: "=", ...facts.expression },
     ],
   };
-}
-/** 翻译语义分析失败附加成员与编译位置，资源故障和取消保持原始异常。 */
-export async function audit_code(
-  code: RenpyCode,
-  member: string,
-  session: PythonSession,
-  python2: boolean,
-  signal?: AbortSignal,
-): Promise<PythonFacts> {
-  try {
-    return await analyze_code(code, session, python2, signal);
-  } catch (cause) {
-    if (!(cause instanceof PythonSyntaxError)) throw cause;
-    throw new Error(member + ": " + code_diagnostic(code, cause.diagnostic).message, { cause });
-  }
 }

@@ -160,6 +160,6 @@ export function collect_tyrano_files(
 }
 
 /** 离线解析只依赖识别时读定的解析语义。 */
-export async function build_tyrano_metadata(game: TyranoSource): Promise<Uint8Array> {
+export function build_tyrano_metadata(game: TyranoSource): Uint8Array {
   return Buffer.from(JSON.stringify(game.syntax));
 }

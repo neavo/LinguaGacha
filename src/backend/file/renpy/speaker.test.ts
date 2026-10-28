@@ -1,7 +1,6 @@
 import path from "node:path";
 import { expect, it } from "vitest";
 import { configure_python_parser, PythonSession } from "./python-syntax";
-import { read_speaker_expression } from "./speaker";
 
 configure_python_parser(path.resolve("build/resources/workspace"));
 
@@ -30,9 +29,7 @@ it.each([
   ["extend", undefined, undefined],
 ] as const)("当前表达式的姓名和默认翻译资格：%s", async (source, expected, usage) => {
   using session = await PythonSession.create();
-  const input = { source, mode: "eval" as const };
-  const facts = await session.analyze(input);
-  const result = await read_speaker_expression(input, facts, session);
+  const result = (await session.analyze({ source, mode: "eval" })).speaker;
   expect(result.name?.value).toBe(expected);
   expect([...result.usages.values()]).toEqual(usage === undefined ? [] : [usage]);
 });

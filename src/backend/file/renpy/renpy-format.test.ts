@@ -1,14 +1,15 @@
 import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import { read_renpy_metadata } from "./item";
-import { PythonSession } from "./python-syntax";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { GameFormat, GAME_METADATA_MEMBER, read_game_container } from "../shared/game/format";
+import type { Item } from "../../../domain/item";
+import { NativeFs } from "../../../native/native-fs";
+import { GameFormat, GAME_METADATA_MEMBER } from "../shared/game/format";
 import { create_renpy_adapter } from "./renpy-format";
-import { build_renpy_metadata, collect_renpy_files, discover_renpy_source } from "./source";
+import { collect_renpy_files, discover_renpy_source } from "./source";
 import { RENPY_LANGUAGE_FILE, RENPY_STRINGS_FILE } from "./generated";
 import {
   create_renpy_fixture,
@@ -21,57 +22,50 @@ import {
   object,
   opcode,
   tuple,
+  extract_fixture,
+  import_metadata,
+  speaker_say,
 } from "../../../test/renpy-fixture";
 import { pickle_string } from "./pickle";
-import { extract_script } from "./extract";
 import { encode_python } from "./python";
 
-it("独立代码写回只解析目标脚本，空译文导出只更新生成资源", async () => {
+it("独立代码只分析目标成员，无关坏成员按原字节输出，正文改动依赖完整字符串表", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-export-dependencies-"));
   const native = create_renpy_fixture(temp.path);
+  const { format, items, context } = await import_fixture(temp.path, native);
   const game = (await discover_renpy_source(temp.path, native))!;
   const data = collect_renpy_files(game, native);
-  const format = new GameFormat(new GameDirectoryOperations(), create_renpy_adapter(), native);
-  const content = await format.create_container(
-    data,
+  const broken = Buffer.from("not a compiled script");
+  const asset = await format.create_container(
+    new Map([...data, ["game/unrelated.rpyc", broken]]),
     "demo.renpy",
     "",
     undefined,
-    await build_renpy_metadata(game, { data, complete: true }, native),
+    await import_metadata(game, data, native),
   );
-  const parsed = await format.read_from_stream(content, "demo.renpy");
-  const code = parsed.items.find((item) => read_renpy_metadata(item.extra_field).usage === "code")!;
-  const { input } = await read_game_container(content, "demo.renpy", true);
-  const target = read_renpy_metadata(code.extra_field).internal_file_path;
-  const extra = {
-    ...input.get(target)!,
-    async: vi.fn(async () => {
-      throw new Error("unrelated script must not be parsed");
-    }),
-  };
-  const files = new Map(input);
-  files.set("game/unrelated.rpyc", extra);
-  const handler = await create_renpy_adapter().create_members(files);
-  const generated = await handler.prepare_export!([
-    { ...code, status: "PROCESSED", dst: "独立代码" },
-  ]);
-  expect(extra.async).not.toHaveBeenCalled();
-  expect(generated.has(RENPY_LANGUAGE_FILE)).toBe(true);
-  const rendered = await handler.render(await input.get(target)!.async("uint8array"), target, []);
-  using session = await PythonSession.create();
+  const broken_context = { ...context, asset_reader: () => Buffer.from(asset) };
+  const out = (name: string) =>
+    native.read_file(path.join(context.paths.translated_path, "demo", name));
+  const code = items.find((item) => read_renpy_metadata(item.extra_field).usage === "code")!;
+  await format.write_to_path([{ ...code, status: "PROCESSED", dst: "独立代码" }], broken_context);
+  expect(out("game/unrelated.rpyc")).toEqual(broken);
   expect(
-    (await extract_script(rendered, false, session)).candidates.some(
+    (await extract_fixture(out("game/script.rpyc"))).candidates.some(
       (candidate) => candidate.text === "独立代码",
     ),
   ).toBe(true);
-  extra.async.mockClear();
-  const empty = await create_renpy_adapter().create_members(files);
-  expect((await empty.prepare_export!([])).get(RENPY_STRINGS_FILE)).toBeDefined();
-  expect(extra.async).not.toHaveBeenCalled();
+  await format.write_to_path([], broken_context);
+  expect(out("game/script.rpyc")).toEqual(compiled_fixture());
+  expect(Buffer.from(out(RENPY_STRINGS_FILE)).toString()).not.toContain("translate");
+  const say = items.find((item) => read_renpy_metadata(item.extra_field).usage === "say")!;
+  await expect(
+    format.write_to_path([{ ...say, status: "PROCESSED", dst: "正文" }], broken_context),
+  ).rejects.toThrow("Cannot index Ren'Py member game/unrelated.rpyc");
+  await format.write_to_path([{ ...say, status: "PROCESSED", dst: say.src }], broken_context);
+  expect(out("game/script.rpyc")).toEqual(compiled_fixture());
 });
 
 it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共用固化资产", async (version) => {
-  using session = await PythonSession.create();
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-format-"));
   const root = path.join(temp.path, "original"),
     native = create_renpy_fixture(root);
@@ -89,7 +83,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
     "demo.renpy",
     [...data.keys()].join("\n"),
     undefined,
-    await build_renpy_metadata(game, { data, complete: true }, native),
+    await import_metadata(game, data, native),
   );
   fs.renameSync(root, path.join(temp.path, "unavailable"));
   const parsed = await new GameFormat(
@@ -116,7 +110,7 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
   const first = native.read_file(path.join(out, "demo/game/script.rpyc"));
   const generated = native.read_text_file(path.join(out, "demo", RENPY_LANGUAGE_FILE));
   expect(
-    (await extract_script(first, version.startsWith("6."), session)).candidates.map(
+    (await extract_fixture(first, version.startsWith("6."))).candidates.map(
       (candidate) => candidate.text,
     ),
   ).toEqual(expect.arrayContaining(["首句 [lg_name]。", "人工放行"]));
@@ -147,7 +141,7 @@ async function import_fixture(root: string, native: ReturnType<typeof create_ren
     "demo.renpy",
     [...data.keys()].join("\n"),
     undefined,
-    await build_renpy_metadata(game, { data, complete: true }, native),
+    await import_metadata(game, data, native),
   );
   const parsed = await format.read_from_stream(asset, "demo.renpy");
   const out = path.join(root, "out");
@@ -183,7 +177,6 @@ it.each(["digest", "key", "src"] as const)("失效 %s 在落盘前失败", async
   expect(native.exists(context.paths.translated_path)).toBe(false);
 });
 it("跨成员 None 字符串写 new，保留语言按新键重映射并拒绝冲突", async () => {
-  using session = await PythonSession.create();
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-strings-"));
   const native = create_renpy_fixture(temp.path);
   native.write_file_sync(
@@ -213,13 +206,8 @@ it("跨成员 None 字符串写 new，保留语言按新键重映射并拒绝冲
     ],
     context,
   );
-  const table = (
-    await extract_script(
-      native.read_file(path.join(out, "demo/game/strings.rpymc")),
-      false,
-      session,
-    )
-  ).strings;
+  const table = (await extract_fixture(native.read_file(path.join(out, "demo/game/strings.rpymc"))))
+    .strings;
   expect(table).toContainEqual(
     expect.objectContaining({ language: null, old: "Common question?", text: "基础译文" }),
   );
@@ -302,11 +290,8 @@ it("固定的旧条目身份仍可导出，重新提取得到新增条目", asyn
     },
   };
   await format.write_to_path([legacy], context);
-  using session = await PythonSession.create();
-  const output = await extract_script(
+  const output = await extract_fixture(
     native.read_file(path.join(context.paths.translated_path, "demo/game/compat.rpyc")),
-    false,
-    session,
   );
   expect(output.candidates.map((candidate) => candidate.text)).toEqual([
     " 后缀",
@@ -336,16 +321,13 @@ it("生成阶段不判断译文质量：格式记号、文本标签和源码表�
     ],
     context,
   );
-  using session = await PythonSession.create();
   const output = (file: string) =>
     native.read_file(path.join(context.paths.translated_path, "demo/game", file));
   expect(
-    (await extract_script(output("quality.rpyc"), false, session)).candidates.map(
-      (candidate) => candidate.text,
-    ),
+    (await extract_fixture(output("quality.rpyc"))).candidates.map((candidate) => candidate.text),
   ).toEqual(["你好 %d", 'f"嗨 {nickname!r}"']);
   expect(
-    (await extract_script(output("script.rpyc"), false, session)).candidates.some(
+    (await extract_fixture(output("script.rpyc"))).candidates.some(
       (candidate) => candidate.text === "首句 [lg_name。{#context}",
     ),
   ).toBe(true);
@@ -381,18 +363,6 @@ it("Ren'Py 配套输出提交失败后恢复整个资产", async () => {
   expect(native.exists(path.join(directory, ".tmp"))).toBe(false);
 });
 
-/** 对白身份与 who 表达式由测试独立构造。 */
-function speaker_say(who: string | Buffer, serial: number, what = `Line ${serial}`): Buffer {
-  return object(
-    "Say",
-    dictionary({
-      name: tuple(pickle_string("game/dialogue.rpy"), opcode(0x4b, 1), opcode(0x4b, serial)),
-      who: typeof who === "string" ? pickle_string(who) : who,
-      what: pickle_string(what),
-    }),
-  );
-}
-
 it.each([
   ["'Alice'", "Alice"],
   ["('Al' 'ice')", "Alice"],
@@ -423,11 +393,8 @@ it.each([
     [{ ...dialogue, dst: dialogue.src, name_dst: "爱丽丝", status: "PROCESSED" }],
     context,
   );
-  using session = await PythonSession.create();
-  const output = await extract_script(
+  const output = await extract_fixture(
     native.read_file(path.join(context.paths.translated_path, "demo/game/dialogue.rpyc")),
-    false,
-    session,
   );
   expect(output.candidates).toEqual(
     expect.arrayContaining([
@@ -448,35 +415,6 @@ it.each([
   ).rejects.toThrow("speaker original changed");
 });
 
-it("槽位说话者不一致时保留正文唯一写入口和独立姓名", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-speaker-slots-"));
-  const native = create_renpy_fixture(temp.path);
-  native.write_file_sync(
-    path.join(temp.path, "game/dialogue.rpyc"),
-    compiled_slots([[speaker_say("'Alice'", 1)], [speaker_say("'Beth'", 1)]]),
-  );
-  const { items } = await import_fixture(temp.path, native);
-  expect(items.filter((item) => item.src === "Line 1")).toHaveLength(1);
-  expect(items.find((item) => item.src === "Line 1")!.name_src).toBeNull();
-});
-
-it.each(["Hello", "Alice"])("字符串表拥有 %s 的唯一写入口", async (text) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-speaker-table-"));
-  const native = create_renpy_fixture(temp.path);
-  native.write_file_sync(
-    path.join(temp.path, "game/dialogue.rpyc"),
-    compiled_nodes([speaker_say("'Alice'", 1, "Hello")]),
-  );
-  native.write_file_sync(
-    path.join(temp.path, "game/table.rpyc"),
-    strings_fixture([{ language: null, old: text, text: "Base text" }]),
-  );
-  const { items } = await import_fixture(temp.path, native);
-  expect(items.some((item) => item.src === text)).toBe(false);
-  expect(items.every((item) => item.name_src === null)).toBe(true);
-  expect(items.some((item) => item.src === "Base text")).toBe(true);
-});
-
 it("旧独立姓名和旧动态表达式保留候选身份及人工导出资格", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-speaker-legacy-"));
   const native = create_renpy_fixture(temp.path);
@@ -489,8 +427,7 @@ it("旧独立姓名和旧动态表达式保留候选身份及人工导出资格"
     compiled_nodes([speaker_say("protagonist", 1)]),
   );
   const { items, format, context } = await import_fixture(temp.path, native);
-  using session = await PythonSession.create();
-  const original = await extract_script(bytes, false, session);
+  const original = await extract_fixture(bytes);
   const dialogue = items.find((item) => item.src === "Line 1")!;
   const legacy = original.candidates.map((candidate, index) => ({
     ...dialogue,
@@ -510,10 +447,8 @@ it("旧独立姓名和旧动态表达式保留候选身份及人工导出资格"
     },
   }));
   await format.write_to_path(legacy, context);
-  const output = await extract_script(
+  const output = await extract_fixture(
     native.read_file(path.join(context.paths.translated_path, "demo/game/characters.rpyc")),
-    false,
-    session,
   );
   expect(output.candidates.map((candidate) => candidate.text)).toEqual([
     "旧姓名",
@@ -550,13 +485,161 @@ it.each([false, true])("共享姓名消费边只在完整正文写入组内开�
     })),
     context,
   );
-  using session = await PythonSession.create();
-  const output = await extract_script(
+  const output = await extract_fixture(
     native.read_file(path.join(context.paths.translated_path, "demo/game/dialogue.rpyc")),
-    false,
-    session,
   );
   expect(output.candidates.map((candidate) => candidate.text)).toEqual(
     expect.arrayContaining(["甲", "乙", "Line 1", "Line 2"]),
+  );
+});
+
+/** 直接固化测试成员与指定元数据，模拟历史原稿。 */
+async function metadata_asset(
+  members: ReadonlyMap<string, Buffer>,
+  metadata: Readonly<Record<string, unknown>>,
+) {
+  const native = new NativeFs();
+  const format = new GameFormat(new GameDirectoryOperations(), create_renpy_adapter(), native);
+  const metadata_bytes = Buffer.from(
+    JSON.stringify({
+      schema: "linguagacha-renpy-1",
+      engine_version: "test",
+      python_major: 3,
+      common: [],
+      ...metadata,
+    }),
+  );
+  const asset = await format.create_container(
+    members,
+    "demo.renpy",
+    [...members.keys()].join("\n"),
+    undefined,
+    metadata_bytes,
+  );
+  /** 导出到临时目录并读回指定成员。 */
+  const write = async (out: string, items: Item[]) => {
+    await format.write_to_path(items, {
+      paths: { translated_path: out, bilingual_path: out },
+      source_files: [{ path: "demo.renpy", file_type: "RENPY" }],
+      asset_reader: () => Buffer.from(asset),
+    });
+    return (name: string) => native.read_file(path.join(out, "demo", name));
+  };
+  return { format, asset, metadata_bytes, write };
+}
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const menu_node = (label: string) =>
+  object(
+    "Menu",
+    dictionary({
+      name: tuple(pickle_string("game/menu.rpy"), opcode(0x4b, 1), opcode(0x4b, 1)),
+      items: tuple(tuple(pickle_string(label), pickle_string("True"), tuple())),
+    }),
+  );
+
+it("历史未知百分号语义按默认值导出旧菜单，其他语言改用新键，基础语言表与公共条目照常导出", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-legacy-menu-"));
+  const menu = compiled_nodes([menu_node("Progress 100%%")]);
+  const members = new Map([
+    ["game/menu.rpyc", menu],
+    [
+      "game/strings.rpyc",
+      strings_fixture([
+        { language: null, old: "Progress 100%", text: "Base progress" },
+        { language: "french", old: "Progress 100%", text: "Progrès 100%" },
+      ]),
+    ],
+  ]);
+  const { format, asset, metadata_bytes, write } = await metadata_asset(members, {
+    old_substitutions: null,
+    common: ["Common question?"],
+  });
+  const { items } = await format.read_from_stream(asset, "demo.renpy");
+  // 按当前规则重新提取时，菜单由已有的基础语言字符串表条目承接。
+  expect(items.some((item) => item.src === "Progress 100%%")).toBe(false);
+  const base = items.find((item) => item.src === "Base progress")!;
+  const common = items.find((item) => item.src === "Common question?")!;
+  expect(read_renpy_metadata(common.extra_field).digest).toBe(sha256(metadata_bytes));
+  const candidate = (await extract_fixture(menu)).candidates[0]!;
+  const legacy_menu: Item = {
+    ...base,
+    src: candidate.text,
+    status: "PROCESSED",
+    dst: "进度 100%",
+    extra_field: {
+      renpy: {
+        internal_file_path: "game/menu.rpyc",
+        digest: sha256(menu),
+        usage: "menu",
+        key: candidate.key,
+      },
+    },
+  };
+  const output = await write(path.join(temp.path, "out"), [
+    legacy_menu,
+    { ...base, status: "PROCESSED", dst: "基础进度" },
+    { ...common, status: "PROCESSED", dst: "公共问题？" },
+  ]);
+  expect((await extract_fixture(output("game/menu.rpyc"))).candidates[0]!.text).toBe("进度 100%%");
+  expect((await extract_fixture(output("game/strings.rpyc"))).strings).toContainEqual({
+    language: null,
+    old: "Progress 100%",
+    text: "基础进度",
+  });
+  const generated = Buffer.from(output(RENPY_STRINGS_FILE)).toString();
+  const mapping = (language: string, old: string, text: string) =>
+    `translate ${language} strings:\n    old ${encode_python(old).slice(1)}\n    new ${encode_python(text).slice(1)}`;
+  expect(generated).toContain(mapping("french", "进度 100%", "Progrès 100%"));
+  expect(generated).toContain(mapping("None", "Common question?", "公共问题？"));
+});
+
+it.each([
+  [true, "100%% %% %(name)s %%d"],
+  [null, "100%% %% %(name)s %%d"],
+  [false, "100% %% %(name)s %d"],
+])("百分号语义 %s：对白与菜单的译文按引擎替换规则写回", async (old_substitutions, expected) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-percent-"));
+  const script = compiled_nodes([
+    object(
+      "Say",
+      dictionary({
+        name: tuple(pickle_string("game/say.rpy"), opcode(0x4b, 1), opcode(0x4b, 1)),
+        what: pickle_string("Rate"),
+      }),
+    ),
+    menu_node("Choice"),
+  ]);
+  const { format, asset, write } = await metadata_asset(new Map([["game/script.rpyc", script]]), {
+    old_substitutions,
+  });
+  const { items } = await format.read_from_stream(asset, "demo.renpy");
+  expect(items.map((item) => read_renpy_metadata(item.extra_field).usage)).toEqual(["say", "menu"]);
+  const output = await write(
+    path.join(temp.path, "out"),
+    items.map((item) => ({ ...item, status: "PROCESSED", dst: "100% %% %(name)s %d" })),
+  );
+  expect(
+    (await extract_fixture(output("game/script.rpyc"))).candidates.map((entry) => entry.text),
+  ).toEqual([expected, expected]);
+});
+
+it("NUL 按字段编码写回：对白写入编译文本，代码字面量写作转义", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-nul-"));
+  const native = create_renpy_fixture(temp.path);
+  const { format, items, context } = await import_fixture(temp.path, native);
+  const say = items.find((item) => read_renpy_metadata(item.extra_field).usage === "say")!;
+  const code = items.find((item) => item.src === "Program value")!;
+  await format.write_to_path(
+    [
+      { ...say, status: "PROCESSED", dst: "A\0B" },
+      { ...code, status: "PROCESSED", dst: "C\0D" },
+    ],
+    context,
+  );
+  const output = await extract_fixture(
+    native.read_file(path.join(context.paths.translated_path, "demo/game/script.rpyc")),
+  );
+  expect(output.candidates.map((candidate) => candidate.text)).toEqual(
+    expect.arrayContaining(["A\0B", "C\0D"]),
   );
 });

@@ -12,7 +12,7 @@ description: 翻译、审校或分析 RenPy 游戏前必须首先加载，提供
 |文件|内容|
 |---|---|
 |`game_files.reference.txt`|游戏目录的文件清单，每行一个相对路径，包括图片、音频、字体和 JSON 等数据文件。导入时读取失败的文件仍列在清单中|
-|`__metadata__.json`|`engine_version` 为引擎版本，`python_major` 为 Python 代际。`old_substitutions` 为百分号语义，`null` 表示未知。`common` 为公共界面字符串，`null` 表示收集不完整。`scripts_incomplete: true` 表示编译脚本有已知遗漏|
+|`__metadata__.json`|`engine_version` 为引擎版本，`python_major` 为 Python 代际。`old_substitutions` 为百分号语义，历史工程中的 `null` 按 `true` 使用。`common` 为公共界面字符串，`null` 表示收集不完整。`scripts_incomplete: true` 表示编译脚本有已知遗漏|
 |`game/x.rpyc`|编译原件|
 |`game/x.rpyc.reference.rpy`|按原始行号还原的近似脚本，不能编译。编译时丢失的注释写作空行，ATL 写作 `# ATL`，6.99 旧式界面写作 `# legacy screen language`，其余无法还原的语句写作 `# <类名>`|
 |`game/x.rpyc.reference.json`|`{ internal_file_path, strings }`。解析失败时不生成投影，失败记录在 `source_issues.jsonl`|
@@ -92,8 +92,9 @@ f-string 产生 `write_mode` 为 `source` 的 `code` 条目，例如 `f"Hello {n
 
 - 对白、菜单和字符串表改写该字段，同一节点被多条语句共享时一起改写。
 - 代码字面量按完整字面量区间写回，保留区间外的代码。
-- 条目原文在其他语言的字符串表中作为 `old` 时，导出自动以译文为新键生成同一映射，其他语言仍可使用。
+- 修改显示原文时，导出以译文为新键保留其他语言的字符串映射。
 - 导出生成 `game/zz_lg_language.rpy` 和 `game/zz_lg_strings.rpy`，前者在本次导出后的首次启动重置语言偏好。后者写入公共界面字符串和上述映射。
+- 对白、菜单、界面文字、姓名和公共界面字符串的修改依赖完整字符串表。`scripts_incomplete: true` 或字符串表读取失败会阻止这类修改导出。`code`、字符串表的 `new` 和未改动条目不依赖全表。
 
 导出结果只适用于已准备的游戏目录，即归档已解开、源码已移出的目录。
 
@@ -107,10 +108,10 @@ f-string 产生 `write_mode` 为 `source` 的 `code` 条目，例如 `f"Hello {n
 - 字符串是 `%` 运算的左操作数时，译文的记号序列要与原文一致，包括字面百分号 `%%`。`%s`、`%d` 等按位置代入，顺序不能变。含 `%(name)s` 时按名称代入，可以换序。单独的 `%` 必须写作 `%%`。
 - 放行调用 `.format()` 的程序字符串时，`{0}`、`{name}` 等格式字段保持原样，字面的 `{`、`}` 写作 `{{`、`}}`。
 
-导出按以下规则处理 `%` 与 NUL，违反时当前游戏资产导出失败：
+导出按以下规则处理 `%` 与 NUL：
 
-- `__metadata__.json` 的 `old_substitutions` 为 `null` 时，对白和菜单译文中不能出现 `%`。为 `true` 时，对白和菜单中的 `%` 由导出自动转义，`%(name)s` 保持替换。
-- 译文不能含 NUL 字符。
+- `__metadata__.json` 的 `old_substitutions` 为 `true` 或 `null` 时，导出自动转义对白和菜单中的 `%`。`%%` 与 `%(name)s` 原样写回。为 `false` 时 `%` 原样写回。
+- NUL 按所在字段编码写回，源码条目原样替换。发现 NUL 时核对原文。源码中的原始 NUL 可能使游戏加载失败，导出成功不证明源码可以运行。
 
 导出不检查插值、文本标签、`{#…}` 和 `%` 记号：`{b}Hello{/b}` 译为 `你好` 也能导出，`%` 记号不匹配会让游戏在运行时抛出异常。这类问题只能由文本保护警告和「翻译后检查」发现。文本保护默认保护插值、文本标签和 `%` 格式记号。
 

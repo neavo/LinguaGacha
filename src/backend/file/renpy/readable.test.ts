@@ -10,13 +10,14 @@ import {
   object,
   opcode,
   tuple,
+  import_metadata,
 } from "../../../test/renpy-fixture";
 import { GameFormat, read_game_container } from "../shared/game/format";
 import { read_renpy_metadata } from "./item";
 import { pickle_string } from "./pickle";
 import { read_renpy_projections } from "./readable";
 import { create_renpy_adapter } from "./renpy-format";
-import { build_renpy_metadata, collect_renpy_files, discover_renpy_source } from "./source";
+import { collect_renpy_files, discover_renpy_source } from "./source";
 
 type Projection = {
   strings: {
@@ -80,7 +81,7 @@ it("可读视图按原行号还原脚本，字符串的视图行与原稿行分�
     "demo.renpy",
     [...members.keys()].join("\n"),
     undefined,
-    await build_renpy_metadata(game, { data, complete: true }, native),
+    await import_metadata(game, data, native),
   );
   const { input } = await read_game_container(container, "demo.renpy", true);
   const outputs = new Map<string, string>();
@@ -110,11 +111,13 @@ it("可读视图按原行号还原脚本，字符串的视图行与原稿行分�
     ["World", "text", 8, 7],
   ]);
 
-  const handler = await create_renpy_adapter().create_members(input);
-  const read = await handler.read_file(new Uint8Array(), "game/script.rpyc");
+  const read = (await create_renpy_adapter().read_asset(input)).find(
+    (entry) => entry.name === "game/script.rpyc",
+  );
+  if (!read?.ok) throw new Error("Expected Ren’Py script items");
   expect(
     projection("game/script.rpyc")
       .strings.map((entry) => entry.key)
       .sort(),
-  ).toEqual(read.items.map((item) => read_renpy_metadata(item.extra_field).key).sort());
+  ).toEqual(read.read.items.map((item) => read_renpy_metadata(item.extra_field).key).sort());
 });

@@ -1,4 +1,8 @@
-import { configure_python_parser } from "../backend/file/renpy/python-syntax";
+import { configure_python_parser, PythonSession } from "../backend/file/renpy/python-syntax";
+import { extract_script } from "../backend/file/renpy/extract";
+import { read_member } from "../backend/file/renpy/member";
+import { prepare_renpy_import, type RenpySource } from "../backend/file/renpy/source";
+import type { GameSourceData } from "../backend/file/shared/game/source-files";
 import fs from "node:fs";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
@@ -7,6 +11,22 @@ import { NativeFs } from "../native/native-fs";
 
 configure_python_parser(path.resolve("build/resources/workspace"));
 
+/** 测试从字节建立成员分析并完整提取，`member` 供写回测试使用。 */
+export async function extract_fixture(bytes: Uint8Array, python2 = false) {
+  using session = await PythonSession.create();
+  const member = await read_member(bytes, python2);
+  return { member, ...(await extract_script(member, session)) };
+}
+/** 按新建导入的联合分析取得完整快照的格式元数据。 */
+export async function import_metadata(
+  game: RenpySource,
+  data: GameSourceData,
+  native: NativeFs,
+): Promise<Uint8Array> {
+  return (
+    await prepare_renpy_import(game, { data, files: [...data.keys()], complete: true }, native)
+  ).metadata;
+}
 /** 测试自有 RPA，包含多片段与前缀，和读取器的偏移计算独立。 */
 export function archive_fixture(entries: ReadonlyMap<string, Uint8Array>, version = 3): Buffer {
   const header_size = version === 3 ? 34 : 25,
@@ -141,6 +161,13 @@ export function compiled_fixture(layout: "legacy" | "modern" = "modern"): Buffer
   return Buffer.concat([header, ...slots, Buffer.alloc(16)]);
 }
 export const opcode = (...values: number[]) => Buffer.from(values);
+/** BININT 承载负数与较大的初始化优先级。 */
+export const integer = (value: number) => {
+  const bytes = Buffer.alloc(5);
+  bytes[0] = 0x4a;
+  bytes.writeInt32LE(value, 1);
+  return bytes;
+};
 export const tuple = (...values: Buffer[]) =>
   Buffer.concat([opcode(0x28), ...values, opcode(0x74)]);
 export const dictionary = (values: Record<string, Buffer>) =>
@@ -194,7 +221,7 @@ export function strings_fixture(
           language: entry.language === null ? opcode(0x4e) : pickle_string(entry.language),
           old: pickle_string(entry.old),
           new: pickle_string(entry.text),
-          name: tuple(pickle_string("game/strings.rpy"), opcode(0x4b, 1), opcode(0x4b, index)),
+          name: tuple(pickle_string("game/strings.rpy"), opcode(0x4b, 1), integer(index)),
         }),
       ),
     ),
@@ -231,7 +258,7 @@ export function code_fixture(
         )
       : statement;
   return compiled_nodes([
-    object("Init", dictionary({ priority: opcode(0x4b, priority), block: tuple(block) })),
+    object("Init", dictionary({ priority: integer(priority), block: tuple(block) })),
   ]);
 }
 /** 最小标准引擎只服务静态发现，测试不启动或执行这些源码。 */
@@ -259,4 +286,29 @@ export function create_renpy_fixture(root: string, recursive = false): NativeFs 
     native.write_file_sync(path.join(root, name), bytes);
   fs.mkdirSync(path.join(root, "lib/py3-windows-x86_64"), { recursive: true });
   return native;
+}
+
+/** 菜单身份保持独立，选项容器可由用例共享。 */
+export const menu_fixture = (serial: number, items: Buffer) =>
+  object(
+    "Menu",
+    dictionary({
+      name: tuple(pickle_string("game/shared.rpy"), opcode(0x4b, 1), opcode(0x4b, serial)),
+      items,
+    }),
+  );
+/** 固定选项正文，隔离共享容器对写回组的影响。 */
+export const menu_option_fixture = () =>
+  tuple(tuple(pickle_string("Shared choice"), pickle_string("True"), tuple()));
+
+/** 对白身份与 who 表达式由测试独立构造。 */
+export function speaker_say(who: string | Buffer, serial: number, what = `Line ${serial}`): Buffer {
+  return object(
+    "Say",
+    dictionary({
+      name: tuple(pickle_string("game/dialogue.rpy"), opcode(0x4b, 1), opcode(0x4b, serial)),
+      who: typeof who === "string" ? pickle_string(who) : who,
+      what: pickle_string(what),
+    }),
+  );
 }

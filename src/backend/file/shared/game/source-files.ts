@@ -13,6 +13,7 @@ import {
   type PreparedGameFiles as PreparedSources,
   type SourceDiagnostic,
 } from "./preparation";
+import type { GameReadResult } from "./format";
 /** 读取诊断回调只在主线程使用，Worker 回包仍只携带来源数据。 */
 export type PreparedGameFiles = PreparedSources &
   Readonly<{ on_read_failure?: (diagnostic: SourceDiagnostic) => void }>;
@@ -21,6 +22,14 @@ export type PreparedGameFiles = PreparedSources &
 export type GameSourceData = ReadonlyMap<string, Uint8Array>;
 /** 字体工具读定的原字节：数据承载字体配置，字体为替换目标。 */
 export type GameSourceFiles = Readonly<{ data: GameSourceData; fonts: GameSourceData }>;
+/** 本次导入已读定的快照，格式导入语义只消费它，不重新扫描活动游戏目录。 */
+export type GameImportSources = Readonly<{
+  data: GameSourceData; // 翻译原稿与附加原稿，即将固化的同一份字节。
+  files: readonly string[]; // 完整有效文件清单。
+  complete: boolean; // 翻译原稿是否完整，附加原稿的遗漏不改变格式的跨成员语义。
+}>;
+/** 格式导入的结果：固化的格式元数据，以及本次已完成的成员读取结果。 */
+export type GameImport = Readonly<{ metadata: Uint8Array; read?: readonly GameReadResult[] }>;
 
 const ADDITIONAL_EXTENSIONS = new Set([".txt", ".json", ".csv", ".tsv", ".ks"]); // `.ks` 仅固化原稿，文本提取由独立格式能力提供。
 
@@ -32,7 +41,7 @@ export function collect_game_import_files(
   fs: NativeFs,
   signal?: AbortSignal,
   prepared?: PreparedGameFiles,
-): { data: GameSourceData; additional_files: string[]; game_files: string } {
+): { data: GameSourceData; additional_files: string[]; files: string[] } {
   const data = new Map(translation); // 保留引擎已读定的字节，附加原稿只补充其他成员。
   const additional_files: string[] = [];
   const names = new Set<string>(); // 完整清单也包含不收录字节的素材。
@@ -103,10 +112,7 @@ export function collect_game_import_files(
   return {
     data,
     additional_files: additional_files.sort(),
-    game_files: [...names]
-      .filter((name) => !prepared?.excluded.includes(name))
-      .sort()
-      .join("\n"),
+    files: [...names].filter((name) => !prepared?.excluded.includes(name)).sort(),
   };
 }
 
@@ -157,6 +163,7 @@ export function collect_game_source_files(
   }
   const data = new Map<string, Uint8Array>();
   const captured = new Map<string, Uint8Array>(); // 选择器先读取的 RGSS 配置与最终原稿共用同一份字节。
+  const verified = new Set<string>(); // 本次读取阶段只读，共同祖先只核对一次。
   /** 只读取最终选中的实际文件，读取前重新拒绝链接。 */
   function read(name: string): Uint8Array {
     signal?.throwIfAborted();
@@ -165,7 +172,7 @@ export function collect_game_source_files(
     const target = files.get(name);
     if (target === null) throw new Error("Selected game source is unavailable: " + name);
     if (!target) throw new Error("Missing game source file: " + name);
-    assert_regular_path(target, fs);
+    assert_regular_path(target, fs, verified);
     const bytes = fs.read_file(target);
     captured.set(name, bytes);
     return bytes;

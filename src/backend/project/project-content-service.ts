@@ -399,7 +399,7 @@ export class ProjectContentService {
    */
   public async reset_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.runtime_gate.run_project_write(async () => {
+    return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, PROJECT_DERIVED_FIELDS);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
       if (rel_paths.length === 0) {
@@ -420,11 +420,17 @@ export class ProjectContentService {
       )
         revisionSections.push("pdf");
       await this.write_store.check_section_revisions(project_path, expected, revisionSections);
-      return await this.rebuild_assets(project_path, snapshot, records, {
-        source: "project_reset_files",
-        expectedSectionRevisions: expected,
-        revisionSections,
-      });
+      return await this.rebuild_assets(
+        project_path,
+        snapshot,
+        records,
+        {
+          source: "project_reset_files",
+          expectedSectionRevisions: expected,
+          revisionSections,
+        },
+        signal,
+      );
     });
   }
 
@@ -574,12 +580,16 @@ export class ProjectContentService {
       ...PROJECT_DERIVED_FIELDS,
       "expected_section_revisions",
     ]);
-    return this.runtime_gate.run_project_write(async () => {
+    return this.runtime_gate.run_project_write(async (signal) => {
       if (mode === "all") {
         const snapshot = await this.read_project_write_snapshot(project_path);
-        return await this.rebuild_assets(project_path, snapshot, snapshot.asset_records, {
-          source: "translation_reset",
-        });
+        return await this.rebuild_assets(
+          project_path,
+          snapshot,
+          snapshot.asset_records,
+          { source: "translation_reset" },
+          signal,
+        );
       }
       if (mode === "failed") {
         // 失败条目已获准翻译，重试保留该资格。
@@ -890,8 +900,9 @@ export class ProjectContentService {
           expectedSectionRevisions: ProjectExpectedSectionRevisions;
           revisionSections: Array<"files" | "items" | "pdf">;
         },
+    signal?: AbortSignal,
   ): Promise<ProjectWriteResult> {
-    const assets = await this.reparse_assets(project_path, records);
+    const assets = await this.reparse_assets(project_path, records, signal);
     const settings = await this.read_project_write_settings(project_path);
     const progress =
       command.source === "translation_reset"
@@ -915,6 +926,7 @@ export class ProjectContentService {
       progress,
       items: Object.values(write_output.items),
     });
+    signal?.throwIfAborted(); // 重建与预过滤完成后，取消仍须阻止重置事务开始。
     return await this.write_store.replace_project_items_and_files({
       projectPath: project_path,
       ...(command.source === "translation_reset"
@@ -935,6 +947,7 @@ export class ProjectContentService {
   private async reparse_assets(
     project_path: string,
     records: ProjectAssetRecord[],
+    signal?: AbortSignal,
   ): Promise<Map<string, Item[]>> {
     const format_service = await this.create_format_service(project_path);
     const assets = new Map<string, Item[]>();
@@ -944,6 +957,7 @@ export class ProjectContentService {
       await this.database.get_all_meta(project_path),
     );
     for (const record of records) {
+      signal?.throwIfAborted();
       try {
         const content = await this.database.read_asset_content(project_path, record.path);
         if (content === null) {
@@ -960,7 +974,9 @@ export class ProjectContentService {
           content,
           record.file_type,
           additional_files[record.path],
+          signal,
         );
+        signal?.throwIfAborted();
         if (parsed.kind === "items") {
           warnings.push(...(parsed.warnings ?? []));
           if (parsed.extraction_complete === false) {
@@ -978,6 +994,7 @@ export class ProjectContentService {
           assets.set(record.path, parsed.items);
         }
       } catch (error) {
+        if (signal?.aborted) throw error; // 取消不能归为单个资产的解析失败。
         failures.push({ source_path: record.path, rel_path: record.path, error });
       }
     }

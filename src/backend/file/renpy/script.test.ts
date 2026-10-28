@@ -1,4 +1,5 @@
 import { PythonSession } from "./python-syntax";
+import { setImmediate } from "node:timers";
 import { expect, it } from "vitest";
 import {
   compiled_nodes,
@@ -7,6 +8,7 @@ import {
   object,
   opcode,
   tuple,
+  strings_fixture,
 } from "../../../test/renpy-fixture";
 import { class_name, pickle_string } from "./pickle";
 import { read_compiled } from "./compiled";
@@ -17,9 +19,36 @@ import {
   analyze_code,
   code_diagnostic,
   menu_item_lines,
+  script_excluded,
+  script_consumers,
 } from "./script";
 
-it("PyCode 内的 PyExpr 只按外层 hide 模式分析一次", () => {
+it.each(["排除子图", "身份", "代码上下文", "消费者"])("%s遍历中响应取消", async (stage) => {
+  const slots = await read_compiled(
+    strings_fixture(
+      Array.from({ length: 2048 }, (_, index) => ({
+        language: null,
+        old: String(index),
+        text: String(index),
+      })),
+    ),
+  );
+  const controller = new AbortController();
+  const reason = new Error("cancel graph traversal");
+  setImmediate(() => controller.abort(reason));
+  const signal = controller.signal;
+  const task =
+    stage === "排除子图"
+      ? script_excluded(slots, signal)
+      : stage === "身份"
+        ? script_identities(slots, new Set(), signal)
+        : stage === "代码上下文"
+          ? script_codes({ slots }, new Map(), signal)
+          : script_consumers(slots[0]!.graph.root, new Map(), signal);
+  await expect(task.then(() => "completed")).rejects.toBe(reason);
+});
+
+it("PyCode 内的 PyExpr 只按外层 hide 模式分析一次", async () => {
   const expression = Buffer.concat([
     Buffer.from("crenpy.astsupport\nPyExpr\n"),
     tuple(pickle_string("    x = 'text'")),
@@ -30,9 +59,9 @@ it("PyCode 内的 PyExpr 只按外层 hide 模式分析一次", () => {
     "Init",
     dictionary({ block: tuple(object("Python", dictionary({ code }))) }),
   );
-  expect(script_codes({ slots: read_compiled(compiled_nodes([statement])) })).toMatchObject([
-    { source: "    x = 'text'", mode: "hide", phase: "init" },
-  ]);
+  expect(
+    await script_codes({ slots: await read_compiled(compiled_nodes([statement])) }),
+  ).toMatchObject([{ source: "    x = 'text'", mode: "hide", phase: "init" }]);
 });
 it("旧 PyCode 的 Python AST 直接提供加载访问事实", async () => {
   const ast = (name: string, fields: Record<string, Buffer>) =>
@@ -48,12 +77,11 @@ it("旧 PyCode 的 Python AST 直接提供加载访问事实", async () => {
   });
   const code = object("PyCode", tuple(opcode(0x4b, 1), expression, tuple(), pickle_string("exec")));
   const statement = object("Screen", dictionary({ name: pickle_string("legacy"), code }));
-  const records = script_codes({ slots: read_compiled(compiled_nodes([statement])) });
+  const records = await script_codes({ slots: await read_compiled(compiled_nodes([statement])) });
   expect(records[0]?.source).toBeNull();
   using session = await PythonSession.create();
   const facts = await analyze_code(records[0]!, session, true);
   expect(facts.references).toContain("config.searchpath");
-  expect(facts.bare_references).not.toContain("config");
   expect(facts.constants).toEqual([]);
 });
 
@@ -77,8 +105,8 @@ it("相同源码保留各自来源与槽位，Define 目标不改变源码范围
         code: pycode('"Same"', line),
       }),
     );
-  const records = script_codes({
-    slots: read_compiled(
+  const records = await script_codes({
+    slots: await read_compiled(
       compiled_slots([
         [define("config.name", 10), define("other", 20)],
         [define("config.name", 10), define("other", 20)],
@@ -106,12 +134,12 @@ it("相同源码保留各自来源与槽位，Define 目标不改变源码范围
     [],
   );
 });
-it("共享代码保留每个消费者的用途上下文，缺失编译位置保持未知", () => {
+it("共享代码保留每个消费者的用途上下文，缺失编译位置保持未知", async () => {
   const shared = Buffer.concat([pycode('"Shared"'), opcode(0x71, 0)]);
   const define = (name: string, code: Buffer) =>
     object("Define", dictionary({ name: pickle_string(name), varname: pickle_string(name), code }));
-  const records = script_codes({
-    slots: read_compiled(
+  const records = await script_codes({
+    slots: await read_compiled(
       compiled_nodes([define("config.name", shared), define("identifier", opcode(0x68, 0))]),
     ),
   });
@@ -123,7 +151,7 @@ it("共享代码保留每个消费者的用途上下文，缺失编译位置保�
   expect(diagnostic.message).toContain("[1, 4)");
 });
 
-it("菜单项行号：选项取子块首行的上一行，标题紧跟上一项", () => {
+it("菜单项行号：选项取子块首行的上一行，标题紧跟上一项", async () => {
   const pass = (line: number) => object("Pass", dictionary({ linenumber: opcode(0x4b, line) }));
   const item = (label: string, block: Buffer) =>
     tuple(pickle_string(label), pickle_string("True"), block);
@@ -139,10 +167,10 @@ it("菜单项行号：选项取子块首行的上一行，标题紧跟上一项"
       ),
     }),
   );
-  const nodes = read_compiled(compiled_slots([[menu]]))[0]!.graph.nodes;
-  expect(menu_item_lines(nodes.find((node) => class_name(node) === "renpy.ast.Menu")!)).toEqual([
-    11, 12, 15, 18,
-  ]);
+  const nodes = (await read_compiled(compiled_slots([[menu]])))[0]!.graph.nodes;
+  expect(
+    await menu_item_lines(nodes.find((node) => class_name(node) === "renpy.ast.Menu")!),
+  ).toEqual([11, 12, 15, 18]);
 });
 
 /** 固定位置和正文，只改变身份字段或语言来验证协调边界。 */
@@ -185,9 +213,9 @@ it.each([
     [dialogue("Say", { name: tuple(pickle_string("stable"), opcode(0x4b, 7)) })],
     [dialogue("TranslateSay")],
   ],
-] as const)("身份协调保留原身份：%s", (_case, first, second) => {
-  const slots = read_compiled(compiled_slots([first, second]));
-  const identities = script_identities(slots);
+] as const)("身份协调保留原身份：%s", async (_case, first, second) => {
+  const slots = await read_compiled(compiled_slots([first, second]));
+  const identities = await script_identities(slots);
   const original = slots.flatMap((slot) =>
     slot.graph.nodes.flatMap((node) => {
       const identity = statement_identity(node);

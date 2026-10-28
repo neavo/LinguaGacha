@@ -10,7 +10,7 @@ import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { FileFormatService } from "./file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
@@ -357,4 +357,40 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
       ),
     ),
   ).toEqual({ currencyUnit: "游戏1译" });
+});
+
+it.each([true, false])("准备阶段已解析时直接消费结果，读取失败仍保留可靠原稿：%s", async (ok) => {
+  const content = Buffer.from("reliable original");
+  const error = new Error("joint analysis failed");
+  const item = create_item({ file_type: "RENPY", file_path: "game.renpy", row: 0, src: "原文" });
+  const parse_asset = vi.fn();
+  const service = {
+    prepare_source: async () => ({
+      content,
+      additional_files: [],
+      source_complete: true,
+      directory_changed: false,
+      diagnostics: [],
+      read: ok
+        ? {
+            ok: true,
+            result: { kind: "items", file_type: "RENPY", items: [item], extraction_complete: true },
+          }
+        : { ok: false, error },
+    }),
+    parse_asset,
+  } as unknown as FileFormatService;
+  const result = await new SourceFileParsePipeline(service).parse_import_commands([
+    {
+      source: { kind: "failure", error: new Error("unused") },
+      source_path: "game",
+      rel_path: "game.renpy",
+      file_type: "RENPY",
+    },
+  ]);
+  expect(parse_asset).not.toHaveBeenCalled();
+  expect(result.file_drafts).toMatchObject([
+    { content, extraction_complete: ok, parsed_items: ok ? [item] : [] },
+  ]);
+  expect(result.failures.map((failure) => failure.error)).toEqual(ok ? [] : [error]);
 });

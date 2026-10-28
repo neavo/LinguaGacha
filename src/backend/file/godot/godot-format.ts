@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { GODOT_RESOURCE_MAX_BYTES } from "./binary";
 import { create_item, type Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
-import type { GameFormatAdapter } from "../shared/game/format";
+import type { GameMemberAdapter } from "../shared/game/format";
 import { read_godot_metadata, type GodotLocation } from "./item";
 import { create_text_extractor } from "./extract";
 import { patch_gdsc } from "./gdsc";
@@ -24,8 +24,9 @@ import {
 type Change = { original: string; text: string };
 
 /** 每次容器操作共用一次语言表计划，坏成员保留到成员边界报告告警。 */
-export function create_godot_adapter(): GameFormatAdapter {
+export function create_godot_adapter(): GameMemberAdapter {
   return {
+    scope: "member",
     file_type: "GODOT",
     internal_path: (item) => read_godot_metadata(item.extra_field).internal_file_path, // 按持久坐标定位原稿成员。
     /** 为一次容器操作建立语言表计划，并保留成员级解析失败。 */

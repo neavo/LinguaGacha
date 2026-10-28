@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { setImmediate } from "node:timers/promises";
 import type { Node, Parser, Tree } from "web-tree-sitter";
 import { decode_python, PythonDecodeError, type PythonLiteral } from "./python";
+import { python_children, python_name } from "./python-tree";
+import { read_speaker, type PythonSpeaker } from "./speaker";
 
 export type PythonMode = "eval" | "exec" | "hide";
 export type PythonInput = Readonly<{ source: string; mode: PythonMode }>;
@@ -43,9 +45,9 @@ export type PythonFacts = Readonly<{
   formatted: readonly PythonSpan[]; // 完整 f-string 或含 f-string 的隐式拼接，其中嵌套的字符串不进入 `constants`。
   assignments: readonly PythonAssignment[];
   references: readonly string[];
-  bare_references: readonly string[];
   diagnostics: readonly PythonDiagnostic[];
   expression: Readonly<{ value: PythonValue; start: number; end: number }> | undefined;
+  speaker: PythonSpeaker; // 与普通事实来自同一棵语法树，避免为姓名再次解析。
 }>;
 const PARSE_SLICE_MS = 8;
 const WALK_SLICE_NODES = 512;
@@ -80,20 +82,6 @@ async function load_language() {
     }
   })();
   return language;
-}
-export const python_children = (node: Node): Node[] =>
-  node.namedChildren.filter((child) => child.type !== "comment");
-/** 只解析静态属性链，调用和下标表达式没有可确定的名称。 */
-export function python_name(node: Node | null): string {
-  if (!node) return "";
-  if (node.type === "identifier") return node.text;
-  if (node.type === "attribute")
-    return (
-      python_name(node.childForFieldName("object")) +
-      "." +
-      python_name(node.childForFieldName("attribute"))
-    );
-  return "";
 }
 /** CST 提供字面量边界，字符串解码由 `python.ts` 负责。 */
 function token(node: Node): PythonLiteral {
@@ -139,8 +127,8 @@ export function python_value(node: Node | null, python2 = false, bytes = false):
 export type PythonView = { root: Node; nodes: readonly Node[]; offset: number };
 /** 调用方持有会话，树和游标只活到消费回调结束。 */
 export class PythonSession {
-  private cache_hits = 0;
-  private readonly facts = new Map<string, PythonFacts>(); // 仅保留本成员的成功分析，释放会话时清空。
+  private cache_hits = 0; // 连续命中也须让出事件循环，避免取消被缓存路径饿死。
+  private readonly facts = new Map<string, PythonFacts>(); // 仅保留当前成员的成功分析，成员边界和释放时清空。
   /** 接管已配置语言的 `Parser`，释放责任归当前会话。 */
   private constructor(private readonly parser: Parser) {}
   /** 每个会话独占 `Parser`，语言资源在线程内复用。 */
@@ -154,6 +142,10 @@ export class PythonSession {
   public [Symbol.dispose](): void {
     this.facts.clear();
     this.parser.delete();
+  }
+  /** 成员处理完毕后释放纯值事实，`Parser` 留给同一操作的后续成员。 */
+  public clear(): void {
+    this.facts.clear();
   }
   /** 回调只在树存活期间消费 CST，所有退出路径都释放树并重置解析器。 */
   public async read<T>(
@@ -244,11 +236,11 @@ export class PythonSession {
     }
     const result = await this.read(
       input,
-      ({ root, nodes, offset }) => {
+      (view) => {
+        const { root, nodes, offset } = view;
         const constants: PythonConstant[] = [],
           assignments: PythonAssignment[] = [],
           references: string[] = [],
-          bare_references: string[] = [],
           diagnostics: PythonDiagnostic[] = [],
           formatted_spans: PythonSpan[] = [];
         let expression_value: PythonFacts["expression"],
@@ -271,11 +263,7 @@ export class PythonSession {
           }
         }
         for (const node of nodes) {
-          if (["identifier", "attribute"].includes(node.type)) {
-            const name = python_name(node);
-            references.push(name);
-            if (node.parent?.type !== "attribute") bare_references.push(name);
-          }
+          if (["identifier", "attribute"].includes(node.type)) references.push(python_name(node));
           if (["assignment", "augmented_assignment"].includes(node.type)) {
             const right = node.childForFieldName("right");
             let value: PythonValue;
@@ -379,9 +367,9 @@ export class PythonSession {
           formatted: formatted_spans,
           assignments,
           references,
-          bare_references,
           diagnostics,
           expression: expression_value,
+          speaker: read_speaker(view, constants, expression_value),
         };
       },
       signal,

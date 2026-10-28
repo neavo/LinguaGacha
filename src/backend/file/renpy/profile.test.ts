@@ -7,19 +7,19 @@ import { create_renpy_fixture } from "../../../test/renpy-fixture";
 import { read_profile, collect_common, read_renpy_format_metadata } from "./profile";
 
 it.each([
-  ["True", true],
-  ["False", false],
-  ["choose_semantics()", null],
-] as const)("替换语义 %s 保留确定值或未知", async (expression, expected) => {
+  ["old_substitutions = True", true],
+  ["old_substitutions = False", false],
+  ["old_substitutions = choose_semantics()", true],
+  ["old_substitutions = False\nold_substitutions = True", true],
+  ["def configure():\n    old_substitutions = False", true],
+  ["force_old = True", true],
+] as const)("引擎基础替换语义只读取模块级赋值：%s", async (declaration, expected) => {
   using session = await PythonSession.create();
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-semantics-"));
   const native = create_renpy_fixture(temp.path);
-  const config = path.join(temp.path, "renpy/config.py");
   native.write_file_sync(
-    config,
-    native
-      .read_text_file(config)
-      .replace("old_substitutions = True", "old_substitutions = " + expression),
+    path.join(temp.path, "renpy/config.py"),
+    declaration + "\nforce_archives = False\n",
   );
   expect((await read_profile(temp.path, native, undefined, session)).old_substitutions).toBe(
     expected,
@@ -111,19 +111,27 @@ it.each([
     );
 });
 
-it("离线元数据独立校验必需字段，不从引擎版本补 Python 代际", () => {
+it("离线元数据独立校验必需字段，历史未知百分号语义读作默认值", () => {
   const metadata = {
     schema: "linguagacha-renpy-1",
     engine_version: "unknown",
     python_major: 2,
-    old_substitutions: null,
+    old_substitutions: false,
     common: ["Common"],
   };
   expect(read_renpy_format_metadata(Buffer.from(JSON.stringify(metadata)))).toEqual(metadata);
+  expect(
+    read_renpy_format_metadata(
+      Buffer.from(JSON.stringify({ ...metadata, old_substitutions: null })),
+    ).old_substitutions,
+  ).toBe(true);
   for (const field of ["engine_version", "python_major", "old_substitutions", "common"])
     expect(() =>
       read_renpy_format_metadata(Buffer.from(JSON.stringify({ ...metadata, [field]: undefined }))),
     ).toThrow();
+  expect(() =>
+    read_renpy_format_metadata(Buffer.from(JSON.stringify({ ...metadata, old_substitutions: 1 }))),
+  ).toThrow("text semantics");
   expect(() =>
     read_renpy_format_metadata(Buffer.from(JSON.stringify({ ...metadata, python_major: 4 }))),
   ).toThrow("Python generation");

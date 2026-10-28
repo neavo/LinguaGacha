@@ -3,10 +3,11 @@ import { resolve_game_source_input } from "./shared/game/source-input";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { assert_game_directory_ready } from "./shared/game/directory";
 import { source_diagnostic, type SourceDiagnostic } from "./shared/game/preparation";
-import type { PreparedSource } from "./file-format-types";
+import type { PreparedRead, PreparedSource } from "./file-format-types";
 import type { GodotPackOrder } from "../../shared/godot";
 import { apply_godot_pack_order, godot_pack_preview } from "./godot/source";
 import { GAME_ENGINES, prepare_game_source } from "./shared/game/engines";
+import type { GameImport } from "./shared/game/source-files";
 import { GameFormat } from "./shared/game/format";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import {
@@ -117,12 +118,18 @@ export class FileFormatService {
     content: Uint8Array,
     file_type?: string,
     additional_files: readonly string[] = [],
+    signal?: AbortSignal,
   ): Promise<FileFormatReadResult> {
     if (is_game_file_type(file_type))
       return {
         kind: "items",
         file_type,
-        ...(await this.games[file_type].read_from_stream(content, rel_path, additional_files)),
+        ...(await this.games[file_type].read_from_stream(
+          content,
+          rel_path,
+          additional_files,
+          signal,
+        )),
       };
     const by_extension: Record<string, string> = {
       ".txt": "TXT",
@@ -366,7 +373,9 @@ export class FileFormatService {
       const format = this.games[source.file_type];
       const engine = GAME_ENGINES[source.file_type];
       const diagnostics: SourceDiagnostic[] = [];
-      let captured: { content: Uint8Array; additional_files: readonly string[] } | undefined;
+      let captured:
+        | { content: Uint8Array; additional_files: readonly string[]; read?: PreparedRead }
+        | undefined;
       let source_complete = true,
         directory_changed = false;
       let archive_error: unknown;
@@ -404,28 +413,41 @@ export class FileFormatService {
                 signal,
                 sources,
               );
-              let metadata: Uint8Array | undefined;
+              // 导入语义只消费即将固化的同一份快照，已完成的读取随原稿交付，避免固化后再次解析。
+              let imported: GameImport | undefined;
+              let read: PreparedRead | undefined;
               try {
-                metadata = await engine.build_metadata?.(
+                imported = await engine.prepare_import?.(
                   source,
-                  { data: translation, complete: translation_complete },
+                  { data: collected.data, files: collected.files, complete: translation_complete },
                   this.native_fs,
                   signal,
                   (diagnostic) => diagnostics.push(diagnostic),
                 );
               } catch (error) {
                 signal?.throwIfAborted();
-                diagnostics.push(source_diagnostic("archive", error));
+                read = { ok: false, error };
               }
+              const content = await format.create_container(
+                collected.data,
+                rel_path,
+                collected.files.join("\n"),
+                signal,
+                imported?.metadata,
+              );
+              if (imported?.read)
+                read = {
+                  ok: true,
+                  result: {
+                    kind: "items",
+                    file_type: source.file_type,
+                    ...format.collect_read(imported.read, rel_path),
+                  },
+                };
               captured = {
-                content: await format.create_container(
-                  collected.data,
-                  rel_path,
-                  collected.game_files,
-                  signal,
-                  metadata,
-                ),
+                content,
                 additional_files: collected.additional_files,
+                ...(read && { read }),
               };
             } catch (error) {
               signal?.throwIfAborted();

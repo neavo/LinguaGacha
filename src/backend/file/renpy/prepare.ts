@@ -21,8 +21,9 @@ import {
   copy_archive_member,
   type ArchiveMember,
 } from "./archive";
-import { source_digest, read_compiled_async } from "./compiled";
-import { patch_script } from "./extract";
+import { source_digest } from "./compiled";
+import { read_member } from "./member";
+import { patch_script } from "./patch";
 import { read_loading, resolve_loading } from "./loading";
 import type { RenpySource } from "./source";
 import { generated_members, is_generated_member } from "./generated";
@@ -43,14 +44,12 @@ export async function stage_renpy_source(
   fs: NativeFs,
   signal?: AbortSignal,
 ): Promise<GamePreparation> {
-  {
-    using session = await PythonSession.create();
-    assert.deepEqual(
-      await read_profile(game.root, fs, signal, session),
-      game.profile,
-      "Ren'Py engine rules changed after discovery; import again",
-    );
-  }
+  using session = await PythonSession.create(); // 本次准备独享解析器，成员边界释放纯值事实。
+  assert.deepEqual(
+    await read_profile(game.root, fs, signal, session),
+    game.profile,
+    "Ren'Py engine rules changed after discovery; import again",
+  );
   const loose = new Set<string>();
   collect_existing_files(game.root, "game", loose, fs, signal);
   for (const name of loose) if (/^game\/(?:cache|saves)\//u.test(name)) loose.delete(name);
@@ -180,24 +179,21 @@ export async function stage_renpy_source(
       signal?.throwIfAborted();
       if (!name.endsWith(".rpyc") || generated.has(name) || /^game\/(?:cache|saves)\//u.test(name))
         continue;
-      using session = await PythonSession.create();
       try {
         const bytes = await read(name);
         captured.set(name, bytes);
-        const script = {
-          bytes,
-          slots: await read_compiled_async(bytes, signal),
-          python2: game.profile.python_major === 2,
-        };
-        const loading = await read_loading(script, name, game.profile, session, signal);
+        const member = await read_member(bytes, game.profile.python_major === 2, signal);
+        const loading = await read_loading(member, name, game.profile, session, signal);
         declarations.push(...loading.declarations);
         if (loading.changes.length)
-          changed.set(name, await patch_script(script, [], loading.changes, session, signal));
+          changed.set(name, await patch_script(member, [], loading.changes, session, signal));
       } catch (error) {
         signal?.throwIfAborted();
         loading_complete = false;
         selected_files.set(name, null);
         diagnostics.push(source_diagnostic("prepare", error, name));
+      } finally {
+        session.clear();
       }
     }
     if (!loading_complete) return await partial();

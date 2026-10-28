@@ -5,7 +5,11 @@ import { read_json_record } from "../../../domain/json";
 import type { NativeFs } from "../../../native/native-fs";
 import { assert_regular_path, collect_existing_files } from "../source-file-paths";
 import { paragraph_text, PythonDecodeError } from "./python";
-import { type PythonSession, python_value, python_name, type PythonValue } from "./python-syntax";
+import { type PythonSession, python_value, type PythonValue } from "./python-syntax";
+import { python_name } from "./python-tree";
+
+/** 引擎 `config.old_substitutions` 的默认值。无法确定游戏设置时统一采用。 */
+export const RENPY_OLD_SUBSTITUTIONS_DEFAULT = true;
 
 export type RenpyProfile = {
   version: string;
@@ -15,17 +19,20 @@ export type RenpyProfile = {
   salt: string;
   ren_python: boolean;
   script_order: "filename" | "grouped";
-  old_substitutions: boolean | null;
+  old_substitutions: boolean; // 引擎源码的基础值，游戏版本兼容设置由元数据阶段应用。
 };
 export type RenpyFormatMetadata = {
   schema: "linguagacha-renpy-1";
   engine_version: string;
   python_major: 2 | 3;
-  old_substitutions: boolean | null;
+  old_substitutions: boolean;
   common: string[] | null; // `null` 表示无法重建公共字符串，不能伪装为空表。
   scripts_incomplete?: true; // 记录已知脚本遗漏，离线字符串表不能从剩余成员推断完整性。
 };
-/** 适配器与可读视图共用的元数据入口，只校验下游实际读取的字段。 */
+/**
+ * 适配器与可读视图共用的元数据入口，只校验下游实际读取的字段。
+ * 历史原稿的 `old_substitutions: null` 在此转为默认值，原始字节不改写，公共条目摘要保持有效。
+ */
 export function read_renpy_format_metadata(bytes: Uint8Array): RenpyFormatMetadata {
   const metadata = read_json_record(JSON.parse(Buffer.from(bytes).toString("utf8")) as unknown);
   assert(metadata["schema"] === "linguagacha-renpy-1", "Unknown Ren'Py metadata schema");
@@ -48,7 +55,11 @@ export function read_renpy_format_metadata(bytes: Uint8Array): RenpyFormatMetada
       (Array.isArray(common) && common.every((entry) => typeof entry === "string")),
     "Invalid Ren'Py common strings",
   );
-  return metadata as RenpyFormatMetadata;
+  return {
+    ...(metadata as Omit<RenpyFormatMetadata, "old_substitutions">),
+    old_substitutions:
+      (metadata["old_substitutions"] as boolean | null) ?? RENPY_OLD_SUBSTITUTIONS_DEFAULT,
+  };
 }
 /** 引擎源码摘要的已知写法：读取写法决定换行是否先统一，计算写法须与之配套。 */
 const DIGEST_RULES = [
@@ -86,9 +97,10 @@ export async function read_profile(
     assert(fs.exists(file), "Missing Ren'Py engine source: " + file);
     return session.read(
       { source: fs.read_text_file(file), mode: "exec" },
-      ({ nodes }) => {
+      ({ root, nodes }) => {
         const shapes = new Set<string>();
         const values = new Map<string, PythonValue[]>();
+        const module_values = new Map<string, PythonValue[]>(); // 模块级赋值按源码顺序，函数与类的同名局部变量不参与。
         for (const node of nodes) {
           if (
             ["call", "not_operator", "binary_operator", "identifier", "string"].includes(node.type)
@@ -110,9 +122,11 @@ export async function read_profile(
               value = undefined;
             }
             values.set(name, [...(values.get(name) ?? []), value]);
+            if (node.parent?.type === "expression_statement" && node.parent.parent?.id === root.id)
+              module_values.set(name, [...(module_values.get(name) ?? []), value]);
           }
         }
-        return { shapes, values };
+        return { shapes, values, module_values };
       },
       signal,
     );
@@ -169,18 +183,10 @@ export async function read_profile(
     config.values.get("force_archives")?.[0] === false,
     "Unknown Ren'Py default archive policy",
   );
-  const substitutions = config.values.get("old_substitutions");
-  let old_substitutions: boolean | null =
-    substitutions?.length === 1 && typeof substitutions[0] === "boolean" ? substitutions[0] : null;
-  const compatibility = path.join(root, "game/script_version.txt");
-  if (fs.exists(compatibility)) {
-    const numbers = fs.read_text_file(compatibility).match(/\d+/gu)?.slice(0, 3).map(Number);
-    if (!numbers || numbers.length !== 3) old_substitutions = null;
-    else {
-      const code = numbers[0]! * 1_000_000 + numbers[1]! * 1_000 + numbers[2]!;
-      if (code > 6_012_002 && code <= 6_013_008) old_substitutions = false;
-    }
-  }
+  // 后赋值覆盖前赋值，无法静态求值的位置使用默认值。
+  const substitutions = config.module_values.get("old_substitutions")?.at(-1);
+  const old_substitutions =
+    typeof substitutions === "boolean" ? substitutions : RENPY_OLD_SUBSTITUTIONS_DEFAULT;
   return {
     version,
     python_major: python3 ? 3 : 2,
