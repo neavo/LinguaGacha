@@ -23,6 +23,7 @@ type Projection = {
     key: string;
     text: string;
     usage: string;
+    write_mode: string;
     line: number | null;
     source_line: number | null;
   }[];
@@ -36,7 +37,7 @@ function lines_fixture(): Buffer {
     "PyCode",
     tuple(
       opcode(0x4b, 1),
-      pickle_string("\nx = 1\ny = Text('Hi')"),
+      pickle_string("\nx = f'{n}'\ny = Text('Hi')"),
       tuple(pickle_string("game/lines.rpy"), opcode(0x4b, 3)),
       pickle_string("exec"),
     ),
@@ -93,17 +94,20 @@ it("可读视图按原行号还原脚本，字符串的视图行与原稿行分�
   const script = outputs.get("game/lines.rpyc.reference.rpy")!.split("\n");
   expect(script.slice(2, 8)).toEqual([
     "python:",
-    "    x = 1",
+    "    x = f'{n}'",
     "    y = Text('Hi')",
     "",
     'e "Hello"',
     'e "World"',
   ]);
   const strings = projection("game/lines.rpyc").strings;
-  expect(strings.map(({ text, line, source_line }) => [text, line, source_line])).toEqual([
-    ["Hi", 5, 5],
-    ["Hello", 7, 7],
-    ["World", 8, 7],
+  expect(
+    strings.map(({ text, write_mode, line, source_line }) => [text, write_mode, line, source_line]),
+  ).toEqual([
+    ["f'{n}'", "source", 4, 4],
+    ["Hi", "text", 5, 5],
+    ["Hello", "text", 7, 7],
+    ["World", "text", 8, 7],
   ]);
 
   const handler = await create_renpy_adapter().create_members(input);

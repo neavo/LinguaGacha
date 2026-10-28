@@ -1,6 +1,6 @@
 import { splice } from "../shared/splice";
 import { read_speaker_expression, static_character_name } from "./speaker";
-import type { ScriptDiagnostic } from "../file-format-types";
+import type { ScriptDiagnostic, SourceFileParseWarning } from "../file-format-types";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { read_compiled, write_compiled, type CompiledSlot } from "./compiled";
@@ -18,6 +18,7 @@ import { encode_python } from "./python";
 import {
   type PythonSession,
   PythonSyntaxError,
+  type PythonDiagnostic,
   type PythonFacts,
   type PythonMode,
 } from "./python-syntax";
@@ -47,14 +48,23 @@ export type RenpyCoordinate = {
   start?: number; // 代码字符串内的 UTF-16 区间。
   end?: number;
 };
+/** `text` 的原文是解码后的文字，写回按字段编码。`source` 的原文是 Python 源码片段，译文直接替换源码区间。 */
+export type RenpyWriteMode = "text" | "source";
 export type RenpyCandidate = {
   key: string;
   text: string;
   usage: RenpyUsage;
+  write_mode: RenpyWriteMode; // 由原稿结构决定，导出从固化原稿恢复，不持久化。
   coordinates: RenpyCoordinate[];
   owners: string[]; // 本次解析确定的全部语句消费者，不作为可编辑元数据保存。
-  percent: boolean; // 代码字面量是 `%` 格式化的左操作数，导出要求译文保持格式记号。不持久化。
   line: number | null; // 原始 `.rpy` 行号，供可读视图定位。不持久化。
+};
+/** 诊断按语法错误和提取遗漏分类，供日志区分原因。 */
+export type RenpyWarning = ScriptDiagnostic & {
+  code: Extract<
+    SourceFileParseWarning["code"],
+    "script_syntax_error" | "script_extraction_incomplete"
+  >;
 };
 export type RenpyString = {
   language: string | null;
@@ -67,8 +77,8 @@ export type RenpyScript = {
   slots: CompiledSlot[];
   candidates: RenpyCandidate[];
   strings: RenpyString[];
-  warnings: ScriptDiagnostic[];
-  extraction_complete: boolean;
+  warnings: RenpyWarning[]; // 解释遗漏原因，正常的默认排除项不产生警告。
+  extraction_complete: boolean; // 存在遗漏的写回位置时为 `false`，由遗漏分支记录。
   python2: boolean;
   names: Map<string, string>; // 当前正文写入组到当前姓名写入组，不持久化。
 };
@@ -125,9 +135,8 @@ function write_groups(
   candidates: RenpyCandidate[],
   required: ReadonlyMap<string, Set<string>>,
   slots: readonly CompiledSlot[],
-  warnings: ScriptDiagnostic[],
-): { candidates: RenpyCandidate[]; extraction_complete: boolean } {
-  let extraction_complete = true;
+  omit: (warning: RenpyWarning) => void,
+): RenpyCandidate[] {
   const parents = new Map(candidates.map((candidate) => [candidate, candidate])); // 并查集合并经共享边间接相连的候选。
   const find = (candidate: RenpyCandidate): RenpyCandidate => {
     let root = candidate;
@@ -169,8 +178,8 @@ function write_groups(
       ),
     );
     if (missing_slot) {
-      extraction_complete = false;
-      warnings.push({
+      omit({
+        code: "script_extraction_incomplete",
         message: "Incomplete Ren'Py slot write group: " + first.key,
         line: first.line,
         column: null,
@@ -185,8 +194,8 @@ function write_groups(
           [...(required.get(candidate.key) ?? [])].some((owner) => !owners.includes(owner)),
       )
     ) {
-      extraction_complete = false;
-      warnings.push({
+      omit({
+        code: "script_extraction_incomplete",
         message: "Unresolved Ren'Py shared consumer: " + first.key,
         line: first.line,
         column: null,
@@ -200,7 +209,6 @@ function write_groups(
           ? first.key
           : JSON.stringify(group.map((candidate) => candidate.key).sort()),
       owners,
-      percent: group.some((candidate) => candidate.percent),
       coordinates: [
         ...new Map(
           group
@@ -210,7 +218,7 @@ function write_groups(
       ],
     });
   }
-  return { candidates: result, extraction_complete };
+  return result;
 }
 
 /** 全部槽位先解析，必要索引缺失时让资产创建失败，避免生成不完整的字符串表。 */
@@ -221,12 +229,35 @@ export async function extract_script(
 ): Promise<RenpyScript> {
   const bytes = Buffer.from(input);
   const slots = read_compiled(bytes);
-  let extraction_complete = true;
   const candidates = new Map<string, RenpyCandidate>(),
     required = new Map<string, Set<string>>(),
     strings: RenpyString[] = [],
     names = new Map<string, RenpyCoordinate[]>(),
-    warnings: ScriptDiagnostic[] = [];
+    warnings: RenpyWarning[] = [];
+  let extraction_complete = true;
+  /** 遗漏写回位置的唯一入口，同时记录完整性和原因。 */
+  const omit = (warning: RenpyWarning) => {
+    extraction_complete = false;
+    warnings.push(warning);
+  };
+  // 各槽位保存同一源码，同一问题按语句、字段、源码区间和原因合并，并保留出现的槽位。
+  const issues = new Map<
+    string,
+    { code: RenpyWarning["code"]; record: RenpyCode; diagnostic: PythonDiagnostic; slots: number[] }
+  >();
+  const report = (code: RenpyWarning["code"], record: RenpyCode, diagnostic: PythonDiagnostic) => {
+    const key = JSON.stringify([
+      code,
+      record.owner,
+      record.field,
+      diagnostic.start,
+      diagnostic.end,
+      diagnostic.reason,
+    ]);
+    const issue = issues.get(key);
+    if (issue) issue.slots.push(record.slot);
+    else issues.set(key, { code, record, diagnostic, slots: [record.slot] });
+  };
   const excluded = script_excluded(slots);
   const identities = script_identities(slots, excluded);
   const records = script_codes({ slots }, identities);
@@ -241,17 +272,21 @@ export async function extract_script(
       source: string,
       usage: RenpyUsage,
       line: number | null,
-      { start, end, percent = false }: { start?: number; end?: number; percent?: boolean } = {},
+      {
+        start,
+        end,
+        write_mode = "text",
+      }: { start?: number; end?: number; write_mode?: RenpyWriteMode } = {},
     ): void => {
-      // 用途由位置与当前规则推出，不属于身份。规则调整后，既有条目仍能按位置找回。
+      // 用途和写回类别由位置与当前规则推出，不属于身份。规则调整后，既有条目仍能按位置找回。
       const key = JSON.stringify([owner, field, start ?? null, source]);
       const candidate = candidates.get(key) ?? {
         key,
         text: source,
         usage,
+        write_mode,
         coordinates: [],
         owners: [owner],
-        percent,
         line,
       };
       const required_owners = required.get(key) ?? new Set<string>();
@@ -384,14 +419,11 @@ export async function extract_script(
         tokens = await analyze_code(record, session, python2);
       } catch (error) {
         if (!(error instanceof PythonSyntaxError)) throw error;
-        extraction_complete = false;
-        warnings.push(code_diagnostic(record, error.diagnostic));
+        report("script_syntax_error", record, error.diagnostic);
         continue;
       }
-      for (const diagnostic of tokens.diagnostics) {
-        extraction_complete = false;
-        warnings.push(code_diagnostic(record, diagnostic));
-      }
+      for (const diagnostic of tokens.diagnostics)
+        report("script_extraction_incomplete", record, diagnostic);
       const speaker = await read_speaker_expression(record, tokens, session);
       if (record.field === "who") {
         const key = JSON.stringify([record.owner, record.slot]),
@@ -404,32 +436,31 @@ export async function extract_script(
         });
         names.set(key, entries);
       }
-      for (const token of tokens.constants) {
-        const usage =
-          record.field === "who" && speaker.name?.start === token.start
-            ? "display"
-            : (speaker.usages.get(token.start) ?? string_usage(token, record.display));
-        if (!token.writable || (token.dynamic && usage !== "code")) {
-          extraction_complete = false;
-          warnings.push(
-            code_diagnostic(record, {
-              start: token.start,
-              end: token.end,
-              reason: "Dynamic Python string expression",
-            }),
-          );
+      // 按源码顺序加入，新条目的行序与原稿一致。
+      const spans = [
+        ...tokens.constants.map((token) => ({ kind: "text", token }) as const),
+        ...tokens.formatted.map((token) => ({ kind: "source", token }) as const),
+      ].sort((a, b) => a.token.start - b.token.start);
+      for (const span of spans) {
+        const { start, end } = span.token,
+          line = code_line(record, start);
+        if (span.kind === "source") {
+          // f-string 的显示与求值语义只能结合上下文判断，统一作为默认排除的源码候选。
+          const source = record.source.slice(start, end);
+          add(record.owner, record.field, record.edge, source, "code", line, {
+            start,
+            end,
+            write_mode: "source",
+          });
           continue;
         }
+        const token = span.token;
+        const usage =
+          record.field === "who" && speaker.name?.start === start
+            ? "display"
+            : (speaker.usages.get(start) ?? string_usage(token, record.display));
         if (token.value)
-          add(
-            record.owner,
-            record.field,
-            record.edge,
-            token.value,
-            usage,
-            code_line(record, token.start),
-            token,
-          );
+          add(record.owner, record.field, record.edge, token.value, usage, line, { start, end });
       }
     }
     for (const node of slot.graph.nodes) {
@@ -479,14 +510,16 @@ export async function extract_script(
       }
     }
   }
-  const grouped = write_groups([...candidates.values()], required, slots, warnings);
+  for (const { code, record, diagnostic, slots: found } of issues.values())
+    omit({ code, ...code_diagnostic(record, diagnostic, found) });
+  const grouped = write_groups([...candidates.values()], required, slots, omit);
   const coordinates = new Map(
-    grouped.candidates.flatMap((candidate) =>
+    grouped.flatMap((candidate) =>
       candidate.coordinates.map((coordinate) => [coordinate_key(coordinate), candidate] as const),
     ),
   );
   const dialogue_names = new Map<string, string>();
-  for (const dialogue of grouped.candidates) {
+  for (const dialogue of grouped) {
     if (dialogue.usage !== "say") continue;
     const targets = dialogue.owners.flatMap((owner) =>
       slots.flatMap((slot) => {
@@ -515,8 +548,8 @@ export async function extract_script(
     bytes,
     digest: createHash("sha256").update(bytes).digest("hex"),
     slots,
-    candidates: grouped.candidates,
-    extraction_complete: extraction_complete && grouped.extraction_complete,
+    candidates: grouped,
+    extraction_complete,
     strings,
     warnings,
     python2,
@@ -617,33 +650,37 @@ export async function patch_script(
         if (coordinate.start === undefined) {
           assert.equal(display_text(edge), change.candidate.text, "Ren'Py original text changed");
           set(edge, pickle_string(change.text));
-        } else {
+          continue;
+        }
+        const record = source_record(edge);
+        if (change.candidate.write_mode === "source")
+          // 源码区间的原文就是源码本身，直接比对，无需重新解析。
+          assert.equal(
+            record.source.slice(coordinate.start, coordinate.end),
+            change.candidate.text,
+            "Ren'Py code span changed",
+          );
+        else {
           let tokens = literals.get(edge.start);
           if (!tokens) {
-            const facts = await session.analyze(source_record(edge), script.python2, signal);
-            tokens = new Map(
-              facts.constants
-                .filter((token) => token.writable)
-                .map((token) => [token.start, token]),
-            );
+            const facts = await session.analyze(record, script.python2, signal);
+            tokens = new Map(facts.constants.map((token) => [token.start, token]));
             literals.set(edge.start, tokens);
           }
           const token = tokens.get(coordinate.start);
           assert(
-            token &&
-              (!token.dynamic || change.candidate.usage === "code") &&
-              token.end === coordinate.end &&
-              token.value === change.candidate.text,
+            token && token.end === coordinate.end && token.value === change.candidate.text,
             "Ren'Py code span changed",
           );
-          const entry = codes.get(edge.start) ?? { edge, changes: [] };
-          entry.changes.push({
-            start: coordinate.start,
-            end: coordinate.end!,
-            text: encode_python(change.text),
-          });
-          codes.set(edge.start, entry);
         }
+        const entry = codes.get(edge.start) ?? { edge, changes: [] };
+        entry.changes.push({
+          start: coordinate.start,
+          end: coordinate.end!,
+          // 源码译文的语法与求值语义归 AGENT 负责，写回不改写也不校验。
+          text: change.candidate.write_mode === "source" ? change.text : encode_python(change.text),
+        });
+        codes.set(edge.start, entry);
       }
       assert(
         change.candidate.owners.every((owner) => covered.has(owner)),
@@ -664,7 +701,6 @@ export async function patch_script(
       }
       parts.push(original.slice(at));
       const source = parts.join("");
-      await session.analyze({ ...source_record(edge), source }, script.python2, signal);
       set(edge, pickle_string(source));
       code_updates.set(edge, source);
     }

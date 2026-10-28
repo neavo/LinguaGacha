@@ -46,8 +46,9 @@ export const LEGACY_DISPLAY_CALLS: readonly string[] = Object.freeze([
   "_p",
 ]);
 
-/** 参数位置与外层表达式确定用途，字面量能否独立写回由提取层判断。 */
+/** 参数位置与外层表达式确定用途。 */
 export function string_usage(token: PythonConstant, display: boolean): RenpyUsage {
+  if (token.dynamic) return "code"; // 动态片段只是运行时文本的一部分，交给 AGENT 判断。
   const binding = token.argument;
   const matches = (index: number, names: readonly string[]) =>
     binding?.kind === "positional"

@@ -44,31 +44,40 @@ it("加载赋值保留逻辑根与用户条件，字符串和注释不冒充配�
   expect(facts.references).not.toContain("config.searchpath");
   expect(facts.references).not.toContain("config.file_open_callback");
 });
-it("动态表达式保留完整字面量的写回范围，字节串与 f-string 保留诊断", async () => {
+it("动态判断只看字面量到用途位置之间的运算，外层拼接不影响完整参数", async () => {
   using session = await PythonSession.create();
-  const facts = await session.analyze({
-    source: "x = 'hello' + name\ny = f'{name}'\nz = b'bytes'",
-    mode: "exec",
-  });
-  expect(facts.constants).toMatchObject([{ value: "hello", dynamic: true, writable: true }]);
-  expect(facts.diagnostics).toHaveLength(2);
+  const source = 'a = _("Hello") + name\nrenpy.say(None, prefix + "text")';
+  const facts = await session.analyze({ source, mode: "exec" });
+  expect(
+    facts.constants.map(({ start, end, call, argument, dynamic }) => ({
+      text: source.slice(start, end),
+      call,
+      argument,
+      dynamic,
+    })),
+  ).toEqual([
+    { text: '"Hello"', call: "_", argument: { kind: "positional", index: 0 }, dynamic: false },
+    {
+      text: '"text"',
+      call: "renpy.say",
+      argument: { kind: "positional", index: 1 },
+      dynamic: true,
+    },
+  ]);
 });
 
-it("拼接保留显示参数与字面量范围，插值内部字面量不能独立写回", async () => {
+it.each([
+  [String.raw`rF'C:\{d}' + 'tail'`, [String.raw`rF'C:\{d}'`], ["tail"]],
+  ['f"""第一行\n{a!r:>{w}}"""', ['f"""第一行\n{a!r:>{w}}"""'], []],
+  [`("Hello " # note\n f"{name}" '!')`, [`"Hello " # note\n f"{name}" '!'`], []],
+  [`f"{d['k']} {f'{y}'}" + "x"`, [`f"{d['k']} {f'{y}'}"`], ["x"]],
+])("f-string 记录完整源码范围，嵌套字符串不另行记录：%s", async (expression, spans, values) => {
   using session = await PythonSession.create();
-  const source = 'renpy.say(None, prefix + "text")';
+  const source = "x = " + expression;
   const facts = await session.analyze({ source, mode: "exec" });
-  const token = facts.constants[0]!;
-  expect(token).toMatchObject({
-    call: "renpy.say",
-    argument: { kind: "positional", index: 1 },
-    dynamic: true,
-    writable: true,
-  });
-  expect(source.slice(token.start, token.end)).toBe('"text"');
-  const interpolation = await session.analyze({ source: `f"{lookup('key')}"`, mode: "eval" });
-  expect(interpolation.constants).toMatchObject([{ value: "key", writable: false }]);
-  expect(interpolation.diagnostics).toHaveLength(1);
+  expect(facts.formatted.map(({ start, end }) => source.slice(start, end))).toEqual(spans);
+  expect(facts.constants.map((token) => token.value)).toEqual(values);
+  expect(facts.diagnostics).toEqual([]);
 });
 it.each(["if True:\npass", "def f():", "'unclosed"])(
   "拒绝容错恢复的无效源码：%s",

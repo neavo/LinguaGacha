@@ -179,7 +179,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 |控制符与占位符|读取 `warnings` 数据集中本次条目的 `TEXT_PRESERVE` 和 `LINE_COUNT_MISMATCH`|按「控制符与占位符」恢复|
 |名称依赖|对本次写入的条目和补漏的 `显示` 条目，用原文搜索比较、字典键、`match`、下标和查找位置|按「依赖协调」处理，证据不足时列为未决|
 |比较值冲突|收集参与比较或查找的条目译文，找出不同原文得到相同译文的情况|调整译文，使它们互相区分|
-|语言表消息键|按「消息键判断」核对位置及读取代码|恢复确认被误译的消息键引用：`dst: ""`，`status: "RULE_SKIPPED"`|
+|语言表消息键|按「消息键判断」核对位置及读取代码|恢复确认被误译的消息键引用：`dst: ""`，`status: "EXCLUDED"`|
 
 # 审校检查点
 
@@ -187,11 +187,15 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 
 # 覆盖缺口
 
-交付时说明以下未覆盖范围：
+交付时按下表检查，只向用户说明本游戏满足条件的项：
 
-- 未选中 locale 的语言表。系统语言或游戏内语言菜单命中这些表时，游戏仍显示其中的原文。
-- C# 和 Mono 的 DLL、GDExtension 原生库。
-- 文本格式的 `.tscn`、`.tres`，以及附加原稿范围以外的自定义数据文件，它们只出现在 `game_files.reference.txt` 中。
-- 图片中的文字。
-- `source_issues.jsonl` 记录的成员。
+|条件|向用户说明|
+|---|---|
+|`source_issues.jsonl` 有本游戏的记录|涉及的成员，其中的文字可能仍显示原文|
+|有 `selected` 为 `false` 的语言表|系统语言或游戏内语言菜单选中这些 locale 时，游戏仍显示其中的原文|
+|`game_files.reference.txt` 列出 C# 或 Mono 的 DLL、GDExtension 原生库|其中的文字仍显示原文|
+|`game_files.reference.txt` 列出文本格式的 `.tscn`、`.tres`，或附加原稿范围以外的自定义数据文件|其中的文字仍显示原文|
+
+每次交付都说明：
+
 - 可见文本补漏和依赖协调依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。

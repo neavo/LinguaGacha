@@ -20,8 +20,8 @@ it.each([
   ).toEqual(expected);
 });
 
-it("界面外层拼接表达式仍具有显示用途", async () => {
+it("界面整体值中的拼接片段归为 code", async () => {
   using session = await PythonSession.create();
   const facts = await session.analyze({ source: 'prefix + "caption"', mode: "eval" });
-  expect(string_usage(facts.constants[0]!, true)).toBe("display");
+  expect(string_usage(facts.constants[0]!, true)).toBe("code");
 });

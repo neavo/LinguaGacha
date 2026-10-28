@@ -1,6 +1,7 @@
 import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import { read_renpy_metadata } from "./item";
 import { PythonSession } from "./python-syntax";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -148,14 +149,14 @@ async function import_fixture(root: string, native: ReturnType<typeof create_ren
     undefined,
     await build_renpy_metadata(game, { data, complete: true }, native),
   );
-  const { items } = await format.read_from_stream(asset, "demo.renpy");
+  const parsed = await format.read_from_stream(asset, "demo.renpy");
   const out = path.join(root, "out");
   const context = {
     paths: { translated_path: out, bilingual_path: out },
     source_files: [{ path: "demo.renpy", file_type: "RENPY" }],
     asset_reader: () => Buffer.from(asset),
   };
-  return { format, items, context };
+  return { format, ...parsed, context };
 }
 
 it.each(["digest", "key", "src"] as const)("失效 %s 在落盘前失败", async (field) => {
@@ -233,43 +234,121 @@ it("跨成员 None 字符串写 new，保留语言按新键重映射并拒绝冲
   ).rejects.toThrow("Conflicting generated");
 });
 
-it("以旧用途保存的条目按位置找回，导出按本次解析的用途校验", async () => {
+it("以旧用途保存的条目按位置找回，导出按本次解析的用途维护其他语言映射", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-usage-"));
   const native = create_renpy_fixture(temp.path);
+  native.write_file_sync(
+    path.join(temp.path, "game/strings.rpymc"),
+    strings_fixture([{ language: "french", old: "First line [lg_name].", text: "French text" }]),
+  );
   const { format, items, context } = await import_fixture(temp.path, native);
   const say = items.find((item) => item.src === "First line [lg_name].")!;
   const stale = {
     ...say,
     status: "PROCESSED" as const,
+    dst: "Translated [lg_name].",
     extra_field: {
       renpy: { ...(say.extra_field as { renpy: object }).renpy, usage: "code" },
     },
   };
-  await expect(
-    format.write_to_path([{ ...stale, dst: "首句 [lg_name。" }], context),
-  ).rejects.toThrow("Unclosed Ren'Py interpolation");
-  await format.write_to_path([{ ...stale, dst: "首句 [lg_name]。" }], context);
+  await format.write_to_path([stale], context);
+  const generated = native.read_text_file(
+    path.join(context.paths.translated_path, "demo", RENPY_STRINGS_FILE),
+  );
+  expect(generated).toContain('old "Translated [lg_name]."');
+  expect(generated).toContain('new "French text"');
 });
 
-it.each([
-  ["Hello %s %%", "你好 %s", false],
-  ["Hello %s %%", "你好 %s %%，100%", false],
-  ["Hello %s %%", "你好 %s %%", true],
-  ["%(a)s and %(b)s", "%(b)s 与 %(a)s", true],
-])("`%%` 左操作数 %s 译为 %s 时导出%s", async (src, dst, accepted) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-percent-"));
+it("固定的旧条目身份仍可导出，重新提取得到新增条目", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-legacy-keys-"));
+  const native = create_renpy_fixture(temp.path);
+  const bytes = code_fixture(
+    'asset = prefix + " suffix"\ngreet = _("Hello") + name\nlabel = f"Hi {name}"',
+  );
+  native.write_file_sync(path.join(temp.path, "game/compat.rpyc"), bytes);
+  const { format, items, warnings, extraction_complete, context } = await import_fixture(
+    temp.path,
+    native,
+  );
+  expect(warnings).toEqual([]);
+  expect(extraction_complete).toBe(true);
+  expect(
+    items
+      .filter(
+        (item) => read_renpy_metadata(item.extra_field).internal_file_path === "game/compat.rpyc",
+      )
+      .map((item) => [item.src, item.status]),
+  ).toEqual([
+    [" suffix", "RULE_SKIPPED"],
+    ["Hello", "NONE"],
+    ['f"Hi {name}"', "RULE_SKIPPED"],
+  ]);
+  const template = items.find((item) => item.src.startsWith("First line"))!;
+  const legacy = {
+    ...template,
+    src: " suffix",
+    dst: " 后缀",
+    name_src: null,
+    name_dst: null,
+    status: "PROCESSED" as const,
+    extra_field: {
+      renpy: {
+        internal_file_path: "game/compat.rpyc",
+        digest: createHash("sha256").update(bytes).digest("hex"),
+        // 旧版本提取器产生的身份，按字面量固定。
+        key: JSON.stringify([JSON.stringify(["game/test.rpy", "1", "1"]), "code", 17, " suffix"]),
+        usage: "code",
+      },
+    },
+  };
+  await format.write_to_path([legacy], context);
+  using session = await PythonSession.create();
+  const output = await extract_script(
+    native.read_file(path.join(context.paths.translated_path, "demo/game/compat.rpyc")),
+    false,
+    session,
+  );
+  expect(output.candidates.map((candidate) => candidate.text)).toEqual([
+    " 后缀",
+    "Hello",
+    'f"Hi {name}"',
+  ]);
+});
+
+it("生成阶段不判断译文质量：格式记号、文本标签和源码表达式的变化照常写回", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-quality-"));
   const native = create_renpy_fixture(temp.path);
   native.write_file_sync(
-    path.join(temp.path, "game/percent.rpyc"),
-    code_fixture('a = Text("Hello %s %%" % name)\nb = Text("%(a)s and %(b)s" % values)'),
+    path.join(temp.path, "game/quality.rpyc"),
+    code_fixture('a = Text("Hello %s %%" % name)\nb = f"Hi {name}"'),
   );
   const { format, items, context } = await import_fixture(temp.path, native);
-  const item = { ...items.find((entry) => entry.src === src)!, status: "PROCESSED" as const, dst };
-  if (accepted) await format.write_to_path([item], context);
-  else
-    await expect(format.write_to_path([item], context)).rejects.toThrow(
-      "Ren'Py percent format changed",
-    );
+  const translate = (src: string, dst: string) => ({
+    ...items.find((entry) => entry.src === src)!,
+    status: "PROCESSED" as const,
+    dst,
+  });
+  await format.write_to_path(
+    [
+      translate("Hello %s %%", "你好 %d"),
+      translate('f"Hi {name}"', 'f"嗨 {nickname!r}"'),
+      translate("First line [lg_name].", "首句 [lg_name。{#context}"),
+    ],
+    context,
+  );
+  using session = await PythonSession.create();
+  const output = (file: string) =>
+    native.read_file(path.join(context.paths.translated_path, "demo/game", file));
+  expect(
+    (await extract_script(output("quality.rpyc"), false, session)).candidates.map(
+      (candidate) => candidate.text,
+    ),
+  ).toEqual(["你好 %d", 'f"嗨 {nickname!r}"']);
+  expect(
+    (await extract_script(output("script.rpyc"), false, session)).candidates.some(
+      (candidate) => candidate.text === "首句 [lg_name。{#context}",
+    ),
+  ).toBe(true);
 });
 
 it("Ren'Py 配套输出提交失败后恢复整个资产", async () => {

@@ -32,7 +32,7 @@ export function paragraph_text(text: string): string {
   }
   return result + paragraph.join(" ");
 }
-/** 只解释普通字符串转义，动态表达式交给提取警告处理。 */
+/** 只解释普通字符串转义，f-string 由语法分析按源码范围记录。 */
 export function decode_python(token: PythonLiteral, python2 = false): string {
   require_literal(
     !/[bf]/iu.test(token.prefix),
