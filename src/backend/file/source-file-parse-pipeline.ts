@@ -2,14 +2,24 @@ import type { Item, ProjectItemPersistentRecord } from "../../domain/item";
 import type { SourceFileFailure } from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "./file-format-service";
 import type { PDFDocument } from "../../shared/pdf";
-import type { ProjectFileType, SourceFileParseWarning } from "./file-format-types";
+import type { PreparedRead, ProjectFileType, SourceFileParseWarning } from "./file-format-types";
 import { is_app_error } from "../../shared/error";
 
 export type SourceFileParseCommand = import("./source-discovery").DiscoveredSource;
 
-export type SourceFileParsedDraft = SourceFileParseCommand & {
-  source_complete: boolean; // 原稿遗漏会阻止整组替换，可靠成员仍允许新增。
-  extraction_complete: boolean; // 原稿可靠性由准备边界保证，替换还要求提取完整。
+/** 已取得原稿的资产。外部来源由准备流程交付，重置读取工程保存的原稿。 */
+export type SourceFileAsset = Readonly<{
+  source_path: string; // 失败诊断定位，重置时即资产路径。
+  rel_path: string;
+  file_type?: string | undefined;
+  content: Uint8Array;
+  additional_files: readonly string[];
+  read?: PreparedRead; // 准备阶段已解析同一快照时直接消费。
+}>;
+
+/** 取得原稿即形成可提交草稿，解析失败时条目为空。 */
+export type SourceFileParsedDraft = {
+  rel_path: string;
   file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
   game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
   additional_files: readonly string[]; // 游戏容器中的附加原稿成员，其他格式为空。
@@ -18,10 +28,17 @@ export type SourceFileParsedDraft = SourceFileParseCommand & {
   parsed_items: Item[]; // 格式解析器已补齐的条目草稿，身份由工程入口分配
 };
 
+/** 单个资产的解析结果，诊断由操作拥有者统一记录。 */
+export type SourceFileAssetParse = {
+  draft: SourceFileParsedDraft;
+  warnings: SourceFileParseWarning[];
+  failure: SourceFileFailure | null; // 整个资产解析失败，草稿仍以零条目提交。
+};
+
 export type SourceFileParseResult = {
   directory_changes: string[];
   warnings: SourceFileParseWarning[]; // 本次解析的局部遗漏，仅供后端操作日志使用。
-  file_drafts: SourceFileParsedDraft[]; // 包含可靠原稿，解析失败时仍可作为新增资产保存。
+  file_drafts: SourceFileParsedDraft[]; // 每个取得原稿的来源一份，解析失败时条目为空。
   failures: SourceFileFailure[]; // 来源准备或提取失败，仅供日志使用，可靠原稿可同时存在。
 };
 
@@ -41,7 +58,7 @@ export type SourceFileProjectDraft = {
 };
 
 /**
- * 源文件解析流水线消费已发现来源，统一准备、解析和归集失败。
+ * 源文件解析流水线消费已发现来源或已保存原稿，统一解析和归集失败。
  */
 export class SourceFileParsePipeline {
   private readonly format_service: FileFormatService; // 来源准备和格式分发共用本次设置快照。
@@ -114,7 +131,58 @@ export class SourceFileParsePipeline {
   }
 
   /**
-   * 固化已确定来源，再将提取结果附到同一资产草稿。
+   * 新建、导入与重置共用的接纳规则：取得原稿即形成草稿，解析失败只清空条目。
+   */
+  public async parse_asset_draft(
+    asset: SourceFileAsset,
+    signal?: AbortSignal,
+  ): Promise<SourceFileAssetParse> {
+    const draft: SourceFileParsedDraft = {
+      rel_path: asset.rel_path,
+      file_type: (asset.file_type ?? "NONE") as ProjectFileType,
+      content: asset.content,
+      additional_files: asset.additional_files,
+      pdf_document: null,
+      parsed_items: [],
+    };
+    try {
+      signal?.throwIfAborted();
+      const { read } = asset;
+      if (read && !read.ok) throw read.error;
+      const parsed = read
+        ? read.result
+        : await this.format_service.parse_asset(
+            asset.rel_path,
+            asset.content,
+            asset.file_type,
+            asset.additional_files,
+            signal,
+          );
+      if (parsed.kind === "pdf") {
+        draft.file_type = "PDF";
+        draft.pdf_document = parsed.document;
+      } else {
+        draft.file_type = parsed.file_type;
+        draft.parsed_items = parsed.items;
+        if (parsed.game_engine !== undefined) draft.game_engine = parsed.game_engine;
+      }
+      return {
+        draft,
+        warnings: parsed.kind === "items" ? (parsed.warnings ?? []) : [],
+        failure: null,
+      };
+    } catch (error) {
+      if (signal?.aborted) throw error; // 取消不能归为单个资产的解析失败。
+      return {
+        draft,
+        warnings: [],
+        failure: { source_path: asset.source_path, rel_path: asset.rel_path, error },
+      };
+    }
+  }
+
+  /**
+   * 准备外部来源取得原稿，再交给共用的资产解析。未取得原稿的来源只记录失败。
    */
   private async parse_source_entries(
     entries: readonly SourceFileParseCommand[],
@@ -126,60 +194,40 @@ export class SourceFileParsePipeline {
     const directory_changes: string[] = [];
     for (const entry of entries) {
       signal?.throwIfAborted();
-      const file_type = entry.file_type;
+      let prepared;
       try {
-        const prepared = await this.format_service.prepare_source(entry, signal);
-        if (prepared.directory_changed) directory_changes.push(entry.source_path);
-        for (const diagnostic of prepared.diagnostics)
-          warnings.push({
-            code: "source_preparation_failed",
-            rel_path: entry.rel_path,
-            ...(diagnostic.member === undefined ? {} : { internal_file_path: diagnostic.member }),
-            stage: diagnostic.stage,
-            error: diagnostic.error,
-            diagnostics: [{ message: diagnostic.error.message, line: null, column: null }],
-          });
-        signal?.throwIfAborted();
-        const { content } = prepared;
-        const draft: SourceFileParsedDraft = {
-          ...entry,
-          file_type: (file_type ?? "NONE") as ProjectFileType,
-          content,
-          additional_files: prepared.additional_files,
-          pdf_document: null,
-          parsed_items: [],
-          extraction_complete: false,
-          source_complete: prepared.source_complete,
-        };
-        file_drafts.push(draft);
-        // 准备阶段已解析时直接消费；失败沿用解析失败通道，可靠原稿已在上方登记。
-        const { read } = prepared;
-        if (read && !read.ok) throw read.error;
-        const parsed = read
-          ? read.result
-          : await this.format_service.parse_asset(
-              entry.rel_path,
-              content,
-              file_type,
-              prepared.additional_files,
-              signal,
-            );
-        if (parsed.kind === "items") warnings.push(...(parsed.warnings ?? []));
-        Object.assign(draft, {
-          ...(parsed.kind === "items" && parsed.game_engine !== undefined
-            ? { game_engine: parsed.game_engine }
-            : {}),
-          file_type: parsed.kind === "pdf" ? "PDF" : parsed.file_type,
-          pdf_document: parsed.kind === "pdf" ? parsed.document : null,
-          parsed_items: parsed.kind === "items" ? parsed.items : [],
-          extraction_complete: parsed.kind === "pdf" || parsed.extraction_complete !== false,
-        });
+        prepared = await this.format_service.prepare_source(entry, signal);
       } catch (error) {
         if (signal?.aborted) throw error; // 保留取消收尾中的恢复失败及恢复材料位置。
         if (is_app_error(error) && error.public_details?.directory_changed === true)
           directory_changes.push(entry.source_path);
         failures.push({ source_path: entry.source_path, rel_path: entry.rel_path, error });
+        continue;
       }
+      if (prepared.directory_changed) directory_changes.push(entry.source_path);
+      for (const diagnostic of prepared.diagnostics)
+        warnings.push({
+          code: "source_preparation_failed",
+          rel_path: entry.rel_path,
+          ...(diagnostic.member === undefined ? {} : { internal_file_path: diagnostic.member }),
+          stage: diagnostic.stage,
+          error: diagnostic.error,
+          diagnostics: [{ message: diagnostic.error.message, line: null, column: null }],
+        });
+      const parsed = await this.parse_asset_draft(
+        {
+          source_path: entry.source_path,
+          rel_path: entry.rel_path,
+          file_type: entry.file_type,
+          content: prepared.content,
+          additional_files: prepared.additional_files,
+          ...(prepared.read && { read: prepared.read }),
+        },
+        signal,
+      );
+      file_drafts.push(parsed.draft);
+      warnings.push(...parsed.warnings);
+      if (parsed.failure) failures.push(parsed.failure);
     }
     return { file_drafts, failures, warnings, directory_changes };
   }

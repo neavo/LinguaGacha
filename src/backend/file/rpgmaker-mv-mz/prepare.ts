@@ -16,7 +16,16 @@ import {
 import { read_evb, extract_evb_member } from "../shared/evb/archive";
 import { read_evb_game, type RPGMakerSource } from "./source";
 import { RPGMakerJsonCodec } from "./json-codec";
-import { decrypt_media, MEDIA_EXTENSIONS } from "./media";
+import { decrypt_media } from "./media";
+
+/** 输出沿用引擎请求的路径，`.png` 可以承载原游戏中的其他图片格式。 */
+const MEDIA_EXTENSIONS: Readonly<Record<string, string>> = {
+  ".rpgmvp": ".png",
+  ".rpgmvo": ".ogg",
+  ".rpgmvm": ".m4a",
+  ".png_": ".png",
+  ".ogg_": ".ogg",
+};
 
 /** worker 只拥有暂存目录，来源目录中的文件始终只读。 */
 export async function stage_rpgmaker_source(

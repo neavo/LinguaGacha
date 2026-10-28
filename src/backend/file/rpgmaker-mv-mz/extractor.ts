@@ -18,7 +18,6 @@ const NEIGHBOR_CONTEXT_MIN_LENGTH = 64; // 为相邻成员预留短摘要，长�
 export function create_rpgmaker_extractor(rel_path: string) {
   const items: Item[] = [];
   const warnings: SourceFileParseWarning[] = [];
-  let extraction_complete = true;
 
   /** 事件正文、选项、默认翻译字段和模板片段按原文保存，空对白仍可携带姓名。 */
   function add(
@@ -76,22 +75,21 @@ export function create_rpgmaker_extractor(rel_path: string) {
     visit(src, metadata.location);
   }
 
-  /** 脚本偏移相对完整容器保存，语法失败时只保留诊断。 */
+  /**
+   * 脚本偏移相对完整容器保存。`355 + 655` 可能包含插件自定义语法，解析失败时静默保留整块原文供审阅和写回。
+   * 其他脚本入口只记录诊断。
+   */
   function script(src: string, container: RPGMakerRootLocation): void {
     const result = read_javascript_strings(src);
     if (!result.ok) {
-      extraction_complete = false;
+      if (container.kind === "block") {
+        add(src, { usage: "metadata", location: container });
+        return;
+      }
       warnings.push({
         code: "script_syntax_error",
         rel_path,
-        ...(container.kind === "field" && container.path.length === 0
-          ? {}
-          : {
-              json_path:
-                container.kind === "block"
-                  ? [...container.path, container.start, "parameters", 0]
-                  : container.path,
-            }),
+        ...(container.path.length === 0 ? {} : { json_path: container.path }),
         diagnostics: result.diagnostics,
       });
       return;
@@ -115,9 +113,6 @@ export function create_rpgmaker_extractor(rel_path: string) {
     add,
     expand,
     script,
-    get extraction_complete() {
-      return extraction_complete;
-    },
   };
 }
 

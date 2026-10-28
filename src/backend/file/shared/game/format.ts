@@ -56,17 +56,14 @@ export async function read_game_container(
   return { members, input, additional, game_files };
 }
 
-/** 单个成员的提取结果，完整性单独决定已有资产能否替换。 */
-export type GameMemberRead = Readonly<{
+/** 成员或整个资产的提取结果，局部遗漏只记录诊断。 */
+export type GameRead = Readonly<{
   items: Item[];
   warnings: SourceFileParseWarning[];
-  extraction_complete?: boolean;
 }>;
-/** 资产汇总必须给出完整性，供导入与重置判断替换资格。 */
-export type GameAssetRead = Required<GameMemberRead>;
-/** 按成员组织的读取结果。共享层统一转换资产路径、连续行号、诊断和完整性。 */
+/** 按成员组织的读取结果。共享层统一转换资产路径、连续行号和诊断。 */
 export type GameReadResult = Readonly<
-  { name: string } & ({ ok: true; read: GameMemberRead } | { ok: false; error: unknown })
+  { name: string } & ({ ok: true; read: GameRead } | { ok: false; error: unknown })
 >;
 /** 导出序列的一项输出。原稿成员必须全部且只输出一次，生成资源不能占用原稿或保留路径。 */
 export type GameOutput = Readonly<{
@@ -99,7 +96,7 @@ export type GameAssetAdapter = GameAdapterBase & {
 export type GameFormatAdapter = GameMemberAdapter | GameAssetAdapter;
 /** 本次容器操作独享解析上下文，成员只接收自身内容。 */
 export interface GameMemberHandler {
-  read_file(content: Uint8Array, file: string): Promise<GameMemberRead>; // 共享层按成员归集解析失败。
+  read_file(content: Uint8Array, file: string): Promise<GameRead>; // 共享层按成员归集解析失败。
   render(content: Uint8Array, file: string, items: readonly Item[]): Promise<Uint8Array>; // 应用译文或返回未修改的原字节。
 }
 /** 游戏原稿容器负责固化、解析与目录导出，格式适配器解释成员内容。 */
@@ -150,7 +147,7 @@ export class GameFormat {
     file: string,
     additional_files: readonly string[] = [],
     signal?: AbortSignal,
-  ): Promise<GameAssetRead> {
+  ): Promise<GameRead> {
     const { input } = await read_game_container(
       content,
       file,
@@ -177,20 +174,17 @@ export class GameFormat {
     return this.collect_read(results, file);
   }
 
-  /** 成员结果转换为资产结果：行号在外层资产内连续，成员失败记为遗漏。 */
-  public collect_read(results: readonly GameReadResult[], file: string): GameAssetRead {
+  /** 成员结果转换为资产结果：行号在外层资产内连续，成员失败只记录诊断。 */
+  public collect_read(results: readonly GameReadResult[], file: string): GameRead {
     const items: Item[] = [];
     const warnings: SourceFileParseWarning[] = [];
-    let extraction_complete = true;
     for (const result of results) {
       if (!result.ok) {
-        extraction_complete = false;
         warnings.push(
           this.file_warning("internal_file_parse_failed", file, result.name, result.error),
         );
         continue;
       }
-      if (result.read.extraction_complete === false) extraction_complete = false;
       warnings.push(
         ...result.read.warnings.map((warning) => ({
           ...warning,
@@ -201,7 +195,7 @@ export class GameFormat {
       for (const item of result.read.items)
         items.push({ ...item, file_path: file, row: items.length });
     }
-    return { items, warnings, extraction_complete };
+    return { items, warnings };
   }
 
   /** 容器清单拥有零条目和跳过文件，导出不从翻译条目反推清单。 */

@@ -218,7 +218,7 @@ export function read_tyrano_member(
   content: Uint8Array,
   file: string,
   syntax: SceneSyntax,
-): { items: Item[]; warnings: SourceFileParseWarning[]; extraction_complete: boolean } {
+): { items: Item[]; warnings: SourceFileParseWarning[] } {
   const { targets, warnings } = read_targets(decode_member(content).text, file, syntax);
   const items = targets.map((target, row) => {
     const extra_field = {
@@ -239,7 +239,7 @@ export function read_tyrano_member(
       extra_field,
     });
   });
-  return { items, warnings, extraction_complete: warnings.length === 0 };
+  return { items, warnings };
 }
 
 /** 从固化原稿计算写回。场景脚本逐行优先使用普通写法，无法无损表示时改用静态字符表达式，最后整份复核。 */

@@ -60,7 +60,6 @@ export type RenpyScript = {
   candidates: RenpyCandidate[];
   strings: RenpyString[];
   warnings: RenpyWarning[]; // 解释遗漏原因，正常的默认排除项不产生警告。
-  extraction_complete: boolean; // 存在遗漏的写回位置时为 `false`，由遗漏分支记录。
   names: Map<string, string>; // 当前正文写入组到当前姓名写入组，不持久化。
 };
 
@@ -125,7 +124,7 @@ async function write_groups(
   candidates: RenpyCandidate[],
   required: ReadonlyMap<string, Set<string>>,
   slots: readonly CompiledSlot[],
-  omit: (warning: RenpyWarning) => void,
+  warnings: RenpyWarning[],
   signal?: AbortSignal,
 ): Promise<RenpyCandidate[]> {
   const checkpoint = create_checkpoint(signal);
@@ -176,7 +175,7 @@ async function write_groups(
       ),
     );
     if (missing_slot) {
-      omit({
+      warnings.push({
         code: "script_extraction_incomplete",
         message: "Incomplete Ren'Py slot write group: " + first.key,
         line: first.line,
@@ -192,7 +191,7 @@ async function write_groups(
           [...(required.get(candidate.key) ?? [])].some((owner) => !owners.includes(owner)),
       )
     ) {
-      omit({
+      warnings.push({
         code: "script_extraction_incomplete",
         message: "Unresolved Ren'Py shared consumer: " + first.key,
         line: first.line,
@@ -232,12 +231,6 @@ export async function extract_script(
     strings: RenpyString[] = [],
     names = new Map<string, RenpyCoordinate[]>(),
     warnings: RenpyWarning[] = [];
-  let extraction_complete = true;
-  /** 遗漏写回位置的唯一入口，同时记录完整性和原因。 */
-  const omit = (warning: RenpyWarning) => {
-    extraction_complete = false;
-    warnings.push(warning);
-  };
   // 各槽位保存同一源码，同一问题按语句、字段、源码区间和原因合并，并保留出现的槽位。
   const issues = new Map<
     string,
@@ -525,8 +518,8 @@ export async function extract_script(
     }
   }
   for (const { code, record, diagnostic, slots: found } of issues.values())
-    omit({ code, ...code_diagnostic(record, diagnostic, found) });
-  const grouped = await write_groups([...candidates.values()], required, slots, omit, signal);
+    warnings.push({ code, ...code_diagnostic(record, diagnostic, found) });
+  const grouped = await write_groups([...candidates.values()], required, slots, warnings, signal);
   const coordinates = new Map(
     grouped.flatMap((candidate) =>
       candidate.coordinates.map((coordinate) => [coordinate_key(coordinate), candidate] as const),
@@ -563,7 +556,6 @@ export async function extract_script(
   return {
     digest: member_digest(member.bytes),
     candidates: grouped,
-    extraction_complete,
     strings,
     warnings,
     names: dialogue_names,

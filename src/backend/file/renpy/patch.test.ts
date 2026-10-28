@@ -37,7 +37,7 @@ it("跨槽位转换的回退对白身份合并后可双槽位写回", async () =
   const script = await extract_fixture(
     compiled_slots([[fallback_say("Say")], [fallback_say("TranslateSay")]]),
   );
-  expect(script.extraction_complete).toBe(true);
+  expect(script.warnings).toEqual([]);
   expect(script.candidates).toHaveLength(1);
   const output = await extract_fixture(
     await patch_script(
@@ -47,7 +47,7 @@ it("跨槽位转换的回退对白身份合并后可双槽位写回", async () =
       session,
     ),
   );
-  expect(output.extraction_complete).toBe(true);
+  expect(output.warnings).toEqual([]);
   expect(output.candidates[0]).toMatchObject({
     text: "译文",
     coordinates: [{ slot: 1 }, { slot: 2 }],

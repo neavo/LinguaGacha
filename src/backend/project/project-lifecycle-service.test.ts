@@ -22,6 +22,8 @@ import type { LogManager } from "../log/log-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
+import { ProjectContentService } from "./project-content-service";
+import { adapt_project_change } from "./project-write-event-adapter";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
 import { create_item } from "../../domain/item";
@@ -923,6 +925,108 @@ describe("ProjectLifecycleService", () => {
           },
         }),
       );
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("新建、追加、替换与两种重置对同组异常原稿保持相同条目和默认资格", async () => {
+    const root = create_temp_dir();
+    const game = path.join(root, "game");
+    const script = "CBR 顔画像 勇者\nCBR 表示 左";
+    write_file(path.join(game, "data/System.json"), "{}");
+    write_file(path.join(game, "js/rmmz_core.js"), "");
+    write_file(path.join(game, "js/plugins.js"), 'const broken = "');
+    write_file(
+      path.join(game, "data/CommonEvents.json"),
+      JSON.stringify([
+        null,
+        {
+          list: [
+            { code: 101, indent: 0, parameters: ["", 0, 0, 2] },
+            { code: 401, indent: 0, parameters: ["こんにちは"] },
+            { code: 355, indent: 0, parameters: [script.split("\n")[0]] },
+            { code: 655, indent: 0, parameters: [script.split("\n")[1]] },
+            { code: 355, indent: 0, parameters: ['say("こんにちは");'] },
+            { code: 0, indent: 0, parameters: [] },
+          ],
+        },
+      ]),
+    );
+    const broken = write_file(path.join(root, "broken.json"), "{");
+    const database = new ProjectDatabase("1.0.0");
+    const session_state = new ProjectSessionState();
+    const lifecycle = create_service({ database, session_state });
+    const content = new ProjectContentService(
+      new GameDirectoryOperations(),
+      database,
+      new RuntimeOperationGate(),
+      session_state,
+      new ProjectWriteStore(
+        database,
+        () => undefined,
+        (change) => adapt_project_change(session_state, change),
+      ),
+      create_pdf_execution(),
+      undefined,
+      create_log_manager(),
+    );
+    const created = path.join(root, "created.lg");
+    const imported = path.join(root, "imported.lg");
+    // 身份由各次写入分配。其余持久化字段必须与新建结果一致。
+    const read_items = async (project: string) =>
+      (await database.get_all_items(project)).map(({ id: _id, ...item }) => item);
+    try {
+      await lifecycle.create_project_commit({ path: created, source_paths: [game, broken] });
+      const expected = await read_items(created);
+      expect(expected.map((item) => [item.src, item.status])).toEqual([
+        ["こんにちは", "NONE"],
+        [script, "RULE_SKIPPED"],
+        ["こんにちは", "RULE_SKIPPED"],
+      ]);
+      const records = await database.get_all_asset_records(created);
+      expect(records).toHaveLength(2);
+      const files = records.map((record) => ({
+        source_path: record.file_type === "RPGMAKER_MV_MZ" ? game : broken,
+        target_rel_path: record.path,
+      }));
+      const broken_path = files.find((file) => file.source_path === broken)!.target_rel_path;
+      await lifecycle.create_project_commit({ path: imported, source_paths: [] });
+      const request = { files, conflict_action: "replace" };
+      await content.import_files({
+        ...request,
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      expect(await read_items(imported)).toEqual(expected);
+      for (const operation of ["replace", "files", "all"]) {
+        await database.transaction(imported, (writer) => {
+          const items = writer.get_all_items(imported);
+          writer.set_items(imported, [
+            ...items.map((item) => ({ ...item, dst: "旧译文", status: "PROCESSED" })),
+            create_item({
+              id: Math.max(...items.map((item) => Number(item.id))) + 1,
+              file_path: broken_path,
+              src: "已无法提取的旧条目",
+              dst: "旧译文",
+              status: "PROCESSED",
+            }),
+          ]);
+        });
+        if (operation === "replace")
+          await content.import_files({
+            ...request,
+            expected_section_revisions: { files: 1, items: 1 },
+          });
+        else if (operation === "files")
+          await content.reset_files({
+            rel_paths: records.map((record) => record.path),
+            expected_section_revisions: { files: 2, items: 2 },
+          });
+        else await content.reset_translation({ mode: "all" });
+        expect(await read_items(imported), operation).toEqual(expected);
+        expect(await database.get_all_asset_records(imported), operation).toEqual(records);
+        expect((await database.read_asset_content(imported, broken_path))?.toString()).toBe("{");
+      }
     } finally {
       await database.close();
     }

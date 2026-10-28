@@ -771,7 +771,7 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("同一游戏目录新增原稿后整体替换，提交失败保留旧工程并支持离线重建和独立删除", async () => {
+  it("同一游戏目录整体替换接纳部分解析结果，提交失败保留旧工程并支持离线重建和独立删除", async () => {
     const log_manager = create_log_manager();
     const { database, service, lg_path } = await create_service(undefined, log_manager);
     const source = project_path("game");
@@ -818,14 +818,6 @@ describe("ProjectContentService", () => {
       write("data/New.json", '{"text":"新文"}');
       write("data/Broken.json", "{");
       write("js/plugins.js", 'const broken = "');
-      await expect(service.import_files(await request())).rejects.toMatchObject({
-        code: "file.parse_failed",
-      });
-      expect((await database.read_asset_content(lg_path, "game.zip"))!.equals(old!)).toBe(true);
-      expect(await database.get_all_items(lg_path)).toEqual(old_items);
-      expect(await database.get_all_meta(lg_path)).toEqual(old_meta);
-      write("data/Broken.json", "{}");
-      write("js/plugins.js", "");
       const fail = vi
         .spyOn(ProjectDatabaseAccess.prototype, "set_items")
         .mockImplementationOnce(() => {
@@ -846,6 +838,11 @@ describe("ProjectContentService", () => {
       expect(await database.get_all_items(lg_path)).toMatchObject([
         { src: "新文", file_path: "game.zip" },
       ]);
+      fs.renameSync(source, source + "-moved");
+      await database.close_project(lg_path);
+      vi.mocked(log_manager.warning).mockClear();
+      await service.reset_translation({ mode: "all" });
+      expect(log_manager.warning).toHaveBeenCalledTimes(2); // 两个失败成员各记录一次诊断。
       for (const [internal_file_path, code] of [
         ["data/Broken.json", "internal_file_parse_failed"],
         ["js/plugins.js", "script_syntax_error"],
@@ -858,9 +855,6 @@ describe("ProjectContentService", () => {
             },
           }),
         );
-      fs.renameSync(source, source + "-moved");
-      await database.close_project(lg_path);
-      await service.reset_translation({ mode: "all" });
       expect((await database.get_all_items(lg_path)).some((item) => item.src === "新文")).toBe(
         true,
       );
@@ -1305,7 +1299,7 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("文件重置只替换完整解析结果，空结果清除旧条目", async () => {
+  it("文件重置按资产完整重建，零条目与解析失败都清除旧条目", async () => {
     const { database, service, lg_path } = await create_service();
     try {
       await database.transaction(lg_path, (writer) => {
@@ -1316,41 +1310,27 @@ describe("ProjectContentService", () => {
           create_persistent_item({
             item_id: 2,
             file_path: "b.txt",
-            dst: "保留译文",
+            dst: "旧译文",
             status: "PROCESSED",
           }),
         ]);
       });
-      const before = await database.get_all_items(lg_path);
       const parse = FileFormatService.prototype.parse_asset;
       vi.spyOn(FileFormatService.prototype, "parse_asset").mockImplementation(function (
         this: FileFormatService,
         ...args
       ) {
-        if (args[0] === "b.txt")
-          return Promise.resolve({
-            kind: "items",
-            file_type: "TXT",
-            items: [],
-            extraction_complete: false,
-          });
+        if (args[0] === "b.txt") return Promise.reject(new Error("parse probe"));
         return parse.apply(this, args);
       });
       await service.reset_files({
         rel_paths: ["a.txt", "b.txt"],
         expected_section_revisions: { files: 0, items: 0 },
       });
-      expect(await database.get_all_items(lg_path)).toEqual([
-        before.find((item) => item.file_path === "b.txt"),
-      ]);
-      await expect(
-        service.reset_files({
-          rel_paths: ["b.txt"],
-          expected_section_revisions: { files: 0, items: 1 },
-        }),
-      ).rejects.toMatchObject({ code: "file.parse_failed" });
-      expect(await database.get_all_items(lg_path)).toEqual([
-        before.find((item) => item.file_path === "b.txt"),
+      expect(await database.get_all_items(lg_path)).toEqual([]);
+      expect((await database.get_all_asset_records(lg_path)).map((file) => file.path)).toEqual([
+        "a.txt",
+        "b.txt",
       ]);
     } finally {
       await database.close();
@@ -1644,94 +1624,38 @@ describe("ProjectContentService", () => {
     await reopened.close();
   });
 
-  it.each([true, false])(
-    "全部重置提取不完整只记录一次原因，已有诊断：%s",
-    async (has_diagnostic) => {
-      const log_manager = create_log_manager();
-      const { database, service, lg_path } = await create_service(undefined, log_manager);
-      try {
-        await database.transaction(lg_path, (writer) => {
-          writer.add_asset(lg_path, "a.txt", Buffer.from("original"), "TXT", null);
-          writer.set_items(lg_path, [create_persistent_item({ dst: "old", status: "PROCESSED" })]);
-        });
-        const original = await database.get_all_items(lg_path);
-        vi.spyOn(FileFormatService.prototype, "parse_asset").mockResolvedValueOnce({
-          kind: "items",
-          file_type: "TXT",
-          items: [],
-          extraction_complete: false,
-          warnings: has_diagnostic
-            ? [
-                {
-                  code: "internal_file_parse_failed",
-                  rel_path: "a.txt",
-                  diagnostics: [{ message: "member unavailable", line: null, column: null }],
-                },
-              ]
-            : [],
-        });
-        await expect(service.reset_translation({ mode: "all" })).rejects.toMatchObject({
-          code: "file.parse_failed",
-        });
-        expect(await database.get_all_items(lg_path)).toEqual(original);
-        expect(log_manager.warning).toHaveBeenCalledTimes(1);
-        if (has_diagnostic)
-          expect(log_manager.warning).toHaveBeenCalledWith(
-            expect.stringContaining("member unavailable"),
-            expect.anything(),
-          );
-      } finally {
-        await database.close();
-      }
-    },
-  );
+  it.each(["missing", "commit"])("全部重置在 %s 失败时保留条目和项目元数据", async (failure) => {
+    const { database, service, lg_path } = await create_service();
+    await database.transaction(lg_path, (writer) =>
+      writer.add_asset(lg_path, "a.txt", Buffer.from("新正文"), "TXT", null, 0),
+    );
+    await database.transaction(lg_path, (writer) =>
+      writer.set_items(lg_path, [create_persistent_item({ dst: "已有译文", status: "PROCESSED" })]),
+    );
+    const before_items = await database.get_all_items(lg_path);
+    const before_meta = await database.get_all_meta(lg_path);
+    if (failure === "missing") vi.spyOn(database, "read_asset_content").mockResolvedValueOnce(null);
+    if (failure === "commit") {
+      const set_items = ProjectDatabaseAccess.prototype.set_items;
+      vi.spyOn(ProjectDatabaseAccess.prototype, "set_items").mockImplementationOnce(function (
+        this: ProjectDatabaseAccess,
+        ...args
+      ) {
+        set_items.call(this, ...args);
+        throw new Error("commit probe");
+      });
+    }
+    await expect(service.reset_translation({ mode: "all" })).rejects.toThrow();
+    expect(await database.get_all_items(lg_path)).toEqual(before_items);
+    expect(await database.get_all_meta(lg_path)).toEqual(before_meta);
+    await database.close();
+  });
 
-  it.each(["missing", "parse", "commit"])(
-    "全部重置在 %s 失败时保留条目和项目元数据",
-    async (failure) => {
-      const { database, service, lg_path } = await create_service();
-      const file = failure === "parse" ? "a.json" : "a.txt";
-      await database.transaction(lg_path, (writer) =>
-        writer.add_asset(
-          lg_path,
-          file,
-          Buffer.from("新正文"),
-          failure === "parse" ? "KVJSON" : "TXT",
-          null,
-          0,
-        ),
-      );
-      await database.transaction(lg_path, (writer) =>
-        writer.set_items(lg_path, [
-          create_persistent_item({ file_path: file, dst: "已有译文", status: "PROCESSED" }),
-        ]),
-      );
-      const before_items = await database.get_all_items(lg_path);
-      const before_meta = await database.get_all_meta(lg_path);
-      if (failure === "missing")
-        vi.spyOn(database, "read_asset_content").mockResolvedValueOnce(null);
-      if (failure === "commit") {
-        const set_items = ProjectDatabaseAccess.prototype.set_items;
-        vi.spyOn(ProjectDatabaseAccess.prototype, "set_items").mockImplementationOnce(function (
-          this: ProjectDatabaseAccess,
-          ...args
-        ) {
-          set_items.call(this, ...args);
-          throw new Error("commit probe");
-        });
-      }
-      await expect(service.reset_translation({ mode: "all" })).rejects.toThrow();
-      expect(await database.get_all_items(lg_path)).toEqual(before_items);
-      expect(await database.get_all_meta(lg_path)).toEqual(before_meta);
-      await database.close();
-    },
-  );
-
-  it("全部重置只替换完整资产，失败资产避开预过滤并保留条目身份及译文", async () => {
+  it("全部重置只重建取得原稿的资产，未取得原稿的资产避开预过滤并保留条目身份及译文", async () => {
     const { database, service, lg_path } = await create_service();
     try {
       await database.transaction(lg_path, (writer) => {
-        writer.add_asset(lg_path, "a.json", Buffer.from("{"), "KVJSON", null, 0);
+        writer.add_asset(lg_path, "a.json", Buffer.from("{}"), "KVJSON", null, 0);
         writer.add_asset(lg_path, "b.txt", Buffer.from("新正文"), "TXT", null, 1);
         writer.set_items(lg_path, [
           create_persistent_item({
@@ -1753,6 +1677,10 @@ describe("ProjectContentService", () => {
       });
       const retained = (await database.get_all_items(lg_path)).find(
         (item) => item.file_path === "a.json",
+      );
+      const read = database.read_asset_content.bind(database);
+      vi.spyOn(database, "read_asset_content").mockImplementation((project, file) =>
+        file === "a.json" ? Promise.resolve(null) : read(project, file),
       );
       await service.reset_translation({ mode: "all" });
       const items = await database.get_all_items(lg_path);

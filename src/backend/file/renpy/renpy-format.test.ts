@@ -254,12 +254,8 @@ it("固定的旧条目身份仍可导出，重新提取得到新增条目", asyn
     'asset = prefix + " suffix"\ngreet = _("Hello") + name\nlabel = f"Hi {name}"',
   );
   native.write_file_sync(path.join(temp.path, "game/compat.rpyc"), bytes);
-  const { format, items, warnings, extraction_complete, context } = await import_fixture(
-    temp.path,
-    native,
-  );
+  const { format, items, warnings, context } = await import_fixture(temp.path, native);
   expect(warnings).toEqual([]);
-  expect(extraction_complete).toBe(true);
   expect(
     items
       .filter(

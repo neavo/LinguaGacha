@@ -2,11 +2,10 @@ import type { PDFDocument } from "../../shared/pdf";
 import type { Item, ItemFileType } from "../../domain/item";
 import type { SourceDiagnostic } from "./shared/game/preparation";
 
-/** 原稿字节与目录副作用独立交付，完整性只约束已有资产替换。 */
+/** 原稿字节与目录副作用独立交付，成员读取遗漏只记录诊断。 */
 export type PreparedSource = Readonly<{
   content: Uint8Array;
   additional_files: readonly string[];
-  source_complete: boolean;
   directory_changed: boolean;
   diagnostics: readonly SourceDiagnostic[];
   read?: PreparedRead; // 缺省表示准备阶段未解析，流水线解析固化后的原稿。
@@ -50,7 +49,6 @@ export type FileFormatReadResult =
       file_type: ItemFileType;
       game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
       warnings?: SourceFileParseWarning[];
-      extraction_complete?: boolean; // 解析器明确报告遗漏，诊断仅用于解释。
     }
   | { kind: "pdf"; document: PDFDocument };
 

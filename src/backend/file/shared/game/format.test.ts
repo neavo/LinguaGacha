@@ -30,7 +30,6 @@ it("附加原稿统一分流，旧清单兼容且常规导出保留已有补丁"
     native,
   );
   expect(await format.read_from_stream(bytes, "game.rpgmaker", additional_files)).toEqual({
-    extraction_complete: true,
     items: [],
     warnings: [],
   });
@@ -224,7 +223,6 @@ it("成员解析失败保留异常链与堆栈", async () => {
   const format = new GameFormat(new GameDirectoryOperations(), adapter, new NativeFs());
   const bytes = await write_zip(new Map([["data/Broken.json", "{}"]]));
   const parsed = await format.read_from_stream(bytes, "game.zip");
-  expect(parsed.extraction_complete).toBe(false);
   expect(parsed.warnings).toMatchObject([
     {
       internal_file_path: "data/Broken.json",

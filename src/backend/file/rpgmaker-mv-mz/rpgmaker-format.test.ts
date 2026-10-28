@@ -129,7 +129,7 @@ describe("MV/MZ 原稿写回", () => {
       );
     },
   );
-  it("错误脚本前后的对白可翻译，行数变化后仍完整保留失败脚本", async () => {
+  it("无法解析的脚本事件块静默保留为默认排除条目，启用后按行数重建指令", async () => {
     const broken = [command(355, ['say("保留原文");']), command(655, ["if()array.push;"])];
     const list = [
       command(101, ["", 0, 0, 2]),
@@ -144,22 +144,24 @@ describe("MV/MZ 原稿写回", () => {
     const bytes = Buffer.from(JSON.stringify([null, { list, id: 1 }]));
     const result = await members.read_file(bytes, "data/CommonEvents.json");
     expect(result.warnings).toMatchObject([
-      {
-        rel_path: "data/CommonEvents.json",
-        json_path: [1, "list", 2, "parameters", 0],
-        diagnostics: [{ line: 2, column: 4 }],
-      },
-      { json_path: [1, "list", 4, "parameters", 1] },
+      { code: "script_syntax_error", json_path: [1, "list", 4, "parameters", 1] },
     ]);
-    expect(result.items.map((item) => item.src)).toEqual(["前文", "后文", "有效脚本"]);
+    const fallback = 'say("保留原文");\nif()array.push;';
+    expect(result.items.map((item) => [item.src, item.status])).toEqual([
+      ["前文", "NONE"],
+      [fallback, "RULE_SKIPPED"],
+      ["后文", "NONE"],
+      ["有效脚本", "RULE_SKIPPED"],
+    ]);
     for (const item of result.items) {
-      item.status = "PROCESSED";
       item.dst = item.src === "前文" ? "前一\n前二" : `${item.src}译文`;
+      if (item.src !== fallback) item.status = "PROCESSED";
     }
-    const output = JSON.parse(
-      Buffer.from(await members.render(bytes, "data/CommonEvents.json", result.items)).toString(),
-    );
-    expect(output).toEqual([
+    const render = async () =>
+      JSON.parse(
+        Buffer.from(await members.render(bytes, "data/CommonEvents.json", result.items)).toString(),
+      );
+    const expected = (block: unknown[]) => [
       null,
       {
         id: 1,
@@ -167,7 +169,7 @@ describe("MV/MZ 原稿写回", () => {
           list[0],
           command(401, ["前一"]),
           command(401, ["前二"]),
-          ...broken,
+          ...block,
           list[4],
           list[5],
           command(401, ["后文译文"]),
@@ -175,7 +177,12 @@ describe("MV/MZ 原稿写回", () => {
           list[8],
         ],
       },
-    ]);
+    ];
+    expect(await render()).toEqual(expected(broken));
+    Object.assign(result.items[1]!, { status: "PROCESSED", dst: "a();\nb();\nc();" });
+    expect(await render()).toEqual(
+      expected([command(355, ["a();"]), command(655, ["b();"]), command(655, ["c();"])]),
+    );
   });
   it("保存的定位独立于用途分类、条目顺序和当前提取字段", async () => {
     const bytes = Buffer.from('[null,{"name":"勇者","legacy":"旧字段"}]');
