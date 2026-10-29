@@ -26,7 +26,6 @@ export const ja_jp_project_page = {
     drop_title: "クリックまたは .lg ファイルをドロップ",
     recent_title: "最近開いた項目",
     empty: "最近開いたプロジェクトはありません",
-    ready_status: "プロジェクトの準備ができました",
     loading_toast: "プロジェクトを読み込み中 …",
     preview_unavailable: "プロジェクトのプレビューを読み込めませんでした …",
     action: "プロジェクトを開く",
@@ -42,15 +41,6 @@ export const ja_jp_project_page = {
     created_at: "作成日時",
     updated_at: "最終更新",
     progress: "翻訳進捗",
-  },
-  loading_stages: {
-    project: "プロジェクトの基本情報を読み込み中 …",
-    files: "プロジェクトのファイルを読み込み中 …",
-    items: "プロジェクトの項目を読み込み中 …",
-    quality: "品質ルールを読み込み中 …",
-    prompts: "プロンプト設定を読み込み中 …",
-    proofreading: "校正画面を読み込み中 …",
-    task: "タスクの状態を読み込み中 …",
   },
   formats: {
     title: "対応ファイル形式",

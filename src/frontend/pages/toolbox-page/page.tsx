@@ -1,10 +1,9 @@
 import type { JSX } from "react";
-import { ChevronRight } from "lucide-react";
+import { CircleChevronRight } from "lucide-react";
 
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { RouteId, ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { render_rich_text, type RichTextComponentMap } from "@frontend/app/locale/rich-text";
 import "@frontend/pages/toolbox-page/toolbox-page.css";
 import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
 import { Separator } from "@frontend/shadcn/separator";
@@ -19,18 +18,16 @@ type ToolboxEntry = {
 // 按展示顺序排列。
 const TOOLBOX_ENTRIES: readonly ToolboxEntry[] = [
   {
+    title_key: "translation_transfer_page.title",
+    description_key: "toolbox_page.entries.translation_transfer.description",
+    route_id: "translation-transfer",
+  },
+  {
     title_key: "game_font_page.title", // 入口与功能页共用名称。
     description_key: "toolbox_page.entries.game_font.description",
     route_id: "game-font",
   },
 ];
-
-// 描述中的强调文字使用主题强调色。
-const DESCRIPTION_COMPONENT_MAP: RichTextComponentMap = {
-  emphasis: (children) => {
-    return <span className="toolbox-page__description-emphasis font-medium">{children}</span>;
-  },
-};
 
 /** 工具入口不依赖工程会话，未打开 `.lg` 时也可使用。 */
 export function ToolboxPage(_props: ScreenComponentProps): JSX.Element {
@@ -52,13 +49,11 @@ export function ToolboxPage(_props: ScreenComponentProps): JSX.Element {
           >
             <CardHeader className="toolbox-page__card-header">
               <CardTitle className="toolbox-page__card-title">{t(entry.title_key)}</CardTitle>
-              <ChevronRight className="toolbox-page__card-icon" aria-hidden="true" />
+              <CircleChevronRight className="toolbox-page__card-icon" aria-hidden="true" />
             </CardHeader>
             <Separator className="toolbox-page__separator" />
             <CardContent className="toolbox-page__card-content">
-              <p className="toolbox-page__description">
-                {render_rich_text(t(entry.description_key), DESCRIPTION_COMPONENT_MAP)}
-              </p>
+              <p className="toolbox-page__description">{t(entry.description_key)}</p>
             </CardContent>
           </Card>
         ))}

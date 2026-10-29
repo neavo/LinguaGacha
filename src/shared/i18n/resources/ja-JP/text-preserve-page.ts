@@ -4,7 +4,6 @@ export const ja_jp_text_preserve_page = {
   title: "テキスト保護",
   mode: {
     label: "テキスト保護モード",
-    loading_toast: "校正キャッシュを更新中 …",
     content_html:
       "翻訳不要なコード、制御文字、装飾文字などを保護し、誤って翻訳されるのを防ぎます" +
       "<br>" +

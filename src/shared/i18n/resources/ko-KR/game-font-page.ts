@@ -18,8 +18,5 @@ export const ko_kr_game_font_page = {
   },
   feedback: {
     inspect_failed: "인식하지 못했습니다 …",
-    apply_failed: "변경하지 못했습니다 …",
-    applying: "게임 글꼴을 변경하는 중 …",
-    apply_success: "게임 글꼴 변경을 완료했습니다 …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_game_font_page>;

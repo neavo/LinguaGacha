@@ -7,34 +7,9 @@
   gap: var(--ui-list-gap-dense);
 }
 
-.game-font-page__fields {
-  display: grid;
+.game-font-page__body {
   min-height: 0;
   flex: 1;
-  align-content: start;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
   overflow-x: hidden;
   overflow-y: auto;
-}
-
-.game-font-page__field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.game-font-page__field-title {
-  margin: 0;
-  font-size: var(--ui-font-size-14);
-  line-height: 1.5;
-  font-weight: 500;
-  color: var(--foreground);
-}
-
-@media (max-width: 760px) {
-  .game-font-page__fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

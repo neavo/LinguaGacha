@@ -525,7 +525,7 @@ describe("useWorkbenchPageState", () => {
     expect(latest_state?.dialog_state.kind).toBeNull();
     expect(toast_fixture.current.push_toast).toHaveBeenLastCalledWith(
       "success",
-      "app.data_refresh.success",
+      "app.feedback.operation_success",
     );
   });
 

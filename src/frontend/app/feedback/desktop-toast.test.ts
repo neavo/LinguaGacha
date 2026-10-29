@@ -7,11 +7,15 @@ vi.mock("sonner", () => ({
 }));
 
 beforeEach(() => vi.useFakeTimers());
-it("持续警告指定无限展示时长并支持显式关闭", () => {
+it("持续警告透传结果正文并支持显式关闭", () => {
   vi.mocked(toast.warning).mockReturnValue("warning");
-  const id = notifications.push_toast("warning", "部分条目失败", { persistent: true });
+  const id = notifications.push_toast("warning", "部分条目失败", {
+    persistent: true,
+    description: "未匹配 2 条",
+  });
   expect(toast.warning).toHaveBeenCalledWith("部分条目失败", {
     duration: Infinity,
+    description: "未匹配 2 条",
   });
   vi.mocked(toast.dismiss).mockClear();
   notifications.dismiss_toast(id);
@@ -38,20 +42,9 @@ it("接管进度后，旧任务与关闭计时不能改写当前快照", async (
   notifications.dismiss_toast(previous);
   const current = notifications.push_progress_toast({ message: "当前任务", presentation: "modal" });
   const snapshot = notifications.read_progress_toast();
-  notifications.update_progress_toast(previous, { message: "迟到更新" });
-  expect(notifications.read_progress_toast()).toBe(snapshot);
   notifications.dismiss_toast(previous);
   await vi.runOnlyPendingTimersAsync();
   expect(notifications.read_progress_toast()).toBe(snapshot);
-  notifications.update_progress_toast(current, {
-    message: "当前进度",
-    progress_percent: 80,
-    presentation: "modal",
-  });
-  expect(notifications.read_progress_toast()).toMatchObject({
-    message: "当前进度",
-    progress_percent: 80,
-  });
   notifications.dismiss_toast(current);
   expect(notifications.read_progress_toast()).toBeNull();
 });

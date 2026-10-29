@@ -26,7 +26,6 @@ export const ko_kr_project_page = {
     drop_title: "클릭하거나 .lg 파일 놓기",
     recent_title: "최근 열었던 프로젝트",
     empty: "최근 열었던 프로젝트가 없습니다",
-    ready_status: "프로젝트 준비 완료",
     loading_toast: "프로젝트 불러오는 중 …",
     preview_unavailable: "프로젝트 미리 보기 읽기 실패 …",
     action: "프로젝트 열기",
@@ -42,15 +41,6 @@ export const ko_kr_project_page = {
     created_at: "생성 시간",
     updated_at: "마지막 수정",
     progress: "번역 진행률",
-  },
-  loading_stages: {
-    project: "프로젝트 기본 정보 불러오는 중 …",
-    files: "프로젝트 파일 불러오는 중 …",
-    items: "프로젝트 항목 불러오는 중 …",
-    quality: "품질 규칙 불러오는 중 …",
-    prompts: "프롬프트 설정 불러오는 중 …",
-    proofreading: "교정 화면 불러오는 중 …",
-    task: "작업 상태 불러오는 중 …",
   },
   formats: {
     title: "지원 파일 형식",

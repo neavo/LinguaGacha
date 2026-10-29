@@ -9,25 +9,17 @@ import { ProjectPage } from "@frontend/pages/project-page/page";
 import { PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY } from "./project-language-preference";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
-const {
-  api_fetch_mock,
-  desktop_runtime_fixture,
-  dismiss_toast_mock,
-  push_progress_toast_mock,
-  push_toast_mock,
-  update_progress_toast_mock,
-} = vi.hoisted(() => {
-  return {
-    api_fetch_mock: vi.fn(),
-    desktop_runtime_fixture: {
-      current: null as ReturnType<typeof create_desktop_runtime_fixture> | null,
-    },
-    dismiss_toast_mock: vi.fn(),
-    push_progress_toast_mock: vi.fn(() => "project-loading-toast"),
-    push_toast_mock: vi.fn(),
-    update_progress_toast_mock: vi.fn(),
-  };
-});
+const { api_fetch_mock, desktop_runtime_fixture, run_modal_progress_toast_mock, push_toast_mock } =
+  vi.hoisted(() => {
+    return {
+      api_fetch_mock: vi.fn(),
+      desktop_runtime_fixture: {
+        current: null as ReturnType<typeof create_desktop_runtime_fixture> | null,
+      },
+      run_modal_progress_toast_mock: vi.fn((args: { task: () => Promise<unknown> }) => args.task()),
+      push_toast_mock: vi.fn(),
+    };
+  });
 
 vi.mock("@frontend/app/desktop/desktop-api", async () => {
   const actual = await vi.importActual<typeof import("@frontend/app/desktop/desktop-api")>(
@@ -46,11 +38,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  dismiss_toast: dismiss_toast_mock,
-  push_progress_toast: push_progress_toast_mock,
+  run_modal_progress_toast: run_modal_progress_toast_mock,
   push_error_toast: push_toast_mock,
   push_toast: push_toast_mock,
-  update_progress_toast: update_progress_toast_mock,
 }));
 
 vi.mock("@frontend/widgets/app-context-menu", () => {
@@ -177,7 +167,6 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
 /** 构造页面公开依赖的 DesktopState 测试替身。 */
 function create_desktop_runtime_fixture(settings_overrides: Record<string, unknown> = {}) {
   return {
-    project_session_stage: null,
     settings_snapshot: create_settings_snapshot(settings_overrides),
     refresh_project_snapshot: vi.fn(),
     set_project_session_status: vi.fn(),
@@ -271,10 +260,8 @@ describe("ProjectPage", () => {
     container = null;
     root = null;
     api_fetch_mock.mockReset();
-    dismiss_toast_mock.mockReset();
-    push_progress_toast_mock.mockClear();
+    run_modal_progress_toast_mock.mockClear();
     push_toast_mock.mockReset();
-    update_progress_toast_mock.mockReset();
     vi.restoreAllMocks();
     vi.useRealTimers();
     window.localStorage.removeItem(PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY);
@@ -391,7 +378,7 @@ describe("ProjectPage", () => {
     await drop_paths(get_button_by_text(container!, "点击或拖拽 .lg 文件"), ["E:/open.lg"]);
     if (state === "failed") await act(async () => preview.reject(new Error("preview failed")));
     expect(get_button_by_text(container!, "打开工程").disabled).toBe(false);
-    expect(push_progress_toast_mock).not.toHaveBeenCalled();
+    expect(run_modal_progress_toast_mock).not.toHaveBeenCalled();
     push_toast_mock.mockClear();
     await act(async () => get_button_by_text(container!, "打开工程").click());
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/open", {
@@ -415,7 +402,7 @@ describe("ProjectPage", () => {
     await mount_page();
     await act(async () => get_button_by_text(container!, "失效工程").click());
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
-    expect(container!.textContent).not.toContain("工程已就绪");
+    expect(get_button_by_text(container!, "点击或拖拽 .lg 文件")).toBeDefined(); // 失效工程未被选中。
     expect(get_button_by_text(container!, "打开工程").disabled).toBe(true);
     expect(push_toast_mock).not.toHaveBeenCalled();
     api_fetch_mock.mockClear();
@@ -660,7 +647,7 @@ describe("ProjectPage", () => {
     );
   });
 
-  it("来源摘要失败只提示结果，重新选择仍可恢复", async () => {
+  it("来源摘要没有可用文件时只提示结果，重新选择仍可恢复", async () => {
     const source = "E:/Source/broken.exe";
     vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
       canceled: false,
@@ -671,15 +658,6 @@ describe("ProjectPage", () => {
         ? {
             source_file_count: 0,
             format_hit_counts: {},
-            failed_files: [
-              {
-                source_path: source,
-                rel_path: "broken.exe",
-                filename: "broken.exe",
-                code: "file.io_failed",
-                message: "EVB header damaged",
-              },
-            ],
           }
         : {},
     );
@@ -688,7 +666,6 @@ describe("ProjectPage", () => {
       get_button_by_text(container as HTMLElement, "选择文件").click();
     });
     expect(push_toast_mock).toHaveBeenCalledOnce();
-    expect(JSON.stringify(push_toast_mock.mock.calls)).not.toContain("EVB header damaged");
     vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
       canceled: false,
       paths: ["E:/Source/good.txt"],

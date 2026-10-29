@@ -13,7 +13,6 @@ export const ja_jp_workbench_page = {
     agent_recommended: "翻訳には AGENT の使用をおすすめします",
   },
   feedback: {
-    add_file_loading_toast: "ファイルを追加中 …",
     no_valid_file: "追加できる有効なファイルがありません",
     close_project_failed:
       "プロジェクトを閉じられませんでした。しばらくしてから再試行してください …",

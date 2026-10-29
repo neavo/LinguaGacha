@@ -1,48 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "../../shared/error";
-import {
-  build_source_file_parse_failure,
-  log_source_file_diagnostics,
-} from "./source-file-parse-failure-reporter";
+import { log_source_file_diagnostics } from "./source-file-parse-failure-reporter";
 
 describe("source-file-parse-failure-reporter", () => {
-  it("把解析、缺失和其它 IO 异常归一为稳定失败记录", () => {
-    const parse_failure = build_source_file_parse_failure({
-      source_path: "E:/input/broken.json",
-      rel_path: "nested/broken.json",
-      error: new SyntaxError("bad json"),
+  it("把解析、缺失和其它 IO 异常归一为稳定错误码", () => {
+    const warning = vi.fn();
+    log_source_file_diagnostics({
+      source: "project-import",
+      log_manager: { warning },
+      failures: [
+        new SyntaxError("bad json"),
+        Object.assign(new Error("missing"), { code: "ENOENT" }),
+        new Error(),
+        new AppError("file.parse_failed"),
+      ].map((error) => ({ source_path: "source.txt", rel_path: "", error })),
+      warnings: [],
     });
-    const missing_error = Object.assign(new Error("missing"), { code: "ENOENT" });
 
-    expect(parse_failure).toEqual({
-      source_path: "E:/input/broken.json",
-      rel_path: "nested/broken.json",
-      filename: "broken.json",
-      code: "file.parse_failed",
-      message: "bad json",
-    });
-    expect(
-      build_source_file_parse_failure({
-        source_path: "missing.txt",
-        rel_path: "",
-        error: missing_error,
-      }).code,
-    ).toBe("file.not_found");
-    expect(
-      build_source_file_parse_failure({
-        source_path: "locked.txt",
-        rel_path: "",
-        error: new Error(),
-      }).code,
-    ).toBe("file.io_failed");
-    expect(
-      build_source_file_parse_failure({
-        source_path: "broken.txt",
-        rel_path: "broken.txt",
-        error: new AppError("file.parse_failed"),
-      }).code,
-    ).toBe("file.parse_failed");
+    expect(warning.mock.calls.map(([, entry]) => entry.context.code)).toEqual([
+      "file.parse_failed",
+      "file.not_found",
+      "file.io_failed",
+      "file.parse_failed",
+    ]);
   });
 
   it("每个来源失败和每个局部遗漏各记一条日志，保留原始异常与定位", () => {

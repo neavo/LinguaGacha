@@ -18,8 +18,5 @@ export const de_de_game_font_page = {
   },
   feedback: {
     inspect_failed: "Erkennung fehlgeschlagen …",
-    apply_failed: "Ändern fehlgeschlagen …",
-    applying: "Spielschrift wird geändert …",
-    apply_success: "Spielschrift geändert …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_game_font_page>;

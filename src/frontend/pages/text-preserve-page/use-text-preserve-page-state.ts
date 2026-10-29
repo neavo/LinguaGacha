@@ -312,7 +312,7 @@ export function useTextPreservePageState() {
 
       try {
         await run_modal_progress_toast({
-          message: t("text_preserve_page.mode.loading_toast"),
+          message: t("app.feedback.operation_running"),
           timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
           task: async () => {
             await update_meta({ mode: next_mode });

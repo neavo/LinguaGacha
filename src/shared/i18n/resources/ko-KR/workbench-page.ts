@@ -13,7 +13,6 @@ export const ko_kr_workbench_page = {
     agent_recommended: "AGENT로 번역하는 것을 권장합니다",
   },
   feedback: {
-    add_file_loading_toast: "파일 추가 중 …",
     no_valid_file: "추가할 수 있는 유효한 파일이 없습니다",
     close_project_failed: "프로젝트를 닫지 못했습니다. 잠시 후 다시 시도해 주세요 …",
   },

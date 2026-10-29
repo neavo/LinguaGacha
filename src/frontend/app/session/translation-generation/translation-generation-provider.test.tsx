@@ -20,7 +20,10 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({ selected_route: "agent", navigate_to_agent: vi.fn() }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ project_snapshot: { loaded: true, path: "test.lg" } }),
+  useDesktopState: () => ({
+    project_snapshot: { loaded: true, path: "test.lg" },
+    settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
+  }),
 }));
 vi.mock("@frontend/features/translation-generation/translation-generation-dialog", () => ({
   TranslationGenerationDialog: ({ state }: TranslationGenerationFlow) =>

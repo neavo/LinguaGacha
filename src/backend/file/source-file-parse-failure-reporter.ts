@@ -3,7 +3,6 @@ import type { SourceFileParseWarning } from "./file-format-types";
 
 import type { LogManager } from "../log/log-manager";
 import * as AppErrors from "../../shared/error";
-import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 
 /** 来源级失败保留原始异常，日志据此记录完整原因链。 */
 export type SourceFileFailure = Readonly<{
@@ -29,20 +28,6 @@ export function source_operation_error(
   });
 }
 
-/** 预览阶段把来源发现失败转成公开记录，正式操作的失败只进入日志。 */
-export function build_source_file_parse_failure(
-  args: SourceFileFailure,
-): SourceFileParseFailureRecord {
-  const app_error = normalize_source_file_parse_error(args.error);
-  return {
-    source_path: args.source_path,
-    rel_path: args.rel_path,
-    filename: path.basename(args.source_path),
-    code: app_error.code,
-    message: app_error.message,
-  };
-}
-
 /** 每个来源失败和每个局部遗漏各记一条日志，由操作拥有者调用一次。 */
 export function log_source_file_diagnostics(args: {
   failures: readonly SourceFileFailure[];
@@ -53,11 +38,11 @@ export function log_source_file_diagnostics(args: {
   const { log_manager, source } = args;
   if (log_manager === null) return;
   for (const failure of args.failures) {
-    const record = build_source_file_parse_failure(failure);
-    log_manager.warning(record.filename + " - " + record.message, {
+    const error = normalize_source_file_parse_error(failure.error);
+    log_manager.warning(path.basename(failure.source_path) + " - " + error.message, {
       source,
       error: failure.error,
-      context: { source_path: record.source_path, rel_path: record.rel_path, code: record.code },
+      context: { source_path: failure.source_path, rel_path: failure.rel_path, code: error.code },
     });
   }
   for (const { error, ...warning } of args.warnings) {

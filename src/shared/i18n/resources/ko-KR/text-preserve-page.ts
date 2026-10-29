@@ -4,7 +4,6 @@ export const ko_kr_text_preserve_page = {
   title: "텍스트 보호",
   mode: {
     label: "텍스트 보호 모드",
-    loading_toast: "교정 캐시 새로 고치는 중 …",
     content_html:
       "번역할 필요가 없는 코드, 제어 문자, 스타일 문자 등을 보호하여 잘못 번역되는 것을 방지합니다" +
       "<br>" +

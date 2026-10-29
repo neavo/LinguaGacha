@@ -1,12 +1,16 @@
-import type { ComponentProps, JSX } from "react";
+import type { ComponentProps, JSX, ReactNode } from "react";
 import { SquareMousePointer, X, type LucideIcon } from "lucide-react";
 
 import { cn } from "@frontend/shadcn/classnames";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import { type PathDropOptions, usePathDrop } from "@frontend/widgets/file-drop-zone/use-path-drop";
 import "@frontend/widgets/path-selection-card/path-selection-card.css";
 
-export type PathSelectionSummary = Readonly<{ name: string; detail?: string }>;
+export type PathSelectionSummary = Readonly<{
+  name: string; // 卡片内单行显示的名称
+  path?: string; // 完整路径，悬停名称时显示
+}>;
 
 // 剩余按钮属性与 `ref` 落在主触发按钮上，菜单触发器可以直接以本组件作为渲染目标。
 type PathSelectionCardProps = Omit<
@@ -16,7 +20,6 @@ type PathSelectionCardProps = Omit<
   PathDropOptions & {
     icon: LucideIcon;
     title: string; // 空状态提示
-    hint?: string; // 空状态补充说明
     summary: PathSelectionSummary | null; // `null` 表示尚未选择
     clear_label: string;
     on_clear: () => void;
@@ -28,7 +31,6 @@ export function PathSelectionCard(props: PathSelectionCardProps): JSX.Element {
     ref,
     icon: Icon,
     title,
-    hint,
     summary,
     clear_label,
     on_clear,
@@ -41,8 +43,7 @@ export function PathSelectionCard(props: PathSelectionCardProps): JSX.Element {
   } = props;
   const { drop_active, drop_handlers } = usePathDrop(props);
   const SummaryIcon = summary === null ? Icon : SquareMousePointer; // 选中后沿用工程页的重新选择提示。
-  const name = summary?.name ?? title; // 空状态与选中状态共用同一布局。
-  const detail = summary === null ? hint : summary.detail;
+  const label = <span className="path-selection-card__title">{summary?.name ?? title}</span>; // 空状态与选中状态共用同一行。
 
   return (
     <div
@@ -61,9 +62,13 @@ export function PathSelectionCard(props: PathSelectionCardProps): JSX.Element {
         <span className="path-selection-card__icon">
           <SummaryIcon className="size-11 stroke-[1.8]" />
         </span>
-        <span className="path-selection-card__title">{name}</span>
-        {detail === undefined ? null : (
-          <span className="path-selection-card__detail">{detail}</span>
+        {summary?.path === undefined ? (
+          label
+        ) : (
+          <Tooltip>
+            <TooltipTrigger render={label} />
+            <TooltipContent className="max-w-[512px] break-all">{summary.path}</TooltipContent>
+          </Tooltip>
         )}
       </button>
       {summary === null ? null : (
@@ -78,6 +83,25 @@ export function PathSelectionCard(props: PathSelectionCardProps): JSX.Element {
           <X className="size-4" />
         </AppButton>
       )}
+    </div>
+  );
+}
+
+/** 并排排列多个路径字段，窄窗口改为单列。 */
+export function PathSelectionFields(props: { label: string; children: ReactNode }): JSX.Element {
+  return (
+    <section className="path-selection-fields" aria-label={props.label}>
+      {props.children}
+    </section>
+  );
+}
+
+/** 字段标题位于选择卡片上方。 */
+export function PathSelectionField(props: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <div className="path-selection-field">
+      <h2 className="path-selection-field__title">{props.title}</h2>
+      {props.children}
     </div>
   );
 }

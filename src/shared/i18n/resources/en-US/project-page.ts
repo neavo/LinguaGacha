@@ -27,7 +27,6 @@ export const en_us_project_page = {
     drop_title: "Click or Drag .lg File",
     recent_title: "Recent Projects",
     empty: "No recent projects",
-    ready_status: "Project Ready",
     loading_toast: "Loading project …",
     preview_unavailable: "Failed to read project preview …",
     action: "Open Project",
@@ -44,15 +43,6 @@ export const en_us_project_page = {
     created_at: "Created At",
     updated_at: "Last Updated",
     progress: "Progress",
-  },
-  loading_stages: {
-    project: "Loading project information …",
-    files: "Loading project files …",
-    items: "Loading project items …",
-    quality: "Loading quality rules …",
-    prompts: "Loading prompt settings …",
-    proofreading: "Loading proofreading view …",
-    task: "Loading task status …",
   },
   formats: {
     title: "Supported File Formats",

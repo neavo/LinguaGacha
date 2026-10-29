@@ -8,9 +8,7 @@ import { useGameBackupConfirm } from "@frontend/features/game-backup-confirm/use
 import {
   push_error_toast,
   push_toast,
-  push_progress_toast,
-  update_progress_toast,
-  dismiss_toast,
+  run_modal_progress_toast,
 } from "@frontend/app/feedback/desktop-toast";
 import type { ProjectPreview } from "@shared/project-preview";
 import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
@@ -25,7 +23,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { type JSX, type MouseEvent, useEffect, useRef, useState } from "react";
+import { type JSX, type MouseEvent, useState } from "react";
 
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 
@@ -52,8 +50,7 @@ import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import "@frontend/pages/project-page/project-page.css";
 import { ProjectSourceFormats } from "@frontend/pages/project-page/components/project-source-formats";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
-import { extract_parent_dir } from "@frontend/app/desktop/path";
-import type { ProjectStage } from "@frontend/app/state/desktop-project-change-types";
+import { extract_file_name, extract_parent_dir } from "@frontend/app/desktop/path";
 import type { ProjectLanguageKey } from "@domain/project-settings";
 import { ProjectLanguageDialog } from "@frontend/pages/project-page/components/project-language-dialog";
 import {
@@ -180,14 +177,6 @@ const DEFAULT_PRESET_SETTING_SPECS: DefaultPresetSettingSpec[] = [
     name_key: "project_page.create.default_presets.translation_prompt",
   },
 ];
-
-/**
- * 从跨平台路径中提取文件名，供默认工程名和最近工程名复用。
- */
-function extract_file_name(file_path: string): string {
-  const normalized_segments = file_path.split(/[\\/]+/u);
-  return normalized_segments.at(-1) ?? file_path;
-}
 
 /**
  * 从文件名中提取 stem，避免默认工程名继承源文件扩展名。
@@ -396,40 +385,7 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
 }
 
 /**
- * 将项目加载阶段映射为模态进度文案。
- */
-function resolve_project_loading_stage_message(
-  stage: ProjectStage | null,
-  t: ReturnType<typeof useI18n>["t"],
-): string | null {
-  if (stage === "project") {
-    return t("project_page.loading_stages.project");
-  }
-  if (stage === "files" || stage === "pdf") {
-    return t("project_page.loading_stages.files");
-  }
-  if (stage === "items") {
-    return t("project_page.loading_stages.items");
-  }
-  if (stage === "quality") {
-    return t("project_page.loading_stages.quality");
-  }
-  if (stage === "prompts") {
-    return t("project_page.loading_stages.prompts");
-  }
-
-  if (stage === "proofreading") {
-    return t("project_page.loading_stages.proofreading");
-  }
-  if (stage === "task") {
-    return t("project_page.loading_stages.task");
-  }
-
-  return null;
-}
-
-/**
- * 等待下一帧，给加载 Toast 的最后一次阶段更新留出渲染机会。
+ * 等待下一帧，任务结束后的界面先完成渲染再解除遮罩。
  */
 function wait_for_next_animation_frame(): Promise<void> {
   return new Promise((resolve) => {
@@ -444,7 +400,6 @@ function wait_for_next_animation_frame(): Promise<void> {
  */
 export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const {
-    project_session_stage,
     settings_snapshot,
     set_project_session_status,
     refresh_project_snapshot,
@@ -463,7 +418,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const [create_languages, set_create_languages] = useState<ProjectLanguageDraft>(
     read_project_language_preference,
   );
-  const project_loading_toast_id_ref = useRef<string | number | null>(null);
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5);
   const has_recent_projects = recent_projects.length > 0;
   const source_selection_disabled = is_source_checking || is_creating_project; // 摘要与创建共用来源快照，期间冻结所有编辑入口。
@@ -490,43 +444,20 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     set_selected_source(null);
   }
 
-  useEffect(() => {
-    const toast_id = project_loading_toast_id_ref.current;
-    const next_message = resolve_project_loading_stage_message(project_session_stage, t);
-    const normalized_message = next_message?.trim() ?? "";
-
-    if (toast_id === null || normalized_message === "") {
-      return;
-    }
-
-    update_progress_toast(toast_id, {
-      message: normalized_message,
-      presentation: "modal",
-    });
-  }, [project_session_stage, t]);
-
   /**
-   * 包裹创建和打开流程，统一展示可更新的模态进度。
+   * 创建和打开流程共用模态进度。
    */
   async function run_project_loading_modal(args: {
-    initial_message: string;
+    message: string;
     task: () => Promise<void>;
   }): Promise<void> {
-    const toast_id = push_progress_toast({
-      message: args.initial_message,
-      presentation: "modal",
+    await run_modal_progress_toast({
+      message: args.message,
+      task: async () => {
+        await args.task();
+        await wait_for_next_animation_frame();
+      },
     });
-    project_loading_toast_id_ref.current = toast_id;
-
-    try {
-      await args.task();
-      await wait_for_next_animation_frame();
-    } finally {
-      if (project_loading_toast_id_ref.current === toast_id) {
-        project_loading_toast_id_ref.current = null;
-      }
-      dismiss_toast(toast_id);
-    }
   }
 
   /**
@@ -553,9 +484,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
       if (source_file_count === 0) {
         set_selected_source(null);
-        if (Array.isArray(payload.failed_files) && payload.failed_files.length)
-          push_error_toast(t("project_page.create.unavailable"), t("app.data_refresh.failed"));
-        else push_toast("warning", t("project_page.create.unavailable"));
+        push_toast("warning", t("project_page.create.unavailable"));
       } else {
         set_selected_source({
           source_paths: normalized_source_paths,
@@ -691,7 +620,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
         ? output_path
         : `${output_path}.lg`;
       await run_project_loading_modal({
-        initial_message: t("project_page.create.loading_toast"),
+        message: t("project_page.create.loading_toast"),
         task: async () => {
           const create_payload = await api_fetch<ProjectCreateCommitPayload>(
             "/api/session/project/create",
@@ -815,7 +744,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           ? null
           : {
               name: extract_file_name(selected_project.path),
-              detail: t("project_page.open.ready_status"),
+              path: selected_project.path,
             }
       }
       clear_label={t("app.action.reset")}

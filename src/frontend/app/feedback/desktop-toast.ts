@@ -6,6 +6,7 @@ type DesktopToastId = string | number;
 type DesktopToastAction = { label: string; onClick: () => void };
 type DesktopToastOptions = {
   id?: DesktopToastId; // 持续状态以同一 ID 更新内容。
+  description?: string; // 标题下方的具体结果。
   action?: DesktopToastAction;
   persistent?: boolean; // 需要用户确认的结果持续显示，使用已有关闭按钮。
   dismissible?: boolean; // 运行状态通知由拥有者随状态解除。
@@ -52,9 +53,10 @@ export function push_toast(
   message: string,
   options: DesktopToastOptions = {},
 ): DesktopToastId {
-  const { id, action, persistent = false, dismissible } = options;
+  const { id, description, action, persistent = false, dismissible } = options;
   return toast[kind](message, {
     ...(id === undefined ? {} : { id }),
+    ...(description === undefined ? {} : { description }),
     ...(action === undefined ? {} : { action }),
     ...(dismissible === undefined ? {} : { dismissible, closeButton: dismissible }),
     ...(persistent || action !== undefined || dismissible === false
@@ -86,17 +88,6 @@ export function push_progress_toast(options: ProgressToastOptions): DesktopToast
   const owner_token = `${PROGRESS_TOAST_SONNER_ID}:${++progress_owner_seed}`;
   write_progress_toast({ ...options, owner_token });
   return owner_token;
-}
-
-/** 旧任务的迟到回调只能操作自己的通知。 */
-export function update_progress_toast(
-  toast_id: DesktopToastId,
-  options: ProgressToastOptions,
-): DesktopToastId {
-  if (progress_state?.owner_token === toast_id) {
-    write_progress_toast({ ...options, owner_token: toast_id });
-  }
-  return toast_id;
 }
 
 /** 模态任务立即释放遮罩，普通进度短暂保留完成反馈。 */

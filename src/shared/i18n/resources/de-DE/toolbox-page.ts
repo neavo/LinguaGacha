@@ -5,8 +5,11 @@ export const de_de_toolbox_page = {
   title: "Werkzeugkasten",
   entries: {
     game_font: {
+      description: "Godot · RenPy · Tyrano · WOLFRPG · RPGMAKER MV/MZ",
+    },
+    translation_transfer: {
       description:
-        "<emphasis>Godot</emphasis> · <emphasis>RenPy</emphasis> · <emphasis>Tyrano</emphasis> · <emphasis>WOLFRPG</emphasis> · <emphasis>RPGMAKER MV/MZ</emphasis>",
+        "Abgeschlossene Übersetzungen in ein anderes Projekt übertragen, häufig für Aktualisierungen von Inhalten wie Romanen oder Spielen",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_toolbox_page>;

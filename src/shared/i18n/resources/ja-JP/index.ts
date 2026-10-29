@@ -1,4 +1,5 @@
 import { ja_jp_game_font_page } from "./game-font-page";
+import { ja_jp_translation_transfer_page } from "./translation-transfer-page";
 import { ja_jp_toolbox_page } from "./toolbox-page";
 import { ja_jp_skills_page } from "./skills-page";
 import { ja_jp_agent_page } from "./agent-page";
@@ -36,6 +37,7 @@ export const ja_jp_messages = {
   laboratory_page: ja_jp_laboratory_page,
   toolbox_page: ja_jp_toolbox_page,
   game_font_page: ja_jp_game_font_page,
+  translation_transfer_page: ja_jp_translation_transfer_page,
   log_window_page: ja_jp_log_window_page,
   model_page: ja_jp_model_page,
   post_translation_replacement_page: ja_jp_post_translation_replacement_page,

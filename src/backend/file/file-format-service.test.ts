@@ -161,7 +161,6 @@ describe("FileFormatService", () => {
     );
     const result = await service.summarize_source_files([bad, good]);
     expect(result.source_file_count).toBe(1);
-    expect(result.failed_files).toMatchObject([{ source_path: bad, message: "stat denied" }]);
   });
 
   it("已展开游戏的零包预览也检查正式执行前新增的包", async () => {
@@ -456,7 +455,6 @@ it("识别失败与正常来源共同进入只读摘要，正式导入重新识�
   );
   const summary = await service.summarize_source_files([temp.path]);
   expect(summary.source_file_count).toBe(1);
-  expect(summary.failed_files).toMatchObject([{ source_path: source }]);
   expect(fs.readdirSync(temp.path).sort()).toEqual(["bad.exe", "ok.txt"]);
   fs.writeFileSync(
     source,

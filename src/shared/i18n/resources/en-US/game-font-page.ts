@@ -18,8 +18,5 @@ export const en_us_game_font_page = {
   },
   feedback: {
     inspect_failed: "Detection failed …",
-    apply_failed: "Modification failed …",
-    applying: "Modifying game font …",
-    apply_success: "Game font modified …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_game_font_page>;

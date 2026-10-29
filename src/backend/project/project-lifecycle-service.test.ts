@@ -982,7 +982,7 @@ describe("ProjectLifecycleService", () => {
       expect(expected.map((item) => [item.src, item.status])).toEqual([
         ["こんにちは", "NONE"],
         [script, "RULE_SKIPPED"],
-        ["こんにちは", "RULE_SKIPPED"],
+        ['say("こんにちは");', "RULE_SKIPPED"], // 事件脚本整块保留，不再拆出字符串字面量。
       ]);
       const records = await database.get_all_asset_records(created);
       expect(records).toHaveLength(2);

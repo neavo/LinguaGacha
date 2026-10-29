@@ -74,6 +74,11 @@ export const APP_ERROR_DEFINITIONS = {
     status: 409,
     severity: "expected",
   },
+  "project.path_conflict": {
+    message: "The output project must differ from the source projects and the loaded project.",
+    status: 409,
+    severity: "expected",
+  },
   "data.revision_conflict": {
     message: "The data was modified by another operation.",
     status: 409,

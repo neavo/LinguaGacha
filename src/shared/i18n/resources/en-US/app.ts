@@ -2,10 +2,6 @@ import { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {
-  data_refresh: {
-    success: "Data refresh succeeded …",
-    failed: "Data refresh failed …",
-  },
   godot_pack_order: {
     title: "Resource pack priority",
     description: "Later resource packs override resources with the same name in earlier packs",
@@ -80,6 +76,8 @@ export const en_us_app = {
     export_failed: "Export failed …",
     copy_failed: "Copy failed …",
     read_failed: "Read failed …",
+    operation_running: "Running operation …",
+    operation_success: "Operation succeeded …",
     operation_failed: "Operation failed …",
     content_unavailable: "Content unavailable",
     save_failed: "Save failed …",
@@ -91,7 +89,6 @@ export const en_us_app = {
     no_valid_data: "No valid data",
     update_failed: "Update failed …",
     project_settings_aligned: "Project settings updated from current settings",
-    project_cache_loading: "Refreshing project cache …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

@@ -42,6 +42,7 @@ import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectSummaryService } from "../project/project-summary-service";
+import { ProjectTranslationTransferService } from "../project/project-translation-transfer-service";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
 import { ProofreadingService } from "../proofreading/proofreading-service";
@@ -99,6 +100,7 @@ export interface BackendProjectServices {
 
   summary: ProjectSummaryService;
   content: ProjectContentService;
+  translationTransfer: ProjectTranslationTransferService;
 }
 
 export interface BackendProofreadingServices {
@@ -285,6 +287,11 @@ export class BackendServices {
         undefined,
         this.logManager,
         this.game_prepare_worker.run,
+      ),
+      translationTransfer: new ProjectTranslationTransferService(
+        options.database,
+        this.runtime_gate,
+        session_state,
       ),
     };
     const settings_commands = new AppSettingsCommandService(

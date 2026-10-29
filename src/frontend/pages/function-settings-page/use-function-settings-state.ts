@@ -138,7 +138,7 @@ export function useFunctionSettingsState(): UseFunctionSettingsStateResult {
       };
       if (field === "source_language") {
         await run_modal_progress_toast({
-          message: t("app.feedback.project_cache_loading"),
+          message: t("app.feedback.operation_running"),
           task: save,
         });
       } else {

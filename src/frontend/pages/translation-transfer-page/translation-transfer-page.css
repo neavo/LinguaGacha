@@ -1,0 +1,18 @@
+/* 页面本身不滚动，选择区与设置行独立滚动，动作条始终占据底部。 */
+.translation-transfer-page {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  gap: var(--ui-list-gap-dense);
+}
+
+.translation-transfer-page__body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { compare_app_version, parse_app_version } from "../../shared/app-version";
 import type { ProjectPreview } from "../../shared/project-preview";
@@ -21,6 +22,13 @@ export type {
 } from "./project-database-access";
 const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite 的 FULL 物理回收模式。
 const SQLITE_BUSY_TIMEOUT_MS = 5000; // 版本查询与 WAL 配置均受等待上限约束。
+const SQLITE_WAL_SUFFIX = "-wal";
+const PROJECT_FILE_SUFFIXES = ["", SQLITE_WAL_SUFFIX, "-shm"] as const; // 替换和删除同时处理主文件、WAL 与共享索引。
+/**
+ * `write` 启用写入。`query` 在调用方确认前禁止写入。
+ * `read_only` 关闭时不会合并 WAL，也不会清理自己创建的副文件。
+ */
+type ProjectConnectionMode = "write" | "query" | "read_only";
 /** 关闭失败的连接仍由数据库层持有，以便再次回收。 */
 interface ProjectDatabaseConnectionRecord {
   readonly normalized_path: string;
@@ -133,6 +141,61 @@ export class ProjectDatabase {
       false,
       "query",
     );
+  }
+  /** 导出包含 WAL 已提交数据的一致快照。调用方负责清理目标文件。 */
+  public export_snapshot(project_path: string, output_path: string): Promise<void> {
+    return this.schedule(project_path, () => {
+      // 遗留 WAL 用只读连接保留原工程字节。无 WAL 时用可写连接清理本次打开创建的副文件。
+      const mode = this.native_fs.exists(project_path + SQLITE_WAL_SUFFIX) ? "read_only" : "query";
+      return this.execute_connection(
+        project_path,
+        async (record) => {
+          if (mode === "query") record.db.exec("PRAGMA query_only=OFF"); // `query_only` 同样阻止写出目标文件。
+          record.db.prepare("VACUUM INTO ?").run(this.native_fs.to_native_path(output_path));
+        },
+        false,
+        mode,
+      );
+    });
+  }
+  /** 替换失败时恢复旧工程及其 WAL。备份清理失败按已提交错误报告。 */
+  public replace_project_file(source_path: string, target_path: string): Promise<void> {
+    return this.schedule(target_path, async () => {
+      const backup_path = path.join(path.dirname(target_path), `.${randomUUID()}.tmp`);
+      const moved: string[] = []; // 只恢复已经移开的文件，保留失败前仍在原位的文件。
+      try {
+        for (const suffix of PROJECT_FILE_SUFFIXES) {
+          if (!this.native_fs.exists(target_path + suffix)) continue;
+          this.native_fs.rename(target_path + suffix, backup_path + suffix);
+          moved.push(suffix);
+        }
+        this.native_fs.rename(source_path, target_path);
+      } catch (error) {
+        const failure = database_error(error, target_path, "replace_file");
+        try {
+          for (const suffix of moved)
+            this.native_fs.rename(backup_path + suffix, target_path + suffix);
+        } catch (cleanup) {
+          throw database_cleanup_error(
+            failure,
+            database_error(cleanup, target_path, "restore_file"),
+          );
+        }
+        throw failure;
+      }
+      try {
+        for (const suffix of moved) this.native_fs.unlink(backup_path + suffix, { force: true });
+      } catch (cleanup) {
+        throw this.committed_error(cleanup, target_path);
+      }
+    });
+  }
+  /** 删除工程主文件及其副文件，缺失的文件视为已删除。 */
+  public remove_project_file(project_path: string): Promise<void> {
+    return this.schedule(project_path, async () => {
+      for (const suffix of PROJECT_FILE_SUFFIXES)
+        this.native_fs.unlink(project_path + suffix, { force: true });
+    });
   }
   /** 排他创建文件，失败时按提交状态决定是否删除本次新文件。 */
   public async create_project(
@@ -295,7 +358,7 @@ export class ProjectDatabase {
     project_path: string,
     callback: (record: ProjectDatabaseConnectionRecord) => Promise<T>,
     write: boolean | (() => boolean) = false,
-    mode: "write" | "query" = "write",
+    mode: ProjectConnectionMode = "write",
   ): Promise<T> {
     return this.schedule(project_path, () =>
       this.execute_connection(project_path, callback, write, mode),
@@ -306,24 +369,24 @@ export class ProjectDatabase {
     project_path: string,
     callback: (record: ProjectDatabaseConnectionRecord) => Promise<T>,
     write: boolean | (() => boolean) = false,
-    mode: "write" | "query" = "write",
+    mode: ProjectConnectionMode = "write",
   ): Promise<T> {
     // 取得队列后检查，防止等待期间文件被移走后 SQLite 静默创建空库。
-    if (mode === "query" && !this.native_fs.exists(project_path)) {
+    if (mode !== "write" && !this.native_fs.exists(project_path)) {
       throw new AppErrors.AppError("project.not_found", {
         public_details: { filename: path.basename(project_path) },
       });
     }
-    const record = this.open_project_record(path.resolve(project_path));
+    const record = this.open_project_record(path.resolve(project_path), mode === "read_only");
     let result: { ok: true; value: T } | { ok: false; error: unknown };
     try {
       if (mode === "query") record.db.exec("PRAGMA query_only=ON");
-      else this.enable_project_writes(record);
+      else if (mode === "write") this.enable_project_writes(record);
       result = { ok: true, value: await callback(record) };
     } catch (error) {
       result = {
         ok: false,
-        error: mode === "query" ? database_error(error, project_path, mode) : error,
+        error: mode === "write" ? error : database_error(error, project_path, mode),
       };
     }
     try {
@@ -353,7 +416,10 @@ export class ProjectDatabase {
   /**
    * 取得可用连接，失败连接先关闭再重新初始化
    */
-  private open_project_record(normalized_path: string): ProjectDatabaseConnectionRecord {
+  private open_project_record(
+    normalized_path: string,
+    read_only = false,
+  ): ProjectDatabaseConnectionRecord {
     const cached = this.connection_records.get(normalized_path);
     if (cached !== undefined) this.close_connection_record(cached);
     let record: ProjectDatabaseConnectionRecord | undefined;
@@ -361,6 +427,7 @@ export class ProjectDatabase {
       this.native_fs.make_dir(path.dirname(normalized_path));
       const db = new DatabaseSync(this.native_fs.to_native_path(normalized_path), {
         timeout: SQLITE_BUSY_TIMEOUT_MS,
+        readOnly: read_only,
       });
       record = {
         normalized_path,

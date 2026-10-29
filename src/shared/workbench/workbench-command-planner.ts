@@ -1,5 +1,3 @@
-import type { SourceFileParseFailureRecord } from "../source-file-parse-failure";
-
 type WorkbenchCommandSection = "files" | "items" | "pdf";
 type WorkbenchSectionRevisions = Record<string, number | undefined>;
 
@@ -137,7 +135,6 @@ export type WorkbenchImportFilesPreview = {
   files_revision: number; // 与命名和冲突分类来自同一次数据库读取。
   files: WorkbenchImportFileCandidate[];
   contains_game: boolean; // 原生游戏会改写游戏目录，界面据此提示完整备份。
-  failed_files?: SourceFileParseFailureRecord[];
 };
 
 // 前端只提交预览候选和用户选择，名称与冲突分类由后端拥有。

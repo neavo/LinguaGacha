@@ -13,6 +13,7 @@ import { ProjectPage } from "@frontend/pages/project-page/page";
 import { TextPreservePage } from "@frontend/pages/text-preserve-page/page";
 import { TextReplacementPage } from "@frontend/pages/text-replacement-page/page";
 import { ToolboxPage } from "@frontend/pages/toolbox-page/page";
+import { TranslationTransferPage } from "@frontend/pages/translation-transfer-page/page";
 import { WorkbenchPage } from "@frontend/pages/workbench-page/page";
 import type { ScreenComponentProps, ScreenRegistry } from "@frontend/app/navigation/types";
 
@@ -90,5 +91,9 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
   "game-font": {
     component: GameFontPage,
     title_key: "game_font_page.title",
+  },
+  "translation-transfer": {
+    component: TranslationTransferPage,
+    title_key: "translation_transfer_page.title",
   },
 };
