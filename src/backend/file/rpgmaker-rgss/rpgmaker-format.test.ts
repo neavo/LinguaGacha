@@ -13,6 +13,7 @@ import {
   ruby_object as o,
   ruby_string as s,
   ruby_integer as n,
+  ruby_command as c,
 } from "../../../test/rgss-fixture";
 import { create_pdf_execution } from "../pdf/test-support";
 import { FileFormatService } from "../file-format-service";
@@ -51,6 +52,18 @@ it.each([
     encode(o("RPG::System", { "@game_title": s(title), "@currency_unit": s("ゴールド") })),
   );
   fs.writeFileSync(path.join(data, "Actors" + extension), actors);
+  const script = 'profile = "unfinished\nshow_profile actor';
+  fs.writeFileSync(
+    path.join(data, "Map001" + extension),
+    encode(
+      a([
+        c(355, [s('profile = "unfinished')]),
+        c(655, [s("show_profile actor")]),
+        c(355, [s('puts "keep event"')]),
+        c(0, []),
+      ]),
+    ),
+  );
   fs.writeFileSync(path.join(data, "Broken" + extension), "broken");
   const service = new FileFormatService(
     new GameDirectoryOperations(),
@@ -80,6 +93,8 @@ it.each([
   expect(result.items.map((item) => [item.src, FileFormatService.default_status(item)])).toEqual([
     ["hero", "NONE"],
     ["resource", "RULE_SKIPPED"],
+    [script, "RULE_SKIPPED"],
+    ['puts "keep event"', "RULE_SKIPPED"],
     [title, "RULE_SKIPPED"],
     ["ゴールド", "NONE"],
     ["menu", "RULE_SKIPPED"],
@@ -96,6 +111,10 @@ it.each([
   menu.status = "PROCESSED";
   const keep = result.items.find((item) => item.src === "keep")!;
   keep.dst = "不应写入";
+  const event = result.items.find((item) => item.src === script)!;
+  event.dst = 'profile = "角色介绍"\nshow_profile actor\n# 译文';
+  event.status = "PROCESSED";
+  result.items.find((item) => item.src === 'puts "keep event"')!.dst = "不应写入";
   const item = result.items.find((item) => item.src === "hero")!;
   item.dst = "英雄";
   item.status = "PROCESSED";
@@ -114,6 +133,12 @@ it.each([
   expect(fs.readFileSync(path.join(output, "game/Data/Broken" + extension), "utf8")).toBe("broken");
   const archive = decode(fs.readFileSync(path.join(output, "game/Custom/Main" + extension)));
   expect(inflateSync(bytes(array(array(archive)[0]!)[2]!)).toString()).toBe('puts "菜单", "keep"');
+  const map = decode(fs.readFileSync(path.join(output, "game/Data/Map001" + extension)));
+  expect(
+    array(map)
+      .slice(0, -1)
+      .map((node) => text(array(field(node, "@parameters")!)[0]!)),
+  ).toEqual([...event.dst.split("\n"), 'puts "keep event"']);
   const unchanged = path.join(temp.path, "unchanged");
   await new GameFormat(
     new GameDirectoryOperations(),
