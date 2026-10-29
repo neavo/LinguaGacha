@@ -99,42 +99,36 @@ describe("MV/MZ 原稿写回", () => {
     ).toEqual({ settings: container, label: "标题译文" });
   });
 
-  it.each(["js/plugins/test.js", "data/CommonEvents.json"])(
-    "插件和事件脚本默认排除，人工翻译按保存定位写回：%s",
-    async (file) => {
-      const script = 'const x = {"管理😀": "显示"}; show(`你好${x}世界`); x[`選択_${id}`];';
-      const json = file.endsWith(".json");
-      const bytes = Buffer.from(
-        json ? JSON.stringify([null, { list: [command(355, [script])] }]) : script,
-      );
-      const { items } = await members.read_file(bytes, file);
-      expect(items.map(({ src, status }) => [src, status])).toEqual([
-        ["管理😀", "RULE_SKIPPED"],
-        ["显示", "RULE_SKIPPED"],
-        ["你好", "RULE_SKIPPED"],
-        ["世界", "RULE_SKIPPED"],
-        ["選択_", "RULE_SKIPPED"],
-      ]);
-      expect(items[0]?.extra_field).toMatchObject({
-        rpgmaker_mv_mz: {
-          source_context: '"管理😀": "显示"',
-          location: { kind: "script" },
-        },
-      });
-      items[0]!.status = "PROCESSED";
-      items[0]!.dst = "人工😀";
-      const output = Buffer.from(await members.render(bytes, file, items)).toString();
-      expect(json ? JSON.parse(output)[1].list[0].parameters[0] : output).toBe(
-        script.replace("管理😀", "人工😀"),
-      );
-    },
-  );
-  it("无法解析的脚本事件块静默保留为默认排除条目，启用后按行数重建指令", async () => {
-    const broken = [command(355, ['say("保留原文");']), command(655, ["if()array.push;"])];
+  it("插件脚本默认排除，人工翻译按保存定位写回", async () => {
+    const file = "js/plugins/test.js";
+    const script = 'const x = {"管理😀": "显示"}; show(`你好${x}世界`); x[`選択_${id}`];';
+    const bytes = Buffer.from(script);
+    const { items } = await members.read_file(bytes, file);
+    expect(items.map(({ src, status }) => [src, status])).toEqual([
+      ["管理😀", "RULE_SKIPPED"],
+      ["显示", "RULE_SKIPPED"],
+      ["你好", "RULE_SKIPPED"],
+      ["世界", "RULE_SKIPPED"],
+      ["選択_", "RULE_SKIPPED"],
+    ]);
+    expect(items[0]?.extra_field).toMatchObject({
+      rpgmaker_mv_mz: {
+        source_context: '"管理😀": "显示"',
+        location: { kind: "script" },
+      },
+    });
+    items[0]!.status = "PROCESSED";
+    items[0]!.dst = "人工😀";
+    const output = Buffer.from(await members.render(bytes, file, items)).toString();
+    expect(output).toBe(script.replace("管理😀", "人工😀"));
+  });
+
+  it("事件脚本默认排除，启用后按译文行数重建并保留缩进及相邻指令", async () => {
+    const block = [command(355, ['say("保留原文");'], 2), command(655, ["// 续行"], 2)];
     const list = [
       command(101, ["", 0, 0, 2]),
       command(401, ["前文"]),
-      ...broken,
+      ...block,
       command(111, [12, "$dataMap."]),
       command(101, ["", 0, 0, 2]),
       command(401, ["后文"]),
@@ -146,16 +140,25 @@ describe("MV/MZ 原稿写回", () => {
     expect(result.warnings).toMatchObject([
       { code: "script_syntax_error", json_path: [1, "list", 4, "parameters", 1] },
     ]);
-    const fallback = 'say("保留原文");\nif()array.push;';
+    const script = 'say("保留原文");\n// 续行';
     expect(result.items.map((item) => [item.src, item.status])).toEqual([
       ["前文", "NONE"],
-      [fallback, "RULE_SKIPPED"],
+      [script, "RULE_SKIPPED"],
       ["后文", "NONE"],
-      ["有效脚本", "RULE_SKIPPED"],
+      ['say("有效脚本");', "RULE_SKIPPED"],
     ]);
     for (const item of result.items) {
-      item.dst = item.src === "前文" ? "前一\n前二" : `${item.src}译文`;
-      if (item.src !== fallback) item.status = "PROCESSED";
+      if (item.src === script) item.dst = "a();\nb();\nc();";
+      else
+        Object.assign(item, {
+          status: "PROCESSED",
+          dst:
+            item.src === "前文"
+              ? "前一\n前二"
+              : item.src === "后文"
+                ? "后文译文"
+                : 'say("有效脚本译文");',
+        });
     }
     const render = async () =>
       JSON.parse(
@@ -178,11 +181,46 @@ describe("MV/MZ 原稿写回", () => {
         ],
       },
     ];
-    expect(await render()).toEqual(expected(broken));
-    Object.assign(result.items[1]!, { status: "PROCESSED", dst: "a();\nb();\nc();" });
+    expect(await render()).toEqual(expected(block));
+    result.items[1]!.status = "PROCESSED";
     expect(await render()).toEqual(
-      expected([command(355, ["a();"]), command(655, ["b();"]), command(655, ["c();"])]),
+      expected([command(355, ["a();"], 2), command(655, ["b();"], 2), command(655, ["c();"], 2)]),
     );
+  });
+
+  it("历史脚本字符串按保存的 script → block 定位继续写回", async () => {
+    const list = [
+      command(355, ['say("旧文");'], 1),
+      command(655, ["// 保留续行"], 1),
+      command(0, []),
+    ];
+    const bytes = Buffer.from(JSON.stringify([null, { list }]));
+    const item = create_item({
+      src: "旧文",
+      dst: '历史"译文\n😀',
+      status: "PROCESSED",
+      extra_field: {
+        rpgmaker_mv_mz: {
+          internal_file_path: "data/CommonEvents.json",
+          usage: "metadata",
+          location: {
+            kind: "script",
+            container: { kind: "block", path: [1, "list"], start: 0, end: 2, code: 355 },
+            start: 4,
+            end: 8,
+            template: false,
+          },
+        },
+      },
+    });
+    expect(
+      JSON.parse(
+        Buffer.from(await members.render(bytes, "data/CommonEvents.json", [item])).toString(),
+      ),
+    ).toEqual([
+      null,
+      { list: [command(355, [`say(${JSON.stringify(item.dst)});`], 1), ...list.slice(1)] },
+    ]);
   });
   it("保存的定位独立于用途分类、条目顺序和当前提取字段", async () => {
     const bytes = Buffer.from('[null,{"name":"勇者","legacy":"旧字段"}]');
@@ -255,6 +293,8 @@ describe("MV/MZ 原稿写回", () => {
   it("对话变长后，姓名、JSON 选项镜像与脚本按原始位置写回", async () => {
     const choice = JSON.stringify({ text: "はい" });
     const script = `const x = ${JSON.stringify(JSON.stringify({ text: "脚本" }))};`;
+    const source_script = `${script}\nconsole.log(x);`;
+    const translated_script = `const x = ${JSON.stringify(JSON.stringify({ text: '引号"和\\换行\n😀' }))};\n// 新增行\nconsole.log(x);`;
     const list = [
       command(101, ["Face", 0, 0, 2, "勇者"]),
       command(401, ["一行"]),
@@ -272,7 +312,7 @@ describe("MV/MZ 原稿写回", () => {
       JSON.stringify({ displayName: "地图", events: [null, { name: "EV001", pages: [{ list }] }] }),
     );
     const { items } = await members.read_file(bytes, "data/Map001.json");
-    expect(items.find((item) => item.src === "脚本")?.status).toBe("RULE_SKIPPED");
+    expect(items.find((item) => item.src === source_script)?.status).toBe("RULE_SKIPPED");
     for (const item of items) {
       if (item.src === "一行")
         Object.assign(item, {
@@ -282,8 +322,8 @@ describe("MV/MZ 原稿写回", () => {
         });
       if (item.src === choice)
         Object.assign(item, { status: "PROCESSED", dst: JSON.stringify({ text: "是" }) });
-      if (item.src === "脚本")
-        Object.assign(item, { status: "PROCESSED", dst: '引号"和\\换行\n😀' });
+      if (item.src === source_script)
+        Object.assign(item, { status: "PROCESSED", dst: translated_script });
     }
     const output = JSON.parse(
       Buffer.from(await members.render(bytes, "data/Map001.json", items)).toString(),
@@ -297,10 +337,9 @@ describe("MV/MZ 原稿写回", () => {
     ]);
     expect(written[4].parameters[0]).toEqual([JSON.stringify({ text: "是" }), "いいえ"]);
     expect(written[5].parameters).toEqual([0, written[4].parameters[0][0]]);
-    expect(read_javascript_strings(written[8].parameters[0])).toMatchObject({
-      ok: true,
-      strings: [{ src: JSON.stringify({ text: '引号"和\\换行\n😀' }) }],
-    });
+    expect(written.slice(8, 11)).toEqual(
+      translated_script.split("\n").map((line, index) => command(index === 0 ? 355 : 655, [line])),
+    );
     expect(written.slice(-3)).toEqual(list.slice(-3));
   });
 

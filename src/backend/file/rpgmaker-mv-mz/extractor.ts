@@ -75,17 +75,10 @@ export function create_rpgmaker_extractor(rel_path: string) {
     visit(src, metadata.location);
   }
 
-  /**
-   * 脚本偏移相对完整容器保存。`355 + 655` 可能包含插件自定义语法，解析失败时静默保留整块原文供审阅和写回。
-   * 其他脚本入口只记录诊断。
-   */
-  function script(src: string, container: RPGMakerRootLocation): void {
+  /** 字段脚本的字符串偏移相对完整字段保存，解析失败时记录诊断。 */
+  function script(src: string, container: Extract<RPGMakerRootLocation, { kind: "field" }>): void {
     const result = read_javascript_strings(src);
     if (!result.ok) {
-      if (container.kind === "block") {
-        add(src, { usage: "metadata", location: container });
-        return;
-      }
       warnings.push({
         code: "script_syntax_error",
         rel_path,

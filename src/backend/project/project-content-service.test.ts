@@ -939,14 +939,18 @@ describe("ProjectContentService", () => {
               ])
             : script,
         );
-        const expected = [
-          ...(json ? [["插件事件", "RULE_SKIPPED", ""]] : []),
-          ["管理キー", "RULE_SKIPPED", ""],
-          ["こんにちは", "RULE_SKIPPED", ""],
-          ["EV001", "RULE_SKIPPED", ""],
-          ["Hello", "RULE_SKIPPED", ""],
-          ["こんにちは", "RULE_SKIPPED", ""],
-        ];
+        const expected = json
+          ? [
+              ["插件事件", "RULE_SKIPPED", ""],
+              [script, "RULE_SKIPPED", ""],
+            ]
+          : [
+              ["管理キー", "RULE_SKIPPED", ""],
+              ["こんにちは", "RULE_SKIPPED", ""],
+              ["EV001", "RULE_SKIPPED", ""],
+              ["Hello", "RULE_SKIPPED", ""],
+              ["こんにちは", "RULE_SKIPPED", ""],
+            ];
         const source = project_path("game");
         const prefix = file.startsWith("www/") ? "www/" : "";
         for (const [internal, content] of [
