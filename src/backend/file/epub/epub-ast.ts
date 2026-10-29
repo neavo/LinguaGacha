@@ -140,6 +140,10 @@ const SKIP_SUBTREE_TAGS = new Set([
 /** 单独处理链接和锚点容器，避免正文替换破坏资源、目标和属性。 */
 const TEXT_RUN_RESOURCE_TAGS = new Set(["svg", "math", "video", "audio", "iframe", "object"]);
 
+// 仅用于写回。提取规则参与已有条目的摘要核验。
+const BLOCK_TRANSLATION_RUBY_CONTAINERS = new Set(["ruby", "rb"]); // 解除容器语义，保留正文和属性。
+const BLOCK_TRANSLATION_RUBY_ANNOTATIONS = new Set(["rt", "rp", "rtc"]); // 删除注音及回退展示内容。
+
 // 宽松 XML 解析可能将后续正文挂在 `br`、`img` 下，因此仍需遍历其子节点。
 const TEXT_RUN_BOUNDARY_TAGS = new Set([
   "br",
@@ -1085,9 +1089,10 @@ export class EpubAst {
       .join("");
   }
 
-  /** 整块译文写入首个正文文本槽，保留锚点、链接、资源和跳过子树的原节点。 */
+  /** 整块翻译失去原文底字与注音的对应关系，写回时解除注音结构。 */
   public write_block_translation(block: Element, text: string): void {
     let first: Text | null = null; // 整块译文只有一个写入槽，其他正文槽清空。
+    // 先处理子树再展开容器，使首个正文节点的引用继续有效。
     const walk = (element: Element): void => {
       const children: ChildNode[] = [];
       for (const node of element.children) {
@@ -1096,8 +1101,8 @@ export class EpubAst {
           node.data = "";
         } else if (isTag(node)) {
           const tag = this.local_name(node.name);
-          if (tag === "rt") {
-            // 注音失去对应原文后移除，带身份的节点转为无正文锚点。
+          if (BLOCK_TRANSLATION_RUBY_ANNOTATIONS.has(tag)) {
+            // 注音文字删除后，保留链接仍可能引用的节点身份。
             const anchors = this.flatten_elements(node).filter(
               (n) => n.attribs["id"] !== undefined || n.attribs["name"] !== undefined,
             );
@@ -1106,6 +1111,13 @@ export class EpubAst {
             continue;
           }
           if (!SKIP_SUBTREE_TAGS.has(tag) && !TEXT_RUN_RESOURCE_TAGS.has(tag)) walk(node);
+          if (BLOCK_TRANSLATION_RUBY_CONTAINERS.has(tag)) {
+            if (Object.keys(node.attribs).length === 0) {
+              children.push(...node.children);
+              continue;
+            }
+            node.name = "span";
+          }
         }
         children.push(node);
       }
