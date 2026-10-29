@@ -4,7 +4,7 @@ import {
   type BatchTranslationProgress,
   TASK_PROGRESS_STATUSES,
 } from "../../domain/batch-translation";
-import { normalize_item_name_field, type ProjectItemPublicRecord } from "../../domain/item";
+import { type ProjectItemPublicRecord } from "../../domain/item";
 
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { read_item_translation_candidates } from "../../shared/prefilter/item-prefilter";
@@ -66,18 +66,14 @@ export function build_translation_extras_from_items(args: {
 }
 
 /**
- * 将已收窄的条目集合转成按身份索引的独立姓名快照。
+ * 将已收窄的条目集合转成按身份索引的独立条目快照。
  */
 function copy_public_items(
   items: Record<string, ProjectItemPublicRecord>,
 ): Record<string, ProjectItemPublicRecord> {
   const result: Record<string, ProjectItemPublicRecord> = {};
   for (const item of Object.values(items)) {
-    result[String(item.item_id)] = {
-      ...item,
-      name_src: normalize_item_name_field(item.name_src),
-      name_dst: normalize_item_name_field(item.name_dst),
-    };
+    result[String(item.item_id)] = { ...item };
   }
   return result;
 }

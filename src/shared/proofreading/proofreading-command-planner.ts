@@ -1,6 +1,5 @@
 import type { ItemManualStatus, ItemNameField } from "../../domain/item";
 import type { ProjectDataSectionRevisions } from "../project-event";
-import { read_item_name_text } from "../item-name";
 import { apply_project_item_manual_update } from "../project/project-item-update";
 import { compile_text_pattern, replace_text_pattern } from "../text/text-pattern";
 
@@ -109,7 +108,7 @@ function has_replace_all_change(args: {
     return true;
   }
 
-  const name_dst = read_item_name_text(args.item.name_dst);
+  const name_dst = args.item.name_dst ?? "";
   const name_replace_result = replace_all_in_text({
     text: name_dst,
     search_text: args.search_text,

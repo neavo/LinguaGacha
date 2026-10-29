@@ -43,21 +43,24 @@ describe("project item duplicate coordination", () => {
     ]);
   });
 
-  it("按文件和可见角色名区分重复组", () => {
+  it("按文件和姓名区分重复组，空字符串与 null 姓名归为一组", () => {
     expect(
       coordinate_project_duplicate_statuses(
         [
           item(1, "NONE", { name_src: "甲" }),
-          item(2, "NONE", { name_src: ["甲", "附加列"] }),
+          item(2, "NONE", { name_src: "甲" }),
           item(3, "NONE", { name_src: "乙" }),
           item(4, "NONE", { name_src: "甲" }),
           item(5, "NONE", { name_src: "甲", file_path: "b.txt" }),
+          item(6, "NONE", { name_src: null }),
+          item(7, "NONE", { name_src: "" }),
         ],
         true,
       ),
     ).toEqual([
       { item_id: 2, status: "DUPLICATED" },
       { item_id: 4, status: "DUPLICATED" },
+      { item_id: 7, status: "DUPLICATED" },
     ]);
   });
 });

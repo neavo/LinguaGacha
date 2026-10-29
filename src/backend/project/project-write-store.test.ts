@@ -312,7 +312,7 @@ describe("ProjectWriteStore", () => {
           item_id: 1,
           patch: {
             dst: "译文",
-            name_dst: ["译名"],
+            name_dst: "译名",
             status: "PROCESSED",
           },
         },
@@ -331,7 +331,7 @@ describe("ProjectWriteStore", () => {
           src: "原文",
           dst: "译文",
           name_src: "原名",
-          name_dst: ["译名"],
+          name_dst: "译名",
           status: "PROCESSED",
           file_path: "demo.txt",
           file_type: "TXT",
@@ -542,7 +542,7 @@ describe("ProjectWriteStore", () => {
     });
   });
 
-  it("完整替换在删除条目前拒绝缺失字段和非 JSON 私有数据，保留已有事实与修订", async () => {
+  it("完整替换在删除条目前拒绝非法条目，保留已有事实与修订", async () => {
     const { database, project_path, store, published_changes } = await create_store(
       "invalid-item-replacement",
     );
@@ -552,7 +552,12 @@ describe("ProjectWriteStore", () => {
     const complete = create_item({ id: 1, src: "新原文" });
     const { dst, ...incomplete } = complete;
     expect(dst).toBe("");
-    for (const item of [incomplete, { ...complete, extra_field: { invalid: undefined } }]) {
+    for (const item of [
+      incomplete,
+      { ...complete, extra_field: { invalid: undefined } },
+      { ...complete, name_src: ["旧数组"] },
+      { ...complete, name_dst: ["旧数组"] },
+    ]) {
       await expect(
         store.replace_project_items_and_files({
           projectPath: project_path,
@@ -1228,6 +1233,7 @@ describe("ProjectWriteStore", () => {
     );
   }
 
+  /** 回读数据库条目，检验事务提交或回滚后的事实。 */
   async function read_items(
     database: ProjectDatabase,
     project_path: string,
@@ -1235,6 +1241,7 @@ describe("ProjectWriteStore", () => {
     return (await database.get_all_items(project_path)) as unknown as MutableJsonRecord[];
   }
 
+  /** 回读持久修订和进度，检验它们与条目写入保持一致。 */
   async function read_meta(
     database: ProjectDatabase,
     project_path: string,

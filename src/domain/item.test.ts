@@ -12,17 +12,15 @@ import {
 import { Check } from "typebox/value";
 
 describe("条目数据契约", () => {
-  it("公开和存储边界复制姓名数组，后续编辑不会修改上游快照", () => {
-    const item = create_item({ id: 1, name_src: ["原名", "来源槽"], name_dst: ["译名", "译名槽"] });
-    const public_record = build_project_item_public_record(item);
-    const stored = build_project_item_persistent_records({ "1": public_record })[0]!;
-    expect(Array.isArray(public_record.name_dst)).toBe(true);
-    if (Array.isArray(public_record.name_dst)) public_record.name_dst[0] = "新译名";
-    expect(item.name_dst).toEqual(["译名", "译名槽"]);
-    expect(stored.name_dst).toEqual(["译名", "译名槽"]);
-    if (Array.isArray(public_record.name_src)) public_record.name_src[0] = "新原名";
-    expect(item.name_src).toEqual(["原名", "来源槽"]);
-    expect(stored.name_src).toEqual(["原名", "来源槽"]);
+  it("公开与完整写入契约拒绝姓名数组", () => {
+    const item = create_item({ id: 1, name_src: "原名", name_dst: "译名" });
+    const record = build_project_item_public_record(item);
+    for (const field of ["name_src", "name_dst"] as const) {
+      const invalid = { ...record, [field]: ["姓名", "附加槽"] };
+      expect(Check(PROJECT_ITEM_PUBLIC_SCHEMA, invalid)).toBe(false);
+      expect(normalize_project_item_public_record(invalid)).toBeNull();
+      expect(Check(PROJECT_ITEM_WRITE_SCHEMA, { ...item, [field]: ["姓名"] })).toBe(false);
+    }
   });
   it("格式解析可以没有身份，公开条目必须有身份，私有数据可嵌套 JSON", () => {
     const item = create_item({ extra_field: { slots: [{ value: [null, true, 1, "正文"] }] } });
@@ -40,14 +38,14 @@ describe("条目数据契约", () => {
   });
 
   it("缺失字段由 Schema 诊断，存储字段别名只在公开边界转换", () => {
-    const record = create_item({ id: 2, row: 4, name_dst: ["姓名", "后续槽"] });
+    const record = create_item({ id: 2, row: 4, name_dst: "姓名" });
     const { dst: _dst, ...incomplete } = record;
     expect(collect_project_item_missing_public_fields(incomplete)).toEqual(["dst"]);
     expect(normalize_project_item_public_record(incomplete)).toBeNull();
     expect(normalize_project_item_public_record(record)).toMatchObject({
       item_id: 2,
       row_number: 4,
-      name_dst: ["姓名", "后续槽"],
+      name_dst: "姓名",
     });
     expect(collect_project_item_missing_public_fields({})).toEqual(
       expect.arrayContaining(["item_id", "row_number", "name_src", "extra_field"]),
@@ -57,7 +55,7 @@ describe("条目数据契约", () => {
     const item = create_item({
       id: 5,
       src: 123,
-      name_src: ["名", 1, "别名"],
+      name_src: "名",
       file_type: "BROKEN",
       file_path: "script.json",
       status: "BROKEN",
@@ -69,7 +67,7 @@ describe("条目数据契约", () => {
       id: 5,
       src: "123",
       dst: "",
-      name_src: ["名", "别名"],
+      name_src: "名",
       name_dst: null,
       extra_field: "",
       tag: "",

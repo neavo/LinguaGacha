@@ -1,4 +1,3 @@
-import { read_item_name_text } from "@shared/item-name";
 import {
   compile_text_pattern,
   matches_text_pattern,
@@ -9,6 +8,7 @@ import type { ProofreadingItem } from "@shared/proofreading/proofreading-types";
 
 export type ProofreadingCompiledSearchPattern = CompiledTextPattern;
 
+/** 搜索忽略大小写，每次替换只处理首个匹配。 */
 export function create_search_pattern(
   keyword: string,
   is_regex: boolean,
@@ -21,6 +21,7 @@ export function create_search_pattern(
   });
 }
 
+/** 空查询或不可用的模式保持列表可见。 */
 export function matches_search_pattern(
   text: string,
   search_pattern: ProofreadingCompiledSearchPattern | null,
@@ -38,6 +39,7 @@ export function matches_search_pattern(
   return matches_text_pattern(text, search_pattern);
 }
 
+/** 替换文本实际变化时才计为命中，避免重复提交同值。 */
 export function replace_first_visible_match(
   text: string,
   search_pattern: ProofreadingCompiledSearchPattern,
@@ -56,6 +58,7 @@ export function replace_first_visible_match(
   };
 }
 
+/** 先替换正文，再尝试译名，每次只返回一个字段。 */
 export function find_first_translation_replace(args: {
   item: ProofreadingItem;
   search_pattern: ProofreadingCompiledSearchPattern;
@@ -75,7 +78,7 @@ export function find_first_translation_replace(args: {
     };
   }
 
-  const name_dst = read_item_name_text(args.item.name_dst);
+  const name_dst = args.item.name_dst ?? "";
   const name_result = replace_first_visible_match(
     name_dst,
     args.search_pattern,
@@ -92,6 +95,7 @@ export function find_first_translation_replace(args: {
   return null;
 }
 
+/** 正文或译名命中即可成为替换目标。 */
 export function matches_translation_replace_target(args: {
   item: ProofreadingItem;
   search_pattern: ProofreadingCompiledSearchPattern | null;
@@ -99,10 +103,6 @@ export function matches_translation_replace_target(args: {
 }): boolean {
   return (
     matches_search_pattern(args.item.dst, args.search_pattern, args.keyword) ||
-    matches_search_pattern(
-      read_item_name_text(args.item.name_dst),
-      args.search_pattern,
-      args.keyword,
-    )
+    matches_search_pattern(args.item.name_dst ?? "", args.search_pattern, args.keyword)
   );
 }

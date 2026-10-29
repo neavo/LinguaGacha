@@ -8,7 +8,6 @@ import {
 } from "../../domain/project-settings";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import { AppError } from "../../shared/error";
-import { are_item_name_fields_equal } from "../../shared/item-name";
 import {
   TRANSLATION_INHERITANCE_MODES,
   type TranslationInheritanceMode,
@@ -87,7 +86,7 @@ export class ProjectTranslationTransferService {
           const after = output.items[String(before.item_id)]!;
           return after.status === before.status &&
             after.dst === before.dst &&
-            are_item_name_fields_equal(after.name_dst, before.name_dst)
+            after.name_dst === before.name_dst
             ? []
             : [
                 {

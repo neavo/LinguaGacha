@@ -386,8 +386,8 @@ describe("ProofreadingEditDialog", () => {
     const rendered = await render_dialog({
       item: {
         ...create_proofreading_item(),
-        name_src: ["Alice", "Bob"],
-        name_dst: ["旧译名", "保留译名"],
+        name_src: "Alice",
+        name_dst: "旧译名",
       },
       state: create_dialog_state({
         draft_item: { dst: "Magic 和美1优", name_dst: "旧译名" },
@@ -413,12 +413,12 @@ describe("ProofreadingEditDialog", () => {
     expect(on_change).toHaveBeenCalledWith({ name_dst: "新译名" });
   });
 
-  it("姓名数组首项为空时不显示后续槽位姓名", async () => {
+  it("空姓名不显示姓名字段", async () => {
     const rendered = await render_dialog({
       item: {
         ...create_proofreading_item(),
-        name_src: ["", "Bob"],
-        name_dst: ["", "旧译名"],
+        name_src: "",
+        name_dst: "",
       },
     });
 

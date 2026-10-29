@@ -66,7 +66,7 @@ describe("proofreading search replace", () => {
 
     expect(
       find_first_translation_replace({
-        item: create_item({ name_dst: ["Name: Alice", "保留译名"], status: "PROCESSED" }),
+        item: create_item({ name_dst: "Name: Alice", status: "PROCESSED" }),
         search_pattern: pattern,
         replacement: "$1",
         is_regex: true,
@@ -79,7 +79,7 @@ describe("proofreading search replace", () => {
 
     expect(
       matches_translation_replace_target({
-        item: create_item({ name_dst: ["Alice", "保留译名"] }),
+        item: create_item({ name_dst: "Alice" }),
         search_pattern: pattern,
         keyword: "Alice",
       }),

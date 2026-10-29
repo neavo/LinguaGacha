@@ -4,7 +4,7 @@ import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
-import { type ProjectItemPublicRecord, normalize_item_name_field } from "../../domain/item";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import { read_json_record } from "../../domain/json";
 import type {
   ProofreadingContextQuery,
@@ -164,7 +164,7 @@ export class ProofreadingCache {
     return {
       projectPath: snapshot.projectPath,
       sectionRevisions: snapshot.sectionRevisions,
-      data: structuredClone(item), // 姓名数组和格式私有数据不能与缓存共享嵌套引用。
+      data: structuredClone(item), // 格式私有数据不能与缓存共享嵌套引用。
     };
   }
 
@@ -451,8 +451,8 @@ export class ProofreadingCache {
       row_number: item.row_number,
       src: item.src,
       dst: item.dst,
-      name_src: normalize_item_name_field(item["name_src"]),
-      name_dst: normalize_item_name_field(item["name_dst"]),
+      name_src: item.name_src,
+      name_dst: item.name_dst,
       status: item.status,
       file_type: item.file_type,
     };

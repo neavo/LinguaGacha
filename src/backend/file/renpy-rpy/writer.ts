@@ -2,7 +2,7 @@ import { encode_python } from "../renpy/python";
 import { read_translation_for_generation } from "../shared/translation-generation-text";
 import type { Item } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
+import { resolve_output_item_name } from "../../../shared/item-name";
 import {
   build_skeleton,
   escape_renpy_string,
@@ -107,13 +107,9 @@ export class RenpyWriter {
         continue;
       }
       if (slot.role === "NAME") {
-        const name = resolve_output_item_name({
-          name_src: item.name_src,
-          name_dst: item.name_dst,
-        });
-        const name_text = read_item_name_text(name);
-        if (name_text !== "") {
-          result.set(slot.lit_index, name_text);
+        const name = resolve_output_item_name(item);
+        if (name) {
+          result.set(slot.lit_index, name);
         }
         continue;
       }

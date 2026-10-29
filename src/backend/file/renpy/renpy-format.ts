@@ -1,5 +1,5 @@
 import { PythonSession } from "./python-syntax";
-import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
+import { resolve_output_item_name } from "../../../shared/item-name";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { Item } from "../../../domain/item";
@@ -192,12 +192,12 @@ async function* export_renpy(
       );
       await plan(candidate, item.dst);
       // 旧项目没有姓名字段时只写原有正文。姓名位置按当前成员的原始姓名关系恢复。
-      const name_src = read_item_name_text(item.name_src);
+      const name_src = item.name_src;
       if (!name_src) continue;
       const name_key = script.names.get(candidate.key);
       const speaker = name_key === undefined ? undefined : candidates.get(name_key);
       assert(speaker && speaker.text === name_src, "Ren'Py speaker original changed");
-      await plan(speaker, read_item_name_text(resolve_output_item_name(item)));
+      await plan(speaker, resolve_output_item_name(item)!);
     }
     return patch_script(member, changes, [], session, signal);
   };

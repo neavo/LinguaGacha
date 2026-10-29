@@ -1,176 +1,95 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
 import { describe, expect, it } from "vitest";
-
 import { create_item } from "../../../domain/item";
+import type { JsonValue } from "../../../domain/json";
 import { MESSAGEJSONFormat } from "./messagejson-format";
 
+const format = new MESSAGEJSONFormat();
+
 describe("MESSAGEJSONFormat", () => {
-  it("解析 name、names 和纯 message 条目且不预填译文", () => {
-    const format = new MESSAGEJSONFormat();
-
-    const items = format.read_items(
-      [
-        { name: "Alice", message: "msg1" },
-        { names: ["Bob", 123, "Carol"], message: "msg2" },
-        { message: "msg3" },
-        { name: "skip" },
-        "invalid",
-      ],
-      "m.json",
-    );
-
-    expect(items).toHaveLength(3);
-    expect(items.map((item) => item.name_src)).toEqual(["Alice", ["Bob", "Carol"], null]);
-    expect(items.map((item) => item.name_dst)).toEqual([null, null, null]);
-    expect(items.map((item) => item.src)).toEqual(["msg1", "msg2", "msg3"]);
-    expect(items.map((item) => item.dst)).toEqual(["", "", ""]);
-    expect(items.every((item) => item.file_type === "MESSAGEJSON")).toBe(true);
-  });
-
-  it("非数组 JSON 不按 MESSAGEJSON 解析", () => {
-    const format = new MESSAGEJSONFormat();
-
-    expect(format.read_items({ a: 1 }, "m.json")).toEqual([]);
-  });
-
-  it("完成空译文保留对象并清空正文", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
-    );
-    const format = new MESSAGEJSONFormat();
-
-    await format.write_to_path(
-      [
-        create_item({
-          status: "PROCESSED",
-          src: "s1",
-          dst: "",
-          row: 1,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-      ],
-      {
-        translated_path: temp_dir.path,
-        bilingual_path: path.join(temp_dir.path, "bilingual"),
-      },
-    );
-
+  it("导入只提取当前姓名和有效台词序号", () => {
+    const source: JsonValue = [
+      { command: "wait" },
+      { name: "Alice", names: ["ignored"], message: "one" },
+      null,
+      { names: [123, "Bob", "tail"], message: "two" },
+      { names: [false], message: "three" },
+      { name: "", names: ["ignored"], message: "four" },
+    ];
+    const items = format.read_items(source, "m.json");
     expect(
-      JSON.parse(fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8")),
-    ).toEqual([{ message: "" }]);
-  });
-
-  it("写回时逐条优先使用第 0 槽译名并回退源姓名", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
-    );
-    const format = new MESSAGEJSONFormat();
-    await format.write_to_path(
-      [
-        create_item({
-          status: "PROCESSED",
-          dst: "m1",
-          name_src: "hero",
-          name_dst: "勇者",
-          row: 1,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-        create_item({
-          status: "PROCESSED",
-          dst: "m2",
-          name_src: "hero",
-          name_dst: "英雄",
-          row: 2,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-        create_item({
-          status: "PROCESSED",
-          dst: "m2b",
-          name_src: "hero",
-          name_dst: null,
-          row: 4,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-        create_item({
-          status: "PROCESSED",
-          dst: "m3",
-          row: 3,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-        create_item({
-          status: "PROCESSED",
-          dst: "m4",
-          name_src: ["first", "tail"],
-          name_dst: ["第一译名", "不会写入"],
-          row: 5,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-      ],
-      {
-        translated_path: temp_dir.path,
-        bilingual_path: path.join(temp_dir.path, "bilingual"),
-      },
-    );
-
-    const result = JSON.parse(
-      fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8"),
-    );
-    expect(result).toContainEqual({ name: "勇者", message: "m1" });
-    expect(result).toContainEqual({ name: "英雄", message: "m2" });
-    expect(result).toContainEqual({ name: "hero", message: "m2b" });
-    expect(result).toContainEqual({ names: ["第一译名", "tail"], message: "m4" });
-    expect(result).toContainEqual({ message: "m3" });
-  });
-
-  it("按行号排序写回译名并保留姓名数组附加信息", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
-    );
-    const format = new MESSAGEJSONFormat();
-
-    await format.write_to_path(
-      [
-        create_item({
-          status: "PROCESSED",
-          src: "old1",
-          dst: "new1",
-          name_src: "原名",
-          name_dst: "译名",
-          row: 2,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-        create_item({
-          status: "PROCESSED",
-          src: "old0",
-          dst: "new0",
-          name_src: ["甲", "乙"],
-          name_dst: ["A", "B"],
-          row: 1,
-          file_type: "MESSAGEJSON",
-          file_path: "message/a.json",
-        }),
-      ],
-      {
-        translated_path: temp_dir.path,
-        bilingual_path: path.join(temp_dir.path, "bilingual"),
-      },
-    );
-
-    expect(
-      JSON.parse(fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8")),
+      items.map(({ row, src, name_src, name_dst, dst }) => ({ row, src, name_src, name_dst, dst })),
     ).toEqual([
-      { names: ["A", "乙"], message: "new0" },
-      { name: "译名", message: "new1" },
+      { row: 0, src: "one", name_src: "Alice", name_dst: null, dst: "" },
+      { row: 1, src: "two", name_src: "Bob", name_dst: null, dst: "" },
+      { row: 2, src: "three", name_src: null, name_dst: null, dst: "" },
+      { row: 3, src: "four", name_src: "", name_dst: null, dst: "" },
     ]);
+    expect(format.read_items({ message: "one" }, "m.json")).toEqual([]);
+  });
+
+  it("按有效台词序号写回并保留所有源字段和未参与翻译的元素", () => {
+    const source: JsonValue = [
+      { command: "wait" },
+      { name: "Alice", names: ["ignored"], message: "same", voice: "001" },
+      null,
+      { names: [123, "Bob", "tail"], message: "same", flag: true },
+      { names: [false, { private: true }], message: "three" },
+      { name: 42, message: "four" },
+      { names: [123, "", "tail"], message: "five" },
+      { message: "untouched", extra: [1, 2] },
+    ];
+    const items = format.read_items(source, "m.json");
+    const updates = [
+      { ...items[3]!, name_dst: "四" },
+      { ...items[1]!, status: "PROCESSED" as const, dst: "第二句", name_dst: "鲍勃" },
+      { ...items[0]!, status: "PROCESSED" as const, dst: "", name_dst: "爱丽丝" },
+      { ...items[2]!, status: "ERROR" as const, dst: "忽略", name_dst: "三" },
+      { ...items[4]!, name_dst: "" },
+    ];
+    expect(JSON.parse(format.render_text(JSON.stringify(source), updates, "m.json"))).toEqual([
+      { command: "wait" },
+      { name: "爱丽丝", names: ["ignored"], message: "", voice: "001" },
+      null,
+      { names: [123, "鲍勃", "tail"], message: "第二句", flag: true },
+      { names: ["三", false, { private: true }], message: "three" },
+      { name: "四", message: "four" },
+      { names: [123, "", "tail"], message: "five" },
+      { message: "untouched", extra: [1, 2] },
+    ]);
+  });
+
+  it.each([null, ""])("空译名 %s 保留源姓名结构", (name_dst) => {
+    const source = [{ name: "Alice", names: [123, "Bob"], message: "one" }];
+    const items = format.read_items(source, "m.json").map((item) => ({ ...item, name_dst }));
+    expect(JSON.parse(format.render_text(JSON.stringify(source), items, "m.json"))).toEqual(source);
+  });
+
+  it.each([{ row: -1 }, { row: 0.5 }, { row: 1 }, { src: "mismatch" }])(
+    "拒绝错误定位 %j",
+    (patch) => {
+      expect(() =>
+        format.render_text(
+          '[{"message":"one"}]',
+          [{ ...create_item({ src: "one" }), ...patch }],
+          "m.json",
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "file.invalid_structure",
+          public_details: { file: "m.json" },
+          diagnostic_context: expect.objectContaining({ reason: expect.any(String) }),
+        }),
+      );
+    },
+  );
+
+  it("拒绝重复定位和非数组源结构", () => {
+    const item = create_item({ src: "one" });
+    expect(() => format.render_text('[{"message":"one"}]', [item, item], "m.json")).toThrow(
+      expect.objectContaining({ code: "file.invalid_structure" }),
+    );
+    expect(() => format.render_text("{}", [], "m.json")).toThrow(
+      expect.objectContaining({ code: "file.invalid_structure" }),
+    );
   });
 });

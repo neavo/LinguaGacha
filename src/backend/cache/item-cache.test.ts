@@ -8,19 +8,19 @@ describe("ItemCache", () => {
   it("局部范围与全量重复协调等价，跳过成员只在显式目标中读取", () => {
     const cache = new ItemCache();
     const items = [
-      create_item(1, { src: "同文", status: "NONE", name_src: ["甲", "乙"] }),
+      create_item(1, { src: "同文", status: "NONE", name_src: "甲" }),
       create_item(2, {
         src: "同文",
         status: "DUPLICATED",
-        name_src: ["甲", "乙"],
+        name_src: "甲",
       }),
-      create_item(3, { src: "同文", status: "ERROR", name_src: ["甲", "乙"] }),
-      create_item(4, { src: "同文", status: "RULE_SKIPPED", name_src: ["甲", "乙"] }),
-      create_item(5, { src: "同文", status: "NONE", name_src: ["丙"] }),
+      create_item(3, { src: "同文", status: "ERROR", name_src: "甲" }),
+      create_item(4, { src: "同文", status: "RULE_SKIPPED", name_src: "甲" }),
+      create_item(5, { src: "同文", status: "NONE", name_src: "丙" }),
       create_item(6, {
         src: "同文",
         status: "NONE",
-        name_src: ["甲", "乙"],
+        name_src: "甲",
         file_path: "other.txt",
       }),
     ];

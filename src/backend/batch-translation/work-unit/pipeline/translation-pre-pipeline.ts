@@ -15,7 +15,6 @@ import type {
   TextQualitySnapshot,
   TextTaskItemRecord,
 } from "../../../../shared/text/text-processing";
-import { read_optional_item_name_text } from "../../../../shared/item-name";
 import {
   project_text_resource_references,
   type TextResourceReferenceMapping,
@@ -81,7 +80,7 @@ export class TranslationPrePipeline {
     }
     const prepared = prepare_translation_source({
       src: source_text,
-      name_src: read_optional_item_name_text(item.name_src),
+      name_src: item.name_src || null,
       text_type,
       preserve_rule,
       pre_replacements: this.pre_replacements,

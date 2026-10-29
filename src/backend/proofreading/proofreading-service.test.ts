@@ -17,10 +17,7 @@ import type { ProjectChangeEvent } from "../../shared/project-event";
 let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
 
-function project_path(name: string): string {
-  return path.join(temp_dir, name);
-}
-
+/** 从数据库观察进度与修订，避免仅凭通知判断写入结果。 */
 async function read_meta(
   database: ProjectDatabase,
   project_path: string,
@@ -42,7 +39,7 @@ async function create_service(task_busy = false): Promise<{
   const database = new ProjectDatabase("1.0.0");
   cleanup_databases.push(database);
   const session_state = new ProjectSessionState();
-  const lg_path = project_path("proofreading.lg");
+  const lg_path = path.join(temp_dir, "proofreading.lg");
   await database.create_project(lg_path, "proofreading");
   await database.transaction(lg_path, (writer) =>
     writer.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null),
@@ -55,7 +52,8 @@ async function create_service(task_busy = false): Promise<{
     project_event_bus,
     publisher.publish_project_change,
   );
-  const runtime_gate = create_runtime_gate(task_busy);
+  const runtime_gate = new RuntimeOperationGate();
+  if (task_busy) runtime_gate.begin_runtime("batch_translation");
   return {
     database,
     service: new ProofreadingService(runtime_gate, session_state, write_store),
@@ -64,12 +62,6 @@ async function create_service(task_busy = false): Promise<{
     publisher,
     runtime_gate,
   };
-}
-
-function create_runtime_gate(busy: boolean): RuntimeOperationGate {
-  const gate = new RuntimeOperationGate();
-  if (busy) gate.begin_runtime("batch_translation");
-  return gate;
 }
 
 /** 公开通知沿用提交事实，测试复用生产事件适配器。 */
@@ -83,6 +75,7 @@ function create_test_project_change_publisher(lg_path: string) {
   };
 }
 
+/** 提供完整持久字段，让校对操作经过真实项目写入口。 */
 function create_project_item(overrides: JsonRecord = {}): JsonRecord {
   return {
     id: 1,
@@ -175,8 +168,8 @@ describe("ProofreadingService", () => {
         create_project_item({
           id: 2,
           dst: "正文",
-          name_src: ["Alice", "Bob"],
-          name_dst: ["旧名", "保留名"],
+          name_src: "Alice",
+          name_dst: "旧名",
           status: "ERROR",
         }),
       ]),
@@ -203,8 +196,8 @@ describe("ProofreadingService", () => {
       create_project_item({
         id: 2,
         dst: "正文",
-        name_src: ["Alice", "Bob"],
-        name_dst: ["新名", "保留名"],
+        name_src: "Alice",
+        name_dst: "新名",
         status: "PROCESSED",
       }),
     ]);
@@ -394,14 +387,14 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("替换全部同时处理正文译文和第 0 槽姓名译文", async () => {
+  it("替换全部同时处理正文译文和姓名译文", async () => {
     const { database, service, lg_path } = await create_service();
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
         create_project_item({
           dst: "Name: Alice",
-          name_src: ["Alice", "Bob"],
-          name_dst: ["Name: Alice", "保留译名"],
+          name_src: "Alice",
+          name_dst: "Name: Alice",
           status: "NONE",
         }),
       ]),
@@ -428,8 +421,8 @@ describe("ProofreadingService", () => {
     expect(await database.get_all_items(lg_path)).toEqual([
       create_project_item({
         dst: "Alice",
-        name_src: ["Alice", "Bob"],
-        name_dst: ["Alice", "保留译名"],
+        name_src: "Alice",
+        name_dst: "Alice",
         status: "PROCESSED",
       }),
     ]);
@@ -458,7 +451,7 @@ describe("ProofreadingService", () => {
     ]);
   });
 
-  it("替换全部能只更新第 0 槽姓名译文并完成条目", async () => {
+  it("替换全部能只更新姓名译文并完成条目", async () => {
     const { database, service, lg_path } = await create_service();
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -495,8 +488,8 @@ describe("ProofreadingService", () => {
       writer.set_items(lg_path, [
         create_project_item({
           dst: "旧译文",
-          name_src: ["Alice", "Bob"],
-          name_dst: ["旧译名", "保留译名"],
+          name_src: "Alice",
+          name_dst: "旧译名",
           status: "PROCESSED",
         }),
       ]),
@@ -521,7 +514,7 @@ describe("ProofreadingService", () => {
     expect(await database.get_all_items(lg_path)).toEqual([
       create_project_item({
         dst: "",
-        name_src: ["Alice", "Bob"],
+        name_src: "Alice",
         name_dst: null,
         status: "PROCESSED",
       }),
@@ -534,10 +527,10 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("正文译文已空但姓名译文非空时清空仍会写入", async () => {
+  it("清空正文与空字符串姓名时仍将姓名写为 null", async () => {
     const { database, service, lg_path } = await create_service();
     await database.transaction(lg_path, (writer) =>
-      writer.set_items(lg_path, [create_project_item({ dst: "", name_dst: ["", "保留译名"] })]),
+      writer.set_items(lg_path, [create_project_item({ dst: "", name_dst: "" })]),
     );
 
     const ack = await service.clear_translations({

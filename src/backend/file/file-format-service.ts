@@ -1,3 +1,4 @@
+import { group_items } from "./shared/file-format-helpers";
 import { collect_game_import_files } from "./shared/game/source-files";
 import { resolve_game_source_input } from "./shared/game/source-input";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
@@ -529,9 +530,7 @@ export class FileFormatService {
     };
   }
 
-  /**
-   * 字幕按资产文件集合调度，其余格式继续消费各自的条目集合。
-   */
+  /** 字幕与 `MESSAGEJSON` 按资产集合导出，保证零条目文件也能生成。 */
   public async write_items(items: Item[], context: FileFormatServiceWriteContext): Promise<void> {
     const { paths, asset_reader } = context;
     const failures: unknown[] = [];
@@ -547,13 +546,32 @@ export class FileFormatService {
     await this.md.write_to_path(items, paths);
     await this.write_subtitles(items, context);
     await this.kvjson.write_to_path(items, paths, asset_reader);
-    await this.messagejson.write_to_path(items, paths);
+    await this.write_messagejson(items, context);
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy_rpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);
     if (failures.length === 1) throw failures[0];
     if (failures.length) throw new AggregateError(failures, "Game assets could not be exported");
+  }
+
+  /** 资产集合驱动 MESSAGEJSON 导出，零条目文件也完整保留源结构。 */
+  private async write_messagejson(
+    items: Item[],
+    context: FileFormatServiceWriteContext,
+  ): Promise<void> {
+    const groups = group_items(items, "MESSAGEJSON");
+    for (const { path: file, file_type } of context.source_files) {
+      if (file_type !== "MESSAGEJSON") continue;
+      const asset = await context.asset_reader(file);
+      if (asset === null) throw new AppError("file.not_found", { public_details: { file } });
+      const output = this.messagejson.render_text(
+        await decode_text_content(asset),
+        groups.get(file) ?? [],
+        file,
+      );
+      await this.native_fs.write_file(path.join(context.paths.translated_path, file), output);
+    }
   }
 
   /** 文件集合拥有导出调度，格式处理器只组装当前文件的两种正文。 */

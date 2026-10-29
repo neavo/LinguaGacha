@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { TextResolver } from "@shared/i18n";
 import { create_apply_item_changes_plan } from "@shared/proofreading/proofreading-command-planner";
-import { read_item_name_text } from "@shared/item-name";
 import type {
   ProofreadingClientItem,
   ProofreadingContextItem,
@@ -90,7 +89,7 @@ export function useProofreadingDialogActions(
     set_dialog_state({
       open: true,
       target_row_id: item.row_id,
-      draft_item: { dst: item.dst, name_dst: read_item_name_text(item.name_dst) },
+      draft_item: { dst: item.dst, name_dst: item.name_dst ?? "" },
       pending: false,
       view: { kind: "edit" },
     });
@@ -210,7 +209,7 @@ export function useProofreadingDialogActions(
           {
             item_id: Number(target_item.item_id),
             ...(dst !== target_item.dst ? { dst } : {}),
-            ...(name_dst !== read_item_name_text(target_item.name_dst) ? { name_dst } : {}),
+            ...(name_dst !== (target_item.name_dst ?? "") ? { name_dst } : {}),
           },
         ],
       });

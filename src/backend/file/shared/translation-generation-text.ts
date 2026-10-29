@@ -2,7 +2,7 @@ import type { Item } from "../../../domain/item";
 
 /**
  * `PROCESSED` 接受整条当前结果，`dst` 的空值、空格和换行均原样生效。
- * 其它状态返回 `undefined`，格式按源资产选择正文。姓名由 `resolve_output_item_name()` 解释。
+ * 其它状态返回 `undefined`，正文回退与姓名写回由格式处理器负责。
  *
  * - 单值类（TXT、Markdown、ASS、SRT、MESSAGEJSON、EPUB）：未完成时使用 `src`。
  *   格式负责表达空正文，EPUB 书名与目录等受限位置回源。

@@ -1,76 +1,76 @@
-import { read_translation_for_generation } from "../shared/translation-generation-text";
-import path from "node:path";
-
-import { JsonTool } from "../../../shared/utils/json-tool";
-import type { JsonValue } from "../../../domain/json";
-import { group_items, write_text_file } from "../shared/file-format-helpers";
-import { type GeneratedFilePaths } from "../file-format-types";
 import { type Item, create_item } from "../../../domain/item";
-import { read_json_record } from "../../../domain/json";
-import { resolve_output_item_name } from "../../../shared/item-name";
+import { is_json_record, type JsonRecord, type JsonValue } from "../../../domain/json";
+import { AppError } from "../../../shared/error";
+import { JsonTool } from "../../../shared/utils/json-tool";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
 
-/**
- * message JSON 格式用于 KAG 风格 name/message 数组结构
- * 单值类的正文生效规则见 `read_translation_for_generation()`。
- */
+type MessageRecord = JsonRecord & { message: string };
+
+// `row` 始终是有效台词序号，导入与写回复用筛选规则以兼容已保存的条目。
+function read_messages(data: JsonValue): MessageRecord[] {
+  return Array.isArray(data)
+    ? data.filter(
+        (entry): entry is MessageRecord =>
+          is_json_record(entry) && typeof entry.message === "string",
+      )
+    : [];
+}
+
+/** MESSAGEJSON 只把当前姓名和正文交给业务层，源资产拥有格式附加信息。 */
 export class MESSAGEJSONFormat {
-  /**
-   * 只解析数组内含 message 字符串的对象，name/names 作为角色名字段保存
-   */
+  /** `name` 优先于 `names`，后者只提取第一个字符串作为当前姓名。 */
   public read_items(data: JsonValue, rel_path: string): Item[] {
-    if (!Array.isArray(data)) {
-      return [];
-    }
-    const items: Item[] = [];
-    for (const entry of data) {
-      const record = read_json_record(entry);
-      if (typeof record["message"] !== "string") {
-        continue;
-      }
-      const names = Array.isArray(record["names"])
-        ? record["names"].filter((value): value is string => typeof value === "string")
-        : undefined;
-      const name = typeof record["name"] === "string" ? record["name"] : names;
-      items.push(
-        create_item({
-          src: record["message"],
-          dst: "",
-          name_src: name,
-          name_dst: null,
-          row: items.length,
-          file_type: "MESSAGEJSON",
-          file_path: rel_path,
-        }),
-      );
-    }
-    return items;
+    return read_messages(data).map((record, row) =>
+      create_item({
+        src: record.message,
+        name_src:
+          typeof record.name === "string"
+            ? record.name
+            : Array.isArray(record.names)
+              ? (record.names.find((value) => typeof value === "string") ?? null)
+              : null,
+        row,
+        file_type: "MESSAGEJSON",
+        file_path: rel_path,
+      }),
+    );
   }
 
-  /**
-   * 写回时每条 item 独立解析姓名，避免同名角色跨行互相污染
-   */
-  public async write_to_path(items: Item[], paths: GeneratedFilePaths): Promise<void> {
-    for (const [rel_path, group] of group_items(items, "MESSAGEJSON")) {
-      const data = group
-        .sort((left, right) => left.row - right.row)
-        .map((item) => {
-          const message = read_translation_for_generation(item) ?? item.src;
-          const name = resolve_output_item_name({
-            name_src: item.name_src,
-            name_dst: item.name_dst,
-          });
-          if (typeof name === "string") {
-            return { name, message };
-          }
-          if (Array.isArray(name)) {
-            return { names: name, message };
-          }
-          return { message };
-        });
-      await write_text_file(
-        path.join(paths.translated_path, rel_path),
-        JsonTool.stringifyStrict(data as unknown as JsonValue, { indent: 4 }),
-      );
+  /** 完整生成并验证当前文件后，由文件服务负责落盘。 */
+  public render_text(text: string, items: readonly Item[], rel_path: string): string {
+    const data = JsonTool.parseStrict<JsonValue>(text);
+    if (!Array.isArray(data)) throw invalid_structure(rel_path, "expected_message_array");
+    const messages = read_messages(data);
+    const written = new Set<number>(); // 每个源对象只接纳一条译文，避免后写覆盖前写。
+    for (const item of items) {
+      if (!Number.isInteger(item.row) || item.row < 0)
+        throw invalid_structure(rel_path, "invalid_message_row", item.row);
+      const record = messages[item.row];
+      if (!record) throw invalid_structure(rel_path, "message_row_not_found", item.row);
+      if (written.has(item.row))
+        throw invalid_structure(rel_path, "duplicate_message_row", item.row);
+      if (record.message !== item.src)
+        throw invalid_structure(rel_path, "message_source_mismatch", item.row);
+      written.add(item.row);
+      record.message = read_translation_for_generation(item) ?? item.src;
+      // 姓名独立于正文状态。双字段沿用 `name` 优先规则。
+      if (!item.name_dst) continue; // 空译名保留源姓名结构。
+      if (typeof record.name === "string" || !Array.isArray(record.names)) {
+        record.name = item.name_dst;
+      } else {
+        const slot = record.names.findIndex((value) => typeof value === "string");
+        if (slot < 0) record.names.unshift(item.name_dst);
+        else record.names[slot] = item.name_dst;
+      }
     }
+    return JsonTool.stringifyStrict(data, { indent: 4 });
   }
+}
+
+/** 公开错误定位到文件，具体错位原因留给诊断日志。 */
+function invalid_structure(file: string, reason: string, row?: number): AppError {
+  return new AppError("file.invalid_structure", {
+    public_details: { file },
+    diagnostic_context: { reason, row },
+  });
 }

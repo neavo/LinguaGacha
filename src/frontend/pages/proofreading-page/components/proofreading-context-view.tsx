@@ -7,7 +7,6 @@ import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/
 import type { ProofreadingContextItem } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppButton } from "@frontend/widgets/app-button";
-import { read_optional_item_name_text } from "@shared/item-name";
 
 type ProofreadingContextViewProps = {
   items: ProofreadingContextItem[];
@@ -86,10 +85,10 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
       <ol ref={items_ref} className="proofreading-page__context-items">
         {props.items.map((item) => {
           const is_current = item.row_id === props.target_row_id;
-          const source_name = read_optional_item_name_text(item.name_src);
+          const source_name = item.name_src || null;
           const translation_name = is_current
             ? props.draft_item.name_dst || null
-            : read_optional_item_name_text(item.name_dst);
+            : item.name_dst || null;
           const translation = is_current ? props.draft_item.dst : item.dst;
           return (
             <li

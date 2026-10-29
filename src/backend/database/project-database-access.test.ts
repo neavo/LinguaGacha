@@ -221,7 +221,7 @@ it("patchItemTranslationFields 只更新译文字段并保留条目持久事实"
         item_id: 1,
         next: {
           dst: "译文",
-          name_dst: ["译名"],
+          name_dst: "译名",
           status: "PROCESSED",
         },
       },
@@ -234,7 +234,7 @@ it("patchItemTranslationFields 只更新译文字段并保留条目持久事实"
       src: "原文",
       dst: "译文",
       name_src: "原名",
-      name_dst: ["译名"],
+      name_dst: "译名",
       status: "PROCESSED",
       file_path: "demo.txt",
       file_type: "TXT",

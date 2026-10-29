@@ -10,7 +10,6 @@ import {
 import { is_item_manual_status, type ItemManualStatus } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import type { ProjectWriteResult } from "../../shared/project-event";
-import { read_item_name_text } from "../../shared/item-name";
 import {
   apply_project_item_manual_update,
   apply_project_item_field_patch,
@@ -131,7 +130,7 @@ export class ProofreadingService {
             replacement_text: String(request["replace_text"] ?? ""),
             replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
           });
-          const current_name_dst = read_item_name_text(item["name_dst"]);
+          const current_name_dst = item["name_dst"] ?? "";
           const name_replace_result = replace_text_pattern({
             text: current_name_dst,
             pattern,
