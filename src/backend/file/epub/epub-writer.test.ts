@@ -200,13 +200,14 @@ describe("EpubWriter", () => {
     await expect(read_epub_entry_text(fs.readFileSync(bilingual_path))).resolves.toContain("译文");
   });
 
-  it("block_text 写回普通译文时移除 rt，双语原文块保留原始 ruby DOM", async () => {
+  it.each(["　", "前文"])("block_text 解除整块注音结构，双语原文保留 ruby：%j", async (prefix) => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-epub-writer-"));
     const writer = create_writer();
     const epub_asset = await create_epub_fixture(
-      '<ruby class="calibre3">宝<rt>ほう</rt>條<rt>じょう</rt>直<rt>なお</rt>希<rt>き</rt></ruby>',
+      `${prefix}<ruby>女男爵<rt>バロネス</rt></ruby>ということだが……`,
     );
-    const item = await create_translated_epub_item(epub_asset, "宝条直希");
+    const translation = "这是一段比原底字更长的译文，后半段也需要完整写入普通正文。";
+    const item = await create_translated_epub_item(epub_asset, translation);
     const translated_path = path.join(temp_dir.path, "ruby-translated", "book.epub");
     const bilingual_path = path.join(temp_dir.path, "ruby-bilingual", "book.epub");
 
@@ -215,12 +216,22 @@ describe("EpubWriter", () => {
 
     const translated_text = await read_epub_entry_text(fs.readFileSync(translated_path));
     const bilingual_text = await read_epub_entry_text(fs.readFileSync(bilingual_path));
+    for (const text of [translated_text, bilingual_text]) {
+      expect(text.split(translation)).toHaveLength(2);
+    }
 
-    expect(translated_text).toContain("宝条直希");
-    expect(translated_text).not.toContain("<rt>");
-    expect(bilingual_text).toContain('<ruby class="calibre3">');
-    expect(bilingual_text).toContain("<rt>ほう</rt>");
-    expect(bilingual_text).toContain("宝条直希");
+    const ast = new EpubAst();
+    const [translated_block] = ast.find_descendants(ast.parse_xml_document(translated_text), "p");
+    const [original_block, bilingual_block] = ast.find_descendants(
+      ast.parse_xml_document(bilingual_text),
+      "p",
+    );
+    for (const block of [translated_block!, bilingual_block!]) {
+      expect(ast.build_canonical_block_text(block)).toBe(translation);
+      expect(ast.flatten_elements(block).map((node) => ast.local_name(node.name))).toEqual(["p"]);
+    }
+    expect(ast.find_descendants(original_block!, "ruby")).toHaveLength(1);
+    expect(ast.read_text_slot(ast.find_descendants(original_block!, "rt")[0]!)).toBe("バロネス");
   });
 
   it("block_text 写回校验复用读取器的规范空白口径", async () => {
@@ -286,7 +297,7 @@ describe("EpubWriter", () => {
   it("缺少 AST metadata 时回退 legacy 顺序写回", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-epub-writer-"));
     const writer = create_writer();
-    const epub_asset = await create_epub_fixture("章节");
+    const epub_asset = await create_epub_fixture("　<ruby>章<rt>しょう</rt></ruby>节");
     const out_path = path.join(temp_dir.path, "legacy", "book.epub");
     const legacy_item = create_item({
       src: "章节",
@@ -300,9 +311,14 @@ describe("EpubWriter", () => {
 
     expect(writer.has_epub_ast_metadata(legacy_item)).toBe(false);
 
-    await writer.build_epub(epub_asset, [legacy_item], out_path, false);
+    await writer.build_epub(epub_asset, [legacy_item], out_path, true);
 
-    await expect(read_epub_entry_text(fs.readFileSync(out_path))).resolves.toContain("译文");
+    const ast = new EpubAst();
+    const text = await read_epub_entry_text(fs.readFileSync(out_path));
+    const [original, translated] = ast.find_descendants(ast.parse_xml_document(text), "p");
+    expect(ast.find_descendants(original!, "ruby")).toHaveLength(1);
+    expect(ast.build_canonical_block_text(translated!)).toBe("译文");
+    expect(ast.flatten_elements(translated!).map((node) => node.name)).toEqual(["p"]);
   });
 
   it("legacy 写回 XHTML 时把真实 NBSP 输出为 XML 合法内容", async () => {
@@ -614,7 +630,13 @@ it("OPF 实际标题同步 XHTML，空书名回退原稿", async () => {
 it.each([undefined, "译文", ""])("含 ruby 的块写回 %j 保留锚点、链接和资源", async (dst) => {
   using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-epub-anchors-"));
   const asset = await create_epub_fixture(
-    '<span id="anchor"><ruby>原<rt>yuan</rt></ruby>文</span><a href="#anchor">链接</a><img src="image.png"/>',
+    `<x:ruby xmlns:x="http://www.w3.org/1999/xhtml" id="anchor" class="reading" style="color:red" data-note="keep">
+      <x:rb name="base">原</x:rb><x:rp id="open">（</x:rp>
+      <x:rt id="reading"><span name="note">yuan</span></x:rt><x:rp>）</x:rp>
+      <x:rtc name="group"><x:rt>extra</x:rt></x:rtc><img src="inside.png"/>
+    </x:ruby>
+    <a href="#anchor">链接</a><img src="after.png"/><ruby><rb>文</rb></ruby>
+    <code><ruby>code<rt>skip</rt></ruby></code>`,
   );
   const items = await new EpubAst().read_from_stream(asset, "book.epub");
   if (dst !== undefined) {
@@ -624,15 +646,37 @@ it.each([undefined, "译文", ""])("含 ruby 的块写回 %j 保留锚点、链�
   const out = path.join(dir.path, "x.epub");
   await create_writer().build_epub(asset, items, out, false);
   const text = await read_epub_entry_text(fs.readFileSync(out));
-  expect(text).toContain('id="anchor"');
-  expect(text).toContain('href="#anchor"');
-  expect(text).toContain('src="image.png"');
-  if (dst === undefined) expect(text).toContain("<rt>yuan</rt>");
+  const ast = new EpubAst();
+  const root = ast.parse_xml_document(text);
+  const block = ast.find_descendants(root, "p")[0]!;
+  const elements = ast.flatten_elements(block);
+  const container = elements.find((node) => node.attribs["id"] === "anchor");
+  expect(container?.attribs).toMatchObject({
+    id: "anchor",
+    class: "reading",
+    style: "color:red",
+    "data-note": "keep",
+  });
+  expect(
+    elements.filter((node) => ["a", "img"].includes(node.name)).map((node) => node.attribs),
+  ).toEqual([{ src: "inside.png" }, { href: "#anchor" }, { src: "after.png" }]);
+  expect(text).toContain("<ruby>code<rt>skip</rt></ruby>");
+  if (dst === undefined) expect(text).toContain('<x:rt id="reading">');
   else {
-    expect(text).not.toContain("<rt>");
-    const ast = new EpubAst();
-    const root = ast.parse_xhtml_or_html(Buffer.from(text));
-    expect(ast.build_canonical_block_text(ast.find_descendants(root, "p")[0]!)).toBe(dst);
+    expect(ast.build_canonical_block_text(block)).toBe(dst);
+    expect(container?.name).toBe("span");
+    for (const identity of ["base", "open", "reading", "note", "group"]) {
+      const anchor = elements.find(
+        (node) => node.attribs["id"] === identity || node.attribs["name"] === identity,
+      );
+      expect(anchor).toMatchObject({ name: "span" });
+      if (identity !== "base") expect(anchor!.children).toEqual([]);
+    }
+    expect(
+      elements
+        .filter((node) => ["ruby", "rb", "rt", "rp", "rtc"].includes(ast.local_name(node.name)))
+        .map((node) => node.name),
+    ).toEqual(["ruby", "rt"]);
   }
 });
 

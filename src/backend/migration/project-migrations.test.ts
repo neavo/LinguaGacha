@@ -94,10 +94,10 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
     const bilingual = await read_epub_entry_text(
       fs.readFileSync(path.join(bilingual_path, "book.epub")),
     );
-    expect(translated).toContain("汉");
+    expect(translated).toContain("<p>汉</p>");
     expect(translated).not.toContain("かん");
     expect(bilingual).toContain("<ruby>漢<rt>かん</rt></ruby>");
-    expect(bilingual).toContain("汉");
+    expect(bilingual).toContain("<p>汉</p>");
   } finally {
     await database.close();
   }
