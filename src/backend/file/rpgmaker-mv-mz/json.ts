@@ -78,18 +78,12 @@ export function read_rpgmaker_json(
       const parameters_path = [...list_path, index, "parameters"];
       const continuation = BLOCK_CODES.get(command.code);
       if (continuation !== undefined) {
-        const first =
-          command.code === RPGMAKER_EVENT.COMMENT || command.code === RPGMAKER_EVENT.SCRIPT
-            ? index
-            : index + 1;
+        const includes_header =
+          command.code === RPGMAKER_EVENT.COMMENT || command.code === RPGMAKER_EVENT.SCRIPT; // 注释和脚本的头指令自身携带正文。
+        const first = includes_header ? index : index + 1;
         let end = index + 1;
         while (list[end]?.code === continuation && list[end]?.indent === command.indent) end++;
-        const code =
-          command.code === RPGMAKER_EVENT.SCRIPT
-            ? RPGMAKER_EVENT.SCRIPT
-            : command.code === RPGMAKER_EVENT.COMMENT
-              ? RPGMAKER_EVENT.COMMENT
-              : continuation;
+        const code = includes_header ? command.code : continuation;
         const location: Extract<RPGMakerLocation, { kind: "block" }> = {
           kind: "block",
           path: list_path,
@@ -106,13 +100,15 @@ export function read_rpgmaker_json(
             ? command.parameters[4]
             : null;
         if (name !== null) location.name_path = [...parameters_path, 4];
-        if (command.code === RPGMAKER_EVENT.SCRIPT) script(text, location);
-        else
-          add(
-            text,
-            { location, usage: command.code === RPGMAKER_EVENT.COMMENT ? "metadata" : "text" },
-            name,
-          );
+        // 事件脚本可能承载插件自定义协议，因此完整保留。
+        add(
+          text,
+          {
+            location,
+            usage: includes_header ? "metadata" : "text",
+          },
+          name,
+        );
         // 头指令的资源字段也保留为默认排除条目。
         if (command.code === RPGMAKER_EVENT.MESSAGE)
           command.parameters.forEach((entry, slot) => {

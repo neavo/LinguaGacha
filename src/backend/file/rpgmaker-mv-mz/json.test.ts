@@ -51,3 +51,45 @@ it("默认翻译字段完整保存 JSON 形状文本，元数据展开为默认�
     ["Actor1", "RULE_SKIPPED"],
   ]);
 });
+
+it.each([
+  { name: "合法 JS 与注释空白", lines: ['  say("テキスト-表示"); // 注释', "", "  // 尾行  "] },
+  { name: "无字符串 JS", lines: ["$gameSwitches.setValue(1, true);", "counter++;"] },
+  { name: "非法 JS", lines: ['say("テキスト-表示");', "if()array.push;"] },
+  { name: "可解析插件指令", lines: ["CBR-設定", "テキスト-本文"] },
+  {
+    name: "内嵌 JSON",
+    lines: ['{"text":"テキスト-本文","nested":"{\\"label\\":\\"テキスト-内部\\"}"}'],
+  },
+  { name: "纯空白", lines: ["  \t"] },
+  { name: "仅换行", lines: ["", ""] },
+  { name: "完全空字符串", lines: [""] },
+])("事件脚本整块保留且不产生语法警告：$name", ({ lines }) => {
+  const list = [
+    command(0, []),
+    ...lines.map((line, index) => command(index === 0 ? 355 : 655, [line], 2)),
+    command(0, []),
+  ];
+  const { items, warnings } = read_rpgmaker_json([null, { list }], "data/CommonEvents.json");
+  const src = lines.join("\n");
+  expect(warnings).toEqual([]);
+  expect(items).toHaveLength(src === "" ? 0 : 1);
+  if (src !== "") {
+    expect(items[0]).toMatchObject({
+      src,
+      status: "RULE_SKIPPED",
+      extra_field: {
+        rpgmaker_mv_mz: {
+          usage: "metadata",
+          location: {
+            kind: "block",
+            path: [1, "list"],
+            start: 1,
+            end: 1 + lines.length,
+            code: 355,
+          },
+        },
+      },
+    });
+  }
+});
