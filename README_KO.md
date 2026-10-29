@@ -97,9 +97,8 @@
 | `.trans` 프로젝트 파일 | `.trans` | 출처 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 지원 종료 예정` |
 
 ## 최근 업데이트 📅
-- 20261026 v0.131.0
-  - `Tyrano` 게임 네이티브 지원 [#1046](../../issues/1046)
-  - 수정 및 개선 [#1039](../../issues/1039) [#1041](../../issues/1041) [#1042](../../issues/1042) [#1043](../../issues/1043)
+- 20261029 v0.132.1
+  - 수정 및 개선 [#1049](../../issues/1049) [#1050](../../issues/1050) [#1052](../../issues/1052) [#1053](../../issues/1053) [#1054](../../issues/1054)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다

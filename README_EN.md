@@ -101,9 +101,8 @@
 | `.trans` project files | `.trans` | Source: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Support ending soon` |
 
 ## Recent Updates 📅
-- 20261026 v0.131.0
-  - Native support for `Tyrano` games [#1046](../../issues/1046)
-  - Fixes and improvements [#1039](../../issues/1039) [#1041](../../issues/1041) [#1042](../../issues/1042) [#1043](../../issues/1043)
+- 20261029 v0.132.1
+  - Fixes and improvements [#1049](../../issues/1049) [#1050](../../issues/1050) [#1052](../../issues/1052) [#1053](../../issues/1053) [#1054](../../issues/1054)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)

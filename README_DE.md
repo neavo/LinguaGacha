@@ -97,9 +97,8 @@
 | `.trans` Projektdateien | `.trans` | Quelle: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Unterstützung endet bald` |
 
 ## Neueste Updates 📅
-- 20261026 v0.131.0
-  - Native Unterstützung für `Tyrano`-Spiele [#1046](../../issues/1046)
-  - Korrekturen und Verbesserungen [#1039](../../issues/1039) [#1041](../../issues/1041) [#1042](../../issues/1042) [#1043](../../issues/1043)
+- 20261029 v0.132.1
+  - Korrekturen und Verbesserungen [#1049](../../issues/1049) [#1050](../../issues/1050) [#1052](../../issues/1052) [#1053](../../issues/1053) [#1054](../../issues/1054)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)
