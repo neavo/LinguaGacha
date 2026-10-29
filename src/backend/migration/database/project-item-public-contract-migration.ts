@@ -1,7 +1,7 @@
 import type { ItemMigrationPayload } from "./item-migration";
 import type { DatabaseSync } from "node:sqlite";
 
-import { normalize_item_name_field, normalize_item_status } from "../../../domain/item";
+import { normalize_item_status } from "../../../domain/item";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { read_json_integer } from "../../../domain/json";
 import { write_item_migration, normalize_migration_file_type } from "./item-migration";
@@ -38,13 +38,13 @@ export function normalize_item_public_contract_payload(item_data: ItemMigrationP
     assign_contract_field(
       normalized,
       "name_src",
-      normalize_item_name_field(normalized["name_src"]),
+      normalize_legacy_item_name(normalized["name_src"]),
     ) || changed;
   changed =
     assign_contract_field(
       normalized,
       "name_dst",
-      normalize_item_name_field(normalized["name_dst"]),
+      normalize_legacy_item_name(normalized["name_dst"]),
     ) || changed;
   changed =
     assign_contract_field(
@@ -105,4 +105,12 @@ function json_values_equal(left: unknown, right: unknown): boolean {
     return left === right;
   }
   return JsonTool.stringifyStrict(left) === JsonTool.stringifyStrict(right);
+}
+
+// 固定已发布迁移的历史解释，现行业务类型变化不能改写已发布升级步骤。
+function normalize_legacy_item_name(value: unknown): string | string[] | null {
+  if (value === undefined || value === null) return null;
+  if (Array.isArray(value))
+    return value.filter((entry): entry is string => typeof entry === "string");
+  return typeof value === "string" ? value : String(value);
 }

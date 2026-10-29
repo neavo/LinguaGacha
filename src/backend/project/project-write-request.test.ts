@@ -34,6 +34,26 @@ describe("project write request", () => {
     );
   });
 
+  it("翻译补丁拒绝姓名数组并保留合法空姓名", () => {
+    expect(() =>
+      normalize_translation_item_patches([{ item_id: 1, name_dst: ["旧数组"] }]),
+    ).toThrow(
+      expect.objectContaining({
+        code: "runtime.internal_invariant",
+        diagnostic_context: { reason: "invalid_translation_name_dst", item_id: 1 },
+      }),
+    );
+    expect(
+      normalize_translation_item_patches([
+        { item_id: 1, name_dst: "" },
+        { item_id: 2, name_dst: null },
+      ]),
+    ).toEqual([
+      { item_id: 1, patch: { name_dst: "" } },
+      { item_id: 2, patch: { name_dst: null } },
+    ]);
+  });
+
   it("把任务 artifact 收窄为 typed Store 请求", () => {
     expect(
       normalize_translation_item_patches([{ item_id: 1, dst: "译文", status: "PROCESSED" }]),

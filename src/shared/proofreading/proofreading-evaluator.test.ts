@@ -268,8 +268,8 @@ describe("proofreading-evaluator", () => {
     const item = evaluate({
       src: "普通正文",
       dst: "",
-      name_src: ["Alice", "隐藏姓名"],
-      name_dst: ["旧译名", "隐藏译名"],
+      name_src: "Alice",
+      name_dst: "旧译名",
       sourceLanguage: "JA",
       quality,
     });
@@ -332,8 +332,8 @@ describe("proofreading-evaluator", () => {
       evaluate({
         src: "正文 {PLAYER}",
         dst: "正文かな {BODY}",
-        name_src: ["Alice（幼年）{PLAYER}", "忽略"],
-        name_dst: ["かな {NAME}", "ignore"],
+        name_src: "Alice（幼年）{PLAYER}",
+        name_dst: "かな {NAME}",
         sourceLanguage: "JA",
         quality,
       }).warnings,
@@ -421,8 +421,8 @@ describe("proofreading-evaluator", () => {
       evaluate({
         src: "",
         dst: "",
-        name_src: ["Alice\nhttps://example.com/(a)", "かな"],
-        name_dst: ["Alice https://example.com/(a)", "かな"],
+        name_src: "Alice\nhttps://example.com/(a)",
+        name_dst: "Alice https://example.com/(a)",
         sourceLanguage: "EN",
         quality,
       }).warnings,

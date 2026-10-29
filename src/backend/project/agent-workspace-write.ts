@@ -16,7 +16,6 @@ import {
   type QualityRuleKind,
   type QualityRuleEntry,
 } from "../../domain/quality";
-import { read_optional_item_name_text } from "../../shared/item-name";
 import {
   collect_quality_rule_duplicate_groups,
   QualityRuleImportRuleTypeValue,
@@ -169,14 +168,14 @@ function read_item_write_record(item: JsonRecord): ProjectItemWriteRecord {
   );
 }
 
-/** 工作区显示姓名第 0 槽，指纹绑定同一字段视图。 */
+/** 工作区显示当前姓名，指纹绑定同一字段视图。 */
 function project_workspace_item(item: ProjectItemWriteRecord): JsonRecord {
   const row = {
     item_id: item.item_id,
     src: item.src,
     dst: item.dst,
-    name_src: read_optional_item_name_text(item.name_src) ?? "",
-    name_dst: read_optional_item_name_text(item.name_dst) ?? "",
+    name_src: item.name_src ?? "",
+    name_dst: item.name_dst ?? "",
     file_path: item.file_path,
     row_number: item.row_number,
     status: item.status,

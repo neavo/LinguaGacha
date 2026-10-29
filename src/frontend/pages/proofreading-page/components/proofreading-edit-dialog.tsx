@@ -24,7 +24,6 @@ import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { AppContentState } from "@frontend/widgets/app-content-state";
-import { read_optional_item_name_text, read_item_name_text } from "@shared/item-name";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -333,8 +332,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const scroll_ref = useRef<HTMLDivElement>(null); // 进入查看视图时承接焦点，原入口按钮随编辑区隐藏
   const previous_view_ref = useRef(view.kind); // 返回编辑时用原视图恢复对应入口的焦点。
   const has_content_change =
-    item !== null &&
-    (draft_item.dst !== item.dst || draft_item.name_dst !== read_item_name_text(item.name_dst));
+    item !== null && (draft_item.dst !== item.dst || draft_item.name_dst !== (item.name_dst ?? ""));
 
   useEffect(() => {
     if (previous_view_ref.current !== "edit" && !viewer_open && open) {
@@ -375,17 +373,14 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const visible_warning_codes = read_proofreading_warning_codes(item.warnings).filter(
     (code) => glossary_badge_state === null || code !== "GLOSSARY",
   );
-  const source_name = read_item_name_text(item.name_src);
+  const source_name = item.name_src ?? "";
   const translation_name = draft_item.name_dst;
   const file_path_label =
     item.internal_file_path === null
       ? item.file_path
       : `${item.file_path} | ${item.internal_file_path}`;
   const name_glossary_state = resolve_name_glossary_state(glossary_applications); // 双方姓名共享当前草稿的落实结果。
-  const show_name_fields =
-    read_optional_item_name_text(item.name_src) !== null ||
-    read_optional_item_name_text(item.name_dst) !== null ||
-    translation_name !== "";
+  const show_name_fields = Boolean(source_name || item.name_dst || translation_name);
   const translation_readonly = props.readonly || pending;
   const source_name_marks = build_glossary_field_marks({
     text: source_name,

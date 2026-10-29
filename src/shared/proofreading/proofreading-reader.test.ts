@@ -698,8 +698,8 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 1,
           dst: "普通译文",
-          name_src: ["Alice", "隐藏姓名"],
-          name_dst: ["艾丽丝", "隐藏译名"],
+          name_src: "Alice",
+          name_dst: "艾丽丝",
           status: "PROCESSED",
         }),
         create_item({ item_id: 2, dst: "普通译文", status: "PROCESSED" }),
@@ -772,8 +772,8 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 1,
           dst: "",
-          name_src: ["Alice", "隐藏姓名"],
-          name_dst: ["旧译名", "隐藏译名"],
+          name_src: "Alice",
+          name_dst: "旧译名",
           status: "PROCESSED",
         }),
       ],
@@ -845,8 +845,8 @@ describe("proofreading-reader", () => {
       upsertItems: [
         {
           ...create_item({ item_id: 1, dst: "正文" }),
-          name_src: ["Alice", "Bob"],
-          name_dst: ["旧译名", "保留译名"],
+          name_src: "Alice",
+          name_dst: "旧译名",
         },
       ],
     });
@@ -868,8 +868,8 @@ describe("proofreading-reader", () => {
         create_item({
           item_id: 1,
           dst: "正文",
-          name_src: ["Alice", "Bob"],
-          name_dst: ["新译名", "保留译名"],
+          name_src: "Alice",
+          name_dst: "新译名",
         }),
       ],
     });
@@ -881,8 +881,8 @@ describe("proofreading-reader", () => {
 
     expect(window.rows.filter((row) => row.kind === "item")[0]?.item).toMatchObject({
       item_id: 1,
-      name_src: ["Alice", "Bob"],
-      name_dst: ["新译名", "保留译名"],
+      name_src: "Alice",
+      name_dst: "新译名",
     });
   });
 

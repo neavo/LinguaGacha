@@ -40,7 +40,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
-import { read_optional_item_name_text } from "@shared/item-name";
 import type {
   AppTableColumn,
   AppTableRowModel,
@@ -324,7 +323,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           return (
             <ProofreadingTextCell
               label={t("proofreading_page.fields.source")}
-              name={read_optional_item_name_text(payload.row.item.name_src)}
+              name={payload.row.item.name_src || null}
               text={payload.row.compressed_src}
               full_text={payload.row.item.src}
             />
@@ -348,7 +347,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           return (
             <ProofreadingTextCell
               label={t("proofreading_page.fields.translation")}
-              name={read_optional_item_name_text(payload.row.item.name_dst)}
+              name={payload.row.item.name_dst || null}
               text={payload.row.compressed_dst}
               full_text={payload.row.item.dst}
             />

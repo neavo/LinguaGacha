@@ -46,7 +46,7 @@ function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
 }
 
 describe("compute_project_prefilter_write", () => {
-  it("内部预过滤与统计只读取业务字段，保留格式私有数据和上游姓名快照", () => {
+  it("预过滤与统计保留格式私有数据，条目状态修改与上游隔离", () => {
     let private_reads = 0;
     const extra_field = {
       get nested() {
@@ -56,8 +56,6 @@ describe("compute_project_prefilter_write", () => {
     };
     const original = create_item(1, {
       src: "hello",
-      name_src: ["姓名", "格式槽"],
-      name_dst: ["译名", "译名槽"],
       extra_field,
     });
     const state = create_state([original]);
@@ -74,12 +72,6 @@ describe("compute_project_prefilter_write", () => {
     expect(private_reads).toBe(0);
     expect(result.items["1"]!.extra_field).toBe(extra_field);
     expect(progress.total_line).toBe(1);
-    const result_name = result.items["1"]!.name_src;
-    if (Array.isArray(result_name)) result_name[0] = "编辑后";
-    expect(original.name_src).toEqual(["姓名", "格式槽"]);
-    const result_name_dst = result.items["1"]!.name_dst;
-    if (Array.isArray(result_name_dst)) result_name_dst[0] = "编辑后";
-    expect(original.name_dst).toEqual(["译名", "译名槽"]);
     result.items["1"]!.status = "PROCESSED";
     expect(original.status).toBe("NONE");
   });
@@ -102,11 +94,11 @@ describe("compute_project_prefilter_write", () => {
     const result = compute_project_prefilter_write({
       state: create_state([
         create_item(1, { src: "「…………」", name_src: "眼鏡の美少女" }),
-        create_item(2, { src: "", name_src: ["俊輔", "附加信息"] }),
+        create_item(2, { src: "", name_src: "俊輔" }),
         create_item(3, { src: "EV12", name_src: "EV12" }),
         create_item(4, { src: "……", name_src: "Alice" }),
         create_item(5, { src: "……", name_src: "image.png" }),
-        create_item(6, { src: "……", name_src: ["", "俊輔"] }),
+        create_item(6, { src: "……", name_src: "" }),
         create_item(7, { src: "こんにちは", name_src: "Alice" }),
       ]),
       source_language: "JA",

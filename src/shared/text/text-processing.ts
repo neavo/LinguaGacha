@@ -76,8 +76,8 @@ export type TextTaskItemRecord = JsonRecord & {
   item_id?: number;
   src?: string; // src/dst/status 是翻译提交的核心事实，其余字段只辅助处理
   dst?: string;
-  name_src?: string | string[] | null;
-  name_dst?: string | string[] | null;
+  name_src?: string | null;
+  name_dst?: string | null;
   status?: string;
   file_type?: string;
   file_path?: string;

@@ -2,7 +2,7 @@ import { RPGMAKER_EVENT } from "../shared/rpgmaker-event";
 import { read_rpgmaker_metadata } from "./item";
 import type { Item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
-import { read_item_name_text, resolve_output_item_name } from "../../../shared/item-name";
+import { resolve_output_item_name } from "../../../shared/item-name";
 import { decode_javascript_string, encode_javascript_string } from "../shared/javascript";
 import { RPGMakerJsonCodec } from "./json-codec";
 import { type RPGMakerLocation, type RPGMakerRootLocation, type JsonPath } from "./types";
@@ -65,12 +65,8 @@ export function write_rpgmaker_items(
     const location = read_rpgmaker_metadata(item.extra_field).location;
     replace(location, item.dst);
     if (location.kind === "block" && location.name_path) {
-      const name = resolve_output_item_name({
-        name_src: item.name_src,
-        name_dst: item.name_dst,
-      });
-      if (name !== null)
-        replace({ kind: "field", path: location.name_path }, read_item_name_text(name));
+      const name = resolve_output_item_name(item);
+      if (name !== null) replace({ kind: "field", path: location.name_path }, name);
     }
   }
   for (const change of roots.values()) {

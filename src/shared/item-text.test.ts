@@ -28,17 +28,17 @@ describe("item-text", () => {
     ]);
   });
 
-  it("读取数组姓名时只消费第 0 槽", () => {
+  it("空姓名不产生文本单元，非空姓名独立于正文", () => {
     expect(
       read_item_source_text_parts({
         src: "",
-        name_src: ["", "Bob", "Carol"],
+        name_src: "",
       }),
     ).toEqual([{ field: "src", text: "" }]);
     expect(
       read_item_translation_text_parts({
         dst: "",
-        name_dst: ["鲍勃", "", "卡萝"],
+        name_dst: "鲍勃",
       }),
     ).toEqual([
       { field: "dst", text: "" },
@@ -48,7 +48,7 @@ describe("item-text", () => {
 
   it("按正文译文或姓名译文判断是否有可清空文本", () => {
     expect(has_item_translation_text({ dst: "", name_dst: null })).toBe(false);
-    expect(has_item_translation_text({ dst: "", name_dst: ["", "保留译名"] })).toBe(false);
+    expect(has_item_translation_text({ dst: "", name_dst: "" })).toBe(false);
     expect(has_item_translation_text({ dst: "正文译文", name_dst: null })).toBe(true);
   });
 });

@@ -8,6 +8,7 @@ import {
   type ProofreadingCommandSnapshot,
 } from "./proofreading-command-planner";
 
+/** 提供完整公开条目，让命令规划直接消费跨层契约。 */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -26,6 +27,7 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
+/** 使用不同分区修订号，检验命令携带对应的并发约束。 */
 function create_test_snapshot(items: ProjectItemPublicRecord[]): ProofreadingCommandSnapshot {
   return { items, section_revisions: { items: 4, proofreading: 2 } };
 }
@@ -55,12 +57,12 @@ describe("proofreading command planner", () => {
     });
   });
 
-  it("姓名数组只比较第 0 槽，并在无最终变化时省略命令", () => {
+  it("姓名无最终变化时省略命令", () => {
     const snapshot = create_test_snapshot([
       create_test_item({
         item_id: 1,
         dst: "正文",
-        name_dst: ["译名", "保留"],
+        name_dst: "译名",
         status: "PROCESSED",
       }),
     ]);

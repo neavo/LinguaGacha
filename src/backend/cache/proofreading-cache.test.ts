@@ -129,7 +129,7 @@ describe("ProofreadingCache", () => {
     const extra_field = { nested: { values: [1, false, null, "", '{"nested":true}'] } };
     const item = create_cache_item({
       dst: "",
-      name_src: ["角色", "旁白"],
+      name_src: "角色",
       name_dst: null,
       extra_field,
     });
@@ -147,7 +147,6 @@ describe("ProofreadingCache", () => {
       sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       data: expected_item,
     });
-    (result.data.name_src as string[])[0] = "查看修改";
     (result.data.extra_field as typeof extra_field).nested.values.push("查看修改");
     expect(cache.rawItem(1).data).toEqual(expected_item);
     expect(() => cache.rawItem(2)).toThrow(

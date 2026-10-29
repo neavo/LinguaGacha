@@ -628,3 +628,63 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出", async (
     ),
   ).toBe(true);
 });
+
+it("MESSAGEJSON 按资产导出零条目文件并保留真实输出中的附加结构", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-messagejson-export-"));
+  const service = create_service();
+  const originals = new Map([
+    ["empty.json", "[]"],
+    ["metadata.json", '[{"command":"wait"},null,42]'],
+    ["nested/story.json", '[{"names":[123,"Alice","tail"],"message":"hello","voice":"001"}]'],
+  ]);
+  const parsed = await service.parse_asset(
+    "nested/story.json",
+    Buffer.from(originals.get("nested/story.json")!),
+  );
+  if (parsed.kind !== "items") throw new Error("Expected message items");
+  await service.write_items(
+    [{ ...parsed.items[0]!, status: "PROCESSED", dst: "你好", name_dst: "爱丽丝" }],
+    {
+      paths: { translated_path: temp.path, bilingual_path: path.join(temp.path, "bilingual") },
+      source_files: [...originals.keys()].map((path) => ({ path, file_type: "MESSAGEJSON" })),
+      asset_reader: (file) => Buffer.from(originals.get(file)!),
+    },
+  );
+  expect(JSON.parse(fs.readFileSync(path.join(temp.path, "empty.json"), "utf8"))).toEqual([]);
+  expect(JSON.parse(fs.readFileSync(path.join(temp.path, "metadata.json"), "utf8"))).toEqual([
+    { command: "wait" },
+    null,
+    42,
+  ]);
+  expect(JSON.parse(fs.readFileSync(path.join(temp.path, "nested/story.json"), "utf8"))).toEqual([
+    { names: [123, "爱丽丝", "tail"], message: "你好", voice: "001" },
+  ]);
+});
+
+it.each(["missing", "mismatch"])("MESSAGEJSON %s 在本文件写入前报告错误", async (failure) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-messagejson-invalid-"));
+  const service = create_service();
+  const parsed = await service.parse_asset(
+    "story.json",
+    Buffer.from('[{"message":"one"},{"message":"two"}]'),
+  );
+  if (parsed.kind !== "items") throw new Error("Expected message items");
+  fs.writeFileSync(path.join(temp.path, "story.json"), "existing output");
+  await expect(
+    service.write_items(
+      parsed.items.map((item) => ({ ...item, status: "PROCESSED", dst: "译文" })),
+      {
+        paths: { translated_path: temp.path, bilingual_path: path.join(temp.path, "bilingual") },
+        source_files: [{ path: "story.json", file_type: "MESSAGEJSON" }],
+        asset_reader: () =>
+          failure === "missing" ? null : Buffer.from('[{"message":"one"},{"message":"changed"}]'),
+      },
+    ),
+  ).rejects.toThrow(
+    expect.objectContaining({
+      code: failure === "missing" ? "file.not_found" : "file.invalid_structure",
+      public_details: { file: "story.json" },
+    }),
+  );
+  expect(fs.readFileSync(path.join(temp.path, "story.json"), "utf8")).toBe("existing output");
+});

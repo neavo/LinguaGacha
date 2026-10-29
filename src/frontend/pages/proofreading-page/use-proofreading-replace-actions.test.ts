@@ -13,7 +13,7 @@ import { useProofreadingReplaceActions } from "./use-proofreading-replace-action
 
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: vi.fn() }));
 
-it("姓名替换完成条目并保留其他姓名槽位", async () => {
+it("姓名替换更新当前姓名并完成条目", async () => {
   const item: ProofreadingClientItem = {
     item_id: 1,
     row_id: "1",
@@ -23,7 +23,7 @@ it("姓名替换完成条目并保留其他姓名槽位", async () => {
     src: "原文",
     dst: "既有译文",
     name_src: null,
-    name_dst: ["旧名", "旁白"],
+    name_dst: "旧名",
     status: "ERROR",
     warnings: [],
     glossary_applications: [],
@@ -83,7 +83,7 @@ it("姓名替换完成条目并保留其他姓名槽位", async () => {
     await act(async () => {
       await actions.replace_next_visible_match();
     });
-    expect(saved.name_dst).toEqual(["新名", "旁白"]);
+    expect(saved.name_dst).toBe("新名");
     expect(saved.status).toBe("PROCESSED");
   } finally {
     await act(async () => {

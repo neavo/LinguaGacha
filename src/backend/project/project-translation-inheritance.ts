@@ -1,13 +1,4 @@
-import {
-  normalize_item_name_field,
-  type ItemStatus,
-  type ProjectItemPublicRecord,
-} from "../../domain/item";
-import {
-  are_item_name_fields_equal,
-  read_item_name_text,
-  read_optional_item_name_text,
-} from "../../shared/item-name";
+import { type ItemStatus, type ProjectItemPublicRecord } from "../../domain/item";
 import type { TranslationInheritanceMode } from "../../shared/translation-inheritance";
 
 /** 继承只读取原文身份与译文结果，只改写新条目的译文和完成状态。 */
@@ -63,7 +54,7 @@ export function inherit_completed_translations(
       ? [
           {
             ...entry,
-            result_id: read_result_id(entry.item.dst, read_item_name_text(entry.item.name_dst)),
+            result_id: read_result_id(entry.item.dst, entry.item.name_dst ?? ""),
           },
         ]
       : [],
@@ -81,14 +72,11 @@ export function inherit_completed_translations(
       (TEXT_INHERIT_STATUSES.has(item.status) ? text_candidates.get(source_id) : undefined);
     if (candidate === undefined) continue;
     if (!replacing) result.filled += 1;
-    else if (
-      item.dst !== candidate.dst ||
-      !are_item_name_fields_equal(item.name_dst, candidate.name_dst)
-    )
+    else if (item.dst !== candidate.dst || item.name_dst !== candidate.name_dst)
       result.replaced += 1;
     else continue; // 覆盖结果相同，条目保持原样。
     item.dst = candidate.dst;
-    item.name_dst = normalize_item_name_field(candidate.name_dst); // 数组姓名不与旧快照共享。
+    item.name_dst = candidate.name_dst;
     item.status = "PROCESSED";
   }
   return result;
@@ -140,7 +128,7 @@ function read_context_entries(
 ): ContextEntry[] {
   const entries = items.map((item) => ({
     item,
-    source_id: read_source_id(item.src, read_optional_item_name_text(item.name_src)),
+    source_id: read_source_id(item.src, item.name_src || null),
     context_key: "",
   }));
   const files = new Map<string, ContextEntry[]>();

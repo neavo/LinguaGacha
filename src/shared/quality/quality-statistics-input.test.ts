@@ -96,14 +96,14 @@ describe("prepare_quality_statistics_task_input", () => {
     },
   );
 
-  it("保护统计中正文按行、可见姓名按整段，隐藏姓名槽位不参与", () => {
+  it("保护统计中正文按行、姓名按整段", () => {
     const input = prepare_quality_statistics_task_input({
       rule_key: "text_preserve",
       entries: [{ entry_id: "cross", src: "<A\\nB>" }],
       items: [
         { src: "<A\nB>正文" },
-        { src: "正文", name_src: ["Alice<A\nB>", "ignored"] },
-        { src: "正文", name_src: ["Alice", "<A\nB>"] },
+        { src: "正文", name_src: "Alice<A\nB>" },
+        { src: "正文", name_src: "Alice" },
       ],
     });
     const result = run_quality_statistics_task_sync(input);

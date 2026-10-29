@@ -1,4 +1,4 @@
-import { read_item_name_text } from "./item-name";
+import type { ItemNameField } from "../domain/item";
 
 type ItemTextField = "src" | "name_src" | "dst" | "name_dst";
 
@@ -9,7 +9,7 @@ export type ItemTextPart = {
 
 export type ItemTextGroup = ItemTextPart[];
 
-/** 保持字段边界，把每个字段拆成独立行；空行仍是可观察文本单元。 */
+/** 每个字段独立拆行，空行仍参与规则计算。 */
 export function split_item_text_parts_by_line(parts: readonly ItemTextPart[]): ItemTextGroup {
   return parts.flatMap((part) =>
     part.text.split("\n").map((text) => ({ field: part.field, text })),
@@ -19,13 +19,16 @@ export function split_item_text_parts_by_line(parts: readonly ItemTextPart[]): I
 type ItemTextRecord = {
   src?: unknown;
   dst?: unknown;
-  name_src?: unknown;
-  name_dst?: unknown;
+  name_src?: ItemNameField;
+  name_dst?: ItemNameField;
 };
 
-function read_name_text_parts(field: "name_src" | "name_dst", value: unknown): ItemTextPart[] {
-  const text = read_item_name_text(value);
-  return text === "" ? [] : [{ field, text }];
+/** 空姓名不参与规则匹配，非空姓名保留独立字段边界。 */
+function read_name_text_parts(
+  field: "name_src" | "name_dst",
+  value: ItemNameField | undefined,
+): ItemTextPart[] {
+  return value ? [{ field, text: value }] : [];
 }
 
 // 原文正文与源姓名保持独立 part，规则不得跨字段拼接命中。

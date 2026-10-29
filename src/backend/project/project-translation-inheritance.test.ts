@@ -133,7 +133,7 @@ describe("inherit_completed_translations", () => {
     const next_items = [
       item("x.txt", "早安"),
       item("x.txt", "你好", { status: "DUPLICATED" }),
-      item("x.txt", "你好", { name_src: ["太郎", "附加"] }),
+      item("x.txt", "你好", { name_src: "太郎" }),
       item("x.txt", "你好", { dst: "已有", status: "PROCESSED" }),
     ];
 
@@ -146,17 +146,15 @@ describe("inherit_completed_translations", () => {
     expect(next_items[2]?.name_dst).toBe("乙名");
   });
 
-  it("复制空正文与完整姓名形状，姓名数组不共享旧快照", () => {
-    const old_name_dst = ["俊辅", "附加"];
+  it("按姓名继承已完成的空正文", () => {
     const old_items = [
-      item("a.txt", "", { name_src: "俊輔", name_dst: old_name_dst, status: "PROCESSED" }),
+      item("a.txt", "", { name_src: "俊輔", name_dst: "俊辅", status: "PROCESSED" }),
     ];
     const next = item("b.txt", "", { name_src: "俊輔", status: "RULE_SKIPPED" });
 
     inherit_completed_translations(old_items, [next], "fill");
 
-    expect(next).toMatchObject({ dst: "", name_dst: ["俊辅", "附加"], status: "PROCESSED" });
-    expect(next.name_dst).not.toBe(old_name_dst);
+    expect(next).toMatchObject({ dst: "", name_dst: "俊辅", status: "PROCESSED" });
   });
 
   it("失败条目可经上下文或票选填充，排除条目在两种模式下都不变", () => {

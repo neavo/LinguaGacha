@@ -9,7 +9,7 @@ import {
 
 const BASE_ITEM = {
   dst: "旧译文",
-  name_dst: ["旧译名", "保留译名"],
+  name_dst: "旧译名",
   status: "NONE",
 };
 
@@ -18,14 +18,14 @@ describe("project item field patch", () => {
     expect(
       normalize_project_item_field_patch({
         dst: "新译文",
-        name_dst: ["新译名", 404, "保留译名"],
+        name_dst: "新译名",
         status: "PROCESSED",
         src: "不能写回",
         broken: true,
       }),
     ).toEqual({
       dst: "新译文",
-      name_dst: ["新译名", "保留译名"],
+      name_dst: "新译名",
       status: "PROCESSED",
     });
   });
@@ -33,20 +33,21 @@ describe("project item field patch", () => {
   it("坏状态和非对象不生成字段补丁", () => {
     expect(normalize_project_item_field_patch({ status: "BROKEN" })).toBeNull();
     expect(normalize_project_item_field_patch(null)).toBeNull();
+    expect(normalize_project_item_field_patch({ name_dst: ["旧数组"], dst: "译文" })).toBeNull();
   });
 
-  it("应用 patch 时按姓名字段内容比较数组", () => {
+  it("应用 patch 时比较当前姓名", () => {
     const unchanged = apply_project_item_field_patch(BASE_ITEM, {
-      name_dst: ["旧译名", "保留译名"],
+      name_dst: "旧译名",
     });
     const changed = apply_project_item_field_patch(BASE_ITEM, {
-      name_dst: ["新译名", "保留译名"],
+      name_dst: "新译名",
     });
 
     expect(unchanged).toBeNull();
     expect(changed).toEqual({
       ...BASE_ITEM,
-      name_dst: ["新译名", "保留译名"],
+      name_dst: "新译名",
     });
   });
 
@@ -54,7 +55,7 @@ describe("project item field patch", () => {
     expect(
       build_project_item_field_patch(BASE_ITEM, {
         dst: "新译文",
-        name_dst: ["旧译名", "保留译名"],
+        name_dst: "旧译名",
         status: "PROCESSED",
       }),
     ).toEqual({
@@ -69,17 +70,14 @@ describe("project item field patch", () => {
 });
 
 describe("project item manual update", () => {
-  it.each([null, "", ["", "保留译名"]])(
-    "提交相同空可见姓名 %j 保持无变化与字段形状",
-    (name_dst) => {
-      expect(
-        apply_project_item_manual_update(
-          { ...BASE_ITEM, name_dst, status: "ERROR" },
-          { name_dst: "" },
-        ),
-      ).toBeNull();
-    },
-  );
+  it.each([null, ""])("提交相同空姓名 %j 保持无变化", (name_dst) => {
+    expect(
+      apply_project_item_manual_update(
+        { ...BASE_ITEM, name_dst, status: "ERROR" },
+        { name_dst: "" },
+      ),
+    ).toBeNull();
+  });
 
   it("显式完成可以接受空译文", () => {
     expect(
@@ -114,12 +112,12 @@ describe("project item manual update", () => {
     ).toMatchObject({ status: "EXCLUDED" });
   });
 
-  it.each(["", "新译名"])("可见姓名改为 %j 时完成条目并保留其它槽位", (name_dst) => {
+  it.each(["", "新译名"])("姓名改为 %j 时完成条目", (name_dst) => {
     expect(
       apply_project_item_manual_update({ ...BASE_ITEM, status: "ERROR" }, { name_dst }),
     ).toEqual({
       ...BASE_ITEM,
-      name_dst: [name_dst, "保留译名"],
+      name_dst,
       status: "PROCESSED",
     });
   });

@@ -1,7 +1,7 @@
 import type { JsonValue } from "../../domain/json";
 import { PROJECT_REVISION_SCHEMA } from "../../domain/project-revision";
 import { Check } from "typebox/value";
-import { normalize_item_name_field, normalize_item_status } from "../../domain/item";
+import { normalize_item_status } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 
 import * as AppErrors from "../../shared/error";
@@ -101,7 +101,12 @@ export function normalize_translation_item_patches(
       patch.dst = raw_item["dst"];
     }
     if (Object.hasOwn(raw_item, "name_dst")) {
-      patch.name_dst = normalize_item_name_field(raw_item["name_dst"]);
+      if (raw_item["name_dst"] !== null && typeof raw_item["name_dst"] !== "string") {
+        throw new AppErrors.AppError("runtime.internal_invariant", {
+          diagnostic_context: { reason: "invalid_translation_name_dst", item_id },
+        });
+      }
+      patch.name_dst = raw_item["name_dst"];
     }
     if (Object.hasOwn(raw_item, "status")) {
       patch.status = normalize_item_status(raw_item["status"]);

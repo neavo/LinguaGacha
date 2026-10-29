@@ -37,7 +37,7 @@ const saved_item = build_project_item_public_record(
     row: 1,
     src: "原文",
     dst: "已保存译文",
-    name_src: ["角色", "旁白"],
+    name_src: "角色",
   }),
 );
 
@@ -85,7 +85,7 @@ describe("useProofreadingDialogActions", () => {
   }
 
   it("保存姓名差异后完成条目并关闭弹窗", async () => {
-    const current = { ...item, status: "ERROR", name_dst: ["旧名", "旁白"] };
+    const current = { ...item, status: "ERROR", name_dst: "旧名" };
     read_items.mockResolvedValue([current]);
     await render_hook();
     await act(async () => {
@@ -99,7 +99,7 @@ describe("useProofreadingDialogActions", () => {
     expect(change).toEqual({ item_id: 1, name_dst: "新名" });
     const saved = apply_project_item_manual_update(current, change)!;
     expect(saved.status).toBe("PROCESSED");
-    expect(saved.name_dst).toEqual(["新名", "旁白"]);
+    expect(saved.name_dst).toBe("新名");
     expect(state?.dialog_state.open).toBe(false);
   });
 

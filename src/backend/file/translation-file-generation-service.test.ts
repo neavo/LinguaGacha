@@ -512,45 +512,59 @@ describe("TranslationFileGenerationService", () => {
     );
   });
 
-  it("MESSAGEJSON 译文生成只在相同可见角色间复用译文", async () => {
+  it("MESSAGEJSON 译文生成只在相同姓名间复用译文", async () => {
     const project_path = path.join(temp_dir, "actors.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
-    const database = create_database([
+    const database = create_database(
+      [
+        {
+          id: 1,
+          src: "あうぅ……。",
+          dst: "嗷呜……。",
+          name_src: "アビゲイル",
+          name_dst: "阿比盖尔",
+          status: "PROCESSED",
+          file_type: "MESSAGEJSON",
+          file_path: "actors.json",
+          row: 0,
+        },
+        {
+          id: 2,
+          src: "あうぅ……。",
+          dst: "",
+          name_src: "アビゲイル",
+          name_dst: null,
+          status: "DUPLICATED",
+          file_type: "MESSAGEJSON",
+          file_path: "actors.json",
+          row: 1,
+        },
+        {
+          id: 3,
+          src: "あうぅ……。",
+          dst: "",
+          name_src: "武藏",
+          name_dst: null,
+          status: "DUPLICATED",
+          file_type: "MESSAGEJSON",
+          file_path: "actors.json",
+          row: 2,
+        },
+      ],
       {
-        id: 1,
-        src: "あうぅ……。",
-        dst: "嗷呜……。",
-        name_src: "アビゲイル",
-        name_dst: "阿比盖尔",
-        status: "PROCESSED",
-        file_type: "MESSAGEJSON",
-        file_path: "actors.json",
-        row: 0,
+        "actors.json": {
+          file_type: "MESSAGEJSON",
+          content: Buffer.from(
+            JSON.stringify([
+              { name: "アビゲイル", message: "あうぅ……。" },
+              { name: "アビゲイル", message: "あうぅ……。" },
+              { name: "武藏", message: "あうぅ……。" },
+            ]),
+          ),
+        },
       },
-      {
-        id: 2,
-        src: "あうぅ……。",
-        dst: "",
-        name_src: "アビゲイル",
-        name_dst: null,
-        status: "DUPLICATED",
-        file_type: "MESSAGEJSON",
-        file_path: "actors.json",
-        row: 1,
-      },
-      {
-        id: 3,
-        src: "あうぅ……。",
-        dst: "",
-        name_src: "武藏",
-        name_dst: null,
-        status: "DUPLICATED",
-        file_type: "MESSAGEJSON",
-        file_path: "actors.json",
-        row: 2,
-      },
-    ]);
+    );
     const service = new TranslationFileGenerationService(
       new GameDirectoryOperations(),
       database,

@@ -140,6 +140,8 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
   const item = {
     src: "原文",
     dst: "译文",
+    name_src: [123, "姓名", "附加信息"],
+    name_dst: ["译名", "附加译名"],
     file_path: "story.TRANS",
     file_type: "TRANS",
     tag: "next",
@@ -192,8 +194,8 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
     row: 2,
     status: "PROCESSED",
     skip_internal_filter: true,
-    name_src: null,
-    name_dst: null,
+    name_src: "姓名",
+    name_dst: "译名",
     extra_field: { tag: ["aqua"], private: true, trans_ref: { file_key: "next", row_index: 0 } },
     legacy_private: { keep: true },
   });
@@ -216,8 +218,15 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
     "project-item-public-contract",
     "asset-file-type",
     "renpy-rpy-file-type",
+    "item-name-text",
   ]);
   expect(db.prepare("SELECT sort_order FROM assets").get()?.["sort_order"]).toBe(0);
+  expect(
+    db
+      .prepare("SELECT data FROM assets ORDER BY id")
+      .all()
+      .every((row) => Buffer.from(row["data"] as Uint8Array).equals(compressed)),
+  ).toBe(true);
   const meta = db.prepare("SELECT * FROM meta ORDER BY key").all();
   run_project_database_migrations(db, "1.0.0");
   expect(db.prepare("SELECT data FROM items ORDER BY id").all()).toEqual(rows);

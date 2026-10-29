@@ -6,16 +6,16 @@ describe("read_item_translation_candidates", () => {
     expect(
       read_item_translation_candidates({ src: "……", name_src: "data:image/png;base64,AAAA" }),
     ).toEqual([]);
-    expect(
-      read_item_translation_candidates({ src: "EV12", name_src: ["Alice image.png", "附加字段"] }),
-    ).toEqual([{ field: "name_src", text: "Alice image.png" }]);
+    expect(read_item_translation_candidates({ src: "EV12", name_src: "Alice image.png" })).toEqual([
+      { field: "name_src", text: "Alice image.png" },
+    ]);
   });
 
-  it("强制翻译绕过内容规则并只读取可见姓名槽位", () => {
+  it("强制翻译绕过内容规则并读取当前姓名", () => {
     expect(
       read_item_translation_candidates({
         src: "EV12",
-        name_src: ["…", "附加字段"],
+        name_src: "…",
         skip_internal_filter: true,
       }),
     ).toEqual([

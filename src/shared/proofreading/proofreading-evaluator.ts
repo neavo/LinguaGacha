@@ -12,7 +12,6 @@ import type {
   ProofreadingWarning,
 } from "./proofreading-types";
 import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
-import { read_item_name_text, read_optional_item_name_text } from "../item-name";
 import {
   build_text_preserve_rule,
   type TextPreserveAnalysis,
@@ -197,7 +196,7 @@ export function evaluateProofreadingItem(args: {
   }
   const prepared = prepare_translation_source({
     src: item.src,
-    name_src: read_optional_item_name_text(item.name_src),
+    name_src: item.name_src || null,
     text_type: text_type,
     preserve_rule: sample_rule,
     pre_replacements: args.quality_context.pre_replacements,
@@ -231,7 +230,7 @@ export function evaluateProofreadingItem(args: {
       warnings.push({ code: "LINE_COUNT_MISMATCH", target_field: "dst" });
     }
   }
-  const name_dst = read_item_name_text(item.name_dst);
+  const name_dst = item.name_dst ?? "";
   if (name_dst !== "") {
     const translation = project_text_resource_references(name_dst);
     warnings.push(

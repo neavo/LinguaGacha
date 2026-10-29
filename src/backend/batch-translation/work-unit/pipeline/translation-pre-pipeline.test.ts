@@ -72,7 +72,7 @@ describe("TranslationPrePipeline", () => {
 
     const context = pipeline.process_item({
       src: "こんにちは",
-      name_src: ["Alice"],
+      name_src: "Alice",
       file_type: "TXT",
     });
 

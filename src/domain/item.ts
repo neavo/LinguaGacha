@@ -40,7 +40,7 @@ export const ITEM_FILE_TYPES = [
   "MESSAGEJSON",
 ] as const;
 
-const ITEM_NAME_SCHEMA = Type.Union([Type.String(), Type.Array(Type.String()), Type.Null()]); // 数组第 0 槽为可见姓名，其余槽位保留格式信息。
+const ITEM_NAME_SCHEMA = Type.Union([Type.String(), Type.Null()]);
 /** 条目形状共用业务字段，身份和行号由各自边界补充。 */
 const ITEM_BUSINESS_SCHEMA = Type.Object({
   src: Type.String(), // 正文原文。
@@ -75,11 +75,11 @@ export const PROJECT_ITEM_WRITE_SCHEMA = Type.Object({
   ...PROJECT_ITEM_PERSISTENT_SCHEMA.properties,
   id: Type.Optional(PROJECT_ITEM_PERSISTENT_SCHEMA.properties.id), // 新条目可由数据库分配主键。
 });
-/** 人工姓名是第 0 槽的字符串视图，提交 patch 仍携带完整姓名字段。 */
+/** 人工编辑提交当前姓名字符串。 */
 export const PROJECT_ITEM_MANUAL_UPDATE_SCHEMA = Type.Object(
   {
     dst: Type.Optional(ITEM_BUSINESS_SCHEMA.properties.dst), // 人工确认的正文译文，允许空字符串。
-    name_dst: Type.Optional(Type.String()), // 姓名第 0 槽的人工译文。
+    name_dst: Type.Optional(Type.String()), // 当前姓名的人工译文。
     status: Type.Optional(Type.Enum(ITEM_MANUAL_STATUSES)), // 显式人工状态，优先于内容修改的默认完成状态。
   },
   { additionalProperties: false, minProperties: 1 },
@@ -118,8 +118,8 @@ export function create_item(payload: unknown = {}): Item {
     ...(record["id"] === undefined ? {} : { id: read_json_integer(record["id"], 0) }),
     src,
     dst: String(record["dst"] ?? DEFAULT_ITEM.dst),
-    name_src: normalize_item_name_field(record["name_src"]),
-    name_dst: normalize_item_name_field(record["name_dst"]),
+    name_src: typeof record["name_src"] === "string" ? record["name_src"] : null,
+    name_dst: typeof record["name_dst"] === "string" ? record["name_dst"] : null,
     extra_field: record["extra_field"] ?? DEFAULT_ITEM.extra_field,
     tag: String(record["tag"] ?? DEFAULT_ITEM.tag),
     row: read_json_integer(record["row"] ?? record["row_number"], DEFAULT_ITEM.row),
@@ -134,8 +134,6 @@ export function build_project_item_public_record(item: Item): ProjectItemPublicR
   const { id, row, ...fields } = item;
   return {
     ...fields,
-    name_src: normalize_item_name_field(fields.name_src),
-    name_dst: normalize_item_name_field(fields.name_dst),
     item_id: id ?? 0,
     row_number: row,
   };
@@ -151,19 +149,6 @@ export function normalize_item_status(value: unknown): ItemStatus {
  */
 export function normalize_item_file_type(value: unknown): ItemFileType {
   return is_item_file_type(value) ? value : DEFAULT_ITEM.file_type;
-}
-
-/**
- * 名称字段兼容字符串和多列名称数组，非法项在边界处剔除
- */
-export function normalize_item_name_field(value: unknown): ItemNameField {
-  if (value === undefined || value === null) {
-    return null;
-  }
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
-  }
-  return typeof value === "string" ? value : String(value);
 }
 
 // item 状态从数据库、API 和任务进度多处流入，先判定再统计
@@ -204,6 +189,12 @@ export function normalize_project_item_public_record(
   if (!Number.isInteger(item_id) || item_id <= 0) {
     return null;
   }
+  if (
+    ![record["name_src"], record["name_dst"]].every(
+      (name) => name === null || typeof name === "string",
+    )
+  )
+    return null;
   const item = create_item({
     ...record,
     id: item_id,
@@ -234,8 +225,6 @@ function build_project_item_persistent_record(
   const { item_id, row_number, ...fields } = public_record;
   return {
     ...fields,
-    name_src: normalize_item_name_field(fields.name_src),
-    name_dst: normalize_item_name_field(fields.name_dst),
     id: item_id,
     row: row_number,
   };
