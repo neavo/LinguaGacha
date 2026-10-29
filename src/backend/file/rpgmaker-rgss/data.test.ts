@@ -1,11 +1,13 @@
 import { expect, it } from "vitest";
 import { deflateSync, inflateSync } from "node:zlib";
+import { create_item } from "../../../domain/item";
 import {
   ruby_array as a,
   ruby_string as s,
   ruby_integer as n,
   ruby_command as c,
   ruby_object as o,
+  ruby_symbol,
 } from "../../../test/rgss-fixture";
 import { decode, encode, field, base } from "./marshal";
 import { array, text, integer, bytes } from "./value";
@@ -63,7 +65,13 @@ it("脚本归档修改合并，失败脚本和未修改压缩载荷保持原样"
   ]);
   const original = bytes(array(array(root)[2]!)[2]!);
   const parsed = await read_rgss_data(root, "Data/Scripts.rvdata2", "ace", true);
-  expect(parsed.warnings).toHaveLength(1);
+  expect(parsed.warnings).toMatchObject([
+    {
+      code: "script_syntax_error",
+      location: JSON.stringify({ kind: "archive", path: [1, 2] }),
+      diagnostics: [expect.objectContaining({ message: expect.any(String) })],
+    },
+  ]);
   const changes = parsed.items.filter((item) => item.src !== "keep");
   for (const item of changes) item.dst = "译" + item.src;
   await write_rgss_data(root, changes, "ace");
@@ -77,6 +85,7 @@ it.each<RGSSVersion>(["xp", "vx", "ace"])(
     const root = o("Fixture", {
       "@list": a([
         c(355, [s('table = {"key" => "value"}; puts table["key"]')]),
+        c(655, [s("# custom script")]),
         c(111, [n(12), s('name == "condition"')]),
         c(122, [n(1), n(1), n(0), n(4), version === "ace" ? s('"variable"') : n(1), n(0)]),
         c(101, version === "xp" ? [s("dialogue")] : [s(""), n(0), n(0), n(2)]),
@@ -90,17 +99,145 @@ it.each<RGSSVersion>(["xp", "vx", "ace"])(
     const result = await read_rgss_data(root, "Data/Map001.rvdata2", version, false);
     expect(result.warnings).toEqual([]);
     expect(result.items.map((item) => [item.src, item.status])).toEqual([
-      ["key", "RULE_SKIPPED"],
-      ["value", "RULE_SKIPPED"],
-      ["key", "RULE_SKIPPED"],
+      ['table = {"key" => "value"}; puts table["key"]\n# custom script', "RULE_SKIPPED"],
       ["condition", "RULE_SKIPPED"],
       ...(version === "ace" ? [["variable", "RULE_SKIPPED"]] : []),
       ["dialogue", "NONE"],
       ["choice", "NONE"],
       ["move", "RULE_SKIPPED"],
     ]);
+    expect(read_rgss_metadata(result.items[0]!.extra_field)).toMatchObject({
+      usage: "metadata",
+      location: { kind: "block", path: [{ field: "@list" }], start: 0, end: 2, code: 355 },
+    });
   },
 );
+
+it.each([
+  'profile = "unfinished',
+  "show_profile actor",
+  "",
+  " \t ",
+  "\n",
+  '  puts "hello #{name}" # comment\n\tplugin text\n',
+])("事件脚本完整保留原文与定位，默认排除且不诊断 Ruby 语法：%j", async (source) => {
+  const lines = source.split("\n");
+  const root = a(lines.map((line, index) => c(index === 0 ? 355 : 655, [s(line)], 2)));
+  const parsed = await read_rgss_data(root, "Data/Map001.rvdata2", "ace", false);
+  expect(parsed.warnings).toEqual([]);
+  expect(parsed.items.map((item) => [item.src, item.status])).toEqual(
+    source === "" ? [] : [[source, "RULE_SKIPPED"]],
+  );
+  if (source !== "")
+    expect(read_rgss_metadata(parsed.items[0]!.extra_field)).toEqual({
+      internal_file_path: "Data/Map001.rvdata2",
+      usage: "metadata",
+      location: { kind: "block", path: [], start: 0, end: lines.length, code: 355 },
+    });
+});
+
+it("条件、变量与移动路线字段仍报告 Ruby 语法错误", async () => {
+  const broken = () => s('puts "unfinished');
+  const root = a([
+    c(111, [n(12), broken()]),
+    c(122, [n(1), n(1), n(0), n(4), broken()]),
+    o("RPG::MoveCommand", { "@code": n(45), "@parameters": a([broken()]) }),
+  ]);
+  const parsed = await read_rgss_data(root, "Data/Map001.rvdata2", "ace", false);
+  expect(parsed.items).toEqual([]);
+  expect(parsed.warnings.map((warning) => [warning.code, JSON.parse(warning.location!)])).toEqual(
+    [1, 4, 0].map((slot, index) => [
+      "script_syntax_error",
+      { kind: "field", path: [index, { field: "@parameters" }, slot] },
+    ]),
+  );
+  for (const warning of parsed.warnings)
+    expect(warning.diagnostics).toEqual([
+      expect.objectContaining({ message: expect.any(String), line: 1 }),
+    ]);
+});
+
+it("共享事件脚本列表按原稿定位增减多个块，保留缩进、头结构、编码与相邻指令", async () => {
+  const source = s('puts "first"');
+  source.pairs = [[ruby_symbol("encoding"), s("Shift_JIS")]]; // 写回需沿用原稿的显式编码。
+  const header = o("RPG::EventCommand", {
+    "@code": n(355),
+    "@indent": n(2),
+    "@parameters": a([source]),
+    "@custom": n(7),
+  });
+  const list = a([
+    header,
+    c(655, [s("# tail")], 2),
+    c(655, [s("different indent")], 1),
+    c(355, [s('puts "last"')], 1),
+    c(655, [s("# remove")], 1),
+    c(0, []),
+  ]);
+  const root = decode(encode(o("Fixture", { "@first": list, "@alias": list })));
+  const parsed = await read_rgss_data(root, "Data/Map001.rvdata2", "ace", false);
+  const blocks = parsed.items.filter(
+    (item) => read_rgss_metadata(item.extra_field).location.kind === "block",
+  );
+  expect(blocks.map((item) => item.src)).toEqual(['puts "first"\n# tail', 'puts "last"\n# remove']);
+  const before = array(field(root, "@first")!);
+  const adjacent = encode(a([before[2]!, before[5]!]));
+  blocks[0]!.dst = "custom 訳文\n  # retained\n";
+  blocks[1]!.dst = 'puts "末尾"';
+  await write_rgss_data(root, blocks, "ace");
+  const output = decode(encode(root));
+  expect(base(field(output, "@first")!)).toBe(base(field(output, "@alias")!));
+  const commands = array(field(output, "@first")!);
+  expect(
+    commands.map((node) => [integer(field(node, "@code")!), integer(field(node, "@indent")!)]),
+  ).toEqual([
+    [355, 2],
+    [655, 2],
+    [655, 2],
+    [655, 1],
+    [355, 1],
+    [0, 0],
+  ]);
+  expect(encode(a([commands[3]!, commands[5]!]))).toEqual(adjacent);
+  for (const node of commands.slice(0, 3)) {
+    expect(integer(field(node, "@custom")!)).toBe(7);
+    expect(text(array(field(node, "@parameters")!)[0]!.pairs![0]![1])).toBe("Shift_JIS");
+  }
+  const reparsed = await read_rgss_data(output, "Data/Map001.rvdata2", "ace", false);
+  expect(reparsed.warnings).toEqual([]);
+  expect(
+    reparsed.items
+      .filter((item) => read_rgss_metadata(item.extra_field).location.kind === "block")
+      .map((item) => item.src),
+  ).toEqual(blocks.map((item) => item.dst));
+});
+
+it("历史 ruby → block 定位仍按保存的字符串范围写回", async () => {
+  const root = a([c(355, [s('puts "old"')]), c(655, [s('puts "tail"')]), c(0, [])]);
+  const item = create_item({
+    src: "old",
+    dst: "中文",
+    file_type: "RPGMAKER_RGSS",
+    extra_field: {
+      rpgmaker_rgss: {
+        internal_file_path: "Data/Map001.rvdata2",
+        usage: "metadata",
+        location: {
+          kind: "ruby",
+          container: { kind: "block", path: [], start: 0, end: 2, code: 355 },
+          span: { start: 5, end: 10 },
+        },
+      },
+    },
+  });
+  await write_rgss_data(root, [item], "ace");
+  expect(array(root).map((node) => integer(field(node, "@code")!))).toEqual([355, 655, 0]);
+  expect(
+    array(root)
+      .slice(0, 2)
+      .map((node) => text(array(field(node, "@parameters")!)[0]!)),
+  ).toEqual(['puts "中文"', 'puts "tail"']);
+});
 it("数据库默认翻译资格与元数据分开，子目录同名文件不套用数据库字段，ASCII 标记随中文写回更新", async () => {
   const ascii = s("name");
   ascii.pairs![0]![1] = { t: "F" };
@@ -212,7 +349,7 @@ it("只有明确的 EventCommand 和 MoveCommand 进入事件解释", async () =
   ).toEqual([
     ['puts "ordinary"', "field"],
     ["move", "ruby"],
-    ["event", "ruby"],
+    ['puts "event"', "block"],
   ]);
 });
 

@@ -228,8 +228,8 @@ export async function read_rgss_data(
     seen.set(target, entries);
     candidates.push(candidate);
   }
-  // 单段脚本失败只产生诊断，原始成员仍由容器清单保存。
-  async function script(container: RGSSContainer) {
+  // 字段和脚本库解析失败只产生诊断，原始成员仍由容器清单保存。
+  async function script(container: Exclude<RGSSContainer, { kind: "block" }>) {
     try {
       const source = read_container(locations.slots, container, version);
       const parsed = await read_ruby_strings(source);
@@ -312,13 +312,12 @@ export async function read_rgss_data(
           end,
           code: entry.code,
         };
-        if (entry.code === EVENT.SCRIPT) await script(location);
-        else
-          add(
-            read_container(locations.slots, location, version),
-            location,
-            entry.code !== EVENT.COMMENT,
-          );
+        // 事件脚本可能承载自定义协议，因此完整保留。
+        add(
+          read_container(locations.slots, location, version),
+          location,
+          entry.code !== EVENT.COMMENT && entry.code !== EVENT.SCRIPT,
+        );
         if (entry.code === EVENT.MESSAGE && version !== "xp")
           for (let slot = 0; slot < entry.parameters.length; slot++)
             await walk(entry.parameters[slot]!, [...params, slot]);
