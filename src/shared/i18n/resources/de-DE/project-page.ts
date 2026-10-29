@@ -27,7 +27,6 @@ export const de_de_project_page = {
     drop_title: "Klicken oder .lg-Datei hierher ziehen",
     recent_title: "Letzte Projekte",
     empty: "Keine letzten Projekte",
-    ready_status: "Projekt bereit",
     loading_toast: "Projekt wird geladen …",
     preview_unavailable: "Fehler beim Lesen der Projektvorschau …",
     action: "Projekt öffnen",
@@ -44,15 +43,6 @@ export const de_de_project_page = {
     created_at: "Erstellt am",
     updated_at: "Zuletzt aktualisiert",
     progress: "Fortschritt",
-  },
-  loading_stages: {
-    project: "Projektinformationen werden geladen …",
-    files: "Projektdateien werden geladen …",
-    items: "Projekteinträge werden geladen …",
-    quality: "Qualitätsregeln werden geladen …",
-    prompts: "Prompt-Einstellungen werden geladen …",
-    proofreading: "Korrekturansicht wird geladen …",
-    task: "Aufgabenstatus wird geladen …",
   },
   formats: {
     title: "Unterstützte Dateiformate",

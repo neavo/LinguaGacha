@@ -65,11 +65,10 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         }
       };
       if (affects_project && project_snapshot.loaded) {
-        const message =
-          field === "mtool_optimizer_enable"
-            ? "app.feedback.project_cache_loading"
-            : "app.feedback.project_cache_loading";
-        await run_modal_progress_toast({ message: t(message), task: save });
+        await run_modal_progress_toast({
+          message: t("app.feedback.operation_running"),
+          task: save,
+        });
       } else {
         await save();
       }

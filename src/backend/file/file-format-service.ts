@@ -9,7 +9,6 @@ import { apply_godot_pack_order, godot_pack_preview } from "./godot/source";
 import { GAME_ENGINES, prepare_game_source } from "./shared/game/engines";
 import type { GameImport } from "./shared/game/source-files";
 import { GameFormat } from "./shared/game/format";
-import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import {
   discover_source,
   discover_sources,
@@ -498,11 +497,6 @@ export class FileFormatService {
       this.collect_source_file_entries(source_paths, signal),
     );
     const source_files = entries.filter((entry) => entry.source.kind !== "failure");
-    const failed_files = entries.flatMap((entry) =>
-      entry.source.kind === "failure"
-        ? [build_source_file_parse_failure({ ...entry, error: entry.source.error })]
-        : [],
-    );
     const format_hit_counts = Object.fromEntries(
       PROJECT_SOURCE_FORMATS.map((format) => [format.id, 0]),
     ) as ProjectSourceFormatHitCounts;
@@ -528,7 +522,6 @@ export class FileFormatService {
         : [],
     );
     return {
-      ...(failed_files.length ? { failed_files } : {}),
       ...(godot_packs.length ? { godot_packs } : {}),
       contains_game: source_files.some((entry) => entry.source.kind === "game"),
       source_file_count: source_files.length,

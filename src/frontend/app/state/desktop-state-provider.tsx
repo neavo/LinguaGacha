@@ -158,7 +158,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   });
   const [project_session_status, set_project_session_status] =
     useState<ProjectSessionStatus>("idle");
-  const [project_session_stage, set_project_session_stage] = useState<ProjectStage | null>(null);
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null);
   const [is_app_language_updating, set_is_app_language_updating] = useState(false);
   const refresh_scheduler_ref = useRef<DesktopRefreshScheduler | null>(null); // 本地操作和项目刷新通过 ref 先冲刷 SSE pending 队列
@@ -492,14 +491,12 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
       clear_project_state_identity();
-      set_project_session_stage(null);
       set_project_session_status("idle");
       return;
     }
 
     const chat_identity = begin_project_state_session(project_snapshot.path.trim());
     set_project_session_status("warming");
-    set_project_session_stage(null);
     const manifest = await api_fetch<ProjectManifestPayload>("/api/session/project/manifest", {});
     if (!is_current_project_session_warming(chat_identity)) {
       return;
@@ -509,7 +506,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     const manifest_project_path = String(manifest.projectPath ?? "").trim();
     if (!next_project_snapshot.loaded || manifest_project_path === "") {
       sync_project_snapshot(next_project_snapshot);
-      set_project_session_stage(null);
       set_project_session_status("idle");
       return;
     }
@@ -665,7 +661,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   useEffect(() => {
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
       clear_project_state_identity();
-      set_project_session_stage(null);
       return;
     }
 
@@ -700,12 +695,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     refresh_project_state,
     report_state_error,
   ]);
-
-  useEffect(() => {
-    if (project_session_status === "ready") {
-      set_project_session_stage(null);
-    }
-  }, [project_session_status]);
 
   const project_event_pipeline = useProjectEventPipeline({
     projectSnapshot: project_snapshot,
@@ -742,7 +731,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       settings_snapshot,
       project_snapshot,
       project_session_status,
-      project_session_stage,
       pending_target_route,
       is_app_language_updating,
       set_project_session_status,
@@ -762,7 +750,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     settings_snapshot,
     project_snapshot,
     project_session_status,
-    project_session_stage,
     pending_target_route,
     is_app_language_updating,
     apply_settings_snapshot,

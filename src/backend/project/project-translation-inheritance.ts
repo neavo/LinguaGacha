@@ -3,13 +3,23 @@ import {
   type ItemStatus,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
-import { read_item_name_text, read_optional_item_name_text } from "../../shared/item-name";
+import {
+  are_item_name_fields_equal,
+  read_item_name_text,
+  read_optional_item_name_text,
+} from "../../shared/item-name";
+import type { TranslationInheritanceMode } from "../../shared/translation-inheritance";
 
 /** 继承只读取原文身份与译文结果，只改写新条目的译文和完成状态。 */
 export type TranslationInheritanceItem = Pick<
   ProjectItemPublicRecord,
   "file_path" | "src" | "name_src" | "dst" | "name_dst" | "status"
 >;
+
+export type TranslationInheritanceResult = {
+  filled: number; // 原本未完成、本次填充的条目数。
+  replaced: number; // 原本已完成、结果实际改变的条目数。
+};
 
 type ContextEntry = {
   item: TranslationInheritanceItem;
@@ -25,23 +35,26 @@ type Vote = { item: TranslationInheritanceItem; count: number }; // 首次出现
 const CONTEXT_INHERIT_STATUSES: ReadonlySet<ItemStatus> = new Set([
   "NONE",
   "DUPLICATED",
+  "ERROR",
   "RULE_SKIPPED",
   "LANGUAGE_SKIPPED",
 ]);
-// 仅原文相同的证据较弱，过滤结果保持不变。
-const TEXT_INHERIT_STATUSES: ReadonlySet<ItemStatus> = new Set(["NONE", "DUPLICATED"]);
+// 仅原文相同的证据较弱，过滤结果与已完成译文都保持不变。
+const TEXT_INHERIT_STATUSES: ReadonlySet<ItemStatus> = new Set(["NONE", "DUPLICATED", "ERROR"]);
 const FILE_BOUNDARY = -1; // 编号从 0 开始，文件首尾不会与任何条目混淆。
 
 /**
- * 用导入前的已完成条目为新条目填充译文。
+ * 用旧条目中已完成的译文原地填充新条目。
  * 前一条、自身、后一条的原文与可见姓名一致且结果无冲突时优先继承。
  * 精确继承未成功时，符合状态条件的条目按原文与可见姓名票选。
  * 两阶段共用同一份旧快照，新填充的结果不参与匹配与投票。
+ * `overwrite` 只让上下文匹配覆盖已完成条目：同一短句在不同上下文可有不同译法，票选不足以推翻已完成译文。
  */
 export function inherit_completed_translations(
   old_items: readonly TranslationInheritanceItem[],
   next_items: readonly TranslationInheritanceItem[],
-): void {
+  mode: TranslationInheritanceMode,
+): TranslationInheritanceResult {
   const read_source_id = create_pair_id_reader(); // 旧条目与新条目共用，同一身份得到同一编号。
   const read_result_id = create_pair_id_reader();
   // 窗口先由全部旧条目构造再筛选，提前筛掉未完成条目会改变邻接关系。
@@ -57,18 +70,28 @@ export function inherit_completed_translations(
   );
   const context_candidates = build_context_candidates(completed);
   const text_candidates = build_text_candidates(completed);
+  const result: TranslationInheritanceResult = { filled: 0, replaced: 0 };
   for (const { item, source_id, context_key } of read_context_entries(next_items, read_source_id)) {
-    // 上下文冲突或未命中时，普通条目继续票选，被过滤条目保持原状态。
+    const replacing = item.status === "PROCESSED";
+    // 上下文冲突或未命中时，普通条目继续票选，被过滤条目与已完成条目保持原状态。
     const candidate =
-      (CONTEXT_INHERIT_STATUSES.has(item.status)
+      (CONTEXT_INHERIT_STATUSES.has(item.status) || (replacing && mode === "overwrite")
         ? context_candidates.get(context_key)?.item
         : undefined) ??
       (TEXT_INHERIT_STATUSES.has(item.status) ? text_candidates.get(source_id) : undefined);
     if (candidate === undefined) continue;
+    if (!replacing) result.filled += 1;
+    else if (
+      item.dst !== candidate.dst ||
+      !are_item_name_fields_equal(item.name_dst, candidate.name_dst)
+    )
+      result.replaced += 1;
+    else continue; // 覆盖结果相同，条目保持原样。
     item.dst = candidate.dst;
     item.name_dst = normalize_item_name_field(candidate.name_dst); // 数组姓名不与旧快照共享。
     item.status = "PROCESSED";
   }
+  return result;
 }
 
 /** 每个上下文保留最早候选，出现不同结果后永久记为冲突。 */

@@ -29,7 +29,7 @@ describe("ToolboxPage", () => {
     root = null;
   });
 
-  it("点击修改游戏字体入口后进入对应页面", async () => {
+  it("点击工具入口后进入对应页面", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -37,11 +37,13 @@ describe("ToolboxPage", () => {
       root?.render(<ToolboxPage is_sidebar_collapsed={false} />);
     });
 
-    const entry = get_button_by_name(container, "game_font_page.title");
-
-    await act(async () => entry.click());
-
-    expect(navigate_to_route_mock).toHaveBeenCalledWith("game-font");
+    for (const [title, route] of [
+      ["game_font_page.title", "game-font"],
+      ["translation_transfer_page.title", "translation-transfer"],
+    ] as const) {
+      await act(async () => get_button_by_name(container!, title).click());
+      expect(navigate_to_route_mock).toHaveBeenLastCalledWith(route);
+    }
   });
 });
 

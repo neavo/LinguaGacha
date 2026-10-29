@@ -2,10 +2,6 @@ import { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_app = {
-  data_refresh: {
-    success: "Daten erfolgreich aktualisiert …",
-    failed: "Aktualisierung der Daten fehlgeschlagen …",
-  },
   godot_pack_order: {
     title: "Priorität der Ressourcenpakete",
     description:
@@ -83,6 +79,8 @@ export const de_de_app = {
     export_failed: "Export fehlgeschlagen …",
     copy_failed: "Kopieren fehlgeschlagen …",
     read_failed: "Lesen fehlgeschlagen …",
+    operation_running: "Vorgang wird ausgeführt …",
+    operation_success: "Vorgang erfolgreich …",
     operation_failed: "Vorgang fehlgeschlagen …",
     content_unavailable: "Inhalt nicht verfügbar",
     save_failed: "Speichern fehlgeschlagen …",
@@ -95,7 +93,6 @@ export const de_de_app = {
     no_valid_data: "Keine gültigen Daten",
     update_failed: "Aktualisierung fehlgeschlagen …",
     project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen",
-    project_cache_loading: "Projekt-Cache wird aktualisiert …",
   },
   error_boundary: {
     eyebrow: "Renderer-Laufzeit",

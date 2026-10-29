@@ -18,7 +18,8 @@ export type RouteId =
   | "custom-prompt"
   | "laboratory"
   | "toolbox"
-  | "game-font";
+  | "game-font"
+  | "translation-transfer";
 
 /** 规则页跳转到校对页时只传一次性搜索条件，不携带页面筛选缓存。 */
 export type ProofreadingLookupIntent = {

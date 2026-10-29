@@ -5,7 +5,6 @@ export const de_de_text_preserve_page = {
   title: "Textschutz",
   mode: {
     label: "Textschutz-Modus",
-    loading_toast: "Korrektur-Cache wird aktualisiert …",
     content_html:
       "Schützt Textsegmente wie Code-Snippets, Steuerzeichen und Stilzeichen, die nicht übersetzt werden sollen, um falsche Übersetzungen zu verhindern" +
       "<br>" +

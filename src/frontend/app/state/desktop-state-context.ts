@@ -1,6 +1,5 @@
 import { createContext } from "react";
 import type { RouteId } from "@frontend/app/navigation/types";
-import type { ProjectStage } from "@frontend/app/state/desktop-project-change-types";
 import type { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import type { createRuntimeActivityStore } from "@frontend/app/state/runtime-activity-store";
@@ -29,7 +28,6 @@ export type DesktopStateContextValue = {
   settings_snapshot: SettingsSnapshot;
   project_snapshot: ProjectSnapshot;
   project_session_status: ProjectSessionStatus;
-  project_session_stage: ProjectStage | null;
   pending_target_route: RouteId | null;
   is_app_language_updating: boolean;
   set_project_session_status: (status: ProjectSessionStatus) => void;

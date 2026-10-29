@@ -18,8 +18,5 @@ export const ja_jp_game_font_page = {
   },
   feedback: {
     inspect_failed: "判定に失敗しました …",
-    apply_failed: "変更に失敗しました …",
-    applying: "ゲームフォントを変更しています …",
-    apply_success: "ゲームフォントの変更が完了しました …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_game_font_page>;

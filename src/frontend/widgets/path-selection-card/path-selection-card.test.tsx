@@ -40,3 +40,48 @@ it("引用指向选择按钮，清除独立触发，禁用后两个动作均不�
     container.remove();
   }
 });
+
+it("已选名称只在带路径时提供完整路径提示", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const props = {
+    icon: File,
+    title: "选择文件",
+    clear_label: "清除",
+    on_clear: vi.fn(),
+    on_path_drop: vi.fn(),
+  };
+  try {
+    await act(async () =>
+      root.render(<PathSelectionCard {...props} summary={{ name: "已选择 2 个源文件" }} />),
+    );
+    expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
+
+    const path = "E:/very/long/folder/source.txt";
+    await act(async () =>
+      root.render(<PathSelectionCard {...props} summary={{ name: "source.txt", path }} />),
+    );
+    const trigger = container.querySelector<HTMLElement>('[data-slot="tooltip-trigger"]')!;
+    expect(container.querySelector("button")?.textContent).toBe("source.txt");
+    await act(async () => {
+      trigger.dispatchEvent(
+        new MouseEvent("mouseenter", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      trigger.dispatchEvent(
+        new MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      trigger.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+    });
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(path),
+      );
+    });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

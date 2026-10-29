@@ -77,8 +77,8 @@ describe("GameFontPage", () => {
 
     const paths = { font_path: FONT_PATH, game_path: GAME_PATH };
     expect(api_fetch).toHaveBeenCalledWith("/api/toolbox/game-font/inspect", paths);
-    expect(container.textContent).toContain(GAME_PATH);
-    expect(container.textContent).toContain(FONT_PATH);
+    expect(get_button("demo")).toBeDefined(); // 卡片单行显示路径末段。
+    expect(get_button("custom.ttf")).toBeDefined();
     expect(get_button("开始修改")).toHaveProperty("disabled", false);
 
     vi.useFakeTimers();

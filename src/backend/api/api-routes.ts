@@ -217,6 +217,9 @@ export function register_api_routes(context: ApiRouteContext): void {
     services.files.gameFont.inspect(body),
   );
   context.postJson("/api/toolbox/game-font/apply", (body) => services.files.gameFont.apply(body));
+  context.postJson("/api/toolbox/translation-transfer/apply", (body) =>
+    services.project.translationTransfer.apply(body),
+  );
 
   const settings = services.app.settings;
   context.postJson("/api/settings/app", () => settings.get_app_settings());

@@ -101,6 +101,7 @@ const POST_PATHS = new Set([
   "/api/translation/files/generate",
   "/api/toolbox/game-font/inspect",
   "/api/toolbox/game-font/apply",
+  "/api/toolbox/translation-transfer/apply",
   "/api/settings/app",
   "/api/settings/update",
   "/api/settings/recent-projects/add",

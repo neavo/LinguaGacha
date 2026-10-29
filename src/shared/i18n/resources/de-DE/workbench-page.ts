@@ -14,7 +14,6 @@ export const de_de_workbench_page = {
     agent_recommended: "Wir empfehlen AGENT für die Übersetzung",
   },
   feedback: {
-    add_file_loading_toast: "Dateien werden hinzugefügt …",
     no_valid_file: "Keine gültigen Dateien können hinzugefügt werden",
     close_project_failed:
       "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut …",

@@ -303,7 +303,8 @@ export function useBatchTranslationTask(
             );
           },
         });
-        if (reset_request.mode === "all") push_toast("success", t("app.data_refresh.success"));
+        if (reset_request.mode === "all")
+          push_toast("success", t("app.feedback.operation_success"));
         await refresh_batch_translation();
         set_task_confirm_state(null);
       }

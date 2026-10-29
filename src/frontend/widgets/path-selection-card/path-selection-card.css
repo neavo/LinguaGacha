@@ -1,6 +1,5 @@
 .path-selection-card {
   --path-selection-card-line: color-mix(in srgb, var(--border) 92%, transparent);
-  --path-selection-card-detail: color-mix(in srgb, var(--foreground) 72%, transparent);
   --path-selection-card-active-bg: color-mix(in srgb, var(--primary) 10%, transparent);
   position: relative;
   display: flex;
@@ -16,7 +15,6 @@
 
 .dark .path-selection-card {
   --path-selection-card-line: var(--border);
-  --path-selection-card-detail: color-mix(in srgb, var(--foreground) 84%, transparent);
   --path-selection-card-active-bg: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 
@@ -54,20 +52,14 @@
 
 .path-selection-card__title {
   max-width: 100%;
+  overflow: hidden;
   font-size: var(--ui-font-size-14);
   line-height: 1.35;
   letter-spacing: 0;
   font-weight: 500;
   color: var(--foreground);
-  overflow-wrap: anywhere;
-}
-
-.path-selection-card__detail {
-  max-width: 100%;
-  font-size: var(--ui-font-size-12);
-  line-height: 1.35;
-  color: var(--path-selection-card-detail);
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .path-selection-card__clear {
@@ -76,4 +68,32 @@
   right: 8px;
   border-radius: var(--ui-radius-pill);
   color: var(--foreground);
+}
+
+.path-selection-fields {
+  display: grid;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.path-selection-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.path-selection-field__title {
+  margin: 0;
+  font-size: var(--ui-font-size-14);
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+@media (max-width: 760px) {
+  .path-selection-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

@@ -3,7 +3,6 @@ import { GameDirectoryOperations } from "../file/shared/game/game-directory-oper
 import type { GodotPackOrder } from "../../shared/godot";
 import { godot_pack_preview, read_godot_pack_orders } from "../file/godot/source";
 import {
-  build_source_file_parse_failure,
   log_source_file_diagnostics,
   source_operation_error,
   type SourceFileFailure,
@@ -144,11 +143,6 @@ export class ProjectContentService {
         asset.path,
       ]),
     );
-    const failed_files = entries.flatMap((entry) =>
-      entry.source.kind === "failure"
-        ? [build_source_file_parse_failure({ ...entry, error: entry.source.error })]
-        : [],
-    );
     const godot_packs = entries.flatMap((entry) =>
       entry.source.kind === "game" && entry.source.file_type === "GODOT"
         ? [godot_pack_preview(entry.source.game)]
@@ -157,7 +151,6 @@ export class ProjectContentService {
     return {
       files_revision: snapshot.files_revision,
       ...(godot_packs.length ? { godot_packs } : {}),
-      ...(failed_files.length ? { failed_files } : {}),
       contains_game: entries.some((entry) => entry.source.kind === "game"),
       files: entries.map((entry) => {
         const target = normalize_project_asset_path(entry.rel_path);
@@ -311,6 +304,7 @@ export class ProjectContentService {
               const item = write_output.items[String(item_id)];
               return item === undefined ? [] : [item];
             }),
+            "fill",
           );
           write_output = await this.compute_prefilter_output({
             project_path,

@@ -28,7 +28,7 @@
   margin: 0;
   color: var(--foreground);
   font-size: var(--ui-font-size-16);
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.25;
   letter-spacing: 0;
 }
@@ -37,13 +37,25 @@
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  color: var(--foreground);
+  color: var(--muted-foreground);
+  transition: color 180ms ease;
+}
+
+.toolbox-page__card:hover .toolbox-page__card-icon,
+.toolbox-page__card:focus-visible .toolbox-page__card-icon {
+  color: var(--primary);
 }
 
 .toolbox-page__separator {
   margin-inline: 16px;
   width: auto;
-  background: color-mix(in srgb, var(--border) 88%, var(--foreground) 12%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--border) 50%, transparent) 10%,
+    color-mix(in srgb, var(--border) 50%, transparent) 90%,
+    transparent
+  );
 }
 
 .toolbox-page__card-content {
@@ -54,10 +66,6 @@
   margin: 0;
   color: var(--muted-foreground);
   font-size: var(--ui-font-size-12);
-  line-height: 1.25;
+  line-height: 1.4;
   overflow-wrap: anywhere;
-}
-
-.toolbox-page__description-emphasis {
-  color: var(--primary);
 }

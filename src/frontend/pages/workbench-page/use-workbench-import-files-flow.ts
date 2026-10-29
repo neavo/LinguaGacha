@@ -166,7 +166,7 @@ export function useWorkbenchImportFilesFlow(
       }
 
       const import_preview = await options.run_modal_progress_toast({
-        message: options.t("workbench_page.feedback.add_file_loading_toast"),
+        message: options.t("app.feedback.operation_running"),
         task: async (): Promise<WorkbenchImportFilesPreview> => {
           const payload = await api_fetch<WorkbenchImportFilesPreview>(
             "/api/workbench/files/preview",
@@ -259,7 +259,7 @@ export function useWorkbenchImportFilesFlow(
       );
       try {
         await options.run_modal_progress_toast({
-          message: options.t("workbench_page.feedback.add_file_loading_toast"),
+          message: options.t("app.feedback.operation_running"),
           task: () =>
             options.run_project_file_write(import_plan, (body) =>
               api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", {
@@ -278,7 +278,7 @@ export function useWorkbenchImportFilesFlow(
         await request_add_files_from_paths(pending_request.source_paths);
         return;
       }
-      options.push_toast("success", options.t("app.data_refresh.success"));
+      options.push_toast("success", options.t("app.feedback.operation_success"));
       set_pending_import_files_request(null);
       options.set_dialog_state(close_dialog_state());
     },

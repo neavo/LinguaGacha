@@ -62,6 +62,24 @@ function has_project_sidecar(lg_path: string): boolean {
   return [`${lg_path}-wal`, `${lg_path}-shm`].some((sidecar_path) => fs.existsSync(sidecar_path));
 }
 
+/** 复制持有未检查点 WAL 的工程，模拟异常退出后遗留的主文件与 WAL，返回副本路径。 */
+function create_crashed_project(lg_path: string, name: string): string {
+  const crashed_path = project_path(name);
+  using holder = new DatabaseSync(lg_path); // 保持连接，阻止检查点合并 WAL。
+  holder.exec("PRAGMA wal_autocheckpoint=0");
+  holder.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run("wal_probe", '"wal"');
+  fs.copyFileSync(lg_path, crashed_path);
+  fs.copyFileSync(`${lg_path}-wal`, `${crashed_path}-wal`);
+  return crashed_path;
+}
+
+/** 读取承载已提交数据的主文件与 WAL，缺失记为 null。`-shm` 只是可重建的索引，不参与比较。 */
+function read_project_data(lg_path: string): Array<Buffer | null> {
+  return ["", "-wal"].map((suffix) =>
+    fs.existsSync(lg_path + suffix) ? fs.readFileSync(lg_path + suffix) : null,
+  );
+}
+
 /** 读取 SQLite 文件头中的自动回收模式，直接观察 .lg 物理契约。 */
 function read_auto_vacuum_mode(lg_path: string): number {
   using db = new DatabaseSync(lg_path);
@@ -480,6 +498,80 @@ describe("ProjectDatabase", () => {
     expect(await read_meta(database, lg_path, "name", "")).toBe("deferred-auto-vacuum");
     expect(vacuum_failed).toBe(true);
     expect(read_auto_vacuum_mode(lg_path)).toBe(0);
+  });
+
+  it("快照保留原工程字节与副文件，包含异常退出遗留 WAL 中的已提交数据", async () => {
+    const { database, lg_path } = await create_database_project("snapshot-clean");
+    const crashed_path = create_crashed_project(lg_path, "snapshot-crashed.lg");
+    const crashed_bytes = read_project_data(crashed_path);
+    const clean_bytes = read_project_data(lg_path);
+
+    await database.export_snapshot(crashed_path, project_path("crashed-copy.lg"));
+    await database.export_snapshot(lg_path, project_path("clean-copy.lg"));
+
+    expect(read_project_data(crashed_path)).toEqual(crashed_bytes);
+    expect(read_project_data(lg_path)).toEqual(clean_bytes);
+    expect(has_project_sidecar(lg_path)).toBe(false); // 无 WAL 时不留下副文件。
+    expect(await read_meta(database, project_path("crashed-copy.lg"), "wal_probe", null)).toBe(
+      "wal",
+    );
+
+    const missing_output = project_path("missing-snapshot.lg");
+    await expect(
+      database.export_snapshot(project_path("missing.lg"), missing_output),
+    ).rejects.toMatchObject({ code: "project.not_found" });
+    expect(fs.existsSync(missing_output)).toBe(false);
+  });
+
+  it("替换失败时被覆盖工程连同遗留 WAL 原样归位，成功后新工程不重放旧 WAL", async () => {
+    const { lg_path } = await create_database_project("replace-old");
+    const target_path = create_crashed_project(lg_path, "replace-target.lg");
+    const target_bytes = read_project_data(target_path);
+    const { database: next_database, lg_path: next_path } =
+      await create_database_project("replace-next");
+    await next_database.transaction(next_path, (writer) =>
+      writer.set_meta(next_path, "replace_probe", "next"),
+    );
+    const native = new NativeFs();
+    const rename = native.rename.bind(native);
+    const rename_spy = vi.spyOn(native, "rename").mockImplementation((source, destination) => {
+      if (source === next_path) throw new Error("target locked");
+      rename(source, destination);
+    });
+    const database = new ProjectDatabase("1.0.0", native);
+    cleanup_databases.push(database);
+
+    await expect(database.replace_project_file(next_path, target_path)).rejects.toThrow();
+    expect(read_project_data(target_path)).toEqual(target_bytes);
+    expect(fs.readdirSync(temp_dir).sort()).toEqual([
+      "replace-next.lg",
+      "replace-old.lg",
+      "replace-target.lg",
+      "replace-target.lg-wal",
+    ]);
+
+    rename_spy.mockRestore();
+    await database.replace_project_file(next_path, target_path);
+    expect(await read_meta(database, target_path, "replace_probe", null)).toBe("next");
+    expect(await read_meta(database, target_path, "wal_probe", null)).toBeNull();
+    expect(fs.readdirSync(temp_dir).sort()).toEqual(["replace-old.lg", "replace-target.lg"]);
+  });
+
+  it("替换后的备份清理失败仍报告已提交，并保留新工程", async () => {
+    const { lg_path: target_path } = await create_database_project("cleanup-old");
+    const { lg_path: source_path } = await create_database_project("cleanup-new");
+    const native = new NativeFs();
+    const database = new ProjectDatabase("1.0.0", native);
+    cleanup_databases.push(database);
+    vi.spyOn(native, "unlink").mockImplementation(() => {
+      throw new Error("backup locked");
+    });
+
+    await expect(database.replace_project_file(source_path, target_path)).rejects.toMatchObject({
+      code: "data.committed_sync_failed",
+      public_details: { committed: true },
+    });
+    expect(await read_meta(database, target_path, "name", null)).toBe("cleanup-new");
   });
 
   it("普通 scoped 操作结束后不常驻 WAL 副文件", async () => {

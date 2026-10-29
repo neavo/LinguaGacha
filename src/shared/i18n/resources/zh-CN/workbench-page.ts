@@ -11,7 +11,6 @@ export const zh_cn_workbench_page = {
     agent_recommended: "建议使用 AGENT 翻译",
   },
   feedback: {
-    add_file_loading_toast: "正在添加文件 …",
     no_valid_file: "没有可添加的有效文件",
     close_project_failed: "关闭工程失败 …",
   },

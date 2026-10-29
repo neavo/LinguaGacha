@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { TranslationInheritanceMode } from "../../shared/translation-inheritance";
 import {
   inherit_completed_translations,
   type TranslationInheritanceItem,
@@ -23,8 +24,9 @@ function done(file_path: string, src: string, dst: string): TranslationInheritan
 function inherit(
   old_items: TranslationInheritanceItem[],
   next_items: TranslationInheritanceItem[],
+  mode: TranslationInheritanceMode = "fill",
 ): Array<[string, string]> {
-  inherit_completed_translations(old_items, next_items);
+  inherit_completed_translations(old_items, next_items, mode);
   return next_items.map((next) => [next.dst, next.status]);
 }
 
@@ -151,9 +153,64 @@ describe("inherit_completed_translations", () => {
     ];
     const next = item("b.txt", "", { name_src: "俊輔", status: "RULE_SKIPPED" });
 
-    inherit_completed_translations(old_items, [next]);
+    inherit_completed_translations(old_items, [next], "fill");
 
     expect(next).toMatchObject({ dst: "", name_dst: ["俊辅", "附加"], status: "PROCESSED" });
     expect(next.name_dst).not.toBe(old_name_dst);
+  });
+
+  it("失败条目可经上下文或票选填充，排除条目在两种模式下都不变", () => {
+    const old_items = [item("a.txt", "前"), done("a.txt", "甲", "A"), done("b.txt", "乙", "B")];
+    for (const mode of ["fill", "overwrite"] as const) {
+      expect(
+        inherit(
+          old_items,
+          [
+            item("x.txt", "前"),
+            item("x.txt", "甲", { status: "ERROR" }),
+            item("y.txt", "乙", { status: "ERROR" }),
+            item("y.txt", "尾"), // 改变上下文，让失败条目只能经票选填充。
+            item("z.txt", "乙", { status: "EXCLUDED" }),
+          ],
+          mode,
+        ),
+      ).toEqual([
+        ["", "NONE"],
+        ["A", "PROCESSED"],
+        ["B", "PROCESSED"],
+        ["", "NONE"],
+        ["", "EXCLUDED"],
+      ]);
+    }
+  });
+
+  it("覆盖模式只在上下文一致时替换已完成译文，并分别统计填充与实际替换", () => {
+    const old_items = [
+      item("a.txt", "前"),
+      done("a.txt", "甲", "新甲"),
+      done("a.txt", "同", "同译"),
+      done("b.txt", "乙", "新乙"),
+    ];
+    const next_items = (): TranslationInheritanceItem[] => [
+      item("x.txt", "前"),
+      done("x.txt", "甲", "旧甲"), // 上下文一致。
+      done("x.txt", "同", "同译"), // 上下文一致但结果相同。
+      done("y.txt", "乙", "旧乙"), // 仅票选命中。
+      item("y.txt", "乙"),
+    ];
+
+    const filled = next_items();
+    expect(inherit_completed_translations(old_items, filled, "fill")).toEqual({
+      filled: 1,
+      replaced: 0,
+    });
+    expect(filled.map((next) => next.dst)).toEqual(["", "旧甲", "同译", "旧乙", "新乙"]);
+
+    const overwritten = next_items();
+    expect(inherit_completed_translations(old_items, overwritten, "overwrite")).toEqual({
+      filled: 1,
+      replaced: 1,
+    });
+    expect(overwritten.map((next) => next.dst)).toEqual(["", "新甲", "同译", "旧乙", "新乙"]);
   });
 });

@@ -5,7 +5,6 @@ export const en_us_text_preserve_page = {
   title: "Text Preserve",
   mode: {
     label: "Text Preserve Mode",
-    loading_toast: "Refreshing proofreading cache …",
     content_html:
       "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation" +
       "<br>" +

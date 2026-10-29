@@ -1,10 +1,6 @@
 import type { LanguageCode } from "../../../../domain/language";
 
 export const zh_cn_app = {
-  data_refresh: {
-    success: "数据刷新成功 …",
-    failed: "数据刷新失败 …",
-  },
   godot_pack_order: {
     title: "资源包优先级",
     description: "后面的资源包会覆盖前面资源包中的同名资源",
@@ -79,6 +75,8 @@ export const zh_cn_app = {
     export_failed: "导出失败 …",
     copy_failed: "复制失败 …",
     read_failed: "读取失败 …",
+    operation_running: "正在执行操作 …",
+    operation_success: "操作成功 …",
     operation_failed: "操作失败 …",
     content_unavailable: "内容暂不可用",
     save_failed: "保存失败 …",
@@ -90,7 +88,6 @@ export const zh_cn_app = {
     no_valid_data: "没有有效数据",
     update_failed: "更新失败 …",
     project_settings_aligned: "已按当前设置更新工程设置",
-    project_cache_loading: "正在刷新工程缓存 …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

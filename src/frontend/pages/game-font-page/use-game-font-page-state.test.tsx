@@ -203,7 +203,7 @@ describe("useGameFontPageState", () => {
     await act(async () => state.request_apply());
     await act(async () => state.confirm_apply());
     expect(toast.push_error_toast).toHaveBeenLastCalledWith(
-      "game_font_page.feedback.apply_failed",
+      "app.feedback.operation_failed",
       expect.any(Error),
     );
     expect(state.can_apply).toBe(true);

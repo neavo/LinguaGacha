@@ -106,7 +106,7 @@ export function useGameFontPageState() {
     let refresh_packs = false;
     try {
       await run_modal_progress_toast({
-        message: t("game_font_page.feedback.applying"),
+        message: t("app.feedback.operation_running"),
         task: () =>
           api_fetch("/api/toolbox/game-font/apply", {
             ...paths,
@@ -115,12 +115,12 @@ export function useGameFontPageState() {
       });
       set_godot_packs((current) => current.map((game) => ({ ...game, external_pcks: [] })));
       set_orders([]);
-      push_toast("success", t("game_font_page.feedback.apply_success"));
+      push_toast("success", t("app.feedback.operation_success"));
     } catch (error) {
       refresh_packs =
         error instanceof DesktopApiError &&
         error.details.action === GODOT_PACK_ORDER_REFRESH_ACTION;
-      push_error_toast(t("game_font_page.feedback.apply_failed"), error);
+      push_error_toast(t("app.feedback.operation_failed"), error);
     } finally {
       busy_ref.current = false;
       set_phase("ready"); // 保留选择，便于再次修改或重试。

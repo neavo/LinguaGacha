@@ -697,7 +697,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         await run_project_file_write(reset_plan, async (body) => {
           return await api_fetch<ProjectWriteResultPayload>("/api/workbench/file/reset", body);
         });
-        push_toast("success", t("app.data_refresh.success"));
+        push_toast("success", t("app.feedback.operation_success"));
         set_dialog_state(close_dialog_state());
         return;
       }

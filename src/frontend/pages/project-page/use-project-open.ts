@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
+import { extract_file_name } from "@frontend/app/desktop/path";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
@@ -22,7 +23,7 @@ type ProjectOpenPayload = {
     changed?: ProjectSettingsAlignmentChangedFields;
   };
 };
-type LoadingModal = (args: { initial_message: string; task: () => Promise<void> }) => Promise<void>;
+type LoadingModal = (args: { message: string; task: () => Promise<void> }) => Promise<void>;
 
 /** 页面本地拥有打开意图。普通预览失败仍可打开。确认绑定本次路径与版本。 */
 export function useProjectOpen(run_loading_modal: LoadingModal) {
@@ -118,7 +119,7 @@ export function useProjectOpen(run_loading_modal: LoadingModal) {
     try {
       let alignment: ProjectOpenPayload["settings_alignment"];
       await run_loading_modal({
-        initial_message: t("project_page.open.loading_toast"),
+        message: t("project_page.open.loading_toast"),
         task: async () => {
           const request: ProjectOpenRequest = {
             path: target.path,
@@ -131,7 +132,7 @@ export function useProjectOpen(run_loading_modal: LoadingModal) {
           alignment = response.settings_alignment;
           set_project_session_status("warming");
           await refresh_project_snapshot();
-          const file_name = target.path.split(/[\\/]/u).pop() ?? target.path;
+          const file_name = extract_file_name(target.path);
           await api_fetch("/api/settings/recent-projects/add", {
             path: target.path,
             name: file_name.replace(/\.[^.]+$/u, ""),

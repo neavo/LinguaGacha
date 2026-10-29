@@ -2,10 +2,6 @@ import type { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ko_kr_app = {
-  data_refresh: {
-    success: "데이터 새로고침 성공 …",
-    failed: "데이터 새로고침 실패 …",
-  },
   godot_pack_order: {
     title: "리소스 팩 우선순위",
     description: "뒤에 있는 리소스 팩이 앞에 있는 팩의 같은 이름 리소스를 덮어씁니다",
@@ -80,6 +76,8 @@ export const ko_kr_app = {
     export_failed: "내보내기 실패 …",
     copy_failed: "복사 실패 …",
     read_failed: "읽기 실패 …",
+    operation_running: "작업 실행 중 …",
+    operation_success: "작업 성공 …",
     operation_failed: "작업 실패 …",
     content_unavailable: "콘텐츠를 사용할 수 없습니다",
     save_failed: "저장 실패 …",
@@ -91,7 +89,6 @@ export const ko_kr_app = {
     no_valid_data: "유효한 데이터가 없습니다",
     update_failed: "업데이트에 실패했습니다 …",
     project_settings_aligned: "현재 설정에 맞춰 프로젝트 설정을 업데이트했습니다",
-    project_cache_loading: "프로젝트 캐시 새로 고치는 중 …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

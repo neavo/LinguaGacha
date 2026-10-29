@@ -24,7 +24,6 @@ export const zh_cn_project_page = {
     drop_title: "点击或拖拽 .lg 文件",
     recent_title: "最近打开",
     empty: "暂无最近打开的工程",
-    ready_status: "工程已就绪",
     loading_toast: "正在加载工程 …",
     preview_unavailable: "读取工程预览失败 …",
     action: "打开工程",
@@ -40,15 +39,6 @@ export const zh_cn_project_page = {
     created_at: "创建时间",
     updated_at: "最后修改",
     progress: "翻译进度",
-  },
-  loading_stages: {
-    project: "正在加载工程基本信息 …",
-    files: "正在加载工程文件 …",
-    items: "正在加载工程条目 …",
-    quality: "正在加载质量规则 …",
-    prompts: "正在加载提示词配置 …",
-    proofreading: "正在加载校对视图 …",
-    task: "正在加载任务状态 …",
   },
   formats: {
     title: "支持文件格式",

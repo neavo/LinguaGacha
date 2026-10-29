@@ -2,10 +2,6 @@ import type { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ja_jp_app = {
-  data_refresh: {
-    success: "データの更新に成功しました …",
-    failed: "データの更新に失敗しました …",
-  },
   godot_pack_order: {
     title: "リソースパックの優先順位",
     description: "後のリソースパックが、前のパック内の同名リソースを上書きします",
@@ -81,6 +77,8 @@ export const ja_jp_app = {
     export_failed: "エクスポートに失敗しました …",
     copy_failed: "コピーに失敗しました …",
     read_failed: "読み取りに失敗しました …",
+    operation_running: "操作を実行中 …",
+    operation_success: "操作に成功しました …",
     operation_failed: "操作に失敗しました …",
     content_unavailable: "内容を表示できません",
     save_failed: "保存に失敗しました …",
@@ -92,7 +90,6 @@ export const ja_jp_app = {
     no_valid_data: "有効なデータがありません",
     update_failed: "更新できませんでした …",
     project_settings_aligned: "現在の設定に合わせてプロジェクト設定を更新しました",
-    project_cache_loading: "プロジェクトのキャッシュを更新中 …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
