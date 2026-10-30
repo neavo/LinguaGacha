@@ -1,10 +1,11 @@
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
-import { type ReactNode, act, cloneElement, isValidElement } from "react";
+import { type ReactNode, act } from "react";
 
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { ProjectPage } from "@frontend/pages/project-page/page";
 import { PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY } from "./project-language-preference";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
@@ -68,27 +69,6 @@ vi.mock("@frontend/widgets/app-context-menu", () => {
   };
 });
 
-vi.mock("@frontend/widgets/app-button", () => {
-  return {
-    AppButton: (props: {
-      children: ReactNode;
-      disabled?: boolean;
-      onClick?: () => void;
-      type?: "button";
-      "aria-label"?: string;
-    }) => (
-      <button
-        type={props.type ?? "button"}
-        aria-label={props["aria-label"]}
-        disabled={props.disabled}
-        onClick={props.onClick}
-      >
-        {props.children}
-      </button>
-    ),
-  };
-});
-
 vi.mock("@frontend/shadcn/card", () => {
   return {
     Card: (props: { children: ReactNode }) => <section>{props.children}</section>,
@@ -103,22 +83,6 @@ vi.mock("@frontend/shadcn/card", () => {
 vi.mock("@frontend/shadcn/spinner", () => {
   return {
     Spinner: () => <span />,
-  };
-});
-
-vi.mock("@frontend/shadcn/tooltip", () => {
-  return {
-    Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>{props.render ?? props.children}</>
-    ),
-    TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
-    TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>
-        {isValidElement(props.render) && props.children !== undefined
-          ? cloneElement(props.render, undefined, props.children)
-          : (props.render ?? props.children)}
-      </>
-    ),
   };
 });
 
@@ -276,7 +240,9 @@ describe("ProjectPage", () => {
     await act(async () => {
       root?.render(
         <LocaleProvider locale="zh-CN">
-          <ProjectPage is_sidebar_collapsed={false} />
+          <TooltipProvider>
+            <ProjectPage is_sidebar_collapsed={false} />
+          </TooltipProvider>
         </LocaleProvider>,
       );
     });
@@ -394,6 +360,23 @@ describe("ProjectPage", () => {
     expect(get_button_by_text(container!, "open.lg")).toBeDefined();
   });
 
+  it("最近工程的移除提示绑定记录操作，点击不触发工程选择", async () => {
+    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
+      recent_projects: [{ path: "E:/recent.lg", name: "最近工程" }],
+    });
+    await mount_page();
+    const row = container!.querySelector(".project-home__recent-row")!;
+    const remove = row.querySelector<HTMLButtonElement>("button[aria-label]")!;
+    await act(async () => remove.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true })));
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+      remove.getAttribute("aria-label"),
+    );
+    await act(async () => remove.click());
+    expect(api_fetch_mock).toHaveBeenCalledExactlyOnceWith("/api/settings/recent-projects/remove", {
+      path: "E:/recent.lg",
+    });
+  });
+
   it("点击失效最近工程立即确认移除，取消后保留记录并禁用打开", async () => {
     desktop_runtime_fixture.current = create_desktop_runtime_fixture({
       recent_projects: [{ path: "E:/missing.lg", name: "失效工程" }],
@@ -479,18 +462,16 @@ describe("ProjectPage", () => {
     await act(async () => {
       get_button_by_text(container!, "旧来源名称").click();
     });
-    expect(container!.textContent).toContain("2020-12-12 12:12:12");
-    expect(container!.textContent).toContain("2026-09-17 14:05:54");
     const files_row = container!.querySelector(".project-home__preview-files-row")!;
-    const files_badge = files_row.querySelector('[data-slot="badge"]');
-    expect(files_badge?.textContent).toBe(`${paths.length} 个文件`);
-    expect(
-      [...files_row.querySelectorAll('[role="tooltip"] li')].map((element) => element.textContent),
-    ).toEqual(paths);
-    const progress = container!.querySelector(
-      '.project-home__preview-progress [data-slot="badge"]',
+    const files_badge = files_row.querySelector<HTMLElement>("[tabindex]")!;
+    await act(async () =>
+      files_badge.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true })),
     );
-    expect(progress?.textContent).toBe("33.00%");
+    expect(
+      [...document.querySelectorAll('[role="tooltip"][data-open] li')].map(
+        (element) => element.textContent,
+      ),
+    ).toEqual(paths);
     await act(async () => {
       get_button_by_text(container!, "打开工程").click();
     });

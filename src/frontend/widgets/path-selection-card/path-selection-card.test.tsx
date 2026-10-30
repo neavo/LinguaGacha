@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { File } from "lucide-react";
 import { expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { PathSelectionCard } from "./path-selection-card";
 
 it("引用指向选择按钮，清除独立触发，禁用后两个动作均不可用", async () => {
@@ -23,14 +24,32 @@ it("引用指向选择按钮，清除独立触发，禁用后两个动作均不�
     on_path_drop: vi.fn(),
   };
   try {
-    await act(async () => root.render(<PathSelectionCard {...props} />));
+    await act(async () =>
+      root.render(
+        <TooltipProvider>
+          <PathSelectionCard {...props} />
+        </TooltipProvider>,
+      ),
+    );
     const clear = container.querySelector<HTMLButtonElement>('button[aria-label="清除"]')!;
+    await act(async () => {
+      clear.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+      clear.getAttribute("aria-label"),
+    );
     await act(async () => ref.current!.click());
     await act(async () => clear.click());
     expect(on_select).toHaveBeenCalledTimes(1);
     expect(on_clear).toHaveBeenCalledTimes(1);
 
-    await act(async () => root.render(<PathSelectionCard {...props} disabled />));
+    await act(async () =>
+      root.render(
+        <TooltipProvider>
+          <PathSelectionCard {...props} disabled />
+        </TooltipProvider>,
+      ),
+    );
     await act(async () => ref.current!.click());
     await act(async () => clear.click());
     expect(on_select).toHaveBeenCalledTimes(1);
@@ -54,32 +73,32 @@ it("已选名称只在带路径时提供完整路径提示", async () => {
   };
   try {
     await act(async () =>
-      root.render(<PathSelectionCard {...props} summary={{ name: "已选择 2 个源文件" }} />),
+      root.render(
+        <TooltipProvider>
+          <PathSelectionCard {...props} summary={{ name: "已选择 2 个源文件" }} />
+        </TooltipProvider>,
+      ),
     );
-    expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
+    expect(
+      container.querySelector('.path-selection-card__trigger [data-slot="tooltip-trigger"]'),
+    ).toBeNull();
 
     const path = "E:/very/long/folder/source.txt";
     await act(async () =>
-      root.render(<PathSelectionCard {...props} summary={{ name: "source.txt", path }} />),
+      root.render(
+        <TooltipProvider>
+          <PathSelectionCard {...props} summary={{ name: "source.txt", path }} />
+        </TooltipProvider>,
+      ),
     );
-    const trigger = container.querySelector<HTMLElement>('[data-slot="tooltip-trigger"]')!;
+    const trigger = container.querySelector<HTMLElement>(
+      '.path-selection-card__trigger [data-slot="tooltip-trigger"]',
+    )!;
     expect(container.querySelector("button")?.textContent).toBe("source.txt");
     await act(async () => {
-      trigger.dispatchEvent(
-        new MouseEvent("mouseenter", { bubbles: true, clientX: 10, clientY: 10 }),
-      );
-      trigger.dispatchEvent(
-        new MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 10 }),
-      );
-      trigger.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 10, clientY: 10 }),
-      );
+      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
     });
-    await act(async () => {
-      await vi.waitFor(() =>
-        expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(path),
-      );
-    });
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(path);
   } finally {
     await act(async () => root.unmount());
     container.remove();

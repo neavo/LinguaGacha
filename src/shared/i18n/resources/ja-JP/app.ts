@@ -191,7 +191,7 @@ export const ja_jp_app = {
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
-    status_tooltip: "GitHub のプロジェクトページを開く",
+    status_tooltip: "ホームページ",
     update_available: "クリックして新しいバージョンをダウンロード！",
     update_available_tooltip: "更新の確認画面を開く",
   },

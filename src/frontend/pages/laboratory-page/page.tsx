@@ -49,7 +49,7 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
           "mtool_optimizer_enable",
           <SettingHelpButton
             url={`https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer${locale === "zh-CN" ? "" : "EN"}`}
-            aria_label={t("laboratory_page.fields.mtool_optimizer_enable.title")}
+            label={t("laboratory_page.fields.mtool_optimizer_enable.title")}
             className="laboratory-page__help-button"
           />,
         )}

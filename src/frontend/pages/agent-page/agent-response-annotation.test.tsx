@@ -1,4 +1,4 @@
-import { act, createElement, type ReactNode } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -31,7 +31,7 @@ describe("AgentResponseAnnotation", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    await act(async () => root?.render(createElement(TooltipProvider, null, view)));
+    await act(async () => root?.render(<TooltipProvider>{view}</TooltipProvider>));
     return container;
   }
 
@@ -85,26 +85,38 @@ describe("AgentResponseAnnotation", () => {
     expect(composing_event.defaultPrevented).toBe(false);
   });
 
-  it("只读视图展示评论，空评论不生成占位", async () => {
+  it("只读视图提供关闭提示和动作，空评论不生成占位", async () => {
+    const on_cancel = vi.fn();
     const view = await render_view(
       <AgentResponseAnnotationViewer
         aria-label="批注"
         selected_text="旧回复"
         comment="请更准确"
-        on_cancel={vi.fn()}
+        on_cancel={on_cancel}
       />,
     );
     expect(view.querySelector("blockquote")?.textContent).toBe("旧回复");
     expect(view.querySelector("p")?.textContent).toBe("请更准确");
+    const close = view.querySelector<HTMLButtonElement>("button")!;
+    await act(async () => {
+      close.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+      close.getAttribute("aria-label"),
+    );
+    await act(async () => close.click());
+    expect(on_cancel).toHaveBeenCalledOnce();
 
     await act(async () =>
       root?.render(
-        <AgentResponseAnnotationViewer
-          aria-label="批注"
-          selected_text="旧回复"
-          comment=""
-          on_cancel={vi.fn()}
-        />,
+        <TooltipProvider>
+          <AgentResponseAnnotationViewer
+            aria-label="批注"
+            selected_text="旧回复"
+            comment=""
+            on_cancel={vi.fn()}
+          />
+        </TooltipProvider>,
       ),
     );
     expect(view.querySelector("p")).toBeNull();

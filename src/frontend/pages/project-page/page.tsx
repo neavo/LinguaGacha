@@ -23,7 +23,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { type JSX, type MouseEvent, useState } from "react";
+import { type JSX, useState } from "react";
 
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 
@@ -122,15 +122,12 @@ type SettingsPayload = {
   };
 };
 
-/**
- * 最近工程列表行的展示文本和操作回调。
- */
 type RecentProjectRowProps = {
   name: string;
   path: string;
   on_select: () => void;
   on_remove: () => void;
-  remove_aria_label: string;
+  remove_label: string;
 };
 
 /**
@@ -250,18 +247,8 @@ function collect_loaded_default_preset_names(
   });
 }
 
-/**
- * 最近工程行同时承载选择和移除操作，移除按钮阻止冒泡。
- */
+/** 最近工程行分别处理选择与移除。 */
 function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
-  /**
-   * 移除最近工程时不触发行选择。
-   */
-  function handle_remove_click(event: MouseEvent<HTMLButtonElement>): void {
-    event.stopPropagation();
-    props.on_remove();
-  }
-
   return (
     <div className="project-home__recent-row">
       <button className="project-home__recent-main" type="button" onClick={props.on_select}>
@@ -283,15 +270,22 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
         </Tooltip>
       </button>
 
-      <AppButton
-        variant="ghost"
-        size="icon-sm"
-        className="project-home__recent-remove h-7 w-7 p-0"
-        onClick={handle_remove_click}
-        aria-label={props.remove_aria_label}
-      >
-        <X className="size-4" />
-      </AppButton>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <AppButton
+              variant="ghost"
+              size="icon-sm"
+              className="project-home__recent-remove h-7 w-7 p-0"
+              onClick={props.on_remove}
+              aria-label={props.remove_label}
+            >
+              <X className="size-4" />
+            </AppButton>
+          }
+        />
+        <TooltipContent>{props.remove_label}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -773,7 +767,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               on_remove={() => {
                 void handle_recent_project_remove(project_item.path);
               }}
-              remove_aria_label={t("app.action.delete")}
+              remove_label={t("app.action.delete")}
             />
           ))}
         </div>

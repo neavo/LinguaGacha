@@ -196,7 +196,7 @@ export const de_de_app = {
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
-    status_tooltip: "GitHub-Repository öffnen",
+    status_tooltip: "Startseite",
     update_available: "Neue Version herunterladen …!",
     update_available_tooltip: "Update-Bestätigungsdialog öffnen",
   },

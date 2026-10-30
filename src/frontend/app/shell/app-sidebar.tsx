@@ -114,6 +114,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                   <SidebarMenuButton
                     className="sidebar-row"
                     disabled={props.is_language_updating}
+                    tooltip={t("app.navigation_action.language")}
                     aria-label={t("app.navigation_action.language")}
                   >
                     <Languages className="sidebar-row__icon" />

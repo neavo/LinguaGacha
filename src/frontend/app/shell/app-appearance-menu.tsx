@@ -54,7 +54,11 @@ export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
       <AppDropdownMenu>
         <AppDropdownMenuTrigger
           render={
-            <SidebarMenuButton className="sidebar-row" aria-label={appearance_label}>
+            <SidebarMenuButton
+              className="sidebar-row"
+              tooltip={appearance_label}
+              aria-label={appearance_label}
+            >
               <Palette className="sidebar-row__icon" />
               <span className="sidebar-row__label">{appearance_label}</span>
             </SidebarMenuButton>

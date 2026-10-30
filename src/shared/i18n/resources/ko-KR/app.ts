@@ -183,7 +183,7 @@ export const ko_kr_app = {
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
-    status_tooltip: "GitHub 프로젝트 페이지 열기",
+    status_tooltip: "홈페이지",
     update_available: "클릭하여 새 버전 다운로드!",
     update_available_tooltip: "업데이트 확인 창 열기",
   },

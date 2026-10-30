@@ -38,15 +38,22 @@ function AgentResponseAnnotationPanel({
       <div className="agent-annotation-panel__header">
         <strong>{t("agent_page.annotation.selected_text")}</strong>
         {on_cancel === undefined ? null : (
-          <AppButton
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            aria-label={t("app.action.close")}
-            onClick={on_cancel}
-          >
-            <X aria-hidden="true" />
-          </AppButton>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <AppButton
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={t("app.action.close")}
+                  onClick={on_cancel}
+                >
+                  <X aria-hidden="true" />
+                </AppButton>
+              }
+            />
+            <TooltipContent>{t("app.action.close")}</TooltipContent>
+          </Tooltip>
         )}
       </div>
       <blockquote>{selected_text}</blockquote>
@@ -55,7 +62,7 @@ function AgentResponseAnnotationPanel({
   );
 }
 
-/** 选择浮层与 Composer 共用的唯一批注编辑器；输入外观统一交给 Textarea 基元。 */
+/** 选择浮层与 Composer 共用批注编辑器。 */
 export function AgentResponseAnnotationEditor({
   comment,
   on_comment_change,
