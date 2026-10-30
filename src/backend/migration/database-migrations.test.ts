@@ -3,6 +3,7 @@ import { zstdCompressSync } from "node:zlib";
 import { expect, it } from "vitest";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseWritebackMigration } from "./migration-types";
+import { run_renpy_rpy_file_type_migration } from "./database/renpy-rpy-file-type-migration";
 import {
   run_project_database_migrations,
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
@@ -13,41 +14,87 @@ function read_meta(db: DatabaseSync, key: string): unknown {
   return row === undefined ? null : JsonTool.parseStrict(String(row["value"]));
 }
 
-it("按顺序建库和写回，失败原子回滚，重试及重复打开保留完成记录", () => {
+it("Ren’Py 条目写入失败回滚资产、全部条目和标记，保留前项并支持重试", () => {
   using db = new DatabaseSync(":memory:");
-  db.exec("CREATE TABLE records (name TEXT)");
-  const failure = new Error("writeback failed");
-  let fail = true;
+  run_project_database_migrations(db, "1.0.0", []);
+  // 第二条更新失败，使第一条已执行的更新也必须随资产改名一起回滚。
+  db.exec(`
+    CREATE TABLE records (name TEXT);
+    INSERT INTO assets (path, file_type, data, original_size, compressed_size)
+      VALUES ('script.rpy', 'RENPY', X'', 0, 0);
+    CREATE TRIGGER reject_item BEFORE UPDATE ON items WHEN OLD.id = 2
+      BEGIN SELECT RAISE(ABORT, 'item write failed'); END;
+  `);
+  const originals = [1, 2].map((id) => ({
+    file_path: "script.rpy",
+    src: `原文 ${id}`,
+    dst: `译文 ${id}`,
+    extra_field: { renpy: { v: 1, pair: { target_line: id } }, keep: true },
+  }));
+  const insert = db.prepare("INSERT INTO items VALUES (?, ?)");
+  originals.forEach((item, index) => insert.run(index + 1, JSON.stringify(item)));
+  const assets = db.prepare("SELECT * FROM assets").all();
+  const items = db.prepare("SELECT * FROM items ORDER BY id").all();
   const migrations: DatabaseWritebackMigration[] = [
     {
       id: "first",
       run: (db) => {
-        db.prepare("INSERT INTO records VALUES (?)").run("first");
+        db.exec("INSERT INTO records VALUES ('first')");
       },
     },
-    {
-      id: "second",
-      run: (db) => {
-        db.prepare("INSERT INTO records VALUES (?)").run("second");
-        if (fail) throw failure;
-      },
-    },
+    { id: "renpy-rpy-file-type", run: run_renpy_rpy_file_type_migration },
   ];
-  expect(() => run_project_database_migrations(db, "1.0.0", migrations)).toThrow(failure);
+  const key = PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY;
+
+  expect(() => run_project_database_migrations(db, "1.0.0", migrations)).toThrow(
+    "item write failed",
+  );
+  expect(db.prepare("SELECT * FROM assets").all()).toEqual(assets);
+  expect(db.prepare("SELECT * FROM items ORDER BY id").all()).toEqual(items);
   expect(db.prepare("SELECT name FROM records").all()).toEqual([{ name: "first" }]);
-  expect(read_meta(db, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY)).toEqual(["first"]);
-  expect(read_meta(db, "target_app_version")).toBe("1.0.0");
-  fail = false;
+  expect(read_meta(db, key)).toEqual(["first"]);
+
+  db.exec("DROP TRIGGER reject_item");
   run_project_database_migrations(db, "1.0.0", migrations);
-  run_project_database_migrations(db, "1.0.0", migrations);
-  expect(db.prepare("SELECT name FROM records").all()).toEqual([
-    { name: "first" },
-    { name: "second" },
-  ]);
-  expect(read_meta(db, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY)).toEqual([
-    "first",
-    "second",
-  ]);
+  expect(db.prepare("SELECT * FROM assets").all()).toEqual(
+    assets.map((asset) => ({ ...asset, file_type: "RENPY_RPY" })),
+  );
+  expect(
+    db
+      .prepare("SELECT * FROM items ORDER BY id")
+      .all()
+      .map((row) => JSON.parse(String(row.data))),
+  ).toEqual(
+    originals.map((item) => ({
+      ...item,
+      extra_field: { renpy_rpy: item.extra_field.renpy, keep: true },
+    })),
+  );
+  expect(read_meta(db, key)).toEqual(["first", "renpy-rpy-file-type"]);
+});
+
+it("早期迁移已完成的工程仍独立升级姓名字段", () => {
+  using db = new DatabaseSync(":memory:");
+  run_project_database_migrations(db, "1.0.0");
+  const key = PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY;
+  const applied = read_meta(db, key) as string[];
+  db.prepare("UPDATE meta SET value = ? WHERE key = ?").run(
+    JSON.stringify(applied.filter((id) => id !== "item-name-text")),
+    key,
+  );
+  const item = { name_src: ["Alice", "extra"], name_dst: ["译名"], unknown: { keep: true } };
+  db.prepare("INSERT INTO items VALUES (1, ?)").run(JSON.stringify(item));
+
+  run_project_database_migrations(db, "1.0.0");
+
+  expect(JSON.parse(String(db.prepare("SELECT data FROM items WHERE id = 1").get()!.data))).toEqual(
+    {
+      ...item,
+      name_src: "Alice",
+      name_dst: "译名",
+    },
+  );
+  expect(read_meta(db, key)).toEqual(applied);
 });
 
 it("版本维护失败回滚本项数据和迁移标记，保留前项已提交事实", () => {

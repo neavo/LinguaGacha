@@ -3,7 +3,7 @@ import { is_json_record } from "../../../domain/json";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
 
-// 固定已发布 `.lg` 的条目类型，新增解析器不应扩大历史迁移值域；`MD` 留给打开期重建。
+// 固定已发布 `.lg` 的条目类型，避免新增解析器改写历史升级结果。
 const LEGACY_ITEM_FILE_TYPES = new Set<string>([
   "NONE",
   "MD",
@@ -23,7 +23,10 @@ const LEGACY_ITEM_FILE_TYPES = new Set<string>([
 ]);
 export type ItemMigrationPayload = Record<string, unknown>;
 
-/** 历史条目迁移共用逐行写回机制，各迁移步骤拥有字段和顺序语义。 */
+/**
+ * 损坏 JSON 与非对象载荷保留原文。
+ * 转换、序列化和写入错误交给调度入口回滚本项事务。
+ */
 export function write_item_migration(
   db: DatabaseSync,
   normalize: (item: ItemMigrationPayload) => { data: ItemMigrationPayload; changed: boolean },
@@ -31,14 +34,15 @@ export function write_item_migration(
   const rows = db.prepare("SELECT id, data FROM items ORDER BY id").iterate();
   const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
   for (const row of rows) {
+    let parsed: unknown;
     try {
-      const parsed = JsonTool.parseStrict<unknown>(row_text(row, "data"));
-      if (!is_json_record(parsed)) continue;
-      const result = normalize(parsed);
-      if (result.changed) update.run(JsonTool.stringifyStrict(result.data), row_number(row, "id"));
+      parsed = JsonTool.parseStrict<unknown>(row_text(row, "data"));
     } catch {
-      // 保留历史逐行容错边界：失败行原文留存。收窄到解析异常属于独立行为修正。
+      continue; // 保留仍可恢复的原始内容。
     }
+    if (!is_json_record(parsed)) continue;
+    const result = normalize(parsed);
+    if (result.changed) update.run(JsonTool.stringifyStrict(result.data), row_number(row, "id"));
   }
 }
 
