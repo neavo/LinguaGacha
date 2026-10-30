@@ -36,7 +36,7 @@ describe("AppAppearanceMenu", () => {
   });
 
   /** 挂载真实菜单，沿用户入口验证外观偏好的提交。 */
-  async function render_menu(): Promise<void> {
+  async function render_menu(open = true): Promise<HTMLButtonElement> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -45,24 +45,14 @@ describe("AppAppearanceMenu", () => {
       root?.render(
         <LocaleProvider locale="zh-CN">
           <TooltipProvider>
-            <SidebarProvider open>
-              <AppAppearanceMenu is_collapsed={false} />
+            <SidebarProvider open={open}>
+              <AppAppearanceMenu is_collapsed={!open} />
             </SidebarProvider>
           </TooltipProvider>
         </LocaleProvider>,
       );
     });
-  }
-
-  /** 点击可见入口，使菜单与 Portal 走完整的挂载路径。 */
-  async function open_menu(): Promise<void> {
-    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="变换自如"]');
-    if (trigger === null) {
-      throw new Error("缺少外观菜单按钮。");
-    }
-    await act(async () => {
-      trigger.click();
-    });
+    return container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
   }
 
   /** 通过可见文字选择选项，断言只锁定提交的持久化编码。 */
@@ -76,14 +66,20 @@ describe("AppAppearanceMenu", () => {
     return option;
   }
 
-  it("选择选项时提交明确的字体和主题偏好", async () => {
-    await render_menu();
-    await open_menu();
+  it("折叠时悬停显示外观提示，选择选项后提交字体和主题偏好", async () => {
+    const trigger = await render_menu(false);
+    await act(async () => {
+      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+      trigger.getAttribute("aria-label"),
+    );
+    await act(async () => trigger.click());
     await act(async () => {
       find_option("系统字体").click();
     });
 
-    await open_menu();
+    await act(async () => trigger.click());
     await act(async () => {
       find_option("深色").click();
     });
@@ -92,8 +88,8 @@ describe("AppAppearanceMenu", () => {
     expect(appearance.set_theme_preference).toHaveBeenCalledWith("dark");
   });
   it("选择字体大小时提交对应的持久化编码", async () => {
-    await render_menu();
-    await open_menu();
+    const trigger = await render_menu();
+    await act(async () => trigger.click());
     await act(async () => {
       find_option("更大字体").click();
     });

@@ -61,26 +61,24 @@ describe("AppSidebar", () => {
     });
   }
 
-  /** 从用户可见入口打开语言菜单。 */
-  async function open_language_menu(): Promise<void> {
-    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="字字珠玑"]');
-    if (trigger === null) {
-      throw new Error("缺少界面语言菜单按钮。");
-    }
-
-    await act(async () => {
-      trigger.click();
-    });
-  }
-
-  it("选择语言自称后提交对应的持久化编码", async () => {
+  it("折叠时悬停显示语言提示，选择语言后提交对应的持久化编码", async () => {
     const selected_languages: AppLanguage[] = [];
-    await render_sidebar({
-      on_select_app_language: (language) => {
-        selected_languages.push(language);
+    await render_sidebar(
+      {
+        on_select_app_language: (language) => {
+          selected_languages.push(language);
+        },
       },
+      false,
+    );
+    const trigger = container!.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
+    await act(async () => {
+      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
     });
-    await open_language_menu();
+    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
+      trigger.getAttribute("aria-label"),
+    );
+    await act(async () => trigger.click());
 
     const language_option = Array.from(
       document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
@@ -99,7 +97,7 @@ describe("AppSidebar", () => {
   it("语言设置更新期间禁用菜单按钮", async () => {
     await render_sidebar({ is_language_updating: true });
 
-    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="字字珠玑"]');
+    const trigger = container!.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
     expect(trigger?.disabled).toBe(true);
   });
 

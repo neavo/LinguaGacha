@@ -72,16 +72,23 @@ export function PathSelectionCard(props: PathSelectionCardProps): JSX.Element {
         )}
       </button>
       {summary === null ? null : (
-        <AppButton
-          variant="ghost"
-          size="icon-sm"
-          className="path-selection-card__clear h-[30px] w-[30px] p-0"
-          disabled={disabled}
-          aria-label={clear_label}
-          onClick={on_clear}
-        >
-          <X className="size-4" />
-        </AppButton>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <AppButton
+                variant="ghost"
+                size="icon-sm"
+                className="path-selection-card__clear h-[30px] w-[30px] p-0"
+                disabled={disabled}
+                aria-label={clear_label}
+                onClick={on_clear}
+              >
+                <X className="size-4" />
+              </AppButton>
+            }
+          />
+          <TooltipContent>{clear_label}</TooltipContent>
+        </Tooltip>
       )}
     </div>
   );
