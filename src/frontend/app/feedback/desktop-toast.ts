@@ -16,15 +16,22 @@ type ProgressToastOptions = {
   progress_percent?: number | undefined;
   presentation?: "inline" | "modal";
 };
-type ProgressToastState = Readonly<ProgressToastOptions & { owner_token: DesktopToastId }>;
+type ProgressToastState = Readonly<
+  ProgressToastOptions & {
+    owner_token: DesktopToastId;
+    shown_at: number | null; // null 表示已锁定输入，视觉反馈仍在等待展示。
+  }
+>;
 
 export const PROGRESS_TOAST_SONNER_ID = "desktop-progress-toast";
 const PROGRESS_TOAST_DISMISS_DELAY_MS = 1500;
+const MODAL_PROGRESS_SHOW_DELAY_MS = 250;
+const MODAL_PROGRESS_MIN_VISIBLE_MS = 1000;
 const ERROR_TOAST_DURATION_MS = 6000;
 const progress_listeners = new Set<() => void>();
 let progress_state: ProgressToastState | null = null; // 同一引用代表同一可观察快照
 let progress_owner_seed = 0; // 任务身份独立于 Sonner 复用的展示 ID
-let dismiss_timer: ReturnType<typeof setTimeout> | null = null; // 接管任务或关闭时取消旧计时
+let progress_timer: ReturnType<typeof setTimeout> | null = null; // 展示和关闭分阶段共用计时器。
 
 /** 进度动作和展示共用窗口内唯一快照，展示模块更新时仍保留任务身份。 */
 export function read_progress_toast(): ProgressToastState | null {
@@ -39,10 +46,10 @@ export function subscribe_progress_toast(listener: () => void): () => void {
   };
 }
 
-/** 写入前取消旧关闭任务，再发布同一份不可变快照。 */
+/** 每次状态切换都取消旧计时，回调只提交创建计时时的快照。 */
 function write_progress_toast(state: ProgressToastState | null): void {
-  if (dismiss_timer !== null) clearTimeout(dismiss_timer);
-  dismiss_timer = null;
+  if (progress_timer !== null) clearTimeout(progress_timer);
+  progress_timer = null;
   progress_state = state;
   for (const listener of progress_listeners) listener();
 }
@@ -65,7 +72,7 @@ export function push_toast(
   });
 }
 
-/** 标题由操作拥有者本地化，原因由异常源头提供；一次失败只在拥有者处通知。 */
+/** 操作拥有者提供本地化标题，并负责一次失败通知。 */
 export function push_error_toast(
   title: string,
   error: unknown,
@@ -86,21 +93,36 @@ export function push_error_toast(
 /** 新任务取得唯一进度通知的所有权。 */
 export function push_progress_toast(options: ProgressToastOptions): DesktopToastId {
   const owner_token = `${PROGRESS_TOAST_SONNER_ID}:${++progress_owner_seed}`;
-  write_progress_toast({ ...options, owner_token });
+  // 连续模态任务沿用可见时段，接管时不重新隐藏遮罩。
+  let shown_at: number | null = Date.now();
+  if (options.presentation === "modal") {
+    shown_at = progress_state?.presentation === "modal" ? progress_state.shown_at : null;
+  }
+  const state: ProgressToastState = { ...options, owner_token, shown_at };
+  write_progress_toast(state);
+  if (shown_at === null) {
+    progress_timer = setTimeout(() => {
+      write_progress_toast({ ...state, shown_at: Date.now() });
+    }, MODAL_PROGRESS_SHOW_DELAY_MS);
+  }
   return owner_token;
 }
 
-/** 模态任务立即释放遮罩，普通进度短暂保留完成反馈。 */
-function finish_progress_toast(owner_token: DesktopToastId): void {
-  if (progress_state?.owner_token !== owner_token) return;
-  if (progress_state.presentation === "modal") {
-    write_progress_toast(null);
+/** 展示时序只延后界面关闭，任务结果仍按实际完成时间返回。 */
+function finish_progress_toast(state: ProgressToastState): void {
+  if (state.presentation === "modal") {
+    const remaining_ms =
+      state.shown_at === null ? 0 : MODAL_PROGRESS_MIN_VISIBLE_MS - (Date.now() - state.shown_at);
+    if (remaining_ms <= 0) {
+      write_progress_toast(null);
+    } else if (progress_timer === null) {
+      // 重复关闭沿用原计时，最短展示时长从 shown_at 开始。
+      progress_timer = setTimeout(() => write_progress_toast(null), remaining_ms);
+    }
     return;
   }
-  write_progress_toast({ ...progress_state, progress_percent: undefined });
-  dismiss_timer = setTimeout(() => {
-    if (progress_state?.owner_token === owner_token) write_progress_toast(null);
-  }, PROGRESS_TOAST_DISMISS_DELAY_MS);
+  write_progress_toast({ ...state, progress_percent: undefined });
+  progress_timer = setTimeout(() => write_progress_toast(null), PROGRESS_TOAST_DISMISS_DELAY_MS);
 }
 
 /** 进度按任务身份关闭，普通通知按 Sonner ID 关闭。 */
@@ -109,9 +131,9 @@ export function dismiss_toast(toast_id?: DesktopToastId): void {
     for (const { id } of toast.getToasts()) {
       if (id !== PROGRESS_TOAST_SONNER_ID) toast.dismiss(id);
     }
-    if (progress_state !== null) finish_progress_toast(progress_state.owner_token);
+    if (progress_state !== null) finish_progress_toast(progress_state);
   } else if (progress_state?.owner_token === toast_id) {
-    finish_progress_toast(toast_id);
+    finish_progress_toast(progress_state);
   } else {
     toast.dismiss(toast_id);
   }
@@ -127,7 +149,7 @@ export class ModalProgressToastTimeoutError extends Error {
   }
 }
 
-/** 任务结束或超时后释放其拥有的进度，超时不会取消调用方任务。 */
+/** 任务结束或超时后提交关闭。超时只停止等待，调用方任务继续执行。 */
 export async function run_modal_progress_toast<T>(args: {
   message: string;
   task: () => Promise<T>;
