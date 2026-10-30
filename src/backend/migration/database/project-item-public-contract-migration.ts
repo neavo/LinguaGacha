@@ -8,14 +8,13 @@ import { write_item_migration, normalize_migration_file_type } from "./item-migr
 
 /**
  * 迁移背景：
- * 完整公开 item DTO 成为项目 query、预过滤、reset 和全量写回的唯一跨层形状。
- * 已执行过旧写回迁移的项目不会再进入旧迁移，因此公开 DTO 依赖字段必须由新的迁移 id 一次性补齐。
+ * 公开条目契约使用独立迁移，补齐已完成早期迁移的工程。
  *
  * 生效场景：
- * `.lg` schema、基础 Item 和 TRANS 迁移完成后补齐公开 DTO 字段，由独立完成标记避免重复执行。
+ * 本项在基础条目与 TRANS 迁移后执行。
  *
  * 不处理范围：
- * 不替代旧状态和 TRANS 定位迁移。格式私有字段及未知字段保留，逐行失败沿用历史容错规则。
+ * 格式私有字段和未知字段保留原值。
  */
 export function run_project_item_public_contract_migration(db: DatabaseSync): void {
   write_item_migration(db, normalize_item_public_contract_payload);

@@ -60,3 +60,29 @@ it("逐行跳过损坏及非对象载荷，只写回发生变化的对象", () =
   // SQL 实际写入次数证明未变化行没有重写，独立于归一函数的 changed 返回值。
   expect(db.prepare("SELECT total_changes() AS count").get()!["count"]).toBe(changes_before + 1);
 });
+
+it.each(["转换", "序列化"])("%s失败时向调用方传播原始错误", (stage) => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, data TEXT NOT NULL)");
+  db.prepare("INSERT INTO items VALUES (1, ?)").run('{"src":"old"}');
+  const failure = new Error("item migration failed");
+  let caught: unknown;
+
+  try {
+    write_item_migration(db, () => {
+      if (stage === "转换") throw failure;
+      return {
+        data: {
+          toJSON() {
+            throw failure; // 让真实序列化器抛错，验证原始错误继续向上传播。
+          },
+        },
+        changed: true,
+      };
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  expect(caught).toBe(failure);
+});

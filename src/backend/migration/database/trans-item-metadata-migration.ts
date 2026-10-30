@@ -74,17 +74,17 @@ export class TransItemMetadataAssetIndex {
 
 /**
  * 迁移背景：
- * 旧 TRANS 条目仅保存文件、标签和全局行号。当前 writer 依赖 `extra_field.trans_ref` 精确修改原资产。
- * 旧 `aqua` 标签还承载强制翻译语义，当前过滤链通过 `skip_internal_filter` 消费这一事实。
+ * 旧 TRANS 条目缺少 `extra_field.trans_ref`，导出需要此引用精确修改原资产。
+ * 旧 `aqua` 标签承载强制翻译语义。
  *
  * 生效场景：
- * Schema 和基础 Item 迁移完成后，用原资产的文件路径、文件键、全局行号和原文共同核验定位。
- * 为匹配的 TRANS 条目补齐引用，为 TRANS 的 `aqua` 条目补 true，清理其它条目中非法的非布尔过滤字段。
- * 已有合法引用和布尔选择优先。独立完成标记与写回数据在同一事务保存。
+ * 本项在基础条目迁移后用原资产核验定位。
+ * 旧 `aqua` 标签迁为 `skip_internal_filter`，已有布尔选择优先。
+ * 已有合法引用优先。
  *
  * 不处理范围：
- * 缺失或损坏资产、原文已变和定位不符的条目保留原定位事实，缺失引用由导出入口报告。
- * 格式解析与导出回退由文件域负责。单行失败沿用历史容错边界，原文留存。
+ * 缺失或损坏资产、原文已变和定位不符时保留原定位事实。
+ * 导出入口负责报告缺失引用。
  */
 export function run_trans_item_metadata_migration(db: DatabaseSync): void {
   const asset_index = build_trans_item_metadata_asset_index(db);
