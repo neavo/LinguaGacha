@@ -1,25 +1,31 @@
 import { read_translation_for_generation } from "../shared/translation-generation-text";
-import type { JsonValue, MutableJsonRecord } from "../../../domain/json";
+import type { Item } from "../../../domain/item";
+import { read_json_record, type JsonValue, type MutableJsonRecord } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
 import {
   derive_trans_filter_effect,
   string_array,
   to_mutable_record,
-  type PatchTarget,
-  type TransSnapshot,
   type NoneTransProcessor,
 } from "./trans-processor";
+
+/** 条目定位通过原稿校验后，交给同步写回流程使用。 */
+export type PatchTarget = {
+  item: Readonly<Item>;
+  file_key: string;
+  row_index: number;
+};
 
 /**
  * 校验所有条目都能通过 trans_ref 定位原始数据行，避免无定位信息时猜测写回
  */
 export function collect_patch_targets(
-  snapshots: TransSnapshot[],
+  items: readonly Readonly<Item>[],
   files: MutableJsonRecord,
 ): PatchTarget[] {
   const targets: PatchTarget[] = [];
-  for (const snap of snapshots) {
-    const trans_ref = to_mutable_record(snap.extra_field["trans_ref"]);
+  for (const item of items) {
+    const trans_ref = read_json_record(read_json_record(item.extra_field)["trans_ref"]);
     const file_key = trans_ref["file_key"];
     const row_index = trans_ref["row_index"];
     if (
@@ -40,7 +46,7 @@ export function collect_patch_targets(
         diagnostic_context: { file_key, row_index, reason: "trans_ref_out_of_range" },
       });
     }
-    targets.push({ snap, file_key, row_index });
+    targets.push({ item, file_key, row_index });
   }
   return targets;
 }
@@ -59,7 +65,7 @@ export function patch_trans_row(
   const context_row = read_row_string_array(entry["context"], target.row_index);
   const parameter_row = read_row_value(entry["parameters"], target.row_index);
   const effect = derive_trans_filter_effect({
-    block: processor.filter(target.snap.src, target.file_key, tag_row, context_row),
+    block: processor.filter(target.item.src, target.file_key, tag_row, context_row),
     tag: tag_row,
     parameter: parameter_row,
   });
@@ -78,7 +84,7 @@ export function patch_trans_row(
       parameters_field.push(null);
     }
     parameters_field[target.row_index] = processor.generate_parameter(
-      target.snap.src,
+      target.item.src,
       context_row,
       parameter_row,
       effect.block,
@@ -86,7 +92,7 @@ export function patch_trans_row(
   }
 
   // KV 类：未完成结果保持源行，完成空译文覆盖目标列。
-  const translation = read_translation_for_generation(target.snap);
+  const translation = read_translation_for_generation(target.item);
   if (translation === undefined) {
     files[target.file_key] = entry;
     return;

@@ -11,7 +11,7 @@ type SceneState = { comment: boolean; script: boolean; html: boolean; block: num
 
 /** 参数值在原稿中的范围，含引号。只有单独解码后与引擎结果一致的参数才登记。 */
 type SceneParam = Readonly<{ key: string; start: number; end: number }>;
-/** 与引擎 `parseScenario` 输出一一对应的节点，附带原稿范围。`#` 行对应 `chara_ptext`，`*` 行对应 `label`。 */
+/** 与引擎 `parseScenario` 输出一一对应的节点，可写文字附带原稿范围。`#` 行对应 `chara_ptext`，`*` 行对应 `label`。 */
 export type SceneNode = Readonly<
   | {
       kind: "text";
@@ -27,8 +27,6 @@ export type SceneNode = Readonly<
       name: string;
       pm: ReadonlyMap<string, string>;
       params: readonly SceneParam[];
-      start: number;
-      end: number;
       line: number;
       mode: SceneMode;
     }
@@ -66,18 +64,15 @@ export function scan_scene(
     const entry = { ...state };
     let line = row.trim();
     let content = line_start + row.length - row.trimStart().length;
-    const content_end = content + line.length;
     const mode = (): SceneMode => (state.script ? "script" : state.html ? "html" : "text"); // 引擎优先处理脚本模式。
     /** 标签名决定后续行的解析状态，与引擎 `makeTag` 的副作用一致。 */
-    const tag = (raw: string, raw_start: number, start: number, end: number): void => {
+    const tag = (raw: string, raw_start: number): void => {
       const { name, pm } = make_tag(raw, syntax);
       nodes.push({
         kind: "tag",
         name,
         pm,
         params: param_ranges(raw, raw_start, pm, syntax),
-        start,
-        end,
         line: index,
         mode: mode(),
       });
@@ -116,7 +111,7 @@ export function scan_scene(
         title: (parts[1] ?? "").trim(),
         line: index,
       });
-    } else if (line.startsWith("@")) tag(line.slice(1), content + 1, content, content_end);
+    } else if (line.startsWith("@")) tag(line.slice(1), content + 1);
     else {
       if (line.startsWith("_")) {
         line = line.slice(1);
@@ -149,12 +144,7 @@ export function scan_scene(
           if (state.script) value += c;
           else if (tag_start >= 0) {
             if (c === "]" && !quote && --depth === 0) {
-              tag(
-                line.slice(tag_start + 1, j),
-                content + tag_start + 1,
-                content + tag_start,
-                content + j + 1,
-              );
+              tag(line.slice(tag_start + 1, j), content + tag_start + 1);
               tag_start = -1;
               segment = j + 1;
               quote = "";
@@ -174,12 +164,7 @@ export function scan_scene(
           else value += c;
         } else if (tag_start >= 0) {
           if (c === "]" && !state.script && --depth === 0) {
-            tag(
-              line.slice(tag_start + 1, j),
-              content + tag_start + 1,
-              content + tag_start,
-              content + j + 1,
-            );
+            tag(line.slice(tag_start + 1, j), content + tag_start + 1);
             tag_start = -1;
             segment = j + 1;
           } else if (c === "[" && !state.script) depth++;
@@ -192,12 +177,7 @@ export function scan_scene(
       // 新版补全行尾未闭合的标签，旧版丢弃。
       if (syntax.parser === "modern" && tag_start >= 0 && tag_start + 1 < line.length) {
         const raw = line.slice(tag_start + 1);
-        tag(
-          raw.endsWith("]") ? raw.slice(0, -1) : raw,
-          content + tag_start + 1,
-          content + tag_start,
-          content_end,
-        );
+        tag(raw.endsWith("]") ? raw.slice(0, -1) : raw, content + tag_start + 1);
       }
       push_text(line.length);
     }

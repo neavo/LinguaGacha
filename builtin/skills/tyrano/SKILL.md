@@ -17,8 +17,6 @@ description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必�
 
 原件直接可读，没有投影。`<app>/tyrano/` 下的引擎、第三方库和素材不在原稿中，路径列在 `sources/<file_path>/game_files.reference.txt`。附加原稿的扫描范围是 `<app>/data/`。
 
-条目的 `extra_field.tyrano` 记录 `internal_file_path`、`usage`、`location` 和从 1 开始的 `line`。参数与脚本条目另有 `source_context`，分别为所在标签和所在语句。
-
 场景按引擎的解析规则拆分，一个条目对应一个原始文本节点或参数值：
 
 - 正文在 `[r]`、`[p]`、`[l]` 等标签处断开，一句话可能分成多个条目。译文保持各片段的语序和衔接，不增加换行。
@@ -27,7 +25,9 @@ description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必�
 
 # 默认状态
 
-|`usage`|来源|默认状态|
+导入按原文所在的标签、参数和代码位置区分用途：
+
+|用途|来源|默认状态|
 |---|---|---|
 |`text`|普通正文，`glink`、`ptext`、`mtext`、`tb_ptext_show`、`dialog`、`ruby` 的 `text`，`title` 的 `name`，`text` 的 `val`，`System.title`|`NONE`|
 |`name`|`#` 行的名字，`chara_new` 的 `jname`，`chara_ptext` 的 `name`|`RULE_SKIPPED`|
@@ -62,7 +62,7 @@ description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必�
 
 # 可见文本补漏
 
-候选为含源语言文字的 `parameter` 与 `code` 条目，`name` 条目按「依赖协调」处理。按候选位置找到读取它的代码：
+候选为含源语言文字的 `RULE_SKIPPED` 条目，按原文在原稿中的位置区分用途，`name` 条目按「依赖协调」处理。按候选位置找到读取它的代码：
 
 |位置|读取方式|调查重点|
 |---|---|---|

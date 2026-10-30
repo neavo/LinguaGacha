@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import type { MutableJsonRecord } from "../../../domain/json";
+import { create_item } from "../../../domain/item";
 import { RPGMakerTransProcessor } from "./rpgmaker-processor";
 import { WolfTransProcessor } from "./wolf-processor";
-import type { PatchTarget, TransSnapshot } from "./trans-processor";
-import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
+import { collect_patch_targets, patch_trans_row, type PatchTarget } from "./trans-patch-writer";
 
 describe("collect_patch_targets", () => {
   it("拒绝缺失 trans_ref 的条目，避免猜测写回位置", () => {
-    const snap = create_snapshot({
+    const item = create_item({
       extra_field: {},
     });
 
-    expect(() => collect_patch_targets([snap], { "/demo.map": { data: [["原文", ""]] } })).toThrow(
+    expect(() => collect_patch_targets([item], { "/demo.map": { data: [["原文", ""]] } })).toThrow(
       expect.objectContaining({ code: "file.invalid_structure" }),
     );
   });
@@ -29,7 +29,7 @@ describe("patch_trans_row", () => {
       },
     };
     const target = create_target({
-      snap: create_snapshot({
+      item: create_item({
         src: "原文",
         dst: "译文",
         status: "PROCESSED",
@@ -65,8 +65,7 @@ describe("patch_trans_row", () => {
       create_target({
         file_key: "common/1.json",
         row_index: 0,
-        snap: create_snapshot({
-          file_key: "common/1.json",
+        item: create_item({
           src: "混合",
           dst: "译文",
           status: "PROCESSED",
@@ -80,8 +79,7 @@ describe("patch_trans_row", () => {
       create_target({
         file_key: "common/1.json",
         row_index: 1,
-        snap: create_snapshot({
-          file_key: "common/1.json",
+        item: create_item({
           src: "span",
           dst: "译文",
           status: "PROCESSED",
@@ -117,8 +115,7 @@ describe("patch_trans_row", () => {
       files,
       create_target({
         file_key: "data/CommonEvents.json",
-        snap: create_snapshot({
-          file_key: "data/CommonEvents.json",
+        item: create_item({
           src: "ShowMessage",
           status: "EXCLUDED",
         }),
@@ -134,29 +131,11 @@ describe("patch_trans_row", () => {
   });
 });
 
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_snapshot(overrides: Partial<TransSnapshot> = {}): TransSnapshot {
-  return {
-    row: 0,
-    file_key: "/demo.map",
-    src: "原文",
-    dst: "",
-    status: "NONE",
-    extra_field: { trans_ref: { file_key: "/demo.map", row_index: 0 } },
-    ...overrides,
-  };
-}
-
-/**
- * 构造当前测试场景的标准数据。
- */
+/** 写回测试直接提供已校验的目标，定位校验由 `collect_patch_targets` 用例负责。 */
 function create_target(overrides: Partial<PatchTarget> = {}): PatchTarget {
-  const snap = overrides.snap ?? create_snapshot();
   return {
-    snap,
-    file_key: snap.file_key,
+    item: create_item({ src: "原文" }),
+    file_key: "/demo.map",
     row_index: 0,
     ...overrides,
   };

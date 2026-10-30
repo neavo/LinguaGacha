@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { RPGMakerTransProcessor } from "./rpgmaker-processor";
 
 describe("RPGMakerTransProcessor", () => {
-  it("按 RPGMaker 地址黑名单生成状态并为自动过滤项补 gold", () => {
+  it("按 RPGMaker 地址黑名单生成状态", () => {
     const processor = new RPGMakerTransProcessor({});
 
     expect(
@@ -11,23 +11,20 @@ describe("RPGMakerTransProcessor", () => {
     ).toMatchObject({
       src: "ステラ",
       status: "NONE",
-      tag: [],
     });
     expect(
       processor.check("data/Actors.json", ["ActorName", ""], [], ["MapInfos/1/name"]),
     ).toMatchObject({
       src: "ActorName",
       status: "RULE_SKIPPED",
-      tag: ["gold"],
     });
     expect(processor.check("data/Actors.json", ["Done", "已完成"], [], [])).toMatchObject({
       src: "Done",
       status: "PROCESSED",
-      tag: [],
     });
   });
 
-  it("MZ 插件命令只有 text 字段保留翻译，其它自动过滤字段带 gold", () => {
+  it("MZ 插件命令只有 text 字段保留翻译，其它字段自动过滤", () => {
     const processor = new RPGMakerTransProcessor({});
 
     expect(
@@ -40,7 +37,6 @@ describe("RPGMakerTransProcessor", () => {
     ).toMatchObject({
       src: "ShowMessage",
       status: "RULE_SKIPPED",
-      tag: ["gold"],
     });
     expect(
       processor.check(
@@ -52,7 +48,6 @@ describe("RPGMakerTransProcessor", () => {
     ).toMatchObject({
       src: "正文",
       status: "NONE",
-      tag: [],
     });
   });
 

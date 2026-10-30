@@ -1,7 +1,6 @@
-import { SOURCE_CONTEXT_MAX_LENGTH } from "../shared/javascript";
 import { expect, it } from "vitest";
 import { create_rpgmaker_extractor } from "./extractor";
-import { read_json_record } from "../../../domain/json";
+import { read_rpgmaker_metadata } from "./item";
 
 it("JSON 只展开字符串值，标量与无效 JSON 保持原文，内部事件形状按普通结构遍历", () => {
   const extractor = create_rpgmaker_extractor("data/Plugins.json");
@@ -27,35 +26,35 @@ it("JSON 只展开字符串值，标量与无效 JSON 保持原文，内部事�
         path: ["list", 0, "parameters", 0],
         container: { kind: "field", path: ["settings"] },
       },
-      source_context: expect.stringContaining("settings"),
     },
   });
 });
 
-it("六层解码继承代码来源，上下文有界且保留邻近值", () => {
+it("六层解码保留条目顺序、默认状态与完整写回定位", () => {
   const extractor = create_rpgmaker_extractor("data/CommonEvents.json");
-  let source = JSON.stringify({ Text: "はい", Hint: "选择提示", padding: "😀".repeat(2000) });
+  let source = JSON.stringify({ Text: "はい", Hint: "选择提示" });
   for (const key of ["Command", "CommandList", "Window", "WindowList", "SceneCustomMenu"])
     source = JSON.stringify({ [key]: source });
   extractor.script(`const parameters = ${JSON.stringify(source)};`, { kind: "field", path: [] });
   const item = extractor.items.find(({ src }) => src === "はい")!;
   expect(extractor.items.every((entry) => entry.status === "RULE_SKIPPED")).toBe(true);
-  const metadata = read_json_record(read_json_record(item.extra_field)["rpgmaker_mv_mz"]) as {
-    source_context: string;
-  };
-  for (const key of [
-    "parameters",
-    "SceneCustomMenu",
-    "WindowList",
-    "Window",
-    "CommandList",
-    "Command",
-    "Text",
-    "选择提示",
-  ])
-    expect(metadata.source_context).toContain(key);
-  expect(metadata.source_context.length).toBeLessThanOrEqual(SOURCE_CONTEXT_MAX_LENGTH);
-  expect(metadata.source_context.isWellFormed()).toBe(true);
+  expect(extractor.items.map(({ src }) => src)).toEqual(["はい", "选择提示"]);
+  const metadata = read_rpgmaker_metadata(item.extra_field);
+  expect(metadata.internal_file_path).toBe("data/CommonEvents.json");
+  expect(metadata.usage).toBe("metadata");
+  let location = metadata.location;
+  for (const key of ["Text", "Command", "CommandList", "Window", "WindowList", "SceneCustomMenu"]) {
+    expect(location).toMatchObject({ kind: "json", path: [key] });
+    if (location.kind !== "json") throw new Error("Missing JSON container");
+    location = location.container;
+  }
+  expect(location).toEqual({
+    kind: "script",
+    start: 19,
+    end: 19 + JSON.stringify(source).length,
+    template: false,
+    container: { kind: "field", path: [] },
+  });
 });
 
 it("完整模板可以展开，含插值模板中看似完整的 JSON 片段保持原文", () => {
@@ -65,50 +64,4 @@ it("完整模板可以展开，含插值模板中看似完整的 JSON 片段保�
     path: [],
   });
   expect(extractor.items.map(({ src }) => src)).toEqual(["完整", '{"text":"片段"}', "尾"]);
-});
-
-it.each([
-  { padding: "无关".repeat(2000), before: "前邻", target: "目标😀", after: "后邻" },
-  ["无关".repeat(2000), "前邻", "目标😀", "后邻", "遥远成员"],
-])("上下文选取目标及前后成员，不受父容器开头长文本影响", (value) => {
-  const extractor = create_rpgmaker_extractor("data/Plugins.json");
-  extractor.expand(JSON.stringify(value), {
-    usage: "metadata",
-    location: { kind: "field", path: ["settings"] },
-  });
-  const item = extractor.items.find(({ src }) => src === "目标😀")!;
-  const context = read_json_record(read_json_record(item.extra_field)["rpgmaker_mv_mz"])[
-    "source_context"
-  ] as string;
-  for (const text of ["settings", "目标😀", "前邻", "后邻"]) expect(context).toContain(text);
-  expect(context).not.toContain("无关");
-  expect(context).not.toContain("遥远成员");
-  expect(context.length).toBeLessThanOrEqual(SOURCE_CONTEXT_MAX_LENGTH);
-  expect(context.isWellFormed()).toBe(true);
-});
-
-it("长目标优先保留定位和正文，相邻对象与数组只展示成员数", () => {
-  const extractor = create_rpgmaker_extractor("data/Plugins.json");
-  const target = "目标😀".repeat(2000);
-  extractor.expand(
-    JSON.stringify({
-      before: { hidden: "对象正文", extra: true },
-      target,
-      after: ["数组正文", 1, null],
-    }),
-    {
-      usage: "metadata",
-      location: { kind: "field", path: ["settings"] },
-    },
-  );
-  const item = extractor.items.find(({ src }) => src === target)!;
-  const context = read_json_record(read_json_record(item.extra_field)["rpgmaker_mv_mz"])[
-    "source_context"
-  ] as string;
-  for (const text of ["settings", "target", "目标😀", "before", "Object(2)", "after", "Array(3)"])
-    expect(context).toContain(text);
-  expect(context).not.toContain("对象正文");
-  expect(context).not.toContain("数组正文");
-  expect(context.length).toBeLessThanOrEqual(SOURCE_CONTEXT_MAX_LENGTH);
-  expect(context.isWellFormed()).toBe(true);
 });

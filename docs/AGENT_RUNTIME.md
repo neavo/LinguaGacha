@@ -134,6 +134,8 @@ Agent 复用共享 `BatchTranslationService`，由批量引擎逐批提交译文
 
 共享层保留原件，引擎只生成可读视图，使参考失败或路径冲突都不改变原稿证据。
 
+格式元数据 `extra_field` 随后端实现演进，因此不构成模型可见契约。Agent 从原稿和可读视图判断条目语境，并自行消歧重复文本。
+
 原稿准备失败不单独决定 `workspace_run` 成败，因为脚本可能只使用工程快照。`source_issues.jsonl` 向 Agent 说明当前原稿的缺口，它与 `sources` 不一致时阻止脚本执行。身份隔离遵循 [跨层不变量](ARCHITECTURE.md#身份隔离迟到结果)。
 
 附加原稿不产生条目，由 Agent 制作补丁交付。补丁归 `work` 的生命周期，不写回工程。附加原稿清单与资产的一致性见 [BACKEND](BACKEND.md#原生游戏)。

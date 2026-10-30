@@ -113,7 +113,6 @@ describe("MV/MZ 原稿写回", () => {
     ]);
     expect(items[0]?.extra_field).toMatchObject({
       rpgmaker_mv_mz: {
-        source_context: '"管理😀": "显示"',
         location: { kind: "script" },
       },
     });
@@ -351,7 +350,6 @@ describe("MV/MZ 原稿写回", () => {
     expect(items[0]?.extra_field).toMatchObject({
       rpgmaker_mv_mz: {
         internal_file_path: "js/plugins/test.js",
-        source_context: 'x = "中文😀"',
       },
     });
     const translations = ['引号"\\\n😀', "`前${字}", "后"];

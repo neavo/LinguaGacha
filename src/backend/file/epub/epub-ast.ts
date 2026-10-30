@@ -864,7 +864,6 @@ export class EpubAst {
               block_path: elem_path,
               parts: [{ slot: "text", path: elem_path }],
               src_digest: this.sha1_hex(text),
-              is_ncx: true,
             },
           } as JsonValue,
         }),

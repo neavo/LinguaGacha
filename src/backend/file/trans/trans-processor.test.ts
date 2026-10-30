@@ -64,14 +64,12 @@ describe("NoneTransProcessor", () => {
     expect(processor.check("file.json", ["", ""], [], ["ctx"])).toMatchObject({
       src: "",
       dst: "",
-      tag: [],
       status: "RULE_SKIPPED",
       skip_internal_filter: false,
     });
     expect(processor.check("file.json", ["src", "src"], ["aqua"], ["ctx"])).toMatchObject({
       src: "src",
       dst: "src",
-      tag: ["aqua"],
       status: "NONE",
       skip_internal_filter: true,
     });

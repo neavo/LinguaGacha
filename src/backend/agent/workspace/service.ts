@@ -563,12 +563,6 @@ export class AgentWorkspaceService {
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.items),
           map_iterable(current_items, project_agent_workspace_item),
         ),
-        // 来源上下文可能较大，独立成文件避免增加主条目文件的读取成本。
-        write_jsonl_file(
-          this.native_fs,
-          path.join(this.root_path, AGENT_WORKSPACE_PATHS.itemExtra),
-          map_iterable(current_items, ({ item_id, extra_field }) => ({ item_id, extra_field })),
-        ),
         write_json_file(
           this.native_fs,
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.prompts),
