@@ -68,26 +68,9 @@ import {
   type AppLanguage,
 } from "@domain/app-language";
 
-// SIDEBAR STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
-const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
+const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed"; // 窗口本地侧栏偏好的持久化键
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
-
-/** 导航只开放注册表中实际存在的页面。 */
-function has_registered_screen(route_id: RouteId): boolean {
-  return SCREEN_REGISTRY[route_id] !== undefined;
-}
-
-/** 从窗口本地偏好恢复侧栏折叠状态。 */
-function read_sidebar_state(): boolean {
-  const stored_sidebar_state = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-
-  if (stored_sidebar_state === "true") {
-    return true;
-  } else {
-    return false;
-  }
-}
 
 /** 根据宿主窗口角色选择 renderer 组合根。 */
 function is_log_window_mode(): boolean {
@@ -117,12 +100,12 @@ function AppContent(): JSX.Element {
 
   const { t } = useI18n();
   const shell_info = window.desktopApp.shell;
+  // 主窗口持有路由，页面通过共享导航入口提交跳转。
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
   // 请求与实际导航共同提交，工程选择期间保留，离开目标流程时清除。
   const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
-  const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set());
-  const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
-    read_sidebar_state(),
+  const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(
+    () => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true",
   );
   const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
@@ -135,7 +118,7 @@ function AppContent(): JSX.Element {
   const previous_project_session_status_ref = useRef(project_session_status);
   const log_badge_project_path_ref = useRef<string | null>(null);
   const [log_badge_visible, set_log_badge_visible] = useState<boolean>(false);
-  const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
+  const active_screen = SCREEN_REGISTRY[selected_route];
   const ScreenComponent = active_screen.component;
   const app_title = t("app.metadata.app_name");
   const update_release = read_update_release(update_dialog_state);
@@ -215,41 +198,6 @@ function AppContent(): JSX.Element {
       project_session_status,
     });
   }, [project_snapshot.loaded, project_session_status]);
-  const visible_navigation_groups = useMemo(() => {
-    return NAVIGATION_GROUPS.filter((group) => {
-      return group.items.some((item) => {
-        if ((item.children?.length ?? 0) > 0) {
-          return item.children?.some((child) => has_registered_screen(child.id)) ?? false;
-        }
-
-        return has_registered_screen(item.id);
-      });
-    }).map((group) => {
-      return {
-        ...group,
-        items: group.items
-          .filter((item) => {
-            if ((item.children?.length ?? 0) > 0) {
-              return item.children?.some((child) => has_registered_screen(child.id)) ?? false;
-            }
-
-            return has_registered_screen(item.id);
-          })
-          .map((item) => {
-            if (item.children === undefined || item.children.length === 0) {
-              return item;
-            }
-
-            return {
-              ...item,
-              children: item.children.filter((child) => {
-                return has_registered_screen(child.id);
-              }),
-            };
-          }),
-      };
-    });
-  }, []);
 
   /** 离页保存成功后共同提交路由和输入请求，保存失败时保留当前页面。 */
   function handle_select_route(route_id: RouteId, request?: AgentInputRequest): void {
@@ -292,30 +240,6 @@ function AppContent(): JSX.Element {
     log_badge_project_path_ref.current = project_path;
     set_log_badge_visible(true);
   }, [project_snapshot.loaded, project_snapshot.path, project_session_status]);
-
-  /** 切换导航分组，并在侧栏折叠时先展开侧栏。 */
-  function handle_toggle_group(route_id: RouteId): void {
-    if (is_sidebar_collapsed) {
-      set_is_sidebar_collapsed(false);
-      set_expanded_items((previous_items) => {
-        const next_items = new Set(previous_items);
-        next_items.add(route_id);
-        return next_items;
-      });
-    } else {
-      set_expanded_items((previous_items) => {
-        const next_items = new Set(previous_items);
-
-        if (next_items.has(route_id)) {
-          next_items.delete(route_id);
-        } else {
-          next_items.add(route_id);
-        }
-
-        return next_items;
-      });
-    }
-  }
 
   /** 通过宿主打开日志窗口并消费当前项目的日志提示。 */
   function handle_open_logs(): void {
@@ -543,9 +467,8 @@ function AppContent(): JSX.Element {
           <AppTitlebar title={app_title} />
           <section className="shell-body">
             <AppSidebar
-              groups={visible_navigation_groups}
+              groups={NAVIGATION_GROUPS}
               selected_route={selected_route}
-              expanded_items={expanded_items}
               disabled_route_ids={disabled_route_ids}
               app_language={settings_snapshot.app_language}
               is_language_updating={is_app_language_updating}
@@ -560,7 +483,6 @@ function AppContent(): JSX.Element {
               }
               is_profile_update_available={update_release_url !== null}
               on_select_route={handle_select_route}
-              on_toggle_group={handle_toggle_group}
               on_open_logs={handle_open_logs}
               on_select_app_language={handle_select_app_language}
               on_profile_action={handle_profile_action}

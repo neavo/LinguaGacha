@@ -2,7 +2,6 @@ import { zh_cn_text_replacement_page } from "../zh-CN/text-replacement-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_text_replacement_page = {
-  title: "Textersetzung",
   fields: {
     replacement: "Ersetzung",
   },

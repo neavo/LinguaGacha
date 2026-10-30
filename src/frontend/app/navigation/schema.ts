@@ -8,7 +8,6 @@ import {
   FlaskConical,
   Grid2x2Check,
   ListTree,
-  ReplaceAll,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -75,21 +74,14 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         title_key: "text_preserve_page.title",
       },
       {
-        id: "text-replacement",
-        icon: ReplaceAll,
-        title_key: "text_replacement_page.title",
-        children: [
-          {
-            id: "pre-translation-replacement",
-            icon: BetweenVerticalStart,
-            title_key: "pre_translation_replacement_page.title",
-          },
-          {
-            id: "post-translation-replacement",
-            icon: BetweenVerticalEnd,
-            title_key: "post_translation_replacement_page.title",
-          },
-        ],
+        id: "pre-translation-replacement",
+        icon: BetweenVerticalStart,
+        title_key: "pre_translation_replacement_page.title",
+      },
+      {
+        id: "post-translation-replacement",
+        icon: BetweenVerticalEnd,
+        title_key: "post_translation_replacement_page.title",
       },
       {
         id: "custom-prompt",

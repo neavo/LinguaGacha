@@ -77,14 +77,6 @@ export function resolve_update_action_label(state: UpdateDialogState, t: AppTran
   return t("app.update.action");
 }
 
-/** 将替换功能分组解析为默认可访问页面。 */
-export function resolve_selectable_route(route_id: RouteId): RouteId {
-  if (route_id === "text-replacement") {
-    return "pre-translation-replacement";
-  }
-  return route_id;
-}
-
 /** 按项目加载与准备状态计算可用入口。 */
 export function resolve_disabled_route_ids(args: {
   project_loaded: boolean;
@@ -106,17 +98,18 @@ export function resolve_route_selection(args: {
   project_session_status: ProjectSessionStatus;
   pending_target_route: RouteId | null;
 }): { selected_route: RouteId; pending_target_route: RouteId | null } {
-  const next_route = resolve_selectable_route(args.route_id);
   if (
-    is_project_dependent_route(next_route) &&
+    is_project_dependent_route(args.route_id) &&
     (!args.project_loaded || args.project_session_status !== "ready")
   ) {
-    return { selected_route: DEFAULT_ROUTE_ID, pending_target_route: next_route };
+    return { selected_route: DEFAULT_ROUTE_ID, pending_target_route: args.route_id };
   }
 
   return {
-    selected_route: next_route,
-    pending_target_route: is_project_dependent_route(next_route) ? args.pending_target_route : null,
+    selected_route: args.route_id,
+    pending_target_route: is_project_dependent_route(args.route_id)
+      ? args.pending_target_route
+      : null,
   };
 }
 
@@ -146,10 +139,7 @@ export function resolve_project_route_after_snapshot(args: {
   }
 
   return {
-    selected_route:
-      args.pending_target_route === null
-        ? "agent"
-        : resolve_selectable_route(args.pending_target_route),
+    selected_route: args.pending_target_route ?? "agent",
     pending_target_route: null,
   };
 }
