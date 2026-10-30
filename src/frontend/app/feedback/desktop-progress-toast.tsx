@@ -11,7 +11,7 @@ import {
 export function DesktopProgressToast(): JSX.Element | null {
   const progress = useSyncExternalStore(subscribe_progress_toast, read_progress_toast);
   useLayoutEffect(() => {
-    if (progress === null) {
+    if (progress === null || progress.shown_at === null) {
       toast.dismiss(PROGRESS_TOAST_SONNER_ID);
       return;
     }
@@ -33,7 +33,12 @@ export function DesktopProgressToast(): JSX.Element | null {
     },
     [],
   );
+  // 透明遮罩立即拦截输入，防止等待展示时重复操作。
   return progress?.presentation === "modal" ? (
-    <div className="cn-progress-toast-modal-layer" aria-hidden="true" />
+    <div
+      className="cn-progress-toast-modal-layer"
+      data-visible={progress.shown_at !== null}
+      aria-hidden="true"
+    />
   ) : null;
 }

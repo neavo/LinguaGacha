@@ -663,10 +663,13 @@ svg {
     position: fixed;
     inset: 0;
     z-index: var(--ui-layer-blocking-overlay);
-    background: rgb(0 0 0 / 0.1);
-    backdrop-filter: blur(4px);
     cursor: wait;
     pointer-events: auto;
+  }
+
+  .cn-progress-toast-modal-layer[data-visible="true"] {
+    background: rgb(0 0 0 / 0.1);
+    backdrop-filter: blur(4px);
   }
 
   .cn-toast--progress-modal {
