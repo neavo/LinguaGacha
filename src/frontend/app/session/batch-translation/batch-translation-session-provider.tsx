@@ -27,10 +27,6 @@ function resolve_translation_task_confirm_description(
     return t("batch_translation.confirm.reset_all_description");
   }
 
-  if (state.kind === "reset-failed") {
-    return t("batch_translation.confirm.reset_failed_description");
-  }
-
   return t("batch_translation.confirm.stop_description");
 }
 
@@ -70,10 +66,7 @@ function BatchTranslationDialogsLayer(): JSX.Element {
           t,
         )}
         submitting={batch_translation_task.task_confirm_state?.submitting ?? false}
-        confirmDelay={
-          batch_translation_task.task_confirm_state?.kind === "reset-all" ||
-          batch_translation_task.task_confirm_state?.kind === "reset-failed"
-        }
+        confirmDelay={batch_translation_task.task_confirm_state?.kind === "reset-all"}
         onConfirm={batch_translation_task.confirm_task_action}
         onClose={batch_translation_task.close_task_action_confirmation}
       />

@@ -115,9 +115,7 @@ export class ProjectTranslationTransferService {
         return {
           filled,
           replaced,
-          unmatched: Object.values(output.items).filter(
-            (item) => item.status === "NONE" || item.status === "ERROR",
-          ).length,
+          unmatched: Object.values(output.items).filter((item) => item.status === "NONE").length,
         };
       } finally {
         await this.database.remove_project_file(output_snapshot);

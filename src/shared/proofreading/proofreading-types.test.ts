@@ -17,7 +17,7 @@ describe("proofreading types", () => {
 
   it("克隆筛选项时不会共享术语 ID 数组", () => {
     const filters: ProofreadingFilterOptions = {
-      outcomes: ["GLOSSARY", "NONE", "PROCESSED", "ERROR"],
+      outcomes: ["GLOSSARY", "NONE", "PROCESSED"],
       files: { mode: "selected", values: [{ file_path: "chapter.txt", internal_file_path: null }] },
       glossary_entry_ids: ["magic"],
       include_without_glossary_miss: true,
@@ -26,7 +26,7 @@ describe("proofreading types", () => {
     cloned.outcomes.push("FOREIGN_CHAR_RESIDUE");
     cloned.glossary_entry_ids[0] = "dirty";
 
-    expect(filters.outcomes).toEqual(["GLOSSARY", "NONE", "PROCESSED", "ERROR"]);
+    expect(filters.outcomes).toEqual(["GLOSSARY", "NONE", "PROCESSED"]);
     expect(filters.glossary_entry_ids).toEqual(["magic"]);
   });
 
@@ -43,7 +43,7 @@ describe("proofreading types", () => {
         ],
       }),
     ).toEqual(["FOREIGN_CHAR_RESIDUE", "GLOSSARY"]);
-    expect(resolve_proofreading_outcomes({ status: "ERROR", warnings: [] })).toEqual(["ERROR"]);
+    expect(resolve_proofreading_outcomes({ status: "NONE", warnings: [] })).toEqual(["NONE"]);
   });
 
   it("按固定类型顺序汇总成功译文的校对警告", () => {
@@ -64,7 +64,7 @@ describe("proofreading types", () => {
           ],
         },
         {
-          status: "ERROR",
+          status: "NONE",
           warnings: [
             {
               code: "TEXT_PRESERVE",

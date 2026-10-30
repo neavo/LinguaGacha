@@ -3,7 +3,7 @@ import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_workbench_page = {
   title: "작업대",
   unit: {
-    line: "Line",
+    item: "Items",
   },
   table: {
     file_name: "파일 이름",
@@ -23,7 +23,6 @@ export const ko_kr_workbench_page = {
     translation_task: "번역",
     start_translation: "번역 시작",
     reset_task_all: "모든 데이터 초기화",
-    reset_task_failed: "실패 데이터 초기화",
   },
   dialog: {
     import_conflict: {

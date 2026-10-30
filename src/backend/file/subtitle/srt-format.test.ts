@@ -25,7 +25,7 @@ it.each(["", " \n "])("完成空正文 %j 省略单语块，未完成回源，�
     create_item({
       src: "保留",
       dst: "暂存",
-      status: "ERROR",
+      status: "NONE",
       row: 9,
       extra_field: "00:00:03,000 --> 00:00:04,000",
     }),

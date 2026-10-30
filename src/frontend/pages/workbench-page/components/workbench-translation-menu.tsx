@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { BrushCleaning, Paintbrush, Play, ScanText } from "lucide-react";
+import { BrushCleaning, Play, ScanText } from "lucide-react";
 
 import "@frontend/features/batch-translation/batch-translation.css";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -20,8 +20,6 @@ import {
 import { SegmentedProgress } from "@frontend/widgets/segmented-progress/segmented-progress";
 import type { TranslationTaskActionKind } from "@shared/batch-translation/batch-translation";
 
-type WorkbenchTaskResetKind = "reset-all" | "reset-failed";
-
 type WorkbenchTranslationMenuProps = {
   active: boolean;
   workbench_stats: ProjectTranslationStats | null;
@@ -30,7 +28,7 @@ type WorkbenchTranslationMenuProps = {
   model_selection: ModelSelectionController;
   active_task_action_kind: TranslationTaskActionKind | null;
   on_start_or_continue: () => Promise<void>;
-  on_request_reset: (kind: WorkbenchTaskResetKind) => void;
+  on_request_reset: (kind: "reset-all") => void;
 };
 
 /**
@@ -81,7 +79,6 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
               stats={props.workbench_stats}
               labels={{
                 skipped: t(`task_progress.translation_skipped`),
-                failed: t(`task_progress.translation_failed`),
                 completed: t(`task_progress.translation_completed`),
                 pending: t(`task_progress.translation_pending`),
                 total: t("task_progress.total_lines"),
@@ -132,20 +129,6 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
               <BrushCleaning data-icon="inline-start" />
             )}
             {t("workbench_page.action.reset_task_all")}
-          </AppDropdownMenuItem>
-          <AppDropdownMenuItem
-            variant="destructive"
-            disabled={action_items_disabled}
-            onClick={() => {
-              props.on_request_reset("reset-failed");
-            }}
-          >
-            {props.active_task_action_kind === "reset-failed" && props.busy ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <Paintbrush data-icon="inline-start" />
-            )}
-            {t("workbench_page.action.reset_task_failed")}
           </AppDropdownMenuItem>
         </AppDropdownMenuGroup>
       </AppDropdownMenuContent>

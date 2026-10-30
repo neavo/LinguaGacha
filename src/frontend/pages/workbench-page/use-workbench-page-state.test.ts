@@ -227,7 +227,6 @@ function create_workbench_query_response() {
         total_count: items.filter((item) => item.file_path === file.rel_path).length,
         completed_count: 0,
         skipped_count: 0,
-        failed_count: 0,
         pending_count: items.filter((item) => item.file_path === file.rel_path).length,
         completion_percent: 0,
       },

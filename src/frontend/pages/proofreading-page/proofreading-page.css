@@ -125,10 +125,6 @@
   color: color-mix(in srgb, var(--ui-warning) 78%, var(--foreground) 22%);
 }
 
-.proofreading-page__status-icon--failure {
-  color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground) 18%);
-}
-
 .proofreading-page__status-icon svg {
   display: block;
   width: 16px;

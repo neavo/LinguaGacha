@@ -17,7 +17,6 @@ describe("批量翻译展示", () => {
         status: "stopped",
         progress: {
           ...create_empty_batch_translation_snapshot().progress,
-          line: 1,
           total_line: 4,
           time: 87864.8,
           total_output_tokens: 878648,

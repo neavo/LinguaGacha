@@ -10,7 +10,6 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 const labels = {
   skipped: "无需",
-  failed: "失败",
   completed: "成功",
   pending: "等待",
   total: "总计",
@@ -32,6 +31,7 @@ describe("SegmentedProgress", () => {
     root = null;
   });
 
+  /** 挂载真实分段控件，观察计数如何映射为宽度。 */
   async function render_progress(stats: SegmentedProgressStats): Promise<HTMLDivElement> {
     container = document.createElement("div");
     document.body.append(container);
@@ -46,27 +46,24 @@ describe("SegmentedProgress", () => {
     return container;
   }
 
-  it("按无需、失败、成功、等待顺序渲染非零分段", async () => {
+  it("按总量计算非零分段宽度，零值不占空间", async () => {
     const view = await render_progress({
       total_items: 10,
       completed_count: 3,
-      failed_count: 2,
-      pending_count: 4,
-      skipped_count: 1,
-      completion_percent: 40,
+      pending_count: 7,
+      skipped_count: 0,
+      completion_percent: 30,
     });
 
-    expect(view.querySelectorAll(".segmented-progress__segment")).toHaveLength(4);
-    expect(view.querySelector("[role='progressbar']")?.getAttribute("aria-label")).toBe(
-      "无需 - 1 / 失败 - 2 / 成功 - 3 / 等待 - 4 / 总计 - 10",
-    );
+    const segments = view.querySelectorAll<HTMLElement>(".segmented-progress__segment");
+    expect([...segments].map((segment) => segment.style.width)).toEqual(["30%", "70%"]);
+    expect(view.querySelector("[role='progressbar']")?.getAttribute("aria-valuenow")).toBe("30");
   });
 
   it("0 总数时保留空轨道且不渲染分段", async () => {
     const view = await render_progress({
       total_items: 0,
       completed_count: 0,
-      failed_count: 0,
       pending_count: 0,
       skipped_count: 0,
       completion_percent: 0,

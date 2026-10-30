@@ -212,9 +212,9 @@ describe("ProofreadingEditDialog", () => {
     expect(on_save).not.toHaveBeenCalled();
   });
 
-  it("术语提示按实际数据分组，失败条目和空警告也展示应用结果", async () => {
+  it("术语提示按实际数据分组，未处理条目和空警告也展示应用结果", async () => {
     const rendered = await render_dialog({
-      item: { ...create_proofreading_item(), status: "ERROR", warnings: [] },
+      item: { ...create_proofreading_item(), status: "NONE", warnings: [] },
     });
     const tooltip = rendered.querySelector(
       ".proofreading-page__dialog-status-strip [data-test-tooltip]",

@@ -30,7 +30,6 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
   const stats = {
     total_items: 4,
     completed_count: 1,
-    failed_count: 0,
     pending_count: 3,
     skipped_count: 0,
     completion_percent: 25,

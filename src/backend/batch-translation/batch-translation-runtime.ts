@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import {
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
+  type BatchTranslationRunProgress,
   type BatchTranslationRequestState,
   type BatchTranslationStopSource,
   type BatchTranslationSource,
@@ -108,8 +109,8 @@ export class BatchTranslationRuntime {
         : {},
     );
   }
-  /** 本轮计数只在成功提交后推进，供异常收尾恢复已完成结果。 */
-  public read_run_progress(): BatchTranslationProgress | undefined {
+  /** 本轮计数在成功条目和用量提交后结算，供异常收尾恢复已结束尝试。 */
+  public read_run_progress(): BatchTranslationRunProgress | undefined {
     return this.snapshot.run_progress === undefined ? undefined : { ...this.snapshot.run_progress };
   }
   /** 在异步读取累计进度前固定运行快照，目标与本轮计数来自同一版本。 */
@@ -385,8 +386,11 @@ export class BatchTranslationRuntime {
   public async publish_targets(
     handle: BatchTranslationRunHandle,
     target_ids: ReadonlySet<number>,
-  ): Promise<BatchTranslationProgress> {
-    const run_progress = TranslationProgressAccumulator.empty(target_ids.size);
+  ): Promise<BatchTranslationRunProgress> {
+    const run_progress = {
+      ...TranslationProgressAccumulator.empty(target_ids.size),
+      failed_line: 0,
+    };
     if (!this.is_current(handle.run_id)) return run_progress;
     this.snapshot = { ...this.snapshot, pending_item_ids: [...target_ids], run_progress };
     try {
@@ -397,15 +401,15 @@ export class BatchTranslationRuntime {
     }
     return { ...run_progress };
   }
-  /** 已提交结果退出待处理范围，同值结果也完成本轮尝试。 */
+  /** 成功与耗尽都退出待处理范围，同值成功也完成本轮尝试。 */
   public async publish_progress(
     handle: BatchTranslationRunHandle,
-    committed_ids: number[] = [],
-    run_progress?: BatchTranslationProgress,
+    settled_ids: number[] = [],
+    run_progress?: BatchTranslationRunProgress,
   ): Promise<void> {
     if (!this.is_current(handle.run_id)) return;
     this.clear_request_state_timer();
-    const done = new Set(committed_ids);
+    const done = new Set(settled_ids);
     this.snapshot = {
       ...this.snapshot,
       ...(run_progress === undefined ? {} : { run_progress: { ...run_progress } }),

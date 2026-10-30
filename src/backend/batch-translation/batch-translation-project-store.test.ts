@@ -39,7 +39,7 @@ describe("BatchTranslationProjectStore", () => {
           status: "PROCESSED",
         },
       ],
-      create_progress_snapshot({ line: 1, processed_line: 1 }),
+      create_progress_snapshot({ processed_line: 1 }),
       false,
     );
 
@@ -69,7 +69,7 @@ describe("BatchTranslationProjectStore", () => {
       ].map((item) => create_item(item)),
     );
     expect((await read_meta(database, project_path))["translation_extras"]).toEqual(
-      create_progress_snapshot({ line: 1, processed_line: 1 }),
+      create_progress_snapshot({ processed_line: 1 }),
     );
     expect(ack).toEqual({
       changed_item_ids: [1],
@@ -97,7 +97,7 @@ describe("BatchTranslationProjectStore", () => {
           status: "PROCESSED",
         },
       ],
-      create_progress_snapshot({ line: 1, processed_line: 1 }),
+      create_progress_snapshot({ processed_line: 1 }),
       true,
     );
 
@@ -118,13 +118,13 @@ describe("BatchTranslationProjectStore", () => {
     ]);
   });
 
-  it("失败重试按实际状态更新工程计数，同值失败仍提交本次用量", async () => {
+  it("耗尽批次仅提交用量，工程字段白名单隔离本轮失败数", async () => {
     const { database, project_path, store, published_changes } = await create_store();
     await database.transaction(project_path, (writer) =>
       writer.set_items(
         project_path,
         [
-          { id: 1, src: "待重试", dst: "", status: "ERROR", file_path: "a.txt" },
+          { id: 1, src: "待重试", dst: "", status: "NONE", file_path: "a.txt" },
           {
             id: 2,
             src: "已完成",
@@ -135,34 +135,31 @@ describe("BatchTranslationProjectStore", () => {
         ].map((item) => create_item(item)),
       ),
     );
-    const failed = { item_id: 1, dst: "", status: "ERROR" };
-    const ack = await store.commit_translation_batch(
-      [failed],
-      create_progress_snapshot({ total_line: 999, error_line: 999, total_tokens: 7 }),
-      false,
-    );
+    const run_progress = {
+      ...create_progress_snapshot({ total_line: 999, total_tokens: 7 }),
+      failed_line: 999,
+    };
+    const ack = await store.commit_translation_batch([], run_progress, false);
     expect(ack.changed_item_ids).toEqual([]);
     expect(published_changes).toMatchObject([]);
     expect((await read_meta(database, project_path))["project_runtime_revision.items"] ?? 0).toBe(
       0,
     );
-    expect((await read_meta(database, project_path))["translation_extras"]).toMatchObject({
-      total_line: 2,
-      line: 2,
-      processed_line: 1,
-      error_line: 1,
-      total_tokens: 7,
-    });
+    expect((await read_meta(database, project_path))["translation_extras"]).toEqual(
+      create_progress_snapshot({
+        total_line: 2,
+        processed_line: 1,
+        total_tokens: 7,
+      }),
+    );
     await store.commit_translation_batch(
-      [{ ...failed, dst: "重试成功", status: "PROCESSED" }],
+      [{ item_id: 1, dst: "重试成功", status: "PROCESSED" }],
       create_progress_snapshot({ total_tokens: 10 }),
       false,
     );
     expect((await read_meta(database, project_path))["translation_extras"]).toMatchObject({
       total_line: 2,
-      line: 2,
       processed_line: 2,
-      error_line: 0,
       total_tokens: 10,
     });
   });
@@ -224,7 +221,7 @@ describe("BatchTranslationProjectStore", () => {
           status: "PROCESSED",
         },
       ],
-      create_progress_snapshot({ line: 1, processed_line: 1 }),
+      create_progress_snapshot({ processed_line: 1 }),
       false,
     );
 
@@ -322,9 +319,7 @@ describe("BatchTranslationProjectStore", () => {
       start_time: 10,
       time: 0,
       total_line: 2,
-      line: 0,
       processed_line: 0,
-      error_line: 0,
       total_tokens: 3,
       total_input_tokens: 1,
       total_reasoning_tokens: 0,

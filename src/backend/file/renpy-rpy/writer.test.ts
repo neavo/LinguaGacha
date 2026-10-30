@@ -211,7 +211,7 @@ it.each(["", "已有译文"])("未完成 Ren’Py 正文回退源目标 %j，完
     dst: "暂存译文",
     slots: [{ role: "STRING", lit_index: 0 }],
   });
-  item.status = "ERROR";
+  item.status = "NONE";
   writer.apply_item(lines, item);
   expect(lines[1]).toBe(`    new "${source || "old"}"`);
   item.status = "PROCESSED";

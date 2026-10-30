@@ -31,7 +31,7 @@ describe("DesktopRefreshScheduler", () => {
     expect(applied_tasks).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(applied_tasks.map((snapshot) => snapshot.progress.line)).toEqual([2]);
+    expect(applied_tasks.map((snapshot) => snapshot.progress.processed_line)).toEqual([2]);
   });
 
   it("同一窗口内按到达顺序批量应用 project change", async () => {
@@ -146,7 +146,7 @@ function create_task_snapshot(line: number): BatchTranslationSnapshot {
     status: "running",
     source: "standalone",
     request_in_flight_count: line,
-    progress: { ...snapshot.progress, line, total_line: 10, processed_line: line },
+    progress: { ...snapshot.progress, total_line: 10, processed_line: line },
   };
 }
 

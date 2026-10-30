@@ -85,7 +85,7 @@ describe("useProofreadingDialogActions", () => {
   }
 
   it("保存姓名差异后完成条目并关闭弹窗", async () => {
-    const current = { ...item, status: "ERROR", name_dst: "旧名" };
+    const current = { ...item, status: "NONE", name_dst: "旧名" };
     read_items.mockResolvedValue([current]);
     await render_hook();
     await act(async () => {
@@ -103,22 +103,19 @@ describe("useProofreadingDialogActions", () => {
     expect(state?.dialog_state.open).toBe(false);
   });
 
-  it.each(["navigate", "save"] as const)(
-    "无内容变化时 %s 保留失败状态且省略提交",
-    async (action) => {
-      read_items.mockResolvedValue([{ ...item, status: "ERROR" }]);
-      await render_hook();
-      await act(async () => {
-        await state?.open_edit_dialog("1");
-      });
-      await act(async () => {
-        if (action === "save") await state?.save_dialog_entry();
-        else expect(await state?.save_dialog_draft()).toBe(true);
-      });
-      expect(options.run_project_write).not.toHaveBeenCalled();
-      expect(state?.dialog_state.open).toBe(action === "navigate");
-    },
-  );
+  it.each(["navigate", "save"] as const)("无内容变化时 %s 保持未处理且省略提交", async (action) => {
+    read_items.mockResolvedValue([{ ...item, status: "NONE" }]);
+    await render_hook();
+    await act(async () => {
+      await state?.open_edit_dialog("1");
+    });
+    await act(async () => {
+      if (action === "save") await state?.save_dialog_entry();
+      else expect(await state?.save_dialog_draft()).toBe(true);
+    });
+    expect(options.run_project_write).not.toHaveBeenCalled();
+    expect(state?.dialog_state.open).toBe(action === "navigate");
+  });
 
   it("内容保存失败时保留弹窗", async () => {
     options.run_project_write.mockResolvedValue(false);

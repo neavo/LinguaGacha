@@ -95,7 +95,6 @@ export class ProjectSummaryService {
         total_count: pdf.pages,
         completed_count: pdf.translated_pages,
         skipped_count,
-        failed_count: null,
         pending_count: pdf.pages - pdf.translated_pages - skipped_count,
         completion_percent: calculate_completion_percent(
           pdf.pages,

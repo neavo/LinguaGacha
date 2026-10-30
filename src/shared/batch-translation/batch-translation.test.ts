@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalize_batch_translation_progress,
+  normalize_batch_translation_run_progress,
   type BatchTranslationRequestRecovery,
 } from "../../domain/batch-translation";
 import {
@@ -57,17 +58,15 @@ describe("批量翻译展示", () => {
         operation: "translate",
         progress: normalize_batch_translation_progress({
           total_line: 100,
-          line: 80,
           processed_line: 70,
-          error_line: 10,
+          failed_line: 10,
           time: 100,
           total_output_tokens: 1000,
         }),
-        run_progress: normalize_batch_translation_progress({
+        run_progress: normalize_batch_translation_run_progress({
           total_line: 10,
-          line: 4,
           processed_line: 0,
-          error_line: 4,
+          failed_line: 4,
           start_time: 10,
           total_output_tokens: 40,
         }),
@@ -120,15 +119,15 @@ describe("批量翻译展示", () => {
       batch_translation: {
         revision: 7,
         status: "running",
-        progress: normalize_batch_translation_progress({ line: 3, total_line: 4 }),
+        progress: normalize_batch_translation_progress({ processed_line: 3, total_line: 4 }),
         pending_item_ids: [2, 3, 2, -1],
       },
     });
     expect(snapshot.pending_item_ids).toEqual([2, 3]);
     const cloned = clone_translation_task_snapshot(snapshot);
-    cloned.progress.line = 9;
+    cloned.progress.processed_line = 9;
     expect(cloned.pending_item_ids).not.toBe(snapshot.pending_item_ids);
-    expect(snapshot.progress.line).toBe(3);
+    expect(snapshot.progress.processed_line).toBe(3);
     expect(snapshot.pending_item_ids).toEqual([2, 3]);
   });
   it("已知总量的当前快照优先于历史停止态", () => {
@@ -144,7 +143,7 @@ describe("批量翻译展示", () => {
   it("空闲当前快照回退到有结果的历史终态", () => {
     const snapshot = create_empty_batch_translation_snapshot();
     const last = create_empty_batch_translation_snapshot();
-    last.progress.line = 2;
+    last.progress.processed_line = 2;
     last.status = "done";
     expect(
       resolve_translation_task_display_snapshot({
@@ -157,7 +156,6 @@ describe("批量翻译展示", () => {
     const snapshot = create_empty_batch_translation_snapshot();
     snapshot.status = "running";
     Object.assign(snapshot.progress, {
-      line: 3,
       total_line: 4,
       processed_line: 2,
       total_tokens: 90,
@@ -169,7 +167,7 @@ describe("批量翻译展示", () => {
     expect(resolve_translation_task_metrics({ snapshot, now_seconds: 8 })).toMatchObject({
       active: true,
       elapsed_seconds: 6,
-      remaining_seconds: 2,
+      remaining_seconds: 6,
       average_generation_speed: 50 / 6,
       input_tokens: 40,
       reasoning_tokens: 20,

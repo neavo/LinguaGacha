@@ -6,11 +6,7 @@ import {
   normalize_section_revisions,
 } from "@frontend/app/state/desktop-event-payload";
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
-import {
-  summarize_log_error_path,
-  type LogErrorPathIdentity,
-  type LogErrorContext,
-} from "@shared/error";
+import { summarize_log_error_path, type LogErrorContext } from "@shared/error";
 
 type RuntimeProjectDiagnosticsInput = {
   loaded: boolean;
@@ -35,7 +31,7 @@ export function summarize_project_state_for_diagnostics(
 ): LogErrorContext {
   return {
     loaded: input.loaded,
-    path: summarize_path_for_diagnostics(input.path),
+    path: summarize_log_error_path(input.path),
     sessionStatus: input.sessionStatus,
   };
 }
@@ -50,11 +46,18 @@ export function summarize_task_snapshot_for_diagnostics(
     runRevision: snapshot.revision,
     status: snapshot.status,
     requestInFlightCount: snapshot.request_in_flight_count,
+    ...(snapshot.run_progress === undefined
+      ? {}
+      : {
+          runProgress: {
+            totalLine: snapshot.run_progress.total_line,
+            processedLine: snapshot.run_progress.processed_line,
+            failedLine: snapshot.run_progress.failed_line,
+          },
+        }),
     progress: {
-      line: snapshot.progress.line,
       totalLine: snapshot.progress.total_line,
       processedLine: snapshot.progress.processed_line,
-      errorLine: snapshot.progress.error_line,
     },
   };
 }
@@ -68,7 +71,7 @@ export function summarize_project_change_for_diagnostics(
   return {
     eventId: event.eventId ?? "",
     source: event.source,
-    projectPath: summarize_path_for_diagnostics(event.projectPath),
+    projectPath: summarize_log_error_path(event.projectPath),
     projectRevision: event.projectRevision,
     updatedSections: event.updatedSections,
     sectionRevisions: event.sectionRevisions ?? {},
@@ -85,18 +88,11 @@ export function summarize_project_change_payload_for_diagnostics(
   return {
     eventId: String(payload.eventId ?? ""),
     source: String(payload.source ?? ""),
-    projectPath: summarize_path_for_diagnostics(String(payload.projectPath ?? "")),
+    projectPath: summarize_log_error_path(String(payload.projectPath ?? "")),
     projectRevision: Number(payload.projectRevision ?? 0),
     updatedSections: normalize_section_array(payload.updatedSections),
     sectionRevisions: normalize_section_revisions(payload.sectionRevisions) ?? {},
   };
-}
-
-/**
- * 路径诊断只保留文件名和稳定 hash，避免日志中出现用户完整目录结构。
- */
-function summarize_path_for_diagnostics(raw_path: string): LogErrorPathIdentity {
-  return summarize_log_error_path(raw_path);
 }
 
 /**

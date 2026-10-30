@@ -39,7 +39,6 @@ type RuntimeSnapshot = {
   proofreadingItemIds: Array<number | string>;
   projectPath: string;
   taskStatus: string;
-  taskLine: number;
   taskProcessedLine: number;
   taskOutputTokens: number;
   taskRequestInFlightCount: number;
@@ -184,7 +183,6 @@ function RuntimeProbe(props: {
       proofreadingItemIds: current_proofreading_signal?.item_ids ?? [],
       projectPath: state.project_snapshot.path,
       taskStatus: task_snapshot.status,
-      taskLine: task_snapshot.progress.line,
       taskProcessedLine: task_snapshot.progress.processed_line,
       taskOutputTokens: task_snapshot.progress.total_output_tokens,
       taskRequestInFlightCount: task_snapshot.request_in_flight_count,
@@ -197,7 +195,6 @@ function RuntimeProbe(props: {
     proofreading_signal,
     state.settings_snapshot.request_timeout,
     state.project_snapshot.languages,
-    task_snapshot.progress.line,
     task_snapshot.progress.processed_line,
     task_snapshot.request_in_flight_count,
     runtime_snapshot.owner,
@@ -891,7 +888,7 @@ describe("DesktopStateProvider", () => {
       batch_translation: {
         status: "running",
 
-        progress: { line: 0, total_line: 5 },
+        progress: { processed_line: 0, total_line: 5 },
         scope: { kind: "all" },
       },
     });
@@ -917,7 +914,6 @@ describe("DesktopStateProvider", () => {
           status: "running",
 
           progress: {
-            line: 2,
             total_line: 5,
             processed_line: 2,
           },
@@ -931,7 +927,7 @@ describe("DesktopStateProvider", () => {
     await flush_state_refresh_window();
 
     await wait_for_condition(() => {
-      return snapshots.at(-1)?.taskLine === 2;
+      return snapshots.at(-1)?.taskProcessedLine === 2;
     });
 
     await act(async () => {
@@ -940,7 +936,6 @@ describe("DesktopStateProvider", () => {
           status: "running",
 
           progress: {
-            line: 4,
             total_line: 5,
             processed_line: 4,
             total_output_tokens: 12,
@@ -957,12 +952,13 @@ describe("DesktopStateProvider", () => {
 
     await wait_for_condition(() => {
       const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.taskLine === 4 && latest_snapshot.taskRequestInFlightCount === 3;
+      return (
+        latest_snapshot?.taskProcessedLine === 4 && latest_snapshot.taskRequestInFlightCount === 3
+      );
     });
 
     expect(snapshots.at(-1)).toMatchObject({
       taskStatus: "running",
-      taskLine: 4,
       taskProcessedLine: 4,
       taskOutputTokens: 12,
       taskRequestInFlightCount: 3,

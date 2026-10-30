@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CLICommandName } from "./cli-parser";
-import { CLIJsonStatusReporter } from "./cli-status-reporter";
+import { CLIJsonStatusReporter, build_cli_progress_stats } from "./cli-status-reporter";
 
 const TIMESTAMP = "2026-05-19T10:00:00.000Z";
 
@@ -14,11 +14,13 @@ describe("CLIJsonStatusReporter", () => {
     reporter.emit_progress({ status: "running", progress: {} });
     reporter.emit_progress({
       status: "running",
-      progress: { total_line: 4, line: 2, processed_line: 2, error_line: 1 },
+      progress: { total_line: 100, processed_line: 90 },
+      run_progress: { total_line: 4, processed_line: 2, failed_line: 1 },
     });
     reporter.emit_progress({
       status: "stopping",
-      progress: { total_line: 4, line: 2, processed_line: 2, error_line: 1 },
+      progress: { total_line: 100, processed_line: 90 },
+      run_progress: { total_line: 4, processed_line: 2, failed_line: 1 },
     });
     reporter.emit_finished("done");
     reporter.emit_finished("done");
@@ -43,6 +45,12 @@ describe("CLIJsonStatusReporter", () => {
     ]);
   });
 
+  it("累计进度不从旧字段恢复成功数或失败数", () => {
+    expect(
+      build_cli_progress_stats({ total_line: 4, processed_line: 0, line: 3, error_line: 2 }),
+    ).toMatchObject({ completed: 0, failed: 0, pending: 4 });
+  });
+
   it("失败结束时自动补 started 并只暴露错误消息", () => {
     const { events, reporter } = create_reporter("translate");
 
@@ -61,6 +69,7 @@ describe("CLIJsonStatusReporter", () => {
   });
 });
 
+/** 固定时钟并解析实际 JSONL 输出，观察调用方收到的事件。 */
 function create_reporter(command: CLICommandName): {
   events: Array<Record<string, unknown>>;
   reporter: CLIJsonStatusReporter;

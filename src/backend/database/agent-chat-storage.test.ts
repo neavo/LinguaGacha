@@ -83,7 +83,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
     const writes = new ProjectWriteStore(database, () => undefined, null);
     const progress = writes.update_task_progress_meta({
       projectPath: file,
-      meta: { translation_extras: { line: 123 } },
+      meta: { translation_extras: { processed_line: 123 } },
     });
     let read_finished = false;
     const queued_read = database.get_all_meta(file).then((meta) => {
@@ -103,7 +103,9 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
     await progress;
     expect((await preview).file_paths).toEqual([]);
     expect(await queued_read).not.toHaveProperty("rolled_back");
-    expect(await database.get_all_meta(file)).toHaveProperty("translation_extras", { line: 123 });
+    expect(await database.get_all_meta(file)).toHaveProperty("translation_extras", {
+      processed_line: 123,
+    });
     expect((await store.read())?.data.uploads).toEqual([]);
     await Promise.all(
       Array.from({ length: 10 }, async (_, i) =>

@@ -1014,44 +1014,24 @@ describe("ProjectContentService", () => {
     },
   );
 
-  it("失败重置保留 RM 脚本与人工启用元数据的翻译资格", async () => {
+  it("拒绝失败重置命令并保留已有正文、姓名与状态", async () => {
     const { database, service, lg_path } = await create_service();
     try {
       await database.transaction(lg_path, (writer) =>
-        writer.add_asset(lg_path, "data/Actors.json", Buffer.from("[]"), "RPGMAKER_MV_MZ", null),
+        writer.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null),
       );
       const items = [
-        { usage: "text", status: "ERROR" },
-        { usage: "metadata", status: "ERROR" },
-        { usage: "metadata", status: "PROCESSED" },
-        { usage: "metadata", status: "EXCLUDED" },
-        { usage: "metadata", status: "RULE_SKIPPED" },
-      ].map(({ usage, status }, index) =>
         create_persistent_item({
-          item_id: index + 1,
-          src: "EV001",
           dst: "已有译文",
           name_dst: "已有姓名",
-          file_type: "RPGMAKER_MV_MZ",
-          file_path: "data/Actors.json",
-          status,
-          extra_field: {
-            rpgmaker_mv_mz: { usage },
-          },
+          status: "PROCESSED",
         }),
-      );
+      ];
       await database.transaction(lg_path, (writer) => writer.set_items(lg_path, items));
-      await service.reset_translation({ mode: "failed" });
-      expect(await database.get_all_items(lg_path)).toEqual([
-        { ...items[0], status: "NONE", dst: "", name_dst: null },
-        { ...items[1], status: "NONE", dst: "", name_dst: null },
-        ...items.slice(2),
-      ]);
-      expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-        total_line: 3,
-        processed_line: 1,
-        error_line: 0,
+      await expect(service.reset_translation({ mode: "failed" })).rejects.toMatchObject({
+        code: "request.validation_failed",
       });
+      expect(await database.get_all_items(lg_path)).toEqual(items);
     } finally {
       await database.close();
     }
@@ -1292,7 +1272,6 @@ describe("ProjectContentService", () => {
         time: 12,
         total_line: 2,
         processed_line: 1,
-        line: 1,
       });
       expect(ack.changes[0]).toMatchObject({
         updatedSections: ["items"],
@@ -1447,9 +1426,7 @@ describe("ProjectContentService", () => {
       await database.transaction(lg_path, (writer) =>
         writer.set_meta(lg_path, "translation_extras", {
           total_line: 2,
-          line: 2,
           processed_line: 2,
-          error_line: 0,
           total_tokens: 100,
           total_input_tokens: 60,
           total_output_tokens: 40,
@@ -1466,9 +1443,7 @@ describe("ProjectContentService", () => {
       ]);
       expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
         total_line: 2,
-        line: 1,
         processed_line: 1,
-        error_line: 0,
         total_tokens: 0,
         total_input_tokens: 0,
         total_output_tokens: 0,
@@ -1733,7 +1708,7 @@ describe("ProjectContentService", () => {
         create_persistent_item({
           src: "新",
           dst: "old",
-          status: "ERROR",
+          status: "NONE",
           row_number: 0,
         }),
       ]),
@@ -1747,7 +1722,7 @@ describe("ProjectContentService", () => {
     try {
       await expect(
         service.reset_translation({
-          mode: "failed",
+          mode: "all",
         }),
       ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     } finally {
@@ -1800,7 +1775,7 @@ describe("ProjectContentService", () => {
         create_persistent_item({
           src: "旧",
           dst: "old",
-          status: "ERROR",
+          status: "NONE",
           row_number: 0,
         }),
       ]),
@@ -1816,7 +1791,7 @@ describe("ProjectContentService", () => {
     try {
       await expect(
         service.reset_translation({
-          mode: "failed",
+          mode: "all",
         }),
       ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
     } finally {
@@ -1832,7 +1807,7 @@ describe("ProjectContentService", () => {
       create_persistent_item({
         src: "旧",
         dst: "old",
-        status: "ERROR",
+        status: "NONE",
         row_number: 0,
       }),
       create_persistent_item({
@@ -2221,9 +2196,7 @@ describe("ProjectContentService", () => {
 
     expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
       processed_line: 0,
-      error_line: 0,
       total_line: 1,
-      line: 0,
     });
     expect(await read_meta(database, lg_path, "prefilter_config", {})).toEqual({
       source_language: "JA",
@@ -2389,7 +2362,7 @@ describe("ProjectContentService", () => {
 
     await expect(
       service.reset_translation({
-        mode: "failed",
+        mode: "all",
         expected_section_revisions: { items: 1 },
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));

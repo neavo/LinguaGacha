@@ -579,7 +579,7 @@ it("EPUB 完成空正文清空，双语保留原文，未完成暂存译文不�
   await create_writer().build_epub(asset, [item], out, true);
   expect(await read_epub_entry_text(fs.readFileSync(out))).toContain("正文");
   item.dst = "暂存译文";
-  item.status = "ERROR";
+  item.status = "NONE";
   await create_writer().build_epub(asset, [item], out, false);
   expect(await read_epub_entry_text(fs.readFileSync(out))).toContain("正文");
 });

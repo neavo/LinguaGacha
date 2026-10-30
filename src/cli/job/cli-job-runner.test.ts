@@ -65,7 +65,6 @@ describe("run_cli_job", () => {
               total_count: 3,
               completed_count: 0,
               skipped_count: 0,
-              failed_count: null,
               pending_count: 3,
               completion_percent: 0,
             },
@@ -122,17 +121,15 @@ describe("run_cli_job", () => {
 
     await harness.emit_snapshot("running", {
       total_line: 4,
-      line: 2,
       processed_line: 2,
-      error_line: 1,
+      failed_line: 1,
     });
     expect(harness.generate_files_to_directory).not.toHaveBeenCalled();
 
     await harness.emit_snapshot("done", {
       total_line: 4,
-      line: 4,
       processed_line: 3,
-      error_line: 1,
+      failed_line: 1,
     });
     await expect(run_promise).resolves.toBeUndefined();
 
@@ -383,7 +380,6 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
                     total_count: 4,
                     completed_count: 0,
                     skipped_count: 0,
-                    failed_count: 0,
                     pending_count: 4,
                     completion_percent: 0,
                   },
@@ -426,7 +422,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     unload_project,
     emit_snapshot: async (
       status: BatchTranslationSnapshot["status"],
-      progress: Partial<BatchTranslationSnapshot["progress"]> = {},
+      progress: Partial<import("../../domain/batch-translation").BatchTranslationRunProgress> = {},
     ): Promise<void> => {
       if (!started) {
         throw new Error("任务尚未启动");
@@ -455,7 +451,7 @@ async function wait_for_task_start(
 /** 构造独立任务的公开进度快照。 */
 function create_task_snapshot(
   status: BatchTranslationSnapshot["status"],
-  progress: Partial<BatchTranslationSnapshot["progress"]> = {},
+  progress: Partial<import("../../domain/batch-translation").BatchTranslationRunProgress> = {},
 ): BatchTranslationSnapshot {
   const snapshot = create_empty_batch_translation_snapshot();
   return {
@@ -464,6 +460,7 @@ function create_task_snapshot(
     status,
     source: status === "idle" ? null : "standalone",
     progress: { ...snapshot.progress, ...progress },
+    run_progress: { ...snapshot.progress, failed_line: 0, ...progress },
   };
 }
 

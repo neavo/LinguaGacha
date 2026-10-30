@@ -6,7 +6,7 @@ type WorkbenchStatCardProps = {
   title: string;
   value: number | null;
   unit: string;
-  accent?: "skipped" | "success" | "failure";
+  accent?: "skipped" | "success";
 };
 
 /** 展示单项工程计数；统计尚未返回时保留占位。 */
@@ -25,7 +25,6 @@ export function WorkbenchStatCard(props: WorkbenchStatCardProps): JSX.Element {
                   "workbench-page__stat-card-value",
                   props.accent === "skipped" && "workbench-page__stat-card-value--skipped",
                   props.accent === "success" && "workbench-page__stat-card-value--success",
-                  props.accent === "failure" && "workbench-page__stat-card-value--failure",
                 )}
               >
                 {props.value?.toLocaleString() ?? "—"}

@@ -171,6 +171,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
             return (
               <AppContextMenuGroup>
                 <AppContextMenuItem
+                  variant="destructive"
                   disabled={props.readonly}
                   onClick={() => props.on_reset(payload.row_id)}
                 >

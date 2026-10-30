@@ -12,7 +12,7 @@
 
 .workbench-page__stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -87,10 +87,6 @@
 
 .workbench-page__stat-card-value--success {
   color: var(--ui-success);
-}
-
-.workbench-page__stat-card-value--failure {
-  color: var(--ui-failure);
 }
 
 .workbench-page__stat-card-unit {

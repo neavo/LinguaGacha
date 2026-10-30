@@ -26,12 +26,11 @@ type Vote = { item: TranslationInheritanceItem; count: number }; // 首次出现
 const CONTEXT_INHERIT_STATUSES: ReadonlySet<ItemStatus> = new Set([
   "NONE",
   "DUPLICATED",
-  "ERROR",
   "RULE_SKIPPED",
   "LANGUAGE_SKIPPED",
 ]);
 // 仅原文相同的证据较弱，过滤结果与已完成译文都保持不变。
-const TEXT_INHERIT_STATUSES: ReadonlySet<ItemStatus> = new Set(["NONE", "DUPLICATED", "ERROR"]);
+const TEXT_INHERIT_STATUSES: ReadonlySet<ItemStatus> = new Set(["NONE", "DUPLICATED"]);
 const FILE_BOUNDARY = -1; // 编号从 0 开始，文件首尾不会与任何条目混淆。
 
 /**

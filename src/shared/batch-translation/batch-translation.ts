@@ -1,5 +1,6 @@
 import {
   normalize_batch_translation_progress,
+  normalize_batch_translation_run_progress,
   normalize_batch_translation_config,
   is_active_batch_translation_status,
   BATCH_TRANSLATION_RUN_STATUSES,
@@ -34,9 +35,7 @@ export function has_translation_task_progress(snapshot: BatchTranslationSnapshot
   }
   return (
     snapshot.progress.total_line > 0 ||
-    snapshot.progress.line > 0 ||
     snapshot.progress.processed_line > 0 ||
-    snapshot.progress.error_line > 0 ||
     snapshot.progress.total_output_tokens > 0 ||
     snapshot.progress.total_reasoning_tokens > 0 ||
     snapshot.progress.total_input_tokens > 0 ||
@@ -87,6 +86,7 @@ export function resolve_translation_task_metrics(args: {
 
   const snapshot = args.snapshot;
   const progress = snapshot.run_progress ?? snapshot.progress;
+  const settled = progress.processed_line + (snapshot.run_progress?.failed_line ?? 0);
   const active = is_active_batch_translation_status(snapshot.status);
   const elapsed_seconds =
     active && progress.start_time > 0
@@ -103,12 +103,11 @@ export function resolve_translation_task_metrics(args: {
     stopping: snapshot.status === "stopping",
     elapsed_seconds,
     remaining_seconds:
-      progress.line <= 0
+      settled <= 0
         ? 0
         : Math.max(
             0,
-            (elapsed_seconds / Math.max(1, progress.line)) *
-              Math.max(0, progress.total_line - progress.line),
+            (elapsed_seconds / Math.max(1, settled)) * Math.max(0, progress.total_line - settled),
           ),
     average_generation_speed:
       elapsed_seconds <= 0 ? 0 : generated_tokens / Math.max(1, elapsed_seconds),
@@ -125,7 +124,7 @@ export function resolve_translation_task_metrics(args: {
   };
 }
 
-export type TranslationTaskActionKind = "reset-all" | "reset-failed" | "stop-translation";
+export type TranslationTaskActionKind = "reset-all" | "stop-translation";
 export type TranslationTaskConfirmState = {
   kind: TranslationTaskActionKind;
   submitting: boolean;
@@ -159,7 +158,7 @@ export function normalize_batch_translation_snapshot(
       : {}),
     ...(raw.run_progress === undefined
       ? {}
-      : { run_progress: normalize_batch_translation_progress(raw.run_progress) }),
+      : { run_progress: normalize_batch_translation_run_progress(raw.run_progress) }),
     ...(config === undefined ? {} : { config }),
     status,
     source: raw.source === "standalone" || raw.source === "agent" ? raw.source : null,

@@ -29,7 +29,10 @@ export type ItemMigrationPayload = Record<string, unknown>;
  */
 export function write_item_migration(
   db: DatabaseSync,
-  normalize: (item: ItemMigrationPayload) => { data: ItemMigrationPayload; changed: boolean },
+  normalize: (
+    item: ItemMigrationPayload,
+    id: number,
+  ) => { data: ItemMigrationPayload; changed: boolean },
 ): void {
   const rows = db.prepare("SELECT id, data FROM items ORDER BY id").iterate();
   const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
@@ -41,7 +44,7 @@ export function write_item_migration(
       continue; // 保留仍可恢复的原始内容。
     }
     if (!is_json_record(parsed)) continue;
-    const result = normalize(parsed);
+    const result = normalize(parsed, row_number(row, "id"));
     if (result.changed) update.run(JsonTool.stringifyStrict(result.data), row_number(row, "id"));
   }
 }

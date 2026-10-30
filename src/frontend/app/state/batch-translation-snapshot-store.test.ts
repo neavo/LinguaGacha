@@ -16,7 +16,7 @@ function create_task_snapshot(
     revision,
     status,
     source: status === "idle" ? null : "standalone",
-    progress: { ...snapshot.progress, line, total_line: line, processed_line: line },
+    progress: { ...snapshot.progress, total_line: line, processed_line: line },
   };
 }
 
@@ -45,7 +45,7 @@ describe("createBatchTranslationSnapshotStore", () => {
       revision: 8,
       status: "idle",
       progress: {
-        line: 2,
+        processed_line: 2,
       },
     });
   });

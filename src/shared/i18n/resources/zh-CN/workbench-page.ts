@@ -1,7 +1,7 @@
 export const zh_cn_workbench_page = {
   title: "工作台",
   unit: {
-    line: "Line",
+    item: "Items",
   },
   table: {
     file_name: "文件名",
@@ -21,7 +21,6 @@ export const zh_cn_workbench_page = {
     translation_task: "翻译",
     start_translation: "开始翻译",
     reset_task_all: "重置所有数据",
-    reset_task_failed: "重置失败数据",
   },
   dialog: {
     import_conflict: {

@@ -82,9 +82,7 @@ describe("MarkdownV2BlockMigration", () => {
       total_tokens: 42,
       time: 7,
       processed_line: 2,
-      error_line: 0,
       total_line: 4,
-      line: 2,
     });
 
     expect(fixture.bumped_sections).toEqual([["files", "items"]]);
@@ -92,7 +90,7 @@ describe("MarkdownV2BlockMigration", () => {
     expect(fixture.items().every((item) => item["file_type"] !== "MD")).toBe(true);
   });
 
-  it("聚合跳过、错误、未处理和混合终态并解析重复译文", () => {
+  it("聚合跳过、未处理和混合终态并解析重复译文", () => {
     const fixture = create_database([
       legacy_item(1, 0, "规则一", { status: "RULE_SKIPPED" }),
       legacy_item(2, 1, "规则二", { status: "RULE_SKIPPED" }),
@@ -101,7 +99,7 @@ describe("MarkdownV2BlockMigration", () => {
       legacy_item(5, 4, "语言二", { status: "LANGUAGE_SKIPPED" }),
       legacy_item(6, 5, "", { status: "EXCLUDED" }),
       legacy_item(7, 6, "错误一", { status: "PROCESSED", dst: "Done" }),
-      legacy_item(8, 7, "错误二", { status: "ERROR" }),
+      legacy_item(8, 7, "错误二", { status: "NONE" }),
       legacy_item(9, 8, "", { status: "EXCLUDED" }),
       legacy_item(10, 9, "待处理一", { status: "PROCESSED", dst: "Done" }),
       legacy_item(11, 10, "待处理二", { status: "NONE" }),
@@ -122,7 +120,7 @@ describe("MarkdownV2BlockMigration", () => {
     expect(items.map((item) => item["status"])).toEqual([
       "RULE_SKIPPED",
       "LANGUAGE_SKIPPED",
-      "ERROR",
+      "NONE",
       "NONE",
       "PROCESSED",
       "PROCESSED",

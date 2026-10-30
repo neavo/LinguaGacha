@@ -4,23 +4,21 @@ import {
   calculate_completion_percent,
 } from "./project-translation-stats";
 
-it("统一成功、跳过、失败与待处理状态的计数和完成率取整", () => {
+it("统一成功、跳过与待处理状态的计数和完成率取整", () => {
   const statuses = [
     "PROCESSED",
     "EXCLUDED",
     "RULE_SKIPPED",
     "LANGUAGE_SKIPPED",
     "DUPLICATED",
-    "ERROR",
     "NONE",
   ];
   expect(build_project_translation_stats(statuses.map((status) => ({ status })))).toEqual({
-    total_items: 7,
+    total_items: 6,
     completed_count: 1,
     skipped_count: 4,
-    failed_count: 1,
     pending_count: 1,
-    completion_percent: 71,
+    completion_percent: 83,
   });
 });
 

@@ -115,7 +115,6 @@ describe("BatchTranslationSessionProvider", () => {
 
   it.each([
     ["reset-all", true],
-    ["reset-failed", true],
     ["stop-translation", false],
   ] as const)("%s 的确认受理遵循译文清空保护", async (kind, delayed) => {
     vi.useFakeTimers();

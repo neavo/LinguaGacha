@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_task_progress = {
   total_lines: "합계",
   translation_completed: "번역 성공",
-  translation_failed: "번역 실패",
   translation_pending: "번역 대기",
   translation_skipped: "번역 불필요",
   line: "{status} - {count}행",

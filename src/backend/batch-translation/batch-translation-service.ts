@@ -66,7 +66,7 @@ export class BatchTranslationService {
       mode: command.operation === "translate" ? command.mode : "continue",
       ...(command.scope.kind === "items" ? { item_ids: [...command.scope.item_ids] } : {}),
       ...(command.operation === "translate" && command.mode !== "reset"
-        ? { item_statuses: command.include_errors ? ["NONE", "ERROR"] : ["NONE"] }
+        ? { item_statuses: ["NONE"] }
         : {}),
     };
     const handle = this.runtime.begin_standalone(run_command.operation);
@@ -101,9 +101,7 @@ export class BatchTranslationService {
     const item_ids = ids === undefined ? undefined : [...new Set(ids)];
     const item_statuses = statuses === undefined ? undefined : [...new Set(statuses)];
     const command: BatchTranslationRunCommand = {
-      operation: item_statuses?.every((status) => status === "NONE" || status === "ERROR")
-        ? "translate"
-        : "retranslate", // 重翻提交同时推进校对修订。
+      operation: item_statuses?.every((status) => status === "NONE") ? "translate" : "retranslate", // 重翻提交同时推进校对修订。
       ...(item_ids === undefined ? {} : { item_ids }),
       ...(item_statuses === undefined ? {} : { item_statuses }),
       mode: resolve_batch_translation_start_mode(await this.runtime.read_progress()),
@@ -140,9 +138,7 @@ export class BatchTranslationService {
     if (operation !== "translate" && operation !== "retranslate")
       throw new AppError("request.validation_failed");
     const allowed =
-      operation === "translate"
-        ? ["operation", "mode", "scope", "include_errors"]
-        : ["operation", "scope"];
+      operation === "translate" ? ["operation", "mode", "scope"] : ["operation", "scope"];
     if (Object.keys(request).some((key) => !allowed.includes(key)))
       throw new AppError("request.validation_failed");
     const raw = request["scope"];
@@ -168,9 +164,7 @@ export class BatchTranslationService {
       return { operation, scope };
     }
     const mode = request["mode"] ?? "new";
-    const include_errors = request["include_errors"] ?? false;
-    if (!is_batch_translation_start_mode(mode) || typeof include_errors !== "boolean")
-      throw new AppError("request.validation_failed");
-    return { operation, mode, scope, include_errors };
+    if (!is_batch_translation_start_mode(mode)) throw new AppError("request.validation_failed");
+    return { operation, mode, scope };
   }
 }

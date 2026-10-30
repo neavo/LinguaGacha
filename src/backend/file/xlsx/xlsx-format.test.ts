@@ -76,7 +76,7 @@ it.each(["XLSX", "WOLFXLSX"] as const)("%s 未完成保留源译文，完成空�
     create_item({
       src: "源文",
       dst: "B",
-      status: "ERROR",
+      status: "NONE",
       row: 2,
       file_type: type,
       file_path: "x.xlsx",

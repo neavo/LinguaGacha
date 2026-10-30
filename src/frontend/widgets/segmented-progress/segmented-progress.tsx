@@ -5,7 +5,6 @@ import "@frontend/widgets/segmented-progress/segmented-progress.css";
 export type SegmentedProgressStats = {
   total_items: number;
   completed_count: number;
-  failed_count: number;
   pending_count: number;
   skipped_count: number;
   completion_percent: number;
@@ -13,7 +12,6 @@ export type SegmentedProgressStats = {
 
 export type SegmentedProgressLabels = {
   skipped: string;
-  failed: string;
   completed: string;
   pending: string;
   total: string;
@@ -25,7 +23,7 @@ type SegmentedProgressProps = {
 };
 
 type ProgressSegment = {
-  key: "skipped" | "failed" | "completed" | "pending";
+  key: "skipped" | "completed" | "pending";
   value: number;
   label: string;
 };
@@ -37,11 +35,6 @@ export function SegmentedProgress(props: SegmentedProgressProps): JSX.Element {
       key: "skipped",
       value: props.stats.skipped_count,
       label: props.labels.skipped,
-    },
-    {
-      key: "failed",
-      value: props.stats.failed_count,
-      label: props.labels.failed,
     },
     {
       key: "completed",

@@ -21,10 +21,8 @@ function create_task_snapshot(): BatchTranslationSnapshot {
     request_in_flight_count: 2,
     request_recovery: null,
     progress: {
-      line: 5,
       total_line: 20,
       processed_line: 4,
-      error_line: 1,
       total_tokens: 100,
       total_output_tokens: 40,
       total_reasoning_tokens: 0,
@@ -75,10 +73,8 @@ describe("desktop state diagnostics", () => {
       status: "running",
       requestInFlightCount: 2,
       progress: {
-        line: 5,
         totalLine: 20,
         processedLine: 4,
-        errorLine: 1,
       },
     });
 
@@ -125,9 +121,7 @@ describe("desktop state diagnostics", () => {
       projectChanges: [{ eventId: "evt-1" }],
       taskSnapshot: {
         runRevision: 7,
-        progress: {
-          line: 5,
-        },
+        progress: {},
       },
     });
   });

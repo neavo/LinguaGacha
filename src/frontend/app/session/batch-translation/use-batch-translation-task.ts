@@ -293,7 +293,7 @@ export function useBatchTranslationTask(
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
       } else {
-        const reset_request = { mode: task_confirm_state.kind === "reset-all" ? "all" : "failed" };
+        const reset_request = { mode: "all" };
         await commit_project_write({
           operation: WORKBENCH_TRANSLATION_WRITE,
           run: async () => {
@@ -303,8 +303,7 @@ export function useBatchTranslationTask(
             );
           },
         });
-        if (reset_request.mode === "all")
-          push_toast("success", t("app.feedback.operation_success"));
+        push_toast("success", t("app.feedback.operation_success"));
         await refresh_batch_translation();
         set_task_confirm_state(null);
       }
@@ -313,8 +312,6 @@ export function useBatchTranslationTask(
 
       if (task_confirm_state.kind === "reset-all") {
         fallback_message = t("batch_translation.feedback.reset_all_failed");
-      } else if (task_confirm_state.kind === "reset-failed") {
-        fallback_message = t("batch_translation.feedback.reset_failed_failed");
       }
 
       push_error_toast(fallback_message, error);
@@ -377,7 +374,16 @@ export function useBatchTranslationTask(
     if (is_active_batch_translation_status(previous_status)) {
       const feedback = resolve_batch_translation_feedback(translation_task_snapshot);
       if (feedback !== null) {
-        push_toast(feedback.kind, t(feedback.message), { persistent: feedback.persistent });
+        push_toast(feedback.kind, t(feedback.message), {
+          persistent: feedback.persistent,
+          ...(feedback.exhausted_count === undefined
+            ? {}
+            : {
+                description: t("batch_translation.feedback.retry_exhausted", {
+                  count: String(feedback.exhausted_count),
+                }),
+              }),
+        });
       }
     }
 
@@ -448,16 +454,19 @@ function resolve_batch_translation_feedback(snapshot: BatchTranslationSnapshot):
   kind: "success" | "warning" | "info";
   message: LocaleKey;
   persistent: boolean;
+  exhausted_count?: number;
 } | null {
   if (snapshot.source !== "standalone") return null;
   if (snapshot.status === "stopped") {
     return { kind: "info", message: "batch_translation.feedback.stopped", persistent: false };
   }
   if (snapshot.status !== "done") return null;
-  if ((snapshot.run_progress?.error_line ?? 0) > 0) {
+  const exhausted_count = snapshot.run_progress?.failed_line ?? 0;
+  if (exhausted_count > 0) {
     return {
       kind: "warning",
-      message: "batch_translation.feedback.done_with_errors",
+      message: "batch_translation.feedback.ended",
+      exhausted_count,
       persistent: true,
     };
   }

@@ -27,12 +27,14 @@ function setup(loaded = true, line = 0) {
   const gate = new RuntimeOperationGate();
   const runtime = new BatchTranslationRuntime(
     session,
-    { get_all_meta: () => ({ translation_extras: { line } }) } as unknown as ProjectDatabase,
+    {
+      get_all_meta: () => ({ translation_extras: { processed_line: line } }),
+    } as unknown as ProjectDatabase,
     gate,
   );
   const run = vi.fn<BatchTranslationRunner["run"]>(async () => ({
     status: "done",
-    progress: normalize_batch_translation_progress({ line }),
+    progress: normalize_batch_translation_progress({ processed_line: line }),
   }));
   const service = new BatchTranslationService(
     { run } as unknown as BatchTranslationRunner,
@@ -50,6 +52,19 @@ function setup(loaded = true, line = 0) {
 }
 
 describe("批量翻译服务", () => {
+  it("普通入口拒绝已删除的失败参数", async () => {
+    const { service, runtime, run } = setup();
+    await expect(
+      service.start({
+        operation: "translate",
+        mode: "continue",
+        scope: { kind: "all" },
+        include_errors: true,
+      }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    expect(run).not.toHaveBeenCalled();
+    await runtime.dispose();
+  });
   it("重翻在入口去重保序，并沿同一运行链提交", async () => {
     const { service, runtime, run } = setup();
     expect(
@@ -96,7 +111,10 @@ describe("批量翻译服务", () => {
     });
     run.mockImplementation(async () => {
       await work;
-      return { status: "done", progress: normalize_batch_translation_progress({ line }) };
+      return {
+        status: "done",
+        progress: normalize_batch_translation_progress({ processed_line: line }),
+      };
     });
     const lease = gate.begin_runtime("agent");
     const completed = vi.fn();
@@ -107,7 +125,7 @@ describe("批量翻译服务", () => {
     const result = service
       .run_under_agent(lease, new AbortController().signal, inherited, {
         item_ids: [2],
-        item_statuses: ["NONE", "ERROR"],
+        item_statuses: ["NONE"],
       })
       .then((value) => {
         completed();
@@ -123,7 +141,7 @@ describe("批量翻译服务", () => {
     expect(run.mock.calls[0]?.[2].model.thinking).not.toBe(inherited.thinking);
     expect(run.mock.calls[0]?.[1]).toEqual({
       operation: "translate",
-      item_statuses: ["NONE", "ERROR"],
+      item_statuses: ["NONE"],
       mode: line > 0 ? "continue" : "new",
       item_ids: [2],
     });
@@ -131,7 +149,7 @@ describe("批量翻译服务", () => {
       service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
     ).rejects.toMatchObject({ code: "runtime.busy" });
     finish();
-    expect((await result).progress.line).toBe(line);
+    expect((await result).progress.processed_line).toBe(line);
     expect(gate.get_snapshot().owner).toBe("agent");
     gate.finish_runtime(lease);
     await runtime.dispose();
@@ -165,16 +183,15 @@ describe("批量翻译服务", () => {
     await runtime.dispose();
   });
   it.each([
-    { mode: "new" as const, include_errors: false, statuses: ["NONE"] },
-    { mode: "continue" as const, include_errors: true, statuses: ["NONE", "ERROR"] },
-    { mode: "reset" as const, include_errors: false, statuses: undefined },
-  ])("工作台入口显式转换状态条件 $mode", async ({ mode, include_errors, statuses }) => {
+    { mode: "new" as const, statuses: ["NONE"] },
+    { mode: "continue" as const, statuses: ["NONE"] },
+    { mode: "reset" as const, statuses: undefined },
+  ])("工作台入口显式转换状态条件 $mode", async ({ mode, statuses }) => {
     const { service, runtime, run } = setup();
     const handle = await service.start_current_project({
       operation: "translate",
       mode,
       scope: { kind: "all" },
-      include_errors,
     });
     await handle.completion;
     expect(run.mock.calls[0]?.[1]).toEqual({
@@ -282,7 +299,7 @@ it.each([
     const prepared = frames.find((frame) => frame.run_progress !== undefined);
     expect(prepared).toMatchObject({
       pending_item_ids: targets,
-      run_progress: { total_line: targets.length, line: 0 },
+      run_progress: { total_line: targets.length, processed_line: 0 },
     });
     expect(frames.at(-1)).toMatchObject({
       status: "done",
@@ -323,7 +340,7 @@ it.each([
       }),
     ).toMatchObject({
       status: "done",
-      run_progress: { total_line: 0, line: 0 },
+      run_progress: { total_line: 0, processed_line: 0 },
       progress: { total_tokens: result.progress.total_tokens },
     });
     // 运行失败连同终态统计和原始原因交给 Agent。
@@ -485,7 +502,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     });
     expect(await handle.completion).toMatchObject({
       status: "done",
-      progress: { line: 1, processed_line: 1, total_tokens: 7 },
+      progress: { processed_line: 1, total_tokens: 7 },
     });
     expect(await database.get_all_items(project_path)).toEqual([
       expect.objectContaining({ dst: "你好", status: "PROCESSED" }),

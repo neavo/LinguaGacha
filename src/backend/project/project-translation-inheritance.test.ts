@@ -157,7 +157,7 @@ describe("inherit_completed_translations", () => {
     expect(next).toMatchObject({ dst: "", name_dst: "俊辅", status: "PROCESSED" });
   });
 
-  it("失败条目可经上下文或票选填充，排除条目在两种模式下都不变", () => {
+  it("未处理条目可经上下文或票选填充，排除条目在两种模式下都不变", () => {
     const old_items = [item("a.txt", "前"), done("a.txt", "甲", "A"), done("b.txt", "乙", "B")];
     for (const mode of ["fill", "overwrite"] as const) {
       expect(
@@ -165,9 +165,9 @@ describe("inherit_completed_translations", () => {
           old_items,
           [
             item("x.txt", "前"),
-            item("x.txt", "甲", { status: "ERROR" }),
-            item("y.txt", "乙", { status: "ERROR" }),
-            item("y.txt", "尾"), // 改变上下文，让失败条目只能经票选填充。
+            item("x.txt", "甲"),
+            item("y.txt", "乙"),
+            item("y.txt", "尾"), // 改变上下文，让该条目只能经票选填充。
             item("z.txt", "乙", { status: "EXCLUDED" }),
           ],
           mode,

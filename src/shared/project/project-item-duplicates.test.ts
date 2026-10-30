@@ -16,10 +16,10 @@ describe("project item duplicate coordination", () => {
     ).toEqual([{ item_id: 3, status: "DUPLICATED" }]);
   });
 
-  it.each(["PROCESSED", "ERROR"] as const)("%s 条目承担重复组代表", (status) => {
+  it("已完成条目承担重复组代表", () => {
     expect(
       coordinate_project_duplicate_statuses(
-        [item(1, status), item(2, "NONE"), item(3, "DUPLICATED")],
+        [item(1, "PROCESSED"), item(2, "NONE"), item(3, "DUPLICATED")],
         true,
       ),
     ).toEqual([{ item_id: 2, status: "DUPLICATED" }]);

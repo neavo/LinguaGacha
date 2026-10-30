@@ -224,9 +224,6 @@ export class MarkdownV2BlockMigration {
     if (unit.rule_skipped) {
       return "RULE_SKIPPED";
     }
-    if (items.some((item) => item.status === "ERROR")) {
-      return "ERROR";
-    }
     if (items.some((item) => item.status === "NONE")) {
       return "NONE";
     }

@@ -2,7 +2,10 @@ import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import { create_agent_batch_item_translation_tool } from "./batch-item-translation";
-import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
+import {
+  normalize_batch_translation_progress,
+  normalize_batch_translation_run_progress,
+} from "../../../domain/batch-translation";
 import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-runtime";
 import { AppError } from "../../../shared/error";
 
@@ -14,7 +17,7 @@ describe("Agent 条目批量翻译工具", () => {
     });
     const summary = {
       status: "done" as const,
-      progress: normalize_batch_translation_progress({ line: 2 }),
+      progress: normalize_batch_translation_progress({ processed_line: 2 }),
     };
     const run = vi.fn(async () => {
       await pending;
@@ -29,7 +32,7 @@ describe("Agent 条目批量翻译工具", () => {
         name: tool.name,
         arguments: args,
       } as ToolCall);
-    const request = { item_ids: [1, 2], item_statuses: ["NONE", "ERROR"] };
+    const request = { item_ids: [1, 2], item_statuses: ["NONE"] };
     expect(call(request)).toEqual(request);
     expect(() => call({ scope: { kind: "pages" }, include_errors: false })).toThrow();
     for (const invalid of [
@@ -40,6 +43,7 @@ describe("Agent 条目批量翻译工具", () => {
       { item_ids: [Number.MAX_SAFE_INTEGER + 1] },
       { item_statuses: ["ALL"] },
       { item_statuses: ["unknown"] },
+      { item_statuses: ["ERROR"] },
     ]) {
       expect(() => call(invalid), JSON.stringify(invalid)).toThrow();
     }
@@ -74,11 +78,10 @@ describe("Agent 条目批量翻译工具", () => {
       status,
       ...(status === "done" ? {} : { stop_source: "user" as const }),
       progress: normalize_batch_translation_progress({ total_line: 100, processed_line: 80 }),
-      run_progress: normalize_batch_translation_progress({
+      run_progress: normalize_batch_translation_run_progress({
         total_line: status === "done" ? 8 : 10,
-        line: 8,
         processed_line: 6,
-        error_line: 2,
+        failed_line: 2,
         time: 12.5,
         total_input_tokens: 1000,
         total_reasoning_tokens: 200,
@@ -140,7 +143,7 @@ describe("Agent 条目批量翻译工具", () => {
     const tool = create_agent_batch_item_translation_tool(async () => ({
       status: "done",
       progress: normalize_batch_translation_progress({ total_line: 100 }),
-      run_progress: normalize_batch_translation_progress({}),
+      run_progress: normalize_batch_translation_run_progress({}),
     }));
     expect(await tool.execute({ item_ids: [1] }, ...agent_tool_call("batch"))).toMatchObject({
       details: {

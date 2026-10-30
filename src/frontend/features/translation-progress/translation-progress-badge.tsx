@@ -8,7 +8,6 @@ type TranslationProgressBadgeProps = {
     completion_percent: number;
     completed_count: number;
     skipped_count: number;
-    failed_count: number | null;
     pending_count: number;
   };
   total: number;
@@ -26,7 +25,6 @@ export function TranslationProgressBadge({
   const { t } = useI18n();
   const entries = [
     { label: t("task_progress.translation_skipped"), count: progress.skipped_count },
-    { label: t("task_progress.translation_failed"), count: progress.failed_count },
     { label: t("task_progress.translation_completed"), count: progress.completed_count },
     { label: t("task_progress.translation_pending"), count: progress.pending_count },
     { label: t("task_progress.total_lines"), count: total },
@@ -45,13 +43,11 @@ export function TranslationProgressBadge({
       </TooltipTrigger>
       <TooltipContent>
         <div className="flex flex-col gap-1 tabular-nums">
-          {entries
-            .filter((entry) => entry.count !== null)
-            .map((entry) => (
-              <span key={entry.label}>
-                {t(`task_progress.${unit}`, { status: entry.label, count: String(entry.count) })}
-              </span>
-            ))}
+          {entries.map((entry) => (
+            <span key={entry.label}>
+              {t(`task_progress.${unit}`, { status: entry.label, count: String(entry.count) })}
+            </span>
+          ))}
         </div>
       </TooltipContent>
     </Tooltip>

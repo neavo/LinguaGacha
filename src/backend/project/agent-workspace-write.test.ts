@@ -93,7 +93,7 @@ describe("Agent 工作区对象写入规则", () => {
       ...create_item(1),
       name_src: "姫",
       name_dst: "现有译名",
-      status: "ERROR",
+      status: "NONE",
     };
     const snapshot = { pdfDocuments: [], items: [current], quality: {}, prompts: {} };
     expect(
@@ -412,6 +412,7 @@ function batch(args: {
   };
 }
 
+/** 构造具有稳定身份的已完成条目，供写入与指纹校验共用。 */
 function create_item(item_id: number): JsonRecord {
   return {
     item_id,
@@ -426,6 +427,7 @@ function create_item(item_id: number): JsonRecord {
   };
 }
 
+/** 构造存量术语，保留显式身份以测试更新与重排。 */
 function quality_entry(id: string, src: string, extra: JsonRecord = {}): QualityRuleGlossaryEntry {
   return {
     entry_id: id,
@@ -436,6 +438,7 @@ function quality_entry(id: string, src: string, extra: JsonRecord = {}): Quality
   };
 }
 
+/** 创建意图使用输入行号定位错误，不提前分配条目身份。 */
 function quality_create(line: number, src: string, sort: number) {
   return {
     line,
@@ -445,6 +448,7 @@ function quality_create(line: number, src: string, sort: number) {
   };
 }
 
+/** 更新意图携带读取指纹，省略顺序时只修改字段。 */
 function quality_update(line: number, id: string, fp: string, fields: JsonRecord, sort?: number) {
   return {
     line,
@@ -456,22 +460,27 @@ function quality_update(line: number, id: string, fp: string, fields: JsonRecord
   };
 }
 
+/** 删除意图保留指纹，供冲突检查确认读取基线。 */
 function quality_delete(line: number, id: string, fp: string) {
   return { line, kind: "glossary" as const, id, fp };
 }
 
+/** 组合仅更新的批次，避免用例重复声明空操作集合。 */
 function quality_ops(updates: ReturnType<typeof quality_update>[]): AgentWorkspaceQualityIntents {
   return { creates: [], updates, deletes: [] };
 }
 
+/** 从真实工作区投影取得条目指纹，避免测试复制摘要算法。 */
 function item_fp(item: JsonRecord): string {
   return String(project_agent_workspace_item(item)["fp"]);
 }
 
+/** 从真实规则投影取得指纹，使用同一读取基线。 */
 function quality_fp(kind: QualityRuleKind, entry: QualityRuleEntry): string {
   return String(project_agent_workspace_quality_entry(kind, entry, 0)["fp"]);
 }
 
+/** 从真实提示词投影取得指纹，供写入冲突测试使用。 */
 function prompt_fp(kind: PromptKind, text: string): string {
   return String(project_agent_workspace_prompt(kind, text)["fp"]);
 }

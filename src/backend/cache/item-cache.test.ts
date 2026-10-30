@@ -14,7 +14,7 @@ describe("ItemCache", () => {
         status: "DUPLICATED",
         name_src: "甲",
       }),
-      create_item(3, { src: "同文", status: "ERROR", name_src: "甲" }),
+      create_item(3, { src: "同文", status: "NONE", name_src: "甲" }),
       create_item(4, { src: "同文", status: "RULE_SKIPPED", name_src: "甲" }),
       create_item(5, { src: "同文", status: "NONE", name_src: "丙" }),
       create_item(6, {
@@ -29,7 +29,7 @@ describe("ItemCache", () => {
     expect(cache.readWriteScope([4])).toEqual([1, 2, 3, 4]);
     for (const enabled of [false, true])
       for (const target of items) {
-        for (const status of ["NONE", "DUPLICATED", "PROCESSED", "ERROR", "EXCLUDED"] as const) {
+        for (const status of ["NONE", "DUPLICATED", "PROCESSED", "EXCLUDED"] as const) {
           const explicit_changes = [
             { item_id: target.item_id, current: target, next: { ...target, status } },
           ];

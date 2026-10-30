@@ -37,7 +37,6 @@ function response(percent: number, path = fixture.project.path): ProjectTranslat
       total_items: 100,
       completed_count: percent,
       skipped_count: 0,
-      failed_count: 0,
       pending_count: 100 - percent,
       completion_percent: percent,
     },

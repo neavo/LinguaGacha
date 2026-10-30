@@ -133,7 +133,7 @@ describe("ProjectSummaryService", () => {
   it("从 CacheManager 返回项目摘要与 revision", async () => {
     const { service } = await create_service([
       create_item({ id: 1, status: "PROCESSED" }),
-      create_item({ id: 2, src: "失敗", status: "ERROR" }),
+      create_item({ id: 2, src: "失敗", status: "NONE" }),
     ]);
 
     const result = await service.read();
@@ -174,7 +174,7 @@ describe("ProjectSummaryService", () => {
         create_item({ id: 1, status: "PROCESSED" }),
         create_item({ id: 2, src: "跳过", status: "EXCLUDED" }),
         create_item({ id: 3, file_path: "waiting.txt", status: "NONE" }),
-        create_item({ id: 4, src: "翻译失败", status: "ERROR" }),
+        create_item({ id: 4, src: "翻译失败", status: "NONE" }),
       ],
       [
         { path: "script.txt", sort_order: 0, file_type: "TXT" },
@@ -189,8 +189,7 @@ describe("ProjectSummaryService", () => {
         total_items: 4,
         completed_count: 1,
         skipped_count: 1,
-        failed_count: 1,
-        pending_count: 1,
+        pending_count: 2,
         completion_percent: 50,
       },
     });
@@ -200,8 +199,7 @@ describe("ProjectSummaryService", () => {
         total_count: 3,
         completed_count: 1,
         skipped_count: 1,
-        failed_count: 1,
-        pending_count: 0,
+        pending_count: 1,
         completion_percent: 67,
       },
       {
@@ -209,7 +207,6 @@ describe("ProjectSummaryService", () => {
         total_count: 1,
         completed_count: 0,
         skipped_count: 0,
-        failed_count: 0,
         pending_count: 1,
         completion_percent: 0,
       },
@@ -234,7 +231,6 @@ describe("ProjectSummaryService", () => {
           total_count: 4,
           completed_count: 1,
           skipped_count: 2,
-          failed_count: null,
           pending_count: 1,
           completion_percent: 75,
         },
