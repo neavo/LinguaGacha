@@ -6,7 +6,7 @@ import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
 export interface AppPathServiceOptions {
-  appRoot: string; // 安装根，承载版本、历史迁移与便携数据位置
+  appRoot: string; // 安装根，承载版本与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   platform?: NodeJS.Platform; // 只参与数据根选择
   env?: NodeJS.ProcessEnv; // 只读取 APPIMAGE 运行形态
@@ -72,7 +72,7 @@ export function resolve_preset_file(options: {
  * AppPathService 是安装根、内置资产根、数据根和用户文件落点的唯一路径权威。
  */
 export class AppPathService {
-  private readonly app_root: string; // 版本文件、历史迁移和便携数据共享的安装根
+  private readonly app_root: string; // 版本文件和便携数据共享的安装根
   private readonly builtin_root: string; // 与安装根独立的当前版本只读资产根
   private readonly platform: NodeJS.Platform;
   private readonly env: NodeJS.ProcessEnv;
@@ -91,7 +91,7 @@ export class AppPathService {
   }
 
   /**
-   * 返回安装根，供版本、历史迁移和便携数据解析共享同一事实
+   * 返回安装根，供版本和便携数据解析共享同一事实
    */
   public get_app_root(): string {
     return this.app_root;

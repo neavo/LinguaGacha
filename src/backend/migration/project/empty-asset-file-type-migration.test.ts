@@ -5,7 +5,6 @@ import ExcelJS from "exceljs";
 import { expect, it } from "vitest";
 import { ProjectDatabase } from "../../database/database-operations";
 import { empty_asset_file_type_migration } from "./empty-asset-file-type-migration";
-import type { AppSettingService } from "../../app/app-setting-service";
 
 it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成标记一起回滚", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-asset-migration-"));
@@ -24,8 +23,6 @@ it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成�
     const context = {
       project_path: project,
       database,
-      app_setting_service: {} as AppSettingService,
-      items: [],
       assets: await database.get_all_asset_records(project),
       meta: {},
     };

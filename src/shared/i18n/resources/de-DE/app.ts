@@ -250,21 +250,14 @@ export const de_de_app = {
       direct_route_failed: "API Gateway-Direkt-Routing fehlgeschlagen …",
     },
     default_preset: {
-      config_normalize_failed:
-        "Fehler beim Normalisieren der Standard-Voreinstellungskonfiguration: {CONFIG_PATH} …",
       prompt_load_failed: "Fehler beim Laden der Standard-Prompt-Voreinstellung …",
       quality_rule_load_failed: "Fehler beim Laden der Standard-Qualitätsregel-Voreinstellung …",
-      value_normalize_failed:
-        "Fehler beim Normalisieren des Standard-Voreinstellungswerts: {PRESET_DIRECTORY} -> {VALUE} …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha konnte nicht gestartet werden …",
       backend_gateway_start_failed: "Backend-/Gateway-Start fehlgeschlagen …",
       main_fatal_uncaught:
         "Electron-Hauptprozess hat eine unbehandelte schwerwiegende Ausnahme abgefangen …",
-    },
-    migration: {
-      path_failed: "Fehler beim Migrieren des Pfads: {SOURCE_PATH} -> {DESTINATION_PATH} …",
     },
     renderer: {
       main_frame_load_failed: "Renderer-Hauptframe konnte nicht geladen werden …",

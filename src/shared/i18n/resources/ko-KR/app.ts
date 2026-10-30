@@ -236,19 +236,13 @@ export const ko_kr_app = {
       direct_route_failed: "API Gateway 직접 경로 처리에 실패했습니다 …",
     },
     default_preset: {
-      config_normalize_failed: "기본 프리셋 설정을 정규화하지 못했습니다: {CONFIG_PATH} …",
       prompt_load_failed: "기본 프롬프트 프리셋을 불러오지 못했습니다 …",
       quality_rule_load_failed: "기본 품질 규칙 프리셋을 불러오지 못했습니다 …",
-      value_normalize_failed:
-        "기본 프리셋 값을 정규화하지 못했습니다: {PRESET_DIRECTORY} -> {VALUE} …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha를 시작하지 못했습니다 …",
       backend_gateway_start_failed: "Backend / Gateway를 시작하지 못했습니다 …",
       main_fatal_uncaught: "Electron main에서 처리되지 않은 치명적 예외가 발생했습니다 …",
-    },
-    migration: {
-      path_failed: "경로 이전에 실패했습니다: {SOURCE_PATH} -> {DESTINATION_PATH} …",
     },
     renderer: {
       main_frame_load_failed: "렌더러 기본 프레임을 불러오지 못했습니다 …",

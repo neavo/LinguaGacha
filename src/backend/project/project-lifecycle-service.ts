@@ -172,7 +172,6 @@ export class ProjectLifecycleService {
       const migration_writes = await build_project_open_writes({
         project_path,
         database: this.database,
-        app_setting_service: this.app_setting_service,
       });
 
       const opened = await this.database.transaction(project_path, (writer) => {
@@ -391,7 +390,6 @@ export class ProjectLifecycleService {
                 .filter((file) => file.additional_files.length > 0)
                 .map((file) => [file.rel_path, [...file.additional_files]]),
             ),
-            translation_prompt_legacy_migrated: true,
             "migration.asset_file_type_complete": true,
           });
           // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。

@@ -77,15 +77,12 @@ export function create_shared_boundary_rules() {
             if (
               relative_target.startsWith("src/backend/file/") ||
               relative_target.startsWith("src/backend/project/") ||
-              /^src\/backend\/migration\/(startup|project)-migrations(?:\.ts)?$/u.test(
-                relative_target,
-              )
+              /^src\/backend\/migration\/project-migrations(?:\.ts)?$/u.test(relative_target)
             ) {
               errors.push({
                 relative_path: context.relative_path(file),
                 line: dependency.line,
-                message:
-                  "数据库迁移的运行依赖只能包含存储升级能力，启动与工程打开迁移由各自入口加载",
+                message: "数据库迁移的运行依赖只能包含存储升级能力，工程打开迁移由独立入口加载",
               });
               continue;
             }

@@ -2,7 +2,19 @@ import { is_json_record } from "../../../domain/json";
 import type { DatabaseSync } from "node:sqlite";
 import { normalize_migration_file_type, write_item_migration } from "./item-migration";
 
-/** 文件身份移交资产后删除条目副本；损坏 JSON 沿用历史保留策略。 */
+/**
+ * 迁移背景：
+ * 旧工程把文件类型保存在条目中。当前文件身份统一由 `assets.file_type` 持有。
+ * 本迁移将类型移交资产，并删除条目中的 `file_type` 和 `text_type` 副本。
+ *
+ * 生效场景：
+ * 数据库补齐资产类型列后，依次按 PDF 记录、首个有效条目类型和历史扩展名确定类型。
+ * 条目中的旧 `MD` 类型写入资产，供打开期迁移重建正文。
+ *
+ * 不处理范围：
+ * 无法确定类型的资产保留为 `NONE`。空 JSON 和 XLSX 的内容识别由打开期迁移负责。
+ * 损坏的条目 JSON 保留原文。
+ */
 export function run_asset_file_type_migration(db: DatabaseSync): void {
   const rows = db.prepare("SELECT data FROM items WHERE json_valid(data) ORDER BY id").iterate();
   const types = new Map<string, string>();

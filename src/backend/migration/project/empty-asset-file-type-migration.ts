@@ -1,12 +1,27 @@
 import path from "node:path";
 import { XLSXFormat } from "../../file/xlsx/xlsx-format";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import type { ProjectOpenMigration } from "../migration-types";
+import type { ProjectDatabaseWrite } from "../../database/database-operations";
+import type { ProjectOpenMigrationContext } from "../migration-types";
 
 const MIGRATION_KEY = "migration.asset_file_type_complete";
 
-/** 无条目的历史 JSON / XLSX 需要读取固化原稿一次，完成标记与身份共同提交。 */
-export const empty_asset_file_type_migration: ProjectOpenMigration = async (context) => {
+/**
+ * 迁移背景：
+ * 无条目的历史 JSON 和 XLSX 缺少条目类型依据，数据库迁移后资产类型仍可能为 `NONE`。
+ * 本迁移读取固化原稿，补齐 JSON 和工作簿的具体类型。
+ *
+ * 生效场景：
+ * 工程打开且完成标记缺失时，检查类型为 `NONE` 的资产。
+ * 识别结果与 `migration.asset_file_type_complete` 在打开事务中共同提交。
+ *
+ * 不处理范围：
+ * 原稿缺失或内容无法识别时保留 `NONE`。迁移保留资产原始字节。
+ * 完成标记记录已处理一次，不保证所有资产均已识别成功。
+ */
+export async function empty_asset_file_type_migration(
+  context: ProjectOpenMigrationContext,
+): Promise<ProjectDatabaseWrite[]> {
   if (context.meta[MIGRATION_KEY] === true) return [];
   const types = new Map<string, string>();
   for (const asset of context.assets) {
@@ -33,4 +48,4 @@ export const empty_asset_file_type_migration: ProjectOpenMigration = async (cont
       database.set_meta(context.project_path, MIGRATION_KEY, true);
     },
   ];
-};
+}
