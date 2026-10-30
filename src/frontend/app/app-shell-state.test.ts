@@ -74,39 +74,41 @@ describe("App 更新弹窗状态", () => {
 
 describe("App 项目导航状态", () => {
   it.each([
-    { project_loaded: false, project_session_status: "idle", disabled: true },
-    { project_loaded: true, project_session_status: "warming", disabled: true },
-    { project_loaded: true, project_session_status: "ready", disabled: false },
+    { project_loaded: false, project_session_status: "idle", disabled: true, task_disabled: false },
+    {
+      project_loaded: true,
+      project_session_status: "warming",
+      disabled: true,
+      task_disabled: true,
+    },
+    {
+      project_loaded: true,
+      project_session_status: "ready",
+      disabled: false,
+      task_disabled: false,
+    },
   ] as const)(
-    "技能入口在 loaded=$project_loaded、session=$project_session_status 时遵循工程就绪状态",
-    ({ project_loaded, project_session_status, disabled }) => {
-      expect(
-        resolve_disabled_route_ids({ project_loaded, project_session_status }).has("skills"),
-      ).toBe(disabled);
+    "工程入口在 loaded=$project_loaded、session=$project_session_status 时遵循工程就绪状态",
+    ({ project_loaded, project_session_status, disabled, task_disabled }) => {
+      const disabled_route_ids = resolve_disabled_route_ids({
+        project_loaded,
+        project_session_status,
+      });
+      expect(disabled_route_ids.has("pre-translation-replacement")).toBe(disabled);
+      expect(disabled_route_ids.has("agent")).toBe(task_disabled);
       expect(
         resolve_route_selection({
-          route_id: "skills",
+          route_id: "pre-translation-replacement",
           project_loaded,
           project_session_status,
           pending_target_route: null,
         }),
       ).toEqual({
-        selected_route: disabled ? "project-home" : "skills",
-        pending_target_route: disabled ? "skills" : null,
+        selected_route: disabled ? "project-home" : "pre-translation-replacement",
+        pending_target_route: disabled ? "pre-translation-replacement" : null,
       });
     },
   );
-
-  it("项目就绪后直接选择自定义提示词", () => {
-    expect(
-      resolve_route_selection({
-        route_id: "custom-prompt",
-        project_loaded: true,
-        project_session_status: "ready",
-        pending_target_route: null,
-      }),
-    ).toEqual({ selected_route: "custom-prompt", pending_target_route: null });
-  });
 
   it("未加载项目时把项目入口保存为待恢复路由", () => {
     expect(
@@ -130,7 +132,7 @@ describe("App 项目导航状态", () => {
     ).toEqual({ selected_route: "model", pending_target_route: null });
   });
 
-  it("项目就绪时恢复兼容路由，否则进入 AGENT 页", () => {
+  it("项目就绪时恢复待访问路由，否则进入 AGENT 页", () => {
     const base = {
       previous_project_loaded: false,
       previous_project_path: "",
@@ -143,10 +145,10 @@ describe("App 项目导航状态", () => {
     expect(
       resolve_project_route_after_snapshot({
         ...base,
-        pending_target_route: "text-replacement",
+        pending_target_route: "post-translation-replacement",
       }),
     ).toEqual({
-      selected_route: "pre-translation-replacement",
+      selected_route: "post-translation-replacement",
       pending_target_route: null,
     });
     expect(
@@ -169,28 +171,5 @@ describe("App 项目导航状态", () => {
         pending_target_route: "agent",
       }),
     ).toEqual({ selected_route: "project-home", pending_target_route: null });
-  });
-
-  it("项目状态决定导航禁用集合", () => {
-    const unloaded = resolve_disabled_route_ids({
-      project_loaded: false,
-      project_session_status: "idle",
-    });
-    const warming = resolve_disabled_route_ids({
-      project_loaded: true,
-      project_session_status: "warming",
-    });
-    const ready = resolve_disabled_route_ids({
-      project_loaded: true,
-      project_session_status: "ready",
-    });
-
-    expect(unloaded.has("agent")).toBe(false);
-    expect(unloaded.has("glossary")).toBe(true);
-    expect(unloaded.has("custom-prompt")).toBe(true);
-    expect(warming.has("agent")).toBe(true);
-    expect(warming.has("glossary")).toBe(true);
-    expect(warming.has("custom-prompt")).toBe(true);
-    expect(ready.size).toBe(0);
   });
 });

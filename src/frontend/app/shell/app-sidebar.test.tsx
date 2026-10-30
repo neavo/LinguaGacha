@@ -1,5 +1,4 @@
 import { act, type ComponentProps } from "react";
-import { ReplaceAll } from "lucide-react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +6,7 @@ import type { AppLanguage } from "@domain/app-language";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { SidebarProvider } from "@frontend/shadcn/sidebar";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import { NAVIGATION_GROUPS } from "@frontend/app/navigation/schema";
 import { AppSidebar } from "./app-sidebar";
 
 vi.mock("./app-appearance-menu", () => ({ AppAppearanceMenu: () => null }));
@@ -41,7 +41,6 @@ describe("AppSidebar", () => {
               <AppSidebar
                 groups={[]}
                 selected_route="project-home"
-                expanded_items={new Set()}
                 disabled_route_ids={new Set()}
                 app_language="ZH"
                 is_language_updating={false}
@@ -50,7 +49,6 @@ describe("AppSidebar", () => {
                 profile_tooltip_key="app.profile.status_tooltip"
                 is_profile_update_available={false}
                 on_select_route={vi.fn()}
-                on_toggle_group={vi.fn()}
                 on_open_logs={vi.fn()}
                 on_select_app_language={vi.fn()}
                 on_profile_action={vi.fn()}
@@ -117,53 +115,45 @@ describe("AppSidebar", () => {
     expect(on_open_logs).toHaveBeenCalledOnce();
   });
 
-  it("子导航提交页面选择，禁用项与折叠后的子项退出键盘导航", async () => {
+  it("侧栏折叠时导航入口仍可直接选择并独立高亮", async () => {
     const on_select_route = vi.fn();
-    const options: RenderSidebarOptions = {
-      groups: [
-        {
-          id: "replacement",
-          items: [
-            {
-              id: "text-replacement",
-              title_key: "text_replacement_page.title",
-              icon: ReplaceAll,
-              children: [
-                {
-                  id: "pre-translation-replacement",
-                  title_key: "pre_translation_replacement_page.title",
-                  icon: ReplaceAll,
-                },
-                {
-                  id: "post-translation-replacement",
-                  title_key: "post_translation_replacement_page.title",
-                  icon: ReplaceAll,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      expanded_items: new Set(["text-replacement"]),
-      disabled_route_ids: new Set(["post-translation-replacement"]),
-      on_select_route,
-    };
-    await render_sidebar(options);
-    const [enabled_child, disabled_child] = Array.from(
-      container?.querySelectorAll<HTMLButtonElement>(".sidebar-subitems button") ?? [],
+    await render_sidebar(
+      {
+        groups: NAVIGATION_GROUPS,
+        selected_route: "post-translation-replacement",
+        on_select_route,
+      },
+      false,
     );
-    if (enabled_child === undefined || disabled_child === undefined)
-      throw new Error("缺少测试子导航。");
-    expect(enabled_child.tabIndex).toBe(0);
-    expect(disabled_child.disabled).toBe(true);
+    const pre = container!.querySelector<HTMLButtonElement>('button[aria-label="译前替换"]')!;
+    const post = container!.querySelector<HTMLButtonElement>('button[aria-label="译后替换"]')!;
+    expect(pre.getAttribute("data-active")).toBe("false");
+    expect(post.getAttribute("data-active")).toBe("true");
     await act(async () => {
-      enabled_child.click();
-      disabled_child.click();
+      pre.click();
+      post.click();
     });
-    expect(on_select_route).toHaveBeenCalledExactlyOnceWith("pre-translation-replacement");
+    expect(on_select_route.mock.calls).toEqual([
+      ["pre-translation-replacement"],
+      ["post-translation-replacement"],
+    ]);
+  });
 
-    await render_sidebar(options, false);
-    expect([enabled_child.tabIndex, disabled_child.tabIndex]).toEqual([-1, -1]);
-    expect(enabled_child.closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe("true");
+  it("禁用的替换入口不提交页面选择", async () => {
+    const on_select_route = vi.fn();
+    await render_sidebar({
+      groups: NAVIGATION_GROUPS,
+      disabled_route_ids: new Set(["pre-translation-replacement", "post-translation-replacement"]),
+      on_select_route,
+    });
+    const pre = container!.querySelector<HTMLButtonElement>('button[aria-label="译前替换"]')!;
+    const post = container!.querySelector<HTMLButtonElement>('button[aria-label="译后替换"]')!;
+    expect(pre.disabled).toBe(true);
+    expect(post.disabled).toBe(true);
+    await act(async () => {
+      pre.click();
+      post.click();
+    });
+    expect(on_select_route).not.toHaveBeenCalled();
   });
 });

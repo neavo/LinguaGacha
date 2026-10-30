@@ -191,7 +191,7 @@ function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div"
   );
 }
 
-/** 主导航与子导航共用列表结构，层级缩进由调用方提供。 */
+/** 为导航分组提供统一的列表结构。 */
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
@@ -203,7 +203,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   );
 }
 
-/** 容纳导航按钮及其可选的子列表。 */
+/** 为单个导航按钮提供列表项。 */
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li

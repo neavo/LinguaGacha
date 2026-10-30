@@ -38,7 +38,7 @@
 .sidebar-row {
   position: relative;
   display: grid;
-  grid-template-columns: var(--sidebar-icon-column) minmax(0, 1fr) auto;
+  grid-template-columns: var(--sidebar-icon-column) minmax(0, 1fr);
   align-items: center;
   width: 100%;
   height: var(--sidebar-row-height);
@@ -104,20 +104,6 @@
   opacity: 1;
 }
 
-.sidebar-row--parent-active::before {
-  opacity: 0.72;
-  transform: scaleY(0.82);
-}
-
-.sidebar-row--parent-active::after {
-  background: color-mix(in srgb, var(--sidebar-accent) 52%, transparent);
-  opacity: 1;
-}
-
-.sidebar-row--parent-active:hover::after {
-  background: color-mix(in srgb, var(--sidebar-accent) 88%, transparent);
-}
-
 .sidebar-row__icon {
   display: inline-flex;
   align-items: center;
@@ -136,44 +122,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: opacity 180ms ease;
-}
-
-.sidebar-item__chevron {
-  width: 15px;
-  height: 15px;
-  margin-right: 12px;
-  color: color-mix(in srgb, var(--sidebar-foreground) 62%, transparent);
-  transition:
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease;
-}
-
-.sidebar-item__chevron--expanded {
-  transform: rotate(180deg);
-}
-
-.sidebar-subitems-shell {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease,
-    visibility 260ms;
-}
-
-.sidebar-subitems-shell--expanded {
-  grid-template-rows: 1fr;
-  opacity: 1;
-  visibility: visible;
-}
-
-.sidebar-subitems {
-  min-height: 0;
-  gap: 2px;
-  padding-left: 16px;
-  overflow: hidden;
 }
 
 .sidebar-profile--update {
@@ -217,19 +165,10 @@
   visibility: hidden;
 }
 
-[data-slot="sidebar"][data-collapsible="icon"] .sidebar-item__chevron {
-  width: 0;
-  margin-right: 0;
-  opacity: 0;
-  visibility: hidden;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sidebar-row::before,
   .sidebar-row::after,
-  .sidebar-row__label,
-  .sidebar-item__chevron,
-  .sidebar-subitems-shell {
+  .sidebar-row__label {
     transition: none;
   }
 }

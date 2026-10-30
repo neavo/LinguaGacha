@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { ChevronDown, Languages, ScrollText } from "lucide-react";
+import { Languages, ScrollText } from "lucide-react";
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
 import { is_app_language, type AppLanguage } from "@domain/app-language";
@@ -33,7 +33,6 @@ const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).t
 type AppSidebarProps = {
   groups: NavigationGroup[];
   selected_route: RouteId;
-  expanded_items: ReadonlySet<RouteId>;
   disabled_route_ids: ReadonlySet<RouteId>;
   app_language: AppLanguage;
   is_language_updating: boolean;
@@ -42,7 +41,6 @@ type AppSidebarProps = {
   profile_tooltip_key: LocaleKey;
   is_profile_update_available: boolean;
   on_select_route: (route_id: RouteId) => void;
-  on_toggle_group: (route_id: RouteId) => void;
   on_open_logs: () => void;
   on_select_app_language: (language: AppLanguage) => void;
   on_profile_action: () => void;
@@ -64,84 +62,20 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                 <SidebarMenu>
                   {group.items.map((item) => {
                     const Icon = item.icon;
-                    const has_children = (item.children?.length ?? 0) > 0;
-                    const has_active_child =
-                      item.children?.some((child) => child.id === props.selected_route) ?? false;
-                    const is_active = props.selected_route === item.id;
-                    const is_expanded = has_children && props.expanded_items.has(item.id);
-                    const is_subitems_open = !is_collapsed && is_expanded;
-                    const is_disabled =
-                      props.disabled_route_ids.has(item.id) ||
-                      (has_children &&
-                        (item.children?.every((child) => {
-                          return props.disabled_route_ids.has(child.id);
-                        }) ??
-                          false));
 
                     return (
                       <SidebarMenuItem key={item.id}>
                         <SidebarMenuButton
-                          className={cn(
-                            "sidebar-row",
-                            !is_active && has_active_child && "sidebar-row--parent-active",
-                          )}
-                          isActive={is_active}
-                          disabled={is_disabled}
+                          className="sidebar-row"
+                          isActive={props.selected_route === item.id}
+                          disabled={props.disabled_route_ids.has(item.id)}
                           tooltip={t(item.title_key)}
-                          onClick={() => {
-                            if (has_children) {
-                              props.on_toggle_group(item.id);
-                            }
-                            props.on_select_route(item.id);
-                          }}
+                          onClick={() => props.on_select_route(item.id)}
                           aria-label={t(item.title_key)}
                         >
                           <Icon className="sidebar-row__icon" />
                           <span className="sidebar-row__label">{t(item.title_key)}</span>
-                          {has_children ? (
-                            <ChevronDown
-                              className={cn(
-                                "sidebar-item__chevron",
-                                is_expanded && "sidebar-item__chevron--expanded",
-                              )}
-                            />
-                          ) : null}
                         </SidebarMenuButton>
-                        {has_children ? (
-                          <div
-                            className={cn(
-                              "sidebar-subitems-shell",
-                              is_subitems_open && "sidebar-subitems-shell--expanded",
-                            )}
-                            aria-hidden={!is_subitems_open}
-                          >
-                            <SidebarMenu className="sidebar-subitems">
-                              {item.children?.map((child) => {
-                                const ChildIcon = child.icon;
-                                const is_child_active = child.id === props.selected_route;
-                                const is_child_disabled = props.disabled_route_ids.has(child.id);
-
-                                return (
-                                  <SidebarMenuItem key={child.id}>
-                                    <SidebarMenuButton
-                                      isActive={is_child_active}
-                                      className="sidebar-row"
-                                      disabled={is_child_disabled}
-                                      onClick={() => props.on_select_route(child.id)}
-                                      aria-label={t(child.title_key)}
-                                      tabIndex={is_subitems_open ? 0 : -1}
-                                    >
-                                      <ChildIcon className="sidebar-row__icon" />
-                                      <span className="sidebar-row__label">
-                                        {t(child.title_key)}
-                                      </span>
-                                    </SidebarMenuButton>
-                                  </SidebarMenuItem>
-                                );
-                              })}
-                            </SidebarMenu>
-                          </div>
-                        ) : null}
                       </SidebarMenuItem>
                     );
                   })}
