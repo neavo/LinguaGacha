@@ -4,7 +4,6 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
-import { run_startup_migrations } from "../migration/startup-migrations";
 import { ProxyHttpClient, type ProxyResolver } from "../network/proxy-http-client";
 import type { LogTargets } from "../../shared/log";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
@@ -30,7 +29,7 @@ export class BackendResources {
     private readonly proxy_http_client: ProxyHttpClient, // 全局 Fetch 与连接池随本组资源释放。
   ) {}
 
-  /** 启动迁移、设置、日志、数据库与共享出站 HTTP transport。 */
+  /** 初始化设置、日志、数据库与共享出站 HTTP transport。 */
   public static async start(options: BackendResourceOptions): Promise<BackendResources> {
     const paths = new AppPathService({
       appRoot: options.appRoot,
@@ -51,7 +50,6 @@ export class BackendResources {
         t_main_log("app.log.app_version", { VERSION: metadata.read_version() }),
         log_manager,
       );
-      await run_startup_migrations({ paths, log_manager });
       const settings = new AppSettingService(paths);
       set_main_log_language_reader(() => settings.read_app_language());
       proxy_http_client = new ProxyHttpClient(options.proxyResolver);

@@ -235,18 +235,13 @@ export const zh_cn_app = {
       direct_route_failed: "API Gateway 直接路由处理失败 …",
     },
     default_preset: {
-      config_normalize_failed: "归一化默认预设配置失败：{CONFIG_PATH} …",
       prompt_load_failed: "默认提示词预设加载失败 …",
       quality_rule_load_failed: "默认质量规则预设加载失败 …",
-      value_normalize_failed: "归一化默认预设值失败：{PRESET_DIRECTORY} -> {VALUE} …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha 启动失败 …",
       backend_gateway_start_failed: "Backend / Gateway 启动失败 …",
       main_fatal_uncaught: "Electron main 捕获到未处理致命异常 …",
-    },
-    migration: {
-      path_failed: "迁移路径失败：{SOURCE_PATH} -> {DESTINATION_PATH} …",
     },
     renderer: {
       main_frame_load_failed: "渲染层主框架加载失败 …",

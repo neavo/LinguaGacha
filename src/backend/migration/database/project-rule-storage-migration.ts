@@ -21,25 +21,19 @@ const CURRENT_RULE_ENTRY_TYPES = new Set([
   "pre_translation_replacement",
   "post_translation_replacement",
 ]);
-// 文本规则最终只能落为 `{ text }` 对象，旧语言提示词槽位保留给后续业务迁移读取。
-const CURRENT_RULE_TEXT_TYPES = new Set([
-  "translation_prompt",
-  "CUSTOM_PROMPT_ZH",
-  "CUSTOM_PROMPT_EN",
-]);
+const CURRENT_RULE_TEXT_TYPE = "translation_prompt"; // 当前文本规则统一保存为 `{ text }` 对象。
 
 /**
  * 迁移背景：
- * Python 旧工程把规则类型持久化为大写枚举，且同一规则可能拆成多行。
- * 文本规则也可能直接存 JSON 字符串。当前规则表只暴露小写物理槽位，
- * 条目规则落为单行数组，文本规则落为 `{ text }` 对象。
+ * Python 旧工程使用大写规则类型，同类规则可能分散在多行。
+ * 本迁移统一现行规则槽位，将条目规则保存为单行数组，将文本规则保存为 `{ text }`。
  *
  * 生效场景：
- * `.lg` schema 可用后，打开旧工程时一次性归一 rules 表。
+ * 数据库结构准备完成后执行规则写回。新旧槽位同时存在时保留当前小写槽位。
+ * 规则身份迁移随后读取归一后的条目数组。
  *
  * 不处理范围：
- * 旧翻译提示词 ZH/EN 槽位是否要补写到当前 `translation_prompt`，
- * 属于项目打开期业务语义迁移，不在本文件读应用语言或生成类型化写入。
+ * 停用槽位保留原始记录，供历史数据恢复。当前读取只消费现行槽位。
  */
 export function run_project_rule_storage_migration(db: DatabaseSync): void {
   migrate_rule_types(db);
@@ -70,7 +64,7 @@ function migrate_rule_payloads(db: DatabaseSync): void {
   const rows_by_type = new Map<string, RuleMigrationRow[]>();
   for (const row of rows) {
     const type = row_text(row, "type");
-    if (!CURRENT_RULE_ENTRY_TYPES.has(type) && !CURRENT_RULE_TEXT_TYPES.has(type)) {
+    if (!CURRENT_RULE_ENTRY_TYPES.has(type) && type !== CURRENT_RULE_TEXT_TYPE) {
       continue;
     }
     const bucket = rows_by_type.get(type) ?? [];
@@ -85,9 +79,10 @@ function migrate_rule_payloads(db: DatabaseSync): void {
     if (first_row === undefined) {
       continue;
     }
-    const normalized_data = CURRENT_RULE_TEXT_TYPES.has(rule_type)
-      ? { text: deserialize_rule_text_rows(rule_rows) }
-      : deserialize_rule_entry_rows(rule_rows);
+    const normalized_data =
+      rule_type === CURRENT_RULE_TEXT_TYPE
+        ? { text: deserialize_rule_text_rows(rule_rows) }
+        : deserialize_rule_entry_rows(rule_rows);
     const normalized_raw = JsonTool.stringifyStrict(normalized_data);
     if (row_text(first_row, "data") !== normalized_raw) {
       update.run(normalized_raw, row_number(first_row, "id"));

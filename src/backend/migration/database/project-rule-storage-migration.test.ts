@@ -38,6 +38,20 @@ describe("run_project_rule_storage_migration", () => {
       { type: "translation_prompt", data: { text: "旧提示词" } },
     ]);
   });
+
+  it("停用的语言提示词槽位保留全部原始记录，不归一载荷或合并重复行", () => {
+    using db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE rules (id INTEGER PRIMARY KEY, type TEXT NOT NULL, data TEXT NOT NULL)");
+    const insert = db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)");
+    insert.run("CUSTOM_PROMPT_ZH", '"旧中文提示词"');
+    insert.run("CUSTOM_PROMPT_ZH", '{ "text": "另一条旧中文提示词" }');
+    insert.run("CUSTOM_PROMPT_EN", "broken-json");
+    const original = db.prepare("SELECT * FROM rules ORDER BY id").all();
+
+    run_project_rule_storage_migration(db);
+
+    expect(db.prepare("SELECT * FROM rules ORDER BY id").all()).toEqual(original);
+  });
 });
 
 /**

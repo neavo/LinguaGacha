@@ -240,19 +240,13 @@ export const en_us_app = {
       direct_route_failed: "API Gateway direct route handling failed …",
     },
     default_preset: {
-      config_normalize_failed: "Failed to normalize default preset configuration: {CONFIG_PATH} …",
       prompt_load_failed: "Failed to load default prompt preset …",
       quality_rule_load_failed: "Failed to load default quality rule preset …",
-      value_normalize_failed:
-        "Failed to normalize default preset value: {PRESET_DIRECTORY} -> {VALUE} …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha failed to start …",
       backend_gateway_start_failed: "Backend / Gateway startup failed …",
       main_fatal_uncaught: "Electron main caught an unhandled fatal exception …",
-    },
-    migration: {
-      path_failed: "Failed to migrate path: {SOURCE_PATH} -> {DESTINATION_PATH} …",
     },
     renderer: {
       main_frame_load_failed: "Renderer main frame failed to load …",

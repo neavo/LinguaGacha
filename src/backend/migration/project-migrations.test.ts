@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
-import type { AppSettingService } from "../app/app-setting-service";
 import { create_epub_fixture, read_epub_entry_text } from "../../test/epub-fixture";
 import { create_item } from "../../domain/item";
 import { EPUBFormat } from "../file/epub/epub-format";
@@ -19,6 +18,7 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
       database.add_asset(project_path, "book.epub", epub_content, "EPUB", null);
       database.add_asset(project_path, "demo.md", Buffer.from("正文"), "MD", null);
       database.set_rule_text(project_path, "CUSTOM_PROMPT_EN", "旧提示词");
+      database.set_meta(project_path, "text_preserve_enable", true);
       database.set_items(project_path, [
         {
           id: 1,
@@ -49,13 +49,7 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
         },
       ]);
     });
-    const context = {
-      project_path,
-      database,
-      app_setting_service: {
-        read_setting: () => ({ app_language: "EN" }),
-      } as unknown as AppSettingService,
-    };
+    const context = { project_path, database };
     const writes = await build_project_open_writes(context);
     await database.transaction(project_path, (database) => {
       for (const write of writes) write(database);
@@ -69,12 +63,12 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
         extra_field: { epub: expect.objectContaining({ mode: "block_text" }) },
       }),
     ]);
-    expect(await database.get_all_meta(project_path)).toMatchObject({
-      text_preserve_mode: "smart",
-      glossary_enable: true,
-      translation_prompt_legacy_migrated: true,
-    });
-    expect(await database.get_rule_text(project_path, "translation_prompt")).toBe("旧提示词");
+    const meta = await database.get_all_meta(project_path);
+    expect(meta.text_preserve_enable).toBe(true);
+    expect(meta).not.toHaveProperty("text_preserve_mode");
+    expect(meta).not.toHaveProperty("glossary_enable");
+    expect(await database.get_rule_text(project_path, "translation_prompt")).toBeNull();
+    expect(await database.get_rule_text(project_path, "CUSTOM_PROMPT_EN")).toBe("旧提示词");
     expect(await build_project_open_writes(context)).toEqual([]);
     await database.close_project(project_path);
     const reopened = await database.get_all_items(project_path);

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { QualityRule } from "../../domain/quality";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
 
 import {
@@ -84,11 +85,11 @@ describe("project section revision", () => {
 });
 
 describe("ProjectDataReader", () => {
-  it("读取 quality/prompts 时不预热 items 快照", () => {
+  it("质量与提示词读取沿用领域默认值并跳过条目扫描", () => {
     const get_all_items = vi.fn(() => {
       throw new Error("不应读取 items");
     });
-    const get_all_meta = vi.fn(() => ({}));
+    const get_all_meta = vi.fn(() => ({ text_preserve_enable: true }));
     const get_rules = vi.fn(() => []);
     const get_rule_text = vi.fn(() => "");
     const service = new ProjectDataReader(
@@ -96,13 +97,15 @@ describe("ProjectDataReader", () => {
     );
 
     const meta = service.get_all_meta("E:/demo/demo.lg");
-    service.build_quality_block("E:/demo/demo.lg", meta);
+    const quality = service.build_quality_block("E:/demo/demo.lg", meta);
     service.build_prompts_block("E:/demo/demo.lg", meta);
 
     expect(get_all_meta).toHaveBeenCalled();
     expect(get_rules).toHaveBeenCalled();
     expect(get_rule_text).toHaveBeenCalled();
     expect(get_all_items).not.toHaveBeenCalled();
+    expect(quality.text_preserve.mode).toBe(QualityRule.from_json("text_preserve").default_mode);
+    expect(quality.glossary.enabled).toBe(QualityRule.from_json("glossary").default_enabled);
   });
 
   it("prompts section 使用顶层 enabled 表达自定义提示词启用态", () => {

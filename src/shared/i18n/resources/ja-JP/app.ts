@@ -243,19 +243,13 @@ export const ja_jp_app = {
       direct_route_failed: "API Gateway の直接ルート処理に失敗しました …",
     },
     default_preset: {
-      config_normalize_failed: "既定のプリセット設定を正規化できませんでした：{CONFIG_PATH} …",
       prompt_load_failed: "既定のプロンプトプリセットを読み込めませんでした …",
       quality_rule_load_failed: "既定の品質ルールプリセットを読み込めませんでした …",
-      value_normalize_failed:
-        "既定のプリセット値を正規化できませんでした：{PRESET_DIRECTORY} -> {VALUE} …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha を起動できませんでした …",
       backend_gateway_start_failed: "Backend / Gateway を起動できませんでした …",
       main_fatal_uncaught: "Electron main で未処理の致命的な例外が発生しました …",
-    },
-    migration: {
-      path_failed: "パスを移行できませんでした：{SOURCE_PATH} -> {DESTINATION_PATH} …",
     },
     renderer: {
       main_frame_load_failed: "レンダラーのメインフレームを読み込めませんでした …",

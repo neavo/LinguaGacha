@@ -182,7 +182,6 @@ describe("ProjectLifecycleService", () => {
       expect(snapshots[0]?.meta).toMatchObject({
         glossary_enable: true,
         additional_files: { "game.wolfrpg": ["dialogue.json"] },
-        translation_prompt_legacy_migrated: true,
         "migration.asset_file_type_complete": true,
       });
       expect(snapshots[0]?.files["game.trans"]).toMatchObject({ game_engine: "kag" });
