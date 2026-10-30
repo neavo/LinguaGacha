@@ -9,6 +9,7 @@ import { check_typescript } from "../../../test/typescript-fixture";
 
 describe("Agent 工作区 contract", () => {
   it("索引指向包含对应数据路径的参考，各主题声明可独立使用", () => {
+    expect(AGENT_WORKSPACE_CONTRACT.datasets).not.toHaveProperty("item_extra");
     const entries = [
       ...Object.values(AGENT_WORKSPACE_CONTRACT.datasets),
       ...Object.values(AGENT_WORKSPACE_CONTRACT.changes).flatMap(Object.values),

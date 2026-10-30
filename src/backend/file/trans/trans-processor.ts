@@ -2,35 +2,13 @@ import type { ItemStatus } from "../../../domain/item";
 import { is_json_record, read_json_record, type MutableJsonRecord } from "../../../domain/json";
 
 /**
- * TRANS processor.check 的返回结构，保持旧 src/dst/tag/status/skip 顺序语义
+ * `check` 返回归一后的文本、默认状态与强制翻译标记。
  */
 export interface TransCheckResult {
   src: string; // 归一后的源文
   dst: string; // 归一后的已有译文
-  tag: string[]; // 原始 TRANS 标签
   status: ItemStatus; // 导入后的统一条目状态
   skip_internal_filter: boolean; // aqua 等强制翻译标记
-}
-
-/**
- * 写回前对 Item 做快照，避免后续补丁逻辑反复读取可变对象
- */
-export interface TransSnapshot {
-  row: number; // 工程内稳定全局行号
-  file_key: string; // 原始 project.files 键
-  src: string; // 写回前源文快照
-  dst: string; // 写回前译文快照
-  status: ItemStatus; // 决定是否采用译文
-  extra_field: MutableJsonRecord; // 保存精确 trans_ref 与格式私有字段
-}
-
-/**
- * patch writer 定位到原始 .trans project.files[file_key].data[row_index] 的目标
- */
-export interface PatchTarget {
-  snap: TransSnapshot; // 待写回条目快照
-  file_key: string; // 目标文件键
-  row_index: number; // 目标 data 数组下标
 }
 
 /**
@@ -67,14 +45,14 @@ export function string_array(value: unknown): string[] {
 }
 
 /**
- * 读取参数对象数组，保持 extra_field.parameter 只含普通对象
+ * 读取参数对象数组，只保留普通对象。
  */
 export function record_array(value: unknown): MutableJsonRecord[] {
   return Array.isArray(value) ? value.filter(is_json_record) : [];
 }
 
 /**
- * 分区参数生成需要浅拷贝对象，避免就地污染原始 extra_field 引用
+ * 分区参数按原顺序读取，非对象成员使用空对象。
  */
 export function trans_record_array(value: unknown): MutableJsonRecord[] {
   return Array.isArray(value)
@@ -174,7 +152,7 @@ export class NoneTransProcessor {
   public post_process(): void {}
 
   /**
-   * 判断一行 .trans 数据的状态，并维护计算 gold 标签与 aqua 跳过语义
+   * 根据原稿标签与上下文判断导入状态和 `aqua` 强制翻译标记。
    */
   public check(
     path_key: string,
@@ -186,13 +164,13 @@ export class NoneTransProcessor {
     const dst = typeof data[1] === "string" ? data[1] : "";
 
     if (src === "") {
-      return { src, dst, tag, status: "RULE_SKIPPED", skip_internal_filter: false };
+      return { src, dst, status: "RULE_SKIPPED", skip_internal_filter: false };
     }
     if (tag.some((value) => value === "aqua")) {
-      return { src, dst, tag, status: "NONE", skip_internal_filter: true };
+      return { src, dst, status: "NONE", skip_internal_filter: true };
     }
     if (dst !== "" && src !== dst) {
-      return { src, dst, tag, status: "PROCESSED", skip_internal_filter: false };
+      return { src, dst, status: "PROCESSED", skip_internal_filter: false };
     }
 
     const effect = derive_trans_filter_effect({
@@ -203,7 +181,6 @@ export class NoneTransProcessor {
     return {
       src,
       dst,
-      tag: effect.tag,
       status: effect.status,
       skip_internal_filter: false,
     };

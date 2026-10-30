@@ -19,8 +19,6 @@ export type TyranoMetadata = Readonly<{
   internal_file_path: string;
   usage: TyranoUsage;
   location: TyranoLocation;
-  line: number; // 原稿中从 1 开始的行号，供审校定位。
-  source_context?: string; // 参数所在标签或字符串所在语句，供审校查看原稿语境。
 }>;
 
 /** 持久化边界只检查形状，写回时再对照固化原稿验证范围与原文。 */

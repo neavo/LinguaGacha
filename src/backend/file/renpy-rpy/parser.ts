@@ -123,7 +123,6 @@ export function parse_document(lines: string[]): RenpyDocument {
     }
 
     const kind = classify_block_kind(header.label);
-    const header_line_no = index + 1;
     index += 1;
 
     const statements: RenpyStatementNode[] = [];
@@ -133,7 +132,6 @@ export function parse_document(lines: string[]): RenpyDocument {
     }
 
     blocks.push({
-      header_line_no,
       lang: header.lang,
       label: header.label,
       kind,

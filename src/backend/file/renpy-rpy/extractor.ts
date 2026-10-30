@@ -160,7 +160,6 @@ export class RenpyExtractor {
           lang: block.lang,
           label: block.label,
           kind: block.kind,
-          header_line: block.header_line_no,
         },
         pair: {
           template_line: template_stmt.line_no,

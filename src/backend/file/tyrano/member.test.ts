@@ -104,7 +104,14 @@ it("写回保留 BOM 与未修改字节，过期定位拒绝写回", () => {
     render_tyrano_member(Buffer.from(source), FILE, MODERN, [
       { ...item!, src: "旧", status: "PROCESSED", dst: "新" },
     ]),
-  ).toThrow(/Stale Tyrano location/u);
+  ).toThrow(`Stale Tyrano location: ${FILE}:1`);
+  const translated: Item = { ...item!, status: "PROCESSED", dst: "新" };
+  expect(() =>
+    render_tyrano_member(Buffer.from(source), FILE, MODERN, [translated, translated]),
+  ).toThrow(`Duplicate Tyrano location: ${FILE}:1`);
+  expect(() =>
+    render_tyrano_member(Buffer.from("改变范围[p]"), FILE, MODERN, [translated]),
+  ).toThrow(`Stale Tyrano location: ${FILE} text:0:2`);
 });
 
 it("普通脚本文件按 JavaScript 字符串写回", () => {

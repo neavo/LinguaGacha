@@ -15,7 +15,7 @@ function encode_trans(project: Record<string, unknown>): Uint8Array {
 }
 
 describe("TRANSFormat", () => {
-  it("读取引擎身份，并按索引、行号和同位扩展字段读取 TRANS 条目", () => {
+  it("读取引擎身份与指定文本列，格式私有数据只保存原稿定位", () => {
     const { items, game_engine } = new TRANSFormat().read_from_stream(
       encode_trans({
         indexOriginal: 1,
@@ -42,13 +42,8 @@ describe("TRANSFormat", () => {
       file_type: "TRANS",
       file_path: "demo.trans",
       status: "PROCESSED",
-      extra_field: {
-        tag: ["keep"],
-        context: ["ctx"],
-        parameter: [{ note: "meta" }],
-        trans_ref: { file_key: "file.json", row_index: 0 },
-      },
     });
+    expect(items[0]!.extra_field).toEqual({ trans_ref: { file_key: "file.json", row_index: 0 } });
   });
 
   it("写回可读取资产时输出转换后的 TRANS JSON", async () => {

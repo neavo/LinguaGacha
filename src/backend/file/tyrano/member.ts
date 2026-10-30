@@ -48,7 +48,6 @@ type Target = {
   usage: TyranoUsage;
   value: string; // 运行时字面值，静态字符表达式已解码。
   line: number;
-  source_context?: string;
   node?: number; // 场景节点序号，脚本与配置目标没有节点。
   key?: string; // 参数目标的参数名。
 };
@@ -109,7 +108,6 @@ function read_targets(
         usage: "code",
         value: span.src,
         line: start.line,
-        source_context: span.source_context,
       });
     }
   };
@@ -165,7 +163,6 @@ function read_targets(
           ...candidate,
           location: { kind: "param", start: param.start, end: param.end },
           line: node.line,
-          source_context: text.slice(node.start, node.end),
           node: index,
           key: param.key,
         });
@@ -226,8 +223,6 @@ export function read_tyrano_member(
         internal_file_path: file,
         usage: target.usage,
         location: target.location,
-        line: target.line + 1,
-        ...(target.source_context === undefined ? {} : { source_context: target.source_context }),
       },
     };
     return create_item({
@@ -259,11 +254,9 @@ export function render_tyrano_member(
     const metadata = read_tyrano_metadata(item.extra_field);
     assert.equal(metadata.internal_file_path, file, "Mismatched Tyrano member");
     const target = index.get(location_key(metadata.location));
-    assert(
-      target && target.value === item.src,
-      "Stale Tyrano location: " + file + ":" + metadata.line,
-    );
-    assert(!changes.has(target), "Duplicate Tyrano location: " + file + ":" + metadata.line);
+    assert(target, `Stale Tyrano location: ${file} ${location_key(metadata.location)}`);
+    assert.equal(target.value, item.src, `Stale Tyrano location: ${file}:${target.line + 1}`);
+    assert(!changes.has(target), `Duplicate Tyrano location: ${file}:${target.line + 1}`);
     changes.set(target, item.dst);
   }
   const output = scene

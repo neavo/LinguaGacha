@@ -10,7 +10,7 @@ export type RPGMakerRootLocation =
       code: number;
       name_path?: JsonPath;
     };
-/** 每层容器只保存自身坐标与父定位，供提取上下文和递归写回共用。 */
+/** 每层容器只保存自身坐标与父定位，供递归写回使用。 */
 export type RPGMakerLocation =
   | RPGMakerRootLocation
   | {
@@ -26,5 +26,4 @@ export type RPGMakerMetadata = {
   internal_file_path: string;
   usage: RPGMakerUsage;
   location: RPGMakerLocation;
-  source_context?: string; // 上下文固定为导入原稿，与翻译用途独立。
 };

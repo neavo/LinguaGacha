@@ -42,6 +42,7 @@ export const AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
+/** 显式选择模型可读字段，避免格式私有元数据随公开条目结构进入工作区。 */
 export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
   {
     item_id: PROJECT_ITEM_PUBLIC_SCHEMA.properties.item_id,
@@ -58,15 +59,6 @@ export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
 );
 
 export type AgentWorkspaceItem = Static<typeof AGENT_WORKSPACE_ITEM_SCHEMA>;
-
-/** 格式私有扩展数据按条目身份原样投影，内部形状由来源格式决定。 */
-export const AGENT_WORKSPACE_ITEM_EXTRA_SCHEMA = Type.Object(
-  {
-    item_id: PROJECT_ITEM_PUBLIC_SCHEMA.properties.item_id,
-    extra_field: PROJECT_ITEM_PUBLIC_SCHEMA.properties.extra_field,
-  },
-  { additionalProperties: false },
-);
 
 // 与共享校对联合类型保持一致，按规则限定字段和证据形状。
 const proofreading_warning_schema = Type.Union([

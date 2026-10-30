@@ -17,7 +17,6 @@ import {
   AGENT_WORKSPACE_PAGE_SCHEMA,
   AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_ITEM_SCHEMA,
-  AGENT_WORKSPACE_ITEM_EXTRA_SCHEMA,
   AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
   AGENT_WORKSPACE_PROMPTS_SCHEMA,
   AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA,
@@ -83,7 +82,6 @@ const reference_notes: Readonly<Record<string, readonly string[]>> = {
   project_meta: ["工程元数据描述当前快照的语言、完整数量和文件顺序。"],
   items: [
     "`warnings` 按 `item_id` 关联条目，保存快照加载时的校对证据。正文与姓名属于同一个条目。",
-    "`item_extra` 原样保存条目的 `extra_field`，内部形状和含义由来源格式决定。",
     "`dst` 或 `name_dst` 实际变化时默认同步更新状态为 `PROCESSED`，同值提交不改变状态，省略的内容字段保持当前值。",
     '显式 `status` 覆盖内容修改的默认状态，接受现有结果时可提交 `status: "PROCESSED"`，最终内容和状态均相同时，回执为无变化。',
     "同文组按 `file_path`、`src` 与可见 `name_src` 关联，`NONE` 与 `DUPLICATED` 状态由宿主按重复过滤规则自动处理。",
@@ -168,14 +166,6 @@ const definition = {
       purpose: "当前快照的校对警告与字段级证据，按 `item_id` 关联条目",
       identity: ["item_id"],
       schema: AGENT_WORKSPACE_WARNING_SCHEMA,
-      reference: reference_path("items"),
-    },
-    item_extra: {
-      path: AGENT_WORKSPACE_PATHS.itemExtra,
-      format: "jsonl" as const,
-      purpose: "条目的格式私有扩展数据，按 `item_id` 关联条目",
-      identity: ["item_id"],
-      schema: AGENT_WORKSPACE_ITEM_EXTRA_SCHEMA,
       reference: reference_path("items"),
     },
     prompts: {

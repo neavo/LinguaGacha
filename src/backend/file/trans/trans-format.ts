@@ -8,13 +8,7 @@ import { group_items, write_text_file } from "../shared/file-format-helpers";
 import { type GeneratedFilePaths } from "../file-format-types";
 import { RPGMakerTransProcessor } from "./rpgmaker-processor";
 import { WolfTransProcessor } from "./wolf-processor";
-import {
-  NoneTransProcessor,
-  record_array,
-  string_array,
-  to_mutable_record,
-  type TransSnapshot,
-} from "./trans-processor";
+import { NoneTransProcessor, string_array, to_mutable_record } from "./trans-processor";
 import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
 
 /**
@@ -45,7 +39,6 @@ export class TRANSFormat {
       const data_list = Array.isArray(entry["data"]) ? entry["data"] : [];
       const tags_list = Array.isArray(entry["tags"]) ? entry["tags"] : [];
       const context_list = Array.isArray(entry["context"]) ? entry["context"] : [];
-      const parameters_list = Array.isArray(entry["parameters"]) ? entry["parameters"] : [];
       for (const [row_index, data_raw] of data_list.entries()) {
         const data_row = Array.isArray(data_raw) ? data_raw : [];
         const src = typeof data_row[index_original] === "string" ? data_row[index_original] : "";
@@ -53,16 +46,12 @@ export class TRANSFormat {
           typeof data_row[index_translation] === "string" ? data_row[index_translation] : "";
         const tag = string_array(tags_list[row_index]);
         const context = string_array(context_list[row_index]);
-        const parameter = record_array(parameters_list[row_index]);
         const checked = processor.check(file_key, [src, dst], tag, context);
         items.push(
           create_item({
             src: checked.src,
             dst: checked.dst,
             extra_field: {
-              tag: checked.tag,
-              context,
-              parameter,
               trans_ref: { file_key, row_index },
             },
             tag: file_key,
@@ -102,19 +91,7 @@ export class TRANSFormat {
       const processor = this.get_processor(project);
       processor.post_process();
 
-      const snapshots = group.map((item): TransSnapshot => {
-        const extra_field = to_mutable_record(item.extra_field);
-        return {
-          row: item.row,
-          file_key: item.tag,
-          src: item.src,
-          dst: item.dst,
-          status: item.status,
-          extra_field,
-        };
-      });
-
-      const patch_targets = collect_patch_targets(snapshots, files);
+      const patch_targets = collect_patch_targets(group, files);
       for (const target of patch_targets) {
         patch_trans_row(files, target, processor, index_translation);
       }

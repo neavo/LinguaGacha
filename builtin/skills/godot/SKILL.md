@@ -64,9 +64,9 @@ JSON 投影的统一结构如下：
 
 `x.gdc.reference.gd` 按原行号还原，注释在编译时已丢失，空格只是近似。行号和字面量与原脚本一致，可以直接搜索。
 
-## 条目坐标
+## 位置坐标
 
-`item_extra` 中的 `godot.location` 与投影 `strings[].location` 的结构完全相同，可以按值比较：
+投影 `strings[].location` 按 `kind` 区分坐标：
 
 |`kind`|坐标|对应位置|
 |---|---|---|
@@ -74,14 +74,10 @@ JSON 投影的统一结构如下：
 |`scene`|`node`、`property`|`nodes[node]` 的属性，`node` 是 `nodes` 的下标|
 |`resource`|`offset`|资源或非优化语言表的 `strings`|
 |`slot`|`word`|优化语言表的 `strings`|
-|`gd`|`start`、`end`|`.gd` 原文的区间，包含引号|
-|`po`|`start`、`end`|`.po` 原文中整个 `msgstr` 字段的区间|
 
-`gd` 和 `po` 的区间是 UTF-16 下标，与 JavaScript 字符串的 `slice(start, end)` 一致。
+`.gd` 和 `.po` 没有投影，直接在原文中搜索。
 
 # 默认状态
-
-`godot.usage` 为 `text` 的条目默认 `NONE`，`code` 默认 `RULE_SKIPPED`。
 
 以下字符串不产生条目：
 
@@ -90,6 +86,8 @@ JSON 投影的统一结构如下：
 - `.gd` 中带 `&`、`^`、`$` 前缀的字面量。
 - 自定义 `Resource` 以外的资源，以及资源内嵌的 `GDScript`、`Shader`、`ShaderInclude`、`VisualShader`。
 - 未选中 locale 的语言表。
+
+产生条目的字符串按所在位置决定默认状态：
 
 |默认 `NONE`|默认 `RULE_SKIPPED`|
 |---|---|
@@ -132,7 +130,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 
 先按位置区分，再比较文本：
 
-1. 选中语言表的译文位置正常翻译，即使原文等于消息键。这些位置是 `selected` 为 `true` 的语言表投影中的 `strings`，以及 `translation.tables` 中 `.po` 的 `msgstr` 区间。
+1. 选中语言表的译文位置正常翻译，即使原文等于消息键。这些位置是 `selected` 为 `true` 的语言表投影中的 `strings`，以及 `translation.tables` 中 `.po` 的 `msgstr`。
 2. 代码、场景和其他资源中等于消息键的字符串，按读取代码确认用途。只对确认被误译的消息键引用恢复原文，证据不足时列为未决。
 
 例如语言表 `Start → Start` 中，右侧的 `Start` 是译文，可以译为「开始」。代码中的 `tr("Start")` 使用消息键，保持原文。

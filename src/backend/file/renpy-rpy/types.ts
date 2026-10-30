@@ -49,7 +49,6 @@ export interface RenpyStatementNode {
  * translate 块是 old/new strings 与 label 对白匹配的边界，跨块不做配对。
  */
 export interface RenpyTranslateBlock {
-  header_line_no: number;
   lang: string;
   label: string;
   kind: RenpyBlockKind;
