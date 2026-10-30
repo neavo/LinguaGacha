@@ -36,7 +36,7 @@ it("带回退 KV 从原对象取基线，完成空正文不回退，并保留非
     create_item({
       src: "a",
       dst: "B",
-      status: "ERROR",
+      status: "NONE",
       file_type: "KVJSON",
       file_path: "x.json",
     }),

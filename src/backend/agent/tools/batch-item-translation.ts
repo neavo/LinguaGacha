@@ -42,8 +42,8 @@ function format_batch_translation_result(
         : {
             total: progress.total_line,
             succeeded: progress.processed_line,
-            failed: progress.error_line,
-            unfinished: progress.total_line - progress.processed_line - progress.error_line,
+            failed: progress.failed_line,
+            unfinished: progress.total_line - progress.processed_line - progress.failed_line,
           },
     usage:
       progress === undefined
@@ -75,7 +75,7 @@ export function create_agent_batch_item_translation_tool(
       "",
       "- `item_ids` 与 `item_statuses` 至少提供一个。数组内取并集，两者之间取交集，省略即不限制。",
       "- 省略 `item_statuses` 时，指定 ID 的已译、排除、跳过和重复条目也会被翻译。",
-      "- 目标的已有译文会被覆盖，之前读取的工作区快照随之过期。",
+      "- 翻译成功的条目才更新，工作区快照随之过期，失败则保持原状。",
       "- 工具在内部分批翻译并逐批提交。本对话首次调用前，先用一条目标 `item` 测试，通过后用一次调用处理其余全部目标。",
       "- 调用失败且错误与思考等级有关时，传入 `thinking_downgrade: false` 重试，本对话后续调用保持该值。",
       "",
@@ -83,7 +83,7 @@ export function create_agent_batch_item_translation_tool(
       "",
       "|返回字段|含义|",
       "|---|---|",
-      "|`status`|`done` 为完成，`stopped` 为已停止，`error` 为出错|",
+      "|`status`|`done` 为本轮结束，是否全部成功由 `items` 统计决定，`stopped` 为已停止，`error` 为出错|",
       "|`stop_source`|`user` 为用户停止，`parent` 为上层任务取消，`shutdown` 为运行环境关闭|",
       "|`items`|本次的 `total`、`succeeded`、`failed`、`unfinished` 条目数|",
       "|`usage`|本次耗时与 token 用量|",

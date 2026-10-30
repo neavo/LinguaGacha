@@ -3,7 +3,7 @@ import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_workbench_page = {
   title: "ワークベンチ",
   unit: {
-    line: "Line",
+    item: "Items",
   },
   table: {
     file_name: "ファイル名",
@@ -24,7 +24,6 @@ export const ja_jp_workbench_page = {
     translation_task: "翻訳",
     start_translation: "翻訳を開始",
     reset_task_all: "すべてのデータをリセット",
-    reset_task_failed: "失敗したデータをリセット",
   },
   dialog: {
     import_conflict: {

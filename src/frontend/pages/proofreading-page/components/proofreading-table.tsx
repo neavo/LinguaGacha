@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   Ban,
   CircleCheck,
   CircleMinus,
@@ -83,7 +82,7 @@ type ProofreadingTableProps = {
   ) => void;
 };
 
-type ProofreadingStatusIconTone = "success" | "warning" | "failure" | "neutral";
+type ProofreadingStatusIconTone = "success" | "warning" | "neutral";
 
 // 菜单选择后会恢复焦点，弹窗动作延后一拍以免同轮抢焦点。
 function run_after_context_menu_close(action: () => void): void {
@@ -91,12 +90,9 @@ function run_after_context_menu_close(action: () => void): void {
 }
 
 /** 将条目处理状态映射为当前表格的状态图标。 */
-function resolve_status_icon(status: string): typeof AlertCircle | null {
+function resolve_status_icon(status: string): typeof CircleCheck | null {
   if (status === "PROCESSED") {
     return CircleCheck;
-  }
-  if (status === "ERROR") {
-    return AlertCircle;
   }
   if (status === "EXCLUDED") {
     return Ban;
@@ -114,13 +110,10 @@ function resolve_status_icon(status: string): typeof AlertCircle | null {
   return null;
 }
 
-/** 成功与失败突出显示，其余状态使用中性图标色。 */
+/** 成功突出显示，其余状态使用中性图标色。 */
 function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
   if (status === "PROCESSED") {
     return "success";
-  }
-  if (status === "ERROR") {
-    return "failure";
   }
 
   return "neutral";

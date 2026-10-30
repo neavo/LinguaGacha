@@ -11,7 +11,7 @@ import type { ProofreadingFilterOptions } from "@shared/proofreading/proofreadin
 // 生成当前测试场景的完整筛选载荷，避免用例只关心术语时遗漏其它维度语义。
 function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): ProofreadingFilterOptions {
   return {
-    outcomes: ["NO_WARNING", "GLOSSARY", "NONE", "PROCESSED", "ERROR"],
+    outcomes: ["NO_WARNING", "GLOSSARY", "NONE", "PROCESSED"],
     files: { mode: "selected", values: [{ file_path: "chapter01.txt", internal_file_path: null }] },
     glossary_entry_ids: [],
     include_without_glossary_miss: true,
@@ -78,10 +78,10 @@ describe("resolve_proofreading_filter_selection_from_filters", () => {
     const selection = resolve_proofreading_filter_selection_from_filters({
       file_selection: { mode: "default" },
       filters: create_filters({
-        outcomes: ["ERROR", "NONE", "PROCESSED"],
+        outcomes: ["NONE", "PROCESSED"],
       }),
       default_filters: create_filters({
-        outcomes: ["NONE", "PROCESSED", "ERROR"],
+        outcomes: ["NONE", "PROCESSED"],
       }),
     });
 

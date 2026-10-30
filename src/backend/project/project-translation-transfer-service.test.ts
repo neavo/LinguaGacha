@@ -48,7 +48,7 @@ async function create_pair(): Promise<{ source_path: string; base_path: string }
   ]);
   const base_path = await create_project("base", [
     { src: "甲" },
-    { src: "乙", status: "ERROR" },
+    { src: "乙", status: "NONE" },
     { src: "丙", dst: "旧丙", status: "PROCESSED" }, // 上下文与迁出工程一致。
     { src: "丁", file_path: "b.txt" },
   ]);

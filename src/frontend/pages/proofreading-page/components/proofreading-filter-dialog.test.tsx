@@ -92,15 +92,14 @@ describe("ProofreadingFilterDialog", () => {
       on_change,
       filters: {
         ...filters,
-        outcomes: ["NO_WARNING", "ERROR", "NONE"],
+        outcomes: ["NO_WARNING", "NONE"],
       },
       panel: {
         ...panel,
-        available_outcomes: ["NO_WARNING", "FOREIGN_CHAR_RESIDUE", "ERROR", "NONE", "EXCLUDED"],
+        available_outcomes: ["NO_WARNING", "FOREIGN_CHAR_RESIDUE", "NONE", "EXCLUDED"],
         outcome_count_by_code: {
           NO_WARNING: 2,
           FOREIGN_CHAR_RESIDUE: 1,
-          ERROR: 3,
           NONE: 4,
           EXCLUDED: 5,
         },
@@ -124,7 +123,7 @@ describe("ProofreadingFilterDialog", () => {
 
     expect(on_change).toHaveBeenCalledWith(
       expect.objectContaining({
-        outcomes: ["NO_WARNING", "ERROR", "NONE", "FOREIGN_CHAR_RESIDUE"],
+        outcomes: ["NO_WARNING", "NONE", "FOREIGN_CHAR_RESIDUE"],
       }),
     );
   });

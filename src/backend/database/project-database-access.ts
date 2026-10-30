@@ -558,12 +558,10 @@ export class ProjectDatabaseAccess {
     const row = db
       .prepare(
         `SELECT
-           COALESCE(SUM(CASE WHEN status IN ('NONE', 'PROCESSED', 'ERROR') THEN 1 ELSE 0 END), 0)
+           COALESCE(SUM(CASE WHEN status IN ('NONE', 'PROCESSED') THEN 1 ELSE 0 END), 0)
              AS total_line,
            COALESCE(SUM(CASE WHEN status = 'PROCESSED' THEN 1 ELSE 0 END), 0)
-             AS processed_line,
-           COALESCE(SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END), 0)
-             AS error_line
+             AS processed_line
          FROM (
            SELECT json_extract(data, '$.status') AS status
            FROM items
@@ -571,12 +569,9 @@ export class ProjectDatabaseAccess {
       )
       .get();
     const processed_line = row === undefined ? 0 : row_number(row, "processed_line");
-    const error_line = row === undefined ? 0 : row_number(row, "error_line");
     return {
       total_line: row === undefined ? 0 : row_number(row, "total_line"),
       processed_line,
-      error_line,
-      line: processed_line + error_line,
     };
   }
 

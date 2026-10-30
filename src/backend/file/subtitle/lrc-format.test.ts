@@ -23,7 +23,7 @@ it("同时间戳条目不合并，空译文保留时间，未完成回源，字�
   items[0]!.dst = "";
   items[1]!.status = "PROCESSED";
   items[1]!.dst = "二\\n行";
-  items[2]!.status = "ERROR";
+  items[2]!.status = "NONE";
   items[2]!.dst = "暂存";
   const output = format.render_text(text, items, "sub.lrc");
   expect(output.translated).toBe("[00:01]\n[00:01]二\\n行\n[00:02]three");

@@ -1,5 +1,6 @@
 import {
   normalize_batch_translation_progress,
+  normalize_batch_translation_run_progress,
   type BatchTranslationSnapshot,
   type BatchTranslationProgress,
 } from "@domain/batch-translation";
@@ -62,7 +63,8 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
 vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({
-      t: (key: string) => key,
+      t: (key: string, params?: { count?: string }) =>
+        params?.count === undefined ? key : `${key}:${params.count}`,
     }),
   };
 });
@@ -172,11 +174,11 @@ describe("useBatchTranslationTask", () => {
   // 固定产品契约：终态、失败数、提示类型、文案键、持久显示与导出次数。
   it.each([
     ["done", 0, "success", "done", false, 1],
-    ["done", 2, "warning", "done_with_errors", true, 1],
+    ["done", 2, "warning", "ended", true, 1],
     ["stopped", 2, "info", "stopped", false, 0],
   ] as const)(
     "%s / %i 的独立与 Agent 终态反馈",
-    async (status, error_line, kind, message, persistent, generation_count) => {
+    async (status, failed_line, kind, message, persistent, generation_count) => {
       api_fetch_mock.mockImplementation(async () => ({
         batch_translation: runtime_fixture.current.task_snapshot,
       }));
@@ -188,8 +190,8 @@ describe("useBatchTranslationTask", () => {
         );
         await render_probe();
         const snapshot = {
-          ...create_task_snapshot({ source, status, progress: { error_line: 99 } }),
-          run_progress: normalize_batch_translation_progress({ error_line }),
+          ...create_task_snapshot({ source, status, progress: { total_line: 99 } }),
+          run_progress: normalize_batch_translation_run_progress({ failed_line }),
         };
         runtime_fixture.current = create_runtime_fixture(snapshot);
         await render_probe();
@@ -202,7 +204,12 @@ describe("useBatchTranslationTask", () => {
           expect(push_toast_mock).toHaveBeenCalledExactlyOnceWith(
             kind,
             `batch_translation.feedback.${message}`,
-            { persistent },
+            {
+              persistent,
+              ...(status === "done" && failed_line > 0
+                ? { description: `batch_translation.feedback.retry_exhausted:${failed_line}` }
+                : {}),
+            },
           );
           expect(on_request_generation_mock).toHaveBeenCalledTimes(generation_count);
         } else {
@@ -233,7 +240,7 @@ describe("useBatchTranslationTask", () => {
         status: "done",
         operation: "retranslate",
         pending_item_ids: [],
-        progress: { line: 1, total_line: 1 },
+        progress: { processed_line: 1, total_line: 1 },
       }),
     );
     await render_probe();
@@ -247,7 +254,7 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "done",
-        progress: { line: 2, total_line: 2, processed_line: 2, total_output_tokens: 8 },
+        progress: { total_line: 2, processed_line: 2, total_output_tokens: 8 },
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -271,7 +278,7 @@ describe("useBatchTranslationTask", () => {
 
   it("停止回包晚于终态时不会把翻译运行态写回停止中", async () => {
     runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({ status: "stopping", progress: { line: 1, total_line: 2 } }),
+      create_task_snapshot({ status: "stopping", progress: { processed_line: 1, total_line: 2 } }),
     );
     const initial_fixture = runtime_fixture.current;
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -282,7 +289,10 @@ describe("useBatchTranslationTask", () => {
       }
       if (path === "/api/batch-translation/stop") {
         runtime_fixture.current = create_runtime_fixture(
-          create_task_snapshot({ status: "stopped", progress: { line: 1, total_line: 2 } }),
+          create_task_snapshot({
+            status: "stopped",
+            progress: { processed_line: 1, total_line: 2 },
+          }),
         );
         return {
           batch_translation: runtime_fixture.current.task_snapshot,
@@ -385,7 +395,7 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "running",
-        progress: { line: 1, total_line: 2, total_output_tokens: 6 },
+        progress: { processed_line: 1, total_line: 2, total_output_tokens: 6 },
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -398,7 +408,7 @@ describe("useBatchTranslationTask", () => {
         runtime_fixture.current = create_runtime_fixture(
           create_task_snapshot({
             status: "stopped",
-            progress: { line: 1, total_line: 2, total_output_tokens: 6 },
+            progress: { processed_line: 1, total_line: 2, total_output_tokens: 6 },
           }),
         );
         return {
@@ -430,7 +440,7 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "running",
-        progress: { line: 1, total_line: 2, total_output_tokens: 6 },
+        progress: { processed_line: 1, total_line: 2, total_output_tokens: 6 },
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -476,7 +486,7 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "done",
-        progress: { line: 2, total_line: 2, processed_line: 2, total_output_tokens: 8 },
+        progress: { total_line: 2, processed_line: 2, total_output_tokens: 8 },
       }),
     );
 
@@ -500,7 +510,7 @@ describe("useBatchTranslationTask", () => {
         return {
           batch_translation: create_task_snapshot({
             status: "idle",
-            progress: { line: 2, total_line: 2, processed_line: 1, error_line: 1 },
+            progress: { total_line: 2, processed_line: 1 },
           }),
         };
       }
@@ -531,10 +541,8 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         progress: {
-          line: 9,
           total_line: 12,
           processed_line: 8,
-          error_line: 1,
           total_tokens: 300,
           total_output_tokens: 180,
           total_input_tokens: 120,
@@ -574,10 +582,8 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current.refresh_batch_translation.mockResolvedValueOnce(
       create_task_snapshot({
         progress: {
-          line: 0,
           total_line: 1,
           processed_line: 0,
-          error_line: 0,
           total_tokens: 0,
           total_output_tokens: 0,
           total_input_tokens: 0,
@@ -612,128 +618,6 @@ describe("useBatchTranslationTask", () => {
     expect(push_toast_mock).toHaveBeenCalledWith("success", "app.feedback.operation_success");
     expect(runtime_fixture.current.refresh_batch_translation).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_batch_translation).toHaveBeenCalledWith();
-  });
-
-  it("translation reset failed 只提交失败项重置命令", async () => {
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        progress: {
-          line: 5,
-          total_line: 7,
-          processed_line: 4,
-          error_line: 1,
-          total_tokens: 90,
-          total_output_tokens: 50,
-          total_input_tokens: 40,
-          time: 12,
-          start_time: 20,
-        },
-      }),
-    );
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-translation/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
-      if (path === "/api/workbench/translation/reset") {
-        return {
-          accepted: true,
-          changes: [
-            {
-              source: "translation_reset_failed",
-              projectPath: "E:/demo/sample.lg",
-              projectRevision: 13,
-              updatedSections: ["items"],
-              sectionRevisions: {
-                items: 5,
-              },
-              items: { mode: "delta", changedIds: [1] },
-              qualityStatisticsScope: "all",
-              eventId: "test-13",
-            },
-          ],
-        };
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-    runtime_fixture.current.refresh_batch_translation.mockResolvedValueOnce(
-      create_task_snapshot({
-        progress: {
-          line: 0,
-          total_line: 1,
-          processed_line: 0,
-          error_line: 0,
-          total_tokens: 90,
-          total_output_tokens: 50,
-          total_input_tokens: 40,
-          time: 12,
-          start_time: 20,
-        },
-      }),
-    );
-
-    await render_probe();
-    await flush_microtasks();
-
-    await act(async () => {
-      latest_state?.request_task_action_confirmation("reset-failed");
-    });
-    await flush_microtasks();
-
-    await act(async () => {
-      await latest_state?.confirm_task_action();
-    });
-    await flush_microtasks();
-
-    expect(runtime_fixture.current.commit_project_write).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation: "workbench.translation_write",
-      }),
-    );
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/translation/reset", {
-      mode: "failed",
-    });
-    expect(runtime_fixture.current.refresh_batch_translation).toHaveBeenCalledWith();
-  });
-
-  it("translation reset failed 失败时由统一写入管线回传错误", async () => {
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-translation/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
-      if (path === "/api/workbench/translation/reset") {
-        throw new Error("reset boom");
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    await render_probe();
-    await flush_microtasks();
-
-    await act(async () => {
-      latest_state?.request_task_action_confirmation("reset-failed");
-    });
-    await flush_microtasks();
-
-    await act(async () => {
-      await latest_state?.confirm_task_action();
-    });
-    await flush_microtasks();
-
-    expect(runtime_fixture.current.commit_project_write).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation: "workbench.translation_write",
-      }),
-    );
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "batch_translation.feedback.reset_failed_failed",
-      expect.any(Error),
-    );
   });
 });
 

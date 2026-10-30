@@ -10,7 +10,15 @@ const MAX_RENDERER_DIAGNOSTIC_TEXT_LENGTH = 4096;
 // renderer 黑匣子只接收本地摘要字段，避免 shared error 的通用 sanitizer 记录完整业务 payload。
 const RENDERER_DIAGNOSTIC_CONTEXT_KEYS = {
   project: ["loaded", "path", "projectPath", "projectRevision", "runRevision", "sessionStatus"],
-  task: ["runRevision", "taskType", "status", "busy", "requestInFlightCount", "progress"],
+  task: [
+    "runRevision",
+    "taskType",
+    "status",
+    "busy",
+    "requestInFlightCount",
+    "progress",
+    "runProgress",
+  ],
   event: [
     "topic",
     "eventId",
@@ -85,11 +93,12 @@ export function normalize_renderer_diagnostics_payload(value: unknown): Renderer
     return {};
   }
   const record = value as Record<string, unknown>;
+  const route = normalize_renderer_diagnostics_text(record["route"]);
   return {
-    ...read_optional_route_field(record),
-    ...read_optional_context_field(record, "project", "project"),
-    ...read_optional_context_field(record, "task", "task"),
-    ...read_optional_context_field(record, "event", "event"),
+    ...(route === undefined ? {} : { route }),
+    ...read_optional_context_field(record, "project"),
+    ...read_optional_context_field(record, "task"),
+    ...read_optional_context_field(record, "event"),
   };
 }
 
@@ -128,25 +137,20 @@ export function normalize_renderer_error_context(value: unknown): LogErrorContex
   return Object.keys(context).length === 0 ? undefined : context;
 }
 
-function read_optional_route_field(record: Record<string, unknown>): Record<string, string> {
-  const route = normalize_renderer_diagnostics_text(record["route"]);
-  return route === undefined ? {} : { route };
-}
-
+/** 空上下文省略字段，避免生成没有诊断信息的节点。 */
 function read_optional_context_field(
   record: Record<string, unknown>,
-  field: "project" | "task" | "event",
-  key: RendererDiagnosticsContextKey,
+  field: RendererDiagnosticsContextKey,
 ): Record<string, LogErrorContext> {
-  const context = normalize_renderer_diagnostics_context_field(record[field], key);
+  const context = normalize_renderer_diagnostics_context_field(record[field], field);
   return context === undefined ? {} : { [field]: context };
 }
 
+/** 字段白名单属于 renderer 黑匣子边界，不回流到通用 sanitizer。 */
 function pick_renderer_diagnostic_context(
   value: object,
   key: keyof typeof RENDERER_DIAGNOSTIC_CONTEXT_KEYS,
 ): LogErrorContextInput {
-  // 字段白名单属于 renderer 黑匣子边界，不回流到 shared error 通用 sanitizer。
   const record = value as Record<string, unknown>;
   return Object.fromEntries(
     RENDERER_DIAGNOSTIC_CONTEXT_KEYS[key].flatMap((context_key) => {
@@ -158,6 +162,7 @@ function pick_renderer_diagnostic_context(
   );
 }
 
+/** 路径只保留可定位的摘要，其余已准入字段交给通用裁剪。 */
 function summarize_renderer_diagnostic_context_value(
   context_key: string,
   record: Record<string, unknown>,
@@ -169,6 +174,7 @@ function summarize_renderer_diagnostic_context_value(
   return value;
 }
 
+/** 异常上下文只接收登记字段，避免附带业务载荷。 */
 function pick_renderer_error_context(value: object): LogErrorContextInput {
   const record = value as Record<string, unknown>;
   return Object.fromEntries(
@@ -181,6 +187,7 @@ function pick_renderer_error_context(value: object): LogErrorContextInput {
   );
 }
 
+/** 路径与 URL 使用各自的脱敏规则，非法值按空身份处理。 */
 function summarize_renderer_error_context_value(
   context_key: RendererErrorContextKey,
   record: Record<string, unknown>,
@@ -197,6 +204,7 @@ function summarize_renderer_error_context_value(
   return value;
 }
 
+/** 统一换行并限制单段文本长度，控制诊断体积。 */
 function trim_renderer_diagnostic_text(value: string): string {
   const text = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   return text.length > MAX_RENDERER_DIAGNOSTIC_TEXT_LENGTH

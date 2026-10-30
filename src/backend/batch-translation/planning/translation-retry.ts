@@ -7,11 +7,11 @@ import type { TranslationContext } from "./translation-plan-types";
 const TRANSLATION_HALVING_ROUNDS = 2; // 多条单元对半切的轮数。
 const TRANSLATION_SINGLE_RETRY_LIMIT = 1; // 单条单元首次执行后的重试次数。
 
-/** 按单元粒度收敛失败条目，单条耗尽预算后在 worker 快照上标记 ERROR。 */
+/** 按单元粒度收敛失败条目，单条耗尽预算后只返回本轮耗尽 ID。 */
 export function plan_translation_retry(
   context: TranslationContext,
   returned_items: TextTaskItemRecord[],
-): { retry_contexts: TranslationContext[]; error_items: TextTaskItemRecord[] } {
+): { retry_contexts: TranslationContext[]; exhausted_item_ids: number[] } {
   const pending_by_id = new Map(
     returned_items
       .filter((item) => read_task_item_status(item) === "NONE")
@@ -19,10 +19,7 @@ export function plan_translation_retry(
   );
   const is_single = context.items.length === 1;
   if (is_single && context.retry_count >= TRANSLATION_SINGLE_RETRY_LIMIT) {
-    // 终态提交保留 worker 写回的译文和附加字段。
-    const error_items = [...pending_by_id.values()];
-    for (const item of error_items) item["status"] = "ERROR";
-    return { retry_contexts: [], error_items };
+    return { retry_contexts: [], exhausted_item_ids: [...pending_by_id.keys()] };
   }
   // worker 决定待重试集合，拆块使用本轮原始源文与顺序。
   const pending_items = context.items.filter((item) => pending_by_id.has(read_task_item_id(item)));
@@ -39,5 +36,5 @@ export function plan_translation_retry(
       retry_count: !is_single && items.length === 1 ? 0 : context.retry_count + 1, // 多条拆成单条时开始单条计数。
     });
   }
-  return { retry_contexts, error_items: [] };
+  return { retry_contexts, exhausted_item_ids: [] };
 }

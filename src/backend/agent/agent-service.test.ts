@@ -4043,9 +4043,7 @@ describe("AgentService", () => {
         start_time: 0,
         time: 0,
         total_line: 2,
-        line: 1,
         processed_line: 1,
-        error_line: 0,
         total_tokens: 0,
         total_input_tokens: 0,
         total_reasoning_tokens: 0,
@@ -4056,7 +4054,7 @@ describe("AgentService", () => {
           status: cleanup_failed ? ("error" as const) : ("stopped" as const),
           stop_source: "user" as const,
           progress,
-          run_progress: progress,
+          run_progress: { ...progress, failed_line: 0 },
         };
         if (cleanup_failed)
           throw new BatchTranslationCompletionError(result, new Error("cleanup failed"));
@@ -4134,10 +4132,8 @@ describe("AgentService", () => {
             progress: {
               start_time: 0,
               time: 0,
-              line: 2,
               total_line: 2,
               processed_line: 2,
-              error_line: 0,
               total_tokens: 0,
               total_input_tokens: 0,
               total_reasoning_tokens: 0,

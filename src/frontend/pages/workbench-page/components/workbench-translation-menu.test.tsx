@@ -56,7 +56,6 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
 const workbench_stats = {
   total_items: 4,
   completed_count: 1,
-  failed_count: 0,
   pending_count: 3,
   skipped_count: 0,
   completion_percent: 25,
@@ -96,6 +95,7 @@ describe("WorkbenchTranslationMenu", () => {
     root = null;
   });
 
+  /** 按可见标签选择动作，缺失时直接报告目标。 */
   function find_button(label: string): HTMLButtonElement {
     const button = [...(container?.querySelectorAll("button") ?? [])].find((candidate) =>
       candidate.textContent?.includes(label),
@@ -106,6 +106,7 @@ describe("WorkbenchTranslationMenu", () => {
     return button;
   }
 
+  /** 复用挂载点更新菜单，保留 React 的真实重渲染行为。 */
   async function render_menu(element: ReactNode): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -131,11 +132,10 @@ describe("WorkbenchTranslationMenu", () => {
     await act(async () => {
       find_button("workbench_page.action.start_translation").click();
       find_button("workbench_page.action.reset_task_all").click();
-      find_button("workbench_page.action.reset_task_failed").click();
     });
 
     expect(on_start_or_continue).toHaveBeenCalledOnce();
     expect(on_request_reset).toHaveBeenNthCalledWith(1, "reset-all");
-    expect(on_request_reset).toHaveBeenNthCalledWith(2, "reset-failed");
+    expect(on_request_reset).toHaveBeenCalledOnce();
   });
 });

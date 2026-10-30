@@ -37,7 +37,7 @@ describe("proofreading command planner", () => {
     const plan = create_apply_item_changes_plan({
       snapshot: create_test_snapshot([
         create_test_item({ item_id: 1, dst: "旧正文", name_dst: "旧译名" }),
-        create_test_item({ item_id: 2, status: "ERROR" }),
+        create_test_item({ item_id: 2, status: "NONE" }),
       ]),
       changes: [
         { item_id: 1, dst: "新正文", name_dst: "新译名" },

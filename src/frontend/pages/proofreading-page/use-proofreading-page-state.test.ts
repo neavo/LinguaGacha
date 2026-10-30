@@ -920,7 +920,7 @@ describe("useProofreadingPageState", () => {
     const glossary_entry_id = "magic";
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        outcomes: ["NO_WARNING", "NONE", "PROCESSED", "ERROR"],
+        outcomes: ["NO_WARNING", "NONE", "PROCESSED"],
         glossary_entry_ids: [glossary_entry_id],
       });
     });
@@ -932,7 +932,7 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          outcomes: ["NO_WARNING", "NONE", "PROCESSED", "ERROR"],
+          outcomes: ["NO_WARNING", "NONE", "PROCESSED"],
           glossary_entry_ids: [glossary_entry_id],
         }),
       }),

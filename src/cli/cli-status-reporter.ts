@@ -64,7 +64,7 @@ export class CLIJsonStatusReporter {
   }
 
   /**
-   * 从任务快照组装四卡片进度；外部 stats 未变化时不重复刷屏。
+   * 从任务快照组装本轮进度；外部 stats 未变化时不重复刷屏。
    */
   public emit_progress(snapshot: CLIProgressInput): void {
     const stats = build_cli_progress_stats(snapshot.run_progress ?? snapshot.progress);
@@ -144,18 +144,12 @@ function is_empty_stats(stats: CLIProgressStats): boolean {
 }
 
 /**
- * 将内部 BatchTranslationProgress 转换为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
+ * 将内部 BatchTranslationProgress 转换为稳定 stats；外部字段不跟随内部 total_line 等命名变化。
  */
 export function build_cli_progress_stats(progress: JsonRecord): CLIProgressStats {
   const total = Math.max(0, read_progress_count(progress["total_line"]));
-  const completed = clamp_count(
-    read_progress_count(progress["processed_line"]) > 0
-      ? read_progress_count(progress["processed_line"])
-      : read_progress_count(progress["line"]),
-    0,
-    total,
-  );
-  const failed = clamp_count(read_progress_count(progress["error_line"]), 0, total - completed);
+  const completed = clamp_count(read_progress_count(progress["processed_line"]), 0, total);
+  const failed = clamp_count(read_progress_count(progress["failed_line"]), 0, total - completed);
   const skipped = 0;
   const pending = Math.max(0, total - skipped - failed - completed);
   const percent = total > 0 ? ((completed + skipped) / total) * 100 : 0;

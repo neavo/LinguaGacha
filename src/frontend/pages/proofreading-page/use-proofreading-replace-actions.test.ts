@@ -24,7 +24,7 @@ it("姓名替换更新当前姓名并完成条目", async () => {
     dst: "既有译文",
     name_src: null,
     name_dst: "旧名",
-    status: "ERROR",
+    status: "NONE",
     warnings: [],
     glossary_applications: [],
     compressed_src: "原文",

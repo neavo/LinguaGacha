@@ -45,7 +45,7 @@ it("注音不进入翻译，改写正文后展开 ruby，双语原文保留注�
   const text = "WEBVTT\n\n00:00.000 --> 00:02.000\n<lang ja><ruby>漢<rt>かん</ruby></lang>字\n";
   const items = await format.read_from_stream(Buffer.from(text), "sub.vtt");
   expect(items.map((item) => item.src)).toEqual(["漢", "字"]);
-  items[0]!.status = "ERROR";
+  items[0]!.status = "NONE";
   items[0]!.dst = "暂存译文";
   expect(format.render_text(text, items, "sub.vtt").translated).toBe(text);
   items[0]!.status = "PROCESSED";

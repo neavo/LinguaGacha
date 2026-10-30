@@ -6,7 +6,6 @@ it("完成接受正文原值，其余状态不提供写回结果", () => {
     expect(read_translation_for_generation({ status: "PROCESSED", dst })).toBe(dst);
     for (const status of [
       "NONE",
-      "ERROR",
       "EXCLUDED",
       "RULE_SKIPPED",
       "LANGUAGE_SKIPPED",

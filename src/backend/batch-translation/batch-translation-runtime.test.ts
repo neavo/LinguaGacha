@@ -27,7 +27,7 @@ function deferred<T>() {
 /** 提供已完成两条的最小运行结果。 */
 const result = () => ({
   status: "done" as const,
-  progress: normalize_batch_translation_progress({ line: 2, total_line: 2 }),
+  progress: normalize_batch_translation_progress({ processed_line: 2, total_line: 2 }),
 });
 
 describe("批量翻译完成链", () => {
@@ -188,10 +188,11 @@ describe("批量翻译完成链", () => {
     ]);
     expect(gate.get_snapshot().owner).toBeNull();
     const next = runtime.begin_standalone();
-    await runtime.publish_targets(next, new Set([4]));
+    const next_progress = await runtime.publish_targets(next, new Set([4]));
     await runtime.publish_targets(handle, new Set([99]));
-    await runtime.publish_progress(handle, [4]);
+    await runtime.publish_progress(handle, [4], { ...next_progress, failed_line: 9 });
     expect((await runtime.build_snapshot()).pending_item_ids).toEqual([4]);
+    expect((await runtime.build_snapshot()).run_progress?.failed_line).toBe(0);
     await runtime.dispose();
     await next.completion;
     await database.close();
@@ -327,7 +328,7 @@ describe("批量翻译完成链", () => {
       item_ids.add(4);
       expect(frames.at(-1)).toMatchObject({
         pending_item_ids: [1, 2, 3],
-        run_progress: { total_line: 3, line: 0 },
+        run_progress: { total_line: 3, processed_line: 0 },
       });
       await runtime.publish_progress(handle, [2]);
       expect((await runtime.build_snapshot()).pending_item_ids).toEqual([1, 3]);
@@ -368,8 +369,8 @@ describe("批量翻译完成链", () => {
     terminal.resolve();
     expect(await handle.completion).toEqual(output);
     expect(gate.get_snapshot().owner).toBeNull();
-    output.progress.line = 20;
-    expect((await handle.completion).progress.line).toBe(2);
+    output.progress.processed_line = 20;
+    expect((await handle.completion).progress.processed_line).toBe(2);
     unsubscribe();
     await runtime.dispose();
     await database.close();

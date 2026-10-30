@@ -68,9 +68,6 @@ function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
   if (status === "PROCESSED") {
     return "success";
   }
-  if (status === "ERROR") {
-    return "failure";
-  }
 
   return "neutral";
 }

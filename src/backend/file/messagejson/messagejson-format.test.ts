@@ -43,7 +43,7 @@ describe("MESSAGEJSONFormat", () => {
       { ...items[3]!, name_dst: "四" },
       { ...items[1]!, status: "PROCESSED" as const, dst: "第二句", name_dst: "鲍勃" },
       { ...items[0]!, status: "PROCESSED" as const, dst: "", name_dst: "爱丽丝" },
-      { ...items[2]!, status: "ERROR" as const, dst: "忽略", name_dst: "三" },
+      { ...items[2]!, status: "NONE" as const, dst: "忽略", name_dst: "三" },
       { ...items[4]!, name_dst: "" },
     ];
     expect(JSON.parse(format.render_text(JSON.stringify(source), updates, "m.json"))).toEqual([

@@ -1,9 +1,10 @@
 import type { TranslationContext } from "../planning/translation-plan-types";
 import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
 
-/** 批次提交携带终态条目与本次用量，也支持仅用量提交。 */
+/** 批次结算携带成功条目、耗尽 ID 与本次用量。 */
 export interface TranslationCommitEntry {
   items: TextTaskItemRecord[];
+  exhausted_item_ids: number[]; // 只结算本轮目标，不生成条目写入。
   input_tokens: number;
   reasoning_tokens: number; // 已报告的思考用量，与输出用量互斥。
   output_tokens: number; // 已扣除思考用量的模型输出。
@@ -11,7 +12,7 @@ export interface TranslationCommitEntry {
 
 /** 流水线分别接收批次提交与内容重试，二者可同时存在。 */
 export interface TranslationPipelineWorkerResult {
-  commit_entries: TranslationCommitEntry[]; // 终态条目或仅用量的批次，提交前核对运行身份。
+  commit_entries: TranslationCommitEntry[]; // 成功、耗尽或仅用量的批次，结算前核对运行身份。
   retry_contexts: TranslationContext[]; // 保留失败上下文，调度器优先安排重试
 }
 
@@ -143,7 +144,7 @@ export class TranslationPipeline {
   }
 
   /**
-   * 冲刷提交队列；提交失败交给上层任务 catch 转成 ERROR 终态
+   * 冲刷提交队列；提交失败交给上层任务完成链。
    */
   private async flush_commit_queue(): Promise<void> {
     if (this.commit_queue.length === 0) {

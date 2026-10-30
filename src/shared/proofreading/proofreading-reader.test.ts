@@ -275,7 +275,7 @@ describe("proofreading-reader", () => {
       quality: create_quality(),
       upsertItems: [
         create_item({ item_id: 1, dst: "译文", status: "PROCESSED" }),
-        create_item({ item_id: 2, dst: "", status: "ERROR" }),
+        create_item({ item_id: 2, dst: "", status: "NONE" }),
         create_item({ item_id: 3, dst: "", status: "NONE" }),
         create_item({ item_id: 4, dst: "", status: "EXCLUDED" }),
       ],
@@ -339,7 +339,7 @@ describe("proofreading-reader", () => {
           row_number: 4,
           src: "失败",
           dst: "",
-          status: "ERROR",
+          status: "NONE",
         }),
         create_item({
           item_id: 5,

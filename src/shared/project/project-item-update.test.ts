@@ -72,29 +72,28 @@ describe("project item field patch", () => {
 describe("project item manual update", () => {
   it.each([null, ""])("提交相同空姓名 %j 保持无变化", (name_dst) => {
     expect(
-      apply_project_item_manual_update(
-        { ...BASE_ITEM, name_dst, status: "ERROR" },
-        { name_dst: "" },
-      ),
+      apply_project_item_manual_update({ ...BASE_ITEM, name_dst }, { name_dst: "" }),
     ).toBeNull();
   });
 
   it("显式完成可以接受空译文", () => {
     expect(
       apply_project_item_manual_update(
-        { ...BASE_ITEM, dst: "", name_dst: null, status: "ERROR" },
+        { ...BASE_ITEM, dst: "", name_dst: null },
         { status: "PROCESSED" },
       ),
     ).toEqual({ ...BASE_ITEM, dst: "", name_dst: null, status: "PROCESSED" });
   });
   it.each(["", "新译文"])("正文实际改为 %j 时完成条目", (dst) => {
-    expect(
-      apply_project_item_manual_update({ ...BASE_ITEM, dst: "旧译文", status: "ERROR" }, { dst }),
-    ).toEqual({ ...BASE_ITEM, dst, status: "PROCESSED" });
+    expect(apply_project_item_manual_update(BASE_ITEM, { dst })).toEqual({
+      ...BASE_ITEM,
+      dst,
+      status: "PROCESSED",
+    });
   });
 
-  it("同值内容不改变失败状态，显式状态可以接受已有译文", () => {
-    const current = { ...BASE_ITEM, status: "ERROR" };
+  it("同值内容保持未处理，显式状态可以接受已有译文", () => {
+    const current = BASE_ITEM;
     expect(apply_project_item_manual_update(current, { dst: current.dst })).toBeNull();
     expect(apply_project_item_manual_update(current, { name_dst: "旧译名" })).toBeNull();
     expect(apply_project_item_manual_update(current, {})).toBeNull();
@@ -105,17 +104,12 @@ describe("project item manual update", () => {
 
   it.each([{ dst: "新译文" }, { name_dst: "" }])("显式状态覆盖内容修改的完成状态：%j", (update) => {
     expect(
-      apply_project_item_manual_update(
-        { ...BASE_ITEM, status: "ERROR" },
-        { ...update, status: "EXCLUDED" },
-      ),
+      apply_project_item_manual_update(BASE_ITEM, { ...update, status: "EXCLUDED" }),
     ).toMatchObject({ status: "EXCLUDED" });
   });
 
   it.each(["", "新译名"])("姓名改为 %j 时完成条目", (name_dst) => {
-    expect(
-      apply_project_item_manual_update({ ...BASE_ITEM, status: "ERROR" }, { name_dst }),
-    ).toEqual({
+    expect(apply_project_item_manual_update(BASE_ITEM, { name_dst })).toEqual({
       ...BASE_ITEM,
       name_dst,
       status: "PROCESSED",

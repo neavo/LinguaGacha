@@ -2,7 +2,6 @@
 export type ProjectTranslationStats = {
   total_items: number;
   completed_count: number;
-  failed_count: number;
   pending_count: number;
   skipped_count: number;
   completion_percent: number;
@@ -29,15 +28,11 @@ export function build_project_translation_stats(
   items: readonly { status: string }[],
 ): ProjectTranslationStats {
   let completed_count = 0;
-  let failed_count = 0;
   let skipped_count = 0;
   for (const item of items) {
     switch (item.status) {
       case "PROCESSED":
         completed_count += 1;
-        break;
-      case "ERROR":
-        failed_count += 1;
         break;
       case "EXCLUDED":
       case "RULE_SKIPPED":
@@ -51,9 +46,8 @@ export function build_project_translation_stats(
   return {
     total_items,
     completed_count,
-    failed_count,
     skipped_count,
-    pending_count: total_items - completed_count - failed_count - skipped_count,
+    pending_count: total_items - completed_count - skipped_count,
     completion_percent: calculate_completion_percent(total_items, completed_count, skipped_count),
   };
 }

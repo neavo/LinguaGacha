@@ -422,19 +422,17 @@ describe("ProjectLifecycleService", () => {
       const service = create_service({
         database,
         config: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: enabled },
-        project_event_handler: async () => {
-          expect((await database.get_all_items(project_path)).map((item) => item.status)).toEqual([
+        project_event_handler: ({ snapshot }) => {
+          expect(snapshot?.items.map((item) => item.status)).toEqual([
             "NONE",
             enabled ? "DUPLICATED" : "NONE",
             "PROCESSED",
             "PROCESSED",
             "EXCLUDED",
           ]);
-          expect((await database.get_all_meta(project_path)).translation_extras).toMatchObject({
+          expect(snapshot?.meta["translation_extras"]).toMatchObject({
             total_line: enabled ? 3 : 4,
             processed_line: 2,
-            error_line: 0,
-            line: 2,
           });
         },
       });

@@ -26,9 +26,11 @@ export const de_de_batch_translation = {
   feedback: {
     stats_refresh_failed:
       "Die Übersetzungsstatistik des Projekts konnte nicht aktualisiert werden …",
-    done: "Übersetzung abgeschlossen",
-    stopped: "Übersetzung gestoppt",
-    done_with_errors: "Übersetzung abgeschlossen, einige Einträge sind fehlgeschlagen",
+    done: "Übersetzung abgeschlossen …",
+    stopped: "Übersetzung gestoppt …",
+    ended: "Übersetzung beendet …",
+    retry_exhausted:
+      "{count} Einträge waren auch nach mehreren Versuchen nicht erfolgreich und wurden übersprungen …",
     keys_retry_wait:
       "API-Fehler. Automatischer Neuversuch in {seconds} Sekunden. Bisher {count} Neuversuche …",
     keys_retry_running: "API-Fehler. Erneuter Versuch läuft …",
@@ -36,12 +38,10 @@ export const de_de_batch_translation = {
     start_failed: "Fehler beim Starten der Übersetzungsaufgabe …",
     stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe …",
     reset_all_failed: "Fehler beim Zurücksetzen des gesamten Übersetzungsfortschritts …",
-    reset_failed_failed: "Fehler beim Zurücksetzen der fehlgeschlagenen Übersetzungseinträge …",
   },
   confirm: {
     reset_all_description:
       "Übersetzungsfortschritt für das gesamte Projekt wirklich zurücksetzen …?",
-    reset_failed_description: "Fehlgeschlagene Übersetzungseinträge wirklich zurücksetzen …?",
     stop_description: "Aktuelle Übersetzungsaufgabe wirklich stoppen …?",
   },
   action: { stop: "Stoppen" },

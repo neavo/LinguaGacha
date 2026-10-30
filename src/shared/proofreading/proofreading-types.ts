@@ -67,7 +67,7 @@ export const PROOFREADING_OUTCOME_GROUPS = [
   {
     code: "unfinished",
     selected_by_default: true,
-    outcome_codes: ["ERROR", "NONE"],
+    outcome_codes: ["NONE"],
   },
   {
     code: "not_required",
@@ -83,7 +83,6 @@ export type ProofreadingOutcomeCode = string;
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSED",
-  "ERROR",
   "LANGUAGE_SKIPPED",
   "EXCLUDED",
   "RULE_SKIPPED",

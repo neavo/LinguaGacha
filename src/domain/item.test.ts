@@ -12,6 +12,16 @@ import {
 import { Check } from "typebox/value";
 
 describe("条目数据契约", () => {
+  it("公开与完整写入契约拒绝旧失败状态", () => {
+    const item = create_item({ id: 1 });
+    expect(
+      Check(PROJECT_ITEM_PUBLIC_SCHEMA, {
+        ...build_project_item_public_record(item),
+        status: "ERROR",
+      }),
+    ).toBe(false);
+    expect(Check(PROJECT_ITEM_WRITE_SCHEMA, { ...item, status: "ERROR" })).toBe(false);
+  });
   it("公开与完整写入契约拒绝姓名数组", () => {
     const item = create_item({ id: 1, name_src: "原名", name_dst: "译名" });
     const record = build_project_item_public_record(item);

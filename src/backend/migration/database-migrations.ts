@@ -1,4 +1,5 @@
 import { run_item_name_text_migration } from "./database/item-name-text-migration";
+import { run_item_error_status_migration } from "./database/item-error-status-migration";
 import { update_project_file_version } from "../database/project-file-version";
 import { run_asset_file_type_migration } from "./database/asset-file-type-migration";
 import { run_renpy_rpy_file_type_migration } from "./database/renpy-rpy-file-type-migration";
@@ -23,6 +24,7 @@ const DATABASE_WRITEBACK_MIGRATIONS: readonly DatabaseWritebackMigration[] = [
   { id: "asset-file-type", run: run_asset_file_type_migration },
   { id: "renpy-rpy-file-type", run: run_renpy_rpy_file_type_migration },
   { id: "item-name-text", run: run_item_name_text_migration },
+  { id: "item-error-status", run: run_item_error_status_migration },
 ];
 export const PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY =
   "applied_writeback_migrations";

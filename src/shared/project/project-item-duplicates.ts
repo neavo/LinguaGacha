@@ -21,11 +21,11 @@ export type ProjectDuplicateStatusChange = Readonly<{
 
 type DuplicateGroup = {
   candidates: ProjectDuplicateItem[]; // 可在 NONE 与 DUPLICATED 间协调的成员
-  has_anchor: boolean; // PROCESSED 或 ERROR 已承担组代表
+  has_anchor: boolean; // PROCESSED 已承担组代表
 };
 
 /**
- * 每个重复组只保留一个可翻译代表；已完成或最终失败的条目承担组代表，避免重复请求绕过重试语义。
+ * 每个重复组只保留一个可翻译代表；已完成条目承担组代表。
  * 协调器只维护 NONE 与 DUPLICATED，不覆盖人工、过滤或任务产生的其它状态。
  */
 export function coordinate_project_duplicate_statuses(
@@ -54,7 +54,7 @@ export function coordinate_project_duplicate_statuses(
     }
     if (item.status === "NONE" || item.status === "DUPLICATED") {
       group.candidates.push(item);
-    } else if (item.status === "PROCESSED" || item.status === "ERROR") {
+    } else if (item.status === "PROCESSED") {
       group.has_anchor = true;
     }
   }

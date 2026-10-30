@@ -55,7 +55,6 @@ describe("AgentTaskStatus", () => {
           ...create_empty_batch_translation_snapshot().progress,
           start_time: 10,
           total_output_tokens: 100,
-          line: 100,
           total_line: 400,
         },
       },

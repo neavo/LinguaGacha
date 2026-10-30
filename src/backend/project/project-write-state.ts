@@ -41,15 +41,11 @@ export function build_translation_extras_from_items(args: {
   items: Iterable<Pick<ProjectItemPublicRecord, "status">>;
 }): BatchTranslationProgress {
   let processed_line = 0;
-  let error_line = 0;
   let total_line = 0;
 
   for (const item of args.items) {
     if (item.status === "PROCESSED") {
       processed_line += 1;
-    }
-    if (item.status === "ERROR") {
-      error_line += 1;
     }
     if ((TASK_PROGRESS_STATUSES as readonly string[]).includes(item.status)) {
       total_line += 1;
@@ -57,11 +53,9 @@ export function build_translation_extras_from_items(args: {
   }
 
   return {
-    ...args.progress,
+    ...normalize_batch_translation_progress(args.progress),
     processed_line,
-    error_line,
     total_line,
-    line: processed_line + error_line,
   };
 }
 

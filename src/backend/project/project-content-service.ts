@@ -582,27 +582,6 @@ export class ProjectContentService {
           signal,
         );
       }
-      if (mode === "failed") {
-        // 失败条目已获准翻译，重试保留该资格。
-        const items = this.to_public_item_record(await this.database.get_all_items(project_path));
-        for (const item of Object.values(items)) {
-          if (item.status !== "ERROR") {
-            continue;
-          }
-          item.dst = "";
-          item.name_dst = null;
-          item.status = "NONE";
-        }
-        const translation_extras = await this.build_translation_extras_for_items(
-          project_path,
-          items,
-        );
-        return await this.write_store.reset_translation_state({
-          projectPath: project_path,
-          items: build_project_item_persistent_records(items),
-          translationExtras: translation_extras as MutableJsonRecord,
-        });
-      }
       throw new AppErrors.AppError("request.validation_failed");
     });
   }
@@ -770,15 +749,6 @@ export class ProjectContentService {
   }
 
   /**
-   * 以 record 形状传给后端预过滤工具，key 固定为公开 item_id
-   */
-  private to_public_item_record(
-    items: MutableJsonRecord[],
-  ): Record<string, ProjectItemPublicRecord> {
-    return this.public_item_record(this.to_public_items_by_id(items).values());
-  }
-
-  /**
    * 按 item_id 组装预过滤输入并复制条目，避免预过滤或继承修改上游快照。
    */
   private public_item_record(
@@ -864,19 +834,6 @@ export class ProjectContentService {
       seed = Math.max(seed, item_id);
     }
     return seed;
-  }
-
-  /**
-   * 按完整 item 集合重建翻译进度 meta，保留数据库现有累计统计
-   */
-  private async build_translation_extras_for_items(
-    project_path: string,
-    items: Record<string, ProjectItemPublicRecord>,
-  ): Promise<Record<string, unknown>> {
-    return build_translation_extras_from_items({
-      progress: await this.read_translation_progress(project_path),
-      items: Object.values(items),
-    });
   }
 
   /** 按资产完整重建取得原稿的资产，保留其他资产的条目，并在同一事务提交最终事实。 */

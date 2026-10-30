@@ -269,6 +269,7 @@ function context(id: number) {
   return {
     work_unit_id: String(id),
     items: [],
+    exhausted_item_ids: [],
     precedings: [],
     followings: [],
     retry_count: 0,
@@ -276,5 +277,11 @@ function context(id: number) {
 }
 /** 通过提交载荷区分已完成任务，无需建立项目存储。 */
 function commit(id: number) {
-  return { items: [], input_tokens: id, reasoning_tokens: 0, output_tokens: 0 };
+  return {
+    items: [],
+    exhausted_item_ids: [],
+    input_tokens: id,
+    reasoning_tokens: 0,
+    output_tokens: 0,
+  };
 }

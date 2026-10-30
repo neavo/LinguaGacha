@@ -6,7 +6,6 @@ import { JSON_VALUE_SCHEMA, read_json_record, read_json_integer } from "./json";
 export const ITEM_STATUSES = [
   "NONE",
   "PROCESSED",
-  "ERROR",
   "EXCLUDED",
   "RULE_SKIPPED",
   "LANGUAGE_SKIPPED",

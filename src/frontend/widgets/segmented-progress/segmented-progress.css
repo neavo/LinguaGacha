@@ -16,10 +16,6 @@
   background: var(--primary);
 }
 
-.segmented-progress__segment--failed {
-  background: var(--ui-failure);
-}
-
 .segmented-progress__segment--completed {
   background: var(--ui-success);
 }

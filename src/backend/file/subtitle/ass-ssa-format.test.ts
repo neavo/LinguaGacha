@@ -68,7 +68,7 @@ it("旧项目的行号和译文直接写回，历史模板不决定正文位置"
     translated: `${before}${PREFIX}\n`,
     bilingual: text,
   });
-  item.status = "ERROR";
+  item.status = "NONE";
   item.dst = "暂存";
   expect(format.render_text(text, [structural, item], "old.ass").translated).toBe(text);
 });

@@ -42,7 +42,6 @@ function create_entry(rel_path: string, completion_percent = 33): WorkbenchFileE
       total_count: 3,
       completed_count: 1,
       skipped_count: 0,
-      failed_count: 0,
       pending_count: 2,
       completion_percent,
     },
@@ -99,14 +98,9 @@ describe("WorkbenchFileTable", () => {
     return document.querySelector('[role="tooltip"][data-open]')!;
   }
 
-  it("只显示文件与进度列，右键多选中的文件时重置点击的文件", async () => {
+  it("右键多选中的文件时重置点击的文件", async () => {
     const on_reset = vi.fn();
     await render([create_entry("a.txt"), create_entry("b.txt")], on_reset, ["a.txt", "b.txt"]);
-    expect(
-      [...container.querySelectorAll(".app-table__head-cell:not(.app-table__drag-head)")].map(
-        (cell) => cell.textContent,
-      ),
-    ).toEqual(["workbench_page.table.file_name", "workbench_page.table.progress"]);
     const row = container.querySelector<HTMLElement>(
       '.app-table__table--body [data-row-index="1"]',
     )!;
@@ -157,7 +151,6 @@ describe("WorkbenchFileTable", () => {
         total_count: 3,
         completed_count: 2,
         skipped_count: 1,
-        failed_count: null,
         pending_count: 0,
         completion_percent: 100,
       },

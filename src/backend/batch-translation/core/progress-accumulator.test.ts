@@ -9,47 +9,6 @@ describe("TranslationProgressAccumulator", () => {
     vi.useRealTimers();
   });
 
-  it("从数据库 meta 恢复固定进度字段并过滤坏值", () => {
-    expect(
-      TranslationProgressAccumulator.from_record({
-        start_time: 10.5,
-        time: "bad",
-        total_line: "3.8",
-        line: 2.9,
-        processed_line: null,
-        error_line: "1.2",
-        total_tokens: Number.NaN,
-        total_input_tokens: 4.7,
-        total_output_tokens: "6.9",
-        extra: 999,
-      }),
-    ).toEqual({
-      start_time: 10.5,
-      time: 0,
-      total_line: 3,
-      line: 2,
-      processed_line: 0,
-      error_line: 1,
-      total_tokens: 0,
-      total_input_tokens: 4,
-      total_reasoning_tokens: 0,
-      total_output_tokens: 6,
-    });
-
-    expect(TranslationProgressAccumulator.from_record([])).toEqual({
-      start_time: 0,
-      time: 0,
-      total_line: 0,
-      line: 0,
-      processed_line: 0,
-      error_line: 0,
-      total_tokens: 0,
-      total_input_tokens: 0,
-      total_reasoning_tokens: 0,
-      total_output_tokens: 0,
-    });
-  });
-
   it("累计 token 时以输入、思考和输出字段重建总数", () => {
     const snapshot = TranslationProgressAccumulator.add_tokens(
       {
@@ -69,24 +28,6 @@ describe("TranslationProgressAccumulator", () => {
       total_reasoning_tokens: 5,
       total_output_tokens: 6,
       total_tokens: 14,
-    });
-  });
-
-  it("更新行数时用 processed 和 error 生成公开 line", () => {
-    const snapshot = TranslationProgressAccumulator.with_counts(
-      TranslationProgressAccumulator.empty(),
-      {
-        total_line: 4,
-        processed_line: 2,
-        error_line: 1,
-      },
-    );
-
-    expect(snapshot).toMatchObject({
-      total_line: 4,
-      processed_line: 2,
-      error_line: 1,
-      line: 3,
     });
   });
 

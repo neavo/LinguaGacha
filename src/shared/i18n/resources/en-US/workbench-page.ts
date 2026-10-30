@@ -4,7 +4,7 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_workbench_page = {
   title: "Workbench",
   unit: {
-    line: "Line",
+    item: "Items",
   },
   table: {
     file_name: "File Name",
@@ -24,7 +24,6 @@ export const en_us_workbench_page = {
     translation_task: "Translation",
     start_translation: "Start Translation",
     reset_task_all: "Reset All Data",
-    reset_task_failed: "Reset Failed Data",
   },
   dialog: {
     import_conflict: {

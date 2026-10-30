@@ -70,13 +70,7 @@ export class ItemCache {
       visited.add(key);
       for (const member of this.duplicate_groups.get(key) ?? []) {
         const status = this.items_by_id.get(member)?.status;
-        if (
-          status === "NONE" ||
-          status === "DUPLICATED" ||
-          status === "PROCESSED" ||
-          status === "ERROR"
-        )
-          ids.add(member);
+        if (status === "NONE" || status === "DUPLICATED" || status === "PROCESSED") ids.add(member);
       }
     }
     return [...ids].sort((a, b) => a - b);

@@ -266,6 +266,7 @@ it.each([false, true])("真实旧工程完整升级及早期步骤已完成：%s
     "asset-file-type",
     "renpy-rpy-file-type",
     "item-name-text",
+    "item-error-status",
   ]);
   expect(db.prepare("SELECT sort_order FROM assets").get()?.["sort_order"]).toBe(0);
   expect(

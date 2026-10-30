@@ -137,8 +137,6 @@ export type ProjectWriteSectionAck = {
 type TranslationProgressCounters = {
   total_line: number;
   processed_line: number;
-  error_line: number;
-  line: number;
 };
 
 /** Agent 预演与事务重算共用的领域结果。 */
@@ -432,27 +430,6 @@ export class ProjectWriteStore {
         Object.assign(context.pendingMeta, request.meta);
         this.stage_section_revisions(context);
         return { writes: [] };
-      },
-    });
-  }
-
-  /**
-   * 翻译重置提交完整后端生成 item 集合，但提交管线仍统一。
-   */
-  public async reset_translation_state(request: {
-    projectPath: string;
-    items: Item[];
-    translationExtras: MutableJsonRecord;
-  }): Promise<ProjectWriteResult> {
-    return await this.replace_project_items_and_files({
-      projectPath: request.projectPath,
-      requireExpectedSectionRevisions: false,
-      revisionSections: ["items"],
-      source: "translation_reset",
-      updatedSections: ["items"],
-      items: request.items,
-      meta: {
-        translation_extras: request.translationExtras as unknown as JsonValue,
       },
     });
   }
@@ -835,11 +812,9 @@ export class ProjectWriteStore {
             actual_changes,
           );
           const translation_extras = {
-            ...request.translationExtras,
+            ...normalize_batch_translation_progress(request.translationExtras),
             total_line: counters["total_line"],
             processed_line: counters["processed_line"],
-            error_line: counters["error_line"],
-            line: counters["line"],
           };
           revision_context.pendingMeta["translation_extras"] = translation_extras as JsonValue;
           if (actual_changes.length === 0) return { writes: [], updatedSections: [] };
@@ -1162,20 +1137,16 @@ export class ProjectWriteStore {
    * 用空闲任务默认值补齐项目内 translation_extras。
    */
   private read_translation_progress(meta: JsonRecord): Record<string, unknown> {
-    return {
-      ...normalize_batch_translation_progress(undefined),
-      ...read_json_record(meta["translation_extras"]),
-    };
+    return normalize_batch_translation_progress(meta["translation_extras"]);
   }
 
   /**
-   * 只有三项基础计数都是有限数字时才允许增量维护。
+   * 只有两项基础计数都是有限数字时才允许增量维护。
    */
   private has_translation_progress_counters(progress: Record<string, unknown>): boolean {
     return (
       this.is_finite_number(progress["total_line"]) &&
-      this.is_finite_number(progress["processed_line"]) &&
-      this.is_finite_number(progress["error_line"])
+      this.is_finite_number(progress["processed_line"])
     );
   }
 
@@ -1186,12 +1157,9 @@ export class ProjectWriteStore {
     progress: Record<string, unknown>,
   ): TranslationProgressCounters {
     const processed_line = this.read_non_negative_integer(progress["processed_line"]);
-    const error_line = this.read_non_negative_integer(progress["error_line"]);
     return {
       total_line: this.read_non_negative_integer(progress["total_line"]),
       processed_line,
-      error_line,
-      line: processed_line + error_line,
     };
   }
 
@@ -1206,12 +1174,9 @@ export class ProjectWriteStore {
       ...read_json_record(database.get_item_status_summary(project_path)),
     };
     const processed_line = this.read_non_negative_integer(summary["processed_line"]);
-    const error_line = this.read_non_negative_integer(summary["error_line"]);
     return {
       total_line: this.read_non_negative_integer(summary["total_line"]),
       processed_line,
-      error_line,
-      line: processed_line + error_line,
     };
   }
 
@@ -1224,36 +1189,28 @@ export class ProjectWriteStore {
   ): TranslationProgressCounters {
     let total_line = counters.total_line;
     let processed_line = counters.processed_line;
-    let error_line = counters.error_line;
     for (const change of changes) {
       const before = this.count_translation_status(change.current.status);
       const after = this.count_translation_status(change.next.status);
       total_line += after.total_line - before.total_line;
       processed_line += after.processed_line - before.processed_line;
-      error_line += after.error_line - before.error_line;
     }
     processed_line = Math.max(0, Math.trunc(processed_line));
-    error_line = Math.max(0, Math.trunc(error_line));
     return {
       total_line: Math.max(0, Math.trunc(total_line)),
       processed_line,
-      error_line,
-      line: processed_line + error_line,
     };
   }
 
   /**
-   * 将单个状态映射为翻译进度的四项计数贡献。
+   * 将单个状态映射为翻译进度的计数贡献。
    */
   private count_translation_status(status: string): TranslationProgressCounters {
     const is_progress_status = is_task_progress_status(status);
     const processed_line = status === "PROCESSED" ? 1 : 0;
-    const error_line = status === "ERROR" ? 1 : 0;
     return {
       total_line: is_progress_status ? 1 : 0,
       processed_line,
-      error_line,
-      line: processed_line + error_line,
     };
   }
 

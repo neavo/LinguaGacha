@@ -22,7 +22,7 @@ describe("plan_translation_retry", () => {
       status: item.id === 2 ? "PROCESSED" : "NONE",
     }));
     const result = plan_translation_retry(context, returned);
-    expect(result.error_items).toEqual([]);
+    expect(result.exhausted_item_ids).toEqual([]);
     expect(result.retry_contexts).toMatchObject([
       {
         items: [context.items[0], context.items[2]],
@@ -55,7 +55,7 @@ describe("plan_translation_retry", () => {
     expect(contexts.every((context) => context.retry_count === 0)).toBe(true);
   });
 
-  it("单条执行两次仍失败时，在 worker 快照上标记 ERROR", () => {
+  it("单条执行两次仍失败时，只返回耗尽 ID 并保留 worker 快照", () => {
     const context = create_context(2, [1, 2]);
     const [single] = plan_translation_retry(context, [
       { ...context.items[0], status: "PROCESSED" },
@@ -67,8 +67,8 @@ describe("plan_translation_retry", () => {
     const returned = [{ id: 2, src: "worker 源文", status: "NONE", dst: "" }];
     const final = plan_translation_retry(retry!, returned);
     expect(final.retry_contexts).toEqual([]);
-    expect(final.error_items[0]).toBe(returned[0]);
-    expect(returned[0]?.status).toBe("ERROR");
+    expect(final.exhausted_item_ids).toEqual([2]);
+    expect(returned[0]?.status).toBe("NONE");
     expect(context.items[1]?.status).toBe("NONE");
   });
 });

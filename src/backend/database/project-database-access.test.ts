@@ -138,7 +138,7 @@ it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事
   await database.transaction(lg_path, (writer) =>
     writer.set_items(lg_path, [
       { id: 1, src: "完成", status: "PROCESSED" },
-      { id: 2, src: "失败后修复", status: "ERROR" },
+      { id: 2, src: "失败后修复", status: "NONE" },
       { id: 3, src: "待处理", status: "NONE" },
       { id: 4, src: "跳过", status: "RULE_SKIPPED" },
     ]),
@@ -167,7 +167,6 @@ it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事
       translation_stats: {
         total_items: 4,
         completed_count: 2,
-        failed_count: 0,
         pending_count: 1,
         skipped_count: 1,
         completion_percent: 75,

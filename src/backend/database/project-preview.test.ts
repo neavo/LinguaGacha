@@ -19,8 +19,7 @@ it("旧表摘要按 id 排序，只读取概览字段并解释历史完成状态
     translation_stats: {
       total_items: 3,
       completed_count: 1,
-      failed_count: 1,
-      pending_count: 1,
+      pending_count: 2,
     },
   });
 });

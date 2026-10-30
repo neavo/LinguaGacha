@@ -393,7 +393,7 @@ describe("ProjectWriteStore", () => {
     await seed_items(database, project_path);
     await database.transaction(project_path, (writer) =>
       writer.upsert_meta_entries(project_path, {
-        translation_extras: { total_line: 1, processed_line: 0, error_line: 0, line: 0 },
+        translation_extras: { total_line: 1, processed_line: 0 },
       }),
     );
 
@@ -424,8 +424,6 @@ describe("ProjectWriteStore", () => {
       translation_extras: expect.objectContaining({
         total_line: 1,
         processed_line: 1,
-        error_line: 0,
-        line: 1,
       }),
     });
     expect(published_changes.at(-1)).toMatchObject({
@@ -451,8 +449,6 @@ describe("ProjectWriteStore", () => {
       translationExtras: {
         total_line: 1,
         processed_line: 1,
-        error_line: 0,
-        line: 1,
         total_tokens: 10,
       },
     });
@@ -470,8 +466,6 @@ describe("ProjectWriteStore", () => {
     expect((await read_meta(database, project_path)).translation_extras).toMatchObject({
       total_line: 1,
       processed_line: 1,
-      error_line: 0,
-      line: 1,
       total_tokens: 10,
     });
     expect(published_changes.at(-1)).toMatchObject({

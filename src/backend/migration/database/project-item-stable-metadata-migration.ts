@@ -1,7 +1,6 @@
 import type { ItemMigrationPayload } from "./item-migration";
 import type { DatabaseSync } from "node:sqlite";
 
-import { is_item_status } from "../../../domain/item";
 import { read_json_integer } from "../../../domain/json";
 import { write_item_migration, normalize_migration_file_type } from "./item-migration";
 
@@ -10,6 +9,15 @@ const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST";
 const LEGACY_PROCESSING = "PROCESSING";
 const CURRENT_PROCESSED = "PROCESSED";
 const CURRENT_NONE = "NONE";
+const LEGACY_ITEM_STATUSES = new Set([
+  "NONE",
+  "PROCESSED",
+  "ERROR",
+  "EXCLUDED",
+  "RULE_SKIPPED",
+  "LANGUAGE_SKIPPED",
+  "DUPLICATED",
+]); // 固定已发布值域，后续状态升级由独立迁移承担。
 
 /**
  * 迁移背景：
@@ -81,5 +89,5 @@ function normalize_item_status_value(value: unknown): string {
   if (raw_value === LEGACY_PROCESSING) {
     return CURRENT_NONE;
   }
-  return is_item_status(raw_value) ? raw_value : CURRENT_NONE;
+  return LEGACY_ITEM_STATUSES.has(raw_value) ? raw_value : CURRENT_NONE;
 }

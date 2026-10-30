@@ -53,7 +53,7 @@ export class BatchTranslationProjectStore {
     const request = {
       projectPath: this.session_state.require_loaded_project_path(),
       items: normalize_translation_item_patches(items),
-      translationExtras: normalize_batch_translation_progress(progress_snapshot),
+      translationExtras: { ...progress_snapshot }, // 隔离调用方引用，工程字段由唯一写入口收窄。
     };
     return affects_proofreading
       ? await this.write_store.apply_retranslation_item_patches(request)
@@ -66,7 +66,7 @@ export class BatchTranslationProjectStore {
   public async update_translation_progress(progress: BatchTranslationProgress): Promise<void> {
     await this.write_store.update_task_progress_meta({
       projectPath: this.session_state.require_loaded_project_path(),
-      meta: { translation_extras: { ...progress } },
+      meta: { translation_extras: normalize_batch_translation_progress(progress) },
     });
   }
 

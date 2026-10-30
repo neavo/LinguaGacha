@@ -21,7 +21,10 @@ import type {
   BatchTranslationResult,
 } from "../../../domain/batch-translation";
 import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
-import type { BatchTranslationProgress } from "../../../domain/batch-translation";
+import type {
+  BatchTranslationProgress,
+  BatchTranslationRunProgress,
+} from "../../../domain/batch-translation";
 import type { TranslationCommitEntry } from "./translation-pipeline";
 import type { TranslationContext } from "../planning/translation-plan-types";
 import { plan_translation_retry } from "../planning/translation-retry";
@@ -78,8 +81,6 @@ export interface BatchTranslationRunnerOptions {
   taskPlanner: Pick<TranslationPlanner, "build_translation_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
   logManager: Pick<LogManager, "append">; // 生命周期与批次日志共用结构化追加入口。
 }
-
-const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
 
 /**
  * Backend Runtime 与 CLI 共用的翻译调度、限流、重试和提交循环
@@ -272,7 +273,7 @@ export class BatchTranslationRunner {
   }
 
   /**
-   * 翻译 worker 结果拆成可提交终态 items 与需要重试的上下文
+   * 翻译 worker 结果拆成成功条目、耗尽 ID 与需要重试的上下文。
    */
   private build_translation_worker_result(
     context: TranslationContext,
@@ -282,19 +283,19 @@ export class BatchTranslationRunner {
       return { commit_entries: [], retry_contexts: [] };
     }
     const returned_items = result.output.items.length > 0 ? result.output.items : context.items;
-    const terminal_items = returned_items.filter((item) =>
-      TRANSLATION_TERMINAL_STATUSES.has(read_task_item_status(item)),
+    const commit_items = returned_items.filter(
+      (item) => read_task_item_status(item) === "PROCESSED",
     );
     const retry_plan = plan_translation_retry(context, returned_items);
-    const commit_items = [...terminal_items, ...retry_plan.error_items];
     // 用量与条目终态独立提交，内容重试也保留已经报告的消耗。
     const has_usage = Object.values(result.metrics).some((tokens) => tokens > 0);
     return {
       commit_entries:
-        commit_items.length > 0 || has_usage
+        commit_items.length > 0 || retry_plan.exhausted_item_ids.length > 0 || has_usage
           ? [
               {
                 items: commit_items,
+                exhausted_item_ids: retry_plan.exhausted_item_ids,
                 ...result.metrics,
               },
             ]
@@ -309,22 +310,21 @@ export class BatchTranslationRunner {
   private async commit_translation_entries(
     handle: BatchTranslationRunHandle,
     entries: TranslationCommitEntry[],
-    run_progress: BatchTranslationProgress,
+    run_progress: BatchTranslationRunProgress,
     affects_proofreading: boolean,
-  ): Promise<BatchTranslationProgress> {
+  ): Promise<BatchTranslationRunProgress> {
     if (!this.task_runtime.is_current(handle.run_id) || entries.length === 0) {
       return run_progress;
     }
     const items = entries.flatMap((entry) => entry.items);
-    const processed_delta = items.filter(
-      (item) => read_task_item_status(item) === "PROCESSED",
-    ).length;
-    const error_delta = items.filter((item) => read_task_item_status(item) === "ERROR").length;
+    const exhausted_item_ids = entries.flatMap((entry) => entry.exhausted_item_ids);
+    const settled_ids = [...items.map(read_task_item_id), ...exhausted_item_ids];
     let next_progress = await this.task_runtime.read_progress(); // 每次提交从权威累计事实继续。
-    let next_run = TranslationProgressAccumulator.with_counts(run_progress, {
-      processed_line: run_progress.processed_line + processed_delta,
-      error_line: run_progress.error_line + error_delta,
-    });
+    let next_run: BatchTranslationRunProgress = {
+      ...run_progress,
+      processed_line: run_progress.processed_line + items.length,
+      failed_line: run_progress.failed_line + exhausted_item_ids.length,
+    };
     for (const entry of entries) {
       next_run = TranslationProgressAccumulator.add_tokens(
         next_run,
@@ -347,7 +347,7 @@ export class BatchTranslationRunner {
       // 事务已经提交但事件同步失败时，本轮结果仍然成立；保留原始诊断。
       if (error instanceof AppError && error.code === "data.committed_sync_failed") {
         try {
-          await this.task_runtime.publish_progress(handle, items.map(read_task_item_id), next_run);
+          await this.task_runtime.publish_progress(handle, settled_ids, next_run);
         } catch (publish_error) {
           throw new AggregateError(
             [error, publish_error],
@@ -358,7 +358,7 @@ export class BatchTranslationRunner {
       }
       throw error;
     }
-    await this.task_runtime.publish_progress(handle, items.map(read_task_item_id), next_run);
+    await this.task_runtime.publish_progress(handle, settled_ids, next_run);
     return next_run;
   }
 
@@ -376,19 +376,17 @@ export class BatchTranslationRunner {
     const processed_line = items.filter(
       (item) => read_task_item_status(item) === "PROCESSED",
     ).length;
-    const error_line = items.filter((item) => read_task_item_status(item) === "ERROR").length;
     const previous =
       mode === "continue" ? previous_progress : TranslationProgressAccumulator.empty();
-    return TranslationProgressAccumulator.with_counts(
-      {
-        ...previous,
-        start_time:
-          mode === "continue" && previous.time > 0
-            ? Date.now() / 1000 - previous.time
-            : Date.now() / 1000,
-      },
-      { total_line, processed_line, error_line },
-    );
+    return {
+      ...previous,
+      total_line,
+      processed_line,
+      start_time:
+        mode === "continue" && previous.time > 0
+          ? Date.now() / 1000 - previous.time
+          : Date.now() / 1000,
+    };
   }
 
   /**

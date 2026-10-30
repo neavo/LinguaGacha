@@ -42,7 +42,7 @@ export const BATCH_TRANSLATION_START_MODES = ["new", "continue", "reset"] as con
 
 export const BATCH_TRANSLATION_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const; // 翻译活跃态供 renderer 折叠快照使用
 
-export const TASK_PROGRESS_STATUSES = ["NONE", "PROCESSED", "ERROR"] as const; // 进度状态是 item 统计口径，不等同于任务生命周期状态
+export const TASK_PROGRESS_STATUSES = ["NONE", "PROCESSED"] as const; // 进度状态是 item 统计口径，不等同于任务生命周期状态
 
 // 这些 item 状态不会进入翻译进度统计
 export const TASK_SKIPPED_ITEM_STATUSES = [
@@ -65,13 +65,16 @@ export type BatchTranslationProgress = {
   start_time: number; // 秒级任务启动时间戳
   time: number; // 由 start_time 计算的累计耗时秒数
   total_line: number; // 工程统计总量或本轮冻结目标数，由所属进度口径决定
-  line: number; // 已成功与最终失败行数之和
   processed_line: number; // 已成功提交的行数
-  error_line: number; // 最终失败的行数
   total_tokens: number; // 输入、思考与输出 token 总量
   total_input_tokens: number; // work unit 汇总的输入 token
   total_reasoning_tokens: number; // work unit 汇总的思考 token
   total_output_tokens: number; // work unit 汇总的输出 token
+};
+
+/** 重试耗尽只结算本轮尝试，不改变工程条目事实。 */
+export type BatchTranslationRunProgress = BatchTranslationProgress & {
+  failed_line: number; // 本轮内容重试耗尽数，不参与工程完成率。
 };
 
 export type BatchTranslationScope =
@@ -95,7 +98,7 @@ export function is_batch_translation_start_mode(
   return TASK_START_MODE_SET.has(String(value));
 }
 
-// 进度统计只接受 item 级别三态，避免生命周期状态污染统计
+// 进度统计只接受条目状态，避免生命周期状态污染统计。
 export function is_task_progress_status(value: unknown): value is BatchTranslationProgressStatus {
   return TASK_PROGRESS_STATUS_SET.has(value as BatchTranslationProgressStatus);
 }
@@ -120,13 +123,25 @@ export function normalize_batch_translation_progress(value: unknown): BatchTrans
     start_time: read_non_negative_number(record["start_time"]),
     time: read_non_negative_number(record["time"]),
     total_line: read_non_negative_integer(record["total_line"]),
-    line: read_non_negative_integer(record["line"]),
     processed_line: read_non_negative_integer(record["processed_line"]),
-    error_line: read_non_negative_integer(record["error_line"]),
     total_tokens: read_non_negative_integer(record["total_tokens"]),
     total_input_tokens: read_non_negative_integer(record["total_input_tokens"]),
     total_reasoning_tokens: read_non_negative_integer(record["total_reasoning_tokens"]),
     total_output_tokens: read_non_negative_integer(record["total_output_tokens"]),
+  };
+}
+
+/** 本轮计数复用工程字段归一，失败数始终从当前运行读取。 */
+export function normalize_batch_translation_run_progress(
+  value: unknown,
+): BatchTranslationRunProgress {
+  return {
+    ...normalize_batch_translation_progress(value),
+    failed_line: read_non_negative_integer(
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? (value as Record<string, unknown>)["failed_line"]
+        : undefined,
+    ),
   };
 }
 
@@ -159,20 +174,20 @@ export type BatchTranslationRequestState = Readonly<{
 export type BatchTranslationSnapshot = BatchTranslationRequestState & {
   config?: BatchTranslationConfig | undefined;
   operation?: BatchTranslationOperation | undefined; // 首次预约后保留本轮目的，工程切换清空
-  run_progress?: BatchTranslationProgress | undefined; // 本轮目标和实际提交结果，只属于内存运行态
+  run_progress?: BatchTranslationRunProgress | undefined; // 本轮目标和已结束尝试，只属于内存运行态
   revision: number;
   status: BatchTranslationRunStatus;
   source: BatchTranslationSource | null; // 预约入口决定本轮来源，终态保留，工程切换清空
   stop_source?: BatchTranslationStopSource | undefined; // 本轮首次受理的取消来源，收尾失败也保留
   progress: BatchTranslationProgress;
-  pending_item_ids: readonly number[]; // 已确定且尚未提交终态结果的目标，准备前和收尾后为空
+  pending_item_ids: readonly number[]; // 本轮尚未结束尝试的目标，准备前和收尾后为空
 };
 
 export type BatchTranslationResult = Readonly<{
   status: "done" | "stopped" | "error";
   stop_source?: BatchTranslationStopSource;
   progress: Readonly<BatchTranslationProgress>;
-  run_progress?: Readonly<BatchTranslationProgress>;
+  run_progress?: Readonly<BatchTranslationRunProgress>;
 }>;
 
 export type BatchTranslationStartCommand =
@@ -180,7 +195,6 @@ export type BatchTranslationStartCommand =
       operation: "translate";
       mode: BatchTranslationStartMode;
       scope: BatchTranslationScope;
-      include_errors?: boolean;
     }
   | {
       operation: "retranslate";
@@ -196,9 +210,7 @@ export function resolve_batch_translation_start_mode(
   progress: BatchTranslationProgress,
 ): "new" | "continue" {
   return progress.total_line > 0 ||
-    progress.line > 0 ||
     progress.processed_line > 0 ||
-    progress.error_line > 0 ||
     progress.total_tokens > 0 ||
     progress.total_input_tokens > 0 ||
     progress.total_reasoning_tokens > 0 ||
