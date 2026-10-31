@@ -5,6 +5,7 @@ import {
   resolve_app_language_from_locale_tag,
   resolve_app_locale,
   resolve_prompt_template_language,
+  resolve_system_locale,
 } from "./app-language";
 
 describe("应用语言", () => {
@@ -25,11 +26,24 @@ describe("应用语言", () => {
     expect(normalize_app_language("unknown")).toBe("ZH");
   });
 
-  it("从系统 locale tag 解析应用语言", () => {
+  it("窗口缺省文案按主语言匹配，未知语言沿用中文回退", () => {
     expect(resolve_app_language_from_locale_tag("ja-JP")).toBe("JA");
     expect(resolve_app_language_from_locale_tag("ko-KR")).toBe("KO");
     expect(resolve_app_language_from_locale_tag("de-DE")).toBe("DE");
     expect(resolve_app_language_from_locale_tag("en-US")).toBe("EN");
     expect(resolve_app_language_from_locale_tag("fr-FR")).toBe("ZH");
+  });
+
+  it.each([
+    [["zh-TW"], "zh-CN"],
+    [["  zH-hAnT-tW  "], "zh-CN"],
+    [["de-AT"], "de-DE"],
+    [["en-GB", "ja-JP"], "en-US"],
+    [["fr-FR", "ja-JP"], "ja-JP"],
+    [["ko-KR", "ja-JP"], "ko-KR"],
+    [["fr-FR"], "en-US"],
+    [[], "en-US"],
+  ] as const)("系统偏好 %j 选择发行包支持的 %s", (preferred_languages, locale) => {
+    expect(resolve_system_locale(preferred_languages)).toBe(locale);
   });
 });

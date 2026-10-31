@@ -68,6 +68,7 @@ describe("产品统一入口", () => {
     expect_worker_threads_backend_worker_execution(calls.cli[0]?.workerExecution);
     expect(calls.gui).toEqual([]);
     expect(exit_codes).toEqual([0]);
+    expect(calls.startup).toEqual(["locale", "cli:load"]);
   });
 
   it("开发态 --cli 只把标记后的参数交给 CLI parser", async () => {
@@ -110,21 +111,28 @@ describe("产品统一入口", () => {
       /\/backend-runtime-worker-entry\.js$/u,
     );
     expect(exit_codes).toEqual([]);
+    expect(calls.startup).toEqual(["locale", "gui:load"]);
   });
 });
 
 /**
- * 替换 GUI 与 CLI 入口模块，测试只观察产品入口分发结果。
+ * 记录模块加载顺序，验证语言配置早于 GUI、CLI 的动态加载。
  */
 function mock_entry_modules(): {
   cli: CLIEntryCall[];
   gui: GuiEntryCall[];
+  startup: string[];
 } {
   const calls = {
     cli: [] as CLIEntryCall[],
     gui: [] as GuiEntryCall[],
+    startup: [] as string[],
   };
+  vi.doMock("./native/app-locale", () => ({
+    configure_app_locale: () => calls.startup.push("locale"),
+  }));
   vi.doMock("./cli/cli-entry", () => {
+    calls.startup.push("cli:load");
     return {
       run_cli_entry: async (
         argv: string[],
@@ -137,6 +145,7 @@ function mock_entry_modules(): {
     };
   });
   vi.doMock("./gui/gui-entry", () => {
+    calls.startup.push("gui:load");
     return {
       run_gui_entry: (options: GuiEntryCall) => {
         calls.gui.push(options);

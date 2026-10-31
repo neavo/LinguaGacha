@@ -1,4 +1,4 @@
-// 设置编码沿用持久化值；顺序和语言自称同时供菜单及发行包消费。
+// 设置编码沿用持久化值。菜单、语言资源裁剪和启动语言选择共用这份声明。
 export const APP_LANGUAGE_DEFINITIONS = [
   { code: "ZH", locale: "zh-CN", name: "中文" },
   { code: "JA", locale: "ja-JP", name: "日本語" },
@@ -14,7 +14,7 @@ export const LOCALES: readonly Locale[] = APP_LANGUAGE_DEFINITIONS.map(({ locale
 /** 内置提示词模板使用的语言值域。 */
 export type TranslationPromptLanguage = "zh" | "en";
 
-/** 菜单值使用严格校验；设置及系统输入由归一化入口处理。 */
+/** 菜单值使用严格校验，持久化设置由归一化入口处理。 */
 export function is_app_language(value: unknown): value is AppLanguage {
   return APP_LANGUAGE_DEFINITIONS.some(({ code }) => code === value);
 }
@@ -33,16 +33,28 @@ export function resolve_app_locale(app_language: unknown): Locale {
   return APP_LANGUAGE_DEFINITIONS.find(({ code }) => code === language)!.locale;
 }
 
-/** 内置模板维护中英文；其它 UI 语言统一消费英文模板及其说明。 */
+/** 中英文以外的界面语言共用英文提示词模板。 */
 export function resolve_prompt_template_language(app_language: unknown): TranslationPromptLanguage {
   return normalize_app_language(app_language) === "ZH" ? "zh" : "en";
 }
 
-/** 系统缺省场景只取主语言，不将系统设置覆盖到已保存的选择。 */
+/** 界面设置尚不可用时按宿主语言选择文案，未知值使用中文。 */
 export function resolve_app_language_from_locale_tag(locale_tag: unknown): AppLanguage {
   const primary_language =
     String(locale_tag ?? "")
       .trim()
       .split("-")[0] ?? "";
   return normalize_app_language(primary_language);
+}
+
+/** 每种主语言只有一个发行变体，按系统偏好顺序匹配，全部不支持时使用英文。 */
+export function resolve_system_locale(preferred_languages: readonly string[]): Locale {
+  for (const preferred_language of preferred_languages) {
+    const primary_language = preferred_language.trim().toLowerCase().split("-")[0];
+    const definition = APP_LANGUAGE_DEFINITIONS.find(
+      ({ locale }) => locale.split("-")[0] === primary_language,
+    );
+    if (definition !== undefined) return definition.locale;
+  }
+  return "en-US";
 }

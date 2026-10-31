@@ -1,15 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { configure_app_locale } from "./native/app-locale";
+
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
   build_backend_runtime_worker_entry_url_from_desktop_bundle_dir,
   resolve_desktop_bundle_dir_from_module_url,
 } from "./backend/worker/worker-execution";
 
-/**
- * 统一产品入口配置 worker 执行路径，再分发 GUI/CLI。
- */
+configure_app_locale(); // 动态加载可能让出 Electron ready 时机，须先同步设置语言。
 void run_product_entry();
 
 /**
