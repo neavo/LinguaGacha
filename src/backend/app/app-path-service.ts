@@ -148,6 +148,16 @@ export class AppPathService {
     return this.get_user_data_path(AGENT_WORKSPACE_DIR_NAME);
   }
 
+  /** 所有工程共用普通 npm 工程，系统锁文件位于工程目录之外。 */
+  public get_agent_node_root_dir(): string {
+    return this.get_user_data_path("node");
+  }
+
+  /** 锁放在工程目录之外，初始化替换和 npm 清理都不会移走租约文件。 */
+  public get_agent_node_lock_path(): string {
+    return this.get_user_data_path("node.lock");
+  }
+
   /**
    * 返回指定版本更新包目录，目录名和启动清理规则共享同一约定。
    */

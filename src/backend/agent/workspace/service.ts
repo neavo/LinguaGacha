@@ -1,3 +1,8 @@
+import {
+  AgentNodeExecError,
+  type AgentWorkspaceExecRequest,
+  type AgentWorkspaceExecResult,
+} from "../node/runtime";
 import { read_project_additional_files } from "../../project/project-additional-files";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
@@ -204,8 +209,11 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
+      runExec: (
+        request: AgentWorkspaceExecRequest,
+        signal: AbortSignal,
+      ) => Promise<AgentWorkspaceExecResult>;
       pdfHost?: PDFHost | undefined;
-      runtimeDirectory: string; // 当前应用版本部署的预加载模块与 npm 依赖目录
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -422,16 +430,17 @@ export class AgentWorkspaceService {
     await this.clear_snapshot();
     await this.clear_sources();
     await this.native_fs.make_dir_async(this.work_path);
-    this.native_fs.copy_file(
-      path.join(this.options.runtimeDirectory, "package.json"),
+    await this.native_fs.write_file(
       path.join(this.root_path, "package.json"),
+      JSON.stringify({ private: true, type: "module" }),
     );
     const modules = path.join(this.root_path, "node_modules");
-    await this.native_fs.remove_async(modules, { recursive: true, force: true });
-    this.native_fs.create_directory_link(
-      this.native_fs.real_path(path.join(this.options.runtimeDirectory, "node_modules")),
-      modules,
-    );
+    try {
+      // 旧版本的宿主链接只移除入口，用户的真实目录及链接目标继续保留。
+      if (this.native_fs.lstat(modules).isSymbolicLink()) this.native_fs.unlink(modules);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
     await this.directories.touch(id);
     await this.directories.prune(id);
   }
@@ -716,6 +725,45 @@ export class AgentWorkspaceService {
     });
   }
 
+  /** npm 只借用对话互斥和日志目录，工程快照由脚本执行入口准备。 */
+  public async run_exec(command: string, signal: AbortSignal): Promise<AgentWorkspaceExecResult> {
+    return await this.exclusive(async () => {
+      signal.throwIfAborted();
+      const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${random_id()}.exec`;
+      await this.native_fs.make_dir_async(path.join(this.root_path, AGENT_WORKSPACE_RUN_ROOT));
+      try {
+        return await this.options.runExec(
+          {
+            workspacePath: this.root_path,
+            command,
+            stdoutPath: `${run_path}.stdout.log`,
+            stderrPath: `${run_path}.stderr.log`,
+          },
+          signal,
+        );
+      } catch (error) {
+        if (is_agent_cancellation(error, signal)) throw error;
+        if (error instanceof AgentNodeExecError)
+          throw new AppErrors.AppError("request.validation_failed", {
+            cause: error,
+            public_details: {
+              action: "workspace_exec",
+              message: error.message,
+              ...error.execution,
+            },
+            diagnostic_context: { reason: "agent_workspace_exec_failed" },
+          });
+        throw workspace_error_with_action(
+          error,
+          "workspace_exec",
+          "agent_workspace_exec_host_failed",
+        );
+      } finally {
+        await this.touch();
+      }
+    });
+  }
+
   /** 一次准备真实差异，按需等待审批，再把同一份差异交给跨 section 事务。 */
   public async apply_workspace(
     request_approval?: (summary: AgentPendingWriteSummary) => Promise<void>,
@@ -981,6 +1029,7 @@ export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
   | "list_files"
   | "run"
+  | "run_exec"
   | "apply_workspace"
   | "create_chat"
   | "activate_chat"
@@ -1314,7 +1363,7 @@ function workspace_validation_error(reason: string): AppErrors.AppError {
 /** 统一包装一次异常并保留原始 `cause`。运行失败提供阶段与安全的 IO 定位信息。 */
 function workspace_error_with_action(
   error: unknown,
-  action: "workspace_run" | "workspace_apply",
+  action: "workspace_run" | "workspace_apply" | "workspace_exec",
   reason?: string,
   run?: Readonly<{ phase: WorkspaceRunPhase; root: string }>,
 ): AppErrors.AppError {

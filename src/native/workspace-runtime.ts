@@ -16,7 +16,7 @@ export function resolve_workspace_runtime_directory(args: {
 /** 只解析包导出，bootstrap 和 worker 的初始化由对应执行进程负责。 */
 export function resolve_workspace_runtime_entry(
   directory: string,
-  entry: "@lg/workspace/bootstrap" | "@lg/pdf" | "@lg/pdf/worker",
+  entry: "@lg/workspace/bootstrap" | "@lg/workspace/prepare" | "@lg/pdf" | "@lg/pdf/worker",
 ): string {
   return createRequire(path.join(path.resolve(directory), "package.json")).resolve(entry);
 }

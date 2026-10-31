@@ -1,3 +1,4 @@
+import { execute_and_refresh_skills } from "./workspace-execution";
 import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
@@ -28,23 +29,27 @@ export function create_agent_workspace_run_tool(options: {
       "- 每次调用启动独立 Node.js 进程，跨调用的数据通过文件交接。",
       `- 每次执行的脚本与输出由宿主自动保存到 \`${AGENT_WORKSPACE_RUN_ROOT}/\`。`,
       "- 当前工作目录（`cwd`）是工作区根目录，文件相对路径从这里解析，脚本内的相对 `import` 从脚本文件所在目录解析。",
-      `- 预装包：${app_package.workspaceRuntimePackages.agent.join("、")}，通过标准 import 使用。`,
+      "",
+      "### 依赖",
+      "",
+      "- 裸包导入只解析由 `workspace_exec` 管理的共享 npm 工程，缺少的包先安装，再在新的调用中导入。",
+      "- 应用包：",
       "  - `@lg/workspace/item-contexts` 提供 `queryItemContexts`，用于取得条目的邻近语境。",
       "  - `@lg/text` 提供与应用共用的字面匹配能力。",
-      "  - `@lg/pdf` 提供与正式输出共用的文档模板。",
-      "- 包版本、类型和详细 API 可从 `node_modules` 中读取。依赖由应用管理，禁止自行安装或下载依赖。",
+      "  - `@lg/pdf` 提供与正式输出共用的 PDF 读取、渲染和生成，接口只交换字节。",
+      `- 共享工程初始提供 ${app_package.workspaceRuntimePackages.agent.join("、")}。`,
       "",
       "### 文件与权限",
       "",
       "- 可以读取当前系统账户能够访问的本机文件。",
       `- 可以写入 ${AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.map((root) => `\`${root}/**\``).join("、")} 和 \`ws.userSkillDirectory\`。`,
-      "- 禁止创建子进程、启动 worker 或加载原生扩展（native addons）。",
+      "- 不能创建子进程或启动 worker，命令行工具通过 `workspace_exec` 调用。允许加载原生扩展。",
       "",
       "### 输出",
       "",
-      `- 执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000} 秒。程序在事件循环空闲时自然退出。`,
+      `- 脚本执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000} 秒，不含执行前的环境准备。程序在事件循环空闲时自然退出。`,
       "- 使用 `console.log` 输出结果。",
-      `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，超额时返回补读提示，按需读取文件。`,
+      `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，内容是文本或解析后的 JSON，超额时返回补读提示，按需读取文件。`,
       "",
       "|返回字段|含义|",
       "|---|---|",
@@ -56,6 +61,7 @@ export function create_agent_workspace_run_tool(options: {
       "### 失败与恢复",
       "",
       "- 程序失败或超时会携带执行记录，根据记录定位失败原因。",
+      "- 环境准备失败时脚本不会运行，用 `workspace_exec` 修复共享工程后重试。",
       "- 程序失败、停止或超时后，已完成的文件写入仍然保留，继续前检查受影响的文件，复用完整内容并修复未完成或损坏的部分。",
       "",
       "### 工作区数据",
@@ -101,24 +107,10 @@ export function create_agent_workspace_run_tool(options: {
       // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
       const effective_signal = signal ?? new AbortController().signal;
       effective_signal.throwIfAborted();
-      const outcome = await options.run(params.script, effective_signal).then(
-        (value) => ({ ok: true as const, value }),
-        (error: unknown) => ({ ok: false as const, error }),
+      const { execution, images } = await execute_and_refresh_skills(
+        () => options.run(params.script, effective_signal),
+        options.refresh_skills,
       );
-      // 程序失败时仍刷新已写入的技能，两者失败保留主回执与完整原因链。
-      try {
-        await options.refresh_skills();
-      } catch (error) {
-        if (outcome.ok) throw new Error("Agent skill refresh failed.", { cause: error });
-        // 宿主边界按 `cause` 采用脚本失败作为模型回执。
-        throw new AggregateError(
-          [outcome.error, error],
-          "Workspace execution and skill refresh failed.",
-          { cause: outcome.error },
-        );
-      }
-      if (!outcome.ok) throw outcome.error;
-      const { execution, images } = outcome.value;
       const result = agent_tool_result({
         ...execution,
         ...(images.length === 0

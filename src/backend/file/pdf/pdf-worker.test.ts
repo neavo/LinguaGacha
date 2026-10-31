@@ -10,18 +10,20 @@ import { create_pdf_fixture } from "./test-support";
 import type { PDFDocument } from "../../../shared/pdf";
 
 let directory: string;
+let resources: string;
 beforeAll(async () => {
-  directory = await mkdtemp(path.join(os.tmpdir(), "lg-pdf-worker-"));
+  resources = await mkdtemp(path.join(os.tmpdir(), "lg-pdf-worker-"));
+  directory = path.join(resources, "workspace");
   const deployed = process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME;
   if (deployed) await cp(deployed, directory, { recursive: true });
   else
-    execFileSync(process.execPath, ["buildtools/build-workspace.mjs", directory], {
+    execFileSync(process.execPath, ["buildtools/resources/build.mjs", resources], {
       windowsHide: true,
       stdio: "pipe",
     });
 }, 60_000);
 afterAll(async () => {
-  await rm(directory, { recursive: true, force: true });
+  await rm(resources, { recursive: true, force: true });
 });
 
 it("独立部署线程读取、打印回调与合并共用同一引擎，取消收尾后队列可继续", async () => {

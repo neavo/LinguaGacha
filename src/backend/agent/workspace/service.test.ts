@@ -62,7 +62,7 @@ import {
 
 import {
   workspace_execution,
-  create_workspace_runtime_fixture,
+  workspace_exec_execution,
 } from "../../../test/agent-workspace-fixture";
 
 const VALID_WORKSPACE_SCRIPT = "console.log(null);";
@@ -601,20 +601,25 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.query_warnings).toHaveBeenCalledOnce();
   });
 
-  it("重新激活刷新依赖链接并保留工作材料，部署目录保持完整", async () => {
+  it("激活移除旧宿主链接并保留真实依赖目录与工作材料", async () => {
     const fixture = await create_fixture(temp_dir);
     const modules = path.join(fixture.workspace_root, "node_modules");
-    const deployed = fs.realpathSync(modules);
+    const deployed = path.join(temp_dir, "old-runtime");
+    fs.mkdirSync(deployed);
     const marker = path.join(deployed, "installed.txt");
     fs.writeFileSync(marker, "installed");
-    await run_workspace(fixture);
+    fs.symlinkSync(deployed, modules, process.platform === "win32" ? "junction" : "dir");
     await fixture.service.activate_chat("test0001", [], async () => {});
-    expect(fs.realpathSync(modules)).toBe(deployed);
+    expect(fs.existsSync(modules)).toBe(false);
     expect(fs.readFileSync(marker, "utf8")).toBe("installed");
+    fs.mkdirSync(modules);
+    fs.writeFileSync(path.join(modules, "user.txt"), "keep");
+    await fixture.service.activate_chat("test0001", [], async () => {});
+    expect(fs.readFileSync(path.join(modules, "user.txt"), "utf8")).toBe("keep");
     expect(fs.existsSync(path.join(fixture.workspace_root, "work"))).toBe(true);
-    expect(fs.readFileSync(path.join(fixture.workspace_root, "package.json"), "utf8")).toBe(
-      fs.readFileSync(path.join(temp_dir, "runtime", "package.json"), "utf8"),
-    );
+    expect(
+      JSON.parse(fs.readFileSync(path.join(fixture.workspace_root, "package.json"), "utf8")),
+    ).toEqual({ private: true, type: "module" });
   });
 
   it("sources 在激活后按需生成，普通调用复用，文件修订和重新激活后重建", async () => {
@@ -1343,7 +1348,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const read_meta = vi.fn(async () => ({}) as JsonRecord);
   const service = new AgentWorkspaceService({
     images: { prepare: prepare_image },
-    runtimeDirectory: create_workspace_runtime_fixture(temp_dir),
+    runExec: async () => workspace_exec_execution(),
     paths: {
       get_agent_workspace_root_dir: () => workspace_parent,
     },
@@ -1539,7 +1544,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: async () => workspace_execution(),
-      runtimeDirectory: create_workspace_runtime_fixture(directory.path),
+      runExec: async () => workspace_exec_execution(),
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });

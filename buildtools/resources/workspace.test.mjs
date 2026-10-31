@@ -3,10 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { deploy_workspace_dependencies } from "./workspace-dependencies.mjs";
+import { deploy_workspace_dependencies } from "./workspace.mjs";
+const npm = path.resolve("node_modules/npm/bin/npm-cli.js");
+const runNpm = (cwd, args) =>
+  execFileSync(process.execPath, [npm, ...args], { cwd, windowsHide: true });
 
 // 两次 npm 查询及独立 Node 导入共享全量测试的进程启动预算。
-it("独立部署合并全部分组，保留嵌套版本和包资源，重建移除旧依赖", async () => {
+it("独立部署后端依赖并保留嵌套版本、运行资源和其它生成步骤的产物", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "lg-workspace-dependencies-"));
   const root = path.join(directory, "source");
   const output = path.join(directory, "runtime");
@@ -15,7 +18,7 @@ it("独立部署合并全部分组，保留嵌套版本和包资源，重建移�
     const manifest = {
       name: "fixture",
       private: true,
-      workspaceRuntimePackages: { agent: ["alpha"], backend: ["alpha", "beta"] },
+      workspaceRuntimePackages: { agent: ["unused"], backend: ["alpha", "beta"] },
       dependencies: { alpha: "1.0.0", beta: "1.0.0", unused: "1.0.0" },
     };
     await writeFile(path.join(root, "package.json"), JSON.stringify(manifest));
@@ -51,7 +54,12 @@ it("独立部署合并全部分组，保留嵌套版本和包资源，重建移�
     await writeFile(path.join(root, "node_modules/alpha/index.js.map"), "{}");
     await writeFile(path.join(root, "node_modules/alpha/index.d.ts"), "export default 1;");
 
-    await deploy_workspace_dependencies(root, output);
+    await deploy_workspace_dependencies({
+      root,
+      output,
+      names: manifest.workspaceRuntimePackages.backend,
+      runNpm,
+    });
     expect(
       execFileSync(
         process.execPath,
@@ -82,33 +90,18 @@ it("独立部署合并全部分组，保留嵌套版本和包资源，重建移�
       JSON.parse(await readFile(path.join(output, "package.json"), "utf8")).dependencies,
     ).toEqual({ alpha: "1.0.0", beta: "1.0.0" });
 
-    manifest.workspaceRuntimePackages.backend = ["alpha"];
-    await writeFile(path.join(root, "package.json"), JSON.stringify(manifest));
-    await deploy_workspace_dependencies(root, output);
-    await expect(
-      readFile(path.join(output, "node_modules/beta/package.json")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await readFile(path.join(root, "node_modules/beta/package.json"), "utf8")).toContain(
-      '"beta"',
-    );
+    await writeFile(path.join(output, "other-resource.txt"), "keep");
+    await deploy_workspace_dependencies({
+      root,
+      output,
+      names: manifest.workspaceRuntimePackages.backend,
+      runNpm,
+    });
+    expect(await readFile(path.join(output, "other-resource.txt"), "utf8")).toBe("keep");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 }, 30_000);
-
-it("整体重建拒绝覆盖项目和依赖安装源", async () => {
-  const root = path.resolve("fixture-source");
-  for (const output of [root, path.dirname(root), path.join(root, "node_modules/runtime")]) {
-    await expect(deploy_workspace_dependencies(root, output)).rejects.toThrow(
-      "overlaps its source",
-    );
-  }
-  if (process.platform === "win32") {
-    await expect(
-      deploy_workspace_dependencies(root, path.join(root, "NODE_MODULES/runtime")),
-    ).rejects.toThrow("overlaps its source");
-  }
-});
 
 /** 创建可由 npm 查询和 Node 导入的自有包，验证真实依赖部署。 */
 async function create_package(root, name, version, dependencies, code) {

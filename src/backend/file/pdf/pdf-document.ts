@@ -56,8 +56,21 @@ export function read_pdf_document(bytes: Uint8Array): PDFDocument {
   }
 }
 
-/** 文档由调用者持有，可连续渲染多页；只分配目标裁剪区域的像素。 */
+/** MuPDF 对象只在本包内流通，调用者可使用另一份 MuPDF 实例。 */
 export function render_pdf_page(
+  bytes: Uint8Array,
+  request: { page: number; scale: number; region?: PDFRegion },
+): Uint8Array {
+  const pdf = new mupdf.PDFDocument(bytes);
+  try {
+    return render_pdf_page_from_document(pdf, request);
+  } finally {
+    pdf.destroy();
+  }
+}
+
+/** 包内批量渲染复用同一文档，只分配目标裁剪区域的像素。 */
+function render_pdf_page_from_document(
   pdf: mupdf.PDFDocument,
   request: { page: number; scale: number; region?: PDFRegion },
 ): Uint8Array {
@@ -227,7 +240,7 @@ async function print_pdf_group(
     rendered,
     renderImage: async (region) => {
       args.signal?.throwIfAborted();
-      return render_pdf_page(source, { page: region.page, scale: 2, region });
+      return render_pdf_page_from_document(source, { page: region.page, scale: 2, region });
     },
   });
   const bytes = await args.print(html);
@@ -236,7 +249,11 @@ async function print_pdf_group(
   try {
     if (background) {
       const image = new mupdf.Image(
-        render_pdf_page(source, { page: background.page, scale: 2, region: background }),
+        render_pdf_page_from_document(source, {
+          page: background.page,
+          scale: 2,
+          region: background,
+        }),
       );
       try {
         apply_pdf_background(printed, image);
@@ -301,7 +318,7 @@ export function render_pdf_preview(
       target.destroy();
     }
     return {
-      image: `data:image/png;base64,${Buffer.from(render_pdf_page(document, { page, scale })).toString("base64")}`,
+      image: `data:image/png;base64,${Buffer.from(render_pdf_page_from_document(document, { page, scale })).toString("base64")}`,
       count: document.countPages(),
       page,
     };

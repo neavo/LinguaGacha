@@ -175,7 +175,7 @@ it("全篇译稿替换全部原页，打印失败和取消不回退原文", asyn
 it("页面裁剪使用左上角坐标，旋转后尺寸与导入一致并限制像素分配", async () => {
   const pdf = new mupdf.PDFDocument(create_pdf_fixture());
   try {
-    const bytes = render_pdf_page(pdf, {
+    const bytes = render_pdf_page(pdf.saveToBuffer("").asUint8Array(), {
       page: 3,
       scale: 1,
       region: { page: 3, x: 40, y: 180, width: 120, height: 80 },
@@ -195,15 +195,19 @@ it("页面裁剪使用左上角坐标，旋转后尺寸与导入一致并限制�
     object.put("MediaBox", [0, 0, 300, 400]);
     object.destroy();
     page.destroy();
-    const rotated = new mupdf.Image(render_pdf_page(pdf, { page: 3, scale: 1 }));
+    const rotated = new mupdf.Image(
+      render_pdf_page(pdf.saveToBuffer("").asUint8Array(), { page: 3, scale: 1 }),
+    );
     try {
       expect([rotated.getWidth(), rotated.getHeight()]).toEqual([400, 300]);
     } finally {
       rotated.destroy();
     }
-    expect(() => render_pdf_page(pdf, { page: 3, scale: 100 })).toThrow("pixel limit");
     expect(() =>
-      render_pdf_page(pdf, {
+      render_pdf_page(pdf.saveToBuffer("").asUint8Array(), { page: 3, scale: 100 }),
+    ).toThrow("pixel limit");
+    expect(() =>
+      render_pdf_page(pdf.saveToBuffer("").asUint8Array(), {
         page: 3,
         scale: 1,
         region: { page: 3, x: 390, y: 0, width: 20, height: 20 },
@@ -216,7 +220,7 @@ it("页面裁剪使用左上角坐标，旋转后尺寸与导入一致并限制�
     cropped_object.destroy();
     cropped_page.destroy();
     const crop = new mupdf.Image(
-      render_pdf_page(pdf, {
+      render_pdf_page(pdf.saveToBuffer("").asUint8Array(), {
         page: 3,
         scale: 1,
         region: { page: 3, x: 40, y: 40, width: 160, height: 240 },

@@ -13,7 +13,7 @@ import { AgentToolError } from "./tool-definition";
 import { AppError } from "../../shared/error";
 import type { LogAppendPayload } from "../../shared/log";
 import { uploaded_file } from "../../test/agent-upload-fixture";
-import { workspace_execution } from "../../test/agent-workspace-fixture";
+import { workspace_exec_execution, workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
@@ -4316,6 +4316,7 @@ describe("AgentService", () => {
         close: vi.fn(async () => undefined),
         delete_chat: vi.fn(async () => undefined),
         cancel_uploads: vi.fn(),
+        run_exec: vi.fn(async () => workspace_exec_execution()),
         run: vi.fn<AgentWorkspacePort["run"]>(async () => {
           await wait_for_held_tool();
           return { images: [], execution: workspace_execution({ items: read_items() }) };

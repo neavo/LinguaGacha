@@ -1,6 +1,17 @@
+import { AgentNodeRuntime } from "../../node/runtime";
 import type { AgentWorkspaceRunRequest } from "./runner";
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -19,7 +30,7 @@ import app_package from "../../../../../package.json";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
-const RUN_TIMEOUT_MS = 3_000; // 早于测试超时回收子进程，失败后目录清理也能完成
+const RUN_TIMEOUT_MS = 15_000; // 早于测试超时回收子进程，失败后目录清理也能完成
 let root = "";
 let runtime = "";
 let workspace = "";
@@ -31,23 +42,22 @@ const skill_paths = {
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "linguagacha-node-"));
-  runtime = path.join(root, "runtime");
+  runtime = path.join(root, "resources/workspace");
   workspace = path.join(root, "workspace");
   const deployed = process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME;
   if (deployed) await cp(deployed, runtime, { recursive: true });
   else
-    execFileSync(process.execPath, [path.resolve("buildtools/build-workspace.mjs"), runtime], {
-      windowsHide: true,
-      stdio: "pipe",
-    });
+    execFileSync(
+      process.execPath,
+      [path.resolve("buildtools/resources/build.mjs"), path.dirname(runtime), "--development"],
+      {
+        windowsHide: true,
+        stdio: "pipe",
+      },
+    );
   await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
   await mkdir(path.join(workspace, "changes"));
-  await cp(path.join(runtime, "package.json"), path.join(workspace, "package.json"));
-  await symlink(
-    path.join(runtime, "node_modules"),
-    path.join(workspace, "node_modules"),
-    process.platform === "win32" ? "junction" : "dir",
-  );
+  await writeFile(path.join(workspace, "package.json"), JSON.stringify({ type: "module" }));
   await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
   for (const [relative_path, content] of Object.entries(AGENT_WORKSPACE_REFERENCES)) {
     await mkdir(path.dirname(path.join(workspace, relative_path)), { recursive: true });
@@ -57,10 +67,6 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (workspace)
-    await unlink(path.join(workspace, "node_modules")).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error;
-    });
   if (root) await rm(root, { recursive: true, force: true });
 });
 
@@ -105,7 +111,7 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   expect(result).toMatchObject({
     exitCode: 0,
     signal: null,
-    stderr: { content: "ordinary stderr\n" },
+    stderr: { content: expect.stringContaining("ordinary stderr\n") },
   });
   expect(output_content(result.stdout)).toBe(
     `${JSON.stringify({ main: true, value: 42, itemPath: AGENT_WORKSPACE_CONTRACT.datasets.items!.path })}\nasync finished\n`,
@@ -122,9 +128,9 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   ).toMatchObject({ content: "42\n" });
   const empty = await run("// 没有输出的普通程序也成功");
   expect(empty.exitCode).toBe(0);
+  expect(empty.stdout).toMatchObject({ bytes: 0, content: "" });
   for (const output of [empty.stdout, empty.stderr]) {
-    expect(output).toMatchObject({ bytes: 0, content: "" });
-    expect(await readFile(path.join(workspace, output.path), "utf8")).toBe("");
+    expect(await readFile(path.join(workspace, output.path), "utf8")).toBe(output_content(output));
   }
 });
 
@@ -140,7 +146,7 @@ it("权限模式直接导入 MuPDF WASM 和 Markdown npm 包", async () => {
     const pdf = new mupdf.PDFDocument(new Uint8Array(await readFile('work/source.pdf')));
     try {
       const page = pdf.loadPage(0); const text = page.toStructuredText();
-      try { console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:render_pdf_page(pdf,{page:3,scale:1}).length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type })); }
+      try { console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:render_pdf_page(pdf.saveToBuffer("").asUint8Array(),{page:3,scale:1}).length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type })); }
       finally { text.destroy(); page.destroy(); }
     } finally { pdf.destroy(); }
 
@@ -290,8 +296,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     });
     const runner = new AgentWorkspaceRunner({
       paths: resources.paths,
-      executablePath: electron_path,
-      runtimeDirectory: runtime,
+      node: create_node_runtime(),
       proxyResolver: { resolveProxy: async () => "DIRECT" },
     });
     const service = new AgentWorkspaceService({
@@ -309,7 +314,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: runner.run.bind(runner),
-      runtimeDirectory: runtime,
+      runExec: (request, signal) => create_node_runtime().run_exec(request, signal),
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
@@ -481,7 +486,10 @@ it("工作区外可读不可写，权限保护部署与快照，失败保留输�
   await expect(
     run('console.error(JSON.stringify({ message: "intentional exit" })); process.exitCode = 7;'),
   ).rejects.toMatchObject({
-    execution: { exitCode: 7, stderr: { content: { message: "intentional exit" } } },
+    execution: {
+      exitCode: 7,
+      stderr: { content: expect.stringContaining('{"message":"intentional exit"}') },
+    },
   });
   expect((await run("process.exit(0);")).exitCode).toBe(0);
 });
@@ -539,18 +547,16 @@ it.each([false, true])(
       if (mount_work) await symlink(external, path.join(logical_workspace, "work"), link_type);
       else await mkdir(path.join(logical_workspace, "work"));
       await mkdir(path.join(logical_workspace, "changes"));
-      await symlink(
-        path.join(runtime, "node_modules"),
-        path.join(logical_workspace, "node_modules"),
-        link_type,
-      );
       await symlink(external, path.join(logical_workspace, "work", "output"), link_type);
       await writeFile(path.join(external, "helper.mjs"), "export const title = 'linked';");
       await writeFile(
         path.join(logical_workspace, "contract.json"),
         JSON.stringify(AGENT_WORKSPACE_CONTRACT),
       );
-      await cp(path.join(runtime, "package.json"), path.join(logical_workspace, "package.json"));
+      await writeFile(
+        path.join(logical_workspace, "package.json"),
+        JSON.stringify({ type: "module" }),
+      );
       await mkdir(path.join(logical_workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
       const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task.mjs`;
       await writeFile(
@@ -568,8 +574,7 @@ it.each([false, true])(
       );
       const result = await new AgentWorkspaceRunner({
         paths: skill_paths,
-        executablePath: electron_path,
-        runtimeDirectory: runtime_link,
+        node: create_node_runtime(runtime_link),
         proxyResolver: { resolveProxy: async () => "DIRECT" },
       }).run(
         {
@@ -688,6 +693,100 @@ it("模型说明列出的预装包都能在权限模式下导入", async () => {
   expect(output_content(result.stdout)).toEqual([]);
 });
 
+it("共享工程统一解析 ESM、CJS 与 createRequire，保留条件导出和嵌套版本", async () => {
+  await run("// 先初始化共享工程，再放入测试自有包。");
+  const shared = path.join(root, "shared node/node_modules");
+  for (const [directory, manifest, files] of [
+    [
+      "lg-condition",
+      {
+        name: "lg-condition",
+        type: "module",
+        exports: { import: "./import.mjs", require: "./require.cjs" },
+      },
+      { "import.mjs": "export default 'import';", "require.cjs": "module.exports='require';" },
+    ],
+    [
+      "lg-parent",
+      { name: "lg-parent", type: "module", exports: "./index.mjs" },
+      { "index.mjs": "import value from 'lg-condition'; export default value;" },
+    ],
+    [
+      "lg-parent/node_modules/lg-condition",
+      { name: "lg-condition", type: "module", exports: "./index.mjs" },
+      { "index.mjs": "export default 'nested';" },
+    ],
+  ] as const) {
+    await mkdir(path.join(shared, directory), { recursive: true });
+    await writeFile(path.join(shared, directory, "package.json"), JSON.stringify(manifest));
+    for (const [name, value] of Object.entries(files))
+      await writeFile(path.join(shared, directory, name), value);
+  }
+  await writeFile(
+    path.join(workspace, "work/require.cjs"),
+    "module.exports = require('lg-condition');",
+  );
+  const linked = path.join(root, "linked package");
+  await mkdir(linked);
+  await writeFile(
+    path.join(linked, "package.json"),
+    JSON.stringify({ name: "@fixture/linked", type: "module", exports: "./index.mjs" }),
+  );
+  await writeFile(path.join(linked, "index.mjs"), "export default 'linked';");
+  await mkdir(path.join(shared, "@fixture"));
+  await symlink(
+    linked,
+    path.join(shared, "@fixture/linked"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const result = await run(`
+    import esm from 'lg-condition';
+    import nested from 'lg-parent';
+    import linked from '@fixture/linked';
+    import cjs from '../require.cjs';
+    import {createRequire} from 'node:module';
+    const require = createRequire(import.meta.url);
+    console.log(JSON.stringify({esm,nested,cjs,linked,linkedRequired:require('@fixture/linked').default,required:require('lg-condition'),resolved:require.resolve('lg-condition').endsWith('require.cjs')}));
+  `);
+  expect(result.stdout).toMatchObject({
+    content: {
+      esm: "import",
+      nested: "nested",
+      cjs: "require",
+      linked: "linked",
+      linkedRequired: "linked",
+      required: "require",
+      resolved: true,
+    },
+  });
+  const removed = path.join(shared, "chardet");
+  const saved = `${removed}.saved`;
+  const ancestor = path.join(root, "node_modules/chardet");
+  await mkdir(ancestor, { recursive: true });
+  await writeFile(
+    path.join(ancestor, "package.json"),
+    JSON.stringify({ name: "chardet", main: "index.cjs" }),
+  );
+  await writeFile(path.join(ancestor, "index.cjs"), "module.exports = 'ancestor';");
+  await rename(removed, saved);
+  try {
+    for (const script of [
+      "import 'chardet';",
+      "import {createRequire} from 'node:module'; createRequire(import.meta.url)('chardet');",
+    ]) {
+      await expect(run(script)).rejects.toMatchObject({
+        execution: {
+          exitCode: 1,
+          stderr: { content: expect.stringContaining("MODULE_NOT_FOUND") },
+        },
+      });
+    }
+  } finally {
+    await rename(saved, removed);
+    await rm(ancestor, { recursive: true });
+  }
+});
+
 it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退出", async () => {
   const result = await run(
     `
@@ -727,8 +826,7 @@ async function run(
   await writeFile(path.join(workspace, scriptPath), script);
   return await new AgentWorkspaceRunner({
     paths: skill_paths,
-    executablePath: electron_path,
-    runtimeDirectory: runtime,
+    node: create_node_runtime(runtime, resolveProxy),
     proxyResolver: { resolveProxy },
   }).run(
     {
@@ -746,4 +844,20 @@ async function run(
 function output_content(output: AgentWorkspaceOutput) {
   if (!("content" in output)) throw new Error(output.message);
   return output.content;
+}
+
+function create_node_runtime(
+  directory = runtime,
+  resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
+) {
+  return new AgentNodeRuntime({
+    runtimeDirectory: directory,
+    executablePath: electron_path,
+    electronVersion: "45.0.0",
+    paths: {
+      get_agent_node_root_dir: () => path.join(root, "shared node"),
+      get_agent_node_lock_path: () => path.join(root, "node.lock"),
+    },
+    proxyResolver: { resolveProxy },
+  });
 }

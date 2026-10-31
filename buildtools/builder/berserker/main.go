@@ -109,7 +109,7 @@ func runBerserker(args []string, stdin io.Reader, output io.Writer, start func(s
 
 // 参数来自 GUI 准备阶段，安装目标与要结束的程序必须指向同一目录。
 func parseBerserkerPlan(args []string) (berserkerPlan, error) {
-	flags := flag.NewFlagSet("win-berserker", flag.ContinueOnError)
+	flags := flag.NewFlagSet("berserker", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	zipPath := flags.String("zip", "", "release zip path")
 	target := flags.String("target", "", "install target directory")

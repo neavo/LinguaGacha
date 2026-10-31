@@ -6,7 +6,9 @@ import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { is_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
+import { AgentNodeExecError, type AgentNodeRuntime } from "../../node/runtime";
+import type { Supervisor } from "../../../../native/supervisor";
+import { read_agent_process_output, type AgentProcessOutput } from "../../process-output";
 import type { AgentImageOptions } from "../../../../shared/agent-image";
 import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
@@ -28,15 +30,7 @@ export type AgentWorkspaceRunRequest = Readonly<{
   doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
 }>;
 
-export type AgentWorkspaceOutputContent = string | JsonRecord | JsonValue[];
-
-/** 文件保存完整原文。小输出附带内容，大输出只提供补读提示。 */
-export type AgentWorkspaceOutput = Readonly<
-  {
-    path: string;
-    bytes: number;
-  } & ({ content: AgentWorkspaceOutputContent } | { message: string })
->;
+export type AgentWorkspaceOutput = AgentProcessOutput;
 
 type WorkspaceProcessResult = {
   exitCode: number | null;
@@ -65,8 +59,7 @@ export class AgentWorkspaceRunError extends Error {
 
 /** 父进程拥有执行、取消与回收。Node 自身拥有程序及其异步任务的完成语义。 */
 export class AgentWorkspaceRunner {
-  private readonly executable_path: string;
-  private readonly runtime_directory: string;
+  private readonly node: AgentNodeRuntime;
   private readonly proxy_resolver: ProxyResolver; // 经宿主查询当前 Session，子进程共用同一代理策略。
   private readonly paths: Pick<
     AppPathService,
@@ -75,13 +68,11 @@ export class AgentWorkspaceRunner {
 
   /** 保存当前应用版本的启动资源与宿主代理端口。 */
   public constructor(options: {
-    executablePath?: string;
-    runtimeDirectory: string;
+    node: AgentNodeRuntime;
     proxyResolver: ProxyResolver;
     paths: Pick<AppPathService, "get_agent_user_skill_dir" | "get_agent_builtin_skill_dir">;
   }) {
-    this.executable_path = path.resolve(options.executablePath ?? process.execPath);
-    this.runtime_directory = path.resolve(options.runtimeDirectory);
+    this.node = options.node;
     this.proxy_resolver = options.proxyResolver;
     this.paths = options.paths;
   }
@@ -91,10 +82,36 @@ export class AgentWorkspaceRunner {
     request: AgentWorkspaceRunRequest,
     signal: AbortSignal,
   ): Promise<AgentWorkspaceExecution> {
+    try {
+      return await this.node.with_environment(
+        request,
+        signal,
+        "run",
+        (owner, env, execution_signal) => this.run_prepared(request, execution_signal, owner, env),
+      );
+    } catch (error) {
+      if (error instanceof AgentNodeExecError)
+        throw new AgentWorkspaceRunError(error.message, {
+          scriptPath: request.scriptPath,
+          exitCode: error.execution.exitCode,
+          signal: error.execution.signal,
+          stdout: error.execution.stdout,
+          stderr: error.execution.stderr,
+        });
+      throw error;
+    }
+  }
+
+  private async run_prepared(
+    request: AgentWorkspaceRunRequest,
+    signal: AbortSignal,
+    owner: Supervisor,
+    env: NodeJS.ProcessEnv,
+  ): Promise<AgentWorkspaceExecution> {
     signal.throwIfAborted();
     // 宿主先解析祖先链接，cwd、预加载与写入授权使用同一真实位置。
     const workspace_path = default_native_fs.real_path(request.workspacePath);
-    const runtime_directory = default_native_fs.real_path(this.runtime_directory);
+    const runtime_directory = default_native_fs.real_path(this.node.directory);
     const bootstrap_path = resolve_workspace_runtime_entry(
       runtime_directory,
       "@lg/workspace/bootstrap",
@@ -111,6 +128,8 @@ export class AgentWorkspaceRunner {
     write_paths.add(default_native_fs.real_path(user_skill_directory));
     // 技能模块可能经逻辑入口或真实位置加载，npm 依赖解析按两者匹配，每次 run 都重新解析。
     const skill_module_roots = [
+      path.join(request.workspacePath, "work"),
+      path.join(workspace_path, "work"),
       user_skill_directory,
       this.paths.get_agent_builtin_skill_dir(),
     ].flatMap((entry) => {
@@ -125,20 +144,21 @@ export class AgentWorkspaceRunner {
     // 标准异步资源释放在返回或抛错前关闭句柄，第二路打开失败也会释放第一路。
     await using stdout = await default_native_fs.open_file(
       path.join(workspace_path, request.stdoutPath),
-      "w",
+      "a",
     );
     await using stderr = await default_native_fs.open_file(
       path.join(workspace_path, request.stderrPath),
-      "w",
+      "a",
     );
     const launch_options: ForkOptions & { windowsHide: boolean } = {
-      execPath: this.executable_path,
+      execPath: this.node.executable,
       execArgv: [
         "--permission",
+        "--allow-addons",
         // 读取范围是当前系统账户可访问的本机文件，写入限定在授权目录。
         "--allow-fs-read=*",
         ...[...write_paths].map((directory) => `--allow-fs-write=${directory}`),
-        // 包括主程序在内都按工作区入口解析模块。work 本身是链接时仍能发现工作区 node_modules。
+        // 保留工作材料与技能的逻辑入口，模块解析钩子同时匹配逻辑位置和真实位置。
         "--preserve-symlinks",
         "--preserve-symlinks-main",
         "--import",
@@ -146,7 +166,9 @@ export class AgentWorkspaceRunner {
       ],
       cwd: workspace_path,
       // 启动参数由 runner 拥有，禁止继承父进程的 Node 注入选项。
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "" },
+      env,
+      // Windows 跳过 libuv 的隐式 Job，让所有目标共用监管程序持有的具名 Job。
+      detached: true,
       windowsHide: true,
       stdio: ["ignore", stdout.fd, stderr.fd, "ipc"],
     };
@@ -158,13 +180,14 @@ export class AgentWorkspaceRunner {
       launch_options,
       signal,
       request,
+      owner,
     );
     const execution: AgentWorkspaceExecution = {
       scriptPath: request.scriptPath,
       exitCode: process_result.exitCode,
       signal: process_result.signal,
-      stdout: read_output(workspace_path, request.stdoutPath),
-      stderr: read_output(workspace_path, request.stderrPath),
+      stdout: read_agent_process_output(workspace_path, request.stdoutPath),
+      stderr: read_agent_process_output(workspace_path, request.stderrPath),
     };
     if (process_result.failure !== undefined)
       throw new AgentWorkspaceRunError(process_result.failure, execution);
@@ -179,6 +202,7 @@ export class AgentWorkspaceRunner {
     launch_options: ForkOptions,
     signal: AbortSignal,
     run_request: AgentWorkspaceRunRequest,
+    owner: Supervisor,
   ): Promise<WorkspaceProcessResult> {
     signal.throwIfAborted();
     return new Promise((resolve, reject) => {
@@ -199,7 +223,8 @@ export class AgentWorkspaceRunner {
         if (terminal_error !== undefined) return;
         terminal_error = reason;
         abort_requests(reason);
-        child.kill("SIGKILL");
+        // attach 请求先于停止入队，由监管器结束目标，避免根进程先消失导致登记失败。
+        owner.stop();
       };
       /** IPC 发送失败沿同一终止路径处理。 */
       const send = (message: AgentWorkspaceRuntimeParentMessage): void => {
@@ -276,7 +301,11 @@ export class AgentWorkspaceRunner {
         clearTimeout(timer);
         signal.removeEventListener("abort", abort_listener);
         abort_requests(new Error("Workspace process closed."));
-        void Promise.allSettled(operations).then(() => {
+        void Promise.allSettled([supervision, ...operations]).then(([supervisor_result]) => {
+          if (supervisor_result?.status === "rejected") {
+            reject(supervisor_result.reason);
+            return;
+          }
           if (terminal_error !== undefined && terminal_error !== timeout_error)
             reject(terminal_error);
           else
@@ -291,30 +320,27 @@ export class AgentWorkspaceRunner {
             });
         });
       });
-      send({
-        type: "start",
-        userSkillDirectory: user_skill_directory,
-        skillRoots: skill_roots,
-      });
+      const supervision = (async () => {
+        try {
+          if (child.pid === undefined) throw new Error("Workspace process did not start.");
+          await owner.attach(child.pid);
+          send({
+            type: "start",
+            userSkillDirectory: user_skill_directory,
+            nodeRoot: this.node.root,
+            moduleRoots: skill_roots,
+          });
+          await owner.settle(signal);
+        } catch (error) {
+          terminate(error);
+          // 监管失败时才由宿主回收根进程；正常停止与超时由监管器统一处理后代。
+          if (!signal.aborted || error !== signal.reason) child.kill("SIGKILL");
+          throw error;
+        }
+      })();
+      // close 的结算路径消费监管失败，提前注册避免在进程退出前成为未处理拒绝。
+      void supervision.catch(() => {});
       if (signal.aborted) abort_listener();
     });
   }
-}
-
-/** 只把额度内的完整文件读入内存，两路输出独立决定是否直接返回。 */
-function read_output(workspace_path: string, relative_path: string): AgentWorkspaceOutput {
-  const file_path = path.join(workspace_path, relative_path);
-  const bytes = default_native_fs.stat(file_path).size;
-  if (bytes > AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes) {
-    return { path: relative_path, bytes, message: "输出超长，请按需读取记录文件。" };
-  }
-  const text = default_native_fs.read_text_file(file_path);
-  let content: AgentWorkspaceOutputContent = text;
-  try {
-    const value = JSON.parse(text) as JsonValue;
-    if (is_json_record(value) || Array.isArray(value)) content = value;
-  } catch {
-    // 普通文本和混合日志都是有效输出，保留原始内容。
-  }
-  return { path: relative_path, bytes, content };
 }

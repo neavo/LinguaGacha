@@ -58,7 +58,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: buildtools/builder/win-cli/go.mod
+          go-version-file: buildtools/builder/supervisor/go.mod
           cache-dependency-path: buildtools/builder/**/go.mod
 
       - name: Sync Manifest Versions
@@ -106,6 +106,12 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: buildtools/builder/supervisor/go.mod
+          cache-dependency-path: buildtools/builder/**/go.mod
 
       - name: Sync Manifest Versions
         shell: bash
@@ -160,6 +166,12 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: buildtools/builder/supervisor/go.mod
+          cache-dependency-path: buildtools/builder/**/go.mod
 
       - name: Sync Manifest Versions
         shell: bash

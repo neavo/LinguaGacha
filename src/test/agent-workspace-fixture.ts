@@ -1,15 +1,16 @@
+import type { AgentWorkspaceExecResult } from "../backend/agent/node/runtime";
+import type { AgentProcessOutputContent } from "../backend/agent/process-output";
 import fs from "node:fs";
 import path from "node:path";
 import type {
   AgentWorkspaceExecution,
   AgentWorkspaceOutput,
-  AgentWorkspaceOutputContent,
 } from "../backend/agent/workspace/runtime/runner";
 
 /** 应用侧测试只隔离进程执行；执行记录仍遵循真实公开形状。 */
 export function workspace_execution(
-  stdout: AgentWorkspaceOutputContent = "",
-  stderr: AgentWorkspaceOutputContent = "",
+  stdout: AgentProcessOutputContent = "",
+  stderr: AgentProcessOutputContent = "",
 ): AgentWorkspaceExecution {
   return {
     scriptPath: "work/runs/test.mjs",
@@ -20,8 +21,19 @@ export function workspace_execution(
   };
 }
 
+export function workspace_exec_execution(): AgentWorkspaceExecResult {
+  const result = workspace_execution();
+  return {
+    cwd: "userdata/node",
+    exitCode: 0,
+    signal: null,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
 /** 假执行结果同样区分日志原文字节数与返回的结构化内容。 */
-function output_file(content: AgentWorkspaceOutputContent, path: string): AgentWorkspaceOutput {
+function output_file(content: AgentProcessOutputContent, path: string): AgentWorkspaceOutput {
   return {
     path,
     bytes: Buffer.byteLength(typeof content === "string" ? content : JSON.stringify(content)),
@@ -29,7 +41,7 @@ function output_file(content: AgentWorkspaceOutputContent, path: string): AgentW
   };
 }
 
-/** 工作区生命周期测试使用独立部署目录，验证链接和清理而不依赖真实安装包。 */
+/** 宿主启动测试使用最小部署目录，只验证组合根生命周期。 */
 export function create_workspace_runtime_fixture(root: string): string {
   const directory = path.join(root, "runtime");
   fs.mkdirSync(path.join(directory, "node_modules"), { recursive: true });

@@ -1,3 +1,5 @@
+import type { AgentNodeRuntime } from "../../node/runtime";
+import type { Supervisor } from "../../../../native/supervisor";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import type { FileHandle } from "node:fs/promises";
@@ -15,9 +17,15 @@ import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 let directory = "";
 let request: AgentWorkspaceRunRequest;
 let handles: FileHandle[] = [];
+let settle: Supervisor["settle"];
+let attach: Supervisor["attach"];
+let stop: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fork.mockReset();
+  settle = async () => ({ exitCode: 0, signal: null });
+  attach = async () => {};
+  stop = vi.fn();
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "lg-runner-"));
   const workspacePath = path.join(directory, "workspace");
   const package_directory = path.join(directory, "node_modules/@lg/workspace");
@@ -161,60 +169,72 @@ describe("AgentWorkspaceRunner", () => {
     expect(child.send).toHaveBeenCalledTimes(1);
   });
 
-  it.each([0, 1])("退出码 %s 的小输出优先结构化，文件保留原始文本", async (code) => {
-    const { child, result } = await start_run();
-    const stdout = ' {"items":[{"id":1,"literal":"{\\"nested\\":true}"}]}\n';
-    child.write_stdout(stdout.slice(0, 10));
-    child.write_stdout(stdout.slice(10));
-    child.write_stderr('[{"code":"notice"}]\n');
-    child.emit("close", code);
-    const execution = {
-      exitCode: code,
-      stdout: {
-        path: request.stdoutPath,
-        bytes: Buffer.byteLength(stdout),
-        content: { items: [{ id: 1, literal: '{"nested":true}' }] },
-      },
-      stderr: { path: request.stderrPath, content: [{ code: "notice" }] },
-    };
-    if (code === 0) await expect(result).resolves.toMatchObject(execution);
-    else await expect(result).rejects.toMatchObject({ execution });
-    expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe(stdout);
+  it("监管失败也等待在途宿主请求实际结算", async () => {
+    const supervision = Promise.withResolvers<{ exitCode: number | null; signal: string | null }>();
+    settle = () => supervision.promise;
+    const operation = Promise.withResolvers<string>();
+    const started = Promise.withResolvers<void>();
+    const { child, result } = await start_run(async () => {
+      started.resolve();
+      return await operation.promise;
+    });
+    child.emit("message", {
+      type: "request",
+      id: 1,
+      request: { kind: "resolve_proxy", url: "https://example.com/pending" },
+    });
+    await started.promise;
+    let settled = false;
+    const failure = new Error("supervisor disappeared");
+    const outcome = result.catch((error: unknown) => {
+      settled = true;
+      return error;
+    });
+    supervision.reject(failure);
+    child.emit("close", 1);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    operation.resolve("DIRECT");
+    expect(await outcome).toBe(failure);
     expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
   });
 
-  it.each(["123\n", '"{}"\n', 'progress\n{"ok":true}\n'])(
-    "文本输出按原样返回并落盘：%j",
-    async (text) => {
-      const { child, result } = await start_run();
-      child.write_stdout(text);
-      child.emit("close", 0);
-      await expect(result).resolves.toMatchObject({ stdout: { content: text } });
-      expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe(text);
-    },
-  );
+  it("登记期间停止由监管器回收，保留停止原因且不直接结束待登记进程", async () => {
+    const registered = Promise.withResolvers<void>();
+    const settling = Promise.withResolvers<void>();
+    attach = () => registered.promise;
+    settle = async (signal) => {
+      settling.resolve();
+      signal.throwIfAborted();
+      return { exitCode: 0, signal: null };
+    };
+    const controller = new AbortController();
+    const stopped = new Error("stop while registering");
+    const { child, result } = await start_run(undefined, controller.signal);
+    const outcome = result.catch((error: unknown) => error);
+    controller.abort(stopped);
+    registered.resolve();
+    await settling.promise;
+    child.emit("close", null, "SIGKILL");
+    expect(await outcome).toBe(stopped);
+    expect(child.kill).not.toHaveBeenCalled();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(child.send).not.toHaveBeenCalled();
+    expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
+  });
 
-  it("两路独立判断额度，超限内容完整保存且不读入返回值", async () => {
+  it("非零退出携带执行记录并关闭句柄", async () => {
     const { child, result } = await start_run();
-    const json = '{"value":true}'.padEnd(AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes, " ");
-    child.write_stdout(json);
-    child.write_stdout("末尾");
-    child.write_stderr(json);
-    const read = vi.spyOn(default_native_fs, "read_text_file");
-    child.emit("close", 0);
-    const execution = await result;
-    expect(execution.stdout).toEqual({
-      path: request.stdoutPath,
-      bytes: Buffer.byteLength(json) + 6,
-      message: expect.any(String),
+    child.write_stdout("failed output");
+    child.emit("close", 1);
+    await expect(result).rejects.toMatchObject({
+      execution: {
+        exitCode: 1,
+        stdout: { path: request.stdoutPath, content: "failed output" },
+      },
     });
-    expect(execution.stderr).toEqual({
-      path: request.stderrPath,
-      bytes: Buffer.byteLength(json),
-      content: { value: true },
-    });
-    expect(read).not.toHaveBeenCalledWith(output_path("stdout"));
-    expect(fs.readFileSync(output_path("stdout"), "utf8").endsWith("末尾")).toBe(true);
+    expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
   });
 
   it.each(["abort", "timeout"])("%s 等 close 后结算，保留输出并关闭句柄", async (kind) => {
@@ -228,7 +248,8 @@ describe("AgentWorkspaceRunner", () => {
     });
     if (kind === "abort") controller.abort(new Error("stop"));
     else await vi.advanceTimersByTimeAsync(AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs);
-    expect(child.kill).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(child.kill).not.toHaveBeenCalled();
     await Promise.resolve();
     expect(settled).toBe(false);
     child.emit("close", null, "SIGKILL");
@@ -268,7 +289,7 @@ async function start_run(
     const stderr: unknown = options.stdio[2];
     if (typeof stdout !== "number" || typeof stderr !== "number")
       throw new Error("Expected file descriptors");
-    child = fake_process(stdout, stderr);
+    child = fake_process(stdout);
     started();
     return child;
   });
@@ -278,11 +299,11 @@ async function start_run(
 }
 
 /** close 由用例触发，用于观察进程退出前后的互斥和句柄生命周期。 */
-function fake_process(stdout: number, stderr: number) {
+function fake_process(stdout: number) {
   return Object.assign(new EventEmitter(), {
     connected: true,
+    pid: 123,
     write_stdout: (text: string) => fs.writeSync(stdout, text),
-    write_stderr: (text: string) => fs.writeSync(stderr, text),
     send: vi.fn((_message: unknown, callback: (error: Error | null) => void) => callback(null)),
     kill: vi.fn(() => true),
   });
@@ -300,12 +321,31 @@ function output_path(channel: "stdout" | "stderr") {
 function build_runner(
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ) {
+  const owner = {
+    attach: (...args: Parameters<Supervisor["attach"]>) => attach(...args),
+    settle: (...args: Parameters<Supervisor["settle"]>) => settle(...args),
+    stop,
+  } as unknown as Supervisor;
+  const with_environment: AgentNodeRuntime["with_environment"] = async (
+    _request,
+    signal,
+    _mode,
+    action,
+  ) => {
+    signal.throwIfAborted();
+    return await action(owner, process.env, signal);
+  };
   return new AgentWorkspaceRunner({
+    node: {
+      root: directory,
+      directory,
+      executable: process.execPath,
+      with_environment,
+    } as AgentNodeRuntime,
     paths: {
       get_agent_user_skill_dir: () => path.join(directory, "user-skills"),
       get_agent_builtin_skill_dir: () => path.join(directory, "builtin-skills"),
     },
-    runtimeDirectory: directory,
     proxyResolver: { resolveProxy },
   });
 }

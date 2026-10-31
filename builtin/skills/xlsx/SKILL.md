@@ -9,7 +9,7 @@ description: 读取或分析 XLSX 表格时使用，处理工作表、单元格�
 
 ## 阅读表格
 
-使用预装 `exceljs`，先确认目标工作表、列语义和处理范围。读取大表时先列出工作表及少量样例，按任务选择需要的行列，结果保留工作表名和单元格位置。
+使用 `exceljs`，先确认目标工作表、列语义和处理范围。读取大表时先列出工作表及少量样例，按任务选择需要的行列，结果保留工作表名和单元格位置。
 
 ```js
 import ExcelJS from 'exceljs';
@@ -23,7 +23,7 @@ for (let row = 1; row <= Math.min(sheet.rowCount, 10); row++) {
 }
 ```
 
-具体接口读取 `node_modules/exceljs/README.md` 或 `index.d.ts`。富文本从 `richText` 各段取得文字，超链接使用 `text`，公式使用已有 `result` 时注明它是文件中的缓存值。ExcelJS 读取已有公式缓存，缓存缺失时说明该单元格结果未知。WOLF 表格具有固定列及填充色规则，检查原表后再定位原文和译文列。
+具体接口读取共享 npm 工程中 `node_modules/exceljs/` 的 `README.md` 或 `index.d.ts`。富文本从 `richText` 各段取得文字，超链接使用 `text`，公式使用已有 `result` 时注明它是文件中的缓存值。ExcelJS 读取已有公式缓存，缓存缺失时说明该单元格结果未知。WOLF 表格具有固定列及填充色规则，检查原表后再定位原文和译文列。
 
 ## 生成独立 XLSX
 
