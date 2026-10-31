@@ -140,6 +140,7 @@ npm test -- --project renderer <测试文件路径...>
 GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目标测试。
 
 - 应用代理变化：运行 [app-proxy.test.ts](../src/native/app-proxy.test.ts)。它用真实 Electron 与本地代理验证 Chromium 和 Undici 的路由及传输。
+- 语言资源或启动语言变化：运行 [app-locale.test.ts](../src/native/app-locale.test.ts) 的真实 Electron 测试。
 - 共享资源或生命周期变化：运行 `BackendResources` 与 `GuiBackendBootstrap` 的真实集成测试。
 - 文件删除或清理变化：运行 `src/native/native-fs.test.ts` 与调用者测试。前者在 Windows 用真实 Electron 验证只读文件与目录删除。
 - 用户文件语义变化：运行 `src/native/native-fs.test.ts`。它在 Electron 主进程、后端线程与 `ELECTRON_RUN_AS_NODE` 中验证 ASAR 档案按普通文件处理。普通 Node 测试不识别 ASAR。
