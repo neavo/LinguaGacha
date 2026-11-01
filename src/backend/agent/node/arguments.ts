@@ -1,5 +1,12 @@
-/** 只拆参数，不执行 shell 展开。反斜线规则兼顾 Windows 路径与带空格参数。 */
-export function split_workspace_command(command: string): string[] {
+/** `workspace_exec` 可运行的命令及其在运行资源中的 CLI 入口。新增命令只在此登记，时限、监管与回执沿用执行入口。 */
+const AGENT_WORKSPACE_COMMANDS: Readonly<Record<string, string>> = Object.freeze({
+  npm: "npm/bin/npm-cli.js",
+});
+
+export type AgentWorkspaceCommand = Readonly<{ entry: string; args: readonly string[] }>;
+
+/** 只拆参数，不执行 shell 展开。反斜线规则兼顾 Windows 路径与带空格参数，首个参数选择登记命令。 */
+export function parse_workspace_command(command: string): AgentWorkspaceCommand {
   const args: string[] = [];
   let value = "";
   let started = false; // 空引号也产生参数，不能只根据 value 是否为空判断。
@@ -38,7 +45,14 @@ export function split_workspace_command(command: string): string[] {
   }
   if (quote !== "") throw new Error(`Unclosed quote at position ${quote_position}.`);
   if (started) args.push(value);
-  if (args.length === 0) throw new Error("Missing command at position 0.");
-  if (args[0] !== "npm") throw new Error("Only the npm command is supported.");
-  return args;
+  const [name, ...rest] = args;
+  if (name === undefined) throw new Error("Missing command at position 0.");
+  const entry = Object.hasOwn(AGENT_WORKSPACE_COMMANDS, name) // 原型链上的键不是登记命令。
+    ? AGENT_WORKSPACE_COMMANDS[name]
+    : undefined;
+  if (entry === undefined)
+    throw new Error(
+      `Unsupported command "${name}". Available commands: ${Object.keys(AGENT_WORKSPACE_COMMANDS).join(", ")}.`,
+    );
+  return { entry, args: rest };
 }

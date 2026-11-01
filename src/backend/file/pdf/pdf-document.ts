@@ -13,7 +13,7 @@ const PDF_MAX_PIXELS = 32_000_000; // 分配位图前限制像素总量，约束
 const PDF_COORDINATE_DECIMALS = 6; // 背景变换矩阵写入十进制小数，符合 PDF 内容流的数字语法。
 const PDF_PREVIEW_MAX_EDGE = 1600; // 预览图最长边，控制传输体积与显示清晰度。
 
-/** 原稿身份由字节决定；阅读和渲染共用旋转后的左上角页面坐标。 */
+/** 原稿身份由字节决定。阅读和渲染共用旋转后的左上角页面坐标。 */
 export function read_pdf_document(bytes: Uint8Array): PDFDocument {
   const pdf = new mupdf.PDFDocument(bytes);
   try {
@@ -56,7 +56,7 @@ export function read_pdf_document(bytes: Uint8Array): PDFDocument {
   }
 }
 
-/** MuPDF 对象只在本包内流通，调用者可使用另一份 MuPDF 实例。 */
+/** 字节接口保持跨版本和进程边界，调用者可使用独立的 MuPDF 实例。 */
 export function render_pdf_page(
   bytes: Uint8Array,
   request: { page: number; scale: number; region?: PDFRegion },
@@ -157,7 +157,7 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
         index++;
         continue;
       }
-      // 有正文才发起打印；空译稿不生成空白页，也不打断兼容的连续正文。
+      // 空译稿跳过打印，连续正文仍可合并排版。
       const size = page;
       const group = [rendered[index++]!];
       while (index < document.pages.length) {
@@ -226,7 +226,7 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
   }
 }
 
-/** 共用排版和背景，保留完整来源；返回文档由调用方释放，导出可直接接页而无需中间序列化。 */
+/** 返回完整文档供调用方直接接页，避免中间序列化。调用方负责释放。 */
 async function print_pdf_group(
   args: BuildPDFDocumentArgs,
   source: mupdf.PDFDocument,
@@ -268,7 +268,7 @@ async function print_pdf_group(
   }
 }
 
-/** 单页译稿允许没有输出；调用方先按处置状态展示空态。 */
+/** 单页译稿允许没有输出，调用方按处置状态展示空态。 */
 export async function build_pdf_page_preview(
   args: BuildPDFDocumentArgs & { page: number },
 ): Promise<Uint8Array> {
@@ -327,7 +327,7 @@ export function render_pdf_preview(
   }
 }
 
-/** 在实际输出页底层绘制背景，页面裁切负责出血；一组页面共享一个图像对象。 */
+/** 背景按页边界裁切。一组页面共享图像对象。 */
 function apply_pdf_background(pdf: mupdf.PDFDocument, image: mupdf.Image): void {
   const reference = pdf.addImage(image);
   try {

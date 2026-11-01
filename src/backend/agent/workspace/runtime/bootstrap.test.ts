@@ -1,17 +1,7 @@
 import { AgentNodeRuntime } from "../../node/runtime";
 import type { AgentWorkspaceRunRequest } from "./runner";
 import { execFileSync } from "node:child_process";
-import {
-  cp,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rename,
-  rm,
-  symlink,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -134,19 +124,34 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   }
 });
 
-it("权限模式直接导入 MuPDF WASM 和 Markdown npm 包", async () => {
+it("权限模式下 PDF 引擎与渲染 API 共用实例，Markdown 从用户 npm 工程加载", async () => {
   await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
   const result = await run(`
     import { readFile } from 'node:fs/promises';
-    import * as mupdf from 'mupdf';
+    import assert from 'node:assert/strict';
+    import * as mupdf from '@lg/pdf/mupdf';
     import {render_pdf_page} from '@lg/pdf';
     import { unified } from 'unified';
     import remarkParse from 'remark-parse';
     import remarkGfm from 'remark-gfm';
+    const loadPage = mupdf.PDFDocument.prototype.loadPage;
+    let rendered = false;
+    mupdf.PDFDocument.prototype.loadPage = function(index) {
+      rendered = true;
+      return loadPage.call(this, index);
+    };
     const pdf = new mupdf.PDFDocument(new Uint8Array(await readFile('work/source.pdf')));
     try {
       const page = pdf.loadPage(0); const text = page.toStructuredText();
-      try { console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:render_pdf_page(pdf.saveToBuffer("").asUint8Array(),{page:3,scale:1}).length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type })); }
+      try {
+        rendered = false;
+        const buffer = pdf.saveToBuffer('');
+        let image;
+        try { image = render_pdf_page(buffer.asUint8Array(), {page:3,scale:1}); }
+        finally { buffer.destroy(); }
+        assert.equal(rendered, true, 'PDF API 必须使用公开引擎的同一原型');
+        console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:image.length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type }));
+      }
       finally { text.destroy(); page.destroy(); }
     } finally { pdf.destroy(); }
 
@@ -673,7 +678,13 @@ it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", a
 
 it("页面更新模块在部署工作区解析记录并判定目标", async () => {
   const result = await run(`
-    import { parse_page_update, resolve_agent_workspace_page_updates } from '@lg/workspace/page-updates';
+    import { registerHooks } from 'node:module';
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      if (specifier === 'mupdf') throw new Error('工作区数据模块不应初始化 PDF 引擎');
+      return nextResolve(specifier, context);
+    }});
+    await import('@lg/workspace/item-contexts');
+    const { parse_page_update, resolve_agent_workspace_page_updates } = await import('@lg/workspace/page-updates');
     const value = {file_path:'sample.pdf',page:1,fp:'abcd',translation:null,reviewed:false,notes:''};
     const valid = parse_page_update({line:2,value});
     const missing = resolve_agent_workspace_page_updates([valid.intent], []);
@@ -693,99 +704,69 @@ it("模型说明列出的预装包都能在权限模式下导入", async () => {
   expect(output_content(result.stdout)).toEqual([]);
 });
 
-it("共享工程统一解析 ESM、CJS 与 createRequire，保留条件导出和嵌套版本", async () => {
-  await run("// 先初始化共享工程，再放入测试自有包。");
-  const shared = path.join(root, "shared node/node_modules");
-  for (const [directory, manifest, files] of [
-    [
-      "lg-condition",
-      {
-        name: "lg-condition",
-        type: "module",
-        exports: { import: "./import.mjs", require: "./require.cjs" },
-      },
-      { "import.mjs": "export default 'import';", "require.cjs": "module.exports='require';" },
-    ],
-    [
-      "lg-parent",
-      { name: "lg-parent", type: "module", exports: "./index.mjs" },
-      { "index.mjs": "import value from 'lg-condition'; export default value;" },
-    ],
-    [
-      "lg-parent/node_modules/lg-condition",
-      { name: "lg-condition", type: "module", exports: "./index.mjs" },
-      { "index.mjs": "export default 'nested';" },
-    ],
-  ] as const) {
-    await mkdir(path.join(shared, directory), { recursive: true });
-    await writeFile(path.join(shared, directory, "package.json"), JSON.stringify(manifest));
-    for (const [name, value] of Object.entries(files))
-      await writeFile(path.join(shared, directory, name), value);
-  }
-  await writeFile(
-    path.join(workspace, "work/require.cjs"),
-    "module.exports = require('lg-condition');",
-  );
-  const linked = path.join(root, "linked package");
-  await mkdir(linked);
-  await writeFile(
-    path.join(linked, "package.json"),
-    JSON.stringify({ name: "@fixture/linked", type: "module", exports: "./index.mjs" }),
-  );
-  await writeFile(path.join(linked, "index.mjs"), "export default 'linked';");
-  await mkdir(path.join(shared, "@fixture"));
-  await symlink(
-    linked,
-    path.join(shared, "@fixture/linked"),
-    process.platform === "win32" ? "junction" : "dir",
-  );
-  const result = await run(`
-    import esm from 'lg-condition';
-    import nested from 'lg-parent';
-    import linked from '@fixture/linked';
-    import cjs from '../require.cjs';
-    import {createRequire} from 'node:module';
-    const require = createRequire(import.meta.url);
-    console.log(JSON.stringify({esm,nested,cjs,linked,linkedRequired:require('@fixture/linked').default,required:require('lg-condition'),resolved:require.resolve('lg-condition').endsWith('require.cjs')}));
-  `);
-  expect(result.stdout).toMatchObject({
-    content: {
-      esm: "import",
-      nested: "nested",
-      cjs: "require",
-      linked: "linked",
-      linkedRequired: "linked",
-      required: "require",
-      resolved: true,
-    },
-  });
-  const removed = path.join(shared, "chardet");
-  const saved = `${removed}.saved`;
-  const ancestor = path.join(root, "node_modules/chardet");
-  await mkdir(ancestor, { recursive: true });
-  await writeFile(
-    path.join(ancestor, "package.json"),
-    JSON.stringify({ name: "chardet", main: "index.cjs" }),
-  );
-  await writeFile(path.join(ancestor, "index.cjs"), "module.exports = 'ancestor';");
-  await rename(removed, saved);
+it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", async () => {
+  await run("// 初始化用户工程。");
+  const shared = path.join(root, "shared node");
+  const updated = path.join(root, "新版应用 # 空格/workspace");
+  await cp(runtime, updated, { recursive: true });
+  const fixture = "@lg/runtime-fixture";
   try {
-    for (const script of [
-      "import 'chardet';",
-      "import {createRequire} from 'node:module'; createRequire(import.meta.url)('chardet');",
-    ]) {
-      await expect(run(script)).rejects.toMatchObject({
-        execution: {
-          exitCode: 1,
-          stderr: { content: expect.stringContaining("MODULE_NOT_FOUND") },
-        },
-      });
+    for (const [directory, value] of [
+      [runtime, "v1"],
+      [updated, "v2"],
+      [shared, "user"],
+    ] as const) {
+      const target = path.join(directory, "node_modules", fixture);
+      await mkdir(target, { recursive: true });
+      await writeFile(
+        path.join(target, "package.json"),
+        JSON.stringify({ name: fixture, type: "module", exports: "./index.mjs" }),
+      );
+      await writeFile(path.join(target, "index.mjs"), `export default '${value}';`);
     }
+    const files = [
+      "package.json",
+      "package-lock.json",
+      "npmrc",
+      "node_modules/@lg/runtime-fixture/index.mjs",
+    ];
+    const before = await Promise.all(
+      files.map((file) => readFile(path.join(shared, file), "utf8")),
+    );
+    // 更新应用时 npm 不参与准备，任何意外调用都应立即使测试失败。
+    await writeFile(
+      path.join(updated, "npm/bin/npm-cli.js"),
+      "throw new Error('SDK update must not call npm');",
+    );
+    for (const [directory, version] of [
+      [runtime, "v1"],
+      [updated, "v2"],
+    ] as const) {
+      const result = await run(
+        `
+        import assert from 'node:assert/strict';
+        import version from '${fixture}';
+        for (const name of ['@lg/workspace/bootstrap', '@lg/workspace/prepare', '@lg/pdf/worker']) {
+          await assert.rejects(import(name), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+        }
+        console.log(version);
+        `,
+        undefined,
+        undefined,
+        {},
+        directory,
+      );
+      expect(output_content(result.stdout)).toBe(`${version}\n`);
+    }
+    expect(
+      await Promise.all(files.map((file) => readFile(path.join(shared, file), "utf8"))),
+    ).toEqual(before);
   } finally {
-    await rename(saved, removed);
-    await rm(ancestor, { recursive: true });
+    for (const directory of [runtime, shared])
+      await rm(path.join(directory, "node_modules", fixture), { recursive: true, force: true });
+    await rm(updated, { recursive: true, force: true });
   }
-});
+}, 30_000);
 
 it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退出", async () => {
   const result = await run(
@@ -816,17 +797,19 @@ it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退
 });
 
 /** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */
+/** 使用真实准备和 IPC 启动链，每次执行拥有独立脚本与日志。 */
 async function run(
   script: string,
   signal: AbortSignal = AbortSignal.timeout(RUN_TIMEOUT_MS),
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
   tools: Pick<AgentWorkspaceRunRequest, "host" | "emitImage" | "doing"> = {},
+  directory = runtime,
 ) {
   const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task-${++sequence}.mjs`;
   await writeFile(path.join(workspace, scriptPath), script);
   return await new AgentWorkspaceRunner({
     paths: skill_paths,
-    node: create_node_runtime(runtime, resolveProxy),
+    node: create_node_runtime(directory, resolveProxy),
     proxyResolver: { resolveProxy },
   }).run(
     {
@@ -846,6 +829,7 @@ function output_content(output: AgentWorkspaceOutput) {
   return output.content;
 }
 
+/** 应用目录可切换，用户工程与跨进程锁保持一致。 */
 function create_node_runtime(
   directory = runtime,
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",

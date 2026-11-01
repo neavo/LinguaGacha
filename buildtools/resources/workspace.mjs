@@ -4,7 +4,7 @@ import path from "node:path";
 import { build } from "vite";
 import { keep_workspace_package_path } from "./package-files.mjs";
 
-// 公开入口和可信入口在构建时分开，种子只接收公开包产物。
+// 应用 SDK 随应用发布，公开入口与私有启动入口共用一个构建图。
 const WORKSPACE_PACKAGES = [
   {
     name: "@lg/workspace",
@@ -12,31 +12,19 @@ const WORKSPACE_PACKAGES = [
       "item-contexts": "src/backend/agent/workspace/runtime/item-contexts.ts",
       "page-updates": "src/backend/agent/workspace/page-updates.ts",
     },
-    runtimeEntries: {
-      bootstrap: "src/backend/agent/workspace/runtime/bootstrap.ts",
-      prepare: "src/backend/agent/node/prepare.ts",
-    },
   },
   { name: "@lg/text", entries: { index: "src/shared/text/literal-matcher.ts" } },
   {
     name: "@lg/pdf",
     entries: {
       index: "src/backend/file/pdf/pdf-document.ts",
-      worker: "src/backend/file/pdf/pdf-worker-entry.ts",
+      mupdf: "src/backend/file/pdf/mupdf.ts",
     },
-    dependencies: ["mupdf"],
   },
 ];
 
-/** 公开包作为种子输入，可信入口只构建到发布目录。 */
-export async function build_workspace_resources({
-  root,
-  output,
-  packagesDirectory,
-  manifest,
-  lock,
-  runNpm,
-}) {
+/** 所有应用入口一次构建，共同依赖生成共享 chunk，MuPDF 保留单一外部安装。 */
+export async function build_workspace_resources({ root, output, manifest, runNpm }) {
   await deploy_workspace_dependencies({
     root,
     output,
@@ -49,45 +37,48 @@ export async function build_workspace_resources({
       path.join(root, "node_modules/tree-sitter-python", name),
       path.join(output, "python", name),
     );
-  const packages = [];
+  const entries = {
+    "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
+    "runtime/prepare": "src/backend/agent/node/prepare.ts",
+    "runtime/pdf-worker": "src/backend/file/pdf/pdf-worker-entry.ts",
+  };
   for (const definition of WORKSPACE_PACKAGES) {
-    const { name, entries, runtimeEntries = {} } = definition;
-    const dependencies = Object.fromEntries(
-      (definition.dependencies ?? []).map((dependency) => [
-        dependency,
-        lock.packages[`node_modules/${dependency}`].version,
-      ]),
-    );
-    const directory = path.join(packagesDirectory, name);
+    const { name, entries: package_entries } = definition;
+    const directory = path.join(output, "node_modules", name);
     const publicManifest = {
       name,
       private: true,
       type: "module",
-      exports: package_exports(entries),
-      dependencies,
+      exports: package_exports(package_entries),
     };
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, "package.json"), JSON.stringify(publicManifest, null, 2));
-    await build_package(root, directory, entries, dependencies);
-    packages.push({ name, directory });
-    const published = path.join(output, "node_modules", name);
-    await cp(directory, published, { recursive: true });
-    if (Object.keys(runtimeEntries).length > 0) {
-      await build_package(root, published, runtimeEntries, dependencies);
-      await writeFile(
-        path.join(published, "package.json"),
-        JSON.stringify(
-          {
-            ...publicManifest,
-            exports: { ...publicManifest.exports, ...package_exports(runtimeEntries) },
-          },
-          null,
-          2,
-        ),
-      );
-    }
+    for (const [entry, source] of Object.entries(package_entries))
+      entries[`node_modules/${name}/${entry}`] = source;
   }
-  return packages;
+  await build({
+    configFile: false,
+    resolve: { conditions: ["node"], mainFields: ["module", "main"] },
+    publicDir: false,
+    build: {
+      target: "node24",
+      outDir: output,
+      emptyOutDir: false,
+      minify: false,
+      lib: {
+        entry: Object.fromEntries(
+          Object.entries(entries).map(([key, file]) => [key, path.join(root, file)]),
+        ),
+        formats: ["es"],
+        fileName: (_format, name) => `${name}.mjs`,
+      },
+      rolldownOptions: {
+        platform: "node",
+        external: [...builtinModules, /^node:/u, ...manifest.workspaceRuntimePackages.backend],
+        output: { chunkFileNames: "chunks/[name]-[hash].mjs" },
+      },
+    },
+  });
 }
 
 /** npm 拥有依赖解析，这里只复制后端依赖闭包，不清理其它步骤的产物。 */
@@ -125,39 +116,9 @@ export async function deploy_workspace_dependencies({ root, output, names, runNp
   );
 }
 
-/** 每个包只公开本次入口集合，可信入口与用户包分别生成导出。 */
+/** 包导出只定义公开 API，私有启动入口由宿主按路径定位。 */
 function package_exports(entries) {
   return Object.fromEntries(
     Object.keys(entries).map((name) => [name === "index" ? "." : `./${name}`, `./${name}.mjs`]),
   );
-}
-
-/** 第三方运行依赖留给 npm 部署，内部业务源码合并进应用包。 */
-async function build_package(root, directory, entries, dependencies) {
-  await build({
-    configFile: false,
-    resolve: { conditions: ["node"], mainFields: ["module", "main"] },
-    publicDir: false,
-    build: {
-      target: "node24",
-      outDir: directory,
-      emptyOutDir: false,
-      minify: false,
-      lib: {
-        entry: Object.fromEntries(
-          Object.entries(entries).map(([key, file]) => [key, path.join(root, file)]),
-        ),
-        formats: ["es"],
-        fileName: (_format, name) => `${name}.mjs`,
-      },
-      rolldownOptions: {
-        platform: "node",
-        external: [...builtinModules, /^node:/u, ...Object.keys(dependencies)],
-        output: {
-          codeSplitting: Object.keys(entries).length > 1,
-          chunkFileNames: "chunks/[name]-[hash].mjs",
-        },
-      },
-    },
-  });
 }

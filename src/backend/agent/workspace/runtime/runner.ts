@@ -83,11 +83,8 @@ export class AgentWorkspaceRunner {
     signal: AbortSignal,
   ): Promise<AgentWorkspaceExecution> {
     try {
-      return await this.node.with_environment(
-        request,
-        signal,
-        "run",
-        (owner, env, execution_signal) => this.run_prepared(request, execution_signal, owner, env),
+      return await this.node.with_environment(request, signal, (owner, env, execution_signal) =>
+        this.run_prepared(request, execution_signal, owner, env),
       );
     } catch (error) {
       if (error instanceof AgentNodeExecError)
@@ -102,6 +99,7 @@ export class AgentWorkspaceRunner {
     }
   }
 
+  /** 固定本次启动的资源路径与写入权限，再交给受监管的子进程执行。 */
   private async run_prepared(
     request: AgentWorkspaceRunRequest,
     signal: AbortSignal,
@@ -112,10 +110,7 @@ export class AgentWorkspaceRunner {
     // 宿主先解析祖先链接，cwd、预加载与写入授权使用同一真实位置。
     const workspace_path = default_native_fs.real_path(request.workspacePath);
     const runtime_directory = default_native_fs.real_path(this.node.directory);
-    const bootstrap_path = resolve_workspace_runtime_entry(
-      runtime_directory,
-      "@lg/workspace/bootstrap",
-    );
+    const bootstrap_path = resolve_workspace_runtime_entry(runtime_directory, "bootstrap");
     const write_paths = new Set(
       AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.flatMap((name) => {
         const entry = path.join(workspace_path, name);
@@ -175,6 +170,7 @@ export class AgentWorkspaceRunner {
 
     const process_result = await this.run_process(
       path.resolve(workspace_path, request.scriptPath),
+      runtime_directory,
       user_skill_directory,
       [...new Set(skill_module_roots.map((entry) => pathToFileURL(entry + path.sep).href))],
       launch_options,
@@ -197,6 +193,7 @@ export class AgentWorkspaceRunner {
   /** 子进程直接写入日志文件。父进程只处理 IPC 和生命周期，close 后再读取结果。 */
   private run_process(
     script_path: string,
+    runtime_directory: string,
     user_skill_directory: string,
     skill_roots: readonly string[],
     launch_options: ForkOptions,
@@ -328,12 +325,13 @@ export class AgentWorkspaceRunner {
             type: "start",
             userSkillDirectory: user_skill_directory,
             nodeRoot: this.node.root,
+            runtimeDirectory: runtime_directory,
             moduleRoots: skill_roots,
           });
           await owner.settle(signal);
         } catch (error) {
           terminate(error);
-          // 监管失败时才由宿主回收根进程；正常停止与超时由监管器统一处理后代。
+          // 监管失败时由宿主回收根进程。正常停止与超时由监管器回收进程树。
           if (!signal.aborted || error !== signal.reason) child.kill("SIGKILL");
           throw error;
         }

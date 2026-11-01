@@ -8,10 +8,10 @@ import type { ProxyResolver } from "../../network/proxy-http-client";
 import { AppError } from "../../../shared/error";
 import { read_agent_process_output, type AgentProcessOutput } from "../process-output";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
-import { split_workspace_command } from "./arguments";
+import { parse_workspace_command, type AgentWorkspaceCommand } from "./arguments";
 
 export type AgentWorkspaceExecRequest = Readonly<{
-  workspacePath: string; // 日志属于当前对话，npm 的 cwd 仍是共享工程。
+  workspacePath: string; // 日志属于当前对话，命令的 cwd 仍是共享工程。
   command: string;
   stdoutPath: string;
   stderrPath: string;
@@ -34,8 +34,8 @@ export class AgentNodeExecError extends Error {
 /** GUI 组合根拥有此运行态，用户依赖只由受监管的准备程序和 npm 写入。 */
 export class AgentNodeRuntime {
   public readonly executable: string;
-  public readonly directory: string;
-  public readonly root: string;
+  public readonly directory: string; // 随应用版本固定的运行资源。
+  public readonly root: string; // 跨应用更新保留的用户 npm 工程。
   private readonly lock: string;
   private active: Promise<unknown> | undefined; // 关闭等待整个操作结算，不能只等目标进程。
   private controller: AbortController | undefined; // 应用关闭与调用方取消合并到本次操作。
@@ -57,14 +57,14 @@ export class AgentNodeRuntime {
     this.lock = options.paths.get_agent_node_lock_path();
   }
 
-  /** 参数只决定 npm 的 argv，时限覆盖准备和实际命令。 */
+  /** 命令只决定启动的 CLI 与其 argv，时限、监管和回执由本入口统一负责并覆盖环境准备。 */
   public async run_exec(
     request: AgentWorkspaceExecRequest,
     signal: AbortSignal,
   ): Promise<AgentWorkspaceExecResult> {
-    let args: string[];
+    let command: AgentWorkspaceCommand;
     try {
-      args = split_workspace_command(request.command);
+      command = parse_workspace_command(request.command);
     } catch (cause) {
       throw new AppError("request.validation_failed", {
         cause,
@@ -79,12 +79,11 @@ export class AgentNodeRuntime {
       return await this.with_environment(
         request,
         deadline,
-        "exec",
         async (owner, env, execution_signal) => {
           const result = await owner.launch(
             {
               executable: this.executable,
-              args: [path.join(this.directory, "npm/bin/npm-cli.js"), ...args.slice(1)],
+              args: [path.join(this.directory, command.entry), ...command.args],
               cwd: this.root,
               env,
               stdout: path.join(request.workspacePath, request.stdoutPath),
@@ -94,14 +93,14 @@ export class AgentNodeRuntime {
           );
           const execution = this.result(request, result);
           if (result.exitCode !== 0)
-            throw new AgentNodeExecError("npm exited unsuccessfully.", execution);
+            throw new AgentNodeExecError("Command exited unsuccessfully.", execution);
           return execution;
         },
       );
     } catch (error) {
       if (!signal.aborted && deadline.aborted && error === deadline.reason)
         throw new AgentNodeExecError(
-          "npm command timed out.",
+          "Command timed out.",
           this.result(request, { exitCode: null, signal: null }),
           { cause: error },
         );
@@ -113,14 +112,13 @@ export class AgentNodeRuntime {
   public async with_environment<T>(
     request: Pick<AgentWorkspaceExecRequest, "workspacePath" | "stdoutPath" | "stderrPath">,
     signal: AbortSignal,
-    mode: "exec" | "run",
     action: (owner: Supervisor, env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     if (this.closed) throw new Error("Agent Node runtime is closed.");
     if (this.active) throw new AppError("runtime.busy");
     this.controller = new AbortController();
     const effective = AbortSignal.any([signal, this.controller.signal]);
-    const operation = this.execute(request, effective, mode, action);
+    const operation = this.execute(request, effective, action);
     this.active = operation;
     try {
       return await operation;
@@ -134,7 +132,6 @@ export class AgentNodeRuntime {
   private async execute<T>(
     request: Pick<AgentWorkspaceExecRequest, "workspacePath" | "stdoutPath" | "stderrPath">,
     signal: AbortSignal,
-    mode: "exec" | "run",
     action: (owner: Supervisor, env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     signal.throwIfAborted();
@@ -157,10 +154,9 @@ export class AgentNodeRuntime {
           {
             executable: this.executable,
             args: [
-              resolve_workspace_runtime_entry(this.directory, "@lg/workspace/prepare"),
+              resolve_workspace_runtime_entry(this.directory, "prepare"),
               this.directory,
               this.root,
-              mode,
             ],
             cwd: this.directory,
             env,

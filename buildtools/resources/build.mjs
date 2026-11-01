@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { deploy_workspace_tools } from "../builder/native-tools.mjs";
@@ -38,31 +37,20 @@ export async function build_resources({
     });
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
-  const temporary = await mkdtemp(path.join(os.tmpdir(), "lg-resources-"));
-  try {
-    const workspace = path.join(output, "workspace");
-    const packages = await build_workspace_resources({
+  const workspace = path.join(output, "workspace");
+  await build_workspace_resources({ root, output: workspace, manifest, runNpm });
+  await build_node_resources({ root, output: workspace, manifest, lock, runNpm });
+  await build_pdf_print_resources(root, output);
+  if (development)
+    await deploy_workspace_tools({
       root,
-      output: workspace,
-      packagesDirectory: temporary,
-      manifest,
-      lock,
-      runNpm,
+      workspaceDirectory: workspace,
+      platform: process.platform,
+      arch: process.arch,
     });
-    await build_node_resources({ root, output: workspace, manifest, lock, packages, runNpm });
-    await build_pdf_print_resources(root, output);
-    if (development)
-      await deploy_workspace_tools({
-        root,
-        workspaceDirectory: workspace,
-        platform: process.platform,
-        arch: process.arch,
-      });
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
-  }
 }
 
+/** 按路径段判断重叠，避免清理输出时覆盖源码或依赖。 */
 function is_inside(parent, child) {
   const relative = path.relative(parent, child);
   return (

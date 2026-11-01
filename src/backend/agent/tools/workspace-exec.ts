@@ -1,12 +1,15 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
+import {
+  AGENT_WORKSPACE_RUN_ROOT,
+  AGENT_WORKSPACE_RUNTIME_POLICY,
+} from "../workspace/runtime/policy";
 import type { AgentWorkspacePort } from "../workspace/service";
 import { execute_and_refresh_skills } from "./workspace-execution";
 import npm_package from "npm/package.json";
 
-/** 固定 npm CLI，命令的其余语义由 npm 拥有。 */
+/** 工作区命令执行入口，可用命令由运行时登记，参数语义归各命令所有。 */
 export function create_agent_workspace_exec_tool(options: {
   run: AgentWorkspacePort["run_exec"];
   refresh_skills: () => Promise<unknown>;
@@ -14,24 +17,44 @@ export function create_agent_workspace_exec_tool(options: {
   return define_agent_tool({
     name: "workspace_exec",
     description: [
-      `运行应用随附的 npm \`${npm_package.version}\`，管理工作区脚本的共享依赖，或调用 npm 包提供的命令行工具。处理工程数据和文件使用 \`workspace_run\`。`,
+      "在工作区执行命令行，管理脚本依赖或调用命令行工具",
       "",
-      "- 工作目录（返回的 `cwd`）是所有工程和对话共用的 npm 工程，重启后保留，改动会影响之后的全部任务。包的文档与类型在其 `node_modules/<包名>/`。",
-      "- `workspace_run` 只能导入安装在这个工程的包，安装后在新的调用中导入。全局安装和 `npm exec` 临时包不能导入。`@lg/*` 由应用维护。",
-      "- 宿主不是 shell，不展开变量和通配符，不支持管道、重定向和命令串联，Windows 路径可以直接书写。需要 shell 时使用 `npm exec --call` 或包脚本。",
-      '- 命令行工具的输入输出使用绝对路径，`work/` 的绝对路径可在 `workspace_run` 中用 `path.resolve("work")` 取得。',
-      "- 依赖的安装脚本默认不运行，需要时用 `npm install-scripts approve <包>` 授权，再 `npm rebuild <包>`。原生模块须匹配应用的 Electron ABI。",
-      "- npm、安装脚本和命令行工具以当前系统账户直接运行，不构成沙箱，操作范围由用户当前任务决定。",
-      `- 时限 ${AGENT_WORKSPACE_RUNTIME_POLICY.nodeTimeoutMs / 1000} 秒，包含环境准备。返回前等待所有子进程结束，不能保留后台进程。`,
-      "- `stdout`、`stderr` 的形式与 `workspace_run` 相同。非零退出和超时作为工具错误返回。",
-      "- 失败不会回滚，按实际状态用 npm 命令恢复。`workspace_run` 环境准备失败时，可以用本工具修复。",
+      "### 工作方式",
+      "",
+      "- 宿主不是 shell，拆分参数后直接启动命令，不展开变量和通配符，不支持管道、重定向和命令串联，Windows 路径可以直接书写",
+      "- 当前工作目录（`cwd`）是所有工程和对话共用的 npm 工程，重启后保留，改动会影响之后的全部任务",
+      `- 每次执行的输出由宿主自动保存到工作区 \`${AGENT_WORKSPACE_RUN_ROOT}/\`，返回的文件路径相对于工作区根目录`,
+      '- 命令行工具的输入输出使用绝对路径，`work/` 的绝对路径可在 `workspace_run` 中用 `path.resolve("work")` 取得',
+      "",
+      "### 可用命令",
+      "",
+      `- \`npm\`：应用随附的 npm \`${npm_package.version}\``,
+      "  - `workspace_run` 的第三方包从共享 npm 工程加载，安装后在新的调用中导入",
+      "  - 包的文档与类型在其 `node_modules/<包名>/`",
+      "  - 包提供的命令行工具用 `npm exec` 调用",
+      "  - 依赖的安装脚本默认不运行，需要时用 `npm install-scripts approve <包>` 授权，再 `npm rebuild <包>`",
+      "",
+      "### 权限",
+      "",
+      "- 命令、安装脚本和命令行工具以当前系统账户直接运行，不构成沙箱，操作范围由用户当前任务决定",
+      "",
+      "### 输出",
+      "",
+      `- 执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.nodeTimeoutMs / 1000} 秒，返回前等待所有子进程结束，不能保留后台进程`,
+      `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，内容是文本或解析后的 JSON，超额时返回补读提示，按需读取文件`,
+      "",
+      "|返回字段|含义|",
+      "|---|---|",
+      "|`cwd`|本次命令的工作目录|",
+      "|`exitCode`、`signal`|进程退出码与退出信号|",
+      "|`stdout`、`stderr`|`{ path, bytes, content }`，超额时以 `message` 补读提示代替 `content`|",
     ].join("\n"),
     executionMode: "sequential",
     parameters: Type.Object(
       {
         command: Type.String({
           minLength: 1,
-          description: "以 `npm` 开头的完整命令行，例如 `npm install exceljs`。",
+          description: "完整命令行，首个词须是可用命令之一，例如 `npm install exceljs`",
         }),
       },
       { additionalProperties: false },

@@ -34,7 +34,7 @@ it("独立部署线程读取、打印回调与合并共用同一引擎，取消�
   });
   let print_stopped = false;
   const worker = new PDFWorker(
-    pathToFileURL(resolve_workspace_runtime_entry(directory, "@lg/pdf/worker")),
+    pathToFileURL(resolve_workspace_runtime_entry(directory, "pdf-worker")),
     async (_operation, signal) => {
       if (!cancel_print) return create_pdf_fixture(["Translated"]);
       notify_print();

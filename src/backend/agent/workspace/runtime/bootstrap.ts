@@ -23,7 +23,7 @@ const start = await new Promise<Extract<AgentWorkspaceRuntimeParentMessage, { ty
     process.once("disconnect", () => process.exit(1));
   },
 );
-install_workspace_module_resolution(start.nodeRoot, start.moduleRoots);
+install_workspace_module_resolution(start.runtimeDirectory, start.nodeRoot, start.moduleRoots);
 const request_channel = new AgentWorkspaceRequestChannel(send_message, (pending) => {
   // IPC 只在真正等待宿主响应时保活，空闲通道不得改变 Node 的自然退出语义。
   if (pending) process.channel?.ref();

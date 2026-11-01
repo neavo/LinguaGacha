@@ -71,6 +71,7 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
+/** 每个场景拥有独立用户工程，多个实例可共享同一锁路径。 */
 function create_runtime(
   name: string,
   resolveProxy: (url: string) => Promise<string> = async () => "DIRECT",
@@ -133,6 +134,7 @@ it("真实 npm 默认采用应用代理，显式参数和 npmrc 保留原生优�
   }
 }, 30_000);
 
+/** 每次执行单独保存输出，避免前次日志影响断言。 */
 function execute(
   fixture: ReturnType<typeof create_runtime>,
   command: string,
@@ -147,27 +149,27 @@ function execute(
 
 it("发布种子符合工作区运行资源边界", async () => {
   const modules = path.join(runtime, "seed/node_modules");
-  const workspace = JSON.parse(
-    await readFile(path.join(modules, "@lg/workspace/package.json"), "utf8"),
-  );
-  expect(workspace.exports).not.toHaveProperty("./bootstrap");
-  expect(workspace.exports).not.toHaveProperty("./prepare");
-  expect(fs.existsSync(path.join(modules, "@lg/workspace/bootstrap.mjs"))).toBe(false);
-  expect(fs.existsSync(path.join(modules, "@lg/workspace/prepare.mjs"))).toBe(false);
-  for (const file of [
-    "exceljs/dist",
-    "mupdf/dist/mupdf-wasm.wasm.br",
-    "@lg/pdf/node_modules/mupdf/dist/mupdf-wasm.wasm.br",
-  ]) {
+  for (const [file, field] of [
+    ["package.json", "dependencies"],
+    ["package-lock.json", "packages"],
+  ] as const) {
+    const manifest = JSON.parse(await readFile(path.join(runtime, "seed", file), "utf8"));
+    expect(
+      Object.keys(manifest[field]).filter((name) => /(?:^|\/)@lg\/|(?:^|\/)mupdf$/u.test(name)),
+    ).toEqual([]);
+  }
+  for (const file of ["@lg", "mupdf", "exceljs/dist"])
     expect(fs.existsSync(path.join(modules, file))).toBe(false);
-  }
-  for (const file of [
-    "exceljs/index.d.ts",
-    "mupdf/dist/mupdf-wasm.wasm",
-    "@lg/pdf/node_modules/mupdf/dist/mupdf-wasm.wasm",
-  ]) {
-    expect(fs.existsSync(path.join(modules, file))).toBe(true);
-  }
+  for (const file of ["seed/packages", "app-packages.json", "node_modules/@lg/pdf/node_modules"])
+    expect(fs.existsSync(path.join(runtime, file))).toBe(false);
+  expect(fs.existsSync(path.join(modules, "exceljs/index.d.ts"))).toBe(true);
+  const wasm = fs
+    .readdirSync(runtime, { recursive: true })
+    .filter((file) => typeof file === "string" && path.basename(file) === "mupdf-wasm.wasm");
+  expect(wasm).toEqual([path.join("node_modules/mupdf/dist/mupdf-wasm.wasm")]);
+  expect(fs.existsSync(path.join(runtime, "node_modules/mupdf/dist/mupdf-wasm.wasm.br"))).toBe(
+    false,
+  );
 });
 
 it("搬移种子离线首用，npm/npx 和无 shell Node 均使用应用解释器", async () => {
@@ -197,7 +199,7 @@ it("搬移种子离线首用，npm/npx 和无 shell Node 均使用应用解释�
   }
 }, 30_000);
 
-it("应用包修复保留用户依赖与配置，缺失清单可由 npm 原生恢复", async () => {
+it("环境准备保留用户依赖、历史应用包与配置，缺失清单可由 npm 原生恢复", async () => {
   const fixture = create_runtime("repair");
   try {
     expect((await execute(fixture, "npm config get cache")).stdout).toMatchObject({
@@ -211,40 +213,19 @@ it("应用包修复保留用户依赖与配置，缺失清单可由 npm 原生�
       content: `${cache}\n`,
     });
     const config = await readFile(path.join(fixture.shared, "npmrc"), "utf8");
-    await rm(path.join(fixture.shared, "node_modules/@lg/text"), { recursive: true });
-    await rm(path.join(fixture.shared, "node_modules/@lg/pdf"), { recursive: true });
-    const repaired = await fixture.node.with_environment(
+    const historical = path.join(fixture.shared, "node_modules/@lg/text");
+    await mkdir(historical, { recursive: true });
+    await writeFile(path.join(historical, "package.json"), '{"version":"old"}');
+    await fixture.node.with_environment(
       { workspacePath: fixture.workspace, stdoutPath: "prepare.out", stderrPath: "prepare.err" },
       AbortSignal.timeout(20_000),
-      "run",
-      async (owner, env, signal) =>
-        await owner.launch(
-          {
-            executable: electron,
-            args: [
-              "--input-type=module",
-              "-e",
-              "import {render_pdf_page} from '@lg/pdf'; console.log(typeof render_pdf_page);",
-            ],
-            cwd: fixture.shared,
-            env,
-            stdout: path.join(fixture.workspace, "repaired.out"),
-            stderr: path.join(fixture.workspace, "repaired.err"),
-          },
-          signal,
-        ),
+      async () => {},
     );
-    expect(repaired.exitCode).toBe(0);
-    expect(await readFile(path.join(fixture.workspace, "repaired.out"), "utf8")).toBe("function\n");
+    expect(await readFile(path.join(historical, "package.json"), "utf8")).toBe('{"version":"old"}');
     const manifest = JSON.parse(await readFile(path.join(fixture.shared, "package.json"), "utf8"));
     expect(manifest.custom).toBe("keep");
     expect(manifest.dependencies.chardet).toBeUndefined();
     expect(await readFile(path.join(fixture.shared, "npmrc"), "utf8")).toBe(config);
-    expect(
-      JSON.parse(
-        await readFile(path.join(fixture.shared, "node_modules/@lg/text/package.json"), "utf8"),
-      ).version,
-    ).toMatch(/^0\.0\.0-lg\.h/u);
     await writeFile(
       path.join(root, "repair/package.json"),
       JSON.stringify({ name: "parent-sentinel" }),

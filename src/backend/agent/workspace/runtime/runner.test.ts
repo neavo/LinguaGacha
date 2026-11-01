@@ -28,19 +28,11 @@ beforeEach(() => {
   stop = vi.fn();
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "lg-runner-"));
   const workspacePath = path.join(directory, "workspace");
-  const package_directory = path.join(directory, "node_modules/@lg/workspace");
-  fs.mkdirSync(package_directory, { recursive: true });
-  fs.writeFileSync(
-    path.join(package_directory, "package.json"),
-    JSON.stringify({
-      name: "@lg/workspace",
-      type: "module",
-      exports: { "./bootstrap": "./bootstrap.mjs" },
-    }),
-  );
+  const runtime_directory = path.join(directory, "runtime");
+  fs.mkdirSync(runtime_directory);
   fs.mkdirSync(path.join(workspacePath, "work/runs"), { recursive: true });
   fs.mkdirSync(path.join(workspacePath, "changes"));
-  fs.writeFileSync(path.join(package_directory, "bootstrap.mjs"), "");
+  fs.writeFileSync(path.join(runtime_directory, "bootstrap.mjs"), "");
   request = {
     workspacePath,
     scriptPath: "work/runs/test.mjs",
@@ -65,7 +57,7 @@ describe("AgentWorkspaceRunner", () => {
   it("两路文件始终建立，正常退出后关闭句柄", async () => {
     const { child, result } = await start_run();
     expect(child.send).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "start" }),
+      expect.objectContaining({ type: "start", runtimeDirectory: fs.realpathSync(directory) }),
       expect.any(Function),
     );
     child.emit("close", 0);
@@ -329,7 +321,6 @@ function build_runner(
   const with_environment: AgentNodeRuntime["with_environment"] = async (
     _request,
     signal,
-    _mode,
     action,
   ) => {
     signal.throwIfAborted();

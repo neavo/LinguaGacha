@@ -20,7 +20,7 @@
 
 从 `read_skill` 的 `base_url` 定位原包资源和脚本，使用 `new URL("scripts/example.mjs", base_url)` 导入。相对资源基于 `import.meta.url` 定位，当前工作目录属于工作区。
 
-脚本的裸包导入使用共享 npm 工程，技能包内不放 `node_modules`，正文写明脚本依赖的第三方包。需要命令行工具的步骤写成 `workspace_exec` 调用。
+脚本在 `workspace_run` 中加载时，`@lg/*` 从当前应用加载，普通第三方包从共享 npm 工程加载。技能包内不放 `node_modules`，正文写明脚本依赖的第三方包。PDF 引擎通过 `@lg/pdf/mupdf` 导入。需要命令行工具的步骤写成 `workspace_exec` 调用，其 npm 子进程不注入应用 SDK 加载器。
 
 编写程序时按当前工具声明核对包名和 `ws` 接口，工程数据结构通过 `ws.contract` 指向的参考读取，技能中的流程与术语使用实际接口名称。
 

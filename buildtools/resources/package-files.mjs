@@ -12,7 +12,7 @@ export function keep_workspace_package_path(name, relative) {
   return !relative.endsWith(".map") && relative !== PACKAGE_EXCLUDED_PATH[name];
 }
 
-/** 仅处理构建拥有的安装树，让发布依赖、应用 tgz 和初始种子采用同一资源规则。 */
+/** 仅处理构建拥有的安装树，让发布依赖与第三方种子采用同一资源规则。 */
 export async function prune_workspace_package_files(project) {
   await prune_modules(path.join(project, "node_modules"));
 }

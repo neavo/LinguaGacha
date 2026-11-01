@@ -725,7 +725,7 @@ export class AgentWorkspaceService {
     });
   }
 
-  /** npm 只借用对话互斥和日志目录，工程快照由脚本执行入口准备。 */
+  /** 命令只借用对话互斥和日志目录，工程快照由脚本执行入口准备。 */
   public async run_exec(command: string, signal: AbortSignal): Promise<AgentWorkspaceExecResult> {
     return await this.exclusive(async () => {
       signal.throwIfAborted();

@@ -110,7 +110,7 @@ Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处�
 - `npm run check` 覆盖分层、迁移、错误、文案和样式边界。
 - 格式修复使用 `npm run format -- <文件路径...>`，随后复查。
 
-格式化支持范围见 [format-related-files.mjs](../buildtools/format-related-files.mjs)。有其它任务改动时，显式传入本任务路径；省略路径会收集全部变更文件。
+格式化支持范围见 [format-related-files.mjs](../buildtools/format-related-files.mjs)。有其它任务改动时，显式传入本任务路径。省略路径会收集全部变更文件。
 
 ### 行为测试
 
@@ -242,7 +242,8 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
 - Electron 语言资源与 `LOCALES` 一致。
 - `builtin/`、`fonts/`、`workspace/` 和 `pdf-print.css` 位于发行 `resources/`。`app.asar` 不含 `builtin/` 和字体。
-- 工作区包含实际依赖清单、标准 `node_modules`、内部包和运行资源。
+- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。应用包不导出 bootstrap、准备程序或 PDF worker。
+- `seed/` 只包含用户第三方依赖，清单、锁文件和安装树中均不包含 `@lg/*`、`mupdf` 或应用包归档。工作区只部署一份应用使用的 MuPDF 包与 WASM。
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
 
@@ -281,7 +282,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 ### Agent Node 与 npm
 
 - 参数、共享环境与真实 CLI：`npm test -- src/backend/agent/node/arguments.test.ts src/backend/agent/node/runtime.test.ts`。
-- 模块解析、MuPDF 对象边界与原生 IPC：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts src/backend/file/pdf/pdf-document.test.ts`。
+- 模块解析、MuPDF 实例共享与字节边界、原生 IPC：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts src/backend/file/pdf/pdf-document.test.ts`。bootstrap 集成覆盖用户同名 SDK 无法覆盖应用、应用版本切换不调用 npm、普通依赖缺失不回退、ESM/CJS 条件导出与嵌套依赖。
 - 默认代理与连接关闭：`npm test -- src/backend/network/npm-proxy.test.ts`。
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。
 - Windows Node 启动器：在 `buildtools/builder/node/` 执行 `go test ./...`，验证 Unicode、空参数、stdio 和退出码。
