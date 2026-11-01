@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentToolEntry } from "@shared/agent";
+import type { AgentRunOutputSnapshot, AgentToolEntry } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import * as tool_output from "./agent-tool-output";
 
@@ -11,6 +11,11 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
     t: (key: string, params?: Record<string, string>) =>
       params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
+}));
+
+const run_output = vi.hoisted(() => ({ current: null as AgentRunOutputSnapshot }));
+vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
+  useAgentRunOutput: () => run_output.current,
 }));
 
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
@@ -28,6 +33,7 @@ describe("AgentToolDetailDialog", () => {
     container?.remove();
     root = null;
     container = null;
+    run_output.current = null;
     vi.restoreAllMocks();
   });
 
@@ -95,6 +101,23 @@ describe("AgentToolDetailDialog", () => {
       document.body.querySelector('[role="dialog"] .cm-content[aria-label="agent_page.tool.input"]')
         ?.textContent,
     ).toContain("aaa/bbb.md");
+  });
+
+  it("运行中的输出页显示两路日志末尾", async () => {
+    run_output.current = {
+      entryId: "tool-1",
+      stdout: "第一行\n第二行\n",
+      stderr: "警告\n",
+      line: "第二行",
+    };
+    await render_dialog(tool_running("workspace_run", '{"script":"1;"}'));
+    const output_tab = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+      (tab) => tab.textContent === "agent_page.tool.output",
+    );
+    await act(async () => output_tab?.click());
+    const output = document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]');
+    expect(output?.textContent).toContain("第二行");
+    expect(output?.textContent).toContain("警告");
   });
 
   it("workspace_run 输入直接显示保持原文的 JavaScript 程序", async () => {

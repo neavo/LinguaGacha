@@ -121,7 +121,7 @@ Chromium 启动语言与界面的 `app_language` 设置各自独立。覆盖安�
 1. 等待页面保存。
 2. 准备更新器。
 3. 关闭 Backend Runtime 与 PDF 宿主。
-4. 启动 `win-berserker`。
+4. 启动 `berserker`。
 
 关闭完成后才覆盖安装文件，避免覆盖仍被使用的资源。
 

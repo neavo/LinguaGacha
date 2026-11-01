@@ -1,8 +1,9 @@
-import { type JSX, memo, useState } from "react";
+import { type JSX, memo, useMemo, useState } from "react";
 
 import { is_json_record } from "@domain/json";
 import type { AgentToolEntry } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { useAgentRunOutput } from "@frontend/app/session/agent/agent-chat-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@frontend/shadcn/tabs";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type {
@@ -65,6 +66,15 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
       return document;
     };
   });
+  const run_output = useAgentRunOutput(entry.id);
+  // 引用随输出变化才更新，`read_payload` 的缓存据此命中。
+  const live = useMemo(
+    () =>
+      run_output === null
+        ? null
+        : [JSON.stringify({ stdout: run_output.stdout, stderr: run_output.stderr })],
+    [run_output],
+  );
   const active = entry.status === "running";
   const duration = useAgentElapsed(entry.createdAt, active);
   const status_label = t(AGENT_STATUS_LABEL_KEYS[entry.status]);
@@ -109,7 +119,7 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
             read_payload={read_payload}
             tool_name={entry.toolName}
             channel="output"
-            content={entry.output}
+            content={entry.output ?? live}
             fallback={status_label}
             aria_label={t("agent_page.tool.output")}
           />

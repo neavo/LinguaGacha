@@ -184,7 +184,7 @@ export class BackendServices {
       options.workerExecution.kind === "in_process"
         ? null
         : pathToFileURL(
-            resolve_workspace_runtime_entry(options.workspaceRuntimeDirectory!, "@lg/pdf/worker"),
+            resolve_workspace_runtime_entry(options.workspaceRuntimeDirectory!, "pdf-worker"),
           ),
       options.pdfHost,
     );

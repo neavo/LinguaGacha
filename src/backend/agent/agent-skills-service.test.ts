@@ -59,7 +59,7 @@ describe("技能管理", () => {
     const original = "---\ndescription: |\n  很长   描述\n  第二行\nextra: keep\n---\nBody";
     fs.writeFileSync(target, original);
     expect((await f.service.snapshot()).skills[0]?.name).toBe("中文 Skill");
-    const tool = create_agent_read_skill_tool(() => f.service.get_current(), f.paths);
+    const tool = create_agent_read_skill_tool(() => f.service.get_current());
     const args = validateToolArguments(tool, {
       type: "toolCall",
       id: "read",

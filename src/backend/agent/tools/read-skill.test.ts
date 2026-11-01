@@ -81,42 +81,9 @@ describe("Agent 技能读取工具", () => {
       execute(fixture.tool, { name: "shared", path: requested_path }),
     ).rejects.toMatchObject({
       details: {
-        code: "skill.resource_not_allowed",
+        code: "skill.resource_path_invalid",
         name: "shared",
         path: requested_path,
-      },
-    });
-  });
-
-  it("拒绝通过 skill 包内符号链接读取包外文件", async () => {
-    using fixture = create_fixture("user", "shared", "正文");
-    const outside = path.join(fixture.root, "outside");
-    write_file(path.join(outside, "secret.md"), "不可读取");
-    fs.symlinkSync(outside, path.join(fixture.user_root, "shared", "linked"), "junction");
-
-    await expect(
-      execute(fixture.tool, { name: "shared", path: "linked/secret.md" }),
-    ).rejects.toMatchObject({
-      details: {
-        code: "skill.resource_not_allowed",
-        name: "shared",
-        path: "linked/secret.md",
-      },
-    });
-  });
-
-  it("拒绝会话建立后被整体替换到全局 skill 根外的包", async () => {
-    using fixture = create_fixture("user", "shared", "正文");
-    const outside = path.join(fixture.root, "outside-package");
-    write_skill(fixture.root, "outside-package", "根外正文");
-    fs.rmSync(path.join(fixture.user_root, "shared"), { recursive: true });
-    fs.symlinkSync(outside, path.join(fixture.user_root, "shared"), "junction");
-
-    await expect(execute(fixture.tool, { name: "shared" })).rejects.toMatchObject({
-      details: {
-        code: "skill.resource_not_allowed",
-        name: "shared",
-        path: "SKILL.md",
       },
     });
   });
@@ -135,7 +102,7 @@ describe("Agent 技能读取工具", () => {
   });
 });
 
-/** 构建可回收的用户／内置资源根及工具快照，验证真实文件边界。 */
+/** 构建可回收的用户／内置资源根及工具快照，从真实磁盘读取。 */
 function create_fixture(source: "user" | "builtin", name: string, body: string) {
   const disposable = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-skill-read-"));
   const user_root = path.join(disposable.path, "user");
@@ -162,13 +129,9 @@ function create_fixture(source: "user" | "builtin", name: string, body: string) 
       },
     ],
   };
-  const tool = create_agent_read_skill_tool(() => catalog.skills, {
-    get_agent_user_skill_dir: () => user_root,
-    get_agent_builtin_skill_dir: () => builtin_root,
-  });
+  const tool = create_agent_read_skill_tool(() => catalog.skills);
   return {
     [Symbol.dispose]: () => disposable[Symbol.dispose](),
-    root: disposable.path,
     user_root,
     builtin_root,
     tool,
@@ -183,7 +146,7 @@ function write_skill(root: string, name: string, body: string): string {
   return file_path;
 }
 
-/** 写入嵌套资源夹具，供相对路径和访问边界场景使用。 */
+/** 写入嵌套资源夹具，供包内相对路径场景使用。 */
 function write_file(file_path: string, content: string): void {
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
   fs.writeFileSync(file_path, content, "utf8");

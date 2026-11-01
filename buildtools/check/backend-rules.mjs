@@ -334,10 +334,11 @@ function create_native_fs_boundary_rule() {
           if (!["node:fs", "node:fs/promises"].includes(import_entry.specifier)) {
             continue;
           }
-          // 独立工作区进程直接消费 Node 文件权限，宿主 NativeFs 仅用于主应用 IO。
+          // 独立工作区进程直接使用 Node IO，宿主通过 NativeFs 处理 ASAR 和平台差异。
           if (
             relative_path === NATIVE_FS_RELATIVE_PATH ||
-            relative_path === WORKSPACE_RUNTIME_BOOTSTRAP_PATH
+            relative_path === WORKSPACE_RUNTIME_BOOTSTRAP_PATH ||
+            relative_path === "src/backend/agent/node/prepare.ts"
           ) {
             continue;
           }

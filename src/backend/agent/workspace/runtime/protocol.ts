@@ -10,12 +10,15 @@ export type WorkspaceRequest =
   | WorkspaceHostRequest;
 export type WorkspaceRequestResult = string | null | WorkspaceHostResult;
 
-/** 父子进程交换 JSON 请求与状态；文本走标准流，图片请求由父进程固定内容。 */
+/** 父子进程通过 IPC 交换 JSON 请求与状态。文本走标准流，图片内容由父进程固定。 */
 export type AgentWorkspaceRuntimeParentMessage =
   | {
       type: "start";
       userSkillDirectory: string; // 应用级用户技能目录，直接写入并跨会话保留
-      skillRoots: readonly string[]; // 带尾斜线的原目录 file: URL，含逻辑入口与真实位置
+      nodeRoot: string;
+      runtimeDirectory: string; // 当前应用规范化的运行目录，应用 SDK 不依赖用户安装树
+      moduleRoots: readonly string[]; // 带尾斜线的原目录 file: URL，含逻辑入口与真实位置
+      python: Readonly<{ pythonRoot: string; uvExecutable: string }>;
     }
   | {
       type: "response";
@@ -25,3 +28,6 @@ export type AgentWorkspaceRuntimeParentMessage =
 export type AgentWorkspaceRuntimeChildMessage =
   | { type: "request"; id: number; request: WorkspaceRequest }
   | { type: "cancel"; id: number };
+
+/** runner 只给根进程设置的环境标记，bootstrap 据此区分根进程与脚本自行创建的后代。 */
+export const AGENT_WORKSPACE_ENTRY_ENV = "LG_WORKSPACE_ENTRY";

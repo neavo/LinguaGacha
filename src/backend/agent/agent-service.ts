@@ -33,6 +33,7 @@ import {
   type AgentInputCommandKind,
   type AgentInputCommandAck,
   type AgentTokenSpeedSnapshot,
+  type AgentRunOutputSnapshot,
   type AgentMessageInput,
   type AgentChatChange,
   type AgentChatSnapshot,
@@ -110,6 +111,7 @@ type AgentChatFields = Pick<
   | "context"
   | "usage"
   | "tokenSpeed"
+  | "runOutput"
 >;
 
 /** 启动时加载的基础提示词和会话种子。 */
@@ -141,6 +143,7 @@ export class AgentService {
   private readonly token_speed = new AgentTokenSpeed();
   private token_speed_snapshot: AgentTokenSpeedSnapshot = null;
   private token_speed_updated_at: number | null = null;
+  private run_output: AgentRunOutputSnapshot = null; // 冻结值，只在执行期间存在，不进入条目
   private chat_id = "inactive"; // 无工程时的快照身份，激活后采用持久化身份
   private readonly database: AgentServiceOptions["database"];
   private store: AgentChatStorage | null = null; // 工程连接的使用权覆盖 SDK 与上传收尾
@@ -309,6 +312,7 @@ export class AgentService {
       context: structuredClone(chat?.context ?? { tokens: null, compactable: false, limits: null }),
       usage: { ...(chat?.usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }) },
       tokenSpeed: structuredClone(this.token_speed_snapshot),
+      runOutput: this.run_output,
     };
   }
   /** 协调器同步清除决定并发布事件，回执指向浮层关闭后的修订。 */
@@ -1045,17 +1049,41 @@ export class AgentService {
           this.decisions.wait_for_question(id, question, signal),
       }),
       create_agent_workspace_run_tool({
-        run: (script, signal) => {
+        run: async ({ script, timeoutMs, callId }, signal) => {
           const execution = this.require_execution();
-          return this.workspace.run(script, signal, async (text) => {
-            signal.throwIfAborted();
-            this.assert_execution(execution);
-            await this.require_chat().change((state) => {
-              signal.throwIfAborted();
-              this.assert_execution(execution);
-              state.doing = text;
-            });
-          });
+          const entry_id = this.require_chat().view.tool_entry_id(callId)!; // 工具入口已等待投影完成
+          try {
+            return await this.workspace.run(
+              {
+                script,
+                timeoutMs,
+                doing: async (text) => {
+                  signal.throwIfAborted();
+                  this.assert_execution(execution);
+                  await this.require_chat().change((state) => {
+                    signal.throwIfAborted();
+                    this.assert_execution(execution);
+                    state.doing = text;
+                  });
+                },
+                output: (tail) => {
+                  if (
+                    this.execution !== execution ||
+                    execution.controller.signal.aborted ||
+                    signal.aborted
+                  )
+                    return;
+                  this.run_output = Object.freeze({ entryId: entry_id, ...tail });
+                  this.publish_snapshot();
+                },
+              },
+              signal,
+            );
+          } finally {
+            // `sequential` 让整轮工具串行，观察又在 run 返回前停止，此时的运行输出只属于本次调用。
+            this.run_output = null;
+            this.publish_snapshot();
+          }
         },
         refresh_skills: () => this.skills.refresh(),
       }),
@@ -1063,7 +1091,7 @@ export class AgentService {
         workspace: this.workspace,
         approval: this.workspace_approval_port(),
       }),
-      create_agent_read_skill_tool(() => this.skills.get_current(), this.paths),
+      create_agent_read_skill_tool(() => this.skills.get_current()),
       ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
     ];
   }
@@ -1122,6 +1150,8 @@ export class AgentService {
       const changes: AgentChatChange[] = [];
       if (!isDeepStrictEqual(fields.tokenSpeed, previous.tokenSpeed))
         changes.push({ type: "token_speed", tokenSpeed: fields.tokenSpeed });
+      if (!isDeepStrictEqual(fields.runOutput, previous.runOutput))
+        changes.push({ type: "run_output", runOutput: fields.runOutput });
       for (const entry of timeline?.entries ?? []) changes.push({ type: "entry_upsert", entry });
       if (fields.state !== previous.state)
         changes.push({ type: "chat_status", state: fields.state });

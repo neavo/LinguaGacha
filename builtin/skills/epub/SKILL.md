@@ -36,7 +36,7 @@ console.log(await readFile(chapterPath, 'utf8'));
 
 ## 生成独立 EPUB
 
-仅在用户明确要求工程外的独立文件时执行，独立文件不会写入工程。修改稿写入 `work/`，修改 XHTML 时保留文档结构、注音、图片、脚注及链接关系，目录与正文顺序保持一致。使用预装 `jszip` 从展开目录创建新包。首先添加无压缩的 `mimetype`，内容严格为 `application/epub+zip`，再按原相对路径复制其他文件，并覆盖已修改的成员：
+仅在用户明确要求工程外的独立文件时执行，独立文件不会写入工程。修改稿写入 `work/`，修改 XHTML 时保留文档结构、注音、图片、脚注及链接关系，目录与正文顺序保持一致。使用 `jszip` 从展开目录创建新包。首先添加无压缩的 `mimetype`，内容严格为 `application/epub+zip`，再按原相对路径复制其他文件，并覆盖已修改的成员：
 
 ```js
 import JSZip from 'jszip';

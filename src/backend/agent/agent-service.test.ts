@@ -2303,6 +2303,7 @@ describe("AgentService", () => {
       inputQueue: { paused: false, canSendNow: false, items: [] },
       doing: null,
       tokenSpeed: null,
+      runOutput: null,
       context: { tokens: null, compactable: false, limits: null },
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
@@ -2312,7 +2313,7 @@ describe("AgentService", () => {
   it("脚本阶段即时发布，停止后保留，后续回合去重、更新和清空", async () => {
     const { service, workspace, publish, runtime_gate } = await create_service();
     const run = vi.spyOn(workspace, "run");
-    run.mockImplementationOnce(async (_script, signal, doing) => {
+    run.mockImplementationOnce(async ({ doing }, signal) => {
       await doing!("基础扫描");
       await wait_for_pending_release(signal);
       return { images: [], execution: workspace_execution() };
@@ -2330,7 +2331,7 @@ describe("AgentService", () => {
     expect(service.get_snapshot().doing).toBe("基础扫描");
 
     const before = count_published_events(publish, "doing");
-    run.mockImplementationOnce(async (_script, _signal, doing) => {
+    run.mockImplementationOnce(async ({ doing }) => {
       await doing!("基础扫描");
       return { images: [], execution: workspace_execution() };
     });
@@ -2338,14 +2339,14 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     expect(count_published_events(publish, "doing")).toBe(before);
 
-    run.mockImplementationOnce(async (_script, _signal, doing) => {
+    run.mockImplementationOnce(async ({ doing }) => {
       await doing!("核验结果");
       return { images: [], execution: workspace_execution() };
     });
     await service.send_message({ text: "核验", attachments: [] });
     await wait_for_idle(service);
     expect(service.get_snapshot().doing).toBe("核验结果");
-    run.mockImplementationOnce(async (_script, _signal, doing) => {
+    run.mockImplementationOnce(async ({ doing }) => {
       await doing!(null);
       return { images: [], execution: workspace_execution() };
     });
@@ -2361,7 +2362,7 @@ describe("AgentService", () => {
   it.each(["stop", "reset"] as const)("%s 后拒绝已结束脚本的阶段更新", async (boundary) => {
     const { service, workspace, publish, runtime_gate } = await create_service();
     let old_write: ((text: string | null) => Promise<void>) | undefined;
-    vi.spyOn(workspace, "run").mockImplementationOnce(async (_script, _signal, doing) => {
+    vi.spyOn(workspace, "run").mockImplementationOnce(async ({ doing }) => {
       old_write = doing;
       await doing!("基础扫描");
       return { images: [], execution: workspace_execution() };
@@ -2382,7 +2383,7 @@ describe("AgentService", () => {
 
   it("执行失败、等待问题和审批均保留模型设置的 `doing` 内容", async () => {
     const { service, workspace } = await create_service();
-    vi.spyOn(workspace, "run").mockImplementationOnce(async (_script, _signal, doing) => {
+    vi.spyOn(workspace, "run").mockImplementationOnce(async ({ doing }) => {
       await doing!("基础扫描");
       throw new Error("工作区执行失败");
     });
@@ -2422,7 +2423,7 @@ describe("AgentService", () => {
       () => session_state.mark_loaded("next.lg"),
       () => service.dispose(),
     ]) {
-      vi.spyOn(workspace, "run").mockImplementationOnce(async (_script, _signal, doing) => {
+      vi.spyOn(workspace, "run").mockImplementationOnce(async ({ doing }) => {
         await doing!("基础扫描");
         return { images: [], execution: workspace_execution() };
       });
@@ -2434,6 +2435,28 @@ describe("AgentService", () => {
       expect(service.get_snapshot().doing).toBeNull();
     }
   });
+
+  it.each([false, true])(
+    "运行输出按工具条目身份发布，结算后清空且不进入条目（失败：%s）",
+    async (fail) => {
+      const { service, workspace, publish } = await create_service();
+      vi.spyOn(workspace, "run").mockImplementationOnce(async ({ output }) => {
+        output!({ stdout: "第 1 步\n", stderr: "", line: "第 1 步" });
+        if (fail) throw new Error("执行失败");
+        return { images: [], execution: workspace_execution() };
+      });
+      fake_agent_state.mode = "tool_only";
+      await service.send_message({ text: "执行", attachments: [] });
+      await wait_for_idle(service);
+      const tool = service.get_snapshot().entries.find((entry) => entry.kind === "tool_call");
+      expect(
+        change_calls(publish).flatMap(([, change]) =>
+          change["type"] === "run_output" ? [change["runOutput"]] : [],
+        ),
+      ).toEqual([{ entryId: tool!.id, stdout: "第 1 步\n", stderr: "", line: "第 1 步" }, null]);
+      expect(JSON.stringify(service.get_snapshot().entries)).not.toContain("第 1 步");
+    },
+  );
 
   it("仅在宿主搜索能力可用时注册 web_search", async () => {
     const web_search = vi.fn<AgentWebSearchPort>(async () => ({
@@ -2899,6 +2922,7 @@ describe("AgentService", () => {
       inputQueue: { paused: false, canSendNow: false, items: [] },
       doing: null,
       tokenSpeed: null,
+      runOutput: null,
       context: { tokens: null, compactable: false, limits: null },
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });

@@ -1,8 +1,10 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import type { AgentContextCompactionEntry as CompactionEntry } from "@shared/agent";
-import { AgentContextCompactionEntry } from "./agent-process-entry";
+import type { AgentContextCompactionEntry as CompactionEntry, AgentToolEntry } from "@shared/agent";
+import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
+import type { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
+import { AgentContextCompactionEntry, AgentToolEntryButton } from "./agent-process-entry";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -118,4 +120,30 @@ it("最新失败压缩整行重试，禁用时收起提示，其它记录和状�
     await render_compactions({ ...failed, status }, true);
     expect(view.querySelector("button")).toBeNull();
   }
+});
+
+it("运行中的工具行只显示归属自己的最新输出行", async () => {
+  const output = { entryId: "tool-a", stdout: "", stderr: "", line: "处理 3/10" };
+  const store = {
+    get_run_output: () => output,
+    subscribe_run_output: () => () => {},
+  } as unknown as AgentChatStore;
+  const tool = (id: string): AgentToolEntry => ({
+    kind: "tool_call",
+    id,
+    toolName: "workspace_run",
+    input: '{"script":"1;"}',
+    status: "running",
+    output: null,
+    createdAt: 1,
+  });
+  const view = await render_entry(
+    <AgentChatStoreContext.Provider value={store}>
+      <AgentToolEntryButton entry={tool("tool-a")} on_open={vi.fn()} />
+      <AgentToolEntryButton entry={tool("tool-b")} on_open={vi.fn()} />
+    </AgentChatStoreContext.Provider>,
+  );
+  expect(
+    [...view.querySelectorAll(".agent-process-entry__detail")].map((node) => node.textContent),
+  ).toEqual([" · 处理 3/10"]);
 });

@@ -13,46 +13,47 @@ description: 涉及 PDF 阅读、文字与图像提取、页面定位、译稿�
 
 ## 阅读与定位
 
-用 `mupdf` 提取文字、字体与坐标，用 `@lg/pdf` 的 `render_pdf_page` 渲染页面或区域，再通过 `ws.emitImage` 查看。多栏、表格、扫描页、图注和公式结合图像判断，跨页内容连同邻页读取。没有提取文字时仍需查看原页。
+用 `@lg/pdf/mupdf` 提取文字、字体与坐标，用 `@lg/pdf` 的 `render_pdf_page(bytes, { page, scale, region? })` 渲染页面或区域，再通过 `ws.emitImage` 查看。多栏、表格、扫描页、图注和公式结合图像判断，跨页内容连同邻页读取。没有提取文字时仍需查看原页。
 
-先看整页确认结构，再裁剪小字、图例和表格细节。区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算，`region.page` 须与请求页一致。使用预装的 `mupdf` 和 `@lg/pdf`，输出 PNG，通过 `ws.emitImage` 查看实际结果并调整区域或文字。
+先看整页确认结构，再裁剪小字、图例和表格细节。区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算。`region.page` 须与请求页一致。PDF API 使用字节接口，MuPDF 对象只在所属实例内使用。
 
-将示例文件名、页码和区域替换为当前目标。在同一程序中复用文档，并用 `try/finally` 释放逐页资源、提取结果和文档。
+将示例文件名、页码和区域替换为当前目标。同一程序中复用已读取的原稿字节，用 `try/finally` 释放 MuPDF 的页面、提取结果和文档。
 
 ### 整页阅读与文字提取
 
 ```js
 import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from 'mupdf';
+import * as mupdf from '@lg/pdf/mupdf';
 import { render_pdf_page } from '@lg/pdf';
-const document = new mupdf.PDFDocument(new Uint8Array(await readFile('sources/book.pdf')));
+const bytes = new Uint8Array(await readFile('sources/book.pdf'));
+const document = new mupdf.PDFDocument(bytes);
+let scale;
 try {
   const page = document.loadPage(0);
-  let scale;
   try {
-    const bounds = page.getBounds();
-    scale = 1920 / Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+    const [x0, y0, x1, y1] = page.getBounds();
+    scale = 1920 / Math.max(x1 - x0, y1 - y0);
     const text = page.toStructuredText('');
     try { await writeFile('work/page-1.json', text.asJSON()); }
     finally { text.destroy(); }
   } finally { page.destroy(); }
-  await writeFile('work/page-1.png', render_pdf_page(document, { page: 1, scale }));
-  await ws.emitImage('work/page-1.png');
 } finally { document.destroy(); }
+await writeFile('work/page-1.png', render_pdf_page(bytes, { page: 1, scale }));
+await ws.emitImage('work/page-1.png');
 ```
 
 ### 裁剪与细节
 
 所选区域保留完整表格行、图例和图注。放大图像不会恢复原稿中缺失的细节。
 
-以下代码假定 `document` 是已打开的原稿，由调用者在整组操作结束后释放。
+以下代码假定 `bytes` 是已读取的原稿字节。
 
 ```js
 import { writeFile } from 'node:fs/promises';
 import { render_pdf_page } from '@lg/pdf';
 const region = { page: 1, x: 40, y: 80, width: 400, height: 240 };
 const maxEdge = 3840;
-await writeFile('work/detail.png', render_pdf_page(document, {
+await writeFile('work/detail.png', render_pdf_page(bytes, {
   page: region.page,
   region,
   scale: maxEdge / Math.max(region.width, region.height),
@@ -62,6 +63,23 @@ await ws.emitImage('work/detail.png', { maxEdge });
 
 整页概览使用默认尺寸。密集小字优先裁剪，仍需细节时使用 `ws.emitImage(path, { maxEdge: 3840 })`。按区域尺寸计算渲染比例，渲染与发送使用相同目标最长边。实际尺寸还受字节额度约束，按工具返回的图片尺寸判断有效细节。
 
+### 渲染修改后的文档
+
+内存中修改过的文档先保存为字节再渲染。`asUint8Array()` 只是 Buffer 内存的视图，先复制再释放 Buffer。
+
+```js
+import { writeFile } from 'node:fs/promises';
+import { render_pdf_page } from '@lg/pdf';
+// document 是脚本用 mupdf 打开并修改过的文档，由调用者释放。
+const buffer = document.saveToBuffer();
+let edited;
+try { edited = buffer.asUint8Array().slice(); }
+finally { buffer.destroy(); }
+await writeFile('work/edited.pdf', edited);
+await writeFile('work/edited-1.png', render_pdf_page(edited, { page: 1, scale: 2 }));
+await ws.emitImage('work/edited-1.png');
+```
+
 ### 拼接相关区域
 
 先确认区域间的阅读顺序和关联，再拼接。不同页面的裁剪使用一致比例，保留来源页与坐标记录。大量页面拼成一张图会挤压小字的可用像素，按连贯内容分组。
@@ -70,7 +88,7 @@ await ws.emitImage('work/detail.png', { maxEdge });
 
 ```js
 import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from 'mupdf';
+import * as mupdf from '@lg/pdf/mupdf';
 const images = [];
 try {
   for (const file of ['work/region-1.png', 'work/region-2.png']) {
@@ -107,7 +125,7 @@ MuPDF 的 `zh-Hans` 字体可绘制简体中文。按实际文字检查缺字、
 
 ```js
 import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from 'mupdf';
+import * as mupdf from '@lg/pdf/mupdf';
 const image = new mupdf.Image(new Uint8Array(await readFile('work/detail.png')));
 try {
   const header = 80;
@@ -173,24 +191,21 @@ await ws.emitImage('work/annotated.png', { maxEdge: 3840 });
 
 ```js
 import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from 'mupdf';
-import { render_pdf_page } from '@lg/pdf';
+import { read_pdf_document, render_pdf_page } from '@lg/pdf';
 const { preview } = await import(new URL('scripts/preview.mjs', base_url).href);
 const result = await preview('book.pdf', 'work/page-updates.jsonl');
-const output = new mupdf.PDFDocument(new Uint8Array(await readFile(result.path)));
-try {
-  console.log({ output_pages: output.countPages() });
-  const output_page = 1; // 替换为本次需要检查的输出页，按工具图片额度分批查看。
-  const page = output.loadPage(output_page - 1);
-  let scale;
-  try {
-    const bounds = page.getBounds();
-    scale = 1920 / Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
-  } finally { page.destroy(); }
-  const image_path = `work/preview-${output_page}.png`;
-  await writeFile(image_path, render_pdf_page(output, { page: output_page, scale }));
-  await ws.emitImage(image_path);
-} finally { output.destroy(); }
+if (result.path === null) throw new Error(result.message);
+const output = new Uint8Array(await readFile(result.path));
+const { pages } = read_pdf_document(output); // 输出页尺寸，坐标与渲染一致
+console.log({ output_pages: pages.length });
+const output_page = 1; // 替换为本次需要检查的输出页，按工具图片额度分批查看。
+const { width, height } = pages[output_page - 1];
+const image_path = `work/preview-${output_page}.png`;
+await writeFile(image_path, render_pdf_page(output, {
+  page: output_page,
+  scale: 1920 / Math.max(width, height),
+}));
+await ws.emitImage(image_path);
 ```
 
 第二个参数是完整页面更新的 JSONL 草稿，格式见 `ws.contract.changes.pages.updates.reference`。脚本校验所有记录的结构，再对目标文件复用正式页级判定，覆盖快照副本后调用正式 PDF 生成入口。目标更新被拒绝时，先按行号修复草稿。省略第二个参数时预览当前工程快照。
