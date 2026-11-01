@@ -46,39 +46,17 @@ beforeAll(async () => {
       },
     );
   await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
-  await mkdir(path.join(workspace, "changes"));
   await writeFile(path.join(workspace, "package.json"), JSON.stringify({ type: "module" }));
   await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
   for (const [relative_path, content] of Object.entries(AGENT_WORKSPACE_REFERENCES)) {
     await mkdir(path.dirname(path.join(workspace, relative_path)), { recursive: true });
     await writeFile(path.join(workspace, relative_path), content);
   }
-  await writeFile(path.join(root, "outside.txt"), "outside");
 }, 60_000);
 
 afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
-
-it.each(["uploads/input.bin", "sources/game.zip/Data/System.rvdata2.json", "source_issues.jsonl"])(
-  "%s 在真实工作区只读，可复制到 work 后修改",
-  async (source) => {
-    await mkdir(path.dirname(path.join(workspace, source)), { recursive: true });
-    await writeFile(path.join(workspace, source), "original");
-    const result = await run(`
-    import { readFile, writeFile, copyFile } from 'node:fs/promises';
-    const original = await readFile(${JSON.stringify(source)}, 'utf8');
-    try { await writeFile(${JSON.stringify(source)}, 'changed'); throw new Error('write allowed'); }
-    catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
-    await copyFile(${JSON.stringify(source)}, 'work/copy.bin');
-    await writeFile('work/copy.bin', 'changed');
-    console.log(JSON.stringify({original, copy: await readFile('work/copy.bin', 'utf8')}));
-  `);
-    expect(result.exitCode).toBe(0);
-    expect(await readFile(path.join(workspace, source), "utf8")).toBe("original");
-    expect(await readFile(path.join(workspace, "work/copy.bin"), "utf8")).toBe("changed");
-  },
-);
 
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
   await mkdir(path.join(workspace, "work/scripts"));
@@ -124,7 +102,7 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   }
 });
 
-it("权限模式下 PDF 引擎与渲染 API 共用实例，Markdown 从用户 npm 工程加载", async () => {
+it("PDF 引擎与渲染 API 共用实例，Markdown 从用户 npm 工程加载", async () => {
   await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
   const result = await run(`
     import { readFile } from 'node:fs/promises';
@@ -206,14 +184,7 @@ it.each(["user", "builtin"])(
     const result = await run(
       `
     const {inspect} = await import(${JSON.stringify(entry_url)});
-    import {writeFile} from 'node:fs/promises';
     const result = await inspect();
-    if (${JSON.stringify(kind)} === 'user') {
-      await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed');
-    } else {
-      try { await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed'); throw new Error('write allowed'); }
-      catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
-    }
     console.log(JSON.stringify(result));
   `,
       undefined,
@@ -236,41 +207,6 @@ it.each(["user", "builtin"])(
     });
   },
 );
-
-it("用户技能目录链接可创建、替换和删除包，失败前的写入保留", async () => {
-  const original = skill_paths.get_agent_user_skill_dir();
-  const target = path.join(root, "linked-user-skills");
-  await mkdir(target);
-  const link = path.join(root, "user-skills-link");
-  await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
-  skill_paths.get_agent_user_skill_dir = () => link;
-  try {
-    const result = await run(`
-      import fs from 'node:fs/promises';
-      import path from 'node:path';
-      const staging = await fs.mkdtemp(path.join(ws.userSkillDirectory, '.install-'));
-      await fs.writeFile(path.join(staging, 'SKILL.md'), 'first');
-      const installed = path.join(ws.userSkillDirectory, 'fixture');
-      await fs.rename(staging, installed);
-      await fs.writeFile(path.join(installed, 'SKILL.md'), 'updated');
-      const content = await fs.readFile(path.join(installed, 'SKILL.md'), 'utf8');
-      await fs.rm(installed, {recursive: true});
-      await fs.writeFile(path.join(ws.userSkillDirectory, 'retained.txt'), content);
-      process.exitCode = 1;
-    `).catch((error: unknown) => {
-      if (error instanceof AgentWorkspaceRunError) return error.execution;
-      throw error;
-    });
-    expect(result.exitCode).toBe(1);
-    expect(await readFile(path.join(target, "retained.txt"), "utf8")).toBe("updated");
-    await expect(readFile(path.join(target, "fixture/SKILL.md"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  } finally {
-    skill_paths.get_agent_user_skill_dir = () => original;
-    await unlink(link);
-  }
-});
 
 it("删除变更目录后继续执行技能、提交和重置", async () => {
   const app_root = await mkdtemp(path.join(root, "lifecycle-"));
@@ -456,26 +392,7 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
   }
 });
 
-it("工作区外可读不可写，权限保护部署与快照，失败保留输出、位置和已写文件", async () => {
-  const outside = path.join(root, "outside.txt");
-  const result = await run(`
-    import fs from 'node:fs/promises';
-    const outside = ${JSON.stringify(outside)};
-    const failures = [];
-    for (const operation of [
-      () => fs.writeFile(outside, 'changed'),
-      () => fs.symlink(${JSON.stringify(root)}, 'work/escape', 'junction'),
-      () => fs.writeFile('contract.json', '{}'),
-      () => fs.writeFile(ws.contract.datasets.items.reference, 'changed'),
-      () => fs.writeFile('package.json', '{}'),
-      () => fs.writeFile('node_modules/unified/package.json', '{}'),
-    ]) { try { await operation(); } catch (error) { failures.push(error.code); } }
-    console.log(JSON.stringify({ text: await fs.readFile(outside, 'utf8'), failures }));
-  `);
-  expect(output_content(result.stdout)).toEqual({
-    text: "outside",
-    failures: Array(6).fill("ERR_ACCESS_DENIED"),
-  });
+it("失败保留输出、位置和已写文件", async () => {
   await expect(
     run(
       `import fs from 'node:fs/promises'; await fs.writeFile('work/kept.txt','kept'); console.log('before error'); throw new Error('program failed');`,
@@ -493,7 +410,7 @@ it("工作区外可读不可写，权限保护部署与快照，失败保留输�
   ).rejects.toMatchObject({
     execution: {
       exitCode: 7,
-      stderr: { content: expect.stringContaining('{"message":"intentional exit"}') },
+      stderr: { content: { message: "intentional exit" } },
     },
   });
   expect((await run("process.exit(0);")).exitCode).toBe(0);
@@ -534,7 +451,7 @@ it("取消在途代理等待后回收进程，并解除宿主请求", async () =
 });
 
 it.each([false, true])(
-  "工作区祖先、部署目录及可写挂载支持链接（work 本身链接：%s）",
+  "工作区祖先、部署目录和工作材料目录支持链接（work 本身链接：%s）",
   async (mount_work) => {
     const directory = await mkdtemp(path.join(root, "linked-"));
     const data = path.join(directory, "data");
@@ -551,7 +468,6 @@ it.each([false, true])(
     try {
       if (mount_work) await symlink(external, path.join(logical_workspace, "work"), link_type);
       else await mkdir(path.join(logical_workspace, "work"));
-      await mkdir(path.join(logical_workspace, "changes"));
       await symlink(external, path.join(logical_workspace, "work", "output"), link_type);
       await writeFile(path.join(external, "helper.mjs"), "export const title = 'linked';");
       await writeFile(
@@ -567,14 +483,10 @@ it.each([false, true])(
       await writeFile(
         path.join(logical_workspace, scriptPath),
         `
-      import fs from 'node:fs/promises';
       import { unified } from 'unified';
       import remarkParse from 'remark-parse';
       import { title } from '../output/helper.mjs';
-      const text = unified().use(remarkParse).parse('# ' + title).children[0].children[0].value;
-      await fs.writeFile('work/output/result.md', text);
-      await fs.writeFile('changes/result.json', JSON.stringify({title}));
-      console.log(await fs.readFile('work/output/result.md', 'utf8'));
+      console.log(unified().use(remarkParse).parse('# ' + title).children[0].children[0].value);
     `,
       );
       const result = await new AgentWorkspaceRunner({
@@ -592,10 +504,6 @@ it.each([false, true])(
       );
       expect(result.exitCode).toBe(0);
       expect(output_content(result.stdout)).toMatch(/^linked\s*$/u);
-      expect(await readFile(path.join(external, "result.md"), "utf8")).toBe("linked");
-      expect(
-        JSON.parse(await readFile(path.join(actual_workspace, "changes/result.json"), "utf8")),
-      ).toEqual({ title: "linked" });
     } finally {
       await unlink(data_link);
       await unlink(runtime_link);
@@ -693,7 +601,7 @@ it("页面更新模块在部署工作区解析记录并判定目标", async () =
   expect(output_content(result.stdout)).toMatchObject([{ reason: "target_missing", line: 2 }]);
 });
 
-it("模型说明列出的预装包都能在权限模式下导入", async () => {
+it("模型说明列出的预装包都能导入", async () => {
   const result = await run(`
     const failed = [];
     for (const name of ${JSON.stringify(app_package.workspaceRuntimePackages.agent)}) {
@@ -768,32 +676,25 @@ it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", as
   }
 }, 30_000);
 
-it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退出", async () => {
-  const result = await run(
-    `
-    import assert from 'node:assert/strict';
-    import ExcelJS from 'exceljs';
-    import JSZip from 'jszip';
-    import iconv from 'iconv-lite';
-    import {detect} from 'chardet';
-    const workbook=new ExcelJS.Workbook();
-    const sheet=workbook.addWorksheet('Sheet1');
-    sheet.getCell('A1').value='原文 🌸';
-    const read=new ExcelJS.Workbook();
-    await read.xlsx.load(await workbook.xlsx.writeBuffer());
-    assert.equal(read.getWorksheet('Sheet1').getCell('A1').value,'原文 🌸');
-    const zip=new JSZip();
-    zip.file('中文.txt','你好');
-    const archive=await JSZip.loadAsync(await zip.generateAsync({type:'uint8array'}));
-    assert.equal(await archive.file('中文.txt').async('string'),'你好');
-    assert.equal(iconv.decode(iconv.encode('中文','gbk'),'gbk'),'中文');
-    assert.equal(typeof detect(Buffer.from('sample')),'string');
-    console.log('file libraries ready');
-  `,
-    AbortSignal.timeout(10000),
+it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
+  await writeFile(
+    path.join(workspace, "work/descendant.mjs"),
+    "console.log(typeof globalThis.ws);",
   );
+  const result = await run(`
+    import { fork } from 'node:child_process';
+    import { Worker } from 'node:worker_threads';
+    import { once } from 'node:events';
+    await once(fork('work/descendant.mjs'), 'exit');
+    await once(new Worker(new URL('../descendant.mjs', import.meta.url)), 'exit');
+    console.log(typeof ws);
+  `);
   expect(result.exitCode).toBe(0);
-  expect(output_content(result.stdout)).toBe("file libraries ready\n");
+  expect(String(output_content(result.stdout)).trim().split(/\r?\n/u).sort()).toEqual([
+    "object",
+    "undefined",
+    "undefined",
+  ]);
 });
 
 /** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */

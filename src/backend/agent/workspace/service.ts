@@ -663,7 +663,7 @@ export class AgentWorkspaceService {
             await this.options.database.get_all_meta(snapshot.projectPath),
           ),
         });
-        // 脚本可删除可写目录。每次执行前补齐目录，保留已有提交意图。
+        // 脚本可能删除运行目录和变更目录。每次执行前补齐目录，保留已有提交意图。
         const directories = new Set([
           AGENT_WORKSPACE_RUN_ROOT,
           ...all_change_paths().map((relative) => path.posix.dirname(relative)),

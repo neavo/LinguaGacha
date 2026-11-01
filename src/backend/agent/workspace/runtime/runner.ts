@@ -15,9 +15,10 @@ import { resolve_workspace_runtime_entry } from "../../../../native/workspace-ru
 import type { ProxyResolver } from "../../../network/proxy-http-client";
 import type { AppPathService } from "../../../app/app-path-service";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
-import type {
-  AgentWorkspaceRuntimeChildMessage,
-  AgentWorkspaceRuntimeParentMessage,
+import {
+  AGENT_WORKSPACE_ENTRY_ENV,
+  type AgentWorkspaceRuntimeChildMessage,
+  type AgentWorkspaceRuntimeParentMessage,
 } from "./protocol";
 
 export type AgentWorkspaceRunRequest = Readonly<{
@@ -99,7 +100,7 @@ export class AgentWorkspaceRunner {
     }
   }
 
-  /** 固定本次启动的资源路径与写入权限，再交给受监管的子进程执行。 */
+  /** 固定本次启动的资源路径与入口标记，再交给受监管的子进程执行。 */
   private async run_prepared(
     request: AgentWorkspaceRunRequest,
     signal: AbortSignal,
@@ -107,20 +108,12 @@ export class AgentWorkspaceRunner {
     env: NodeJS.ProcessEnv,
   ): Promise<AgentWorkspaceExecution> {
     signal.throwIfAborted();
-    // 宿主先解析祖先链接，cwd、预加载与写入授权使用同一真实位置。
+    // 宿主先解析祖先链接，cwd、预加载与模块根使用同一真实位置。
     const workspace_path = default_native_fs.real_path(request.workspacePath);
     const runtime_directory = default_native_fs.real_path(this.node.directory);
     const bootstrap_path = resolve_workspace_runtime_entry(runtime_directory, "bootstrap");
-    const write_paths = new Set(
-      AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.flatMap((name) => {
-        const entry = path.join(workspace_path, name);
-        return [entry, default_native_fs.real_path(entry)];
-      }),
-    );
-    const user_skill_directory = this.paths.get_agent_user_skill_dir(); // 初始化消息与写权限共用应用路径
-    default_native_fs.make_dir(user_skill_directory);
-    write_paths.add(user_skill_directory);
-    write_paths.add(default_native_fs.real_path(user_skill_directory));
+    const user_skill_directory = this.paths.get_agent_user_skill_dir();
+    default_native_fs.make_dir(user_skill_directory); // `ws.userSkillDirectory` 承诺目录存在
     // 技能模块可能经逻辑入口或真实位置加载，npm 依赖解析按两者匹配，每次 run 都重新解析。
     const skill_module_roots = [
       path.join(request.workspacePath, "work"),
@@ -148,11 +141,6 @@ export class AgentWorkspaceRunner {
     const launch_options: ForkOptions & { windowsHide: boolean } = {
       execPath: this.node.executable,
       execArgv: [
-        "--permission",
-        "--allow-addons",
-        // 读取范围是当前系统账户可访问的本机文件，写入限定在授权目录。
-        "--allow-fs-read=*",
-        ...[...write_paths].map((directory) => `--allow-fs-write=${directory}`),
         // 保留工作材料与技能的逻辑入口，模块解析钩子同时匹配逻辑位置和真实位置。
         "--preserve-symlinks",
         "--preserve-symlinks-main",
@@ -160,8 +148,8 @@ export class AgentWorkspaceRunner {
         pathToFileURL(bootstrap_path).href,
       ],
       cwd: workspace_path,
-      // 启动参数由 runner 拥有，禁止继承父进程的 Node 注入选项。
-      env,
+      // 启动参数由 runner 拥有，禁止继承父进程的 Node 注入选项。入口标记只交给根进程。
+      env: { ...env, [AGENT_WORKSPACE_ENTRY_ENV]: "1" },
       // Windows 跳过 libuv 的隐式 Job，让所有目标共用监管程序持有的具名 Job。
       detached: true,
       windowsHide: true,
@@ -230,7 +218,7 @@ export class AgentWorkspaceRunner {
           if (error !== null) terminate(error);
         });
       };
-      /** 参数在父进程信任边界收窄，脚本不能借宿主绕过工作区权限。 */
+      /** 参数在父进程信任边界收窄后才交给宿主能力。 */
       const handle_request = (id: number, request: WorkspaceRequest): void => {
         if (requests.has(id)) throw new Error("Workspace runtime reused a request id.");
         const controller = new AbortController();

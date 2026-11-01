@@ -1068,7 +1068,7 @@ export class AgentService {
         workspace: this.workspace,
         approval: this.workspace_approval_port(),
       }),
-      create_agent_read_skill_tool(() => this.skills.get_current(), this.paths),
+      create_agent_read_skill_tool(() => this.skills.get_current()),
       ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
     ];
   }

@@ -31,7 +31,6 @@ beforeEach(() => {
   const runtime_directory = path.join(directory, "runtime");
   fs.mkdirSync(runtime_directory);
   fs.mkdirSync(path.join(workspacePath, "work/runs"), { recursive: true });
-  fs.mkdirSync(path.join(workspacePath, "changes"));
   fs.writeFileSync(path.join(runtime_directory, "bootstrap.mjs"), "");
   request = {
     workspacePath,

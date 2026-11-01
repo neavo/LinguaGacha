@@ -9,6 +9,7 @@ import { AGENT_WORKSPACE_PATHS } from "../workspace/paths";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
   AGENT_WORKSPACE_RUNTIME_POLICY,
+  AGENT_WORKSPACE_WORK_ROOT,
 } from "../workspace/runtime/policy";
 import { format_agent_workspace_typescript_api } from "../workspace/runtime/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
@@ -39,15 +40,15 @@ export function create_agent_workspace_run_tool(options: {
       "  - `@lg/workspace/item-contexts` 提供 `queryItemContexts`，用于取得条目的邻近语境",
       `- 共享工程初始提供 ${app_package.workspaceRuntimePackages.agent.join("、")}`,
       "",
-      "### 文件与权限",
+      "### 文件与进程",
       "",
-      "- 可以读取当前系统账户能够访问的本机文件",
-      `- 可以写入 ${AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.map((root) => `\`${root}/**\``).join("、")} 和 \`ws.userSkillDirectory\``,
-      "- 不能创建子进程或启动 worker，命令行工具通过 `workspace_exec` 调用。允许加载原生扩展",
+      "- 脚本以当前系统账户运行，宿主不限制本机文件和进程访问",
+      `- 工作材料写入 \`${AGENT_WORKSPACE_WORK_ROOT}/\`，变更清单写入 \`changes/\`，用户技能写入 \`ws.userSkillDirectory\`，其余工作区内容由宿主维护，只读`,
+      "- 可以创建子进程和 worker，它们是标准 Node 环境，不提供 `ws`，也不经过上述依赖解析",
       "",
       "### 输出",
       "",
-      `- 脚本执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000} 秒，程序在事件循环空闲时自然退出`,
+      `- 脚本执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000} 秒，程序在事件循环空闲时自然退出，退出时结束仍在运行的子进程，不能保留后台进程`,
       "- 使用 `console.log` 输出结果",
       `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，内容是文本或解析后的 JSON，超额时返回补读提示，按需读取文件`,
       "",

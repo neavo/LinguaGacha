@@ -27,3 +27,6 @@ export type AgentWorkspaceRuntimeParentMessage =
 export type AgentWorkspaceRuntimeChildMessage =
   | { type: "request"; id: number; request: WorkspaceRequest }
   | { type: "cancel"; id: number };
+
+/** runner 只给根进程设置的环境标记，bootstrap 据此区分根进程与脚本自行创建的后代。 */
+export const AGENT_WORKSPACE_ENTRY_ENV = "LG_WORKSPACE_ENTRY";

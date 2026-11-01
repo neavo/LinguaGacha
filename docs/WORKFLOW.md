@@ -152,7 +152,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 工作区或 Node runtime 变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
 
-加载、权限、文件边界、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
+加载、子进程、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
 
 上传、图片与宿主协议按影响选择：
 
