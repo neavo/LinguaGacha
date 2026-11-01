@@ -1,4 +1,3 @@
-import { execute_and_refresh_skills } from "./workspace-execution";
 import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
@@ -15,6 +14,7 @@ import { format_agent_workspace_typescript_api } from "../workspace/runtime/api-
 import type { AgentWorkspacePort } from "../workspace/service";
 import app_package from "../../../../package.json";
 import { PYTHON_DESCRIPTION } from "../python/description";
+import { NPM_DESCRIPTION } from "../npm/description";
 
 /** 执行程序并刷新技能事实，随后投影模型可见的执行记录与图片。 */
 export function create_agent_workspace_run_tool(options: {
@@ -34,13 +34,16 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### 依赖",
       "",
-      "- 第三方包从 `workspace_exec` 管理的共享 npm 工程加载，缺少的包先安装，再在新的调用中导入",
+      "- 第三方包从共享 npm 工程加载，缺少的包先用 `@lg/npm` 安装，再在新的调用中导入",
       "- `@lg/*` 是随应用更新的 SDK，在本工具及其加载的模块中可用：",
       "  - `@lg/pdf` 提供与正式输出共用的 PDF 读取、渲染和生成，接口只交换字节",
       "  - `@lg/text` 提供与应用共用的字面匹配能力",
+      "  - `@lg/npm` 提供应用随附的 npm，管理共享 npm 工程与调用包提供的命令行工具",
       "  - `@lg/python` 提供应用管理的 Python 解释器、依赖与程序执行",
       "  - `@lg/workspace/item-contexts` 提供 `queryItemContexts`，用于取得条目的邻近语境",
       `- 共享工程初始提供 ${app_package.workspaceRuntimePackages.agent.join("、")}`,
+      "",
+      NPM_DESCRIPTION,
       "",
       PYTHON_DESCRIPTION,
       "",
@@ -66,7 +69,8 @@ export function create_agent_workspace_run_tool(options: {
       "### 失败与恢复",
       "",
       "- 程序失败或超时会携带执行记录，根据记录定位失败原因",
-      "- 环境准备失败时脚本不会运行。npm 依赖问题通过 `workspace_exec` 恢复。应用 SDK 或启动资源缺失表示应用安装损坏，需要修复应用安装",
+      "- 环境准备失败时脚本不会运行。应用 SDK、npm 或启动资源缺失表示应用安装损坏，需要修复应用安装",
+      "- 第三方包缺失或共享 npm 工程损坏时，用 `@lg/npm` 恢复",
       "- 程序失败、停止或超时后，已完成的文件写入仍然保留，继续前检查受影响的文件，复用完整内容并修复未完成或损坏的部分",
       "",
       "### 工作区数据",
@@ -113,7 +117,7 @@ export function create_agent_workspace_run_tool(options: {
       // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
       const effective_signal = signal ?? new AbortController().signal;
       effective_signal.throwIfAborted();
-      const { execution, images } = await execute_and_refresh_skills(
+      const { execution, images } = await run_and_refresh_skills(
         () => options.run(params.script, effective_signal),
         options.refresh_skills,
       );
@@ -138,4 +142,27 @@ export function create_agent_workspace_run_tool(options: {
       };
     },
   });
+}
+
+/** 执行结算后都刷新技能，刷新失败保留执行主因及完整原因链。 */
+async function run_and_refresh_skills<T>(
+  run: () => Promise<T>,
+  refresh: () => Promise<unknown>,
+): Promise<T> {
+  const outcome = await run().then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  try {
+    await refresh();
+  } catch (error) {
+    if (outcome.ok) throw new Error("Agent skill refresh failed.", { cause: error });
+    throw new AggregateError(
+      [outcome.error, error],
+      "Workspace execution and skill refresh failed.",
+      { cause: outcome.error },
+    );
+  }
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
 }

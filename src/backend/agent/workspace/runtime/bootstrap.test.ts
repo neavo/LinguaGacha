@@ -269,7 +269,6 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: runner.run.bind(runner),
-      runExec: (request, signal) => create_execution_runtime().run_exec(request, signal),
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
@@ -695,7 +694,9 @@ it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
     path.join(workspace, "work/descendant.mjs"),
     `import assert from 'node:assert/strict';
      import { python } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/python/index.mjs")).href)};
+     import { npm } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/npm/index.mjs")).href)};
      assert.throws(() => python.environment(), /not bound/);
+     await assert.rejects(npm.run(["--version"]), /not bound/);
      console.log(typeof globalThis.ws);`,
   );
   const result = await run(`

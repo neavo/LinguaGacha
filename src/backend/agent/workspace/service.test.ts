@@ -60,10 +60,7 @@ import {
   AGENT_WORKSPACE_RUNTIME_POLICY,
 } from "./runtime/policy";
 
-import {
-  workspace_execution,
-  workspace_exec_execution,
-} from "../../../test/agent-workspace-fixture";
+import { workspace_execution } from "../../../test/agent-workspace-fixture";
 
 const VALID_WORKSPACE_SCRIPT = "console.log(null);";
 
@@ -1348,7 +1345,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const read_meta = vi.fn(async () => ({}) as JsonRecord);
   const service = new AgentWorkspaceService({
     images: { prepare: prepare_image },
-    runExec: async () => workspace_exec_execution(),
     paths: {
       get_agent_workspace_root_dir: () => workspace_parent,
     },
@@ -1544,7 +1540,6 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: async () => workspace_execution(),
-      runExec: async () => workspace_exec_execution(),
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });

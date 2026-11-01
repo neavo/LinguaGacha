@@ -1,8 +1,3 @@
-import {
-  AgentExecutionError,
-  type AgentWorkspaceExecRequest,
-  type AgentWorkspaceExecResult,
-} from "../execution/runtime";
 import { read_project_additional_files } from "../../project/project-additional-files";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
@@ -209,10 +204,6 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
-      runExec: (
-        request: AgentWorkspaceExecRequest,
-        signal: AbortSignal,
-      ) => Promise<AgentWorkspaceExecResult>;
       pdfHost?: PDFHost | undefined;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -725,45 +716,6 @@ export class AgentWorkspaceService {
     });
   }
 
-  /** 命令只借用对话互斥和日志目录，工程快照由脚本执行入口准备。 */
-  public async run_exec(command: string, signal: AbortSignal): Promise<AgentWorkspaceExecResult> {
-    return await this.exclusive(async () => {
-      signal.throwIfAborted();
-      const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${random_id()}.exec`;
-      await this.native_fs.make_dir_async(path.join(this.root_path, AGENT_WORKSPACE_RUN_ROOT));
-      try {
-        return await this.options.runExec(
-          {
-            workspacePath: this.root_path,
-            command,
-            stdoutPath: `${run_path}.stdout.log`,
-            stderrPath: `${run_path}.stderr.log`,
-          },
-          signal,
-        );
-      } catch (error) {
-        if (is_agent_cancellation(error, signal)) throw error;
-        if (error instanceof AgentExecutionError)
-          throw new AppErrors.AppError("request.validation_failed", {
-            cause: error,
-            public_details: {
-              action: "workspace_exec",
-              message: error.message,
-              ...error.execution,
-            },
-            diagnostic_context: { reason: "agent_workspace_exec_failed" },
-          });
-        throw workspace_error_with_action(
-          error,
-          "workspace_exec",
-          "agent_workspace_exec_host_failed",
-        );
-      } finally {
-        await this.touch();
-      }
-    });
-  }
-
   /** 一次准备真实差异，按需等待审批，再把同一份差异交给跨 section 事务。 */
   public async apply_workspace(
     request_approval?: (summary: AgentPendingWriteSummary) => Promise<void>,
@@ -1029,7 +981,6 @@ export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
   | "list_files"
   | "run"
-  | "run_exec"
   | "apply_workspace"
   | "create_chat"
   | "activate_chat"
@@ -1363,7 +1314,7 @@ function workspace_validation_error(reason: string): AppErrors.AppError {
 /** 统一包装一次异常并保留原始 `cause`。运行失败提供阶段与安全的 IO 定位信息。 */
 function workspace_error_with_action(
   error: unknown,
-  action: "workspace_run" | "workspace_apply" | "workspace_exec",
+  action: "workspace_run" | "workspace_apply",
   reason?: string,
   run?: Readonly<{ phase: WorkspaceRunPhase; root: string }>,
 ): AppErrors.AppError {

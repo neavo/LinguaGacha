@@ -8,30 +8,30 @@ import type { ProxyResolver } from "../../network/proxy-http-client";
 import { AppError } from "../../../shared/error";
 import { read_agent_process_output, type AgentProcessOutput } from "../process-output";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
-import { parse_workspace_command, type AgentWorkspaceCommand } from "./arguments";
 
-export type AgentWorkspaceExecRequest = Readonly<{
-  workspacePath: string; // 日志属于当前对话，命令的 cwd 仍是共享工程。
-  command: string;
+/** 本次执行的两路日志，路径相对于工作区。 */
+export type AgentExecutionLogRequest = Readonly<{
+  workspacePath: string; // 日志属于当前对话，Node 环境仍是共享工程。
   stdoutPath: string;
   stderrPath: string;
 }>;
-export type AgentWorkspaceExecResult = SupervisedProcessResult &
-  Readonly<{ cwd: string; stdout: AgentProcessOutput; stderr: AgentProcessOutput }>;
+// 进程结果与收尾后读取的两路日志。
+export type AgentExecutionResult = SupervisedProcessResult &
+  Readonly<{ stdout: AgentProcessOutput; stderr: AgentProcessOutput }>;
 
-/** 执行失败携带可补读的日志，供服务层投影为工具回执。 */
+/** 环境准备失败与超时携带可补读的日志，runner 投影为工作区执行失败。 */
 export class AgentExecutionError extends Error {
-  /** 超时和非零退出共用回执，原始原因保留给诊断。 */
+  /** 两类失败共用回执，原始原因保留给诊断。 */
   public constructor(
     message: string,
-    public readonly execution: AgentWorkspaceExecResult,
+    public readonly execution: AgentExecutionResult,
     options?: ErrorOptions,
   ) {
     super(message, options);
   }
 }
 
-/** GUI 组合根拥有共享租约，Node 准备和根脚本的所有后代沿同一生命周期收尾。 */
+/** GUI 组合根拥有共享租约，Node 准备和根脚本的所有后代（含 SDK 启动的 npm、Python）沿同一生命周期收尾。 */
 export class AgentExecutionRuntime {
   public readonly nodeExecutable: string;
   public readonly runtimeDirectory: string; // 随应用版本固定的运行资源。
@@ -70,42 +70,9 @@ export class AgentExecutionRuntime {
     });
   }
 
-  /** 命令只决定启动的 CLI 与其 argv，时限、监管和回执由本入口统一负责并覆盖环境准备。 */
-  public async run_exec(
-    request: AgentWorkspaceExecRequest,
-    signal: AbortSignal,
-  ): Promise<AgentWorkspaceExecResult> {
-    let command: AgentWorkspaceCommand;
-    try {
-      command = parse_workspace_command(request.command);
-    } catch (cause) {
-      throw new AppError("request.validation_failed", {
-        cause,
-        public_details: { message: cause instanceof Error ? cause.message : String(cause) },
-      });
-    }
-    return await this.with_environment(request, signal, async (owner, env, execution_signal) => {
-      const result = await owner.launch(
-        {
-          executable: this.nodeExecutable,
-          args: [path.join(this.runtimeDirectory, command.entry), ...command.args],
-          cwd: this.nodeRoot,
-          env,
-          stdout: path.join(request.workspacePath, request.stdoutPath),
-          stderr: path.join(request.workspacePath, request.stderrPath),
-        },
-        execution_signal,
-      );
-      const execution = this.result(request, result);
-      if (result.exitCode !== 0)
-        throw new AgentExecutionError("Command exited unsuccessfully.", execution);
-      return execution;
-    });
-  }
-
   /** 持有租约直到脚本、宿主请求、代理及日志句柄全部收尾。 */
   public async with_environment<T>(
-    request: Pick<AgentWorkspaceExecRequest, "workspacePath" | "stdoutPath" | "stderrPath">,
+    request: AgentExecutionLogRequest,
     signal: AbortSignal,
     action: (owner: Supervisor, env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
@@ -134,7 +101,7 @@ export class AgentExecutionRuntime {
 
   /** 目标、代理和租约沿同一顺序结算，清理故障保留执行主因。 */
   private async execute<T>(
-    request: Pick<AgentWorkspaceExecRequest, "workspacePath" | "stdoutPath" | "stderrPath">,
+    request: AgentExecutionLogRequest,
     signal: AbortSignal,
     action: (owner: Supervisor, env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
@@ -196,11 +163,10 @@ export class AgentExecutionRuntime {
 
   /** 进程收尾后读取日志，避免把仍在写入的输出当作最终回执。 */
   private result(
-    request: Pick<AgentWorkspaceExecRequest, "workspacePath" | "stdoutPath" | "stderrPath">,
+    request: AgentExecutionLogRequest,
     result: SupervisedProcessResult,
-  ): AgentWorkspaceExecResult {
+  ): AgentExecutionResult {
     return {
-      cwd: this.nodeRoot,
       ...result,
       stdout: read_agent_process_output(request.workspacePath, request.stdoutPath),
       stderr: read_agent_process_output(request.workspacePath, request.stderrPath),

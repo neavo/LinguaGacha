@@ -142,7 +142,6 @@ export class GuiBackendBootstrap {
         writeStore: services.state.writes,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
-        runExec: execution.run_exec.bind(execution),
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,

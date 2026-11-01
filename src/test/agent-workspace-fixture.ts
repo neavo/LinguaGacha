@@ -1,4 +1,3 @@
-import type { AgentWorkspaceExecResult } from "../backend/agent/execution/runtime";
 import type { AgentProcessOutputContent } from "../backend/agent/process-output";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,18 +17,6 @@ export function workspace_execution(
     signal: null,
     stdout: output_file(stdout, "work/runs/test.stdout.log"),
     stderr: output_file(stderr, "work/runs/test.stderr.log"),
-  };
-}
-
-/** 命令与脚本共用日志形状，命令回执额外携带工作目录。 */
-export function workspace_exec_execution(): AgentWorkspaceExecResult {
-  const result = workspace_execution();
-  return {
-    cwd: "userdata/node",
-    exitCode: 0,
-    signal: null,
-    stdout: result.stdout,
-    stderr: result.stderr,
   };
 }
 

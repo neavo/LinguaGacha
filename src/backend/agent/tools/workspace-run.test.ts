@@ -67,6 +67,30 @@ describe("workspace_run", () => {
 
     await expect(result).resolves.toHaveProperty("details", workspace_execution()); // 回执只含执行记录。
   });
+  it("脚本成功或失败后都刷新技能，仅刷新失败时保留刷新原因", async () => {
+    const script_error = new Error("脚本失败");
+    const refresh_error = new Error("刷新失败");
+    const refresh_skills = vi.fn(async () => {});
+    const failed = create_agent_workspace_run_tool({
+      run: async () => {
+        throw script_error;
+      },
+      refresh_skills,
+    });
+    await expect(failed.execute({ script: "throw 1;" }, ...agent_tool_call("a"))).rejects.toBe(
+      script_error,
+    );
+    expect(refresh_skills).toHaveBeenCalledOnce();
+    const refresh_failed = create_agent_workspace_run_tool({
+      run: async () => ({ images: [], execution: workspace_execution() }),
+      refresh_skills: async () => {
+        throw refresh_error;
+      },
+    });
+    await expect(
+      refresh_failed.execute({ script: "console.log(1);" }, ...agent_tool_call("b")),
+    ).rejects.toMatchObject({ cause: refresh_error });
+  });
   it("脚本和刷新同时失败保留主回执与两个原始原因", async () => {
     const script_error = new AgentToolError({ code: "script_failed", scriptPath: "work/run.mjs" });
     const refresh_error = new Error("刷新失败");

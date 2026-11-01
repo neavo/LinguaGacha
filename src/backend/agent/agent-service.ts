@@ -54,7 +54,6 @@ import { create_agent_ask_user_tool } from "./tools/ask-user";
 import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_web_search_tool, type AgentWebSearchPort } from "./tools/web-search";
 import type { AgentWorkspacePort } from "./workspace/service";
-import { create_agent_workspace_exec_tool } from "./tools/workspace-exec";
 import { create_agent_workspace_run_tool } from "./tools/workspace-run";
 import { format_agent_skills_for_system_prompt } from "./agent-skills";
 import {
@@ -1044,10 +1043,6 @@ export class AgentService {
       create_agent_ask_user_tool({
         wait_for_answer: (id, question, signal) =>
           this.decisions.wait_for_question(id, question, signal),
-      }),
-      create_agent_workspace_exec_tool({
-        run: (command, signal) => this.workspace.run_exec(command, signal),
-        refresh_skills: () => this.skills.refresh(),
       }),
       create_agent_workspace_run_tool({
         run: (script, signal) => {

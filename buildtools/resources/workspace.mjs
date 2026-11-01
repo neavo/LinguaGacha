@@ -15,6 +15,7 @@ const WORKSPACE_PACKAGES = [
   },
   { name: "@lg/text", entries: { index: "src/shared/text/literal-matcher.ts" } },
   { name: "@lg/python", entries: { index: "src/backend/agent/python/index.ts" } },
+  { name: "@lg/npm", entries: { index: "src/backend/agent/npm/index.ts" } },
   {
     name: "@lg/pdf",
     entries: {

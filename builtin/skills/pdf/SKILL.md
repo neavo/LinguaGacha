@@ -15,7 +15,7 @@ description: 涉及 PDF 阅读、文字与图像提取、页面定位、译稿�
 
 用 `@lg/pdf/mupdf` 提取文字、字体与坐标，用 `@lg/pdf` 的 `render_pdf_page(bytes, { page, scale, region? })` 渲染页面或区域，再通过 `ws.emitImage` 查看。多栏、表格、扫描页、图注和公式结合图像判断，跨页内容连同邻页读取。没有提取文字时仍需查看原页。
 
-先看整页确认结构，再裁剪小字、图例和表格细节。区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算，`region.page` 须与请求页一致。`@lg/pdf/mupdf` 与 `@lg/pdf` 共用同一 MuPDF 实例。PDF API 继续使用字节接口。需要独立 MuPDF 版本时，通过 `workspace_exec` 安装并导入普通 `mupdf`，独立实例之间只传字节，不传文档、页面等对象。
+先看整页确认结构，再裁剪小字、图例和表格细节。区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算，`region.page` 须与请求页一致。`@lg/pdf/mupdf` 与 `@lg/pdf` 共用同一 MuPDF 实例。PDF API 继续使用字节接口。需要独立 MuPDF 版本时，用 `@lg/npm` 安装普通 `mupdf`，在下一次 `workspace_run` 中导入，独立实例之间只传字节，不传文档、页面等对象。
 
 将示例文件名、页码和区域替换为当前目标。同一程序中复用已读取的原稿字节，用 `try/finally` 释放 MuPDF 的页面、提取结果和文档。
 
