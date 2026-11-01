@@ -45,6 +45,10 @@
 
 ## 🛠️ 开发与命令帮助
 
+开发环境使用与 [构建工作流](../.github/workflows/build.yml) 中 `node-version` 一致的 Node 主版本。
+
+应用与工作区使用 Electron 内置的 Node，工作区构建目标和 Node 类型跟随 Electron 的运行环境。
+
 |操作|命令|
 |---|---|
 |启动开发应用|`npm run dev`|
