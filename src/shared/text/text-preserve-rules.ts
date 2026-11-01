@@ -6,7 +6,6 @@ import {
 import base_text_preserve_entries from "../../../builtin/text_preserve/preset/base.json";
 import kag_text_preserve_entries from "../../../builtin/text_preserve/preset/kag.json";
 import renpy_text_preserve_entries from "../../../builtin/text_preserve/preset/renpy.json";
-import { scan_renpy_boundaries } from "./renpy-boundaries";
 import rpgmaker_text_preserve_entries from "../../../builtin/text_preserve/preset/rpgmaker.json";
 import godot_text_preserve_entries from "../../../builtin/text_preserve/preset/godot.json";
 import wolf_text_preserve_entries from "../../../builtin/text_preserve/preset/wolf.json";
@@ -32,7 +31,7 @@ const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
   NONE: [],
   MD: [],
   KAG: kag_text_preserve_entries,
-  RENPY: renpy_text_preserve_entries.filter((entry) => entry.src.startsWith("%")), // 方括号与花括号由 `scan_renpy_boundaries` 按嵌套规则识别。
+  RENPY: renpy_text_preserve_entries,
   RPGMAKER: rpgmaker_text_preserve_entries,
   WOLF: wolf_text_preserve_entries,
   GODOT: godot_text_preserve_entries,
@@ -41,11 +40,9 @@ const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
 /** 文本保护规则按源位置和规则顺序裁决正则候选，统一提供提取与替换操作。 */
 export class TextPreserveRule {
   private readonly patterns: RegExp[];
-  private readonly renpy: boolean;
 
   /** 一次编译本轮规则，后续文本操作复用同一组正则。 */
-  public constructor(entries: readonly Pick<TextPreserveEntry, "src">[], renpy = false) {
-    this.renpy = renpy;
+  public constructor(entries: readonly Pick<TextPreserveEntry, "src">[]) {
     this.patterns = entries.map(({ src }) => new RegExp(src, "giu"));
   }
 
@@ -61,16 +58,12 @@ export class TextPreserveRule {
     };
   }
 
-  /**
-   * 收集正文中的可接受保护段
-   */
+  /** 收集正文中的可接受保护段。 */
   public collect(text: string): string[] {
     return this.collect_sample_matches(text).map((match) => match.value);
   }
 
-  /**
-   * 替换正文中的可接受保护段，回调索引只统计实际被替换的段
-   */
+  /** 替换正文中的可接受保护段，回调索引只统计实际被替换的段。 */
   public replace(
     text: string,
     replacement: string | ((match: string, index: number) => string),
@@ -92,24 +85,13 @@ export class TextPreserveRule {
 
   /** 收集全部候选后统一裁决重叠，避免规则遍历顺序改变文本顺序。 */
   private collect_sample_matches(text: string): TextPreserveMatch[] {
-    const candidates: TextPreserveMatch[] = this.renpy
-      ? scan_renpy_boundaries(text)
-          .filter(
-            (match) =>
-              match.value.startsWith("{#") ||
-              /^\[[A-Za-z_]\w*(?:\[|\()/u.test(match.value) ||
-              !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(
-                match.value,
-              ),
-          )
-          .map((match) => ({ ...match, definition_index: -1 }))
-      : [];
+    const candidates: TextPreserveMatch[] = [];
     this.patterns.forEach((pattern, definition_index) => {
       // `matchAll` 使用正则副本，每次调用从头匹配。
       for (const match of text.matchAll(pattern)) {
-        const value = match[0] ?? "";
-        const index = match.index ?? -1;
-        if (value === "" || index < 0) {
+        const value = match[0];
+        const index = match.index;
+        if (value === "") {
           continue;
         }
         candidates.push({ value, index, definition_index });
@@ -181,15 +163,13 @@ export function build_text_preserve_rule(args: {
   text_type: string;
   entries: readonly TextPreserveEntry[];
 }): TextPreserveRule {
-  return new TextPreserveRule(
-    [...base_text_preserve_entries, ...resolve_text_preserve_entries(args)],
-    normalize_text_preserve_mode(args.mode) === "smart" && args.text_type.toUpperCase() === "RENPY",
-  );
+  return new TextPreserveRule([
+    ...base_text_preserve_entries,
+    ...resolve_text_preserve_entries(args),
+  ]);
 }
 
-/**
- * 统一提取非空保护段，保留原始空白供精确比较。
- */
+/** 统一提取非空保护段，保留原始空白供精确比较。 */
 export function collect_non_blank_text_preserve_segments(
   text: string,
   rule: TextPreserveRule,

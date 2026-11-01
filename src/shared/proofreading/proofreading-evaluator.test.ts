@@ -58,6 +58,34 @@ function evaluate(args: {
 
 describe("proofreading-evaluator", () => {
   it.each([
+    ['[items[0].get("]")]', []],
+    [
+      '[items[1].get("]")]',
+      [
+        {
+          code: "TEXT_PRESERVE",
+          target_field: "dst",
+          source_fragments: ['[items[0].get("]")]'],
+          translation_fragments: ['[items[1].get("]")]'],
+        },
+      ],
+    ],
+  ])("Ren’Py 校对比较完整插值：%s", (interpolation, warnings) => {
+    const quality = create_quality({
+      text_preserve: { enabled: true, mode: "smart", revision: 1, entries: [] },
+    });
+    expect(
+      evaluate({
+        src: 'Hello [items[0].get("]")]',
+        dst: `你好 ${interpolation}`,
+        sourceLanguage: "EN",
+        quality,
+        processingConfig: { file_contexts: { "chapter.txt": { file_type: "RENPY_RPY" } } },
+      }).warnings,
+    ).toEqual(warnings);
+  });
+
+  it.each([
     ["token", "译文\n<A>", "原文\n<A>", ["LINE_COUNT_MISMATCH"]],
     ["token\n<A>", "译文\n<A>", "原文\r", []],
   ])("译前替换引入换行时按组合后的实际行比较保护段：%s", (src, dst, replacement, warnings) => {
