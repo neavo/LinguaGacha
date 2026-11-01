@@ -4,14 +4,13 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { prune_workspace_package_files } from "./package-files.mjs";
 
-it("发布树移除 Node 不用的资源，保留运行文件、类型、许可证和 npm 元数据", async () => {
+it("依赖裁剪移除 Node 不用的资源，保留运行文件、类型和 npm 元数据", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "lg-package-files-"));
   const modules = path.join(root, "node_modules");
   const files = [
     "exceljs/package.json",
     "exceljs/index.js",
     "exceljs/index.d.ts",
-    "exceljs/LICENSE",
     "exceljs/lib/workbook.js",
     "exceljs/lib/workbook.js.map",
     "exceljs/dist/browser.js",

@@ -153,8 +153,13 @@ export class AppPathService {
     return this.get_user_data_path("node");
   }
 
-  /** 锁放在工程目录之外，初始化替换和 npm 清理都不会移走租约文件。 */
-  public get_agent_node_lock_path(): string {
+  /** Python 按次版本共享解释器、依赖项目和缓存。 */
+  public get_agent_python_root_dir(): string {
+    return this.get_user_data_path("python");
+  }
+
+  /** 保留 node.lock 的物理身份，让不同应用版本继续共享同一租约与 Windows Job。 */
+  public get_agent_execution_lock_path(): string {
     return this.get_user_data_path("node.lock");
   }
 

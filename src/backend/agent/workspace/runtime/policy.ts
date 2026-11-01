@@ -6,8 +6,7 @@ export const AGENT_WORKSPACE_RUN_ROOT = `${AGENT_WORKSPACE_WORK_ROOT}/runs`;
 
 /** 模型说明与执行限制共同消费的 Workspace Runtime 权威。 */
 export const AGENT_WORKSPACE_RUNTIME_POLICY = Object.freeze({
-  timeoutMs: 120_000, // 工作区脚本在环境准备结束后单独计时
-  nodeTimeoutMs: 600_000, // 环境准备的时限，`workspace_exec` 命令连同准备共用
+  executionTimeoutMs: 600_000, // 租约、环境准备和脚本共用一个截止时间，收尾完成后才释放占用。
   inlineOutputBytes: 64 * 1024, // 每路直接返回的额度，完整输出始终保存在文件中
   imageCount: 10,
   imageOutputBytes: 20 * 1024 * 1024, // 模型图片 base64 累计额度，独立于 stdout/stderr

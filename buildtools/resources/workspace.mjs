@@ -14,6 +14,7 @@ const WORKSPACE_PACKAGES = [
     },
   },
   { name: "@lg/text", entries: { index: "src/shared/text/literal-matcher.ts" } },
+  { name: "@lg/python", entries: { index: "src/backend/agent/python/index.ts" } },
   {
     name: "@lg/pdf",
     entries: {
@@ -32,11 +33,10 @@ export async function build_workspace_resources({ root, output, manifest, runNpm
     runNpm,
   });
   await mkdir(path.join(output, "python"), { recursive: true });
-  for (const name of ["tree-sitter-python.wasm", "LICENSE"])
-    await cp(
-      path.join(root, "node_modules/tree-sitter-python", name),
-      path.join(output, "python", name),
-    );
+  await cp(
+    path.join(root, "node_modules/tree-sitter-python/tree-sitter-python.wasm"),
+    path.join(output, "python/tree-sitter-python.wasm"),
+  );
   const entries = {
     "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
     "runtime/prepare": "src/backend/agent/node/prepare.ts",

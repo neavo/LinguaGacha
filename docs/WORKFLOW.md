@@ -53,7 +53,7 @@
 |macOS CLI 帮助|主程序运行 `LinguaGacha --cli translate --help`|
 |Linux CLI 帮助|`./LinguaGacha.AppImage --cli translate --help`|
 
-- `npm run dev` 通过统一资源入口准备静态资源，并部署宿主平台的 `supervisor` 与 Node 启动脚本。首次构建种子可能下载锁定资源，运行时首次复制可离线完成。
+- `npm run dev` 准备静态资源并部署宿主平台工具。uv 版本由 `package.json` 的 `workspaceRuntimeTools.uv` 指定。首次构建可能下载种子与 uv 归档，运行时种子初始化可离线完成。
 - `npm run build` 包含 TypeScript 检查和静态资源生成，`afterPack` 再按实际目标部署原生工具。开发与发行的原生工具准备均需要 Go 工具链。
 - CLI 命令按实际安装位置定位可执行文件，参数和资源扩展名以帮助为准。
 - CLI 输出字段与退出码见上表对应实现和测试。
@@ -150,7 +150,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 ### Agent 工作区与图片
 
-工作区或 Node runtime 变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
+工作区或共享执行运行时变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
 
 加载、子进程、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
 
@@ -237,6 +237,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - 统一资源入口：`node buildtools/resources/build.mjs [输出根目录] [--development]`。缺省生成 `build/resources/`，自定义输出放在仓库外。
 - 开发和仓库外集成测试使用 `--development` 准备宿主原生工具。发行构建由 `afterPack` 部署目标架构的工具。
 - 资源规则和构建边界使用 `npm test -- buildtools/resources buildtools/builder/native-tools.test.mjs` 验证。
+- 检查生成目录中的独立许可文本已清理。确认 `license.js` 等运行代码仍可用。
 按影响范围检查产物：
 
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
@@ -277,14 +278,18 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 
 - `pdf-host.test.ts` 只设置工作区运行目录，使用默认开发 Electron。
 - 资源部署或字体路径变化时，按上表指向发行包运行 `app-resources.test.ts` 与 `pdf-host.test.ts`。两者分别验证界面与 PDF 加载同一份字体。
-- 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM，以及 `web-tree-sitter` 和 `python/tree-sitter-python.wasm`、许可证。Python 语法包的原生 addon 不部署。
+- 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM，以及 `web-tree-sitter` 和 `python/tree-sitter-python.wasm`。Python 语法包的原生 addon 不部署。
 
-### Agent Node 与 npm
+### Agent 共享执行环境
 
-- 参数、共享环境与真实 CLI：`npm test -- src/backend/agent/node/arguments.test.ts src/backend/agent/node/runtime.test.ts`。
-- 模块解析、MuPDF 实例共享与字节边界、原生 IPC：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts src/backend/file/pdf/pdf-document.test.ts`。bootstrap 集成覆盖用户同名 SDK 无法覆盖应用、应用版本切换不调用 npm、普通依赖缺失不回退、ESM/CJS 条件导出与嵌套依赖。
-- 默认代理与连接关闭：`npm test -- src/backend/network/npm-proxy.test.ts`。
+- 参数、共享环境与真实 CLI：`npm test -- src/backend/agent/execution/arguments.test.ts src/backend/agent/execution/runtime.test.ts`。
+- Python 环境与模型声明：`npm test -- src/backend/agent/python`。常规测试使用自有夹具。
+- SDK 加载、原生 IPC 与 Python 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。设置 `LINGUAGACHA_TEST_PYTHON_ARCHIVE` 为当前平台 CPython 3.13.8 的官方归档，启用本地镜像集成测试。归档地址用随附 uv 的 `python list 3.13.8 --all-versions --output-format json` 查询。缺少归档时相关场景报告跳过。
+- Python 在线发行验收额外设置 `LINGUAGACHA_TEST_PYTHON_ONLINE=1`，验证代理下载、原生包、补丁升级和搬移恢复。
+- MuPDF 实例与字节边界：`npm test -- src/backend/file/pdf/pdf-document.test.ts`。
+- 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。
 - Windows Node 启动器：在 `buildtools/builder/node/` 执行 `go test ./...`，验证 Unicode、空参数、stdio 和退出码。
-- 构建变化执行 `npm run build`，再设置上表的发行可执行文件与工作区目录，运行 `runtime.test.ts` 和 `bootstrap.test.ts`。检查完整 npm、许可证、可搬移种子及目标架构的辅助程序。
+- 构建变化执行 `npm run build`，再设置上表的发行可执行文件与工作区目录，运行 `runtime.test.ts` 和 `bootstrap.test.ts`。检查 npm 运行文件、可搬移种子及目标架构的辅助程序。
+- uv 部署验证：`npm test -- buildtools/builder/uv.test.mjs buildtools/builder/native-tools.test.mjs`。发行工作区 `bin/<platform>-<arch>/uv[.exe] --version` 应与 `workspaceRuntimeTools.uv` 一致。Windows 发行验收运行上述 Python 在线集成测试。
 - macOS/Linux 须在对应平台验收共享锁描述符、进程组启动门、正常收尾、停止及监管程序退出。跨平台编译只能证明代码可构建，不能替代平台生命周期实测。

@@ -1,4 +1,4 @@
-import type { AgentNodeRuntime } from "../../node/runtime";
+import type { AgentExecutionRuntime } from "../../execution/runtime";
 import type { Supervisor } from "../../../../native/supervisor";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -12,7 +12,6 @@ const { fork } = vi.hoisted(() => ({ fork: vi.fn() }));
 vi.mock("node:child_process", () => ({ fork }));
 
 import { AgentWorkspaceRunner, type AgentWorkspaceRunRequest } from "./runner";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 
 let directory = "";
 let request: AgentWorkspaceRunRequest;
@@ -228,8 +227,7 @@ describe("AgentWorkspaceRunner", () => {
     expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
   });
 
-  it.each(["abort", "timeout"])("%s 等 close 后结算，保留输出并关闭句柄", async (kind) => {
-    vi.useFakeTimers();
+  it("取消等 close 后结算，保留输出并关闭句柄", async () => {
     const controller = new AbortController();
     const { child, result } = await start_run(undefined, controller.signal);
     child.write_stdout("已完成部分");
@@ -237,14 +235,13 @@ describe("AgentWorkspaceRunner", () => {
     void result.catch(() => {
       settled = true;
     });
-    if (kind === "abort") controller.abort(new Error("stop"));
-    else await vi.advanceTimersByTimeAsync(AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs);
+    controller.abort(new Error("stop"));
     expect(stop).toHaveBeenCalledOnce();
     expect(child.kill).not.toHaveBeenCalled();
     await Promise.resolve();
     expect(settled).toBe(false);
     child.emit("close", null, "SIGKILL");
-    await expect(result).rejects.toThrow(kind === "abort" ? "stop" : "timed out");
+    await expect(result).rejects.toThrow("stop");
     expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe("已完成部分");
     expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
   });
@@ -317,7 +314,7 @@ function build_runner(
     settle: (...args: Parameters<Supervisor["settle"]>) => settle(...args),
     stop,
   } as unknown as Supervisor;
-  const with_environment: AgentNodeRuntime["with_environment"] = async (
+  const with_environment: AgentExecutionRuntime["with_environment"] = async (
     _request,
     signal,
     action,
@@ -326,12 +323,13 @@ function build_runner(
     return await action(owner, process.env, signal);
   };
   return new AgentWorkspaceRunner({
-    node: {
-      root: directory,
-      directory,
-      executable: process.execPath,
+    execution: {
+      nodeRoot: directory,
+      runtimeDirectory: directory,
+      nodeExecutable: process.execPath,
+      python: { pythonRoot: directory, uvExecutable: process.execPath },
       with_environment,
-    } as AgentNodeRuntime,
+    } as AgentExecutionRuntime,
     paths: {
       get_agent_user_skill_dir: () => path.join(directory, "user-skills"),
       get_agent_builtin_skill_dir: () => path.join(directory, "builtin-skills"),

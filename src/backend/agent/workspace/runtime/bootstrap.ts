@@ -1,6 +1,7 @@
 import { bind_emit_image } from "../../tools/emit-image";
 import { bind_doing } from "../../tools/doing";
 import { bind_host } from "../../tools/host";
+import { bind_python } from "../../python/runtime";
 import { readFile } from "node:fs/promises";
 import { install_workspace_module_resolution } from "./module-resolution";
 
@@ -32,6 +33,7 @@ async function start_workspace_runtime(): Promise<void> {
     },
   );
   install_workspace_module_resolution(start.runtimeDirectory, start.nodeRoot, start.moduleRoots);
+  bind_python(start.python);
   const request_channel = new AgentWorkspaceRequestChannel(send_message, (pending) => {
     // IPC 只在真正等待宿主响应时保活，空闲通道不得改变 Node 的自然退出语义。
     if (pending) process.channel?.ref();

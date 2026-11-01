@@ -37,7 +37,7 @@ export function create_agent_workspace_exec_tool(options: {
       "",
       "### 输出",
       "",
-      `- 执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.nodeTimeoutMs / 1000} 秒，命令退出时结束仍在运行的子进程，不能保留后台进程`,
+      `- 执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.executionTimeoutMs / 1000} 秒，命令退出时结束仍在运行的子进程，不能保留后台进程`,
       `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，内容是文本或解析后的 JSON，超额时返回补读提示，按需读取文件`,
       "",
       "|返回字段|含义|",

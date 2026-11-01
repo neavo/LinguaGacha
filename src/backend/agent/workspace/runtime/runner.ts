@@ -6,7 +6,7 @@ import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { AgentNodeExecError, type AgentNodeRuntime } from "../../node/runtime";
+import { AgentExecutionError, type AgentExecutionRuntime } from "../../execution/runtime";
 import type { Supervisor } from "../../../../native/supervisor";
 import { read_agent_process_output, type AgentProcessOutput } from "../../process-output";
 import type { AgentImageOptions } from "../../../../shared/agent-image";
@@ -14,7 +14,6 @@ import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
 import type { ProxyResolver } from "../../../network/proxy-http-client";
 import type { AppPathService } from "../../../app/app-path-service";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import {
   AGENT_WORKSPACE_ENTRY_ENV,
   type AgentWorkspaceRuntimeChildMessage,
@@ -60,7 +59,7 @@ export class AgentWorkspaceRunError extends Error {
 
 /** 父进程拥有执行、取消与回收。Node 自身拥有程序及其异步任务的完成语义。 */
 export class AgentWorkspaceRunner {
-  private readonly node: AgentNodeRuntime;
+  private readonly execution: AgentExecutionRuntime;
   private readonly proxy_resolver: ProxyResolver; // 经宿主查询当前 Session，子进程共用同一代理策略。
   private readonly paths: Pick<
     AppPathService,
@@ -69,11 +68,11 @@ export class AgentWorkspaceRunner {
 
   /** 保存当前应用版本的启动资源与宿主代理端口。 */
   public constructor(options: {
-    node: AgentNodeRuntime;
+    execution: AgentExecutionRuntime;
     proxyResolver: ProxyResolver;
     paths: Pick<AppPathService, "get_agent_user_skill_dir" | "get_agent_builtin_skill_dir">;
   }) {
-    this.node = options.node;
+    this.execution = options.execution;
     this.proxy_resolver = options.proxyResolver;
     this.paths = options.paths;
   }
@@ -84,11 +83,13 @@ export class AgentWorkspaceRunner {
     signal: AbortSignal,
   ): Promise<AgentWorkspaceExecution> {
     try {
-      return await this.node.with_environment(request, signal, (owner, env, execution_signal) =>
-        this.run_prepared(request, execution_signal, owner, env),
+      return await this.execution.with_environment(
+        request,
+        signal,
+        (owner, env, execution_signal) => this.run_prepared(request, execution_signal, owner, env),
       );
     } catch (error) {
-      if (error instanceof AgentNodeExecError)
+      if (error instanceof AgentExecutionError)
         throw new AgentWorkspaceRunError(error.message, {
           scriptPath: request.scriptPath,
           exitCode: error.execution.exitCode,
@@ -110,7 +111,7 @@ export class AgentWorkspaceRunner {
     signal.throwIfAborted();
     // 宿主先解析祖先链接，cwd、预加载与模块根使用同一真实位置。
     const workspace_path = default_native_fs.real_path(request.workspacePath);
-    const runtime_directory = default_native_fs.real_path(this.node.directory);
+    const runtime_directory = default_native_fs.real_path(this.execution.runtimeDirectory);
     const bootstrap_path = resolve_workspace_runtime_entry(runtime_directory, "bootstrap");
     const user_skill_directory = this.paths.get_agent_user_skill_dir();
     default_native_fs.make_dir(user_skill_directory); // `ws.userSkillDirectory` 承诺目录存在
@@ -139,7 +140,7 @@ export class AgentWorkspaceRunner {
       "a",
     );
     const launch_options: ForkOptions & { windowsHide: boolean } = {
-      execPath: this.node.executable,
+      execPath: this.execution.nodeExecutable,
       execArgv: [
         // 保留工作材料与技能的逻辑入口，模块解析钩子同时匹配逻辑位置和真实位置。
         "--preserve-symlinks",
@@ -196,7 +197,6 @@ export class AgentWorkspaceRunner {
       const operations = new Set<Promise<void>>(); // 回收前等待宿主资源实际结算
       let closed = false;
       let terminal_error: unknown; // 首个终止原因拥有结果，close 只负责回收与结算
-      const timeout_error = new Error("Workspace program timed out.");
 
       /** 终止当前进程时取消宿主等待，迟到响应不再投递。 */
       const abort_requests = (reason: unknown): void => {
@@ -258,10 +258,6 @@ export class AgentWorkspaceRunner {
         operations.add(operation);
       };
       const abort_listener = (): void => terminate(signal.reason);
-      const timer = setTimeout(
-        () => terminate(timeout_error),
-        AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs,
-      );
       signal.addEventListener("abort", abort_listener, { once: true });
       child.on("message", (message: AgentWorkspaceRuntimeChildMessage) => {
         if (terminal_error !== undefined) return;
@@ -283,7 +279,6 @@ export class AgentWorkspaceRunner {
       child.once("error", terminate);
       child.once("close", (exitCode, exitSignal) => {
         closed = true;
-        clearTimeout(timer);
         signal.removeEventListener("abort", abort_listener);
         abort_requests(new Error("Workspace process closed."));
         void Promise.allSettled([supervision, ...operations]).then(([supervisor_result]) => {
@@ -291,17 +286,12 @@ export class AgentWorkspaceRunner {
             reject(supervisor_result.reason);
             return;
           }
-          if (terminal_error !== undefined && terminal_error !== timeout_error)
-            reject(terminal_error);
+          if (terminal_error !== undefined) reject(terminal_error);
           else
             resolve({
               exitCode,
               signal: exitSignal ?? null,
-              ...(terminal_error === timeout_error
-                ? { failure: timeout_error.message }
-                : exitCode !== 0
-                  ? { failure: "Workspace program exited unsuccessfully." }
-                  : {}),
+              ...(exitCode !== 0 ? { failure: "Workspace program exited unsuccessfully." } : {}),
             });
         });
       });
@@ -312,9 +302,10 @@ export class AgentWorkspaceRunner {
           send({
             type: "start",
             userSkillDirectory: user_skill_directory,
-            nodeRoot: this.node.root,
+            nodeRoot: this.execution.nodeRoot,
             runtimeDirectory: runtime_directory,
             moduleRoots: skill_roots,
+            python: this.execution.python,
           });
           await owner.settle(signal);
         } catch (error) {

@@ -1,13 +1,25 @@
-import { AgentNodeRuntime } from "../../node/runtime";
+import { AgentExecutionRuntime } from "../../execution/runtime";
 import type { AgentWorkspaceRunRequest } from "./runner";
-import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { execFile, execFileSync } from "node:child_process";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { promisify } from "node:util";
+import JSZip from "jszip";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../../tools/contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError, type AgentWorkspaceOutput } from "./runner";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
@@ -25,6 +37,7 @@ let root = "";
 let runtime = "";
 let workspace = "";
 let sequence = 0;
+let python_root = "";
 const skill_paths = {
   get_agent_user_skill_dir: () => path.join(root, "user skills # %"),
   get_agent_builtin_skill_dir: () => path.join(root, "内置 skills"),
@@ -32,6 +45,7 @@ const skill_paths = {
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "linguagacha-node-"));
+  python_root = path.join(root, "python");
   runtime = path.join(root, "resources/workspace");
   workspace = path.join(root, "workspace");
   const deployed = process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME;
@@ -237,7 +251,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     });
     const runner = new AgentWorkspaceRunner({
       paths: resources.paths,
-      node: create_node_runtime(),
+      execution: create_execution_runtime(),
       proxyResolver: { resolveProxy: async () => "DIRECT" },
     });
     const service = new AgentWorkspaceService({
@@ -255,7 +269,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: runner.run.bind(runner),
-      runExec: (request, signal) => create_node_runtime().run_exec(request, signal),
+      runExec: (request, signal) => create_execution_runtime().run_exec(request, signal),
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
@@ -491,7 +505,7 @@ it.each([false, true])(
       );
       const result = await new AgentWorkspaceRunner({
         paths: skill_paths,
-        node: create_node_runtime(runtime_link),
+        execution: create_execution_runtime(runtime_link),
         proxyResolver: { resolveProxy: async () => "DIRECT" },
       }).run(
         {
@@ -679,7 +693,10 @@ it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", as
 it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
   await writeFile(
     path.join(workspace, "work/descendant.mjs"),
-    "console.log(typeof globalThis.ws);",
+    `import assert from 'node:assert/strict';
+     import { python } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/python/index.mjs")).href)};
+     assert.throws(() => python.environment(), /not bound/);
+     console.log(typeof globalThis.ws);`,
   );
   const result = await run(`
     import { fork } from 'node:child_process';
@@ -697,7 +714,222 @@ it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
   ]);
 });
 
-/** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */
+it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
+  "真实 Python SDK 安装本地 wheel、执行、搬移恢复与取消后代",
+  async () => {
+    await install_test_python();
+    const wheel = new JSZip();
+    const metadata = "lg_python_fixture-1.0.0.dist-info";
+    const files = {
+      "lg_python_fixture.py": "value = '搭档的 Python'\n",
+      [`${metadata}/METADATA`]: "Metadata-Version: 2.1\nName: lg-python-fixture\nVersion: 1.0.0\n",
+      [`${metadata}/WHEEL`]:
+        "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+    };
+    for (const [name, content] of Object.entries(files)) wheel.file(name, content);
+    wheel.file(
+      `${metadata}/RECORD`,
+      [...Object.keys(files), `${metadata}/RECORD`].map((name) => `${name},,`).join("\n"),
+    );
+    const wheel_path = path.join(workspace, "work/lg_python_fixture-1.0.0-py3-none-any.whl");
+    await writeFile(wheel_path, await wheel.generateAsync({ type: "nodebuffer" }));
+    const initial = await run(
+      `
+    import { python } from '@lg/python';
+    import assert from 'node:assert/strict';
+    const env = python.environment(); await env.ensure();
+    assert.equal((await env.info()).version, '3.13.8');
+    await env.install([${JSON.stringify(wheel_path)}]);
+    await env.run(['-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
+    assert.ok((await python.list()).some(entry => entry.version === '3.13.8'));
+    console.log('python ready');
+  `,
+      AbortSignal.timeout(30_000),
+    );
+    expect(output_content(initial.stdout)).toBe("python ready\n");
+    expect(await readFile(path.join(workspace, "work/python-result.txt"), "utf8")).toBe(
+      "搭档的 Python",
+    );
+
+    const project = path.join(python_root, "environments/3.13");
+    const manifest = path.join(project, "pyproject.toml");
+    await writeFile(
+      manifest,
+      (await readFile(manifest, "utf8")).replace(
+        '"lg-python-fixture"',
+        '"lg-python-fixture<1,>=10"',
+      ),
+    );
+    await writeFile(path.join(project, ".incomplete"), "");
+    await run(
+      `
+      import { python } from '@lg/python';
+      const env = python.environment();
+      await env.remove(['lg-python-fixture']);
+      await env.run(['-c', 'import importlib.util; assert importlib.util.find_spec("lg_python_fixture") is None']);
+      await env.install([${JSON.stringify(wheel_path)}]);
+    `,
+      AbortSignal.timeout(30_000),
+    );
+
+    const moved = path.join(root, "移动后的 Python");
+    await rename(python_root, moved);
+    python_root = moved;
+    const recovered = await run(
+      `
+    import { python } from '@lg/python';
+    const env = python.environment();
+    await env.run(['-c', 'import lg_python_fixture; print(lg_python_fixture.value)']);
+    await env.remove(['lg-python-fixture']);
+  `,
+      AbortSignal.timeout(30_000),
+    );
+    expect(String(output_content(recovered.stdout)).trim()).toBe("搭档的 Python");
+
+    const pids_path = path.join(workspace, "work/python-pids.json");
+    await writeFile(
+      path.join(workspace, "work/python-wait.py"),
+      `import subprocess,sys,os,json,time\nchild=subprocess.Popen([sys.executable,'-c','import time; time.sleep(300)'])\nopen('work/python-pids.json','w').write(json.dumps([os.getpid(),child.pid]))\ntime.sleep(300)\n`,
+    );
+    const controller = new AbortController();
+    const stopped = new Error("stop Python SDK");
+    const pending = run(
+      `import {python} from '@lg/python'; const env = python.environment(); await env.run(['work/python-wait.py']);`,
+      controller.signal,
+    ).catch((error: unknown) => error);
+    try {
+      let pids: number[] = [];
+      await vi.waitFor(
+        async () => {
+          pids = JSON.parse(await readFile(pids_path, "utf8"));
+          expect(pids).toHaveLength(2);
+        },
+        { timeout: 15_000 },
+      );
+      controller.abort(stopped);
+      expect(await pending).toBe(stopped);
+      for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      controller.abort(stopped);
+      await pending;
+    }
+  },
+  90_000,
+);
+
+it.skipIf(
+  !process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE || !process.env.LINGUAGACHA_TEST_PYTHON_ONLINE,
+)(
+  "真实 Python 经应用代理下载，健康升级复用安装树且搬移后恢复原生 wheel",
+  async () => {
+    python_root = path.join(root, "online Python");
+    await install_test_python();
+    const routes: string[] = [];
+    const resolveProxy = async (url: string) => {
+      routes.push(url);
+      return "DIRECT";
+    };
+    const installed = await run(
+      `
+      import { python } from '@lg/python';
+      import assert from 'node:assert/strict';
+      const env = python.environment(); await env.ensure();
+      assert.equal((await env.info()).version, '3.13.8');
+      await env.install(['Pillow', 'fonttools']);
+      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
+    `,
+      AbortSignal.timeout(90_000),
+      resolveProxy,
+    );
+    expect(String(output_content(installed.stdout)).trim()).toBe("(2, 2)");
+    const sentinel = path.join(python_root, "environments/3.13/.venv/upgrade-sentinel");
+    await writeFile(sentinel, "keep healthy installation");
+    const upgraded = await run(
+      `
+      import { python } from '@lg/python';
+      import assert from 'node:assert/strict';
+      const env = python.environment({version: '3.13'}); await env.upgrade();
+      const info = await env.info();
+      assert.match(info.version, /^3\\.13\\./);
+      assert.notEqual(info.version, '3.13.8');
+      assert.ok((await python.list()).some(entry => entry.version === '3.13.8'));
+      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
+      console.log(info.version);
+    `,
+      AbortSignal.timeout(90_000),
+      resolveProxy,
+    );
+    expect(String(output_content(upgraded.stdout))).toMatch(/\(2, 2\)[\r\n]+3\.13\./u);
+    expect(await readFile(sentinel, "utf8")).toBe("keep healthy installation");
+    await run(
+      `import { python } from '@lg/python'; await python.environment().upgrade();`,
+      AbortSignal.timeout(30_000),
+    );
+    expect(await readFile(sentinel, "utf8")).toBe("keep healthy installation");
+    const moved = path.join(root, "online moved Python");
+    await rename(python_root, moved);
+    python_root = moved;
+    const recovered = await run(
+      `
+      import { python } from '@lg/python';
+      const env = python.environment();
+      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
+      await env.remove(['Pillow', 'fonttools']);
+    `,
+      AbortSignal.timeout(30_000),
+    );
+    expect(String(output_content(recovered.stdout)).trim()).toBe("(2, 2)");
+    expect(routes.some((url) => url.includes("pythonhosted.org"))).toBe(true);
+    expect(routes.some((url) => url.includes("astral.sh") || url.includes("github"))).toBe(true);
+  },
+  180_000,
+);
+
+/** 固定归档只通过本地镜像安装，正常测试不访问解释器下载服务。 */
+async function install_test_python(): Promise<void> {
+  const archive = await readFile(process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE!);
+  const mirror = createServer((_request, response) => response.end(archive));
+  await new Promise<void>((resolve) => mirror.listen(0, "127.0.0.1", resolve));
+  const address = mirror.address();
+  if (!address || typeof address === "string") throw new Error("Invalid Python mirror address.");
+  const uv = path.join(
+    runtime,
+    "bin",
+    `${process.platform}-${process.arch}`,
+    process.platform === "win32" ? "uv.exe" : "uv",
+  );
+  const env = { ...process.env };
+  for (const key of Object.keys(env))
+    if (/^(?:UV_|PYTHON|PIP_|CONDA_|VIRTUAL_ENV$|https?_proxy|all_proxy|no_proxy)/iu.test(key))
+      delete env[key];
+  Object.assign(env, {
+    UV_PYTHON_INSTALL_DIR: path.join(python_root, "interpreters"),
+    UV_CACHE_DIR: path.join(python_root, "cache"),
+    UV_PYTHON_BIN_DIR: path.join(python_root, "bin"),
+    UV_PYTHON_INSTALL_BIN: "0",
+    UV_PYTHON_INSTALL_REGISTRY: "0",
+  });
+  try {
+    await promisify(execFile)(
+      uv,
+      [
+        "--no-config",
+        "python",
+        "install",
+        "3.13.8",
+        "--no-bin",
+        "--no-registry",
+        "--mirror",
+        `http://127.0.0.1:${address.port}`,
+      ],
+      { env, windowsHide: true, timeout: 30_000 },
+    );
+  } finally {
+    mirror.closeAllConnections();
+    await new Promise<void>((resolve) => mirror.close(() => resolve()));
+  }
+}
+
 /** 使用真实准备和 IPC 启动链，每次执行拥有独立脚本与日志。 */
 async function run(
   script: string,
@@ -710,7 +942,7 @@ async function run(
   await writeFile(path.join(workspace, scriptPath), script);
   return await new AgentWorkspaceRunner({
     paths: skill_paths,
-    node: create_node_runtime(directory, resolveProxy),
+    execution: create_execution_runtime(directory, resolveProxy),
     proxyResolver: { resolveProxy },
   }).run(
     {
@@ -731,17 +963,18 @@ function output_content(output: AgentWorkspaceOutput) {
 }
 
 /** 应用目录可切换，用户工程与跨进程锁保持一致。 */
-function create_node_runtime(
+function create_execution_runtime(
   directory = runtime,
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ) {
-  return new AgentNodeRuntime({
+  return new AgentExecutionRuntime({
     runtimeDirectory: directory,
     executablePath: electron_path,
     electronVersion: "45.0.0",
     paths: {
       get_agent_node_root_dir: () => path.join(root, "shared node"),
-      get_agent_node_lock_path: () => path.join(root, "node.lock"),
+      get_agent_python_root_dir: () => python_root,
+      get_agent_execution_lock_path: () => path.join(root, "node.lock"),
     },
     proxyResolver: { resolveProxy },
   });

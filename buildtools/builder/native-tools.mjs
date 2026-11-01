@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Arch } from "builder-util";
+import { deploy_uv } from "./uv.mjs";
 
 const GO_ARCH = { x64: "amd64", arm64: "arm64" };
 const GO_OS = { win32: "windows", darwin: "darwin", linux: "linux" };
@@ -21,6 +22,7 @@ export async function deploy_packaged_tools({
   platform,
   arch,
   run = execFileSync,
+  download,
 }) {
   if (platform === "win32") {
     for (const name of ["cli", "berserker"]) {
@@ -28,7 +30,7 @@ export async function deploy_packaged_tools({
       await copyFile(binary, path.join(appDirectory, `${name}.exe`));
     }
   }
-  await deploy_workspace_tools({ root, workspaceDirectory, platform, arch, run });
+  await deploy_workspace_tools({ root, workspaceDirectory, platform, arch, run, download });
 }
 
 /** 开发与测试补齐宿主工具，发行调用方显式提供目标平台与架构。 */
@@ -38,6 +40,7 @@ export async function deploy_workspace_tools({
   platform,
   arch,
   run = execFileSync,
+  download,
 }) {
   const directory = path.join(workspaceDirectory, "bin", `${platform}-${arch}`);
   const supervisor = await build_native_tool({ root, name: "supervisor", platform, arch, run });
@@ -46,6 +49,7 @@ export async function deploy_workspace_tools({
     supervisor,
     path.join(directory, platform === "win32" ? "supervisor.exe" : "supervisor"),
   );
+  await deploy_uv({ root, workspaceDirectory, platform, arch, download });
   if (platform === "win32") {
     const node = await build_native_tool({ root, name: "node", platform, arch, run });
     await copyFile(node, path.join(directory, "node.exe"));

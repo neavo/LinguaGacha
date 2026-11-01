@@ -17,6 +17,10 @@ afterEach(async () => {
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "lg-native-tools-"));
   roots.push(root);
+  await writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify({ workspaceRuntimeTools: { uv: "1.2.3" } }),
+  );
   const appDirectory = path.join(root, "release");
   const workspaceDirectory = path.join(appDirectory, "resources/workspace");
   await mkdir(appDirectory);
@@ -29,8 +33,14 @@ async function fixture() {
       await writeFile(output, options.env.GOARCH);
     }
   };
+  const download = async (_version, filename) => {
+    const source = path.join(root, "uv");
+    await mkdir(source, { recursive: true });
+    await writeFile(path.join(source, filename.endsWith(".zip") ? "uv.exe" : "uv"), "uv");
+    return path.join(root, "uv");
+  };
   // 替身在返回前写出产物，部署仍通过真实文件系统验证。
-  return { root, appDirectory, workspaceDirectory, calls, run };
+  return { root, appDirectory, workspaceDirectory, calls, run, download };
 }
 
 it.each([
@@ -57,7 +67,7 @@ it.each([
   ).toBe(true);
 });
 
-it.each(["linux", "darwin"])("%s 发行只安装监管器和 exec 启动脚本", async (platform) => {
+it.each(["linux", "darwin"])("%s 发行安装监管器、uv 和 exec 启动脚本", async (platform) => {
   const test = await fixture();
   await deploy_packaged_tools({ ...test, platform, arch: "arm64" });
   expect(test.calls.find(({ args }) => args[0] === "build").options.env).toMatchObject({
@@ -66,7 +76,7 @@ it.each(["linux", "darwin"])("%s 发行只安装监管器和 exec 启动脚本",
     CGO_ENABLED: "0",
   });
   const bin = path.join(test.workspaceDirectory, `bin/${platform}-arm64`);
-  expect((await readdir(bin)).sort()).toEqual(["node", "npm", "npx", "supervisor"]);
+  expect((await readdir(bin)).sort()).toEqual(["node", "npm", "npx", "supervisor", "uv"].sort());
 });
 
 it.each([

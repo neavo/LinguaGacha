@@ -7,7 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import npm_package from "npm/package.json";
-import { AgentNodeRuntime, AgentNodeExecError } from "./runtime";
+import { AgentExecutionRuntime, AgentExecutionError } from "./runtime";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 
 const electron =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -81,13 +82,14 @@ function create_runtime(
   return {
     shared,
     workspace,
-    node: new AgentNodeRuntime({
+    execution: new AgentExecutionRuntime({
       runtimeDirectory: runtime,
       executablePath: electron,
       electronVersion: "45.0.0",
       paths: {
         get_agent_node_root_dir: () => shared,
-        get_agent_node_lock_path: () => path.join(root, name, "node.lock"),
+        get_agent_python_root_dir: () => path.join(root, "python"),
+        get_agent_execution_lock_path: () => path.join(root, name, "node.lock"),
       },
       proxyResolver: { resolveProxy },
     }),
@@ -126,7 +128,7 @@ it("真实 npm 默认采用应用代理，显式参数和 npmrc 保留原生优�
     await execute(fixture, `npm config set proxy http://127.0.0.1:${explicit}`);
     expect((await execute(fixture, command)).stdout).toMatchObject({ content: "2.0.0\n" });
   } finally {
-    await fixture.node.close();
+    await fixture.execution.close();
     for (const server of servers) {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -141,11 +143,40 @@ function execute(
   signal = AbortSignal.timeout(20_000),
 ) {
   const id = ++sequence;
-  return fixture.node.run_exec(
+  return fixture.execution.run_exec(
     { workspacePath: fixture.workspace, command, stdoutPath: `${id}.out`, stderrPath: `${id}.err` },
     signal,
   );
 }
+
+it("环境准备与脚本共用唯一截止信号，超时回执保留日志", async () => {
+  const fixture = create_runtime("deadline");
+  const deadline = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+  try {
+    const pending = fixture.execution.with_environment(
+      { workspacePath: fixture.workspace, stdoutPath: "deadline.out", stderrPath: "deadline.err" },
+      new AbortController().signal,
+      async (_owner, _env, signal) => {
+        await writeFile(path.join(fixture.workspace, "deadline.out"), "before deadline");
+        deadline.abort(new DOMException("test deadline", "TimeoutError"));
+        signal.throwIfAborted();
+      },
+    );
+    const error: unknown = await pending.catch((error: unknown) => error);
+    expect(error).toMatchObject({
+      message: "Workspace execution timed out.",
+      execution: { stdout: { content: "before deadline" }, exitCode: null },
+      cause: deadline.signal.reason,
+    });
+    expect(timeout).toHaveBeenCalledExactlyOnceWith(
+      AGENT_WORKSPACE_RUNTIME_POLICY.executionTimeoutMs,
+    );
+  } finally {
+    timeout.mockRestore();
+    await fixture.execution.close();
+  }
+});
 
 it("发布种子符合工作区运行资源边界", async () => {
   const modules = path.join(runtime, "seed/node_modules");
@@ -195,7 +226,7 @@ it("搬移种子离线首用，npm/npx 和无 shell Node 均使用应用解释�
     });
   } finally {
     vi.unstubAllEnvs();
-    await fixture.node.close();
+    await fixture.execution.close();
   }
 }, 30_000);
 
@@ -216,7 +247,7 @@ it("环境准备保留用户依赖、历史应用包与配置，缺失清单可�
     const historical = path.join(fixture.shared, "node_modules/@lg/text");
     await mkdir(historical, { recursive: true });
     await writeFile(path.join(historical, "package.json"), '{"version":"old"}');
-    await fixture.node.with_environment(
+    await fixture.execution.with_environment(
       { workspacePath: fixture.workspace, stdoutPath: "prepare.out", stderrPath: "prepare.err" },
       AbortSignal.timeout(20_000),
       async () => {},
@@ -239,7 +270,7 @@ it("环境准备保留用户依赖、历史应用包与配置，缺失清单可�
       name: "parent-sentinel",
     });
   } finally {
-    await fixture.node.close();
+    await fixture.execution.close();
   }
 }, 30_000);
 
@@ -270,11 +301,11 @@ it("跨实例互斥覆盖取消和后代回收，失败保留日志并允许下�
       content: `${npm_package.version}\n`,
     });
     await expect(execute(other, "npm definitely-not-a-command")).rejects.toBeInstanceOf(
-      AgentNodeExecError,
+      AgentExecutionError,
     );
   } finally {
-    await fixture.node.close();
-    await other.node.close();
+    await fixture.execution.close();
+    await other.execution.close();
   }
 }, 30_000);
 
@@ -293,6 +324,6 @@ it("准备阶段回收中断暂存材料，已初始化的用户文件继续保�
         expect(await readFile(path.join(fixture.shared, "user.txt"), "utf8")).toBe("keep");
     }
   } finally {
-    await fixture.node.close();
+    await fixture.execution.close();
   }
 }, 30_000);

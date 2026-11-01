@@ -26,7 +26,7 @@ type SupervisorEvent = SupervisedProcessResult & {
 export class Supervisor {
   private readonly events: SupervisorEvent[] = []; // 同批到达的回执按各阶段分别消费。
   private changed: (() => void) | undefined; // 控制协议顺序执行，同一时刻只有一个等待点。
-  private failure: unknown;
+  private failure: unknown; // 首个失败拥有本次结果，迟到的取消或管道错误只触发收尾。
   private closed = false;
   private failure_reported = false; // wait 已交出故障后，close 只清理，避免重复包装主因。
   private group: number | undefined; // POSIX 监管程序消失时，宿主接管此进程组。
@@ -53,7 +53,7 @@ export class Supervisor {
       try {
         const event: SupervisorEvent = JSON.parse(line);
         if (event.type === "fault") {
-          this.failure =
+          this.failure ??=
             event.code === "runtime.busy"
               ? new AppError("runtime.busy")
               : new Error(event.message ?? "Process supervisor failed.");
@@ -63,7 +63,7 @@ export class Supervisor {
           this.events.push(event);
         }
       } catch (error) {
-        this.failure = error;
+        this.failure ??= error;
       }
       this.changed?.();
     });
@@ -72,7 +72,7 @@ export class Supervisor {
       this.changed?.();
     });
     this.child.on("error", (error) => {
-      this.failure = error;
+      this.failure ??= error;
       this.changed?.();
     });
     this.completion = new Promise((resolve) =>
@@ -87,7 +87,12 @@ export class Supervisor {
   }
 
   /** POSIX 两端持有同一锁描述，单端退出不会提前释放租约。 */
-  public static async acquire(runtime: string, lock: string): Promise<Supervisor> {
+  public static async acquire(
+    runtime: string,
+    lock: string,
+    signal?: AbortSignal,
+  ): Promise<Supervisor> {
+    signal?.throwIfAborted();
     default_native_fs.make_dir(path.dirname(lock));
     const handle =
       process.platform === "win32" ? undefined : await default_native_fs.open_file(lock, "a+");
@@ -98,8 +103,17 @@ export class Supervisor {
       process.platform === "win32" ? "supervisor.exe" : "supervisor",
     );
     const owner = new Supervisor(executable, lock, handle);
+    const abort = () => {
+      owner.failure ??= signal?.reason;
+      owner.failure_reported = true; // acquire 交付失败原因，close 只回收资源。
+      owner.child.stdin.end(); // EOF 也覆盖尚未收到租约回执的阶段。
+      owner.changed?.();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     try {
       await owner.wait("leased");
+      signal?.throwIfAborted();
       return owner;
     } catch (error) {
       await owner.close().catch((cleanup: unknown) => {
@@ -110,6 +124,8 @@ export class Supervisor {
         );
       });
       throw error;
+    } finally {
+      signal?.removeEventListener("abort", abort);
     }
   }
 

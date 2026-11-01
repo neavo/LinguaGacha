@@ -9,8 +9,8 @@ import { SocksProxyAgent } from "socks-proxy-agent";
 import { SocksClient } from "socks";
 import { resolve_proxy_route, type ProxyResolver } from "./proxy-http-client";
 
-/** npm 默认代理只桥接应用路由，不限制可信 CLI 的联网能力。 */
-export class NpmProxy {
+/** 工作区进程的默认代理桥接应用路由，连接与共享执行一起收尾。 */
+export class WorkspaceProxy {
   private readonly token = randomBytes(24).toString("hex");
   private readonly server = http.createServer();
   private readonly sockets = new Set<Duplex>(); // CONNECT 建立后，隧道独立于 HTTP 请求存活。
@@ -168,8 +168,8 @@ export class NpmProxy {
   }
 
   /** 监听成功后才向子进程提供本次独占的回环端点。 */
-  public static async start(resolver: ProxyResolver): Promise<NpmProxy> {
-    const proxy = new NpmProxy(resolver);
+  public static async start(resolver: ProxyResolver): Promise<WorkspaceProxy> {
+    const proxy = new WorkspaceProxy(resolver);
     await new Promise<void>((resolve, reject) => {
       proxy.server.once("error", reject);
       proxy.server.listen(0, "127.0.0.1", () => {
@@ -179,7 +179,7 @@ export class NpmProxy {
     });
     const address = proxy.server.address();
     if (address === null || typeof address === "string")
-      throw new Error("Invalid npm proxy address.");
+      throw new Error("Invalid workspace proxy address.");
     proxy.endpoint = `http://lg:${proxy.token}@127.0.0.1:${address.port}`;
     return proxy;
   }
@@ -197,6 +197,7 @@ export class NpmProxy {
     );
   }
 
+  /** 收尾期间才建立的连接也必须纳入当前执行并立即关闭。 */
   private track(socket: Duplex): void {
     this.sockets.add(socket);
     // 对端断开和取消都会重置连接，失败回执由所属请求负责，连接本身仍须收尾。
@@ -226,7 +227,7 @@ export class NpmProxy {
 
   /** 先中断再排空，防止监听器关闭后仍有异步转发创建连接。 */
   public async close(): Promise<void> {
-    this.controller.abort(new Error("npm proxy closed."));
+    this.controller.abort(new Error("Workspace proxy closed."));
     const closed = new Promise<void>((resolve, reject) =>
       this.server.close((error) => (error ? reject(error) : resolve())),
     );

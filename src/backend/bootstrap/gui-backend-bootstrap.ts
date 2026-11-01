@@ -1,4 +1,4 @@
-import { AgentNodeRuntime } from "../agent/node/runtime";
+import { AgentExecutionRuntime } from "../agent/execution/runtime";
 import { AgentPersonalityService } from "../agent/agent-personality-service";
 import { AgentSkillsService } from "../agent/agent-skills-service";
 import type { PDFHost } from "../../shared/pdf";
@@ -47,7 +47,7 @@ export class GuiBackendBootstrap {
   private services: BackendServices | null = null;
   private event_stream: ApiStreamHub | null = null;
   private agent: AgentService | null = null;
-  private node: AgentNodeRuntime | null = null; // Agent 停止后统一释放共享执行资源。
+  private execution: AgentExecutionRuntime | null = null; // Agent 停止后统一释放共享执行资源。
   private images: AgentImageService | null = null; // 关闭 Gateway 前取消模型图片准备，排空正在受理的发送请求
   private web_search: WebSearchService | null = null;
   private gateway: ApiGatewayServer | null = null;
@@ -120,14 +120,14 @@ export class GuiBackendBootstrap {
       const images = new AgentImageService(this.options.imageHost);
       this.images = images;
       // runner 与 catalog 共用同一 AppPathService，避免重复维护可写数据根的选择。
-      const node = new AgentNodeRuntime({
+      const execution = new AgentExecutionRuntime({
         paths: resources.paths,
         runtimeDirectory: this.options.workspaceRuntimeDirectory,
         proxyResolver: this.options.proxyResolver,
       });
-      this.node = node;
+      this.execution = execution;
       const runner = new AgentWorkspaceRunner({
-        node,
+        execution,
         paths: resources.paths,
         proxyResolver: this.options.proxyResolver,
       });
@@ -142,7 +142,7 @@ export class GuiBackendBootstrap {
         writeStore: services.state.writes,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
-        runExec: node.run_exec.bind(node),
+        runExec: execution.run_exec.bind(execution),
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
@@ -261,9 +261,9 @@ export class GuiBackendBootstrap {
     this.agent = null;
     await collect_failure(failures, async () => await agent?.dispose());
 
-    const node = this.node;
-    this.node = null;
-    await collect_failure(failures, async () => await node?.close());
+    const execution = this.execution;
+    this.execution = null;
+    await collect_failure(failures, async () => await execution?.close());
 
     const web_search = this.web_search;
     this.web_search = null;

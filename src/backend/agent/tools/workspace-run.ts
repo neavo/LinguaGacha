@@ -14,6 +14,7 @@ import {
 import { format_agent_workspace_typescript_api } from "../workspace/runtime/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
 import app_package from "../../../../package.json";
+import { PYTHON_DESCRIPTION } from "../python/description";
 
 /** 执行程序并刷新技能事实，随后投影模型可见的执行记录与图片。 */
 export function create_agent_workspace_run_tool(options: {
@@ -37,8 +38,11 @@ export function create_agent_workspace_run_tool(options: {
       "- `@lg/*` 是随应用更新的 SDK，在本工具及其加载的模块中可用：",
       "  - `@lg/pdf` 提供与正式输出共用的 PDF 读取、渲染和生成，接口只交换字节",
       "  - `@lg/text` 提供与应用共用的字面匹配能力",
+      "  - `@lg/python` 提供应用管理的 Python 解释器、依赖与程序执行",
       "  - `@lg/workspace/item-contexts` 提供 `queryItemContexts`，用于取得条目的邻近语境",
       `- 共享工程初始提供 ${app_package.workspaceRuntimePackages.agent.join("、")}`,
+      "",
+      PYTHON_DESCRIPTION,
       "",
       "### 文件与进程",
       "",
@@ -48,7 +52,7 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### 输出",
       "",
-      `- 脚本执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000} 秒，程序在事件循环空闲时自然退出，退出时结束仍在运行的子进程，不能保留后台进程`,
+      `- 环境准备与脚本共用执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.executionTimeoutMs / 1000} 秒，程序在事件循环空闲时自然退出，退出时结束仍在运行的子进程，不能保留后台进程`,
       "- 使用 `console.log` 输出结果",
       `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，内容是文本或解析后的 JSON，超额时返回补读提示，按需读取文件`,
       "",

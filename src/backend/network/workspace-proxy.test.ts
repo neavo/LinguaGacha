@@ -2,7 +2,7 @@ import http from "node:http";
 import net from "node:net";
 import type { Duplex } from "node:stream";
 import { afterEach, expect, it, vi } from "vitest";
-import { NpmProxy } from "./npm-proxy";
+import { WorkspaceProxy } from "./workspace-proxy";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -27,7 +27,7 @@ async function listen(server: net.Server): Promise<number> {
 }
 
 async function proxy(resolveProxy: (url: string) => Promise<string>) {
-  const value = await NpmProxy.start({ resolveProxy });
+  const value = await WorkspaceProxy.start({ resolveProxy });
   cleanups.push(() => value.close());
   return value;
 }
@@ -37,7 +37,7 @@ function authorization(url: string) {
   return `Basic ${Buffer.from(`${target.username}:${target.password}`).toString("base64")}`;
 }
 
-async function request(proxy: NpmProxy, target: string, auth = authorization(proxy.url)) {
+async function request(proxy: WorkspaceProxy, target: string, auth = authorization(proxy.url)) {
   return await new Promise<{ status: number; body: string }>((resolve, reject) => {
     const outgoing = http.request(
       proxy.url,
@@ -56,7 +56,7 @@ async function request(proxy: NpmProxy, target: string, auth = authorization(pro
   });
 }
 
-async function tunnel(proxy: NpmProxy, target: string): Promise<Duplex> {
+async function tunnel(proxy: WorkspaceProxy, target: string): Promise<Duplex> {
   return await new Promise((resolve, reject) => {
     const outgoing = http.request(proxy.url, {
       method: "CONNECT",
@@ -122,7 +122,7 @@ it("CONNECT 支持回环直连、HTTP 上游认证和取消中的隧道关闭", 
     socket.once("close", () => target.destroy());
   });
   const port = await listen(upstream);
-  const local = await NpmProxy.start({
+  const local = await WorkspaceProxy.start({
     resolveProxy: async () => `PROXY user:secret@127.0.0.1:${port}`,
   });
   try {

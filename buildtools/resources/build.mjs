@@ -6,6 +6,7 @@ import { deploy_workspace_tools } from "../builder/native-tools.mjs";
 import { build_workspace_resources } from "./workspace.mjs";
 import { build_node_resources } from "./node.mjs";
 import { build_pdf_print_resources } from "./pdf-print.mjs";
+import { remove_license_files } from "./license-files.mjs";
 
 const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -48,6 +49,7 @@ export async function build_resources({
       platform: process.platform,
       arch: process.arch,
     });
+  await remove_license_files(output);
 }
 
 /** 按路径段判断重叠，避免清理输出时覆盖源码或依赖。 */

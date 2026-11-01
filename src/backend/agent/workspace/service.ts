@@ -1,8 +1,8 @@
 import {
-  AgentNodeExecError,
+  AgentExecutionError,
   type AgentWorkspaceExecRequest,
   type AgentWorkspaceExecResult,
-} from "../node/runtime";
+} from "../execution/runtime";
 import { read_project_additional_files } from "../../project/project-additional-files";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
@@ -743,7 +743,7 @@ export class AgentWorkspaceService {
         );
       } catch (error) {
         if (is_agent_cancellation(error, signal)) throw error;
-        if (error instanceof AgentNodeExecError)
+        if (error instanceof AgentExecutionError)
           throw new AppErrors.AppError("request.validation_failed", {
             cause: error,
             public_details: {

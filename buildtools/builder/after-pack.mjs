@@ -1,7 +1,8 @@
 import path from "node:path";
 import { deploy_packaged_tools, resolve_builder_arch } from "./native-tools.mjs";
+import { remove_license_files } from "../resources/license-files.mjs";
 
-/** electron-builder 拥有目标信息，这里只将其交给原生工具部署入口。 */
+/** 按目标平台部署工具，并在归档前清理 Electron 发行目录带入的许可文本。 */
 export default async function after_pack(context) {
   await deploy_packaged_tools({
     root: context.packager.projectDir,
@@ -10,4 +11,5 @@ export default async function after_pack(context) {
     platform: context.electronPlatformName,
     arch: resolve_builder_arch(context.arch),
   });
+  await remove_license_files(context.appOutDir);
 }
