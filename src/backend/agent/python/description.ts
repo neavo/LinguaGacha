@@ -4,16 +4,16 @@ export function format_python_typescript_api(): string {
 type PythonInfo = Readonly<{ version: string; executable: string; directory: string }>;
 type PythonInstallation = Readonly<{ version: string; executable: string }>;
 interface PythonEnvironment {
-  ensure(): Promise<void>;
-  upgrade(): Promise<void>;
-  info(): Promise<PythonInfo>;
-  install(requirements: readonly string[]): Promise<void>;
+  ensure(): Promise<void>; // 按当前依赖声明准备环境，install、remove、run 会自行准备
+  upgrade(): Promise<void>; // 升级所选次版本的补丁
+  info(): Promise<PythonInfo>; // 只查询已准备的环境
+  install(requirements: readonly string[]): Promise<void>; // 先修改依赖声明再同步，可修正无法解析的旧依赖
   remove(packages: readonly string[]): Promise<void>;
-  run(args: readonly string[]): Promise<void>;
+  run(args: readonly string[]): Promise<void>; // 执行 python <args>，输出写入本工具日志
 }
 interface PythonApi {
-  environment(options?: Readonly<{ version?: string }>): PythonEnvironment;
-  list(): Promise<readonly PythonInstallation[]>;
+  environment(options?: Readonly<{ version?: string }>): PythonEnvironment; // 同步选择次版本，默认 "3.13"
+  list(): Promise<readonly PythonInstallation[]>; // 应用已安装的解释器
 }
 declare const python: PythonApi;
 `.trim();
@@ -22,21 +22,10 @@ declare const python: PythonApi;
 export const PYTHON_DESCRIPTION = [
   "### Python：`@lg/python`",
   "",
-  "从 `@lg/python` 导入 `python`。`python.environment()` 同步取得环境句柄，不执行准备，其他方法返回 Promise，必须 await。每个 CPython 次版本共享一个依赖环境，安装/移除影响后续对话。",
-  '`environment()` 默认选择 CPython 3.13，也接受 `{ version: "3.14" }` 这样的明确次版本。`env.ensure()` 准备可运行环境，首次缺少资源时下载，已准备资源可离线复用。',
-  "`python.list()` 只查询应用管理的已安装解释器。`env.upgrade()` 显式升级所选次版本的补丁并复用健康安装树。`env.info()` 返回当前实际版本，句柄仅在本次 JS 执行内有效。",
-  "`env.install`/`env.remove` 先应用非空字符串数组指定的依赖修改，再解析和同步，因此旧依赖不可解析时仍可修正。`env.run` 自动准备环境，再执行 Python argv。失败抛错，stdout/stderr 写入本工具日志。中断的安装树在下次操作时重建，保留依赖声明。",
-  "Python 的 cwd 是当前工作区。脚本、结果和材料写入 `work/`，通过文件与 JS 交换数据，工程变更仍由 JS 经 `ws` 准备和提交。子进程和 worker 没有 Python SDK 的运行绑定。",
+  "- 从 `@lg/python` 导入 `python`。程序以工作区根目录为 `cwd`，不能读取 stdin，结果写入文件后由脚本读取",
+  "- 每个 CPython 次版本有一个跨工程、跨对话共享的依赖环境，`install`、`remove` 影响之后的任务，缺少解释器或依赖时需要联网下载",
   "",
-  "```typescript",
+  "```ts",
   format_python_typescript_api(),
-  "```",
-  "",
-  "```javascript",
-  'import { python } from "@lg/python";',
-  'const env = python.environment({ version: "3.13" });',
-  'await env.install(["Pillow", "fonttools"]);',
-  'await env.run(["work/process.py", "sources/input.png"]);',
-  "console.log(await env.info());",
   "```",
 ].join("\n");

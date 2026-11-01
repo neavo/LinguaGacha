@@ -17,7 +17,7 @@ export function create_agent_workspace_exec_tool(options: {
   return define_agent_tool({
     name: "workspace_exec",
     description: [
-      "在工作区执行命令行，管理脚本依赖或调用命令行工具",
+      "在工作区执行命令行，管理 npm 依赖或调用命令行工具",
       "",
       "### 工作方式",
       "",
