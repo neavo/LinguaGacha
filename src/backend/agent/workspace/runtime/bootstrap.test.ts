@@ -1,14 +1,28 @@
+import { AgentExecutionRuntime } from "../../execution/runtime";
 import type { AgentWorkspaceRunRequest } from "./runner";
-import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { execFile, execFileSync } from "node:child_process";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { promisify } from "node:util";
+import JSZip from "jszip";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../../tools/contract";
-import { AgentWorkspaceRunner, AgentWorkspaceRunError, type AgentWorkspaceOutput } from "./runner";
+import { AgentWorkspaceRunner, AgentWorkspaceRunError } from "./runner";
+import type { AgentProcessOutput } from "../../process-output";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { BackendResources } from "../../../bootstrap/backend-resources";
@@ -19,11 +33,13 @@ import app_package from "../../../../../package.json";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
-const RUN_TIMEOUT_MS = 3_000; // 早于测试超时回收子进程，失败后目录清理也能完成
+const RUN_TIMEOUT_MS = 15_000; // 早于测试超时回收子进程，失败后目录清理也能完成
+const EXECUTION_TIMEOUT_MS = 60_000; // 晚于外部取消信号，测试失败沿取消路径收尾
 let root = "";
 let runtime = "";
 let workspace = "";
 let sequence = 0;
+let python_root = "";
 const skill_paths = {
   get_agent_user_skill_dir: () => path.join(root, "user skills # %"),
   get_agent_builtin_skill_dir: () => path.join(root, "内置 skills"),
@@ -31,58 +47,32 @@ const skill_paths = {
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "linguagacha-node-"));
-  runtime = path.join(root, "runtime");
+  python_root = path.join(root, "python");
+  runtime = path.join(root, "resources/workspace");
   workspace = path.join(root, "workspace");
   const deployed = process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME;
   if (deployed) await cp(deployed, runtime, { recursive: true });
   else
-    execFileSync(process.execPath, [path.resolve("buildtools/build-workspace.mjs"), runtime], {
-      windowsHide: true,
-      stdio: "pipe",
-    });
+    execFileSync(
+      process.execPath,
+      [path.resolve("buildtools/resources/build.mjs"), path.dirname(runtime), "--development"],
+      {
+        windowsHide: true,
+        stdio: "pipe",
+      },
+    );
   await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
-  await mkdir(path.join(workspace, "changes"));
-  await cp(path.join(runtime, "package.json"), path.join(workspace, "package.json"));
-  await symlink(
-    path.join(runtime, "node_modules"),
-    path.join(workspace, "node_modules"),
-    process.platform === "win32" ? "junction" : "dir",
-  );
+  await writeFile(path.join(workspace, "package.json"), JSON.stringify({ type: "module" }));
   await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
   for (const [relative_path, content] of Object.entries(AGENT_WORKSPACE_REFERENCES)) {
     await mkdir(path.dirname(path.join(workspace, relative_path)), { recursive: true });
     await writeFile(path.join(workspace, relative_path), content);
   }
-  await writeFile(path.join(root, "outside.txt"), "outside");
 }, 60_000);
 
 afterAll(async () => {
-  if (workspace)
-    await unlink(path.join(workspace, "node_modules")).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error;
-    });
   if (root) await rm(root, { recursive: true, force: true });
 });
-
-it.each(["uploads/input.bin", "sources/game.zip/Data/System.rvdata2.json", "source_issues.jsonl"])(
-  "%s 在真实工作区只读，可复制到 work 后修改",
-  async (source) => {
-    await mkdir(path.dirname(path.join(workspace, source)), { recursive: true });
-    await writeFile(path.join(workspace, source), "original");
-    const result = await run(`
-    import { readFile, writeFile, copyFile } from 'node:fs/promises';
-    const original = await readFile(${JSON.stringify(source)}, 'utf8');
-    try { await writeFile(${JSON.stringify(source)}, 'changed'); throw new Error('write allowed'); }
-    catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
-    await copyFile(${JSON.stringify(source)}, 'work/copy.bin');
-    await writeFile('work/copy.bin', 'changed');
-    console.log(JSON.stringify({original, copy: await readFile('work/copy.bin', 'utf8')}));
-  `);
-    expect(result.exitCode).toBe(0);
-    expect(await readFile(path.join(workspace, source), "utf8")).toBe("original");
-    expect(await readFile(path.join(workspace, "work/copy.bin"), "utf8")).toBe("changed");
-  },
-);
 
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
   await mkdir(path.join(workspace, "work/scripts"));
@@ -105,7 +95,7 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   expect(result).toMatchObject({
     exitCode: 0,
     signal: null,
-    stderr: { content: "ordinary stderr\n" },
+    stderr: { content: expect.stringContaining("ordinary stderr\n") },
   });
   expect(output_content(result.stdout)).toBe(
     `${JSON.stringify({ main: true, value: 42, itemPath: AGENT_WORKSPACE_CONTRACT.datasets.items!.path })}\nasync finished\n`,
@@ -122,25 +112,40 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   ).toMatchObject({ content: "42\n" });
   const empty = await run("// 没有输出的普通程序也成功");
   expect(empty.exitCode).toBe(0);
+  expect(empty.stdout).toMatchObject({ bytes: 0, content: "" });
   for (const output of [empty.stdout, empty.stderr]) {
-    expect(output).toMatchObject({ bytes: 0, content: "" });
-    expect(await readFile(path.join(workspace, output.path), "utf8")).toBe("");
+    expect(await readFile(path.join(workspace, output.path), "utf8")).toBe(output_content(output));
   }
 });
 
-it("权限模式直接导入 MuPDF WASM 和 Markdown npm 包", async () => {
+it("PDF 引擎与渲染 API 共用实例，Markdown 从用户 npm 工程加载", async () => {
   await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
   const result = await run(`
     import { readFile } from 'node:fs/promises';
-    import * as mupdf from 'mupdf';
+    import assert from 'node:assert/strict';
+    import * as mupdf from '@lg/pdf/mupdf';
     import {render_pdf_page} from '@lg/pdf';
     import { unified } from 'unified';
     import remarkParse from 'remark-parse';
     import remarkGfm from 'remark-gfm';
+    const loadPage = mupdf.PDFDocument.prototype.loadPage;
+    let rendered = false;
+    mupdf.PDFDocument.prototype.loadPage = function(index) {
+      rendered = true;
+      return loadPage.call(this, index);
+    };
     const pdf = new mupdf.PDFDocument(new Uint8Array(await readFile('work/source.pdf')));
     try {
       const page = pdf.loadPage(0); const text = page.toStructuredText();
-      try { console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:render_pdf_page(pdf,{page:3,scale:1}).length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type })); }
+      try {
+        rendered = false;
+        const buffer = pdf.saveToBuffer('');
+        let image;
+        try { image = render_pdf_page(buffer.asUint8Array(), {page:3,scale:1}); }
+        finally { buffer.destroy(); }
+        assert.equal(rendered, true, 'PDF API 必须使用公开引擎的同一原型');
+        console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:image.length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type }));
+      }
       finally { text.destroy(); page.destroy(); }
     } finally { pdf.destroy(); }
 
@@ -195,14 +200,7 @@ it.each(["user", "builtin"])(
     const result = await run(
       `
     const {inspect} = await import(${JSON.stringify(entry_url)});
-    import {writeFile} from 'node:fs/promises';
     const result = await inspect();
-    if (${JSON.stringify(kind)} === 'user') {
-      await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed');
-    } else {
-      try { await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed'); throw new Error('write allowed'); }
-      catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
-    }
     console.log(JSON.stringify(result));
   `,
       undefined,
@@ -225,41 +223,6 @@ it.each(["user", "builtin"])(
     });
   },
 );
-
-it("用户技能目录链接可创建、替换和删除包，失败前的写入保留", async () => {
-  const original = skill_paths.get_agent_user_skill_dir();
-  const target = path.join(root, "linked-user-skills");
-  await mkdir(target);
-  const link = path.join(root, "user-skills-link");
-  await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
-  skill_paths.get_agent_user_skill_dir = () => link;
-  try {
-    const result = await run(`
-      import fs from 'node:fs/promises';
-      import path from 'node:path';
-      const staging = await fs.mkdtemp(path.join(ws.userSkillDirectory, '.install-'));
-      await fs.writeFile(path.join(staging, 'SKILL.md'), 'first');
-      const installed = path.join(ws.userSkillDirectory, 'fixture');
-      await fs.rename(staging, installed);
-      await fs.writeFile(path.join(installed, 'SKILL.md'), 'updated');
-      const content = await fs.readFile(path.join(installed, 'SKILL.md'), 'utf8');
-      await fs.rm(installed, {recursive: true});
-      await fs.writeFile(path.join(ws.userSkillDirectory, 'retained.txt'), content);
-      process.exitCode = 1;
-    `).catch((error: unknown) => {
-      if (error instanceof AgentWorkspaceRunError) return error.execution;
-      throw error;
-    });
-    expect(result.exitCode).toBe(1);
-    expect(await readFile(path.join(target, "retained.txt"), "utf8")).toBe("updated");
-    await expect(readFile(path.join(target, "fixture/SKILL.md"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  } finally {
-    skill_paths.get_agent_user_skill_dir = () => original;
-    await unlink(link);
-  }
-});
 
 it("删除变更目录后继续执行技能、提交和重置", async () => {
   const app_root = await mkdtemp(path.join(root, "lifecycle-"));
@@ -290,8 +253,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     });
     const runner = new AgentWorkspaceRunner({
       paths: resources.paths,
-      executablePath: electron_path,
-      runtimeDirectory: runtime,
+      execution: create_execution_runtime(),
       proxyResolver: { resolveProxy: async () => "DIRECT" },
     });
     const service = new AgentWorkspaceService({
@@ -309,20 +271,19 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: runner.run.bind(runner),
-      runtimeDirectory: runtime,
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });
     await service.activate_chat("test0001", [], async () => {});
+    /** 本用例的每次执行共用时限与外部取消信号。 */
+    const run_script = (script: string) =>
+      service.run({ script, timeoutMs: EXECUTION_TIMEOUT_MS }, AbortSignal.timeout(RUN_TIMEOUT_MS));
     // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
-    await service.run("console.log('ready');", AbortSignal.timeout(RUN_TIMEOUT_MS));
-    await service.run(
-      `
+    await run_script("console.log('ready');");
+    await run_script(`
       import { rm } from 'node:fs/promises';
       await rm('changes', { recursive: true });
-    `,
-      AbortSignal.timeout(RUN_TIMEOUT_MS),
-    );
+    `);
     const entry = path.join(resources.paths.get_agent_user_skill_dir(), "fixture", "entry.mjs");
     await mkdir(path.dirname(entry), { recursive: true });
     // 原包替换正文，下一进程必须看到新版本。apply 使用真实工程写入口。
@@ -339,22 +300,22 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     `;
     await writeFile(entry, module_body("第一版"));
     const script = `const {update} = await import(${JSON.stringify(pathToFileURL(entry).href)}); await update();`;
-    await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS));
+    await run_script(script);
     expect(await service.apply_workspace(async () => {})).toMatchObject({ status: "applied" });
     expect(services.state.cache.items.readItems()[0]?.dst).toBe("第一版");
     await writeFile(entry, module_body("第二版"));
-    const result = await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS));
+    const result = await run_script(script);
     expect(result.execution.stdout).toMatchObject({
       content: { before: "第一版", after: "第二版" },
     });
     await service.close();
     await service.delete_chat("test0001");
     await service.activate_chat("test0001", [], async () => {});
-    expect(
-      (await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).execution.stdout,
-    ).toMatchObject({ content: { before: "第一版", after: "第二版" } });
+    expect((await run_script(script)).execution.stdout).toMatchObject({
+      content: { before: "第一版", after: "第二版" },
+    });
     await unlink(entry);
-    await expect(service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).rejects.toThrow();
+    await expect(run_script(script)).rejects.toThrow();
   } finally {
     await services.dispose();
     await resources.dispose();
@@ -446,26 +407,7 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
   }
 });
 
-it("工作区外可读不可写，权限保护部署与快照，失败保留输出、位置和已写文件", async () => {
-  const outside = path.join(root, "outside.txt");
-  const result = await run(`
-    import fs from 'node:fs/promises';
-    const outside = ${JSON.stringify(outside)};
-    const failures = [];
-    for (const operation of [
-      () => fs.writeFile(outside, 'changed'),
-      () => fs.symlink(${JSON.stringify(root)}, 'work/escape', 'junction'),
-      () => fs.writeFile('contract.json', '{}'),
-      () => fs.writeFile(ws.contract.datasets.items.reference, 'changed'),
-      () => fs.writeFile('package.json', '{}'),
-      () => fs.writeFile('node_modules/unified/package.json', '{}'),
-    ]) { try { await operation(); } catch (error) { failures.push(error.code); } }
-    console.log(JSON.stringify({ text: await fs.readFile(outside, 'utf8'), failures }));
-  `);
-  expect(output_content(result.stdout)).toEqual({
-    text: "outside",
-    failures: Array(6).fill("ERR_ACCESS_DENIED"),
-  });
+it("失败保留输出、位置和已写文件", async () => {
   await expect(
     run(
       `import fs from 'node:fs/promises'; await fs.writeFile('work/kept.txt','kept'); console.log('before error'); throw new Error('program failed');`,
@@ -481,7 +423,10 @@ it("工作区外可读不可写，权限保护部署与快照，失败保留输�
   await expect(
     run('console.error(JSON.stringify({ message: "intentional exit" })); process.exitCode = 7;'),
   ).rejects.toMatchObject({
-    execution: { exitCode: 7, stderr: { content: { message: "intentional exit" } } },
+    execution: {
+      exitCode: 7,
+      stderr: { content: { message: "intentional exit" } },
+    },
   });
   expect((await run("process.exit(0);")).exitCode).toBe(0);
 });
@@ -521,7 +466,7 @@ it("取消在途代理等待后回收进程，并解除宿主请求", async () =
 });
 
 it.each([false, true])(
-  "工作区祖先、部署目录及可写挂载支持链接（work 本身链接：%s）",
+  "工作区祖先、部署目录和工作材料目录支持链接（work 本身链接：%s）",
   async (mount_work) => {
     const directory = await mkdtemp(path.join(root, "linked-"));
     const data = path.join(directory, "data");
@@ -538,38 +483,30 @@ it.each([false, true])(
     try {
       if (mount_work) await symlink(external, path.join(logical_workspace, "work"), link_type);
       else await mkdir(path.join(logical_workspace, "work"));
-      await mkdir(path.join(logical_workspace, "changes"));
-      await symlink(
-        path.join(runtime, "node_modules"),
-        path.join(logical_workspace, "node_modules"),
-        link_type,
-      );
       await symlink(external, path.join(logical_workspace, "work", "output"), link_type);
       await writeFile(path.join(external, "helper.mjs"), "export const title = 'linked';");
       await writeFile(
         path.join(logical_workspace, "contract.json"),
         JSON.stringify(AGENT_WORKSPACE_CONTRACT),
       );
-      await cp(path.join(runtime, "package.json"), path.join(logical_workspace, "package.json"));
+      await writeFile(
+        path.join(logical_workspace, "package.json"),
+        JSON.stringify({ type: "module" }),
+      );
       await mkdir(path.join(logical_workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
       const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task.mjs`;
       await writeFile(
         path.join(logical_workspace, scriptPath),
         `
-      import fs from 'node:fs/promises';
       import { unified } from 'unified';
       import remarkParse from 'remark-parse';
       import { title } from '../output/helper.mjs';
-      const text = unified().use(remarkParse).parse('# ' + title).children[0].children[0].value;
-      await fs.writeFile('work/output/result.md', text);
-      await fs.writeFile('changes/result.json', JSON.stringify({title}));
-      console.log(await fs.readFile('work/output/result.md', 'utf8'));
+      console.log(unified().use(remarkParse).parse('# ' + title).children[0].children[0].value);
     `,
       );
       const result = await new AgentWorkspaceRunner({
         paths: skill_paths,
-        executablePath: electron_path,
-        runtimeDirectory: runtime_link,
+        execution: create_execution_runtime(runtime_link),
         proxyResolver: { resolveProxy: async () => "DIRECT" },
       }).run(
         {
@@ -577,15 +514,12 @@ it.each([false, true])(
           scriptPath,
           stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task.stdout.log`,
           stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task.stderr.log`,
+          timeoutMs: EXECUTION_TIMEOUT_MS,
         },
         AbortSignal.timeout(RUN_TIMEOUT_MS),
       );
       expect(result.exitCode).toBe(0);
       expect(output_content(result.stdout)).toMatch(/^linked\s*$/u);
-      expect(await readFile(path.join(external, "result.md"), "utf8")).toBe("linked");
-      expect(
-        JSON.parse(await readFile(path.join(actual_workspace, "changes/result.json"), "utf8")),
-      ).toEqual({ title: "linked" });
     } finally {
       await unlink(data_link);
       await unlink(runtime_link);
@@ -668,7 +602,13 @@ it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", a
 
 it("页面更新模块在部署工作区解析记录并判定目标", async () => {
   const result = await run(`
-    import { parse_page_update, resolve_agent_workspace_page_updates } from '@lg/workspace/page-updates';
+    import { registerHooks } from 'node:module';
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      if (specifier === 'mupdf') throw new Error('工作区数据模块不应初始化 PDF 引擎');
+      return nextResolve(specifier, context);
+    }});
+    await import('@lg/workspace/item-contexts');
+    const { parse_page_update, resolve_agent_workspace_page_updates } = await import('@lg/workspace/page-updates');
     const value = {file_path:'sample.pdf',page:1,fp:'abcd',translation:null,reviewed:false,notes:''};
     const valid = parse_page_update({line:2,value});
     const missing = resolve_agent_workspace_page_updates([valid.intent], []);
@@ -677,7 +617,7 @@ it("页面更新模块在部署工作区解析记录并判定目标", async () =
   expect(output_content(result.stdout)).toMatchObject([{ reason: "target_missing", line: 2 }]);
 });
 
-it("模型说明列出的预装包都能在权限模式下导入", async () => {
+it("模型说明列出的预装包都能导入", async () => {
   const result = await run(`
     const failed = [];
     for (const name of ${JSON.stringify(app_package.workspaceRuntimePackages.agent)}) {
@@ -688,47 +628,325 @@ it("模型说明列出的预装包都能在权限模式下导入", async () => {
   expect(output_content(result.stdout)).toEqual([]);
 });
 
-it("工作区预装表格、ZIP 和编码库在权限模式下读写并自然退出", async () => {
-  const result = await run(
-    `
-    import assert from 'node:assert/strict';
-    import ExcelJS from 'exceljs';
-    import JSZip from 'jszip';
-    import iconv from 'iconv-lite';
-    import {detect} from 'chardet';
-    const workbook=new ExcelJS.Workbook();
-    const sheet=workbook.addWorksheet('Sheet1');
-    sheet.getCell('A1').value='原文 🌸';
-    const read=new ExcelJS.Workbook();
-    await read.xlsx.load(await workbook.xlsx.writeBuffer());
-    assert.equal(read.getWorksheet('Sheet1').getCell('A1').value,'原文 🌸');
-    const zip=new JSZip();
-    zip.file('中文.txt','你好');
-    const archive=await JSZip.loadAsync(await zip.generateAsync({type:'uint8array'}));
-    assert.equal(await archive.file('中文.txt').async('string'),'你好');
-    assert.equal(iconv.decode(iconv.encode('中文','gbk'),'gbk'),'中文');
-    assert.equal(typeof detect(Buffer.from('sample')),'string');
-    console.log('file libraries ready');
-  `,
-    AbortSignal.timeout(10000),
+it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", async () => {
+  await run("// 初始化用户工程。");
+  const shared = path.join(root, "shared node");
+  const updated = path.join(root, "新版应用 # 空格/workspace");
+  await cp(runtime, updated, { recursive: true });
+  const fixture = "@lg/runtime-fixture";
+  try {
+    for (const [directory, value] of [
+      [runtime, "v1"],
+      [updated, "v2"],
+      [shared, "user"],
+    ] as const) {
+      const target = path.join(directory, "node_modules", fixture);
+      await mkdir(target, { recursive: true });
+      await writeFile(
+        path.join(target, "package.json"),
+        JSON.stringify({ name: fixture, type: "module", exports: "./index.mjs" }),
+      );
+      await writeFile(path.join(target, "index.mjs"), `export default '${value}';`);
+    }
+    const files = [
+      "package.json",
+      "package-lock.json",
+      "npmrc",
+      "node_modules/@lg/runtime-fixture/index.mjs",
+    ];
+    const before = await Promise.all(
+      files.map((file) => readFile(path.join(shared, file), "utf8")),
+    );
+    // 更新应用时 npm 不参与准备，任何意外调用都应立即使测试失败。
+    await writeFile(
+      path.join(updated, "npm/bin/npm-cli.js"),
+      "throw new Error('SDK update must not call npm');",
+    );
+    for (const [directory, version] of [
+      [runtime, "v1"],
+      [updated, "v2"],
+    ] as const) {
+      const result = await run(
+        `
+        import assert from 'node:assert/strict';
+        import version from '${fixture}';
+        for (const name of ['@lg/workspace/bootstrap', '@lg/workspace/prepare', '@lg/pdf/worker']) {
+          await assert.rejects(import(name), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+        }
+        console.log(version);
+        `,
+        undefined,
+        undefined,
+        {},
+        directory,
+      );
+      expect(output_content(result.stdout)).toBe(`${version}\n`);
+    }
+    expect(
+      await Promise.all(files.map((file) => readFile(path.join(shared, file), "utf8"))),
+    ).toEqual(before);
+  } finally {
+    for (const directory of [runtime, shared])
+      await rm(path.join(directory, "node_modules", fixture), { recursive: true, force: true });
+    await rm(updated, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
+  await writeFile(
+    path.join(workspace, "work/descendant.mjs"),
+    `import assert from 'node:assert/strict';
+     import { python } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/python/index.mjs")).href)};
+     import { npm } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/npm/index.mjs")).href)};
+     assert.throws(() => python.environment(), /not bound/);
+     await assert.rejects(npm.run(["--version"]), /not bound/);
+     console.log(typeof globalThis.ws);`,
   );
+  const result = await run(`
+    import { fork } from 'node:child_process';
+    import { Worker } from 'node:worker_threads';
+    import { once } from 'node:events';
+    await once(fork('work/descendant.mjs'), 'exit');
+    await once(new Worker(new URL('../descendant.mjs', import.meta.url)), 'exit');
+    console.log(typeof ws);
+  `);
   expect(result.exitCode).toBe(0);
-  expect(output_content(result.stdout)).toBe("file libraries ready\n");
+  expect(String(output_content(result.stdout)).trim().split(/\r?\n/u).sort()).toEqual([
+    "object",
+    "undefined",
+    "undefined",
+  ]);
 });
 
-/** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */
+it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
+  "真实 Python SDK 安装本地 wheel、执行、搬移恢复与取消后代",
+  async () => {
+    await install_test_python();
+    const wheel = new JSZip();
+    const metadata = "lg_python_fixture-1.0.0.dist-info";
+    const files = {
+      "lg_python_fixture.py": "value = '搭档的 Python'\n",
+      [`${metadata}/METADATA`]: "Metadata-Version: 2.1\nName: lg-python-fixture\nVersion: 1.0.0\n",
+      [`${metadata}/WHEEL`]:
+        "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+    };
+    for (const [name, content] of Object.entries(files)) wheel.file(name, content);
+    wheel.file(
+      `${metadata}/RECORD`,
+      [...Object.keys(files), `${metadata}/RECORD`].map((name) => `${name},,`).join("\n"),
+    );
+    const wheel_path = path.join(workspace, "work/lg_python_fixture-1.0.0-py3-none-any.whl");
+    await writeFile(wheel_path, await wheel.generateAsync({ type: "nodebuffer" }));
+    const initial = await run(
+      `
+    import { python } from '@lg/python';
+    import assert from 'node:assert/strict';
+    const env = python.environment(); await env.ensure();
+    assert.equal((await env.info()).version, '3.13.8');
+    await env.install([${JSON.stringify(wheel_path)}]);
+    await env.run(['-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
+    assert.ok((await python.list()).some(entry => entry.version === '3.13.8'));
+    console.log('python ready');
+  `,
+      AbortSignal.timeout(30_000),
+    );
+    expect(output_content(initial.stdout)).toBe("python ready\n");
+    expect(await readFile(path.join(workspace, "work/python-result.txt"), "utf8")).toBe(
+      "搭档的 Python",
+    );
+
+    const project = path.join(python_root, "environments/3.13");
+    const manifest = path.join(project, "pyproject.toml");
+    await writeFile(
+      manifest,
+      (await readFile(manifest, "utf8")).replace(
+        '"lg-python-fixture"',
+        '"lg-python-fixture<1,>=10"',
+      ),
+    );
+    await writeFile(path.join(project, ".incomplete"), "");
+    await run(
+      `
+      import { python } from '@lg/python';
+      const env = python.environment();
+      await env.remove(['lg-python-fixture']);
+      await env.run(['-c', 'import importlib.util; assert importlib.util.find_spec("lg_python_fixture") is None']);
+      await env.install([${JSON.stringify(wheel_path)}]);
+    `,
+      AbortSignal.timeout(30_000),
+    );
+
+    const moved = path.join(root, "移动后的 Python");
+    await rename(python_root, moved);
+    python_root = moved;
+    const recovered = await run(
+      `
+    import { python } from '@lg/python';
+    const env = python.environment();
+    await env.run(['-c', 'import lg_python_fixture; print(lg_python_fixture.value)']);
+    await env.remove(['lg-python-fixture']);
+  `,
+      AbortSignal.timeout(30_000),
+    );
+    expect(String(output_content(recovered.stdout)).trim()).toBe("搭档的 Python");
+
+    const pids_path = path.join(workspace, "work/python-pids.json");
+    await writeFile(
+      path.join(workspace, "work/python-wait.py"),
+      `import subprocess,sys,os,json,time\nchild=subprocess.Popen([sys.executable,'-c','import time; time.sleep(300)'])\nopen('work/python-pids.json','w').write(json.dumps([os.getpid(),child.pid]))\ntime.sleep(300)\n`,
+    );
+    const controller = new AbortController();
+    const stopped = new Error("stop Python SDK");
+    const pending = run(
+      `import {python} from '@lg/python'; const env = python.environment(); await env.run(['work/python-wait.py']);`,
+      controller.signal,
+    ).catch((error: unknown) => error);
+    try {
+      let pids: number[] = [];
+      await vi.waitFor(
+        async () => {
+          pids = JSON.parse(await readFile(pids_path, "utf8"));
+          expect(pids).toHaveLength(2);
+        },
+        { timeout: 15_000 },
+      );
+      controller.abort(stopped);
+      expect(await pending).toBe(stopped);
+      for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      controller.abort(stopped);
+      await pending;
+    }
+  },
+  90_000,
+);
+
+it.skipIf(
+  !process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE || !process.env.LINGUAGACHA_TEST_PYTHON_ONLINE,
+)(
+  "真实 Python 经应用代理下载，健康升级复用安装树且搬移后恢复原生 wheel",
+  async () => {
+    python_root = path.join(root, "online Python");
+    await install_test_python();
+    const routes: string[] = [];
+    const resolveProxy = async (url: string) => {
+      routes.push(url);
+      return "DIRECT";
+    };
+    const installed = await run(
+      `
+      import { python } from '@lg/python';
+      import assert from 'node:assert/strict';
+      const env = python.environment(); await env.ensure();
+      assert.equal((await env.info()).version, '3.13.8');
+      await env.install(['Pillow', 'fonttools']);
+      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
+    `,
+      AbortSignal.timeout(90_000),
+      resolveProxy,
+    );
+    expect(String(output_content(installed.stdout)).trim()).toBe("(2, 2)");
+    const sentinel = path.join(python_root, "environments/3.13/.venv/upgrade-sentinel");
+    await writeFile(sentinel, "keep healthy installation");
+    const upgraded = await run(
+      `
+      import { python } from '@lg/python';
+      import assert from 'node:assert/strict';
+      const env = python.environment({version: '3.13'}); await env.upgrade();
+      const info = await env.info();
+      assert.match(info.version, /^3\\.13\\./);
+      assert.notEqual(info.version, '3.13.8');
+      assert.ok((await python.list()).some(entry => entry.version === '3.13.8'));
+      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
+      console.log(info.version);
+    `,
+      AbortSignal.timeout(90_000),
+      resolveProxy,
+    );
+    expect(String(output_content(upgraded.stdout))).toMatch(/\(2, 2\)[\r\n]+3\.13\./u);
+    expect(await readFile(sentinel, "utf8")).toBe("keep healthy installation");
+    await run(
+      `import { python } from '@lg/python'; await python.environment().upgrade();`,
+      AbortSignal.timeout(30_000),
+    );
+    expect(await readFile(sentinel, "utf8")).toBe("keep healthy installation");
+    const moved = path.join(root, "online moved Python");
+    await rename(python_root, moved);
+    python_root = moved;
+    const recovered = await run(
+      `
+      import { python } from '@lg/python';
+      const env = python.environment();
+      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
+      await env.remove(['Pillow', 'fonttools']);
+    `,
+      AbortSignal.timeout(30_000),
+    );
+    expect(String(output_content(recovered.stdout)).trim()).toBe("(2, 2)");
+    expect(routes.some((url) => url.includes("pythonhosted.org"))).toBe(true);
+    expect(routes.some((url) => url.includes("astral.sh") || url.includes("github"))).toBe(true);
+  },
+  180_000,
+);
+
+/** 固定归档只通过本地镜像安装，正常测试不访问解释器下载服务。 */
+async function install_test_python(): Promise<void> {
+  const archive = await readFile(process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE!);
+  const mirror = createServer((_request, response) => response.end(archive));
+  await new Promise<void>((resolve) => mirror.listen(0, "127.0.0.1", resolve));
+  const address = mirror.address();
+  if (!address || typeof address === "string") throw new Error("Invalid Python mirror address.");
+  const uv = path.join(
+    runtime,
+    "bin",
+    `${process.platform}-${process.arch}`,
+    process.platform === "win32" ? "uv.exe" : "uv",
+  );
+  const env = { ...process.env };
+  for (const key of Object.keys(env))
+    if (/^(?:UV_|PYTHON|PIP_|CONDA_|VIRTUAL_ENV$|https?_proxy|all_proxy|no_proxy)/iu.test(key))
+      delete env[key];
+  Object.assign(env, {
+    UV_PYTHON_INSTALL_DIR: path.join(python_root, "interpreters"),
+    UV_CACHE_DIR: path.join(python_root, "cache"),
+    UV_PYTHON_BIN_DIR: path.join(python_root, "bin"),
+    UV_PYTHON_INSTALL_BIN: "0",
+    UV_PYTHON_INSTALL_REGISTRY: "0",
+  });
+  try {
+    await promisify(execFile)(
+      uv,
+      [
+        "--no-config",
+        "python",
+        "install",
+        "3.13.8",
+        "--no-bin",
+        "--no-registry",
+        "--mirror",
+        `http://127.0.0.1:${address.port}`,
+      ],
+      { env, windowsHide: true, timeout: 30_000 },
+    );
+  } finally {
+    mirror.closeAllConnections();
+    await new Promise<void>((resolve) => mirror.close(() => resolve()));
+  }
+}
+
+/** 使用真实准备和 IPC 启动链，每次执行拥有独立脚本与日志。 */
 async function run(
   script: string,
   signal: AbortSignal = AbortSignal.timeout(RUN_TIMEOUT_MS),
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
   tools: Pick<AgentWorkspaceRunRequest, "host" | "emitImage" | "doing"> = {},
+  directory = runtime,
 ) {
   const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task-${++sequence}.mjs`;
   await writeFile(path.join(workspace, scriptPath), script);
   return await new AgentWorkspaceRunner({
     paths: skill_paths,
-    executablePath: electron_path,
-    runtimeDirectory: runtime,
+    execution: create_execution_runtime(directory, resolveProxy),
     proxyResolver: { resolveProxy },
   }).run(
     {
@@ -736,6 +954,7 @@ async function run(
       scriptPath,
       stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stdout.log`,
       stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stderr.log`,
+      timeoutMs: EXECUTION_TIMEOUT_MS,
       ...tools,
     },
     signal,
@@ -743,7 +962,25 @@ async function run(
 }
 
 /** 本场景期待额度内的完整输出。 */
-function output_content(output: AgentWorkspaceOutput) {
+function output_content(output: AgentProcessOutput) {
   if (!("content" in output)) throw new Error(output.message);
   return output.content;
+}
+
+/** 应用目录可切换，用户工程与跨进程锁保持一致。 */
+function create_execution_runtime(
+  directory = runtime,
+  resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
+) {
+  return new AgentExecutionRuntime({
+    runtimeDirectory: directory,
+    executablePath: electron_path,
+    electronVersion: "45.0.0",
+    paths: {
+      get_agent_node_root_dir: () => path.join(root, "shared node"),
+      get_agent_python_root_dir: () => python_root,
+      get_agent_execution_lock_path: () => path.join(root, "node.lock"),
+    },
+    proxyResolver: { resolveProxy },
+  });
 }

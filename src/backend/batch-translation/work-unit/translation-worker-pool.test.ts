@@ -192,16 +192,20 @@ parentPort?.on("message", (message) => {
   it("worker 崩溃会中止所属父线程请求并保留基础设施诊断", async () => {
     const temp_root = await create_temp_root();
     const worker_path = path.join(temp_root, "crashing-worker.mjs");
+    // 父线程的 message 与 error 事件无序，worker 等请求开始后再崩溃，才能确定请求在途。
+    const request_started = new BroadcastChannel(temp_root);
     await writeFile(
       worker_path,
       `import { parentPort } from "node:worker_threads";
+new BroadcastChannel(${JSON.stringify(temp_root)}).onmessage = () => {
+  throw new Error("worker crashed");
+};
 parentPort.on("message", (message) => {
   if (message.type !== "execute") return;
   parentPort.postMessage({ type: "llm_request", requestId: "request", body: {
     run_id: message.unit.run_id, work_unit_id: message.unit.unit_id,
     model: message.unit.model, config_snapshot: message.unit.config_snapshot, messages: [],
   } });
-  throw new Error("worker crashed");
 });`,
       "utf-8",
     );
@@ -227,6 +231,7 @@ parentPort.on("message", (message) => {
         pool.execute_unit(create_translation_unit("crash"), new AbortController().signal, {
           request: async (_body, signal) => {
             signals.push(signal);
+            request_started.postMessage(null);
             try {
               return await new Promise<never>((_resolve, reject) => {
                 signal.addEventListener("abort", () => reject(signal.reason), { once: true });
@@ -244,6 +249,7 @@ parentPort.on("message", (message) => {
       expect(signals[0]?.aborted).toBe(true);
       await finished;
     } finally {
+      request_started.close();
       await pool.dispose();
     }
   });

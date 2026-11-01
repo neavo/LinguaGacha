@@ -80,20 +80,17 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
         document.pages[0].translation.markdown += '\\n\\n公式 $E=mc^2$。\\n\\n$$\\n\\\\frac{1}{2}\\n$$\\n\\n> [!NOTE]\\n> 说明正文。\\n\\n带注释的正文[^a]。\\n\\n[^a]: 注释内容。';
         const decorated = await build_pdf_document({title:'公式与背景',document,source_bytes:source,print:html=>host({kind:'print_pdf',html})});
         await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.pdf"))}, decorated);
-        const decoratedPdf = new mupdf.PDFDocument(decorated);
-        await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.png"))}, render_pdf_page(decoratedPdf,{page:1,scale:1.5}));
-        decoratedPdf.destroy();
+        await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.png"))}, render_pdf_page(decorated,{page:1,scale:1.5}));
         delete document.pages[0].translation.background;
         document.pages[0].translation.markdown = '# 地图与图注\\n\\n![完整图注](pdf-image:' + document.digest + '/3/0,0,612,792)';
         const illustrated = await build_pdf_document({title:'插图分页',document,source_bytes:source,print:html=>host({kind:'print_pdf',html})});
         const illustratedPdf = new mupdf.PDFDocument(illustrated);
         assert.equal(illustratedPdf.countPages(),3,'标题、整页比例插图与短图注应能一起排入一页');
-        await fs.writeFile(${JSON.stringify(path.join(directory, "illustrated.png"))},render_pdf_page(illustratedPdf,{page:1,scale:1.5}));
+        await fs.writeFile(${JSON.stringify(path.join(directory, "illustrated.png"))},render_pdf_page(illustrated,{page:1,scale:1.5}));
         illustratedPdf.destroy();
-        const output_pdf = new mupdf.PDFDocument(output);
-        const rendered = render_pdf_page(output_pdf,{page:1,scale:1.5});
+        const rendered = render_pdf_page(output,{page:1,scale:1.5});
         await fs.writeFile(${JSON.stringify(path.join(directory, "translated.png"))}, rendered);
-        const original_page = render_pdf_page(output_pdf,{page:3,scale:1.5}); output_pdf.destroy();
+        const original_page = render_pdf_page(output,{page:3,scale:1.5});
         await fs.writeFile(${JSON.stringify(path.join(directory, "original.png"))}, original_page);
         await host({kind:'print_pdf',html:'<!--' + 'x'.repeat(2_100_000) + '--><p>Second document</p>'});
         assert.equal(BrowserWindow.getAllWindows().length,0);
@@ -147,9 +144,8 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
       })();
     `,
     );
-    const electron =
-      process.env.LINGUAGACHA_TEST_ELECTRON ??
-      (createRequire(import.meta.url)("electron") as string);
+    // 打包应用只启动产品入口，打印探针必须由开发 Electron 加载自己的入口。
+    const electron = createRequire(import.meta.url)("electron") as string;
     const environment: NodeJS.ProcessEnv = { ...process.env, NODE_OPTIONS: "" };
     delete environment.ELECTRON_RUN_AS_NODE;
     const result = await promisify(execFile)(electron, [entry], {

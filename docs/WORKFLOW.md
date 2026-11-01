@@ -41,7 +41,7 @@
 |问题|实现入口|
 |---|---|
 |构建与打包|[构建脚本](../buildtools/)、[打包配置](../buildtools/builder/electron-builder.config.ts)|
-|Windows 入口|[CLI 启动器](../buildtools/builder/win-cli/)、[更新器](../buildtools/builder/win-berserker/)|
+|Windows 入口|[CLI 启动器](../buildtools/builder/cli/)、[更新器](../buildtools/builder/berserker/)|
 
 ## 🛠️ 开发与命令帮助
 
@@ -57,8 +57,8 @@
 |macOS CLI 帮助|主程序运行 `LinguaGacha --cli translate --help`|
 |Linux CLI 帮助|`./LinguaGacha.AppImage --cli translate --help`|
 
-- `npm run dev` 同时准备工作区依赖和 PDF 打印资源。
-- `npm run build` 包含 TypeScript 检查，Windows 打包还需要 Go 工具链。
+- `npm run dev` 准备静态资源并部署宿主平台工具。首次构建可能下载依赖与 uv 归档。
+- `npm run build` 包含 TypeScript 检查和静态资源生成，`afterPack` 再按实际目标部署原生工具。开发与发行的原生工具准备均需要 Go 工具链。
 - CLI 命令按实际安装位置定位可执行文件，参数和资源扩展名以帮助为准。
 - CLI 输出字段与退出码见上表对应实现和测试。
 - Windows 更新日志位于安装目录的 `log/update.log`，每次运行覆盖旧日志，可与应用日志一起收集。
@@ -114,7 +114,7 @@ Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处�
 - `npm run check` 覆盖分层、迁移、错误、文案和样式边界。
 - 格式修复使用 `npm run format -- <文件路径...>`，随后复查。
 
-格式化支持范围见 [format-related-files.mjs](../buildtools/format-related-files.mjs)。有其它任务改动时，显式传入本任务路径；省略路径会收集全部变更文件。
+格式化支持范围见 [format-related-files.mjs](../buildtools/format-related-files.mjs)。有其它任务改动时，显式传入本任务路径。省略路径会收集全部变更文件。
 
 ### 行为测试
 
@@ -154,9 +154,9 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 ### Agent 工作区与图片
 
-工作区或 Node runtime 变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
+工作区或共享执行运行时变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
 
-加载、权限、文件边界、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
+加载、子进程、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
 
 上传、图片与宿主协议按影响选择：
 
@@ -214,8 +214,7 @@ PDF 来源、页面写入、排版或译文生成变化时，按影响选择：
 [pdf-host.test.ts](../src/native/pdf-host.test.ts) 验证真实 Electron 打印与取消。执行前准备工作区依赖和打印资源：
 
 ```powershell
-node buildtools/build-workspace.mjs
-node buildtools/build-pdf-print.mjs
+node buildtools/resources/build.mjs --development
 npm test -- --project node src/native/pdf-host.test.ts
 ```
 
@@ -233,22 +232,27 @@ npm test -- --project node buildtools/vite/renderer-runtime-reload.test.mjs
 
 该测试使用真实 Vite 与隐藏 Electron 窗口。
 
-Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserker` Go module 中执行 `go test ./...`。更新器进程测试须在 Windows 执行。
+Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go module 中执行 `go test ./...`。更新器进程测试须在 Windows 执行。
 
 ## 📦 构建与发布产物
 
 构建、Vite、electron-builder、`afterPack` 或发布资产变化时，运行 `npm run build`。
+
+- 统一资源入口：`node buildtools/resources/build.mjs [输出根目录] [--development]`。缺省生成 `build/resources/`，自定义输出放在仓库外。
+- 开发和仓库外集成测试使用 `--development` 准备宿主原生工具。发行构建由 `afterPack` 部署目标架构的工具。
+- 资源规则和构建边界使用 `npm test -- buildtools/resources buildtools/builder/native-tools.test.mjs` 验证。
 
 按影响范围检查产物：
 
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
 - Electron 语言资源与 `LOCALES` 一致。
 - `builtin/`、`fonts/`、`workspace/` 和 `pdf-print.css` 位于发行 `resources/`。`app.asar` 不含 `builtin/` 和字体。
-- 工作区包含实际依赖清单、标准 `node_modules`、内部包和运行资源。
+- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。应用包不导出 bootstrap、准备程序或 PDF worker。
+- `seed/` 只包含用户第三方依赖，清单、锁文件和安装树中均不包含 `@lg/*`、`mupdf` 或应用包归档。工作区只部署一份应用使用的 MuPDF 包与 WASM。
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
 
-运行 Ren’Py 解析测试前执行 `node buildtools/build-workspace.mjs`。发行解析资源使用下方 `prepare-worker.test.ts` 入口验证。
+运行 Ren’Py 解析测试前执行 `node buildtools/resources/build.mjs --development`。发行解析资源使用下方 `prepare-worker.test.ts` 入口验证。
 
 根安装使用 `npm ci`，保证依赖来源可复现。
 
@@ -260,7 +264,7 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 
 |变化|验证入口|
 |---|---|
-|工作区依赖部署|[workspace-dependencies.test.mjs](../buildtools/workspace-dependencies.test.mjs)|
+|工作区依赖部署|[workspace.test.mjs](../buildtools/resources/workspace.test.mjs)|
 |工作区入口定位|[workspace-runtime.test.ts](../src/native/workspace-runtime.test.ts)|
 |应用入口与合并后的 SDK|[index.test.ts](../src/index.test.ts) 的仓库外 ASAR 集成测试|
 |部署后的工作区执行|仓库外 Electron bootstrap 集成测试|
@@ -278,4 +282,19 @@ Windows 启动器或更新器变化时，在对应的 `win-cli` 或 `win-berserk
 
 - `pdf-host.test.ts` 只设置工作区运行目录，使用默认开发 Electron。
 - 资源部署或字体路径变化时，按上表指向发行包运行 `app-resources.test.ts` 与 `pdf-host.test.ts`。两者分别验证界面与 PDF 加载同一份字体。
-- 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM，以及 `web-tree-sitter` 和 `python/tree-sitter-python.wasm`、许可证。Python 语法包的原生 addon 不部署。
+- 脚本解析器部署还须核对发行工作区中的 `oxc-parser` 平台绑定与 `@ruby/prism` WASM，以及 `web-tree-sitter` 和 `python/tree-sitter-python.wasm`。Python 语法包的原生 addon 不部署。
+
+### Agent 共享执行环境
+
+- 共享租约、环境准备与时限：`npm test -- src/backend/agent/execution src/backend/agent/node`。
+- npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
+- Python 环境与模型声明：`npm test -- src/backend/agent/python`。常规测试使用自有夹具。
+- SDK 加载、原生 IPC 与 Python 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。设置 `LINGUAGACHA_TEST_PYTHON_ARCHIVE` 为当前平台 CPython 3.13.8 的官方归档，启用本地镜像集成测试。归档地址用随附 uv 的 `python list 3.13.8 --all-versions --output-format json` 查询。缺少归档时相关场景报告跳过。
+- Python 在线发行验收额外设置 `LINGUAGACHA_TEST_PYTHON_ONLINE=1`，验证代理下载、原生包、补丁升级和搬移恢复。
+- MuPDF 实例与字节边界：`npm test -- src/backend/file/pdf/pdf-document.test.ts`。
+- 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。
+- 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。
+- Windows Node 启动器：在 `buildtools/builder/node/` 执行 `go test ./...`，验证 Unicode、空参数、stdio 和退出码。
+- 构建变化执行 `npm run build`，再设置上表的发行可执行文件与工作区目录，运行 `runtime.test.ts`、`npm/index.test.ts` 和 `bootstrap.test.ts`。检查 npm 运行文件、可搬移种子及目标架构的辅助程序。
+- uv 部署验证：`npm test -- buildtools/builder/uv.test.mjs buildtools/builder/native-tools.test.mjs`。发行工作区 `bin/<platform>-<arch>/uv[.exe] --version` 应与 `workspaceRuntimeTools.uv` 一致。Windows 发行验收运行上述 Python 在线集成测试。
+- macOS/Linux 须在对应平台验收共享锁描述符、进程组启动门、正常收尾、停止及监管程序退出。跨平台编译只能证明代码可构建，不能替代平台生命周期实测。

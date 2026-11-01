@@ -6,6 +6,7 @@ import type {
   AgentContextCompactionEntry as ContextCompactionEntry,
 } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
+import { useAgentRunOutput } from "@frontend/app/session/agent/agent-chat-context";
 import { AGENT_STATUS_LABEL_KEYS, useAgentElapsed } from "./agent-entry-status";
 import { AgentStatusMark } from "./agent-status-mark";
 import { format_agent_tool_label } from "./agent-tool-label";
@@ -26,6 +27,7 @@ export function AgentToolEntryButton(props: {
 }): JSX.Element {
   const { t } = useI18n();
   const label = format_agent_tool_label(props.entry.toolName, props.entry.input);
+  const run_output = useAgentRunOutput(props.entry.id);
   return (
     <AgentProcessEntry
       icon={Wrench}
@@ -33,6 +35,7 @@ export function AgentToolEntryButton(props: {
       status={props.entry.status}
       status_label={t(AGENT_STATUS_LABEL_KEYS[props.entry.status])}
       created_at={props.entry.createdAt}
+      detail={run_output?.line}
       action={{ on_click: props.on_open, has_popup: "dialog" }}
     />
   );
@@ -69,6 +72,7 @@ function AgentProcessEntry(props: {
   status: AgentEntryStatus;
   status_label: string;
   created_at: number | null;
+  detail?: string | undefined; // 运行中的最新输出行，不播报，避免读屏每 500 毫秒朗读
   announce_status?: boolean;
   action: {
     on_click: () => void;
@@ -90,19 +94,19 @@ function AgentProcessEntry(props: {
         {props.status === "running" && props.created_at !== null ? (
           <AgentProcessElapsed created_at={props.created_at} />
         ) : null}
+        {props.status === "running" && props.detail ? (
+          <span className="agent-process-entry__detail"> · {props.detail}</span>
+        ) : null}
       </span>
       <AgentStatusMark status={props.status} label={props.status_label} />
     </>
   );
   return props.action === null ? (
-    <div className="agent-process-entry" data-status={props.status}>
-      {content}
-    </div>
+    <div className="agent-process-entry">{content}</div>
   ) : (
     <button
       type="button"
       className="agent-process-entry agent-process-entry--interactive"
-      data-status={props.status}
       aria-label={props.label}
       aria-haspopup={props.action.has_popup}
       disabled={props.action.disabled}

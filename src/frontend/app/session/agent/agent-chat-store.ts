@@ -35,6 +35,7 @@ import type {
   AgentSkillSnapshot,
   AgentToolEntry,
   AgentTokenSpeedSnapshot,
+  AgentRunOutputSnapshot,
   AgentUsageSnapshot,
   AgentWriteApprovalDecision,
 } from "@shared/agent";
@@ -119,7 +120,7 @@ type PendingInputCommand = {
   message: AgentMessageInput | null;
 };
 
-type StoreSlice = "speed" | "controls" | "queue" | "skills" | "input" | "countdown";
+type StoreSlice = "speed" | "run_output" | "controls" | "queue" | "skills" | "input" | "countdown";
 type Listener = () => void;
 type CommandEventQueue = { base_revision: number; events: AgentChatEvent[] };
 
@@ -141,6 +142,7 @@ const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 export class AgentChatStore {
   private chat_id: string | null = null;
   private token_speed: AgentTokenSpeedSnapshot = null;
+  private run_output: AgentRunOutputSnapshot = null;
   public readonly timeline = new AgentTimelineStore();
   private batching = false; // 快照与增量批次共用的跨切片通知屏障
   private readonly pendingSlices = new Set<StoreSlice>(); // 每个切片在批次结束时只通知一次
@@ -160,6 +162,7 @@ export class AgentChatStore {
   private pending_input: PendingInputCommand | null;
   private readonly listeners: Record<StoreSlice, Set<Listener>> = {
     speed: new Set(),
+    run_output: new Set(),
     controls: new Set(),
     queue: new Set(),
     skills: new Set(),
@@ -222,6 +225,11 @@ export class AgentChatStore {
   /** 速度变化只通知对应订阅者。 */
   public readonly subscribe_token_speed = (listener: Listener): (() => void) =>
     this.subscribe("speed", listener);
+  /** 返回运行中工具的日志末尾，供对应工具行与详情独立订阅。 */
+  public readonly get_run_output = (): AgentRunOutputSnapshot => this.run_output;
+  /** 日志末尾变化只通知运行输出订阅者。 */
+  public readonly subscribe_run_output = (listener: Listener): (() => void) =>
+    this.subscribe("run_output", listener);
 
   /** 返回时间线缓存，供独立消息区订阅。 */
   public readonly get_timeline = this.timeline.read;
@@ -431,6 +439,7 @@ export class AgentChatStore {
       this.chat_id = snapshot.chatId;
       this.revision = snapshot.revision;
       this.set_token_speed(snapshot.tokenSpeed);
+      this.set_run_output(snapshot.runOutput);
       this.timeline.replace(snapshot.entries);
       this.queue = { inputQueue: snapshot.inputQueue };
       this.skills = { skills: snapshot.skills };
@@ -461,6 +470,20 @@ export class AgentChatStore {
       return;
     this.token_speed = speed;
     this.emit("speed");
+  }
+
+  /** 内容相同时保留原引用，避免运行输出订阅者无效重渲染。 */
+  private set_run_output(output: AgentRunOutputSnapshot): void {
+    const current = this.run_output;
+    if (
+      output?.entryId === current?.entryId &&
+      output?.stdout === current?.stdout &&
+      output?.stderr === current?.stderr &&
+      output?.line === current?.line
+    )
+      return;
+    this.run_output = output;
+    this.emit("run_output");
   }
 
   /** 顺序重放事件，遇到首个修订缺口交由快照恢复。 */
@@ -508,6 +531,9 @@ export class AgentChatStore {
         break;
       case "token_speed":
         this.set_token_speed(change.tokenSpeed);
+        break;
+      case "run_output":
+        this.set_run_output(change.runOutput);
         break;
       case "chat_status":
         this.set_controls({ state: change.state });
@@ -881,6 +907,7 @@ function normalize_snapshot(value: unknown): AgentChatSnapshot {
   const input_queue = normalize_input_queue(record["inputQueue"]);
   const doing = normalize_doing(record["doing"]);
   const token_speed = normalize_token_speed(record["tokenSpeed"]);
+  const run_output = normalize_run_output(record["runOutput"]);
   const context = normalize_context(record["context"]);
   const usage = normalize_usage(record["usage"]);
   if (
@@ -889,7 +916,8 @@ function normalize_snapshot(value: unknown): AgentChatSnapshot {
     doing === undefined ||
     context === null ||
     usage === null ||
-    token_speed === undefined
+    token_speed === undefined ||
+    run_output === undefined
   ) {
     throw new TypeError("Agent snapshot is invalid.");
   }
@@ -905,6 +933,7 @@ function normalize_snapshot(value: unknown): AgentChatSnapshot {
     context,
     usage,
     tokenSpeed: token_speed,
+    runOutput: run_output,
   };
 }
 
@@ -953,6 +982,10 @@ function normalize_agent_change(value: unknown): AgentChatChange | null {
       const token_speed = normalize_token_speed(record["tokenSpeed"]);
       return token_speed === undefined ? null : { type: "token_speed", tokenSpeed: token_speed };
     }
+    case "run_output": {
+      const run_output = normalize_run_output(record["runOutput"]);
+      return run_output === undefined ? null : { type: "run_output", runOutput: run_output };
+    }
     case "context": {
       const context = normalize_context(record["context"]);
       return context === null ? null : { type: "context", context };
@@ -982,6 +1015,20 @@ function normalize_token_speed(value: unknown): AgentTokenSpeedSnapshot | undefi
     Number.isFinite(speed) &&
     speed >= 0
     ? { roundId: round_id, tokensPerSecond: speed }
+    : undefined;
+}
+
+/** 运行输出必须带条目身份和三段文本。`null` 表示无运行输出，`undefined` 表示载荷无效。 */
+function normalize_run_output(value: unknown): AgentRunOutputSnapshot | undefined {
+  if (value === null) return null;
+  if (!is_json_record(value)) return undefined;
+  const { entryId, stdout, stderr, line } = value;
+  return typeof entryId === "string" &&
+    entryId !== "" &&
+    typeof stdout === "string" &&
+    typeof stderr === "string" &&
+    typeof line === "string"
+    ? { entryId, stdout, stderr, line }
     : undefined;
 }
 

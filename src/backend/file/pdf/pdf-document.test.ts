@@ -7,6 +7,17 @@ import {
   render_pdf_page,
   build_pdf_page_preview,
 } from "./pdf-document";
+
+/** MuPDF 字节视图依赖原缓冲区，复制后释放才能交给独立的渲染入口。 */
+function save_pdf_bytes(document: mupdf.PDFDocument): Uint8Array {
+  const buffer = document.saveToBuffer("");
+  try {
+    return buffer.asUint8Array().slice();
+  } finally {
+    buffer.destroy();
+  }
+}
+
 it("按原页尺寸和背景分组，省略页不占位置，背景位于每张译文页底层", async () => {
   const original = new mupdf.PDFDocument(
     create_pdf_fixture(["One", "Two", null, "Four", "Five", "Six"]),
@@ -14,9 +25,7 @@ it("按原页尺寸和背景分组，省略页不占位置，背景位于每张�
   const changed = original.loadPage(4);
   changed.setPageBox("MediaBox", [0, 0, 400, 300]);
   changed.destroy();
-  const saved = original.saveToBuffer("");
-  const bytes = new Uint8Array(saved.asUint8Array());
-  saved.destroy();
+  const bytes = save_pdf_bytes(original);
   original.destroy();
   const document = read_pdf_document(bytes);
   const background = { page: 3, x: 40, y: 180, width: 80, height: 73 };
@@ -100,9 +109,7 @@ it("混合导出保留头尾与中间原页，译稿跨过空页连续打印，�
   object.put("Rotate", 90);
   object.destroy();
   original_page.destroy();
-  const saved = original.saveToBuffer("");
-  const bytes = new Uint8Array(saved.asUint8Array());
-  saved.destroy();
+  const bytes = save_pdf_bytes(original);
   original.destroy();
   const document = read_pdf_document(bytes);
   document.pages[4]!.translation = { kind: "keep", reason: "原页无需翻译" };
@@ -175,7 +182,7 @@ it("全篇译稿替换全部原页，打印失败和取消不回退原文", asyn
 it("页面裁剪使用左上角坐标，旋转后尺寸与导入一致并限制像素分配", async () => {
   const pdf = new mupdf.PDFDocument(create_pdf_fixture());
   try {
-    const bytes = render_pdf_page(pdf, {
+    const bytes = render_pdf_page(save_pdf_bytes(pdf), {
       page: 3,
       scale: 1,
       region: { page: 3, x: 40, y: 180, width: 120, height: 80 },
@@ -195,15 +202,16 @@ it("页面裁剪使用左上角坐标，旋转后尺寸与导入一致并限制�
     object.put("MediaBox", [0, 0, 300, 400]);
     object.destroy();
     page.destroy();
-    const rotated = new mupdf.Image(render_pdf_page(pdf, { page: 3, scale: 1 }));
+    const rotated_bytes = save_pdf_bytes(pdf); // 同一修改结果复用于渲染和边界校验。
+    const rotated = new mupdf.Image(render_pdf_page(rotated_bytes, { page: 3, scale: 1 }));
     try {
       expect([rotated.getWidth(), rotated.getHeight()]).toEqual([400, 300]);
     } finally {
       rotated.destroy();
     }
-    expect(() => render_pdf_page(pdf, { page: 3, scale: 100 })).toThrow("pixel limit");
+    expect(() => render_pdf_page(rotated_bytes, { page: 3, scale: 100 })).toThrow("pixel limit");
     expect(() =>
-      render_pdf_page(pdf, {
+      render_pdf_page(rotated_bytes, {
         page: 3,
         scale: 1,
         region: { page: 3, x: 390, y: 0, width: 20, height: 20 },
@@ -216,7 +224,7 @@ it("页面裁剪使用左上角坐标，旋转后尺寸与导入一致并限制�
     cropped_object.destroy();
     cropped_page.destroy();
     const crop = new mupdf.Image(
-      render_pdf_page(pdf, {
+      render_pdf_page(save_pdf_bytes(pdf), {
         page: 3,
         scale: 1,
         region: { page: 3, x: 40, y: 40, width: 160, height: 240 },
@@ -243,18 +251,14 @@ it("部分替换保留原页批注，并迁移译文外链与内部页跳转", a
   note.update();
   note.destroy();
   first.destroy();
-  const source_buffer = original.saveToBuffer("");
-  const bytes = new Uint8Array(source_buffer.asUint8Array());
-  source_buffer.destroy();
+  const bytes = save_pdf_bytes(original);
   original.destroy();
   const printed = new mupdf.PDFDocument(create_pdf_fixture(["Translated A", "Translated B"]));
   const page = printed.loadPage(0);
   page.createLink([10, 10, 80, 25], "https://example.com/").destroy();
   page.createLink([10, 30, 80, 45], "#page=2").destroy();
   page.destroy();
-  const print_buffer = printed.saveToBuffer("");
-  const printed_bytes = new Uint8Array(print_buffer.asUint8Array());
-  print_buffer.destroy();
+  const printed_bytes = save_pdf_bytes(printed);
   printed.destroy();
   const document = read_pdf_document(bytes);
   document.pages[0]!.translation = { kind: "keep", reason: "保留原页与批注" };

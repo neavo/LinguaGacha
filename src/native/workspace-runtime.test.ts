@@ -20,34 +20,18 @@ it.each([
   ).toBe(expected);
 });
 
-it("从独立运行目录解析包导出，解析阶段不执行入口", async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "lg-runtime-exports-"));
+it("私有启动入口从独立运行目录定位，缺失时报告应用安装损坏", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "lg-runtime-entries-"));
   try {
-    for (const [name, exports] of [
-      ["@lg/workspace", { "./bootstrap": "./start.mjs" }],
-      ["@lg/pdf", { ".": "./document.mjs", "./worker": "./thread.mjs" }],
-    ] as const) {
-      const package_directory = path.join(directory, "node_modules", name);
-      await mkdir(package_directory, { recursive: true });
-      await writeFile(
-        path.join(package_directory, "package.json"),
-        JSON.stringify({ name, type: "module", exports }),
-      );
-      for (const file of Object.values(exports)) {
-        await writeFile(
-          path.join(package_directory, file),
-          "throw new Error('入口只能由执行进程加载');",
-        );
-      }
+    await mkdir(path.join(directory, "runtime"));
+    for (const entry of ["bootstrap", "prepare", "pdf-worker"] as const) {
+      const file = path.join(directory, "runtime", `${entry}.mjs`);
+      await writeFile(file, "throw new Error('入口只能由执行进程加载');");
+      expect(resolve_workspace_runtime_entry(directory, entry)).toBe(file);
     }
-    expect(resolve_workspace_runtime_entry(directory, "@lg/workspace/bootstrap")).toBe(
-      path.join(directory, "node_modules/@lg/workspace/start.mjs"),
-    );
-    expect(resolve_workspace_runtime_entry(directory, "@lg/pdf")).toBe(
-      path.join(directory, "node_modules/@lg/pdf/document.mjs"),
-    );
-    expect(resolve_workspace_runtime_entry(directory, "@lg/pdf/worker")).toBe(
-      path.join(directory, "node_modules/@lg/pdf/thread.mjs"),
+    await rm(path.join(directory, "runtime/bootstrap.mjs"));
+    expect(() => resolve_workspace_runtime_entry(directory, "bootstrap")).toThrowError(
+      expect.objectContaining({ cause: expect.objectContaining({ code: "ENOENT" }) }),
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
