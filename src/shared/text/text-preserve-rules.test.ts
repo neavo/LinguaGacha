@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import renpy_entries from "../../../builtin/text_preserve/preset/renpy.json";
 
 import {
   TextPreserveRule,
@@ -118,20 +119,64 @@ describe("text-preserve-rules", () => {
     expect(collect_non_blank_text_preserve_segments(text, rule)).toEqual(segments);
   });
 
-  it("RenPy 智能规则只保护不含 CJK 正文的控制段", () => {
-    const rule = build_text_preserve_rule({
+  it.each([
+    { text: "{{ [[", segments: ["{{", "[["], body: "" },
+    { text: "{#menu}{#菜单}", segments: ["{#menu}", "{#菜单}"], body: "" },
+    {
+      text: "{b}{/b}{a=[url]}{=style}{0}",
+      segments: ["{b}", "{/b}", "{a=[url]}", "{=style}", "{0}"],
+      body: "",
+    },
+    { text: "{普通正文}{font=中文.ttf}", segments: [], body: "{普通正文}{font=中文.ttf}" },
+    ...[
+      "[a + b]",
+      "[n:.2f]",
+      "[a[0][1]]",
+      "[fn()[0]]",
+      "[fn([1, 2])]",
+      '[items[0].get("]")]',
+      '["text]more"]',
+      '[obj.fn("日本")]',
+      "[obj.fn('日本')]",
+      String.raw`[fn("a\"b]c")]`,
+      String.raw`[fn('a\'b]c')]`,
+    ].map((text) => ({ text, segments: [text], body: "" })),
+    ...["[名前]", "[name は誰]", "[fn(日本)]", "[a[日本]]"].map((text) => ({
+      text,
+      segments: [],
+      body: text,
+    })),
+    { text: "[name] Hello [other]", segments: ["[name]", "[other]"], body: "Hello" },
+    { text: "[a[b[0]]]", segments: ["[b[0]]"], body: "[a ]" },
+    { text: "[fn([[1]])]", segments: ["[["], body: "[fn( 1]])]" },
+    { text: "[a\nb] {a\rb}", segments: [], body: "[a b] {a b}" },
+    { text: '[fn("a\nb")]', segments: [], body: '[fn("a b")]' },
+    {
+      text: "%s %(name)s %02d %.2f %.*f %%",
+      segments: ["%s", "%(name)s", "%02d", "%.2f", "%.*f", "%%"],
+      body: "",
+    },
+    { text: "%(name\n)s", segments: [], body: "%(name )s" },
+  ])("Ren’Py 预设按字符边界保护，smart 与 custom 等价：$text", ({ text, segments, body }) => {
+    const smart = build_text_preserve_rule({
       mode: "smart",
       text_type: "RENPY",
       entries: [],
     });
+    const custom = build_text_preserve_rule({
+      mode: "custom",
+      text_type: "RENPY",
+      entries: renpy_entries,
+    });
+    const analysis = smart.analyze(text);
+    expect(analysis).toEqual(custom.analyze(text));
+    expect(analysis.segments.filter((segment) => segment.trim())).toEqual(segments);
+    expect(analysis.unpreserved_text.replace(/\s+/gu, " ").trim()).toBe(body);
+  });
 
-    expect(rule.collect("{player_name}")).toEqual(["{player_name}"]);
-    expect(rule.collect("{名前}")).toEqual([]);
-    expect(rule.collect("[a[0]]")).toEqual(["[a[0]]"]);
-    expect(rule.analyze("Hello [a[0]]").unpreserved_text.trim()).toBe("Hello");
-    expect(collect_non_blank_text_preserve_segments("%(count)d 个，100% 完成", rule)).toEqual([
-      "%(count)d",
-    ]);
+  it("忽略空命中，重叠候选按起点及同起点条目顺序裁决", () => {
+    const rule = new TextPreserveRule([entry(""), entry("bc"), entry("ab"), entry("abc")]);
+    expect(rule.collect("abc")).toEqual(["ab"]);
   });
 
   it("收集保护段时会忽略只包含空白的命中", () => {

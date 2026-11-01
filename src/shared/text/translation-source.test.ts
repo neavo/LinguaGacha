@@ -5,6 +5,23 @@ import { compile_text_replacements } from "./text-replacement-rules";
 import { prepare_translation_source } from "./translation-source";
 
 describe("prepare_translation_source", () => {
+  it.each([
+    ['[items[0].get("]")]', "preserved"],
+    ["[name] Hello [other]", "translatable"],
+    ["[a[b[0]]]", "translatable"],
+    ["[fn(日本)]", "translatable"],
+  ])("Ren’Py 保护边界决定译前状态：%s", (src, state) => {
+    const result = prepare_translation_source({
+      src,
+      name_src: null,
+      text_type: "RENPY",
+      preserve_rule: build_text_preserve_rule({ mode: "smart", text_type: "RENPY", entries: [] }),
+      pre_replacements: null,
+      start_ordinal: 0,
+    });
+    expect(result.prepared_lines[0]).toMatchObject({ state, prepared_text: src });
+  });
+
   it("首尾保护段参与译前替换，恢复依据保留替换前正文", () => {
     const preserve_rule = build_text_preserve_rule({
       mode: "CUSTOM",

@@ -7,6 +7,23 @@ import {
 import { restore_translation_line } from "./translation-output-restoration";
 
 describe("restore_translation_line", () => {
+  it("Ren’Py 完整复杂插值保持原样，并按期望序列删除额外保护段", () => {
+    const preserve_rule = build_text_preserve_rule({
+      mode: "smart",
+      text_type: "RENPY",
+      entries: [],
+    });
+    const interpolation = '[items[0].get("]")]';
+    expect(
+      restore({
+        restoration_text: `Hello ${interpolation}`,
+        prepared_text: `Hello ${interpolation}`,
+        translation: `你好 ${interpolation}[extra]`,
+        preserve_rule,
+      }),
+    ).toBe(`你好 ${interpolation}`);
+  });
+
   it("只删除有序期望序列之外的额外保护段", () => {
     const rule = create_rule(["<[^>]+>"]);
 
@@ -155,11 +172,9 @@ function restore(
 
 /** 用测试自有表达式构造保护规则。 */
 function create_rule(sources: string[]): TextPreserveRule {
-  const rule = build_text_preserve_rule({
+  return build_text_preserve_rule({
     mode: "CUSTOM",
     text_type: "NONE",
     entries: sources.map((src) => ({ src, info: "" })),
   });
-  if (rule === null) throw new Error("测试保护规则构造失败。");
-  return rule;
 }
