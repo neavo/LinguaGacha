@@ -506,10 +506,6 @@
   outline-offset: -1px;
 }
 
-.agent-process-entry[data-status="running"] {
-  color: var(--foreground);
-}
-
 .agent-process-entry__icon {
   width: 12px;
   height: 12px;
@@ -534,6 +530,15 @@
   flex-shrink: 0;
   white-space: pre;
   font-variant-numeric: tabular-nums;
+}
+
+/* 只占用标签和耗时之后的剩余宽度，单行截断让时间线高度不随输出跳动。 */
+.agent-process-entry__detail {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
 }
 
 .agent-thinking-entry__label {

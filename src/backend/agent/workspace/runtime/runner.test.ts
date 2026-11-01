@@ -36,6 +36,7 @@ beforeEach(() => {
     scriptPath: "work/runs/test.mjs",
     stdoutPath: "work/runs/test.stdout.log",
     stderrPath: "work/runs/test.stderr.log",
+    timeoutMs: 60_000,
   };
   handles = [];
   const open = default_native_fs.open_file.bind(default_native_fs);

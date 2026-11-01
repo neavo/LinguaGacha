@@ -355,6 +355,27 @@ describe("AgentChatStore", () => {
     }
   });
 
+  it("运行输出独立发布，重复值不通知，非法载荷转入快照恢复", async () => {
+    const store = new AgentChatStore(window.localStorage, vi.fn());
+    const output_changed = vi.fn();
+    store.subscribe_run_output(output_changed);
+    store.connect();
+    try {
+      await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      const output = { entryId: "tool:1:call", stdout: "进度\n", stderr: "", line: "进度" };
+      event_source.change({ type: "run_output", runOutput: output });
+      event_source.change({ type: "run_output", runOutput: { ...output } });
+      expect(store.get_run_output()).toEqual(output);
+      expect(output_changed).toHaveBeenCalledOnce();
+      desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ revision: 5 }));
+      event_source.change({ type: "run_output", revision: 3, runOutput: { entryId: "" } });
+      event_source.change({ type: "run_output", revision: 5, runOutput: output });
+      await vi.waitFor(() => expect(store.get_run_output()).toBeNull());
+    } finally {
+      store.disconnect();
+    }
+  });
+
   it("StrictMode effect 重放后仍能完成会话恢复", async () => {
     let latest!: ReturnType<typeof useAgentChat>;
     /** 在 StrictMode 重放期间订阅同一公开会话。 */
@@ -1084,6 +1105,7 @@ describe("AgentChatStore", () => {
       doing: null,
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
+      runOutput: null,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       skills: [
         TEST_SKILLS[0],
@@ -1331,6 +1353,7 @@ describe("AgentChatStore", () => {
       doing: null,
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
+      runOutput: null,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     let latest!: ReturnType<typeof useAgentChat>;
@@ -2051,6 +2074,7 @@ function agent_snapshot(overrides: Partial<AgentChatSnapshot> = {}): AgentChatSn
     context: { tokens: null, compactable: false, limits: null },
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     tokenSpeed: null,
+    runOutput: null,
     ...overrides,
   };
 }

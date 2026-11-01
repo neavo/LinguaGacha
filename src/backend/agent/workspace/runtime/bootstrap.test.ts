@@ -33,6 +33,7 @@ import app_package from "../../../../../package.json";
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
 const RUN_TIMEOUT_MS = 15_000; // 早于测试超时回收子进程，失败后目录清理也能完成
+const EXECUTION_TIMEOUT_MS = 60_000; // 晚于外部取消信号，测试失败沿取消路径收尾
 let root = "";
 let runtime = "";
 let workspace = "";
@@ -273,15 +274,15 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       pickSavePath: async () => null,
     });
     await service.activate_chat("test0001", [], async () => {});
+    /** 本用例的每次执行共用时限与外部取消信号。 */
+    const run_script = (script: string) =>
+      service.run({ script, timeoutMs: EXECUTION_TIMEOUT_MS }, AbortSignal.timeout(RUN_TIMEOUT_MS));
     // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
-    await service.run("console.log('ready');", AbortSignal.timeout(RUN_TIMEOUT_MS));
-    await service.run(
-      `
+    await run_script("console.log('ready');");
+    await run_script(`
       import { rm } from 'node:fs/promises';
       await rm('changes', { recursive: true });
-    `,
-      AbortSignal.timeout(RUN_TIMEOUT_MS),
-    );
+    `);
     const entry = path.join(resources.paths.get_agent_user_skill_dir(), "fixture", "entry.mjs");
     await mkdir(path.dirname(entry), { recursive: true });
     // 原包替换正文，下一进程必须看到新版本。apply 使用真实工程写入口。
@@ -298,22 +299,22 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     `;
     await writeFile(entry, module_body("第一版"));
     const script = `const {update} = await import(${JSON.stringify(pathToFileURL(entry).href)}); await update();`;
-    await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS));
+    await run_script(script);
     expect(await service.apply_workspace(async () => {})).toMatchObject({ status: "applied" });
     expect(services.state.cache.items.readItems()[0]?.dst).toBe("第一版");
     await writeFile(entry, module_body("第二版"));
-    const result = await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS));
+    const result = await run_script(script);
     expect(result.execution.stdout).toMatchObject({
       content: { before: "第一版", after: "第二版" },
     });
     await service.close();
     await service.delete_chat("test0001");
     await service.activate_chat("test0001", [], async () => {});
-    expect(
-      (await service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).execution.stdout,
-    ).toMatchObject({ content: { before: "第一版", after: "第二版" } });
+    expect((await run_script(script)).execution.stdout).toMatchObject({
+      content: { before: "第一版", after: "第二版" },
+    });
     await unlink(entry);
-    await expect(service.run(script, AbortSignal.timeout(RUN_TIMEOUT_MS))).rejects.toThrow();
+    await expect(run_script(script)).rejects.toThrow();
   } finally {
     await services.dispose();
     await resources.dispose();
@@ -512,6 +513,7 @@ it.each([false, true])(
           scriptPath,
           stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task.stdout.log`,
           stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task.stderr.log`,
+          timeoutMs: EXECUTION_TIMEOUT_MS,
         },
         AbortSignal.timeout(RUN_TIMEOUT_MS),
       );
@@ -951,6 +953,7 @@ async function run(
       scriptPath,
       stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stdout.log`,
       stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stderr.log`,
+      timeoutMs: EXECUTION_TIMEOUT_MS,
       ...tools,
     },
     signal,

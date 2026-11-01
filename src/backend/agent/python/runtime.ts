@@ -43,6 +43,7 @@ function environment(install: boolean): NodeJS.ProcessEnv {
     UV_PYTHON_DOWNLOADS: install ? "automatic" : "never",
     UV_NO_PROGRESS: "1",
     PYTHONUTF8: "1",
+    PYTHONUNBUFFERED: "1", // 输出写文件时不攒块，界面才能实时观察
     PYTHONNOUSERSITE: "1",
   };
 }

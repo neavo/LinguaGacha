@@ -234,6 +234,11 @@ export class AgentChatView {
     );
   }
 
+  /** 按工具调用身份查找公开条目，投影尚未处理该调用时返回 `undefined`。 */
+  public tool_entry_id(callId: string): string | undefined {
+    return this.calls.get(callId);
+  }
+
   /** 发布者消费更新，不需要比较上一份完整快照。 */
   public take_change(): AgentTimelineChange {
     const result = { replace: this.replace, entries: [...this.changed.values()] };

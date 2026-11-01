@@ -6,7 +6,11 @@ import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { AgentExecutionError, type AgentExecutionRuntime } from "../../execution/runtime";
+import {
+  AgentExecutionError,
+  type AgentExecutionRequest,
+  type AgentExecutionRuntime,
+} from "../../execution/runtime";
 import type { Supervisor } from "../../../../native/supervisor";
 import { read_agent_process_output, type AgentProcessOutput } from "../../process-output";
 import type { AgentImageOptions } from "../../../../shared/agent-image";
@@ -20,15 +24,13 @@ import {
   type AgentWorkspaceRuntimeParentMessage,
 } from "./protocol";
 
-export type AgentWorkspaceRunRequest = Readonly<{
-  workspacePath: string;
-  scriptPath: string; // 同一执行的三个文件路径由 WorkspaceService 唯一确定
-  stdoutPath: string;
-  stderrPath: string;
-  host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
-  emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
-  doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
-}>;
+export type AgentWorkspaceRunRequest = AgentExecutionRequest &
+  Readonly<{
+    scriptPath: string; // 同一执行的脚本与两路日志路径由 WorkspaceService 唯一确定
+    host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
+    emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
+    doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
+  }>;
 
 export type AgentWorkspaceOutput = AgentProcessOutput;
 

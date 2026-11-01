@@ -214,6 +214,11 @@ export type AgentTokenSpeedSnapshot =
   | (JsonRecord & { roundId: string; tokensPerSecond: number })
   | null;
 
+/** 运行中 `workspace_run` 的日志末尾，只供界面观察，不持久化，也不进入模型回执。 */
+export type AgentRunOutputSnapshot =
+  | (JsonRecord & { entryId: string; stdout: string; stderr: string; line: string })
+  | null;
+
 /** 当前产品对话累计的模型用量，历史修订后仍保留已发生的消耗。 */
 export type AgentUsageSnapshot = JsonRecord & {
   input: number; // 普通输入，缓存读取和写入分别计数
@@ -235,6 +240,7 @@ export type AgentChatSnapshot = JsonRecord & {
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
   tokenSpeed: AgentTokenSpeedSnapshot;
+  runOutput: AgentRunOutputSnapshot;
 };
 
 /** 写命令只确认后端受理到的事件边界，公开事实继续由事件同步。 */
@@ -260,6 +266,7 @@ export type AgentChatChange = JsonRecord &
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
     | { type: "doing"; doing: string | null }
     | { type: "token_speed"; tokenSpeed: AgentTokenSpeedSnapshot }
+    | { type: "run_output"; runOutput: AgentRunOutputSnapshot }
     | { type: "context"; context: AgentContextSnapshot }
     | { type: "usage"; usage: AgentUsageSnapshot }
   );

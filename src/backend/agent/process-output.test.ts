@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { default_native_fs } from "../../native/native-fs";
-import { read_agent_process_output } from "./process-output";
+import {
+  read_agent_process_output,
+  watch_agent_process_output,
+  type AgentProcessOutputTail,
+} from "./process-output";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./workspace/runtime/policy";
 
 let directory: string;
@@ -49,4 +53,28 @@ it("按字节独立限制每路输出，超限文件不读入内存", () => {
     bytes: Buffer.byteLength(json),
     content: { value: true },
   });
+});
+
+it("监视日志末尾：截断处丢弃残片，回车进度折叠为一行，摘要取本次增长的一路，中止后退出", async () => {
+  // 截断点落在只有回车的进度序列中，窗口内仍要留下完整的最新进度。
+  fs.writeFileSync(
+    path.join(directory, "out"),
+    `${"进度 10%\r".repeat(2000)}第一行\r\n进度 10%\r进度 100%\n`,
+  );
+  const outputs: AgentProcessOutputTail[] = [];
+  const controller = new AbortController();
+  const watching = watch_agent_process_output(
+    directory,
+    { stdoutPath: "out", stderrPath: "err" }, // stderr 尚不存在，按空内容处理
+    (output) => outputs.push(output),
+    controller.signal,
+  );
+  const stdout = "第一行\n进度 100%\n";
+  await vi.waitFor(() => expect(outputs).toEqual([{ stdout, stderr: "", line: "进度 100%" }]));
+  fs.writeFileSync(path.join(directory, "err"), "警告\n");
+  await vi.waitFor(() =>
+    expect(outputs.at(-1)).toEqual({ stdout, stderr: "警告\n", line: "警告" }),
+  );
+  controller.abort();
+  await expect(watching).resolves.toBeUndefined();
 });

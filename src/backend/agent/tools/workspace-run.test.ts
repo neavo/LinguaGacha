@@ -4,6 +4,7 @@ import { workspace_execution } from "../../../test/agent-workspace-fixture";
 import { create_agent_workspace_run_tool } from "./workspace-run";
 import { AgentToolError } from "../tool-definition";
 import type { AgentWorkspacePort } from "../workspace/service";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 
 describe("workspace_run", () => {
   it("工作区图片作为 SDK image content 返回，摘要不包含图片字节", async () => {
@@ -46,6 +47,23 @@ describe("workspace_run", () => {
       ],
     });
     expect(JSON.stringify(result.details)).not.toContain("aW1hZ2U=");
+  });
+  it("时限省略时取默认值，显式秒数换算为毫秒并带上调用身份", async () => {
+    const run = vi.fn<AgentWorkspacePort["run"]>(async () => ({
+      images: [],
+      execution: workspace_execution(),
+    }));
+    const tool = create_tool(run);
+    await tool.execute({ script: "1;" }, ...agent_tool_call("default"));
+    await tool.execute({ script: "2;", timeout_seconds: 900 }, ...agent_tool_call("explicit"));
+    expect(run.mock.calls.map(([request]) => request)).toEqual([
+      {
+        script: "1;",
+        timeoutMs: AGENT_WORKSPACE_RUNTIME_POLICY.defaultTimeoutSeconds * 1000,
+        callId: "default",
+      },
+      { script: "2;", timeoutMs: 900_000, callId: "explicit" },
+    ]);
   });
   it("调用期间停止仍保留实际成功的执行结果", async () => {
     const released = Promise.withResolvers<void>();

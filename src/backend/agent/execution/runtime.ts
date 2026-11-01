@@ -7,13 +7,13 @@ import { WorkspaceProxy } from "../../network/workspace-proxy";
 import type { ProxyResolver } from "../../network/proxy-http-client";
 import { AppError } from "../../../shared/error";
 import { read_agent_process_output, type AgentProcessOutput } from "../process-output";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 
-/** 本次执行的两路日志，路径相对于工作区。 */
-export type AgentExecutionLogRequest = Readonly<{
+/** 本次执行的两路日志与时限，日志路径相对于工作区。 */
+export type AgentExecutionRequest = Readonly<{
   workspacePath: string; // 日志属于当前对话，Node 环境仍是共享工程。
   stdoutPath: string;
   stderrPath: string;
+  timeoutMs: number; // 租约、环境准备和脚本共用一个截止时间，收尾完成后才释放占用。
 }>;
 // 进程结果与收尾后读取的两路日志。
 export type AgentExecutionResult = SupervisedProcessResult &
@@ -72,14 +72,14 @@ export class AgentExecutionRuntime {
 
   /** 持有租约直到脚本、宿主请求、代理及日志句柄全部收尾。 */
   public async with_environment<T>(
-    request: AgentExecutionLogRequest,
+    request: AgentExecutionRequest,
     signal: AbortSignal,
     action: (owner: Supervisor, env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     if (this.closed) throw new Error("Agent execution runtime is closed.");
     if (this.active) throw new AppError("runtime.busy");
     this.controller = new AbortController();
-    const deadline = AbortSignal.timeout(AGENT_WORKSPACE_RUNTIME_POLICY.executionTimeoutMs);
+    const deadline = AbortSignal.timeout(request.timeoutMs);
     const effective = AbortSignal.any([signal, this.controller.signal, deadline]);
     const operation = this.execute(request, effective, action);
     this.active = operation;
@@ -88,7 +88,7 @@ export class AgentExecutionRuntime {
     } catch (error) {
       if (deadline.aborted && effective.reason === deadline.reason && error === effective.reason)
         throw new AgentExecutionError(
-          "Workspace execution timed out.",
+          `Workspace execution timed out after ${request.timeoutMs / 1000} seconds.`,
           this.result(request, { exitCode: null, signal: null }),
           { cause: error },
         );
@@ -101,7 +101,7 @@ export class AgentExecutionRuntime {
 
   /** 目标、代理和租约沿同一顺序结算，清理故障保留执行主因。 */
   private async execute<T>(
-    request: AgentExecutionLogRequest,
+    request: AgentExecutionRequest,
     signal: AbortSignal,
     action: (owner: Supervisor, env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
@@ -163,7 +163,7 @@ export class AgentExecutionRuntime {
 
   /** 进程收尾后读取日志，避免把仍在写入的输出当作最终回执。 */
   private result(
-    request: AgentExecutionLogRequest,
+    request: AgentExecutionRequest,
     result: SupervisedProcessResult,
   ): AgentExecutionResult {
     return {

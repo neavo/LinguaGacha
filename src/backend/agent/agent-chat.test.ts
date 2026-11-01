@@ -105,6 +105,53 @@ it.each(["text", "error", "image"] as const)(
   },
 );
 
+it("工具等待投影刷新完成后执行，并能立即读取自己的公开条目", async () => {
+  let entry_id: string | undefined;
+  const execute = vi.fn<ToolRegistration["execute"]>(async (_params, api) => {
+    entry_id = chat.view.tool_entry_id(api.callId);
+    return agent_tool_result({});
+  });
+  const tool = define_agent_tool({
+    name: "projection_fixture",
+    description: "测试工具投影顺序",
+    parameters: Type.Object({}),
+    execute,
+  });
+  const { chat, provider } = await create_chat(() => {}, { tools: [tool] });
+  const release = Promise.withResolvers<void>();
+  let waiting = false;
+  const flush = chat.flush.bind(chat);
+  vi.spyOn(chat, "flush").mockImplementation(async () => {
+    if (
+      [...chat.view.records.values()].some((record) =>
+        record.model?.some(
+          (message) =>
+            message.role === "assistant" &&
+            message.content.some((part) => part.type === "toolCall"),
+        ),
+      )
+    ) {
+      waiting = true;
+      await release.promise;
+    }
+    await flush();
+  });
+  provider.setResponses([
+    fauxAssistantMessage([fauxToolCall(tool.name, {})], { stopReason: "toolUse" }),
+    fauxAssistantMessage("完成"),
+  ]);
+  const running = talk(chat, "调用工具");
+  try {
+    await vi.waitFor(() => expect(waiting).toBe(true));
+    expect(execute).not.toHaveBeenCalled();
+  } finally {
+    release.resolve();
+    await running;
+  }
+  expect(entry_id).toBeDefined();
+  expect(chat.entries).toContainEqual(expect.objectContaining({ id: entry_id, kind: "tool_call" }));
+});
+
 it("异步投影失败保留错误并拒绝陈旧成功回执", async () => {
   const { chat } = await create_chat();
   const before = structuredClone(chat.entries);

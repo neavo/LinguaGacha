@@ -1,4 +1,4 @@
-import type { AgentEntry, AgentTokenSpeedSnapshot } from "@shared/agent";
+import type { AgentEntry, AgentRunOutputSnapshot, AgentTokenSpeedSnapshot } from "@shared/agent";
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { AgentDecisionCountdownSnapshot } from "./agent-decision-countdown";
 import type {
@@ -30,6 +30,16 @@ export function useAgentTokenSpeed(): AgentTokenSpeedSnapshot {
     store.get_token_speed,
     store.get_token_speed,
   );
+}
+
+/** 只有归属该条目的运行输出变化才让调用方重渲染，其余工具行恒为 `null`。 */
+export function useAgentRunOutput(entry_id: string): AgentRunOutputSnapshot {
+  const store = use_agent_store();
+  const read = useCallback(() => {
+    const output = store.get_run_output();
+    return output?.entryId === entry_id ? output : null;
+  }, [store, entry_id]);
+  return useSyncExternalStore(store.subscribe_run_output, read, read);
 }
 
 /** 订阅时间线顺序和操作状态，消息正文通过条目订阅更新。 */

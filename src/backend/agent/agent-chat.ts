@@ -215,11 +215,12 @@ export class AgentChat {
         tools: options.tools.map((tool) => ({
           ...tool,
           execute: async (params, api, context) => {
-            // 工具开始帧先获得发布机会，随后执行副作用。
-            await scheduler.yield();
             const execution = chat.execution;
             let result: ToolExecutionResult;
             try {
+              // 工具条目完成投影与发布后才执行副作用，单次让出调度不能保证异步刷新结束。
+              await chat.flush();
+              await scheduler.yield(); // 已发布的开始帧获得发送轮次后，再执行副作用
               result = await tool.execute(params, api, context);
             } catch (error) {
               if (is_agent_cancellation(error, context.abortSignal)) {

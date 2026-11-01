@@ -78,6 +78,7 @@ import {
 import { prepare_agent_workspace_changes } from "./changes";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
 import { write_agent_workspace_sources, type WorkspaceSourceResult } from "./sources";
+import { watch_agent_process_output, type AgentProcessOutputTail } from "../process-output";
 
 /** 预览采用有界读取，完整文件通过另存为交付。 */
 export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
@@ -114,6 +115,14 @@ export type AgentWorkspaceRunPort = (
 ) => Promise<AgentWorkspaceExecution>;
 
 export type AgentWorkspaceImage = Readonly<{ path: string; image: AgentImage }>;
+
+/** 一次工作区执行的输入，`output` 只供界面观察运行中的日志末尾。 */
+export type AgentWorkspaceRunInput = Readonly<{
+  script: string;
+  timeoutMs: number;
+  doing?: AgentWorkspaceRunRequest["doing"];
+  output?: (output: AgentProcessOutputTail) => void;
+}>;
 
 type ActiveAgentWorkspace = {
   projectPath: string; // snapshot 建立时绑定的工程身份
@@ -615,9 +624,8 @@ export class AgentWorkspaceService {
 
   /** 脚本已完成的写入跨失败和停止保留，阶段更新由本次执行借用会话写入口。 */
   public async run(
-    script: string,
+    request: AgentWorkspaceRunInput,
     signal: AbortSignal,
-    doing?: AgentWorkspaceRunRequest["doing"],
   ): Promise<{ execution: AgentWorkspaceExecution; images: AgentWorkspaceImage[] }> {
     return await this.exclusive(async () => {
       const image_output = create_image_output(async (image_path, image_signal, options) => {
@@ -666,30 +674,48 @@ export class AgentWorkspaceService {
         phase = WorkspaceRunPhase.SAVE_SCRIPT;
         const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${random_id()}`;
         const script_path = `${run_path}.mjs`;
-        await this.native_fs.write_file(path.join(this.root_path, script_path), script);
+        await this.native_fs.write_file(path.join(this.root_path, script_path), request.script);
         signal.throwIfAborted();
         if (!this.read_freshness(snapshot).snapshotFresh) {
           await this.clear_sources();
           throw workspace_validation_error("agent_workspace_snapshot_project_changed");
         }
         phase = WorkspaceRunPhase.EXECUTE;
-        const execution = await this.options.run(
-          {
-            workspacePath: this.root_path,
-            scriptPath: script_path,
-            stdoutPath: `${run_path}.stdout.log`,
-            stderrPath: `${run_path}.stderr.log`,
-            emitImage: image_output.emitImage,
-            ...(doing === undefined ? {} : { doing }),
-            host: create_workspace_host({
-              root: this.root_path,
-              nativeFs: this.native_fs,
-              pdfHost: this.options.pdfHost,
-            }),
-          },
-          signal,
-        );
-        return { execution, images: image_output.read() };
+        const logs = { stdoutPath: `${run_path}.stdout.log`, stderrPath: `${run_path}.stderr.log` };
+        const watch = new AbortController();
+        const watching =
+          request.output === undefined
+            ? undefined
+            : watch_agent_process_output(this.root_path, logs, request.output, watch.signal).catch(
+                (error: unknown) =>
+                  // 观察只服务界面，失败不能让执行失败。
+                  this.options.logManager.warning("Agent 执行输出观察失败。", {
+                    source: "agent_workspace",
+                    error,
+                  }),
+              );
+        try {
+          const execution = await this.options.run(
+            {
+              workspacePath: this.root_path,
+              scriptPath: script_path,
+              ...logs,
+              timeoutMs: request.timeoutMs,
+              emitImage: image_output.emitImage,
+              ...(request.doing === undefined ? {} : { doing: request.doing }),
+              host: create_workspace_host({
+                root: this.root_path,
+                nativeFs: this.native_fs,
+                pdfHost: this.options.pdfHost,
+              }),
+            },
+            signal,
+          );
+          return { execution, images: image_output.read() };
+        } finally {
+          watch.abort();
+          await watching; // 返回前等观察退出，调用方结算后不会再收到 `output`
+        }
       } catch (error) {
         if (is_agent_cancellation(error, signal)) throw error;
         if (error instanceof AgentWorkspaceRunError) {

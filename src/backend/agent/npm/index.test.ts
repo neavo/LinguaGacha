@@ -134,6 +134,7 @@ async function create_fixture(
         scriptPath: `${base}.mjs`,
         stdoutPath: `${base}.stdout.log`,
         stderrPath: `${base}.stderr.log`,
+        timeoutMs: 60_000,
       },
       signal,
     );

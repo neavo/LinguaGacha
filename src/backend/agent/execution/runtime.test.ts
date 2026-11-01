@@ -6,7 +6,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { AgentExecutionRuntime } from "./runtime";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 
 const electron =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -63,7 +62,12 @@ function prepare(
   action: () => Promise<void> = async () => {},
 ) {
   return fixture.execution.with_environment(
-    { workspacePath: fixture.workspace, stdoutPath: "prepare.out", stderrPath: "prepare.err" },
+    {
+      workspacePath: fixture.workspace,
+      stdoutPath: "prepare.out",
+      stderrPath: "prepare.err",
+      timeoutMs: 60_000,
+    },
     AbortSignal.timeout(20_000),
     action,
   );
@@ -75,7 +79,12 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志", a
   const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
   try {
     const pending = fixture.execution.with_environment(
-      { workspacePath: fixture.workspace, stdoutPath: "deadline.out", stderrPath: "deadline.err" },
+      {
+        workspacePath: fixture.workspace,
+        stdoutPath: "deadline.out",
+        stderrPath: "deadline.err",
+        timeoutMs: 45_000,
+      },
       new AbortController().signal,
       async (_owner, _env, signal) => {
         await writeFile(path.join(fixture.workspace, "deadline.out"), "before deadline");
@@ -85,13 +94,11 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志", a
     );
     const error: unknown = await pending.catch((error: unknown) => error);
     expect(error).toMatchObject({
-      message: "Workspace execution timed out.",
+      message: "Workspace execution timed out after 45 seconds.",
       execution: { stdout: { content: "before deadline" }, exitCode: null },
       cause: deadline.signal.reason,
     });
-    expect(timeout).toHaveBeenCalledExactlyOnceWith(
-      AGENT_WORKSPACE_RUNTIME_POLICY.executionTimeoutMs,
-    );
+    expect(timeout).toHaveBeenCalledExactlyOnceWith(45_000);
   } finally {
     timeout.mockRestore();
     await fixture.execution.close();

@@ -16,9 +16,15 @@ import app_package from "../../../../package.json";
 import { PYTHON_DESCRIPTION } from "../python/description";
 import { NPM_DESCRIPTION } from "../npm/description";
 
+const { defaultTimeoutSeconds, minTimeoutSeconds, maxTimeoutSeconds } =
+  AGENT_WORKSPACE_RUNTIME_POLICY;
+
 /** 执行程序并刷新技能事实，随后投影模型可见的执行记录与图片。 */
 export function create_agent_workspace_run_tool(options: {
-  run: (script: string, signal: AbortSignal) => ReturnType<AgentWorkspacePort["run"]>;
+  run: (
+    request: Readonly<{ script: string; timeoutMs: number; callId: string }>, // `callId` 关联界面上的工具条目
+    signal: AbortSignal,
+  ) => ReturnType<AgentWorkspacePort["run"]>;
   refresh_skills: () => Promise<unknown>;
 }): ToolRegistration {
   return define_agent_tool({
@@ -55,8 +61,9 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### 输出",
       "",
-      `- 环境准备与脚本共用执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.executionTimeoutMs / 1000} 秒，程序在事件循环空闲时自然退出，退出时结束仍在运行的子进程，不能保留后台进程`,
+      "- 程序在事件循环空闲时自然退出，退出时结束仍在运行的子进程",
       "- 使用 `console.log` 输出结果",
+      "- 耗时处理定期输出进度，界面会实时显示给用户",
       `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，内容是文本或解析后的 JSON，超额时返回补读提示，按需读取文件`,
       "",
       "|返回字段|含义|",
@@ -109,16 +116,31 @@ export function create_agent_workspace_run_tool(options: {
           minLength: 1,
           description: "要执行的完整 JavaScript ESM 源码，可使用顶层 `await`，全局 `ws` 无需导入",
         }),
+        timeout_seconds: Type.Optional(
+          Type.Integer({
+            minimum: minTimeoutSeconds,
+            maximum: maxTimeoutSeconds,
+            description: `执行时限秒数，省略时为 ${defaultTimeoutSeconds}。时限包含执行环境准备及脚本启动的 npm、Python，首次使用 Python 或安装依赖时需调大`,
+          }),
+        ),
       },
       { additionalProperties: false },
     ),
-    execute: async (params, _api, context) => {
+    execute: async (params, api, context) => {
       const signal = context.abortSignal;
       // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
       const effective_signal = signal ?? new AbortController().signal;
       effective_signal.throwIfAborted();
       const { execution, images } = await run_and_refresh_skills(
-        () => options.run(params.script, effective_signal),
+        () =>
+          options.run(
+            {
+              script: params.script,
+              timeoutMs: (params.timeout_seconds ?? defaultTimeoutSeconds) * 1000,
+              callId: api.callId,
+            },
+            effective_signal,
+          ),
         options.refresh_skills,
       );
       const result = agent_tool_result({
