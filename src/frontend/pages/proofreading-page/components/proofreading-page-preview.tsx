@@ -138,7 +138,7 @@ export function ProofreadingPagePreview(props: {
     <AppPageDialog
       open
       title={t("proofreading_page.pages.title")}
-      size="lg"
+      size="viewport"
       onClose={props.on_close}
       bodyClassName="overflow-hidden p-0"
     >
