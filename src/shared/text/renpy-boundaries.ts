@@ -1,6 +1,6 @@
 export type RenpyBoundary = { index: number; value: string };
 
-/** 按插值深度、引号与字面转义扫描，所有文本保护消费者共用同一边界。 */
+/** 按插值深度、引号与字面转义识别边界，供缺少引擎身份的文本推断格式。 */
 export function scan_renpy_boundaries(text: string): RenpyBoundary[] {
   const result: RenpyBoundary[] = [];
   for (let at = 0; at < text.length; at++) {
@@ -19,10 +19,10 @@ export function scan_renpy_boundaries(text: string): RenpyBoundary[] {
       at = end;
       continue;
     }
-    let depth = 1,
-      quote = "",
-      parentheses = 0,
-      end = at + 1;
+    let depth = 1; // 只统计字符串和圆括号外的方括号深度。
+    let quote = ""; // 字符串内的括号不参与边界判断。
+    let parentheses = 0; // 调用参数内的右方括号不能结束外层插值。
+    let end = at + 1;
     for (; end < text.length; end++) {
       const char = text[end];
       if (quote) {

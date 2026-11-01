@@ -37,7 +37,7 @@ export interface LLMRequestResult {
   retry_after_ms?: number; // 服务端要求的有效等待时长，由请求调度器应用策略。
   request_error?: LogError; // 保留供应商或传输异常错误，缺失表示没有请求级失败
   retryable?: boolean; // false 表示配置、授权或套餐额度问题，调度器必须结束执行。
-  response_error?: LogError; // 已收到响应但终态不适合消费，例如输出截断；由业务决定内容重试。
+  response_error?: LogError; // 内容拒绝、输出截断或意外工具调用等响应失败，由调用方决定后续处理。
 }
 
 /**

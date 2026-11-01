@@ -1,7 +1,7 @@
 import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
 import { read_json_integer } from "../../domain/json";
 
-import { log_error_from_message, to_log_error, type LogError } from "../../shared/error";
+import { to_log_error, type LogError } from "../../shared/error";
 import {
   read_model_request_snapshot,
   read_request_timeout_ms,
@@ -22,6 +22,24 @@ interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
   catalog: PiModelCatalogReader;
 }
+
+const GOOGLE_CONTENT_REFUSAL_REASONS = [
+  "SAFETY",
+  "RECITATION",
+  "BLOCKLIST",
+  "PROHIBITED_CONTENT",
+  "SPII",
+] as const;
+// SDK 将内容拒绝与网络故障都归为 `error`，原始原因必须按协议识别。
+const CONTENT_REFUSAL_REASONS: Readonly<
+  Partial<Record<AssistantMessage["api"], readonly string[]>>
+> = {
+  "openai-completions": ["content_filter"],
+  "openai-responses": ["incomplete.content_filter"],
+  "anthropic-messages": ["refusal", "sensitive"],
+  "google-generative-ai": GOOGLE_CONTENT_REFUSAL_REASONS,
+  "google-vertex": GOOGLE_CONTENT_REFUSAL_REASONS,
+};
 
 /** Backend 进程内 OneShot LLM 入口，拥有总时限、取消和结果归一。 */
 export class LLMClient implements LLMClientPort {
@@ -105,23 +123,22 @@ export class LLMClient implements LLMClientPort {
       if (signal.aborted) return empty_llm_result({ cancelled: true });
       if (payload_error !== null)
         return empty_llm_result({
-          request_error: build_request_error(payload_error, snapshot, body),
+          request_error: build_llm_error(payload_error, snapshot, body, message),
           retryable: false,
         });
       const failure = observation?.failure();
       if (failure)
         return empty_llm_result({
-          request_error: build_request_error(failure.error, snapshot, body),
+          request_error: build_llm_error(failure.error, snapshot, body, message),
           retryable: failure.retryable,
         });
 
-      const response_result = contentText(message.content, "").trim();
-      return normalize_pi_result(snapshot, message, response_result);
+      return normalize_pi_result(snapshot, message, body);
     } catch (error) {
       if (timeout) return empty_llm_result({ timeout: true });
       if (signal.aborted) return empty_llm_result({ cancelled: true });
       return empty_llm_result({
-        request_error: build_request_error(error, snapshot, body),
+        request_error: build_llm_error(error, snapshot, body),
         ...(error instanceof AppError &&
         (error.code !== "model.provider_failed" || error.diagnostic_context["retryable"] === false)
           ? { retryable: false }
@@ -134,18 +151,27 @@ export class LLMClient implements LLMClientPort {
   }
 }
 
-/** Pi 的终态是成功与否的权威；供应商 raw reason 只用于后续诊断。 */
+/** 明确的内容拒绝进入内容处理，其余 Pi 请求失败继续交由调度器恢复。 */
 function normalize_pi_result(
   snapshot: ModelRequestSnapshot,
   message: AssistantMessage,
-  response_result: string,
+  body: LLMRequestBody,
 ): LLMRequestResult {
+  const finish_error = read_finish_error(message);
   if (
-    message.stopReason === "error" ||
-    message.stopReason === "aborted" ||
-    message.stopReason === "pending"
+    finish_error === undefined &&
+    (message.stopReason === "error" ||
+      message.stopReason === "aborted" ||
+      message.stopReason === "pending")
   ) {
-    throw new Error(message.errorMessage ?? "Provider request did not complete normally.");
+    return empty_llm_result({
+      request_error: build_llm_error(
+        new Error(message.errorMessage ?? "Provider request did not complete normally."),
+        snapshot,
+        body,
+        message,
+      ),
+    });
   }
   const response_think = message.content
     .filter((block) => block.type === "thinking")
@@ -153,14 +179,17 @@ function normalize_pi_result(
     .join("")
     .trim();
   const usage = normalize_usage(message);
-  const finish_error = read_finish_error(snapshot, message);
   return {
     response_think,
-    response_result: finish_error === undefined ? response_result : "",
+    response_result: finish_error === undefined ? contentText(message.content, "").trim() : "",
     ...usage,
     cancelled: false,
     timeout: false,
-    ...(finish_error === undefined ? {} : { response_error: finish_error }),
+    ...(finish_error === undefined
+      ? {}
+      : {
+          response_error: build_llm_error(finish_error, snapshot, body, message),
+        }),
   };
 }
 
@@ -189,39 +218,39 @@ function read_usage_tokens(value: unknown): number {
   return Math.max(0, read_json_integer(value, 0));
 }
 
-/** 统一拒绝不完整终态；正常结束的正文由消费方按任务协议校验。 */
-function read_finish_error(
-  snapshot: ModelRequestSnapshot,
-  message: AssistantMessage,
-): LogError | undefined {
-  const reason_key =
-    snapshot.api_format === "Anthropic"
-      ? "stop_reason"
-      : snapshot.api_format === "OpenAIResponses"
-        ? "status"
-        : "finish_reason";
-  const raw_reason = message.rawStopReason ?? message.stopReason;
+/** 只识别协议内的明确拒绝值，宽泛或未知原因保留请求失败语义。 */
+function read_finish_error(message: AssistantMessage): string | undefined {
+  if (
+    message.rawStopReason !== undefined &&
+    CONTENT_REFUSAL_REASONS[message.api]?.includes(message.rawStopReason)
+  ) {
+    return message.errorMessage ?? "供应商拒绝生成当前内容。";
+  }
   if (message.stopReason === "length") {
-    return log_error_from_message("供应商返回长度截断。", {
-      [reason_key]: raw_reason,
-    });
+    return "供应商返回长度截断。";
   }
   if (message.stopReason === "toolUse") {
-    return log_error_from_message("供应商返回工具调用，当前任务不支持。", {
-      [reason_key]: raw_reason,
-    });
+    return "供应商返回工具调用，当前任务不支持。";
   }
   return undefined;
 }
 
-/** 请求异常只附加安全的模型与 work-unit 定位字段。 */
-function build_request_error(
+/** 失败只附加安全的模型、work-unit 定位与已取得的 SDK 终态。 */
+function build_llm_error(
   error: unknown,
   snapshot: ModelRequestSnapshot,
   body: LLMRequestBody,
+  message?: AssistantMessage,
 ): LogError {
   return to_log_error(error, {
     ...(error instanceof AppError ? error.diagnostic_context : {}),
+    ...(message === undefined
+      ? {}
+      : {
+          api: message.api,
+          stopReason: message.stopReason,
+          ...(message.rawStopReason === undefined ? {} : { rawStopReason: message.rawStopReason }),
+        }),
     api_format: snapshot.api_format,
     ...(snapshot.model_id === "" ? {} : { model_id: snapshot.model_id }),
     run_id: body.run_id,

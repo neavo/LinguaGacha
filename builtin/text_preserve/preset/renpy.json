@@ -1,14 +1,22 @@
 [
   {
-    "src": "\\{[^\\{\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}]*?\\}",
-    "info": "{=2.3}"
+    "src": "\\{\\{|\\[\\[",
+    "info": "字面转义：{{、[["
   },
   {
-    "src": "\\[[^\\[\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}]*?\\]",
-    "info": "[renpy.version_only]"
+    "src": "\\{#[^{}\\r\\n]*\\}",
+    "info": "字符串表上下文：{#menu}、{#菜单}"
   },
   {
-    "src": "%(?:\\([^)]+\\))?[-#0+]*(?:\\d+|\\*)?(?:\\.(?:\\d+|\\*))?[diouxXeEfFgGcrs%]",
-    "info": "%s、%(name)s、%.2f"
+    "src": "\\{[^{}\\r\\n\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}]*\\}",
+    "info": "花括号控制段：{b}、{/b}、{a=[url]}、{=style}、{0}；排除中日韩文字"
+  },
+  {
+    "src": "\\[(?:[^\\[\\]\"'\\\\\\r\\n\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}]|\"(?:[^\"\\\\\\r\\n]|\\\\[^\\r\\n])*\"|'(?:[^'\\\\\\r\\n]|\\\\[^\\r\\n])*'|\\[(?:[^\\[\\]\"'\\\\\\r\\n\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}]|\"(?:[^\"\\\\\\r\\n]|\\\\[^\\r\\n])*\"|'(?:[^'\\\\\\r\\n]|\\\\[^\\r\\n])*')*\\])*\\]",
+    "info": "插值：[name]、[a[0]]、[fn([1,2])]；支持一层内部方括号、引号内转义；中日韩文字仅允许在引号内"
+  },
+  {
+    "src": "%(?:\\([^)\\r\\n]+\\))?[-#0+]*(?:\\d+|\\*)?(?:\\.(?:\\d+|\\*))?[diouxXeEfFgGcrs%]",
+    "info": "百分号格式：%s、%(name)s、%02d、%.2f、%.*f、%%"
   }
 ]
