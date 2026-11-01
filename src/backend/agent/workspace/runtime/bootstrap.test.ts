@@ -21,7 +21,8 @@ import { promisify } from "node:util";
 import JSZip from "jszip";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../../tools/contract";
-import { AgentWorkspaceRunner, AgentWorkspaceRunError, type AgentWorkspaceOutput } from "./runner";
+import { AgentWorkspaceRunner, AgentWorkspaceRunError } from "./runner";
+import type { AgentProcessOutput } from "../../process-output";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { BackendResources } from "../../../bootstrap/backend-resources";
@@ -961,7 +962,7 @@ async function run(
 }
 
 /** 本场景期待额度内的完整输出。 */
-function output_content(output: AgentWorkspaceOutput) {
+function output_content(output: AgentProcessOutput) {
   if (!("content" in output)) throw new Error(output.message);
   return output.content;
 }

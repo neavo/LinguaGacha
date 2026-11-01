@@ -7,9 +7,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import npm_package from "npm/package.json";
-import { npm } from "./index";
+import type { AgentProcessOutput } from "../process-output";
 import { AgentExecutionRuntime } from "../execution/runtime";
-import { AgentWorkspaceRunner, type AgentWorkspaceOutput } from "../workspace/runtime/runner";
+import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
 
@@ -19,12 +19,6 @@ let root = "";
 let runtime = "";
 let tarball = "";
 let sequence = 0;
-
-it("稀疏参数数组在进入运行时前被拒绝", async () => {
-  const args: string[] = [];
-  args.length = 1;
-  await expect(npm.run(args)).rejects.toBeInstanceOf(TypeError);
-});
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "lg-npm-中文 空格-"));
@@ -148,7 +142,7 @@ async function create_fixture(
 }
 
 /** 本文件场景都期待额度内的完整输出。 */
-function content(output: AgentWorkspaceOutput) {
+function content(output: AgentProcessOutput) {
   if (!("content" in output)) throw new Error(output.message);
   return output.content;
 }
@@ -226,14 +220,6 @@ it("调用按顺序排队，失败不阻断后续调用，未捕获失败使执�
   const fixture = await create_fixture("queue");
   try {
     await fixture.install_fixture();
-    // 用户安装树中的同名包不能替代应用 SDK。
-    const fake = path.join(fixture.shared, "node_modules/@lg/npm");
-    await mkdir(fake, { recursive: true });
-    await writeFile(
-      path.join(fake, "package.json"),
-      JSON.stringify({ name: "@lg/npm", type: "module", exports: "./index.mjs" }),
-    );
-    await writeFile(path.join(fake, "index.mjs"), "export const npm = 'user';");
     const order = path.join(fixture.workspace, "order.log");
     const error: unknown = await fixture
       .run(
@@ -241,6 +227,7 @@ it("调用按顺序排队，失败不阻断后续调用，未捕获失败使执�
       import assert from "node:assert/strict";
       await assert.rejects(npm.run("--version"), TypeError);
       await assert.rejects(npm.run(["a\\0"]), TypeError);
+      await assert.rejects(npm.run(new Array(1)), TypeError);
       const log = (label, delay) => ["exec", "--offline", "--", "lg-fixture", "log", ${JSON.stringify(order)}, label, delay];
       const args = log("a", "300");
       const calls = [npm.run(args), npm.run(["definitely-not-a-command"]), npm.run(log("b", "0"))];
@@ -253,7 +240,7 @@ it("调用按顺序排队，失败不阻断后续调用，未捕获失败使执�
       .catch((error: unknown) => error);
     expect(await readFile(order, "utf8")).toBe("start a\nend a\nstart b\nend b\n");
     const { execution } = error as {
-      execution: { exitCode: number; stdout: AgentWorkspaceOutput; stderr: AgentWorkspaceOutput };
+      execution: { exitCode: number; stdout: AgentProcessOutput; stderr: AgentProcessOutput };
     };
     expect(execution.exitCode).toBe(1);
     // npm 自身的失败输出与脚本输出按调用顺序进入同一日志。
@@ -271,11 +258,12 @@ it("环境准备保留用户依赖与配置，清单缺失或损坏时可经 SDK
   const manifest_path = path.join(fixture.shared, "package.json");
   const read_manifest = async () => JSON.parse(await readFile(manifest_path, "utf8"));
   try {
+    await fixture.install_fixture();
     const cache = path.join(root, "custom cache");
     const configured = await fixture.run(`
       await npm.run(["config", "get", "cache"]);
       await npm.run(["pkg", "set", "custom=keep"]);
-      await npm.run(["uninstall", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--silent", "chardet"]);
+      await npm.run(["uninstall", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--silent", "lg-cli-fixture"]);
       await npm.run(["config", "set", "cache", ${JSON.stringify(cache)}]);
       await npm.run(["config", "get", "cache"]);
     `);
@@ -287,7 +275,7 @@ it("环境准备保留用户依赖与配置，清单缺失或损坏时可经 SDK
     await fixture.run("// 再次准备环境。");
     expect(await readFile(path.join(historical, "package.json"), "utf8")).toBe('{"version":"old"}');
     expect(await read_manifest()).toMatchObject({ custom: "keep" });
-    expect((await read_manifest()).dependencies.chardet).toBeUndefined();
+    expect((await read_manifest()).dependencies["lg-cli-fixture"]).toBeUndefined();
     expect(await readFile(path.join(fixture.shared, "npmrc"), "utf8")).toBe(config);
 
     await writeFile(manifest_path, "{ broken");

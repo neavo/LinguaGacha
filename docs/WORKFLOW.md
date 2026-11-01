@@ -57,7 +57,7 @@
 |macOS CLI 帮助|主程序运行 `LinguaGacha --cli translate --help`|
 |Linux CLI 帮助|`./LinguaGacha.AppImage --cli translate --help`|
 
-- `npm run dev` 准备静态资源并部署宿主平台工具。uv 版本由 `package.json` 的 `workspaceRuntimeTools.uv` 指定。首次构建可能下载种子与 uv 归档，运行时种子初始化可离线完成。
+- `npm run dev` 准备静态资源并部署宿主平台工具。首次构建可能下载依赖与 uv 归档。
 - `npm run build` 包含 TypeScript 检查和静态资源生成，`afterPack` 再按实际目标部署原生工具。开发与发行的原生工具准备均需要 Go 工具链。
 - CLI 命令按实际安装位置定位可执行文件，参数和资源扩展名以帮助为准。
 - CLI 输出字段与退出码见上表对应实现和测试。
@@ -241,7 +241,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - 统一资源入口：`node buildtools/resources/build.mjs [输出根目录] [--development]`。缺省生成 `build/resources/`，自定义输出放在仓库外。
 - 开发和仓库外集成测试使用 `--development` 准备宿主原生工具。发行构建由 `afterPack` 部署目标架构的工具。
 - 资源规则和构建边界使用 `npm test -- buildtools/resources buildtools/builder/native-tools.test.mjs` 验证。
-- 检查生成目录中的独立许可文本已清理。确认 `license.js` 等运行代码仍可用。
+
 按影响范围检查产物：
 
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
@@ -286,7 +286,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 
 ### Agent 共享执行环境
 
-- 共享租约、环境准备与时限：`npm test -- src/backend/agent/execution/runtime.test.ts`。
+- 共享租约、环境准备与时限：`npm test -- src/backend/agent/execution src/backend/agent/node`。
 - npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
 - Python 环境与模型声明：`npm test -- src/backend/agent/python`。常规测试使用自有夹具。
 - SDK 加载、原生 IPC 与 Python 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。设置 `LINGUAGACHA_TEST_PYTHON_ARCHIVE` 为当前平台 CPython 3.13.8 的官方归档，启用本地镜像集成测试。归档地址用随附 uv 的 `python list 3.13.8 --all-versions --output-format json` 查询。缺少归档时相关场景报告跳过。

@@ -14,17 +14,18 @@ function version_input(value: string): string {
 
 /** 入队前复制参数，后续调用方修改不影响已受理的操作。 */
 function arguments_input(values: readonly string[], nonempty: boolean): string[] {
+  if (!Array.isArray(values)) throw new TypeError("Python arguments must be an array.");
+  const args = [...values]; // 展开空位后再校验，避免 uv 把空位当成包名或脚本参数。
   if (
-    !Array.isArray(values) ||
-    (nonempty && values.length === 0) ||
-    values.some(
+    (nonempty && args.length === 0) ||
+    args.some(
       (value) => typeof value !== "string" || value.includes("\0") || (nonempty && !value.trim()),
     )
   )
     throw new TypeError(
       "Python arguments must be strings without NUL; package lists must be nonempty.",
     );
-  return [...values];
+  return args;
 }
 
 /** 只有缺失允许初始化或重建，权限和 IO 错误继续向外传播。 */
@@ -63,7 +64,7 @@ function project(version: string): Project {
 
 /** 固定目录拒绝链接，防止恢复时清理应用环境以外的安装树。 */
 function owned_directory(target: string): void {
-  if (exists(target) && (!fs.lstat(target).isDirectory() || fs.lstat(target).isSymbolicLink()))
+  if (exists(target) && !fs.lstat(target).isDirectory())
     throw new Error(`Python managed directory must not be a link or file: ${target}`);
 }
 

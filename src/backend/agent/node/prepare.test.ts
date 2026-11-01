@@ -45,7 +45,7 @@ it.each(["EPERM", "EBUSY"])("Windows 的 %s 短暂占用解除后完成首次初
   });
 });
 
-it("持续占用有界失败并保留原始错误，下次准备回收暂存材料后恢复", async () => {
+it("持续占用有界失败，重试回收暂存材料并保留已初始化的用户文件", async () => {
   const error = Object.assign(new Error("still busy"), { code: "EPERM" });
   vi.mocked(rename).mockRejectedValue(error);
   await expect(prepare_node_environment(runtime, root)).rejects.toBe(error);
@@ -60,6 +60,17 @@ it("持续占用有界失败并保留原始错误，下次准备回收暂存材�
   await prepare_node_environment(runtime, root);
   expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(manifest);
   await expect(readFile(path.join(root, "partial"))).rejects.toMatchObject({ code: "ENOENT" });
+
+  await mkdir(`${root}.prepare`);
+  await writeFile(path.join(`${root}.prepare`, "partial"), "interrupted copy");
+  await writeFile(path.join(root, "user.txt"), "keep");
+  await writeFile(path.join(root, "npmrc"), "user configuration");
+  await prepare_node_environment(runtime, root);
+  expect(await readFile(path.join(root, "user.txt"), "utf8")).toBe("keep");
+  expect(await readFile(path.join(root, "npmrc"), "utf8")).toBe("user configuration");
+  await expect(readFile(path.join(`${root}.prepare`, "partial"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
 });
 
 it.each([

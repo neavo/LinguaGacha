@@ -306,7 +306,7 @@ function output_path(channel: "stdout" | "stderr") {
   );
 }
 
-/** 测试只替换宿主代理端口。 */
+/** 隔离租约与进程监管，用真实日志句柄验证 runner 的 IPC 和收尾。 */
 function build_runner(
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ) {

@@ -164,6 +164,10 @@ it("版本和包参数收窄，list 过滤外部解释器且不初始化环境",
   await env.ensure();
   expect(() => env.install([])).toThrow("nonempty");
   expect(() => env.remove(["\0"])).toThrow("NUL");
+  const sparse: string[] = [];
+  sparse.length = 1; // 保留真实空位，显式 undefined 不能证明稀疏数组校验。
+  expect(() => env.install(sparse)).toThrow(TypeError);
+  expect(() => env.run(sparse)).toThrow(TypeError);
   calls.uv.mockClear();
   await expect(python.list()).resolves.toEqual([{ version: "3.13.8", executable: selected }]);
   expect(calls.uv).toHaveBeenCalledOnce();

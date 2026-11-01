@@ -50,7 +50,12 @@ export async function build_workspace_resources({ root, output, manifest, runNpm
       name,
       private: true,
       type: "module",
-      exports: package_exports(package_entries),
+      exports: Object.fromEntries(
+        Object.keys(package_entries).map((entry) => [
+          entry === "index" ? "." : `./${entry}`,
+          `./${entry}.mjs`,
+        ]),
+      ),
     };
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, "package.json"), JSON.stringify(publicManifest, null, 2));
@@ -114,12 +119,5 @@ export async function deploy_workspace_dependencies({ root, output, names, runNp
   await writeFile(
     path.join(output, "package.json"),
     JSON.stringify({ name: "lg-workspace", private: true, type: "module", dependencies }, null, 2),
-  );
-}
-
-/** 包导出只定义公开 API，私有启动入口由宿主按路径定位。 */
-function package_exports(entries) {
-  return Object.fromEntries(
-    Object.keys(entries).map((name) => [name === "index" ? "." : `./${name}`, `./${name}.mjs`]),
   );
 }

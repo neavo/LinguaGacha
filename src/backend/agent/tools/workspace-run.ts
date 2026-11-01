@@ -131,18 +131,32 @@ export function create_agent_workspace_run_tool(options: {
       // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
       const effective_signal = signal ?? new AbortController().signal;
       effective_signal.throwIfAborted();
-      const { execution, images } = await run_and_refresh_skills(
-        () =>
-          options.run(
-            {
-              script: params.script,
-              timeoutMs: (params.timeout_seconds ?? defaultTimeoutSeconds) * 1000,
-              callId: api.callId,
-            },
-            effective_signal,
-          ),
-        options.refresh_skills,
-      );
+      const outcome = await options
+        .run(
+          {
+            script: params.script,
+            timeoutMs: (params.timeout_seconds ?? defaultTimeoutSeconds) * 1000,
+            callId: api.callId,
+          },
+          effective_signal,
+        )
+        .then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error }),
+        );
+      // 失败脚本也可能已写入技能。刷新失败时保留执行主因及完整原因链。
+      try {
+        await options.refresh_skills();
+      } catch (error) {
+        if (outcome.ok) throw new Error("Agent skill refresh failed.", { cause: error });
+        throw new AggregateError(
+          [outcome.error, error],
+          "Workspace execution and skill refresh failed.",
+          { cause: outcome.error },
+        );
+      }
+      if (!outcome.ok) throw outcome.error;
+      const { execution, images } = outcome.value;
       const result = agent_tool_result({
         ...execution,
         ...(images.length === 0
@@ -164,27 +178,4 @@ export function create_agent_workspace_run_tool(options: {
       };
     },
   });
-}
-
-/** 执行结算后都刷新技能，刷新失败保留执行主因及完整原因链。 */
-async function run_and_refresh_skills<T>(
-  run: () => Promise<T>,
-  refresh: () => Promise<unknown>,
-): Promise<T> {
-  const outcome = await run().then(
-    (value) => ({ ok: true as const, value }),
-    (error: unknown) => ({ ok: false as const, error }),
-  );
-  try {
-    await refresh();
-  } catch (error) {
-    if (outcome.ok) throw new Error("Agent skill refresh failed.", { cause: error });
-    throw new AggregateError(
-      [outcome.error, error],
-      "Workspace execution and skill refresh failed.",
-      { cause: outcome.error },
-    );
-  }
-  if (!outcome.ok) throw outcome.error;
-  return outcome.value;
 }

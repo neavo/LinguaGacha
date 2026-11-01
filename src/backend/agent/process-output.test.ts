@@ -69,12 +69,15 @@ it("监视日志末尾：截断处丢弃残片，回车进度折叠为一行，�
     (output) => outputs.push(output),
     controller.signal,
   );
-  const stdout = "第一行\n进度 100%\n";
-  await vi.waitFor(() => expect(outputs).toEqual([{ stdout, stderr: "", line: "进度 100%" }]));
-  fs.writeFileSync(path.join(directory, "err"), "警告\n");
-  await vi.waitFor(() =>
-    expect(outputs.at(-1)).toEqual({ stdout, stderr: "警告\n", line: "警告" }),
-  );
-  controller.abort();
-  await expect(watching).resolves.toBeUndefined();
+  try {
+    const stdout = "第一行\n进度 100%\n";
+    await vi.waitFor(() => expect(outputs).toEqual([{ stdout, stderr: "", line: "进度 100%" }]));
+    fs.writeFileSync(path.join(directory, "err"), "警告\n");
+    await vi.waitFor(() =>
+      expect(outputs.at(-1)).toEqual({ stdout, stderr: "警告\n", line: "警告" }),
+    );
+  } finally {
+    controller.abort();
+    await watching;
+  }
 });

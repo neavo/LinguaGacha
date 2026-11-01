@@ -19,11 +19,12 @@ declare const python: PythonApi;
 `.trim();
 }
 
+/** `workspace_run` 提供共享环境的入口，具体操作采用下方声明。 */
 export const PYTHON_DESCRIPTION = [
   "### Python：`@lg/python`",
   "",
-  "- 从 `@lg/python` 导入 `python`。程序以工作区根目录为 `cwd`，不能读取 stdin，结果写入文件后由脚本读取",
-  "- 每个 CPython 次版本有一个跨工程、跨对话共享的依赖环境，`install`、`remove` 影响之后的任务，缺少解释器或依赖时需要联网下载",
+  "- 从 `@lg/python` 导入 `python`。程序以工作区根目录为 `cwd`。程序不能读取 stdin。结果写入文件后由脚本读取",
+  "- 每个 CPython 次版本有一个跨工程、跨对话共享的依赖环境。`install`、`remove` 影响后续任务。缺少解释器或依赖时需要联网下载",
   "",
   "```ts",
   format_python_typescript_api(),

@@ -1,5 +1,6 @@
 import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { describe, expect, it, vi } from "vitest";
+import { validateToolArguments } from "@earendil-works/pi-ai";
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 import { create_agent_workspace_run_tool } from "./workspace-run";
 import { AgentToolError } from "../tool-definition";
@@ -48,7 +49,7 @@ describe("workspace_run", () => {
     });
     expect(JSON.stringify(result.details)).not.toContain("aW1hZ2U=");
   });
-  it("时限省略时取默认值，显式秒数换算为毫秒并带上调用身份", async () => {
+  it("时限采用默认值或显式秒数，校验范围后传递调用身份", async () => {
     const run = vi.fn<AgentWorkspacePort["run"]>(async () => ({
       images: [],
       execution: workspace_execution(),
@@ -64,6 +65,17 @@ describe("workspace_run", () => {
       },
       { script: "2;", timeoutMs: 900_000, callId: "explicit" },
     ]);
+    const { minTimeoutSeconds, maxTimeoutSeconds } = AGENT_WORKSPACE_RUNTIME_POLICY;
+    for (const timeout_seconds of [minTimeoutSeconds - 1, maxTimeoutSeconds + 1]) {
+      expect(() =>
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "invalid",
+          name: tool.name,
+          arguments: { script: "1;", timeout_seconds },
+        }),
+      ).toThrow();
+    }
   });
   it("调用期间停止仍保留实际成功的执行结果", async () => {
     const released = Promise.withResolvers<void>();

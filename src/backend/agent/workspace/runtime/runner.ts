@@ -9,10 +9,11 @@ import { pathToFileURL } from "node:url";
 import {
   AgentExecutionError,
   type AgentExecutionRequest,
+  type AgentExecutionResult,
   type AgentExecutionRuntime,
 } from "../../execution/runtime";
 import type { Supervisor } from "../../../../native/supervisor";
-import { read_agent_process_output, type AgentProcessOutput } from "../../process-output";
+import { read_agent_process_output } from "../../process-output";
 import type { AgentImageOptions } from "../../../../shared/agent-image";
 import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
@@ -32,21 +33,13 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
     doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
   }>;
 
-export type AgentWorkspaceOutput = AgentProcessOutput;
-
 type WorkspaceProcessResult = {
   exitCode: number | null;
   signal: string | null;
   failure?: string; // 可修复的执行失败，读取输出文件后再形成完整错误记录
 };
 
-export type AgentWorkspaceExecution = Readonly<{
-  scriptPath: string;
-  exitCode: number | null;
-  signal: string | null;
-  stdout: AgentWorkspaceOutput;
-  stderr: AgentWorkspaceOutput;
-}>;
+export type AgentWorkspaceExecution = AgentExecutionResult & Readonly<{ scriptPath: string }>;
 
 /** 程序失败保留可修复的执行记录。宿主故障继续使用应用诊断通道。 */
 export class AgentWorkspaceRunError extends Error {
@@ -54,8 +47,9 @@ export class AgentWorkspaceRunError extends Error {
   public constructor(
     message: string,
     public readonly execution: AgentWorkspaceExecution,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -92,13 +86,11 @@ export class AgentWorkspaceRunner {
       );
     } catch (error) {
       if (error instanceof AgentExecutionError)
-        throw new AgentWorkspaceRunError(error.message, {
-          scriptPath: request.scriptPath,
-          exitCode: error.execution.exitCode,
-          signal: error.execution.signal,
-          stdout: error.execution.stdout,
-          stderr: error.execution.stderr,
-        });
+        throw new AgentWorkspaceRunError(
+          error.message,
+          { scriptPath: request.scriptPath, ...error.execution },
+          { cause: error },
+        );
       throw error;
     }
   }

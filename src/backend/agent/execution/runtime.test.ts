@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import fs from "node:fs";
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -105,31 +104,6 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志", a
   }
 });
 
-it("发布种子符合工作区运行资源边界", async () => {
-  const modules = path.join(runtime, "seed/node_modules");
-  for (const [file, field] of [
-    ["package.json", "dependencies"],
-    ["package-lock.json", "packages"],
-  ] as const) {
-    const manifest = JSON.parse(await readFile(path.join(runtime, "seed", file), "utf8"));
-    expect(
-      Object.keys(manifest[field]).filter((name) => /(?:^|\/)@lg\/|(?:^|\/)mupdf$/u.test(name)),
-    ).toEqual([]);
-  }
-  for (const file of ["@lg", "mupdf", "exceljs/dist"])
-    expect(fs.existsSync(path.join(modules, file))).toBe(false);
-  for (const file of ["seed/packages", "app-packages.json", "node_modules/@lg/pdf/node_modules"])
-    expect(fs.existsSync(path.join(runtime, file))).toBe(false);
-  expect(fs.existsSync(path.join(modules, "exceljs/index.d.ts"))).toBe(true);
-  const wasm = fs
-    .readdirSync(runtime, { recursive: true })
-    .filter((file) => typeof file === "string" && path.basename(file) === "mupdf-wasm.wasm");
-  expect(wasm).toEqual([path.join("node_modules/mupdf/dist/mupdf-wasm.wasm")]);
-  expect(fs.existsSync(path.join(runtime, "node_modules/mupdf/dist/mupdf-wasm.wasm.br"))).toBe(
-    false,
-  );
-});
-
 it("跨实例共享租约，持有期间拒绝其它执行，释放后可重新取得", async () => {
   const fixture = create_runtime("lease");
   const other = create_runtime("lease");
@@ -141,24 +115,5 @@ it("跨实例共享租约，持有期间拒绝其它执行，释放后可重新�
   } finally {
     await fixture.execution.close();
     await other.execution.close();
-  }
-}, 30_000);
-
-it("准备阶段回收中断暂存材料，已初始化的用户文件继续保留", async () => {
-  const fixture = create_runtime("interrupted-prepare");
-  const staging = `${fixture.shared}.prepare`;
-  try {
-    for (const initialized of [false, true]) {
-      await mkdir(path.join(staging, "seed"), { recursive: true });
-      await writeFile(path.join(staging, "seed/partial"), "interrupted copy");
-      if (initialized) await writeFile(path.join(fixture.shared, "user.txt"), "keep");
-      await prepare(fixture);
-      expect(fs.existsSync(staging)).toBe(false);
-      expect(fs.existsSync(path.join(fixture.shared, "partial"))).toBe(false);
-      if (initialized)
-        expect(await readFile(path.join(fixture.shared, "user.txt"), "utf8")).toBe("keep");
-    }
-  } finally {
-    await fixture.execution.close();
   }
 }, 30_000);

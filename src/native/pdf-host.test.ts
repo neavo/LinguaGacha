@@ -144,9 +144,8 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
       })();
     `,
     );
-    const electron =
-      process.env.LINGUAGACHA_TEST_ELECTRON ??
-      (createRequire(import.meta.url)("electron") as string);
+    // 打包应用只启动产品入口，打印探针必须由开发 Electron 加载自己的入口。
+    const electron = createRequire(import.meta.url)("electron") as string;
     const environment: NodeJS.ProcessEnv = { ...process.env, NODE_OPTIONS: "" };
     delete environment.ELECTRON_RUN_AS_NODE;
     const result = await promisify(execFile)(electron, [entry], {
