@@ -51,6 +51,7 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { UpdateDialog } from "@frontend/app/shell/update-dialog";
 import { AppSidebar } from "@frontend/app/shell/app-sidebar";
 import { AppTitlebar } from "@frontend/app/shell/app-titlebar";
+import { useAppSidebar } from "@frontend/app/shell/use-app-sidebar";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { LogWindowPage } from "@frontend/pages/log-window-page/page";
 import {
@@ -68,7 +69,6 @@ import {
   type AppLanguage,
 } from "@domain/app-language";
 
-const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed"; // 窗口本地侧栏偏好的持久化键
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 
@@ -104,9 +104,7 @@ function AppContent(): JSX.Element {
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
   // 请求与实际导航共同提交，工程选择期间保留，离开目标流程时清除。
   const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
-  const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(
-    () => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true",
-  );
+  const { is_sidebar_collapsed, on_open_change } = useAppSidebar(selected_route);
   const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
     phase: "idle",
@@ -123,9 +121,6 @@ function AppContent(): JSX.Element {
   const app_title = t("app.metadata.app_name");
   const update_release = read_update_release(update_dialog_state);
   const update_release_url = update_release?.release_url ?? null;
-  useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(is_sidebar_collapsed));
-  }, [is_sidebar_collapsed]);
 
   useEffect(() => {
     let is_disposed = false;
@@ -444,9 +439,7 @@ function AppContent(): JSX.Element {
       />
       <SidebarProvider
         open={!is_sidebar_collapsed}
-        onOpenChange={(is_open) => {
-          set_is_sidebar_collapsed(!is_open); // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致
-        }}
+        onOpenChange={on_open_change}
         style={
           {
             "--sidebar-width": "256px",
