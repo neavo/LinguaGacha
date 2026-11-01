@@ -288,43 +288,25 @@ describe("LLMClient", () => {
   });
 
   it.each([
-    ["OpenAI", "length", "finish_reason"],
-    ["OpenAI", "tool_calls", "finish_reason"],
-    ["OpenAIResponses", "incomplete", "status"],
-    ["Anthropic", "max_tokens", "stop_reason"],
-    ["Anthropic", "tool_use", "stop_reason"],
-  ] as const)("把 %s/%s 保留为响应终态错误", async (api_format, raw_reason, field) => {
-    const mock =
-      api_format === "Anthropic"
-        ? api_mocks.streamSimple
-        : api_format === "OpenAIResponses"
-          ? api_mocks.responses
-          : api_mocks.openai;
-    const is_length =
-      raw_reason === "length" || raw_reason === "incomplete" || raw_reason === "max_tokens";
-    mock.mockImplementation(() =>
+    ["length", "length"],
+    ["toolUse", "tool_calls"],
+  ] as const)("把 %s 终态交给内容处理并保留用量", async (stopReason, rawStopReason) => {
+    api_mocks.openai.mockImplementation(() =>
       completed_stream(
         create_message({
-          api:
-            api_format === "Anthropic"
-              ? "anthropic-messages"
-              : api_format === "OpenAIResponses"
-                ? "openai-responses"
-                : "openai-completions",
-          provider: api_format === "Anthropic" ? "anthropic" : "openai",
           content: [
             { type: "thinking", thinking: "推理" },
             { type: "text", text: "部分正文" },
           ],
-          rawStopReason: raw_reason,
-          stopReason: is_length ? "length" : "toolUse",
+          rawStopReason,
+          stopReason,
           usage: create_usage({ input: 4, output: 5 }),
         }),
       ),
     );
     const client = create_client();
 
-    const result = await client.request(create_body({ api_format }), new AbortController().signal);
+    const result = await client.request(create_body(), new AbortController().signal);
 
     expect(result).toMatchObject({
       response_think: "推理",
@@ -332,35 +314,7 @@ describe("LLMClient", () => {
       input_tokens: 4,
       output_tokens: 5,
       response_error: {
-        context: { [field]: raw_reason },
-      },
-    });
-    expect(result).not.toHaveProperty("request_error");
-  });
-
-  it("把 Google 长度截断保留为响应终态错误", async () => {
-    api_mocks.streamSimple.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          api: "google-generative-ai",
-          provider: "google",
-          content: [{ type: "text", text: "部分正文" }],
-          rawStopReason: "MAX_TOKENS",
-          stopReason: "length",
-        }),
-      ),
-    );
-    const client = create_client();
-
-    const result = await client.request(
-      create_body({ api_format: "Google", model_id: "gemini-2.5-flash" }),
-      new AbortController().signal,
-    );
-
-    expect(result).toMatchObject({
-      response_result: "",
-      response_error: {
-        context: { finish_reason: "MAX_TOKENS" },
+        context: { rawStopReason, stopReason },
       },
     });
     expect(result).not.toHaveProperty("request_error");
@@ -385,15 +339,104 @@ describe("LLMClient", () => {
       timeout: false,
     });
     expect(result).not.toHaveProperty("request_error");
+    expect(result).not.toHaveProperty("response_error");
   });
 
-  it("Pi provider error 返回完整诊断并丢弃部分结果", async () => {
+  it.each([
+    ["OpenAI", "openai-completions", "content_filter"],
+    ["SakuraLLM", "openai-completions", "content_filter"],
+    ["OpenAIResponses", "openai-responses", "incomplete.content_filter"],
+    ["Anthropic", "anthropic-messages", "refusal"],
+    ["Anthropic", "anthropic-messages", "sensitive"],
+    ["Google", "google-generative-ai", "SAFETY"],
+    ["Google", "google-generative-ai", "RECITATION"],
+    ["Google", "google-generative-ai", "BLOCKLIST"],
+    ["Google", "google-generative-ai", "PROHIBITED_CONTENT"],
+    ["Google", "google-generative-ai", "SPII"],
+    ["Google", "google-vertex", "SAFETY"],
+    ["Google", "google-vertex", "RECITATION"],
+    ["Google", "google-vertex", "BLOCKLIST"],
+    ["Google", "google-vertex", "PROHIBITED_CONTENT"],
+    ["Google", "google-vertex", "SPII"],
+  ] as const)("%s/%s/%s 内容拒绝进入内容重试并保留用量", async (api_format, api, rawStopReason) => {
+    const stream = () =>
+      completed_stream(
+        create_message({
+          api,
+          rawStopReason,
+          stopReason: "error",
+          errorMessage: "供应商拒绝内容",
+          content: [{ type: "text", text: "部分正文" }],
+          usage: create_usage({ input: 4, cacheRead: 2, output: 5, reasoning: 2 }),
+        }),
+      );
+    api_mocks.openai.mockImplementation(stream);
+    api_mocks.responses.mockImplementation(stream);
+    api_mocks.streamSimple.mockImplementation(stream);
+
+    const result = await create_client().request(
+      create_body({ api_format }),
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual(
+      create_result({
+        input_tokens: 6,
+        reasoning_tokens: 2,
+        output_tokens: 3,
+        response_error: {
+          message: "供应商拒绝内容",
+          context: {
+            api,
+            stopReason: "error",
+            rawStopReason,
+            api_format,
+            model_id: "gpt-5-mini",
+            run_id: "run-1",
+            work_unit_id: "unit-1",
+          },
+        },
+      }),
+    );
+  });
+
+  it("内容拒绝缺少供应商说明时仍携带原始终态", async () => {
+    api_mocks.openai.mockImplementation(() =>
+      completed_stream(
+        create_message({
+          rawStopReason: "content_filter",
+          stopReason: "error",
+        }),
+      ),
+    );
+    const result = await create_client().request(create_body(), new AbortController().signal);
+    expect(result.response_error).toMatchObject({
+      message: expect.stringMatching(/\S/u),
+      context: { rawStopReason: "content_filter" },
+    });
+    expect(result).not.toHaveProperty("request_error");
+  });
+
+  it.each([
+    ["openai-completions", "network_error", "error"],
+    ["openai-completions", "unknown", "error"],
+    ["openai-completions", undefined, "error"],
+    ["openai-responses", "failed", "error"],
+    ["openai-responses", "incomplete", "error"],
+    ["google-generative-ai", "OTHER", "error"],
+    ["google-generative-ai", "safety", "error"],
+    ["google-generative-ai", "content_filter", "error"],
+    ["unknown-api", "content_filter", "error"],
+    ["openai-completions", undefined, "aborted"],
+    ["openai-completions", undefined, "pending"],
+  ] as const)("%s/%s/%s 请求错误保留诊断并丢弃部分结果", async (api, rawStopReason, stopReason) => {
     api_mocks.openai.mockImplementation(() =>
       completed_stream(
         create_message({
           content: [{ type: "text", text: "部分正文" }],
-          rawStopReason: "content_filter",
-          stopReason: "error",
+          api,
+          ...(rawStopReason === undefined ? {} : { rawStopReason }),
+          stopReason,
           errorMessage: "供应商爆炸",
         }),
       ),
@@ -408,6 +451,9 @@ describe("LLMClient", () => {
           name: "Error",
           message: "供应商爆炸",
           context: {
+            api,
+            stopReason,
+            ...(rawStopReason === undefined ? {} : { rawStopReason }),
             api_format: "OpenAI",
             model_id: "gpt-5-mini",
             run_id: "run-1",
@@ -416,12 +462,16 @@ describe("LLMClient", () => {
         },
       }),
     );
+    expect(result).not.toHaveProperty("response_error");
   });
 
-  it("外部取消丢弃已收到的部分结果", async () => {
+  it("外部取消优先于内容拒绝并丢弃部分结果", async () => {
     const controller = new AbortController();
     api_mocks.openai.mockImplementation((_model, _context, options) =>
-      abortable_stream(options, "部分正文"),
+      abortable_stream(options, "部分正文", {
+        stopReason: "error",
+        rawStopReason: "content_filter",
+      }),
     );
     const client = create_client();
 
@@ -442,10 +492,13 @@ describe("LLMClient", () => {
     expect(api_mocks.openai).not.toHaveBeenCalled();
   });
 
-  it("总时限到期后返回 timeout 并丢弃部分结果", async () => {
+  it("总时限优先于内容拒绝并丢弃部分结果", async () => {
     vi.useFakeTimers();
     api_mocks.openai.mockImplementation((_model, _context, options) =>
-      abortable_stream(options, "部分正文"),
+      abortable_stream(options, "部分正文", {
+        stopReason: "error",
+        rawStopReason: "content_filter",
+      }),
     );
     const client = create_client();
 
@@ -523,6 +576,7 @@ function completed_stream(message: AssistantMessage): AssistantMessageEventStrea
 function abortable_stream(
   options: StreamOptions | undefined,
   partial_text = "",
+  terminal: Partial<AssistantMessage> = {},
 ): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
   if (partial_text !== "") {
@@ -537,7 +591,7 @@ function abortable_stream(
     stream.push({
       type: "error",
       reason: "aborted",
-      error: create_message({ stopReason: "aborted", errorMessage: "请求已中止" }),
+      error: create_message({ stopReason: "aborted", errorMessage: "请求已中止", ...terminal }),
     });
   };
   if (options?.signal?.aborted) abort();

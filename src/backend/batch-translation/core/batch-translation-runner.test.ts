@@ -42,6 +42,18 @@ import { TranslationPlanner } from "../planning/translation-planner";
 import { AppError } from "../../../shared/error";
 import { format_log_content_text } from "../../../shared/log";
 import type { JsonRecord, MutableJsonRecord } from "../../../domain/json";
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessage,
+  type ProviderStreams,
+} from "@earendil-works/pi-ai";
+import { LLMClient } from "../../llm/llm-client";
+import { read_builtin_pi_models } from "../../llm/pi-model-catalog";
+
+const api_mocks = vi.hoisted(() => ({ stream: vi.fn<ProviderStreams["stream"]>() }));
+vi.mock("@earendil-works/pi-ai/api/openai-completions.lazy", () => ({
+  openAICompletionsApi: () => ({ stream: api_mocks.stream, streamSimple: api_mocks.stream }),
+}));
 
 describe("BatchTranslationRunner", () => {
   const cleanup_paths: string[] = [];
@@ -731,6 +743,104 @@ describe("BatchTranslationRunner", () => {
       }
     },
   );
+
+  it("内容拒绝有限耗尽后继续提交后续单元，期间不等待密钥恢复", async () => {
+    vi.useFakeTimers();
+    const builtin_root = create_template_root();
+    const pool = new TranslationWorkerPool({
+      builtinRoot: builtin_root,
+      execution: { kind: "in_process" },
+    });
+    const recoveries: NonNullable<BatchTranslationSnapshot["request_recovery"]>[] = [];
+    const runtime = create_task_runtime((snapshot) => {
+      if (snapshot.request_recovery !== null) recoveries.push(snapshot.request_recovery);
+    });
+    const committed: MutableJsonRecord[] = [];
+    // 只替代 SDK 响应，让真实客户端分类与翻译调度共同验证拒绝后的推进。
+    api_mocks.stream.mockImplementation((model, context) => {
+      const refused = JSON.stringify(context.messages).includes("拒绝原文");
+      const message: AssistantMessage = {
+        role: "assistant",
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        content: [{ type: "text", text: '{"id":0,"text":"有效译文"}' }],
+        stopReason: refused ? "error" : "stop",
+        rawStopReason: refused ? "content_filter" : "stop",
+        ...(refused ? { errorMessage: "Provider finish_reason: content_filter" } : {}),
+        timestamp: 0,
+        usage: {
+          input: 4,
+          output: 5,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 9,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+      };
+      const stream = createAssistantMessageEventStream();
+      if (refused) stream.push({ type: "error", reason: "error", error: message });
+      else stream.push({ type: "done", reason: "stop", message });
+      return stream;
+    });
+    const runner = new BatchTranslationRunner({
+      builtinRoot: builtin_root,
+      taskRuntime: runtime,
+      executorClient: pool,
+      taskPlanner: create_test_task_planner(),
+      logManager: create_log_manager(),
+      llmClient: new LLMClient({
+        userAgent: "LinguaGacha/test",
+        catalog: { read_models: read_builtin_pi_models },
+      }),
+      taskStore: create_task_store({
+        get_translation_items: () => [
+          create_pending_item(1, "first.txt", "拒绝原文"),
+          create_pending_item(2, "next.txt", "正常原文"),
+        ],
+        commit_translation_batch: async (items) => {
+          committed.push(...items);
+          return { changed_item_ids: items.map((item) => Number(item.id)), section_revisions: {} };
+        },
+      }),
+    });
+    try {
+      const context = create_run_context(1, 512, {
+        preceding_lines_threshold: 0, // 隔离两个单元，避免拒绝原文进入正常单元的上下文。
+        following_lines_threshold: 0,
+      });
+      const command: BatchTranslationRunCommand = {
+        operation: "translate",
+        mode: "new",
+        item_statuses: ["NONE"],
+      };
+      const handle = runtime.begin_standalone(command.operation);
+      await runtime.execute(handle, () =>
+        runner.run(handle, command, {
+          ...context,
+          model: { ...context.model, api_format: "OpenAI", model_id: "gpt-5-mini", api_key: "key" },
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await runtime.build_snapshot()).toMatchObject({
+        status: "done",
+        request_recovery: null,
+        run_progress: {
+          total_line: 2,
+          processed_line: 1,
+          failed_line: 1,
+        },
+      });
+      expect(await handle.completion).toMatchObject({ status: "done" });
+      expect(recoveries).toEqual([]);
+      expect(committed).toMatchObject([{ id: 2, dst: "有效译文", status: "PROCESSED" }]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      await runtime.dispose();
+      await pool.dispose();
+      api_mocks.stream.mockReset();
+    }
+  });
 
   it("SakuraLLM 批量响应无法对应时缩段，单条换行变化仍能完成写回", async () => {
     const builtin_root = create_template_root();
