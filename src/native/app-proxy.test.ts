@@ -1,13 +1,15 @@
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
+import { createConnection, createServer, type AddressInfo, type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { build } from "vite";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type TestContext } from "vitest";
 import { configure_app_proxy } from "./app-proxy";
 
 const { set_proxy } = vi.hoisted(() => ({ set_proxy: vi.fn() }));
@@ -92,36 +94,74 @@ describe("configure_app_proxy", () => {
   });
 });
 
-// Node 单测使用 Session 替身，真实代理协议在独立 Electron 进程中验证。
-it("真实 Electron Session 与 Undici 共用应用代理，回环固定直连", async () => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-app-proxy-"));
+/** 先用 Node 验证宿主的 IPv6 回环能力，避免将操作系统拒绝连接误判为 Chromium 代理故障。 */
+async function require_ipv6_loopback(context: TestContext): Promise<void> {
+  const server = createServer((socket) => socket.end());
+  let client: Socket | undefined;
   try {
-    await fs.symlink(
-      path.resolve("node_modules"),
-      path.join(directory, "node_modules"),
-      process.platform === "win32" ? "junction" : "dir",
-    );
-    await build({
-      configFile: false,
-      logLevel: "silent",
-      build: {
-        outDir: path.join(directory, "bundle"),
-        lib: {
-          entry: {
-            configuration: path.resolve("src/native/app-proxy.ts"),
-            client: path.resolve("src/backend/network/proxy-http-client.ts"),
-          },
-          formats: ["es"],
-          fileName: (_format, name) => `${name}.mjs`,
-        },
-        rolldownOptions: { external: ["electron", "undici", /^node:/u], platform: "node" },
-        minify: false,
-      },
+    server.listen(0, "::1");
+    await once(server, "listening");
+    client = createConnection({
+      host: "::1",
+      port: (server.address() as AddressInfo).port,
+      signal: AbortSignal.timeout(5000),
     });
-    const entry = path.join(directory, "main.mjs");
-    await fs.writeFile(
-      entry,
-      `
+    await once(client, "connect");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      typeof error.code === "string" &&
+      ["EACCES", "EAFNOSUPPORT", "EPROTONOSUPPORT", "EADDRNOTAVAIL", "ENETUNREACH"].includes(
+        error.code,
+      )
+    ) {
+      context.skip(`宿主无法连接 IPv6 回环：${error.code}`);
+    }
+    throw error;
+  } finally {
+    client?.destroy();
+    if (server.listening) await promisify(server.close.bind(server))();
+  }
+}
+
+// Node 单测使用 Session 替身，真实代理协议在独立 Electron 进程中验证。
+it.for([
+  { family: "IPv4", address: "0.0.0.0", hosts: ["localhost", "127.0.0.1", "127.1.2.3"] },
+  { family: "IPv6", address: "::1", hosts: ["[::1]"] },
+])(
+  "真实 Electron Session 与 Undici 共用应用代理，$family 回环固定直连",
+  { timeout: 40_000 },
+  async ({ family, address, hosts }, context) => {
+    if (family === "IPv6") await require_ipv6_loopback(context);
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-app-proxy-"));
+    try {
+      await fs.symlink(
+        path.resolve("node_modules"),
+        path.join(directory, "node_modules"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      await build({
+        configFile: false,
+        logLevel: "silent",
+        build: {
+          outDir: path.join(directory, "bundle"),
+          lib: {
+            entry: {
+              configuration: path.resolve("src/native/app-proxy.ts"),
+              client: path.resolve("src/backend/network/proxy-http-client.ts"),
+            },
+            formats: ["es"],
+            fileName: (_format, name) => `${name}.mjs`,
+          },
+          rolldownOptions: { external: ["electron", "undici", /^node:/u], platform: "node" },
+          minify: false,
+        },
+      });
+      const entry = path.join(directory, "main.mjs");
+      await fs.writeFile(
+        entry,
+        `
 import { app, session } from 'electron';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -139,7 +179,7 @@ void (async () => {
   });
   const client = new ProxyHttpClient({resolveProxy: url => session.defaultSession.resolveProxy(url)});
   try {
-    origin.listen(0);
+    origin.listen(0, ${JSON.stringify(address)});
     await once(origin, 'listening');
     proxy.listen(0, '127.0.0.1');
     await once(proxy, 'listening');
@@ -163,8 +203,10 @@ void (async () => {
     assert.equal(await (await client.fetch('http://proxy-fixture.invalid/undici', {signal: AbortSignal.timeout(5000)})).text(), 'origin:/undici');
     assert.deepEqual(requests, ['http://proxy-fixture.invalid/chromium', 'http://proxy-fixture.invalid/undici']);
     for (const host of ['localhost', '127.0.0.1', '127.1.2.3', '[::1]']) {
+      assert.equal(await session.defaultSession.resolveProxy('http://' + host), 'DIRECT');
+    }
+    for (const host of ${JSON.stringify(hosts)}) {
       const url = 'http://' + host + ':' + origin.address().port + '/loopback';
-      assert.equal(await session.defaultSession.resolveProxy(url), 'DIRECT');
       assert.equal(await (await session.defaultSession.fetch(url)).text(), 'origin:/loopback');
       assert.equal(await (await client.fetch(url, {signal: AbortSignal.timeout(5000)})).text(), 'origin:/loopback');
     }
@@ -188,18 +230,19 @@ void (async () => {
   }
 })().then(() => app.exit(0), error => { console.error(error); app.exit(1); });
 `,
-    );
-    const env = { ...process.env };
-    delete env.ELECTRON_RUN_AS_NODE;
-    delete env.LG_PROXY;
-    const executable = createRequire(import.meta.url)("electron") as string;
-    const result = await promisify(execFile)(
-      executable,
-      [entry, `--user-data-dir=${path.join(directory, "profile")}`],
-      { env, timeout: 30_000, windowsHide: true },
-    );
-    expect(result.stdout).toContain("app-proxy-ok");
-  } finally {
-    await fs.rm(directory, { recursive: true, force: true });
-  }
-}, 40_000);
+      );
+      const env = { ...process.env };
+      delete env.ELECTRON_RUN_AS_NODE;
+      delete env.LG_PROXY;
+      const executable = createRequire(import.meta.url)("electron") as string;
+      const result = await promisify(execFile)(
+        executable,
+        [entry, `--user-data-dir=${path.join(directory, "profile")}`],
+        { env, timeout: 30_000, windowsHide: true },
+      );
+      expect(result.stdout).toContain("app-proxy-ok");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  },
+);
