@@ -11,7 +11,7 @@ import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { ApiStreamHub } from "../api/api-stream-hub";
 import { t_main_log } from "../log/log-text";
-import type { ProxyResolver } from "../network/proxy-http-client";
+import type { ProxyResolver } from "../network/proxy-route";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 import { AppError } from "../../shared/error";
 import type { LogTargets } from "../../shared/log";

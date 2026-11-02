@@ -4,7 +4,7 @@ import { default_native_fs } from "../../../native/native-fs";
 import { Supervisor, type SupervisedProcessResult } from "../../../native/supervisor";
 import { resolve_workspace_runtime_entry } from "../../../native/workspace-runtime";
 import { WorkspaceProxy } from "../../network/workspace-proxy";
-import type { ProxyResolver } from "../../network/proxy-http-client";
+import type { ProxyResolver } from "../../network/proxy-route";
 import { AppError } from "../../../shared/error";
 import { read_agent_process_output, type AgentProcessOutput } from "../process-output";
 

@@ -12,6 +12,7 @@ const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const WORKSPACE_RUNTIME_BOOTSTRAP_PATH = "src/backend/agent/workspace/runtime/bootstrap.ts";
 const PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/proxy-http-client.ts";
+const PROXY_DISPATCHER_RELATIVE_PATH = "src/backend/network/proxy-dispatcher.ts";
 const BACKEND_SERVICES_RELATIVE_PATH = "src/backend/bootstrap/backend-services.ts";
 
 /**
@@ -56,7 +57,7 @@ function create_backend_module_ownership_rule() {
   };
 }
 
-/** Undici dispatcher 与全局 fetch 统一由 network 的应用代理客户端拥有。 */
+/** Undici 入口与调度器归 network，全局 fetch 只由应用代理客户端安装。 */
 function create_backend_outbound_network_rule() {
   return {
     name: "后端出站网络边界",
@@ -70,12 +71,15 @@ function create_backend_outbound_network_rule() {
         if (relative_path === PROXY_HTTP_CLIENT_RELATIVE_PATH) continue;
         const content = context.read_file(file_path);
         for (const import_entry of context.read_imports(file_path)) {
-          if (import_entry.specifier !== "undici") {
+          if (
+            import_entry.specifier !== "undici" ||
+            relative_path === PROXY_DISPATCHER_RELATIVE_PATH
+          ) {
             continue;
           }
           errors.push({
             line: import_entry.line,
-            message: "Undici 传输只能由 proxy-http-client 拥有",
+            message: "Undici 传输只能由 proxy-http-client 与 proxy-dispatcher 拥有",
             relative_path,
           });
         }

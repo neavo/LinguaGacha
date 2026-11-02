@@ -59,6 +59,7 @@ describe("backend boundary rules", () => {
           'import { fetch as undici_fetch } from "undici";',
           'undici_fetch("https://example.com");',
         ].join("\n"),
+        "src/backend/network/proxy-dispatcher.ts": 'import { Agent, Dispatcher } from "undici";',
         "src/native/native-fs.ts": 'import "node:fs/promises";',
         "src/backend/agent/workspace/runtime/bootstrap.ts": 'import "node:fs/promises";',
       }),
@@ -74,10 +75,14 @@ describe("backend boundary rules", () => {
     expect(
       run_rules({
         "src/cli/main.ts": "globalThis.fetch = custom_fetch;",
+        "src/backend/network/proxy-dispatcher.ts": "globalThis.fetch = custom_fetch;",
       }),
     ).toEqual([
       expect.objectContaining({
         relative_path: "src/cli/main.ts",
+      }),
+      expect.objectContaining({
+        relative_path: "src/backend/network/proxy-dispatcher.ts",
       }),
     ]);
   });

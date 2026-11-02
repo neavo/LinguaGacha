@@ -4,7 +4,8 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
-import { ProxyHttpClient, type ProxyResolver } from "../network/proxy-http-client";
+import { ProxyHttpClient } from "../network/proxy-http-client";
+import type { ProxyResolver } from "../network/proxy-route";
 import type { LogTargets } from "../../shared/log";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 

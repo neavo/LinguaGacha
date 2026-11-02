@@ -8,6 +8,7 @@ import { DEFAULT_SETTING } from "../../domain/setting";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { ProxyHttpClient } from "../network/proxy-http-client";
+import { ProxyDispatcher } from "../network/proxy-dispatcher";
 import { BackendResources } from "./backend-resources";
 
 let app_root = "";
@@ -108,6 +109,29 @@ describe("BackendResources", () => {
     expect(transport_dispose).toHaveBeenCalledOnce();
     expect(database_close).toHaveBeenCalledOnce();
     expect(log_shutdown).toHaveBeenCalledOnce();
+  });
+
+  it("调度器关闭失败仍恢复全局入口并释放数据库与日志", async () => {
+    const original_fetch = globalThis.fetch;
+    const resources = await BackendResources.start(create_options());
+    const failure = new Error("dispatcher close failed");
+    const close: () => Promise<void> = ProxyDispatcher.prototype.close;
+    vi.spyOn(ProxyDispatcher.prototype, "close").mockImplementationOnce(async function (
+      this: ProxyDispatcher,
+    ) {
+      await close.call(this);
+      throw failure;
+    });
+    const database_close = vi.spyOn(ProjectDatabase.prototype, "close");
+    const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");
+    try {
+      await expect(resources.dispose()).rejects.toMatchObject({ errors: [failure] });
+      expect(globalThis.fetch).toBe(original_fetch);
+      expect(database_close).toHaveBeenCalledOnce();
+      expect(log_shutdown).toHaveBeenCalledOnce();
+    } finally {
+      await resources.dispose();
+    }
   });
 });
 
