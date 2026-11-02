@@ -1,4 +1,4 @@
-import { type JSX, useState } from "react";
+import { type JSX, type ReactNode, useState } from "react";
 import {
   ChevronDown,
   FileOutput,
@@ -29,6 +29,7 @@ import { AgentComposerModelControls } from "./agent-composer-model-controls";
 
 /** 工具栏菜单随底部交互锁关闭，模型配置请求的可用性由模型控件管理。 */
 export function AgentTaskToolbar(props: {
+  add_file: ReactNode;
   locked: boolean;
   can_reset: boolean;
   context: AgentContextSnapshot;
@@ -81,6 +82,7 @@ export function AgentTaskToolbar(props: {
           <ShortcutTooltipRow label={t("agent_page.action.new_task")} shortcut="create" />
         </TooltipContent>
       </Tooltip>
+      {props.add_file}
       <AppButton
         type="button"
         size="sm"

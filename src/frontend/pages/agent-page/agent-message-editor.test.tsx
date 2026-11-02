@@ -608,29 +608,21 @@ describe("AgentMessageEditor", () => {
     });
   });
 
-  it("禁用的底栏控件仍由非禁用外壳承接鼠标提示", async () => {
-    const view = await render_editor({
-      read_only: true,
-    });
-
-    const image_button = view.querySelector<HTMLButtonElement>(".agent-composer__file-trigger");
-    const trigger = image_button?.parentElement;
-    expect(image_button?.disabled).toBe(true);
-    expect(trigger).not.toBeNull();
-    vi.useFakeTimers();
+  it("编辑锁阻止打开文件选择器", async () => {
+    const view = await render_editor();
+    const button = view.querySelector<HTMLButtonElement>(".agent-composer__file-trigger")!;
+    const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input")!;
+    const open_picker = vi.spyOn(input, "click").mockImplementation(() => undefined);
     try {
-      await act(async () => {
-        trigger?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-        trigger?.dispatchEvent(
-          new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }),
-        );
-        vi.runOnlyPendingTimers();
-      });
-      expect(document.body.querySelector('[role="tooltip"]')?.textContent).toContain(
-        "agent_page.action.add_file",
-      );
+      await act(async () => button.click());
+      expect(open_picker).toHaveBeenCalledOnce();
+
+      await render_editor({ read_only: true });
+      expect(button.disabled).toBe(true);
+      await act(async () => button.click());
+      expect(open_picker).toHaveBeenCalledOnce();
     } finally {
-      vi.useRealTimers();
+      open_picker.mockRestore();
     }
   });
 
@@ -669,29 +661,65 @@ describe("AgentMessageEditor", () => {
     expect(input.draft.read().attachments).toEqual([]);
   });
 
-  it.each(["strong", "small"])("候选 %s 列使用应用提示显示自身全文", async (column) => {
-    mention_files.files = [
-      { kind: "workspace", path: "资料/很长的目录/角色设定.xlsx", count: 320, unit: "items" },
-    ];
+  it("鼠标与键盘共用活动项，回车选择当前行且鼠标移动不滚动菜单", async () => {
     const view = await render_editor();
     const editor = get_editor(view);
-    await set_document(editor, "@角色", 3);
-    await wait_for_element(view, 'button[data-kind="file"]');
-    const row = view.querySelector('button[data-kind="file"]')!;
-    const trigger = row.querySelector<HTMLElement>(column)!;
-    expect(row.querySelectorAll("button")).toHaveLength(0);
-    expect(trigger.getAttribute("title")).toBeNull();
+    await set_document(editor, "@", 1);
+    await act(async () => editor.focus());
+    const options = [...view.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+    const scroll_into_view = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+
+    await act(async () => {
+      options[1]!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    });
+    expect(view.querySelectorAll('[role="option"][aria-selected="true"]')).toHaveLength(1);
+    expect(options[1]!.getAttribute("aria-selected")).toBe("true");
+    expect(editor.contentDOM.getAttribute("aria-activedescendant")).toBe(options[1]!.id);
+    expect(editor.hasFocus).toBe(true);
+    expect(scroll_into_view).not.toHaveBeenCalled();
+
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(options[0]!.getAttribute("aria-selected")).toBe("true");
+    // 键盘切换后，在同一行内继续移动鼠标也应重新接管活动项。
+    await act(async () => {
+      options[1]!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    });
+    await dispatch_key(editor.contentDOM, "Enter");
+    expect(editor.state.doc.toString()).toBe('@skill("corpus-search") ');
+  });
+
+  it.each([false, true])("候选整行显示标题与描述，禁用状态为 %j", async (disabled) => {
+    const on_compact = vi.fn();
+    const view = await render_editor({
+      instructions: [
+        {
+          id: "compact_context",
+          title: "压缩上下文",
+          description: "当前上下文较少，无需压缩",
+          disabled,
+          execute: on_compact,
+        },
+      ],
+    });
+    const editor = get_editor(view);
+    await set_document(editor, "@", 1);
+    const row = view.querySelector<HTMLButtonElement>('button[data-kind="instruction"]')!;
+    const trigger = row.closest<HTMLElement>('[data-slot="tooltip-trigger"]')!;
     vi.useFakeTimers();
     try {
       await act(async () => {
         trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
         trigger.dispatchEvent(
           new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }),
         );
         vi.runOnlyPendingTimers();
       });
       const tooltip = document.body.querySelector('[role="tooltip"]');
-      expect(tooltip?.textContent).toBe(trigger.textContent);
+      expect(tooltip?.textContent).toContain("压缩上下文");
+      expect(tooltip?.textContent).toContain("当前上下文较少，无需压缩");
+      expect(row.getAttribute("aria-selected")).toBe(disabled ? "false" : "true");
+      expect(on_compact).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -888,10 +916,11 @@ function EditorFixture({
         on_submit={options.on_submit ?? vi.fn()}
         on_cancel={options.on_cancel}
 
-        render_actions={({ has_content, uploads_pending }) => {
+        render_actions={({ has_content, uploads_pending }, add_file) => {
           const can_submit = !options.read_only && has_content && !uploads_pending;
           return {
             can_submit,
+            actions: add_file,
             submit: (
               <button type="submit" className="agent-composer__submit" disabled={!can_submit}>
                 发送

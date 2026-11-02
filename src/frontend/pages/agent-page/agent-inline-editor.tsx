@@ -114,11 +114,12 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         skills={props.skills}
         input_state={input_state}
         on_submit={submit}
-        render_actions={({ has_content, uploads_pending }) => {
+        render_actions={({ has_content, uploads_pending }, add_file) => {
           const can_submit =
             !read_only && props.unavailable_reason === null && has_content && !uploads_pending;
           return {
             can_submit,
+            actions: add_file,
             submit: (
               <>
                 <AppButton
