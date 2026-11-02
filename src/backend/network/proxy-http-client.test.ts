@@ -1,193 +1,181 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
+import { afterEach, expect, it, vi } from "vitest";
+import { Request, Response, Headers, FormData } from "undici";
+import { ProxyHttpClient } from "./proxy-http-client";
+import { with_http_response_info } from "./http-response-info";
+import { to_log_error } from "../../shared/error/log-error";
+import { listen } from "./proxy-test-support";
 
-const mocks = vi.hoisted(() => {
-  const direct_dispatchers: Array<{ close: ReturnType<typeof vi.fn> }> = [];
-  const proxy_dispatchers: Array<{ uri: string; close: ReturnType<typeof vi.fn> }> = [];
-  return {
-    direct_dispatchers,
-    proxy_dispatchers,
-    fetch: vi.fn(),
-  };
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-vi.mock("undici", () => {
-  /** 记录直连池实例和释放行为。 */
-  class Agent {
-    public readonly close = vi.fn(async () => undefined);
+/** 登记客户端，测试结束时统一恢复全局入口并关闭连接池。 */
+function client(
+  resolveProxy = async (_url: string) => "DIRECT",
+  redirects: "error" | "request" = "error",
+) {
+  const value = new ProxyHttpClient({ resolveProxy }, { redirects });
+  cleanups.push(() => value.dispose());
+  return value;
+}
 
-    /** 登记直连池，供测试观察释放。 */
-    public constructor() {
-      mocks.direct_dispatchers.push(this);
-    }
-  }
-  /** HTTP 与 SOCKS 测试共用同一可观察代理池 fake。 */
-  class ProxyAgent {
-    public readonly uri: string;
-    public readonly close = vi.fn(async () => undefined);
+it("每次跳转按完整目标重新选路，同 origin 切换代理后回到回环直连", async () => {
+  const received: string[] = [];
+  const end = await listen(
+    createServer((request, response) => {
+      received.push(`end:${request.url}`);
+      response.end("finished");
+    }),
+    cleanups,
+  );
+  const proxy_b = await listen(
+    createServer((request, response) => {
+      received.push(`B:${request.url}`);
+      response.writeHead(302, { location: `${end}/end` }).end();
+    }),
+    cleanups,
+  );
+  const proxy_a = await listen(
+    createServer((request, response) => {
+      received.push(`A:${request.url}`);
+      response.writeHead(302, { location: "http://remote.invalid/b?step=2" }).end();
+    }),
+    cleanups,
+  );
+  const start = await listen(
+    createServer((request, response) => {
+      received.push(`start:${request.url}`);
+      response.writeHead(302, { location: "http://remote.invalid/a?step=1" }).end();
+    }),
+    cleanups,
+  );
+  const resolveProxy = vi.fn(
+    async (url: string) => `PROXY ${new URL(url.includes("/a?") ? proxy_a : proxy_b).host}`,
+  );
+  const transport = client(resolveProxy, "request");
+  const response = await transport.fetch(`${start}/start`, { signal: AbortSignal.timeout(2000) });
+  expect(await response.text()).toBe("finished");
+  expect(response.url).toBe(`${end}/end`);
+  expect(resolveProxy.mock.calls.map(([url]) => url)).toEqual([
+    "http://remote.invalid/a?step=1",
+    "http://remote.invalid/b?step=2",
+  ]);
+  expect(received).toEqual([
+    "start:/start",
+    "A:http://remote.invalid/a?step=1",
+    "B:http://remote.invalid/b?step=2",
+    "end:/end",
+  ]);
+});
 
-    /** 记录代理地址与对应连接池。 */
-    public constructor(uri: string) {
-      this.uri = uri;
-      mocks.proxy_dispatchers.push(this);
-    }
-  }
-  return {
-    Agent,
-    ProxyAgent,
-    Socks5ProxyAgent: ProxyAgent,
-    fetch: mocks.fetch,
+it("关闭先结束代理等待，迟到路由不能再发送请求", async () => {
+  const received = vi.fn();
+  const proxy = await listen(
+    createServer((request, response) => {
+      received(request.url);
+      response.end("late request");
+    }),
+    cleanups,
+  );
+  const started = Promise.withResolvers<void>();
+  const route = Promise.withResolvers<string>();
+  const transport = client(async () => {
+    started.resolve();
+    return await route.promise;
+  });
+  const pending = transport.fetch("http://remote.invalid/late");
+  const result = pending.then(
+    () => "sent",
+    () => "cancelled",
+  );
+  await started.promise;
+  await transport.dispose();
+  route.resolve(`PROXY ${new URL(proxy).host}`);
+  expect(await result).toBe("cancelled");
+  expect(received).not.toHaveBeenCalled();
+});
+
+it("安装和关闭统一恢复 fetch 及同版本构造器", async () => {
+  const original = {
+    fetch: globalThis.fetch,
     Request: globalThis.Request,
     Response: globalThis.Response,
     Headers: globalThis.Headers,
     FormData: globalThis.FormData,
   };
+  const transport = client();
+  transport.install_as_global_fetch();
+  expect(globalThis).toMatchObject({
+    fetch: transport.fetch,
+    Request,
+    Response,
+    Headers,
+    FormData,
+  });
+  expect(() => transport.install_as_global_fetch()).toThrow();
+  const closing = transport.dispose();
+  expect(transport.dispose()).toBe(closing);
+  await closing;
+  expect(globalThis).toMatchObject(original);
+  await expect(transport.fetch("http://remote.invalid")).rejects.toThrow();
 });
 
-import { ProxyHttpClient, parse_proxy_route } from "./proxy-http-client";
-import { with_http_response_info } from "./http-response-info";
-
-beforeEach(() => {
-  mocks.fetch.mockReset().mockResolvedValue(new Response("ok"));
-  mocks.direct_dispatchers.length = 0;
-  mocks.proxy_dispatchers.length = 0;
-});
-
-describe("proxy route", () => {
-  it.each([
-    ["DIRECT", { kind: "direct" }],
-    ["PROXY 127.0.0.1:7890", { kind: "proxy", uri: "http://127.0.0.1:7890/" }],
-    ["HTTPS proxy.example:443", { kind: "proxy", uri: "https://proxy.example/" }],
-    ["SOCKS5 localhost:1080", { kind: "socks5", uri: "socks5://localhost:1080" }],
-    ["SOCKS4 old:1080; DIRECT", { kind: "direct" }],
-  ])("解析 %s", (rules, expected) => {
-    expect(parse_proxy_route(rules)).toEqual(expected);
-  });
-
-  it("没有支持路由时拒绝静默直连", () => {
-    expect(() => parse_proxy_route("SOCKS4 old:1080")).toThrow(
-      "Proxy returned no supported route.",
-    );
-  });
-});
-
-describe("ProxyHttpClient", () => {
-  it("共享 HTTP 入口把响应状态与重试时间交给调用上下文", async () => {
-    mocks.fetch.mockResolvedValue(
-      new Response(null, { status: 429, headers: { "Retry-After": "90" } }),
-    );
-    const client = new ProxyHttpClient({ resolveProxy: vi.fn(async () => "DIRECT") });
-    try {
-      const result = await with_http_response_info(async () => {
-        await client.fetch("https://api.example/v1/chat");
-        return {};
-      });
-      expect(result).toMatchObject({
-        http_status: 429,
-        retry_after_ms: 90_000,
-        http_received_at: expect.any(Number),
-      });
-    } finally {
-      await client.dispose();
-    }
-  });
-  it("安装唯一线程 transport 并在释放时恢复原 fetch", async () => {
-    const original_fetch = globalThis.fetch;
-    const client = new ProxyHttpClient({ resolveProxy: vi.fn(async () => "DIRECT") });
-
-    client.install_as_global_fetch();
-    try {
-      expect(globalThis.fetch).toBe(client.fetch);
-      expect(() => client.install_as_global_fetch()).toThrow();
-    } finally {
-      await client.dispose();
-    }
-    expect(globalThis.fetch).toBe(original_fetch);
-  });
-
-  it("每次请求按实际 URL 重新解析代理并禁止自动重定向", async () => {
-    const resolve_proxy = vi
-      .fn()
-      .mockResolvedValueOnce("PROXY 127.0.0.1:7890")
-      .mockResolvedValueOnce("PROXY 127.0.0.1:7891");
-    const client = new ProxyHttpClient({ resolveProxy: resolve_proxy });
-
-    await client.fetch("https://api.example/v1/models", { method: "GET" });
-    await client.fetch("https://api.example/v1/chat", { method: "POST" });
-
-    expect(resolve_proxy.mock.calls.map(([url]) => url)).toEqual([
-      "https://api.example/v1/models",
-      "https://api.example/v1/chat",
-    ]);
-    expect(mocks.fetch.mock.calls.map(([, init]) => init)).toEqual([
-      expect.objectContaining({ dispatcher: mocks.proxy_dispatchers[0], redirect: "error" }),
-      expect.objectContaining({ dispatcher: mocks.proxy_dispatchers[1], redirect: "error" }),
-    ]);
-  });
-
-  it("loopback 明确直连且不查询应用代理", async () => {
-    const resolve_proxy = vi.fn(async () => "PROXY 127.0.0.1:7890");
-    const client = new ProxyHttpClient({ resolveProxy: resolve_proxy });
-
-    await client.fetch("http://127.0.0.1:8080/v1/chat");
-
-    expect(resolve_proxy).not.toHaveBeenCalled();
-    expect(mocks.fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:8080/v1/chat",
-      expect.objectContaining({ dispatcher: mocks.direct_dispatchers[0] }),
-    );
-  });
-
-  it("代理解析失败不会发起直连请求", async () => {
-    const failure = new Error("resolve failed");
-    const client = new ProxyHttpClient({
-      resolveProxy: vi.fn(async () => {
-        throw failure;
-      }),
-    });
-
-    await expect(client.fetch("https://api.example/v1")).rejects.toBe(failure);
-    expect(mocks.fetch).not.toHaveBeenCalled();
-  });
-
-  it("释放所有自有直连和代理连接池", async () => {
-    const client = new ProxyHttpClient({
-      resolveProxy: vi.fn(async (url) =>
-        url.endsWith("/a") ? "PROXY 127.0.0.1:7890" : "SOCKS5 127.0.0.1:1080",
-      ),
-    });
-    await client.fetch("https://api.example/a");
-    await client.fetch("https://api.example/b");
-
-    await client.dispose();
-
-    expect(mocks.proxy_dispatchers.map(({ close }) => close.mock.calls.length)).toEqual([1, 1]);
-    expect(mocks.direct_dispatchers[0]?.close).toHaveBeenCalledOnce();
-    await expect(client.fetch("https://api.example/c")).rejects.toThrow("disposed");
-  });
-});
-
-// 工作区的重定向与取消由原生 fetch / Request 语义决定，代理解析沿同一端口执行。
-it("工作区保留 Request 与调用选项，并转发 Request 的取消信号", async () => {
-  const resolve_proxy = vi.fn(async () => "DIRECT");
-  const client = new ProxyHttpClient({ resolveProxy: resolve_proxy }, { redirects: "request" });
-  const controller = new AbortController();
-  const request = new Request("https://example.com/page", {
-    signal: controller.signal,
-    redirect: "manual",
-  });
-  await client.fetch(request);
-  expect(resolve_proxy).toHaveBeenCalledWith(request.url, request.signal);
-  expect(mocks.fetch).toHaveBeenCalledWith(
-    request,
-    expect.not.objectContaining({ redirect: expect.anything() }),
+it("后端禁止跳转，工作区遵循 Request 和调用选项", async () => {
+  const received: string[] = [];
+  const root = await listen(
+    createServer((request, response) => {
+      received.push(request.url!);
+      if (request.url === "/redirect") response.writeHead(302, { location: "/end" }).end();
+      else response.end("ok");
+    }),
+    cleanups,
   );
-  await client.fetch(request, { redirect: "follow" });
-  expect(mocks.fetch).toHaveBeenLastCalledWith(
-    request,
-    expect.objectContaining({ redirect: "follow" }),
+  await expect(client().fetch(`${root}/redirect`, { redirect: "follow" })).rejects.toThrow();
+  const transport = client(undefined, "request");
+  const request = new Request(`${root}/redirect`, { redirect: "manual" });
+  const manual = await transport.fetch(request as unknown as globalThis.Request);
+  expect(manual.status).toBe(302);
+  await manual.text();
+  expect(
+    await (
+      await transport.fetch(request as unknown as globalThis.Request, { redirect: "follow" })
+    ).text(),
+  ).toBe("ok");
+  await expect(transport.fetch(`${root}/redirect`, { redirect: "error" })).rejects.toThrow();
+  expect(received).toEqual(["/redirect", "/redirect", "/redirect", "/end", "/redirect"]);
+});
+
+it("真实响应保留状态、重试时间和解压后的响应流", async () => {
+  const root = await listen(
+    createServer((_request, response) => {
+      response.writeHead(429, { "Retry-After": "90", "Content-Encoding": "gzip" });
+      response.end(gzipSync("limited"));
+    }),
+    cleanups,
   );
-  controller.abort(new Error("stop"));
-  await expect(client.fetch(request)).rejects.toThrow("stop");
-  expect(mocks.fetch).toHaveBeenCalledTimes(2);
-  await client.dispose();
+  const transport = client();
+  const result = await with_http_response_info(async () => ({
+    body: await (await transport.fetch(root)).text(),
+  }));
+  expect(result).toMatchObject({
+    body: "limited",
+    http_status: 429,
+    retry_after_ms: 90_000,
+    http_received_at: expect.any(Number),
+  });
+});
+
+it("路由失败通过 fetch cause 和日志快照保留原始原因", async () => {
+  const cause = new Error("host resolver failed");
+  const transport = client(async () => {
+    throw cause;
+  });
+  const error = await transport.fetch("http://remote.invalid").catch((error: unknown) => error);
+  expect(error).toHaveProperty("cause", cause);
+  expect(to_log_error(error)).toMatchObject({
+    cause_chain: [expect.objectContaining({ message: cause.message })],
+  });
 });

@@ -7,7 +7,7 @@ import { HttpProxyAgent } from "http-proxy-agent";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import { SocksClient } from "socks";
-import { resolve_proxy_route, type ProxyResolver } from "./proxy-http-client";
+import { resolve_proxy_route, type ProxyResolver } from "./proxy-route";
 
 /** 工作区进程的默认代理桥接应用路由，连接与共享执行一起收尾。 */
 export class WorkspaceProxy {

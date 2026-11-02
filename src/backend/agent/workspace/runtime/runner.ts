@@ -17,7 +17,7 @@ import { read_agent_process_output } from "../../process-output";
 import type { AgentImageOptions } from "../../../../shared/agent-image";
 import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
-import type { ProxyResolver } from "../../../network/proxy-http-client";
+import type { ProxyResolver } from "../../../network/proxy-route";
 import type { AppPathService } from "../../../app/app-path-service";
 import {
   AGENT_WORKSPACE_ENTRY_ENV,

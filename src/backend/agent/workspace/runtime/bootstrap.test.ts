@@ -380,25 +380,19 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
       url: `http://127.0.0.1:${address.port}/page`,
     });
     // 先收到代理请求，再返回错误。等待宿主期间 IPC 必须维持子进程存活。
-    let release!: (rules: string) => void;
-    let started!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    const proxy = new Promise<string>((resolve) => {
-      release = resolve;
-    });
+    const ready = Promise.withResolvers<void>();
+    const proxy = Promise.withResolvers<never>();
     const pending = run(
-      "try { await fetch('https://example.invalid'); } catch (error) { console.log(error.message); }",
+      "try { await fetch('https://example.invalid'); } catch (error) { console.log(error.cause.message); }",
       undefined,
       async () => {
-        started();
-        return await proxy;
+        ready.resolve();
+        return await proxy.promise;
       },
     );
-    await ready;
-    release("UNSUPPORTED");
-    expect(output_content((await pending).stdout)).toContain("Proxy returned no supported route");
+    await ready.promise;
+    proxy.reject(new Error("fixture proxy failure"));
+    expect(output_content((await pending).stdout)).toContain("fixture proxy failure");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
@@ -463,6 +457,49 @@ it("取消在途代理等待后回收进程，并解除宿主请求", async () =
       "utf8",
     ),
   ).toBe("before wait\n");
+});
+
+it("脚本主动取消代理等待后解除 IPC 保活并自然退出", async () => {
+  const started = Promise.withResolvers<void>();
+  let proxy_signal: AbortSignal | undefined;
+  const server = createServer((_request, response) => {
+    void started.promise.then(() => response.end("ready"));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("Missing server address");
+  try {
+    const result = await run(
+      `
+      const controller = new AbortController();
+      const reason = new Error('script stop');
+      const pending = fetch('https://example.invalid/pending', { signal: controller.signal }).catch(error => {
+        if (error !== reason) throw error;
+        console.log(error.message);
+      });
+      await (await fetch('http://127.0.0.1:${address.port}/ready')).text();
+      controller.abort(reason);
+      await pending;
+      console.log('finished');
+    `,
+      undefined,
+      async (_url, signal) => {
+        proxy_signal = signal;
+        started.resolve();
+        return await new Promise<string>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      },
+    );
+    expect(result).toMatchObject({ exitCode: 0, signal: null });
+    expect(output_content(result.stdout)).toBe("script stop\nfinished\n");
+    expect(proxy_signal?.aborted).toBe(true);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
 });
 
 it.each([false, true])(
