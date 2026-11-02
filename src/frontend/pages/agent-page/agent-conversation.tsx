@@ -5,11 +5,11 @@ import { format_agent_reference } from "@shared/agent-reference";
 import { type JSX, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
+  BookA,
+  BookOpenCheck,
   BookOpenText,
   Bot,
   Drama,
-  ListChecks,
-  ScanText,
   Sparkles,
 } from "lucide-react";
 
@@ -65,7 +65,7 @@ const AGENT_TASK_SUGGESTIONS = [
   {
     skillName: "glossary",
     suggestionKey: "agent_page.empty.suggestions.extract_terminology",
-    Icon: ListChecks,
+    Icon: BookA,
   },
   {
     skillName: "translation",
@@ -75,7 +75,7 @@ const AGENT_TASK_SUGGESTIONS = [
   {
     skillName: "translation",
     suggestionKey: "agent_page.empty.suggestions.review_translation",
-    Icon: ScanText,
+    Icon: BookOpenCheck,
   },
 ] as const;
 /** 同一个系统确认框承接首条发送与已有对话关闭思考两个用户动作。 */

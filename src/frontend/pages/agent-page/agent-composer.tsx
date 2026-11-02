@@ -79,7 +79,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       instructions={props.instructions}
       input_state={props.input_state}
       on_submit={props.on_send}
-      render_actions={({ has_content, uploads_pending }) => {
+      render_actions={({ has_content, uploads_pending }, add_file) => {
         const continuing_queue = props.can_continue_queue && !running && !locked;
         // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
         const stop_action = running && !has_content && !locked;
@@ -113,6 +113,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           can_submit,
           actions: (
             <AgentTaskToolbar
+              add_file={add_file}
               locked={locked}
               can_reset={
                 props.can_reset &&

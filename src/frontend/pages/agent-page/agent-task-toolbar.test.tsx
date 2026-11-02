@@ -77,6 +77,13 @@ describe("AgentTaskToolbar", () => {
     expect(on_approval_mode_change).toHaveBeenCalledWith("auto");
   });
 
+  it("把文件入口放在新任务与生成译文之间", async () => {
+    const view = await render({ add_file: <button type="button">文件入口</button> });
+    expect(
+      [...view.querySelectorAll("button")].slice(0, 3).map((button) => button.textContent),
+    ).toEqual(["agent_page.action.new_task", "文件入口", "app.translation_generation.action"]);
+  });
+
   it("收起底部交互时关闭审批菜单，恢复后保持关闭", async () => {
     const view = await render({});
     await act(async () =>
@@ -103,6 +110,7 @@ describe("AgentTaskToolbar", () => {
         <TooltipProvider delay={0}>
           <input />
           <AgentTaskToolbar
+            add_file={null}
             locked={false}
             can_reset={false}
             context={{ tokens: null, compactable: false, limits: null }}

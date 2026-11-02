@@ -1,6 +1,6 @@
 import { type ModelAgentLimits, AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import { type JSX, useState, type ReactNode } from "react";
-import { BookOpenText, Boxes, ChevronDown, Circle, CircleCheck } from "lucide-react";
+import { BookOpenText, Bot, ChevronDown, Circle, CircleCheck } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import type { AgentUsageSnapshot } from "@shared/agent";
 
@@ -79,7 +79,7 @@ export function AgentComposerModelControls(props: {
             ? model_selection_aria_label
             : `${model_selection_aria_label} · ${context_usage.percent}`
         }
-        icon={<Boxes aria-hidden="true" />}
+        icon={<Bot aria-hidden="true" />}
         name={selected_model_name}
         thinking_label={selected_thinking_label}
         detail={

@@ -86,10 +86,13 @@ type AgentMessageEditorProps = {
   input_state: AgentInputState;
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: (() => void) | undefined;
-  /** 消费方统一决定按钮与提交权限，包含只读、内容和图片处理条件。 */
-  render_actions: (state: AgentEditorState) => {
+  /** 编辑器提供文件入口，消费方统一排列动作并决定提交权限。 */
+  render_actions: (
+    state: AgentEditorState,
+    add_file: ReactNode,
+  ) => {
     can_submit: boolean;
-    actions?: ReactNode;
+    actions: ReactNode;
     submit: ReactNode;
   };
 };
@@ -208,8 +211,23 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
   const has_sendable_content =
     draft.text.trim() !== "" || (!assistant_editing && draft_attachments.length > 0);
-  const actions = props.render_actions({ has_content: has_sendable_content, uploads_pending });
   const can_append_files = !editor_read_only && !assistant_editing;
+  const actions = props.render_actions(
+    { has_content: has_sendable_content, uploads_pending },
+    !assistant_editing ? (
+      <AppButton
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="agent-composer__file-trigger"
+        disabled={!can_append_files}
+        onClick={() => file_input_ref.current?.click()}
+      >
+        <Paperclip aria-hidden="true" />
+        <span>{t("agent_page.action.add_file")}</span>
+      </AppButton>
+    ) : null,
+  );
   // CodeMirror 扩展只创建一次，文件拖放读取当前上传权限。
   const can_append_files_ref = useRef(can_append_files);
   can_append_files_ref.current = can_append_files;
@@ -412,13 +430,16 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     }
   }, [matching_candidates, menu_index, menu_open]);
 
-  useEffect(() => {
-    if (!menu_open) return;
-    // aria-activedescendant 不会移动 DOM 焦点，必须显式保持键盘活动项可见。
+  /** `aria-activedescendant` 不移动焦点，键盘活动项需要显式滚入视野。 */
+  const scroll_mention_candidate_into_view = useCallback((index: number): void => {
     menu_ref.current
-      ?.querySelector<HTMLElement>(`#agent-mention-option-${menu_index.toString()}`)
+      ?.querySelector<HTMLElement>(`#agent-mention-option-${index.toString()}`)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [mention_query_text, menu_index, menu_open]);
+  }, []);
+
+  useEffect(() => {
+    if (menu_open) scroll_mention_candidate_into_view(menu_index_ref.current);
+  }, [mention_query_text, menu_open, scroll_mention_candidate_into_view]);
 
   /** 技能写入 marker；指令移除筛选文本后立即执行，不进入消息或草稿历史。 */
   const select_candidate = (candidate: AgentMentionCandidate): void => {
@@ -628,33 +649,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         }}
       />
       <div className="agent-composer__footer">
-        <div className="agent-composer__footer-actions">
-          {!assistant_editing ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <TooltipTarget>
-                    <AppButton
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      className="agent-composer__file-trigger"
-                      disabled={!can_append_files}
-                      aria-label={t("agent_page.action.add_file")}
-                      onClick={() => file_input_ref.current?.click()}
-                    >
-                      <Paperclip aria-hidden="true" />
-                    </AppButton>
-                  </TooltipTarget>
-                }
-              />
-              <TooltipContent>
-                <p>{t("agent_page.action.add_file")}</p>
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-          {actions.actions}
-        </div>
+        <div className="agent-composer__footer-actions">{actions.actions}</div>
         <div className="agent-composer__footer-end">{actions.submit}</div>
       </div>
     </form>
@@ -664,35 +659,54 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   function render_candidate(candidate: AgentMentionCandidate, index: number): JSX.Element {
     const Icon =
       candidate.kind === "skill" ? Sparkles : candidate.kind === "file" ? FileText : Shrink;
+    const disabled = candidate.kind === "instruction" && candidate.disabled;
     return (
-      <button
-        id={`agent-mention-option-${index.toString()}`}
-        key={candidate.key}
-        type="button"
-        role="option"
-        aria-selected={index === menu_index}
-        disabled={candidate.kind === "instruction" && candidate.disabled}
-        data-highlight={index === menu_index}
-        data-kind={candidate.kind}
-        tabIndex={-1}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => select_candidate(candidate)}
-      >
-        <Icon aria-hidden="true" />
-        <MentionCell text={candidate.title} emphasis />
-        <MentionCell text={candidate.description} />
-      </button>
+      <Tooltip key={candidate.key}>
+        <TooltipTrigger
+          tabIndex={-1}
+          onMouseDown={(event) => event.preventDefault()}
+          onMouseMove={() => {
+            if (!disabled) set_menu_index(index);
+          }}
+          render={
+            // 整行外壳同时承接禁用项悬停与定位，避免箭头贴入文本区域。
+            <TooltipTarget className="agent-mention-menu__row">
+              <button
+                id={`agent-mention-option-${index.toString()}`}
+                type="button"
+                role="option"
+                aria-selected={index === menu_index}
+                disabled={disabled}
+                data-kind={candidate.kind}
+                tabIndex={-1}
+                onClick={() => select_candidate(candidate)}
+              >
+                <Icon aria-hidden="true" />
+                <strong>{candidate.title}</strong>
+                <small>{candidate.description}</small>
+              </button>
+            </TooltipTarget>
+          }
+        />
+        <TooltipContent>
+          <div className="agent-mention-menu__tooltip">
+            <strong>{candidate.title}</strong>
+            {candidate.description !== "" && <p>{candidate.description}</p>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
-  /** 菜单有候选时循环选择；零结果时把方向键交还 CodeMirror。 */
+  /** 菜单有候选时循环选择。零结果时把方向键交还 CodeMirror。 */
   function navigate_mention_menu(delta: 1 | -1): boolean {
     if (!menu_open_ref.current || matching_candidates_ref.current.length === 0) return false;
-    set_menu_index(
-      (current) =>
-        (current + delta + matching_candidates_ref.current.length) %
-        matching_candidates_ref.current.length,
-    );
+    const next_index =
+      (menu_index_ref.current + delta + matching_candidates_ref.current.length) %
+      matching_candidates_ref.current.length;
+    set_menu_index(next_index);
+    // 键盘活动项需要显式滚入视野；鼠标接管活动项时保持菜单位置。
+    scroll_mention_candidate_into_view(next_index);
     return true;
   }
 
@@ -826,22 +840,4 @@ class MentionTokenWidget extends WidgetType {
     const x = pos === 0 ? rect.left : rect.right + MentionTokenWidget.CURSOR_GAP_PX;
     return { left: x, right: x, top: rect.top, bottom: rect.bottom };
   }
-}
-
-/** 两列共用截断与应用提示，触发器保持为文本元素，整行负责选择。 */
-function MentionCell({
-  text,
-  emphasis = false,
-}: {
-  text: string;
-  emphasis?: boolean;
-}): JSX.Element {
-  const cell = emphasis ? <strong>{text}</strong> : <small>{text}</small>;
-  if (text === "") return cell;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={cell} tabIndex={-1} />
-      <TooltipContent align="start">{text}</TooltipContent>
-    </Tooltip>
-  );
 }
