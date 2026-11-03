@@ -1,3 +1,4 @@
+import { resolve_project_file_layout, type ProjectFileUpdate } from "./project-file-layout";
 import { read_project_additional_files } from "./project-additional-files";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import { assert_source_file_paths } from "../file/source-file-paths";
@@ -95,10 +96,6 @@ export type ProjectAssetWrite =
       fileType: string;
       additionalFiles?: readonly string[]; // 游戏资产的附加原稿成员，缺省表示没有附加原稿。
       pdfDocument: PDFDocument | null;
-    }
-  | {
-      kind: "delete";
-      path: string;
     };
 
 /** 单次项目事实提交的静态边界与事务内准备函数。 */
@@ -315,12 +312,9 @@ export class ProjectWriteStore {
           const additional_files = read_project_additional_files(revision_context.meta);
           for (const write of request.assetWrites) {
             delete additional_files[write.path];
-            if (write.kind === "delete") files.delete(write.path);
-            else {
-              files.set(write.path, { path: write.path, file_type: write.fileType });
-              if (write.additionalFiles?.length)
-                additional_files[write.path] = [...write.additionalFiles];
-            }
+            files.set(write.path, { path: write.path, file_type: write.fileType });
+            if (write.additionalFiles?.length)
+              additional_files[write.path] = [...write.additionalFiles];
           }
           assert_source_file_paths(files.values()); // 事务内核对最终集合，陈旧预览和直接请求都不能绕过。
           revision_context.pendingMeta["additional_files"] = additional_files;
@@ -329,7 +323,7 @@ export class ProjectWriteStore {
           (request.resetPDFPaths?.length ?? 0) > 0 ||
           (request.assetWrites ?? []).some(
             (write) =>
-              (write.kind !== "delete" && write.pdfDocument != null) ||
+              write.pdfDocument != null ||
               revision_context.database.read_pdf_document(request.projectPath, write.path) !== null,
           );
         const sections = new Set(request.updatedSections);
@@ -383,6 +377,112 @@ export class ProjectWriteStore {
         };
       },
     });
+  }
+
+  /** 资产结构、条目归属、计数与修订同事务提交，缓存据此同步完整快照。 */
+  public async apply_file_changes(request: {
+    projectPath: string;
+    source: string;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
+    revisionSections: ProjectDataSection[];
+    creates: readonly (Extract<ProjectAssetWrite, { kind: "add" }> & { items: JsonRecord[] })[];
+    updates: readonly ProjectFileUpdate[];
+    deletes: readonly string[];
+  }): Promise<{ write: ProjectWriteResult; sectionRevisions: ProjectDataSectionRevisions }> {
+    let sectionRevisions: ProjectDataSectionRevisions = {};
+    const project = request.projectPath;
+    const write = await this.commit_runtime_change(
+      {
+        ...request,
+        requireExpectedSectionRevisions: true,
+        updatedSections: ["files"],
+        prepare: (context) => {
+          const current = context.database.get_all_asset_records(project);
+          const layout = resolve_project_file_layout(current, request.deletes, request.updates);
+          const final = [
+            ...layout,
+            ...request.creates.map((file) => ({ path: file.path, file_type: file.fileType })),
+          ];
+          assert_source_file_paths(final);
+          const additional = read_project_additional_files(context.meta);
+          for (const target of request.deletes) delete additional[target];
+          const renamed = layout.filter((file) => file.path !== file.previous_path);
+          for (const file of renamed) {
+            const members = additional[file.previous_path];
+            delete additional[file.previous_path];
+            if (members !== undefined) additional[file.path] = members;
+          }
+          for (const file of request.creates) {
+            if (file.additionalFiles?.length) additional[file.path] = [...file.additionalFiles];
+          }
+          context.pendingMeta["additional_files"] = additional;
+          // 写入尚未执行，进度须按事务内基线和本批条目增减量计算。
+          const progress = this.read_translation_progress(context.meta);
+          const counters = this.has_translation_progress_counters(
+            read_json_record(context.meta["translation_extras"]),
+          )
+            ? this.read_translation_progress_counters(progress)
+            : this.get_translation_status_summary(context.database, project);
+          if (request.deletes.length) {
+            const removed = context.database.get_item_status_summary(project, request.deletes);
+            counters.total_line -= Number(removed["total_line"]);
+            counters.processed_line -= Number(removed["processed_line"]);
+          }
+          for (const file of request.creates)
+            for (const item of file.items) {
+              const added = this.count_translation_status(String(item["status"]));
+              counters.total_line += added.total_line;
+              counters.processed_line += added.processed_line;
+            }
+          context.pendingMeta["translation_extras"] = { ...progress, ...counters } as JsonRecord;
+          const sections: ProjectDataSection[] = ["files"];
+          if (request.deletes.length || renamed.length || request.creates.length)
+            sections.push("items");
+          const touched = new Set([
+            ...request.deletes,
+            ...renamed.map((file) => file.previous_path),
+          ]);
+          if (
+            current.some((file) => touched.has(file.path) && file.file_type === "PDF") ||
+            request.creates.some((file) => file.fileType === "PDF")
+          )
+            sections.push("pdf");
+          this.stage_section_revisions({ ...context, sections });
+          const writes: ProjectDatabaseWrite[] = [
+            ...request.deletes.map(
+              (target): ProjectDatabaseWrite =>
+                (db) =>
+                  db.delete_asset(project, target),
+            ),
+            ...renamed.map(
+              (file): ProjectDatabaseWrite =>
+                (db) =>
+                  db.rename_asset(project, file.previous_path, file.path),
+            ),
+          ];
+          for (const file of request.creates) {
+            if (!PROJECT_ITEM_WRITE_VALIDATOR.Check(file.items))
+              throw new AppErrors.AppError("request.validation_failed");
+            writes.push(this.build_asset_write(project, file), (db) => {
+              db.insert_items(project, file.items);
+            });
+          }
+          writes.push((db) =>
+            db.update_asset_sort_orders(
+              project,
+              final.map((file) => file.path),
+            ),
+          );
+          return { writes, updatedSections: sections };
+        },
+      },
+      {
+        onCommitted: (change) => {
+          sectionRevisions = change.sectionRevisions;
+        },
+      },
+    );
+    return { write, sectionRevisions };
   }
 
   /**
@@ -1017,17 +1117,14 @@ export class ProjectWriteStore {
           write.sortOrder,
         );
     }
-    if (write.kind === "update") {
-      return (database) =>
-        database.update_asset(
-          project_path,
-          write.path,
-          write.content,
-          write.fileType,
-          write.pdfDocument,
-        );
-    }
-    return (database) => database.delete_asset(project_path, write.path);
+    return (database) =>
+      database.update_asset(
+        project_path,
+        write.path,
+        write.content,
+        write.fileType,
+        write.pdfDocument,
+      );
   }
 
   /** 缓存缺失或落后时回读全表，事务内事实始终拥有最终解释权。 */

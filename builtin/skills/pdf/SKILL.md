@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: 涉及 PDF 阅读、文字与图像提取、页面定位、译稿保存、排版或预览时使用。
+description: 阅读、翻译、审校或排版预览 PDF 文件时使用。
 ---
 
 # PDF 处理能力
@@ -11,20 +11,33 @@ description: 涉及 PDF 阅读、文字与图像提取、页面定位、译稿�
 
 翻译和审校按 `translation` 的页面流程执行，页面模型、提交规则和交付要求以其中为准。本技能补充 PDF 专属的读取、译稿写法、排版和预览方法。
 
+## 应用接口
+
+PDF 接口以字节交换文档，MuPDF 对象只在所属实例内使用。
+
+|入口|用途|
+|---|---|
+|`readPdfDocument(bytes)`|返回 `{ digest, pages }`，即原稿摘要和各页的尺寸、旋转与页码标签。不提取文字|
+|`renderPdfPage(bytes, { page, scale, region? })`|把页面或区域渲染为 PNG 字节|
+|`printPdf(html)`|把静态 HTML 打印为 PDF 字节。打印不执行脚本，也不加载外部资源|
+|`@lg/pdf/mupdf`|应用使用的 MuPDF 实例，API 与 MuPDF.js 相同|
+
+前三项从 `@lg/pdf` 导入。
+
 ## 阅读与定位
 
-用 `@lg/pdf/mupdf` 提取文字、字体与坐标，用 `@lg/pdf` 的 `render_pdf_page(bytes, { page, scale, region? })` 渲染页面或区域，再通过 `ws.emitImage` 查看。多栏、表格、扫描页、图注和公式结合图像判断，跨页内容连同邻页读取。没有提取文字时仍需查看原页。
+用 `@lg/pdf/mupdf` 提取文字、字体与坐标，用 `renderPdfPage` 渲染页面或区域，再通过 `ws.emitImage` 查看。多栏、表格、扫描页、图注和公式结合图像判断，跨页内容连同邻页读取。没有提取文字时仍需查看原页。
 
-先看整页确认结构，再裁剪小字、图例和表格细节。区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算。`region.page` 须与请求页一致。PDF API 使用字节接口，MuPDF 对象只在所属实例内使用。
+先看整页确认结构，再裁剪小字、图例和表格细节。区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算。`region.page` 须与请求页一致。
 
-将示例文件名、页码和区域替换为当前目标。同一程序中复用已读取的原稿字节，用 `try/finally` 释放 MuPDF 的页面、提取结果和文档。
+同一程序中复用已读取的原稿字节，用 `try/finally` 释放 MuPDF 的页面、提取结果和文档。
 
 ### 整页阅读与文字提取
 
 ```js
 import { readFile, writeFile } from 'node:fs/promises';
 import * as mupdf from '@lg/pdf/mupdf';
-import { render_pdf_page } from '@lg/pdf';
+import { renderPdfPage } from '@lg/pdf';
 const bytes = new Uint8Array(await readFile('sources/book.pdf'));
 const document = new mupdf.PDFDocument(bytes);
 let scale;
@@ -38,7 +51,7 @@ try {
     finally { text.destroy(); }
   } finally { page.destroy(); }
 } finally { document.destroy(); }
-await writeFile('work/page-1.png', render_pdf_page(bytes, { page: 1, scale }));
+await writeFile('work/page-1.png', renderPdfPage(bytes, { page: 1, scale }));
 await ws.emitImage('work/page-1.png');
 ```
 
@@ -50,10 +63,10 @@ await ws.emitImage('work/page-1.png');
 
 ```js
 import { writeFile } from 'node:fs/promises';
-import { render_pdf_page } from '@lg/pdf';
+import { renderPdfPage } from '@lg/pdf';
 const region = { page: 1, x: 40, y: 80, width: 400, height: 240 };
 const maxEdge = 3840;
-await writeFile('work/detail.png', render_pdf_page(bytes, {
+await writeFile('work/detail.png', renderPdfPage(bytes, {
   page: region.page,
   region,
   scale: maxEdge / Math.max(region.width, region.height),
@@ -69,14 +82,14 @@ await ws.emitImage('work/detail.png', { maxEdge });
 
 ```js
 import { writeFile } from 'node:fs/promises';
-import { render_pdf_page } from '@lg/pdf';
+import { renderPdfPage } from '@lg/pdf';
 // document 是脚本用 mupdf 打开并修改过的文档，由调用者释放。
 const buffer = document.saveToBuffer();
 let edited;
 try { edited = buffer.asUint8Array().slice(); }
 finally { buffer.destroy(); }
 await writeFile('work/edited.pdf', edited);
-await writeFile('work/edited-1.png', render_pdf_page(edited, { page: 1, scale: 2 }));
+await writeFile('work/edited-1.png', renderPdfPage(edited, { page: 1, scale: 2 }));
 await ws.emitImage('work/edited-1.png');
 ```
 
@@ -191,24 +204,24 @@ await ws.emitImage('work/annotated.png', { maxEdge: 3840 });
 
 ```js
 import { readFile, writeFile } from 'node:fs/promises';
-import { read_pdf_document, render_pdf_page } from '@lg/pdf';
+import { readPdfDocument, renderPdfPage } from '@lg/pdf';
 const { preview } = await import(new URL('scripts/preview.mjs', base_url).href);
 const result = await preview('book.pdf', 'work/page-updates.jsonl');
 if (result.path === null) throw new Error(result.message);
 const output = new Uint8Array(await readFile(result.path));
-const { pages } = read_pdf_document(output); // 输出页尺寸，坐标与渲染一致
+const { pages } = readPdfDocument(output); // 输出页尺寸，坐标与渲染一致
 console.log({ output_pages: pages.length });
-const output_page = 1; // 替换为本次需要检查的输出页，按工具图片额度分批查看。
+const output_page = 1; // 按工具图片额度分批查看输出页
 const { width, height } = pages[output_page - 1];
 const image_path = `work/preview-${output_page}.png`;
-await writeFile(image_path, render_pdf_page(output, {
+await writeFile(image_path, renderPdfPage(output, {
   page: output_page,
   scale: 1920 / Math.max(width, height),
 }));
 await ws.emitImage(image_path);
 ```
 
-第二个参数是完整页面更新的 JSONL 草稿，格式见 `ws.contract.changes.pages.updates.reference`。脚本校验所有记录的结构，再对目标文件复用正式页级判定，覆盖快照副本后调用正式 PDF 生成入口。目标更新被拒绝时，先按行号修复草稿。省略第二个参数时预览当前工程快照。
+第二个参数是完整页面更新的 JSONL 草稿，格式见 `ws.contract.changes.pages.updates.reference`。预览与正式提交、导出使用相同的页面判定和生成规则。记录被拒绝时脚本抛出错误，先按行号修复草稿。省略第二个参数时预览当前工程快照。
 
 生成成功后，通过渲染结果核对阅读顺序和实际版式：
 

@@ -1,9 +1,9 @@
-import { normalize_literal_text } from "@lg/text";
+import { normalizeLiteralText } from "@lg/utils/literal-matcher";
 const MIN_FORM_COUNT = 2; // 公共片段至少涉及两个不同词形
 
 /** 已确认相关词形的公共连续片段，按可见字符长度升序返回。 */
 export function deriveCommonLiteralRoots(forms) {
-  const normalizedForms = forms.map((form) => normalize_literal_text(form, false));
+  const normalizedForms = forms.map((form) => normalizeLiteralText(form, false));
   if (new Set(normalizedForms).size < MIN_FORM_COUNT) {
     throw new Error("forms must contain at least two distinct forms");
   }
@@ -26,7 +26,7 @@ export function deriveCommonLiteralRoots(forms) {
   for (let start = 0; start < baseGraphemes.length; start += 1) {
     for (let end = start + 1; end <= baseGraphemes.length; end += 1) {
       const root = baseGraphemes.slice(start, end).join("");
-      const normalizedKey = normalize_literal_text(root, false);
+      const normalizedKey = normalizeLiteralText(root, false);
       const normalizedRoot = segment(normalizedKey);
       if (
         normalizedKey.trim() === "" ||

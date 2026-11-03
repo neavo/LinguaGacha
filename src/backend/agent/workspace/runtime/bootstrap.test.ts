@@ -1,3 +1,5 @@
+import { create_pdf_printer } from "../../tools/print-pdf";
+import { default_native_fs } from "../../../../native/native-fs";
 import { AgentExecutionRuntime } from "../../execution/runtime";
 import type { AgentWorkspaceRunRequest } from "./runner";
 import { execFile, execFileSync } from "node:child_process";
@@ -6,6 +8,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rename,
   rm,
   symlink,
@@ -74,6 +77,62 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
+it("领域 SDK 通过绑定通道识别来源，ws 只提供运行能力", async () => {
+  const inspectSources = vi.fn(async (sources: string[]) =>
+    sources.map((source_path) => ({
+      source_path,
+      file_count: 1,
+      contains_game: false,
+      godot_packs: [],
+      failures: [],
+    })),
+  );
+  const result = await run(
+    `
+    import { inspectSources } from '@lg/project';
+    import assert from 'node:assert/strict';
+    import * as pdf from '@lg/pdf';
+    assert.equal('build_pdf_page_preview' in pdf || 'render_pdf_preview' in pdf, false);
+    assert.equal('host' in ws || 'doing' in ws, false);
+    console.log(JSON.stringify(await inspectSources(['work/input.txt'])));
+  `,
+    undefined,
+    undefined,
+    { inspectSources },
+  );
+  expect(output_content(result.stdout)).toEqual([
+    {
+      source_path: "work/input.txt",
+      file_count: 1,
+      contains_game: false,
+      godot_packs: [],
+      failures: [],
+    },
+  ]);
+  expect(inspectSources).toHaveBeenCalledOnce();
+});
+
+it("SDK 打印不受脚本当前目录影响，读取后清理宿主临时文件", async () => {
+  const before = await readdir(path.join(workspace, "work"));
+  const printPDF = create_pdf_printer({
+    root: workspace,
+    nativeFs: default_native_fs,
+    pdfHost: async () => new Uint8Array([1, 2, 3]),
+  });
+  const result = await run(
+    `
+    import { printPdf } from '@lg/pdf';
+    process.chdir('work');
+    console.log(JSON.stringify([...await printPdf('<p>fixture</p>')]));
+  `,
+    undefined,
+    undefined,
+    { printPDF },
+  );
+  expect(output_content(result.stdout)).toEqual([1, 2, 3]);
+  expect(await readdir(path.join(workspace, "work"))).toEqual(before);
+});
+
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
   await mkdir(path.join(workspace, "work/scripts"));
   await writeFile(
@@ -124,7 +183,7 @@ it("PDF 引擎与渲染 API 共用实例，Markdown 从用户 npm 工程加载",
     import { readFile } from 'node:fs/promises';
     import assert from 'node:assert/strict';
     import * as mupdf from '@lg/pdf/mupdf';
-    import {render_pdf_page} from '@lg/pdf';
+    import {renderPdfPage} from '@lg/pdf';
     import { unified } from 'unified';
     import remarkParse from 'remark-parse';
     import remarkGfm from 'remark-gfm';
@@ -141,7 +200,7 @@ it("PDF 引擎与渲染 API 共用实例，Markdown 从用户 npm 工程加载",
         rendered = false;
         const buffer = pdf.saveToBuffer('');
         let image;
-        try { image = render_pdf_page(buffer.asUint8Array(), {page:3,scale:1}); }
+        try { image = renderPdfPage(buffer.asUint8Array(), {page:3,scale:1}); }
         finally { buffer.destroy(); }
         assert.equal(rendered, true, 'PDF API 必须使用公开引擎的同一原型');
         console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:image.length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type }));
@@ -176,20 +235,19 @@ it.each(["user", "builtin"])(
       `
     import { unified } from 'unified';
     import remarkParse from 'remark-parse';
-    import { build_pdf_document } from '@lg/pdf';
+    import { buildPdfDocument } from '@lg/pdf';
     import { readFile, writeFile } from 'node:fs/promises';
     import { title } from './helper.mjs';
-    import { queryItemContexts } from '@lg/workspace/item-contexts';
-    import { compile_literal_patterns } from '@lg/text';
+    import { queryItemContexts } from '@lg/project/item-contexts';
+    import { compileLiteralPatterns } from '@lg/utils/literal-matcher';
     export async function inspect() {
       await writeFile('work/items.jsonl', JSON.stringify({item_id:1,file_path:'a',src:'Straße'}));
       const contexts = await queryItemContexts([JSON.parse(await readFile('work/items.jsonl', 'utf8'))], [1]);
-      const matcher = compile_literal_patterns([{key:'street',text:'STRASSE',case_sensitive:false}]);
+      const matcher = compileLiteralPatterns([{key:'street',text:'STRASSE',case_sensitive:false}]);
       if (contexts.items.length !== 1 || !matcher.matches(contexts.items[0].src)) throw new Error('Item contexts or text import failed');
-      const bytes = await build_pdf_document({
+      const bytes = await buildPdfDocument({
         title, source_bytes: new Uint8Array(await readFile('work/source.pdf')),
         document:{digest:'a'.repeat(64),pages:[1,2,3].map(page=>({page,width:300,height:300,rotation:0,label:null,translation:page===2?{kind:'translate',markdown:'# fixture'}:null,reviewed:false,notes:''}))},
-        print:async html => new Uint8Array(await readFile((await ws.host({kind:'print_pdf',html})).path)),
       });
       await writeFile('work/fixture.pdf', bytes);
       return {type:unified().use(remarkParse).parse('# fixture').children[0].type,path:'work/fixture.pdf'};
@@ -206,16 +264,19 @@ it.each(["user", "builtin"])(
       undefined,
       undefined,
       {
-        host: async (request) => {
+        printPDF: async (request) => {
           expect(request.kind).toBe("print_pdf");
           expect(request.html).toContain("fixture");
-          return { path: "work/printed.pdf" };
+          return { path: path.join(workspace, "work/printed.pdf") };
         },
       },
     ).catch((error: unknown) => {
       if (error instanceof AgentWorkspaceRunError)
         throw new Error(JSON.stringify(error.execution), { cause: error });
       throw error;
+    });
+    await expect(readFile(path.join(workspace, "work/printed.pdf"))).rejects.toMatchObject({
+      code: "ENOENT",
     });
     expect(output_content(result.stdout)).toEqual({
       type: "heading",
@@ -257,6 +318,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       proxyResolver: { resolveProxy: async () => "DIRECT" },
     });
     const service = new AgentWorkspaceService({
+      files: services.project.content,
       images: {
         prepare: async () => {
           throw new Error("Unexpected image");
@@ -267,7 +329,9 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       cache: services.state.cache,
       proofreading: services.proofreading.query,
       database: resources.database,
-      runtimeGate: { run_agent_project_write: async (operation) => operation() },
+      runtimeGate: {
+        run_agent_project_write: async (operation) => operation(new AbortController().signal),
+      },
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: runner.run.bind(runner),
@@ -582,8 +646,8 @@ it("doing 在真实 IPC 回包后已生效，程序仍运行且后续失败保�
   const pending = run(
     `
     import assert from 'node:assert/strict';
-    await ws.doing(' 检查章节 ');
-    await assert.rejects(ws.doing(''));
+    await ws.setDoing(' 检查章节 ');
+    await assert.rejects(ws.setDoing(''));
     await fetch('https://example.test/hold');
     `,
     undefined,
@@ -644,11 +708,11 @@ it("页面更新模块在部署工作区解析记录并判定目标", async () =
       if (specifier === 'mupdf') throw new Error('工作区数据模块不应初始化 PDF 引擎');
       return nextResolve(specifier, context);
     }});
-    await import('@lg/workspace/item-contexts');
-    const { parse_page_update, resolve_agent_workspace_page_updates } = await import('@lg/workspace/page-updates');
+    await import('@lg/project/item-contexts');
+    const { parsePageUpdate, resolvePageUpdates } = await import('@lg/pdf/page-updates');
     const value = {file_path:'sample.pdf',page:1,fp:'abcd',translation:null,reviewed:false,notes:''};
-    const valid = parse_page_update({line:2,value});
-    const missing = resolve_agent_workspace_page_updates([valid.intent], []);
+    const valid = parsePageUpdate({line:2,value});
+    const missing = resolvePageUpdates([valid.intent], []);
     console.log(JSON.stringify(missing.rejected));
   `);
   expect(output_content(result.stdout)).toMatchObject([{ reason: "target_missing", line: 2 }]);
@@ -707,8 +771,11 @@ it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", as
         `
         import assert from 'node:assert/strict';
         import version from '${fixture}';
-        for (const name of ['@lg/workspace/bootstrap', '@lg/workspace/prepare', '@lg/pdf/worker']) {
+        for (const name of ['@lg/project/bootstrap', '@lg/project/prepare', '@lg/pdf/worker', '@lg/utils']) {
           await assert.rejects(import(name), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+        }
+        for (const name of ['@lg/workspace/item-contexts', '@lg/workspace/page-updates', '@lg/text']) {
+          await assert.rejects(import(name), {code:'ERR_MODULE_NOT_FOUND'});
         }
         console.log(version);
         `,
@@ -735,6 +802,10 @@ it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
     `import assert from 'node:assert/strict';
      import { python } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/python/index.mjs")).href)};
      import { npm } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/npm/index.mjs")).href)};
+     import { inspectSources } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/project/index.mjs")).href)};
+     import { printPdf } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/pdf/index.mjs")).href)};
+     await assert.rejects(inspectSources([]), /not bound/);
+     await assert.rejects(printPdf(''), /not bound/);
      assert.throws(() => python.environment(), /not bound/);
      await assert.rejects(npm.run(["--version"]), /not bound/);
      console.log(typeof globalThis.ws);`,
@@ -976,7 +1047,7 @@ async function run(
   script: string,
   signal: AbortSignal = AbortSignal.timeout(RUN_TIMEOUT_MS),
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
-  tools: Pick<AgentWorkspaceRunRequest, "host" | "emitImage" | "doing"> = {},
+  tools: Pick<AgentWorkspaceRunRequest, "printPDF" | "inspectSources" | "emitImage" | "doing"> = {},
   directory = runtime,
 ) {
   const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task-${++sequence}.mjs`;

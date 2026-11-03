@@ -32,6 +32,7 @@ const SUMMARY_COUNT_MARKER = "\uE000"; // 不会出现在本地化正文中，�
 
 /** 摘要沿业务数据顺序展示，零变化类别不进入用户决定。 */
 const SUMMARY_FIELDS = [
+  ["files", "agent_page.approval.summary.files"],
   ["pages", "agent_page.approval.summary.pages"],
   ["items", "agent_page.approval.summary.items"],
   ["glossary", "agent_page.approval.summary.glossary"],

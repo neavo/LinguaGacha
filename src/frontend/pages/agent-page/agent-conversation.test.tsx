@@ -924,6 +924,7 @@ describe("AgentConversation", () => {
         textPreserve: 0,
         preReplacement: 0,
         postReplacement: 0,
+        files: 0,
         prompts: 0,
       },
     };

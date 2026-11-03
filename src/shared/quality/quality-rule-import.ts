@@ -1,5 +1,5 @@
 import type { JsonRecord } from "../../domain/json";
-import { normalize_literal_text } from "../text/literal-matcher";
+import { normalizeLiteralText } from "../text/literal-matcher";
 
 const QUALITY_RULE_IMPORT_RULE_TYPES = [
   "GLOSSARY",
@@ -320,7 +320,7 @@ function build_pattern_identity(rule_type: QualityRuleImportRuleType, entry: Jso
   return JSON.stringify([
     regex ? "regex" : "literal",
     case_sensitive,
-    regex ? src : normalize_literal_text(src, case_sensitive),
+    regex ? src : normalizeLiteralText(src, case_sensitive),
   ]);
 }
 

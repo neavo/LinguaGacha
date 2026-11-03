@@ -1,7 +1,11 @@
 import type { WorkspaceRequest } from "./protocol";
 import { execute_image_request } from "../../tools/emit-image";
 import { execute_doing_request } from "../../tools/doing";
-import { execute_host_request, type WorkspaceHostPort } from "../../tools/host";
+import { execute_print_pdf_request, type WorkspacePrintPDFPort } from "../../tools/print-pdf";
+import {
+  execute_inspect_sources_request,
+  type WorkspaceInspectSourcesPort,
+} from "../../tools/inspect-sources";
 import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,7 +32,8 @@ import {
 export type AgentWorkspaceRunRequest = AgentExecutionRequest &
   Readonly<{
     scriptPath: string; // 同一执行的脚本与两路日志路径由 WorkspaceService 唯一确定
-    host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
+    printPDF?: WorkspacePrintPDFPort;
+    inspectSources?: WorkspaceInspectSourcesPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
     emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
     doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
   }>;
@@ -225,7 +230,15 @@ export class AgentWorkspaceRunner {
             return await execute_image_request(request, controller.signal, run_request.emitImage);
           if (request.kind === "resolve_proxy" && typeof request.url === "string")
             return await this.proxy_resolver.resolveProxy(request.url, controller.signal);
-          return await execute_host_request(request, controller.signal, run_request.host);
+          if (request.kind === "print_pdf")
+            return execute_print_pdf_request(request, controller.signal, run_request.printPDF);
+          if (request.kind === "inspect_sources")
+            return execute_inspect_sources_request(
+              request,
+              controller.signal,
+              run_request.inspectSources,
+            );
+          throw new Error("Invalid workspace request.");
         };
         const operation = execute()
           .then(

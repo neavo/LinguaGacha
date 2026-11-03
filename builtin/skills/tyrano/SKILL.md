@@ -1,6 +1,6 @@
 ---
 name: tyrano
-description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必须首先加载，提供原稿结构、条目默认状态、姓名与语音依赖、宏和脚本中的可见文本、写回限制，以及批量翻译后的补漏和检查方法。
+description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必须加载。
 ---
 
 本技能只提供 TyranoScript 引擎知识，翻译、审校和提交流程按 `translation` 执行。

@@ -18,7 +18,6 @@ import {
 } from "./source-discovery";
 import type { GamePrepareExecution } from "./shared/game/prepare-worker";
 import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
-import { format_local_timestamp } from "../../shared/utils/format-local-timestamp";
 import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
 import { SourceFilePathIndex } from "./source-file-paths";
 import type { PDFExecution } from "./pdf/pdf-worker";
@@ -299,15 +298,12 @@ export class FileFormatService {
     return result;
   }
 
-  /** 预览保留已有同名资产供用户确认替换，祖先路径冲突改名到可共同投影的位置。 */
+  /** 在冲突层级分配数字后缀，工作台预览可显式保留同名替换。 */
   public assign_source_file_paths<T extends ProjectSourceFileEntry>(
     entries: readonly T[],
     existing_files: readonly { path: string; file_type: string }[] = [],
+    replace_same_path = false,
   ): T[] {
-    const timestamp = format_local_timestamp(new Date().toISOString())!
-      .replaceAll("-", "")
-      .replaceAll(":", "")
-      .replace(" ", "_");
     const existing = new SourceFilePathIndex();
     for (const file of existing_files) existing.add(file.path, file.file_type);
     const original = new SourceFilePathIndex(); // 自动名称不能抢占尚未分配的原始候选。
@@ -336,7 +332,7 @@ export class FileFormatService {
       const unchanged =
         normalize_project_asset_path(candidate) === normalize_project_asset_path(entry.rel_path);
       const conflict =
-        existing.find_conflict(candidate, entry.file_type, unchanged) ??
+        existing.find_conflict(candidate, entry.file_type, unchanged && replace_same_path) ??
         assigned.find_conflict(candidate, entry.file_type);
       if (conflict !== null) {
         const component = conflict.split("/").length - 1;
@@ -345,11 +341,10 @@ export class FileFormatService {
         const parsed = !is_directory
           ? path.parse(prefix[component]!)
           : { name: prefix[component]!, ext: "" };
-        const name = parsed.name + "_" + timestamp;
-        let suffix = 1;
+        let suffix = 2;
         let renamed: string;
         do {
-          prefix[component] = name + (suffix === 1 ? "" : "_" + suffix) + parsed.ext;
+          prefix[component] = parsed.name + "_" + suffix + parsed.ext;
           renamed = prefix.join("/");
           suffix += 1;
         } while (

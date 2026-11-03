@@ -7,19 +7,23 @@ import { keep_workspace_package_path } from "./package-files.mjs";
 // 应用 SDK 随应用发布，公开入口与私有启动入口共用一个构建图。
 const WORKSPACE_PACKAGES = [
   {
-    name: "@lg/workspace",
+    name: "@lg/project",
     entries: {
+      index: "src/backend/agent/project/index.ts",
       "item-contexts": "src/backend/agent/workspace/runtime/item-contexts.ts",
-      "page-updates": "src/backend/agent/workspace/page-updates.ts",
     },
   },
-  { name: "@lg/text", entries: { index: "src/shared/text/literal-matcher.ts" } },
+  {
+    name: "@lg/utils",
+    entries: { "literal-matcher": "src/shared/text/literal-matcher.ts" },
+  },
   { name: "@lg/python", entries: { index: "src/backend/agent/python/index.ts" } },
   { name: "@lg/npm", entries: { index: "src/backend/agent/npm/index.ts" } },
   {
     name: "@lg/pdf",
     entries: {
-      index: "src/backend/file/pdf/pdf-document.ts",
+      index: "src/backend/agent/pdf/index.ts",
+      "page-updates": "src/backend/agent/workspace/page-updates.ts",
       mupdf: "src/backend/file/pdf/mupdf.ts",
     },
   },

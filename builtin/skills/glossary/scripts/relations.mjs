@@ -1,4 +1,4 @@
-import { normalize_literal_text } from "@lg/text";
+import { normalizeLiteralText } from "@lg/utils/literal-matcher";
 
 const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const MIN_ROOT_LENGTH = 2; // 单字符重合噪声过大
@@ -17,7 +17,7 @@ export function analyzeRelations(entries) {
     if (ids.has(entry.id)) throw new Error(`Duplicate id: ${entry.id}`);
     ids.add(entry.id);
     const bucket = entry.case_sensitive ? sensitive : insensitive;
-    const text = normalize_literal_text(entry.src, entry.case_sensitive);
+    const text = normalizeLiteralText(entry.src, entry.case_sensitive);
     const indexes = bucket.get(text) ?? [];
     indexes.push(index);
     bucket.set(text, indexes);
@@ -30,7 +30,7 @@ export function analyzeRelations(entries) {
       [true, sensitive],
       [false, insensitive],
     ]) {
-      const chars = segments(normalize_literal_text(entry.src, case_sensitive));
+      const chars = segments(normalizeLiteralText(entry.src, case_sensitive));
       for (let start = 0; start < chars.length; start += 1) {
         let text = "";
         for (let end = start; end < chars.length; end += 1) {
@@ -58,7 +58,7 @@ export function analyzeRelations(entries) {
   // 公共片段独立提供成员线索，不传递关系、不安排互斥审查组，也不按组大小丢弃成员。
   const roots = new Map();
   entries.forEach((entry, index) => {
-    const chars = segments(normalize_literal_text(entry.src, false));
+    const chars = segments(normalizeLiteralText(entry.src, false));
     const seen = new Set();
     for (let start = 0; start < chars.length; start += 1) {
       let root = "";

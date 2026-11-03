@@ -2,7 +2,7 @@ import { Check } from "typebox/value";
 import {
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
-  AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
+  AGENT_WORKSPACE_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_CHANGE_PATHS,
 } from "../workspace/paths";
@@ -13,6 +13,7 @@ import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import {
+  AGENT_WORKSPACE_FILE_SCHEMAS,
   AGENT_WORKSPACE_FP_SCHEMA,
   AGENT_WORKSPACE_PAGE_SCHEMA,
   AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
@@ -70,29 +71,40 @@ const AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS = 100;
 
 /** 参考资料按业务主题聚合，读取与修改共享同一份语义。 */
 const reference_path = (topic: string): string => `${AGENT_WORKSPACE_PATHS.reference}/${topic}.md`;
-/** 四类质量规则共享排序与批次语义，拒绝原因统一由 `workspace_apply` 说明。 */
-const quality_notes = [
-  "一次提交会处理完整批次中的 `creates`、`updates` 和 `deletes`。",
-  "排序时，先移除删除对象与明确指定 `sort` 的对象，其余对象保留相对顺序。再按非负 `sort` 值从小到大插入对象，将 `sort` 为 `-1` 的对象追加到末尾。",
-  "插入位置相同时，先处理更新再处理新增，各自按变更文件中的行序排列。最后按对应领域规则整理结果。",
-  "质量规则变更没有建议或强制的单批行数上限。",
+/** 文件与质量规则共用 `insert_by_sort`，批次顺序只维护这一份，取值含义见 `sort` 字段。 */
+const sort_notes = [
+  "排序时，先移除删除对象和指定了 `sort` 的对象，其余对象保留相对顺序，再按 `sort` 从小到大插入，`-1` 最后追加。",
+  "插入位置相同时，先放更新，再放新增，各自按变更文件中的行序排列。",
 ];
 /** 参考资料随工作区提供给模型，说明提交副作用和跨记录关系。 */
 const reference_notes: Readonly<Record<string, readonly string[]>> = {
-  project_meta: ["工程元数据描述当前快照的语言、完整数量和文件顺序。"],
+  project_meta: [
+    "工程元数据描述当前快照的语言、完整数量和文件顺序。`files` 列出全部资产，原稿位于 `sources/<file_path>`。",
+  ],
+  // 文件变更没有同名数据集，规则自成主题，读取元数据时不必加载写入约束。
+  files: [
+    "同一 `file_path` 在本批只能出现在一条更新或删除记录中，同一 `source_path` 只能新增一次。",
+    "新增资产名称与已有名称冲突时，宿主在冲突所在层级加 `_2`、`_3` 等数字后缀：文件加在扩展名前，文件夹加在名称末尾。实际名称以回执和重建后的 `project_meta` 为准。",
+    "`new_file_path` 不能与本批开始时仍保留的其他资产相同，比较不区分大小写，本批删除的资产会释放名称。因此同批不能交换名称或链式改名。",
+    "最终资产集合中，资产路径不能与其他资产互为文件和目录。游戏资产去掉扩展名后的路径也由它独占。",
+    "游戏资产改名时使用引擎类型对应的扩展名，历史 `.zip` 游戏资产可以保留原名。",
+    "删除资产会从工程中移除它的原稿、条目、页面和译文。",
+    "新增记录不接受 `sort`，新资产在其余变化之后按新增记录的顺序追加到末尾。",
+    ...sort_notes,
+  ],
   items: [
     "`warnings` 按 `item_id` 关联条目，保存快照加载时的校对证据。正文与姓名属于同一个条目。",
     "`dst` 或 `name_dst` 实际变化时默认同步更新状态为 `PROCESSED`，同值提交不改变状态，省略的内容字段保持当前值。",
     '显式 `status` 覆盖内容修改的默认状态，接受现有结果时可提交 `status: "PROCESSED"`，最终内容和状态均相同时，回执为无变化。',
     "同文组按 `file_path`、`src` 与可见 `name_src` 关联，`NONE` 与 `DUPLICATED` 状态由宿主按重复过滤规则自动处理。",
-    `建议每批条目更新不超过 ${AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS} 行，以控制上下文与失败恢复成本，这是建议，没有强制行数上限。`,
+    `建议每批条目更新不超过 ${AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS} 行，以控制上下文与失败恢复成本。`,
   ],
   pages: [
     "页面身份由 `file_path` 与从 1 开始的原稿 `page` 组成，`fp` 从当前快照复制。",
     "页面更新完整替换可修改内容。同批同页提交一次，页面独立接受或拒绝，回执按文件与原页码定位，实际更新按页面计数。",
   ],
   prompts: ["以 `kind` 定位提示词，携带当前 `fp` 和完整最终 `text` 提交。"],
-  ...Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, quality_notes])),
+  ...Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, sort_notes])),
 };
 
 type DatasetDefinition = AgentWorkspaceRuntimeContract["datasets"][string] & { schema: TSchema };
@@ -121,7 +133,7 @@ const quality_changes = Object.fromEntries<
   QUALITY_RULE_KINDS.map((kind) => [
     kind,
     Object.fromEntries<ChangeDefinition>(
-      AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((operation) => [
+      AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
         operation,
         {
           path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind][operation],
@@ -179,6 +191,18 @@ const definition = {
     ...quality_entry_datasets,
   },
   changes: {
+    files: Object.fromEntries(
+      AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
+        operation,
+        {
+          path: AGENT_WORKSPACE_CHANGE_PATHS.files[operation],
+          format: "jsonl" as const,
+          schema: AGENT_WORKSPACE_FILE_SCHEMAS[operation],
+          reference: reference_path("files"),
+          identity: [operation === "creates" ? "source_path" : "file_path"],
+        },
+      ]),
+    ),
     pages: {
       updates: {
         path: AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
@@ -269,7 +293,7 @@ export const AGENT_WORKSPACE_REFERENCES: Readonly<Record<string, string>> = Obje
         [
           `# ${topic} 工作区参考`,
           "",
-          "路径相对于工作区根目录。以下 TypeScript 声明用于阅读，工作区脚本使用 JavaScript。字段注释中的约束同样适用。",
+          "路径相对于工作区根目录，字段注释中的约束同样适用。",
           "",
           ...records.map(
             (entry) =>

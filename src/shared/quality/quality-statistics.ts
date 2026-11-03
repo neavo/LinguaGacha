@@ -3,7 +3,7 @@ import {
   collect_projected_text_resource_references,
   type TextResourceReferenceMapping,
 } from "../text/text-resource-reference";
-import { compile_literal_patterns } from "../text/literal-matcher";
+import { compileLiteralPatterns } from "../text/literal-matcher";
 import {
   compile_text_pattern,
   matches_text_pattern,
@@ -88,7 +88,7 @@ function assign_literal_hits(
   seed_by_entry_id: ReadonlyMap<string, number>,
 ): void {
   const literal_rules = rules.filter((rule) => rule.pattern_kind === "literal");
-  const matcher = compile_literal_patterns(
+  const matcher = compileLiteralPatterns(
     literal_rules.map((rule) => ({
       key: rule.entry_id,
       text: rule.pattern,
@@ -99,7 +99,7 @@ function assign_literal_hits(
     const matched_entry_ids = new Set<string>();
     for (const part of text_group) {
       for (const text of part.matching_texts ?? [part.text]) {
-        matcher.scan_keys(text, (entry_id) => matched_entry_ids.add(entry_id));
+        matcher.scanKeys(text, (entry_id) => matched_entry_ids.add(entry_id));
       }
     }
     for (const entry_id of matched_entry_ids) {

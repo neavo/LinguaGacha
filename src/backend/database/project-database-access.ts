@@ -286,12 +286,25 @@ export class ProjectDatabaseAccess {
     });
   }
 
-  /** PDF 文档与源资产一起删除，调用方负责整个项目写入的事务。 */
+  /** 条目、PDF 与源资产一起删除，调用方持有工程事务。 */
   public delete_asset(project_path: string, asset_path: string): void {
     this.with_project_connection(project_path, (db) => {
       db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(asset_path);
       db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(asset_path);
+      db.prepare("DELETE FROM items WHERE json_extract(data, '$.file_path') = ?").run(asset_path);
       this.remove_asset(db, asset_path);
+    });
+  }
+
+  /** 路径身份在同一事务内迁移，不读取或重新压缩原稿。 */
+  public rename_asset(project_path: string, from: string, to: string): void {
+    this.with_project_connection(project_path, (db) => {
+      db.prepare("UPDATE assets SET path = ? WHERE path = ?").run(to, from);
+      db.prepare("UPDATE pdf_documents SET file_path = ? WHERE file_path = ?").run(to, from);
+      db.prepare("UPDATE pdf_pages SET file_path = ? WHERE file_path = ?").run(to, from);
+      db.prepare(
+        "UPDATE items SET data = json_set(data, '$.file_path', ?) WHERE json_extract(data, '$.file_path') = ?",
+      ).run(to, from);
     });
   }
 
@@ -323,8 +336,10 @@ export class ProjectDatabaseAccess {
   }
 
   /** 通过 SQL 聚合条目状态，供进度统计读取。 */
-  public get_item_status_summary(project_path: string): JsonRecord {
-    return this.with_project_connection(project_path, (db) => this.read_item_status_summary(db));
+  public get_item_status_summary(project_path: string, file_paths?: readonly string[]): JsonRecord {
+    return this.with_project_connection(project_path, (db) =>
+      this.read_item_status_summary(db, file_paths),
+    );
   }
 
   /** 按请求 id 顺序回查存在的条目，并去重请求。 */
@@ -335,6 +350,11 @@ export class ProjectDatabaseAccess {
   /** 替换整个条目集合，调用方事务负责与相关工程事实一起提交。 */
   public set_items(project_path: string, items: JsonValue[]): number[] {
     return this.with_project_connection(project_path, (db) => this.replace_items(db, items));
+  }
+
+  /** 追加条目并返回数据库主键，已有条目保持原身份。 */
+  public insert_items(project_path: string, items: JsonValue[]): number[] {
+    return this.with_project_connection(project_path, (db) => this.insert_item_records(db, items));
   }
 
   /** 批量更新译文字段，保持条目原文与定位信息。 */
@@ -554,7 +574,7 @@ export class ProjectDatabaseAccess {
   /**
    * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
    */
-  private read_item_status_summary(db: DatabaseSync): JsonRecord {
+  private read_item_status_summary(db: DatabaseSync, file_paths?: readonly string[]): JsonRecord {
     const row = db
       .prepare(
         `SELECT
@@ -565,9 +585,10 @@ export class ProjectDatabaseAccess {
          FROM (
            SELECT json_extract(data, '$.status') AS status
            FROM items
+           ${file_paths === undefined ? "" : "WHERE json_extract(data, '$.file_path') IN (SELECT value FROM json_each(?))"}
          )`,
       )
-      .get();
+      .get(...(file_paths === undefined ? [] : [JSON.stringify(file_paths)]));
     const processed_line = row === undefined ? 0 : row_number(row, "processed_line");
     return {
       total_line: row === undefined ? 0 : row_number(row, "total_line"),
@@ -610,6 +631,11 @@ export class ProjectDatabaseAccess {
    */
   private replace_items(db: DatabaseSync, items: JsonValue[]): number[] {
     db.prepare("DELETE FROM items").run();
+    return this.insert_item_records(db, items);
+  }
+
+  /** 替换与追加共用插入规则，保留显式主键并为缺省主键分配身份。 */
+  private insert_item_records(db: DatabaseSync, items: JsonValue[]): number[] {
     const insert_with_id = db.prepare("INSERT INTO items (id, data) VALUES (?, ?)");
     const insert = db.prepare("INSERT INTO items (data) VALUES (?)");
     const ids: number[] = [];

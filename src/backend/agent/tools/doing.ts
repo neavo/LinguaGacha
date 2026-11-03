@@ -21,7 +21,7 @@ export function describe_doing(): string {
   );
   return [
     "/** 在界面上显示当前处理阶段，内容跨回合保留，处理结束时传入 `null` 清除。 */",
-    `doing(text: ${text}): Promise<void>;`,
+    `setDoing(text: ${text}): Promise<void>;`,
   ].join("\n");
 }
 

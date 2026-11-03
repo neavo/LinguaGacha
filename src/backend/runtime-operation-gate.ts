@@ -130,7 +130,9 @@ export class RuntimeOperationGate {
   }
 
   /** Agent 写工具复用项目写串行 lease，但只能在自己的运行回合内调用。 */
-  public async run_agent_project_write<T>(operation: () => Promise<T> | T): Promise<T> {
+  public async run_agent_project_write<T>(
+    operation: (signal: AbortSignal) => Promise<T> | T,
+  ): Promise<T> {
     if (this.active_runtime?.owner !== "agent" || this.project_write_running) {
       throw new AppErrors.AppError("runtime.busy");
     }

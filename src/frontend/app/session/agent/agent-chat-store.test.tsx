@@ -741,6 +741,7 @@ describe("AgentChatStore", () => {
         textPreserve: 0,
         preReplacement: 0,
         postReplacement: 0,
+        files: 0,
         prompts: 0,
       },
     };
@@ -819,6 +820,7 @@ describe("AgentChatStore", () => {
           textPreserve: 0,
           preReplacement: 0,
           postReplacement: 0,
+          files: 0,
           prompts: 0,
         },
       } satisfies AgentPendingDecision,
@@ -939,6 +941,7 @@ describe("AgentChatStore", () => {
         textPreserve: 0,
         preReplacement: 0,
         postReplacement: 0,
+        files: 6,
         prompts: 0,
       },
     };
@@ -952,6 +955,15 @@ describe("AgentChatStore", () => {
     expect(latest.pendingDecision).toEqual(pending);
 
     await act(async () => {
+      for (const invalid of [-1, 0.5])
+        event_source.change({
+          type: "pending_decision",
+          pendingDecision: {
+            ...pending,
+            id: "invalid-file-count",
+            summary: { ...pending.summary, files: invalid },
+          },
+        });
       event_source.change({ type: "pending_decision" });
       event_source.change({
         type: "pending_decision",
@@ -965,7 +977,11 @@ describe("AgentChatStore", () => {
         type: "pending_decision",
         pendingDecision: {
           ...pending,
-          summary: { ...pending.summary, items: 0 },
+          summary: {
+            ...pending.summary,
+            items: 0,
+            files: 0,
+          },
         },
       });
       event_source.change({

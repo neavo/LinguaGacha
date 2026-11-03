@@ -68,3 +68,16 @@ export class AgentWorkspaceRequestChannel {
     else request.reject(new Error(message.result.message));
   }
 }
+
+let requests: Pick<AgentWorkspaceRequestChannel, "call"> | undefined; // 只由根脚本启动流程绑定。
+
+/** bootstrap 与领域 SDK 共用模块实例，仅根进程绑定 IPC 通道。 */
+export function bind_workspace_requests(channel: Pick<AgentWorkspaceRequestChannel, "call">): void {
+  requests = channel;
+}
+
+/** 后代进程未绑定通道，调用宿主能力时明确报错。 */
+export function workspace_requests(): Pick<AgentWorkspaceRequestChannel, "call"> {
+  if (!requests) throw new Error("Current process is not bound to the workspace runtime.");
+  return requests;
+}

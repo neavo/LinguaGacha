@@ -110,6 +110,13 @@ it("批量替换 item 后保持回查顺序并支持字段补丁", async () => {
     ),
   ).toEqual([10, 11]);
   expect(await database.get_item_count(lg_path)).toBe(2);
+  await database.read(lg_path, (reader) => {
+    expect(reader.get_item_status_summary(lg_path, ["script-a.txt"])).toEqual({
+      total_line: 1,
+      processed_line: 0,
+    });
+    expect(reader.get_item_status_summary(lg_path)).toEqual({ total_line: 2, processed_line: 1 });
+  });
   await database.transaction(lg_path, (writer) =>
     writer.patch_item_translation_fields(lg_path, [
       { item_id: 10, next: { dst: "", name_dst: null, status: "PROCESSED" } },

@@ -140,6 +140,7 @@ export class GuiBackendBootstrap {
         database: resources.database,
         runtimeGate: services.state.runtimeGate,
         writeStore: services.state.writes,
+        files: services.project.content,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
         pdfHost: this.options.pdfHost,

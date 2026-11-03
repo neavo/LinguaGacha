@@ -1,6 +1,6 @@
 import type { QualityRuleGlossaryEntry } from "../../domain/quality";
 import type { ItemTextPart } from "../item-text";
-import { compile_literal_patterns, type LiteralMatcher } from "../text/literal-matcher";
+import { compileLiteralPatterns, type LiteralMatcher } from "../text/literal-matcher";
 
 /** 术语匹配与应用结果必须能回传项目条目身份。 */
 export type GlossaryEntry = QualityRuleGlossaryEntry;
@@ -39,14 +39,14 @@ export function compile_glossary(entries: readonly GlossaryEntry[]): CompiledGlo
   const matchable_entries = entries.filter((entry) => entry.src.trim() !== "");
   return {
     entries: matchable_entries,
-    source_matcher: compile_literal_patterns(
+    source_matcher: compileLiteralPatterns(
       matchable_entries.map((entry) => ({
         key: entry.entry_id,
         text: entry.src,
         case_sensitive: entry.case_sensitive,
       })),
     ),
-    target_matcher: compile_literal_patterns(
+    target_matcher: compileLiteralPatterns(
       matchable_entries.flatMap((entry) =>
         entry.dst.trim() === ""
           ? []
@@ -67,7 +67,7 @@ export function match_glossary_source(
     const source_field = part.field;
     const target_field = part.field === "src" ? "dst" : "name_dst";
     // 领域检查只消费术语身份与字段归属，字符坐标由高亮或替换入口按需计算。
-    compiled.source_matcher.scan_keys(part.text, (entry_id) => {
+    compiled.source_matcher.scanKeys(part.text, (entry_id) => {
       const fields = fields_by_entry_id.get(entry_id) ?? [];
       fields.push({ source_field, target_field });
       fields_by_entry_id.set(entry_id, fields);
@@ -89,7 +89,7 @@ export function evaluate_glossary_applications(
   for (const part of translation_parts) {
     if (part.field !== "dst" && part.field !== "name_dst") continue;
     const matched_ids = new Set<string>();
-    compiled.target_matcher.scan_keys(part.text, (key) => matched_ids.add(key));
+    compiled.target_matcher.scanKeys(part.text, (key) => matched_ids.add(key));
     matched_ids_by_field.set(part.field, matched_ids);
   }
   return source_matches.flatMap(({ entry, fields }) => {

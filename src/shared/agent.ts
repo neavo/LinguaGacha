@@ -40,15 +40,19 @@ export type AgentContextSnapshot = JsonRecord & {
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
 /** 待审批写入的结构化变更摘要。按业务种类统计受影响对象数量。 */
-export type AgentPendingWriteSummary = Readonly<{
-  pages: number; // 本批实际变化的 PDF 原页数
-  items: number;
-  glossary: number;
-  textPreserve: number;
-  preReplacement: number;
-  postReplacement: number;
-  prompts: number;
-}>;
+export const AGENT_PENDING_WRITE_SUMMARY_FIELDS = Object.freeze([
+  "pages",
+  "items",
+  "glossary",
+  "textPreserve",
+  "preReplacement",
+  "postReplacement",
+  "prompts",
+  "files",
+] as const);
+export type AgentPendingWriteSummary = Readonly<
+  Record<(typeof AGENT_PENDING_WRITE_SUMMARY_FIELDS)[number], number>
+>;
 
 /** ask_user 的固定选项，按推荐顺序排列。 */
 export type AgentQuestionOption = JsonRecord & {

@@ -29,6 +29,56 @@ import {
 } from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
+  it("结构事务迁移全部路径归属，删除统计和失败回滚保持一致", async () => {
+    const { database, project_path, store } = await create_store("file-layout");
+    const bytes = create_pdf_fixture();
+    const document = read_pdf_document(bytes);
+    await database.transaction(project_path, (writer) => {
+      writer.add_asset(project_path, "book.pdf", bytes, "PDF", document);
+      writer.add_asset(project_path, "delete.txt", Buffer.from("old"), "TXT", null);
+      writer.set_meta(project_path, "additional_files", {
+        "book.pdf": ["note.txt"],
+        "delete.txt": ["old.txt"],
+      });
+      writer.set_items(project_path, [
+        create_item({ id: 7, file_path: "book.pdf", status: "PROCESSED" }),
+        create_item({ id: 8, file_path: "delete.txt", status: "NONE" }),
+      ]);
+    });
+    const request = {
+      projectPath: project_path,
+      source: "test",
+      expectedSectionRevisions: { files: 0 },
+      revisionSections: ["files" as const],
+      creates: [],
+      deletes: ["delete.txt"],
+    };
+    await expect(
+      store.apply_file_changes({
+        ...request,
+        updates: [{ file_path: "book.pdf", new_file_path: "../bad.pdf", line: 1 }],
+      }),
+    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    expect(await database.get_asset_count(project_path)).toBe(2);
+    const result = await store.apply_file_changes({
+      ...request,
+      updates: [{ file_path: "book.pdf", new_file_path: "folder/book.pdf", line: 1 }],
+    });
+    expect(result.sectionRevisions).toMatchObject({ files: 1, items: 1, pdf: 1 });
+    expect(await database.read_pdf_document(project_path, "book.pdf")).toBeNull();
+    expect(await database.read_pdf_document(project_path, "folder/book.pdf")).toEqual(document);
+    expect(await database.get_all_items(project_path)).toMatchObject([
+      { id: 7, file_path: "folder/book.pdf" },
+    ]);
+    expect(await database.get_all_meta(project_path)).toMatchObject({
+      additional_files: { "folder/book.pdf": ["note.txt"] },
+      translation_extras: { total_line: 1, processed_line: 1 },
+    });
+    expect(await database.read_asset_content(project_path, "folder/book.pdf")).toEqual(
+      Buffer.from(bytes),
+    );
+  });
+
   it("替换资产时清空其附加原稿清单，保留其他资产的清单", async () => {
     const { database, project_path, store } = await create_store("additional-files");
     await database.transaction(project_path, (writer) => {
@@ -92,22 +142,23 @@ describe("ProjectWriteStore", () => {
     await database.transaction(project_path, (writer) =>
       writer.add_asset(project_path, "game", Buffer.from("旧文"), "TXT", null),
     );
-    await store.replace_project_items_and_files({
+    await store.apply_file_changes({
       projectPath: project_path,
       expectedSectionRevisions: { files: 0 },
       revisionSections: ["files"],
-      updatedSections: ["files"],
       source: "project_import_files",
-      assetWrites: [
+      updates: [],
+      deletes: ["game"],
+      creates: [
         {
           kind: "add",
+          items: [],
           path: "game/readme.txt",
           sortOrder: 0,
           content: Buffer.from("新文"),
           fileType: "TXT",
           pdfDocument: null,
         },
-        { kind: "delete", path: "game" },
       ],
     });
     expect((await database.get_all_asset_records(project_path)).map((asset) => asset.path)).toEqual(
@@ -509,15 +560,14 @@ describe("ProjectWriteStore", () => {
       await create_store("project-content");
     await seed_items(database, project_path);
 
-    await store.replace_project_items_and_files({
+    await store.apply_file_changes({
       projectPath: project_path,
       expectedSectionRevisions: { files: 0, items: 0 },
       revisionSections: ["files", "items"],
       source: "project_delete_files",
-      updatedSections: ["files", "items"],
-      assetWrites: [{ kind: "delete", path: "demo.txt" }],
-      items: [],
-      meta: { translation_extras: {} },
+      creates: [],
+      updates: [],
+      deletes: ["demo.txt"],
     });
 
     expect(await database.get_asset_count(project_path)).toBe(0);

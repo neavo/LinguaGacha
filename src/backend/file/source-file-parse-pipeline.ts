@@ -1,5 +1,8 @@
 import type { Item, ProjectItemPersistentRecord } from "../../domain/item";
-import type { SourceFileFailure } from "./source-file-parse-failure-reporter";
+import {
+  source_operation_error,
+  type SourceFileFailure,
+} from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "./file-format-service";
 import type { PDFDocument } from "../../shared/pdf";
 import type { PreparedRead, ProjectFileType, SourceFileParseWarning } from "./file-format-types";
@@ -192,42 +195,48 @@ export class SourceFileParsePipeline {
     const failures: SourceFileFailure[] = [];
     const warnings: SourceFileParseWarning[] = [];
     const directory_changes: string[] = [];
-    for (const entry of entries) {
-      signal?.throwIfAborted();
-      let prepared;
-      try {
-        prepared = await this.format_service.prepare_source(entry, signal);
-      } catch (error) {
-        if (signal?.aborted) throw error; // 保留取消收尾中的恢复失败及恢复材料位置。
-        if (is_app_error(error) && error.public_details?.directory_changed === true)
-          directory_changes.push(entry.source_path);
-        failures.push({ source_path: entry.source_path, rel_path: entry.rel_path, error });
-        continue;
+    try {
+      for (const entry of entries) {
+        signal?.throwIfAborted();
+        let prepared;
+        try {
+          prepared = await this.format_service.prepare_source(entry, signal);
+        } catch (error) {
+          if (signal?.aborted) throw error; // 保留取消收尾中的恢复失败及恢复材料位置。
+          if (is_app_error(error) && error.public_details?.directory_changed === true)
+            directory_changes.push(entry.source_path);
+          failures.push({ source_path: entry.source_path, rel_path: entry.rel_path, error });
+          continue;
+        }
+        if (prepared.directory_changed) directory_changes.push(entry.source_path);
+        for (const diagnostic of prepared.diagnostics)
+          warnings.push({
+            code: "source_preparation_failed",
+            rel_path: entry.rel_path,
+            ...(diagnostic.member === undefined ? {} : { internal_file_path: diagnostic.member }),
+            stage: diagnostic.stage,
+            error: diagnostic.error,
+            diagnostics: [{ message: diagnostic.error.message, line: null, column: null }],
+          });
+        const parsed = await this.parse_asset_draft(
+          {
+            source_path: entry.source_path,
+            rel_path: entry.rel_path,
+            file_type: entry.file_type,
+            content: prepared.content,
+            additional_files: prepared.additional_files,
+            ...(prepared.read && { read: prepared.read }),
+          },
+          signal,
+        );
+        file_drafts.push(parsed.draft);
+        warnings.push(...parsed.warnings);
+        if (parsed.failure) failures.push(parsed.failure);
       }
-      if (prepared.directory_changed) directory_changes.push(entry.source_path);
-      for (const diagnostic of prepared.diagnostics)
-        warnings.push({
-          code: "source_preparation_failed",
-          rel_path: entry.rel_path,
-          ...(diagnostic.member === undefined ? {} : { internal_file_path: diagnostic.member }),
-          stage: diagnostic.stage,
-          error: diagnostic.error,
-          diagnostics: [{ message: diagnostic.error.message, line: null, column: null }],
-        });
-      const parsed = await this.parse_asset_draft(
-        {
-          source_path: entry.source_path,
-          rel_path: entry.rel_path,
-          file_type: entry.file_type,
-          content: prepared.content,
-          additional_files: prepared.additional_files,
-          ...(prepared.read && { read: prepared.read }),
-        },
-        signal,
-      );
-      file_drafts.push(parsed.draft);
-      warnings.push(...parsed.warnings);
-      if (parsed.failure) failures.push(parsed.failure);
+    } catch (error) {
+      // 关闭或后续来源异常仍须交付此前已完成的目录变化。
+      if (directory_changes.length) throw source_operation_error(error, directory_changes);
+      throw error;
     }
     return { file_drafts, failures, warnings, directory_changes };
   }

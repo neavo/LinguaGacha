@@ -5,10 +5,10 @@ import type { AgentWorkspaceRejectedChange } from "../../project/agent-workspace
 import { AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA } from "./schema";
 import { describe_agent_workspace_schema_error } from "./validation";
 
-export { resolve_agent_workspace_page_updates } from "../../project/agent-workspace-page-write";
+export { resolve_agent_workspace_page_updates as resolvePageUpdates } from "../../project/agent-workspace-page-write";
 
 /** 预览和提交共用整行校验，保留物理行号及非法字段，避免投影后掩盖输入错误。 */
-export function parse_page_update(row: {
+export function parsePageUpdate(row: {
   line: number;
   value: unknown;
   error?: string;
