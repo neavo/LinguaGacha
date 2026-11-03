@@ -18,7 +18,6 @@ type AppDialogAction = {
 };
 
 type AppDialogPrimaryAction = AppDialogAction & {
-  destructive?: boolean;
   delayed?: boolean; // 危险动作在开放确认前启用统一倒计时
 };
 
@@ -26,7 +25,7 @@ type AppDialogActionPosition = "primary" | "secondary";
 
 type AppDialogBaseProps = {
   open: boolean;
-  title?: string | null | undefined; // null 省略可见标题，并用主操作为弹窗命名。
+  hideTitle?: boolean | undefined; // 标题统一为「确认」，隐藏时用主操作为弹窗命名。
   description: ReactNode;
   details?: ReactNode; // 动作弹窗可在无障碍描述之外承载结构化业务详情
   onClose: () => void;
@@ -60,7 +59,7 @@ export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
   return (
     <AppActionDialog
       open={props.open}
-      title={props.title}
+      hideTitle={props.hideTitle}
       description={props.description}
       submitting={props.submitting}
       primaryAction={{
@@ -79,7 +78,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   const { t } = useI18n();
   const submitting = props.submitting ?? false;
   const submitting_icon = props.submittingIcon ?? true;
-  const title = props.title === null ? null : (props.title ?? t("app.action.confirm"));
+  const title = props.hideTitle ? null : t("app.action.confirm");
   const has_header = title !== null || props.description != null;
   const submitting_action = submitting ? (props.submittingAction ?? "primary") : null;
   const delayed = props.primaryAction.delayed === true;
@@ -227,7 +226,6 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
               </AppButton>
             )}
             <AppButton
-              variant={props.primaryAction.destructive ? "destructive" : "default"}
               size="sm"
               data-slot="alert-dialog-primary-action"
               disabled={!primary_enabled}

@@ -1,0 +1,112 @@
+.document-editor {
+  --document-editor-gap: 8px;
+  gap: var(--document-editor-gap);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.document-editor__toolbar .command-bar__toolbar {
+  min-height: 40px;
+}
+.document-editor__toolbar-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+/* 外层居中整组文字，组内基线对齐两种字号。 */
+.document-editor__file-info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.document-editor__path {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  font-size: var(--ui-font-size-13);
+  font-weight: 400;
+  color: var(--foreground);
+}
+.document-editor__path-segment {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.document-editor__path-segment[data-directory] {
+  flex-shrink: 10;
+}
+.document-editor__path-separator {
+  flex-shrink: 0;
+  margin-inline: 6px;
+  color: var(--muted-foreground);
+}
+/* 无文件树的单文档编辑器直接占满剩余高度。 */
+.document-editor > .document-editor__content {
+  flex: 1;
+}
+.document-editor__content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.document-editor__text {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.document-editor__content:not([data-readonly]):focus-within::after {
+  border-color: var(--ring);
+}
+.document-editor__error {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ui-table-divider-soft);
+  color: var(--destructive);
+  font-size: var(--ui-font-size-12);
+}
+.document-editor__error > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.document-editor__unsupported {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  font-size: var(--ui-font-size-13);
+  color: var(--muted-foreground);
+}
+
+.document-editor__status {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 8px;
+  font-size: var(--ui-font-size-12);
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.document-editor__status[data-status="modified"] .document-editor__status-label {
+  color: var(--primary);
+}
+
+.document-editor__status[data-status="save_failed"] .document-editor__status-label,
+.document-editor__status[data-status="conflict"] .document-editor__status-label {
+  color: var(--destructive);
+}
+
+.document-editor__recovery {
+  display: flex;
+  gap: 8px;
+}
+.document-editor__toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

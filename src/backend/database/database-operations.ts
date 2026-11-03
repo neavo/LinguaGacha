@@ -281,6 +281,11 @@ export class ProjectDatabase {
       writer.active = false;
     }
   }
+  /** 在数据库串行读作用域内取得知识正文。 */
+  public list_knowledge(project_path: string) {
+    return this.read(project_path, (db) => db.list_knowledge(project_path));
+  }
+
   public get_all_meta(
     ...args: Parameters<ProjectDatabaseAccess["get_all_meta"]>
   ): Promise<ReturnType<ProjectDatabaseAccess["get_all_meta"]>> {

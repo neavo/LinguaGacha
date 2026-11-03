@@ -1322,12 +1322,11 @@ function normalize_question(value: unknown): AgentQuestion | null {
     ids.add(id);
     return [{ id, label }];
   });
-  const [first, second, third] = options;
-  if (first === undefined || second === undefined || options.length !== raw_options.length) {
+  const [first, ...rest] = options;
+  if (first === undefined || options.length !== raw_options.length) {
     return null;
   }
-  const normalized_options: AgentQuestion["options"] =
-    third === undefined ? [first, second] : [first, second, third];
+  const normalized_options: AgentQuestion["options"] = [first, ...rest];
   return description === undefined
     ? { prompt, options: normalized_options }
     : { prompt, description: description.trim(), options: normalized_options };

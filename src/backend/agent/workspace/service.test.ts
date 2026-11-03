@@ -1,3 +1,6 @@
+import type { KnowledgeDocument } from "../../../shared/project-knowledge";
+import { project_knowledge_fingerprint } from "../../project/project-knowledge";
+import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
 import type { ProjectContentService } from "../../project/project-content-service";
 import { project_agent_workspace_warning } from "./service";
 import { Check } from "typebox/value";
@@ -41,11 +44,7 @@ import {
   has_agent_workspace_applied_changes,
   resolve_agent_workspace_writes,
 } from "../../project/agent-workspace-write";
-import {
-  AGENT_DOCUMENT_MAX_BYTES,
-  AgentWorkspaceService,
-  type AgentWorkspaceRunPort,
-} from "./service";
+import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "./service";
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_PATHS,
@@ -75,6 +74,75 @@ describe("AgentWorkspaceService", () => {
   afterEach(() => {
     fs.rmSync(temp_dir, { recursive: true, force: true });
     vi.restoreAllMocks();
+  });
+
+  it("知识投影与索引共用指纹，知识修订刷新正文，旧指纹按漂移拒绝", async () => {
+    const fixture = await create_fixture(temp_dir);
+    fixture.knowledge.push({
+      path: "notes/setting.md",
+      text: "---\ndescription: Setting\n---\nold",
+    });
+    await run_workspace(fixture);
+    const meta = JSON.parse(
+      fs.readFileSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.projectMeta), "utf8"),
+    );
+    const original = fixture.knowledge[0]!;
+    expect(meta.knowledge).toEqual([
+      {
+        path: original.path,
+        description: "Setting",
+        fp: project_knowledge_fingerprint(original.path, original.text),
+      },
+    ]);
+    expect(
+      fs.readFileSync(
+        path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.knowledge, original.path),
+        "utf8",
+      ),
+    ).toBe(original.text);
+    fixture.knowledge[0] = { ...original, text: "new" };
+    fs.writeFileSync(
+      path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.knowledge.updates),
+      JSON.stringify({ path: original.path, text: "stale", fp: meta.knowledge[0].fp }),
+    );
+    expect(await fixture.service.apply_workspace()).toMatchObject({
+      status: "rejected",
+      rejected: [{ scope: "knowledge", reason: "fp_mismatch" }],
+      destroyed: true,
+    });
+    fixture.snapshot.sectionRevisions.knowledge = 2;
+    await run_workspace(fixture);
+    expect(
+      fs.readFileSync(
+        path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.knowledge, original.path),
+        "utf8",
+      ),
+    ).toBe("new");
+  });
+
+  it("分享工程中的非法知识路径不能写出快照目录", async () => {
+    const fixture = await create_fixture(temp_dir);
+    fixture.knowledge.push({ path: "../outside.md", text: "must stay in database" });
+    await expect(run_workspace(fixture)).rejects.toMatchObject({
+      public_details: { action: "workspace_run" },
+    });
+    expect(fs.existsSync(path.join(fixture.workspace_root, "outside.md"))).toBe(false);
+  });
+
+  it("绝对输入路径原样交给导入记录，工作目录输入不记录", async () => {
+    const fixture = await create_fixture(temp_dir);
+    const absolute = path.join(temp_dir, "game");
+    await run_workspace(fixture);
+    fs.writeFileSync(
+      path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.creates),
+      [absolute, "work/generated.txt"]
+        .map((source_path) => JSON.stringify({ source_path }))
+        .join("\n"),
+    );
+    await fixture.service.apply_workspace();
+    expect(fixture.apply_file_changes).toHaveBeenCalledWith(
+      expect.objectContaining({ sourcePaths: [absolute] }),
+    );
   });
 
   it.each(["none", "update", "delete"])(
@@ -108,6 +176,7 @@ describe("AgentWorkspaceService", () => {
       );
       expect(fixture.apply_file_changes).toHaveBeenCalledWith(
         expect.objectContaining({
+          sourcePaths: [],
           creates: [
             expect.objectContaining({
               source_path: path.join(fixture.workspace_root, "uploads/input.txt"),
@@ -1085,7 +1154,7 @@ describe("AgentWorkspaceService", () => {
       },
       rejected: [],
       destroyed: true,
-      revisions: { items: 2, proofreading: 2, quality: 2, prompts: 2, pdf: 0 },
+      revisions: { items: 2, proofreading: 2, quality: 2, knowledge: 0, prompts: 2, pdf: 0 },
     });
     expect(request_approval).toHaveBeenCalledWith({
       pages: 0,
@@ -1095,6 +1164,7 @@ describe("AgentWorkspaceService", () => {
       preReplacement: 0,
       postReplacement: 0,
       files: 0,
+      knowledge: 0,
       prompts: 1,
     });
     expect(fixture.write_store).toHaveBeenCalledWith(
@@ -1279,7 +1349,7 @@ describe("AgentWorkspaceService", () => {
       applied: {},
       rejected: [],
       destroyed: false,
-      revisions: { items: 1, proofreading: 1, quality: 1, prompts: 1, pdf: 0 },
+      revisions: { items: 1, proofreading: 1, quality: 1, knowledge: 0, prompts: 1, pdf: 0 },
     });
     expect(request_approval).not.toHaveBeenCalled();
     expect(fixture.write_store).not.toHaveBeenCalled();
@@ -1399,10 +1469,12 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
   const run = vi.fn<AgentWorkspaceRunPort>(async () => workspace_execution());
+  const knowledge: KnowledgeDocument[] = [];
   const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(async (request) => {
     const outcome = resolve_agent_workspace_writes({
       batch: request.batch,
       current: {
+        knowledge,
         pdfDocuments: [],
         items: items as unknown as JsonRecord[],
         quality: Object.fromEntries(
@@ -1517,6 +1589,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       get_all_meta: read_meta,
       read_asset_content,
       read_pdf_document: async () => null,
+      list_knowledge: async () => knowledge,
       read_pdf_documents: async () => [],
       read_file_counts: async () => new Map(),
     },
@@ -1546,6 +1619,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     query_warnings,
     run,
     write_store,
+    knowledge,
     items,
     read_asset_content,
     read_meta,
@@ -1793,6 +1867,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       preReplacement: 0,
       postReplacement: 0,
       files: 0,
+      knowledge: 0,
       prompts: 0,
     });
     expect((await services.project.summary.read())["snapshot"]).toMatchObject({

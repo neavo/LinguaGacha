@@ -180,6 +180,7 @@ describe("AgentDecision", () => {
           preReplacement: 0,
           postReplacement: 0,
           files: 6,
+          knowledge: 0,
           prompts: 0,
         },
       },
@@ -219,6 +220,7 @@ describe("AgentDecision", () => {
                 preReplacement: 0,
                 postReplacement: 0,
                 files: 0,
+                knowledge: 0,
                 prompts: 0,
               },
             };

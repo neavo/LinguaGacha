@@ -90,6 +90,7 @@ export const zh_cn_agent_page = {
       text_preserve: "文本保护规则 {count} 条",
       pre_replacement: "译前替换规则 {count} 条",
       post_replacement: "译后替换规则 {count} 条",
+      knowledge: "工程知识 {count} 篇",
       prompts: "自定义提示词 {count} 条",
     },
     reject: "拒绝",

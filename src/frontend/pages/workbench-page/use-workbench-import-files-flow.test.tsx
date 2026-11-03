@@ -356,10 +356,10 @@ describe("useWorkbenchImportFilesFlow", () => {
         },
       },
     ]);
-    expect(api_fetch_mock).toHaveBeenLastCalledWith(
-      "/api/workbench/files/import",
-      write_payloads[0],
-    );
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/workbench/files/import", {
+      ...write_payloads[0],
+      source_paths: ["C:/source/ new.txt "],
+    });
     expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
   });
 

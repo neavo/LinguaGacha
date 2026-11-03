@@ -6,7 +6,11 @@ describe("技能主文件编辑", () => {
   const original =
     '---\r\nname: sample\r\ndescription: "Original"\r\n# 留给其它消费者的字段\r\ndisable-model-invocation: true\r\nextra: [one, two]\r\n---\r\n\n  Body  \n';
   it("字段处理 YAML 特殊字符并保留额外字段与注释", () => {
-    const document = { name: "changed", description: 'A: "quote" # tag', body: "body\n" };
+    const document = {
+      name: "changed",
+      description: 'A: "quote" # tag' + "💡".repeat(1025),
+      body: "body\n",
+    };
     const result = write_agent_skill_document(original, document);
     expect(read_agent_skill_document(result)).toEqual(document);
     expect(result).toContain("disable-model-invocation: true");
@@ -44,22 +48,5 @@ describe("技能主文件编辑", () => {
     expect(write_agent_skill_document(original, { ...value, body: "changed" }, "中文 Skill")).toBe(
       original.replace(/body$/, "changed"),
     );
-  });
-  it("有限修复散文标量，保留块字符串、注释和长描述", () => {
-    const original =
-      "---\nname: 中文  Skill\ndescription: Build for AWS: ECS # keep\nargument-hint: <duration: 7d>\nmetadata:\n  note: |\n    keep: this\n---\nbody";
-    const value = read_agent_skill_document(original);
-    expect(value.name).toBe("中文 Skill");
-    expect(value.description).toBe("Build for AWS: ECS");
-    expect(write_agent_skill_document(original, { ...value, body: "changed" })).toBe(
-      original.replace(/body$/, "changed"),
-    );
-    const saved = write_agent_skill_document(original, {
-      ...value,
-      description: "💡".repeat(1025),
-    });
-    expect(read_agent_skill_document(saved).description).toBe("💡".repeat(1025));
-    expect(saved).toContain("# keep");
-    expect(parse(saved.split("---")[1]!).metadata.note).toBe("keep: this\n");
   });
 });

@@ -23,11 +23,11 @@ const PROJECT_LOAD_ENTRY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
 ]);
 // 这些页面的导航入口在项目未加载时禁用。
 const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  "skills",
   "glossary",
   "text-preserve",
   "pre-translation-replacement",
   "post-translation-replacement",
+  "knowledge",
   "custom-prompt",
   "laboratory",
 ]);

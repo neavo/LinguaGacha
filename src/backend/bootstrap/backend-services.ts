@@ -1,3 +1,4 @@
+import { ProjectKnowledgeService } from "../project/project-knowledge-service";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { configure_python_parser } from "../file/renpy/python-syntax";
 import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
@@ -98,6 +99,7 @@ export interface BackendProjectServices {
   lifecycle: ProjectLifecycleService;
   readManifest: () => Promise<JsonRecord>;
 
+  knowledge: ProjectKnowledgeService;
   summary: ProjectSummaryService;
   content: ProjectContentService;
   translationTransfer: ProjectTranslationTransferService;
@@ -276,6 +278,12 @@ export class BackendServices {
             });
       },
 
+      knowledge: new ProjectKnowledgeService(
+        database,
+        session_state,
+        write_store,
+        this.runtime_gate,
+      ),
       summary: new ProjectSummaryService(session_state, this.cache_manager),
       content: new ProjectContentService(
         this.game_directory_operations,
@@ -284,6 +292,7 @@ export class BackendServices {
         session_state,
         write_store,
         this.pdf_worker.run,
+        this.app_setting_service,
         undefined,
         this.logManager,
         this.game_prepare_worker.run,

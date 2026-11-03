@@ -1,3 +1,5 @@
+import { project_knowledge_entry } from "../../project/project-knowledge";
+import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
 import type { ProjectContentService } from "../../project/project-content-service";
 import { preview_file_changes } from "./file-changes";
 import type { ParsedAgentWorkspaceChanges } from "./changes";
@@ -81,8 +83,6 @@ import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/p
 import { write_agent_workspace_sources, type WorkspaceSourceResult } from "./sources";
 import { watch_agent_process_output, type AgentProcessOutputTail } from "../process-output";
 
-/** 预览采用有界读取，完整文件通过另存为交付。 */
-export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
 const AGENT_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
 
 const WORKSPACE_IMAGE_TYPES: Readonly<Record<string, string>> = {
@@ -128,7 +128,7 @@ export type AgentWorkspaceRunInput = Readonly<{
 type ActiveAgentWorkspace = {
   projectPath: string; // snapshot 建立时绑定的工程身份
   projectEpoch: number; // 隔离同路径重新加载后的旧快照
-  revisions: ProjectDataSectionRevisions; // 完整七 section 快照
+  revisions: ProjectDataSectionRevisions; // 全部数据分区快照
   languageKey: string; // 只包含解释工作区数据所需的语言
 };
 
@@ -203,6 +203,7 @@ export class AgentWorkspaceService {
         | "get_all_meta"
         | "read_asset_content"
         | "read_pdf_document"
+        | "list_knowledge"
         | "read_pdf_documents"
         | "read_file_counts"
       >;
@@ -524,7 +525,9 @@ export class AgentWorkspaceService {
     const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
       ? await this.options.database.read_pdf_documents(project_path)
       : [];
+    const knowledge = await this.options.database.list_knowledge(project_path);
     const project_meta: JsonRecord = {
+      knowledge: knowledge.map(project_knowledge_entry),
       ...language,
       counts: {
         files: snapshot_files.length,
@@ -542,6 +545,12 @@ export class AgentWorkspaceService {
     try {
       // 所有并行写入必须结算后再清理。否则迟到写入会在失败目录删除后复活半成品。
       const write_results = await Promise.allSettled([
+        ...knowledge.map((document) =>
+          this.native_fs.write_file(
+            path.join(this.root_path, AGENT_WORKSPACE_PATHS.knowledge, document.path),
+            document.text,
+          ),
+        ),
         ...Object.entries(AGENT_WORKSPACE_REFERENCES).map(([relative_path, content]) =>
           this.native_fs.write_file(path.join(this.root_path, relative_path), content),
         ),
@@ -788,6 +797,9 @@ export class AgentWorkspaceService {
       try {
         const quality = this.options.cache.quality.readBlock(); // 读取边界已校验规则，预演只借用当前事实。
         const current: AgentWorkspaceCurrentFacts = {
+          knowledge: parsed.batch.knowledge.length
+            ? await this.options.database.list_knowledge(active.projectPath)
+            : [],
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
           pdfDocuments: (
             await Promise.all(
@@ -928,6 +940,9 @@ export class AgentWorkspaceService {
           source: "agent_workspace_apply",
           expectedSectionRevisions: { files: active.revisions.files ?? 0 },
           revisionSections: ["files"],
+          sourcePaths: parsed.files.creates
+            .filter((row) => path.isAbsolute(row.source_path))
+            .map((row) => row.source_path),
           creates: preview.files.creates,
           updates: preview.files.updates,
           deletes: preview.files.deletes.map((row) => row.file_path),
@@ -1084,6 +1099,7 @@ export class AgentWorkspaceService {
     this.link_versions.snapshot += 1;
     this.active = null;
     const targets = [
+      AGENT_WORKSPACE_PATHS.knowledge,
       AGENT_WORKSPACE_PATHS.projectMeta,
       AGENT_WORKSPACE_PATHS.contract,
       AGENT_WORKSPACE_PATHS.reference,
@@ -1151,6 +1167,11 @@ function summarize_applied_changes(
     return summary === undefined ? 0 : summary.created + summary.updated + summary.deleted;
   };
   return {
+    knowledge: applied.knowledge
+      ? applied.knowledge.created.length +
+        applied.knowledge.updated.length +
+        applied.knowledge.deleted.length
+      : 0,
     files: 0,
     items: applied.items?.updated ?? 0,
     pages: applied.pages?.updated ?? 0,
@@ -1217,9 +1238,31 @@ function normalize_workspace_rejections(
     ? read_workspace_json(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts))
     : {};
 
+  const knowledge_meta = drift_candidates.some((row) => row.scope === "knowledge")
+    ? read_workspace_json(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.projectMeta))[
+        "knowledge"
+      ]
+    : [];
+  const baseline_knowledge = new Map(
+    (Array.isArray(knowledge_meta) ? knowledge_meta : [])
+      .filter(is_json_record)
+      .map((row) => [String(row["path"]).toLowerCase(), String(row["fp"])]),
+  );
   return rejections.map((rejection) => {
     if (rejection.reason !== "fp_mismatch" && rejection.reason !== "target_missing")
       return rejection;
+    if (rejection.scope === "knowledge") {
+      const key = String(rejection["path"]).replaceAll("\\", "/").toLowerCase();
+      const fp = baseline_knowledge.get(key);
+      const intents = batch.knowledge.filter(
+        (intent) => intent.path.replaceAll("\\", "/").toLowerCase() === key,
+      );
+      return fp !== undefined &&
+        intents.length > 0 &&
+        intents.every((intent) => intent.op !== "create" && intent.fp === fp)
+        ? rejection
+        : { ...rejection, reason: "invalid_change" };
+    }
     if (rejection.scope === "pages") {
       const fp = baseline_pages.get(JSON.stringify([rejection["file_path"], rejection["page"]]));
       const intents = batch.pages.filter(
@@ -1336,7 +1379,7 @@ function all_change_paths(): string[] {
   );
 }
 
-/** 建立 snapshot 时复制完整七 section revision，隔离 cache 返回的可变引用。 */
+/** 建立 snapshot 时复制全部数据分区修订，隔离 cache 返回的可变引用。 */
 function pick_workspace_revisions(
   revisions: ProjectDataSectionRevisions,
 ): ProjectDataSectionRevisions {
@@ -1348,10 +1391,9 @@ function pick_workspace_revisions(
 /** apply 回执只暴露本工具可能改变的 section。 */
 function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecord {
   return Object.fromEntries(
-    (["items", "proofreading", "quality", "prompts", "pdf"] as const).map((section) => [
-      section,
-      read_json_integer(revisions[section], 0),
-    ]),
+    (["items", "proofreading", "quality", "prompts", "pdf", "knowledge"] as const).map(
+      (section) => [section, read_json_integer(revisions[section], 0)],
+    ),
   );
 }
 

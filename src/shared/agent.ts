@@ -1,6 +1,9 @@
 import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "../domain/app-language";
+/** 工程知识和工作区预览共用 UTF-8 文档字节上限。 */
+export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
+
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_CHAT_EVENT_TOPIC = "agent.chat_event";
 
@@ -48,6 +51,7 @@ export const AGENT_PENDING_WRITE_SUMMARY_FIELDS = Object.freeze([
   "preReplacement",
   "postReplacement",
   "prompts",
+  "knowledge",
   "files",
 ] as const);
 export type AgentPendingWriteSummary = Readonly<
@@ -61,20 +65,18 @@ export type AgentQuestionOption = JsonRecord & {
 };
 
 /** 单题固定选项与自定义入口共同保持在四个可见选择以内。 */
-export const AGENT_QUESTION_OPTION_MIN = 2;
+export const AGENT_QUESTION_OPTION_MIN = 1;
 export const AGENT_QUESTION_OPTION_MAX = 3;
 /** 问题文本限制同时约束模型载荷与决定页布局，后端和 renderer 共用。 */
 export const AGENT_QUESTION_PROMPT_LIMIT = 64;
 export const AGENT_QUESTION_DESCRIPTION_LIMIT = 96;
 export const AGENT_QUESTION_LABEL_LIMIT = 40;
 
-/** 单次工具调用只提出一个问题和二至三个固定选项，自定义答案由 renderer 提供。 */
+/** 单次工具调用只提出一个问题和一至三个固定选项，自定义答案由 renderer 提供。 */
 export type AgentQuestion = JsonRecord & {
   prompt: string;
   description?: string;
-  options:
-    | [AgentQuestionOption, AgentQuestionOption]
-    | [AgentQuestionOption, AgentQuestionOption, AgentQuestionOption];
+  options: [AgentQuestionOption, ...AgentQuestionOption[]];
 };
 
 /** Renderer 对当前问题的一次性决定。固定选项、自定义文本与取消互斥。 */

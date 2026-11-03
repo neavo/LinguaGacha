@@ -1,7 +1,8 @@
+import { ko_kr_knowledge_page } from "./knowledge-page";
+import { ko_kr_project_knowledge } from "./project-knowledge";
 import { ko_kr_game_font_page } from "./game-font-page";
 import { ko_kr_translation_transfer_page } from "./translation-transfer-page";
 import { ko_kr_toolbox_page } from "./toolbox-page";
-import { ko_kr_skills_page } from "./skills-page";
 import { ko_kr_agent_page } from "./agent-page";
 import { ko_kr_agent_runtime } from "./agent-runtime";
 import { ko_kr_app } from "./app";
@@ -26,7 +27,8 @@ import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ko_kr_messages = {
-  skills_page: ko_kr_skills_page,
+  knowledge_page: ko_kr_knowledge_page,
+  project_knowledge: ko_kr_project_knowledge,
   agent_page: ko_kr_agent_page,
   agent_runtime: ko_kr_agent_runtime,
   app: ko_kr_app,

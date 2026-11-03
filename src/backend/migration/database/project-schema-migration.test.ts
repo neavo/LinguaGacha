@@ -5,6 +5,17 @@ import { describe, expect, it } from "vitest";
 import { run_project_schema_migration } from "./project-schema-migration";
 
 describe("run_project_schema_migration", () => {
+  it("旧工程补建知识表，重复打开保留正文", () => {
+    using db = new DatabaseSync(":memory:");
+    run_project_schema_migration(db);
+    db.exec("DROP TABLE knowledge");
+    run_project_schema_migration(db);
+    db.prepare("INSERT INTO knowledge VALUES (?, ?)").run("note.md", "old note");
+    run_project_schema_migration(db);
+    expect(db.prepare("SELECT path, text FROM knowledge").all()).toEqual([
+      { path: "note.md", text: "old note" },
+    ]);
+  });
   it("新建工程提供默认资产类型，并按文件与原页唯一保存页面", () => {
     using db = new DatabaseSync(":memory:");
 

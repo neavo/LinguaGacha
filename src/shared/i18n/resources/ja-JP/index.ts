@@ -1,7 +1,8 @@
+import { ja_jp_knowledge_page } from "./knowledge-page";
+import { ja_jp_project_knowledge } from "./project-knowledge";
 import { ja_jp_game_font_page } from "./game-font-page";
 import { ja_jp_translation_transfer_page } from "./translation-transfer-page";
 import { ja_jp_toolbox_page } from "./toolbox-page";
-import { ja_jp_skills_page } from "./skills-page";
 import { ja_jp_agent_page } from "./agent-page";
 import { ja_jp_agent_runtime } from "./agent-runtime";
 import { ja_jp_app } from "./app";
@@ -26,7 +27,8 @@ import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ja_jp_messages = {
-  skills_page: ja_jp_skills_page,
+  knowledge_page: ja_jp_knowledge_page,
+  project_knowledge: ja_jp_project_knowledge,
   agent_page: ja_jp_agent_page,
   agent_runtime: ja_jp_agent_runtime,
   app: ja_jp_app,

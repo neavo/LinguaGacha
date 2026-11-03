@@ -72,6 +72,7 @@ describe("project section revision", () => {
         "quality_prompt_revision.translation": 8,
       }),
     ).toEqual({
+      knowledge: 0,
       project: 0,
       pdf: 0,
       files: 3,

@@ -28,7 +28,6 @@ export function QualityRuleDuplicateConfirmDialog(
       primaryAction={{
         label: t("app.action.overwrite"),
         onSelect: props.on_overwrite,
-        destructive: true,
       }}
       {...(!props.state.allow_skip
         ? {}

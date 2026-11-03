@@ -163,9 +163,35 @@ export const AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
-/** project_meta.json 提供语言、数量、文件顺序和附加原稿的处理归属。 */
+/** JSONL 校验字段结构，工程层再校验路径、正文与指纹。 */
+export const AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS = {
+  creates: Type.Object(
+    { path: Type.String(), text: Type.String() },
+    { additionalProperties: false },
+  ),
+  updates: Type.Object(
+    { path: Type.String(), fp: AGENT_WORKSPACE_FP_SCHEMA, text: Type.String() },
+    { additionalProperties: false },
+  ),
+  deletes: Type.Object(
+    { path: Type.String(), fp: AGENT_WORKSPACE_FP_SCHEMA },
+    { additionalProperties: false },
+  ),
+};
+
+/** project_meta.json 提供语言、数量、文件顺序、知识索引和附加原稿的处理归属。 */
 export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
   {
+    knowledge: Type.Array(
+      Type.Object(
+        {
+          path: Type.String(),
+          description: Type.Optional(Type.String()),
+          fp: AGENT_WORKSPACE_FP_SCHEMA,
+        },
+        { additionalProperties: false },
+      ),
+    ),
     additional_files: Type.Record(Type.String(), Type.Array(Type.String()), {
       description: "资产路径到附加原稿成员路径的映射，附加原稿不产生条目，按系统指令制作补丁",
     }),
@@ -200,8 +226,7 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
 
 const CHANGE_SORT_SCHEMA = Type.Integer({
   minimum: -1,
-  description:
-    "-1 表示追加到末尾。非负值表示从 0 开始的插入位置，超出当前长度时追加到末尾。更新时省略此字段可保留相对顺序。",
+  description: "-1 表示追加到末尾。非负值表示从 0 开始的插入位置，超出当前长度时追加到末尾。",
 });
 
 /** 每类记录的结构在此生成，参考文档与变更解析使用同一对象。 */

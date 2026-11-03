@@ -3,6 +3,7 @@ import {
   BetweenVerticalStart,
   Bot,
   BookA,
+  Brain,
   BookOpenCheck,
   Boxes,
   FilePenLine,
@@ -10,7 +11,6 @@ import {
   LayoutDashboard,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   ToolCase,
 } from "lucide-react";
 
@@ -62,7 +62,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {
     id: "quality",
     items: [
-      { id: "skills", icon: Sparkles, title_key: "skills_page.title" },
+      { id: "knowledge", icon: Brain, title_key: "knowledge_page.title" },
       {
         id: "glossary",
         icon: BookA,
