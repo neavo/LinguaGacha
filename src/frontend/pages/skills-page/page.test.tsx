@@ -134,7 +134,7 @@ describe("技能页面", () => {
       '.skills-page__open[aria-label="sample"]',
     )!;
     expect(
-      entry.closest(".skills-page__card")?.querySelector<HTMLButtonElement>(".skills-page__handle")
+      entry.closest(".skills-page__row")?.querySelector<HTMLButtonElement>(".skills-page__handle")
         ?.disabled,
     ).toBe(true);
     expect(entry.disabled).toBe(false);
@@ -152,7 +152,7 @@ describe("技能页面", () => {
         'button.skills-page__open[aria-label="sample"]',
       )!;
       const handle = entry
-        .closest(".skills-page__card")!
+        .closest(".skills-page__row")!
         .querySelector<HTMLButtonElement>(".skills-page__handle")!;
       await act(async () => handle.click());
       expect(list.hidden).toBe(false);
@@ -166,7 +166,7 @@ describe("技能页面", () => {
     },
   );
 
-  it("两组共用卡片，内置把手禁用，同名用户技能正常操作，旧读取不能覆盖保存结果", async () => {
+  it("两组共用条目，内置把手禁用，同名用户技能正常操作，旧读取不能覆盖保存结果", async () => {
     let skills = [skill("custom", "builtin"), skill("custom", "user"), skill("another", "user")];
     let finish!: () => void;
     let finish_read!: () => void;
@@ -194,23 +194,23 @@ describe("技能页面", () => {
       },
     );
     await render();
-    const cards = [...container.querySelectorAll<HTMLElement>(".skills-page__card")].filter(
-      (card) =>
-        card.querySelector(
+    const rows = [...container.querySelectorAll<HTMLElement>(".skills-page__row")].filter(
+      (row) =>
+        row.querySelector(
           '.skills-page__open[aria-label="custom"], .skills-page__open[aria-label="another"]',
         ),
     );
-    expect(cards[0]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(true);
-    expect(cards[1]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(
+    expect(rows[0]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(true);
+    expect(rows[1]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(
       false,
     );
-    expect(cards[2]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(
+    expect(rows[2]?.querySelector<HTMLButtonElement>(".skills-page__handle")?.disabled).toBe(
       false,
     );
-    const builtin_toggle = cards[0]?.querySelector(
+    const builtin_toggle = rows[0]?.querySelector(
       '.skills-page__actions button[aria-pressed="false"]',
     );
-    const toggle = cards[1]?.querySelector<HTMLButtonElement>(
+    const toggle = rows[1]?.querySelector<HTMLButtonElement>(
       '.skills-page__actions button[aria-pressed="false"]',
     );
     hold_read = true;

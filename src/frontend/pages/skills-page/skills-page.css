@@ -31,7 +31,15 @@
   color: var(--muted-foreground);
 }
 
-.skills-page__card {
+/* 技能是同类条目的列表：每组一个外框、行间分隔线，区别于设置页的独立选项卡片。 */
+.skills-page__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skills-page__row {
+  position: relative;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
@@ -39,19 +47,22 @@
   gap: 2px 8px;
   padding: 8px 10px;
   min-height: 60px;
-  background: var(--card);
-  box-shadow: none;
 }
 
-.skills-page__card[data-dragging] {
-  opacity: 0.9;
+.skills-page__row:not(:last-child) {
+  border-bottom: 1px solid var(--ui-table-divider-soft);
+}
+
+/* 拖拽中的行被提升到顶层，需要自带底色。 */
+.skills-page__row:hover:has(> .skills-page__open:enabled),
+.skills-page__row[data-dragging] {
+  background: var(--accent);
 }
 
 .skills-page__open {
   position: absolute;
   inset: 0;
   border: 0;
-  border-radius: inherit;
   background: transparent;
   cursor: pointer;
 }
@@ -63,10 +74,6 @@
 .skills-page__open:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
-}
-
-.skills-page__card:has(> .skills-page__open:hover:not(:disabled))::after {
-  border-color: var(--card-border-hover-current);
 }
 
 .skills-page__handle-slot,

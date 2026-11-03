@@ -1,7 +1,7 @@
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { PersonalityEditor } from "./personality-editor";
 import { Badge } from "@frontend/shadcn/badge";
-import { type JSX, useEffect, useRef, useState, type Ref } from "react";
+import { type JSX, type ReactNode, useEffect, useRef, useState, type Ref } from "react";
 import type {
   AgentSkillEntry,
   AgentSkillIdentity,
@@ -61,7 +61,7 @@ function SkillsList({
   active: boolean;
   on_personality: () => void;
 }): JSX.Element {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const state = useSkillsPageState(active);
   const { navigate_to_agent } = useAppNavigation();
   const [help_open, set_help_open] = useState(false);
@@ -76,34 +76,42 @@ function SkillsList({
   const by_name = new Map(user.map((skill) => [skill.name, skill]));
   const pending = state.pending || reorder.pending;
 
+  /** 两个来源的技能共用打开与开关规则，用户分组另外绑定排序。 */
+  function skill_row(skill: AgentSkillEntry): SkillRowProps {
+    return {
+      name: skill.name,
+      description: skill.displayDescriptions[locale],
+      readonly: skill.source === "builtin",
+      open_disabled: pending,
+      on_open: () => on_open({ source: skill.source, name: skill.name }),
+      action: (
+        <BooleanSegmentedToggle
+          aria_label={skill.name}
+          value={skill.enabled}
+          disabled={pending || locked}
+          on_value_change={(enabled) => {
+            if (enabled !== skill.enabled) void state.set_enabled(skill.source, skill.name, enabled);
+          }}
+        />
+      ),
+    };
+  }
+
   return (
     <div className="skills-page page-shell page-shell--full" aria-busy={state.status === "loading"}>
       <section className="skills-page__group" aria-label={t("skills_page.builtin")}>
         <h2>{t("skills_page.builtin")}</h2>
-        <Card className="skills-page__card">
-          <button
-            type="button"
-            className="skills-page__open"
-            aria-label="personality"
-            disabled={pending || state.status !== "ready"}
-            onClick={on_personality}
+        <Card render={<ul />} className="skills-page__rows">
+          <SkillRow
+            name="personality"
+            description={t("skills_page.personality_description")}
+            open_disabled={pending || state.status !== "ready"}
+            on_open={on_personality}
           />
-          <SkillHandle disabled dragging={false} />
-          <h3 className="skills-page__heading">
-            <span>personality</span>
-          </h3>
-          <p className="skills-page__description">{t("skills_page.personality_description")}</p>
+          {builtin.map((skill) => (
+            <SkillRow key={skill.name} {...skill_row(skill)} />
+          ))}
         </Card>
-        {builtin.map((skill) => (
-          <SkillCard
-            key={skill.name}
-            skill={skill}
-            pending={pending}
-            locked={locked}
-            on_enabled={state.set_enabled}
-            on_open={on_open}
-          />
-        ))}
       </section>
       <section className="skills-page__group" aria-label={t("skills_page.user")}>
         <div className="skills-page__group-header">
@@ -124,19 +132,20 @@ function SkillsList({
             <TooltipContent>{t("skills_page.install.title")}</TooltipContent>
           </Tooltip>
         </div>
-        <DragDropProvider {...SORTABLE_PROVIDER_OPTIONS} {...reorder.events}>
-          {reorder.ordered_ids.map((name, index) => (
-            <SortableSkillCard
-              key={name}
-              skill={by_name.get(name)!}
-              index={index}
-              pending={pending}
-              locked={locked}
-              on_enabled={state.set_enabled}
-              on_open={on_open}
-            />
-          ))}
-        </DragDropProvider>
+        {reorder.ordered_ids.length > 0 && (
+          <DragDropProvider {...SORTABLE_PROVIDER_OPTIONS} {...reorder.events}>
+            <Card render={<ul />} className="skills-page__rows">
+              {reorder.ordered_ids.map((name, index) => (
+                <SortableSkillRow
+                  key={name}
+                  {...skill_row(by_name.get(name)!)}
+                  index={index}
+                  sort_disabled={pending || locked}
+                />
+              ))}
+            </Card>
+          </DragDropProvider>
+        )}
       </section>
       <AppActionDialog
         open={help_open}
@@ -163,62 +172,52 @@ function SkillsList({
   );
 }
 
-type SkillCardProps = {
-  on_open: (skill: AgentSkillIdentity) => void;
-  skill: AgentSkillEntry;
-  pending: boolean;
-  locked: boolean;
-  on_enabled: (source: AgentSkillSource, name: string, enabled: boolean) => Promise<void>;
-  card_ref?: Ref<HTMLDivElement>;
-  handle_ref?: Ref<HTMLButtonElement> | undefined;
-  dragging?: boolean;
+type SkillRowProps = {
+  name: string;
+  description: string;
+  readonly?: boolean;
+  open_disabled: boolean;
+  on_open: () => void;
+  action?: ReactNode;
+  // 只有用户技能绑定排序，其余条目保留禁用把手以对齐整列。
+  sort?: {
+    row_ref: Ref<HTMLLIElement>;
+    handle_ref: Ref<HTMLButtonElement>;
+    dragging: boolean;
+    disabled: boolean;
+  };
 };
 
-/** 两个来源共用卡片，用户技能由外层绑定拖拽。 */
-function SkillCard(props: SkillCardProps): JSX.Element {
-  const { t, locale } = useI18n();
-  const skill = props.skill;
-  const description = skill.displayDescriptions[locale];
-  const drag_disabled = props.pending || props.locked || skill.source === "builtin";
+/** 列表中的一行，personality 与技能共用同一结构。 */
+function SkillRow(props: SkillRowProps): JSX.Element {
+  const { t } = useI18n();
+  const dragging = props.sort?.dragging ?? false;
   return (
-    <Card
-      ref={props.card_ref}
-      className="skills-page__card"
-      data-dragging={props.dragging || undefined}
-    >
-      {/* 独立按钮覆盖条目；把手和开关位于上层，点击与拖动无需阻止事件冒泡。 */}
+    <li ref={props.sort?.row_ref} className="skills-page__row" data-dragging={dragging || undefined}>
+      {/* 独立按钮覆盖整行；把手和开关位于上层，点击与拖动无需阻止事件冒泡。 */}
       <button
         type="button"
         className="skills-page__open"
-        aria-label={skill.name}
-        disabled={props.pending || props.dragging}
-        onClick={() => props.on_open({ source: skill.source, name: skill.name })}
+        aria-label={props.name}
+        disabled={props.open_disabled || dragging}
+        onClick={props.on_open}
       />
       <SkillHandle
-        disabled={drag_disabled}
-        dragging={props.dragging ?? false}
-        handle_ref={props.handle_ref}
+        disabled={props.sort?.disabled ?? true}
+        dragging={dragging}
+        handle_ref={props.sort?.handle_ref}
       />
       <h3 className="skills-page__heading">
-        <span>{skill.name}</span>
-        {skill.source === "builtin" && <Badge tone="neutral">{t("skills_page.readonly")}</Badge>}
+        <span>{props.name}</span>
+        {props.readonly && <Badge tone="neutral">{t("skills_page.readonly")}</Badge>}
       </h3>
-      <div className="skills-page__actions">
-        <BooleanSegmentedToggle
-          aria_label={skill.name}
-          value={skill.enabled}
-          disabled={props.pending || props.locked}
-          on_value_change={(enabled) => {
-            if (enabled !== skill.enabled) void props.on_enabled(skill.source, skill.name, enabled);
-          }}
-        />
-      </div>
-      <p className="skills-page__description">{description}</p>
-    </Card>
+      {props.action && <div className="skills-page__actions">{props.action}</div>}
+      <p className="skills-page__description">{props.description}</p>
+    </li>
   );
 }
 
-/** 内置与用户技能共用把手外观，只有用户条目绑定排序。 */
+/** 所有条目共用把手外观，只有用户技能绑定排序。 */
 function SkillHandle({
   disabled,
   dragging,
@@ -249,15 +248,24 @@ function SkillHandle({
   );
 }
 
-/** 将共享排序行为绑定到用户技能卡片。 */
-function SortableSkillCard(props: SkillCardProps & { index: number }): JSX.Element {
+/** 将共享排序行为绑定到用户技能行。 */
+function SortableSkillRow({
+  index,
+  sort_disabled,
+  ...props
+}: SkillRowProps & { index: number; sort_disabled: boolean }): JSX.Element {
   const { ref, handleRef, isDragSource } = useSortable({
     ...SORTABLE_OPTIONS,
-    id: props.skill.name,
-    index: props.index,
-    disabled: props.pending || props.locked,
+    id: props.name,
+    index,
+    disabled: sort_disabled,
   });
-  return <SkillCard {...props} card_ref={ref} handle_ref={handleRef} dragging={isDragSource} />;
+  return (
+    <SkillRow
+      {...props}
+      sort={{ row_ref: ref, handle_ref: handleRef, dragging: isDragSource, disabled: sort_disabled }}
+    />
+  );
 }
 
 /** 页面持有管理快照，当前可用技能由后端同步到对话。 */
