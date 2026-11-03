@@ -90,6 +90,7 @@ export const de_de_agent_page = {
       text_preserve: "{count} Textschutzregeln",
       pre_replacement: "{count} Vorersetzungsregeln",
       post_replacement: "{count} Nachersetzungsregeln",
+      knowledge: "Projektwissen: {count} Dokumente",
       prompts: "{count} benutzerdefinierte Prompts",
     },
     reject: "Ablehnen",

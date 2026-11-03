@@ -39,6 +39,7 @@ const SUMMARY_FIELDS = [
   ["textPreserve", "agent_page.approval.summary.text_preserve"],
   ["preReplacement", "agent_page.approval.summary.pre_replacement"],
   ["postReplacement", "agent_page.approval.summary.post_replacement"],
+  ["knowledge", "agent_page.approval.summary.knowledge"],
   ["prompts", "agent_page.approval.summary.prompts"],
 ] as const satisfies readonly (readonly [keyof AgentPendingWriteSummary, LocaleKey])[];
 

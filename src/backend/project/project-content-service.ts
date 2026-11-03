@@ -1,3 +1,5 @@
+import { resolve_app_locale } from "../../domain/app-language";
+import type { AppSettingService } from "../app/app-setting-service";
 import type {
   SourceInspection,
   ProjectFileCreate,
@@ -120,6 +122,7 @@ export class ProjectContentService {
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
     private readonly pdf_execution: PDFExecution,
+    private readonly app_settings: Pick<AppSettingService, "read_app_language">,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
     private readonly game_prepare_execution?: GamePrepareExecution,
@@ -179,6 +182,7 @@ export class ProjectContentService {
     source: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
     revisionSections: ProjectDataSection[];
+    sourcePaths?: readonly string[];
     creates: readonly ProjectFileCreate[];
     updates: readonly ProjectFileUpdate[];
     deletes: readonly string[];
@@ -288,6 +292,11 @@ export class ProjectContentService {
       const items_by_file = Map.groupBy(persistent, (item) => item["file_path"]);
       const result = await this.write_store.apply_file_changes({
         ...args,
+        sourceRecord: {
+          action: "import",
+          paths: args.sourcePaths ?? [],
+          locale: resolve_app_locale(this.app_settings.read_app_language()),
+        },
         creates: parsed.file_drafts.map((file, sortOrder) => ({
           kind: "add",
           path: file.rel_path,
@@ -384,13 +393,20 @@ export class ProjectContentService {
     };
   }
 
-  /**
-   * 导入工作台文件，并按同名策略同步新增或替换文件事实
-   */
+  /** 请求只携带用户选择的入口，不能从展开的资产路径反推。 */
+  private read_source_paths(value: JsonValue | undefined): string[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((path) => typeof path !== "string"))
+      throw new AppErrors.AppError("request.validation_failed");
+    return (value as string[]).map((path) => path.trim()).filter(Boolean);
+  }
+
+  /** 导入工作台文件，并按同名策略同步新增或替换文件事实。 */
   public async import_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, PROJECT_DERIVED_FIELDS);
+      const source_paths = this.read_source_paths(request["source_paths"]);
       const conflict_action = this.normalize_import_conflict_action(request["conflict_action"]);
       const file_commands = this.normalize_import_file_commands(request["files"]);
       if (file_commands.length === 0) {
@@ -576,6 +592,11 @@ export class ProjectContentService {
             expectedSectionRevisions: expected_revisions,
             revisionSections: ["files", "items"],
             source: "project_import_files",
+            sourceRecord: {
+              action: "import",
+              paths: source_paths,
+              locale: resolve_app_locale(this.app_settings.read_app_language()),
+            },
             updatedSections: ["files", "items"],
             assetWrites: asset_writes,
             items: build_project_item_persistent_records(write_output.items),

@@ -31,7 +31,7 @@ export function UpdateDialog(props: {
   return (
     <AppActionDialog
       open={is_update_dialog_open(props.state)}
-      title={null}
+      hideTitle
       description={null}
       details={
         release?.release_notes ? (

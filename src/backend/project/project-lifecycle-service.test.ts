@@ -1,3 +1,6 @@
+import { resolve_app_locale } from "../../domain/app-language";
+import { format_i18n_message } from "../../shared/i18n";
+import { KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT } from "../../shared/project-knowledge";
 import { FileFormatService } from "../file/file-format-service";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { evb_fixture } from "../../test/evb-fixture";
@@ -42,6 +45,27 @@ type TestProjectDatabase = ProjectDatabase & {
 };
 
 describe("ProjectLifecycleService", () => {
+  it.each(["ZH", "EN"])("新建工程用界面语言 %s 保存选择过的来源入口", async (language) => {
+    const root = create_temp_dir();
+    const source = write_file(path.join(root, "source.txt"), "こんにちは");
+    const project = path.join(root, "knowledge.lg");
+    const database = new ProjectDatabase("1.0.0");
+    try {
+      await create_service({ database, config: { app_language: language } }).create_project_commit({
+        path: project,
+        source_paths: [source],
+      });
+      const documents = await database.list_knowledge(project);
+      expect(documents).toHaveLength(1);
+      expect(documents[0]).toMatchObject({ path: KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT });
+      expect(documents[0]!.text).toContain(
+        format_i18n_message(resolve_app_locale(language), "project_knowledge.create"),
+      );
+      expect(documents[0]!.text).toContain(source);
+    } finally {
+      await database.close();
+    }
+  });
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
   it.each([false, true])("正式创建只发现一次，游戏通知先于本批全部准备：%s", async (games) => {
@@ -965,6 +989,7 @@ describe("ProjectLifecycleService", () => {
         (change) => adapt_project_change(session_state, change),
       ),
       create_pdf_execution(),
+      { read_app_language: () => "ZH" },
       undefined,
       create_log_manager(),
     );
@@ -1304,6 +1329,7 @@ describe("ProjectLifecycleService", () => {
   // 设置服务 fake 合并项目默认值，确保 create-commit 用例只声明场景差异。
   function create_setting_service(config: MutableJsonRecord) {
     return {
+      read_app_language: () => config["app_language"] ?? "ZH",
       read_setting: vi.fn(() => ({
         app_language: "ZH",
         mtool_optimizer_enable: true,

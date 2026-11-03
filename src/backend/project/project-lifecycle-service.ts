@@ -1,3 +1,6 @@
+import { resolve_app_locale } from "../../domain/app-language";
+import { KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT } from "../../shared/project-knowledge";
+import { append_source_record } from "./project-knowledge";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { read_godot_pack_orders } from "../file/godot/source";
 import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
@@ -363,6 +366,15 @@ export class ProjectLifecycleService {
         this.build_project_name(source_paths, project_path),
         (writer) => {
           this.write_default_presets(writer, project_path, default_preset_input);
+          const source_text = append_source_record(null, {
+            action: "create",
+            paths: source_paths,
+            locale: resolve_app_locale(this.app_setting_service.read_app_language()),
+          });
+          if (source_text !== null) {
+            writer.set_knowledge(project_path, KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT, source_text);
+            writer.bump_section_revisions(project_path, ["knowledge"]);
+          }
           for (const file of parsed_draft.files) {
             writer.add_asset(
               project_path,

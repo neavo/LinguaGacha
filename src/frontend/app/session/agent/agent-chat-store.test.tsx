@@ -742,6 +742,7 @@ describe("AgentChatStore", () => {
         preReplacement: 0,
         postReplacement: 0,
         files: 0,
+        knowledge: 0,
         prompts: 0,
       },
     };
@@ -821,6 +822,7 @@ describe("AgentChatStore", () => {
           preReplacement: 0,
           postReplacement: 0,
           files: 0,
+          knowledge: 0,
           prompts: 0,
         },
       } satisfies AgentPendingDecision,
@@ -942,6 +944,7 @@ describe("AgentChatStore", () => {
         preReplacement: 0,
         postReplacement: 0,
         files: 6,
+        knowledge: 0,
         prompts: 0,
       },
     };
@@ -991,7 +994,7 @@ describe("AgentChatStore", () => {
           id: "question-1",
           question: {
             prompt: "选择范围",
-            options: [{ id: "only", label: "唯一选项" }],
+            options: [],
           },
         },
       });

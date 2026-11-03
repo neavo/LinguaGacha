@@ -14,7 +14,7 @@ export function ChatGPTLoginDialog({
   return (
     <AppActionDialog
       open={login.open}
-      title={null}
+      hideTitle
       description={
         <Input
           readOnly

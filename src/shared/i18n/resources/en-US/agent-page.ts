@@ -90,6 +90,7 @@ export const en_us_agent_page = {
       text_preserve: "{count} text-preserve rules",
       pre_replacement: "{count} pre-replacement rules",
       post_replacement: "{count} post-replacement rules",
+      knowledge: "Knowledge: {count} documents",
       prompts: "{count} custom prompts",
     },
     reject: "Reject",

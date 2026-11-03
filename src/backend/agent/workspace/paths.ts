@@ -2,6 +2,7 @@ import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/qualit
 
 /** 工作区快照与模型契约共同使用的固定路径。 */
 export const AGENT_WORKSPACE_PATHS = Object.freeze({
+  knowledge: "knowledge",
   projectMeta: "project_meta.json",
   contract: "contract.json",
   reference: "reference",
@@ -50,6 +51,11 @@ export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
 
 /** 模型只向固定 change 路径写入意图，datasets 始终只读。 */
 export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
+  knowledge: Object.freeze({
+    creates: "changes/knowledge/creates.jsonl",
+    updates: "changes/knowledge/updates.jsonl",
+    deletes: "changes/knowledge/deletes.jsonl",
+  }),
   files: Object.freeze({
     creates: "changes/files/creates.jsonl",
     updates: "changes/files/updates.jsonl",

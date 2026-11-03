@@ -1,3 +1,6 @@
+import { AGENT_DOCUMENT_MAX_BYTES } from "../../shared/agent";
+import { KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT } from "../../shared/project-knowledge";
+import { project_knowledge_fingerprint } from "./project-knowledge";
 import { adapt_project_change } from "./project-write-event-adapter";
 import { ProjectSessionState } from "./project-session-state";
 import { ItemCache } from "../cache/item-cache";
@@ -29,6 +32,108 @@ import {
 } from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
+  it("知识写入推进独立修订，来源追加与资产同事务回滚，超限仍可导入", async () => {
+    const { database, project_path, store } = await create_store("knowledge");
+    await store.apply_knowledge_changes({
+      projectPath: project_path,
+      intents: [{ op: "create", line: 1, path: "notes.md", text: "preserve" }],
+    });
+    const sourceRecord = {
+      action: "import" as const,
+      paths: ["E:/game"],
+      locale: "en-US" as const,
+    };
+    const request = {
+      projectPath: project_path,
+      source: "test",
+      requireExpectedSectionRevisions: false as const,
+      revisionSections: [],
+      updatedSections: [],
+      sourceRecord,
+      assetWrites: [
+        {
+          kind: "add" as const,
+          path: "a.txt",
+          fileType: "TXT",
+          content: Buffer.from("a"),
+          sortOrder: 0,
+          pdfDocument: null,
+        },
+      ],
+    };
+    const fail = vi
+      .spyOn(ProjectDatabaseAccess.prototype, "add_asset")
+      .mockImplementationOnce(() => {
+        throw new Error("asset failed");
+      });
+    await expect(store.replace_project_items_and_files(request)).rejects.toThrow("asset failed");
+    fail.mockRestore();
+    expect(await database.list_knowledge(project_path)).toEqual([
+      { path: "notes.md", text: "preserve" },
+    ]);
+    expect((await database.get_all_meta(project_path))["project_runtime_revision.knowledge"]).toBe(
+      1,
+    );
+    await store.replace_project_items_and_files(request);
+    expect(
+      (await database.list_knowledge(project_path)).find(
+        (doc) => doc.path === KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT,
+      )?.text,
+    ).toContain("E:/game");
+    expect((await database.get_all_meta(project_path))["project_runtime_revision.knowledge"]).toBe(
+      2,
+    );
+    const full = "x".repeat(AGENT_DOCUMENT_MAX_BYTES);
+    await database.transaction(project_path, (writer) =>
+      writer.set_knowledge(project_path, KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT, full),
+    );
+    await store.apply_file_changes({
+      projectPath: project_path,
+      source: "test",
+      expectedSectionRevisions: { files: 1 },
+      revisionSections: ["files"],
+      sourceRecord,
+      creates: [
+        {
+          kind: "add",
+          path: "b.txt",
+          fileType: "TXT",
+          content: Buffer.from("b"),
+          sortOrder: 0,
+          pdfDocument: null,
+          items: [],
+        },
+      ],
+      updates: [],
+      deletes: ["a.txt"],
+    });
+    expect(
+      (await database.list_knowledge(project_path)).find(
+        (doc) => doc.path === KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT,
+      )?.text,
+    ).toBe(full);
+    expect((await database.get_all_meta(project_path))["project_runtime_revision.knowledge"]).toBe(
+      2,
+    );
+    const result = await store.apply_agent_workspace_changes({
+      projectPath: project_path,
+      source: "agent_workspace_apply",
+      batch: {
+        ...create_empty_agent_workspace_intent_batch(),
+        knowledge: [
+          {
+            op: "update",
+            line: 1,
+            path: "notes.md",
+            fp: project_knowledge_fingerprint("notes.md", "preserve"),
+            text: "updated",
+          },
+        ],
+      },
+    });
+    expect(result.applied.knowledge).toEqual({ created: [], updated: ["notes.md"], deleted: [] });
+    expect(result.sectionRevisions.knowledge).toBe(3);
+  });
   it("结构事务迁移全部路径归属，删除统计和失败回滚保持一致", async () => {
     const { database, project_path, store } = await create_store("file-layout");
     const bytes = create_pdf_fixture();
@@ -1314,6 +1419,7 @@ describe("ProjectWriteStore", () => {
   ): AgentWorkspaceIntentBatch {
     const empty = create_empty_agent_workspace_intent_batch();
     return {
+      knowledge: [],
       pages: [],
       items: args.items,
       prompts: args.prompts,

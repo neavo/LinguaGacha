@@ -66,12 +66,11 @@ function normalize_question(params: Static<typeof ASK_USER_PARAMETERS>): AgentQu
     id: option.id.trim(),
     label: option.label.trim(),
   }));
-  const [first, second, third] = options; // 解构供元组类型收窄，数量由 Schema 保证
+  const [first, ...rest] = options; // 解构供非空数组类型收窄，数量由 Schema 保证
   if (
     prompt === "" ||
     description === "" ||
     first === undefined ||
-    second === undefined ||
     options.some(({ id, label }) => id === "" || label === "") ||
     new Set(options.map(({ id }) => id)).size !== options.length
   ) {
@@ -80,7 +79,7 @@ function normalize_question(params: Static<typeof ASK_USER_PARAMETERS>): AgentQu
   return {
     prompt,
     ...(description === undefined ? {} : { description }),
-    options: third === undefined ? [first, second] : [first, second, third],
+    options: [first, ...rest],
   };
 }
 

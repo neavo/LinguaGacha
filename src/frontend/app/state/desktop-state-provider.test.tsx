@@ -547,6 +547,7 @@ describe("DesktopStateProvider", () => {
         "pdf",
         "quality",
         "prompts",
+        "knowledge",
         "proofreading",
       ],
       proofreadingItemIds: [],

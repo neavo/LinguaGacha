@@ -7,6 +7,7 @@ import { preview_file_changes } from "./file-changes";
 
 it.each([
   ["mixed", ["invalid_change"]],
+  ["knowledge", ["invalid_change"]],
   ["duplicate", ["merge_conflict", "merge_conflict"]],
   ["source", ["source_failed"]],
   ["orders", ["invalid_change"]],
@@ -16,6 +17,8 @@ it.each([
   const parsed: ParsedAgentWorkspaceChanges = {
     batch: {
       ...create_empty_agent_workspace_intent_batch(),
+      knowledge:
+        kind === "knowledge" ? [{ op: "create", line: 1, path: "note.md", text: "note" }] : [],
       items: kind === "mixed" ? [{ item_id: 1, fp: "test", line: 1, update: { dst: "译文" } }] : [],
     },
     files: {

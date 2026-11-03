@@ -4,7 +4,7 @@ import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
 import { AGENT_WORKSPACE_CONTRACT } from "./contract";
-import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_PATHS } from "../workspace/paths";
+import { AGENT_WORKSPACE_PATHS } from "../workspace/paths";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
   AGENT_WORKSPACE_RUNTIME_POLICY,
@@ -88,8 +88,13 @@ export function create_agent_workspace_run_tool(options: {
         const operations = Object.keys(AGENT_WORKSPACE_CONTRACT.changes[name] ?? {});
         return `- datasets.${name}：${dataset.purpose}。${operations.length === 0 ? "" : `变更入口 changes.${name}，操作 ${operations.join("、")}。`}参考 ${dataset.reference}`;
       }),
-      // 文件变更没有同名数据集，不会出现在上面的数据集列表中。
-      `- changes.files：工程文件的新增、改名、移动、排序和删除，操作 ${Object.keys(AGENT_WORKSPACE_CHANGE_PATHS.files).join("、")}。参考 ${AGENT_WORKSPACE_CONTRACT.changes["files"]?.["creates"]?.reference}`,
+      // 文件与知识等变更组没有同名数据集，单独列出才能被发现。
+      ...Object.entries(AGENT_WORKSPACE_CONTRACT.changes)
+        .filter(([name]) => !Object.hasOwn(AGENT_WORKSPACE_CONTRACT.datasets, name))
+        .map(
+          ([name, operations]) =>
+            `- changes.${name}：操作 ${Object.keys(operations).join("、")}。参考 ${Object.values(operations)[0]?.reference}`,
+        ),
       "",
       "### `ws` 接口",
       "",

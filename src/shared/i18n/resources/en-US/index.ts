@@ -1,7 +1,8 @@
+import { en_us_knowledge_page } from "./knowledge-page";
+import { en_us_project_knowledge } from "./project-knowledge";
 import { en_us_game_font_page } from "./game-font-page";
 import { en_us_translation_transfer_page } from "./translation-transfer-page";
 import { en_us_toolbox_page } from "./toolbox-page";
-import { en_us_skills_page } from "./skills-page";
 import { en_us_batch_translation } from "./batch-translation";
 import { en_us_agent_page } from "./agent-page";
 import { en_us_agent_runtime } from "./agent-runtime";
@@ -26,7 +27,8 @@ import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_messages = {
-  skills_page: en_us_skills_page,
+  knowledge_page: en_us_knowledge_page,
+  project_knowledge: en_us_project_knowledge,
   agent_page: en_us_agent_page,
   agent_runtime: en_us_agent_runtime,
   app: en_us_app,

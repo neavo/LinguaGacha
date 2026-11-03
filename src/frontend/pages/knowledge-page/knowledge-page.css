@@ -1,0 +1,12 @@
+.knowledge-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.knowledge-page__list {
+  height: 100%;
+  overflow: auto;
+}
+.knowledge-page__list[hidden] {
+  display: none;
+}

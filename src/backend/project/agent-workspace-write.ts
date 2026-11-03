@@ -1,3 +1,5 @@
+import type { KnowledgeDocument, KnowledgeIntent } from "../../shared/project-knowledge";
+import { resolve_knowledge_changes, type KnowledgeWrite } from "./project-knowledge";
 import type { AppliedFiles } from "../../shared/project-file-changes";
 import { insert_by_sort } from "./insert-by-sort";
 import type { PDFDocumentRecord, PDFPageRecord } from "../../shared/pdf";
@@ -44,7 +46,7 @@ export type AgentWorkspaceRejectionReason =
   | "source_failed";
 
 export type AgentWorkspaceRejectedChange = JsonRecord & {
-  scope: "items" | "quality" | "prompts" | "pages" | "files";
+  scope: "knowledge" | "items" | "quality" | "prompts" | "pages" | "files";
   op: "create" | "update" | "delete";
   reason: AgentWorkspaceRejectionReason;
 };
@@ -93,6 +95,7 @@ export type AgentWorkspaceQualityIntents = Readonly<{
 }>;
 
 export type AgentWorkspaceIntentBatch = Readonly<{
+  knowledge: readonly KnowledgeIntent[];
   pages: readonly AgentWorkspacePageUpdateIntent[];
   items: readonly AgentWorkspaceItemUpdateIntent[];
   prompts: readonly AgentWorkspacePromptUpdateIntent[];
@@ -100,6 +103,7 @@ export type AgentWorkspaceIntentBatch = Readonly<{
 }>;
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
+  knowledge: readonly KnowledgeDocument[];
   pdfDocuments: readonly PDFDocumentRecord[];
   items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
@@ -114,6 +118,7 @@ export type AgentWorkspaceQualitySummary = Readonly<{
 }>;
 
 export type AgentWorkspaceAppliedSummary = Readonly<{
+  knowledge?: Readonly<{ created: string[]; updated: string[]; deleted: string[] }>;
   files?: AppliedFiles;
   pages?: Readonly<{ updated: number }>;
   items?: Readonly<{ updated: number }>;
@@ -132,6 +137,7 @@ export type AgentWorkspacePromptWrite = Readonly<{
 }>;
 
 export type AgentWorkspaceWriteResolution = Readonly<{
+  knowledgeChanges: KnowledgeWrite[];
   pageChanges: PDFPageRecord[];
   itemChanges: ProjectItemWriteChange[];
   qualityChanges: AgentWorkspaceQualityWrite[];
@@ -151,6 +157,7 @@ const DUPLICATE_RULE_TYPE_BY_KIND = Object.freeze({
 /** 构造完整的空意图批次，供 parser、测试与调用方复用。 */
 export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceIntentBatch {
   return {
+    knowledge: [],
     pages: [],
     items: [],
     prompts: [],
@@ -221,6 +228,7 @@ export function resolve_agent_workspace_writes(args: {
   current: AgentWorkspaceCurrentFacts;
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
+  const knowledge = resolve_knowledge_changes(args.current.knowledge, args.batch.knowledge);
   const pages = resolve_agent_workspace_page_updates(args.batch.pages, args.current.pdfDocuments);
   const current_items = args.current.items
     .map(read_item_write_record)
@@ -252,23 +260,27 @@ export function resolve_agent_workspace_writes(args: {
   ) as Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
   const prompt_kinds = prompt_result.changes.map((change) => change.kind);
   return {
+    knowledgeChanges: knowledge.writes,
     pageChanges: pages.changes,
     itemChanges: item_changes,
     qualityChanges: quality_changes,
     promptChanges: prompt_result.changes,
     applied: {
+      ...(knowledge.summary === null ? {} : { knowledge: knowledge.summary }),
       ...(pages.changes.length ? { pages: { updated: pages.changes.length } } : {}),
       ...(item_changes.length === 0 ? {} : { items: { updated: item_changes.length } }),
       ...(quality_changes.length === 0 ? {} : { quality: quality_summary }),
       ...(prompt_kinds.length === 0 ? {} : { prompts: { updated: prompt_kinds } }),
     },
     rejected: [
+      ...knowledge.rejected,
       ...pages.rejected,
       ...item_result.rejected,
       ...quality_results.flatMap((result) => result.rejected),
       ...prompt_result.rejected,
     ],
     candidates: {
+      knowledge: knowledge.candidates,
       pages: pages.candidates,
       items: item_result.candidates,
       prompts: prompt_result.candidates,

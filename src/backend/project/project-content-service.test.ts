@@ -1,3 +1,5 @@
+import { format_i18n_message } from "../../shared/i18n";
+import { KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT } from "../../shared/project-knowledge";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import {
@@ -101,6 +103,7 @@ async function create_service(
       session_state,
       write_store,
       create_pdf_execution(),
+      { read_app_language: () => "ZH" },
       undefined,
       log_manager,
     ),
@@ -196,6 +199,40 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("工作台与 Agent 添加文件同事务追加入口，删除资产保留工程知识", async () => {
+    const { database, service, lg_path } = await create_service();
+    const source = project_path("source.txt");
+    fs.writeFileSync(source, "こんにちは");
+    try {
+      await service.import_files({
+        source_paths: [temp_dir],
+        files: [{ source_path: source, target_rel_path: "source.txt" }],
+        conflict_action: "skip",
+        expected_section_revisions: { files: 0, items: 0 },
+      });
+      let document = (await database.list_knowledge(lg_path))[0]!;
+      expect(document.path).toBe(KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT);
+      expect(document.text).toContain(format_i18n_message("zh-CN", "project_knowledge.import"));
+      expect(document.text).toContain(temp_dir);
+      const before = document.text;
+      await service.apply_file_changes({
+        projectPath: lg_path,
+        source: "agent_workspace_apply",
+        sourcePaths: [source],
+        expectedSectionRevisions: { files: 1 },
+        revisionSections: ["files"],
+        creates: [{ source_path: source }],
+        updates: [],
+        deletes: ["source.txt"],
+        signal: new AbortController().signal,
+      });
+      document = (await database.list_knowledge(lg_path))[0]!;
+      expect(document.text.startsWith(before)).toBe(true);
+      expect(document.text).toContain(source);
+    } finally {
+      await database.close();
+    }
+  });
   it("新增已提交但同步失败时，错误仍报告已保存的资产数", async () => {
     const { database, service, lg_path } = await create_service(() => {
       throw new Error("publish failed");

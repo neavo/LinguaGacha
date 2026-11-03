@@ -1,3 +1,13 @@
+import {
+  KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT,
+  type KnowledgeIntent,
+} from "../../shared/project-knowledge";
+import {
+  append_source_record,
+  resolve_knowledge_changes,
+  type KnowledgeSourceRecord,
+  type KnowledgeWrite,
+} from "./project-knowledge";
 import { resolve_project_file_layout, type ProjectFileUpdate } from "./project-file-layout";
 import { read_project_additional_files } from "./project-additional-files";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
@@ -67,7 +77,7 @@ import {
 import type { PromptKind } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 
-type RevisionBackedSection = "project" | "files" | "items" | "proofreading" | "pdf";
+type RevisionBackedSection = "knowledge" | "project" | "files" | "items" | "proofreading" | "pdf";
 const PROJECT_ITEM_WRITE_VALIDATOR = Compile(Type.Array(PROJECT_ITEM_WRITE_SCHEMA)); // 全量写入复用编译结果，校验完成后再替换事实。
 type ProjectWriteRevisionContext = {
   database: ProjectDatabaseAccess;
@@ -276,6 +286,7 @@ export class ProjectWriteStore {
       revisionSections: ProjectDataSection[];
       source: string;
       updatedSections: ProjectDataSection[];
+      sourceRecord?: KnowledgeSourceRecord;
       assetWrites?: ProjectAssetWrite[];
       resetPDFPaths?: string[];
       items?: Item[];
@@ -335,8 +346,13 @@ export class ProjectWriteStore {
           if (changed) sections.add(section);
           else sections.delete(section);
         }
+        const writes = this.build_source_record_writes(
+          request.projectPath,
+          revision_context.database,
+          request.sourceRecord,
+        );
+        if (writes.length) sections.add("knowledge");
         const updated_sections = [...sections];
-        const writes: ProjectDatabaseWrite[] = [];
         if (request.resetPDFPaths?.length)
           writes.push((db) =>
             db.reset_pdf_translations(request.projectPath, request.resetPDFPaths!),
@@ -385,6 +401,7 @@ export class ProjectWriteStore {
     source: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
     revisionSections: ProjectDataSection[];
+    sourceRecord?: KnowledgeSourceRecord;
     creates: readonly (Extract<ProjectAssetWrite, { kind: "add" }> & { items: JsonRecord[] })[];
     updates: readonly ProjectFileUpdate[];
     deletes: readonly string[];
@@ -447,8 +464,15 @@ export class ProjectWriteStore {
             request.creates.some((file) => file.fileType === "PDF")
           )
             sections.push("pdf");
+          const source_writes = this.build_source_record_writes(
+            project,
+            context.database,
+            request.sourceRecord,
+          );
+          if (source_writes.length) sections.push("knowledge");
           this.stage_section_revisions({ ...context, sections });
           const writes: ProjectDatabaseWrite[] = [
+            ...source_writes,
             ...request.deletes.map(
               (target): ProjectDatabaseWrite =>
                 (db) =>
@@ -677,6 +701,77 @@ export class ProjectWriteStore {
     });
   }
 
+  /** 管理页按单篇指纹写入，任何拒绝均保留用户草稿对应的数据库基线。 */
+  public async apply_knowledge_changes(request: {
+    projectPath: string;
+    intents: readonly KnowledgeIntent[];
+  }): Promise<ProjectWriteResult> {
+    return this.commit_runtime_change({
+      projectPath: request.projectPath,
+      source: "project_knowledge",
+      requireExpectedSectionRevisions: false,
+      revisionSections: [],
+      updatedSections: [],
+      prepare: (context) => {
+        const result = resolve_knowledge_changes(
+          context.database.list_knowledge(request.projectPath),
+          request.intents,
+        );
+        const rejection = result.rejected[0];
+        if (rejection)
+          throw new AppErrors.AppError(
+            rejection.reason === "fp_mismatch" || rejection.reason === "target_missing"
+              ? "data.revision_conflict"
+              : "request.validation_failed",
+            { public_details: { reason: rejection.message ?? rejection.reason } },
+          );
+        const sections: ProjectDataSection[] = result.writes.length ? ["knowledge"] : [];
+        this.stage_section_revisions({ ...context, sections });
+        return {
+          writes: this.build_knowledge_writes(request.projectPath, result.writes),
+          updatedSections: sections,
+        };
+      },
+    });
+  }
+
+  /** 将已校验的文档变化交给当前事务执行。 */
+  private build_knowledge_writes(
+    project: string,
+    writes: readonly KnowledgeWrite[],
+  ): ProjectDatabaseWrite[] {
+    return writes.map((write) => (db) => {
+      if (write.text === null) db.delete_knowledge(project, write.path);
+      else db.set_knowledge(project, write.path, write.text);
+    });
+  }
+
+  /** 来源记录与资产共用事务基线，资产失败时一起回滚。 */
+  private build_source_record_writes(
+    project: string,
+    db: ProjectDatabaseAccess,
+    record: KnowledgeSourceRecord | undefined,
+  ): ProjectDatabaseWrite[] {
+    if (!record) return [];
+    const current = db.list_knowledge(project);
+    const existing = current.find(
+      (doc) => doc.path.toLowerCase() === KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT,
+    );
+    const text = append_source_record(existing?.text ?? null, record);
+    if (text === null) return [];
+    // 来源文档可由用户整理成目录；此时参考记录让位于现有知识布局。
+    if (
+      !existing &&
+      current.some((doc) =>
+        doc.path.toLowerCase().startsWith(KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT + "/"),
+      )
+    )
+      return [];
+    return this.build_knowledge_writes(project, [
+      { path: existing?.path ?? KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT, text },
+    ]);
+  }
+
   /** 在单事务内按当前对象重算 Agent 意图，并只发布实际提交的 section。 */
   public async apply_agent_workspace_changes(request: {
     projectPath: string;
@@ -796,6 +891,9 @@ export class ProjectWriteStore {
           quality_kinds.map((kind) => [kind, Array.isArray(quality[kind]) ? quality[kind] : []]),
         ),
         prompts,
+        knowledge: request.batch.knowledge.length
+          ? database.list_knowledge(request.projectPath)
+          : [],
         duplicateFilterEnabled: this.is_duplicate_filter_enabled(meta),
       },
       createQualityEntryId: create_quality_rule_entry_id,
@@ -806,6 +904,7 @@ export class ProjectWriteStore {
   private build_agent_updated_sections(outcome: AgentWorkspaceWriteOutcome): ProjectDataSection[] {
     const sections: ProjectDataSection[] = [];
     // pages 是 Agent 对象类型，持久化后归 PDF 来源文档所在的数据分区。
+    if (outcome.knowledgeChanges.length > 0) sections.push("knowledge");
     if (outcome.pageChanges.length > 0) sections.push("pdf");
     if (outcome.itemChanges.length > 0) sections.push("items", "proofreading");
     if (outcome.qualityChanges.length > 0) sections.push("quality");
@@ -820,7 +919,7 @@ export class ProjectWriteStore {
     outcome: AgentWorkspaceWriteOutcome,
     updated_sections: ProjectDataSection[],
   ): ProjectDatabaseWrite[] {
-    const writes: ProjectDatabaseWrite[] = [];
+    const writes = this.build_knowledge_writes(project_path, outcome.knowledgeChanges);
     for (const change of outcome.pageChanges)
       writes.push((db) => db.write_pdf_page(project_path, change.file_path, change.page));
     if (outcome.itemChanges.length > 0) {
@@ -1074,6 +1173,7 @@ export class ProjectWriteStore {
   private filter_revision_backed_sections(sections: ProjectDataSection[]): RevisionBackedSection[] {
     return sections.filter(
       (section): section is RevisionBackedSection =>
+        section === "knowledge" ||
         section === "project" ||
         section === "files" ||
         section === "items" ||

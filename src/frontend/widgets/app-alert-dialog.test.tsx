@@ -34,7 +34,7 @@ describe("应用模态窗", () => {
     vi.useRealTimers();
   });
 
-  it("确认与取消分别提交对应动作", () => {
+  it("确认弹窗使用统一标题和主题色，确认与取消分别提交对应动作", () => {
     const on_confirm = vi.fn();
     const on_close = vi.fn();
     render_dialog(
@@ -46,6 +46,10 @@ describe("应用模态窗", () => {
       />,
     );
 
+    expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
+      "app.action.confirm",
+    );
+    expect(read_button("app.action.confirm")?.getAttribute("data-variant")).toBe("default");
     click_button("app.action.confirm");
     expect(on_confirm).toHaveBeenCalledTimes(1);
     expect(on_close).not.toHaveBeenCalled();
@@ -62,12 +66,16 @@ describe("应用模态窗", () => {
       <AppActionDialog
         open
         description="请选择处理方式"
-        primaryAction={{ label: "覆盖", onSelect: on_primary, destructive: true }}
+        primaryAction={{ label: "覆盖", onSelect: on_primary }}
         secondaryAction={{ label: "跳过", onSelect: on_secondary }}
         onClose={on_close}
       />,
     );
 
+    expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
+      "app.action.confirm",
+    );
+    expect(read_button("覆盖")?.getAttribute("data-variant")).toBe("default");
     click_button("覆盖");
     expect(on_primary).toHaveBeenCalledTimes(1);
     expect(on_secondary).not.toHaveBeenCalled();
@@ -108,7 +116,7 @@ describe("应用模态窗", () => {
     render_dialog(
       <AppActionDialog
         open
-        title={null}
+        hideTitle
         description="登录地址"
         primaryAction={{ label: "打开登录页", onSelect: vi.fn() }}
         onClose={vi.fn()}
@@ -116,6 +124,7 @@ describe("应用模态窗", () => {
     );
 
     const dialog = document.body.querySelector('[role="alertdialog"]');
+    expect(dialog?.querySelector('[data-slot="alert-dialog-title"]')).toBeNull();
     expect(dialog?.getAttribute("aria-label")).toBe("打开登录页");
     expect(dialog?.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
       "登录地址",

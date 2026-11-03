@@ -26,6 +26,10 @@ export function run_project_schema_migration(db: DatabaseSync): void {
  */
 function ensure_current_schema(db: DatabaseSync): void {
   db.exec(`
+      CREATE TABLE IF NOT EXISTS knowledge (
+        path TEXT PRIMARY KEY,
+        text TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL

@@ -264,6 +264,7 @@ export function useWorkbenchImportFilesFlow(
             options.run_project_file_write(import_plan, (body) =>
               api_fetch<ProjectWriteResultPayload>("/api/workbench/files/import", {
                 ...body,
+                source_paths: pending_request.source_paths,
                 ...(godot_pack_orders.length ? { godot_pack_orders } : {}),
               }),
             ),

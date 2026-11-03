@@ -1,3 +1,4 @@
+import type { KnowledgeDocument } from "../../shared/project-knowledge";
 import { database_error } from "./database-error";
 import { read_project_revision } from "../../domain/project-revision";
 import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
@@ -128,6 +129,34 @@ export class ProjectDatabaseAccess {
   /** 读取工程元数据，供上层一次组装设置与 revision。 */
   public get_all_meta(project_path: string): JsonRecord {
     return this.with_project_connection(project_path, (db) => this.read_all_meta(db));
+  }
+
+  /** 直接读取持久化知识，返回值由调用方生成索引或正文。 */
+  public list_knowledge(project_path: string): KnowledgeDocument[] {
+    return this.with_project_connection(project_path, (db) =>
+      db
+        .prepare("SELECT path, text FROM knowledge ORDER BY path")
+        .all()
+        .map((row) => ({ path: row_text(row, "path"), text: row_text(row, "text") })),
+    );
+  }
+
+  /** 工程层先校验路径和正文，调用方事务负责原子提交。 */
+  public set_knowledge(project_path: string, path: string, text: string): void {
+    this.with_project_connection(project_path, (db) =>
+      db
+        .prepare(
+          "INSERT INTO knowledge(path, text) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET text = excluded.text",
+        )
+        .run(path, text),
+    );
+  }
+
+  /** 只删除指定文档，知识生命周期由工程写入层拥有。 */
+  public delete_knowledge(project_path: string, path: string): void {
+    this.with_project_connection(project_path, (db) =>
+      db.prepare("DELETE FROM knowledge WHERE path = ?").run(path),
+    );
   }
 
   /** 推进 files/items revision，重复 section 在同次调用中只计一次。 */

@@ -61,7 +61,13 @@ export function get_section_revision(meta: JsonRecord, section: string): number 
   if (section === "prompts") {
     return read_project_revision(meta[TRANSLATION_PROMPT.revision_meta_key]);
   }
-  if (section === "project" || section === "files" || section === "items" || section === "pdf") {
+  if (
+    section === "knowledge" ||
+    section === "project" ||
+    section === "files" ||
+    section === "items" ||
+    section === "pdf"
+  ) {
     return read_project_revision(meta[`project_runtime_revision.${section}`]);
   }
   if (section === "proofreading") {

@@ -92,6 +92,7 @@ export const ko_kr_agent_page = {
       text_preserve: "텍스트 보호 규칙 {count}개",
       pre_replacement: "번역 전 치환 규칙 {count}개",
       post_replacement: "번역 후 치환 규칙 {count}개",
+      knowledge: "프로젝트 지식 {count}개",
       prompts: "사용자 지정 프롬프트 {count}개",
     },
     reject: "거부",

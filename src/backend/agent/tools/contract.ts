@@ -1,3 +1,4 @@
+import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
 import { Check } from "typebox/value";
 import {
   AGENT_WORKSPACE_PATHS,
@@ -10,9 +11,9 @@ import type { AgentWorkspaceQualityChangeOperation } from "../workspace/paths";
 import { create_schema_renderer } from "../workspace/schema-description";
 import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 
-import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import {
+  AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS,
   AGENT_WORKSPACE_FILE_SCHEMAS,
   AGENT_WORKSPACE_FP_SCHEMA,
   AGENT_WORKSPACE_PAGE_SCHEMA,
@@ -32,13 +33,7 @@ export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
     datasets: Type.Record(
       Type.String(),
       Type.Object(
-        {
-          path: Type.String(),
-          format: Type.Union([Type.Literal("json"), Type.Literal("jsonl")]),
-          reference: Type.String(),
-          purpose: Type.Optional(Type.String()),
-          identity: Type.Optional(Type.Array(Type.String())),
-        },
+        { path: Type.String(), reference: Type.String(), purpose: Type.String() },
         { additionalProperties: false },
       ),
     ),
@@ -47,12 +42,7 @@ export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
       Type.Record(
         Type.String(),
         Type.Object(
-          {
-            path: Type.String(),
-            format: Type.Literal("jsonl"),
-            reference: Type.String(),
-            identity: Type.Optional(Type.Array(Type.String())),
-          },
+          { path: Type.String(), reference: Type.String() },
           { additionalProperties: false },
         ),
       ),
@@ -66,9 +56,6 @@ export type AgentWorkspaceRuntimeContract = Readonly<
   Static<typeof AGENT_WORKSPACE_CONTRACT_SCHEMA>
 >;
 
-/** 条目批量建议用于控制上下文与失败恢复成本。 */
-const AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS = 100;
-
 /** 参考资料按业务主题聚合，读取与修改共享同一份语义。 */
 const reference_path = (topic: string): string => `${AGENT_WORKSPACE_PATHS.reference}/${topic}.md`;
 /** 文件与质量规则共用 `insert_by_sort`，批次顺序只维护这一份，取值含义见 `sort` 字段。 */
@@ -78,32 +65,35 @@ const sort_notes = [
 ];
 /** 参考资料随工作区提供给模型，说明提交副作用和跨记录关系。 */
 const reference_notes: Readonly<Record<string, readonly string[]>> = {
+  knowledge: [
+    "`path` 相对 `knowledge/`，以 `.md` 结尾，每段须为跨平台合法文件名。路径比较不区分大小写，同一路径不能既是文档又是目录。",
+    `\`fp\` 从 \`project_meta.json\` 的 \`knowledge\` 复制。\`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。frontmatter 可省略，有则须为 YAML 映射，其中 \`description\` 须为字符串。`,
+    "新建只用于尚不存在的路径。同批每个路径只出现一次，改名时同批删除旧路径并新建新路径。",
+  ],
   project_meta: [
-    "工程元数据描述当前快照的语言、完整数量和文件顺序。`files` 列出全部资产，原稿位于 `sources/<file_path>`。",
+    "`files` 列出全部资产，原稿位于 `sources/<file_path>`。`knowledge` 列出工程知识，正文位于 `knowledge/<path>`。",
   ],
   // 文件变更没有同名数据集，规则自成主题，读取元数据时不必加载写入约束。
   files: [
     "同一 `file_path` 在本批只能出现在一条更新或删除记录中，同一 `source_path` 只能新增一次。",
-    "新增资产名称与已有名称冲突时，宿主在冲突所在层级加 `_2`、`_3` 等数字后缀：文件加在扩展名前，文件夹加在名称末尾。实际名称以回执和重建后的 `project_meta` 为准。",
-    "`new_file_path` 不能与本批开始时仍保留的其他资产相同，比较不区分大小写，本批删除的资产会释放名称。因此同批不能交换名称或链式改名。",
+    "新增资产与已有名称冲突时，宿主自动加 `_2`、`_3` 等数字后缀，实际名称以回执为准。",
+    "`new_file_path` 不能与本批开始时仍保留的其他资产相同，比较不区分大小写，本批删除的资产会释放名称，因此同批不能交换名称或链式改名。",
     "最终资产集合中，资产路径不能与其他资产互为文件和目录。游戏资产去掉扩展名后的路径也由它独占。",
-    "游戏资产改名时使用引擎类型对应的扩展名，历史 `.zip` 游戏资产可以保留原名。",
+    "游戏资产改名时使用引擎类型对应的扩展名。",
     "删除资产会从工程中移除它的原稿、条目、页面和译文。",
-    "新增记录不接受 `sort`，新资产在其余变化之后按新增记录的顺序追加到末尾。",
+    "新资产在其余变化之后按新增记录的顺序追加到末尾。",
     ...sort_notes,
   ],
   items: [
-    "`warnings` 按 `item_id` 关联条目，保存快照加载时的校对证据。正文与姓名属于同一个条目。",
-    "`dst` 或 `name_dst` 实际变化时默认同步更新状态为 `PROCESSED`，同值提交不改变状态，省略的内容字段保持当前值。",
-    '显式 `status` 覆盖内容修改的默认状态，接受现有结果时可提交 `status: "PROCESSED"`，最终内容和状态均相同时，回执为无变化。',
-    "同文组按 `file_path`、`src` 与可见 `name_src` 关联，`NONE` 与 `DUPLICATED` 状态由宿主按重复过滤规则自动处理。",
-    `建议每批条目更新不超过 ${AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS} 行，以控制上下文与失败恢复成本。`,
+    "`dst` 或 `name_dst` 实际变化时状态默认改为 `PROCESSED`，同值提交不改变状态。",
+    '显式 `status` 优先于默认状态，接受现有译文时可只提交 `status: "PROCESSED"`。',
+    "同一文件中 `src` 与 `name_src` 相同的条目为同文组，宿主按重复过滤设置自动维护组内的 `NONE` 与 `DUPLICATED`。",
   ],
   pages: [
-    "页面身份由 `file_path` 与从 1 开始的原稿 `page` 组成，`fp` 从当前快照复制。",
-    "页面更新完整替换可修改内容。同批同页提交一次，页面独立接受或拒绝，回执按文件与原页码定位，实际更新按页面计数。",
+    "以 `file_path` 和 `page` 定位页面，同批每页只提交一次，各页独立接受或拒绝。",
+    "更新完整替换 `translation`、`reviewed` 和 `notes`。",
   ],
-  prompts: ["以 `kind` 定位提示词，携带当前 `fp` 和完整最终 `text` 提交。"],
+  prompts: [],
   ...Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, sort_notes])),
 };
 
@@ -118,9 +108,7 @@ const quality_entry_datasets = Object.fromEntries<DatasetDefinition>(
     kind,
     {
       path: AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind],
-      format: "jsonl" as const,
-      purpose: `完整的 ${kind} 规则集合，按当前顺序排列`,
-      identity: ["id"],
+      purpose: `全部 ${kind} 规则，按当前顺序排列`,
       schema: AGENT_WORKSPACE_QUALITY_SCHEMAS[kind].entries,
       reference: reference_path(kind),
     },
@@ -137,7 +125,6 @@ const quality_changes = Object.fromEntries<
         operation,
         {
           path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind][operation],
-          format: "jsonl" as const,
           schema: AGENT_WORKSPACE_QUALITY_SCHEMAS[kind][operation],
           reference: reference_path(kind),
         },
@@ -151,72 +138,67 @@ const definition = {
   datasets: {
     pages: {
       path: AGENT_WORKSPACE_PATHS.pages,
-      format: "jsonl" as const,
       schema: AGENT_WORKSPACE_PAGE_SCHEMA,
       reference: reference_path("pages"),
-      purpose: "完整的 `pages` 集合，每个 `page` 对应一个原稿页",
-      identity: ["file_path", "page"],
+      purpose: "全部原稿页面，每行对应一个原稿页",
     },
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
-      format: "json" as const,
-      purpose: "工程语言、完整数量与文件顺序",
+      purpose: "工程语言、完整数量、文件顺序与知识索引",
       schema: AGENT_WORKSPACE_PROJECT_META_SCHEMA,
       reference: reference_path("project_meta"),
     },
     items: {
       path: AGENT_WORKSPACE_PATHS.items,
-      format: "jsonl" as const,
-      purpose: "完整的 `items` 集合，正文与姓名属于同一个 `item`",
-      identity: ["item_id"],
+      purpose: "全部翻译条目，正文与姓名属于同一条目",
       schema: AGENT_WORKSPACE_ITEM_SCHEMA,
       reference: reference_path("items"),
     },
     warnings: {
       path: AGENT_WORKSPACE_PATHS.warnings,
-      format: "jsonl" as const,
       purpose: "当前快照的校对警告与字段级证据，按 `item_id` 关联条目",
-      identity: ["item_id"],
       schema: AGENT_WORKSPACE_WARNING_SCHEMA,
       reference: reference_path("items"),
     },
     prompts: {
       path: AGENT_WORKSPACE_PATHS.prompts,
-      format: "json" as const,
-      purpose: "当前翻译提示词及其指纹",
-      identity: [...PROMPT_KINDS],
+      purpose: "当前翻译提示词",
       schema: AGENT_WORKSPACE_PROMPTS_SCHEMA,
       reference: reference_path("prompts"),
     },
     ...quality_entry_datasets,
   },
   changes: {
+    knowledge: Object.fromEntries(
+      AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
+        operation,
+        {
+          path: AGENT_WORKSPACE_CHANGE_PATHS.knowledge[operation],
+          schema: AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS[operation],
+          reference: reference_path("knowledge"),
+        },
+      ]),
+    ),
     files: Object.fromEntries(
       AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
         operation,
         {
           path: AGENT_WORKSPACE_CHANGE_PATHS.files[operation],
-          format: "jsonl" as const,
           schema: AGENT_WORKSPACE_FILE_SCHEMAS[operation],
           reference: reference_path("files"),
-          identity: [operation === "creates" ? "source_path" : "file_path"],
         },
       ]),
     ),
     pages: {
       updates: {
         path: AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
-        format: "jsonl" as const,
         schema: AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
         reference: reference_path("pages"),
-        identity: ["file_path", "page"],
       },
     },
     items: {
       updates: {
         path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
-        format: "jsonl" as const,
-        identity: ["item_id"],
         schema: AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
         reference: reference_path("items"),
       },
@@ -224,8 +206,6 @@ const definition = {
     prompts: {
       updates: {
         path: AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
-        format: "jsonl" as const,
-        identity: ["kind"],
         schema: AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA,
         reference: reference_path("prompts"),
       },
@@ -293,11 +273,9 @@ export const AGENT_WORKSPACE_REFERENCES: Readonly<Record<string, string>> = Obje
         [
           `# ${topic} 工作区参考`,
           "",
-          "路径相对于工作区根目录，字段注释中的约束同样适用。",
-          "",
           ...records.map(
             (entry) =>
-              `- \`${entry.access}.path\`：\`${entry.path}\`，格式为 \`${entry.format}\`，记录类型为 \`${entry.name}\`。`,
+              `- \`${entry.access}.path\`：\`${entry.path}\`，记录类型为 \`${entry.name}\`。`,
           ),
           "",
           "```ts",

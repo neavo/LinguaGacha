@@ -1,7 +1,8 @@
+import { zh_cn_knowledge_page } from "./knowledge-page";
+import { zh_cn_project_knowledge } from "./project-knowledge";
 import { zh_cn_game_font_page } from "./game-font-page";
 import { zh_cn_translation_transfer_page } from "./translation-transfer-page";
 import { zh_cn_toolbox_page } from "./toolbox-page";
-import { zh_cn_skills_page } from "./skills-page";
 import { zh_cn_batch_translation } from "./batch-translation";
 import { zh_cn_agent_page } from "./agent-page";
 import { zh_cn_agent_runtime } from "./agent-runtime";
@@ -24,7 +25,8 @@ import { zh_cn_text_replacement_page } from "./text-replacement-page";
 import { zh_cn_workbench_page } from "./workbench-page";
 
 export const zh_cn_messages = {
-  skills_page: zh_cn_skills_page,
+  knowledge_page: zh_cn_knowledge_page,
+  project_knowledge: zh_cn_project_knowledge,
   agent_page: zh_cn_agent_page,
   agent_runtime: zh_cn_agent_runtime,
   app: zh_cn_app,

@@ -58,6 +58,7 @@ async function create_service() {
     session,
     writes,
     create_pdf_execution(),
+    settings,
   );
   return {
     service: new AppSettingsCommandService(settings, gate, session, content),

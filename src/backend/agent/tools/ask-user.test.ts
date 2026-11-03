@@ -49,7 +49,7 @@ describe("ask_user 工具", () => {
     });
   });
 
-  it("只接受二至三个固定选项并校验内容", async () => {
+  it("只接受一至三个固定选项并校验内容", async () => {
     const tool = create_agent_ask_user_tool({ wait_for_answer: vi.fn() });
     if (tool === undefined) throw new Error("缺少 ask_user 工具");
     expect(() => validateToolArguments(tool, tool_call({ prompt: "问题", options: [] }))).toThrow();
@@ -58,7 +58,7 @@ describe("ask_user 工具", () => {
         tool,
         tool_call({ prompt: "问题", options: [{ id: "only", label: "唯一选项" }] }),
       ),
-    ).toThrow();
+    ).not.toThrow();
     expect(() =>
       validateToolArguments(
         tool,

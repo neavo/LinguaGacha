@@ -1,3 +1,4 @@
+import { validate_file_name } from "../../shared/utils/file-name";
 import { AGENT_SKILL_MAIN_FILE, AGENT_SKILL_UI_FILE } from "../../shared/agent-skills";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -12,7 +13,6 @@ import { AppError } from "../../shared/error";
 import { read_agent_skill_document } from "./agent-skill-document";
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
-const RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
 /** 相对路径协议及内部文件保护对所有文件操作一致。 */
 function skill_path_parts(relative: string): string[] {
@@ -34,19 +34,6 @@ function skill_path_parts(relative: string): string[] {
     throw new AppError("request.validation_failed");
   }
   return parts;
-}
-
-/** 新名称使用可跨平台管理的文件名；已有条目按磁盘事实定位。 */
-export function validate_skill_entry_name(name: string): void {
-  if (
-    !name ||
-    /[\\/:<>"|?*]/.test(name) ||
-    [...name].some((char) => char.charCodeAt(0) < 32) ||
-    /[. ]$/.test(name) ||
-    RESERVED_NAME.test(name)
-  ) {
-    throw new AppError("request.validation_failed");
-  }
 }
 
 /** root 已由服务定位为真实技能包目录；包内链接与文件树采用相同的不跟随规则。 */
@@ -76,7 +63,7 @@ export function skill_existing_path(root: string, relative: string): string {
 function skill_target_path(root: string, relative: string): string {
   const parts = skill_path_parts(relative);
   const name = parts.at(-1)!;
-  validate_skill_entry_name(name);
+  validate_file_name(name);
   return path.join(read_skill_entry(root, parts.slice(0, -1)), name);
 }
 
