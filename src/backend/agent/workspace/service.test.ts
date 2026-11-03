@@ -1,3 +1,4 @@
+import type { ProjectContentService } from "../../project/project-content-service";
 import { project_agent_workspace_warning } from "./service";
 import { Check } from "typebox/value";
 import { AGENT_WORKSPACE_PROJECT_META_SCHEMA, AGENT_WORKSPACE_WARNING_SCHEMA } from "./schema";
@@ -48,7 +49,7 @@ import {
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_PATHS,
-  AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
+  AGENT_WORKSPACE_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./paths";
@@ -74,6 +75,133 @@ describe("AgentWorkspaceService", () => {
   afterEach(() => {
     fs.rmSync(temp_dir, { recursive: true, force: true });
     vi.restoreAllMocks();
+  });
+
+  it.each(["none", "update", "delete"])(
+    "文件审批合计实际文件数，回执保留明细：%s",
+    async (operation) => {
+      const fixture = await create_fixture(temp_dir);
+      await run_workspace(fixture);
+      fs.writeFileSync(
+        path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.creates),
+        JSON.stringify({ source_path: "uploads/input.txt" }),
+      );
+      if (operation !== "none") {
+        const change_path =
+          operation === "update"
+            ? AGENT_WORKSPACE_CHANGE_PATHS.files.updates
+            : AGENT_WORKSPACE_CHANGE_PATHS.files.deletes;
+        fs.writeFileSync(
+          path.join(fixture.workspace_root, change_path),
+          JSON.stringify({
+            file_path: "script.txt",
+            ...(operation === "update" ? { sort: -1 } : {}),
+          }),
+        );
+      }
+      const approve = vi.fn(async () => {
+        expect(fixture.apply_file_changes).not.toHaveBeenCalled();
+      });
+      const result = await fixture.service.apply_workspace(approve);
+      expect(approve).toHaveBeenCalledWith(
+        expect.objectContaining({ files: operation === "none" ? 3 : 4 }),
+      );
+      expect(fixture.apply_file_changes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          creates: [
+            expect.objectContaining({
+              source_path: path.join(fixture.workspace_root, "uploads/input.txt"),
+            }),
+          ],
+          signal: expect.any(AbortSignal),
+        }),
+      );
+      expect(result).toMatchObject({
+        status: "applied",
+        destroyed: true,
+        applied: { files: { created: [{ source_path: "uploads/input.txt", files: 3 }] } },
+      });
+      expect(fixture.active_path()).toBe("");
+    },
+  );
+
+  it.each(["invalid", "missing", "stale", "outside"])(
+    "文件批次 %s 整批拒绝且不请求审批",
+    async (kind) => {
+      const fixture = await create_fixture(temp_dir);
+      await run_workspace(fixture);
+      const create = { source_path: "work/input.txt" };
+      fs.writeFileSync(
+        path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.creates),
+        JSON.stringify(create),
+      );
+      if (kind === "invalid")
+        fs.writeFileSync(
+          path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.updates),
+          "{bad",
+        );
+      if (kind === "missing")
+        fs.writeFileSync(
+          path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.deletes),
+          JSON.stringify({ file_path: "missing.txt" }),
+        );
+      if (kind === "outside")
+        fs.writeFileSync(
+          path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.creates),
+          JSON.stringify({ source_path: "uploads/../../bad.txt" }),
+        );
+      if (kind === "stale") fixture.snapshot.sectionRevisions.files = 2;
+      const approve = vi.fn();
+      const result = await fixture.service.apply_workspace(approve);
+      expect(result).toMatchObject({
+        status: "rejected",
+        destroyed: kind === "stale" || kind === "missing",
+      });
+      if (kind === "outside")
+        expect(result["rejected"]).toEqual(
+          expect.arrayContaining([expect.objectContaining({ reason: "invalid_change" })]),
+        );
+      expect(approve).not.toHaveBeenCalled();
+      expect(fixture.apply_file_changes).not.toHaveBeenCalled();
+      expect(fixture.write_store).not.toHaveBeenCalled();
+    },
+  );
+
+  it("审批拒绝不准备来源，准备失败和提交后错误保留目录变化", async () => {
+    const fixture = await create_fixture(temp_dir);
+    await run_workspace(fixture);
+    fs.writeFileSync(
+      path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.creates),
+      JSON.stringify({ source_path: "work/input.txt" }),
+    );
+    await expect(
+      fixture.service.apply_workspace(async () => {
+        throw new Error("rejected");
+      }),
+    ).rejects.toThrow("rejected");
+    expect(fixture.apply_file_changes).not.toHaveBeenCalled();
+    fixture.apply_file_changes.mockResolvedValueOnce({
+      kind: "source_failed",
+      failures: [
+        { source_path: path.join(fixture.workspace_root, "work/input.txt"), message: "failed" },
+      ],
+      directory_changes: ["game"],
+    });
+    expect(await fixture.service.apply_workspace()).toMatchObject({
+      status: "rejected",
+      destroyed: false,
+      directory_changes: ["game"],
+    });
+    fixture.apply_file_changes.mockRejectedValueOnce(
+      new AppErrors.AppError("data.committed_sync_failed", {
+        public_details: { committed: true, source_operation: { directory_changes: ["game"] } },
+      }),
+    );
+    await expect(fixture.service.apply_workspace()).rejects.toMatchObject({
+      code: "data.committed_sync_failed",
+      public_details: { source_operation: { directory_changes: ["game"] } },
+    });
+    expect(fixture.active_path()).toBe("");
   });
 
   it("原稿全部读取失败仍执行脚本并记录问题，同修订只重试失败资产，成功后清空记录", async () => {
@@ -851,7 +979,8 @@ describe("AgentWorkspaceService", () => {
         stderrPath: `${run_path}.stderr.log`,
         timeoutMs: VALID_WORKSPACE_RUN.timeoutMs,
         doing: write_doing,
-        host: expect.any(Function),
+        printPDF: expect.any(Function),
+        inspectSources: expect.any(Function),
         emitImage: expect.any(Function),
       },
       expect.any(AbortSignal),
@@ -965,6 +1094,7 @@ describe("AgentWorkspaceService", () => {
       textPreserve: 0,
       preReplacement: 0,
       postReplacement: 0,
+      files: 0,
       prompts: 1,
     });
     expect(fixture.write_store).toHaveBeenCalledWith(
@@ -1302,9 +1432,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       },
     };
   });
-  const runtime_gate = vi.fn(async (operation: () => ReturnType<typeof write_store>) =>
-    operation(),
-  );
+  const runtime_gate = vi.fn();
   const warning_item = items[0] as JsonRecord;
   const languages: { source_language: "JA"; target_language: "ZH" | "EN" } = {
     source_language: "JA",
@@ -1347,7 +1475,37 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     originalHeight: 1,
   }));
   const read_meta = vi.fn(async () => ({}) as JsonRecord);
+  const inspect_sources = vi.fn<ProjectContentService["inspect_sources"]>(async (sources) =>
+    sources.map((source_path) => ({
+      source_path,
+      file_count: 3,
+      contains_game: false,
+      godot_packs: [],
+      failures: [],
+    })),
+  );
+  const apply_file_changes = vi.fn<ProjectContentService["apply_file_changes"]>(
+    async (request) => ({
+      kind: "applied",
+      write: { accepted: true, changes: [] },
+      sectionRevisions: { files: 2, items: 2 },
+      directory_changes: [],
+      files: {
+        created: request.creates.map((entry) => ({
+          source_path: entry.source_path,
+          files: 3,
+          items: 4,
+          pages: 0,
+          renamed: [],
+          parse_failed: [],
+        })),
+        updated: request.updates.length,
+        deleted: request.deletes.length,
+      },
+    }),
+  );
   const service = new AgentWorkspaceService({
+    files: { inspect_sources, apply_file_changes },
     images: { prepare: prepare_image },
     paths: {
       get_agent_workspace_root_dir: () => workspace_parent,
@@ -1362,7 +1520,12 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       read_pdf_documents: async () => [],
       read_file_counts: async () => new Map(),
     },
-    runtimeGate: { run_agent_project_write: runtime_gate },
+    runtimeGate: {
+      run_agent_project_write: async (operation) => {
+        runtime_gate();
+        return operation(new AbortController().signal);
+      },
+    },
     writeStore: { apply_agent_workspace_changes: write_store },
     logManager: { warning: vi.fn() },
     run,
@@ -1386,6 +1549,8 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     items,
     read_asset_content,
     read_meta,
+    inspect_sources,
+    apply_file_changes,
     active_path: () =>
       fs.existsSync(path.join(workspace_root, AGENT_WORKSPACE_PATHS.contract))
         ? workspace_root
@@ -1470,7 +1635,7 @@ function all_change_paths(): string[] {
     AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
     AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     ...QUALITY_RULE_KINDS.flatMap((kind) =>
-      AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map(
+      AGENT_WORKSPACE_CHANGE_OPERATIONS.map(
         (operation) => AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind][operation],
       ),
     ),
@@ -1525,6 +1690,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       languages: { source_language: "EN", target_language: "ZH" },
     });
     const workspace = new AgentWorkspaceService({
+      files: services.project.content,
       images: {
         prepare: async (bytes) => ({
           data: Buffer.from(bytes).toString("base64"),
@@ -1540,7 +1706,9 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       cache: services.state.cache,
       proofreading: services.proofreading.query,
       database: resources.database,
-      runtimeGate: { run_agent_project_write: async (operation) => operation() },
+      runtimeGate: {
+        run_agent_project_write: async (operation) => operation(new AbortController().signal),
+      },
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: async () => workspace_execution(),
@@ -1624,6 +1792,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       textPreserve: 0,
       preReplacement: 0,
       postReplacement: 0,
+      files: 0,
       prompts: 0,
     });
     expect((await services.project.summary.read())["snapshot"]).toMatchObject({

@@ -4,7 +4,7 @@ import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
 import { AGENT_WORKSPACE_CONTRACT } from "./contract";
-import { AGENT_WORKSPACE_PATHS } from "../workspace/paths";
+import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_PATHS } from "../workspace/paths";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
   AGENT_WORKSPACE_RUNTIME_POLICY,
@@ -40,13 +40,14 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### 依赖",
       "",
+      "- `@lg/*` 是随应用发布的 SDK，在本工具的脚本及其加载的模块中可用。它们不通过 npm 安装：",
+      "  - `@lg/project`：识别待加入工程的来源，用法见 `project-operation` 技能",
+      "  - `@lg/project/item-contexts`：`queryItemContexts(items, item_ids)` 查询条目的同文件邻近语境。`items` 传入 `items` 数据集的完整数组或流，保持数据集顺序",
+      "  - `@lg/pdf`、`@lg/pdf/mupdf`：PDF 读取、渲染与打印，用法见 `pdf` 技能",
+      "  - `@lg/utils/literal-matcher`：应用判定字面命中与规范化文本的规则",
+      "  - `@lg/npm`：应用随附的 npm，管理共享 npm 工程与调用包提供的命令行工具",
+      "  - `@lg/python`：应用管理的 Python 解释器、依赖与程序执行",
       "- 第三方包从共享 npm 工程加载，缺少的包先用 `@lg/npm` 安装，再在新的调用中导入",
-      "- `@lg/*` 是随应用更新的 SDK，在本工具及其加载的模块中可用：",
-      "  - `@lg/pdf` 提供与正式输出共用的 PDF 读取、渲染和生成，接口只交换字节",
-      "  - `@lg/text` 提供与应用共用的字面匹配能力",
-      "  - `@lg/npm` 提供应用随附的 npm，管理共享 npm 工程与调用包提供的命令行工具",
-      "  - `@lg/python` 提供应用管理的 Python 解释器、依赖与程序执行",
-      "  - `@lg/workspace/item-contexts` 提供 `queryItemContexts`，用于取得条目的邻近语境",
       `- 共享工程初始提供 ${app_package.workspaceRuntimePackages.agent.join("、")}`,
       "",
       NPM_DESCRIPTION,
@@ -57,12 +58,11 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "- 脚本以当前系统账户运行，宿主不限制本机文件和进程访问",
       `- 工作材料写入 \`${AGENT_WORKSPACE_WORK_ROOT}/\`，变更清单写入 \`changes/\`，用户技能写入 \`ws.userSkillDirectory\`，其余工作区内容由宿主维护，只读`,
-      "- 可以创建子进程和 worker，它们是标准 Node 环境，不提供 `ws`，也不经过上述依赖解析",
+      "- 可以创建子进程和 worker。它们是标准 Node 环境，没有宿主通道，也不经过上述依赖解析，`ws` 和 `@lg/*` 只在主脚本中使用",
       "",
       "### 输出",
       "",
-      "- 程序在事件循环空闲时自然退出，退出时结束仍在运行的子进程",
-      "- 使用 `console.log` 输出结果",
+      "- 程序退出时结束仍在运行的子进程",
       "- 耗时处理定期输出进度，界面会实时显示给用户",
       `- \`stdout\` 和 \`stderr\` 各自保存为文件。每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容，内容是文本或解析后的 JSON，超额时返回补读提示，按需读取文件`,
       "",
@@ -75,20 +75,21 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### 失败与恢复",
       "",
-      "- 程序失败或超时会携带执行记录，根据记录定位失败原因",
       "- 环境准备失败时脚本不会运行。应用 SDK、npm 或启动资源缺失表示应用安装损坏，需要修复应用安装",
       "- 第三方包缺失或共享 npm 工程损坏时，用 `@lg/npm` 恢复",
       "- 程序失败、停止或超时后，已完成的文件写入仍然保留，继续前检查受影响的文件，复用完整内容并修复未完成或损坏的部分",
       "",
       "### 工作区数据",
       "",
-      "- `sources/<file_path>`：工程原稿，只读",
-      `- \`${AGENT_WORKSPACE_PATHS.sourceIssues}\` 是 \`sources\` 的准备过程遇到的异常项目记录，只读，文件为空表示没有异常，结论依赖原稿完整时先读取该文件`,
-      "- `datasets` 都是只读快照，修改写入对应的 `changes` 后由 `workspace_apply` 提交",
+      "- `sources/<file_path>`：工程原稿",
+      `- \`${AGENT_WORKSPACE_PATHS.sourceIssues}\` 是 \`sources\` 的准备过程遇到的异常项目记录，文件为空表示没有异常，结论依赖原稿完整时先读取该文件`,
+      "- `datasets` 都是工程快照，修改写入对应的 `changes` 后由 `workspace_apply` 提交",
       ...Object.entries(AGENT_WORKSPACE_CONTRACT.datasets).map(([name, dataset]) => {
         const operations = Object.keys(AGENT_WORKSPACE_CONTRACT.changes[name] ?? {});
         return `- datasets.${name}：${dataset.purpose}。${operations.length === 0 ? "" : `变更入口 changes.${name}，操作 ${operations.join("、")}。`}参考 ${dataset.reference}`;
       }),
+      // 文件变更没有同名数据集，不会出现在上面的数据集列表中。
+      `- changes.files：工程文件的新增、改名、移动、排序和删除，操作 ${Object.keys(AGENT_WORKSPACE_CHANGE_PATHS.files).join("、")}。参考 ${AGENT_WORKSPACE_CONTRACT.changes["files"]?.["creates"]?.reference}`,
       "",
       "### `ws` 接口",
       "",

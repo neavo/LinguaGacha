@@ -1,3 +1,11 @@
+import type {
+  SourceInspection,
+  ProjectFileCreate,
+  AppliedFiles,
+} from "../../shared/project-file-changes";
+import type { ProjectDataSection, ProjectDataSectionRevisions } from "../../shared/project-event";
+import { resolve_project_file_layout, type ProjectFileUpdate } from "./project-file-layout";
+import type { DiscoveredSource } from "../file/source-discovery";
 import { read_project_additional_files } from "./project-additional-files";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import type { GodotPackOrder } from "../../shared/godot";
@@ -124,6 +132,218 @@ export class ProjectContentService {
     this.log_manager = log_manager;
   }
 
+  /** 识别只持有来源目录占用，审批前不准备或改写游戏。 */
+  public async inspect_sources(
+    source_paths: readonly string[],
+    orders?: readonly GodotPackOrder[],
+    signal?: AbortSignal,
+  ): Promise<SourceInspection[]> {
+    const service = await this.create_format_service(
+      this.session_state.require_loaded_project_path(),
+    );
+    return service.with_source_directories(
+      source_paths,
+      async (source_signal) => {
+        const inspections: SourceInspection[] = [];
+        for (const source_path of source_paths) {
+          const entries = await service.collect_source_file_entries(
+            [source_path],
+            source_signal,
+            orders,
+          );
+          inspections.push({
+            source_path,
+            file_count: entries.filter((entry) => entry.source.kind !== "failure").length,
+            contains_game: entries.some((entry) => entry.source.kind === "game"),
+            godot_packs: entries.flatMap((entry) =>
+              entry.source.kind === "game" && entry.source.file_type === "GODOT"
+                ? [godot_pack_preview(entry.source.game)]
+                : [],
+            ),
+            failures: entries.flatMap((entry) =>
+              entry.source.kind === "failure"
+                ? [{ path: entry.source_path, message: String(entry.source.error) }]
+                : [],
+            ),
+          });
+        }
+        return inspections;
+      },
+      signal,
+    );
+  }
+
+  /** 调用方持有工程写入占用，来源准备结束后才进入资产事务。 */
+  public async apply_file_changes(args: {
+    projectPath: string;
+    source: string;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
+    revisionSections: ProjectDataSection[];
+    creates: readonly ProjectFileCreate[];
+    updates: readonly ProjectFileUpdate[];
+    deletes: readonly string[];
+    signal: AbortSignal;
+  }): Promise<
+    | {
+        kind: "applied";
+        write: ProjectWriteResult;
+        sectionRevisions: ProjectDataSectionRevisions;
+        files: AppliedFiles;
+        directory_changes: string[];
+      }
+    | {
+        kind: "source_failed";
+        failures: { source_path: string; message: string }[];
+        directory_changes: string[];
+      }
+  > {
+    // 准备游戏前拒绝过期基线，避免先改写来源目录再发现工程已变化。
+    await this.write_store.check_section_revisions(
+      args.projectPath,
+      args.expectedSectionRevisions,
+      args.revisionSections,
+    );
+    const occupied = resolve_project_file_layout(
+      await this.database.get_all_asset_records(args.projectPath),
+      args.deletes,
+      args.updates,
+    );
+    let parsed: SourceFileParseResult = {
+      file_drafts: [],
+      failures: [],
+      warnings: [],
+      directory_changes: [],
+    };
+    let entries: (DiscoveredSource & { record: number; original_path: string })[] = []; // 保留来源记录归属和命名前路径。
+    const failures: { source_path: string; message: string }[] = [];
+    if (args.creates.length) {
+      const service = await this.create_format_service(args.projectPath);
+      parsed = await service.with_source_directories(
+        args.creates.map((entry) => entry.source_path),
+        async (signal) => {
+          for (const [record, create] of args.creates.entries()) {
+            const discovered = await service.collect_source_file_entries(
+              [create.source_path],
+              signal,
+              create.godot_pack_orders,
+            );
+            if (!discovered.length)
+              failures.push({
+                source_path: create.source_path,
+                message: "No supported files found.",
+              });
+            entries.push(
+              ...discovered.map((entry) => ({ ...entry, record, original_path: entry.rel_path })),
+            );
+          }
+          entries = service
+            .assign_source_file_paths(entries, occupied)
+            .map((entry) => ({ ...entry, rel_path: normalize_project_asset_path(entry.rel_path) }));
+          return new SourceFileParsePipeline(service).parse_import_commands(entries, signal);
+        },
+        args.signal,
+      );
+      this.log_source_diagnostics(parsed.failures, parsed.warnings);
+      for (const failure of parsed.failures) {
+        if (parsed.file_drafts.some((file) => file.rel_path === failure.rel_path)) continue;
+        const entry = entries.find((entry) => entry.rel_path === failure.rel_path)!;
+        failures.push({
+          source_path: args.creates[entry.record]!.source_path,
+          message: String(failure.error),
+        });
+      }
+    }
+    if (failures.length)
+      return { kind: "source_failed", failures, directory_changes: parsed.directory_changes };
+    try {
+      const files: ProjectFileSection = {};
+      const items: Record<string, ProjectItemPublicRecord> = {};
+      let id = 0; // 预过滤使用临时主键，入库前移除并由数据库分配真实主键。
+      for (const [sort_index, file] of parsed.file_drafts.entries()) {
+        files[file.rel_path] = {
+          rel_path: file.rel_path,
+          file_type: file.file_type,
+          sort_index,
+          ...(file.game_engine === undefined ? {} : { game_engine: file.game_engine }),
+        };
+        for (const item of file.parsed_items) {
+          id += 1;
+          items[String(id)] = this.normalize_public_item({ ...item, id, file_path: file.rel_path });
+        }
+      }
+      // 重复关系按文件划分，新资产只需预过滤自己的条目。
+      const output = parsed.file_drafts.length
+        ? await this.compute_prefilter_output({
+            project_path: args.projectPath,
+            files,
+            items,
+            settings: await this.read_project_write_settings(args.projectPath),
+          })
+        : { items };
+      const persistent = build_project_item_persistent_records(output.items).map((item) => {
+        const record: MutableJsonRecord = { ...item };
+        delete record["id"];
+        return record;
+      });
+      const items_by_file = Map.groupBy(persistent, (item) => item["file_path"]);
+      const result = await this.write_store.apply_file_changes({
+        ...args,
+        creates: parsed.file_drafts.map((file, sortOrder) => ({
+          kind: "add",
+          path: file.rel_path,
+          fileType: file.file_type,
+          content: file.content,
+          additionalFiles: file.additional_files,
+          pdfDocument: file.pdf_document,
+          sortOrder,
+          items: items_by_file.get(file.rel_path) ?? [],
+        })),
+      });
+      return {
+        kind: "applied",
+        ...result,
+        directory_changes: parsed.directory_changes,
+        files: {
+          updated: args.updates.length,
+          deleted: args.deletes.length,
+          created: args.creates.map((create, record) => {
+            const source_entries = entries.filter((entry) => entry.record === record);
+            const paths = new Set(source_entries.map((entry) => entry.rel_path));
+            const drafts = parsed.file_drafts.filter((file) => paths.has(file.rel_path));
+            return {
+              source_path: create.source_path,
+              files: drafts.length,
+              items: drafts.reduce((count, file) => count + file.parsed_items.length, 0),
+              pages: drafts.reduce(
+                (count, file) => count + (file.pdf_document?.pages.length ?? 0),
+                0,
+              ),
+              renamed: source_entries
+                .filter(
+                  (entry) => normalize_project_asset_path(entry.original_path) !== entry.rel_path,
+                )
+                .map((entry) => ({
+                  from: normalize_project_asset_path(entry.original_path),
+                  to: entry.rel_path,
+                })),
+              parse_failed: parsed.failures
+                .filter((failure) => paths.has(failure.rel_path))
+                .map((failure) => failure.rel_path),
+            };
+          }),
+        },
+      };
+    } catch (error) {
+      throw source_operation_error(
+        error,
+        parsed.directory_changes,
+        AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed"
+          ? parsed.file_drafts.length
+          : 0,
+      );
+    }
+  }
+
   /** 预览只发现来源并分配目标名称，内容准备由正式导入持有。 */
   public async preview_import_files(request: JsonRecord): Promise<WorkbenchImportFilesPreview> {
     const project_path = this.session_state.require_loaded_project_path();
@@ -136,7 +356,7 @@ export class ProjectContentService {
       assets: reader.get_all_asset_records(project_path),
       files_revision: get_section_revision(reader.get_all_meta(project_path), "files"),
     }));
-    const entries = format_service.assign_source_file_paths(sources, snapshot.assets);
+    const entries = format_service.assign_source_file_paths(sources, snapshot.assets, true);
     const existing = new Map(
       snapshot.assets.map((asset) => [
         normalize_project_asset_path(asset.path).toLowerCase(),
@@ -430,48 +650,26 @@ export class ProjectContentService {
    */
   public async delete_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.runtime_gate.run_project_write(async () => {
+    return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, PROJECT_DERIVED_FIELDS);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
       if (rel_paths.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
       }
-      const snapshot = await this.read_project_write_snapshot(project_path);
-      this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
-      const rel_path_set = new Set(rel_paths);
-      const files = { ...snapshot.files };
-      for (const rel_path of rel_paths) {
-        delete files[rel_path];
-      }
-      const items = this.public_item_record(snapshot.public_items_by_id.values());
-      for (const item_id of Object.keys(items)) {
-        const item = items[item_id];
-        if (item !== undefined && rel_path_set.has(item.file_path)) {
-          delete items[item_id];
-        }
-      }
-      const settings = await this.read_project_write_settings(project_path);
-      const write_output = await this.compute_prefilter_output({
-        project_path,
-        files,
-        items,
-        settings,
-      });
-      return await this.write_store.replace_project_items_and_files({
+      const result = await this.apply_file_changes({
         projectPath: project_path,
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
         revisionSections: ["files", "items"],
         source: "project_delete_files",
-        updatedSections: ["files", "items"],
-        assetWrites: rel_paths.map((rel_path) => ({
-          kind: "delete",
-          path: rel_path,
-        })),
-        items: build_project_item_persistent_records(write_output.items),
-        meta: this.build_prefilter_reset_meta(settings, write_output),
+        creates: [],
+        updates: [],
+        deletes: rel_paths,
+        signal,
       });
+      if (result.kind !== "applied") throw new AppErrors.AppError("runtime.internal_invariant");
+      return result.write;
     });
   }
 

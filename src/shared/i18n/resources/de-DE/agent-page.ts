@@ -83,6 +83,7 @@ export const de_de_agent_page = {
     tooltip: "Genehmigungsmodus für Schreibzugriffe",
     title: "Projektdaten werden geschrieben",
     summary: {
+      files: "{count} Dateien",
       pages: "Seitendaten: {count} Seiten",
       items: "Eintragsdaten: {count} Einträge",
       glossary: "{count} Glossarregeln",

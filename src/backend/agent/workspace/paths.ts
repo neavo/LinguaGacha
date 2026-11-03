@@ -20,8 +20,8 @@ export const AGENT_WORKSPACE_QUALITY_ENTRY_PATHS = Object.freeze(
   >,
 );
 
-/** 质量规则的三种对象操作各占一个 JSONL 文件。 */
-export const AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS = Object.freeze([
+/** 文件与质量规则共用三种变更操作。 */
+export const AGENT_WORKSPACE_CHANGE_OPERATIONS = Object.freeze([
   "creates",
   "updates",
   "deletes",
@@ -29,7 +29,7 @@ export const AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS = Object.freeze([
 
 /** 固定 quality change 文件允许的操作名。 */
 export type AgentWorkspaceQualityChangeOperation =
-  (typeof AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS)[number];
+  (typeof AGENT_WORKSPACE_CHANGE_OPERATIONS)[number];
 
 /** 每个 quality kind 复用同一 changes/<kind>/<operation>.jsonl 布局。 */
 export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
@@ -38,7 +38,7 @@ export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
       kind,
       Object.freeze(
         Object.fromEntries(
-          AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((operation) => [
+          AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
             operation,
             `changes/${kind}/${operation}.jsonl`,
           ]),
@@ -48,8 +48,13 @@ export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
   ) as Record<QualityRuleKind, Readonly<Record<AgentWorkspaceQualityChangeOperation, string>>>,
 );
 
-/** 模型可写的全部固定 change 路径；datasets 本身始终只读。 */
+/** 模型只向固定 change 路径写入意图，datasets 始终只读。 */
 export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
+  files: Object.freeze({
+    creates: "changes/files/creates.jsonl",
+    updates: "changes/files/updates.jsonl",
+    deletes: "changes/files/deletes.jsonl",
+  }),
   pages: Object.freeze({ updates: "changes/pages/updates.jsonl" }),
   items: Object.freeze({ updates: "changes/items/updates.jsonl" }),
   prompts: Object.freeze({ updates: "changes/prompts/updates.jsonl" }),

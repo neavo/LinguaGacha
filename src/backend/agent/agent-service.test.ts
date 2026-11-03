@@ -952,6 +952,7 @@ describe("AgentService", () => {
           textPreserve: 0,
           preReplacement: 0,
           postReplacement: 0,
+          files: 0,
           prompts: 0,
         },
       }),
@@ -4352,6 +4353,7 @@ describe("AgentService", () => {
             textPreserve: 0,
             preReplacement: 0,
             postReplacement: 0,
+            files: 0,
             prompts: 0,
           });
           await wait_for_held_tool();

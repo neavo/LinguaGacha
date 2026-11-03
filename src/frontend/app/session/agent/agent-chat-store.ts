@@ -1,3 +1,4 @@
+import { AGENT_PENDING_WRITE_SUMMARY_FIELDS } from "@shared/agent";
 import { AgentTimelineStore } from "./agent-timeline-store";
 export type { AgentTimelineSlice } from "./agent-timeline-store";
 import { AppError } from "@shared/error";
@@ -23,7 +24,6 @@ import type {
   AgentInputQueueSnapshot,
   AgentMessageInput,
   AgentPendingDecision,
-  AgentPendingWriteSummary,
   AgentQuestion,
   AgentQuestionResponse,
   AgentQueuedInput,
@@ -1273,37 +1273,13 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
   if (value["kind"] !== "write_approval") return undefined;
   const raw_summary = value["summary"];
   if (!is_json_record(raw_summary)) return undefined;
-  const pages = raw_summary["pages"];
-  const items = raw_summary["items"];
-  const glossary = raw_summary["glossary"];
-  const text_preserve = raw_summary["textPreserve"];
-  const pre_replacement = raw_summary["preReplacement"];
-  const post_replacement = raw_summary["postReplacement"];
-  const prompts = raw_summary["prompts"];
-  if (
-    ![pages, items, glossary, text_preserve, pre_replacement, post_replacement, prompts].every(
-      (count) => typeof count === "number" && Number.isInteger(count) && count >= 0,
-    ) ||
-    (pages as number) +
-      (items as number) +
-      (glossary as number) +
-      (text_preserve as number) +
-      (pre_replacement as number) +
-      (post_replacement as number) +
-      (prompts as number) ===
-      0
-  ) {
-    return undefined;
+  const summary = {} as Record<(typeof AGENT_PENDING_WRITE_SUMMARY_FIELDS)[number], number>;
+  for (const field of AGENT_PENDING_WRITE_SUMMARY_FIELDS) {
+    const count = raw_summary[field];
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0) return undefined;
+    summary[field] = count;
   }
-  const summary: AgentPendingWriteSummary = {
-    pages: pages as number,
-    items: items as number,
-    glossary: glossary as number,
-    textPreserve: text_preserve as number,
-    preReplacement: pre_replacement as number,
-    postReplacement: post_replacement as number,
-    prompts: prompts as number,
-  };
+  if (Object.values(summary).every((count) => count === 0)) return undefined;
   return { kind: "write_approval", id, summary };
 }
 

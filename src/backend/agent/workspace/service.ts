@@ -1,3 +1,6 @@
+import type { ProjectContentService } from "../../project/project-content-service";
+import { preview_file_changes } from "./file-changes";
+import type { ParsedAgentWorkspaceChanges } from "./changes";
 import { read_project_additional_files } from "../../project/project-additional-files";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
@@ -6,7 +9,7 @@ import type { AgentWorkspaceWarning } from "./schema";
 import { create_image_output, summarize_images } from "../tools/emit-image";
 import type { AgentFile } from "../../../shared/agent-workspace-file";
 import type { AgentFileCandidate } from "../../../shared/agent-reference";
-import { create_workspace_host } from "../tools/host";
+import { create_pdf_printer } from "../tools/print-pdf";
 import { is_agent_cancellation } from "../tool-definition";
 import { AgentUploadStore } from "./uploads";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
@@ -65,8 +68,6 @@ import type { AgentWorkspaceRejectedChange } from "../../project/agent-workspace
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_PATHS,
-  AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
-  AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./paths";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../tools/contract";
@@ -206,10 +207,9 @@ export class AgentWorkspaceService {
         | "read_file_counts"
       >;
       runtimeGate: {
-        run_agent_project_write(
-          operation: () => Promise<AgentWorkspaceStoreResult>,
-        ): Promise<AgentWorkspaceStoreResult>;
+        run_agent_project_write<T>(operation: (signal: AbortSignal) => Promise<T> | T): Promise<T>;
       };
+      files: Pick<ProjectContentService, "inspect_sources" | "apply_file_changes">;
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
@@ -703,7 +703,16 @@ export class AgentWorkspaceService {
               timeoutMs: request.timeoutMs,
               emitImage: image_output.emitImage,
               ...(request.doing === undefined ? {} : { doing: request.doing }),
-              host: create_workspace_host({
+              inspectSources: async (sources, signal) => {
+                const resolved = sources.map((source) => this.resolve_source_path(source));
+                const result = await this.options.files.inspect_sources(
+                  resolved,
+                  undefined,
+                  signal,
+                );
+                return result.map((entry, index) => ({ ...entry, source_path: sources[index]! }));
+              },
+              printPDF: create_pdf_printer({
                 root: this.root_path,
                 nativeFs: this.native_fs,
                 pdfHost: this.options.pdfHost,
@@ -769,6 +778,11 @@ export class AgentWorkspaceService {
           "agent_workspace_apply_prepare_failed",
         );
       }
+      if (
+        Object.values(parsed.files).some((rows) => rows.length) ||
+        parsed.rejected.some((row) => row.scope === "files")
+      )
+        return this.apply_files(active, parsed, request_approval);
       let preview: ReturnType<typeof resolve_agent_workspace_writes>;
       let all_rejected: AgentWorkspaceRejectedChange[];
       try {
@@ -855,6 +869,105 @@ export class AgentWorkspaceService {
       if (write_ack.destroyed) await this.clear_snapshot();
       return result;
     });
+  }
+
+  /** 相对来源只开放用户上传与运行工作材料，解析后复核目录边界。 */
+  private resolve_source_path(source: string): string {
+    if (path.isAbsolute(source)) return source;
+    const normalized = source.replaceAll("\\", "/");
+    const target = path.resolve(this.root_path, normalized);
+    if (!/^(uploads|work)\//u.test(normalized) || !is_inside_path(this.root_path, target))
+      throw workspace_validation_error("invalid_source_path");
+    return target;
+  }
+
+  /** 文件批次先完整预演，再审批和提交，拒绝时按漂移原因决定是否重建快照。 */
+  private async apply_files(
+    active: ActiveAgentWorkspace,
+    parsed: ParsedAgentWorkspaceChanges,
+    approve?: (summary: AgentPendingWriteSummary) => Promise<void>,
+  ): Promise<JsonRecord> {
+    const preview = await preview_file_changes({
+      parsed,
+      current: this.options.cache.files
+        .readFileEntries()
+        .map((file) => ({ path: file.rel_path, file_type: file.file_type })),
+      stale:
+        (active.revisions.files ?? 0) !==
+        (this.options.cache.snapshot().sectionRevisions.files ?? 0),
+      resolve: (source) => this.resolve_source_path(source),
+      inspect: this.options.files.inspect_sources.bind(this.options.files),
+    });
+    // 拒绝回执保留来源准备产生的目录变化。
+    const reject = async (
+      rejected: AgentWorkspaceRejectedChange[],
+      directory_changes: string[] = [],
+    ): Promise<JsonRecord> => {
+      const destroyed = rejected.some(
+        (row) => row.reason === "fp_mismatch" || row.reason === "target_missing",
+      );
+      if (destroyed) await this.clear_snapshot();
+      return {
+        status: "rejected",
+        applied: {},
+        rejected,
+        destroyed,
+        revisions: pick_apply_revisions(this.options.cache.snapshot().sectionRevisions),
+        ...(directory_changes.length ? { directory_changes } : {}),
+      };
+    };
+    if (preview.rejected.length) return reject(preview.rejected);
+    await approve?.({
+      ...summarize_applied_changes({}),
+      files: preview.created + preview.files.updates.length + preview.files.deletes.length,
+    });
+    try {
+      const result = await this.options.runtimeGate.run_agent_project_write((signal) =>
+        this.options.files.apply_file_changes({
+          projectPath: active.projectPath,
+          source: "agent_workspace_apply",
+          expectedSectionRevisions: { files: active.revisions.files ?? 0 },
+          revisionSections: ["files"],
+          creates: preview.files.creates,
+          updates: preview.files.updates,
+          deletes: preview.files.deletes.map((row) => row.file_path),
+          signal,
+        }),
+      );
+      if (result.kind === "source_failed")
+        return reject(
+          result.failures.map((failure) => ({
+            scope: "files",
+            op: "create",
+            reason: "source_failed",
+            line: preview.files.creates.find((row) => row.source_path === failure.source_path)!
+              .line,
+            ...failure,
+          })),
+          result.directory_changes,
+        );
+      // 对外回执保留调用方的路径表示，实际读取使用解析后的本机路径。
+      const files = {
+        ...result.files,
+        created: result.files.created.map((entry, index) => ({
+          ...entry,
+          source_path: parsed.files.creates[index]!.source_path,
+        })),
+      };
+      await this.clear_snapshot();
+      return {
+        status: "applied",
+        applied: { files },
+        rejected: [],
+        destroyed: true,
+        revisions: pick_apply_revisions(result.sectionRevisions),
+        ...(result.directory_changes.length ? { directory_changes: result.directory_changes } : {}),
+      };
+    } catch (error) {
+      if (AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed")
+        await this.clear_snapshot();
+      throw workspace_error_with_action(error, "workspace_apply");
+    }
   }
 
   /** 工程身份或语言变化使提交基线失效，分区修订变化只要求下次运行刷新快照。 */
@@ -1038,6 +1151,7 @@ function summarize_applied_changes(
     return summary === undefined ? 0 : summary.created + summary.updated + summary.deleted;
   };
   return {
+    files: 0,
     items: applied.items?.updated ?? 0,
     pages: applied.pages?.updated ?? 0,
     glossary: count_quality("glossary"),
@@ -1217,16 +1331,9 @@ function baseline_prompts_entry(prompts: JsonRecord, kind: PromptKind): JsonReco
 
 /** 固定 change 路径只从共享 contract 词表展开，避免宿主与 Backend 分叉。 */
 function all_change_paths(): string[] {
-  return [
-    AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
-    AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
-    AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
-    ...QUALITY_RULE_KINDS.flatMap((kind) =>
-      AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map(
-        (operation) => AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind][operation],
-      ),
-    ),
-  ];
+  return Object.values(AGENT_WORKSPACE_CHANGE_PATHS).flatMap((operations) =>
+    Object.values(operations),
+  );
 }
 
 /** 建立 snapshot 时复制完整七 section revision，隔离 cache 返回的可变引用。 */

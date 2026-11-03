@@ -83,6 +83,7 @@ export const zh_cn_agent_page = {
     tooltip: "写入权限审批模式",
     title: "正在写入工程数据",
     summary: {
+      files: "文件 {count} 个",
       pages: "分页数据 {count} 页",
       items: "条目数据 {count} 条",
       glossary: "术语规则 {count} 条",

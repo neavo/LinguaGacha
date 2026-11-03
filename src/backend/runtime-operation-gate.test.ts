@@ -3,6 +3,27 @@ import { describe, expect, it, vi } from "vitest";
 import { RuntimeOperationGate } from "./runtime-operation-gate";
 
 describe("RuntimeOperationGate", () => {
+  it("Agent 文件写入接收应用关闭信号，关闭等待写入收尾", async () => {
+    const gate = new RuntimeOperationGate();
+    const lease = gate.begin_runtime("agent");
+    let observed: AbortSignal | undefined;
+    let finish!: () => void;
+    const writing = gate.run_agent_project_write((signal) => {
+      observed = signal;
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const stopped = vi.fn();
+    const closing = gate.stop_project_writes().then(stopped);
+    expect(observed?.aborted).toBe(true);
+    expect(stopped).not.toHaveBeenCalled();
+    finish();
+    await writing;
+    await closing;
+    expect(stopped).toHaveBeenCalledOnce();
+    gate.finish_runtime(lease);
+  });
   it("技能写入与 Agent 双向互斥，失败后释放占用且不限制其它模型任务", async () => {
     const gate = new RuntimeOperationGate();
     const lease = gate.begin_runtime("agent");

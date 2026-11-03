@@ -322,7 +322,7 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
   );
   expect(draft.failures).toEqual([]);
   const second_game = draft.files[1]!.rel_path;
-  expect(second_game.slice(name.length)).toMatch(/^_\d{8}_\d{6}\.rpgmaker$/u);
+  expect(second_game.slice(name.length)).toBe("_2.rpgmaker");
   expect(draft.files.map((file) => [file.rel_path, file.file_type])).toEqual([
     [`${name}.rpgmaker`, "RPGMAKER_MV_MZ"],
     [second_game, "RPGMAKER_MV_MZ"],

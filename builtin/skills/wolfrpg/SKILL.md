@@ -1,9 +1,9 @@
 ---
 name: wolfrpg
-description: 翻译、审校或分析 WOLF RPG Editor 游戏前必须首先加载，提供原稿结构、条目默认状态、按名引用与拼接路径依赖，以及批量翻译后的补齐、补漏和检查方法。
+description: 翻译、审校或分析 WOLF RPG 游戏前必须加载。
 ---
 
-本技能只提供 WOLF RPG Editor 引擎知识，翻译、审校和提交流程按 `translation` 执行。
+本技能只提供 WOLF RPG 引擎知识，翻译、审校和提交流程按 `translation` 执行。
 
 # 原稿与条目
 

@@ -1,6 +1,6 @@
 ---
 name: epub
-description: 读取或分析 EPUB 电子书结构时使用，处理章节顺序、XHTML、目录与资源关系。用户明确要求工程外的独立 EPUB 文件时，也提供编辑与打包方法。
+description: 读取、分析或翻译 EPUB 文件时使用。用户要求生成或编辑工程外的独立 EPUB 文件时也使用。
 ---
 
 # EPUB 文件处理

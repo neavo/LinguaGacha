@@ -19,7 +19,7 @@ export type LiteralMatcher = {
   /** 只判断是否存在任一命中，首个命中后立即停止。 */
   matches: (text: string) => boolean;
   /** 每个命中身份只访问一次；计数与分组无需构造原文坐标。 */
-  scan_keys: (text: string, visit: (key: string) => void) => void;
+  scanKeys: (text: string, visit: (key: string) => void) => void;
   /** 按扫描顺序流式返回命中及原文范围。 */
   scan: (text: string, visit: (key: string, range: TextRange) => void) => void;
   /** 按 pattern 顺序聚合原文范围；keys 只选择需要收集范围的身份。 */
@@ -46,7 +46,7 @@ type NormalizedText = {
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /** 全仓字面量匹配的唯一规范化规则；大小写标志只控制 casefold。 */
-export function normalize_literal_text(text: string, case_sensitive: boolean): string {
+export function normalizeLiteralText(text: string, case_sensitive: boolean): string {
   const normalized = text.normalize("NFKC");
   return case_sensitive ? normalized : fold_literal_text(normalized);
 }
@@ -57,7 +57,7 @@ function fold_literal_text(normalized: string): string {
 }
 
 /** 编译大小写敏感与不敏感字面量；空文本跳过，重复身份直接拒绝。 */
-export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMatcher {
+export function compileLiteralPatterns(patterns: LiteralPattern[]): LiteralMatcher {
   const case_by_key = new Map<string, boolean>();
   for (const pattern of patterns) {
     if (case_by_key.has(pattern.key)) {
@@ -72,7 +72,7 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
       pattern.case_sensitive === case_sensitive ? [index] : [],
     );
     const matcher = build_aho_matcher(
-      indexes.map((index) => normalize_literal_text(active_patterns[index]!.text, case_sensitive)),
+      indexes.map((index) => normalizeLiteralText(active_patterns[index]!.text, case_sensitive)),
     );
     return matcher === null ? [] : [{ matcher, indexes, case_sensitive }];
   });
@@ -112,14 +112,14 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
     /** 首次命中即结束，不分配原文坐标。 */
     matches(text) {
       return buckets.some(({ matcher, case_sensitive }) =>
-        scan_aho_text(matcher, normalize_literal_text(text, case_sensitive), () => true),
+        scan_aho_text(matcher, normalizeLiteralText(text, case_sensitive), () => true),
       );
     },
     /** 每桶身份去重，全部身份命中后停止扫描该桶。 */
-    scan_keys(text, visit) {
+    scanKeys(text, visit) {
       for (const { matcher, indexes, case_sensitive } of buckets) {
         const seen = new Set<number>();
-        scan_aho_text(matcher, normalize_literal_text(text, case_sensitive), (index) => {
+        scan_aho_text(matcher, normalizeLiteralText(text, case_sensitive), (index) => {
           if (!seen.has(index)) {
             seen.add(index);
             visit(active_patterns[indexes[index]!]!.key);
@@ -247,7 +247,7 @@ function normalize_text_with_source_ranges(
 ): Map<boolean, NormalizedText> {
   const segments: Array<TextRange & { text: string }> = [];
   for (const segment of GRAPHEME_SEGMENTER.segment(text)) {
-    const value = normalize_literal_text(segment.segment, true);
+    const value = normalizeLiteralText(segment.segment, true);
     const end = segment.index + segment.segment.length;
     const previous = segments.at(-1);
     // 兼容 Jamo 等字符可在 NFKC 后跨原始字素组合，坐标需覆盖参与组合的双方。

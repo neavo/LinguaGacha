@@ -39,7 +39,7 @@ import {
   type GlossarySourceMatch,
 } from "@shared/quality/glossary";
 import { read_item_translation_text_parts } from "@shared/item-text";
-import { compile_literal_patterns } from "@shared/text/literal-matcher";
+import { compileLiteralPatterns } from "@shared/text/literal-matcher";
 
 type ProofreadingEditDialogProps = {
   state: ProofreadingDialogState;
@@ -214,7 +214,7 @@ function build_glossary_field_marks(args: {
       source_field ? field.source_field === args.field : field.target_field === args.field,
     ),
   );
-  const matcher = compile_literal_patterns(
+  const matcher = compileLiteralPatterns(
     applications.map((application) => ({
       key: application.entry_id,
       text: source_field ? application.src : application.dst,

@@ -1,3 +1,5 @@
+import type { AppliedFiles } from "../../shared/project-file-changes";
+import { insert_by_sort } from "./insert-by-sort";
 import type { PDFDocumentRecord, PDFPageRecord } from "../../shared/pdf";
 import {
   resolve_agent_workspace_page_updates,
@@ -38,10 +40,11 @@ export type AgentWorkspaceRejectionReason =
   | "fp_mismatch"
   | "target_missing"
   | "merge_conflict"
-  | "dependency_conflict";
+  | "dependency_conflict"
+  | "source_failed";
 
 export type AgentWorkspaceRejectedChange = JsonRecord & {
-  scope: "items" | "quality" | "prompts" | "pages";
+  scope: "items" | "quality" | "prompts" | "pages" | "files";
   op: "create" | "update" | "delete";
   reason: AgentWorkspaceRejectionReason;
 };
@@ -111,6 +114,7 @@ export type AgentWorkspaceQualitySummary = Readonly<{
 }>;
 
 export type AgentWorkspaceAppliedSummary = Readonly<{
+  files?: AppliedFiles;
   pages?: Readonly<{ updated: number }>;
   items?: Readonly<{ updated: number }>;
   quality?: Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
@@ -630,9 +634,9 @@ function replay_quality(args: {
     .filter((entry) => !sorted_existing.has(read_entry_id(entry)));
   const create_by_id = new Map<string, AgentWorkspaceQualityCreateIntent>();
   const sortable: Array<{
-    entry: JsonRecord;
+    value: JsonRecord;
     sort: number;
-    type: 0 | 1;
+    rank: 0 | 1; // 同一位置先插入更新，再插入新增。
     line: number;
   }> = [];
   for (const update of args.updates.values()) {
@@ -640,9 +644,9 @@ function replay_quality(args: {
     const current = args.current.find((entry) => read_entry_id(entry) === update.id);
     if (current !== undefined) {
       sortable.push({
-        entry: { ...current, ...update.fields },
+        value: { ...current, ...update.fields },
         sort: update.sort,
-        type: 0,
+        rank: 0,
         line: update.line,
       });
     }
@@ -652,27 +656,13 @@ function replay_quality(args: {
     if (id === undefined) continue;
     create_by_id.set(id, intent);
     sortable.push({
-      entry: { entry_id: id, ...intent.fields },
+      value: { entry_id: id, ...intent.fields },
       sort: intent.sort,
-      type: 1,
+      rank: 1,
       line: intent.line,
     });
   }
-  sortable.sort((left, right) => {
-    if (left.sort === -1 && right.sort !== -1) return 1;
-    if (right.sort === -1 && left.sort !== -1) return -1;
-    return left.sort - right.sort || left.type - right.type || left.line - right.line;
-  });
-  for (let index = 0; index < sortable.length;) {
-    const sort = sortable[index]?.sort ?? -1;
-    const group: JsonRecord[] = [];
-    while (index < sortable.length && sortable[index]?.sort === sort) {
-      const entry = sortable[index]?.entry;
-      if (entry !== undefined) group.push(entry);
-      index += 1;
-    }
-    entries.splice(sort === -1 ? entries.length : Math.min(sort, entries.length), 0, ...group);
-  }
+  insert_by_sort(entries, sortable);
   return {
     entries: normalize_quality_rule_entries(
       QualityRule.from_json(args.kind),

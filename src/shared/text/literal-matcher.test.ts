@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { compile_literal_patterns, normalize_literal_text } from "./literal-matcher";
+import { compileLiteralPatterns, normalizeLiteralText } from "./literal-matcher";
 
 describe("共享字面量匹配器", () => {
   it("同批区分大小写规则，并按输入 key 顺序保留重复文本身份", () => {
-    const matcher = compile_literal_patterns([
+    const matcher = compileLiteralPatterns([
       { key: "sensitive", text: "HP", case_sensitive: true },
       { key: "folded-a", text: "straße", case_sensitive: false },
       { key: "folded-b", text: "STRASSE", case_sensitive: false },
@@ -29,7 +29,7 @@ describe("共享字面量匹配器", () => {
   });
 
   it("保留重叠命中与原文 UTF-16 范围", () => {
-    const matcher = compile_literal_patterns([
+    const matcher = compileLiteralPatterns([
       { key: "aa", text: "aa", case_sensitive: true },
       { key: "emoji", text: "😀", case_sensitive: true },
       { key: "ss", text: "ss", case_sensitive: false },
@@ -49,7 +49,7 @@ describe("共享字面量匹配器", () => {
   });
 
   it("scan 只流式返回实际命中和原文范围", () => {
-    const matcher = compile_literal_patterns([
+    const matcher = compileLiteralPatterns([
       { key: "root", text: "城", case_sensitive: true },
       { key: "full", text: "白之城", case_sensitive: true },
       { key: "miss", text: "港口", case_sensitive: true },
@@ -65,7 +65,7 @@ describe("共享字面量匹配器", () => {
   });
 
   it("命中身份、布尔匹配与范围匹配保持相同的 Unicode 语义", () => {
-    const matcher = compile_literal_patterns([
+    const matcher = compileLiteralPatterns([
       { key: "folded", text: "STRASSE", case_sensitive: false },
       { key: "sigma", text: "ΟΣ", case_sensitive: false },
       { key: "accent", text: "é", case_sensitive: false },
@@ -96,14 +96,14 @@ describe("共享字面量匹配器", () => {
     for (const text of texts) {
       const matches = matcher.match(text);
       const keys: string[] = [];
-      matcher.scan_keys(text, (key) => keys.push(key));
+      matcher.scanKeys(text, (key) => keys.push(key));
       expect(keys.toSorted(), text).toEqual(matches.map(({ key }) => key).toSorted());
       expect(matcher.matches(text), text).toBe(matches.length > 0);
     }
   });
 
   it("按选定身份返回全部范围，并保持输入身份顺序", () => {
-    const matcher = compile_literal_patterns([
+    const matcher = compileLiteralPatterns([
       { key: "folded", text: "s", case_sensitive: false },
       { key: "suffix", text: "a", case_sensitive: true },
       { key: "full", text: "aa", case_sensitive: true },
@@ -119,8 +119,8 @@ describe("共享字面量匹配器", () => {
   });
 
   it("使用 NFKC 与兼容 casefold", () => {
-    expect(normalize_literal_text("ＳＴＲＡẞＥ I ΟΣ", false)).toBe("strasse i οσ");
-    const matcher = compile_literal_patterns([{ key: "hangul", text: "가", case_sensitive: true }]);
+    expect(normalizeLiteralText("ＳＴＲＡẞＥ I ΟΣ", false)).toBe("strasse i οσ");
+    const matcher = compileLiteralPatterns([{ key: "hangul", text: "가", case_sensitive: true }]);
     expect(matcher.match("ㄱㅏ ﾡￂ")).toEqual([
       {
         key: "hangul",
@@ -133,14 +133,14 @@ describe("共享字面量匹配器", () => {
   });
 
   it("大小写敏感规则仍执行 NFKC，但不执行大小写折叠", () => {
-    const matcher = compile_literal_patterns([{ key: "term", text: "JK", case_sensitive: true }]);
+    const matcher = compileLiteralPatterns([{ key: "term", text: "JK", case_sensitive: true }]);
 
     expect(matcher.match("ＪＫ")).toEqual([{ key: "term", ranges: [{ start: 0, end: 2 }] }]);
     expect(matcher.match("ｊｋ")).toEqual([]);
   });
 
   it("统一上下文大小写折叠，并合并字符展开产生的重复原文范围", () => {
-    const matcher = compile_literal_patterns([
+    const matcher = compileLiteralPatterns([
       { key: "sigma", text: "ΟΣ", case_sensitive: false },
       { key: "expanded", text: "s", case_sensitive: false },
     ]);
@@ -159,13 +159,13 @@ describe("共享字面量匹配器", () => {
   });
 
   it("忽略空 pattern，并拒绝重复 key", () => {
-    const empty_matcher = compile_literal_patterns([
+    const empty_matcher = compileLiteralPatterns([
       { key: "empty", text: "", case_sensitive: false },
     ]);
     expect(empty_matcher).toEqual(expect.objectContaining({ patterns: [] }));
     expect(empty_matcher.matches("任意文本")).toBe(false);
     expect(() =>
-      compile_literal_patterns([
+      compileLiteralPatterns([
         { key: "same", text: "a", case_sensitive: true },
         { key: "same", text: "b", case_sensitive: false },
       ]),

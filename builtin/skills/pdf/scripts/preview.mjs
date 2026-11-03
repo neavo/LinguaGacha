@@ -1,11 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { build_pdf_document } from "@lg/pdf";
-import {
-  parse_page_update,
-  resolve_agent_workspace_page_updates,
-} from "@lg/workspace/page-updates";
+import { buildPdfDocument } from "@lg/pdf";
+import { parsePageUpdate, resolvePageUpdates } from "@lg/pdf/page-updates";
 
 /** JSONL 按 LF 分行并保留物理行号，快照与草稿共用读取方式。 */
 async function read_rows(file_path) {
@@ -30,23 +27,19 @@ export async function preview(file_path, updates_path) {
   if (updates_path) {
     const intents = [];
     for (const row of await read_rows(updates_path)) {
-      const parsed = parse_page_update(row);
+      const parsed = parsePageUpdate(row);
       if ("rejection" in parsed) throw new Error(JSON.stringify(parsed.rejection));
       if (parsed.intent.file_path === file_path) intents.push(parsed.intent);
     }
-    const result = resolve_agent_workspace_page_updates(intents, [{ file_path, document }]);
+    const result = resolvePageUpdates(intents, [{ file_path, document }]);
     // 预览展示完整方案。拒绝任何目标更新时先修复草稿，避免把部分方案当作完整预览。
     if (result.rejected.length) throw new Error(JSON.stringify(result.rejected));
     for (const { page } of result.changes) pages[page.page - 1] = page;
   }
-  const output = await build_pdf_document({
+  const output = await buildPdfDocument({
     title: path.basename(file_path),
     document,
     source_bytes: new Uint8Array(await readFile(`sources/${file_path}`)),
-    print: async (html) => {
-      const printed = await ws.host({ kind: "print_pdf", html });
-      return new Uint8Array(await readFile(printed.path));
-    },
   });
   if (output === null) return { path: null, message: "This document has no output pages." };
   const output_path = `work/${randomUUID()}.pdf`;

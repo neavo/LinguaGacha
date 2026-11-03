@@ -179,6 +179,7 @@ describe("AgentDecision", () => {
           textPreserve: 1,
           preReplacement: 0,
           postReplacement: 0,
+          files: 6,
           prompts: 0,
         },
       },
@@ -192,10 +193,10 @@ describe("AgentDecision", () => {
       actions[1],
     ]);
     expect(
-      [...container.querySelectorAll(".agent-write-summary__value")].map(
-        (value) => value.textContent,
-      ),
-    ).toEqual(["2", "12", "3", "1"]);
+      [...container.querySelectorAll(".agent-write-summary__value")]
+        .map((value) => value.textContent)
+        .sort(),
+    ).toEqual(["1", "12", "2", "3", "6"]);
     await act(async () => actions[1]?.click());
     expect(on_resolve_write_approval).toHaveBeenCalledWith("allow_once");
   });
@@ -217,6 +218,7 @@ describe("AgentDecision", () => {
                 textPreserve: 0,
                 preReplacement: 0,
                 postReplacement: 0,
+                files: 0,
                 prompts: 0,
               },
             };

@@ -14,7 +14,7 @@ import path from "node:path";
 import iconv from "iconv-lite";
 import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { NativeFs } from "../../native/native-fs";
 import { write_zip } from "../../test/zip-fixture";
@@ -233,27 +233,37 @@ describe("FileFormatService", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
-  it("同批同名游戏使用同一本地时间，避让已有与候选的时间戳名称", () => {
+  it("默认避让同名资产，工作台显式替换，点号目录在末尾添加数字", () => {
+    const service = create_service();
+    const entries = [{ source_path: "a", rel_path: "a.txt", file_type: "TXT" }];
+    const existing = [{ path: "a.txt", file_type: "TXT" }];
+    expect(service.assign_source_file_paths(entries, existing)[0]?.rel_path).toBe("a_2.txt");
+    expect(service.assign_source_file_paths(entries, existing, true)[0]?.rel_path).toBe("a.txt");
+    expect(
+      service
+        .assign_source_file_paths(
+          [{ source_path: "a", rel_path: "v1.0/a.txt", file_type: "TXT" }],
+          [{ path: "v1.0", file_type: "TXT" }],
+        )[0]
+        ?.rel_path.replaceAll("\\", "/"),
+    ).toBe("v1.0_2/a.txt");
+  });
+  it("同批同名游戏使用数字后缀，避让已有与候选名称", () => {
     const paths = create_service()
       .assign_source_file_paths(
         [
           { source_path: "a", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
           { source_path: "b", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
           { source_path: "c", rel_path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
-          { source_path: "d", rel_path: "game_20261011_123456_2.zip", file_type: "RPGMAKER_MV_MZ" },
+          { source_path: "d", rel_path: "game_4.zip", file_type: "RPGMAKER_MV_MZ" },
         ],
         [
-          { path: "game_20261011_123456.zip", file_type: "RPGMAKER_MV_MZ" },
+          { path: "game_3.zip", file_type: "RPGMAKER_MV_MZ" },
           { path: "game_2.zip", file_type: "RPGMAKER_MV_MZ" },
         ],
       )
       .map((entry) => entry.rel_path);
-    expect(paths).toEqual([
-      "game.zip",
-      "game_20261011_123456_3.zip",
-      "game_20261011_123456_4.zip",
-      "game_20261011_123456_2.zip",
-    ]);
+    expect(paths).toEqual(["game.zip", "game_5.zip", "game_6.zip", "game_4.zip"]);
   });
 
   it.each([false, true])("普通目录结构优先于同批游戏名称，倒序：%s", (reverse) => {
@@ -269,14 +279,14 @@ describe("FileFormatService", () => {
     );
     expect(paths).toEqual(
       new Map([
-        ["a", "game_20261011_123456.zip"],
+        ["a", "game_2.zip"],
         ["b", "game/readme.txt"],
         ["c", "game/sub/note.txt"],
       ]),
     );
   });
 
-  it("已有游戏保持原名，新普通目录共享一次时间戳前缀且不会并入其他目录", () => {
+  it("已有游戏保持原名，新普通目录共享一次数字后缀且不会并入其他目录", () => {
     const paths = create_service()
       .assign_source_file_paths(
         [
@@ -286,21 +296,13 @@ describe("FileFormatService", () => {
         ],
         [
           { path: "game.zip", file_type: "RPGMAKER_MV_MZ" },
-          { path: "game_20261011_123456/other.txt", file_type: "TXT" },
+          { path: "game_2/other.txt", file_type: "TXT" },
         ],
+        true,
       )
       .map((entry) => entry.rel_path.replaceAll("\\", "/"));
-    expect(paths).toEqual([
-      "game_20261011_123456_2/readme.txt",
-      "game_20261011_123456_2/sub/note.txt",
-      "game.zip",
-    ]);
+    expect(paths).toEqual(["game_3/readme.txt", "game_3/sub/note.txt", "game.zip"]);
   });
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 9, 11, 12, 34, 56));
-  });
-  afterEach(() => vi.useRealTimers());
   it.each(["XLSX", "WOLFXLSX"] as const)("XLSX 分发保留 %s 的解析身份", async (file_type) => {
     const bytes = await spreadsheet_fixture(
       file_type === "WOLFXLSX"

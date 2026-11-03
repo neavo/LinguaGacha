@@ -1,5 +1,7 @@
+import type { SourceInspection } from "../../../../shared/project-file-changes";
+import type { WorkspaceInspectSourcesRequest } from "../../tools/inspect-sources";
 import type { Static } from "@earendil-works/pi-ai";
-import type { WorkspaceHostRequest, WorkspaceHostResult } from "../../tools/host";
+import type { WorkspacePrintPDFRequest, WorkspacePrintPDFResult } from "../../tools/print-pdf";
 import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
 import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
 
@@ -7,8 +9,9 @@ export type WorkspaceRequest =
   | { kind: "resolve_proxy"; url: string }
   | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
   | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
-  | WorkspaceHostRequest;
-export type WorkspaceRequestResult = string | null | WorkspaceHostResult;
+  | WorkspacePrintPDFRequest
+  | WorkspaceInspectSourcesRequest;
+export type WorkspaceRequestResult = string | null | WorkspacePrintPDFResult | SourceInspection[];
 
 /** 父子进程通过 IPC 交换 JSON 请求与状态。文本走标准流，图片内容由父进程固定。 */
 export type AgentWorkspaceRuntimeParentMessage =

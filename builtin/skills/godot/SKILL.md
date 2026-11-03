@@ -1,6 +1,6 @@
 ---
 name: godot
-description: 翻译、审校或分析 Godot 4 游戏前必须首先加载，提供原稿结构与可读视图、条目默认状态、语言表、代码依赖，以及批量翻译后的补漏和检查方法。
+description: 翻译、审校或分析 Godot 4 游戏前必须加载。
 ---
 
 本技能只提供 Godot 引擎知识，翻译、审校和提交流程按 `translation` 执行。

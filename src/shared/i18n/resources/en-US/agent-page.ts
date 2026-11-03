@@ -83,6 +83,7 @@ export const en_us_agent_page = {
     tooltip: "Write permission approval mode",
     title: "Writing project data",
     summary: {
+      files: "{count} files",
       pages: "Page data: {count} pages",
       items: "Entry data: {count} entries",
       glossary: "{count} glossary rules",

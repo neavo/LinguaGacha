@@ -198,10 +198,10 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
-const QUALITY_SORT_SCHEMA = Type.Integer({
+const CHANGE_SORT_SCHEMA = Type.Integer({
   minimum: -1,
   description:
-    "-1 表示追加到末尾。非负值表示从 0 开始的插入位置，超出当前长度时追加到末尾。更新时省略此字段可保留相对顺序。批次内的处理顺序见当前规则的参考文档。",
+    "-1 表示追加到末尾。非负值表示从 0 开始的插入位置，超出当前长度时追加到末尾。更新时省略此字段可保留相对顺序。",
 });
 
 /** 每类记录的结构在此生成，参考文档与变更解析使用同一对象。 */
@@ -218,7 +218,7 @@ function create_quality_schemas(kind: QualityRuleKind) {
       { additionalProperties: false },
     ),
     creates: Type.Object(
-      { ...fields, sort: QUALITY_SORT_SCHEMA },
+      { ...fields, sort: CHANGE_SORT_SCHEMA },
       {
         additionalProperties: false,
         description: "提供全部业务字段和排序位置，由宿主分配对象标识。",
@@ -231,7 +231,7 @@ function create_quality_schemas(kind: QualityRuleKind) {
         ...Object.fromEntries(
           Object.entries(fields).map(([name, schema]) => [name, Type.Optional(schema)]),
         ),
-        sort: Type.Optional(QUALITY_SORT_SCHEMA),
+        sort: Type.Optional(CHANGE_SORT_SCHEMA),
       },
       {
         additionalProperties: false,
@@ -249,3 +249,61 @@ function create_quality_schemas(kind: QualityRuleKind) {
 export const AGENT_WORKSPACE_QUALITY_SCHEMAS = Object.fromEntries(
   QUALITY_RULE_KINDS.map((kind) => [kind, create_quality_schemas(kind)]),
 ) as Record<QualityRuleKind, ReturnType<typeof create_quality_schemas>>;
+
+const FILE_TARGET_SCHEMA = Type.String({
+  minLength: 1,
+  description: "目标资产，从 `project_meta.json` 的 `files` 复制。",
+});
+
+/** 文件变更独立于内容意图，至少提供改名或排序。 */
+export const AGENT_WORKSPACE_FILE_SCHEMAS = Object.freeze({
+  creates: Type.Object(
+    {
+      source_path: Type.String({
+        minLength: 1,
+        description:
+          "待加入的文件或文件夹。使用本机绝对路径，或以 `uploads/`、`work/` 开头、相对工作区根目录的路径。",
+      }),
+      godot_pack_orders: Type.Optional(
+        Type.Array(
+          Type.Object(
+            {
+              game_root: Type.String({
+                minLength: 1,
+                description: "从 `inspectSources` 结果的 `godot_packs` 复制。",
+              }),
+              ordered_pcks: Type.Array(Type.String({ minLength: 1 }), {
+                description:
+                  "用户确认的完整外部包顺序，包含该游戏当前的全部 `external_pcks`，每个包名一次。后面的包覆盖前面包中的同名资源。",
+              }),
+            },
+            { additionalProperties: false },
+          ),
+          { description: "Godot 游戏有至少两个外部包时，提供用户确认的覆盖顺序。" },
+        ),
+      ),
+    },
+    {
+      additionalProperties: false,
+      description: "只指定来源，资产名称由宿主在提交时分配。",
+    },
+  ),
+  updates: Type.Object(
+    {
+      file_path: FILE_TARGET_SCHEMA,
+      new_file_path: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "新的资产路径，改变目录即为移动。",
+        }),
+      ),
+      sort: Type.Optional(CHANGE_SORT_SCHEMA),
+    },
+    {
+      additionalProperties: false,
+      minProperties: 2,
+      description: "提供目标资产和至少一个 `new_file_path` 或 `sort`。",
+    },
+  ),
+  deletes: Type.Object({ file_path: FILE_TARGET_SCHEMA }, { additionalProperties: false }),
+});

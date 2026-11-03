@@ -1,4 +1,4 @@
-import { compile_literal_patterns } from "@lg/text";
+import { compileLiteralPatterns } from "@lg/utils/literal-matcher";
 
 /** 单次扫描正文与姓名。证据上限只限制收集量，完整计数和原文 UTF-16 范围仍按正式匹配器计算。 */
 export async function matchLiterals(items, { patterns, max_matches_per_pattern }) {
@@ -16,7 +16,7 @@ export async function matchLiterals(items, { patterns, max_matches_per_pattern }
       throw new Error("Expected a pattern key, nonblank text and case_sensitive");
   }
   const max_matches = max_matches_per_pattern ?? Infinity;
-  const matcher = compile_literal_patterns(patterns);
+  const matcher = compileLiteralPatterns(patterns);
   const results = new Map(
     patterns.map(({ key }) => [
       key,
@@ -40,7 +40,7 @@ export async function matchLiterals(items, { patterns, max_matches_per_pattern }
       ["name_src", name_src],
     ]) {
       const evidence_keys = new Set();
-      matcher.scan_keys(text, (key) => {
+      matcher.scanKeys(text, (key) => {
         const result = results.get(key); // 身份来自本次编译的模式集合。
         result.field_item_counts[field] += 1;
         matched_results.add(result);

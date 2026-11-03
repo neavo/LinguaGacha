@@ -1,3 +1,4 @@
+import type { Static } from "@earendil-works/pi-ai";
 import type { AgentWorkspacePageUpdateIntent } from "../../project/agent-workspace-page-write";
 import path from "node:path";
 
@@ -9,7 +10,7 @@ import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/qualit
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { iterate_utf8_lf_lines } from "../../../shared/utils/text-tool";
 import type { NativeFs } from "../../../native/native-fs";
-import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS } from "./paths";
+import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_CHANGE_OPERATIONS } from "./paths";
 import {
   create_empty_agent_workspace_intent_batch,
   type AgentWorkspaceIntentBatch,
@@ -22,15 +23,21 @@ import {
 } from "../../project/agent-workspace-write";
 
 import {
+  AGENT_WORKSPACE_FILE_SCHEMAS,
   AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
   AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA,
   AGENT_WORKSPACE_QUALITY_SCHEMAS,
 } from "./schema";
 import { describe_agent_workspace_schema_error } from "./validation";
-import { parse_page_update } from "./page-updates";
+import { parsePageUpdate } from "./page-updates";
 
 export type ParsedAgentWorkspaceChanges = Readonly<{
   batch: AgentWorkspaceIntentBatch;
+  files: {
+    creates: (Static<typeof AGENT_WORKSPACE_FILE_SCHEMAS.creates> & { line: number })[];
+    updates: (Static<typeof AGENT_WORKSPACE_FILE_SCHEMAS.updates> & { line: number })[];
+    deletes: (Static<typeof AGENT_WORKSPACE_FILE_SCHEMAS.deletes> & { line: number })[];
+  };
   rejected: AgentWorkspaceRejectedChange[];
 }>;
 
@@ -53,7 +60,7 @@ export async function prepare_agent_workspace_changes(args: {
     args.nativeFs,
     path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.pages.updates),
   )) {
-    const parsed = parse_page_update(row);
+    const parsed = parsePageUpdate(row);
     if ("rejection" in parsed) rejected.push(parsed.rejection);
     else pages.push(parsed.intent);
   }
@@ -78,7 +85,7 @@ export async function prepare_agent_workspace_changes(args: {
     const creates: AgentWorkspaceQualityCreateIntent[] = [],
       updates: AgentWorkspaceQualityUpdateIntent[] = [],
       deletes: AgentWorkspaceQualityDeleteIntent[] = [];
-    for (const operation of AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS) {
+    for (const operation of AGENT_WORKSPACE_CHANGE_OPERATIONS) {
       const rows = await read_change_rows(
         args.nativeFs,
         path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS[kind][operation]),
@@ -101,7 +108,36 @@ export async function prepare_agent_workspace_changes(args: {
     }
     quality[kind] = { creates, updates, deletes };
   }
-  return { batch: { items, prompts, quality, pages }, rejected };
+  const files: ParsedAgentWorkspaceChanges["files"] = { creates: [], updates: [], deletes: [] };
+  for (const operation of AGENT_WORKSPACE_CHANGE_OPERATIONS) {
+    for (const row of await read_change_rows(
+      args.nativeFs,
+      path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.files[operation]),
+    )) {
+      if (operation === "creates" && Check(AGENT_WORKSPACE_FILE_SCHEMAS.creates, row.value))
+        files.creates.push({ ...row.value, line: row.line });
+      else if (operation === "updates" && Check(AGENT_WORKSPACE_FILE_SCHEMAS.updates, row.value))
+        files.updates.push({ ...row.value, line: row.line });
+      else if (operation === "deletes" && Check(AGENT_WORKSPACE_FILE_SCHEMAS.deletes, row.value))
+        files.deletes.push({ ...row.value, line: row.line });
+      else
+        rejected.push({
+          ...invalid_change(
+            AGENT_WORKSPACE_FILE_SCHEMAS[operation],
+            row,
+            "files",
+            operation === "creates" ? "create" : operation === "updates" ? "update" : "delete",
+          ),
+          ...(typeof row.value["source_path"] === "string"
+            ? { source_path: row.value["source_path"] }
+            : {}),
+          ...(typeof row.value["file_path"] === "string"
+            ? { file_path: row.value["file_path"] }
+            : {}),
+        });
+    }
+  }
+  return { batch: { items, prompts, quality, pages }, files, rejected };
 }
 
 /** Schema 负责记录结构，解析器只把合法记录转换为领域意图。 */

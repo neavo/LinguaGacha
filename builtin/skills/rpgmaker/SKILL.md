@@ -1,6 +1,6 @@
 ---
 name: rpgmaker
-description: 翻译、审校或分析 RPGMAKER 游戏（XP、VX、VX Ace、MV、MZ）前必须首先加载，提供原稿结构、条目默认状态、跨位置文本依赖、插件与脚本中的可见文本，以及批量翻译后的补漏和检查方法。
+description: 翻译、审校或分析 RPGMAKER 游戏（XP、VX、VX Ace、MV、MZ）前必须加载。
 ---
 
 本技能只提供 RPGMAKER 引擎知识，翻译、审校和提交流程按 `translation` 执行。

@@ -106,7 +106,7 @@ describe("AgentWorkspaceRunner", () => {
 
   it("父进程拒绝专用工程导出请求，不调用打印宿主", async () => {
     const host = vi.fn(async () => ({ path: "work/result.pdf" }));
-    request = { ...request, host };
+    request = { ...request, printPDF: host };
     const { child, result } = await start_run();
     child.emit("message", {
       type: "request",
@@ -133,7 +133,7 @@ describe("AgentWorkspaceRunner", () => {
     let finish: () => void = () => undefined;
     request = {
       ...request,
-      host: async (_request, signal) => {
+      printPDF: async (_request, signal) => {
         host_signal = signal;
         await new Promise<void>((resolve) => {
           finish = resolve;

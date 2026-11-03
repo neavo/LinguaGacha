@@ -1,4 +1,4 @@
-import { compile_literal_patterns } from "../text/literal-matcher";
+import { compileLiteralPatterns } from "../text/literal-matcher";
 
 export type QualityRuleSubsetCandidate = {
   entry_id: string; // 结果与规则条目的稳定关联键
@@ -12,7 +12,7 @@ export function find_quality_rule_subset_parents(
   candidates: QualityRuleSubsetCandidate[],
 ): Record<string, string[]> {
   const literals = candidates.filter((candidate) => candidate.pattern_kind === "literal");
-  const matcher = compile_literal_patterns(
+  const matcher = compileLiteralPatterns(
     literals.map((candidate) => ({
       key: candidate.entry_id,
       text: candidate.src,

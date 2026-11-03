@@ -1,6 +1,5 @@
 import { bind_emit_image } from "../../tools/emit-image";
 import { bind_doing } from "../../tools/doing";
-import { bind_host } from "../../tools/host";
 import { bind_python } from "../../python/runtime";
 import { bind_npm } from "../../npm/runtime";
 import { readFile } from "node:fs/promises";
@@ -13,7 +12,7 @@ import {
   type AgentWorkspaceRuntimeParentMessage,
   type AgentWorkspaceRuntimeChildMessage,
 } from "./protocol";
-import { AgentWorkspaceRequestChannel } from "./request-channel";
+import { AgentWorkspaceRequestChannel, bind_workspace_requests } from "./request-channel";
 
 // 脚本 fork 的子进程和 worker 会继承 --import。标记只属于 runner 启动的根进程，读取后立即移除，后代据此作为标准 Node 运行。
 const entry = process.env[AGENT_WORKSPACE_ENTRY_ENV] === "1";
@@ -41,6 +40,7 @@ async function start_workspace_runtime(): Promise<void> {
     if (pending) process.channel?.ref();
     else process.channel?.unref();
   });
+  bind_workspace_requests(request_channel);
   process.on("message", (message: AgentWorkspaceRuntimeParentMessage) => {
     if (message.type === "response") request_channel.accept(message);
   });
@@ -58,9 +58,8 @@ async function start_workspace_runtime(): Promise<void> {
   const contract: unknown = JSON.parse(await readFile("contract.json", "utf8"));
   Object.defineProperty(globalThis, "ws", {
     value: create_agent_workspace_runtime_api(contract, start.userSkillDirectory, {
-      host: bind_host(request_channel),
       emitImage: bind_emit_image(request_channel),
-      doing: bind_doing(request_channel),
+      setDoing: bind_doing(request_channel),
     }),
   });
   process.channel?.unref();

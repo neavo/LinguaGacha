@@ -1,6 +1,6 @@
 import {
-  compile_literal_patterns,
-  normalize_literal_text,
+  compileLiteralPatterns,
+  normalizeLiteralText,
   type LiteralMatcher,
   type TextRange,
 } from "./literal-matcher";
@@ -64,7 +64,7 @@ export function compile_text_pattern(
   if (options.mode === "literal") {
     return {
       kind: "literal",
-      matcher: compile_literal_patterns([{ key: "pattern", text: source_text, case_sensitive }]),
+      matcher: compileLiteralPatterns([{ key: "pattern", text: source_text, case_sensitive }]),
       global,
     };
   }
@@ -134,9 +134,9 @@ export function create_text_keywords_matcher(args: {
     if (keywords.length === 1) {
       const keyword = keywords[0]!;
       const case_sensitive = args.case_sensitive === true;
-      const normalized = normalize_literal_text(keyword.normalized, case_sensitive);
+      const normalized = normalizeLiteralText(keyword.normalized, case_sensitive);
       const matches = (value: string): boolean =>
-        normalize_literal_text(value, case_sensitive).includes(normalized);
+        normalizeLiteralText(value, case_sensitive).includes(normalized);
       return {
         keywords: public_keywords,
         invalid_regex: null,
@@ -144,7 +144,7 @@ export function create_text_keywords_matcher(args: {
         matches,
       };
     }
-    const matcher = compile_literal_patterns(
+    const matcher = compileLiteralPatterns(
       keywords.map((keyword, index) => ({
         key: index.toString(),
         text: keyword.normalized,
@@ -153,7 +153,7 @@ export function create_text_keywords_matcher(args: {
     );
     const match = (value: string): string[] => {
       const matched_indexes = new Set<number>();
-      matcher.scan_keys(value, (key) => matched_indexes.add(Number.parseInt(key, 10)));
+      matcher.scanKeys(value, (key) => matched_indexes.add(Number.parseInt(key, 10)));
       return [...matched_indexes]
         .toSorted((left, right) => left - right)
         .flatMap((index) => {
@@ -214,7 +214,7 @@ export function normalize_text_keywords(args: {
     if (trimmed === "") continue;
     const key = args.is_regex
       ? keyword
-      : normalize_literal_text(trimmed, args.case_sensitive === true);
+      : normalizeLiteralText(trimmed, args.case_sensitive === true);
     if (seen.has(key)) continue;
     seen.add(key);
     keywords.push(keyword);

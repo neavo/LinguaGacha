@@ -4,12 +4,52 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NativeFs } from "../../../native/native-fs";
 import { prepare_agent_workspace_changes } from "./changes";
-import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS } from "./paths";
+import { AGENT_WORKSPACE_CHANGE_PATHS, AGENT_WORKSPACE_CHANGE_OPERATIONS } from "./paths";
 import { QUALITY_RULE_KINDS, QualityRule } from "../../../domain/quality";
 
 const workspaces: string[] = [];
 
 describe("Agent workspace change parser", () => {
+  it("文件记录解析保留行号，缺少更新字段和非整数排序均拒绝", async () => {
+    const workspace = create_workspace();
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.files.creates,
+      JSON.stringify({
+        source_path: "work/game",
+        godot_pack_orders: [{ game_root: "D:/game", ordered_pcks: ["a.pck", "b.pck"] }],
+      }),
+    );
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.files.updates,
+      [
+        { file_path: "a.txt", new_file_path: "folder/a.txt", sort: -1 },
+        { file_path: "b.txt" },
+        { file_path: "c.txt", sort: 1.5 },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n"),
+    );
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.files.deletes,
+      JSON.stringify({ file_path: "b.txt" }),
+    );
+    const parsed = await prepare_agent_workspace_changes({
+      nativeFs: new NativeFs(),
+      workspacePath: workspace,
+    });
+    expect(parsed.files.creates).toMatchObject([{ line: 1, source_path: "work/game" }]);
+    expect(parsed.files.updates).toEqual([
+      { line: 1, file_path: "a.txt", new_file_path: "folder/a.txt", sort: -1 },
+    ]);
+    expect(parsed.files.deletes).toEqual([{ line: 1, file_path: "b.txt" }]);
+    expect(parsed.rejected.map((row) => [row.scope, row.line])).toEqual([
+      ["files", 2],
+      ["files", 3],
+    ]);
+  });
   it("提示词更新接受 null 和空字符串，拒绝其它类型", async () => {
     const workspace = create_workspace();
     write(
@@ -256,7 +296,7 @@ function create_workspace(): string {
     AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
     AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     ...QUALITY_RULE_KINDS.flatMap((kind) =>
-      AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((op) => AGENT_WORKSPACE_CHANGE_PATHS[kind][op]),
+      AGENT_WORKSPACE_CHANGE_OPERATIONS.map((op) => AGENT_WORKSPACE_CHANGE_PATHS[kind][op]),
     ),
   ]) {
     const file = path.join(workspace, relative);
@@ -268,5 +308,6 @@ function create_workspace(): string {
 
 /** 保留真实 JSONL 行边界，便于核对拒绝回执的物理行号。 */
 function write(workspace: string, relative: string, value: string): void {
+  fs.mkdirSync(path.dirname(path.join(workspace, relative)), { recursive: true });
   fs.writeFileSync(path.join(workspace, relative), `${value}\n`, "utf8");
 }
