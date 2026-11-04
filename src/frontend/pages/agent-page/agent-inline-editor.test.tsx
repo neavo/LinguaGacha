@@ -31,7 +31,7 @@ vi.mock("./agent-message-editor", () => ({
       }}
     >
       <span data-draft>{props.input_state.draft.read().text}</span>
-      {props.render_actions({ has_content: true, uploads_pending: false }, null).submit}
+      {props.render_actions({ has_content: true, uploads_pending: false }, null, null).submit}
     </form>
   ),
 }));

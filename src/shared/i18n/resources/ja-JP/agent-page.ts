@@ -119,6 +119,7 @@ export const ja_jp_agent_page = {
     applying: "プロジェクトの変更を適用中です。完了するまで停止できません",
     new_task: "新しいタスク",
     add_file: "ファイルを追加",
+    common_instructions: "よく使う指示",
     continue: "続ける",
     edit: "編集",
     copy: "コピー",

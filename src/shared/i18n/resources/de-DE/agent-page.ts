@@ -117,6 +117,7 @@ export const de_de_agent_page = {
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
     add_file: "Dateien hinzufügen",
+    common_instructions: "Häufige Befehle",
     continue: "Fortsetzen",
     edit: "Bearbeiten",
     copy: "Kopieren",

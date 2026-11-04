@@ -117,6 +117,7 @@ export const zh_cn_agent_page = {
     applying: "正在应用工程修改，完成前不可停止",
     new_task: "新任务",
     add_file: "添加文件",
+    common_instructions: "常用指令",
     continue: "继续",
     edit: "修改",
     copy: "复制",

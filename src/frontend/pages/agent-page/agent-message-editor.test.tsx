@@ -13,6 +13,7 @@ import {
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { Shrink } from "lucide-react";
 
 import { deleteCharBackward, undo } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
@@ -137,6 +138,7 @@ describe("AgentMessageEditor", () => {
       instructions: [
         {
           id: "compact_context",
+          icon: Shrink,
           title: "压缩上下文",
           description: "",
           disabled: false,
@@ -161,6 +163,43 @@ describe("AgentMessageEditor", () => {
     expect(on_submit).not.toHaveBeenCalled();
   });
 
+  it("常用指令入口代写 @ 并定位指令，用户未输入筛选时关闭或选中都恢复原文", async () => {
+    const view = await render_editor({
+      instructions: [
+        {
+          id: "compact_context",
+          icon: Shrink,
+          title: "压缩上下文",
+          description: "",
+          disabled: false,
+          execute: vi.fn(),
+        },
+      ],
+    });
+    const editor = get_editor(view);
+    const open = view.querySelector<HTMLButtonElement>(".agent-composer__instructions-trigger")!;
+    await set_document(editor, "前文", 2);
+
+    await act(async () => open.click());
+    expect(editor.state.doc.toString()).toBe("前文 @");
+    expect(
+      view.querySelector('button[data-kind="instruction"]')?.getAttribute("aria-selected"),
+    ).toBe("true");
+    await dispatch_key(editor.contentDOM, "Escape");
+    expect(editor.state.doc.toString()).toBe("前文");
+
+    await act(async () => open.click());
+    await dispatch_key(editor.contentDOM, "Enter");
+    expect(editor.state.doc.toString()).toBe("前文");
+
+    await act(async () => open.click());
+    await act(async () =>
+      editor.dispatch({ changes: { from: 4, insert: "压" }, selection: EditorSelection.cursor(5) }),
+    );
+    await dispatch_key(editor.contentDOM, "Escape");
+    expect(editor.state.doc.toString()).toBe("前文 @压");
+  });
+
   it("打开中的 mention 菜单随技能集合更新并保留草稿", async () => {
     const view = await render_editor();
     const editor = get_editor(view);
@@ -183,6 +222,7 @@ describe("AgentMessageEditor", () => {
       instructions: [
         {
           id: "compact_context",
+          icon: Shrink,
           title: "压缩上下文",
           description: "当前上下文较少，无需压缩",
           disabled: true,
@@ -694,6 +734,7 @@ describe("AgentMessageEditor", () => {
       instructions: [
         {
           id: "compact_context",
+          icon: Shrink,
           title: "压缩上下文",
           description: "当前上下文较少，无需压缩",
           disabled,
@@ -916,11 +957,16 @@ function EditorFixture({
         on_submit={options.on_submit ?? vi.fn()}
         on_cancel={options.on_cancel}
 
-        render_actions={({ has_content, uploads_pending }, add_file) => {
+        render_actions={({ has_content, uploads_pending }, add_file, open_instructions) => {
           const can_submit = !options.read_only && has_content && !uploads_pending;
           return {
             can_submit,
-            actions: add_file,
+            actions: (
+              <>
+                {add_file}
+                {open_instructions}
+              </>
+            ),
             submit: (
               <button type="submit" className="agent-composer__submit" disabled={!can_submit}>
                 发送

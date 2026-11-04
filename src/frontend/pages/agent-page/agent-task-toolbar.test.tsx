@@ -4,10 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AgentTaskToolbar } from "./agent-task-toolbar";
 
-const request_generation = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
-  useTranslationGeneration: () => ({ can_request_generation: true, request_generation }),
-}));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
@@ -20,7 +16,6 @@ describe("AgentTaskToolbar", () => {
     container?.remove();
     root = null;
     container = null;
-    request_generation.mockClear();
     vi.useRealTimers();
   });
 
@@ -60,13 +55,9 @@ describe("AgentTaskToolbar", () => {
     expect(on_reset).toHaveBeenCalledOnce();
   });
 
-  it("新任务不可用时仍可生成译文和修改审批模式", async () => {
+  it("新任务不可用时仍可修改审批模式", async () => {
     const on_approval_mode_change = vi.fn();
     const view = await render({ can_reset: false, on_approval_mode_change });
-    await act(async () =>
-      view.querySelector<HTMLButtonElement>(".agent-composer__generation")?.click(),
-    );
-    expect(request_generation).toHaveBeenCalledOnce();
     await act(async () =>
       view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger")?.click(),
     );
@@ -75,13 +66,6 @@ describe("AgentTaskToolbar", () => {
     )!;
     await act(async () => auto.click());
     expect(on_approval_mode_change).toHaveBeenCalledWith("auto");
-  });
-
-  it("把文件入口放在新任务与生成译文之间", async () => {
-    const view = await render({ add_file: <button type="button">文件入口</button> });
-    expect(
-      [...view.querySelectorAll("button")].slice(0, 3).map((button) => button.textContent),
-    ).toEqual(["agent_page.action.new_task", "文件入口", "app.translation_generation.action"]);
   });
 
   it("收起底部交互时关闭审批菜单，恢复后保持关闭", async () => {
@@ -111,6 +95,7 @@ describe("AgentTaskToolbar", () => {
           <input />
           <AgentTaskToolbar
             add_file={null}
+            open_instructions={null}
             locked={false}
             can_reset={false}
             context={{ tokens: null, compactable: false, limits: null }}

@@ -119,6 +119,7 @@ export const ko_kr_agent_page = {
     applying: "프로젝트 변경 사항을 적용 중입니다. 완료될 때까지 중지할 수 없습니다",
     new_task: "새 작업",
     add_file: "파일 추가",
+    common_instructions: "자주 쓰는 명령",
     continue: "계속",
     edit: "수정",
     copy: "복사",

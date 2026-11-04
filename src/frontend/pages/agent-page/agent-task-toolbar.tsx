@@ -1,7 +1,6 @@
 import { type JSX, type ReactNode, useState } from "react";
 import {
   ChevronDown,
-  FileOutput,
   MessageSquarePlus,
   ShieldCheck,
   ShieldQuestionMark,
@@ -11,7 +10,6 @@ import type { ModelSelectionInput } from "@shared/model-selection";
 import type { AgentApprovalMode } from "@domain/setting";
 import type { AgentContextSnapshot, AgentUsageSnapshot } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -30,6 +28,7 @@ import { AgentComposerModelControls } from "./agent-composer-model-controls";
 /** 工具栏菜单随底部交互锁关闭，模型配置请求的可用性由模型控件管理。 */
 export function AgentTaskToolbar(props: {
   add_file: ReactNode;
+  open_instructions: ReactNode;
   locked: boolean;
   can_reset: boolean;
   context: AgentContextSnapshot;
@@ -46,7 +45,6 @@ export function AgentTaskToolbar(props: {
   const [approval_open, set_approval_open] = useState(false); // 当前审批菜单的展开状态
   // 在提交菜单前清除展开状态，交互区恢复时菜单保持关闭。
   if (props.locked && approval_open) set_approval_open(false);
-  const translation_generation = useTranslationGeneration();
   useActionShortcut({
     action: "create",
     enabled: props.can_reset,
@@ -83,17 +81,6 @@ export function AgentTaskToolbar(props: {
         </TooltipContent>
       </Tooltip>
       {props.add_file}
-      <AppButton
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="agent-composer__generation"
-        disabled={!translation_generation.can_request_generation}
-        onClick={translation_generation.request_generation}
-      >
-        <FileOutput aria-hidden="true" />
-        <span>{t("app.translation_generation.action")}</span>
-      </AppButton>
       {props.disconnected ? (
         <Tooltip>
           <TooltipTrigger
@@ -173,6 +160,7 @@ export function AgentTaskToolbar(props: {
           </AppDropdownMenuRadioGroup>
         </AppDropdownMenuContent>
       </AppDropdownMenu>
+      {props.open_instructions}
     </>
   );
 }

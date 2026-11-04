@@ -11,7 +11,7 @@ import {
   type RefObject,
   type ReactNode,
 } from "react";
-import { FileText, Paperclip, Shrink, Sparkles } from "lucide-react";
+import { FileText, Paperclip, Sparkles, SquareSlash } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -66,6 +66,9 @@ type MentionQuery = {
   text: string;
 };
 
+/** 指令入口代写的查询前缀；`at` 是其中 @ 的位置。 */
+type InstructionTrigger = Readonly<{ from: number; at: number; text: string }>;
+
 /** 页面动作通过编辑器事务同步草稿，选区与焦点由 CodeMirror 管理。 */
 export type AgentMessageEditorHandle = {
   write_draft: (text: string, selection?: Readonly<{ from: number; to: number }>) => boolean;
@@ -86,10 +89,11 @@ type AgentMessageEditorProps = {
   input_state: AgentInputState;
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: (() => void) | undefined;
-  /** 编辑器提供文件入口，消费方统一排列动作并决定提交权限。 */
+  /** 编辑器提供文件与指令入口，消费方统一排列动作并决定提交权限。 */
   render_actions: (
     state: AgentEditorState,
     add_file: ReactNode,
+    open_instructions: ReactNode,
   ) => {
     can_submit: boolean;
     actions: ReactNode;
@@ -166,6 +170,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const matching_candidates_ref = useRef<readonly AgentMentionCandidate[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
+  const instruction_trigger_ref = useRef<InstructionTrigger | null>(null); // 用户尚未接管的代写 @
   // 草稿拥有当前可见正文，历史浏览只缓存列表与原正文，附件继续属于草稿。
   const input_state_ref = useRef(props.input_state);
   const input_history_navigation_ref = useRef<{
@@ -205,6 +210,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const matching_files = candidate_groups.files;
   const matching_instructions = candidate_groups.instructions;
   const matching_candidates = [...matching_skills, ...matching_files, ...matching_instructions];
+  const instruction_start = matching_skills.length + matching_files.length; // 指令组首项的跨分组索引
   const editor_read_only = props.read_only;
   const menu_open =
     !assistant_editing && mention_query !== null && !editor_read_only && !menu_suppressed;
@@ -225,6 +231,19 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       >
         <Paperclip aria-hidden="true" />
         <span>{t("agent_page.action.add_file")}</span>
+      </AppButton>
+    ) : null,
+    !assistant_editing && props.instructions !== undefined ? (
+      <AppButton
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="agent-composer__instructions-trigger"
+        disabled={editor_read_only}
+        onClick={open_instruction_menu}
+      >
+        <SquareSlash aria-hidden="true" />
+        <span>{t("agent_page.action.common_instructions")}</span>
       </AppButton>
     ) : null,
   );
@@ -441,16 +460,45 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     if (menu_open) scroll_mention_candidate_into_view(menu_index_ref.current);
   }, [mention_query_text, menu_open, scroll_mention_candidate_into_view]);
 
+  // 指令入口代写的 @ 只在菜单打开期间暂存：用户输入筛选后转为普通正文，未输入即关闭则撤回。
+  useEffect(() => {
+    const trigger = instruction_trigger_ref.current;
+    const view = view_ref.current;
+    if (trigger === null || view === null) return;
+    if (menu_open && mention_query?.from === trigger.at) {
+      if (mention_query.text !== "") instruction_trigger_ref.current = null;
+      // 文件候选异步加载会改变跨分组索引，加载结束后再定位指令组。
+      else if (file_query.status !== "loading") {
+        set_menu_index(instruction_start);
+        menu_ref.current
+          ?.querySelector('[aria-labelledby="agent-mention-instructions-label"]')
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+      return;
+    }
+    instruction_trigger_ref.current = null;
+    const to = trigger.from + trigger.text.length;
+    if (view.state.sliceDoc(trigger.from, to) !== trigger.text) return;
+    view.dispatch({
+      changes: { from: trigger.from, to },
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }, [file_query.status, instruction_start, mention_query, menu_open]);
+
   /** 技能写入 marker；指令移除筛选文本后立即执行，不进入消息或草稿历史。 */
   const select_candidate = (candidate: AgentMentionCandidate): void => {
     const view = view_ref.current;
     const query = view === null ? null : find_mention_query(view.state);
     if (view === null || query === null) return;
+    if (candidate.kind === "instruction" && candidate.disabled) return;
+    const trigger = instruction_trigger_ref.current;
+    instruction_trigger_ref.current = null; // 选中后的正文由候选自身决定，不再撤回入口代写的 @
     if (candidate.kind === "instruction") {
-      if (candidate.disabled) return;
+      // 入口补写的前导空格随筛选文本一并移除，正文恢复原样。
+      const from = trigger?.at === query.from ? trigger.from : query.from;
       view.dispatch({
-        changes: { from: query.from, to: query.to, insert: "" },
-        selection: EditorSelection.cursor(query.from),
+        changes: { from, to: query.to, insert: "" },
+        selection: EditorSelection.cursor(from),
       });
       set_menu_suppressed(false);
       candidate.execute();
@@ -658,7 +706,11 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   /** 所有分组共用连续 option 索引，使键盘导航与 aria-activedescendant 指向同一项。 */
   function render_candidate(candidate: AgentMentionCandidate, index: number): JSX.Element {
     const Icon =
-      candidate.kind === "skill" ? Sparkles : candidate.kind === "file" ? FileText : Shrink;
+      candidate.kind === "instruction"
+        ? candidate.icon
+        : candidate.kind === "skill"
+          ? Sparkles
+          : FileText;
     const disabled = candidate.kind === "instruction" && candidate.disabled;
     return (
       <Tooltip key={candidate.key}>
@@ -696,6 +748,21 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         </TooltipContent>
       </Tooltip>
     );
+  }
+
+  /** 在光标处代写 @ 打开菜单，正则要求 @ 前为空白，必要时补一个空格。 */
+  function open_instruction_menu(): void {
+    const view = view_ref.current;
+    if (view === null) return;
+    const head = view.state.selection.main.head;
+    const text = /^\s?$/u.test(view.state.sliceDoc(Math.max(0, head - 1), head)) ? "@" : " @";
+    instruction_trigger_ref.current = { from: head, at: head + text.length - 1, text };
+    view.dispatch({
+      changes: { from: head, insert: text },
+      selection: EditorSelection.cursor(head + text.length),
+      annotations: Transaction.addToHistory.of(false),
+    });
+    view.focus();
   }
 
   /** 菜单有候选时循环选择。零结果时把方向键交还 CodeMirror。 */

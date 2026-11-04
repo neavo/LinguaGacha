@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import type { AgentSkillSnapshot } from "@shared/agent";
 import {
   find_agent_reference_ranges,
@@ -13,6 +14,7 @@ const SEARCH_FILE_CANDIDATE_LIMIT = 20; // 限制搜索菜单规模。
 /** 页面提供宿主指令的显示状态与即时动作；它不进入消息协议。 */
 export type AgentMentionInstruction = Readonly<{
   id: string;
+  icon: LucideIcon;
   title: string;
   description: string;
   disabled: boolean;
