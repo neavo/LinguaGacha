@@ -177,14 +177,25 @@ describe("AgentWorkspaceService", () => {
         updated: 1,
         deleted: 0,
         replaced: [
-          { file_path: "script.txt", source_path: resolved, items: 2, pages: 0, inherited: 1 },
+          {
+            file_path: "script.txt",
+            source_path: resolved,
+            items: 2,
+            pages: 0,
+            inherited: 1,
+            contested: [[42]],
+          },
         ],
       },
     });
     expect(await fixture.service.apply_workspace()).toMatchObject({
       status: "applied",
       applied: {
-        files: { replaced: [{ file_path: "script.txt", source_path, items: 2, inherited: 1 }] },
+        files: {
+          replaced: [
+            { file_path: "script.txt", source_path, items: 2, inherited: 1, contested: [[42]] },
+          ],
+        },
       },
     });
     expect(fixture.apply_file_changes).toHaveBeenLastCalledWith(

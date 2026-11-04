@@ -398,8 +398,13 @@ export class ProjectWriteStore {
     })[];
     updates: readonly ProjectFileUpdate[];
     deletes: readonly string[];
-  }): Promise<{ write: ProjectWriteResult; sectionRevisions: ProjectDataSectionRevisions }> {
+  }): Promise<{
+    write: ProjectWriteResult;
+    sectionRevisions: ProjectDataSectionRevisions;
+    itemIdsByFile: ReadonlyMap<string, readonly number[]>;
+  }> {
     let sectionRevisions: ProjectDataSectionRevisions = {};
+    const itemIdsByFile = new Map<string, number[]>(); // 与各文件输入条目同序，只在事务成功后返回。
     const project = request.projectPath;
     const imports = [...request.creates, ...(request.replacements ?? [])];
     const removed_paths = [
@@ -478,7 +483,7 @@ export class ProjectWriteStore {
             if (file.kind === "update")
               writes.push((db) => db.delete_asset_items(project, file.path));
             writes.push(this.build_asset_write(project, file), (db) => {
-              db.insert_items(project, file.items);
+              itemIdsByFile.set(file.path, db.insert_items(project, file.items));
             });
           }
           if (
@@ -501,7 +506,7 @@ export class ProjectWriteStore {
         },
       },
     );
-    return { write, sectionRevisions };
+    return { write, sectionRevisions, itemIdsByFile };
   }
 
   /**

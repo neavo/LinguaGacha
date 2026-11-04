@@ -293,7 +293,7 @@ export class ProjectContentService {
         ),
         new Set(replacements.map((update) => update.file_path)),
       );
-      const result = await this.write_store.apply_file_changes({
+      const { itemIdsByFile, ...result } = await this.write_store.apply_file_changes({
         ...args,
         sourceRecord: {
           action: "import",
@@ -317,6 +317,9 @@ export class ProjectContentService {
               items: file.items.length,
               pages: file.pdfDocument?.pages.length ?? 0,
               inherited: prepared.inherited.get(file.path) ?? 0,
+              contested: (prepared.contested.get(file.path) ?? []).map((group) =>
+                group.map((index) => itemIdsByFile.get(file.path)![index]!),
+              ),
             };
           }),
           deleted: args.deletes.length,
@@ -381,6 +384,7 @@ export class ProjectContentService {
       }
     }
     const inherited = new Map<string, number>();
+    const contested = new Map<string, number[][]>(); // 文件内条目索引，提交后才映射为数据库 ID。
     let prepared_items = items;
     if (drafts.length) {
       const settings = await this.read_project_write_settings(project_path);
@@ -395,7 +399,22 @@ export class ProjectContentService {
           inherit_paths.has(item.file_path),
         );
         const pending = candidates.filter((item) => item.status !== "PROCESSED"); // 记录继承前的未完成条目。
-        inherit_completed_translations(old_items, candidates, "fill");
+        const inheritance = inherit_completed_translations(old_items, candidates, "fill");
+        // 文件内索引沿用临时 ID 顺序，与下方持久化记录的写入顺序一致。
+        const file_indexes = new Map<ProjectItemPublicRecord, number>();
+        for (const file_items of Map.groupBy(candidates, (item) => item.file_path).values())
+          for (const [index, item] of file_items.entries()) file_indexes.set(item, index);
+        for (const group of inheritance.contested) {
+          const by_file = Map.groupBy(
+            group.map((index) => candidates[index]!),
+            (item) => item.file_path,
+          );
+          for (const [file_path, file_items] of by_file) {
+            const groups = contested.get(file_path) ?? [];
+            groups.push(file_items.map((item) => file_indexes.get(item)!));
+            contested.set(file_path, groups);
+          }
+        }
         for (const item of pending)
           if (item.status === "PROCESSED")
             inherited.set(item.file_path, (inherited.get(item.file_path) ?? 0) + 1);
@@ -429,7 +448,7 @@ export class ProjectContentService {
           sortOrder: next_sort + creates.length,
         });
     }
-    return { creates, replacements, inherited };
+    return { creates, replacements, inherited, contested };
   }
 
   /** 预览只发现来源并分配目标名称，内容准备由正式导入持有。 */

@@ -31,6 +31,7 @@ export type AppliedFiles = {
     items: number;
     pages: number;
     inherited: number;
+    contested: number[][]; // 实际票选且有多种译文结果的已提交条目 ID，按 `src` 与 `name_src` 分组。
   }[];
   updated: number;
   deleted: number;

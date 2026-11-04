@@ -200,6 +200,100 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("多文件替换的争议回执按文件分组并使用实际提交 ID，新增文件不继承", async () => {
+    const { database, service, lg_path } = await create_service();
+    const source = project_path("replacement.generic");
+    const extra = project_path("extra.txt");
+    const content = await write_zip(
+      new Map([
+        [
+          "items.json",
+          JSON.stringify([
+            { message: "導入" },
+            { message: "こんにちは" },
+            { message: "こんにちは" },
+            { message: "さようなら" },
+            { message: "末尾" },
+          ]),
+        ],
+      ]),
+    );
+    fs.writeFileSync(source, content);
+    fs.writeFileSync(extra, "こんにちは");
+    try {
+      await database.transaction(lg_path, (writer) => {
+        writer.add_asset(lg_path, "old.txt", Buffer.from("old"), "TXT", null);
+        for (const file_path of ["a.generic", "b.generic"])
+          writer.add_asset(lg_path, file_path, content, "GENERIC", null);
+        writer.set_items(lg_path, [
+          ...["少数", "多数", "多数"].map((dst, index) =>
+            create_persistent_item({
+              item_id: 101 + index,
+              file_path: "old.txt",
+              row_number: index,
+              src: "こんにちは",
+              dst,
+              status: "PROCESSED",
+            }),
+          ),
+          create_persistent_item({
+            item_id: 104,
+            file_path: "old.txt",
+            row_number: 3,
+            src: "旧邻居",
+          }),
+          create_persistent_item({
+            item_id: 105,
+            file_path: "old.txt",
+            row_number: 4,
+            src: "さようなら",
+            dst: "再见",
+            status: "PROCESSED",
+          }),
+          create_persistent_item({ item_id: 200, file_path: "a.generic", src: "旧甲" }),
+          create_persistent_item({ item_id: 300, file_path: "b.generic", src: "旧乙" }),
+        ]);
+      });
+      const result = await service.apply_file_changes({
+        projectPath: lg_path,
+        source: "agent_workspace_apply",
+        expectedSectionRevisions: { files: 0 },
+        revisionSections: ["files"],
+        creates: [{ source_path: extra }],
+        updates: ["a.generic", "b.generic"].map((file_path, index) => ({
+          file_path,
+          source_path: source,
+          sort: 1 - index,
+          line: index + 1,
+        })),
+        deletes: [],
+        signal: new AbortController().signal,
+      });
+      if (result.kind !== "applied") throw new Error("expected applied result");
+      const saved = await database.get_all_items(lg_path);
+      for (const file_path of ["a.generic", "b.generic"]) {
+        const disputed = saved.filter(
+          (item) => item["file_path"] === file_path && item["src"] === "こんにちは",
+        );
+        expect(disputed).toHaveLength(2);
+        expect(result.files.replaced.find((file) => file.file_path === file_path)).toEqual({
+          file_path,
+          source_path: source,
+          items: 5,
+          pages: 0,
+          inherited: 3,
+          contested: [disputed.map((item) => item["id"])],
+        });
+      }
+      expect(saved.find((item) => item["file_path"] === "extra.txt")).toMatchObject({
+        dst: "",
+        status: "NONE",
+      });
+    } finally {
+      await database.close_project(lg_path);
+    }
+  });
+
   it("通用包离线重置、整包替换继承与坏包失败共用真实资产事务", async () => {
     const { database, service, lg_path } = await create_service();
     const source = project_path("data.generic");
@@ -269,7 +363,7 @@ describe("ProjectContentService", () => {
         }),
       ).toMatchObject({
         kind: "applied",
-        files: { replaced: [{ file_path: "data.generic", items: 3, inherited: 2 }] },
+        files: { replaced: [{ file_path: "data.generic", items: 3, inherited: 2, contested: [] }] },
       });
       const replaced = await database.get_all_items(lg_path);
       expect(replaced.map((item) => [item["row"], item["src"], item["dst"]])).toEqual([
