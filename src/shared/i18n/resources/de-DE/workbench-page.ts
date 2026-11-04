@@ -9,10 +9,6 @@ export const de_de_workbench_page = {
   table: {
     file_name: "Dateiname",
     progress: "Fortschritt",
-    agent: "AGENT",
-    agent_writeback: "AGENT wird zum Zurückschreiben ins Originalformat benötigt",
-    agent_only: "Übersetzung nur mit AGENT möglich",
-    agent_recommended: "Wir empfehlen AGENT für die Übersetzung",
   },
   feedback: {
     no_valid_file: "Keine gültigen Dateien können hinzugefügt werden",
@@ -26,6 +22,13 @@ export const de_de_workbench_page = {
     reset_task_all: "Alle Daten zurücksetzen",
   },
   dialog: {
+    start_translation: {
+      agent_recommended:
+        "Für eine höhere Übersetzungsqualität empfehlen wir die Übersetzung mit AGENT …!",
+      agent_required:
+        "Das Projekt enthält komplexe Daten, die von AGENT verarbeitet werden müssen. Für eine höhere Übersetzungsqualität empfehlen wir die Übersetzung mit AGENT …!",
+      translate_directly: "Direkt übersetzen",
+    },
     import_conflict: {
       description:
         "{COUNT} Dateien mit demselben Namen wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …",

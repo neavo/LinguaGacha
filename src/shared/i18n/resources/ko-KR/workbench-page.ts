@@ -8,10 +8,6 @@ export const ko_kr_workbench_page = {
   table: {
     file_name: "파일 이름",
     progress: "진행률",
-    agent: "AGENT",
-    agent_writeback: "원본 형식으로 기록하려면 AGENT가 필요합니다",
-    agent_only: "AGENT로만 번역할 수 있습니다",
-    agent_recommended: "AGENT로 번역하는 것을 권장합니다",
   },
   feedback: {
     no_valid_file: "추가할 수 있는 유효한 파일이 없습니다",
@@ -25,6 +21,12 @@ export const ko_kr_workbench_page = {
     reset_task_all: "모든 데이터 초기화",
   },
   dialog: {
+    start_translation: {
+      agent_recommended: "더 높은 번역 품질을 위해 AGENT로 번역하는 것을 권장합니다 …!",
+      agent_required:
+        "프로젝트에 AGENT로 처리해야 하는 복잡한 데이터가 포함되어 있습니다. 더 높은 번역 품질을 위해 AGENT로 번역하는 것을 권장합니다 …!",
+      translate_directly: "직접 번역",
+    },
     import_conflict: {
       description: "이름이 같은 파일 {COUNT}개를 발견했습니다. 처리 방법을 선택해 주세요 …",
     },

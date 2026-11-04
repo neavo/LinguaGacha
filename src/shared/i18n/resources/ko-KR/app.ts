@@ -210,7 +210,7 @@ export const ko_kr_app = {
       warning_description:
         "교정 경고가 {COUNT}개 감지되었습니다. 경고가 반드시 오류를 의미하지는 않지만, 먼저 AGENT로 자동 교정을 최소 한 번 실행하는 것을 권장합니다. 번역문을 계속 생성할까요 …?",
       retry_check: "다시 확인",
-      continue_generate: "생성 계속",
+      generate_directly: "직접 생성",
     },
     directory: {
       translated: "번역문",

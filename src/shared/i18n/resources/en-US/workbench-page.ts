@@ -9,10 +9,6 @@ export const en_us_workbench_page = {
   table: {
     file_name: "File Name",
     progress: "Progress",
-    agent: "AGENT",
-    agent_writeback: "AGENT is required to write back to the original format",
-    agent_only: "Translation is only available with AGENT",
-    agent_recommended: "We recommend using AGENT for translation",
   },
   feedback: {
     no_valid_file: "No valid files can be added",
@@ -26,6 +22,12 @@ export const en_us_workbench_page = {
     reset_task_all: "Reset All Data",
   },
   dialog: {
+    start_translation: {
+      agent_recommended: "We recommend using AGENT for higher-quality translations …!",
+      agent_required:
+        "This project contains complex data that must be handled by AGENT. We recommend using AGENT for higher-quality translations …!",
+      translate_directly: "Translate Directly",
+    },
     import_conflict: {
       description: "{COUNT} files with the same name were detected. Choose how to handle them …",
     },

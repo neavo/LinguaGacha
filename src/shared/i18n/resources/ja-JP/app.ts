@@ -216,7 +216,7 @@ export const ja_jp_app = {
       warning_description:
         "校正の警告が {COUNT} 件検出されました。警告は必ずしも誤りを示すものではありませんが、先に AGENT で少なくとも 1 回は自動校正することをおすすめします。このまま訳文を出力しますか …?",
       retry_check: "再確認",
-      continue_generate: "出力を続ける",
+      generate_directly: "直接出力",
     },
     directory: {
       translated: "訳文",

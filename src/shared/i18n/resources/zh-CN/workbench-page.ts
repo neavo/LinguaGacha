@@ -6,10 +6,6 @@ export const zh_cn_workbench_page = {
   table: {
     file_name: "文件名",
     progress: "进度",
-    agent: "AGENT",
-    agent_writeback: "写回原格式需要 AGENT",
-    agent_only: "仅能使用 AGENT 翻译",
-    agent_recommended: "建议使用 AGENT 翻译",
   },
   feedback: {
     no_valid_file: "没有可添加的有效文件",
@@ -23,6 +19,12 @@ export const zh_cn_workbench_page = {
     reset_task_all: "重置所有数据",
   },
   dialog: {
+    start_translation: {
+      agent_recommended: "推荐由 AGENT 执行翻译任务来获得更高的翻译质量 …!",
+      agent_required:
+        "工程中包含必须由 AGENT 处理的复杂数据，推荐由 AGENT 执行翻译任务来获得更高的翻译质量 …!",
+      translate_directly: "直接翻译",
+    },
     import_conflict: {
       description: "检测到 {COUNT} 个同名文件，请选择处理方式 …",
     },

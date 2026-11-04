@@ -223,7 +223,7 @@ export const de_de_app = {
       warning_description:
         "Es wurden {COUNT} Korrekturwarnungen erkannt. Warnungen weisen nicht unbedingt auf Fehler hin. Wir empfehlen jedoch, zuerst mindestens eine automatische Prüfung mit AGENT durchzuführen. Mit dem Erstellen der Übersetzung fortfahren …?",
       retry_check: "Erneut prüfen",
-      continue_generate: "Trotzdem erstellen",
+      generate_directly: "Direkt erstellen",
     },
     directory: {
       translated: "Übersetzung",

@@ -24,6 +24,8 @@ import {
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type WorkbenchCommandBarProps = {
+  can_start_translation: boolean;
+  on_request_start_translation: () => void;
   batch_translation_task: BatchTranslationTask;
   translation_stats: ProjectTranslationStats | null;
   can_edit_files: boolean;
@@ -114,9 +116,8 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               busy={props.batch_translation_task.translation_task_menu_busy}
               model_selection={model_selection}
               active_task_action_kind={active_translation_task_action_kind}
-              on_start_or_continue={
-                props.batch_translation_task.request_start_or_continue_translation
-              }
+              can_start={props.can_start_translation}
+              on_request_start={props.on_request_start_translation}
               on_request_reset={props.batch_translation_task.request_task_action_confirmation}
             />
           </CommandBarGroup>
