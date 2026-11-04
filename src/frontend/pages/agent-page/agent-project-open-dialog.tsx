@@ -27,12 +27,7 @@ export function AgentProjectOpenDialog(props: { path: string; on_close: () => vo
     <AppActionDialog
       open
       contentClassName="project-lifecycle"
-      description={
-        <>
-          <span>{t("project.open.title")}</span>
-          <p className="break-all">{props.path}</p>
-        </>
-      }
+      description={null}
       details={
         preview.status === "ready" ? (
           <ProjectPreviewSummary preview={preview.preview} />

@@ -341,9 +341,6 @@ describe("AgentConversation", () => {
       input.draft.write({ text: "原草稿", attachments: [] });
       const view = await render_page({ input });
       await drop_image(view.querySelector(selector)!, "project.LG");
-      expect(
-        document.body.querySelector('[data-slot="alert-dialog-content"]')?.textContent,
-      ).toContain("E:/資料/project.LG");
       expect(lifecycle.request_open).not.toHaveBeenCalled();
       await drop_image(view.querySelector(selector)!, "ignored.png");
       expect(input.draft.read().text).toBe("原草稿");
