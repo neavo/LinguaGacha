@@ -122,7 +122,7 @@ describe("AgentMessageEditor", () => {
     vi.unstubAllGlobals();
   });
 
-  it("技能失效时恢复原文并保留编辑器和撤销历史，重新启用后恢复块", async () => {
+  it("技能列表变化保持引用块、编辑器和撤销历史", async () => {
     const view = await render_editor();
     const editor = get_editor(view);
     const text = '@skill("glossary-audit")';
@@ -131,7 +131,7 @@ describe("AgentMessageEditor", () => {
     await render_editor({ skills: [] });
     expect(get_editor(view)).toBe(editor);
     expect(editor.state.doc.toString()).toBe(text);
-    expect(view.querySelector(".agent-mention-token")).toBeNull();
+    expect(view.querySelector(".agent-mention-token")).not.toBeNull();
     await render_editor({ skills });
     expect(view.querySelector(".agent-mention-token")).not.toBeNull();
     await act(async () => {

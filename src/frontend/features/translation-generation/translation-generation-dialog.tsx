@@ -9,7 +9,7 @@ import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-d
 
 type TranslationGenerationDialogProps = Pick<
   TranslationGenerationFlow,
-  "state" | "retry_check" | "confirm_generation" | "jump_to_agent" | "can_jump_to_agent" | "close"
+  "state" | "retry_check" | "confirm_generation" | "jump_to_agent" | "close"
 >;
 
 /** 提交中继续展示提交前内容，避免弹窗在译文生成受理后跳版。 */
@@ -112,14 +112,10 @@ export function TranslationGenerationDialog(
         label: t("app.translation_generation.confirmation.continue_generate"),
         onSelect: props.confirm_generation,
       }}
-      secondaryAction={
-        props.can_jump_to_agent
-          ? {
-              label: t("app.action.go_to_agent"),
-              onSelect: props.jump_to_agent,
-            }
-          : undefined
-      }
+      secondaryAction={{
+        label: t("app.action.handle_with_agent"),
+        onSelect: props.jump_to_agent,
+      }}
       onClose={props.close}
     />
   );

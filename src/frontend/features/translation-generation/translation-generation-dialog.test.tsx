@@ -23,7 +23,7 @@ describe("TranslationGenerationDialog", () => {
     root = null;
   });
 
-  it("有警告时显示类型计数并提供前往 AGENT 与继续生成", () => {
+  it("有警告时显示类型计数并允许交给 AGENT 或继续生成", () => {
     const jump_to_agent = vi.fn();
     const confirm_generation = vi.fn(async () => {});
     render_dialog(
@@ -124,7 +124,6 @@ describe("TranslationGenerationDialog", () => {
     act(() => {
       root?.render(
         <TranslationGenerationDialog
-          can_jump_to_agent
           state={state}
           retry_check={vi.fn()}
           confirm_generation={callbacks.confirm_generation ?? vi.fn(async () => {})}

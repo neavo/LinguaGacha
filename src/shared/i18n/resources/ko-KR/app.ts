@@ -58,7 +58,7 @@ export const ko_kr_app = {
     skip: "건너뛰기",
     overwrite: "덮어쓰기",
     replace: "치환",
-    go_to_agent: "AGENT로 이동",
+    handle_with_agent: "AGENT로 처리",
     loading: "불러오는 중",
     select_file: "파일 선택",
     select_folder: "폴더 선택",

@@ -74,9 +74,7 @@ describe("run_cli_job", () => {
     });
     await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
     expect(harness.start_task).not.toHaveBeenCalled();
-    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, [
-      "book.pdf",
-    ]);
+    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
     expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
       "done",
       undefined,
@@ -147,7 +145,7 @@ describe("run_cli_job", () => {
       expect.any(Function),
     );
     expect(harness.apply_task_input).toHaveBeenCalledWith(await build_cli_task_input(command));
-    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, []);
+    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
     expect(
       harness.events.filter((event) =>
         ["apply", "start", "translation_generation", "unload", "finished:done"].includes(event),

@@ -2,6 +2,7 @@ import { type JSX, act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { find_agent_reference_ranges } from "@shared/agent-reference";
 import { useTranslationGenerationFlow } from "./use-translation-generation-flow";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -10,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   workbench: vi.fn(),
   push_toast: vi.fn(),
   navigate_to_agent: vi.fn(),
-  selected_route: "workbench",
   project_snapshot: { loaded: true, path: "E:/demo/sample.lg" },
   settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
 }));
@@ -28,7 +28,6 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({
     navigate_to_agent: mocks.navigate_to_agent,
-    selected_route: mocks.selected_route,
   }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
@@ -62,7 +61,6 @@ describe("useTranslationGenerationFlow", () => {
       .mockResolvedValue({ projectPath: "E:/demo/sample.lg", snapshot: { entries: [] } });
     mocks.push_toast.mockReset();
     mocks.navigate_to_agent.mockReset();
-    mocks.selected_route = "workbench";
     mocks.project_snapshot.loaded = true;
     mocks.project_snapshot.path = "E:/demo/sample.lg";
     mocks.settings_snapshot.translation_save_mode = "PROJECT";
@@ -95,57 +93,39 @@ describe("useTranslationGenerationFlow", () => {
     await act(async () => Promise.resolve());
   }
 
-  it("读取警告摘要后提交仅填充空草稿的审校导航请求", async () => {
-    mocks.api_fetch.mockResolvedValueOnce({
-      projectPath: "E:/demo/sample.lg",
-      warningSummary: {
-        total_count: 3,
-        entries: [{ code: "FOREIGN_CHAR_RESIDUE", count: 3 }],
-      },
-    });
-    await render_probe();
-
-    act(() => latest_flow?.request_generation());
-    expect(latest_flow?.state.phase).toBe("checking");
-    await flush_microtasks();
-    expect(latest_flow?.state).toMatchObject({ phase: "ready", summary: { total_count: 3 } });
-
-    act(() => latest_flow?.jump_to_agent());
-    expect(mocks.navigate_to_agent).toHaveBeenCalledWith({
-      text: expect.stringMatching(/\S+ @skill\([^)]+\)$/),
-      mode: "if-empty",
-    });
-    expect(latest_flow?.state.phase).toBe("closed");
-  });
-
-  it("AGENT 页面隐藏重复导航", async () => {
-    mocks.selected_route = "agent";
-    await render_probe();
-    expect(latest_flow?.can_jump_to_agent).toBe(false);
-  });
-
-  it.each([0, 2])("通用包与 %s 条审校警告共同生成保留草稿的导航请求", async (total_count) => {
-    mocks.api_fetch.mockResolvedValue({
-      projectPath: mocks.project_snapshot.path,
-      warningSummary: { total_count, entries: [] },
-    });
-    mocks.workbench.mockResolvedValue({
-      projectPath: mocks.project_snapshot.path,
-      snapshot: { entries: [{ file_type: "GENERIC", rel_path: "renamed.txt" }] },
-    });
-    await render_probe();
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
-    expect(latest_flow?.state).toMatchObject({ phase: "ready", has_generic: true });
-    act(() => latest_flow?.jump_to_agent());
-    expect(mocks.navigate_to_agent).toHaveBeenCalledWith({
-      mode: "if-empty",
-      text: expect.stringContaining("app.translation_generation.confirmation.generate_all"),
-    });
-    const text = mocks.navigate_to_agent.mock.calls[0]![0].text as string;
-    expect(text.includes("agent_page.empty.suggestions.review_translation")).toBe(total_count > 0);
-    expect(mocks.workbench).toHaveBeenCalledOnce();
-  });
+  it.each([
+    { total_count: 3, has_generic: false },
+    { total_count: 2, has_generic: true },
+    { total_count: 0, has_generic: true },
+  ])(
+    "预检 $total_count 条警告、通用资产 $has_generic 后按任务顺序交给 Agent",
+    async ({ total_count, has_generic }) => {
+      mocks.api_fetch.mockResolvedValue({
+        projectPath: mocks.project_snapshot.path,
+        warningSummary: { total_count, entries: [] },
+      });
+      mocks.workbench.mockResolvedValue({
+        projectPath: mocks.project_snapshot.path,
+        snapshot: {
+          entries: has_generic ? [{ file_type: "GENERIC", rel_path: "renamed.txt" }] : [],
+        },
+      });
+      await render_probe();
+      act(() => latest_flow?.request_generation());
+      expect(latest_flow?.state.phase).toBe("checking");
+      await flush_microtasks();
+      expect(latest_flow?.state).toMatchObject({ phase: "ready", has_generic });
+      act(() => latest_flow?.jump_to_agent());
+      const text = mocks.navigate_to_agent.mock.calls[0]![0].text as string;
+      // 技能路由决定任务责任，提示语可独立调整。
+      expect(find_agent_reference_ranges(text).map(({ reference }) => reference)).toEqual([
+        ...(total_count > 0 ? [{ kind: "skill", name: "translation" }] : []),
+        { kind: "skill", name: "project-operation" },
+      ]);
+      expect(text).toContain("app.translation_generation.confirmation.generate_all");
+      expect(latest_flow?.state.phase).toBe("closed");
+    },
+  );
 
   it("文件检查失败仍可继续生成，不推断通用包不存在", async () => {
     mocks.api_fetch
@@ -250,7 +230,6 @@ describe("useTranslationGenerationFlow", () => {
     expect(latest_flow?.state.phase).toBe("generating");
     expect(mocks.api_fetch).toHaveBeenCalledWith("/api/translation/files/generate", {
       project_path: "E:/demo/sample.lg",
-      output_directory: "E:/demo",
     });
     expect(
       mocks.api_fetch.mock.calls.filter(([path]) => path === "/api/translation/files/generate"),
@@ -261,7 +240,7 @@ describe("useTranslationGenerationFlow", () => {
     expect(mocks.push_toast).not.toHaveBeenCalled();
   });
 
-  it.each(["FIXED", "MANUAL"])("%s 模式使用确定的输出父目录", async (mode) => {
+  it.each(["PROJECT", "FIXED", "MANUAL"])("%s 模式使用确定的输出父目录", async (mode) => {
     mocks.settings_snapshot.translation_save_mode = mode;
     mocks.settings_snapshot.translation_fixed_path = "E:/fixed";
     const pick = vi
@@ -281,7 +260,7 @@ describe("useTranslationGenerationFlow", () => {
     });
     expect(mocks.api_fetch).toHaveBeenLastCalledWith("/api/translation/files/generate", {
       project_path: "E:/demo/sample.lg",
-      output_directory: mode === "FIXED" ? "E:/fixed" : "E:/chosen",
+      ...(mode === "MANUAL" ? { output_directory: "E:/chosen" } : {}),
     });
     expect(pick).toHaveBeenCalledTimes(mode === "MANUAL" ? 1 : 0);
     pick.mockRestore();

@@ -519,7 +519,11 @@ export class FileFormatService {
   }
 
   /** 按格式分发生成，容器与记录格式遍历资产集合以覆盖零条目文件。 */
-  public async write_items(items: Item[], context: FileFormatServiceWriteContext): Promise<void> {
+  public async write_items(
+    items: Item[],
+    context: FileFormatServiceWriteContext,
+    generic_path?: string, // 通用写回输入仅在调用方指定独立目录时生成。
+  ): Promise<void> {
     const { paths, asset_reader } = context;
     const failures: unknown[] = [];
     for (const game of Object.values(this.games)) {
@@ -535,21 +539,23 @@ export class FileFormatService {
     await this.write_subtitles(items, context);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
-    const generic_items = group_items(items, "GENERIC");
-    for (const file of context.source_files) {
-      if (file.file_type !== "GENERIC") continue;
-      const asset = await asset_reader(file.path);
-      if (asset === null)
-        throw new AppError("file.not_found", { public_details: { file: file.path } });
-      const output = await this.generic.render_text(
-        asset,
-        generic_items.get(file.path) ?? [],
-        file.path,
-      );
-      await this.native_fs.write_file(
-        path.join(paths.translated_path, file.path, GENERIC_ITEMS_MEMBER),
-        output,
-      );
+    if (generic_path !== undefined) {
+      const generic_items = group_items(items, "GENERIC");
+      for (const file of context.source_files) {
+        if (file.file_type !== "GENERIC") continue;
+        const asset = await asset_reader(file.path);
+        if (asset === null)
+          throw new AppError("file.not_found", { public_details: { file: file.path } });
+        const output = await this.generic.render_text(
+          asset,
+          generic_items.get(file.path) ?? [],
+          file.path,
+        );
+        await this.native_fs.write_file(
+          path.join(generic_path, file.path, GENERIC_ITEMS_MEMBER),
+          output,
+        );
+      }
     }
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);

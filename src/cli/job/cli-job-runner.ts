@@ -95,7 +95,6 @@ export async function run_cli_job(
       await start_and_wait_for_translation(backend_services, status_reporter);
     await backend_services.files.translationGeneration.generate_files_to_directory(
       command.outputDir,
-      excluded_files,
     );
   } catch (error) {
     if (is_app_error(error))

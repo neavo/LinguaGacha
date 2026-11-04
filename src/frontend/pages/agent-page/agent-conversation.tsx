@@ -489,13 +489,8 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       controls.transport !== "ready"
     )
       return;
-    const draft = input.draft.read();
-    const preserve =
-      request.mode === "if-empty" && (draft.text.trim() !== "" || draft.attachments.length > 0);
-    if (!preserve) {
-      if (!composer_ref.current?.write_draft(request.text, request.selection)) return;
-      input.draft.write({ text: request.text, attachments: [] });
-    }
+    if (!composer_ref.current?.write_draft(request.text, request.selection)) return;
+    input.draft.write({ text: request.text, attachments: [] }); // 导航请求开始新任务，清空旧附件。
     consumed_input_request.current = request;
     clear_agent_input_request();
   }, [
@@ -614,7 +609,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
           ) : (
             <AgentTimeline
               active={active}
-              skills={skills}
               compact_available={compact_available}
               on_compact={compact_context}
               follow_reset_revision={follow_reset_revision}

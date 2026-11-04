@@ -61,7 +61,7 @@ export const de_de_app = {
     skip: "Überspringen",
     overwrite: "Überschreiben",
     replace: "Ersetzen",
-    go_to_agent: "Zu AGENT",
+    handle_with_agent: "Mit AGENT bearbeiten",
     loading: "Wird geladen",
     select_file: "Datei auswählen",
     select_folder: "Ordner auswählen",

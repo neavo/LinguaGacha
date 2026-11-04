@@ -342,7 +342,6 @@ describe("AgentConversation", () => {
     const text = "安装：[链接]";
     navigation.agent_input_request = {
       text,
-      mode: "replace",
       selection: { from: 3, to: text.length },
     };
     const send = vi.fn();
@@ -362,27 +361,9 @@ describe("AgentConversation", () => {
     expect(input.draft.read().text).toBe("用户已修改");
   });
 
-  it.each(["empty", "text", "attachment"] as const)(
-    "审校导航按实际草稿决定是否填充：%s",
-    async (kind) => {
-      const input = build_state().input;
-      const original = {
-        text: kind === "text" ? "已有正文" : "",
-        attachments: kind === "attachment" ? [uploaded_file("old")] : [],
-      };
-      input.draft.write(original);
-      navigation.agent_input_request = { text: "审校请求", mode: "if-empty" };
-      await render_page({ input });
-      expect(input.draft.read()).toEqual(
-        kind === "empty" ? { text: "审校请求", attachments: [] } : original,
-      );
-      expect(navigation.clear_agent_input_request).toHaveBeenCalledTimes(1);
-    },
-  );
-
   it("会话恢复完成后才消费导航请求", async () => {
     const input = build_state().input;
-    navigation.agent_input_request = { text: "安装请求", mode: "replace" };
+    navigation.agent_input_request = { text: "安装请求" };
     await render_page({ input, transport: "restoring" });
     expect(input.draft.read().text).toBe("");
     expect(navigation.clear_agent_input_request).not.toHaveBeenCalled();
@@ -393,7 +374,7 @@ describe("AgentConversation", () => {
   it("输入锁释放后才消费导航请求", async () => {
     const input = build_state().input;
     input.draft.write({ text: "原草稿", attachments: [] });
-    navigation.agent_input_request = { text: "安装请求", mode: "replace" };
+    navigation.agent_input_request = { text: "安装请求" };
     await render_page({ input, command: "reset" });
     expect(input.draft.read().text).toBe("原草稿");
     expect(navigation.clear_agent_input_request).not.toHaveBeenCalled();

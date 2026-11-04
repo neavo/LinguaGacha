@@ -87,7 +87,7 @@
 `sources/` 是工程原稿的只读参考：
 
 - 翻译与审校结果通过 `workspace_apply` 写入工程
-- 普通「生成译文」处理后端支持的格式，跳过通用数据。AGENT 可通过 `@lg/project` 的 `generateFiles()` 取得原生产物与通用写回输入，按 `translation` 技能组织交付
+- 普通「生成译文」处理后端支持的格式，跳过通用数据。AGENT 生成与交付译文时读取 `project-operation` 技能，通过 `@lg/project` 的 `generateFiles()` 取得暂存产物，按应用设置交付
 - 正式解析器范围外的数据由 AGENT 调查、提取和写回，按需读取 `generic-data` 技能。解析成果以 `.generic` 资产保存底稿与解析结果，随后沿用工程翻译与审校流程
 - 应用生成的还原脚本、JSON 投影和文件清单使用 `.reference` 标记，只供阅读和定位。原件也可能有同名标记，须结合资产来源和格式技能判断，不能只凭名称作为可安装文件交付
 

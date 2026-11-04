@@ -59,7 +59,7 @@ export const ja_jp_app = {
     skip: "スキップ",
     overwrite: "上書き",
     replace: "置換",
-    go_to_agent: "AGENT を開く",
+    handle_with_agent: "AGENT で処理",
     loading: "読み込み中",
     select_file: "ファイルを選択",
     select_folder: "フォルダーを選択",

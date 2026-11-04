@@ -27,9 +27,7 @@ function NavigationProbe(): JSX.Element {
         查找
       </button>
       <button onClick={navigation.clear_proofreading_lookup_intent}>清除</button>
-      <button onClick={() => navigation.navigate_to_agent({ text: "安装技能", mode: "replace" })}>
-        安装
-      </button>
+      <button onClick={() => navigation.navigate_to_agent({ text: "安装技能" })}>安装</button>
       <button onClick={navigation.clear_agent_input_request}>消费输入请求</button>
       <span>{navigation.agent_input_request?.text}</span>
     </>
@@ -47,7 +45,7 @@ describe("AppNavigationProvider", () => {
         <AppNavigationProvider
           selected_route="project-home"
           navigate_to_route={navigate_to_route}
-          agent_input_request={{ text: "审校请求", mode: "if-empty" }}
+          agent_input_request={{ text: "审校请求" }}
           clear_agent_input_request={clear_agent_input_request}
         >
           <NavigationProbe />
@@ -68,7 +66,6 @@ describe("AppNavigationProvider", () => {
     await act(async () => buttons[3]?.click());
     expect(navigate_to_route).toHaveBeenLastCalledWith("agent", {
       text: "安装技能",
-      mode: "replace",
     });
     expect(container.querySelector("span")?.textContent).toBe("审校请求");
     await act(async () => buttons[4]?.click());

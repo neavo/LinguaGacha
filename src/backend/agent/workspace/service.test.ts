@@ -1105,6 +1105,7 @@ describe("AgentWorkspaceService", () => {
         doing: write_doing,
         printPDF: expect.any(Function),
         generateFiles: expect.any(Function),
+        getOutputPaths: expect.any(Function),
         inspectSources: expect.any(Function),
         emitImage: expect.any(Function),
       },
@@ -1635,7 +1636,10 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   );
   const service = new AgentWorkspaceService({
     generation: {
-      generate_files_to_directory: async () => {
+      read_output_paths: () => {
+        throw new Error("Unexpected output paths");
+      },
+      generate_staging_files: async () => {
         throw new Error("Unexpected generation");
       },
     },

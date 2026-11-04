@@ -189,9 +189,13 @@ function join_path(directory_path: string, file_name: string): string {
 }
 
 /**
- * 按源路径生成默认 .lg 文件名，目录输入也能得到稳定名称。
+ * 有来源时沿用源名称，空工程使用本地时间生成默认 `.lg` 文件名。
  */
-function build_default_project_file_name(source_path: string): string {
+function build_default_project_file_name(source_path: string | undefined): string {
+  if (source_path === undefined) {
+    const timestamp = format_local_timestamp(new Date().toISOString())!;
+    return `lg_project_${timestamp.replace(/[-:]/gu, "").replace(" ", "_")}.lg`;
+  }
   const file_name = extract_file_name(source_path);
   const has_extension = file_name.lastIndexOf(".") > 0;
   const base_name = has_extension ? extract_stem(file_name) : file_name;
@@ -535,10 +539,7 @@ export function ProjectPage(): JSX.Element {
   async function resolve_project_output_path(
     source_path: string | undefined,
   ): Promise<string | null> {
-    const default_file_name =
-      source_path === undefined
-        ? `${t("app.metadata.app_name")}.lg`
-        : build_default_project_file_name(source_path);
+    const default_file_name = build_default_project_file_name(source_path);
     const save_mode = settings_snapshot.project_save_mode;
 
     if (save_mode === "SOURCE" && source_path !== undefined) {

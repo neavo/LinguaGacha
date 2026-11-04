@@ -143,7 +143,7 @@ Agent 复用共享 `BatchTranslationService`，由批量引擎逐批提交译文
 
 原稿准备失败不单独决定 `workspace_run` 成败，因为脚本可能只使用工程快照。`source_issues.jsonl` 向 Agent 说明当前原稿的缺口，它与 `sources` 不一致时阻止脚本执行。身份隔离遵循 [跨层不变量](ARCHITECTURE.md#身份隔离迟到结果)。
 
-`generateFiles()` 的成功不代表通用数据已写回原格式。Agent 须核对最终交付，责任边界见 [BACKEND](BACKEND.md#通用数据)。
+通用写回责任见 [BACKEND](BACKEND.md#通用数据)。暂存与交付边界见 [译文生成的失败边界](BACKEND.md#译文生成的失败边界)。
 
 文件变更与知识分批提交，使知识引用实际写入后的资产路径。
 

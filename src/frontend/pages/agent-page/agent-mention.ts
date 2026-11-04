@@ -1,10 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { AgentSkillSnapshot } from "@shared/agent";
-import {
-  find_agent_reference_ranges,
-  format_agent_reference,
-  type AgentFileCandidate,
-} from "@shared/agent-reference";
+import { format_agent_reference, type AgentFileCandidate } from "@shared/agent-reference";
 import { create_text_resolver } from "@shared/i18n";
 import { type Locale } from "@domain/app-language";
 
@@ -105,12 +101,4 @@ function format_file_size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/** 块状显示只依赖当前可引用技能，失效引用保留原文并恢复普通文本编辑。 */
-export function find_agent_mention_ranges(text: string, skills: readonly AgentSkillSnapshot[]) {
-  const names = new Set(skills.map((skill) => skill.name));
-  return find_agent_reference_ranges(text).filter(
-    ({ reference }) => reference.kind !== "skill" || names.has(reference.name),
-  );
 }

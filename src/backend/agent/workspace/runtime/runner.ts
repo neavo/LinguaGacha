@@ -1,5 +1,7 @@
 import {
   execute_generate_files_request,
+  execute_get_output_paths_request,
+  type WorkspaceGetOutputPathsPort,
   type WorkspaceGenerateFilesPort,
 } from "../../tools/generate-files";
 import type { WorkspaceRequest } from "./protocol";
@@ -37,6 +39,7 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
   Readonly<{
     scriptPath: string; // 同一执行的脚本与两路日志路径由 WorkspaceService 唯一确定
     generateFiles?: WorkspaceGenerateFilesPort;
+    getOutputPaths?: WorkspaceGetOutputPathsPort;
     printPDF?: WorkspacePrintPDFPort;
     inspectSources?: WorkspaceInspectSourcesPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
     emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
@@ -235,6 +238,12 @@ export class AgentWorkspaceRunner {
             return await execute_image_request(request, controller.signal, run_request.emitImage);
           if (request.kind === "resolve_proxy" && typeof request.url === "string")
             return await this.proxy_resolver.resolveProxy(request.url, controller.signal);
+          if (request.kind === "get_output_paths")
+            return execute_get_output_paths_request(
+              request,
+              controller.signal,
+              run_request.getOutputPaths,
+            );
           if (request.kind === "generate_files")
             return execute_generate_files_request(
               request,

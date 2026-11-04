@@ -215,7 +215,10 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
-      generation: Pick<TranslationFileGenerationService, "generate_files_to_directory">;
+      generation: Pick<
+        TranslationFileGenerationService,
+        "generate_staging_files" | "read_output_paths"
+      >;
       pdfHost?: PDFHost | undefined;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -717,6 +720,9 @@ export class AgentWorkspaceService {
                 return result.map((entry, index) => ({ ...entry, source_path: sources[index]! }));
               },
               generateFiles: create_file_generator(this.root_path, this.options.generation),
+              getOutputPaths: this.options.generation.read_output_paths.bind(
+                this.options.generation,
+              ),
               printPDF: create_pdf_printer({
                 root: this.root_path,
                 nativeFs: this.native_fs,

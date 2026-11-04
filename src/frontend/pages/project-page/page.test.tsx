@@ -760,6 +760,8 @@ describe("ProjectPage", () => {
   });
 
   it("未选择来源时创建空工程，源目录保存模式改为选择保存位置", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2012, 11, 12, 12, 12, 12));
     vi.mocked(window.desktopApp.pickProjectSavePath).mockResolvedValueOnce({
       canceled: false,
       paths: ["E:/Projects/empty.lg"],
@@ -768,7 +770,7 @@ describe("ProjectPage", () => {
     await act(async () => get_button_by_text(container!, "创建工程").click());
     await confirm_create_languages();
     expect(window.desktopApp.pickProjectSavePath).toHaveBeenCalledWith(
-      expect.stringMatching(/\.lg$/u),
+      "lg_project_20121212_121212.lg",
     );
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/session/project/create",

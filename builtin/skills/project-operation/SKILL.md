@@ -1,6 +1,6 @@
 ---
 name: project-operation
-description: 把上传文件、本机文件、文件夹或游戏加入工程，或用户要求翻译、审校尚未加入工程的文件时使用。也用于工程文件的整包替换、改名、移动、排序和删除。
+description: 文件进出工程时使用：把上传文件、本机文件、文件夹或游戏加入工程（包括要翻译、审校但尚未加入的文件），对工程文件整包替换、改名、移动、排序或删除，把工程译文生成并交付给用户。
 ---
 
 # 工程文件操作
@@ -60,3 +60,17 @@ console.log(JSON.stringify(result, null, 2));
 - 替换回执 `replaced` 提供实际条目数、页数和继承填充数。读取最新快照确认结果，再按实际资产路径更新知识。
 - `invalid_change` 提示 Godot 包集合已变化时，重新识别来源，与用户确认新的完整顺序。
 - 错误 `data.committed_sync_failed` 时，先重读工程确认已生效的文件变更，避免重复提交。
+
+## 生成与交付
+
+1. 按 `project_meta.json` 的 `files` 中的 `file_type` 加载对应的格式技能。有 `GENERIC` 时加载 `generic-data`。
+2. `counts.items_with_warnings` 大于零，且用户本次尚未决定是否审校、本对话也未完成审校时，用 `ask_user` 询问。第一项为直接生成，第二项为先审校再生成。选择审校时加载 `translation`。完成审校后继续。
+3. 提交本次交付所需的工程变更。再调用 `@lg/project` 的 `generateFiles()`。
+4. 有 `GENERIC` 时，按 `generic-data` 用 `generic_input_path` 中的写回输入还原目标格式。写回输入属于工作材料，不放入成果。
+5. 对照 `files` 核对原生产物与通用写回成果的完整集合。路径重叠时结合真实加载方式安排合并。用户要求打包时，打包核对后的成果。
+6. 确定交付目录：
+   - 用户指定了位置时，调用 `getOutputPaths(该目录)`。
+   - 否则调用 `getOutputPaths()`。`manual` 为 `true` 时用 `ask_user` 询问。第一项为留在工作区，第二项为写入返回的 `translated_path`。用户输入的自定义内容作为父目录。再调用 `getOutputPaths(该目录)`。
+   - 选择留在工作区或取消时，在工作区交付。
+7. 需要写入工作区外时，把成果写入 `translated_path`，双语对照写入 `bilingual_path`。目标已存在时，沿用已选父目录重新调用 `getOutputPaths` 取得新路径。只写入已核对的成果。
+8. 说明交付位置、格式技能要求的交付说明、验证结果和未完成范围。工作区外的位置写出绝对路径。工作区内的成果提供链接。生成或写入失败时，检查已完成的文件再补齐缺口。把失败残留和写回输入标为工作材料。

@@ -21,7 +21,7 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_toast: vi.fn(),
 }));
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
-  useAppNavigation: () => ({ selected_route: "agent", navigate_to_agent: vi.fn() }),
+  useAppNavigation: () => ({ navigate_to_agent: vi.fn() }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({
