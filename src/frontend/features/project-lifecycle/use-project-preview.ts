@@ -3,7 +3,8 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectPreview, ProjectPreviewResponse } from "@shared/project-preview";
 
 type PreviewState =
-  | { status: "idle" | "loading" | "failed" }
+  | { status: "idle" | "loading" }
+  | { status: "failed"; error: unknown }
   | { status: "ready"; preview: ProjectPreview };
 
 /** 路径变化与卸载都撤销旧请求，迟到结果不能覆盖当前路径。 */
@@ -17,9 +18,9 @@ export function useProjectPreview(path: string | null): PreviewState {
       .then(({ preview }) => {
         if (!request.signal.aborted) set_result({ path, state: { status: "ready", preview } });
       })
-      .catch(() => {
-        // 悬停读取失败时保留路径，直接打开仍由打开流程反馈错误。
-        if (!request.signal.aborted) set_result({ path, state: { status: "failed" } });
+      .catch((error: unknown) => {
+        // 消费方决定悬停静默降级或显式操作的失败反馈。
+        if (!request.signal.aborted) set_result({ path, state: { status: "failed", error } });
       });
     return () => request.abort();
   }, [path]);

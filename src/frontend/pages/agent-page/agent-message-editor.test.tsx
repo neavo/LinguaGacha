@@ -623,7 +623,7 @@ describe("AgentMessageEditor", () => {
     ]);
   });
 
-  it.each(["drop", "editor-drop", "paste", "picker"] as const)(
+  it.each(["paste", "picker"] as const)(
     "%s 将图片和文本上传，其余路径逐行插入选区并支持撤销",
     async (source) => {
       const input_state = create_input_state();
@@ -651,6 +651,40 @@ describe("AgentMessageEditor", () => {
         "notes.JSON",
       ]);
       expect(file_mocks.toast).not.toHaveBeenCalled();
+      await act(async () => {
+        undo(editor);
+      });
+      expect(editor.state.doc.toString()).toBe("前文替换后文");
+    },
+  );
+
+  it.each(["drop", "editor-drop"] as const)(
+    "%s 混合文件全部录入路径，替换选区并保留附件",
+    async (source) => {
+      const input_state = create_input_state();
+      input_state.draft.write({ text: "前文替换后文", attachments: image_attachments("existing") });
+      const view = await render_editor({ input_state });
+      const editor = get_editor(view);
+      await act(async () => editor.dispatch({ selection: EditorSelection.range(2, 4) }));
+      file_mocks.path.mockImplementation((file) =>
+        file.name === "missing.zip" ? "" : `E:/${file.name}`,
+      );
+      image_mocks.upload.mockClear();
+      await add_files(
+        view,
+        [new File([], "photo.PNG"), new File([], "book.pdf"), new File([], "missing.zip")],
+        source,
+      );
+      expect(input_state.draft.read()).toEqual({
+        text: "前文\nE:/photo.PNG\nE:/book.pdf\n后文",
+        attachments: image_attachments("existing"),
+      });
+      expect(image_mocks.upload).not.toHaveBeenCalled();
+      expect(file_mocks.toast).toHaveBeenCalledExactlyOnceWith(
+        "warning",
+        "agent_page.error.invalid_file_path",
+        { description: "missing.zip" },
+      );
       await act(async () => {
         undo(editor);
       });

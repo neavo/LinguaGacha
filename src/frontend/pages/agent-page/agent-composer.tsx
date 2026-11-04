@@ -1,5 +1,5 @@
 import type { AgentApprovalMode } from "@domain/setting";
-import type { JSX, ReactNode, Ref, RefObject } from "react";
+import type { JSX, ReactNode, Ref } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import {
@@ -24,7 +24,7 @@ export type AgentComposerHandle = AgentMessageEditorHandle;
 type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling" | "disconnected";
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
-  file_drop_target_ref?: RefObject<HTMLElement | null>;
+  on_drop_files?: (files: readonly File[]) => void;
   locked?: boolean;
   language_control: ReactNode;
   skills: readonly AgentSkillSnapshot[];
@@ -75,7 +75,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   return (
     <AgentMessageEditor
       ref={props.ref}
-      file_drop_target_ref={props.file_drop_target_ref}
+      on_drop_files={props.on_drop_files}
       read_only={editor_read_only}
       skills={props.skills}
       instructions={props.instructions}
