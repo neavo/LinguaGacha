@@ -35,7 +35,7 @@ describe("ProjectSourceFormats", () => {
     )!;
   }
 
-  it("按支持状态分两组展示，每个格式恰好出现一次并保留目录顺序", async () => {
+  it("按支持状态分两组展示，内部格式不展示，其余格式恰好出现一次并保留目录顺序", async () => {
     await act(async () =>
       root.render(
         <LocaleProvider locale="zh-CN">

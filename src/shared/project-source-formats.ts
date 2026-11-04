@@ -5,7 +5,7 @@ export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "generic",
-    support_status: "supported",
+    support_status: "internal",
     extension: ".generic",
     title_key: "project_page.formats.generic",
     description_keys: [],
@@ -180,7 +180,7 @@ export const PROJECT_SOURCE_FORMATS = [
   source_kind: "file" | "game";
   id: string;
   file_type?: GameFileType;
-  support_status: "supported" | "deprecated"; // 只表达产品支持策略，来源发现与统计仍使用完整目录
+  support_status: "supported" | "deprecated" | "internal"; // 只表达产品支持策略，来源发现与统计仍使用完整目录。`internal` 格式由 AGENT 产出，工程主页不展示
   extension: string;
   title_key: LocaleKey;
   description_keys: readonly LocaleKey[];
