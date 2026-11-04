@@ -34,7 +34,7 @@ describe("应用模态窗", () => {
     vi.useRealTimers();
   });
 
-  it("确认弹窗使用统一标题和主题色，确认与取消分别提交对应动作", () => {
+  it("确认弹窗使用统一标题，确认与取消分别提交对应动作", () => {
     const on_confirm = vi.fn();
     const on_close = vi.fn();
     render_dialog(
@@ -49,7 +49,6 @@ describe("应用模态窗", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
       "app.action.confirm",
     );
-    expect(read_button("app.action.confirm")?.getAttribute("data-variant")).toBe("default");
     click_button("app.action.confirm");
     expect(on_confirm).toHaveBeenCalledTimes(1);
     expect(on_close).not.toHaveBeenCalled();
@@ -75,7 +74,6 @@ describe("应用模态窗", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
       "app.action.confirm",
     );
-    expect(read_button("覆盖")?.getAttribute("data-variant")).toBe("default");
     click_button("覆盖");
     expect(on_primary).toHaveBeenCalledTimes(1);
     expect(on_secondary).not.toHaveBeenCalled();

@@ -27,11 +27,12 @@ export const zh_cn_project = {
   },
   create: {
     title: "创建工程",
-    subtitle: "选择源文件或直接创建空工程，创建完成后即不再需要源文件",
-    drop_title: "点击或拖拽源文件",
-    ready_status: "已选择 {COUNT} 个源文件",
     loading_toast: "正在创建工程 …",
-    unavailable: "所选内容中没有支持的源文件",
+    success: "工程创建成功 …",
+    add_files_draft: {
+      prompt: "帮我把以下文件添加到工程：",
+      placeholder: "[在此输入文件路径或者将文件拖到这里]",
+    },
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     default_presets: {
       glossary: "术语表",
@@ -65,7 +66,7 @@ export const zh_cn_project = {
   },
   formats: {
     generic: "通用数据",
-    title: "支持文件格式",
+    title: "特别优化的文件格式",
     txt: "纯文本",
     md: "Markdown",
     ass: "ASS 字幕",
@@ -86,7 +87,8 @@ export const zh_cn_project = {
     wolfrpg: "WOLFRPG 游戏文件",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ 游戏文件",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce 游戏文件",
-    deprecated_title: "即将停止支持",
+    deprecated_title: "即将停止优化的文件格式",
+    any_format_notice: "理论上支持所有文件格式的翻译，不在上述列表也没问题 …!",
     rpy: "RenPy 游戏文本",
     xlsx: "XLSX 游戏文本",
     trans_export: "Translator++ 导出游戏文本",

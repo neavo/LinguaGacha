@@ -10,11 +10,12 @@ export const ko_kr_project = {
   },
   create: {
     title: "프로젝트 만들기",
-    subtitle: "원본 파일로 또는 빈 .lg 생성. 생성 후 원본 파일은 필요 없습니다",
-    drop_title: "클릭하거나 원본 파일 놓기",
-    ready_status: "원본 파일 {COUNT}개 선택됨",
     loading_toast: "프로젝트 생성 중 …",
-    unavailable: "선택한 항목에 지원되는 원본 파일이 없습니다",
+    success: "프로젝트를 만들었습니다 …",
+    add_files_draft: {
+      prompt: "다음 파일을 프로젝트에 추가해 주세요:",
+      placeholder: "[여기에 파일 경로를 입력하거나 파일을 끌어다 놓으세요]",
+    },
     default_preset_loaded: "기본 프리셋을 자동으로 불러왔습니다: {NAMES} …",
     default_presets: {
       glossary: "용어집",
@@ -48,7 +49,7 @@ export const ko_kr_project = {
   },
   formats: {
     generic: "범용 데이터",
-    title: "지원 파일 형식",
+    title: "특별히 최적화된 파일 형식",
     txt: "일반 텍스트",
     md: "Markdown",
     ass: "ASS 자막",
@@ -69,7 +70,8 @@ export const ko_kr_project = {
     wolfrpg: "WOLFRPG 게임 파일",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ 게임 파일",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce 게임 파일",
-    deprecated_title: "지원 종료 예정",
+    deprecated_title: "최적화 종료 예정 파일 형식",
+    any_format_notice: "이론상 모든 파일 형식을 번역할 수 있으며, 위 목록에 없어도 문제없습니다 …!",
     rpy: "RenPy 게임 텍스트",
     xlsx: "XLSX 게임 텍스트",
     trans_export: "Translator++에서 내보낸 게임 텍스트",

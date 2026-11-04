@@ -10,11 +10,12 @@ export const ja_jp_project = {
   },
   create: {
     title: "プロジェクトを作成",
-    subtitle: "元ファイルから、または空の .lg を作成。作成後は元ファイル不要",
-    drop_title: "クリックまたは元ファイルをドロップ",
-    ready_status: "元ファイルを {COUNT} 個選択しました",
     loading_toast: "プロジェクトを作成中 …",
-    unavailable: "選択した内容に対応するソースファイルがありません",
+    success: "プロジェクトを作成しました …",
+    add_files_draft: {
+      prompt: "次のファイルをプロジェクトに追加してください：",
+      placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
+    },
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
     default_presets: {
       glossary: "用語集",
@@ -48,7 +49,7 @@ export const ja_jp_project = {
   },
   formats: {
     generic: "汎用データ",
-    title: "対応ファイル形式",
+    title: "特に最適化されたファイル形式",
     txt: "プレーンテキスト",
     md: "Markdown",
     ass: "ASS 字幕",
@@ -69,7 +70,9 @@ export const ja_jp_project = {
     wolfrpg: "WOLFRPG ゲームファイル",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ ゲームファイル",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce ゲームファイル",
-    deprecated_title: "サポート終了予定",
+    deprecated_title: "最適化終了予定のファイル形式",
+    any_format_notice:
+      "理論上はあらゆるファイル形式を翻訳できます。上記の一覧にない形式でも問題ありません …!",
     rpy: "RenPy ゲームテキスト",
     xlsx: "XLSX ゲームテキスト",
     trans_export: "Translator++ から出力したゲームテキスト",

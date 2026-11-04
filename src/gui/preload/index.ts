@@ -136,12 +136,6 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async launchUpdate(request: DesktopUpdateLaunchRequest): Promise<DesktopUpdateLaunchResult> {
     return ipcRenderer.invoke(IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER, request);
   },
-  async pickProjectSourceFilePath(): Promise<DesktopPathPickResult> {
-    return invoke_path_picker({ kind: "project-source-files" });
-  },
-  async pickProjectSourceDirectoryPath(): Promise<DesktopPathPickResult> {
-    return invoke_path_picker({ kind: "project-source-directory" });
-  },
   /** 显式目录与最近目录分别传给宿主，由宿主检查目录并选择起点。 */
   async pickProjectFilePath(default_path?: string): Promise<DesktopPathPickResult> {
     return invoke_path_picker({
@@ -208,11 +202,7 @@ async function invoke_path_picker(intent: DesktopPathPickIntent): Promise<Deskto
 
 /** 目录选择结果直接保存，文件选择结果取其父目录。 */
 function is_directory_pick(intent: DesktopPathPickIntent): boolean {
-  return (
-    intent.kind === "project-source-directory" ||
-    intent.kind === "directory" ||
-    intent.kind === "game-directory"
-  );
+  return intent.kind === "directory" || intent.kind === "game-directory";
 }
 
 /** 恢复最近选择目录；存储不可用时交由宿主使用默认目录。 */

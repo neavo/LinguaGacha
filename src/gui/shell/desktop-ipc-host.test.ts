@@ -286,8 +286,6 @@ describe("桌面 IPC 宿主", () => {
     const read_app_language = vi.fn(async () => "ZH");
     await register_handlers({ mainWindow: main_window, readAppLanguage: read_app_language });
     electron_mock.show_open_dialog
-      .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/novel/a.txt", "C:/novel/b.txt"] })
-      .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/novel"] })
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/project/demo.lg"] })
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/project/new.txt"] })
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/fixed"] })
@@ -295,31 +293,13 @@ describe("桌面 IPC 宿主", () => {
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/prompt.txt"] });
 
     await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "project-source-files",
-        default_directory: "D:/recent",
-      }),
-    ).resolves.toEqual({
-      canceled: false,
-      paths: ["C:/novel/a.txt", "C:/novel/b.txt"],
-    });
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "project-source-directory",
-        default_directory: null,
-      }),
-    ).resolves.toEqual({
-      canceled: false,
-      paths: ["C:/novel"],
-    });
-    await expect(
       invoke(IPC_CHANNEL_PICK_PATH, { kind: "project-file", default_directory: null }),
     ).resolves.toEqual({
       canceled: false,
       paths: ["C:/project/demo.lg"],
     });
     await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, { kind: "workbench-files", default_directory: null }),
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "workbench-files", default_directory: "D:/recent" }),
     ).resolves.toEqual({
       canceled: false,
       paths: ["C:/project/new.txt"],
@@ -348,24 +328,18 @@ describe("桌面 IPC 宿主", () => {
     });
 
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(1, main_window, {
-      defaultPath: "D:/recent",
-      properties: ["openFile", "multiSelections"],
-    });
-    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(2, main_window, {
-      properties: ["openDirectory"],
-    });
-    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(3, main_window, {
       properties: ["openFile"],
       filters: [{ name: expect.stringContaining("(*.lg)"), extensions: ["lg"] }],
     });
-    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(4, main_window, {
+    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(2, main_window, {
+      defaultPath: "D:/recent",
       properties: ["openFile", "multiSelections"],
     });
-    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(5, main_window, {
+    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(3, main_window, {
       defaultPath: "C:/fixed",
       properties: ["openDirectory", "createDirectory"],
     });
-    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(6, main_window, {
+    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(4, main_window, {
       properties: ["openFile"],
       filters: [
         { name: expect.any(String), extensions: ["json", "xlsx"] },
@@ -373,7 +347,7 @@ describe("桌面 IPC 宿主", () => {
         { name: expect.any(String), extensions: ["xlsx"] },
       ],
     });
-    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(7, main_window, {
+    expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(5, main_window, {
       properties: ["openFile"],
       filters: [{ name: expect.any(String), extensions: ["txt"] }],
     });
@@ -425,7 +399,7 @@ describe("桌面 IPC 宿主", () => {
 
     await expect(
       invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "project-source-directory",
+        kind: "game-directory",
         default_directory: null,
       }),
     ).resolves.toEqual({

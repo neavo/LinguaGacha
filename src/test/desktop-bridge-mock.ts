@@ -44,8 +44,6 @@ export function create_desktop_bridge_api_mock(
       reason: "missing_windows_zip_url",
     }),
     launchUpdate: async () => ({ status: "launched" }),
-    pickProjectSourceFilePath: async () => ({ canceled: true, paths: [] }),
-    pickProjectSourceDirectoryPath: async () => ({ canceled: true, paths: [] }),
     pickProjectFilePath: async () => ({ canceled: true, paths: [] }),
     pickProjectSavePath: async () => ({ canceled: true, paths: [] }),
     pickWorkbenchFilePath: async () => ({ canceled: true, paths: [] }),

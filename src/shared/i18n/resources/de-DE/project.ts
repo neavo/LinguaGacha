@@ -11,11 +11,12 @@ export const de_de_project = {
   },
   create: {
     title: "Projekt erstellen",
-    subtitle: "Quelle wählen oder leeres eigenständiges .lg-Projekt erstellen",
-    drop_title: "Klicken oder Quelldatei hierher ziehen",
-    ready_status: "{COUNT} Quelldateien ausgewählt",
     loading_toast: "Projekt wird erstellt …",
-    unavailable: "Die Auswahl enthält keine unterstützten Quelldateien",
+    success: "Projekt erstellt …",
+    add_files_draft: {
+      prompt: "Bitte füge die folgenden Dateien zum Projekt hinzu:",
+      placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
+    },
     default_preset_loaded: "Standard-Voreinstellungen geladen: {NAMES} …",
     default_presets: {
       glossary: "Glossar",
@@ -50,7 +51,7 @@ export const de_de_project = {
   },
   formats: {
     generic: "Generische Daten",
-    title: "Unterstützte Dateiformate",
+    title: "Speziell optimierte Dateiformate",
     txt: "Nur Text",
     md: "Markdown",
     ass: "ASS-Untertitel",
@@ -71,7 +72,9 @@ export const de_de_project = {
     wolfrpg: "WOLFRPG-Spieldateien",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ Spieldatei",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce Spieldatei",
-    deprecated_title: "Unterstützung endet bald",
+    deprecated_title: "Dateiformate, deren Optimierung bald endet",
+    any_format_notice:
+      "Theoretisch lassen sich Dateien in jedem Format übersetzen, auch wenn sie oben nicht aufgeführt sind …!",
     rpy: "RenPy-Spieltext",
     xlsx: "XLSX-Spieltext",
     trans_export: "Translator++ Spieltext",

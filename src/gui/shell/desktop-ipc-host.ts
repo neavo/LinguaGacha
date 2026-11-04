@@ -196,11 +196,6 @@ async function pick_path(
 ): Promise<DesktopPathPickResult> {
   const main_window = options.getMainWindow();
   switch (request.kind) {
-    case "project-source-files":
-      return pick_open_path(main_window, request.default_directory, {
-        properties: ["openFile", "multiSelections"],
-      });
-    case "project-source-directory":
     case "game-directory":
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openDirectory"],

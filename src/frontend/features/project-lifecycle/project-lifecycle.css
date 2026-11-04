@@ -1,17 +1,10 @@
 .project-lifecycle {
   --project-lifecycle-muted: var(--muted-foreground);
   --project-lifecycle-subtitle: var(--muted-foreground);
-  --project-lifecycle-source: var(--primary);
+  --project-lifecycle-notice: color-mix(in srgb, var(--ui-success) 60%, var(--foreground));
 }
 
-.project-lifecycle__formats {
-  display: flex;
-  flex-direction: column;
-  /* 分组保持内容高度，空间不足时由外层滚动，避免第一组标签压到第二组标题上。 */
-  overflow-y: auto;
-  gap: 18px;
-}
-
+/* 分组保持内容高度，空间不足时由弹窗正文滚动，避免第一组标签压到第二组标题上。 */
 .project-lifecycle__format-group {
   display: flex;
   flex-shrink: 0;
@@ -19,8 +12,24 @@
   gap: 12px;
 }
 
-.project-lifecycle__selection--source {
-  --path-selection-card-tone: var(--project-lifecycle-source);
+/* 与 Markdown 提示块同一视觉语言：左侧细线与同色浅底。 */
+.project-lifecycle__notice {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  border-left: 1px solid var(--project-lifecycle-notice);
+  background: color-mix(in srgb, var(--project-lifecycle-notice) 6%, transparent);
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.project-lifecycle__notice svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 1.5em; /* 图标与首行文字居中对齐 */
+  color: var(--project-lifecycle-notice);
 }
 
 .project-lifecycle__section-title {
