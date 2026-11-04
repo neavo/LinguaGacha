@@ -2,7 +2,6 @@ import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { create_text_resolver } from "@shared/i18n";
 import { resolve_app_locale } from "@domain/app-language";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { RouteId } from "@frontend/app/navigation/types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
   ProjectChangeApplyResult,
@@ -158,7 +157,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   });
   const [project_session_status, set_project_session_status] =
     useState<ProjectSessionStatus>("idle");
-  const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null);
   const [is_app_language_updating, set_is_app_language_updating] = useState(false);
   const refresh_scheduler_ref = useRef<DesktopRefreshScheduler | null>(null); // 本地操作和项目刷新通过 ref 先冲刷 SSE pending 队列
   const applied_project_event_ids_ref = useRef<Set<string>>(new Set());
@@ -731,10 +729,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       settings_snapshot,
       project_snapshot,
       project_session_status,
-      pending_target_route,
       is_app_language_updating,
       set_project_session_status,
-      set_pending_target_route,
       apply_settings_snapshot,
       refresh_project_snapshot,
       refresh_project_state,
@@ -750,7 +746,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     settings_snapshot,
     project_snapshot,
     project_session_status,
-    pending_target_route,
     is_app_language_updating,
     apply_settings_snapshot,
     commit_project_write,

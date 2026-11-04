@@ -13,7 +13,7 @@ type AppTitlebarProps = {
   title: string;
 };
 
-/** 标题栏共享侧栏切换入口，并用同一动作文案提供提示和无障碍名称。 */
+/** 标题栏共享侧栏切换入口。启动时展示操作提示，后续开关由 `Tooltip` 管理。 */
 export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
   const { t } = useI18n();
   const { state, toggleSidebar } = useSidebar();
@@ -41,7 +41,7 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
       <div className="topbar__safe-area topbar__safe-area--start" aria-hidden="true" />
       <div className="topbar__content">
         <div className="topbar__left">
-          <Tooltip>
+          <Tooltip defaultOpen>
             <TooltipTrigger
               render={
                 <button

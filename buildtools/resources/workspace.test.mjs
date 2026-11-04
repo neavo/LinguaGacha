@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { execa } from "execa";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +7,7 @@ import { expect, it } from "vitest";
 import { deploy_workspace_dependencies } from "./workspace.mjs";
 const npm = path.resolve("node_modules/npm/bin/npm-cli.js");
 const runNpm = (cwd, args) =>
-  execFileSync(process.execPath, [npm, ...args], { cwd, windowsHide: true });
+  execa(process.execPath, [npm, ...args], { cwd, windowsHide: true }).then(({ stdout }) => stdout);
 
 // 两次 npm 查询及独立 Node 导入共享全量测试的进程启动预算。
 it("独立部署后端依赖并保留嵌套版本、运行资源和其它生成步骤的产物", async () => {

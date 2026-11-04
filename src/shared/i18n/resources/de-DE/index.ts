@@ -17,7 +17,7 @@ import { de_de_post_translation_replacement_page } from "./post-translation-repl
 import { de_de_pre_translation_replacement_page } from "./pre-translation-replacement-page";
 import { de_de_preset_editor } from "./preset-editor";
 import { de_de_proofreading_page } from "./proofreading-page";
-import { de_de_project_page } from "./project-page";
+import { de_de_project } from "./project";
 import { de_de_quality_rule_editor } from "./quality-rule-editor";
 import { de_de_task_progress } from "./task-progress";
 import { de_de_text_preserve_page } from "./text-preserve-page";
@@ -45,7 +45,7 @@ export const de_de_messages = {
   pre_translation_replacement_page: de_de_pre_translation_replacement_page,
   preset_editor: de_de_preset_editor,
   proofreading_page: de_de_proofreading_page,
-  project_page: de_de_project_page,
+  project: de_de_project,
   quality_rule_editor: de_de_quality_rule_editor,
   task_progress: de_de_task_progress,
   text_preserve_page: de_de_text_preserve_page,

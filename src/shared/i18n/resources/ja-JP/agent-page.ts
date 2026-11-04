@@ -1,10 +1,12 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_agent_page = {
+  project_required: "まずプロジェクトファイルを作成または開いてください …",
   document: {
     conversation: "会話",
     view: "表示",
     save_as: "名前を付けて保存",
+    open_folder: "ファイルの場所を開く",
   },
   batch_translation_model: {
     follow: "同じモデル",
@@ -119,6 +121,7 @@ export const ja_jp_agent_page = {
     applying: "プロジェクトの変更を適用中です。完了するまで停止できません",
     new_task: "新しいタスク",
     add_file: "ファイルを追加",
+    common_instructions: "よく使う指示",
     continue: "続ける",
     edit: "編集",
     copy: "コピー",
@@ -160,6 +163,7 @@ export const ja_jp_agent_page = {
   upload: { uploading: "アップロード中", failed: "アップロードに失敗" },
   file_saved: "ファイルを保存しました",
   error: {
+    invalid_file_path: "無効なファイルパス …",
     decision: "回答を送信できませんでした。再試行してください …",
     restore: "セッションを復元できませんでした。再試行してください …",
     connection: "接続が切れました。再接続を待っています …",

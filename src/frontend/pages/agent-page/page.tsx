@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type JSX } from "react";
 import { FileText, Image, MessageSquareText, X } from "lucide-react";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useAgentControls, useAgentChatId } from "@frontend/app/session/agent/agent-chat-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -15,7 +14,7 @@ import "./agent-documents.css";
 const CONVERSATION_TAB = "conversation";
 
 /** 对话身份决定全部页内资源的生命周期。 */
-export function AgentPage(_props: ScreenComponentProps): JSX.Element {
+export function AgentPage(): JSX.Element {
   const chat_id = useAgentChatId();
   return <AgentPages key={chat_id ?? "restoring"} chat_id={chat_id ?? ""} />;
 }
@@ -86,24 +85,17 @@ function AgentPages({ chat_id }: { chat_id: string }): JSX.Element {
               </TooltipTrigger>
               <TooltipContent side="bottom">{decodeURIComponent(document.path)}</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    className="agent-pages__close"
-                    aria-label={t("app.action.close")}
-                    onClick={() => {
-                      state.close(document.path);
-                      requestAnimationFrame(focus_current);
-                    }}
-                  />
-                }
-              >
-                <X aria-hidden="true" />
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t("app.action.close")}</TooltipContent>
-            </Tooltip>
+            <button
+              type="button"
+              className="agent-pages__close"
+              aria-label={t("app.action.close")}
+              onClick={() => {
+                state.close(document.path);
+                requestAnimationFrame(focus_current);
+              }}
+            >
+              <X aria-hidden="true" />
+            </button>
           </span>
         ))}
       </TabsList>

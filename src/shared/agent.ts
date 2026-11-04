@@ -1,6 +1,8 @@
 import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "../domain/app-language";
+export const AGENT_INACTIVE_CHAT_ID = "inactive"; // 无工程时的快照身份。
+
 /** 工程知识和工作区预览共用 UTF-8 文档字节上限。 */
 export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -235,7 +237,7 @@ export type AgentUsageSnapshot = JsonRecord & {
 
 /** GET `snapshot` 与 `snapshot_seed` 共用的完整会话形状。 */
 export type AgentChatSnapshot = JsonRecord & {
-  chatId: string; // 对话重置与工程切换后改变，草稿据此清理旧文件引用。
+  chatId: string; // 对话重置与工程切换后改变，用于识别草稿所属对话。
   revision: number;
   state: AgentChatStatus;
   pendingDecision: AgentPendingDecision | null;

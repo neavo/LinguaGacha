@@ -16,7 +16,7 @@ description: 翻译、审校或分析 RPGMAKER 游戏（XP、VX、VX Ace、MV、
 
 `sources/<file_path>/game_files.reference.txt` 每行列出一个游戏目录中的文件路径。路径相对游戏根目录，包含图片、音频等素材。导入时读取失败的文件仍列在清单中。较早导入的工程没有该文件。
 
-附加原稿的扫描范围：MV、MZ 为数据根目录，路径保留 `www/` 前缀。XP、VX、VX Ace 为游戏根目录。
+调查其他数据时可参考的范围：MV、MZ 为数据根目录，路径保留 `www/` 前缀。XP、VX、VX Ace 为游戏根目录。
 
 MV、MZ 的插件参数、`note` 和脚本字符串中的嵌套 JSON 按叶子拆成多个条目。默认翻译字段和事件脚本块即使形似 JSON，也整段作为一个条目。
 

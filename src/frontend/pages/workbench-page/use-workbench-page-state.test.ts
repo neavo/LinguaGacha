@@ -1,3 +1,7 @@
+const lifecycle = vi.hoisted(() => ({ can_close: true, request_close: vi.fn() }));
+vi.mock("@frontend/app/session/project-lifecycle/project-lifecycle-context", () => ({
+  useProjectLifecycle: () => lifecycle,
+}));
 import { type JSX, act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -375,6 +379,27 @@ describe("useWorkbenchPageState", () => {
     await flush_async_updates();
   }
 
+  it("关闭入口使用公共流程，文件写入期间锁定", async () => {
+    lifecycle.can_close = true;
+    lifecycle.request_close.mockClear();
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: { getState: () => create_project_store_state({}) },
+    };
+    await render_hook();
+    act(() => latest_state?.request_close_project());
+    expect(lifecycle.request_close).toHaveBeenCalledOnce();
+    const pending = Promise.withResolvers<ReturnType<typeof create_project_write_result>>();
+    enqueue_api_response("/api/workbench/file/reset", () => pending.promise);
+    act(() => latest_state?.request_reset_file("old.txt"));
+    await act(async () => {
+      void latest_state?.confirm_dialog();
+    });
+    expect(latest_state?.can_close_project).toBe(false);
+    await act(async () => pending.resolve(create_project_write_result()));
+    expect(latest_state?.can_close_project).toBe(true);
+  });
+
   it("最后一次信号与工作台无关时仍会在首次挂载全量刷新", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -407,7 +432,7 @@ describe("useWorkbenchPageState", () => {
     expect(latest_state?.entries.map((entry) => entry.rel_path)).toEqual(["chapter01.txt"]);
   });
 
-  it("全选全部文件时关闭删除权限且删除入口保持安静", async () => {
+  it("全选全部文件时可以删除全部文件", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -441,14 +466,16 @@ describe("useWorkbenchPageState", () => {
       });
     });
 
-    expect(latest_state?.can_delete_selected_files).toBe(false);
+    expect(latest_state?.can_delete_selected_files).toBe(true);
 
     act(() => {
       latest_state?.request_delete_selected_files();
     });
 
-    expect(latest_state?.dialog_state.kind).toBeNull();
-    expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
+    expect(latest_state?.dialog_state).toMatchObject({
+      kind: "delete-file",
+      target_rel_paths: ["chapter01.txt", "chapter02.txt"],
+    });
   });
 
   it("选择器添加文件会委托到同一条按路径解析流程", async () => {
@@ -526,6 +553,37 @@ describe("useWorkbenchPageState", () => {
       "success",
       "app.feedback.operation_success",
     );
+  });
+
+  it("文件改名失败保留弹窗，重试提交原路径与新路径", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: { getState: () => create_project_store_state({}) },
+    };
+    const error = new Error("Target file was not found in the current workbench.");
+    enqueue_api_response("/api/workbench/file/rename", () => {
+      throw error;
+    });
+    enqueue_api_response("/api/workbench/file/rename", create_project_write_result());
+    await render_hook();
+    act(() => latest_state?.request_rename_file("old.txt"));
+    await act(async () => {
+      await latest_state?.confirm_rename_file("new.txt");
+    });
+    expect(latest_state?.dialog_state).toMatchObject({ kind: "rename-file", submitting: false });
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.operation_failed",
+      error,
+    );
+    await act(async () => {
+      await latest_state?.confirm_rename_file("new.txt");
+    });
+    expect(api_fetch).toHaveBeenCalledWith("/api/workbench/file/rename", {
+      rel_path: "old.txt",
+      new_rel_path: "new.txt",
+      expected_section_revisions: { files: 1, items: 2 },
+    });
+    expect(latest_state?.dialog_state.kind).toBeNull();
   });
 
   it("选择不继承会直接提交 import-files", async () => {

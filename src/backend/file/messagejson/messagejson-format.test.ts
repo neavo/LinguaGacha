@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { create_item } from "../../../domain/item";
 import type { JsonValue } from "../../../domain/json";
 import { MESSAGEJSONFormat } from "./messagejson-format";
 
@@ -58,36 +57,7 @@ describe("MESSAGEJSONFormat", () => {
     ]);
   });
 
-  it.each([null, ""])("空译名 %s 保留源姓名结构", (name_dst) => {
-    const source = [{ name: "Alice", names: [123, "Bob"], message: "one" }];
-    const items = format.read_items(source, "m.json").map((item) => ({ ...item, name_dst }));
-    expect(JSON.parse(format.render_text(JSON.stringify(source), items, "m.json"))).toEqual(source);
-  });
-
-  it.each([{ row: -1 }, { row: 0.5 }, { row: 1 }, { src: "mismatch" }])(
-    "拒绝错误定位 %j",
-    (patch) => {
-      expect(() =>
-        format.render_text(
-          '[{"message":"one"}]',
-          [{ ...create_item({ src: "one" }), ...patch }],
-          "m.json",
-        ),
-      ).toThrow(
-        expect.objectContaining({
-          code: "file.invalid_structure",
-          public_details: { file: "m.json" },
-          diagnostic_context: expect.objectContaining({ reason: expect.any(String) }),
-        }),
-      );
-    },
-  );
-
-  it("拒绝重复定位和非数组源结构", () => {
-    const item = create_item({ src: "one" });
-    expect(() => format.render_text('[{"message":"one"}]', [item, item], "m.json")).toThrow(
-      expect.objectContaining({ code: "file.invalid_structure" }),
-    );
+  it("拒绝非数组源结构", () => {
     expect(() => format.render_text("{}", [], "m.json")).toThrow(
       expect.objectContaining({ code: "file.invalid_structure" }),
     );

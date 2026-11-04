@@ -5,10 +5,10 @@ description: 翻译、补译、重译工程内文本或文档，或检查、审�
 
 ## 加载技能
 
-执行前依次加载以下技能，已加载的跳过：
+按任务加载以下技能，已加载的跳过：
 
-1. 写作技能：`writing-guide` 和所有以 `writing-guide-` 开头的技能。
-2. 格式技能：按 `project_meta.files` 中目标文件的 `file_type`，加载 `<available_skills>` 中描述该格式的技能。
+1. 写作技能：形成或修订译文前，加载 `writing-guide` 和所有以 `writing-guide-` 开头的技能。
+2. 格式技能：按 `project_meta.json` 的 `files` 中目标文件的 `file_type`，加载 `<available_skills>` 中描述该格式的技能。
 
 目标涉及多种格式时，加载全部对应的格式技能。没有对应技能的格式跳过。
 

@@ -10,6 +10,7 @@ export type TranslationInheritanceItem = Pick<
 export type TranslationInheritanceResult = {
   filled: number; // 原本未完成、本次填充的条目数。
   replaced: number; // 原本已完成、结果实际改变的条目数。
+  contested: number[][]; // `next_items` 的零基索引，按实际票选且有多种结果的原文身份分组。
 };
 
 type ContextEntry = {
@@ -21,6 +22,7 @@ type CompletedEntry = ContextEntry & {
   result_id: number; // `dst` 与可见 `name_dst` 的本次编号。
 };
 type Vote = { item: TranslationInheritanceItem; count: number }; // 首次出现的完整结果及票数。
+type TextCandidate = { item: TranslationInheritanceItem; contested: boolean }; // 争议取决于结果种类，与票差无关。
 
 // 上下文一致说明是同一句话，被规则或语言过滤的条目也接收旧版译文。
 const CONTEXT_INHERIT_STATUSES: ReadonlySet<ItemStatus> = new Set([
@@ -60,25 +62,37 @@ export function inherit_completed_translations(
   );
   const context_candidates = build_context_candidates(completed);
   const text_candidates = build_text_candidates(completed);
-  const result: TranslationInheritanceResult = { filled: 0, replaced: 0 };
-  for (const { item, source_id, context_key } of read_context_entries(next_items, read_source_id)) {
+  const contested = new Map<number, number[]>();
+  let filled = 0;
+  let replaced = 0;
+  for (const [index, { item, source_id, context_key }] of read_context_entries(
+    next_items,
+    read_source_id,
+  ).entries()) {
     const replacing = item.status === "PROCESSED";
     // 上下文冲突或未命中时，普通条目继续票选，被过滤条目与已完成条目保持原状态。
-    const candidate =
-      (CONTEXT_INHERIT_STATUSES.has(item.status) || (replacing && mode === "overwrite")
+    let candidate =
+      CONTEXT_INHERIT_STATUSES.has(item.status) || (replacing && mode === "overwrite")
         ? context_candidates.get(context_key)?.item
-        : undefined) ??
-      (TEXT_INHERIT_STATUSES.has(item.status) ? text_candidates.get(source_id) : undefined);
+        : undefined;
+    if (candidate === undefined && TEXT_INHERIT_STATUSES.has(item.status)) {
+      const text_candidate = text_candidates.get(source_id);
+      candidate = text_candidate?.item;
+      if (text_candidate?.contested) {
+        const group = contested.get(source_id) ?? [];
+        group.push(index);
+        contested.set(source_id, group);
+      }
+    }
     if (candidate === undefined) continue;
-    if (!replacing) result.filled += 1;
-    else if (item.dst !== candidate.dst || item.name_dst !== candidate.name_dst)
-      result.replaced += 1;
+    if (!replacing) filled += 1;
+    else if (item.dst !== candidate.dst || item.name_dst !== candidate.name_dst) replaced += 1;
     else continue; // 覆盖结果相同，条目保持原样。
     item.dst = candidate.dst;
     item.name_dst = candidate.name_dst;
     item.status = "PROCESSED";
   }
-  return result;
+  return { filled, replaced, contested: [...contested.values()] };
 }
 
 /** 每个上下文保留最早候选，出现不同结果后永久记为冲突。 */
@@ -96,9 +110,7 @@ function build_context_candidates(
 }
 
 /** 按旧条目全局顺序计票，票数严格更高才替换胜者，同票保留最早结果。 */
-function build_text_candidates(
-  completed: readonly CompletedEntry[],
-): Map<number, TranslationInheritanceItem> {
+function build_text_candidates(completed: readonly CompletedEntry[]): Map<number, TextCandidate> {
   const groups = new Map<number, Map<number, Vote>>();
   for (const { item, source_id, result_id } of completed) {
     const results = groups.get(source_id) ?? new Map<number, Vote>();
@@ -110,9 +122,13 @@ function build_text_candidates(
   return new Map(
     [...groups].map(([source_id, results]) => [
       source_id,
-      // `Map` 保留首次插入顺序，严格大于才替换使同票沿用最早结果。
-      [...results.values()].reduce((winner, vote) => (vote.count > winner.count ? vote : winner))
-        .item,
+      {
+        // `Map` 保留首次插入顺序，严格大于才替换使同票沿用最早结果。
+        item: [...results.values()].reduce((winner, vote) =>
+          vote.count > winner.count ? vote : winner,
+        ).item,
+        contested: results.size > 1,
+      },
     ]),
   );
 }

@@ -179,7 +179,7 @@ export const AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS = {
   ),
 };
 
-/** project_meta.json 提供语言、数量、文件顺序、知识索引和附加原稿的处理归属。 */
+/** project_meta.json 提供语言、数量、文件顺序、知识索引。 */
 export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
   {
     knowledge: Type.Array(
@@ -192,9 +192,6 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
         { additionalProperties: false },
       ),
     ),
-    additional_files: Type.Record(Type.String(), Type.Array(Type.String()), {
-      description: "资产路径到附加原稿成员路径的映射，附加原稿不产生条目，按系统指令制作补丁",
-    }),
     source_language: Type.String(),
     target_language: Type.String(),
     counts: Type.Object(
@@ -280,42 +277,53 @@ const FILE_TARGET_SCHEMA = Type.String({
   description: "目标资产，从 `project_meta.json` 的 `files` 复制。",
 });
 
-/** 文件变更独立于内容意图，至少提供改名或排序。 */
-export const AGENT_WORKSPACE_FILE_SCHEMAS = Object.freeze({
-  creates: Type.Object(
-    {
-      source_path: Type.String({
-        minLength: 1,
-        description:
-          "待加入的文件或文件夹。使用本机绝对路径，或以 `uploads/`、`work/` 开头、相对工作区根目录的路径。",
-      }),
-      godot_pack_orders: Type.Optional(
-        Type.Array(
-          Type.Object(
-            {
-              game_root: Type.String({
-                minLength: 1,
-                description: "从 `inspectSources` 结果的 `godot_packs` 复制。",
-              }),
-              ordered_pcks: Type.Array(Type.String({ minLength: 1 }), {
-                description:
-                  "用户确认的完整外部包顺序，包含该游戏当前的全部 `external_pcks`，每个包名一次。后面的包覆盖前面包中的同名资源。",
-              }),
-            },
-            { additionalProperties: false },
-          ),
-          { description: "Godot 游戏有至少两个外部包时，提供用户确认的覆盖顺序。" },
+/** 新增与整包替换共用来源的识别参数。 */
+const FILE_CREATE_SCHEMA = Type.Object(
+  {
+    source_path: Type.String({
+      minLength: 1,
+      description:
+        "待加入的文件或文件夹。使用本机绝对路径，或以 `uploads/`、`work/` 开头、相对工作区根目录的路径。",
+    }),
+    godot_pack_orders: Type.Optional(
+      Type.Array(
+        Type.Object(
+          {
+            game_root: Type.String({
+              minLength: 1,
+              description: "从 `inspectSources` 结果的 `godot_packs` 复制。",
+            }),
+            ordered_pcks: Type.Array(Type.String({ minLength: 1 }), {
+              description:
+                "用户确认的完整外部包顺序，包含该游戏当前的全部 `external_pcks`，每个包名一次。后面的包覆盖前面包中的同名资源。",
+            }),
+          },
+          { additionalProperties: false },
         ),
+        { description: "Godot 游戏有至少两个外部包时，提供用户确认的覆盖顺序。" },
       ),
-    },
-    {
-      additionalProperties: false,
-      description: "只指定来源，资产名称由宿主在提交时分配。",
-    },
-  ),
+    ),
+  },
+  {
+    additionalProperties: false,
+    description: "只指定来源，资产名称由宿主在提交时分配。",
+  },
+);
+
+/** 文件变更独立提交，更新可替换原稿、改名或排序。 */
+export const AGENT_WORKSPACE_FILE_SCHEMAS = Object.freeze({
+  creates: FILE_CREATE_SCHEMA,
   updates: Type.Object(
     {
       file_path: FILE_TARGET_SCHEMA,
+      godot_pack_orders: FILE_CREATE_SCHEMA.properties.godot_pack_orders,
+      source_path: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description:
+            "整包替换来源。支持本机绝对路径、`uploads/` 或 `work/` 路径。重新解析并继承译文，不能与改名同时提交。",
+        }),
+      ),
       new_file_path: Type.Optional(
         Type.String({
           minLength: 1,
@@ -327,7 +335,7 @@ export const AGENT_WORKSPACE_FILE_SCHEMAS = Object.freeze({
     {
       additionalProperties: false,
       minProperties: 2,
-      description: "提供目标资产和至少一个 `new_file_path` 或 `sort`。",
+      description: "提供目标资产和至少一个 `source_path`、`new_file_path` 或 `sort`。",
     },
   ),
   deletes: Type.Object({ file_path: FILE_TARGET_SCHEMA }, { additionalProperties: false }),

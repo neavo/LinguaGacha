@@ -10,17 +10,16 @@ export const de_de_workbench_page = {
     file_name: "Dateiname",
     progress: "Fortschritt",
     agent: "AGENT",
+    agent_writeback: "AGENT wird zum Zurückschreiben ins Originalformat benötigt",
     agent_only: "Übersetzung nur mit AGENT möglich",
     agent_recommended: "Wir empfehlen AGENT für die Übersetzung",
   },
   feedback: {
     no_valid_file: "Keine gültigen Dateien können hinzugefügt werden",
-    close_project_failed:
-      "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut …",
   },
   action: {
     add_file: "Hinzufügen",
-    close_project: "Schließen",
+    rename: "Umbenennen",
     reset: "Dateidaten zurücksetzen",
     translation_task: "Übersetzung",
     start_translation: "Übersetzung starten",
@@ -37,6 +36,11 @@ export const de_de_workbench_page = {
       fill: "Füllen",
       do_not_fill: "Nicht füllen",
     },
+    rename: {
+      exists: "Eine Datei oder ein Ordner mit diesem Namen existiert bereits",
+      invalid_name:
+        'Der Name darf nicht leer sein, kein \\ / : * ? " < > | enthalten und nicht mit einem Punkt enden',
+    },
     reset: {
       description:
         "Ausgewählte Datei und alle zugehörigen Übersetzungseinträge wirklich zurücksetzen …?",
@@ -44,9 +48,6 @@ export const de_de_workbench_page = {
     delete: {
       description:
         "Ausgewählte Datei und alle zugehörigen Übersetzungseinträge wirklich löschen …?",
-    },
-    close_project: {
-      description: "Aktuelles Projekt wirklich schließen …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

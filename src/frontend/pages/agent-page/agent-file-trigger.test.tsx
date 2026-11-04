@@ -33,11 +33,11 @@ afterEach(async () => {
   container.remove();
 });
 /** 使用真实菜单与点击入口，活动状态由所在标签提供。 */
-async function render(active = true) {
+async function render(active = true, path = file.path) {
   await act(async () =>
     root.render(
       <AgentFileContext value={{ open_file: mocks.open, chat_id: "session", active }}>
-        <AgentFileTrigger path={file.path} render={<button />}>
+        <AgentFileTrigger path={path} render={<button />}>
           报告
         </AgentFileTrigger>
       </AgentFileContext>,
@@ -78,6 +78,25 @@ it.each(["markdown", null] as const)("文件能力 %s 同时决定默认动作�
       path: file.path,
     });
 });
+it.each([
+  ["file:///E:/report.bin", "agent_page.document.open_folder"],
+  ["work/report.bin", "agent_page.document.save_as"],
+])("菜单按后端规范身份 %s 选择文案，复用同一激活入口", async (path, label) => {
+  const href = "file:///E:/report.bin";
+  mocks.api.mockImplementation(async (route) =>
+    route.endsWith("/file") ? { ...file, path, preview: null } : { status: "opened" },
+  );
+  const trigger = await render(true, href);
+  await act(async () =>
+    trigger.dispatchEvent(new MouseEvent("contextmenu", { button: 2, bubbles: true })),
+  );
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  expect(items.map((item) => item.textContent)).toEqual([label]);
+  await act(async () => items[0]!.click());
+  expect(mocks.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", { path: href });
+  expect(mocks.open).not.toHaveBeenCalled();
+});
+
 it("保存确认期间合并点击，取消无提示，失败仅报告一次", async () => {
   let finish!: (value: { status: string }) => void;
   mocks.api.mockImplementation(async (route) =>

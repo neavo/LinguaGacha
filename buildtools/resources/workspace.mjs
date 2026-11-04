@@ -1,8 +1,11 @@
-import { cp, mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import path from "node:path";
 import { build } from "vite";
 import { keep_workspace_package_path } from "./package-files.mjs";
+
+// 这些目录只属于应用代码构建，依赖准备与开发缓存均排除它们。
+export const WORKSPACE_CODE_DIRECTORIES = ["runtime", "chunks", "node_modules/@lg"];
 
 // 应用 SDK 随应用发布，公开入口与私有启动入口共用一个构建图。
 const WORKSPACE_PACKAGES = [
@@ -30,18 +33,9 @@ const WORKSPACE_PACKAGES = [
 ];
 
 /** 所有应用入口一次构建，共同依赖生成共享 chunk，MuPDF 保留单一外部安装。 */
-export async function build_workspace_resources({ root, output, manifest, runNpm }) {
-  await deploy_workspace_dependencies({
-    root,
-    output,
-    names: manifest.workspaceRuntimePackages.backend,
-    runNpm,
-  });
-  await mkdir(path.join(output, "python"), { recursive: true });
-  await cp(
-    path.join(root, "node_modules/tree-sitter-python/tree-sitter-python.wasm"),
-    path.join(output, "python/tree-sitter-python.wasm"),
-  );
+export async function build_workspace_resources({ root, output, manifest }) {
+  for (const directory of WORKSPACE_CODE_DIRECTORIES)
+    await rm(path.join(output, directory), { recursive: true, force: true });
   const entries = {
     "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
     "runtime/prepare": "src/backend/agent/node/prepare.ts",
@@ -96,7 +90,7 @@ export async function deploy_workspace_dependencies({ root, output, names, runNp
   const modules = path.join(root, "node_modules");
   const selected = `:root > :is(${names.map((name) => `[name=${JSON.stringify(name)}]`).join(",")})`;
   const packages = JSON.parse(
-    runNpm(root, ["query", `${selected}, ${selected} *`, "--json"]).toString(),
+    (await runNpm(root, ["query", `${selected}, ${selected} *`, "--json"])).toString(),
   );
   const dependencies = Object.fromEntries(
     names.map((name) => {

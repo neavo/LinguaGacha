@@ -2,9 +2,33 @@ import { complete_game_preparation } from "./preparation";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
-import { collect_game_source_files } from "./source-files";
+import { collect_game_source_files, collect_game_file_list } from "./source-files";
+
+it("文件清单合并暂存身份与排除结果，收集不读取额外字节", () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-source-list-"));
+  const native = new NativeFs();
+  for (const name of [
+    "data/Text.json",
+    "notes.txt",
+    "img/actor.png",
+    "removed.bin",
+    ".tmp/stage/hidden.txt",
+  ])
+    native.write_file_sync(path.join(temp.path, name), "fixture");
+  const read = vi.spyOn(native, "read_file");
+  expect(
+    collect_game_file_list(temp.path, native, undefined, {
+      files: new Map([
+        ["data/Text.json", null],
+        ["staged.bin", null],
+      ]),
+      excluded: ["removed.bin"],
+    }),
+  ).toEqual(["data/Text.json", "img/actor.png", "notes.txt", "staged.bin"]);
+  expect(read).not.toHaveBeenCalled();
+});
 
 it.each(["link", "staged-link", "case", "unsafe", "cancel"])(
   "收集边界失败时拒绝读取：%s",

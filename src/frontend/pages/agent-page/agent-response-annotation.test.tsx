@@ -85,7 +85,7 @@ describe("AgentResponseAnnotation", () => {
     expect(composing_event.defaultPrevented).toBe(false);
   });
 
-  it("只读视图提供关闭提示和动作，空评论不生成占位", async () => {
+  it("只读视图可关闭，空评论不生成占位", async () => {
     const on_cancel = vi.fn();
     const view = await render_view(
       <AgentResponseAnnotationViewer
@@ -98,12 +98,6 @@ describe("AgentResponseAnnotation", () => {
     expect(view.querySelector("blockquote")?.textContent).toBe("旧回复");
     expect(view.querySelector("p")?.textContent).toBe("请更准确");
     const close = view.querySelector<HTMLButtonElement>("button")!;
-    await act(async () => {
-      close.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    });
-    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
-      close.getAttribute("aria-label"),
-    );
     await act(async () => close.click());
     expect(on_cancel).toHaveBeenCalledOnce();
 

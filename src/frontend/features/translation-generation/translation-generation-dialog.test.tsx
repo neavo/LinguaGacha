@@ -23,12 +23,13 @@ describe("TranslationGenerationDialog", () => {
     root = null;
   });
 
-  it("有警告时显示类型计数并提供前往 AGENT 与继续生成", () => {
+  it("有警告时显示类型计数并允许交给 AGENT 或继续生成", () => {
     const jump_to_agent = vi.fn();
     const confirm_generation = vi.fn(async () => {});
     render_dialog(
       {
         phase: "ready",
+        has_generic: false,
         summary: {
           total_count: 3,
           entries: [
@@ -62,7 +63,7 @@ describe("TranslationGenerationDialog", () => {
   it("无警告时直接提交确认动作", () => {
     const confirm_generation = vi.fn(async () => {});
     render_dialog(
-      { phase: "ready", summary: { total_count: 0, entries: [] } },
+      { phase: "ready", has_generic: false, summary: { total_count: 0, entries: [] } },
       { confirm_generation },
     );
 
@@ -72,6 +73,40 @@ describe("TranslationGenerationDialog", () => {
         .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
         ?.click(),
     );
+    expect(confirm_generation).toHaveBeenCalledOnce();
+  });
+
+  it.each([0, 2])("存在通用包与 %s 条警告时在同一弹窗提示并允许选择生成方式", (total_count) => {
+    const jump_to_agent = vi.fn();
+    const confirm_generation = vi.fn(async () => {});
+    render_dialog(
+      {
+        phase: "ready",
+        has_generic: true,
+        summary: {
+          total_count,
+          entries: total_count ? [{ code: "GLOSSARY", count: total_count }] : [],
+        },
+      },
+      { jump_to_agent, confirm_generation },
+    );
+    expect(document.body.textContent).toContain(
+      "app.translation_generation.confirmation.generic_description",
+    );
+    expect(document.body.textContent?.includes("proofreading_page.warning.glossary")).toBe(
+      total_count > 0,
+    );
+    act(() =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-secondary-action"]')
+        ?.click(),
+    );
+    act(() =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
+        ?.click(),
+    );
+    expect(jump_to_agent).toHaveBeenCalledOnce();
     expect(confirm_generation).toHaveBeenCalledOnce();
   });
 
@@ -89,7 +124,6 @@ describe("TranslationGenerationDialog", () => {
     act(() => {
       root?.render(
         <TranslationGenerationDialog
-          can_jump_to_agent
           state={state}
           retry_check={vi.fn()}
           confirm_generation={callbacks.confirm_generation ?? vi.fn(async () => {})}

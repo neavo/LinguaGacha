@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execa } from "execa";
 import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Arch } from "builder-util";
@@ -21,7 +21,7 @@ export async function deploy_packaged_tools({
   workspaceDirectory,
   platform,
   arch,
-  run = execFileSync,
+  run = execa,
   download,
 }) {
   if (platform === "win32") {
@@ -39,7 +39,7 @@ export async function deploy_workspace_tools({
   workspaceDirectory,
   platform,
   arch,
-  run = execFileSync,
+  run = execa,
   download,
 }) {
   const directory = path.join(workspaceDirectory, "bin", `${platform}-${arch}`);

@@ -48,7 +48,7 @@ describe("run_cli_job", () => {
       source_operation,
     );
   });
-  it("纯 PDF 输入报告排除文件并跳过模型与批量运行", async () => {
+  it.each(["PDF", "GENERIC"])("零条目 %s 输入报告排除文件并跳过批量运行", async (file_type) => {
     const harness = create_backend_services_harness();
     const paths = create_cli_paths();
     vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
@@ -58,7 +58,7 @@ describe("run_cli_job", () => {
         entries: [
           {
             rel_path: "book.pdf",
-            file_type: "PDF",
+            file_type,
             sort_index: 0,
             progress: {
               unit: "page",
@@ -74,9 +74,7 @@ describe("run_cli_job", () => {
     });
     await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
     expect(harness.start_task).not.toHaveBeenCalled();
-    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, [
-      "book.pdf",
-    ]);
+    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
     expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
       "done",
       undefined,
@@ -147,7 +145,7 @@ describe("run_cli_job", () => {
       expect.any(Function),
     );
     expect(harness.apply_task_input).toHaveBeenCalledWith(await build_cli_task_input(command));
-    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir, []);
+    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
     expect(
       harness.events.filter((event) =>
         ["apply", "start", "translation_generation", "unload", "finished:done"].includes(event),

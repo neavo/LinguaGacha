@@ -10,16 +10,16 @@ export const en_us_workbench_page = {
     file_name: "File Name",
     progress: "Progress",
     agent: "AGENT",
+    agent_writeback: "AGENT is required to write back to the original format",
     agent_only: "Translation is only available with AGENT",
     agent_recommended: "We recommend using AGENT for translation",
   },
   feedback: {
     no_valid_file: "No valid files can be added",
-    close_project_failed: "Failed to close the project. Please try again later …",
   },
   action: {
     add_file: "Add",
-    close_project: "Close",
+    rename: "Rename",
     reset: "Reset File Data",
     translation_task: "Translation",
     start_translation: "Start Translation",
@@ -34,14 +34,15 @@ export const en_us_workbench_page = {
       fill: "Fill",
       do_not_fill: "Do Not Fill",
     },
+    rename: {
+      exists: "A file or folder with this name already exists",
+      invalid_name: 'Name must not be empty, contain \\ / : * ? " < > |, or end with a dot',
+    },
     reset: {
       description: "Confirm resetting the selected file and all of its translation entries …?",
     },
     delete: {
       description: "Confirm deleting the selected file and all of its translation entries …?",
-    },
-    close_project: {
-      description: "Confirm closing the current project …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

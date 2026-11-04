@@ -1,3 +1,15 @@
+const project_state = vi.hoisted(() => ({ loaded: true }));
+const lifecycle = vi.hoisted(() => ({
+  busy: false,
+  can_close: true,
+  request_close: vi.fn(),
+  show_create_dialog: vi.fn(),
+  request_open: vi.fn(),
+  open_recent_project: vi.fn(),
+}));
+vi.mock("@frontend/app/session/project-lifecycle/project-lifecycle-context", () => ({
+  useProjectLifecycle: () => lifecycle,
+}));
 import { AgentTimelineStore } from "@frontend/app/session/agent/agent-timeline-store";
 vi.mock("./use-agent-mention-files", () => ({
   useAgentMentionFiles: () => ({ files: [], status: "idle" }),
@@ -170,7 +182,8 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state.current,
   useDesktopState: () => ({
     initial_state_status: "ready",
-    settings_snapshot: settings_state.snapshot,
+    project_snapshot: project_state,
+    settings_snapshot: { ...settings_state.snapshot, recent_projects: [] },
     apply_settings_snapshot: settings_state.apply_snapshot,
   }),
 }));
@@ -205,8 +218,9 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
     }),
   };
 });
+const request_generation = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
-  useTranslationGeneration: () => ({ can_request_generation: true, request_generation: vi.fn() }),
+  useTranslationGeneration: () => ({ can_request_generation: true, request_generation }),
 }));
 vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
   useProjectTranslationStats: () => null,
@@ -228,6 +242,9 @@ describe("AgentConversation", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
+    project_state.loaded = true;
+    lifecycle.can_close = true;
+    lifecycle.request_close.mockClear();
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
@@ -276,6 +293,44 @@ describe("AgentConversation", () => {
     return container;
   }
 
+  it("无工程发送和附件共用拦截，草稿保留", async () => {
+    project_state.loaded = false;
+    lifecycle.can_close = false;
+    const send = vi.fn();
+    const input = build_state({}).input;
+    input.draft.write({ text: "待发送草稿", attachments: [] });
+    const view = await render_page({ send, input });
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(send).not.toHaveBeenCalled();
+    expect(input.draft.read()).toEqual({ text: "待发送草稿", attachments: [] });
+    expect(push_toast).toHaveBeenCalledWith("warning", "agent_page.project_required");
+    const picker = vi.spyOn(view.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__file-trigger")!.click(),
+    );
+    expect(picker).not.toHaveBeenCalled();
+    picker.mockRestore();
+    const file = new File(["data"], "source.txt");
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: { files: [file], getData: () => "" } });
+    await act(async () => view.querySelector(".cm-content")!.dispatchEvent(paste));
+    expect(input.draft.read()).toEqual({ text: "待发送草稿", attachments: [] });
+    expect(push_toast).toHaveBeenCalledTimes(3);
+  });
+  it.each([false, true])("关闭工程指令排在首位且遵循可用性 %s", async (can_close) => {
+    lifecycle.can_close = can_close;
+    const view = await render_page();
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__instructions-trigger")!.click(),
+    );
+    const first = view.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+    )!;
+    expect(first.textContent).toContain("project.close.action");
+    expect(first.disabled).toBe(!can_close);
+    await act(async () => first.click());
+    expect(lifecycle.request_close).toHaveBeenCalledTimes(can_close ? 1 : 0);
+  });
   it.each(["success", "failure"] as const)(
     "运行中保存审批偏好，%s 后展示已确认设置",
     async (outcome) => {
@@ -341,7 +396,6 @@ describe("AgentConversation", () => {
     const text = "安装：[链接]";
     navigation.agent_input_request = {
       text,
-      mode: "replace",
       selection: { from: 3, to: text.length },
     };
     const send = vi.fn();
@@ -361,27 +415,9 @@ describe("AgentConversation", () => {
     expect(input.draft.read().text).toBe("用户已修改");
   });
 
-  it.each(["empty", "text", "attachment"] as const)(
-    "审校导航按实际草稿决定是否填充：%s",
-    async (kind) => {
-      const input = build_state().input;
-      const original = {
-        text: kind === "text" ? "已有正文" : "",
-        attachments: kind === "attachment" ? [uploaded_file("old")] : [],
-      };
-      input.draft.write(original);
-      navigation.agent_input_request = { text: "审校请求", mode: "if-empty" };
-      await render_page({ input });
-      expect(input.draft.read()).toEqual(
-        kind === "empty" ? { text: "审校请求", attachments: [] } : original,
-      );
-      expect(navigation.clear_agent_input_request).toHaveBeenCalledTimes(1);
-    },
-  );
-
   it("会话恢复完成后才消费导航请求", async () => {
     const input = build_state().input;
-    navigation.agent_input_request = { text: "安装请求", mode: "replace" };
+    navigation.agent_input_request = { text: "安装请求" };
     await render_page({ input, transport: "restoring" });
     expect(input.draft.read().text).toBe("");
     expect(navigation.clear_agent_input_request).not.toHaveBeenCalled();
@@ -392,7 +428,7 @@ describe("AgentConversation", () => {
   it("输入锁释放后才消费导航请求", async () => {
     const input = build_state().input;
     input.draft.write({ text: "原草稿", attachments: [] });
-    navigation.agent_input_request = { text: "安装请求", mode: "replace" };
+    navigation.agent_input_request = { text: "安装请求" };
     await render_page({ input, command: "reset" });
     expect(input.draft.read().text).toBe("原草稿");
     expect(navigation.clear_agent_input_request).not.toHaveBeenCalled();
@@ -571,6 +607,26 @@ describe("AgentConversation", () => {
     expect(editor.state.doc.toString()).toBe("");
     expect(compactContext).toHaveBeenCalledOnce();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("从 mention 菜单选择生成译文指令后调用工程译文生成入口", async () => {
+    request_generation.mockClear();
+    const view = await render_page({});
+    const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
+    if (editor === null) throw new Error("缺少 Composer");
+    await act(async () =>
+      editor.dispatch({
+        changes: { from: 0, insert: "@generate" },
+        selection: EditorSelection.cursor(9),
+      }),
+    );
+    const instruction = view.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+    );
+    if (instruction === null) throw new Error("缺少生成译文指令");
+
+    await act(async () => instruction.click());
+    expect(request_generation).toHaveBeenCalledOnce();
   });
 
   it.each(["batch_translation", "model_test"] as const)(

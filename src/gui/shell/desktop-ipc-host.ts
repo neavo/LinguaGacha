@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { stat } from "node:fs/promises";
 import { GAME_FONT_INPUT_EXTENSIONS } from "../../shared/game-font";
 import { pick_save_path } from "./path-dialog";
 
@@ -136,7 +137,7 @@ async function create_dialog_text_resolver(
 function build_project_file_filters(t: TextResolver): Electron.FileFilter[] {
   return [
     {
-      name: t("app.native_file_filter.project"),
+      name: `${t("app.native_file_filter.project")} (*.lg)`,
       extensions: ["lg"],
     },
   ];
@@ -204,11 +205,26 @@ async function pick_path(
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openDirectory"],
       });
-    case "project-file":
-      return pick_open_path(main_window, request.default_directory, {
+    case "project-file": {
+      let directory = request.default_directory;
+      if (request.default_path) {
+        try {
+          if ((await stat(request.default_path)).isDirectory()) directory = request.default_path;
+        } catch (error) {
+          // 固定目录可能已被移动或删除，失效时沿用全局最近目录。
+          if (
+            !(error instanceof Error) ||
+            !("code" in error) ||
+            (error.code !== "ENOENT" && error.code !== "ENOTDIR")
+          )
+            throw error;
+        }
+      }
+      return pick_open_path(main_window, directory, {
         properties: ["openFile"],
         filters: build_project_file_filters(await create_dialog_text_resolver(options)),
       });
+    }
     case "project-save":
       return pick_save_path(
         main_window,

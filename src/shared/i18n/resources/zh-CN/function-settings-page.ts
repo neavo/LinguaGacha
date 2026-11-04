@@ -21,7 +21,7 @@ export const zh_cn_function_settings_page = {
     },
     project_save_mode: {
       title: "工程文件保存位置",
-      description: "设置新建工程时工程文件的保存位置",
+      description: "设置创建工程时工程文件的保存位置",
       options: {
         manual: "每次手动选择",
         fixed: "固定目录",

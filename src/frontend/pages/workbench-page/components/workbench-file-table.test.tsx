@@ -60,7 +60,7 @@ describe("WorkbenchFileTable", () => {
   /** 挂载真实表格，覆盖页面列配置与通用表格的接入。 */
   async function render(
     entries: WorkbenchFileEntry[],
-    on_reset = vi.fn(),
+    actions = { rename: vi.fn(), reset: vi.fn() },
     selected_entry_ids: string[] = [],
   ): Promise<void> {
     container = document.createElement("div");
@@ -76,7 +76,8 @@ describe("WorkbenchFileTable", () => {
             anchor_entry_id={null}
             readonly={false}
             on_selection_change={() => {}}
-            on_reset={on_reset}
+            on_rename={actions.rename}
+            on_reset={actions.reset}
             on_reorder={async () => {}}
           />
         </TooltipProvider>,
@@ -98,9 +99,9 @@ describe("WorkbenchFileTable", () => {
     return document.querySelector('[role="tooltip"][data-open]')!;
   }
 
-  it("右键多选中的文件时重置点击的文件", async () => {
-    const on_reset = vi.fn();
-    await render([create_entry("a.txt"), create_entry("b.txt")], on_reset, ["a.txt", "b.txt"]);
+  it.each(["rename", "reset"] as const)("右键多选中的文件时 %s 点击的文件", async (action) => {
+    const actions = { rename: vi.fn(), reset: vi.fn() };
+    await render([create_entry("a.txt"), create_entry("b.txt")], actions, ["a.txt", "b.txt"]);
     const row = container.querySelector<HTMLElement>(
       '.app-table__table--body [data-row-index="1"]',
     )!;
@@ -110,12 +111,12 @@ describe("WorkbenchFileTable", () => {
       ),
     );
     const menu_item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (item) => item.textContent?.includes("workbench_page.action.reset"),
+      (item) => item.textContent?.includes(`workbench_page.action.${action}`),
     );
     expect(menu_item).toBeDefined();
     await act(async () => menu_item!.click());
-    expect(on_reset).toHaveBeenCalledOnce();
-    expect(on_reset).toHaveBeenCalledWith("b.txt");
+    expect(actions[action]).toHaveBeenCalledExactlyOnceWith("b.txt");
+    expect(actions[action === "rename" ? "reset" : "rename"]).not.toHaveBeenCalled();
   });
 
   it.each([

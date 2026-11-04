@@ -15,7 +15,7 @@ description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必�
 |`<app>/data/**/*.js`|游戏自有脚本与插件|
 |`<app>/data/system/Config.tjs`|引擎配置，只有 `System.title` 产生条目|
 
-原件直接可读，没有投影。`<app>/tyrano/` 下的引擎、第三方库和素材不在原稿中，路径列在 `sources/<file_path>/game_files.reference.txt`。附加原稿的扫描范围是 `<app>/data/`。
+原件直接可读，没有投影。`<app>/tyrano/` 下的引擎、第三方库和素材不在原稿中，路径列在 `sources/<file_path>/game_files.reference.txt`。调查其他数据时可参考的范围是 `<app>/data/`。
 
 场景按引擎的解析规则拆分，一个条目对应一个原始文本节点或参数值：
 

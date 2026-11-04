@@ -4,6 +4,7 @@ CLI 面向文件输入、翻译和译文生成的一次性任务，复用应用�
 
 - 进程装配与跨层不变量见 [ARCHITECTURE](ARCHITECTURE.md)。
 - 命令帮助与验证入口见 [WORKFLOW](WORKFLOW.md)。
+- 通用数据的生成边界见 [BACKEND](BACKEND.md#通用数据)。
 
 ## 📦 临时工程与设置继承
 

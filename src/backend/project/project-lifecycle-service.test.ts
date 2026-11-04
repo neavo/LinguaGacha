@@ -205,7 +205,6 @@ describe("ProjectLifecycleService", () => {
       expect(reads).not.toHaveBeenCalled();
       expect(snapshots[0]?.meta).toMatchObject({
         glossary_enable: true,
-        additional_files: { "game.wolfrpg": ["dialogue.json"] },
         "migration.asset_file_type_complete": true,
       });
       expect(snapshots[0]?.files["game.trans"]).toMatchObject({ game_engine: "kag" });
@@ -221,7 +220,6 @@ describe("ProjectLifecycleService", () => {
       const { meta: second_meta, ...loaded } = snapshots[1]!;
       expect(loaded).toEqual(created);
       expect(second_meta.translation_extras).toEqual(first_meta.translation_extras);
-      expect(second_meta.additional_files).toEqual(first_meta.additional_files);
     } finally {
       await database.close();
     }
@@ -1014,6 +1012,8 @@ describe("ProjectLifecycleService", () => {
       }));
       const broken_path = files.find((file) => file.source_path === broken)!.target_rel_path;
       await lifecycle.create_project_commit({ path: imported, source_paths: [] });
+      expect(await database.get_all_asset_records(imported)).toEqual([]);
+      expect((await database.get_all_meta(imported))["name"]).toBe("imported");
       const request = { files, conflict_action: "replace" };
       await content.import_files({
         ...request,
@@ -1045,7 +1045,16 @@ describe("ProjectLifecycleService", () => {
             expected_section_revisions: { files: 2, items: 2 },
           });
         else await content.reset_translation({ mode: "all" });
-        expect(await read_items(imported), operation).toEqual(expected);
+        const actual = await read_items(imported);
+        expect(
+          actual.filter((item) => item.file_path !== broken_path),
+          operation,
+        ).toEqual(expected);
+        if (operation === "replace")
+          expect(actual.filter((item) => item.file_path === broken_path)).toMatchObject([
+            { src: "已无法提取的旧条目", dst: "旧译文", status: "PROCESSED" },
+          ]);
+        else expect(actual.filter((item) => item.file_path === broken_path)).toEqual([]);
         expect(await database.get_all_asset_records(imported), operation).toEqual(records);
         expect((await database.read_asset_content(imported, broken_path))?.toString()).toBe("{");
       }

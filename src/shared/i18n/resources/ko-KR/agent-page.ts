@@ -1,10 +1,12 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_agent_page = {
+  project_required: "먼저 프로젝트 파일을 만들거나 열어 주세요 …",
   document: {
     conversation: "대화",
     view: "보기",
     save_as: "다른 이름으로 저장",
+    open_folder: "파일이 있는 폴더 열기",
   },
   batch_translation_model: {
     follow: "같은 모델 사용",
@@ -119,6 +121,7 @@ export const ko_kr_agent_page = {
     applying: "프로젝트 변경 사항을 적용 중입니다. 완료될 때까지 중지할 수 없습니다",
     new_task: "새 작업",
     add_file: "파일 추가",
+    common_instructions: "자주 쓰는 명령",
     continue: "계속",
     edit: "수정",
     copy: "복사",
@@ -159,6 +162,7 @@ export const ko_kr_agent_page = {
   upload: { uploading: "업로드 중", failed: "업로드 실패" },
   file_saved: "파일을 저장했습니다",
   error: {
+    invalid_file_path: "유효하지 않은 파일 경로 …",
     decision: "결정을 제출하지 못했습니다. 다시 시도해 주세요 …",
     restore: "세션을 복원하지 못했습니다. 다시 시도해 주세요 …",
     connection: "연결이 끊어졌습니다. 재연결을 기다리고 있습니다 …",

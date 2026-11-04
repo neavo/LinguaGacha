@@ -30,7 +30,6 @@ export async function write_agent_workspace_sources(args: {
   nativeFs: NativeFs;
   signal?: AbortSignal;
   sourceRoot: string;
-  additionalFiles?: Readonly<Record<string, readonly string[]>>; // 资产路径到附加原稿的映射，附加原稿不生成参考。
   files: ReadonlyArray<{ file_path: string; file_type: string }>;
   readAsset: (file_path: string) => Buffer | null | Promise<Buffer | null>;
   report?: (asset: string, diagnostic: SourceDiagnostic) => void;
@@ -87,18 +86,17 @@ export async function write_agent_workspace_sources(args: {
     }
     signal?.throwIfAborted();
     try {
-      if (is_game_file_type(file.file_type) || file.file_type === "EPUB") {
+      if (
+        is_game_file_type(file.file_type) ||
+        file.file_type === "EPUB" ||
+        file.file_type === "GENERIC"
+      ) {
         const engine = is_game_file_type(file.file_type) ? GAME_ENGINES[file.file_type] : null;
         const container = engine
-          ? await read_game_container(
-              content,
-              file.file_path,
-              engine.create_adapter().has_metadata,
-              args.additionalFiles?.[file.file_path],
-            )
+          ? await read_game_container(content, file.file_path, engine.create_adapter().has_metadata)
           : null;
         const originals = container
-          ? new Map([...container.input, ...container.additional])
+          ? container.input
           : await read_zip_members(content, file.file_path);
         const names = new ProjectAssetPathIndex();
         for (const name of originals.keys()) names.add(name); // 失败成员仍占据原稿路径。

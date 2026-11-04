@@ -264,23 +264,16 @@ function AgentDecisionFrame(props: {
         </div>
         <div className="agent-decision__header-actions">
           {props.on_cancel === undefined ? null : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <AppButton
-                    type="button"
-                    className="agent-decision-icon agent-decision__cancel"
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label={t("agent_page.decision.cancel")}
-                    onClick={props.on_cancel}
-                  >
-                    <X aria-hidden="true" />
-                  </AppButton>
-                }
-              />
-              <TooltipContent>{t("agent_page.decision.cancel")}</TooltipContent>
-            </Tooltip>
+            <AppButton
+              type="button"
+              className="agent-decision-icon agent-decision__cancel"
+              size="icon-xs"
+              variant="ghost"
+              aria-label={t("agent_page.decision.cancel")}
+              onClick={props.on_cancel}
+            >
+              <X aria-hidden="true" />
+            </AppButton>
           )}
         </div>
       </header>

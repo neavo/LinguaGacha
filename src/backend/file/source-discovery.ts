@@ -1,8 +1,5 @@
-import {
-  is_preparation_path,
-  GameSourceConflictError,
-  GAME_ASSET_EXTENSIONS,
-} from "./source-file-paths";
+import { is_preparation_path, GameSourceConflictError } from "./source-file-paths";
+import { GAME_ASSET_EXTENSIONS } from "../../shared/project/project-asset-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
 import {

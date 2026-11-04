@@ -16,7 +16,7 @@ import {
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
 
-export const DEFAULT_ROUTE_ID: RouteId = "project-home";
+export const DEFAULT_ROUTE_ID: RouteId = "agent";
 
 export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {

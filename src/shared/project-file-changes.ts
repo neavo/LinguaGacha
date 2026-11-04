@@ -25,6 +25,14 @@ export type AppliedFiles = {
     renamed: { from: string; to: string }[];
     parse_failed: string[]; // 原稿已保存，文本解析失败。
   }[];
+  replaced: {
+    file_path: string;
+    source_path: string;
+    items: number;
+    pages: number;
+    inherited: number;
+    contested: number[][]; // 实际票选且有多种译文结果的已提交条目 ID，按 `src` 与 `name_src` 分组。
+  }[];
   updated: number;
   deleted: number;
 };

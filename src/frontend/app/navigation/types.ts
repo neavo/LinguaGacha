@@ -3,7 +3,6 @@ import type { LucideIcon } from "lucide-react";
 import type { ComponentType } from "react";
 
 export type RouteId =
-  | "project-home"
   | "model"
   | "agent"
   | "proofreading"
@@ -27,10 +26,9 @@ export type ProofreadingLookupIntent = {
   scope: "src" | "dst" | "all";
 };
 
-/** 随导航交给 Agent 的一次性输入请求，选区使用最终正文的字符位置。 */
+/** 消费导航请求时替换草稿并清空附件。选区使用新正文的字符位置。 */
 export type AgentInputRequest = Readonly<{
   text: string;
-  mode: "replace" | "if-empty";
   selection?: Readonly<{ from: number; to: number }>;
 }>;
 
@@ -45,12 +43,8 @@ export type NavigationGroup = {
   items: NavigationItem[];
 };
 
-export type ScreenComponentProps = {
-  is_sidebar_collapsed: boolean;
-};
-
 type ScreenModule = {
-  component: ComponentType<ScreenComponentProps>;
+  component: ComponentType;
   title_key: LocaleKey;
   /** 缺省页面使用 Shell 标准边距。沉浸式工作面显式占满 `WorkspaceFrame`。 */
   workspace_layout?: "edge-to-edge";

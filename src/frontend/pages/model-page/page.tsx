@@ -17,12 +17,8 @@ import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { useChatGPTLogin } from "./use-chatgpt-login";
 import { ChatGPTLoginDialog } from "./dialogs/chatgpt-login-dialog";
 
-type ModelPageProps = {
-  is_sidebar_collapsed: boolean;
-};
-
 /** 管理模型配置与排序；具体任务使用哪个模型由各任务入口选择。 */
-export function ModelPage(_props: ModelPageProps): JSX.Element {
+export function ModelPage(): JSX.Element {
   const { t } = useI18n();
   const chatgpt_login = useChatGPTLogin();
 

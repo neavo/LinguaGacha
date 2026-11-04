@@ -1,5 +1,6 @@
 import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 import { read_renpy_metadata } from "./item";
+import { read_renpy_format_metadata } from "./profile";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -75,15 +76,20 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
   );
   if (version.startsWith("6."))
     fs.renameSync(path.join(root, "lib/py3-windows-x86_64"), path.join(root, "lib/windows-i686"));
+  const script_version = "(6, 13, 0)\n";
+  native.write_file_sync(path.join(root, "game/script_version.txt"), script_version);
   const game = (await discover_renpy_source(root, native))!;
   const data = collect_renpy_files(game, native);
+  expect(Buffer.from(data.get("game/script_version.txt")!).toString()).toBe(script_version);
+  const metadata = await import_metadata(game, data, native);
+  expect(read_renpy_format_metadata(metadata).old_substitutions).toBe(false);
   const format = new GameFormat(new GameDirectoryOperations(), create_renpy_adapter(), native);
   const container = await format.create_container(
     data,
     "demo.renpy",
     [...data.keys()].join("\n"),
     undefined,
-    await import_metadata(game, data, native),
+    metadata,
   );
   fs.renameSync(root, path.join(temp.path, "unavailable"));
   const parsed = await new GameFormat(
@@ -107,6 +113,9 @@ it.each(["6.99.8", "8.0.3"])("%s 离线重载、人工放行与重复导出共�
     asset_reader: () => Buffer.from(container),
   };
   await format.write_to_path(items, context);
+  expect(native.read_text_file(path.join(out, "demo/game/script_version.txt"))).toBe(
+    script_version,
+  );
   const first = native.read_file(path.join(out, "demo/game/script.rpyc"));
   const generated = native.read_text_file(path.join(out, "demo", RENPY_LANGUAGE_FILE));
   expect(

@@ -11,6 +11,7 @@ import {
   AGENT_QUESTION_OPTION_MIN,
   AGENT_QUESTION_PROMPT_LIMIT,
   AGENT_CHAT_EVENT_TOPIC,
+  AGENT_INACTIVE_CHAT_ID,
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
 } from "@shared/agent";
@@ -431,7 +432,12 @@ export class AgentChatStore {
     if (snapshot.revision < this.revision) return;
     this.batching = true;
     try {
-      if (this.chat_id !== null && snapshot.chatId !== this.chat_id) {
+      // 无工程时禁止添加附件，正文草稿可安全带入首个工程对话。
+      if (
+        this.chat_id !== null &&
+        this.chat_id !== AGENT_INACTIVE_CHAT_ID &&
+        snapshot.chatId !== this.chat_id
+      ) {
         this.draft.clear();
         this.input = this.create_input_state(this.input.revision + 1);
         this.emit("input");

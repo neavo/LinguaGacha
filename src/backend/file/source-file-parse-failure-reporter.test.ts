@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AppError } from "../../shared/error";
-import { log_source_file_diagnostics } from "./source-file-parse-failure-reporter";
+import {
+  log_source_file_diagnostics,
+  source_operation_error,
+} from "./source-file-parse-failure-reporter";
 
 describe("source-file-parse-failure-reporter", () => {
+  it("多阶段失败合并已经发生的目录变化并保留提交事实", () => {
+    const inner = source_operation_error(new AppError("data.committed_sync_failed"), ["second"], 2);
+    const outer = source_operation_error(inner, ["first", "second"]);
+    expect(outer).toMatchObject({
+      code: "data.committed_sync_failed",
+      cause: inner,
+      public_details: {
+        source_operation: { saved_assets: 2, directory_changes: ["first", "second"] },
+      },
+    });
+  });
   it("把解析、缺失和其它 IO 异常归一为稳定错误码", () => {
     const warning = vi.fn();
     log_source_file_diagnostics({

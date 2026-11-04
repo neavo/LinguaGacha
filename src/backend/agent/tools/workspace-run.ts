@@ -1,3 +1,5 @@
+import { GENERIC_ITEMS_MEMBER, GENERIC_ITEMS_SCHEMA } from "../../file/generic/generic-format";
+import { create_schema_renderer } from "../workspace/schema-description";
 import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
@@ -41,7 +43,7 @@ export function create_agent_workspace_run_tool(options: {
       "### 依赖",
       "",
       "- `@lg/*` 是随应用发布的 SDK，在本工具的脚本及其加载的模块中可用。它们不通过 npm 安装：",
-      "  - `@lg/project`：识别待加入工程的来源，用法见 `project-operation` 技能",
+      "  - `@lg/project`：识别来源、生成原生产物和通用写回输入，用法见 `project-operation` 技能",
       "  - `@lg/project/item-contexts`：`queryItemContexts(items, item_ids)` 查询条目的同文件邻近语境。`items` 传入 `items` 数据集的完整数组或流，保持数据集顺序",
       "  - `@lg/pdf`、`@lg/pdf/mupdf`：PDF 读取、渲染与打印，用法见 `pdf` 技能",
       "  - `@lg/utils/literal-matcher`：应用判定字面命中与规范化文本的规则",
@@ -95,6 +97,19 @@ export function create_agent_workspace_run_tool(options: {
           ([name, operations]) =>
             `- changes.${name}：操作 ${Object.keys(operations).join("、")}。参考 ${Object.values(operations)[0]?.reference}`,
         ),
+      "",
+      "### `@lg/project` 生成接口",
+      "",
+      `调用前先提交必要译文。\`generateFiles()\` 生成到 \`${AGENT_WORKSPACE_WORK_ROOT}/\` 下的暂存目录，返回本机绝对路径：\`output_path\` 只含已支持格式的可安装产物，\`bilingual_output_path\` 为双语对照，\`generic_input_path\` 为通用写回输入目录。\`pdf_files\` 报告 PDF 页面结果。生成与交付流程见 \`project-operation\` 技能。`,
+      "`getOutputPaths(directory?)` 按应用设置计算交付目录，传入绝对路径时改用该父目录。`manual` 为 `true` 表示用户设置为每次手动选择。返回的目录名已避开现有同名目录，但不会预先创建。",
+      `每个通用包是 ZIP，根目录 \`${GENERIC_ITEMS_MEMBER}\` 使用下列结构，其余成员保存解析与写回所需底稿。数组下标是条目行号。写回输入为 \`<generic_input_path>/<file_path>/${GENERIC_ITEMS_MEMBER}\`，记录数与源数组相同，正文与姓名已确定，私有字段保留。AGENT 根据私有定位写回底稿。`,
+      "```ts",
+      create_schema_renderer(new Map([[GENERIC_ITEMS_SCHEMA, "GenericItems"]])).declarations(),
+      "declare module '@lg/project' {",
+      "  function getOutputPaths(directory?: string): Promise<{ manual: boolean; translated_path: string; bilingual_path: string }>;",
+      "  function generateFiles(): Promise<{ accepted: true; output_path: string; bilingual_output_path: string; generic_input_path?: string; pdf_files: Array<{ file_path: string; written: boolean; translated_pages: number; original_pages: number; omitted_pages: number }> }>;",
+      "}",
+      "```",
       "",
       "### `ws` 接口",
       "",

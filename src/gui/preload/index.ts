@@ -142,8 +142,12 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async pickProjectSourceDirectoryPath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "project-source-directory" });
   },
-  async pickProjectFilePath(): Promise<DesktopPathPickResult> {
-    return invoke_path_picker({ kind: "project-file" });
+  /** 显式目录与最近目录分别传给宿主，由宿主检查目录并选择起点。 */
+  async pickProjectFilePath(default_path?: string): Promise<DesktopPathPickResult> {
+    return invoke_path_picker({
+      kind: "project-file",
+      ...(default_path === undefined ? {} : { default_path }),
+    });
   },
   async pickProjectSavePath(default_name: string): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "project-save", default_name });

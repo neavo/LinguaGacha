@@ -1,5 +1,6 @@
+import { GenericFormat, GENERIC_ITEMS_MEMBER } from "./generic/generic-format";
 import { group_items } from "./shared/file-format-helpers";
-import { collect_game_import_files } from "./shared/game/source-files";
+import { collect_game_file_list } from "./shared/game/source-files";
 import { resolve_game_source_input } from "./shared/game/source-input";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { assert_game_directory_ready } from "./shared/game/directory";
@@ -18,8 +19,10 @@ import {
 } from "./source-discovery";
 import type { GamePrepareExecution } from "./shared/game/prepare-worker";
 import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
-import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import { SourceFilePathIndex } from "./source-file-paths";
+import {
+  normalize_project_asset_path,
+  SourceFilePathIndex,
+} from "../../shared/project/project-asset-paths";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
@@ -64,6 +67,7 @@ export class FileFormatService {
 
   private readonly native_fs: NativeFs; // 文件发现与字幕写入复用的磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
+  private readonly generic = new GenericFormat();
   private readonly txt: TXTFormat;
   private readonly md: MDV2Format;
   private readonly ass: ASSFormat;
@@ -116,19 +120,13 @@ export class FileFormatService {
     rel_path: string,
     content: Uint8Array,
     file_type?: string,
-    additional_files: readonly string[] = [],
     signal?: AbortSignal,
   ): Promise<FileFormatReadResult> {
     if (is_game_file_type(file_type))
       return {
         kind: "items",
         file_type,
-        ...(await this.games[file_type].read_from_stream(
-          content,
-          rel_path,
-          additional_files,
-          signal,
-        )),
+        ...(await this.games[file_type].read_from_stream(content, rel_path, signal)),
       };
     const by_extension: Record<string, string> = {
       ".txt": "TXT",
@@ -142,6 +140,7 @@ export class FileFormatService {
       ".rpy": "RENPY_RPY",
       ".trans": "TRANS",
       ".pdf": "PDF",
+      ".generic": "GENERIC",
     };
     let type =
       (file_type === "NONE" ? undefined : file_type) ??
@@ -194,6 +193,7 @@ export class FileFormatService {
         )),
       };
     const formats = {
+      GENERIC: this.generic,
       TXT: this.txt,
       MD_V2: this.md,
       ASS: this.ass,
@@ -382,9 +382,7 @@ export class FileFormatService {
       const format = this.games[source.file_type];
       const engine = GAME_ENGINES[source.file_type];
       const diagnostics: SourceDiagnostic[] = [];
-      let captured:
-        | { content: Uint8Array; additional_files: readonly string[]; read?: PreparedRead }
-        | undefined;
+      let captured: { content: Uint8Array; read?: PreparedRead } | undefined;
       let directory_changed = false;
       let archive_error: unknown;
       try {
@@ -412,11 +410,8 @@ export class FileFormatService {
             };
             try {
               const translation = await engine.collect(source, this.native_fs, signal, sources);
-              const translation_complete = members_complete; // 附加原稿的遗漏不改变格式的跨成员语义。
-              const collected = collect_game_import_files(
+              const file_list = collect_game_file_list(
                 source.game.root,
-                translation,
-                (name) => engine.includes_additional_file(source, name),
                 this.native_fs,
                 signal,
                 sources,
@@ -427,7 +422,7 @@ export class FileFormatService {
               try {
                 imported = await engine.prepare_import?.(
                   source,
-                  { data: collected.data, files: collected.files, complete: translation_complete },
+                  { data: translation, files: file_list, complete: members_complete },
                   this.native_fs,
                   signal,
                   (diagnostic) => diagnostics.push(diagnostic),
@@ -437,9 +432,9 @@ export class FileFormatService {
                 read = { ok: false, error };
               }
               const content = await format.create_container(
-                collected.data,
+                translation,
                 rel_path,
-                collected.files.join("\n"),
+                file_list.join("\n"),
                 signal,
                 imported?.metadata,
               );
@@ -454,7 +449,6 @@ export class FileFormatService {
                 };
               captured = {
                 content,
-                additional_files: collected.additional_files,
                 ...(read && { read }),
               };
             } catch (error) {
@@ -479,7 +473,6 @@ export class FileFormatService {
     }
     return {
       content: this.native_fs.read_file(entry.source_path),
-      additional_files: [],
       directory_changed: false,
       diagnostics: [],
     };
@@ -525,8 +518,12 @@ export class FileFormatService {
     };
   }
 
-  /** 字幕与 `MESSAGEJSON` 按资产集合导出，保证零条目文件也能生成。 */
-  public async write_items(items: Item[], context: FileFormatServiceWriteContext): Promise<void> {
+  /** 按格式分发生成，容器与记录格式遍历资产集合以覆盖零条目文件。 */
+  public async write_items(
+    items: Item[],
+    context: FileFormatServiceWriteContext,
+    generic_path?: string, // 通用写回输入仅在调用方指定独立目录时生成。
+  ): Promise<void> {
     const { paths, asset_reader } = context;
     const failures: unknown[] = [];
     for (const game of Object.values(this.games)) {
@@ -542,6 +539,24 @@ export class FileFormatService {
     await this.write_subtitles(items, context);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
+    if (generic_path !== undefined) {
+      const generic_items = group_items(items, "GENERIC");
+      for (const file of context.source_files) {
+        if (file.file_type !== "GENERIC") continue;
+        const asset = await asset_reader(file.path);
+        if (asset === null)
+          throw new AppError("file.not_found", { public_details: { file: file.path } });
+        const output = await this.generic.render_text(
+          asset,
+          generic_items.get(file.path) ?? [],
+          file.path,
+        );
+        await this.native_fs.write_file(
+          path.join(generic_path, file.path, GENERIC_ITEMS_MEMBER),
+          output,
+        );
+      }
+    }
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy_rpy.write_to_path(items, paths, asset_reader);

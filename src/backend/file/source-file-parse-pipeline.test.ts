@@ -53,9 +53,9 @@ it("MV/MZ 配置解析失败仍保留原稿和其他有效条目", async () => {
 });
 
 it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "GODOT", "RENPY"])(
-  "%s 按范围保存附加原稿，解析只消费翻译成员",
+  "%s 只保存引擎选定原稿，文件清单覆盖其他材料",
   async (engine) => {
-    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-additional-"));
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-native-source-"));
     const native = new NativeFs();
     const root = path.join(temp.path, "game");
     const write = (name: string, bytes: string | Uint8Array) =>
@@ -104,15 +104,12 @@ it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "GODOT", "RENPY"])(
     expect(draft.files).toHaveLength(1);
     const file = draft.files[0]!;
     expect(file.file_type).toBe(engine);
-    expect(new Set(file.additional_files)).toEqual(new Set(extra.keys()));
-    const container = await read_game_container(
-      file.content,
-      file.rel_path,
-      engine === "RENPY",
-      file.additional_files,
-    );
-    for (const [name, bytes] of extra)
-      expect(await container.additional.get(name)!.async("nodebuffer")).toEqual(bytes);
+    const container = await read_game_container(file.content, file.rel_path, engine === "RENPY");
+    const list = await container.game_files!.async("string");
+    for (const name of extra.keys()) {
+      expect(container.members.has(name)).toBe(false);
+      expect(list.split("\n")).toContain(name);
+    }
     if (engine === "RPGMAKER_MV_MZ")
       expect(draft.items.some((item) => item.src === "正式条目")).toBe(true);
   },
@@ -229,14 +226,12 @@ describe("SourceFileParsePipeline", () => {
     expect(draft.files.map(({ content: _content, ...file }) => file)).toEqual([
       {
         rel_path: "script.txt",
-        additional_files: [],
         pdf_document: null,
         file_type: "TXT",
         sort_index: 0,
       },
       {
         rel_path: "broken.json",
-        additional_files: [],
         pdf_document: null,
         file_type: "NONE",
         sort_index: 1,
@@ -378,7 +373,6 @@ it.each(["before", "during"])("取消发生在解析 %s 时向上传播，不交
           rel_path: "saved.txt",
           file_type: "TXT",
           content: Buffer.from("原文"),
-          additional_files: [],
         },
         controller.signal,
       ),
@@ -396,7 +390,6 @@ it.each([true, false])("准备阶段已解析时直接消费结果，读取失�
   const service = {
     prepare_source: async () => ({
       content,
-      additional_files: [],
       directory_changed: false,
       diagnostics: [],
       read: ok

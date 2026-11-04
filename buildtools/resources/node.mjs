@@ -28,7 +28,13 @@ export async function build_node_resources({ root, output, manifest, lock, runNp
     ),
   );
   await cp(path.join(root, "package-lock.json"), path.join(seed, "package-lock.json"));
-  runNpm(seed, ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]);
-  runNpm(seed, ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]);
+  await runNpm(seed, [
+    "install",
+    "--package-lock-only",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+  ]);
+  await runNpm(seed, ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]);
   await prune_workspace_package_files(seed);
 }

@@ -16,7 +16,7 @@ import { ja_jp_model_page } from "./model-page";
 import { ja_jp_post_translation_replacement_page } from "./post-translation-replacement-page";
 import { ja_jp_pre_translation_replacement_page } from "./pre-translation-replacement-page";
 import { ja_jp_preset_editor } from "./preset-editor";
-import { ja_jp_project_page } from "./project-page";
+import { ja_jp_project } from "./project";
 import { ja_jp_proofreading_page } from "./proofreading-page";
 import { ja_jp_quality_rule_editor } from "./quality-rule-editor";
 import { ja_jp_task_progress } from "./task-progress";
@@ -45,7 +45,7 @@ export const ja_jp_messages = {
   post_translation_replacement_page: ja_jp_post_translation_replacement_page,
   pre_translation_replacement_page: ja_jp_pre_translation_replacement_page,
   preset_editor: ja_jp_preset_editor,
-  project_page: ja_jp_project_page,
+  project: ja_jp_project,
   proofreading_page: ja_jp_proofreading_page,
   quality_rule_editor: ja_jp_quality_rule_editor,
   task_progress: ja_jp_task_progress,

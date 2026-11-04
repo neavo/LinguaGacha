@@ -24,7 +24,7 @@ import { create_renpy_fixture, compiled_fixture } from "../../test/renpy-fixture
 import { read_renpy_metadata } from "./renpy/item";
 import { read_renpy_format_metadata } from "./renpy/profile";
 
-it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留离线语义", async (failure) => {
+it.each(["script", "unselected"])("Ren’Py %s 读取失败按真实依赖保留离线语义", async (failure) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-renpy-partial-context-"));
   const root = path.join(temp.path, "game");
   const native = create_renpy_fixture(root);
@@ -51,9 +51,11 @@ it.each(["script", "additional"])("Ren’Py %s 读取失败按真实依赖保留
     return read(file);
   });
   const prepared = await service.prepare_source(entry).finally(() => unavailable.mockRestore());
-  expect(prepared.diagnostics).toContainEqual(
-    expect.objectContaining({ member: "game/" + path.basename(missing) }),
-  );
+  if (failure === "script")
+    expect(prepared.diagnostics).toContainEqual(
+      expect.objectContaining({ member: "game/" + path.basename(missing) }),
+    );
+  else expect(prepared.diagnostics).toEqual([]);
   fs.renameSync(root, path.join(temp.path, "offline"));
   const { input } = await read_game_container(prepared.content, entry.rel_path, true);
   const metadata = read_renpy_format_metadata(

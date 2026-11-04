@@ -58,7 +58,7 @@ export const en_us_app = {
     skip: "Skip",
     overwrite: "Overwrite",
     replace: "Replace",
-    go_to_agent: "Go to AGENT",
+    handle_with_agent: "Handle with AGENT",
     loading: "Loading",
     select_file: "Select File",
     select_folder: "Select Folder",
@@ -202,10 +202,14 @@ export const en_us_app = {
   translation_generation: {
     action: "Generate Translation",
     confirmation: {
+      generic_description:
+        "This project contains generic data packages. Use AGENT to generate all translations. Direct generation will skip these packages.",
+      generate_all:
+        "Generate all translations for this project, including generic data packages, and verify the deliverables.",
       description: "Confirm generating currently available translation files …?",
-      checking: "Checking proofreading warnings …",
+      checking: "Checking project files and proofreading warnings …",
       check_failed:
-        "Proofreading warnings could not be loaded. You can still generate the current translation …",
+        "Could not check project files or proofreading warnings. You can still generate the current translations …",
       warning_description:
         "Detected {COUNT} proofreading warnings. Warnings do not necessarily indicate errors, but we recommend running at least one automatic review with AGENT first. Continue generating the translation …?",
       retry_check: "Check Again",

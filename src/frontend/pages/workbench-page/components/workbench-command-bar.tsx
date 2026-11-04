@@ -84,7 +84,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     {
       id: "close-project",
       icon: SquarePower,
-      label_key: "workbench_page.action.close_project",
+      label_key: "project.close.action",
       disabled: !props.can_close_project,
       on_click: props.on_close_project,
     },

@@ -12,9 +12,6 @@ vi.mock("./use-agent-mention-files", () => ({
 }));
 
 type RenderComposerOptions = Partial<ComponentProps<typeof AgentComposer>>;
-vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
-  useTranslationGeneration: () => ({ can_request_generation: true, request_generation: vi.fn() }),
-}));
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));

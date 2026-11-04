@@ -1,11 +1,10 @@
-import { zh_cn_project_page } from "../zh-CN/project-page";
+import { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
 
-export const de_de_project_page = {
-  title: "Projekt-Startseite",
+export const de_de_project = {
   create: {
     title: "Projekt erstellen",
-    subtitle: "Quelle wählen und eigenständiges .lg-Projekt erstellen",
+    subtitle: "Quelle wählen oder leeres eigenständiges .lg-Projekt erstellen",
     drop_title: "Klicken oder Quelldatei hierher ziehen",
     ready_status: "{COUNT} Quelldateien ausgewählt",
     loading_toast: "Projekt wird erstellt …",
@@ -23,21 +22,20 @@ export const de_de_project_page = {
   },
   open: {
     title: "Projekt öffnen",
-    subtitle: ".lg öffnen: Übersetzungsfortschritt und Regeln fortsetzen",
     drop_title: "Klicken oder .lg-Datei hierher ziehen",
-    recent_title: "Letzte Projekte",
-    empty: "Keine letzten Projekte",
     loading_toast: "Projekt wird geladen …",
-    preview_unavailable: "Fehler beim Lesen der Projektvorschau …",
-    action: "Projekt öffnen",
     remove_unavailable:
       "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut …",
     newer_app_version_description:
       "Diese Datei ist für App-Version <emphasis>v{VERSION}</emphasis> vorgesehen. Das Öffnen mit einer älteren App-Version kann Daten beschädigen. Möchten Sie die Datei trotzdem öffnen …?",
     missing_file_description: "Die Projektdatei ist ungültig. Aus der Liste entfernen …?",
   },
+  close: {
+    action: "Schließen",
+    confirm: "Aktuelles Projekt wirklich schließen …?",
+    failed: "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut …",
+  },
   preview: {
-    title: "Projektübersicht",
     file_count: "Dateianzahl",
     files: "{COUNT} Dateien",
     created_at: "Erstellt am",
@@ -45,6 +43,7 @@ export const de_de_project_page = {
     progress: "Fortschritt",
   },
   formats: {
+    generic: "Generische Daten",
     title: "Unterstützte Dateiformate",
     txt: "Nur Text",
     md: "Markdown",
@@ -73,4 +72,4 @@ export const de_de_project_page = {
     wolf: "Vom offiziellen WOLF-Übersetzungstool exportierter Spieltext",
     trans: "Translator++ Projektdatei",
   },
-} satisfies LocaleMessageSchema<typeof zh_cn_project_page>;
+} satisfies LocaleMessageSchema<typeof zh_cn_project>;

@@ -167,7 +167,7 @@ describe("FunctionSettingsPage", () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<FunctionSettingsPage is_sidebar_collapsed={false} />);
+      root?.render(<FunctionSettingsPage />);
     });
   }
 

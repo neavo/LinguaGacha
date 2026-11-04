@@ -12,9 +12,12 @@ import type {
   SourceFileParseWarning,
 } from "../../file-format-types";
 
-import { assert_source_file_paths, source_file_output_path } from "../../source-file-paths";
 import { read_zip_members } from "../zip-members";
-import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
+import {
+  assert_source_file_paths,
+  ProjectAssetPathIndex,
+  source_file_output_path,
+} from "../../../../shared/project/project-asset-paths";
 
 /** 应用生成物占用明确标记的路径，与游戏原稿共同检查冲突。 */
 export const GAME_FILES_MEMBER = "game_files.reference.txt";
@@ -26,7 +29,6 @@ export type GameFiles = ReadonlyMap<string, JSZip.JSZipObject>;
 export type GameContainer = Readonly<{
   members: GameFiles; // 参与常规导出的翻译原稿。
   input: GameFiles; // 翻译原稿加格式元数据，`create_members` 与 `workspace_projections` 共用，保证视图与条目同源。
-  additional: GameFiles; // 附加原稿只展开字节，不进入解析和常规导出。
   game_files: JSZip.JSZipObject | null; // 早于清单的容器没有该成员。
 }>;
 
@@ -35,25 +37,20 @@ export async function read_game_container(
   content: Uint8Array,
   file: string,
   has_metadata = false,
-  additional_files: readonly string[] = [],
 ): Promise<GameContainer> {
   const input = new Map(await read_zip_members(content, file));
-  const additional = new Map<string, JSZip.JSZipObject>();
-  for (const name of additional_files) {
-    const member = input.get(name);
-    if (!member) throw new AppError("file.invalid_structure", { public_details: { file } }); // 清单与资产同事务提交，缺失成员说明资产已损坏。
-    additional.set(name, member);
-    input.delete(name);
-  }
   const game_files = input.get(GAME_FILES_MEMBER) ?? input.get(LEGACY_GAME_FILES_MEMBER) ?? null;
   input.delete(GAME_FILES_MEMBER);
-  input.delete(LEGACY_GAME_FILES_MEMBER); // 已登记的真实同名文件已分流至 additional。
+  input.delete(LEGACY_GAME_FILES_MEMBER);
   // 只有显式声明元数据的格式使用保留入口，旧格式的同名普通成员仍是原稿。
   const members = new Map(input);
   if (has_metadata) members.delete(GAME_METADATA_MEMBER);
-  if (members.size + additional.size === 0)
-    throw new AppError("file.invalid_structure", { public_details: { file } });
-  return { members, input, additional, game_files };
+  if (members.size === 0)
+    throw new AppError("file.invalid_structure", {
+      public_details: { file },
+      diagnostic_context: { reason: "empty_game_container" },
+    });
+  return { members, input, game_files };
 }
 
 /** 成员或整个资产的提取结果，局部遗漏只记录诊断。 */
@@ -116,7 +113,7 @@ export class GameFormat {
     metadata?: Uint8Array,
   ): Promise<Uint8Array> {
     signal?.throwIfAborted();
-    assert_game_path_spellings([...files.keys()]); // 在固化边界统一检查翻译成员与附加原稿的目录拼写。
+    assert_game_path_spellings([...files.keys()]); // 在固化边界统一检查原稿成员的目录拼写。
     const zip = new JSZip();
     const member_paths = new ProjectAssetPathIndex();
     member_paths.add(GAME_FILES_MEMBER);
@@ -145,15 +142,9 @@ export class GameFormat {
   public async read_from_stream(
     content: Uint8Array,
     file: string,
-    additional_files: readonly string[] = [],
     signal?: AbortSignal,
   ): Promise<GameRead> {
-    const { input } = await read_game_container(
-      content,
-      file,
-      this.adapter.has_metadata,
-      additional_files,
-    );
+    const { input } = await read_game_container(content, file, this.adapter.has_metadata);
     if (this.adapter.scope === "asset")
       return this.collect_read(await this.adapter.read_asset(input, signal), file);
     const handler = await this.adapter.create_members(input);
@@ -219,11 +210,10 @@ export class GameFormat {
           const content = await context.asset_reader(file.path);
           if (content === null)
             throw new AppError("file.not_found", { public_details: { file: file.path } });
-          const { members, input, additional } = await read_game_container(
+          const { members, input } = await read_game_container(
             content,
             file.path,
             this.adapter.has_metadata,
-            context.additional_files?.[file.path],
           );
           const asset_items = groups.get(file.path) ?? [];
           for (const item of asset_items)
@@ -241,7 +231,7 @@ export class GameFormat {
           await write_game_directory(
             root,
             this.fs,
-            (staging) => this.stage_outputs(outputs, staging, members, additional, signal),
+            (staging) => this.stage_outputs(outputs, staging, members, signal),
             signal,
             this.game_directory_operations.report_cleanup,
           );
@@ -285,13 +275,11 @@ export class GameFormat {
     outputs: AsyncIterable<GameOutput>,
     staging: string,
     members: GameFiles,
-    additional: GameFiles,
     signal: AbortSignal,
   ): Promise<{ writes: string[] }> {
-    // 生成资源不能冒充原稿、附加原稿、元数据或文件清单。
+    // 生成资源不能冒充原稿、元数据或文件清单。
     const occupied = new ProjectAssetPathIndex();
-    for (const name of [...members.keys(), ...additional.keys(), GAME_FILES_MEMBER])
-      occupied.reserve(name);
+    for (const name of [...members.keys(), GAME_FILES_MEMBER]) occupied.reserve(name);
     if (this.adapter.has_metadata) occupied.reserve(GAME_METADATA_MEMBER);
     const pending = new Set(members.keys()); // 尚未输出的原稿成员。
     const written = new ProjectAssetPathIndex(); // 重复输出、大小写冲突与文件目录前缀冲突。

@@ -157,3 +157,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.workbench-page__rename-issue {
+  margin-top: 8px;
+  color: var(--destructive);
+  font-size: var(--ui-font-size-12);
+}

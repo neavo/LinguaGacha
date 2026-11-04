@@ -1,7 +1,6 @@
 import type { JSX } from "react";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/text-preserve-page/text-preserve-page.css";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { TextPreserveCommandBar } from "@frontend/pages/text-preserve-page/components/text-preserve-command-bar";
@@ -23,7 +22,7 @@ const TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE = {
 
 const TEXT_PRESERVE_FILTER_SCOPES: TextPreserveFilterScope[] = ["all", "src", "info"];
 /** 组装文本保护规则的查询状态、列表与编辑操作。 */
-export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
+export function TextPreservePage(): JSX.Element {
   const { t } = useI18n();
 
   const page_state = useTextPreservePageState();

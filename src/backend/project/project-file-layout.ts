@@ -1,11 +1,14 @@
 import { AppError } from "../../shared/error";
-import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import path from "node:path";
-import { is_game_file_type } from "../../shared/project-source-formats";
-import { GAME_ASSET_EXTENSIONS, assert_source_file_paths } from "../file/source-file-paths";
+import {
+  assert_source_file_paths,
+  normalize_project_asset_path,
+  project_asset_extension,
+} from "../../shared/project/project-asset-paths";
+import { is_portable_file_name } from "../../shared/utils/file-name";
 import { insert_by_sort } from "./insert-by-sort";
+import type { ProjectFileCreate } from "../../shared/project-file-changes";
 
-export type ProjectFileUpdate = {
+export type ProjectFileUpdate = Partial<ProjectFileCreate> & {
   file_path: string;
   new_file_path?: string;
   sort?: number;
@@ -28,29 +31,39 @@ export function resolve_project_file_layout(
   const remaining = current.filter((file) => !deleted.has(file.path));
   const layout = remaining.map((file) => {
     const update = updates.find((entry) => entry.file_path === file.path);
+    if (update?.godot_pack_orders !== undefined && update.source_path === undefined)
+      throw new AppError("request.validation_failed");
+    if (update?.source_path !== undefined && update.new_file_path !== undefined)
+      throw new AppError("request.validation_failed");
     const target =
       update?.new_file_path === undefined
         ? file.path
         : normalize_project_asset_path(update.new_file_path);
-    if (
-      target !== file.path &&
-      is_game_file_type(file.file_type) &&
-      path.posix.extname(target) !== GAME_ASSET_EXTENSIONS[file.file_type]
-    )
-      throw new AppError("request.validation_failed", {
-        public_details: { file_path: file.path, conflict: target },
-      });
-    if (
-      target !== file.path &&
-      remaining.some(
-        (other) =>
-          other.path !== file.path &&
-          normalize_project_asset_path(other.path).toLowerCase() === target.toLowerCase(),
+    // 扩展名决定格式与游戏输出目录。未改名的已有路径按磁盘事实保留。
+    if (target !== file.path) {
+      if (project_asset_extension(target) !== project_asset_extension(file.path))
+        throw new AppError("request.validation_failed", {
+          message: `Renaming "${file.path}" to "${target}" would change the file extension.`,
+          public_details: { file_path: file.path },
+        });
+      if (!target.split("/").every(is_portable_file_name))
+        throw new AppError("request.validation_failed", {
+          message: `Invalid file name in "${target}": names must not contain reserved characters, end with a dot or space, or use a reserved device name.`,
+          public_details: { file_path: file.path },
+        });
+      // 最终集合校验无法发现交换和链式改名，目标还须避开当前占用。
+      if (
+        remaining.some(
+          (other) =>
+            other.path !== file.path &&
+            normalize_project_asset_path(other.path).toLowerCase() === target.toLowerCase(),
+        )
       )
-    )
-      throw new AppError("request.validation_failed", {
-        public_details: { file_path: file.path, conflict: target },
-      });
+        throw new AppError("request.validation_failed", {
+          message: `"${target}" conflicts with an existing file or directory at "${target}".`,
+          public_details: { file_path: file.path, conflict: target },
+        });
+    }
     if (update?.sort !== undefined && (!Number.isInteger(update.sort) || update.sort < -1))
       throw new AppError("request.validation_failed");
     return { path: target, previous_path: file.path, file_type: file.file_type };

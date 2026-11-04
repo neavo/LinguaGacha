@@ -7,8 +7,7 @@ import {
   is_update_dialog_submitting,
   read_update_release,
   resolve_disabled_route_ids,
-  resolve_project_route_after_snapshot,
-  resolve_route_selection,
+  resolve_route_after_project_snapshot,
   resolve_update_action_label,
   type UpdateDialogState,
 } from "@frontend/app/app-shell-state";
@@ -72,104 +71,36 @@ describe("App 更新弹窗状态", () => {
   });
 });
 
-describe("App 项目导航状态", () => {
+describe("App 工程导航状态", () => {
   it.each([
-    { project_loaded: false, project_session_status: "idle", disabled: true, task_disabled: false },
-    {
-      project_loaded: true,
-      project_session_status: "warming",
-      disabled: true,
-      task_disabled: true,
-    },
-    {
-      project_loaded: true,
-      project_session_status: "ready",
-      disabled: false,
-      task_disabled: false,
-    },
-  ] as const)(
-    "工程入口在 loaded=$project_loaded、session=$project_session_status 时遵循工程就绪状态",
-    ({ project_loaded, project_session_status, disabled, task_disabled }) => {
-      const disabled_route_ids = resolve_disabled_route_ids({
-        project_loaded,
-        project_session_status,
-      });
-      expect(disabled_route_ids.has("pre-translation-replacement")).toBe(disabled);
-      expect(disabled_route_ids.has("agent")).toBe(task_disabled);
-      expect(
-        resolve_route_selection({
-          route_id: "pre-translation-replacement",
-          project_loaded,
-          project_session_status,
-          pending_target_route: null,
-        }),
-      ).toEqual({
-        selected_route: disabled ? "project-home" : "pre-translation-replacement",
-        pending_target_route: disabled ? "pre-translation-replacement" : null,
-      });
-    },
-  );
-
-  it("未加载项目时把项目入口保存为待恢复路由", () => {
-    expect(
-      resolve_route_selection({
-        route_id: "agent",
-        project_loaded: false,
-        project_session_status: "idle",
-        pending_target_route: null,
-      }),
-    ).toEqual({ selected_route: "project-home", pending_target_route: "agent" });
+    { project_loaded: false, project_session_status: "idle", disabled: true },
+    { project_loaded: true, project_session_status: "warming", disabled: true },
+    { project_loaded: true, project_session_status: "ready", disabled: false },
+  ] as const)("工程可用性 $project_loaded/$project_session_status", (args) => {
+    const routes = resolve_disabled_route_ids(args);
+    for (const route of [
+      "proofreading",
+      "workbench",
+      "glossary",
+      "text-preserve",
+      "pre-translation-replacement",
+      "post-translation-replacement",
+      "knowledge",
+      "custom-prompt",
+      "laboratory",
+    ] as const)
+      expect(routes.has(route)).toBe(args.disabled);
+    expect(routes.has("agent")).toBe(false);
+    expect(routes.has("model")).toBe(false);
   });
-
-  it("非项目路由直接进入并清除待恢复路由", () => {
-    expect(
-      resolve_route_selection({
-        route_id: "model",
-        project_loaded: false,
-        project_session_status: "idle",
-        pending_target_route: "agent",
-      }),
-    ).toEqual({ selected_route: "model", pending_target_route: null });
-  });
-
-  it("项目就绪时恢复待访问路由，否则进入 AGENT 页", () => {
-    const base = {
-      previous_project_loaded: false,
-      previous_project_path: "",
-      previous_project_session_status: "idle" as const,
-      project_loaded: true,
-      project_path: "E:/demo/sample.lg",
-      project_session_status: "ready" as const,
-    };
-
-    expect(
-      resolve_project_route_after_snapshot({
-        ...base,
-        pending_target_route: "post-translation-replacement",
-      }),
-    ).toEqual({
-      selected_route: "post-translation-replacement",
-      pending_target_route: null,
-    });
-    expect(
-      resolve_project_route_after_snapshot({
-        ...base,
-        pending_target_route: null,
-      }),
-    ).toEqual({ selected_route: "agent", pending_target_route: null });
-  });
-
-  it("项目卸载时回到项目首页", () => {
-    expect(
-      resolve_project_route_after_snapshot({
-        previous_project_loaded: true,
-        previous_project_path: "E:/demo/sample.lg",
-        previous_project_session_status: "ready",
-        project_loaded: false,
-        project_path: "",
-        project_session_status: "idle",
-        pending_target_route: "agent",
-      }),
-    ).toEqual({ selected_route: "project-home", pending_target_route: null });
+  it.each([
+    [true, false, "agent"],
+    [false, true, null],
+    [true, true, null],
+    [false, false, null],
+  ] as const)("工程快照 %s → %s", (previous_project_loaded, project_loaded, expected) => {
+    expect(resolve_route_after_project_snapshot({ previous_project_loaded, project_loaded })).toBe(
+      expected,
+    );
   });
 });

@@ -40,7 +40,7 @@ describe("AppSidebar", () => {
             <SidebarProvider open={open}>
               <AppSidebar
                 groups={[]}
-                selected_route="project-home"
+                selected_route="agent"
                 disabled_route_ids={new Set()}
                 app_language="ZH"
                 is_language_updating={false}

@@ -124,6 +124,26 @@ export function create_workbench_delete_files_plan(args: {
   };
 }
 
+// 改名只提交原路径与新路径，名称规则和冲突由后端按最终文件集合复核。
+export function create_workbench_rename_file_plan(args: {
+  state: WorkbenchCommandPlanningState;
+  rel_path: string;
+  new_rel_path: string;
+}): WorkbenchCommandPlan {
+  if (!build_file_map(args.state).has(args.rel_path)) {
+    throw new Error("Target file was not found in the current workbench.");
+  }
+
+  return {
+    updatedSections: ["files", "items"],
+    requestBody: {
+      rel_path: args.rel_path,
+      new_rel_path: args.new_rel_path,
+      expected_section_revisions: build_expected_revisions(args.state, ["files", "items"]),
+    },
+  };
+}
+
 export type WorkbenchImportFileCandidate = {
   source_path: string;
   target_rel_path: string; // 后端预览分配的规范资产路径。

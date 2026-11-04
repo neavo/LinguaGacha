@@ -141,6 +141,7 @@ export class GuiBackendBootstrap {
         runtimeGate: services.state.runtimeGate,
         writeStore: services.state.writes,
         files: services.project.content,
+        generation: services.files.translationGeneration,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
         pdfHost: this.options.pdfHost,

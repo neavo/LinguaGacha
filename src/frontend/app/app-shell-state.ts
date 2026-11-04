@@ -15,14 +15,10 @@ type AppTranslator = (
   key: "app.update.action" | "app.update.launching" | "app.update.restart_confirm",
 ) => string;
 
-// 无项目时允许点击并记录目标，加载完成后恢复访问。
-const PROJECT_LOAD_ENTRY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  "agent",
+// 依赖工程会话的页面只在工程就绪时开放导航。
+const PROJECT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "proofreading",
   "workbench",
-]);
-// 这些页面的导航入口在项目未加载时禁用。
-const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "glossary",
   "text-preserve",
   "pre-translation-replacement",
@@ -31,11 +27,6 @@ const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "custom-prompt",
   "laboratory",
 ]);
-
-/** 识别需要项目会话才能进入的路由。 */
-function is_project_dependent_route(route_id: RouteId): boolean {
-  return PROJECT_LOAD_ENTRY_ROUTE_IDS.has(route_id) || PROJECT_LOADED_ONLY_ROUTE_IDS.has(route_id);
-}
 
 /** 从更新流程当前阶段读取发行信息。 */
 export function read_update_release(state: UpdateDialogState): GithubReleaseUpdate | null {
@@ -82,64 +73,15 @@ export function resolve_disabled_route_ids(args: {
   project_loaded: boolean;
   project_session_status: ProjectSessionStatus;
 }): ReadonlySet<RouteId> {
-  if (!args.project_loaded) {
-    return new Set(PROJECT_LOADED_ONLY_ROUTE_IDS);
-  }
-
-  return args.project_session_status === "ready"
+  return args.project_loaded && args.project_session_status === "ready"
     ? new Set()
-    : new Set([...PROJECT_LOAD_ENTRY_ROUTE_IDS, ...PROJECT_LOADED_ONLY_ROUTE_IDS]);
+    : PROJECT_ROUTE_IDS;
 }
 
-/** 项目尚未就绪时保留目标，供会话准备后恢复。 */
-export function resolve_route_selection(args: {
-  route_id: RouteId;
-  project_loaded: boolean;
-  project_session_status: ProjectSessionStatus;
-  pending_target_route: RouteId | null;
-}): { selected_route: RouteId; pending_target_route: RouteId | null } {
-  if (
-    is_project_dependent_route(args.route_id) &&
-    (!args.project_loaded || args.project_session_status !== "ready")
-  ) {
-    return { selected_route: DEFAULT_ROUTE_ID, pending_target_route: args.route_id };
-  }
-
-  return {
-    selected_route: args.route_id,
-    pending_target_route: is_project_dependent_route(args.route_id)
-      ? args.pending_target_route
-      : null,
-  };
-}
-
-/** 项目关闭时回首页，新会话就绪后恢复待访问页面。 */
-export function resolve_project_route_after_snapshot(args: {
+/** 工程卸载时回到 AGENT，其余快照变化保持当前路由。 */
+export function resolve_route_after_project_snapshot(args: {
   previous_project_loaded: boolean;
-  previous_project_path: string;
-  previous_project_session_status: ProjectSessionStatus;
   project_loaded: boolean;
-  project_path: string;
-  project_session_status: ProjectSessionStatus;
-  pending_target_route: RouteId | null;
-}): { selected_route: RouteId; pending_target_route: RouteId | null } | null {
-  if (args.previous_project_loaded && !args.project_loaded) {
-    return { selected_route: DEFAULT_ROUTE_ID, pending_target_route: null };
-  }
-  if (!args.project_loaded || args.project_session_status !== "ready") {
-    return null;
-  }
-
-  const project_changed =
-    !args.previous_project_loaded ||
-    args.previous_project_path !== args.project_path ||
-    args.previous_project_session_status !== "ready";
-  if (!project_changed) {
-    return null;
-  }
-
-  return {
-    selected_route: args.pending_target_route ?? "agent",
-    pending_target_route: null,
-  };
+}): RouteId | null {
+  return args.previous_project_loaded && !args.project_loaded ? DEFAULT_ROUTE_ID : null;
 }

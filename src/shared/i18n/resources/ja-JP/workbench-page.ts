@@ -9,17 +9,16 @@ export const ja_jp_workbench_page = {
     file_name: "ファイル名",
     progress: "進捗",
     agent: "AGENT",
+    agent_writeback: "元の形式への書き戻しには AGENT が必要",
     agent_only: "AGENT でのみ翻訳できます",
     agent_recommended: "翻訳には AGENT の使用をおすすめします",
   },
   feedback: {
     no_valid_file: "追加できる有効なファイルがありません",
-    close_project_failed:
-      "プロジェクトを閉じられませんでした。しばらくしてから再試行してください …",
   },
   action: {
     add_file: "追加",
-    close_project: "プロジェクトを閉じる",
+    rename: "名前を変更",
     reset: "ファイルデータをリセット",
     translation_task: "翻訳",
     start_translation: "翻訳を開始",
@@ -34,14 +33,16 @@ export const ja_jp_workbench_page = {
       fill: "埋める",
       do_not_fill: "埋めない",
     },
+    rename: {
+      exists: "同じ名前のファイルまたはフォルダーが既に存在します",
+      invalid_name:
+        '名前は空にできず、\\ / : * ? " < > | を含めることも、ドットで終わることもできません',
+    },
     reset: {
       description: "選択したファイルと、そのすべての翻訳項目をリセットしますか …?",
     },
     delete: {
       description: "選択したファイルと、そのすべての翻訳項目を削除しますか …?",
-    },
-    close_project: {
-      description: "現在のプロジェクトを閉じますか …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

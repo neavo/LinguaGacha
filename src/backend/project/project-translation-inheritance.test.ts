@@ -40,20 +40,23 @@ describe("inherit_completed_translations", () => {
       done("b.txt", "EV1", "事件乙"),
     ];
 
-    expect(
-      inherit(old_items, [
-        item("new.txt", "前"),
-        item("new.txt", "EV1", { status: "RULE_SKIPPED" }),
-        item("new.txt", "后"),
-        item("plain.txt", "前"),
-        item("plain.txt", "EV1"),
-        item("plain.txt", "后"),
-        item("other.txt", "前"),
-        item("other.txt", "EV1"),
-        item("other.txt", "EV1", { status: "LANGUAGE_SKIPPED" }),
-        item("other.txt", "尾"),
-      ]),
-    ).toEqual([
+    const next_items = [
+      item("new.txt", "前"),
+      item("new.txt", "EV1", { status: "RULE_SKIPPED" }),
+      item("new.txt", "后"),
+      item("plain.txt", "前"),
+      item("plain.txt", "EV1"),
+      item("plain.txt", "后"),
+      item("other.txt", "前"),
+      item("other.txt", "EV1"),
+      item("other.txt", "EV1", { status: "LANGUAGE_SKIPPED" }),
+      item("other.txt", "尾"),
+      item("last.txt", "EV1"),
+    ];
+    expect(inherit_completed_translations(old_items, next_items, "fill").contested).toEqual([
+      [7, 10],
+    ]);
+    expect(next_items.map((next) => [next.dst, next.status])).toEqual([
       ["", "NONE"],
       ["事件甲", "PROCESSED"],
       ["", "NONE"],
@@ -64,6 +67,7 @@ describe("inherit_completed_translations", () => {
       ["事件乙", "PROCESSED"],
       ["", "LANGUAGE_SKIPPED"],
       ["", "NONE"],
+      ["事件乙", "PROCESSED"],
     ]);
   });
 
@@ -137,7 +141,12 @@ describe("inherit_completed_translations", () => {
       item("x.txt", "你好", { dst: "已有", status: "PROCESSED" }),
     ];
 
-    expect(inherit(old_items, next_items)).toEqual([
+    expect(inherit_completed_translations(old_items, next_items, "fill").contested).toEqual([
+      [0], // 同票也有争议。
+      [1], // 明确多数仍有争议。
+      [2], // 相同正文、不同原名分组，不同译名形成争议。
+    ]);
+    expect(next_items.map((next) => [next.dst, next.status])).toEqual([
       ["先出现", "PROCESSED"], // 同票取最早结果。
       ["多数", "PROCESSED"],
       ["同译", "PROCESSED"],
@@ -201,6 +210,7 @@ describe("inherit_completed_translations", () => {
     expect(inherit_completed_translations(old_items, filled, "fill")).toEqual({
       filled: 1,
       replaced: 0,
+      contested: [],
     });
     expect(filled.map((next) => next.dst)).toEqual(["", "旧甲", "同译", "旧乙", "新乙"]);
 
@@ -208,6 +218,7 @@ describe("inherit_completed_translations", () => {
     expect(inherit_completed_translations(old_items, overwritten, "overwrite")).toEqual({
       filled: 1,
       replaced: 1,
+      contested: [],
     });
     expect(overwritten.map((next) => next.dst)).toEqual(["", "新甲", "同译", "旧乙", "新乙"]);
   });

@@ -1503,7 +1503,7 @@
 }
 
 .agent-composer__file-trigger,
-.agent-composer__generation,
+.agent-composer__instructions-trigger,
 .agent-composer__reset,
 .agent-composer__model-trigger,
 .agent-composer__approval-trigger {
@@ -1771,4 +1771,107 @@
   gap: 4px;
   color: var(--ui-warning);
   font-size: var(--ui-font-size-12);
+}
+
+.agent-project-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: var(--agent-status-side-rail);
+}
+.agent-project-entry > button {
+  flex-shrink: 0;
+}
+/* 最近工程按名称自适应宽度，空间不足时收缩截断，固定入口保持完整。 */
+.agent-project-entry > .agent-project-entry__recent {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 160px;
+  flex-shrink: 1;
+}
+.agent-project-entry__recent-open {
+  width: 100%;
+  min-width: 0;
+}
+/* 悬停停留在中性灰阶，与描边的固定入口保持同一强度。 */
+.agent-project-entry__recent:hover .agent-project-entry__recent-open,
+.agent-project-entry__recent:focus-within .agent-project-entry__recent-open {
+  background: color-mix(in srgb, var(--secondary), var(--foreground) 8%);
+  color: var(--foreground);
+}
+/* 沿用附件的覆盖式移除按钮，不预留文本空间，实色底遮住末尾文字。 */
+.agent-project-entry__recent-remove {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--ui-radius-button);
+  background: color-mix(in srgb, var(--secondary), var(--foreground) 8%);
+  color: var(--foreground);
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+}
+.agent-project-entry__recent:hover .agent-project-entry__recent-remove,
+.agent-project-entry__recent:focus-within .agent-project-entry__recent-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+.agent-project-entry__recent-remove:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
+  background: var(--muted);
+}
+.agent-project-entry__recent-remove:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+.agent-project-entry__recent-remove:disabled {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+.agent-project-entry__recent-remove svg {
+  width: 14px;
+  height: 14px;
+}
+@media (hover: none) {
+  .agent-project-entry__recent-remove {
+    opacity: 1;
+    pointer-events: auto;
+    background: var(--secondary);
+  }
+}
+.agent-project-entry__preview {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  max-width: 480px;
+  --project-lifecycle-subtitle: currentColor;
+}
+.agent-project-entry[data-attention] {
+  animation: agent-project-entry-shake 400ms ease-out;
+}
+@keyframes agent-project-entry-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-project-entry[data-attention] {
+    animation: none;
+  }
 }

@@ -17,7 +17,7 @@ import { paragraph_text } from "./python";
 import type { PythonSession } from "./python-syntax";
 import { script_excluded } from "./script";
 
-export const RENPY_SCRIPT_MEMBER = /^game\/.*\.rpym?c$/u; // 附加原稿与元数据不参与编译分析。
+export const RENPY_SCRIPT_MEMBER = /^game\/.*\.rpym?c$/u; // 版本文件与元数据不参与编译分析。
 
 /** 跨成员保留的纯值摘要。完整编译图、代码上下文和写回坐标随成员释放。 */
 export type RenpySummary = Readonly<

@@ -1,3 +1,5 @@
+import { find_agent_reference_ranges } from "@shared/agent-reference";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
   type JSX,
@@ -11,13 +13,12 @@ import {
   type RefObject,
   type ReactNode,
 } from "react";
-import { FileText, Paperclip, Shrink, Sparkles } from "lucide-react";
+import { FileText, Paperclip, Sparkles, SquareSlash } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   Annotation,
   Compartment,
-  Facet,
   EditorSelection,
   EditorState,
   StateField,
@@ -51,7 +52,6 @@ import {
 import type { AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import {
   create_agent_mention_candidates,
-  find_agent_mention_ranges,
   type AgentMentionCandidate,
   type AgentMentionInstruction,
 } from "./agent-mention";
@@ -59,12 +59,45 @@ import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-inp
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AgentFileDropTarget } from "./agent-file-drop-target";
 
+/** 编辑器按扩展名选择上传附件，图片格式对应后端 `read_image_type`。 */
+const AGENT_UPLOAD_EXTENSIONS: readonly string[] = Object.freeze([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "bmp",
+  "avif",
+  "txt",
+  "json",
+  "jsonl",
+  "md",
+  "markdown",
+  "ini",
+  "csv",
+  "tsv",
+  "yaml",
+  "yml",
+  "toml",
+  "xml",
+  "log",
+  "srt",
+  "ass",
+  "ssa",
+  "vtt",
+  "po",
+  "pot",
+  "lrc",
+]);
+
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
   from: number;
   to: number;
   text: string;
 };
+
+/** 指令入口代写的查询前缀；`at` 是其中 @ 的位置。 */
+type InstructionTrigger = Readonly<{ from: number; at: number; text: string }>;
 
 /** 页面动作通过编辑器事务同步草稿，选区与焦点由 CodeMirror 管理。 */
 export type AgentMessageEditorHandle = {
@@ -84,12 +117,14 @@ type AgentMessageEditorProps = {
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[] | undefined;
   input_state: AgentInputState;
+  before_attach?: (() => boolean) | undefined; // 文件选择、拖放与粘贴共用前置检查。
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: (() => void) | undefined;
-  /** 编辑器提供文件入口，消费方统一排列动作并决定提交权限。 */
+  /** 编辑器提供文件与指令入口，消费方统一排列动作并决定提交权限。 */
   render_actions: (
     state: AgentEditorState,
     add_file: ReactNode,
+    open_instructions: ReactNode,
   ) => {
     can_submit: boolean;
     actions: ReactNode;
@@ -111,25 +146,13 @@ const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
 
-const skills_compartment = new Compartment(); // 技能变化只更新装饰依赖，保留文档和撤销历史。
-const mention_skills = Facet.define<readonly AgentSkillSnapshot[], readonly AgentSkillSnapshot[]>({
-  combine: (values) => values.at(-1) ?? [],
-});
-
+// 引用块只依赖正文，技能列表仅影响候选菜单。
 const mention_tokens_field = StateField.define<DecorationSet>({
-  create: (state) =>
-    create_mention_token_decorations(state.doc.toString(), state.facet(mention_skills)),
-  /** 正文或当前技能改变时重建装饰，失效引用同时解除整块光标导航。 */
+  create: (state) => create_mention_token_decorations(state.doc.toString()),
   update(tokens, transaction) {
-    if (
-      !transaction.docChanged &&
-      transaction.startState.facet(mention_skills) === transaction.state.facet(mention_skills)
-    )
-      return tokens;
-    return create_mention_token_decorations(
-      transaction.newDoc.toString(),
-      transaction.state.facet(mention_skills),
-    );
+    return transaction.docChanged
+      ? create_mention_token_decorations(transaction.newDoc.toString())
+      : tokens;
   },
   /** 同一装饰范围同时拥有绘制与整块光标导航语义。 */
   provide(field) {
@@ -166,6 +189,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const matching_candidates_ref = useRef<readonly AgentMentionCandidate[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
+  const instruction_trigger_ref = useRef<InstructionTrigger | null>(null); // 用户尚未接管的代写 @
   // 草稿拥有当前可见正文，历史浏览只缓存列表与原正文，附件继续属于草稿。
   const input_state_ref = useRef(props.input_state);
   const input_history_navigation_ref = useRef<{
@@ -205,6 +229,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const matching_files = candidate_groups.files;
   const matching_instructions = candidate_groups.instructions;
   const matching_candidates = [...matching_skills, ...matching_files, ...matching_instructions];
+  const instruction_start = matching_skills.length + matching_files.length; // 指令组首项的跨分组索引
   const editor_read_only = props.read_only;
   const menu_open =
     !assistant_editing && mention_query !== null && !editor_read_only && !menu_suppressed;
@@ -221,16 +246,30 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         variant="ghost"
         className="agent-composer__file-trigger"
         disabled={!can_append_files}
-        onClick={() => file_input_ref.current?.click()}
+        onClick={() => {
+          if (props.before_attach?.() !== false) file_input_ref.current?.click();
+        }}
       >
         <Paperclip aria-hidden="true" />
         <span>{t("agent_page.action.add_file")}</span>
       </AppButton>
     ) : null,
+    !assistant_editing && props.instructions !== undefined ? (
+      <AppButton
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="agent-composer__instructions-trigger"
+        disabled={editor_read_only}
+        onClick={open_instruction_menu}
+      >
+        <SquareSlash aria-hidden="true" />
+        <span>{t("agent_page.action.common_instructions")}</span>
+      </AppButton>
+    ) : null,
   );
-  // CodeMirror 扩展只创建一次，文件拖放读取当前上传权限。
-  const can_append_files_ref = useRef(can_append_files);
-  can_append_files_ref.current = can_append_files;
+  // CodeMirror 扩展只创建一次，通过 ref 调用当前文件分流入口。
+  const append_files_ref = useRef<(files: Iterable<File>) => void>(() => undefined);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_state.revision;
@@ -267,7 +306,6 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
               resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
             ),
             placeholder_compartment.of(placeholder(placeholder_text)),
-            skills_compartment.of(mention_skills.of([])),
             mention_token_extension,
             drawSelection(),
             history(),
@@ -279,11 +317,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                 const transfer = event.dataTransfer;
                 if (transfer === null || !Array.from(transfer.types).includes("Files"))
                   return false;
-                // 在 CodeMirror 读取文本文件前消费事件，上传只进入当前编辑器的草稿。
+                // 在 CodeMirror 读取文本文件前消费事件，交给统一文件入口。
                 event.preventDefault();
                 event.stopPropagation();
-                if (can_append_files_ref.current)
-                  input_state_ref.current.draft.append(transfer.files);
+                append_files_ref.current(transfer.files);
                 return true;
               },
             }),
@@ -368,12 +405,6 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   }, []);
 
   useEffect(() => {
-    view_ref.current?.dispatch({
-      effects: skills_compartment.reconfigure(mention_skills.of(props.skills)),
-    });
-  }, [props.skills]);
-
-  useEffect(() => {
     const view = view_ref.current;
     if (view === null) return;
     const current = input_state_ref.current.draft.read();
@@ -441,16 +472,45 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     if (menu_open) scroll_mention_candidate_into_view(menu_index_ref.current);
   }, [mention_query_text, menu_open, scroll_mention_candidate_into_view]);
 
+  // 指令入口代写的 @ 只在菜单打开期间暂存：用户输入筛选后转为普通正文，未输入即关闭则撤回。
+  useEffect(() => {
+    const trigger = instruction_trigger_ref.current;
+    const view = view_ref.current;
+    if (trigger === null || view === null) return;
+    if (menu_open && mention_query?.from === trigger.at) {
+      if (mention_query.text !== "") instruction_trigger_ref.current = null;
+      // 文件候选异步加载会改变跨分组索引，加载结束后再定位指令组。
+      else if (file_query.status !== "loading") {
+        set_menu_index(instruction_start);
+        menu_ref.current
+          ?.querySelector('[aria-labelledby="agent-mention-instructions-label"]')
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+      return;
+    }
+    instruction_trigger_ref.current = null;
+    const to = trigger.from + trigger.text.length;
+    if (view.state.sliceDoc(trigger.from, to) !== trigger.text) return;
+    view.dispatch({
+      changes: { from: trigger.from, to },
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }, [file_query.status, instruction_start, mention_query, menu_open]);
+
   /** 技能写入 marker；指令移除筛选文本后立即执行，不进入消息或草稿历史。 */
   const select_candidate = (candidate: AgentMentionCandidate): void => {
     const view = view_ref.current;
     const query = view === null ? null : find_mention_query(view.state);
     if (view === null || query === null) return;
+    if (candidate.kind === "instruction" && candidate.disabled) return;
+    const trigger = instruction_trigger_ref.current;
+    instruction_trigger_ref.current = null; // 选中后的正文由候选自身决定，不再撤回入口代写的 @
     if (candidate.kind === "instruction") {
-      if (candidate.disabled) return;
+      // 入口补写的前导空格随筛选文本一并移除，正文恢复原样。
+      const from = trigger?.at === query.from ? trigger.from : query.from;
       view.dispatch({
-        changes: { from: query.from, to: query.to, insert: "" },
-        selection: EditorSelection.cursor(query.from),
+        changes: { from, to: query.to, insert: "" },
+        selection: EditorSelection.cursor(from),
       });
       set_menu_suppressed(false);
       candidate.execute();
@@ -473,10 +533,44 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     draft.write({ ...draft.read(), attachments });
   }, []);
 
-  /** 输入只交给常驻草稿，上传状态和取消由草稿自身拥有。 */
+  /** 附件交给常驻草稿，其余本机文件以独立行写入正文，保留原路径。 */
   const append_files = (files: Iterable<File>): void => {
-    if (can_append_files) props.input_state.draft.append(files);
+    if (props.before_attach?.() === false) return;
+    const view = view_ref.current;
+    if (!can_append_files || view === null) return;
+    const uploads: File[] = [];
+    const paths: string[] = [];
+    const skipped: string[] = [];
+    for (const file of files) {
+      const extension = file.name.includes(".") ? file.name.split(".").at(-1)!.toLowerCase() : "";
+      if (AGENT_UPLOAD_EXTENSIONS.includes(extension)) {
+        uploads.push(file);
+        continue;
+      }
+      const path = window.desktopApp.getPathForFile(file); // 虚拟 File 没有磁盘路径，Electron 返回空串。
+      if (path === "") skipped.push(file.name);
+      else paths.push(path);
+    }
+    if (paths.length > 0) {
+      const { from, to } = view.state.selection.main;
+      // 路径独占一行，选区两侧已有换行时直接复用。
+      const before = from > 0 && view.state.sliceDoc(from - 1, from) !== "\n" ? "\n" : "";
+      const after =
+        to < view.state.doc.length && view.state.sliceDoc(to, to + 1) !== "\n" ? "\n" : "";
+      const text = before + paths.join("\n") + after;
+      view.dispatch({
+        changes: { from, to, insert: text },
+        selection: EditorSelection.cursor(from + text.length),
+      });
+      view.focus();
+    }
+    if (uploads.length > 0) props.input_state.draft.append(uploads);
+    if (skipped.length > 0)
+      push_toast("warning", t("agent_page.error.invalid_file_path"), {
+        description: skipped.join("\n"),
+      });
   };
+  append_files_ref.current = append_files;
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
   const remove_attachment = (index: number): void => {
@@ -658,7 +752,11 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   /** 所有分组共用连续 option 索引，使键盘导航与 aria-activedescendant 指向同一项。 */
   function render_candidate(candidate: AgentMentionCandidate, index: number): JSX.Element {
     const Icon =
-      candidate.kind === "skill" ? Sparkles : candidate.kind === "file" ? FileText : Shrink;
+      candidate.kind === "instruction"
+        ? candidate.icon
+        : candidate.kind === "skill"
+          ? Sparkles
+          : FileText;
     const disabled = candidate.kind === "instruction" && candidate.disabled;
     return (
       <Tooltip key={candidate.key}>
@@ -696,6 +794,21 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         </TooltipContent>
       </Tooltip>
     );
+  }
+
+  /** 在光标处代写 @ 打开菜单，正则要求 @ 前为空白，必要时补一个空格。 */
+  function open_instruction_menu(): void {
+    const view = view_ref.current;
+    if (view === null) return;
+    const head = view.state.selection.main.head;
+    const text = /^\s?$/u.test(view.state.sliceDoc(Math.max(0, head - 1), head)) ? "@" : " @";
+    instruction_trigger_ref.current = { from: head, at: head + text.length - 1, text };
+    view.dispatch({
+      changes: { from: head, insert: text },
+      selection: EditorSelection.cursor(head + text.length),
+      annotations: Transaction.addToHistory.of(false),
+    });
+    view.focus();
   }
 
   /** 菜单有候选时循环选择。零结果时把方向键交还 CodeMirror。 */
@@ -793,12 +906,9 @@ function find_mention_query(state: EditorState): MentionQuery | null {
 }
 
 /** 把完整引用投影成原子视觉块，底层文档仍保留完整稳定协议。 */
-function create_mention_token_decorations(
-  text: string,
-  skills: readonly AgentSkillSnapshot[],
-): DecorationSet {
+function create_mention_token_decorations(text: string): DecorationSet {
   return Decoration.set(
-    find_agent_mention_ranges(text, skills).map((range) =>
+    find_agent_reference_ranges(text).map((range) =>
       Decoration.replace({
         widget: new MentionTokenWidget(range.marker),
         inclusive: false,

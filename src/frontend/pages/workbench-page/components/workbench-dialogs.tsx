@@ -1,11 +1,15 @@
 import type { JSX } from "react";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
+import { WorkbenchRenameDialog } from "@frontend/pages/workbench-page/components/workbench-rename-dialog";
 import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
+import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
 
 type WorkbenchDialogsProps = {
   dialog_state: WorkbenchDialogState;
+  entries: readonly WorkbenchFileEntry[]; // 改名按当前文件集合就地校验
   on_confirm: () => void;
+  on_rename: (new_rel_path: string) => void;
   on_secondary: () => void;
   on_close: () => void;
 };
@@ -13,11 +17,10 @@ type WorkbenchDialogsProps = {
 const CONFIRM_DESCRIPTION_KEY_BY_KIND = {
   "reset-file": "workbench_page.dialog.reset.description",
   "delete-file": "workbench_page.dialog.delete.description",
-  "close-project": "workbench_page.dialog.close_project.description",
 } as const satisfies Partial<Record<NonNullable<WorkbenchDialogState["kind"]>, LocaleKey>>;
 
 /** 将工作台对话状态映射为统一确认或动作弹窗。 */
-export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
+export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element | null {
   const { t } = useI18n();
   const kind = props.dialog_state.kind;
   const count = props.dialog_state.target_rel_paths.length.toString();
@@ -56,6 +59,22 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
           onSelect: props.on_secondary,
         }}
         onClose={props.on_close}
+      />
+    );
+  }
+
+  if (kind === "rename-file") {
+    const entry = props.entries.find(
+      (candidate) => candidate.rel_path === props.dialog_state.target_rel_paths[0],
+    );
+    return entry === undefined ? null : (
+      <WorkbenchRenameDialog
+        key={entry.rel_path}
+        entry={entry}
+        entries={props.entries}
+        submitting={props.dialog_state.submitting}
+        on_submit={props.on_rename}
+        on_close={props.on_close}
       />
     );
   }
