@@ -1,6 +1,5 @@
 import type { JSX, ReactNode } from "react";
 import { APP_PREFILTER_SETTING_KEYS } from "@domain/project-settings";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
 import {
@@ -12,7 +11,7 @@ import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
 /** 实验选项通过页面状态入口保存，仅工程预过滤操作消费运行锁。 */
-export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
+export function LaboratoryPage(): JSX.Element {
   const { locale, t } = useI18n();
   const { snapshot, pending_state, runtime_locked, update_setting } = useLaboratoryPageState();
 

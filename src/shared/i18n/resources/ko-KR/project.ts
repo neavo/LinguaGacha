@@ -1,10 +1,9 @@
-import type { zh_cn_project_page } from "../zh-CN/project-page";
+import type { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
-export const ko_kr_project_page = {
-  title: "프로젝트 홈",
+export const ko_kr_project = {
   create: {
-    title: "새 프로젝트",
-    subtitle: "원본 파일로 .lg 생성. 생성 후 원본 파일은 필요 없습니다",
+    title: "프로젝트 만들기",
+    subtitle: "원본 파일로 또는 빈 .lg 생성. 생성 후 원본 파일은 필요 없습니다",
     drop_title: "클릭하거나 원본 파일 놓기",
     ready_status: "원본 파일 {COUNT}개 선택됨",
     loading_toast: "프로젝트 생성 중 …",
@@ -22,20 +21,19 @@ export const ko_kr_project_page = {
   },
   open: {
     title: "프로젝트 열기",
-    subtitle: "기존 .lg 프로젝트 파일을 열어 번역 진행 상황과 규칙을 이어서 작업합니다",
     drop_title: "클릭하거나 .lg 파일 놓기",
-    recent_title: "최근 열었던 프로젝트",
-    empty: "최근 열었던 프로젝트가 없습니다",
     loading_toast: "프로젝트 불러오는 중 …",
-    preview_unavailable: "프로젝트 미리 보기 읽기 실패 …",
-    action: "프로젝트 열기",
     remove_unavailable: "최근 사용 기록을 제거할 수 없습니다. 잠시 후 다시 시도해 주세요 …",
     newer_app_version_description:
       "이 파일의 대상 앱 버전은 <emphasis>v{VERSION}</emphasis>입니다. 이전 버전의 앱으로 열면 데이터가 손상될 수 있습니다. 계속 여시겠습니까 …?",
     missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요 …?",
   },
+  close: {
+    action: "프로젝트 닫기",
+    confirm: "현재 프로젝트를 닫을까요 …?",
+    failed: "프로젝트를 닫지 못했습니다. 잠시 후 다시 시도해 주세요 …",
+  },
   preview: {
-    title: "프로젝트 개요",
     file_count: "파일 수",
     files: "파일 {COUNT}개",
     created_at: "생성 시간",
@@ -43,6 +41,7 @@ export const ko_kr_project_page = {
     progress: "번역 진행률",
   },
   formats: {
+    generic: "범용 데이터",
     title: "지원 파일 형식",
     txt: "일반 텍스트",
     md: "Markdown",
@@ -71,4 +70,4 @@ export const ko_kr_project_page = {
     wolf: "WOLF 공식 번역 도구에서 내보낸 게임 텍스트",
     trans: "Translator++ 프로젝트 파일",
   },
-} satisfies LocaleMessageSchema<typeof zh_cn_project_page>;
+} satisfies LocaleMessageSchema<typeof zh_cn_project>;

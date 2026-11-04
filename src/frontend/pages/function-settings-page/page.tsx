@@ -23,11 +23,8 @@ import { useFunctionSettingsState } from "@frontend/pages/function-settings-page
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
-type FunctionSettingsPageProps = {
-  is_sidebar_collapsed: boolean;
-};
 /** 保留数值输入草稿，在失焦或确认后提交设置。 */
-export function FunctionSettingsPage(_props: FunctionSettingsPageProps): JSX.Element {
+export function FunctionSettingsPage(): JSX.Element {
   const { t } = useI18n();
 
   const function_settings_state = useFunctionSettingsState();

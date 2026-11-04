@@ -57,7 +57,7 @@ export const zh_cn_app = {
     skip: "跳过",
     overwrite: "覆盖",
     replace: "替换",
-    go_to_agent: "前往 AGENT",
+    handle_with_agent: "由 AGENT 处理",
     loading: "加载中",
     select_file: "选择文件",
     select_folder: "选择文件夹",
@@ -198,9 +198,12 @@ export const zh_cn_app = {
   translation_generation: {
     action: "生成译文",
     confirmation: {
+      generic_description:
+        "工程包含通用数据包。请使用 AGENT 生成全部译文。直接生成将跳过这些通用数据包。",
+      generate_all: "生成本工程全部译文，包括通用数据包，并验证交付结果。",
       description: "是否确认生成当前可用译文 …?",
-      checking: "正在检查校对警告 …",
-      check_failed: "读取校对警告失败，仍可继续生成当前译文 …",
+      checking: "正在检查工程文件和校对警告 …",
+      check_failed: "检查工程文件或校对警告失败，仍可继续生成当前译文 …",
       warning_description:
         "检测到 {COUNT} 个校对警告，警告并非一定是错误，但建议先使用 AGENT 执行至少一次自动审校，是否确认继续生成译文 …?",
       retry_check: "重新检查",

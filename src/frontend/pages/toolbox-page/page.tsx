@@ -2,7 +2,7 @@ import type { JSX } from "react";
 import { CircleChevronRight } from "lucide-react";
 
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
-import type { RouteId, ScreenComponentProps } from "@frontend/app/navigation/types";
+import type { RouteId } from "@frontend/app/navigation/types";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/toolbox-page/toolbox-page.css";
 import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
@@ -30,7 +30,7 @@ const TOOLBOX_ENTRIES: readonly ToolboxEntry[] = [
 ];
 
 /** 工具入口不依赖工程会话，未打开 `.lg` 时也可使用。 */
-export function ToolboxPage(_props: ScreenComponentProps): JSX.Element {
+export function ToolboxPage(): JSX.Element {
   const { t } = useI18n();
   const { navigate_to_route } = useAppNavigation();
 

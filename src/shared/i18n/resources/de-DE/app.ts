@@ -61,7 +61,7 @@ export const de_de_app = {
     skip: "Überspringen",
     overwrite: "Überschreiben",
     replace: "Ersetzen",
-    go_to_agent: "Zu AGENT",
+    handle_with_agent: "Mit AGENT bearbeiten",
     loading: "Wird geladen",
     select_file: "Datei auswählen",
     select_folder: "Ordner auswählen",
@@ -212,10 +212,14 @@ export const de_de_app = {
   translation_generation: {
     action: "Übersetzung erstellen",
     confirmation: {
+      generic_description:
+        "Dieses Projekt enthält generische Datenpakete. Verwende AGENT, um alle Übersetzungen zu erzeugen. Die direkte Erzeugung überspringt diese Pakete.",
+      generate_all:
+        "Erzeuge alle Übersetzungen dieses Projekts einschließlich der generischen Datenpakete und prüfe die Ergebnisse.",
       description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
-      checking: "Korrekturwarnungen werden geprüft …",
+      checking: "Projektdateien und Korrekturwarnungen werden geprüft …",
       check_failed:
-        "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden …",
+        "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Die aktuellen Übersetzungen können dennoch erzeugt werden …",
       warning_description:
         "Es wurden {COUNT} Korrekturwarnungen erkannt. Warnungen weisen nicht unbedingt auf Fehler hin. Wir empfehlen jedoch, zuerst mindestens eine automatische Prüfung mit AGENT durchzuführen. Mit dem Erstellen der Übersetzung fortfahren …?",
       retry_check: "Erneut prüfen",

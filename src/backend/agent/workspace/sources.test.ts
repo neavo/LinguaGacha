@@ -11,33 +11,6 @@ import { wolf_files } from "../../../test/wolf-fixture";
 import { create_godot_fixture } from "../../../test/godot-fixture";
 import { compiled_fixture } from "../../../test/renpy-fixture";
 
-it("附加原稿按游戏路径原样展开，旧清单同名文件保留原件身份", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-additional-sources-"));
-  const native = new NativeFs();
-  const originals = new Map([
-    ["main.gdc.json", Buffer.from("real game data")],
-    ["game_files.txt", Buffer.from("real file")],
-    ["data/broken.json", Buffer.from("GDSCbroken")], // 文件头形似编译脚本，进入解析时会写出错误投影。
-  ]);
-  const zip = new JSZip();
-  for (const [name, bytes] of [...create_godot_fixture(), ...originals]) zip.file(name, bytes);
-  const sourceRoot = path.join(temp.path, "sources");
-  await write_agent_workspace_sources({
-    nativeFs: native,
-    sourceRoot,
-    files: [{ file_path: "game.godot", file_type: "GODOT" }],
-    additionalFiles: { "game.godot": [...originals.keys()] },
-    readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
-  });
-  for (const [name, bytes] of originals) {
-    const source = native.read_file(path.join(sourceRoot, "game.godot", name));
-    expect(source).toEqual(bytes);
-    expect(native.exists(path.join(sourceRoot, "game.godot", name + ".error.reference.json"))).toBe(
-      false,
-    );
-  }
-});
-
 it("普通原稿按资产相对路径保留原始字节", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
   const bytes = Buffer.from([0, 128, 255, 254, 65, 0]);
@@ -60,6 +33,7 @@ it("普通原稿按资产相对路径保留原始字节", async () => {
 it.each([
   ["RPGMAKER_MV_MZ", "game.zip.rpgmaker"],
   ["EPUB", "小说/书.epub"],
+  ["GENERIC", "data.generic"],
 ])("%s 按资产相对路径展开并保留所有成员字节", async (file_type, file_path) => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
   const zip = new JSZip();
@@ -85,7 +59,9 @@ it.each([
             root.path,
             "sources",
             file_path,
-            name === "game_files.txt" && file_type !== "EPUB" ? "game_files.reference.txt" : name,
+            name === "game_files.txt" && file_type === "RPGMAKER_MV_MZ"
+              ? "game_files.reference.txt"
+              : name,
           ),
         )
         .equals(bytes),
@@ -93,46 +69,48 @@ it.each([
 });
 
 it.each(["Data/System.rvdata2.reference.json", "game_files.reference.txt/real.json"])(
-  "附加原稿 %s 与可读视图或清单冲突时失败",
-  async (additional) => {
+  "原稿 %s 与可读视图或清单冲突时失败",
+  async (original) => {
     using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rgss-"));
     const zip = new JSZip()
       .file("Game.ini", "[Game]\n")
       .file("Data/System.rvdata2", encode(ruby_array([])))
       .file("Data/Scripts.rvdata2", encode(ruby_array([])))
       .file("game_files.txt", "Game.ini\n", { createFolders: false })
-      .file(additional, "original", { createFolders: false });
+      .file(original, "original", { createFolders: false });
     await expect(
       write_agent_workspace_sources({
         nativeFs: new NativeFs(),
         sourceRoot: root.path,
         files: [{ file_path: "game.zip", file_type: "RPGMAKER_RGSS" }],
-        additionalFiles: { "game.zip": [additional] },
         readAsset: () => zip.generateAsync({ type: "nodebuffer" }),
       }),
     ).resolves.toMatchObject([
       { retry: false, issues: [expect.objectContaining({ stage: "reference" })] },
     ]);
-    expect(fs.readFileSync(path.join(root.path, "game.zip", additional), "utf8")).toBe("original");
+    expect(fs.readFileSync(path.join(root.path, "game.zip", original), "utf8")).toBe("original");
   },
 );
 
-it.each(["GODOT", "EPUB"])("%s 拒绝越界容器成员，外部路径没有写入", async (file_type) => {
-  using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
-  const zip = new JSZip().file("../../outside.json", "{}", { createFolders: false });
-  const content = await zip.generateAsync({ type: "nodebuffer" });
-  await expect(
-    write_agent_workspace_sources({
-      nativeFs: new NativeFs(),
-      sourceRoot: path.join(root.path, "sources"),
-      files: [{ file_path: "game.zip", file_type }],
-      readAsset: () => content,
-    }),
-  ).resolves.toMatchObject([
-    { retry: false, issues: [{ asset_path: "game.zip", stage: "archive" }] },
-  ]);
-  expect(fs.existsSync(path.join(root.path, "outside.json"))).toBe(false);
-});
+it.each(["GODOT", "EPUB", "GENERIC"])(
+  "%s 拒绝越界容器成员，外部路径没有写入",
+  async (file_type) => {
+    using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
+    const zip = new JSZip().file("../../outside.json", "{}", { createFolders: false });
+    const content = await zip.generateAsync({ type: "nodebuffer" });
+    await expect(
+      write_agent_workspace_sources({
+        nativeFs: new NativeFs(),
+        sourceRoot: path.join(root.path, "sources"),
+        files: [{ file_path: "game.zip", file_type }],
+        readAsset: () => content,
+      }),
+    ).resolves.toMatchObject([
+      { retry: false, issues: [{ asset_path: "game.zip", stage: "archive" }] },
+    ]);
+    expect(fs.existsSync(path.join(root.path, "outside.json"))).toBe(false);
+  },
+);
 it.each([
   {
     file_type: "WOLFRPG",

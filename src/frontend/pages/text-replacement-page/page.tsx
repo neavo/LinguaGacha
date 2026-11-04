@@ -1,7 +1,6 @@
 import type { JSX } from "react";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/text-replacement-page/text-replacement-page.css";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { TextReplacementVariant } from "@frontend/pages/text-replacement-page/config";
@@ -16,7 +15,7 @@ import { useTextReplacementPageState } from "@frontend/pages/text-replacement-pa
 import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
 
-type TextReplacementPageProps = ScreenComponentProps & {
+type TextReplacementPageProps = {
   variant: TextReplacementVariant;
 };
 

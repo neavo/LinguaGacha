@@ -165,7 +165,7 @@ function KnowledgeList({
         description={t(`knowledge_page.${guide}.description`)}
         onClose={() => set_guide_open(false)}
         primaryAction={{
-          label: t("app.action.go_to_agent"),
+          label: t("app.action.handle_with_agent"),
           onSelect: () => {
             const placeholder = t(`knowledge_page.${guide}.placeholder`);
             const text = t(`knowledge_page.${guide}.request`, { PLACEHOLDER: placeholder });
@@ -173,7 +173,6 @@ function KnowledgeList({
             set_guide_open(false);
             navigate_to_agent({
               text,
-              mode: "replace",
               selection: { from, to: from + placeholder.length },
             });
           },

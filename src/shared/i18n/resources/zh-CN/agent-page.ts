@@ -1,8 +1,10 @@
 export const zh_cn_agent_page = {
+  project_required: "请首先创建或者打开工程文件 …",
   document: {
     conversation: "对话",
     view: "查看",
     save_as: "另存为",
+    open_folder: "打开所在文件夹",
   },
   batch_translation_model: {
     follow: "保持一致",
@@ -117,6 +119,7 @@ export const zh_cn_agent_page = {
     applying: "正在应用工程修改，完成前不可停止",
     new_task: "新任务",
     add_file: "添加文件",
+    common_instructions: "常用指令",
     continue: "继续",
     edit: "修改",
     copy: "复制",
@@ -153,6 +156,7 @@ export const zh_cn_agent_page = {
   upload: { uploading: "正在上传", failed: "上传失败" },
   file_saved: "文件已保存",
   error: {
+    invalid_file_path: "无效的文件路径 …",
     decision: "决定提交失败 …",
     restore: "会话恢复失败 …",
     connection: "连接中断，正在等待重连 …",

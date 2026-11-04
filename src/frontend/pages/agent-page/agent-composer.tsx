@@ -42,6 +42,7 @@ type AgentComposerProps = {
   approval_disabled: boolean;
   model_selection: ModelSelectionController;
   input_state: AgentInputState;
+  before_attach?: (() => boolean) | undefined;
   on_send: (message: AgentMessageInput) => void;
   on_agent_model_select: (change: ModelSelectionInput) => void;
   on_approval_mode_change: (approval_mode: AgentApprovalMode) => void;
@@ -57,7 +58,7 @@ const AGENT_UNAVAILABLE_REASON_KEYS = Object.freeze({
   settling: "agent_page.unavailable.settling",
 } satisfies Readonly<Record<AgentUnavailableReason, LocaleKey>>);
 
-/** 主输入只组合编辑器与任务操作；运行态不锁定模型设置和导出。 */
+/** 主输入只组合编辑器与任务操作；运行态不锁定模型设置和指令入口。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { t } = useI18n();
   const locked = props.locked === true;
@@ -79,7 +80,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       instructions={props.instructions}
       input_state={props.input_state}
       on_submit={props.on_send}
-      render_actions={({ has_content, uploads_pending }, add_file) => {
+      before_attach={props.before_attach}
+      render_actions={({ has_content, uploads_pending }, add_file, open_instructions) => {
         const continuing_queue = props.can_continue_queue && !running && !locked;
         // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
         const stop_action = running && !has_content && !locked;
@@ -114,6 +116,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           actions: (
             <AgentTaskToolbar
               add_file={add_file}
+              open_instructions={open_instructions}
               locked={locked}
               can_reset={
                 props.can_reset &&

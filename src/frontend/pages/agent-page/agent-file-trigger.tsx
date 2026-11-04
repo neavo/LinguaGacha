@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type JSX,
 } from "react";
-import type { AgentFile } from "@shared/agent-workspace-file";
+import { is_agent_file_url, type AgentFile } from "@shared/agent-workspace-file";
 import type { AgentWorkspaceLinkResult } from "@shared/agent";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 
@@ -37,7 +37,7 @@ export function AgentFileTrigger({
   const [open, set_open] = useState(false);
   const [file, set_file] = useState<AgentFile | null>(null);
   const controller = useRef<AbortController | null>(null);
-  const saving = useRef(false);
+  const activating = useRef(false);
   // 标签隐藏、链接目标改变或卸载时，旧菜单与在途读取一起失效。
   useEffect(() => {
     set_open(false);
@@ -47,10 +47,10 @@ export function AgentFileTrigger({
   const report = (error: unknown): void => {
     push_error_toast(t("app.feedback.activate_link"), error);
   };
-  /** 保存对话框返回前合并重复保存，取消时安静结束。 */
-  const save = async (): Promise<void> => {
-    if (saving.current) return;
-    saving.current = true;
+  /** 后端决定打开位置或另存，操作结束前合并重复点击。 */
+  const activate = async (): Promise<void> => {
+    if (activating.current) return;
+    activating.current = true;
     try {
       const result = await api_fetch<AgentWorkspaceLinkResult>(
         "/api/agent/workspace/activate-path",
@@ -60,7 +60,7 @@ export function AgentFileTrigger({
     } catch (error) {
       report(error);
     } finally {
-      saving.current = false;
+      activating.current = false;
     }
   };
   /** 先识别文件能力；右键只提供动作，左键才执行默认操作。 */
@@ -81,7 +81,7 @@ export function AgentFileTrigger({
         set_file(next);
         set_open(next.kind === "file");
       } else if (next.preview) context.open_file(path, next);
-      else await save();
+      else await activate();
     } catch (error) {
       if (!request.signal.aborted) report(error);
     } finally {
@@ -120,10 +120,14 @@ export function AgentFileTrigger({
         ) : null}
         <AppContextMenuItem
           onClick={() => {
-            void save();
+            void activate();
           }}
         >
-          {t("agent_page.document.save_as")}
+          {t(
+            file && is_agent_file_url(file.path)
+              ? "agent_page.document.open_folder"
+              : "agent_page.document.save_as",
+          )}
         </AppContextMenuItem>
       </AppContextMenuContent>
     </AppContextMenu>

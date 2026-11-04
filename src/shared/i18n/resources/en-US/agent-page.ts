@@ -1,8 +1,10 @@
 export const en_us_agent_page = {
+  project_required: "Please create or open a project file first …",
   document: {
     conversation: "Conversation",
     view: "View",
     save_as: "Save as",
+    open_folder: "Open containing folder",
   },
   batch_translation_model: {
     follow: "Follow Agent",
@@ -117,6 +119,7 @@ export const en_us_agent_page = {
     applying: "Applying project changes; this cannot be stopped until completion",
     new_task: "New Task",
     add_file: "Add files",
+    common_instructions: "Common instructions",
     continue: "Continue",
     edit: "Edit",
     copy: "Copy",
@@ -163,6 +166,7 @@ export const en_us_agent_page = {
   upload: { uploading: "Uploading", failed: "Upload failed" },
   file_saved: "File saved",
   error: {
+    invalid_file_path: "Invalid file path …",
     decision: "Could not submit your decision. Please try again …",
     restore: "The session could not be restored. Try again …",
     connection: "Connection interrupted. Waiting to reconnect …",

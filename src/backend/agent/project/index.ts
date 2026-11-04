@@ -1,3 +1,7 @@
+import type {
+  TranslationFileGenerationResult,
+  TranslationOutputPaths,
+} from "../../../shared/translation-generation";
 import { workspace_requests } from "../workspace/runtime/request-channel";
 import type { SourceInspection } from "../../../shared/project-file-changes";
 export type { SourceInspection } from "../../../shared/project-file-changes";
@@ -6,5 +10,24 @@ export type { SourceInspection } from "../../../shared/project-file-changes";
 export async function inspectSources(source_paths: string[]): Promise<SourceInspection[]> {
   const result = await workspace_requests().call({ kind: "inspect_sources", source_paths });
   if (!Array.isArray(result)) throw new Error("Invalid inspect_sources response.");
+  return result;
+}
+
+/** 生成已支持格式及通用数据的写回输入，输出目录由宿主选定。 */
+export async function generateFiles(): Promise<TranslationFileGenerationResult> {
+  const result = await workspace_requests().call({ kind: "generate_files" });
+  if (typeof result !== "object" || result === null || !("accepted" in result))
+    throw new Error("Invalid generate_files response.");
+  return result;
+}
+
+/** 通过宿主查询交付位置，工作区不解释应用保存设置。 */
+export async function getOutputPaths(directory?: string): Promise<TranslationOutputPaths> {
+  const result = await workspace_requests().call({
+    kind: "get_output_paths",
+    ...(directory === undefined ? {} : { directory }),
+  });
+  if (typeof result !== "object" || result === null || !("manual" in result))
+    throw new Error("Invalid get_output_paths response.");
   return result;
 }

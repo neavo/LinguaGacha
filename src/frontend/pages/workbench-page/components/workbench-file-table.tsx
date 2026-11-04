@@ -1,5 +1,5 @@
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
-import { Recycle } from "lucide-react";
+import { Pencil, Recycle } from "lucide-react";
 import { type JSX, useMemo, useState } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -24,6 +24,7 @@ type WorkbenchFileTableProps = {
   anchor_entry_id: string | null;
   readonly: boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
+  on_rename: (entry_id: string) => void;
   on_reset: (entry_id: string) => void;
   on_reorder: (ordered_entry_ids: string[]) => Promise<void>;
 };
@@ -87,13 +88,15 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         head_class_name: "workbench-page__table-file-head",
         cell_class_name: "workbench-page__table-file-cell",
         render_cell: (payload) => {
-          // PDF 需要 Agent，原生游戏仅推荐 Agent，两种提示共用同一入口。
+          // 提示按格式实际需要区分翻译、写回和推荐操作。
           const agent_hint_key: LocaleKey | null =
             payload.row.file_type === "PDF"
               ? "workbench_page.table.agent_only"
-              : is_game_file_type(payload.row.file_type)
-                ? "workbench_page.table.agent_recommended"
-                : null;
+              : payload.row.file_type === "GENERIC"
+                ? "workbench_page.table.agent_writeback"
+                : is_game_file_type(payload.row.file_type)
+                  ? "workbench_page.table.agent_recommended"
+                  : null;
           return (
             <div className="workbench-page__table-file">
               <Tooltip>
@@ -170,6 +173,13 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           render_row_context_menu_items={(payload) => {
             return (
               <AppContextMenuGroup>
+                <AppContextMenuItem
+                  disabled={props.readonly}
+                  onClick={() => props.on_rename(payload.row_id)}
+                >
+                  <Pencil data-icon="inline-start" />
+                  {t("workbench_page.action.rename")}
+                </AppContextMenuItem>
                 <AppContextMenuItem
                   variant="destructive"
                   disabled={props.readonly}

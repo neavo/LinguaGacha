@@ -25,6 +25,7 @@ import { resolve_app_locale } from "../../domain/app-language";
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import {
   AGENT_CHAT_EVENT_TOPIC,
+  AGENT_INACTIVE_CHAT_ID,
   AGENT_INPUT_COMMAND_ID_LIMIT,
   normalize_agent_message_input,
   normalize_agent_revision_request,
@@ -144,7 +145,7 @@ export class AgentService {
   private token_speed_snapshot: AgentTokenSpeedSnapshot = null;
   private token_speed_updated_at: number | null = null;
   private run_output: AgentRunOutputSnapshot = null; // 冻结值，只在执行期间存在，不进入条目
-  private chat_id = "inactive"; // 无工程时的快照身份，激活后采用持久化身份
+  private chat_id = AGENT_INACTIVE_CHAT_ID; // 无工程时的快照身份，激活后采用持久化身份
   private readonly database: AgentServiceOptions["database"];
   private store: AgentChatStorage | null = null; // 工程连接的使用权覆盖 SDK 与上传收尾
   private chat: AgentChat | null = null;
@@ -1314,7 +1315,7 @@ export class AgentService {
     } finally {
       if (execution !== null) this.release(execution);
       this.store = null;
-      this.chat_id = "inactive";
+      this.chat_id = AGENT_INACTIVE_CHAT_ID;
       await store?.close();
     }
   }

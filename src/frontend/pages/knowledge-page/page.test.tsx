@@ -131,9 +131,8 @@ describe("知识页面的技能分组", () => {
       await act(async () => action("取消").click());
       expect(mocks.navigate_to_agent).not.toHaveBeenCalled();
       await act(async () => help.click());
-      await act(async () => action("前往 AGENT").click());
+      await act(async () => action("由 AGENT 处理").click());
       const request = mocks.navigate_to_agent.mock.calls[0]![0];
-      expect(request.mode).toBe("replace");
       expect(request.text).toBe(
         zh_cn_knowledge_page[guide].request.replace(
           "{PLACEHOLDER}",

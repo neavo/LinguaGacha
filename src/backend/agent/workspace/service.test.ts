@@ -24,6 +24,7 @@ import { QualityRule } from "../../../domain/quality";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -142,6 +143,67 @@ describe("AgentWorkspaceService", () => {
     await fixture.service.apply_workspace();
     expect(fixture.apply_file_changes).toHaveBeenCalledWith(
       expect.objectContaining({ sourcePaths: [absolute] }),
+    );
+  });
+
+  it("替换解析失败按目标定位回执，修复后提交保留调用方来源路径", async () => {
+    const fixture = await create_fixture(temp_dir);
+    await run_workspace(fixture);
+    const source_path = "work/replacement.txt";
+    const resolved = path.join(fixture.workspace_root, source_path);
+    fixture.inspect_sources.mockResolvedValue([
+      { source_path: resolved, file_count: 1, contains_game: false, godot_packs: [], failures: [] },
+    ]);
+    fs.writeFileSync(
+      path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.updates),
+      JSON.stringify({ file_path: "script.txt", source_path }),
+    );
+    fixture.apply_file_changes.mockResolvedValueOnce({
+      kind: "source_failed",
+      directory_changes: [],
+      failures: [{ file_path: "script.txt", source_path: resolved, message: "bad records" }],
+    });
+    expect(await fixture.service.apply_workspace()).toMatchObject({
+      status: "rejected",
+      destroyed: false,
+      rejected: [{ op: "update", file_path: "script.txt", reason: "source_failed", line: 1 }],
+    });
+    fixture.apply_file_changes.mockResolvedValueOnce({
+      kind: "applied",
+      write: { accepted: true, changes: [] },
+      sectionRevisions: { files: 2, items: 2 },
+      directory_changes: [],
+      files: {
+        created: [],
+        updated: 1,
+        deleted: 0,
+        replaced: [
+          {
+            file_path: "script.txt",
+            source_path: resolved,
+            items: 2,
+            pages: 0,
+            inherited: 1,
+            contested: [[42]],
+          },
+        ],
+      },
+    });
+    expect(await fixture.service.apply_workspace()).toMatchObject({
+      status: "applied",
+      applied: {
+        files: {
+          replaced: [
+            { file_path: "script.txt", source_path, items: 2, inherited: 1, contested: [[42]] },
+          ],
+        },
+      },
+    });
+    expect(fixture.apply_file_changes).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sourcePaths: [],
+        updates: [expect.objectContaining({ file_path: "script.txt", source_path: resolved })],
+      }),
     );
   });
 
@@ -507,6 +569,74 @@ describe("AgentWorkspaceService", () => {
     await run_workspace(fixture);
   });
 
+  it("外部文件沿用预览且不受脚本互斥影响，激活只打开所在目录", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    const outside = path.join(temp_dir, "外部 # %23");
+    fs.mkdirSync(outside);
+    const document = path.join(outside, "报告.md");
+    const image = path.join(outside, "chart.png");
+    const executable = path.join(outside, "setup.exe");
+    const bytes = Buffer.from([137, 80, 78, 71, 0, 255]);
+    fs.writeFileSync(document, "外部译文");
+    fs.writeFileSync(image, bytes);
+    fs.writeFileSync(executable, "fixture");
+    const href = pathToFileURL(document).href;
+    expect(fixture.service.describe_file(`${href}?v=1#sec`)).toEqual({
+      path: href,
+      name: "报告.md",
+      preview: "markdown",
+      kind: "file",
+    });
+    fixture.run.mockImplementationOnce(async () => {
+      expect(await fixture.service.read_document(`${href}#sec`)).toEqual({
+        path: href,
+        content: "外部译文",
+      });
+      expect(await fixture.service.read_document_image(pathToFileURL(image).href)).toEqual({
+        bytes,
+        mime: "image/png",
+      });
+      for (const target of [document, executable, outside]) {
+        await expect(fixture.service.activate_path(pathToFileURL(target).href)).resolves.toEqual({
+          status: "opened",
+        });
+        expect(fixture.open_directory).toHaveBeenLastCalledWith(outside);
+      }
+      return workspace_execution();
+    });
+    await run_workspace(fixture);
+    expect(fixture.pick_save_path).not.toHaveBeenCalled();
+    expect(fs.existsSync(fixture.destination)).toBe(false);
+    await expect(
+      fixture.service.read_document(pathToFileURL(path.join(outside, "missing.md")).href),
+    ).rejects.toMatchObject({ code: "file.not_found" });
+    fs.writeFileSync(document, Buffer.alloc(AGENT_DOCUMENT_MAX_BYTES + 1));
+    await expect(fixture.service.read_document(href)).rejects.toMatchObject({
+      code: "file.preview_too_large",
+    });
+  });
+
+  it("内部文件 URL 与相对链接共用身份、保存语义和来源失效检查", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    const href = pathToFileURL(fixture.file).href;
+    const file = fixture.service.describe_file(fixture.href);
+    expect(fixture.service.describe_file(`${href}#sec`)).toEqual(file);
+    expect(await fixture.service.read_document(href)).toEqual({ path: file.path, content: "报告" });
+    await expect(fixture.service.activate_path(href)).resolves.toEqual({ status: "saved" });
+    expect(fs.readFileSync(fixture.destination, "utf8")).toBe("报告");
+    expect(fixture.pick_save_path).toHaveBeenCalledWith(file.name);
+    expect(fixture.open_directory).not.toHaveBeenCalled();
+    fixture.pick_save_path.mockImplementationOnce(async () => {
+      fixture.service.invalidate_links();
+      fs.writeFileSync(fixture.file, "新内容");
+      return fixture.destination;
+    });
+    await expect(fixture.service.activate_path(href)).rejects.toMatchObject({
+      code: "file.not_found",
+    });
+    expect(fs.readFileSync(fixture.destination, "utf8")).toBe("报告");
+  });
+
   it("保存编码文件链接并打开目录，保留源文件且不建立快照", async () => {
     const fixture = await create_file_fixture(temp_dir);
     await expect(
@@ -530,7 +660,10 @@ describe("AgentWorkspaceService", () => {
     "work\\report",
     "work/%00",
     "work/%ZZ",
-  ])("拒绝无效工作区链接：%s", async (href) => {
+    "file:///C:/bad%ZZ.md",
+    "file:///C:/bad%2Fname.md",
+    "file:///C:/bad%00.md",
+  ])("拒绝无效文件链接：%s", async (href) => {
     const fixture = await create_file_fixture(temp_dir);
     await expect(fixture.service.activate_path(href)).rejects.toMatchObject({
       code: "request.validation_failed",
@@ -835,7 +968,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
   });
 
-  it("RGSS 可读视图与附加原稿清单随修订重建，落盘失败清理后允许重试", async () => {
+  it("RGSS 可读视图随修订重建，落盘失败清理后允许重试", async () => {
     const file_path = "game.rpgmaker";
     const native = new NativeFs();
     const fixture = await create_fixture(temp_dir, native);
@@ -850,20 +983,14 @@ describe("AgentWorkspaceService", () => {
         .file("Data/System.rvdata2", empty)
         .file("Data/Scripts.rvdata2", empty)
         .file(`Data/${name}.rvdata2`, empty)
-        .file(`custom/${name}.json`, "{")
         .generateAsync({ type: "nodebuffer" });
     fixture.read_asset_content.mockResolvedValue(await archive("Old"));
     await run_workspace(fixture);
 
     fixture.snapshot.sectionRevisions.files = 2;
-    fixture.read_meta.mockResolvedValue({ additional_files: { [file_path]: ["custom/New.json"] } });
     fixture.read_asset_content.mockResolvedValue(await archive("New"));
     await run_workspace(fixture);
     const game = path.join(fixture.workspace_root, "sources", file_path);
-    expect(
-      JSON.parse(fs.readFileSync(path.join(fixture.workspace_root, "project_meta.json"), "utf8"))
-        .additional_files,
-    ).toEqual({ [file_path]: ["custom/New.json"] });
     const new_file = path.join(game, "Data/New.rvdata2.reference.json");
     expect(fs.existsSync(path.join(game, "Data/Old.rvdata2.reference.json"))).toBe(false);
     expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
@@ -1049,6 +1176,8 @@ describe("AgentWorkspaceService", () => {
         timeoutMs: VALID_WORKSPACE_RUN.timeoutMs,
         doing: write_doing,
         printPDF: expect.any(Function),
+        generateFiles: expect.any(Function),
+        getOutputPaths: expect.any(Function),
         inspectSources: expect.any(Function),
         emitImage: expect.any(Function),
       },
@@ -1563,6 +1692,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       sectionRevisions: { files: 2, items: 2 },
       directory_changes: [],
       files: {
+        replaced: [],
         created: request.creates.map((entry) => ({
           source_path: entry.source_path,
           files: 3,
@@ -1577,6 +1707,14 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     }),
   );
   const service = new AgentWorkspaceService({
+    generation: {
+      read_output_paths: () => {
+        throw new Error("Unexpected output paths");
+      },
+      generate_staging_files: async () => {
+        throw new Error("Unexpected generation");
+      },
+    },
     files: { inspect_sources, apply_file_changes },
     images: { prepare: prepare_image },
     paths: {
@@ -1765,6 +1903,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     });
     const workspace = new AgentWorkspaceService({
       files: services.project.content,
+      generation: services.files.translationGeneration,
       images: {
         prepare: async (bytes) => ({
           data: Buffer.from(bytes).toString("base64"),

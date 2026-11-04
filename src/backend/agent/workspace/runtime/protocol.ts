@@ -1,3 +1,11 @@
+import type {
+  WorkspaceGenerateFilesRequest,
+  WorkspaceGetOutputPathsRequest,
+} from "../../tools/generate-files";
+import type {
+  TranslationFileGenerationResult,
+  TranslationOutputPaths,
+} from "../../../../shared/translation-generation";
 import type { SourceInspection } from "../../../../shared/project-file-changes";
 import type { WorkspaceInspectSourcesRequest } from "../../tools/inspect-sources";
 import type { Static } from "@earendil-works/pi-ai";
@@ -10,8 +18,16 @@ export type WorkspaceRequest =
   | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
   | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
   | WorkspacePrintPDFRequest
-  | WorkspaceInspectSourcesRequest;
-export type WorkspaceRequestResult = string | null | WorkspacePrintPDFResult | SourceInspection[];
+  | WorkspaceInspectSourcesRequest
+  | WorkspaceGenerateFilesRequest
+  | WorkspaceGetOutputPathsRequest;
+export type WorkspaceRequestResult =
+  | string
+  | null
+  | WorkspacePrintPDFResult
+  | SourceInspection[]
+  | TranslationFileGenerationResult
+  | TranslationOutputPaths;
 
 /** 父子进程通过 IPC 交换 JSON 请求与状态。文本走标准流，图片内容由父进程固定。 */
 export type AgentWorkspaceRuntimeParentMessage =

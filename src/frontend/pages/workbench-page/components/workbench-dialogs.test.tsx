@@ -92,7 +92,9 @@ describe("WorkbenchDialogs", () => {
       root?.render(
         <WorkbenchDialogs
           dialog_state={dialog_state}
+          entries={[]}
           on_confirm={on_confirm}
+          on_rename={vi.fn()}
           on_secondary={on_secondary}
           on_close={vi.fn()}
         />,

@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
@@ -254,6 +257,30 @@ describe("桌面 IPC 宿主", () => {
     expect(electron_mock.open_external).toHaveBeenCalledWith("file:///C:/secret.txt");
   });
 
+  it("工程选择优先使用有效固定目录，空值、缺失和文件路径回退到最近目录", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "project-picker-"));
+    const file = path.join(directory, "demo.lg");
+    writeFileSync(file, "");
+    try {
+      await register_handlers();
+      electron_mock.show_open_dialog.mockResolvedValue({ canceled: true, filePaths: [] });
+      for (const default_path of [directory, "", path.join(directory, "missing"), file]) {
+        await invoke(IPC_CHANNEL_PICK_PATH, {
+          kind: "project-file",
+          default_path,
+          default_directory: "D:/recent",
+        });
+        expect(electron_mock.show_open_dialog).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            defaultPath: default_path === directory ? directory : "D:/recent",
+          }),
+        );
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("打开路径类 IPC 返回路径快照并传递对应原生选择限制", async () => {
     const main_window = { id: "main-window" };
     const read_app_language = vi.fn(async () => "ZH");
@@ -329,7 +356,7 @@ describe("桌面 IPC 宿主", () => {
     });
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(3, main_window, {
       properties: ["openFile"],
-      filters: [{ name: expect.any(String), extensions: ["lg"] }],
+      filters: [{ name: expect.stringContaining("(*.lg)"), extensions: ["lg"] }],
     });
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(4, main_window, {
       properties: ["openFile", "multiSelections"],

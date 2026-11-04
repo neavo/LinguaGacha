@@ -189,6 +189,19 @@ describe("preload desktop bridge", () => {
     });
   });
 
+  it("工程选择传递指定目录并保留全局最近目录供宿主回退", async () => {
+    await import_preload_with_startup_args();
+    localStorage.setItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY, "D:/recent");
+    electron_mock.invoke.mockResolvedValueOnce({ canceled: true, paths: [] });
+    await electron_mock.exposed_api!.pickProjectFilePath("E:/projects");
+    expect(electron_mock.invoke).toHaveBeenLastCalledWith(IPC_CHANNEL_PICK_PATH, {
+      kind: "project-file",
+      default_path: "E:/projects",
+      default_directory: "D:/recent",
+    });
+    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("D:/recent");
+  });
+
   it("通用目录选择传递默认路径并保留取消结果", async () => {
     await import_preload_with_startup_args();
     const bridge = electron_mock.exposed_api!;

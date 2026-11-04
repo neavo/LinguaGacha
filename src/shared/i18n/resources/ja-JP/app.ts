@@ -59,7 +59,7 @@ export const ja_jp_app = {
     skip: "スキップ",
     overwrite: "上書き",
     replace: "置換",
-    go_to_agent: "AGENT を開く",
+    handle_with_agent: "AGENT で処理",
     loading: "読み込み中",
     select_file: "ファイルを選択",
     select_folder: "フォルダーを選択",
@@ -206,9 +206,13 @@ export const ja_jp_app = {
   translation_generation: {
     action: "訳文を出力",
     confirmation: {
+      generic_description:
+        "このプロジェクトには汎用データパッケージが含まれます。すべての訳文を生成するには AGENT を使用してください。直接生成すると、これらのパッケージはスキップされます。",
+      generate_all:
+        "汎用データパッケージを含む、このプロジェクトのすべての訳文を生成し、成果物を検証してください。",
       description: "現在利用できる訳文を出力しますか …?",
-      checking: "校正の警告を確認中 …",
-      check_failed: "校正の警告を読み込めませんでした。現在の訳文は引き続き出力できます …",
+      checking: "プロジェクトのファイルと校正警告を確認中 …",
+      check_failed: "ファイルまたは校正警告の確認に失敗しました。現在の訳文は生成できます …",
       warning_description:
         "校正の警告が {COUNT} 件検出されました。警告は必ずしも誤りを示すものではありませんが、先に AGENT で少なくとも 1 回は自動校正することをおすすめします。このまま訳文を出力しますか …?",
       retry_check: "再確認",

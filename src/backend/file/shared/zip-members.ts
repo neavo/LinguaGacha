@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { AppError } from "../../../shared/error";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
+import { is_portable_file_name } from "../../../shared/utils/file-name";
 
 /** 落盘前校验完整清单，成员字节按需读取，避免同时解压整包。 */
 export async function read_zip_members(
@@ -43,20 +44,7 @@ export async function read_zip_members(
 /** 内部路径跨平台保存，拒绝越界和 Windows 路径别名。 */
 export function validate_zip_member_path(value: string): string {
   const normalized = value.replace(/\\/gu, "/");
-  if (
-    !normalized ||
-    normalized
-      .split("/")
-      .some(
-        (part) =>
-          !part ||
-          part === "." ||
-          part === ".." ||
-          /[:<>"|?*\p{Cc}]/u.test(part) ||
-          /[. ]$/u.test(part) ||
-          /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(part),
-      )
-  )
+  if (!normalized.split("/").every(is_portable_file_name))
     throw new AppError("file.invalid_structure", { public_details: { file: value } });
   return normalized;
 }

@@ -4,7 +4,6 @@ import {
   useAgentRound,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-chat-context";
-import { find_agent_mention_ranges } from "./agent-mention";
 import {
   type JSX,
   memo,
@@ -19,14 +18,13 @@ import { Check, CircleAlert, Copy, GitFork, Pencil } from "lucide-react";
 
 import type {
   AgentEntry,
-  AgentSkillSnapshot,
   AgentEntryStatus,
   AgentAssistantMessagePart,
   AgentResponseAnnotationAttachment,
 } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
-import { type AgentReferenceRange } from "@shared/agent-reference";
+import { find_agent_reference_ranges, type AgentReferenceRange } from "@shared/agent-reference";
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import {
@@ -48,7 +46,6 @@ const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终
 /** 页面提供交互与展示设置，时间线事实由各层独立订阅。 */
 type AgentTimelineProps = {
   active?: boolean;
-  skills: readonly AgentSkillSnapshot[];
   compact_available: boolean;
   on_compact: () => void;
 
@@ -84,7 +81,6 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
           <AgentRound
             key={roundId}
             roundId={roundId}
-            skills={props.skills}
             compact_available={props.compact_available}
             on_compact={props.on_compact}
             latest_compaction_id={latestCompactionId}
@@ -111,7 +107,6 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
 }
 
 type AgentRoundProps = {
-  skills: readonly AgentSkillSnapshot[];
   compact_available: boolean;
   on_compact: () => void;
   latest_compaction_id: string | null;
@@ -135,7 +130,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
   const user = useAgentEntry(props.roundId);
   const { entryIds, latestAssistantId } = useAgentRound(props.roundId);
   if (user?.kind !== "user_message" || user.delivery !== "round") return null;
-  const mention_ranges = find_agent_mention_ranges(user.text, props.skills);
+  const mention_ranges = find_agent_reference_ranges(user.text);
   const mention_only =
     mention_ranges.length === 1 &&
     mention_ranges[0]?.from === 0 &&
@@ -210,7 +205,7 @@ const AgentRoundItem = memo(function AgentRoundItem(
   const entry = useAgentEntry(props.entryId);
   if (entry === undefined) return null;
   if (entry.kind === "user_message") {
-    const ranges = find_agent_mention_ranges(entry.text, props.skills);
+    const ranges = find_agent_reference_ranges(entry.text);
     return (
       <AgentMessageFrame key={entry.id} role="user" actions={null}>
         <article className="agent-message agent-message--user">

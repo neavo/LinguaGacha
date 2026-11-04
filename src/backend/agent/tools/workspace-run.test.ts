@@ -6,8 +6,23 @@ import { create_agent_workspace_run_tool } from "./workspace-run";
 import { AgentToolError } from "../tool-definition";
 import type { AgentWorkspacePort } from "../workspace/service";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
+import { check_typescript } from "../../../test/typescript-fixture";
 
 describe("workspace_run", () => {
+  it("模型可见的通用记录和生成接口声明可独立编译", () => {
+    const tool = create_tool(async () => ({ images: [], execution: workspace_execution() }));
+    const declaration = [...tool.description.matchAll(/```ts\n([\s\S]*?)\n```/gu)].find((match) =>
+      match[1]!.includes("type GenericItems"),
+    )![1]!;
+    check_typescript([
+      declaration.replace("declare module '@lg/project'", "declare namespace Project") +
+        `
+      const records: GenericItems = [{ message: 'text', locator: { record: 1, private: [true, null] } }];
+      // @ts-expect-error 正文必须是字符串。
+      const invalid: GenericItems = [{ message: 3 }];
+    `,
+    ]);
+  });
   it("工作区图片作为 SDK image content 返回，摘要不包含图片字节", async () => {
     const run = vi.fn(async () => ({
       execution: workspace_execution(),

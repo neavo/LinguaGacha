@@ -9,7 +9,7 @@ import "./document-list.css";
 
 export type DocumentListGroupHelp = { label: string; on_click: () => void };
 
-/** 一组同类条目，标题旁的帮助按钮以可见提示作为无障碍名称。空态文案由调用方在读取完成后传入。 */
+/** 一组同类条目，空态文案由调用方在读取完成后传入。 */
 export function DocumentListGroup(props: {
   title: string;
   help?: DocumentListGroupHelp;
@@ -22,21 +22,14 @@ export function DocumentListGroup(props: {
       <div className="document-list__header">
         <h2>{props.title}</h2>
         {props.help && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <AppButton
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={props.help.label}
-                  onClick={props.help.on_click}
-                >
-                  <BadgeHelp aria-hidden="true" />
-                </AppButton>
-              }
-            />
-            <TooltipContent>{props.help.label}</TooltipContent>
-          </Tooltip>
+          <AppButton
+            variant="ghost"
+            size="icon-xs"
+            aria-label={props.help.label}
+            onClick={props.help.on_click}
+          >
+            <BadgeHelp aria-hidden="true" />
+          </AppButton>
         )}
       </div>
       {props.children}

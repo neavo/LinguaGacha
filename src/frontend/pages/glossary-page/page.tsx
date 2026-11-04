@@ -1,7 +1,6 @@
 import type { JSX } from "react";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/glossary-page/glossary-page.css";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { GlossaryCommandBar } from "@frontend/pages/glossary-page/components/glossary-command-bar";
@@ -24,7 +23,7 @@ const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
 
 const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = ["all", "src", "dst", "info"];
 /** 组装术语表的查询状态、列表与编辑操作。 */
-export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
+export function GlossaryPage(): JSX.Element {
   const { t } = useI18n();
 
   const glossary_page_state = useGlossaryPageState();

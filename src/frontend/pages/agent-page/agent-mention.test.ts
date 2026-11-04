@@ -1,3 +1,4 @@
+import { Shrink } from "lucide-react";
 import { describe, expect, it } from "vitest";
 import type { AgentFileCandidate } from "@shared/agent-reference";
 
@@ -25,6 +26,7 @@ function create_candidates(query: string) {
     instructions: [
       {
         id: "compact_context",
+        icon: Shrink,
         title: "压缩上下文",
         description: "",
         disabled: false,

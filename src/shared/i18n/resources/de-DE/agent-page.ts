@@ -1,8 +1,10 @@
 export const de_de_agent_page = {
+  project_required: "Bitte zuerst eine Projektdatei erstellen oder öffnen …",
   document: {
     conversation: "Unterhaltung",
     view: "Ansehen",
     save_as: "Speichern unter",
+    open_folder: "Übergeordneten Ordner öffnen",
   },
   batch_translation_model: {
     follow: "Wie AGENT",
@@ -117,6 +119,7 @@ export const de_de_agent_page = {
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
     add_file: "Dateien hinzufügen",
+    common_instructions: "Häufige Befehle",
     continue: "Fortsetzen",
     edit: "Bearbeiten",
     copy: "Kopieren",
@@ -166,6 +169,7 @@ export const de_de_agent_page = {
   },
   file_saved: "Datei gespeichert",
   error: {
+    invalid_file_path: "Ungültiger Dateipfad …",
     decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen …",
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen …",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet …",

@@ -121,6 +121,13 @@ export class ProjectDatabaseAccess {
     );
   }
 
+  /** 物理删除已退场的元数据，调用方持有工程事务。 */
+  public delete_meta(project_path: string, key: string): void {
+    this.with_project_connection(project_path, (db) => {
+      db.prepare("DELETE FROM meta WHERE key = ?").run(key);
+    });
+  }
+
   /** 合并提交的 meta 键，保留其它工程元数据。 */
   public upsert_meta_entries(project_path: string, meta: JsonRecord): void {
     this.with_project_connection(project_path, (db) => this.upsert_meta_entries_with_db(db, meta));
@@ -379,6 +386,13 @@ export class ProjectDatabaseAccess {
   /** 替换整个条目集合，调用方事务负责与相关工程事实一起提交。 */
   public set_items(project_path: string, items: JsonValue[]): number[] {
     return this.with_project_connection(project_path, (db) => this.replace_items(db, items));
+  }
+
+  /** 整包替换先删除旧条目，调用方事务同时提交新原稿与新条目。 */
+  public delete_asset_items(project_path: string, asset_path: string): void {
+    this.with_project_connection(project_path, (db) => {
+      db.prepare("DELETE FROM items WHERE json_extract(data, '$.file_path') = ?").run(asset_path);
+    });
   }
 
   /** 追加条目并返回数据库主键，已有条目保持原身份。 */

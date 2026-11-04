@@ -141,10 +141,6 @@ describe("ProjectWriteStore", () => {
     await database.transaction(project_path, (writer) => {
       writer.add_asset(project_path, "book.pdf", bytes, "PDF", document);
       writer.add_asset(project_path, "delete.txt", Buffer.from("old"), "TXT", null);
-      writer.set_meta(project_path, "additional_files", {
-        "book.pdf": ["note.txt"],
-        "delete.txt": ["old.txt"],
-      });
       writer.set_items(project_path, [
         create_item({ id: 7, file_path: "book.pdf", status: "PROCESSED" }),
         create_item({ id: 8, file_path: "delete.txt", status: "NONE" }),
@@ -176,7 +172,6 @@ describe("ProjectWriteStore", () => {
       { id: 7, file_path: "folder/book.pdf" },
     ]);
     expect(await database.get_all_meta(project_path)).toMatchObject({
-      additional_files: { "folder/book.pdf": ["note.txt"] },
       translation_extras: { total_line: 1, processed_line: 1 },
     });
     expect(await database.read_asset_content(project_path, "folder/book.pdf")).toEqual(
@@ -184,37 +179,6 @@ describe("ProjectWriteStore", () => {
     );
   });
 
-  it("替换资产时清空其附加原稿清单，保留其他资产的清单", async () => {
-    const { database, project_path, store } = await create_store("additional-files");
-    await database.transaction(project_path, (writer) => {
-      writer.add_asset(project_path, "game.godot", Buffer.from("old"), "GODOT", null);
-      writer.add_asset(project_path, "other.godot", Buffer.from("other"), "GODOT", null);
-      writer.set_meta(project_path, "additional_files", {
-        "game.godot": ["data/a.json"],
-        "other.godot": ["b.txt"],
-      });
-    });
-    await store.replace_project_items_and_files({
-      projectPath: project_path,
-      expectedSectionRevisions: { files: 0 },
-      revisionSections: ["files"],
-      updatedSections: ["files"],
-      source: "project_import_files",
-      assetWrites: [
-        {
-          kind: "update",
-          path: "game.godot",
-          content: Buffer.from("new"),
-          fileType: "GODOT",
-          pdfDocument: null,
-          additionalFiles: [],
-        },
-      ],
-    });
-    expect((await database.get_all_meta(project_path)).additional_files).toEqual({
-      "other.godot": ["b.txt"],
-    });
-  });
   it.each([
     ["game", "game/readme.txt"],
     ["game/readme.txt", "game"],

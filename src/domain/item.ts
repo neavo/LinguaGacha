@@ -37,6 +37,7 @@ export const ITEM_FILE_TYPES = [
   "TYRANO",
   "KVJSON",
   "MESSAGEJSON",
+  "GENERIC",
 ] as const;
 
 const ITEM_NAME_SCHEMA = Type.Union([Type.String(), Type.Null()]);

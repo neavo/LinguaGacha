@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execa } from "execa";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -17,11 +17,11 @@ it("npm 种子的清单、锁文件和安装树只包含用户依赖", async () 
       manifest,
       lock,
       runNpm: (cwd, args) =>
-        execFileSync(
-          process.execPath,
-          [path.join(root, "node_modules/npm/bin/npm-cli.js"), ...args],
-          { cwd, windowsHide: true, stdio: "pipe" },
-        ),
+        execa(process.execPath, [path.join(root, "node_modules/npm/bin/npm-cli.js"), ...args], {
+          cwd,
+          windowsHide: true,
+          stdio: "pipe",
+        }),
     });
     for (const [file, field] of [
       ["package.json", "dependencies"],

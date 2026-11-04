@@ -1,3 +1,4 @@
+import { ProjectLifecycleProvider } from "@frontend/app/session/project-lifecycle/project-lifecycle-provider";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { TranslationGenerationProvider } from "@frontend/app/session/translation-generation/translation-generation-provider";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
@@ -57,8 +58,7 @@ import { LogWindowPage } from "@frontend/pages/log-window-page/page";
 import {
   read_update_release,
   resolve_disabled_route_ids,
-  resolve_project_route_after_snapshot,
-  resolve_route_selection,
+  resolve_route_after_project_snapshot,
   type UpdateDialogState,
 } from "@frontend/app/app-shell-state";
 import type { DesktopUpdateDownloadProgress, DesktopUpdateDownloadResult } from "@gui/bridge-types";
@@ -89,12 +89,10 @@ function AppContent(): JSX.Element {
   const {
     initial_state_status,
     load_initial_state,
-    pending_target_route,
     is_app_language_updating,
     project_snapshot,
     project_session_status,
     settings_snapshot,
-    set_pending_target_route,
     update_app_language,
   } = useDesktopState();
 
@@ -102,9 +100,9 @@ function AppContent(): JSX.Element {
   const shell_info = window.desktopApp.shell;
   // 主窗口持有路由，页面通过共享导航入口提交跳转。
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
-  // 请求与实际导航共同提交，工程选择期间保留，离开目标流程时清除。
+  // 请求与实际导航共同提交，离开目标流程时清除。
   const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
-  const { is_sidebar_collapsed, on_open_change } = useAppSidebar(selected_route);
+  const { is_sidebar_collapsed, on_open_change } = useAppSidebar();
   const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
     phase: "idle",
@@ -112,8 +110,6 @@ function AppContent(): JSX.Element {
   const [close_confirm_open, set_close_confirm_open] = useState<boolean>(false);
   const [close_confirm_submitting, set_close_confirm_submitting] = useState<boolean>(false);
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
-  const previous_project_path_ref = useRef<string>(project_snapshot.path);
-  const previous_project_session_status_ref = useRef(project_session_status);
   const log_badge_project_path_ref = useRef<string | null>(null);
   const [log_badge_visible, set_log_badge_visible] = useState<boolean>(false);
   const active_screen = SCREEN_REGISTRY[selected_route];
@@ -154,38 +150,13 @@ function AppContent(): JSX.Element {
       return;
     }
 
-    const was_loaded = previous_project_loaded_ref.current;
-    const previous_project_path = previous_project_path_ref.current;
-    const previous_project_session_status = previous_project_session_status_ref.current;
-    previous_project_loaded_ref.current = project_snapshot.loaded;
-    previous_project_path_ref.current = project_snapshot.path;
-    previous_project_session_status_ref.current = project_session_status;
-
-    const next_route = resolve_project_route_after_snapshot({
-      previous_project_loaded: was_loaded,
-      previous_project_path,
-      previous_project_session_status,
+    const next_route = resolve_route_after_project_snapshot({
+      previous_project_loaded: previous_project_loaded_ref.current,
       project_loaded: project_snapshot.loaded,
-      project_path: project_snapshot.path,
-      project_session_status,
-      pending_target_route,
     });
-    if (next_route !== null) {
-      set_selected_route(next_route.selected_route);
-      set_pending_target_route(next_route.pending_target_route);
-      if (next_route.selected_route !== "agent" && next_route.pending_target_route !== "agent") {
-        set_agent_input_request(null);
-      }
-    }
-  }, [
-    initial_state_status,
-    pending_target_route,
-    project_snapshot.loaded,
-    project_snapshot.path,
-    project_session_status,
-    selected_route,
-    set_pending_target_route,
-  ]);
+    previous_project_loaded_ref.current = project_snapshot.loaded;
+    if (next_route !== null) set_selected_route(next_route);
+  }, [initial_state_status, project_snapshot.loaded]);
 
   const disabled_route_ids = useMemo<ReadonlySet<RouteId>>(() => {
     return resolve_disabled_route_ids({
@@ -196,20 +167,14 @@ function AppContent(): JSX.Element {
 
   /** 离页保存成功后共同提交路由和输入请求，保存失败时保留当前页面。 */
   function handle_select_route(route_id: RouteId, request?: AgentInputRequest): void {
+    if (disabled_route_ids.has(route_id)) return;
     if (route_id === selected_route) {
       set_agent_input_request(request ?? null);
       return;
     }
     void (async () => {
       if (!(await prepare_page_leave())) return;
-      const next_route = resolve_route_selection({
-        route_id,
-        project_loaded: project_snapshot.loaded,
-        project_session_status,
-        pending_target_route,
-      });
-      set_pending_target_route(next_route.pending_target_route);
-      set_selected_route(next_route.selected_route);
+      set_selected_route(route_id);
       set_agent_input_request(request ?? null);
     })().catch((error: unknown) => {
       push_error_toast(t("app.feedback.update_failed"), error);
@@ -496,15 +461,17 @@ function AppContent(): JSX.Element {
                   <AgentChatProvider>
                     <AgentCompletionAttention />
                     <ProjectSessionUiStateProvider>
-                      <TranslationGenerationProvider>
-                        <ProjectTranslationStatsProvider>
-                          <BatchTranslationSessionProvider>
-                            <QualityRuleStatisticsProvider>
-                              <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                            </QualityRuleStatisticsProvider>
-                          </BatchTranslationSessionProvider>
-                        </ProjectTranslationStatsProvider>
-                      </TranslationGenerationProvider>
+                      <ProjectLifecycleProvider>
+                        <TranslationGenerationProvider>
+                          <ProjectTranslationStatsProvider>
+                            <BatchTranslationSessionProvider>
+                              <QualityRuleStatisticsProvider>
+                                <ScreenComponent />
+                              </QualityRuleStatisticsProvider>
+                            </BatchTranslationSessionProvider>
+                          </ProjectTranslationStatsProvider>
+                        </TranslationGenerationProvider>
+                      </ProjectLifecycleProvider>
                     </ProjectSessionUiStateProvider>
                   </AgentChatProvider>
                 </AppNavigationProvider>

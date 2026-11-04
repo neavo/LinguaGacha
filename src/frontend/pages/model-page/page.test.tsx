@@ -103,18 +103,18 @@ describe("ModelPage", () => {
     use_model_page_state_mock.mockReturnValue(state);
     container = document.createElement("div");
     root = createRoot(container);
-    await act(async () => root!.render(<ModelPage is_sidebar_collapsed={false} />));
+    await act(async () => root!.render(<ModelPage />));
     expect(container.querySelector('.model-page[aria-busy="true"]')).not.toBeNull();
     expect(container.textContent).not.toContain("app.action.loading");
     const category = container.querySelector(".model-page__category-card");
     expect(category).not.toBeNull();
     expect(container.textContent).toContain(state.snapshot.models[0]!.name);
     state.load_status = "error";
-    await act(async () => root!.render(<ModelPage is_sidebar_collapsed={false} />));
+    await act(async () => root!.render(<ModelPage />));
     expect(container.textContent).toContain("app.feedback.content_unavailable");
     expect(container.querySelector(".model-page__category-card")).toBe(category);
     state.load_status = "ready";
-    await act(async () => root!.render(<ModelPage is_sidebar_collapsed={false} />));
+    await act(async () => root!.render(<ModelPage />));
     expect(container.querySelector(".model-page__category-card")).toBe(category);
   });
 
@@ -129,7 +129,7 @@ describe("ModelPage", () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ModelPage is_sidebar_collapsed={false} />);
+      root?.render(<ModelPage />);
     });
 
     /** 打开实际条目菜单，验证页面绑定的目标身份。 */

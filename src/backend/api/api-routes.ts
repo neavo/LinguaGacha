@@ -159,6 +159,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/workbench/files/import", (body) => project_content.import_files(body));
   context.postJson("/api/workbench/file/reset", (body) => project_content.reset_files(body));
   context.postJson("/api/workbench/file/delete", (body) => project_content.delete_files(body));
+  context.postJson("/api/workbench/file/rename", (body) => project_content.rename_file(body));
   context.postJson("/api/workbench/files/reorder", (body) => project_content.reorder_files(body));
   context.postJson("/api/workbench/files/preview", (body) =>
     project_content.preview_import_files(body),

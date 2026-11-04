@@ -18,7 +18,11 @@ export async function preview_file_changes(args: {
 }> {
   const { parsed } = args;
   const rejected = [...parsed.rejected];
-  const files = { ...parsed.files, creates: parsed.files.creates.map((entry) => ({ ...entry })) };
+  const files = {
+    ...parsed.files,
+    creates: parsed.files.creates.map((entry) => ({ ...entry })),
+    updates: parsed.files.updates.map((entry) => ({ ...entry })),
+  };
   const other = [
     ...parsed.batch.knowledge.map((row) => ({
       scope: "knowledge" as const,
@@ -66,15 +70,21 @@ export async function preview_file_changes(args: {
       file_path: row.file_path,
     })),
   ];
-  for (const row of files.creates) {
+  const sources = [
+    ...files.creates.map((row) => ({ row, op: "create" as const })),
+    ...files.updates
+      .filter((row) => row.source_path !== undefined)
+      .map((row) => ({ row, op: "update" as const })),
+  ];
+  for (const { row, op } of sources) {
     try {
-      row.source_path = args.resolve(row.source_path);
+      row.source_path = args.resolve(row.source_path!);
     } catch (error) {
       rejected.push({
         scope: "files",
-        op: "create",
+        op,
         line: row.line,
-        source_path: row.source_path,
+        source_path: row.source_path!,
         reason: "invalid_change",
         message: String(error),
       });
@@ -126,27 +136,32 @@ export async function preview_file_changes(args: {
     );
   }
   let created = 0;
-  for (const row of files.creates) {
+  for (const { row, op } of sources) {
     try {
-      const [inspection] = await args.inspect([row.source_path], row.godot_pack_orders);
-      if (!inspection || inspection.file_count === 0 || inspection.failures.length)
+      const [inspection] = await args.inspect([row.source_path!], row.godot_pack_orders);
+      if (
+        !inspection ||
+        inspection.file_count === 0 ||
+        inspection.failures.length ||
+        (op === "update" && inspection.file_count !== 1)
+      )
         rejected.push({
           scope: "files",
-          op: "create",
+          op,
           line: row.line,
-          source_path: row.source_path,
+          source_path: row.source_path!,
           reason: "source_failed",
           message:
             inspection?.failures.map((failure) => failure.message).join("\n") ||
             "No supported files found.",
         });
-      else created += inspection.file_count;
+      else if (op === "create") created += inspection.file_count;
     } catch (error) {
       rejected.push({
         scope: "files",
-        op: "create",
+        op,
         line: row.line,
-        source_path: row.source_path,
+        source_path: row.source_path!,
         reason:
           is_app_error(error) && error.code === "request.validation_failed"
             ? "invalid_change"

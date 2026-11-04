@@ -57,7 +57,7 @@ export async function discover_renpy_source(
   using session = await PythonSession.create();
   return { root, profile: await read_profile(root, fs, signal, session) };
 }
-/** 收集固化所需的编译脚本。 */
+/** 编译脚本与兼容版本文件共同固化，离线重置沿用同一份兼容事实。 */
 export function collect_renpy_files(
   game: RenpySource,
   fs: NativeFs,
@@ -73,7 +73,7 @@ export function collect_renpy_files(
         .filter(
           (name) =>
             name.startsWith("game/") &&
-            /\.rpym?c$/u.test(name) &&
+            (/\.rpym?c$/u.test(name) || name === "game/script_version.txt") &&
             !/^game\/(?:cache|saves)\//u.test(name) &&
             !generated.has(name),
         )
@@ -85,7 +85,7 @@ export function collect_renpy_files(
     prepared,
   );
   assert(
-    data.size > 0,
+    [...data.keys()].some((name) => RENPY_SCRIPT_MEMBER.test(name)),
     "Ren'Py game contains no compiled scripts; start the original game once before importing",
   );
   return data;

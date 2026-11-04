@@ -13,12 +13,8 @@ import { WorkbenchStatsSection } from "@frontend/pages/workbench-page/components
 import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import "@frontend/pages/workbench-page/workbench-page.css";
 
-type WorkbenchPageProps = {
-  is_sidebar_collapsed: boolean;
-};
-
 // 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
-export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
+export function WorkbenchPage(): JSX.Element {
   const { t } = useI18n();
   const { batch_translation_task } = useBatchTranslationSession();
   const translation_generation = useTranslationGeneration();
@@ -43,6 +39,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
           anchor_entry_id={workbench_state.anchor_entry_id}
           readonly={workbench_state.readonly}
           on_selection_change={workbench_state.apply_table_selection}
+          on_rename={workbench_state.request_rename_file}
           on_reset={workbench_state.request_reset_file}
           on_reorder={workbench_state.request_reorder_entries}
         />
@@ -65,8 +62,12 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
       <AppConfirmDialog {...workbench_state.game_backup_confirm.dialog_props} />
       <WorkbenchDialogs
         dialog_state={workbench_state.dialog_state}
+        entries={workbench_state.entries}
         on_confirm={() => {
           void workbench_state.confirm_dialog();
+        }}
+        on_rename={(new_rel_path) => {
+          void workbench_state.confirm_rename_file(new_rel_path);
         }}
         on_secondary={() => {
           void workbench_state.secondary_dialog();

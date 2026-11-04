@@ -145,25 +145,18 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
               </TooltipContent>
             </Tooltip>
             {props.mode === "draft" ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      className="agent-attachment__remove"
-                      aria-label={t("app.action.delete")}
-                      disabled={locked}
-                      onClick={() => {
-                        if (open) close_annotation();
-                        props.on_remove(index);
-                      }}
-                    >
-                      <X aria-hidden="true" />
-                    </button>
-                  }
-                />
-                <TooltipContent>{t("app.action.delete")}</TooltipContent>
-              </Tooltip>
+              <button
+                type="button"
+                className="agent-attachment__remove"
+                aria-label={t("app.action.delete")}
+                disabled={locked}
+                onClick={() => {
+                  if (open) close_annotation();
+                  props.on_remove(index);
+                }}
+              >
+                <X aria-hidden="true" />
+              </button>
             ) : null}
           </div>
         );

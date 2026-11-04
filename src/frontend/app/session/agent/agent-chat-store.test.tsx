@@ -1,3 +1,4 @@
+import { AGENT_INACTIVE_CHAT_ID } from "@shared/agent";
 import { AgentChatStore } from "./agent-chat-store";
 import { uploaded_file } from "../../../../test/agent-upload-fixture";
 const decision_toast = vi.hoisted(() => vi.fn());
@@ -1569,6 +1570,30 @@ describe("AgentChatStore", () => {
       JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
     ).toEqual(latest.input.read_history());
     expect(latest.input.revision).toBe(1);
+  });
+
+  it("无工程正文延续到首个工程，关闭工程后清空", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ chatId: AGENT_INACTIVE_CHAT_ID }));
+    let latest!: ReturnType<typeof useAgentChat>;
+    await render_probe(() => {
+      latest = useAgentChat();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.draft.write({ text: "待发送正文", attachments: [] });
+    await act(async () =>
+      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
+        type: "snapshot_seed",
+        snapshot: agent_snapshot({ revision: 1, chatId: "project-chat" }),
+      }),
+    );
+    expect(latest.input.draft.read()).toEqual({ text: "待发送正文", attachments: [] });
+    await act(async () =>
+      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
+        type: "snapshot_seed",
+        snapshot: agent_snapshot({ revision: 2, chatId: AGENT_INACTIVE_CHAT_ID }),
+      }),
+    );
+    expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
   });
 
   it("技能增量只更新候选并保留历史与草稿，新会话身份清理旧文件引用", async () => {

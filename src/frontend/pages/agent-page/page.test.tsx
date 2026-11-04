@@ -130,7 +130,7 @@ describe("Agent 文档标签", () => {
   });
   /** 页面重渲染保留实例，用公开会话身份驱动切换。 */
   async function render(): Promise<void> {
-    await act(async () => root.render(<AgentPage is_sidebar_collapsed={false} />));
+    await act(async () => root.render(<AgentPage />));
   }
   /** 通过实际点击等待 React 更新完成。 */
   async function click(element: Element | null): Promise<void> {
@@ -292,7 +292,7 @@ describe("Agent 文档标签", () => {
     await act(async () =>
       root.render(
         <StrictMode>
-          <AgentPage is_sidebar_collapsed={false} />
+          <AgentPage />
         </StrictMode>,
       ),
     );

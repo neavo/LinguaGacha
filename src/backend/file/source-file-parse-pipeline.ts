@@ -16,7 +16,6 @@ export type SourceFileAsset = Readonly<{
   rel_path: string;
   file_type?: string | undefined;
   content: Uint8Array;
-  additional_files: readonly string[];
   read?: PreparedRead; // 准备阶段已解析同一快照时直接消费。
 }>;
 
@@ -25,7 +24,6 @@ export type SourceFileParsedDraft = {
   rel_path: string;
   file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
   game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
-  additional_files: readonly string[]; // 游戏容器中的附加原稿成员，其他格式为空。
   content: Uint8Array;
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   parsed_items: Item[]; // 格式解析器已补齐的条目草稿，身份由工程入口分配
@@ -52,7 +50,6 @@ export type SourceFileProjectDraft = {
     rel_path: string;
     file_type: ProjectFileType;
     sort_index: number;
-    additional_files: readonly string[];
     content: Uint8Array;
     pdf_document: PDFDocument | null;
   }>; // 资产写入清单，文件类型同时用于新建预过滤。
@@ -92,7 +89,6 @@ export class SourceFileParsePipeline {
         sort_index,
         pdf_document: draft.pdf_document,
         content: draft.content,
-        additional_files: draft.additional_files,
       });
       for (const parsed_item of draft.parsed_items) {
         const item_payload = {
@@ -144,7 +140,6 @@ export class SourceFileParsePipeline {
       rel_path: asset.rel_path,
       file_type: (asset.file_type ?? "NONE") as ProjectFileType,
       content: asset.content,
-      additional_files: asset.additional_files,
       pdf_document: null,
       parsed_items: [],
     };
@@ -158,7 +153,6 @@ export class SourceFileParsePipeline {
             asset.rel_path,
             asset.content,
             asset.file_type,
-            asset.additional_files,
             signal,
           );
       if (parsed.kind === "pdf") {
@@ -224,7 +218,6 @@ export class SourceFileParsePipeline {
             rel_path: entry.rel_path,
             file_type: entry.file_type,
             content: prepared.content,
-            additional_files: prepared.additional_files,
             ...(prepared.read && { read: prepared.read }),
           },
           signal,

@@ -3,6 +3,7 @@ import type { SourceFileParseWarning } from "./file-format-types";
 
 import type { LogManager } from "../log/log-manager";
 import * as AppErrors from "../../shared/error";
+import { read_source_operation_result } from "../../shared/source-operation";
 
 /** 来源级失败保留原始异常，日志据此记录完整原因链。 */
 export type SourceFileFailure = Readonly<{
@@ -18,12 +19,19 @@ export function source_operation_error(
   saved_assets = 0,
 ): AppErrors.AppError {
   const original = AppErrors.is_app_error(error) ? error : null;
-  if (original?.public_details?.source_operation !== undefined) return original;
+  const previous = read_source_operation_result(original?.public_details?.source_operation);
   return new AppErrors.AppError(original?.code ?? "file.io_failed", {
     cause: error,
+    diagnostic_context: original?.diagnostic_context ?? {},
     public_details: {
       ...original?.public_details,
-      source_operation: { saved_assets, directory_changes: [...directory_changes] },
+      // 新增和替换可分阶段准备，外层失败必须保留此前已发生的目录副作用。
+      source_operation: {
+        saved_assets: Math.max(saved_assets, previous?.saved_assets ?? 0),
+        directory_changes: [
+          ...new Set([...directory_changes, ...(previous?.directory_changes ?? [])]),
+        ],
+      },
     },
   });
 }

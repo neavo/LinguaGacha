@@ -2,15 +2,15 @@ export type AgentTextFormat = "markdown" | "json" | "jsonl";
 
 /** 文件入口返回的当前会话资源描述。 */
 export type AgentFile = Readonly<{
-  path: string; // 规范化并逐段编码的工作区相对路径，作为标签身份。
-  name: string; // 上传文件保留原名称，其它文件使用工作区名称。
+  path: string; // 规范文件身份：逐段编码的工作区相对链接，或工作区外文件的 `file:` URL，也是标签身份。
+  name: string; // 上传文件保留原名称，其它文件使用文件名。
   preview: AgentTextFormat | "image" | null;
   kind: "file" | "directory";
 }>;
 
 export type AgentDocument = Readonly<{
   chatId: string;
-  path: string; // 规范化、逐段编码的工作区相对链接，也是标签身份。
+  path: string; // 规范文件身份，与 `AgentFile.path` 一致。
   content: string;
 }>;
 
@@ -28,8 +28,21 @@ export function resolve_agent_text_format(href: string): AgentTextFormat | null 
   }
 }
 
-/** 文档路径和 href 都是 URL 路径；只解码一次，归一后再逐段编码。 */
-export function resolve_agent_workspace_href(href: string, document_path = ""): string {
+/** `file:` URL 也可能指向工作区内，由后端统一归类。 */
+export function is_agent_file_url(href: string): boolean {
+  return /^file:/iu.test(href);
+}
+
+/** 相对路径与 `file:` URL 走文件入口，其他协议、主机地址与页内锚点单独处理。 */
+export function is_agent_file_href(href: string): boolean {
+  return is_agent_file_url(href) || !/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/iu.test(href);
+}
+
+/** 外部文档按 URL 解析，工作区相对路径只解码一次并限制在根目录内。 */
+export function resolve_agent_file_href(href: string, document_path = ""): string {
+  if (is_agent_file_url(href) || is_agent_file_url(document_path)) {
+    return new URL(href, is_agent_file_url(document_path) ? document_path : undefined).href;
+  }
   const suffix_index = href.search(/[?#]/u);
   const raw_path = suffix_index < 0 ? href : href.slice(0, suffix_index);
   const suffix = suffix_index < 0 ? "" : href.slice(suffix_index);

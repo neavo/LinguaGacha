@@ -77,7 +77,17 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it("领域 SDK 通过绑定通道识别来源，ws 只提供运行能力", async () => {
+it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传回脚本", async () => {
+  const generated = {
+    accepted: true as const,
+    output_path: path.join(workspace, "work/output/translated"),
+    bilingual_output_path: path.join(workspace, "work/output/bilingual"),
+    generic_input_path: path.join(workspace, "work/output/generic"),
+    pdf_files: [],
+  };
+  const generateFiles = vi
+    .fn(async () => generated)
+    .mockRejectedValueOnce(new Error("fixture generation failed"));
   const inspectSources = vi.fn(async (sources: string[]) =>
     sources.map((source_path) => ({
       source_path,
@@ -89,26 +99,40 @@ it("领域 SDK 通过绑定通道识别来源，ws 只提供运行能力", async
   );
   const result = await run(
     `
-    import { inspectSources } from '@lg/project';
+    import { inspectSources, generateFiles, getOutputPaths } from '@lg/project';
     import assert from 'node:assert/strict';
     import * as pdf from '@lg/pdf';
     assert.equal('build_pdf_page_preview' in pdf || 'render_pdf_preview' in pdf, false);
     assert.equal('host' in ws || 'doing' in ws, false);
-    console.log(JSON.stringify(await inspectSources(['work/input.txt'])));
+    await assert.rejects(generateFiles(), /fixture generation failed/);
+    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
     undefined,
     undefined,
-    { inspectSources },
-  );
-  expect(output_content(result.stdout)).toEqual([
     {
-      source_path: "work/input.txt",
-      file_count: 1,
-      contains_game: false,
-      godot_packs: [],
-      failures: [],
+      inspectSources,
+      generateFiles,
+      getOutputPaths: (directory) => ({
+        manual: directory === undefined,
+        translated_path: workspace,
+        bilingual_path: workspace,
+      }),
     },
-  ]);
+  );
+  expect(output_content(result.stdout)).toEqual({
+    generated,
+    paths: { manual: true, translated_path: workspace, bilingual_path: workspace },
+    selected: { manual: false, translated_path: workspace, bilingual_path: workspace },
+    sources: [
+      {
+        source_path: "work/input.txt",
+        file_count: 1,
+        contains_game: false,
+        godot_packs: [],
+        failures: [],
+      },
+    ],
+  });
   expect(inspectSources).toHaveBeenCalledOnce();
 });
 
@@ -319,6 +343,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     });
     const service = new AgentWorkspaceService({
       files: services.project.content,
+      generation: services.files.translationGeneration,
       images: {
         prepare: async () => {
           throw new Error("Unexpected image");
@@ -367,6 +392,20 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
     await run_script(script);
     expect(await service.apply_workspace(async () => {})).toMatchObject({ status: "applied" });
     expect(services.state.cache.items.readItems()[0]?.dst).toBe("第一版");
+    const generated = await run_script(`
+      import { generateFiles, getOutputPaths } from '@lg/project';
+      import { readFile } from 'node:fs/promises';
+      import path from 'node:path';
+      const result = await generateFiles();
+      console.log(JSON.stringify({ ...result, paths: await getOutputPaths(${JSON.stringify(app_root)}), text: await readFile(path.join(result.output_path, 'source.txt'), 'utf8') }));
+    `);
+    expect(generated.execution.stdout).toMatchObject({
+      content: {
+        accepted: true,
+        text: "第一版",
+        paths: services.files.translationGeneration.read_output_paths(app_root),
+      },
+    });
     await writeFile(entry, module_body("第二版"));
     const result = await run_script(script);
     expect(result.execution.stdout).toMatchObject({
@@ -1047,7 +1086,10 @@ async function run(
   script: string,
   signal: AbortSignal = AbortSignal.timeout(RUN_TIMEOUT_MS),
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
-  tools: Pick<AgentWorkspaceRunRequest, "printPDF" | "inspectSources" | "emitImage" | "doing"> = {},
+  tools: Pick<
+    AgentWorkspaceRunRequest,
+    "printPDF" | "inspectSources" | "generateFiles" | "getOutputPaths" | "emitImage" | "doing"
+  > = {},
   directory = runtime,
 ) {
   const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task-${++sequence}.mjs`;

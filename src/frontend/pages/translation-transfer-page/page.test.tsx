@@ -44,7 +44,7 @@ describe("TranslationTransferPage", () => {
       pick_project.mockResolvedValueOnce({ canceled: false, paths: [path] });
       await act(async () =>
         [...container.querySelectorAll("button")]
-          .find((button) => button.textContent?.includes(t("project_page.open.drop_title")))!
+          .find((button) => button.textContent?.includes(t("project.open.drop_title")))!
           .click(),
       );
     }
@@ -62,7 +62,7 @@ describe("TranslationTransferPage", () => {
     await act(async () => {
       root.render(
         <LocaleProvider locale="zh-CN">
-          <TranslationTransferPage is_sidebar_collapsed={false} />
+          <TranslationTransferPage />
         </LocaleProvider>,
       );
     });
@@ -105,7 +105,7 @@ describe("TranslationTransferPage", () => {
     pick_project.mockResolvedValueOnce({ canceled: false, paths: [BASE_PATH] });
     await act(async () =>
       [...container.querySelectorAll("button")]
-        .find((button) => button.textContent?.includes(t("project_page.open.drop_title")))!
+        .find((button) => button.textContent?.includes(t("project.open.drop_title")))!
         .click(),
     );
     expect(start_button().disabled).toBe(false);

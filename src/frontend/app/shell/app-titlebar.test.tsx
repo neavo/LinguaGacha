@@ -64,6 +64,20 @@ describe("AppTitlebar", () => {
     expect(container?.querySelector("strong")?.textContent).toBe("LinguaGacha v1.2.3");
   });
 
+  it("启动时展示导航提示，窗口失焦后收起，重新聚焦不重复展示", async () => {
+    const button = await render_titlebar();
+    const tooltip = document.querySelector('[role="tooltip"][data-open]');
+    expect(tooltip).not.toBeNull();
+    expect(button.hasAttribute("data-popup-open")).toBe(true);
+    await act(async () => {
+      window.dispatchEvent(new Event("blur"));
+      vi.runAllTimers();
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull();
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull();
+  });
+
   it("提示与切换状态一致，点击和快捷键共用入口并避开输入框", async () => {
     const button = await render_titlebar();
     await act(async () => {
