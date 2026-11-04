@@ -85,24 +85,17 @@ function AgentPages({ chat_id }: { chat_id: string }): JSX.Element {
               </TooltipTrigger>
               <TooltipContent side="bottom">{decodeURIComponent(document.path)}</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    className="agent-pages__close"
-                    aria-label={t("app.action.close")}
-                    onClick={() => {
-                      state.close(document.path);
-                      requestAnimationFrame(focus_current);
-                    }}
-                  />
-                }
-              >
-                <X aria-hidden="true" />
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t("app.action.close")}</TooltipContent>
-            </Tooltip>
+            <button
+              type="button"
+              className="agent-pages__close"
+              aria-label={t("app.action.close")}
+              onClick={() => {
+                state.close(document.path);
+                requestAnimationFrame(focus_current);
+              }}
+            >
+              <X aria-hidden="true" />
+            </button>
           </span>
         ))}
       </TabsList>

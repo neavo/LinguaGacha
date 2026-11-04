@@ -5,6 +5,7 @@ export type ProjectLifecycle = Readonly<{
   show_create_dialog: () => void;
   request_open: () => void;
   open_recent_project: (path: string) => void;
+  remove_recent_project: (path: string) => void;
   can_close: boolean;
   request_close: () => void;
 }>;

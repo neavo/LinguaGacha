@@ -28,6 +28,9 @@ export function ProjectLifecycleProvider(props: { children: ReactNode }): JSX.El
         open_recent_project: (path) => {
           if (!busy) void open.open_project(path, true);
         },
+        remove_recent_project: (path) => {
+          if (!busy) void open.handle_recent_project_remove(path);
+        },
         can_close: close.can_close && !busy,
         request_close: () => {
           if (!busy) close.request_close();

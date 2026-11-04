@@ -1,6 +1,6 @@
 import { Spinner } from "@frontend/shadcn/spinner";
 import { useState, type JSX } from "react";
-import { FileClock, FileInput, FilePlus } from "lucide-react";
+import { FileClock, FileInput, FilePlus, X } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
@@ -11,33 +11,45 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 
 const RECENT_PROJECT_LIMIT = 5;
 
-/** 每次展开重新读取预览，关闭提示即撤销请求。 */
-function RecentProjectButton(props: { path: string; name: string }): JSX.Element {
+/** 每次展开重新读取预览。关闭提示即撤销请求。 */
+function RecentProjectEntry(props: { path: string; name: string }): JSX.Element {
+  const { t } = useI18n();
   const lifecycle = useProjectLifecycle();
   const [open, set_open] = useState(false);
   const preview = useProjectPreview(open ? props.path : null);
   return (
-    <Tooltip open={open} onOpenChange={set_open}>
-      <TooltipTrigger
-        render={
-          <AppButton
-            variant="secondary"
-            size="sm"
-            className="agent-project-entry__recent"
-            disabled={lifecycle.busy}
-            onClick={() => lifecycle.open_recent_project(props.path)}
-          />
-        }
+    <span className="agent-project-entry__recent">
+      <Tooltip open={open} onOpenChange={set_open}>
+        <TooltipTrigger
+          render={
+            <AppButton
+              variant="secondary"
+              size="sm"
+              className="agent-project-entry__recent-open"
+              disabled={lifecycle.busy}
+              onClick={() => lifecycle.open_recent_project(props.path)}
+            />
+          }
+        >
+          <FileClock aria-hidden="true" />
+          <span className="min-w-0 truncate">{props.name}</span>
+        </TooltipTrigger>
+        <TooltipContent align="start" className="agent-project-entry__preview project-lifecycle">
+          <p className="break-all">{props.path}</p>
+          {preview.status === "loading" && <Spinner />}
+          {preview.status === "ready" && <ProjectPreviewSummary preview={preview.preview} />}
+        </TooltipContent>
+      </Tooltip>
+      <button
+        type="button"
+        className="agent-project-entry__recent-remove"
+        aria-label={t("app.action.delete")}
+        disabled={lifecycle.busy}
+        onClick={() => lifecycle.remove_recent_project(props.path)}
       >
-        <FileClock aria-hidden="true" />
-        <span className="min-w-0 truncate">{props.name}</span>
-      </TooltipTrigger>
-      <TooltipContent align="start" className="agent-project-entry__preview project-lifecycle">
-        <p className="break-all">{props.path}</p>
-        {preview.status === "loading" && <Spinner />}
-        {preview.status === "ready" && <ProjectPreviewSummary preview={preview.preview} />}
-      </TooltipContent>
-    </Tooltip>
+        <X aria-hidden="true" />
+      </button>
+    </span>
   );
 }
 
@@ -69,7 +81,7 @@ export function AgentProjectEntry(props: { attention: number }): JSX.Element | n
         {t("project.open.title")}
       </AppButton>
       {recent_projects.map((project) => (
-        <RecentProjectButton key={project.path} {...project} />
+        <RecentProjectEntry key={project.path} {...project} />
       ))}
     </div>
   );

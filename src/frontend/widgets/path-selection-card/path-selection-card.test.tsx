@@ -32,12 +32,6 @@ it("引用指向选择按钮，清除独立触发，禁用后两个动作均不�
       ),
     );
     const clear = container.querySelector<HTMLButtonElement>('button[aria-label="清除"]')!;
-    await act(async () => {
-      clear.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    });
-    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
-      clear.getAttribute("aria-label"),
-    );
     await act(async () => ref.current!.click());
     await act(async () => clear.click());
     expect(on_select).toHaveBeenCalledTimes(1);

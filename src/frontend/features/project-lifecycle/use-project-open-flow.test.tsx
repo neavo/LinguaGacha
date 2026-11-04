@@ -128,6 +128,16 @@ it("普通打开失败反馈错误并允许重试", async () => {
   });
 });
 
+it("主动移除最近记录后刷新设置", async () => {
+  await act(async () => flow.handle_recent_project_remove("E:/recent.lg"));
+  expect(mocks.api).toHaveBeenCalledExactlyOnceWith("/api/settings/recent-projects/remove", {
+    path: "E:/recent.lg",
+  });
+  expect(mocks.state.refresh_settings).toHaveBeenCalledOnce();
+  expect(mocks.loaded).not.toHaveBeenCalled();
+  expect(mocks.error).not.toHaveBeenCalled();
+});
+
 it("打开成功将工程路径交给加载流程并反馈设置对齐", async () => {
   mocks.api.mockResolvedValueOnce({
     settings_alignment: {

@@ -5,6 +5,8 @@ import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { AgentProjectEntry } from "./agent-project-entry";
 const mocks = vi.hoisted(() => ({
   loaded: false,
+  busy: false,
+  remove: vi.fn(),
   open: vi.fn(),
   create: vi.fn(),
   show_open: vi.fn(),
@@ -22,13 +24,14 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
 }));
 vi.mock("@frontend/app/session/project-lifecycle/project-lifecycle-context", () => ({
   useProjectLifecycle: () => ({
-    busy: false,
+    busy: mocks.busy,
+    remove_recent_project: mocks.remove,
     open_recent_project: mocks.open,
     show_create_dialog: mocks.create,
     request_open: mocks.show_open,
   }),
 }));
-it("无工程只展示五个最近入口，所有按钮连接公共流程，工程加载后隐藏", async () => {
+it("工程入口连接公共流程，忙碌时禁用，工程加载后隐藏", async () => {
   const container = document.createElement("div");
   const root = createRoot(container);
   const render = () =>
@@ -40,7 +43,6 @@ it("无工程只展示五个最近入口，所有按钮连接公共流程，工�
   try {
     await act(async () => render());
     const buttons = container.querySelectorAll("button");
-    expect(buttons).toHaveLength(7);
     await act(async () => {
       buttons[0]!.click();
       buttons[1]!.click();
@@ -49,10 +51,23 @@ it("无工程只展示五个最近入口，所有按钮连接公共流程，工�
     expect(mocks.create).toHaveBeenCalledOnce();
     expect(mocks.show_open).toHaveBeenCalledOnce();
     expect(mocks.open).toHaveBeenCalledExactlyOnceWith("E:/p0.lg");
+    const remove = container.querySelector<HTMLButtonElement>('button[aria-label="删除"]')!;
+    await act(async () => remove.click());
+    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith("E:/p0.lg");
+    expect(mocks.open).toHaveBeenCalledOnce();
+    mocks.busy = true;
+    await act(async () => render());
+    expect(
+      Array.from(container.querySelectorAll("button")).every((button) => button.disabled),
+    ).toBe(true);
+    await act(async () => remove.click());
+    expect(mocks.remove).toHaveBeenCalledOnce();
     mocks.loaded = true;
     await act(async () => render());
     expect(container.childElementCount).toBe(0);
   } finally {
+    mocks.loaded = false;
+    mocks.busy = false;
     await act(async () => root.unmount());
   }
 });

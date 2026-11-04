@@ -14,6 +14,7 @@ const SCOPE_OPTIONS: SearchBarScopeOption<TestScope>[] = [
 ];
 
 type RenderSearchBarOptions = {
+  variant?: "filter" | "replace";
   invalid_message?: string | null;
   keyword?: string;
   on_replace_all?: () => void;
@@ -43,6 +44,7 @@ describe("SearchBar", () => {
     replace_all_calls = 0;
   });
 
+  /** 挂载真实搜索栏，分别观察搜索锁与替换提交锁。 */
   async function render_search_bar(options: RenderSearchBarOptions = {}): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -52,32 +54,35 @@ describe("SearchBar", () => {
       root?.render(
         <TooltipProvider>
           <SearchBar<TestScope>
-            variant="replace"
+            aria-label="搜索工具栏"
             keyword={options.keyword ?? "苹果"}
             placeholder="搜索"
             clear_label="清空搜索"
             invalid_message={options.invalid_message ?? null}
             search_disabled={options.search_disabled}
             on_keyword_change={() => undefined}
-            replace_text={options.replace_text ?? "梨"}
-            replace_placeholder="替换为"
-            replace_clear_label="清空替换"
-            replace_actions_disabled={options.replace_actions_disabled === true}
-            on_replace_text_change={() => undefined}
-            replace_next_label="替换当前"
-            replace_all_label="全部替换"
-            on_replace_next={
-              options.on_replace_next ??
-              (() => {
-                replace_next_calls += 1;
-              })
-            }
-            on_replace_all={
-              options.on_replace_all ??
-              (() => {
-                replace_all_calls += 1;
-              })
-            }
+            {...(options.variant === "filter"
+              ? { variant: "filter" as const }
+              : {
+                  variant: "replace" as const,
+                  replace_text: options.replace_text ?? "梨",
+                  replace_placeholder: "替换为",
+                  replace_clear_label: "清空替换",
+                  replace_actions_disabled: options.replace_actions_disabled === true,
+                  on_replace_text_change: () => undefined,
+                  replace_next_label: "替换当前",
+                  replace_all_label: "全部替换",
+                  on_replace_next:
+                    options.on_replace_next ??
+                    (() => {
+                      replace_next_calls += 1;
+                    }),
+                  on_replace_all:
+                    options.on_replace_all ??
+                    (() => {
+                      replace_all_calls += 1;
+                    }),
+                })}
             scope={{
               value: "all",
               button_label: "范围",
@@ -123,10 +128,20 @@ describe("SearchBar", () => {
     return button;
   }
 
+  /** 两个提交入口共同遵守替换锁。 */
   function expect_replace_submit_disabled(disabled: boolean): void {
     expect(query_button_by_label("替换当前").disabled).toBe(disabled);
     expect(query_button_by_label("全部替换").disabled).toBe(disabled);
   }
+
+  it.each(["filter", "replace"] as const)("%s 模式只向容器传递 DOM 属性", async (variant) => {
+    await render_search_bar({ variant });
+    const section = container!.querySelector('[role="search"]')!;
+    expect(section.getAttribute("aria-label")).toBe("搜索工具栏");
+    for (const name of ["variant", "keyword", "replace_text"]) {
+      expect(section.hasAttribute(name)).toBe(false);
+    }
+  });
 
   it("本地写入语义下锁住搜索控件并保留替换文本编辑", async () => {
     await render_search_bar({

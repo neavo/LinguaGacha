@@ -38,22 +38,15 @@ function AgentResponseAnnotationPanel({
       <div className="agent-annotation-panel__header">
         <strong>{t("agent_page.annotation.selected_text")}</strong>
         {on_cancel === undefined ? null : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <AppButton
-                  type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label={t("app.action.close")}
-                  onClick={on_cancel}
-                >
-                  <X aria-hidden="true" />
-                </AppButton>
-              }
-            />
-            <TooltipContent>{t("app.action.close")}</TooltipContent>
-          </Tooltip>
+          <AppButton
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            aria-label={t("app.action.close")}
+            onClick={on_cancel}
+          >
+            <X aria-hidden="true" />
+          </AppButton>
         )}
       </div>
       <blockquote>{selected_text}</blockquote>

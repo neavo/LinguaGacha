@@ -75,83 +75,37 @@ type SearchBarProps<scope_value extends string = string> =
 function resolve_search_bar_card_props<scope_value extends string = string>(
   props: SearchBarProps<scope_value>,
 ): React.ComponentProps<"section"> {
-  if (props.variant === "replace") {
-    const {
-      variant,
-      className,
-      keyword,
-      placeholder,
-      clear_label,
-      invalid_message,
-      on_keyword_change,
-      search_disabled,
-      scope,
-      regex,
-      replace_text,
-      replace_placeholder,
-      replace_clear_label,
-      on_replace_text_change,
-      replace_next_label,
-      replace_all_label,
-      replace_actions_disabled,
-      on_replace_next,
-      on_replace_all,
-      extra_actions,
-      ...replace_card_props
-    } = props;
-
-    void variant;
-    void className;
-    void keyword;
-    void placeholder;
-    void clear_label;
-    void invalid_message;
-    void on_keyword_change;
-    void search_disabled;
-    void scope;
-    void regex;
-    void replace_text;
-    void replace_placeholder;
-    void replace_clear_label;
-    void on_replace_text_change;
-    void replace_next_label;
-    void replace_all_label;
-    void replace_actions_disabled;
-    void on_replace_next;
-    void on_replace_all;
-    void extra_actions;
-
-    return replace_card_props;
-  }
-
   const {
-    variant,
-    className,
-    keyword,
-    placeholder,
-    clear_label,
-    invalid_message,
-    on_keyword_change,
-    search_disabled,
-    scope,
-    regex,
-    extra_actions,
+    className: _className,
+    keyword: _keyword,
+    placeholder: _placeholder,
+    clear_label: _clear_label,
+    invalid_message: _invalid_message,
+    on_keyword_change: _on_keyword_change,
+    search_disabled: _search_disabled,
+    scope: _scope,
+    regex: _regex,
+    extra_actions: _extra_actions,
     ...card_props
   } = props;
-
-  void variant;
-  void className;
-  void keyword;
-  void placeholder;
-  void clear_label;
-  void invalid_message;
-  void on_keyword_change;
-  void search_disabled;
-  void scope;
-  void regex;
-  void extra_actions;
-
-  return card_props;
+  if (card_props.variant === "replace") {
+    const {
+      variant: _variant,
+      replace_text: _replace_text,
+      replace_placeholder: _replace_placeholder,
+      replace_clear_label: _replace_clear_label,
+      on_replace_text_change: _on_replace_text_change,
+      replace_next_label: _replace_next_label,
+      replace_all_label: _replace_all_label,
+      replace_actions_disabled: _replace_actions_disabled,
+      on_replace_next: _on_replace_next,
+      on_replace_all: _on_replace_all,
+      ...section_props
+    } = card_props;
+    return section_props;
+  }
+  const { variant: _variant, ...section_props } = card_props;
+  return section_props;
 }
 
 type SearchBarKeywordFieldProps = {
@@ -187,28 +141,17 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): React.JSX.Ele
       {show_inline_controls ? (
         <InputGroupAddon align="inline-end" className="search-bar__input-addon">
           {show_clear_keyword ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <TooltipTarget>
-                    <InputGroupButton
-                      size="icon-xs"
-                      disabled={props.search_disabled}
-                      aria-label={props.clear_label}
-                      className="search-bar__clear-button"
-                      onClick={() => {
-                        props.on_keyword_change("");
-                      }}
-                    >
-                      <X />
-                    </InputGroupButton>
-                  </TooltipTarget>
-                }
-              />
-              <TooltipContent>
-                <p>{props.clear_label}</p>
-              </TooltipContent>
-            </Tooltip>
+            <InputGroupButton
+              size="icon-xs"
+              disabled={props.search_disabled}
+              aria-label={props.clear_label}
+              className="search-bar__clear-button"
+              onClick={() => {
+                props.on_keyword_change("");
+              }}
+            >
+              <X />
+            </InputGroupButton>
           ) : null}
           {show_invalid_state ? (
             <Tooltip>
@@ -339,7 +282,6 @@ type SearchBarReplaceFieldProps = {
   replace_clear_label: string;
   replace_next_label: string;
   replace_all_label: string;
-  replace_text_disabled?: boolean; // 替换文本是本地输入，独立于搜索读控件锁。
   replace_submit_disabled: boolean; // 提交锁包含写入口状态和替换前置条件。
   on_replace_text_change: (next_replace_text: string) => void;
   on_replace_next: () => void | Promise<void>;
@@ -350,13 +292,9 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): React.JSX.Ele
   const show_clear_replace_text = props.replace_text !== "";
 
   return (
-    <InputGroup
-      data-disabled={props.replace_text_disabled ? "true" : undefined}
-      className="search-bar__input-group search-bar__input-group--replace"
-    >
+    <InputGroup className="search-bar__input-group search-bar__input-group--replace">
       <InputGroupInput
         value={props.replace_text}
-        disabled={props.replace_text_disabled}
         className="search-bar__input"
         placeholder={props.replace_placeholder}
         onChange={(event) => {
@@ -368,28 +306,16 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): React.JSX.Ele
         className="search-bar__input-addon search-bar__input-addon--replace"
       >
         {show_clear_replace_text ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <TooltipTarget>
-                  <InputGroupButton
-                    size="icon-xs"
-                    disabled={props.replace_text_disabled}
-                    aria-label={props.replace_clear_label}
-                    className="search-bar__clear-button"
-                    onClick={() => {
-                      props.on_replace_text_change("");
-                    }}
-                  >
-                    <X />
-                  </InputGroupButton>
-                </TooltipTarget>
-              }
-            />
-            <TooltipContent>
-              <p>{props.replace_clear_label}</p>
-            </TooltipContent>
-          </Tooltip>
+          <InputGroupButton
+            size="icon-xs"
+            aria-label={props.replace_clear_label}
+            className="search-bar__clear-button"
+            onClick={() => {
+              props.on_replace_text_change("");
+            }}
+          >
+            <X />
+          </InputGroupButton>
         ) : null}
         <Tooltip>
           <TooltipTrigger
