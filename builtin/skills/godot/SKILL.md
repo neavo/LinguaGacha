@@ -20,7 +20,7 @@ description: 翻译、审校或分析 Godot 4 游戏前必须加载。
 
 候选按扩展名发现，不区分大小写。二进制成员按文件头识别：`GDSC` 是编译脚本。`RSRC`、`RSCC` 按资源 `type` 区分语言表和其他资源，例如 `.res` 也可能是语言表。投影文件名在成员路径后追加 `.reference.json` 或 `.reference.gd`。成员解析失败时不生成投影，失败记录在 `source_issues.jsonl`。
 
-附加原稿的扫描范围是游戏根目录，排除 `.godot/`。
+调查其他数据时可参考的范围是游戏根目录，排除 `.godot/`。
 
 路径对应关系：
 
@@ -188,7 +188,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 |`source_issues.jsonl` 有本游戏的记录|涉及的成员，其中的文字可能仍显示原文|
 |有 `selected` 为 `false` 的语言表|系统语言或游戏内语言菜单选中这些 locale 时，游戏仍显示其中的原文|
 |`game_files.reference.txt` 列出 C# 或 Mono 的 DLL、GDExtension 原生库|其中的文字仍显示原文|
-|`game_files.reference.txt` 列出文本格式的 `.tscn`、`.tres`，或附加原稿范围以外的自定义数据文件|其中的文字仍显示原文|
+|`game_files.reference.txt` 列出文本格式的 `.tscn`、`.tres`，或其他自定义数据文件|其中的文字仍显示原文|
 
 每次交付都说明：
 

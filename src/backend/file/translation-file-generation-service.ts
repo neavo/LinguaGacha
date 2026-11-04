@@ -1,4 +1,3 @@
-import { read_project_additional_files } from "../project/project-additional-files";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppError, is_app_error } from "../../shared/error";
@@ -91,7 +90,10 @@ export class TranslationFileGenerationService {
         input.output_directory,
         config.app_language,
       );
-      await this.generate_to_paths(project_path, items, paths, config);
+      const excluded_files = (await this.database.get_all_asset_records(project_path))
+        .filter((file) => file.file_type === "GENERIC")
+        .map((file) => file.path);
+      await this.generate_to_paths(project_path, items, paths, config, excluded_files);
       const pdf_files = await this.write_pdf_files(project_path, paths, documents);
       return {
         accepted: true as const,
@@ -102,7 +104,7 @@ export class TranslationFileGenerationService {
   }
 
   /**
-   * CLI 译文生成直接写入用户指定目录，覆盖既有文件且不触发 GUI 打开目录副作用。
+   * CLI 与 Agent 共用目录生成，输出位置由调用方确定。
    */
   public async generate_files_to_directory(
     output_dir: string,
@@ -117,7 +119,7 @@ export class TranslationFileGenerationService {
           (file_path) => !excluded_files.includes(file_path),
         ),
       );
-      const paths = this.build_cli_generation_paths(output_dir);
+      const paths = this.build_directory_generation_paths(output_dir);
       await this.generate_to_paths(project_path, items, paths, config, excluded_files);
       const pdf_files = await this.write_pdf_files(project_path, paths, documents);
       return {
@@ -129,7 +131,7 @@ export class TranslationFileGenerationService {
     }, false);
   }
 
-  /** GUI 与 CLI 共享任务终态和未知异常归属，日志直接保留原始原因与调用栈。 */
+  /** 各入口共用生成结果与错误归属，日志保留原始原因和调用栈。 */
   private async run_generation(
     write: (project_path: string, setting: JsonRecord) => Promise<TranslationFileGenerationResult>,
     open_output_folder: boolean,
@@ -178,7 +180,7 @@ export class TranslationFileGenerationService {
   }
 
   /**
-   * 按调用方指定的目录组写出译文，GUI 和 CLI 共享格式分发与 asset 读取逻辑。
+   * 各入口按指定目录组写出译文，共用格式分发与资产读取。
    */
   private async generate_to_paths(
     project_path: string,
@@ -199,9 +201,7 @@ export class TranslationFileGenerationService {
     );
     await format_service.write_items(output_items, {
       paths,
-      additional_files: read_project_additional_files(
-        await this.database.get_all_meta(project_path),
-      ),
+
       asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
       source_files: (await this.database.get_all_asset_records(project_path)).filter(
         (file) => !excluded_files.includes(file.path),
@@ -263,9 +263,9 @@ export class TranslationFileGenerationService {
   }
 
   /**
-   * CLI 的单一 output-dir 承载译文，双语对照作为同目录下固定子目录。
+   * 指定目录承载译文，双语对照写入其固定子目录。
    */
-  private build_cli_generation_paths(output_dir: string): GeneratedFilePaths {
+  private build_directory_generation_paths(output_dir: string): GeneratedFilePaths {
     const translated_path = path.resolve(output_dir);
     const bilingual_path = path.join(translated_path, "bilingual");
     this.native_fs.make_dir(translated_path);

@@ -7,6 +7,7 @@ export const zh_cn_workbench_page = {
     file_name: "文件名",
     progress: "进度",
     agent: "AGENT",
+    agent_writeback: "写回原格式需要 AGENT",
     agent_only: "仅能使用 AGENT 翻译",
     agent_recommended: "建议使用 AGENT 翻译",
   },

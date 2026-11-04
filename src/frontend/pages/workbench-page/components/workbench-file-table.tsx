@@ -87,13 +87,15 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         head_class_name: "workbench-page__table-file-head",
         cell_class_name: "workbench-page__table-file-cell",
         render_cell: (payload) => {
-          // PDF 需要 Agent，原生游戏仅推荐 Agent，两种提示共用同一入口。
+          // 提示按格式实际需要区分翻译、写回和推荐操作。
           const agent_hint_key: LocaleKey | null =
             payload.row.file_type === "PDF"
               ? "workbench_page.table.agent_only"
-              : is_game_file_type(payload.row.file_type)
-                ? "workbench_page.table.agent_recommended"
-                : null;
+              : payload.row.file_type === "GENERIC"
+                ? "workbench_page.table.agent_writeback"
+                : is_game_file_type(payload.row.file_type)
+                  ? "workbench_page.table.agent_recommended"
+                  : null;
           return (
             <div className="workbench-page__table-file">
               <Tooltip>

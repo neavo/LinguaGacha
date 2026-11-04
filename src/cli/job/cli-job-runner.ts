@@ -89,7 +89,7 @@ export async function run_cli_job(
 
     const { entries } = (await backend_services.project.summary.read()).snapshot;
     excluded_files = entries
-      .filter((entry) => entry.file_type === "PDF")
+      .filter((entry) => entry.file_type === "PDF" || entry.file_type === "GENERIC")
       .map((entry) => entry.rel_path);
     if (entries.some((entry) => entry.progress.unit === "line" && entry.progress.total_count > 0))
       await start_and_wait_for_translation(backend_services, status_reporter);

@@ -41,6 +41,7 @@ export const zh_cn_project_page = {
     progress: "翻译进度",
   },
   formats: {
+    generic: "通用数据",
     title: "支持文件格式",
     txt: "纯文本",
     md: "Markdown",

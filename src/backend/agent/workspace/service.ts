@@ -1,9 +1,10 @@
+import { create_file_generator } from "../tools/generate-files";
+import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import { project_knowledge_entry } from "../../project/project-knowledge";
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
 import type { ProjectContentService } from "../../project/project-content-service";
 import { preview_file_changes } from "./file-changes";
 import type { ParsedAgentWorkspaceChanges } from "./changes";
-import { read_project_additional_files } from "../../project/project-additional-files";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
 import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
@@ -214,6 +215,7 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
+      generation: Pick<TranslationFileGenerationService, "generate_files_to_directory">;
       pdfHost?: PDFHost | undefined;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -518,9 +520,6 @@ export class AgentWorkspaceService {
       languageKey: language_key,
       currentLanguageKey: JsonTool.stringifyStrict(this.options.cache.languages.readBlock()),
     });
-    const additional_files = read_project_additional_files(
-      await this.options.database.get_all_meta(project_path),
-    );
 
     const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
       ? await this.options.database.read_pdf_documents(project_path)
@@ -539,7 +538,6 @@ export class AgentWorkspaceService {
         ),
       },
       files: snapshot_files,
-      additional_files,
     };
     await this.clear_snapshot();
     try {
@@ -667,9 +665,6 @@ export class AgentWorkspaceService {
           files: this.options.cache.files
             .readFileEntries()
             .map((entry) => ({ file_path: entry.rel_path, file_type: entry.file_type })),
-          additionalFiles: read_project_additional_files(
-            await this.options.database.get_all_meta(snapshot.projectPath),
-          ),
         });
         // 脚本可能删除运行目录和变更目录。每次执行前补齐目录，保留已有提交意图。
         const directories = new Set([
@@ -721,6 +716,7 @@ export class AgentWorkspaceService {
                 );
                 return result.map((entry, index) => ({ ...entry, source_path: sources[index]! }));
               },
+              generateFiles: create_file_generator(this.root_path, this.options.generation),
               printPDF: create_pdf_printer({
                 root: this.root_path,
                 nativeFs: this.native_fs,
@@ -940,9 +936,12 @@ export class AgentWorkspaceService {
           source: "agent_workspace_apply",
           expectedSectionRevisions: { files: active.revisions.files ?? 0 },
           revisionSections: ["files"],
-          sourcePaths: parsed.files.creates
-            .filter((row) => path.isAbsolute(row.source_path))
-            .map((row) => row.source_path),
+          sourcePaths: [
+            ...parsed.files.creates,
+            ...parsed.files.updates.filter((row) => row.source_path !== undefined),
+          ]
+            .filter((row) => path.isAbsolute(row.source_path!))
+            .map((row) => row.source_path!),
           creates: preview.files.creates,
           updates: preview.files.updates,
           deletes: preview.files.deletes.map((row) => row.file_path),
@@ -951,19 +950,30 @@ export class AgentWorkspaceService {
       );
       if (result.kind === "source_failed")
         return reject(
-          result.failures.map((failure) => ({
-            scope: "files",
-            op: "create",
-            reason: "source_failed",
-            line: preview.files.creates.find((row) => row.source_path === failure.source_path)!
-              .line,
-            ...failure,
-          })),
+          result.failures.map((failure) => {
+            const update = preview.files.updates.find((row) => row.file_path === failure.file_path);
+            const create = preview.files.creates.find(
+              (row) => row.source_path === failure.source_path,
+            );
+            return {
+              scope: "files",
+              op: update ? "update" : "create",
+              reason: "source_failed",
+              line: (update ?? create)!.line,
+              ...(update ? { file_path: update.file_path } : {}),
+              ...failure,
+            };
+          }),
           result.directory_changes,
         );
       // 对外回执保留调用方的路径表示，实际读取使用解析后的本机路径。
       const files = {
         ...result.files,
+        replaced: result.files.replaced.map((entry) => ({
+          ...entry,
+          source_path: parsed.files.updates.find((row) => row.file_path === entry.file_path)!
+            .source_path!,
+        })),
         created: result.files.created.map((entry, index) => ({
           ...entry,
           source_path: parsed.files.creates[index]!.source_path,
@@ -1029,7 +1039,6 @@ export class AgentWorkspaceService {
     projectPath: string;
     projectEpoch: number;
     filesRevision: number;
-    additionalFiles: Readonly<Record<string, readonly string[]>>; // 与资产共用 files 修订，缓存键无需单独包含。
     files: ReadonlyArray<{ file_path: string; file_type: string }>;
   }): Promise<void> {
     let cache = this.source_cache;
@@ -1052,7 +1061,6 @@ export class AgentWorkspaceService {
       sourceRoot: path.join(this.root_path, "sources"),
       signal: args.signal,
       files: args.files.filter((file) => cache.assets.get(file.file_path)?.retry ?? true),
-      additionalFiles: args.additionalFiles,
       readAsset: (file_path) =>
         this.options.database.read_asset_content(args.projectPath, file_path),
       report: (asset, diagnostic) =>

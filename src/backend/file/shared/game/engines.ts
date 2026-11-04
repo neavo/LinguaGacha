@@ -84,7 +84,6 @@ import {
   collect_tyrano_files,
   discover_tyrano_source,
   is_tyrano_root,
-  tyrano_path,
   type TyranoSource,
 } from "../../tyrano/source";
 import { stage_tyrano_source } from "../../tyrano/prepare";
@@ -110,7 +109,6 @@ interface EngineDefinition<G> {
   is_root(input: string, fs: NativeFs): unknown; // 目录扫描据此停止递归，避免把游戏成员作为普通来源导入。
   source_path(game: G, input: string): string; // 返回交付给导入流程的来源路径。
   identity(game: G): string; // 多个输入入口按同一游戏身份去重。
-  includes_additional_file(game: G, name: string): boolean; // 声明附加原稿的扫描范围，扩展名和翻译成员排除归共享层。
   needs_stage(game: G, fs: NativeFs): boolean; // 判断本次来源是否需要目录准备。
   /** Worker 只写暂存目录，可靠原稿与正式目录计划分别交付。 */
   stage(
@@ -203,7 +201,6 @@ function register<K extends GameFileType>(
     },
     source_path: (source, input) => engine.source_path(game(source), input),
     identity: (source) => engine.identity(game(source)),
-    includes_additional_file: (source, name) => engine.includes_additional_file(game(source), name),
     needs_stage: (source, fs) => engine.needs_stage(game(source), fs),
     stage: (task, fs, signal) =>
       engine.stage({ game: game(task), staging: task.staging }, fs, signal),
@@ -213,7 +210,6 @@ function register<K extends GameFileType>(
 
 export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
   RENPY: register("RENPY", {
-    includes_additional_file: (_game, name) => /^game\/(?!cache\/|saves\/)/iu.test(name), // `game/` 外是引擎文件，cache 与 saves 是运行时生成物。
     discover: discover_renpy_source,
     is_root: is_renpy_root,
     source_path: (game) => game.root,
@@ -232,7 +228,6 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     },
   }),
   WOLFRPG: register("WOLFRPG", {
-    includes_additional_file: () => true,
     discover: discover_wolf_source,
     is_root: wolf_source_root,
     source_path: (game) => game.root,
@@ -278,11 +273,6 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     },
   }),
   RPGMAKER_MV_MZ: register("RPGMAKER_MV_MZ", {
-    includes_additional_file: (game, name) => {
-      // 数据根目录外是 NW.js 运行时文件。
-      const prefix = path.relative(game.root, game.data_root).replaceAll("\\", "/").toLowerCase();
-      return prefix === "" || name.toLowerCase().startsWith(prefix + "/");
-    },
     discover: discover_rpgmaker_source,
     is_root: discover_unpacked_rpgmaker_source,
     source_path: (game, input) => game.executable ?? input,
@@ -333,7 +323,6 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     },
   }),
   RPGMAKER_RGSS: register("RPGMAKER_RGSS", {
-    includes_additional_file: () => true,
     discover: discover_rgss_source,
     is_root: discover_rgss_source,
     source_path: (game) => game.root,
@@ -371,7 +360,6 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     workspace_projections: read_rgss_projections,
   }),
   GODOT: register("GODOT", {
-    includes_additional_file: (_game, name) => !name.toLowerCase().startsWith(".godot/"), // `.godot/` 是编辑器导入缓存。
     discover: discover_godot_source,
     is_root: is_godot_root,
     source_path: (game, input) => (path.resolve(input) === game.root ? game.root : game.executable),
@@ -389,8 +377,6 @@ export const GAME_ENGINES: Record<GameFileType, GameEngine> = {
     },
   }),
   TYRANO: register("TYRANO", {
-    includes_additional_file: (game, name) =>
-      name.toLowerCase().startsWith(tyrano_path(game, "data/").toLowerCase()), // 应用 `data` 外是引擎、第三方库与 Electron 运行时。
     discover: discover_tyrano_source,
     is_root: is_tyrano_root,
     source_path: (game) => game.root,

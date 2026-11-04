@@ -19,7 +19,7 @@ description: 翻译、审校或分析 RenPy 游戏前必须加载。
 
 `.rpymc` 按同样规则生成 `x.rpymc.reference.rpy` 和 `x.rpymc.reference.json`。
 
-附加原稿的扫描范围是 `game/`，排除 `game/cache/` 与 `game/saves/`。
+调查其他数据时可参考的范围是 `game/`，排除 `game/cache/` 与 `game/saves/`。
 
 `strings` 列出成员中全部可写回的字符串，每项为 `{ key, text, usage, write_mode, line, source_line }`，包括因重定向而不产生条目的字符串。`source_issues.jsonl` 中 `stage` 为 `reference` 的记录也包括不产生条目的位置，`message` 给出键或 `文件:行号`。
 

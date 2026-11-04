@@ -43,6 +43,7 @@ export const ja_jp_project_page = {
     progress: "翻訳進捗",
   },
   formats: {
+    generic: "汎用データ",
     title: "対応ファイル形式",
     txt: "プレーンテキスト",
     md: "Markdown",

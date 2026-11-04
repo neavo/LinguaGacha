@@ -1,3 +1,4 @@
+import { remove_additional_files_migration } from "./project/remove-additional-files-migration";
 import { empty_asset_file_type_migration } from "./project/empty-asset-file-type-migration";
 import type { ProjectDatabaseWrite } from "../database/database-operations";
 import type { ProjectOpenMigrationInput } from "./migration-types";
@@ -31,5 +32,6 @@ export async function build_project_open_writes(
     writes.push(...new MarkdownV2BlockMigration().build_writes(input.project_path, items));
   }
   writes.push(...(await empty_asset_file_type_migration({ ...input, meta, assets })));
+  writes.push(...(await remove_additional_files_migration({ ...input, meta, assets })));
   return writes;
 }

@@ -10,6 +10,7 @@ export const en_us_workbench_page = {
     file_name: "File Name",
     progress: "Progress",
     agent: "AGENT",
+    agent_writeback: "AGENT is required to write back to the original format",
     agent_only: "Translation is only available with AGENT",
     agent_recommended: "We recommend using AGENT for translation",
   },

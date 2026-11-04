@@ -1,3 +1,4 @@
+import type { WorkbenchQueryResponse } from "@shared/workbench/workbench-query";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import type {
   TranslationFileGenerationRequest,
@@ -16,6 +17,7 @@ import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 type TranslationGenerationReadyState = {
   phase: "ready";
   summary: ProofreadingWarningSummary;
+  has_generic: boolean;
 };
 
 type TranslationGenerationFailedState = {
@@ -70,27 +72,35 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
     set_state(next_state);
   }, []);
 
-  /** 读取当前项目的权威 warning 摘要，并隔离旧项目或旧请求结果。 */
-  const load_warning_summary = useCallback((): void => {
+  /** 读取当前工程文件与校对摘要，并隔离旧项目或旧请求结果。 */
+  const load_generation_check = useCallback((): void => {
     const project = project_ref.current;
     if (!project.loaded) {
       return;
     }
     const generation = ++request_generation_ref.current;
     apply_state({ phase: "checking" });
-    void api_fetch<ProofreadingWarningSummaryResponse>("/api/proofreading/query", {
-      action: "warning_summary",
-    })
-      .then((response) => {
+    void Promise.all([
+      api_fetch<ProofreadingWarningSummaryResponse>("/api/proofreading/query", {
+        action: "warning_summary",
+      }),
+      api_fetch<WorkbenchQueryResponse>("/api/workbench/snapshot", {}),
+    ])
+      .then(([response, workbench]) => {
         if (
           generation !== request_generation_ref.current ||
           !project_ref.current.loaded ||
           project_ref.current.path !== project.path ||
-          response.projectPath !== project.path
+          response.projectPath !== project.path ||
+          workbench.projectPath !== project.path
         ) {
           return;
         }
-        apply_state({ phase: "ready", summary: response.warningSummary });
+        apply_state({
+          phase: "ready",
+          summary: response.warningSummary,
+          has_generic: workbench.snapshot.entries.some((entry) => entry.file_type === "GENERIC"),
+        });
       })
       .catch(() => {
         // 查询失败由弹窗提供重试与继续译文生成，不额外叠加 Toast。
@@ -109,16 +119,16 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
     if (state_ref.current.phase !== "closed") {
       return;
     }
-    load_warning_summary();
-  }, [load_warning_summary]);
+    load_generation_check();
+  }, [load_generation_check]);
 
   /** 失败态沿用同一查询入口重新检查。 */
   const retry_check = useCallback((): void => {
     if (state_ref.current.phase !== "check-failed") {
       return;
     }
-    load_warning_summary();
-  }, [load_warning_summary]);
+    load_generation_check();
+  }, [load_generation_check]);
 
   /** 译文生成期间锁定流程，失败后恢复用户确认前的状态。 */
   const confirm_generation = useCallback(async (): Promise<void> => {
@@ -171,16 +181,27 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
     t,
   ]);
 
-  /** 进入 Agent 时保留用户草稿，只有空草稿才补入审校建议。 */
+  /** 进入 Agent 时保留用户草稿，只为空草稿补入当前任务建议。 */
   const jump_to_agent = useCallback((): void => {
     const current_state = state_ref.current;
-    if (current_state.phase !== "ready" || current_state.summary.total_count === 0) {
+    if (
+      current_state.phase !== "ready" ||
+      (current_state.summary.total_count === 0 && !current_state.has_generic)
+    ) {
       return;
     }
     request_generation_ref.current += 1;
     apply_state({ phase: "closed" });
     navigate_to_agent({
-      text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_reference({ kind: "skill", name: "translation" })}`,
+      text: [
+        ...(current_state.has_generic
+          ? [t("app.translation_generation.confirmation.generate_all")]
+          : []),
+        ...(current_state.summary.total_count > 0
+          ? [t("agent_page.empty.suggestions.review_translation")]
+          : []),
+        format_agent_reference({ kind: "skill", name: "translation" }),
+      ].join(" "),
       mode: "if-empty",
     });
   }, [apply_state, navigate_to_agent, t]);

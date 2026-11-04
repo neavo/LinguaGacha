@@ -45,6 +45,7 @@ export const en_us_project_page = {
     progress: "Progress",
   },
   formats: {
+    generic: "Generic data",
     title: "Supported File Formats",
     txt: "Plain Text",
     md: "Markdown",

@@ -1,0 +1,39 @@
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { Type, type Static } from "@earendil-works/pi-ai";
+import { Check } from "typebox/value";
+import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
+import type { TranslationFileGenerationResult } from "../../../shared/translation-generation";
+import { AGENT_WORKSPACE_WORK_ROOT } from "../workspace/runtime/policy";
+
+/** 脚本只请求生成，输出位置由宿主拥有。 */
+export const WORKSPACE_GENERATE_FILES_REQUEST_SCHEMA = Type.Object(
+  { kind: Type.Literal("generate_files") },
+  { additionalProperties: false },
+);
+export type WorkspaceGenerateFilesRequest = Static<typeof WORKSPACE_GENERATE_FILES_REQUEST_SCHEMA>;
+export type WorkspaceGenerateFilesPort = () => Promise<TranslationFileGenerationResult>;
+
+/** 路径由宿主选定，生成服务沿用已持有的工作区执行占用。 */
+export function create_file_generator(
+  root: string,
+  generation: Pick<TranslationFileGenerationService, "generate_files_to_directory">,
+): WorkspaceGenerateFilesPort {
+  return () =>
+    generation.generate_files_to_directory(
+      path.resolve(root, AGENT_WORKSPACE_WORK_ROOT, randomUUID()),
+    );
+}
+
+/** 不接受脚本路径参数，runner 在回收执行前等待本次生成结算。 */
+export async function execute_generate_files_request(
+  request: unknown,
+  signal: AbortSignal,
+  generate: WorkspaceGenerateFilesPort | undefined,
+): Promise<TranslationFileGenerationResult> {
+  if (!Check(WORKSPACE_GENERATE_FILES_REQUEST_SCHEMA, request))
+    throw new Error("Invalid generate_files request.");
+  if (!generate) throw new Error("File generation unavailable.");
+  signal.throwIfAborted();
+  return generate();
+}

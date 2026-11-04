@@ -7,6 +7,7 @@ import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-moc
 
 const mocks = vi.hoisted(() => ({
   api_fetch: vi.fn(),
+  workbench: vi.fn(),
   push_toast: vi.fn(),
   navigate_to_agent: vi.fn(),
   selected_route: "workbench",
@@ -14,7 +15,10 @@ const mocks = vi.hoisted(() => ({
   settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
 }));
 
-vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api_fetch }));
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_fetch: (path: string, request: unknown) =>
+    path === "/api/workbench/snapshot" ? mocks.workbench(request) : mocks.api_fetch(path, request),
+}));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_error_toast: mocks.push_toast,
 }));
@@ -53,6 +57,9 @@ describe("useTranslationGenerationFlow", () => {
   beforeEach(() => {
     vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock());
     mocks.api_fetch.mockReset();
+    mocks.workbench
+      .mockReset()
+      .mockResolvedValue({ projectPath: "E:/demo/sample.lg", snapshot: { entries: [] } });
     mocks.push_toast.mockReset();
     mocks.navigate_to_agent.mockReset();
     mocks.selected_route = "workbench";
@@ -115,6 +122,72 @@ describe("useTranslationGenerationFlow", () => {
     mocks.selected_route = "agent";
     await render_probe();
     expect(latest_flow?.can_jump_to_agent).toBe(false);
+  });
+
+  it.each([0, 2])("通用包与 %s 条审校警告共同生成保留草稿的导航请求", async (total_count) => {
+    mocks.api_fetch.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      warningSummary: { total_count, entries: [] },
+    });
+    mocks.workbench.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      snapshot: { entries: [{ file_type: "GENERIC", rel_path: "renamed.txt" }] },
+    });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state).toMatchObject({ phase: "ready", has_generic: true });
+    act(() => latest_flow?.jump_to_agent());
+    expect(mocks.navigate_to_agent).toHaveBeenCalledWith({
+      mode: "if-empty",
+      text: expect.stringContaining("app.translation_generation.confirmation.generate_all"),
+    });
+    const text = mocks.navigate_to_agent.mock.calls[0]![0].text as string;
+    expect(text.includes("agent_page.empty.suggestions.review_translation")).toBe(total_count > 0);
+    expect(mocks.workbench).toHaveBeenCalledOnce();
+  });
+
+  it("文件检查失败仍可继续生成，不推断通用包不存在", async () => {
+    mocks.api_fetch
+      .mockResolvedValueOnce({
+        projectPath: mocks.project_snapshot.path,
+        warningSummary: { total_count: 0, entries: [] },
+      })
+      .mockResolvedValueOnce({ accepted: true });
+    mocks.workbench.mockRejectedValueOnce(new Error("files unavailable"));
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state).toEqual({ phase: "check-failed" });
+    await act(async () => latest_flow?.confirm_generation());
+    expect(mocks.api_fetch).toHaveBeenLastCalledWith(
+      "/api/translation/files/generate",
+      expect.any(Object),
+    );
+    expect(latest_flow?.state.phase).toBe("closed");
+  });
+
+  it.each(["close", "switch"])("%s 后忽略迟到的文件检查", async (action) => {
+    const pending = Promise.withResolvers<unknown>();
+    mocks.api_fetch.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      warningSummary: { total_count: 0, entries: [] },
+    });
+    mocks.workbench.mockReturnValue(pending.promise);
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    if (action === "close") act(() => latest_flow?.close());
+    else {
+      mocks.project_snapshot.path = "E:/demo/next.lg";
+      await render_probe();
+    }
+    await act(async () =>
+      pending.resolve({
+        projectPath: "E:/demo/sample.lg",
+        snapshot: { entries: [{ file_type: "GENERIC" }] },
+      }),
+    );
+    expect(latest_flow?.state.phase).toBe("closed");
   });
 
   it("工程切换后，旧译文生成失败不会恢复旧确认框", async () => {

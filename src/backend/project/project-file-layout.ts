@@ -4,8 +4,9 @@ import path from "node:path";
 import { is_game_file_type } from "../../shared/project-source-formats";
 import { GAME_ASSET_EXTENSIONS, assert_source_file_paths } from "../file/source-file-paths";
 import { insert_by_sort } from "./insert-by-sort";
+import type { ProjectFileCreate } from "../../shared/project-file-changes";
 
-export type ProjectFileUpdate = {
+export type ProjectFileUpdate = Partial<ProjectFileCreate> & {
   file_path: string;
   new_file_path?: string;
   sort?: number;
@@ -28,6 +29,10 @@ export function resolve_project_file_layout(
   const remaining = current.filter((file) => !deleted.has(file.path));
   const layout = remaining.map((file) => {
     const update = updates.find((entry) => entry.file_path === file.path);
+    if (update?.godot_pack_orders !== undefined && update.source_path === undefined)
+      throw new AppError("request.validation_failed");
+    if (update?.source_path !== undefined && update.new_file_path !== undefined)
+      throw new AppError("request.validation_failed");
     const target =
       update?.new_file_path === undefined
         ? file.path

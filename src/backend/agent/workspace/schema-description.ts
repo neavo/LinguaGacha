@@ -81,15 +81,14 @@ export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, strin
         fields.push(`[key: string]: ${render_schema(entries[0][1], definition)}`);
       }
       if (value.additionalProperties === true) fields.push("[key: string]: unknown");
-      else if (
-        typeof value.additionalProperties === "object" &&
-        value.additionalProperties !== null
-      ) {
-        fields.push(
-          `[key: string]: ${render_schema(value.additionalProperties as TSchema, definition)}`,
-        );
+      const object =
+        fields.length === 0 ? "" : `{\n${fields.map((field) => indent(`${field};`)).join("\n")}\n}`;
+      if (typeof value.additionalProperties === "object" && value.additionalProperties !== null) {
+        // 索引约束与字段相交，避免可选字段的隐含 undefined 使声明自身无法编译。
+        const additional = `Record<string, ${render_schema(value.additionalProperties as TSchema, definition)}>`;
+        return `${comment}${object ? `(${object} & ${additional})` : additional}`;
       }
-      return `${comment}${fields.length === 0 ? "Record<string, never>" : `{\n${fields.map((field) => indent(`${field};`)).join("\n")}\n}`}`;
+      return `${comment}${object || "Record<string, never>"}`;
     }
     throw new Error("Unsupported Agent Workspace schema in model description.");
   }

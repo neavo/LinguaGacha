@@ -4,6 +4,14 @@ import type { LocaleKey } from "./i18n";
 export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
+    id: "generic",
+    support_status: "supported",
+    extension: ".generic",
+    title_key: "project_page.formats.generic",
+    description_keys: [],
+  },
+  {
+    source_kind: "file",
     id: "txt",
     support_status: "supported",
     extension: ".txt",

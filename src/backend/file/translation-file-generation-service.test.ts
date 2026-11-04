@@ -3,6 +3,8 @@ import type { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_pdf_document } from "./pdf/pdf-document";
 import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import { write_zip } from "../../test/zip-fixture";
+import { GenericFormat } from "./generic/generic-format";
+import { create_item } from "../../domain/item";
 import type { PDFDocument } from "../../shared/pdf";
 import fs from "node:fs";
 import os from "node:os";
@@ -117,6 +119,81 @@ function create_database(
 }
 
 describe("TranslationFileGenerationService", () => {
+  it("普通生成跳过通用资产，目录生成输出最终文本并保留私有定位", async () => {
+    const project_path = path.join(temp_dir, "mixed.lg");
+    const records = [
+      { message: "こんにちは", locator: { offset: 2 } },
+      { message: "こんにちは", locator: { offset: 30 } },
+      { message: "消去", name: "案内人", locator: [2] },
+      { message: "未完成", name: "受付", extra: { nested: [1, null, true] } },
+    ];
+    const content = Buffer.from(
+      await write_zip(
+        new Map([
+          ["items.json", JSON.stringify(records)],
+          ["tools/run.mjs", "throw new Error('must not execute')"],
+        ]),
+      ),
+    );
+    const items = await new GenericFormat().read_from_stream(content, "data.generic");
+    items[0] = { ...items[0]!, status: "PROCESSED", dst: "你好" };
+    items[1] = { ...items[1]!, status: "DUPLICATED" };
+    items[2] = { ...items[2]!, status: "PROCESSED", dst: "", name_dst: "向导" };
+    items[3] = { ...items[3]!, status: "EXCLUDED", dst: "未采用", name_dst: "接待" };
+    const session = new ProjectSessionState();
+    await session.mark_loaded(project_path);
+    const service = new TranslationFileGenerationService(
+      new GameDirectoryOperations(),
+      create_database(
+        [
+          ...items,
+          create_item({
+            file_path: "native.txt",
+            file_type: "TXT",
+            src: "原文",
+            dst: "译文",
+            status: "PROCESSED",
+          }),
+        ],
+        {
+          "data.generic": { content, file_type: "GENERIC" },
+          "empty.generic": {
+            content: Buffer.from(await write_zip(new Map([["items.json", "[]"]]))),
+            file_type: "GENERIC",
+          },
+          "native.txt": { content: Buffer.from("原文"), file_type: "TXT" },
+        },
+      ),
+      create_setting_service(),
+      session,
+      async () => {},
+      create_pdf_execution(),
+    );
+    const gui = await service.generate_files({ project_path, output_directory: temp_dir });
+    expect(fs.readFileSync(path.join(gui.output_path, "native.txt"), "utf8")).toBe("译文");
+    expect(fs.existsSync(path.join(gui.output_path, "data.generic"))).toBe(false);
+    expect(fs.existsSync(path.join(gui.output_path, "empty.generic"))).toBe(false);
+    const generated = await service.generate_files_to_directory(path.join(temp_dir, "agent"));
+    expect(
+      JSON.parse(
+        fs.readFileSync(path.join(generated.output_path, "data.generic/items.json"), "utf8"),
+      ),
+    ).toEqual([
+      { ...records[0], message: "你好" },
+      { ...records[1], message: "你好" },
+      { ...records[2], message: "", name: "向导" },
+      { ...records[3], name: "接待" },
+    ]);
+    expect(
+      fs.readFileSync(path.join(generated.output_path, "empty.generic/items.json"), "utf8"),
+    ).toBe("[]");
+    expect(fs.readdirSync(path.join(generated.output_path, "data.generic"))).toEqual([
+      "items.json",
+    ]);
+    expect(fs.existsSync(path.join(generated.bilingual_output_path!, "data.generic"))).toBe(false);
+    expect(fs.readFileSync(path.join(generated.output_path, "native.txt"), "utf8")).toBe("译文");
+  });
+
   it("GUI 校验请求后在指定父目录生成，并避开两个目录的重名", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const output_directory = path.join(temp_dir, "destination");
@@ -438,29 +515,17 @@ describe("TranslationFileGenerationService", () => {
     expect(output_folder_opener).not.toHaveBeenCalled();
   });
 
-  it("游戏导出读取附加原稿清单，保留输出目录中已安装的补丁", async () => {
+  it("游戏导出保留输出目录中已安装的补丁", async () => {
     const output = path.join(temp_dir, "output");
     const patch = path.join(output, "game/custom/a.json");
     fs.mkdirSync(path.dirname(patch), { recursive: true });
     fs.writeFileSync(patch, "installed patch");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(path.join(temp_dir, "game.lg"));
-    const content = Buffer.from(
-      await write_zip(
-        new Map([
-          ["data/System.json", "{}"],
-          ["custom/a.json", "{"],
-        ]),
-      ),
-    );
+    const content = Buffer.from(await write_zip(new Map([["data/System.json", "{}"]])));
     const service = new TranslationFileGenerationService(
       new GameDirectoryOperations(),
-      create_database(
-        [],
-        { "game.zip": { content, file_type: "RPGMAKER_MV_MZ" } },
-        {},
-        { additional_files: { "game.zip": ["custom/a.json"] } },
-      ),
+      create_database([], { "game.zip": { content, file_type: "RPGMAKER_MV_MZ" } }, {}),
       create_setting_service(),
       session_state,
       async () => {},

@@ -5,7 +5,6 @@ import type { SourceDiagnostic } from "./shared/game/preparation";
 /** 原稿字节与目录副作用独立交付，成员读取遗漏只记录诊断。 */
 export type PreparedSource = Readonly<{
   content: Uint8Array;
-  additional_files: readonly string[];
   directory_changed: boolean;
   diagnostics: readonly SourceDiagnostic[];
   read?: PreparedRead; // 缺省表示准备阶段未解析，流水线解析固化后的原稿。
@@ -82,6 +81,5 @@ export interface FileFormatWriteContext {
 
 /** 文件调度拥有源文件集合，单格式写回上下文只携带 IO。 */
 export type FileFormatServiceWriteContext = FileFormatWriteContext & {
-  additional_files?: Readonly<Record<string, readonly string[]>>; // 资产路径到附加原稿的映射，附加原稿不参与导出。
   source_files: readonly { path: string; file_type: string }[]; // 原始资产的文件集合，零条目字幕和 MESSAGEJSON 也参与导出
 };

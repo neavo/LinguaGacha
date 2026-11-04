@@ -164,7 +164,7 @@ it.each([
   expect(await substitutions(scripts, version === undefined ? {} : { version })).toBe(expected);
 });
 
-it("新引擎分组标记来自快照清单，附加原稿不作为编译脚本", async () => {
+it("新引擎分组标记来自快照清单，其他数据不作为编译脚本", async () => {
   const scripts: Script[] = [
     ["game/mods/x.rpyc", "config.old_substitutions = False"],
     ["game/z.rpyc", "config.old_substitutions = True"],

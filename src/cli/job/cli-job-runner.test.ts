@@ -48,7 +48,7 @@ describe("run_cli_job", () => {
       source_operation,
     );
   });
-  it("纯 PDF 输入报告排除文件并跳过模型与批量运行", async () => {
+  it.each(["PDF", "GENERIC"])("零条目 %s 输入报告排除文件并跳过批量运行", async (file_type) => {
     const harness = create_backend_services_harness();
     const paths = create_cli_paths();
     vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
@@ -58,7 +58,7 @@ describe("run_cli_job", () => {
         entries: [
           {
             rel_path: "book.pdf",
-            file_type: "PDF",
+            file_type,
             sort_index: 0,
             progress: {
               unit: "page",

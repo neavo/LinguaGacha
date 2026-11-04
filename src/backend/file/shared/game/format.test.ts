@@ -9,27 +9,23 @@ import { NativeFs } from "../../../../native/native-fs";
 import { create_rpgmaker_mv_mz_adapter } from "../../rpgmaker-mv-mz/rpgmaker-format";
 import { GameFormat, read_game_container, GAME_FILES_MEMBER, GAME_METADATA_MEMBER } from "./format";
 
-it("附加原稿统一分流，旧清单兼容且常规导出保留已有补丁", async () => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-additional-export-"));
+it("旧清单兼容且常规导出保留目录中已有补丁", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-native-export-"));
   const bytes = await write_zip(
     new Map([
       ["data/System.json", "{}"],
-      ["custom/broken.json", "{"],
-      ["game_files.txt", "real game data"],
       ["game_files.reference.txt", "data/System.json\ncustom/broken.json\ngame_files.txt"],
     ]),
   );
-  const additional_files = ["custom/broken.json", "game_files.txt"];
-  const container = await read_game_container(bytes, "game.rpgmaker", false, additional_files);
+  const container = await read_game_container(bytes, "game.rpgmaker", false);
   expect([...container.input.keys()]).toEqual(["data/System.json"]);
-  expect(await container.additional.get("game_files.txt")!.async("string")).toBe("real game data");
   const native = new NativeFs();
   const format = new GameFormat(
     new GameDirectoryOperations(),
     create_rpgmaker_mv_mz_adapter(),
     native,
   );
-  expect(await format.read_from_stream(bytes, "game.rpgmaker", additional_files)).toEqual({
+  expect(await format.read_from_stream(bytes, "game.rpgmaker")).toEqual({
     items: [],
     warnings: [],
   });
@@ -37,7 +33,6 @@ it("附加原稿统一分流，旧清单兼容且常规导出保留已有补丁"
   await format.write_to_path([], {
     paths: { translated_path: temp.path, bilingual_path: temp.path },
     source_files: [{ path: "game.rpgmaker", file_type: "RPGMAKER_MV_MZ" }],
-    additional_files: { "game.rpgmaker": additional_files },
     asset_reader: () => Buffer.from(bytes),
   });
   expect(native.read_text_file(path.join(temp.path, "game/custom/broken.json"))).toBe(

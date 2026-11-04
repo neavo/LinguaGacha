@@ -26,13 +26,7 @@ it("一个游戏一个资产，离线重建条目，常规导出只写翻译原�
   expect(rest).toEqual([]);
   expect([entry!.rel_path, entry!.file_type]).toEqual(["Game.tyrano", "TYRANO"]);
   const prepared = await service.prepare_source(entry!);
-  expect(prepared.additional_files).toEqual(["resources/app/data/others/plugin/p/en.json"]);
-  const parsed = await service.parse_asset(
-    "Game.tyrano",
-    prepared.content,
-    "TYRANO",
-    prepared.additional_files,
-  );
+  const parsed = await service.parse_asset("Game.tyrano", prepared.content, "TYRANO");
   if (parsed.kind !== "items") throw new Error("Unexpected PDF");
   expect(parsed.items.map((item) => [item.src, item.status])).toEqual([
     ["台詞", "NONE"],
@@ -45,7 +39,6 @@ it("一个游戏一个资产，离线重建条目，常规导出只写翻译原�
         bilingual_path: path.join(temp.path, "out"),
       },
       source_files: [{ path: "Game.tyrano", file_type: "TYRANO" }],
-      additional_files: { "Game.tyrano": prepared.additional_files },
       asset_reader: () => Buffer.from(prepared.content),
     });
   await write(

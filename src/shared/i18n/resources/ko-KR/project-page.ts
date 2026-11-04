@@ -43,6 +43,7 @@ export const ko_kr_project_page = {
     progress: "번역 진행률",
   },
   formats: {
+    generic: "범용 데이터",
     title: "지원 파일 형식",
     txt: "일반 텍스트",
     md: "Markdown",

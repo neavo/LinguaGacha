@@ -19,6 +19,7 @@ import {
   member_error,
   merge_strings,
   read_scripts,
+  RENPY_SCRIPT_MEMBER,
   read_strings,
   renpy_read_results,
   table_key,
@@ -50,7 +51,7 @@ export function create_renpy_adapter(): GameAssetAdapter {
       const { bytes, metadata } = await read_metadata(input);
       using session = await PythonSession.create();
       const scripts = await read_scripts(
-        [...input.keys()].filter((name) => name !== GAME_METADATA_MEMBER),
+        [...input.keys()].filter((name) => RENPY_SCRIPT_MEMBER.test(name)),
         (name) => input.get(name)!.async("uint8array"),
         metadata.python_major === 2,
         session,
@@ -108,6 +109,7 @@ async function* export_renpy(
     assert(scripts_incomplete !== true, "Incomplete Ren'Py string table prevents writeback");
     const table = new Map<string, RenpyString>();
     for (const [name, entry] of members) {
+      if (!RENPY_SCRIPT_MEMBER.test(name)) continue; // 版本文件保留原字节，不参与编译脚本的字符串表。
       signal.throwIfAborted();
       let strings = fragments.get(name);
       if (!strings) {

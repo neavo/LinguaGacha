@@ -9,6 +9,7 @@ export const ko_kr_workbench_page = {
     file_name: "파일 이름",
     progress: "진행률",
     agent: "AGENT",
+    agent_writeback: "원본 형식으로 기록하려면 AGENT가 필요합니다",
     agent_only: "AGENT로만 번역할 수 있습니다",
     agent_recommended: "AGENT로 번역하는 것을 권장합니다",
   },

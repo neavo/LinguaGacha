@@ -6,7 +6,11 @@ import { useTranslationGeneration } from "@frontend/app/session/translation-gene
 import type { TranslationGenerationFlow } from "@frontend/features/translation-generation/use-translation-generation-flow";
 
 const api_fetch = vi.hoisted(() =>
-  vi.fn(async () => ({ projectPath: "test.lg", warningSummary: { total_count: 0, entries: [] } })),
+  vi.fn(async () => ({
+    projectPath: "test.lg",
+    snapshot: { entries: [] },
+    warningSummary: { total_count: 0, entries: [] },
+  })),
 );
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
@@ -52,7 +56,7 @@ it("多个入口共享预检和确认，页面替换保留同一译文生成弹�
     await act(async () => {
       for (const button of container.querySelectorAll("button")) button.click();
     });
-    expect(api_fetch).toHaveBeenCalledOnce();
+    expect(api_fetch).toHaveBeenCalledTimes(2);
     expect(container.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     await act(async () =>
       root.render(

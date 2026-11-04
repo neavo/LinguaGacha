@@ -199,9 +199,14 @@ export const ko_kr_app = {
   translation_generation: {
     action: "번역문 생성",
     confirmation: {
+      generic_description:
+        "이 프로젝트에는 범용 데이터 패키지가 있습니다. 모든 번역을 생성하려면 AGENT를 사용하세요. 직접 생성하면 이 패키지를 건너뜁니다.",
+      generate_all:
+        "범용 데이터 패키지를 포함한 프로젝트의 모든 번역을 생성하고 결과물을 검증하세요.",
       description: "현재 사용 가능한 번역문을 생성할까요 …?",
-      checking: "교정 경고 확인 중 …",
-      check_failed: "교정 경고를 읽지 못했습니다. 현재 번역문 생성은 계속할 수 있습니다 …",
+      checking: "프로젝트 파일 및 교정 경고 확인 중 …",
+      check_failed:
+        "프로젝트 파일 또는 교정 경고를 확인하지 못했습니다. 현재 번역을 생성할 수 있습니다 …",
       warning_description:
         "교정 경고가 {COUNT}개 감지되었습니다. 경고가 반드시 오류를 의미하지는 않지만, 먼저 AGENT로 자동 교정을 최소 한 번 실행하는 것을 권장합니다. 번역문을 계속 생성할까요 …?",
       retry_check: "다시 확인",

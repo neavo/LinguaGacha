@@ -68,7 +68,7 @@ export function TranslationGenerationDialog(
     );
   }
 
-  if (visible_state.summary.total_count === 0) {
+  if (visible_state.summary.total_count === 0 && !visible_state.has_generic) {
     return (
       <AppConfirmDialog
         open
@@ -86,19 +86,26 @@ export function TranslationGenerationDialog(
   return (
     <AppActionDialog
       open
-      description={warning_description}
+      description={[
+        ...(visible_state.has_generic
+          ? [t("app.translation_generation.confirmation.generic_description")]
+          : []),
+        ...(visible_state.summary.total_count > 0 ? [warning_description] : []),
+      ].join("\n\n")}
       details={
-        <dl
-          className="grid gap-1.5 rounded-md bg-muted/55 px-3 py-2 text-sm"
-          aria-label={warning_description}
-        >
-          {visible_state.summary.entries.map((entry) => (
-            <div key={entry.code} className="flex items-center justify-between gap-6">
-              <dt>{t(PROOFREADING_WARNING_LABEL_KEY_BY_CODE[entry.code])}</dt>
-              <dd className="font-medium tabular-nums">{entry.count}</dd>
-            </div>
-          ))}
-        </dl>
+        visible_state.summary.total_count > 0 ? (
+          <dl
+            className="grid gap-1.5 rounded-md bg-muted/55 px-3 py-2 text-sm"
+            aria-label={warning_description}
+          >
+            {visible_state.summary.entries.map((entry) => (
+              <div key={entry.code} className="flex items-center justify-between gap-6">
+                <dt>{t(PROOFREADING_WARNING_LABEL_KEY_BY_CODE[entry.code])}</dt>
+                <dd className="font-medium tabular-nums">{entry.count}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : undefined
       }
       submitting={submitting}
       primaryAction={{

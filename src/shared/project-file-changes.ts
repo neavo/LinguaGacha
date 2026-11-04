@@ -25,6 +25,13 @@ export type AppliedFiles = {
     renamed: { from: string; to: string }[];
     parse_failed: string[]; // 原稿已保存，文本解析失败。
   }[];
+  replaced: {
+    file_path: string;
+    source_path: string;
+    items: number;
+    pages: number;
+    inherited: number;
+  }[];
   updated: number;
   deleted: number;
 };
