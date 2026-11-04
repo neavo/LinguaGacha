@@ -22,8 +22,8 @@ export function ProjectLifecycleProvider(props: { children: ReactNode }): JSX.El
         show_create_dialog: () => {
           if (!busy) create.show();
         },
-        request_open: () => {
-          if (!busy) void open.open_project();
+        request_open: (path) => {
+          if (!busy) void open.open_project(path);
         },
         open_recent_project: (path) => {
           if (!busy) void open.open_project(path, true);

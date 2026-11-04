@@ -1,3 +1,16 @@
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
+import { build_project_translation_stats } from "@shared/project-translation-stats";
+vi.mock("@frontend/features/project-lifecycle/use-project-preview", () => ({
+  useProjectPreview: () => ({
+    status: "ready",
+    preview: {
+      file_paths: ["chapter.txt"],
+      created_at: "",
+      updated_at: "",
+      translation_stats: build_project_translation_stats([]),
+    },
+  }),
+}));
 const project_state = vi.hoisted(() => ({
   loaded: true,
   languages: { source_language: "JA", target_language: "ZH" },
@@ -246,6 +259,14 @@ describe("AgentConversation", () => {
 
   beforeEach(() => {
     project_state.loaded = true;
+    lifecycle.busy = false;
+    lifecycle.request_open.mockClear();
+    vi.stubGlobal(
+      "desktopApp",
+      create_desktop_bridge_api_mock({
+        methods: { getPathForFile: (file: File) => `E:/資料/${file.name}` },
+      }),
+    );
     lifecycle.can_close = true;
     lifecycle.request_close.mockClear();
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
@@ -295,6 +316,67 @@ describe("AgentConversation", () => {
     );
     return container;
   }
+
+  it.each([".agent-page", ".cm-content"])(
+    "无工程时从 %s 拖入文件录入路径，忙碌时拒绝",
+    async (selector) => {
+      project_state.loaded = false;
+      const input = build_state().input;
+      const view = await render_page({ input });
+      await drop_image(view.querySelector(selector)!, "photo.png");
+      expect(input.draft.read()).toEqual({ text: "E:/資料/photo.png", attachments: [] });
+      lifecycle.busy = true;
+      await render_page({ input });
+      await drop_image(view.querySelector(selector)!, "ignored.png");
+      expect(input.draft.read().text).toBe("E:/資料/photo.png");
+      expect(lifecycle.request_open).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([".agent-page", ".cm-content"])(
+    "从 %s 拖入单个工程先预览，取消保留草稿，确认才打开",
+    async (selector) => {
+      project_state.loaded = false;
+      const input = build_state().input;
+      input.draft.write({ text: "原草稿", attachments: [] });
+      const view = await render_page({ input });
+      await drop_image(view.querySelector(selector)!, "project.LG");
+      expect(
+        document.body.querySelector('[data-slot="alert-dialog-content"]')?.textContent,
+      ).toContain("E:/資料/project.LG");
+      expect(lifecycle.request_open).not.toHaveBeenCalled();
+      await drop_image(view.querySelector(selector)!, "ignored.png");
+      expect(input.draft.read().text).toBe("原草稿");
+      await act(async () =>
+        document.body
+          .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]')!
+          .click(),
+      );
+      expect(input.draft.read().text).toBe("原草稿");
+      await drop_image(view.querySelector(selector)!, "project.LG");
+      await act(async () =>
+        document.body
+          .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')!
+          .click(),
+      );
+      expect(lifecycle.request_open).toHaveBeenCalledExactlyOnceWith("E:/資料/project.LG");
+      expect(input.draft.read().text).toBe("原草稿");
+    },
+  );
+
+  it("无工程时多个文件包含工程也全部录入路径", async () => {
+    project_state.loaded = false;
+    const input = build_state().input;
+    const view = await render_page({ input });
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", {
+      value: { types: ["Files"], files: [new File([], "a.lg"), new File([], "b.txt")] },
+    });
+    await act(async () => view.querySelector(".cm-content")!.dispatchEvent(event));
+    expect(input.draft.read()).toEqual({ text: "E:/資料/a.lg\nE:/資料/b.txt", attachments: [] });
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+    expect(lifecycle.request_open).not.toHaveBeenCalled();
+  });
 
   it("无工程发送和附件共用拦截，草稿保留", async () => {
     project_state.loaded = false;

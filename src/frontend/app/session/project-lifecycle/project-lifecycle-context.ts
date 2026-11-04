@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 export type ProjectLifecycle = Readonly<{
   busy: boolean;
   show_create_dialog: () => void;
-  request_open: () => void;
+  request_open: (path?: string) => void;
   open_recent_project: (path: string) => void;
   remove_recent_project: (path: string) => void;
   can_close: boolean;

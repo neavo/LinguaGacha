@@ -50,7 +50,7 @@ it("工程入口连接公共流程，忙碌时禁用，工程加载后隐藏", a
       buttons[2]!.click();
     });
     expect(mocks.create).toHaveBeenCalledOnce();
-    expect(mocks.show_open).toHaveBeenCalledOnce();
+    expect(mocks.show_open).toHaveBeenCalledExactlyOnceWith();
     expect(mocks.open).toHaveBeenCalledExactlyOnceWith("E:/p0.lg");
     const remove = container.querySelector<HTMLButtonElement>('button[aria-label="删除"]')!;
     await act(async () => remove.click());

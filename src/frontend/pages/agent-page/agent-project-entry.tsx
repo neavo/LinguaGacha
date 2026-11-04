@@ -75,7 +75,7 @@ export function AgentProjectEntry(props: { attention: number }): JSX.Element | n
         variant="outline"
         size="sm"
         disabled={lifecycle.busy}
-        onClick={lifecycle.request_open}
+        onClick={() => lifecycle.request_open()}
       >
         <FileInput aria-hidden="true" />
         {t("project.open.title")}

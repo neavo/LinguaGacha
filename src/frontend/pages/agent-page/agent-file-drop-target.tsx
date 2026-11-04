@@ -9,7 +9,7 @@ type AgentFileDropTargetProps = {
   on_files: (files: readonly File[]) => void;
 };
 
-/** 编辑器拥有文件输入能力；接收区域只负责文件事件和同一区域内的反馈。 */
+/** 接收区域只负责文件事件与反馈，消费方决定工程打开或编辑器输入。 */
 export function AgentFileDropTarget({
   target_ref,
   enabled,

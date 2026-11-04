@@ -1,3 +1,5 @@
+import { AgentFileDropTarget } from "./agent-file-drop-target";
+import { AgentProjectOpenDialog } from "./agent-project-open-dialog";
 import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import { AgentProjectEntry } from "./agent-project-entry";
 import { AppContentState } from "@frontend/widgets/app-content-state";
@@ -108,6 +110,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     useDesktopState();
   const translation_generation = useTranslationGeneration();
   const project_lifecycle = useProjectLifecycle();
+  const [dropped_project, set_dropped_project] = useState<string | null>(null);
   const [project_attention, set_project_attention] = useState(0);
   // 发送与附件共用入口，草稿仍由常驻 Store 持有。
   const require_project = useCallback((): boolean => {
@@ -563,8 +566,43 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     unavailable_reason !== null ||
     active_inline_edit !== null;
 
+  const file_drop_enabled =
+    active &&
+    active_inline_edit === null &&
+    !input_transition.locked &&
+    controls.command === null &&
+    !project_lifecycle.busy &&
+    dropped_project === null;
+  /** 整页与正文拖放共用入口，打开工程不经过附件权限检查。 */
+  function handle_file_drop(files: readonly File[]): void {
+    if (!file_drop_enabled || files.length === 0) return; // 正文编辑器直接调用此入口，仍须检查页面权限。
+    const file = files[0]!;
+    if (!project_snapshot.loaded && files.length === 1 && file.name.toLowerCase().endsWith(".lg")) {
+      try {
+        const path = window.desktopApp.getPathForFile(file);
+        if (path !== "") {
+          set_dropped_project(path);
+          return;
+        }
+      } catch {
+        // 不可用路径与虚拟文件统一反馈，保留输入。
+      }
+      push_toast("warning", t("agent_page.error.invalid_file_path"), { description: file.name });
+      return;
+    }
+    composer_ref.current?.drop_files(files, project_snapshot.loaded);
+  }
+
   return (
     <div ref={page_ref} className="agent-page">
+      <AgentFileDropTarget
+        target_ref={page_ref}
+        enabled={file_drop_enabled}
+        on_files={handle_file_drop}
+      />
+      {dropped_project !== null ? (
+        <AgentProjectOpenDialog path={dropped_project} on_close={() => set_dropped_project(null)} />
+      ) : null}
       <section
         ref={conversation_ref}
         className="agent-page__conversation"
@@ -730,7 +768,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 }
                 before_attach={require_project}
                 ref={composer_ref}
-                file_drop_target_ref={page_ref}
+                on_drop_files={handle_file_drop}
                 locked={!active || active_inline_edit !== null || input_transition.locked}
                 skills={skills}
                 instructions={instructions}

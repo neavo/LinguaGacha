@@ -41,7 +41,7 @@ it("切换路径后旧请求不能覆盖新预览，关闭后中止并重新读�
     expect(state.status).toBe("loading");
     expect(api).toHaveBeenCalledTimes(3);
     await act(async () => retry.reject(new Error("preview unavailable")));
-    expect(state).toEqual({ status: "failed" });
+    expect(state).toEqual({ status: "failed", error: new Error("preview unavailable") });
   } finally {
     await act(async () => root.unmount());
   }

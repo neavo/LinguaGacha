@@ -10,7 +10,6 @@ import {
   useState,
   useSyncExternalStore,
   type Ref,
-  type RefObject,
   type ReactNode,
 } from "react";
 import { FileText, Paperclip, Sparkles, SquareSlash } from "lucide-react";
@@ -89,6 +88,12 @@ const AGENT_UPLOAD_EXTENSIONS: readonly string[] = Object.freeze([
   "lrc",
 ]);
 
+/** 上传判定沿用扩展名，拖放批次和文件选择共用同一规则。 */
+function can_upload_file(file: File): boolean {
+  const extension = file.name.includes(".") ? file.name.split(".").at(-1)!.toLowerCase() : "";
+  return AGENT_UPLOAD_EXTENSIONS.includes(extension);
+}
+
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
   from: number;
@@ -103,6 +108,7 @@ type InstructionTrigger = Readonly<{ from: number; at: number; text: string }>;
 export type AgentMessageEditorHandle = {
   write_draft: (text: string, selection?: Readonly<{ from: number; to: number }>) => boolean;
   add_response_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
+  drop_files: (files: readonly File[], allow_uploads: boolean) => void;
   focus: () => void;
 };
 
@@ -110,14 +116,14 @@ type AgentEditorState = { has_content: boolean; uploads_pending: boolean };
 
 type AgentMessageEditorProps = {
   ref?: Ref<AgentMessageEditorHandle> | undefined;
-  file_drop_target_ref?: RefObject<HTMLElement | null> | undefined; // 缺省接收当前表单，主输入由页面指定整页区域
+  on_drop_files?: ((files: readonly File[]) => void) | undefined;
   presentation?: "composer" | "inline" | undefined;
   role?: "user" | "assistant" | undefined;
   read_only: boolean;
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[] | undefined;
   input_state: AgentInputState;
-  before_attach?: (() => boolean) | undefined; // 文件选择、拖放与粘贴共用前置检查。
+  before_attach?: (() => boolean) | undefined; // 附件入口的前置检查，页面拖放另由 `on_drop_files` 分流。
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: (() => void) | undefined;
   /** 编辑器提供文件与指令入口，消费方统一排列动作并决定提交权限。 */
@@ -269,7 +275,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     ) : null,
   );
   // CodeMirror 扩展只创建一次，通过 ref 调用当前文件分流入口。
-  const append_files_ref = useRef<(files: Iterable<File>) => void>(() => undefined);
+  const drop_files_ref = useRef<(files: Iterable<File>) => void>(() => undefined);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_state.revision;
@@ -320,7 +326,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                 // 在 CodeMirror 读取文本文件前消费事件，交给统一文件入口。
                 event.preventDefault();
                 event.stopPropagation();
-                append_files_ref.current(transfer.files);
+                drop_files_ref.current(transfer.files);
                 return true;
               },
             }),
@@ -533,21 +539,30 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     draft.write({ ...draft.read(), attachments });
   }, []);
 
-  /** 附件交给常驻草稿，其余本机文件以独立行写入正文，保留原路径。 */
+  /** 文件选择与粘贴继续沿用附件权限。 */
   const append_files = (files: Iterable<File>): void => {
     if (props.before_attach?.() === false) return;
+    insert_files(files, true);
+  };
+
+  /** 一次事务替换选区并插入独立路径行，保留草稿已有附件。 */
+  const insert_files = (files: Iterable<File>, allow_uploads: boolean): void => {
     const view = view_ref.current;
     if (!can_append_files || view === null) return;
     const uploads: File[] = [];
     const paths: string[] = [];
     const skipped: string[] = [];
     for (const file of files) {
-      const extension = file.name.includes(".") ? file.name.split(".").at(-1)!.toLowerCase() : "";
-      if (AGENT_UPLOAD_EXTENSIONS.includes(extension)) {
+      if (allow_uploads && can_upload_file(file)) {
         uploads.push(file);
         continue;
       }
-      const path = window.desktopApp.getPathForFile(file); // 虚拟 File 没有磁盘路径，Electron 返回空串。
+      let path = "";
+      try {
+        path = window.desktopApp.getPathForFile(file);
+      } catch {
+        // 拖拽源无法提供本机路径时，与虚拟文件一起反馈。
+      }
       if (path === "") skipped.push(file.name);
       else paths.push(path);
     }
@@ -570,7 +585,16 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         description: skipped.join("\n"),
       });
   };
-  append_files_ref.current = append_files;
+  /** 拖放整批上传或整批录入路径，避免混合动作。 */
+  const drop_files = (files: readonly File[], allow_uploads: boolean): void => {
+    const upload = allow_uploads && files.every(can_upload_file);
+    insert_files(files, upload);
+  };
+  drop_files_ref.current = (files) => {
+    if (!can_append_files) return;
+    if (props.on_drop_files) props.on_drop_files(Array.from(files));
+    else if (props.before_attach?.() !== false) drop_files(Array.from(files), true);
+  };
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
   const remove_attachment = (index: number): void => {
@@ -593,34 +617,31 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     );
   };
 
-  useImperativeHandle(
-    props.ref,
-    () => ({
-      /** 外部草稿替换退出历史导航。编辑锁阻止写入时返回 `false`，调用方可在解锁后重试。 */
-      write_draft(text, selection) {
-        const view = view_ref.current;
-        if (view === null || editor_read_only) return false;
-        input_history_navigation_ref.current = null;
-        write_agent_message_text(view, text, undefined, selection);
-        view.focus();
-        return true;
-      },
-      /** 复制批注后加入当前草稿，助手历史编辑遵循纯正文边界。 */
-      add_response_annotation(annotation) {
-        if (editor_read_only || assistant_editing) return;
-        write_draft_attachments([
-          ...input_state_ref.current.draft.read().attachments,
-          structuredClone(annotation),
-        ]);
-        view_ref.current?.focus();
-      },
-      /** 页面动作完成后将焦点交回当前编辑器。 */
-      focus() {
-        view_ref.current?.focus();
-      },
-    }),
-    [assistant_editing, editor_read_only, write_draft_attachments],
-  );
+  useImperativeHandle(props.ref, () => ({
+    drop_files,
+    /** 外部草稿替换退出历史导航。编辑锁阻止写入时返回 `false`，调用方可在解锁后重试。 */
+    write_draft(text, selection) {
+      const view = view_ref.current;
+      if (view === null || editor_read_only) return false;
+      input_history_navigation_ref.current = null;
+      write_agent_message_text(view, text, undefined, selection);
+      view.focus();
+      return true;
+    },
+    /** 复制批注后加入当前草稿，助手历史编辑遵循纯正文边界。 */
+    add_response_annotation(annotation) {
+      if (editor_read_only || assistant_editing) return;
+      write_draft_attachments([
+        ...input_state_ref.current.draft.read().attachments,
+        structuredClone(annotation),
+      ]);
+      view_ref.current?.focus();
+    },
+    /** 页面动作完成后将焦点交回当前编辑器。 */
+    focus() {
+      view_ref.current?.focus();
+    },
+  }));
 
   /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent Chat Store 原子更新。 */
   const submit = (): void => {
@@ -651,11 +672,13 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         append_files(event.clipboardData.files);
       }}
     >
-      <AgentFileDropTarget
-        target_ref={props.file_drop_target_ref ?? form_ref}
-        enabled={can_append_files}
-        on_files={append_files}
-      />
+      {props.on_drop_files === undefined ? (
+        <AgentFileDropTarget
+          target_ref={form_ref}
+          enabled={can_append_files}
+          on_files={(files) => drop_files_ref.current(files)}
+        />
+      ) : null}
       {menu_open && (
         <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
           {matching_skills.length > 0 && (
