@@ -241,7 +241,7 @@ describe("ProjectPage", () => {
       root?.render(
         <LocaleProvider locale="zh-CN">
           <TooltipProvider>
-            <ProjectPage is_sidebar_collapsed={false} />
+            <ProjectPage />
           </TooltipProvider>
         </LocaleProvider>,
       );

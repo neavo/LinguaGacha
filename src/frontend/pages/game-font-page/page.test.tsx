@@ -51,7 +51,7 @@ describe("GameFontPage", () => {
     await act(async () => {
       root.render(
         <LocaleProvider locale="zh-CN">
-          <GameFontPage is_sidebar_collapsed={false} />
+          <GameFontPage />
         </LocaleProvider>,
       );
     });

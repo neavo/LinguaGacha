@@ -12,7 +12,6 @@ import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import type { TranslationInheritanceMode } from "@shared/translation-inheritance";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import "@frontend/pages/translation-transfer-page/translation-transfer-page.css";
 import { SegmentedToggle } from "@frontend/shadcn/segmented-toggle";
 import { Spinner } from "@frontend/shadcn/spinner";
@@ -30,7 +29,7 @@ type TransferPaths = Readonly<{ source_path: string | null; base_path: string | 
 type TransferResult = Readonly<{ filled: number; replaced: number; unmatched: number }>;
 
 /** 以迁入工程为基础，迁入迁出工程已完成的译文，另存为新工程。 */
-export function TranslationTransferPage(_props: ScreenComponentProps): JSX.Element {
+export function TranslationTransferPage(): JSX.Element {
   const { t } = useI18n();
   const runtime_busy = is_runtime_busy(useRuntimeSnapshot());
   const [paths, set_paths] = useState<TransferPaths>({ source_path: null, base_path: null });

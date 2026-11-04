@@ -68,13 +68,6 @@ import {
 } from "@shared/project-source-formats";
 
 /**
- * 页面入口接收导航层的折叠状态，当前布局由 CSS 决定。
- */
-type ProjectPageProps = {
-  is_sidebar_collapsed: boolean;
-};
-
-/**
  * 已选择的源路径与后端摘要，首个路径用于推导默认工程名。
  */
 type SelectedSource = ProjectSourceFileSummary & {
@@ -392,7 +385,7 @@ function wait_for_next_animation_frame(): Promise<void> {
 /**
  * 项目页是工程创建、打开和最近工程恢复的唯一入口，成功后交给 DesktopState 初始化会话。
  */
-export function ProjectPage(_props: ProjectPageProps): JSX.Element {
+export function ProjectPage(): JSX.Element {
   const {
     settings_snapshot,
     set_project_session_status,

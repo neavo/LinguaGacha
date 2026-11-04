@@ -13,12 +13,8 @@ import { WorkbenchStatsSection } from "@frontend/pages/workbench-page/components
 import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import "@frontend/pages/workbench-page/workbench-page.css";
 
-type WorkbenchPageProps = {
-  is_sidebar_collapsed: boolean;
-};
-
 // 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
-export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
+export function WorkbenchPage(): JSX.Element {
   const { t } = useI18n();
   const { batch_translation_task } = useBatchTranslationSession();
   const translation_generation = useTranslationGeneration();

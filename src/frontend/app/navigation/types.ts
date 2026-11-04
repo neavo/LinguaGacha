@@ -45,12 +45,8 @@ export type NavigationGroup = {
   items: NavigationItem[];
 };
 
-export type ScreenComponentProps = {
-  is_sidebar_collapsed: boolean;
-};
-
 type ScreenModule = {
-  component: ComponentType<ScreenComponentProps>;
+  component: ComponentType;
   title_key: LocaleKey;
   /** 缺省页面使用 Shell 标准边距。沉浸式工作面显式占满 `WorkspaceFrame`。 */
   workspace_layout?: "edge-to-edge";

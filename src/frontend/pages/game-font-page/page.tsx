@@ -3,7 +3,6 @@ import type { JSX } from "react";
 import { FileType, FolderOpen, Gamepad2, Play, SquareTerminal } from "lucide-react";
 
 import { extract_file_name } from "@frontend/app/desktop/path";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/game-font-page/game-font-page.css";
@@ -33,7 +32,7 @@ function build_summary(path: string | null): PathSelectionSummary | null {
 }
 
 /** 点击或拖入选择游戏与字体，后端检查通过后确认修改游戏字体。 */
-export function GameFontPage(_props: ScreenComponentProps): JSX.Element {
+export function GameFontPage(): JSX.Element {
   const { t } = useI18n();
   const state = useGameFontPageState();
 

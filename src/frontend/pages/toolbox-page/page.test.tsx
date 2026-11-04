@@ -34,7 +34,7 @@ describe("ToolboxPage", () => {
     document.body.append(container);
     root = createRoot(container);
     await act(async () => {
-      root?.render(<ToolboxPage is_sidebar_collapsed={false} />);
+      root?.render(<ToolboxPage />);
     });
 
     for (const [title, route] of [

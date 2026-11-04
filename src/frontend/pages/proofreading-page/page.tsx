@@ -3,7 +3,6 @@ import { ProofreadingFilePicker } from "./components/proofreading-file-picker";
 import { ProofreadingPagePreview } from "./components/proofreading-page-preview";
 import { Funnel } from "lucide-react";
 
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import "@frontend/pages/proofreading-page/proofreading-page.css";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
 import { ProofreadingConfirmDialog } from "@frontend/pages/proofreading-page/components/proofreading-confirm-dialog";
@@ -25,7 +24,7 @@ const PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE = {
 const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = ["all", "src", "dst"];
 
 // 只组合校对页状态和展示组件，不持有项目事实。
-export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
+export function ProofreadingPage(): JSX.Element {
   const { t } = useI18n();
   const proofreading_page_state = useProofreadingPageState();
   const [preview, set_preview] = useState<{

@@ -15,20 +15,16 @@ import { TextReplacementPage } from "@frontend/pages/text-replacement-page/page"
 import { ToolboxPage } from "@frontend/pages/toolbox-page/page";
 import { TranslationTransferPage } from "@frontend/pages/translation-transfer-page/page";
 import { WorkbenchPage } from "@frontend/pages/workbench-page/page";
-import type { ScreenComponentProps, ScreenRegistry } from "@frontend/app/navigation/types";
+import type { ScreenRegistry } from "@frontend/app/navigation/types";
 
 // 将通用替换页面固定为译前替换入口，供路由表直接消费。
-function PreTranslationReplacementScreen(
-  props: ScreenComponentProps,
-): ReturnType<typeof createElement> {
-  return createElement(TextReplacementPage, { ...props, variant: "pre" });
+function PreTranslationReplacementScreen(): ReturnType<typeof createElement> {
+  return createElement(TextReplacementPage, { variant: "pre" });
 }
 
 // 将通用替换页面固定为译后替换入口，避免路由侧散落 variant。
-function PostTranslationReplacementScreen(
-  props: ScreenComponentProps,
-): ReturnType<typeof createElement> {
-  return createElement(TextReplacementPage, { ...props, variant: "post" });
+function PostTranslationReplacementScreen(): ReturnType<typeof createElement> {
+  return createElement(TextReplacementPage, { variant: "post" });
 }
 
 // 导航 route 到页面组件与标题 key 的唯一映射。

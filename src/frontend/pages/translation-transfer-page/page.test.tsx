@@ -62,7 +62,7 @@ describe("TranslationTransferPage", () => {
     await act(async () => {
       root.render(
         <LocaleProvider locale="zh-CN">
-          <TranslationTransferPage is_sidebar_collapsed={false} />
+          <TranslationTransferPage />
         </LocaleProvider>,
       );
     });

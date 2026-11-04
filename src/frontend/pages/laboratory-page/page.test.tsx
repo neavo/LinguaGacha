@@ -83,7 +83,7 @@ describe("LaboratoryPage", () => {
     document.body.append(container);
     root = createRoot(container);
     await act(async () => {
-      root?.render(<LaboratoryPage is_sidebar_collapsed={false} />);
+      root?.render(<LaboratoryPage />);
     });
   }
 

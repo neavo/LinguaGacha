@@ -200,7 +200,7 @@ describe("ProofreadingPage", () => {
     await act(async () => {
       root?.render(
         <TooltipProvider>
-          <ProofreadingPage is_sidebar_collapsed={false} />
+          <ProofreadingPage />
         </TooltipProvider>,
       );
     });
@@ -350,7 +350,7 @@ describe("ProofreadingPage", () => {
     await act(async () =>
       root!.render(
         <TooltipProvider>
-          <ProofreadingPage is_sidebar_collapsed={false} />
+          <ProofreadingPage />
         </TooltipProvider>,
       ),
     );

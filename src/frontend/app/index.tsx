@@ -104,7 +104,7 @@ function AppContent(): JSX.Element {
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
   // 请求与实际导航共同提交，工程选择期间保留，离开目标流程时清除。
   const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
-  const { is_sidebar_collapsed, on_open_change } = useAppSidebar(selected_route);
+  const { is_sidebar_collapsed, on_open_change } = useAppSidebar();
   const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
     phase: "idle",
@@ -500,7 +500,7 @@ function AppContent(): JSX.Element {
                         <ProjectTranslationStatsProvider>
                           <BatchTranslationSessionProvider>
                             <QualityRuleStatisticsProvider>
-                              <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                              <ScreenComponent />
                             </QualityRuleStatisticsProvider>
                           </BatchTranslationSessionProvider>
                         </ProjectTranslationStatsProvider>
