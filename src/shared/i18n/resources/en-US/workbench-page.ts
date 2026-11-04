@@ -21,6 +21,7 @@ export const en_us_workbench_page = {
   action: {
     add_file: "Add",
     close_project: "Close",
+    rename: "Rename",
     reset: "Reset File Data",
     translation_task: "Translation",
     start_translation: "Start Translation",
@@ -34,6 +35,11 @@ export const en_us_workbench_page = {
       description: "Use completed translations to fill the imported files …?",
       fill: "Fill",
       do_not_fill: "Do Not Fill",
+    },
+    rename: {
+      invalid_name:
+        'Name must not be empty, contain \\ / : * ? " < > |, or end with a dot or space',
+      exists: "A file or folder with this name already exists",
     },
     reset: {
       description: "Confirm resetting the selected file and all of its translation entries …?",

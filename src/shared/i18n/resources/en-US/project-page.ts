@@ -5,7 +5,7 @@ export const en_us_project_page = {
   title: "Project Home",
   create: {
     title: "Create Project",
-    subtitle: "Select source to create a self-contained .lg project",
+    subtitle: "Select source or create an empty self-contained .lg project",
     drop_title: "Click or Drag Source File",
     ready_status: "{COUNT} source files selected",
     loading_toast: "Creating project …",

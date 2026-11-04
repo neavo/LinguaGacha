@@ -19,8 +19,10 @@ import {
 } from "./source-discovery";
 import type { GamePrepareExecution } from "./shared/game/prepare-worker";
 import { is_game_file_type, type GameFileType } from "../../shared/project-source-formats";
-import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import { SourceFilePathIndex } from "./source-file-paths";
+import {
+  normalize_project_asset_path,
+  SourceFilePathIndex,
+} from "../../shared/project/project-asset-paths";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";

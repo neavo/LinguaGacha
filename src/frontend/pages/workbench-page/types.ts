@@ -2,6 +2,7 @@ type WorkbenchActionKind =
   | "confirm-import-files"
   | "inherit-import-files"
   | "reset-file"
+  | "rename-file"
   | "delete-file"
   | "close-project";
 

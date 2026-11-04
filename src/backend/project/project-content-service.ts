@@ -17,8 +17,10 @@ import {
   type SourceFileFailure,
 } from "../file/source-file-parse-failure-reporter";
 import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
-import { assert_source_file_paths } from "../file/source-file-paths";
-import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
+import {
+  assert_source_file_paths,
+  normalize_project_asset_path,
+} from "../../shared/project/project-asset-paths";
 import type { SourceFileParseWarning } from "../file/file-format-types";
 import type { WorkbenchImportFilesPreview } from "../../shared/workbench/workbench-command-planner";
 import { get_section_revision, ProjectDataReader } from "./project-data-reader";
@@ -638,23 +640,47 @@ export class ProjectContentService {
    * 删除工作台文件与对应条目，并重建翻译进度
    */
   public async delete_files(request: JsonRecord): Promise<ProjectWriteResult> {
+    const rel_paths = this.normalize_string_list(request["rel_paths"]);
+    if (rel_paths.length === 0) {
+      throw new AppErrors.AppError("request.validation_failed");
+    }
+    return this.commit_workbench_file_changes(request, "project_delete_files", {
+      updates: [],
+      deletes: rel_paths,
+    });
+  }
+
+  /** 改名迁移资产路径，条目、页面与译文随资产保留，名称规则由文件布局统一校验。 */
+  public async rename_file(request: JsonRecord): Promise<ProjectWriteResult> {
+    const file_path = request["rel_path"];
+    const new_file_path = request["new_rel_path"];
+    if (typeof file_path !== "string" || typeof new_file_path !== "string") {
+      throw new AppErrors.AppError("request.validation_failed");
+    }
+    return this.commit_workbench_file_changes(request, "project_rename_file", {
+      updates: [{ file_path, new_file_path, line: 1 }],
+      deletes: [],
+    });
+  }
+
+  /** 工作台删除与改名不经来源准备，直接提交资产结构事务。 */
+  private async commit_workbench_file_changes(
+    request: JsonRecord,
+    source: string,
+    changes: { updates: ProjectFileUpdate[]; deletes: string[] },
+  ): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, PROJECT_DERIVED_FIELDS);
-      const rel_paths = this.normalize_string_list(request["rel_paths"]);
-      if (rel_paths.length === 0) {
-        throw new AppErrors.AppError("request.validation_failed");
-      }
       const result = await this.apply_file_changes({
         projectPath: project_path,
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
         revisionSections: ["files", "items"],
-        source: "project_delete_files",
+        source,
         creates: [],
-        updates: [],
-        deletes: rel_paths,
+        ...changes,
         signal,
       });
       if (result.kind !== "applied") throw new AppErrors.AppError("runtime.internal_invariant");

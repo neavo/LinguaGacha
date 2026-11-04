@@ -665,8 +665,8 @@ export class ProjectLifecycleService {
    * 新建工程名优先使用第一个源路径名称，否则使用输出文件名
    */
   private build_project_name(source_paths: string[], project_path: string): string {
-    const seed_path = source_paths[0] ?? project_path;
-    return path.basename(seed_path);
+    const source_path = source_paths[0];
+    return source_path === undefined ? path.parse(project_path).name : path.basename(source_path);
   }
 
   /**

@@ -20,6 +20,7 @@ export const ko_kr_workbench_page = {
   action: {
     add_file: "추가",
     close_project: "프로젝트 닫기",
+    rename: "이름 바꾸기",
     reset: "파일 데이터 초기화",
     translation_task: "번역",
     start_translation: "번역 시작",
@@ -33,6 +34,11 @@ export const ko_kr_workbench_page = {
       description: "완료된 번역문으로 가져온 파일을 채울까요 …?",
       fill: "채우기",
       do_not_fill: "채우지 않기",
+    },
+    rename: {
+      invalid_name:
+        '이름은 비워 둘 수 없으며 \\ / : * ? " < > |를 포함하거나 마침표나 공백으로 끝날 수 없습니다',
+      exists: "같은 이름의 파일 또는 폴더가 이미 있습니다",
     },
     reset: {
       description: "선택한 파일과 해당 파일의 모든 번역 항목을 초기화할까요 …?",

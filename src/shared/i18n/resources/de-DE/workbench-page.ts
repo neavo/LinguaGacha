@@ -22,6 +22,7 @@ export const de_de_workbench_page = {
   action: {
     add_file: "Hinzufügen",
     close_project: "Schließen",
+    rename: "Umbenennen",
     reset: "Dateidaten zurücksetzen",
     translation_task: "Übersetzung",
     start_translation: "Übersetzung starten",
@@ -37,6 +38,11 @@ export const de_de_workbench_page = {
         "Abgeschlossene Übersetzungen verwenden, um die importierten Dateien zu füllen …?",
       fill: "Füllen",
       do_not_fill: "Nicht füllen",
+    },
+    rename: {
+      invalid_name:
+        'Der Name darf nicht leer sein, kein \\ / : * ? " < > | enthalten und nicht mit Punkt oder Leerzeichen enden',
+      exists: "Eine Datei oder ein Ordner mit diesem Namen existiert bereits",
     },
     reset: {
       description:

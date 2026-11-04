@@ -2,7 +2,7 @@ export const zh_cn_project_page = {
   title: "工程主页",
   create: {
     title: "新建工程",
-    subtitle: "选择源文件创建 .lg 工程文件，创建完成后即不再需要源文件",
+    subtitle: "选择源文件或直接创建空工程，创建完成后即不再需要源文件",
     drop_title: "点击或拖拽源文件",
     ready_status: "已选择 {COUNT} 个源文件",
     loading_toast: "正在创建工程 …",

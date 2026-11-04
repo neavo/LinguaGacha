@@ -755,9 +755,25 @@ describe("ProjectPage", () => {
     await drop_paths(get_button_by_text(container!, "点击或拖拽源文件"), ["E:/old.txt"]);
     api_fetch_mock.mockResolvedValueOnce({ source_file_count: 0, format_hit_counts: {} });
     await drop_paths(get_button_by_text(container!, "已选择 1 个源文件"), ["E:/empty"]);
-    expect(get_button_by_text(container!, "创建工程").disabled).toBe(true);
     expect(get_button_by_text(container!, "点击或拖拽源文件").disabled).toBe(false);
     expect(push_toast_mock).toHaveBeenCalledWith("warning", expect.any(String));
+  });
+
+  it("未选择来源时创建空工程，源目录保存模式改为选择保存位置", async () => {
+    vi.mocked(window.desktopApp.pickProjectSavePath).mockResolvedValueOnce({
+      canceled: false,
+      paths: ["E:/Projects/empty.lg"],
+    });
+    await mount_page();
+    await act(async () => get_button_by_text(container!, "创建工程").click());
+    await confirm_create_languages();
+    expect(window.desktopApp.pickProjectSavePath).toHaveBeenCalledWith(
+      expect.stringMatching(/\.lg$/u),
+    );
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.objectContaining({ source_paths: [], path: "E:/Projects/empty.lg" }),
+    );
   });
 
   it("打开区域拒绝多路径并保留已有工程", async () => {
@@ -830,7 +846,7 @@ describe("ProjectPage", () => {
       const reset = container!.querySelector<HTMLButtonElement>('button[aria-label="重置"]')!;
       expect(reset.disabled).toBe(false);
       await act(async () => reset.click());
-      expect(get_button_by_text(container!, "创建工程").disabled).toBe(true);
+      expect(get_button_by_text(container!, "点击或拖拽源文件")).toBeDefined();
       expect(container!.querySelector('[data-slot="badge"]')).toBeNull();
     },
   );

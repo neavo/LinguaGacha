@@ -1,5 +1,5 @@
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
-import { Recycle } from "lucide-react";
+import { Pencil, Recycle } from "lucide-react";
 import { type JSX, useMemo, useState } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -24,6 +24,7 @@ type WorkbenchFileTableProps = {
   anchor_entry_id: string | null;
   readonly: boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
+  on_rename: (entry_id: string) => void;
   on_reset: (entry_id: string) => void;
   on_reorder: (ordered_entry_ids: string[]) => Promise<void>;
 };
@@ -172,6 +173,13 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           render_row_context_menu_items={(payload) => {
             return (
               <AppContextMenuGroup>
+                <AppContextMenuItem
+                  disabled={props.readonly}
+                  onClick={() => props.on_rename(payload.row_id)}
+                >
+                  <Pencil data-icon="inline-start" />
+                  {t("workbench_page.action.rename")}
+                </AppContextMenuItem>
                 <AppContextMenuItem
                   variant="destructive"
                   disabled={props.readonly}

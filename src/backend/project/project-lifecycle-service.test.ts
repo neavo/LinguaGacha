@@ -1012,6 +1012,8 @@ describe("ProjectLifecycleService", () => {
       }));
       const broken_path = files.find((file) => file.source_path === broken)!.target_rel_path;
       await lifecycle.create_project_commit({ path: imported, source_paths: [] });
+      expect(await database.get_all_asset_records(imported)).toEqual([]);
+      expect((await database.get_all_meta(imported))["name"]).toBe("imported");
       const request = { files, conflict_action: "replace" };
       await content.import_files({
         ...request,

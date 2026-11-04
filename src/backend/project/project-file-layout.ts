@@ -1,8 +1,10 @@
 import { AppError } from "../../shared/error";
-import { normalize_project_asset_path } from "../../shared/project/project-asset-paths";
-import path from "node:path";
-import { is_game_file_type } from "../../shared/project-source-formats";
-import { GAME_ASSET_EXTENSIONS, assert_source_file_paths } from "../file/source-file-paths";
+import {
+  assert_source_file_paths,
+  normalize_project_asset_path,
+  project_asset_extension,
+} from "../../shared/project/project-asset-paths";
+import { is_portable_file_name } from "../../shared/utils/file-name";
 import { insert_by_sort } from "./insert-by-sort";
 import type { ProjectFileCreate } from "../../shared/project-file-changes";
 
@@ -37,14 +39,13 @@ export function resolve_project_file_layout(
       update?.new_file_path === undefined
         ? file.path
         : normalize_project_asset_path(update.new_file_path);
+    // 扩展名决定格式与游戏输出目录。未改名的已有路径按磁盘事实保留。
     if (
       target !== file.path &&
-      is_game_file_type(file.file_type) &&
-      path.posix.extname(target) !== GAME_ASSET_EXTENSIONS[file.file_type]
+      (project_asset_extension(target) !== project_asset_extension(file.path) ||
+        !target.split("/").every(is_portable_file_name))
     )
-      throw new AppError("request.validation_failed", {
-        public_details: { file_path: file.path, conflict: target },
-      });
+      throw new AppError("request.validation_failed", { public_details: { file_path: file.path } });
     if (
       target !== file.path &&
       remaining.some(

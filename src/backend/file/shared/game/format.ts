@@ -12,9 +12,12 @@ import type {
   SourceFileParseWarning,
 } from "../../file-format-types";
 
-import { assert_source_file_paths, source_file_output_path } from "../../source-file-paths";
 import { read_zip_members } from "../zip-members";
-import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
+import {
+  assert_source_file_paths,
+  ProjectAssetPathIndex,
+  source_file_output_path,
+} from "../../../../shared/project/project-asset-paths";
 
 /** 应用生成物占用明确标记的路径，与游戏原稿共同检查冲突。 */
 export const GAME_FILES_MEMBER = "game_files.reference.txt";

@@ -5,7 +5,7 @@ export const de_de_project_page = {
   title: "Projekt-Startseite",
   create: {
     title: "Projekt erstellen",
-    subtitle: "Quelle wählen und eigenständiges .lg-Projekt erstellen",
+    subtitle: "Quelle wählen oder leeres eigenständiges .lg-Projekt erstellen",
     drop_title: "Klicken oder Quelldatei hierher ziehen",
     ready_status: "{COUNT} Quelldateien ausgewählt",
     loading_toast: "Projekt wird erstellt …",

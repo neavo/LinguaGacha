@@ -16,6 +16,7 @@ import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 
 import {
   create_workbench_delete_files_plan,
+  create_workbench_rename_file_plan,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
   type WorkbenchCommandPlanningState,
@@ -235,10 +236,12 @@ export type UseWorkbenchPageStateResult = {
   request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
   notify_add_file_drop_issue: (issue: WorkbenchAddFileDropIssue) => void;
   request_close_project: () => void;
+  request_rename_file: (entry_id: string) => void;
   request_reset_file: (entry_id: string) => void;
   request_delete_selected_files: () => void;
   request_reorder_entries: (ordered_entry_ids: string[]) => Promise<void>;
   confirm_dialog: () => Promise<void>;
+  confirm_rename_file: (new_rel_path: string) => Promise<void>;
   secondary_dialog: () => Promise<void>;
   close_dialog: () => void;
 };
@@ -490,17 +493,9 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     file_op_running ||
     is_write_running;
   const can_edit_files = !readonly;
-  // 删除权限以当前可见工作台文件为准，避免全选或陈旧选择绕过最后文件保护
-  const selected_delete_target_rel_paths = useMemo(() => {
-    const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path));
-    return dedupe_workbench_entry_ids(selected_entry_ids).filter((entry_id) => {
-      return visible_entry_id_set.has(entry_id);
-    });
-  }, [entries, selected_entry_ids]);
   const can_delete_selected_files =
     can_edit_files &&
-    selected_delete_target_rel_paths.length > 0 &&
-    selected_delete_target_rel_paths.length < entries.length;
+    selected_entry_ids.some((entry_id) => entries.some((entry) => entry.rel_path === entry_id));
   const can_close_project =
     project_snapshot.loaded && !is_runtime_busy(runtime_snapshot) && !is_write_running;
 
@@ -580,7 +575,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         return visible_entry_id_set.has(entry_id);
       });
 
-      if (target_rel_paths.length === 0 || target_rel_paths.length >= entries.length) {
+      if (target_rel_paths.length === 0) {
         return;
       }
 
@@ -627,6 +622,40 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     });
   }
 
+  /** 冻结待改名文件，新名称由改名弹窗校验后提交。 */
+  function request_rename_file(entry_id: string): void {
+    set_dialog_state({
+      kind: "rename-file",
+      target_rel_paths: [entry_id],
+      pending_path: null,
+      submitting: false,
+    });
+  }
+
+  /** 提交改名，失败保留弹窗供修改或重试。 */
+  async function confirm_rename_file(new_rel_path: string): Promise<void> {
+    const rel_path = dialog_state.target_rel_paths[0];
+    if (dialog_state.kind !== "rename-file" || dialog_state.submitting || rel_path === undefined) {
+      return;
+    }
+
+    set_dialog_submitting(true);
+    try {
+      const rename_plan = create_workbench_rename_file_plan({
+        state: get_workbench_planning_state(),
+        rel_path,
+        new_rel_path,
+      });
+      await run_project_file_write(rename_plan, async (body) => {
+        return await api_fetch<ProjectWriteResultPayload>("/api/workbench/file/rename", body);
+      });
+      set_dialog_state(close_dialog_state());
+    } catch (error) {
+      push_error_toast(t("app.feedback.rename_failed"), error);
+      set_dialog_submitting(false);
+    }
+  }
+
   /** 冻结待重置文件，交由确认入口提交。 */
   function request_reset_file(entry_id: string): void {
     set_dialog_state({
@@ -637,7 +666,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     });
   }
 
-  /** 删除动作读取最新选择，复用最后文件保护。 */
+  /** 删除动作读取最新选择，只提交仍可见的文件。 */
   function request_delete_selected_files(): void {
     request_delete_entries(selection_state_ref.current.selected_entry_ids);
   }
@@ -787,10 +816,12 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     request_add_files_from_paths,
     notify_add_file_drop_issue,
     request_close_project,
+    request_rename_file,
     request_reset_file,
     request_delete_selected_files,
     request_reorder_entries,
     confirm_dialog,
+    confirm_rename_file,
     secondary_dialog,
     close_dialog,
   };

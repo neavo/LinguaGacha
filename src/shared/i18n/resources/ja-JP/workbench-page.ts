@@ -21,6 +21,7 @@ export const ja_jp_workbench_page = {
   action: {
     add_file: "追加",
     close_project: "プロジェクトを閉じる",
+    rename: "名前を変更",
     reset: "ファイルデータをリセット",
     translation_task: "翻訳",
     start_translation: "翻訳を開始",
@@ -34,6 +35,11 @@ export const ja_jp_workbench_page = {
       description: "翻訳済みの訳文を使って、インポートしたファイルを埋めますか …?",
       fill: "埋める",
       do_not_fill: "埋めない",
+    },
+    rename: {
+      invalid_name:
+        '名前は空にできず、\\ / : * ? " < > | を含めることも、ドットや空白で終わることもできません',
+      exists: "同じ名前のファイルまたはフォルダーが既に存在します",
     },
     reset: {
       description: "選択したファイルと、そのすべての翻訳項目をリセットしますか …?",

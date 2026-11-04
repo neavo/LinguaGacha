@@ -4,7 +4,7 @@ export const ko_kr_project_page = {
   title: "프로젝트 홈",
   create: {
     title: "새 프로젝트",
-    subtitle: "원본 파일로 .lg 생성. 생성 후 원본 파일은 필요 없습니다",
+    subtitle: "원본 파일로 또는 빈 .lg 생성. 생성 후 원본 파일은 필요 없습니다",
     drop_title: "클릭하거나 원본 파일 놓기",
     ready_status: "원본 파일 {COUNT}개 선택됨",
     loading_toast: "프로젝트 생성 중 …",

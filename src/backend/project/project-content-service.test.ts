@@ -28,6 +28,7 @@ import {
   create_workbench_reset_file_plan,
   create_workbench_reorder_plan,
   create_workbench_delete_files_plan,
+  create_workbench_rename_file_plan,
   type WorkbenchImportFileCandidate,
 } from "../../shared/workbench/workbench-command-planner";
 import { create_pdf_execution, create_pdf_fixture } from "../file/pdf/test-support";
@@ -2481,21 +2482,33 @@ describe("ProjectContentService", () => {
       );
       state = await read_planning_state();
       expect(state.files.map((file) => file.rel_path)).toEqual(order);
+      await service.rename_file(
+        create_workbench_rename_file_plan({
+          state,
+          rel_path: " book.pdf",
+          new_rel_path: " manual.pdf",
+        }).requestBody as JsonRecord,
+      );
+      expect(await database.read_pdf_document(lg_path, " manual.pdf")).not.toBeNull();
+      state = await read_planning_state();
       await service.delete_files(
         create_workbench_delete_files_plan({ state, rel_paths: [" a.json"] })
           .requestBody as JsonRecord,
       );
       expect((await database.get_all_asset_records(lg_path)).map((file) => file.path)).toEqual([
-        " book.pdf",
+        " manual.pdf",
         "a.json",
       ]);
       expect((await database.get_all_items(lg_path)).map((item) => item.file_path)).toEqual([
         "a.json",
       ]);
-      expect((await read_planning_state()).files.map((file) => file.rel_path)).toEqual([
-        " book.pdf",
-        "a.json",
-      ]);
+      state = await read_planning_state();
+      expect(state.files.map((file) => file.rel_path)).toEqual([" manual.pdf", "a.json"]);
+      await service.delete_files(
+        create_workbench_delete_files_plan({ state, rel_paths: [" manual.pdf", "a.json"] })
+          .requestBody as JsonRecord,
+      );
+      expect((await read_planning_state()).files).toEqual([]);
     } finally {
       await database.close();
     }

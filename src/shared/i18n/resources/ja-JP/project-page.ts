@@ -4,7 +4,7 @@ export const ja_jp_project_page = {
   title: "プロジェクト",
   create: {
     title: "新しいプロジェクト",
-    subtitle: "元ファイルから .lg を作成。作成後は元ファイル不要",
+    subtitle: "元ファイルから、または空の .lg を作成。作成後は元ファイル不要",
     drop_title: "クリックまたは元ファイルをドロップ",
     ready_status: "元ファイルを {COUNT} 個選択しました",
     loading_toast: "プロジェクトを作成中 …",

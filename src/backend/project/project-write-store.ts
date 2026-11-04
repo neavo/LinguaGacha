@@ -10,7 +10,7 @@ import {
 } from "./project-knowledge";
 import { resolve_project_file_layout, type ProjectFileUpdate } from "./project-file-layout";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
-import { assert_source_file_paths } from "../file/source-file-paths";
+import { assert_source_file_paths } from "../../shared/project/project-asset-paths";
 import type { CacheManager } from "../cache/cache-manager";
 import type { PDFDocument } from "../../shared/pdf";
 import {

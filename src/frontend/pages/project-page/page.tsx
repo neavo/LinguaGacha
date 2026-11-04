@@ -530,19 +530,24 @@ export function ProjectPage(): JSX.Element {
 
   /**
    * 按保存模式解析新建工程输出路径，固定目录缺失时先请求用户选择。
+   * 空工程没有来源目录，源目录模式改为手动选择保存位置。
    */
-  async function resolve_project_output_path(source_path: string): Promise<string | null> {
-    const default_file_name = build_default_project_file_name(source_path);
+  async function resolve_project_output_path(
+    source_path: string | undefined,
+  ): Promise<string | null> {
+    const default_file_name =
+      source_path === undefined
+        ? `${t("app.metadata.app_name")}.lg`
+        : build_default_project_file_name(source_path);
     const save_mode = settings_snapshot.project_save_mode;
 
-    if (save_mode === "MANUAL") {
-      const result = await window.desktopApp.pickProjectSavePath(default_file_name);
-      return result.canceled ? null : (result.paths[0] ?? null);
+    if (save_mode === "SOURCE" && source_path !== undefined) {
+      return join_path(extract_parent_dir(source_path), default_file_name);
     }
 
-    if (save_mode === "SOURCE") {
-      const parent_dir = extract_parent_dir(source_path);
-      return join_path(parent_dir, default_file_name);
+    if (save_mode === "MANUAL" || save_mode === "SOURCE") {
+      const result = await window.desktopApp.pickProjectSavePath(default_file_name);
+      return result.canceled ? null : (result.paths[0] ?? null);
     }
 
     let fixed_directory = settings_snapshot.project_fixed_path;
@@ -565,12 +570,13 @@ export function ProjectPage(): JSX.Element {
 
   /**
    * 点击创建先提示备份原生游戏，再选择项目语言，确认后才进入保存路径与创建流程。
+   * 未选择来源时创建空工程。
    */
   async function open_language_dialog(): Promise<void> {
-    if (selected_source === null || source_selection_disabled) {
+    if (source_selection_disabled) {
       return;
     }
-    if (!(await backup_confirm.request_confirm(selected_source.contains_game))) return;
+    if (!(await backup_confirm.request_confirm(selected_source?.contains_game === true))) return;
 
     set_is_language_dialog_open(true);
   }
@@ -587,7 +593,7 @@ export function ProjectPage(): JSX.Element {
    * 提交新建工程请求，成功后刷新会话、任务和最近工程。
    */
   async function handle_create_project(languages: ProjectLanguageDraft): Promise<void> {
-    if (selected_source === null || source_selection_disabled) {
+    if (source_selection_disabled) {
       return;
     }
 
@@ -595,11 +601,10 @@ export function ProjectPage(): JSX.Element {
 
     try {
       const loaded_default_preset_names = collect_loaded_default_preset_names(settings_snapshot, t);
-      const source_path = selected_source.source_paths[0]!; // 选择阶段保证非空，首项决定默认名称和目录。
-      const source_paths = selected_source.source_paths;
-      const godot_pack_orders = await pack_order.request_order(selected_source.godot_packs);
+      const source_paths = selected_source?.source_paths ?? [];
+      const godot_pack_orders = await pack_order.request_order(selected_source?.godot_packs);
       if (godot_pack_orders === null) return;
-      const output_path = await resolve_project_output_path(source_path);
+      const output_path = await resolve_project_output_path(source_paths[0]); // 首项决定默认名称和目录。
       if (output_path === null || output_path === "") {
         return;
       }
@@ -645,6 +650,7 @@ export function ProjectPage(): JSX.Element {
       clear_selected_project();
     } catch (error) {
       if (
+        selected_source !== null &&
         error instanceof DesktopApiError &&
         error.details.action === GODOT_PACK_ORDER_REFRESH_ACTION
       ) {
@@ -853,7 +859,7 @@ export function ProjectPage(): JSX.Element {
                 label={t("project_page.create.action")}
                 loading_label={t("app.action.loading")}
                 is_loading={is_creating_project}
-                disabled={selected_source === null || source_selection_disabled}
+                disabled={source_selection_disabled}
                 on_click={() => void open_language_dialog()}
               />
             </CardFooter>
