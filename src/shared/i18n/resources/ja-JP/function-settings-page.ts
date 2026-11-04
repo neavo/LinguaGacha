@@ -3,12 +3,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_function_settings_page = {
   title: "機能設定",
   fields: {
-    source_language: {
-      description: "入力テキストの言語を設定します",
-    },
-    target_language: {
-      description: "出力テキストの言語を設定します",
-    },
     preceding_lines_threshold: {
       title: "参照する前文の項目数",
       description:

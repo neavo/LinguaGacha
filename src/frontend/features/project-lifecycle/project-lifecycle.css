@@ -86,12 +86,6 @@
   text-align: right;
 }
 
-.project-lifecycle__language-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-list-gap-dense);
-}
-
 .project-lifecycle__version-emphasis {
   color: var(--primary);
   overflow-wrap: anywhere;

@@ -1,4 +1,30 @@
 export const zh_cn_project = {
+  language: {
+    short: {
+      ALL: "任意",
+      ZH: "中",
+      "ZH-HANT": "繁",
+      EN: "英",
+      JA: "日",
+      KO: "韩",
+      RU: "俄",
+      AR: "阿",
+      DE: "德",
+      FR: "法",
+      PL: "波",
+      ES: "西",
+      IT: "意",
+      PT: "葡",
+      HU: "匈",
+      TR: "土",
+      TH: "泰",
+      ID: "印尼",
+      VI: "越",
+    },
+    title: "工程语言",
+    source_description: "设置输入文本的语言",
+    target_description: "设置输出文本的语言",
+  },
   create: {
     title: "创建工程",
     subtitle: "选择源文件或直接创建空工程，创建完成后即不再需要源文件",
@@ -15,7 +41,6 @@ export const zh_cn_project = {
       translation_prompt: "翻译提示词",
     },
     action: "创建工程",
-    language_dialog_title: "工程语言",
   },
   open: {
     title: "打开工程",

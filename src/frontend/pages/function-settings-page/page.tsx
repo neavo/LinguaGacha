@@ -18,7 +18,6 @@ import {
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
 } from "@frontend/pages/function-settings-page/types";
-import { ProjectLanguageSelect } from "@frontend/features/project-language/project-language-select";
 import { useFunctionSettingsState } from "@frontend/pages/function-settings-page/use-function-settings-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
@@ -37,50 +36,12 @@ export function FunctionSettingsPage(): JSX.Element {
     label: t(TRANSLATION_SAVE_MODE_LABEL_KEYS[mode]),
   }));
 
-  const language_locked = function_settings_state.language_locked;
-
   return (
     <div className="function-settings-page page-shell page-shell--full">
       <section
         className="function-settings-page__list"
         aria-label={t("function_settings_page.title")}
       >
-        <SettingCardRow
-          action_width="content"
-          title={t("app.language_role.source")}
-          description={t("function_settings_page.fields.source_language.description")}
-          action={
-            <ProjectLanguageSelect
-              field="source_language"
-              value={function_settings_state.languages.source_language}
-              disabled={
-                language_locked || function_settings_state.language_pending_state.source_language
-              }
-              on_change={(next_value) => {
-                void function_settings_state.update_source_language(next_value);
-              }}
-            />
-          }
-        />
-
-        <SettingCardRow
-          action_width="content"
-          title={t("app.language_role.target")}
-          description={t("function_settings_page.fields.target_language.description")}
-          action={
-            <ProjectLanguageSelect
-              field="target_language"
-              value={function_settings_state.languages.target_language}
-              disabled={
-                language_locked || function_settings_state.language_pending_state.target_language
-              }
-              on_change={(next_value) => {
-                void function_settings_state.update_target_language(next_value);
-              }}
-            />
-          }
-        />
-
         <NumberSettingRow
           title={t("function_settings_page.fields.preceding_lines_threshold.title")}
           description={t("function_settings_page.fields.preceding_lines_threshold.description")}

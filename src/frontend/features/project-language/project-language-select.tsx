@@ -25,7 +25,7 @@ type ProjectLanguageSelectProps = {
   on_change: (next_value: string) => void;
 };
 
-/** 设置页与新建项目弹窗共用的项目语言下拉，集中维护选项与文案。 */
+/** 项目语言弹窗使用的下拉，集中维护选项与文案。 */
 export function ProjectLanguageSelect(props: ProjectLanguageSelectProps): JSX.Element {
   const { t } = useI18n();
   const options = useMemo(() => {

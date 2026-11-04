@@ -10,6 +10,19 @@ import {
 import { Check } from "typebox/value";
 
 describe("设置快照", () => {
+  it.each([
+    ["E:\\工程\\renpy_01.lg", "renpy_01.lg"],
+    ["/projects/novel.v2.LG", "novel.v2.LG"],
+  ])("旧最近工程名称按实际文件名恢复后缀：%s", (path, name) => {
+    const payload = {
+      recent_projects: [{ path, name: "旧显示名", updated_at: "2026-11-04T12:00:00" }],
+    };
+    const expected = [{ path, name, updated_at: "2026-11-04T12:00:00" }];
+    const setting = Setting.from_json(payload);
+    expect(setting.to_json()["recent_projects"]).toEqual(expected);
+    expect(normalize_setting_snapshot(payload).recent_projects).toEqual(expected);
+  });
+
   it("旧设置默认保存到工程旁，译文固定目录可独立保留", () => {
     const old = Setting.from_json({ project_fixed_path: "E:/projects" });
     expect(old.to_snapshot()).toMatchObject({

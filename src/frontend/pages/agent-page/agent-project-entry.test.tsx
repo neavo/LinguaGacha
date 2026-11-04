@@ -17,7 +17,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
     settings_snapshot: {
       recent_projects: Array.from({ length: 6 }, (_, i) => ({
         path: `E:/p${i}.lg`,
-        name: `project ${i}`,
+        name: `p${i}.lg`,
       })),
     },
   }),
@@ -43,6 +43,7 @@ it("工程入口连接公共流程，忙碌时禁用，工程加载后隐藏", a
   try {
     await act(async () => render());
     const buttons = container.querySelectorAll("button");
+    expect(buttons[2]!.textContent).toBe("p0.lg");
     await act(async () => {
       buttons[0]!.click();
       buttons[1]!.click();

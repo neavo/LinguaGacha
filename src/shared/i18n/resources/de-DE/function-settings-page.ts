@@ -4,12 +4,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const de_de_function_settings_page = {
   title: "Funktionseinstellungen",
   fields: {
-    source_language: {
-      description: "Legt die Sprache des Eingabetexts fest",
-    },
-    target_language: {
-      description: "Legt die Sprache des Ausgabetexts fest",
-    },
     preceding_lines_threshold: {
       title: "Anzahl vorhergehender Kontexteinträge",
       description:

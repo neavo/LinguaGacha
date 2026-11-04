@@ -13,7 +13,7 @@ import { open_context_menu_at_click_position } from "@frontend/widgets/app-menu"
 import { PathSelectionCard } from "@frontend/widgets/path-selection-card/path-selection-card";
 import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
 import { ProjectSourceFormats } from "./project-source-formats";
-import { ProjectLanguageDialog } from "./project-language-dialog";
+import { ProjectLanguageDialog } from "@frontend/features/project-language/project-language-dialog";
 import type { useProjectCreateFlow } from "./use-project-create-flow";
 import "./project-lifecycle.css";
 /** 创建与后续确认保持父子关系，子弹窗关闭后恢复创建焦点。 */

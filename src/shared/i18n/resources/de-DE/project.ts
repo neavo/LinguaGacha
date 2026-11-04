@@ -1,7 +1,14 @@
+import { en_us_project } from "../en-US/project";
 import { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_project = {
+  language: {
+    short: en_us_project.language.short,
+    title: "Projektsprachen",
+    source_description: "Legt die Sprache des Eingabetexts fest",
+    target_description: "Legt die Sprache des Ausgabetexts fest",
+  },
   create: {
     title: "Projekt erstellen",
     subtitle: "Quelle wählen oder leeres eigenständiges .lg-Projekt erstellen",
@@ -18,7 +25,6 @@ export const de_de_project = {
       translation_prompt: "Übersetzungs-Prompt",
     },
     action: "Projekt erstellen",
-    language_dialog_title: "Projektsprachen",
   },
   open: {
     title: "Projekt öffnen",

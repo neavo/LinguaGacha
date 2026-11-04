@@ -3,12 +3,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_function_settings_page = {
   title: "기능 설정",
   fields: {
-    source_language: {
-      description: "입력 텍스트 언어를 설정합니다",
-    },
-    target_language: {
-      description: "출력 텍스트 언어를 설정합니다",
-    },
     preceding_lines_threshold: {
       title: "참고할 앞선 문맥의 항목 수",
       description:

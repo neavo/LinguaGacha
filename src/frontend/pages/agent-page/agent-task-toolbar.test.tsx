@@ -94,6 +94,7 @@ describe("AgentTaskToolbar", () => {
         <TooltipProvider delay={0}>
           <input />
           <AgentTaskToolbar
+            language_control={null}
             add_file={null}
             open_instructions={null}
             locked={false}

@@ -27,6 +27,7 @@ import { AgentComposerModelControls } from "./agent-composer-model-controls";
 
 /** 工具栏菜单随底部交互锁关闭，模型配置请求的可用性由模型控件管理。 */
 export function AgentTaskToolbar(props: {
+  language_control: ReactNode;
   add_file: ReactNode;
   open_instructions: ReactNode;
   locked: boolean;
@@ -160,6 +161,7 @@ export function AgentTaskToolbar(props: {
           </AppDropdownMenuRadioGroup>
         </AppDropdownMenuContent>
       </AppDropdownMenu>
+      {props.language_control}
       {props.open_instructions}
     </>
   );

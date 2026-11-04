@@ -1,6 +1,13 @@
+import { en_us_project } from "../en-US/project";
 import type { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_project = {
+  language: {
+    short: en_us_project.language.short,
+    title: "프로젝트 언어",
+    source_description: "입력 텍스트 언어를 설정합니다",
+    target_description: "출력 텍스트 언어를 설정합니다",
+  },
   create: {
     title: "프로젝트 만들기",
     subtitle: "원본 파일로 또는 빈 .lg 생성. 생성 후 원본 파일은 필요 없습니다",
@@ -17,7 +24,6 @@ export const ko_kr_project = {
       translation_prompt: "번역 프롬프트",
     },
     action: "프로젝트 만들기",
-    language_dialog_title: "프로젝트 언어",
   },
   open: {
     title: "프로젝트 열기",
