@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   toast: vi.fn(),
   state: {
+    settings_snapshot: { project_save_mode: "MANUAL", project_fixed_path: "" },
     refresh_settings: vi.fn(),
   },
 }));
@@ -45,6 +46,7 @@ function Probe() {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mocks.state.settings_snapshot = { project_save_mode: "MANUAL", project_fixed_path: "" };
   desktop_descriptor = Object.getOwnPropertyDescriptor(window, "desktopApp");
   mocks.pick.mockReset().mockResolvedValue({ canceled: false, paths: ["E:/picked.lg"] });
   Object.defineProperty(window, "desktopApp", {
@@ -66,6 +68,17 @@ afterEach(async () => {
   vi.restoreAllMocks();
   if (desktop_descriptor) Object.defineProperty(window, "desktopApp", desktop_descriptor);
   else Reflect.deleteProperty(window, "desktopApp");
+});
+
+it.each([
+  ["FIXED", "E:/projects"],
+  ["MANUAL", undefined],
+  ["SOURCE", undefined],
+] as const)("保存模式 %s 决定打开工程的起始目录", async (mode, expected) => {
+  mocks.state.settings_snapshot.project_save_mode = mode;
+  mocks.state.settings_snapshot.project_fixed_path = "E:/projects";
+  await act(async () => flow.open_project());
+  expect(mocks.pick).toHaveBeenCalledWith(expected);
 });
 
 it("同帧打开只受理一次，版本确认后重新核对并完成加载", async () => {

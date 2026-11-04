@@ -23,7 +23,7 @@ type ProjectOpenPayload = {
 /** 工程打开随应用会话常驻，版本确认绑定本次路径。 */
 export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
   const { t } = useI18n();
-  const { refresh_settings } = useDesktopState();
+  const { settings_snapshot, refresh_settings } = useDesktopState();
   const [is_opening_project, set_is_opening_project] = useState(false);
   const [pending_confirmation, set_pending_confirmation] = useState<PendingConfirmation | null>(
     null,
@@ -45,7 +45,11 @@ export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
     set_is_opening_project(true);
     try {
       if (target === null) {
-        const result = await window.desktopApp.pickProjectFilePath();
+        const result = await window.desktopApp.pickProjectFilePath(
+          settings_snapshot.project_save_mode === "FIXED"
+            ? settings_snapshot.project_fixed_path
+            : undefined,
+        );
         const selected_path = result.paths[0];
         if (result.canceled || selected_path === undefined) return;
         target = { path: selected_path, from_recent: false };

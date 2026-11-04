@@ -32,7 +32,7 @@ export interface DesktopBridgeApi {
   launchUpdate: (request: DesktopUpdateLaunchRequest) => Promise<DesktopUpdateLaunchResult>; // 复制并启动更新器后由 main 进入统一退出链路
   pickProjectSourceFilePath: () => Promise<DesktopPathPickResult>; // 项目源文件入口允许多选，格式校验留给后续 Backend / renderer 流程
   pickProjectSourceDirectoryPath: () => Promise<DesktopPathPickResult>; // 项目源目录入口只返回目录路径，和源文件入口保持语义分离
-  pickProjectFilePath: () => Promise<DesktopPathPickResult>; // 打开已有工程只通过 main 原生对话框返回受控路径
+  pickProjectFilePath: (default_path?: string) => Promise<DesktopPathPickResult>; // 打开已有工程可指定起始目录，最终路径由 main 确认
   pickProjectSavePath: (default_name: string) => Promise<DesktopPathPickResult>; // 工程保存路径由 renderer 给出默认名，main 负责系统对话框确认
   pickWorkbenchFilePath: () => Promise<DesktopPathPickResult>; // 工作台追加文件入口允许多选，去重与解析不放在 preload
   pickDirectory: (default_path?: string) => Promise<DesktopPathPickResult>; // 目录选择可带入默认路径，最终路径由 main 确认
