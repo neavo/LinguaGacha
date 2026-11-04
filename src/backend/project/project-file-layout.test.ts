@@ -57,5 +57,20 @@ it.each([
       [],
       [{ file_path: file, new_file_path: target, line: 1 }],
     ),
-  ).toThrow();
+  ).toThrow(expect.objectContaining({ code: "request.validation_failed" }));
+});
+
+it.each(["other.txt", "folder.txt"])("改名冲突说明占用的路径：%s", (target) => {
+  expect(() =>
+    resolve_project_file_layout(
+      ["old.txt", "other.txt", "folder.txt/child.txt"].map((path) => ({ path, file_type: "TXT" })),
+      [],
+      [{ file_path: "old.txt", new_file_path: target, line: 1 }],
+    ),
+  ).toThrow(
+    expect.objectContaining({
+      code: "request.validation_failed",
+      message: expect.stringContaining(target),
+    }),
+  );
 });

@@ -18,8 +18,9 @@ import { AgentUploadStore } from "./uploads";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { resolve_agent_text_format } from "../../../shared/agent-workspace-file";
+import { is_agent_file_url, resolve_agent_text_format } from "../../../shared/agent-workspace-file";
 
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
@@ -143,8 +144,9 @@ type AgentWorkspaceSourceCache = {
 
 type WorkspacePath = Readonly<{
   path: string;
+  href: string; // 规范文件身份，由解析入口统一计算。
   kind: "file" | "directory";
-  scope: "work" | "sources" | "snapshot" | "uploads"; // 按工作区访问入口匹配清理生命周期，链接目标可在外部
+  scope: "work" | "sources" | "snapshot" | "uploads" | "external"; // 内部按访问入口匹配清理生命周期，目录链接目标可在外部。
 }>;
 
 /** 当前 Agent 会话磁盘工作区。协调跨快照 work、当前数据快照与 apply。 */
@@ -254,36 +256,44 @@ export class AgentWorkspaceService {
 
   /** 已解析目标复用上传记录与 MIME 规则，菜单、读取和保存采用同一文件身份。 */
   private describe_target(target: WorkspacePath): AgentFile & { mime: string | null } {
-    const relative = path.relative(this.root_path, target.path).split(path.sep).join("/");
-    const href = relative.split("/").map(encodeURIComponent).join("/");
-    const upload = this.uploads.list().find((file) => file.path === relative);
+    const upload =
+      target.scope === "uploads"
+        ? this.uploads.list().find((file) => file.path === decodeURIComponent(target.href))
+        : undefined;
     const mime =
       upload?.imageMimeType ??
       WORKSPACE_IMAGE_TYPES[path.extname(target.path).toLowerCase()] ??
       null;
     return {
-      path: href,
+      path: target.href,
       name: upload?.name ?? path.basename(target.path),
       kind: target.kind,
       mime,
       preview:
-        target.kind === "directory" ? null : mime ? "image" : resolve_agent_text_format(href),
+        target.kind === "directory"
+          ? null
+          : mime
+            ? "image"
+            : resolve_agent_text_format(target.href),
     };
   }
 
-  /** 文件保存确认时的内容。等待用户选择位置期间不占用脚本互斥。 */
+  /** 目录打开，外部文件打开所在目录，内部文件保存确认时的内容。 */
   public async activate_path(href: unknown): Promise<AgentWorkspaceLinkResult> {
     const target = this.resolve_path(href);
-    const version = this.link_versions[target.scope];
     try {
-      if (target.kind === "directory") {
-        await this.options.openDirectory(target.path);
+      if (target.kind === "directory" || target.scope === "external") {
+        await this.options.openDirectory(
+          target.kind === "directory" ? target.path : path.dirname(target.path),
+        );
         return { status: "opened" };
       }
+      const scope = target.scope;
+      const version = this.link_versions[scope]; // 等待保存对话框期间，来源仍可能失效。
       const destination = await this.options.pickSavePath(this.describe_target(target).name);
       if (destination === null) return { status: "cancelled" };
       return await this.exclusive(async () => {
-        if (version !== this.link_versions[target.scope]) {
+        if (version !== this.link_versions[scope]) {
           throw new AppErrors.AppError("file.not_found");
         }
         const current = this.resolve_path(href);
@@ -313,22 +323,14 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** 检查脚本互斥后同步捕获有界字节。多份预览可独立读取，异步解码不占写锁。 */
-  private read_preview_file(href: unknown, max_bytes: number): { path: string; bytes: Uint8Array } {
-    if (this.busy) throw new AppErrors.AppError("runtime.busy");
-    const target = this.resolve_path(href);
+  /** 工作区内预览受脚本互斥保护，外部文件只做有界读取，异步解码不占写锁。 */
+  private read_preview_file(target: WorkspacePath, max_bytes: number): Uint8Array {
+    if (target.scope !== "external" && this.busy) throw new AppErrors.AppError("runtime.busy");
     if (target.kind !== "file") throw new AppErrors.AppError("file.invalid_structure");
     try {
       const bytes = this.native_fs.read_prefix(target.path, max_bytes + 1);
       if (bytes.length > max_bytes) throw new AppErrors.AppError("file.preview_too_large");
-      return {
-        path: path
-          .relative(this.root_path, target.path)
-          .split(path.sep)
-          .map(encodeURIComponent)
-          .join("/"),
-        bytes,
-      };
+      return bytes;
     } catch (cause) {
       if (AppErrors.is_app_error(cause)) throw cause;
       throw new AppErrors.AppError("file.io_failed", { cause });
@@ -340,8 +342,9 @@ export class AgentWorkspaceService {
     if (typeof href !== "string" || resolve_agent_text_format(href) === null) {
       throw new AppErrors.AppError("file.invalid_structure");
     }
-    const file = this.read_preview_file(href, AGENT_DOCUMENT_MAX_BYTES);
-    return { path: file.path, content: await decode_text_content(file.bytes) };
+    const target = this.resolve_path(href);
+    const bytes = this.read_preview_file(target, AGENT_DOCUMENT_MAX_BYTES);
+    return { path: target.href, content: await decode_text_content(bytes) };
   }
 
   /** 允许的图片类型统一映射为响应 MIME，字节仍经有界读取。 */
@@ -349,8 +352,7 @@ export class AgentWorkspaceService {
     const target = this.resolve_path(href);
     const { mime } = this.describe_target(target);
     if (!mime) throw new AppErrors.AppError("file.invalid_structure");
-    const file = this.read_preview_file(href, AGENT_IMAGE_MAX_BYTES);
-    return { bytes: file.bytes, mime };
+    return { bytes: this.read_preview_file(target, AGENT_IMAGE_MAX_BYTES), mime };
   }
 
   /** 会话开始失效时立即隔离待决保存，不等待旧模型和脚本停止。 */
@@ -361,29 +363,36 @@ export class AgentWorkspaceService {
     this.link_versions.snapshot += 1;
   }
 
-  /** 两次检查共用工作区相对路径解码。文件访问沿目录链接自然到达目标。 */
+  /** 统一文件身份与生命周期归属，文件访问仍沿目录链接自然到达目标。 */
   private resolve_path(href: unknown): WorkspacePath {
     if (typeof href !== "string") {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    let relative_path: string;
+    let file_path: string;
     try {
-      // 链接片段不参与文件定位。百分号只在此解码一次，保留编码后的文件名字符。
-      relative_path = decodeURIComponent(href.split(/[?#]/u, 1)[0]!);
+      if (is_agent_file_url(href)) {
+        file_path = fileURLToPath(href);
+        if (file_path.includes("\0")) throw new AppErrors.AppError("request.validation_failed");
+      } else {
+        // 链接片段不参与文件定位。百分号只解码一次，外部访问必须显式使用 `file:` URL。
+        const relative_path = decodeURIComponent(href.split(/[?#]/u, 1)[0]!);
+        if (
+          relative_path === "" ||
+          /[\\:]/u.test(relative_path) ||
+          relative_path.includes("\0") ||
+          path.posix.isAbsolute(relative_path) ||
+          relative_path.split("/").includes("..")
+        ) {
+          throw new AppErrors.AppError("request.validation_failed");
+        }
+        file_path = path.resolve(this.root_path, relative_path);
+      }
     } catch (cause) {
+      if (AppErrors.is_app_error(cause)) throw cause;
       throw new AppErrors.AppError("request.validation_failed", { cause });
     }
-    if (
-      relative_path === "" ||
-      /[\\:]/u.test(relative_path) ||
-      relative_path.includes("\0") ||
-      path.posix.isAbsolute(relative_path) ||
-      relative_path.split("/").includes("..")
-    ) {
-      throw new AppErrors.AppError("request.validation_failed");
-    }
     try {
-      const file_path = path.resolve(this.root_path, relative_path);
+      const inside = is_inside_path(this.root_path, file_path);
       const inside_path = path.relative(this.root_path, file_path);
       const stat = this.native_fs.stat(file_path);
       if (!stat.isFile() && !stat.isDirectory()) {
@@ -392,9 +401,13 @@ export class AgentWorkspaceService {
       const scope = inside_path.split(path.sep)[0];
       return {
         path: file_path,
+        href: inside
+          ? inside_path.split(path.sep).map(encodeURIComponent).join("/")
+          : pathToFileURL(file_path).href,
         kind: stat.isDirectory() ? "directory" : "file",
-        scope:
-          scope === "work" || scope === "sources" || scope === "uploads"
+        scope: !inside
+          ? "external"
+          : scope === "work" || scope === "sources" || scope === "uploads"
             ? scope
             : inside_path === AGENT_WORKSPACE_PATHS.sourceIssues
               ? "sources"

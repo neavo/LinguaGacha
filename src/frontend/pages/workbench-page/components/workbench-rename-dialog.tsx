@@ -27,11 +27,12 @@ function check_rename(
   stem: string,
   entries: readonly WorkbenchFileEntry[],
 ): RenameCheck {
+  stem = stem.trim(); // 只规范用户输入的主干，已有路径按原始身份定位。
   const extension = project_asset_extension(entry.rel_path);
   const name = stem + extension;
   const target = entry.rel_path.slice(0, entry.rel_path.lastIndexOf("/") + 1) + name;
   if (target === entry.rel_path) return null;
-  // 主干也是游戏输出目录名。拼接后缀会掩盖主干末尾的点和空格。
+  // 主干也是游戏输出目录名。拼接后缀会掩盖主干末尾的点。
   if (!is_portable_file_name(stem) || project_asset_extension(name) !== extension)
     return { issue: "invalid_name" };
   const index = new SourceFilePathIndex();

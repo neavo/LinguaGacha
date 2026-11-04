@@ -35,9 +35,8 @@ export const en_us_workbench_page = {
       do_not_fill: "Do Not Fill",
     },
     rename: {
-      invalid_name:
-        'Name must not be empty, contain \\ / : * ? " < > |, or end with a dot or space',
       exists: "A file or folder with this name already exists",
+      invalid_name: 'Name must not be empty, contain \\ / : * ? " < > |, or end with a dot',
     },
     reset: {
       description: "Confirm resetting the selected file and all of its translation entries …?",

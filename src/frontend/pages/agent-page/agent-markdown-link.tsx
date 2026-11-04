@@ -1,11 +1,11 @@
 import { useContext, type ComponentProps, type JSX } from "react";
 import type { ExtraProps } from "streamdown";
-import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
+import { is_agent_file_href, resolve_agent_file_href } from "@shared/agent-workspace-file";
 import { useExternalLink } from "@frontend/app/desktop/use-external-link";
 import { AgentFileTrigger } from "./agent-file-trigger";
 import { AgentFileContext, AgentMarkdownPathContext } from "./agent-file-context";
 
-/** 链接负责外链与锚点，工作区文件交给统一文件入口。 */
+/** 链接负责外链与锚点，本机文件交给统一文件入口。 */
 export function AgentMarkdownLink({
   node: _node,
   href,
@@ -16,12 +16,11 @@ export function AgentMarkdownLink({
   const documents = useContext(AgentFileContext);
   const base_path = useContext(AgentMarkdownPathContext);
   if (!href) return <span>{children}</span>;
-  const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(href);
-  if (!external && !href.startsWith("#")) {
+  if (is_agent_file_href(href)) {
     if (!documents) return <span>{children}</span>;
     let path: string;
     try {
-      path = resolve_agent_workspace_href(href, base_path);
+      path = resolve_agent_file_href(href, base_path);
     } catch {
       return <span>{children}</span>;
     }

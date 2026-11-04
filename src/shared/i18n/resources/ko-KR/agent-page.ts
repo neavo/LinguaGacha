@@ -6,6 +6,7 @@ export const ko_kr_agent_page = {
     conversation: "대화",
     view: "보기",
     save_as: "다른 이름으로 저장",
+    open_folder: "파일이 있는 폴더 열기",
   },
   batch_translation_model: {
     follow: "같은 모델 사용",

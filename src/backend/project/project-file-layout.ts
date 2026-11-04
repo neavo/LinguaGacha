@@ -40,23 +40,30 @@ export function resolve_project_file_layout(
         ? file.path
         : normalize_project_asset_path(update.new_file_path);
     // 扩展名决定格式与游戏输出目录。未改名的已有路径按磁盘事实保留。
-    if (
-      target !== file.path &&
-      (project_asset_extension(target) !== project_asset_extension(file.path) ||
-        !target.split("/").every(is_portable_file_name))
-    )
-      throw new AppError("request.validation_failed", { public_details: { file_path: file.path } });
-    if (
-      target !== file.path &&
-      remaining.some(
-        (other) =>
-          other.path !== file.path &&
-          normalize_project_asset_path(other.path).toLowerCase() === target.toLowerCase(),
+    if (target !== file.path) {
+      if (project_asset_extension(target) !== project_asset_extension(file.path))
+        throw new AppError("request.validation_failed", {
+          message: `Renaming "${file.path}" to "${target}" would change the file extension.`,
+          public_details: { file_path: file.path },
+        });
+      if (!target.split("/").every(is_portable_file_name))
+        throw new AppError("request.validation_failed", {
+          message: `Invalid file name in "${target}": names must not contain reserved characters, end with a dot or space, or use a reserved device name.`,
+          public_details: { file_path: file.path },
+        });
+      // 最终集合校验无法发现交换和链式改名，目标还须避开当前占用。
+      if (
+        remaining.some(
+          (other) =>
+            other.path !== file.path &&
+            normalize_project_asset_path(other.path).toLowerCase() === target.toLowerCase(),
+        )
       )
-    )
-      throw new AppError("request.validation_failed", {
-        public_details: { file_path: file.path, conflict: target },
-      });
+        throw new AppError("request.validation_failed", {
+          message: `"${target}" conflicts with an existing file or directory at "${target}".`,
+          public_details: { file_path: file.path, conflict: target },
+        });
+    }
     if (update?.sort !== undefined && (!Number.isInteger(update.sort) || update.sort < -1))
       throw new AppError("request.validation_failed");
     return { path: target, previous_path: file.path, file_type: file.file_type };

@@ -4,6 +4,7 @@ export const de_de_agent_page = {
     conversation: "Unterhaltung",
     view: "Ansehen",
     save_as: "Speichern unter",
+    open_folder: "Übergeordneten Ordner öffnen",
   },
   batch_translation_model: {
     follow: "Wie AGENT",

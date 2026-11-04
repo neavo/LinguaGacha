@@ -4,6 +4,7 @@ export const en_us_agent_page = {
     conversation: "Conversation",
     view: "View",
     save_as: "Save as",
+    open_folder: "Open containing folder",
   },
   batch_translation_model: {
     follow: "Follow Agent",

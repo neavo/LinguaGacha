@@ -34,9 +34,9 @@ export const ko_kr_workbench_page = {
       do_not_fill: "채우지 않기",
     },
     rename: {
-      invalid_name:
-        '이름은 비워 둘 수 없으며 \\ / : * ? " < > |를 포함하거나 마침표나 공백으로 끝날 수 없습니다',
       exists: "같은 이름의 파일 또는 폴더가 이미 있습니다",
+      invalid_name:
+        '이름은 비워 둘 수 없으며 \\ / : * ? " < > |를 포함하거나 마침표로 끝날 수 없습니다',
     },
     reset: {
       description: "선택한 파일과 해당 파일의 모든 번역 항목을 초기화할까요 …?",

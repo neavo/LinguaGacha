@@ -67,25 +67,27 @@ describe("工作台改名弹窗", () => {
     };
   }
 
-  it("只编辑主干，保留目录与扩展名提交", async () => {
-    await render(entry("book/chapter.txt"));
+  it("主干去除首尾空白，保留内部空格、目录与扩展名提交", async () => {
+    await render(entry(" book/chapter.txt"));
     expect(document.querySelector("input")?.value).toBe("chapter");
-    const { confirm, issue } = await enter("序章");
+    const { confirm, issue } = await enter("　 第一 章  ");
     expect(issue).toBeNull();
+    expect(document.querySelector("input")?.value).toBe("　 第一 章  ");
     await act(async () => confirm.click());
-    expect(submit).toHaveBeenCalledExactlyOnceWith("book/序章.txt");
+    expect(submit).toHaveBeenCalledExactlyOnceWith(" book/第一 章.txt");
   });
 
   it.each([
     ["chapter", null],
+    [" chapter ", null],
     ["", "名称不能为空"],
     ["a/b", "名称不能为空"],
     ["a?", "名称不能为空"],
     ["CON", "名称不能为空"],
     [" ", "名称不能为空"],
-    ["name ", "名称不能为空"],
     ["name.", "名称不能为空"],
     ["Other", "已存在同名"],
+    [" Other ", "已存在同名"],
   ])("主干 %j 禁止提交并就地提示 %j", async (stem, expected) => {
     await render(entry("chapter.txt"), [entry("other.txt")]);
     const { confirm, issue } = await enter(stem);

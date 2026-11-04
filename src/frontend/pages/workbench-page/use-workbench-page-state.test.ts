@@ -560,8 +560,9 @@ describe("useWorkbenchPageState", () => {
       ...runtime_fixture.current,
       project_store: { getState: () => create_project_store_state({}) },
     };
+    const error = new Error("Target file was not found in the current workbench.");
     enqueue_api_response("/api/workbench/file/rename", () => {
-      throw new Error("failed");
+      throw error;
     });
     enqueue_api_response("/api/workbench/file/rename", create_project_write_result());
     await render_hook();
@@ -570,6 +571,10 @@ describe("useWorkbenchPageState", () => {
       await latest_state?.confirm_rename_file("new.txt");
     });
     expect(latest_state?.dialog_state).toMatchObject({ kind: "rename-file", submitting: false });
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
+      "app.feedback.operation_failed",
+      error,
+    );
     await act(async () => {
       await latest_state?.confirm_rename_file("new.txt");
     });

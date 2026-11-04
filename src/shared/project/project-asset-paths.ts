@@ -30,6 +30,7 @@ export function normalize_project_asset_path(value: string): string {
     parts.some((part) => part === "." || part === "..")
   ) {
     throw new AppError("request.validation_failed", {
+      message: `Invalid project file path "${value}": use a non-empty relative path without null characters, "." or ".." segments.`,
       diagnostic_context: { reason: "invalid_asset_path", path: value },
     });
   }
@@ -58,6 +59,7 @@ export class ProjectAssetPathIndex {
     const conflict = this.find_conflict(value);
     if (conflict !== null)
       throw new AppError("request.validation_failed", {
+        message: `"${value}" conflicts with an existing file or directory at "${conflict}".`,
         diagnostic_context: { reason: "asset_path_conflict", path: value, conflict },
       });
     this.reserve(value);
@@ -83,11 +85,15 @@ export function source_file_output_path(file: string, file_type?: string): strin
     extension !== ".zip" // 历史游戏资产保留 `.zip` 身份与输出目录。
   )
     throw new AppError("request.validation_failed", {
+      message: `Invalid game file extension in "${file}": expected "${GAME_ASSET_EXTENSIONS[file_type]}" or ".zip".`,
       diagnostic_context: { reason: "invalid_game_asset_path", path: file },
     });
   const output = normalized.slice(0, -extension.length);
   if (!output.split("/").every(is_portable_file_name))
-    throw new AppError("file.invalid_structure", { public_details: { file: output } });
+    throw new AppError("file.invalid_structure", {
+      message: `Invalid game output directory name "${output}": names must not contain reserved characters, end with a dot or space, or use a reserved device name.`,
+      public_details: { file: output },
+    });
   return output;
 }
 
@@ -123,6 +129,7 @@ export class SourceFilePathIndex {
     const conflict = this.find_conflict(file, file_type);
     if (conflict !== null)
       throw new AppError("request.validation_failed", {
+        message: `"${file}" conflicts with an existing file or directory at "${conflict}".`,
         diagnostic_context: { reason: "asset_path_conflict", path: file, conflict },
       });
     this.reserve(file, file_type);

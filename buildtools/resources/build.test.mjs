@@ -1,6 +1,23 @@
 import path from "node:path";
+import os from "node:os";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import lockfile from "proper-lockfile";
 import { expect, it } from "vitest";
 import { build_resources } from "./build.mjs";
+
+it("输出目录已被占用时拒绝构建并保留已有产物", async () => {
+  const output = await mkdtemp(path.join(os.tmpdir(), "lg-resource-lock-"));
+  const file = path.join(output, "existing.txt");
+  const release = await lockfile.lock(output, { realpath: false });
+  try {
+    await writeFile(file, "keep");
+    await expect(build_resources({ output })).rejects.toMatchObject({ code: "ELOCKED" });
+    expect(await readFile(file, "utf8")).toBe("keep");
+  } finally {
+    await release();
+    await rm(output, { recursive: true, force: true });
+  }
+});
 
 it("整体重建拒绝覆盖项目和依赖安装源", async () => {
   const root = path.resolve("fixture-source");

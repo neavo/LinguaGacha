@@ -37,9 +37,9 @@ export const de_de_workbench_page = {
       do_not_fill: "Nicht füllen",
     },
     rename: {
-      invalid_name:
-        'Der Name darf nicht leer sein, kein \\ / : * ? " < > | enthalten und nicht mit Punkt oder Leerzeichen enden',
       exists: "Eine Datei oder ein Ordner mit diesem Namen existiert bereits",
+      invalid_name:
+        'Der Name darf nicht leer sein, kein \\ / : * ? " < > | enthalten und nicht mit einem Punkt enden',
     },
     reset: {
       description:

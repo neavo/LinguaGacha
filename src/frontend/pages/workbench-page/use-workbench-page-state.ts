@@ -637,7 +637,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
       });
       set_dialog_state(close_dialog_state());
     } catch (error) {
-      push_error_toast(t("app.feedback.rename_failed"), error);
+      push_error_toast(t("app.feedback.operation_failed"), error);
       set_dialog_submitting(false);
     }
   }

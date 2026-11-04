@@ -24,6 +24,7 @@ import { QualityRule } from "../../../domain/quality";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -568,6 +569,74 @@ describe("AgentWorkspaceService", () => {
     await run_workspace(fixture);
   });
 
+  it("外部文件沿用预览且不受脚本互斥影响，激活只打开所在目录", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    const outside = path.join(temp_dir, "外部 # %23");
+    fs.mkdirSync(outside);
+    const document = path.join(outside, "报告.md");
+    const image = path.join(outside, "chart.png");
+    const executable = path.join(outside, "setup.exe");
+    const bytes = Buffer.from([137, 80, 78, 71, 0, 255]);
+    fs.writeFileSync(document, "外部译文");
+    fs.writeFileSync(image, bytes);
+    fs.writeFileSync(executable, "fixture");
+    const href = pathToFileURL(document).href;
+    expect(fixture.service.describe_file(`${href}?v=1#sec`)).toEqual({
+      path: href,
+      name: "报告.md",
+      preview: "markdown",
+      kind: "file",
+    });
+    fixture.run.mockImplementationOnce(async () => {
+      expect(await fixture.service.read_document(`${href}#sec`)).toEqual({
+        path: href,
+        content: "外部译文",
+      });
+      expect(await fixture.service.read_document_image(pathToFileURL(image).href)).toEqual({
+        bytes,
+        mime: "image/png",
+      });
+      for (const target of [document, executable, outside]) {
+        await expect(fixture.service.activate_path(pathToFileURL(target).href)).resolves.toEqual({
+          status: "opened",
+        });
+        expect(fixture.open_directory).toHaveBeenLastCalledWith(outside);
+      }
+      return workspace_execution();
+    });
+    await run_workspace(fixture);
+    expect(fixture.pick_save_path).not.toHaveBeenCalled();
+    expect(fs.existsSync(fixture.destination)).toBe(false);
+    await expect(
+      fixture.service.read_document(pathToFileURL(path.join(outside, "missing.md")).href),
+    ).rejects.toMatchObject({ code: "file.not_found" });
+    fs.writeFileSync(document, Buffer.alloc(AGENT_DOCUMENT_MAX_BYTES + 1));
+    await expect(fixture.service.read_document(href)).rejects.toMatchObject({
+      code: "file.preview_too_large",
+    });
+  });
+
+  it("内部文件 URL 与相对链接共用身份、保存语义和来源失效检查", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    const href = pathToFileURL(fixture.file).href;
+    const file = fixture.service.describe_file(fixture.href);
+    expect(fixture.service.describe_file(`${href}#sec`)).toEqual(file);
+    expect(await fixture.service.read_document(href)).toEqual({ path: file.path, content: "报告" });
+    await expect(fixture.service.activate_path(href)).resolves.toEqual({ status: "saved" });
+    expect(fs.readFileSync(fixture.destination, "utf8")).toBe("报告");
+    expect(fixture.pick_save_path).toHaveBeenCalledWith(file.name);
+    expect(fixture.open_directory).not.toHaveBeenCalled();
+    fixture.pick_save_path.mockImplementationOnce(async () => {
+      fixture.service.invalidate_links();
+      fs.writeFileSync(fixture.file, "新内容");
+      return fixture.destination;
+    });
+    await expect(fixture.service.activate_path(href)).rejects.toMatchObject({
+      code: "file.not_found",
+    });
+    expect(fs.readFileSync(fixture.destination, "utf8")).toBe("报告");
+  });
+
   it("保存编码文件链接并打开目录，保留源文件且不建立快照", async () => {
     const fixture = await create_file_fixture(temp_dir);
     await expect(
@@ -591,7 +660,10 @@ describe("AgentWorkspaceService", () => {
     "work\\report",
     "work/%00",
     "work/%ZZ",
-  ])("拒绝无效工作区链接：%s", async (href) => {
+    "file:///C:/bad%ZZ.md",
+    "file:///C:/bad%2Fname.md",
+    "file:///C:/bad%00.md",
+  ])("拒绝无效文件链接：%s", async (href) => {
     const fixture = await create_file_fixture(temp_dir);
     await expect(fixture.service.activate_path(href)).rejects.toMatchObject({
       code: "request.validation_failed",

@@ -6,6 +6,7 @@ export const ja_jp_agent_page = {
     conversation: "会話",
     view: "表示",
     save_as: "名前を付けて保存",
+    open_folder: "ファイルの場所を開く",
   },
   batch_translation_model: {
     follow: "同じモデル",

@@ -31,7 +31,7 @@ import {
 import { useAppearance } from "@frontend/app/appearance/appearance-context";
 import { api_blob } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { resolve_agent_workspace_href } from "@shared/agent-workspace-file";
+import { is_agent_file_href, resolve_agent_file_href } from "@shared/agent-workspace-file";
 import { MARKDOWN_BASE_COMPONENTS } from "@frontend/widgets/app-markdown";
 import { AgentMarkdownLink } from "./agent-markdown-link";
 import { AgentFileContext, AgentMarkdownPathContext } from "./agent-file-context";
@@ -56,7 +56,7 @@ const MARKDOWN_CONTROLS = { mermaid: { fullscreen: false } };
 const MARKDOWN_REHYPE_PLUGINS = [defaultRehypePlugins.raw!]; // Streamdown 的 raw 插件是产品保留原始 HTML 的固定依赖。
 const MARKDOWN_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), MARKDOWN_ALERT];
 const DOCUMENT_REMARK_PLUGINS = [...MARKDOWN_REMARK_PLUGINS, agent_document_headings];
-const MARKDOWN_URL_PROTOCOL = /^(?:https?|ircs?|mailto|xmpp)$/iu;
+const MARKDOWN_URL_PROTOCOL = /^(?:https?|ircs?|mailto|xmpp|file)$/iu;
 const MERMAID_NODE_RADIUS = 4;
 const MERMAID_EDGE_LABEL_RADIUS = 3;
 // 节点和连线几何不在 Mermaid 主题变量中，通过官方 themeCSS 保留应用图表样式。
@@ -229,7 +229,7 @@ function AgentMarkdownTable({
   );
 }
 
-/** 与原 Markdown URL 规则一致：相对目标保留，协议目标仅接受既有公开协议。 */
+/** 保留相对目标、本机文件 URL 和允许的外链协议。 */
 function filter_markdown_url(value: string): string {
   const colon = value.indexOf(":");
   if (
@@ -305,14 +305,14 @@ function AgentMarkdownImage({
     url: string;
     mime: string;
   } | null>(null);
-  const relative = typeof src === "string" && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(src);
+  const local = typeof src === "string" && is_agent_file_href(src);
   const chat_id = documents?.chat_id;
   useEffect(() => {
-    if (!relative || !src || !chat_id) return;
+    if (!local || !src || !chat_id) return;
     const controller = new AbortController();
     let url: string | null = null;
     void (async () => {
-      const path = resolve_agent_workspace_href(src, base_path);
+      const path = resolve_agent_file_href(src, base_path);
       const query = new URLSearchParams({ path, chatId: chat_id });
       const blob = await api_blob(`/api/agent/workspace/image?${query}`, controller.signal);
       if (controller.signal.aborted) return;
@@ -325,10 +325,10 @@ function AgentMarkdownImage({
       controller.abort();
       if (url !== null) URL.revokeObjectURL(url);
     };
-  }, [base_path, relative, chat_id, src, t]);
+  }, [base_path, local, chat_id, src, t]);
   if (!src) return null;
   const source =
-    relative && chat_id ? (local_source?.source === src ? local_source.url : undefined) : src;
+    local && chat_id ? (local_source?.source === src ? local_source.url : undefined) : src;
   const label = alt?.trim() || title?.trim() || t("agent_page.image.title");
   // 只限制有 MIME 依据且未指定排版尺寸的位图；矢量图与作者尺寸保留 CSS 语义。
   const actual_width =
@@ -363,8 +363,13 @@ function AgentMarkdownImage({
       decoding={props.decoding ?? "async"}
     />
   );
-  if (relative && documents && typeof src === "string") {
-    const path = resolve_agent_workspace_href(src, base_path);
+  if (local && documents && typeof src === "string") {
+    let path: string;
+    try {
+      path = resolve_agent_file_href(src, base_path);
+    } catch {
+      return image; // 无效目标的读取错误由上方 effect 统一报告。
+    }
     return (
       <AgentFileTrigger
         path={path}

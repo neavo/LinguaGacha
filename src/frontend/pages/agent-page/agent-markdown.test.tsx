@@ -46,6 +46,7 @@ describe("AgentMarkdown", () => {
       preview: "markdown",
     }));
     mocks.open_file.mockClear();
+    mocks.api_blob.mockReset();
     mocks.push_toast.mockReset();
   });
 
@@ -117,7 +118,7 @@ describe("AgentMarkdown", () => {
 
   it("被过滤的目标呈现文本，页内链接保留原生跳转", async () => {
     const view = await render_markdown(
-      '[文件](file:///E:/report.md)\n\n[盘符](E:/report.md)\n\n[跳转](#section)\n\n<span id="section">目标</span>',
+      '[文件](javascript:alert)\n\n[盘符](E:/report.md)\n\n[跳转](#section)\n\n<span id="section">目标</span>',
       false,
     );
     expect(view.textContent).toContain("文件");
@@ -130,6 +131,45 @@ describe("AgentMarkdown", () => {
     expect(event.defaultPrevented).toBe(false);
     expect(mocks.open_external_url).not.toHaveBeenCalled();
     expect(mocks.api_fetch).not.toHaveBeenCalled();
+  });
+
+  it("文件 URL 通过 Markdown 过滤，外部文档中的相对文件与图片使用文件入口", async () => {
+    mocks.api_blob.mockResolvedValue(new Blob(["image"], { type: "image/png" }));
+    const view = await render_markdown(
+      "[报告](file:///E:/Output/report.md)\n\n[相关](../related.md#sec)\n\n![配图](./chart.png)",
+      false,
+      "file:///E:/Output/report.md",
+    );
+    const links = view.querySelectorAll("a");
+    await act(async () => links[0]!.click());
+    expect(mocks.open_file).toHaveBeenLastCalledWith(
+      "file:///E:/Output/report.md",
+      expect.objectContaining({ preview: "markdown" }),
+    );
+    await act(async () => links[1]!.click());
+    expect(mocks.open_file).toHaveBeenLastCalledWith(
+      "file:///E:/related.md#sec",
+      expect.objectContaining({ preview: "markdown" }),
+    );
+    const query = new URLSearchParams({ path: "file:///E:/Output/chart.png", chatId: "session" });
+    expect(mocks.api_blob).toHaveBeenCalledWith(
+      `/api/agent/workspace/image?${query}`,
+      expect.any(AbortSignal),
+    );
+    expect(view.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/u);
+    await act(async () => view.querySelector("img")!.closest("button")!.click());
+    expect(mocks.open_file).toHaveBeenLastCalledWith(
+      "file:///E:/Output/chart.png",
+      expect.anything(),
+    );
+    expect(mocks.open_external_url).not.toHaveBeenCalled();
+  });
+
+  it("无效文件 URL 图片保留正文并报告一次读取错误", async () => {
+    const view = await render_markdown("正文\n\n![配图](file://[invalid/image.png)", false);
+    expect(view.textContent).toContain("正文");
+    expect(view.querySelector("img")!.closest("button")).toBeNull();
+    expect(mocks.push_toast).toHaveBeenCalledOnce();
   });
 
   it.each([

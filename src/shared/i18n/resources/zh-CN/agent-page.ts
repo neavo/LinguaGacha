@@ -4,6 +4,7 @@ export const zh_cn_agent_page = {
     conversation: "对话",
     view: "查看",
     save_as: "另存为",
+    open_folder: "打开所在文件夹",
   },
   batch_translation_model: {
     follow: "保持一致",

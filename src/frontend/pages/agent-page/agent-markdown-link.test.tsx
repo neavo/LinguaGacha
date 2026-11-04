@@ -56,15 +56,29 @@ describe("AgentMarkdownLink", () => {
     );
     return container;
   }
-  it("相对链接归一编码后交给文件入口，外链交给宿主", async () => {
-    const view = await render_links(["work/报告%20%23%25.md", "https://example.com"]);
+  it("相对链接和文件 URL 交给文件入口，外链交给宿主", async () => {
+    const view = await render_links([
+      "work/报告%20%23%25.md",
+      "file:///E:/setup.exe",
+      "https://example.com",
+    ]);
     const links = view.querySelectorAll<HTMLAnchorElement>("a");
     await act(async () => links[0]!.click());
     expect(mocks.open_file).toHaveBeenCalledWith(
       "work/%E6%8A%A5%E5%91%8A%20%23%25.md",
       expect.objectContaining({ preview: "markdown" }),
     );
+    mocks.api_fetch.mockImplementation(async (route, body) =>
+      route.endsWith("/file")
+        ? { path: body.path, name: "setup.exe", kind: "file", preview: null }
+        : { status: "opened" },
+    );
     await act(async () => links[1]!.click());
+    expect(mocks.api_fetch).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
+      path: "file:///E:/setup.exe",
+    });
+    expect(mocks.open_external_url).not.toHaveBeenCalled();
+    await act(async () => links[2]!.click());
     expect(mocks.open_external_url).toHaveBeenCalledWith("https://example.com");
   });
 });
