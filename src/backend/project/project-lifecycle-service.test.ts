@@ -100,7 +100,7 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("新建来源摘要只读，确认顺序传到准备，错误顺序不创建工程", async () => {
+  it("新建确认的包顺序传到准备，错误顺序不创建工程", async () => {
     const root = create_temp_dir(),
       game = path.join(root, "ordered"),
       project = path.join(root, "ordered.lg");
@@ -117,14 +117,6 @@ describe("ProjectLifecycleService", () => {
     const database = new ProjectDatabase("1.0.0"),
       service = create_service({ database });
     try {
-      expect((await service.summarize_source_files({ source_paths: [game] })).godot_packs).toEqual([
-        {
-          game_root: game,
-          game_name: "ordered",
-          external_pcks: ["game.pck", "patch2.pck", "patch10.pck"],
-        },
-      ]);
-      expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch10.pck", "patch2.pck"]);
       await expect(
         service.create_project_commit({
           path: project,

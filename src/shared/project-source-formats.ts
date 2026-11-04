@@ -1,6 +1,6 @@
 import type { LocaleKey } from "./i18n";
 
-/** 后端来源发现、摘要统计和工程创建界面共用的格式目录。 */
+/** 后端来源发现和工程创建界面共用的格式目录。 */
 export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
@@ -180,7 +180,7 @@ export const PROJECT_SOURCE_FORMATS = [
   source_kind: "file" | "game";
   id: string;
   file_type?: GameFileType;
-  support_status: "supported" | "deprecated" | "internal"; // 只表达产品支持策略，来源发现与统计仍使用完整目录。`internal` 格式由 AGENT 产出，工程创建界面不展示
+  support_status: "supported" | "deprecated" | "internal"; // 只表达产品支持策略，来源发现仍使用完整目录。`internal` 格式由 AGENT 产出，工程创建界面不展示
   extension: string;
   title_key: LocaleKey;
   description_keys: readonly LocaleKey[];
@@ -188,17 +188,6 @@ export const PROJECT_SOURCE_FORMATS = [
 
 /** 支持格式目录的稳定跨层身份。 */
 export type ProjectSourceFormatId = (typeof PROJECT_SOURCE_FORMATS)[number]["id"];
-
-/** 各互斥格式的文件命中数。 */
-export type ProjectSourceFormatHitCounts = Record<ProjectSourceFormatId, number>;
-
-/** 源路径发现完成后返回给 renderer 的公开摘要。 */
-export type ProjectSourceFileSummary = {
-  godot_packs?: readonly import("./godot").GodotPackPreview[];
-  contains_game: boolean; // 原生游戏会改写游戏目录，界面据此提示完整备份。
-  source_file_count: number; // 递归发现并按真实路径去重后的支持文件总数
-  format_hit_counts: ProjectSourceFormatHitCounts; // 包含目录内全部格式，未命中项固定为零
-};
 
 export const GAME_FILE_TYPES = [
   "WOLFRPG",

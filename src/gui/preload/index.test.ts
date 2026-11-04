@@ -133,28 +133,20 @@ describe("preload desktop bridge", () => {
     }
     electron_mock.invoke
       .mockResolvedValueOnce({ canceled: false, paths: ["E:/novel/a.txt"] })
-      .mockResolvedValueOnce({ canceled: false, paths: ["D:/projects"] })
       .mockResolvedValueOnce({ canceled: false, paths: ["F:/games/demo"] })
       .mockResolvedValueOnce({ canceled: true, paths: [] });
 
-    await bridge.pickProjectSourceFilePath();
+    await bridge.pickWorkbenchFilePath();
     expect(electron_mock.invoke).toHaveBeenNthCalledWith(1, IPC_CHANNEL_PICK_PATH, {
-      kind: "project-source-files",
+      kind: "workbench-files",
       default_directory: null,
     });
     expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("E:/novel");
 
-    await bridge.pickProjectSourceDirectoryPath();
-    expect(electron_mock.invoke).toHaveBeenNthCalledWith(2, IPC_CHANNEL_PICK_PATH, {
-      kind: "project-source-directory",
-      default_directory: "E:/novel",
-    });
-    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("D:/projects");
-
     await bridge.pickGameDirectoryPath();
-    expect(electron_mock.invoke).toHaveBeenNthCalledWith(3, IPC_CHANNEL_PICK_PATH, {
+    expect(electron_mock.invoke).toHaveBeenNthCalledWith(2, IPC_CHANNEL_PICK_PATH, {
       kind: "game-directory",
-      default_directory: "D:/projects",
+      default_directory: "E:/novel",
     });
     expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("F:/games/demo");
 

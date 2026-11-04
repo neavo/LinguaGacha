@@ -1,5 +1,5 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
-import { type JSX, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { type JSX, useLayoutEffect, useRef, type ReactNode } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { cn } from "@frontend/shadcn/classnames";
@@ -10,6 +10,7 @@ import {
   is_dialog_primary_shortcut_event,
 } from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+import { useConfirmDelay } from "@frontend/widgets/interactions/use-confirm-delay";
 
 type AppDialogAction = {
   label: string;
@@ -50,10 +51,7 @@ type AppActionDialogProps = AppDialogBaseProps & {
   secondaryAction?: AppDialogAction | undefined;
 };
 
-// 延迟确认采用统一时长，业务层只判断动作是否需要保护。
-const CONFIRM_DELAY_SECONDS = 3;
-
-/** 固定承载取消/确认语义，危险动作的倒计时由 `AppActionDialog` 统一实现。 */
+/** 固定承载取消/确认语义，危险动作沿用 `useConfirmDelay` 的统一倒计时。 */
 export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   return (
@@ -81,33 +79,9 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   const title = props.hideTitle ? null : t("app.action.confirm");
   const has_header = title !== null || props.description != null;
   const submitting_action = submitting ? (props.submittingAction ?? "primary") : null;
-  const delayed = props.primaryAction.delayed === true;
-  const [remaining_seconds, set_remaining_seconds] = useState(0); // 当前弹窗的瞬时倒计时，不进入业务状态
-  useLayoutEffect(() => {
-    if (!props.open || !delayed) {
-      set_remaining_seconds(0);
-      return;
-    }
-
-    // 在弹窗绘制前锁定主操作，避免打开瞬间短暂暴露可提交状态。
-    set_remaining_seconds(CONFIRM_DELAY_SECONDS);
-    // 每秒递减，归零后立即停止，避免弹窗关闭后继续持有定时器。
-    const timer_id = window.setInterval(() => {
-      set_remaining_seconds((previous_seconds) => {
-        if (previous_seconds <= 1) {
-          window.clearInterval(timer_id);
-          return 0;
-        }
-
-        return previous_seconds - 1;
-      });
-    }, 1_000);
-
-    return () => window.clearInterval(timer_id);
-  }, [delayed, props.open]);
-  const primary_is_delayed = props.open && remaining_seconds > 0; // 同时驱动可见秒数与动作禁用，避免两套状态漂移
+  const remaining_seconds = useConfirmDelay(props.open, props.primaryAction.delayed === true);
   const primary_enabled =
-    !submitting && !primary_is_delayed && props.primaryAction.disabled !== true;
+    !submitting && remaining_seconds === 0 && props.primaryAction.disabled !== true;
   const popup_ref = useRef<HTMLDivElement>(null);
   const close_handled_ref = useRef(false); // 同一次关闭只向受控状态拥有者回流一次
   useLayoutEffect(() => {
@@ -240,7 +214,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
                   {submitting_icon ? <Spinner data-icon="inline-start" /> : null}
                   {props.submittingLabel ?? t("app.action.loading")}
                 </>
-              ) : primary_is_delayed ? (
+              ) : remaining_seconds > 0 ? (
                 `${remaining_seconds}s`
               ) : (
                 props.primaryAction.label

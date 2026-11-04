@@ -77,7 +77,6 @@ it.each([
   ]);
   expect(entries).toHaveLength(1);
   expect(entries[0]!.file_type).toBe("RPGMAKER_RGSS");
-  expect((await service.summarize_source_files([source])).format_hit_counts.rpgmaker_rgss).toBe(1);
   const prepared = await service.prepare_source(
     (await service.discover_import_sources([{ source_path: source, rel_path: "game.zip" }]))[0]!,
   );

@@ -50,7 +50,6 @@ import {
 } from "../../domain/project-settings";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
-import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   compute_project_prefilter_write,
@@ -624,17 +623,6 @@ export class ProjectLifecycleService {
   public async get_project_preview(body: JsonRecord): Promise<ProjectPreviewResponse> {
     const project_path = this.require_body_string(body, "path");
     return { preview: await this.database.read_project_preview(project_path) };
-  }
-
-  /**
-   * 汇总可导入源文件总数和互斥格式命中数，不向 renderer 暴露本地文件路径
-   */
-  public async summarize_source_files(body: JsonRecord): Promise<ProjectSourceFileSummary> {
-    const source_paths = this.normalize_source_paths(body["source_paths"]);
-    // 来源摘要只统计格式命中，项目语言尚未选择时使用默认值。
-    return this.create_format_service(DEFAULT_PROJECT_LANGUAGE_SETTINGS).summarize_source_files(
-      source_paths,
-    );
   }
 
   /**

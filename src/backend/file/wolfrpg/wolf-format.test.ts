@@ -37,7 +37,6 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
   const entries = await service.collect_source_file_entries(sources);
   expect(entries).toHaveLength(1);
   expect(entries[0]!.file_type).toBe("WOLFRPG");
-  expect((await service.summarize_source_files(sources)).format_hit_counts.wolfrpg).toBe(1);
   const asset = await service.prepare_source(entries[0]!);
   expect(fs.existsSync(path.join(root, "Data.wolf"))).toBe(false);
   for (const [name, bytes] of files)

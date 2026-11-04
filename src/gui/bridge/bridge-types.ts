@@ -40,8 +40,6 @@ export type DesktopPathPickResult = {
 };
 
 export type DesktopPathPickIntent =
-  | { kind: "project-source-files" }
-  | { kind: "project-source-directory" }
   | { kind: "project-file"; default_path?: string }
   | { kind: "project-save"; default_name: string }
   | { kind: "workbench-files" }

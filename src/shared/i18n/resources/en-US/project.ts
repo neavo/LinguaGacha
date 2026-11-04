@@ -31,11 +31,12 @@ export const en_us_project = {
   },
   create: {
     title: "Create Project",
-    subtitle: "Select source or create an empty self-contained .lg project",
-    drop_title: "Click or Drag Source File",
-    ready_status: "{COUNT} source files selected",
     loading_toast: "Creating project …",
-    unavailable: "The selection contains no supported source files",
+    success: "Project created …",
+    add_files_draft: {
+      prompt: "Please add the following files to the project:",
+      placeholder: "[Enter file paths here or drag files here]",
+    },
     default_preset_loaded: "Default presets loaded: {NAMES} …",
     default_presets: {
       glossary: "Glossary",
@@ -70,7 +71,7 @@ export const en_us_project = {
   },
   formats: {
     generic: "Generic data",
-    title: "Supported File Formats",
+    title: "Specially Optimized File Formats",
     txt: "Plain Text",
     md: "Markdown",
     ass: "ASS Subtitles",
@@ -91,7 +92,9 @@ export const en_us_project = {
     wolfrpg: "WOLFRPG game files",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ Game File",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce Game File",
-    deprecated_title: "Support Ending Soon",
+    deprecated_title: "File Formats Losing Optimization Soon",
+    any_format_notice:
+      "In theory, files in any format can be translated, even if they are not listed above …!",
     rpy: "RenPy Game Text",
     xlsx: "XLSX Game Text",
     trans_export: "Translator++ Game Text",
