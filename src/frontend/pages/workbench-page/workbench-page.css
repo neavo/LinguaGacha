@@ -142,16 +142,8 @@
   text-align: left;
 }
 
-.workbench-page__table-file {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
 .workbench-page__table-file-text {
   display: block;
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

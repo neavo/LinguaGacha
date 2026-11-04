@@ -207,7 +207,7 @@ export const zh_cn_app = {
       warning_description:
         "检测到 {COUNT} 个校对警告，警告并非一定是错误，但建议先使用 AGENT 执行至少一次自动审校，是否确认继续生成译文 …?",
       retry_check: "重新检查",
-      continue_generate: "继续生成",
+      generate_directly: "直接生成",
     },
     directory: {
       translated: "译文",

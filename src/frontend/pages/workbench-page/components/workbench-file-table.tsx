@@ -5,9 +5,6 @@ import { type JSX, useMemo, useState } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppContextMenuGroup, AppContextMenuItem } from "@frontend/widgets/app-context-menu";
 import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
-import type { LocaleKey } from "@shared/i18n";
-import { is_game_file_type } from "@shared/project-source-formats";
-import { Badge } from "@frontend/shadcn/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
@@ -88,43 +85,20 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         head_class_name: "workbench-page__table-file-head",
         cell_class_name: "workbench-page__table-file-cell",
         render_cell: (payload) => {
-          // 提示按格式实际需要区分翻译、写回和推荐操作。
-          const agent_hint_key: LocaleKey | null =
-            payload.row.file_type === "PDF"
-              ? "workbench_page.table.agent_only"
-              : payload.row.file_type === "GENERIC"
-                ? "workbench_page.table.agent_writeback"
-                : is_game_file_type(payload.row.file_type)
-                  ? "workbench_page.table.agent_recommended"
-                  : null;
           return (
-            <div className="workbench-page__table-file">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span
-                      className="workbench-page__table-file-text"
-                      tabIndex={payload.presentation === "body" ? 0 : -1}
-                    />
-                  }
-                >
-                  {payload.row.rel_path}
-                </TooltipTrigger>
-                <TooltipContent>{payload.row.rel_path}</TooltipContent>
-              </Tooltip>
-              {agent_hint_key !== null ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Badge tone="brand" tabIndex={payload.presentation === "body" ? 0 : -1} />
-                    }
-                  >
-                    {t("workbench_page.table.agent")}
-                  </TooltipTrigger>
-                  <TooltipContent>{t(agent_hint_key)}</TooltipContent>
-                </Tooltip>
-              ) : null}
-            </div>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    className="workbench-page__table-file-text"
+                    tabIndex={payload.presentation === "body" ? 0 : -1}
+                  />
+                }
+              >
+                {payload.row.rel_path}
+              </TooltipTrigger>
+              <TooltipContent>{payload.row.rel_path}</TooltipContent>
+            </Tooltip>
           );
         },
         render_placeholder: () => {

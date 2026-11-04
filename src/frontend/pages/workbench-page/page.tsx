@@ -1,6 +1,6 @@
 import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
-import type { JSX } from "react";
-import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
+import { useEffect, useState, type JSX } from "react";
+import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -10,16 +10,46 @@ import { WorkbenchCommandBar } from "@frontend/pages/workbench-page/components/w
 import { WorkbenchDialogs } from "@frontend/pages/workbench-page/components/workbench-dialogs";
 import { WorkbenchFileTable } from "@frontend/pages/workbench-page/components/workbench-file-table";
 import { WorkbenchStatsSection } from "@frontend/pages/workbench-page/components/workbench-stats-section";
+import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import { format_agent_reference } from "@shared/agent-reference";
 import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import "@frontend/pages/workbench-page/workbench-page.css";
 
-// 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
+/** 工作台持有启动选择，翻译执行与 AGENT 草稿交给现有会话入口。 */
 export function WorkbenchPage(): JSX.Element {
   const { t } = useI18n();
+  const { navigate_to_agent } = useAppNavigation();
   const { batch_translation_task } = useBatchTranslationSession();
   const translation_generation = useTranslationGeneration();
   const workbench_state = useWorkbenchPageState();
   const translation_stats = useProjectTranslationStats();
+  const [start_dialog_open, set_start_dialog_open] = useState(false); // 启动选择随页面卸载结束。
+  // PDF 按页处理，通用数据需要还原原格式。这两类文件由 AGENT 完成流程。
+  const requires_agent = workbench_state.entries.some(
+    (entry) => entry.file_type === "PDF" || entry.file_type === "GENERIC",
+  );
+  // 文件快照就绪后才决定入口。PDF 即使没有文本条目也能转交。
+  const can_start_translation =
+    workbench_state.cache_status === "ready" &&
+    !workbench_state.readonly &&
+    !batch_translation_task.translation_task_menu_disabled &&
+    (requires_agent || workbench_state.entries.some((entry) => entry.progress.total_count > 0));
+
+  // 文件刷新、运行占用或工程切换后结束旧选择，避免沿用过期的文件判断。
+  useEffect(() => {
+    set_start_dialog_open(false);
+  }, [can_start_translation, workbench_state.settled_project_path]);
+
+  const agent_action = {
+    label: t("app.action.handle_with_agent"),
+    onSelect: () => {
+      set_start_dialog_open(false);
+      // 复用首页任务建议，导航只预填草稿，由用户发送。
+      navigate_to_agent({
+        text: `${t("agent_page.empty.suggestions.translate_full_text")} ${format_agent_reference({ kind: "skill", name: "translation" })}`,
+      });
+    },
+  };
 
   return (
     <div className="workbench-page page-shell page-shell--full">
@@ -45,6 +75,8 @@ export function WorkbenchPage(): JSX.Element {
         />
       </FileDropZone>
       <WorkbenchCommandBar
+        can_start_translation={can_start_translation}
+        on_request_start_translation={() => set_start_dialog_open(true)}
         batch_translation_task={batch_translation_task}
         translation_stats={translation_stats}
         can_edit_files={workbench_state.can_edit_files}
@@ -58,6 +90,29 @@ export function WorkbenchPage(): JSX.Element {
         on_generate_translation={translation_generation.request_generation}
         on_close_project={workbench_state.request_close_project}
       />
+      {start_dialog_open && can_start_translation ? (
+        <AppActionDialog
+          open
+          description={t(
+            requires_agent
+              ? "workbench_page.dialog.start_translation.agent_required"
+              : "workbench_page.dialog.start_translation.agent_recommended",
+          )}
+          primaryAction={
+            requires_agent
+              ? agent_action
+              : {
+                  label: t("workbench_page.dialog.start_translation.translate_directly"),
+                  onSelect: () => {
+                    set_start_dialog_open(false);
+                    void batch_translation_task.request_start_or_continue_translation();
+                  },
+                }
+          }
+          secondaryAction={requires_agent ? undefined : agent_action}
+          onClose={() => set_start_dialog_open(false)}
+        />
+      ) : null}
       <GodotPackOrderDialog {...workbench_state.godot_pack_order.dialog_props} />
       <AppConfirmDialog {...workbench_state.game_backup_confirm.dialog_props} />
       <WorkbenchDialogs

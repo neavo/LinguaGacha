@@ -213,7 +213,7 @@ export const en_us_app = {
       warning_description:
         "Detected {COUNT} proofreading warnings. Warnings do not necessarily indicate errors, but we recommend running at least one automatic review with AGENT first. Continue generating the translation …?",
       retry_check: "Check Again",
-      continue_generate: "Generate Anyway",
+      generate_directly: "Generate Directly",
     },
     directory: {
       translated: "Translated",

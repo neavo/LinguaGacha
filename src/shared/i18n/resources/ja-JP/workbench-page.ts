@@ -8,10 +8,6 @@ export const ja_jp_workbench_page = {
   table: {
     file_name: "ファイル名",
     progress: "進捗",
-    agent: "AGENT",
-    agent_writeback: "元の形式への書き戻しには AGENT が必要",
-    agent_only: "AGENT でのみ翻訳できます",
-    agent_recommended: "翻訳には AGENT の使用をおすすめします",
   },
   feedback: {
     no_valid_file: "追加できる有効なファイルがありません",
@@ -25,6 +21,12 @@ export const ja_jp_workbench_page = {
     reset_task_all: "すべてのデータをリセット",
   },
   dialog: {
+    start_translation: {
+      agent_recommended: "翻訳品質を高めるため、AGENT による翻訳をおすすめします …!",
+      agent_required:
+        "プロジェクトには AGENT で処理する必要がある複雑なデータが含まれています。翻訳品質を高めるため、AGENT による翻訳をおすすめします …!",
+      translate_directly: "直接翻訳",
+    },
     import_conflict: {
       description: "同名のファイルが {COUNT} 個あります。処理方法を選択してください …",
     },

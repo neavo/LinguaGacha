@@ -27,14 +27,15 @@ type WorkbenchTranslationMenuProps = {
   busy: boolean;
   model_selection: ModelSelectionController;
   active_task_action_kind: TranslationTaskActionKind | null;
-  on_start_or_continue: () => Promise<void>;
+  can_start: boolean;
+  on_request_start: () => void;
   on_request_reset: (kind: "reset-all") => void;
 };
 
 /**
  * 翻译任务菜单展示进度并提供模型选择、开始与重置操作。
  *
- * 运行事实来自共享 Store，确认框和完成提示由会话 Hook 持有。
+ * 页面决定启动方式，运行事实和重置动作由会话层提供。
  */
 export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): JSX.Element {
   const { t } = useI18n();
@@ -91,10 +92,8 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
 
         <AppDropdownMenuGroup>
           <AppDropdownMenuItem
-            disabled={action_items_disabled || props.workbench_stats?.total_items === 0}
-            onClick={() => {
-              void props.on_start_or_continue();
-            }}
+            disabled={action_items_disabled || !props.can_start}
+            onClick={props.on_request_start}
           >
             {props.active ? (
               <Spinner data-icon="inline-start" />

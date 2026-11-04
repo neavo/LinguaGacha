@@ -56,7 +56,7 @@ export function TranslationGenerationDialog(
         description={t("app.translation_generation.confirmation.check_failed")}
         submitting={submitting}
         primaryAction={{
-          label: t("app.translation_generation.confirmation.continue_generate"),
+          label: t("app.translation_generation.confirmation.generate_directly"),
           onSelect: props.confirm_generation,
         }}
         secondaryAction={{
@@ -109,7 +109,7 @@ export function TranslationGenerationDialog(
       }
       submitting={submitting}
       primaryAction={{
-        label: t("app.translation_generation.confirmation.continue_generate"),
+        label: t("app.translation_generation.confirmation.generate_directly"),
         onSelect: props.confirm_generation,
       }}
       secondaryAction={{

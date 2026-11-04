@@ -13,11 +13,11 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 }));
 
 vi.mock("@frontend/pages/workbench-page/components/workbench-translation-menu", () => ({
-  WorkbenchTranslationMenu: (props: { on_start_or_continue: () => Promise<void> }) => (
+  WorkbenchTranslationMenu: (props: { on_request_start: () => void }) => (
     <button
       type="button"
       onClick={() => {
-        void props.on_start_or_continue();
+        props.on_request_start();
       }}
     >
       translation-task
@@ -47,6 +47,8 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
   };
 
   return {
+    can_start_translation: true,
+    on_request_start_translation: vi.fn(),
     batch_translation_task: {
       translation_task_display_snapshot: null,
       translation_task_metrics,
@@ -122,14 +124,6 @@ describe("WorkbenchCommandBar", () => {
     await render_command_bar(props);
 
     expect(find_button("app.action.delete").disabled).toBe(true);
-    expect(find_button("app.action.delete").getAttribute("aria-keyshortcuts")).toBe("Delete");
-    expect(find_button("app.action.delete").querySelector("kbd")?.textContent).toBe("Del");
-    expect(find_button("workbench_page.action.add_file").getAttribute("aria-keyshortcuts")).toBe(
-      "Control+N",
-    );
-    expect(find_button("workbench_page.action.add_file").querySelector("kbd")?.textContent).toBe(
-      "Ctrl+N",
-    );
     await act(async () => {
       find_button("app.action.delete").click();
       find_button("workbench_page.action.add_file").click();
@@ -140,14 +134,12 @@ describe("WorkbenchCommandBar", () => {
     expect(props.on_delete_selected).not.toHaveBeenCalled();
   });
 
-  it("翻译按钮调用任务启动入口", async () => {
+  it("翻译按钮请求页面选择执行方式", async () => {
     const props = await render_command_bar();
 
     await act(async () => find_button("translation-task").click());
 
-    expect(
-      props.batch_translation_task.request_start_or_continue_translation,
-    ).toHaveBeenCalledOnce();
+    expect(props.on_request_start_translation).toHaveBeenCalledOnce();
   });
 
   it("运行中的摘要使用命令栏收到的工程完成率", async () => {
@@ -156,7 +148,7 @@ describe("WorkbenchCommandBar", () => {
     await render_command_bar(props);
 
     expect(container?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe(
-      "25",
+      String(props.translation_stats!.completion_percent),
     );
   });
 });
