@@ -117,6 +117,7 @@ type AgentMessageEditorProps = {
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[] | undefined;
   input_state: AgentInputState;
+  before_attach?: (() => boolean) | undefined; // 文件选择、拖放与粘贴共用前置检查。
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: (() => void) | undefined;
   /** 编辑器提供文件与指令入口，消费方统一排列动作并决定提交权限。 */
@@ -245,7 +246,9 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         variant="ghost"
         className="agent-composer__file-trigger"
         disabled={!can_append_files}
-        onClick={() => file_input_ref.current?.click()}
+        onClick={() => {
+          if (props.before_attach?.() !== false) file_input_ref.current?.click();
+        }}
       >
         <Paperclip aria-hidden="true" />
         <span>{t("agent_page.action.add_file")}</span>
@@ -532,6 +535,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   /** 附件交给常驻草稿，其余本机文件以独立行写入正文，保留原路径。 */
   const append_files = (files: Iterable<File>): void => {
+    if (props.before_attach?.() === false) return;
     const view = view_ref.current;
     if (!can_append_files || view === null) return;
     const uploads: File[] = [];

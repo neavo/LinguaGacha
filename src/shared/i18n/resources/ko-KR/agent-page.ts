@@ -1,6 +1,7 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_agent_page = {
+  project_required: "먼저 프로젝트 파일을 만들거나 열어 주세요 …",
   document: {
     conversation: "대화",
     view: "보기",

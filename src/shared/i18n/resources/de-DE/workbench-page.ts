@@ -16,12 +16,9 @@ export const de_de_workbench_page = {
   },
   feedback: {
     no_valid_file: "Keine gültigen Dateien können hinzugefügt werden",
-    close_project_failed:
-      "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut …",
   },
   action: {
     add_file: "Hinzufügen",
-    close_project: "Schließen",
     rename: "Umbenennen",
     reset: "Dateidaten zurücksetzen",
     translation_task: "Übersetzung",
@@ -51,9 +48,6 @@ export const de_de_workbench_page = {
     delete: {
       description:
         "Ausgewählte Datei und alle zugehörigen Übersetzungseinträge wirklich löschen …?",
-    },
-    close_project: {
-      description: "Aktuelles Projekt wirklich schließen …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

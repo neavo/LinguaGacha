@@ -1,4 +1,5 @@
 export const en_us_agent_page = {
+  project_required: "Please create or open a project file first …",
   document: {
     conversation: "Conversation",
     view: "View",

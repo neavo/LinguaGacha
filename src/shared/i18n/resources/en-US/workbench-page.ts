@@ -16,11 +16,9 @@ export const en_us_workbench_page = {
   },
   feedback: {
     no_valid_file: "No valid files can be added",
-    close_project_failed: "Failed to close the project. Please try again later …",
   },
   action: {
     add_file: "Add",
-    close_project: "Close",
     rename: "Rename",
     reset: "Reset File Data",
     translation_task: "Translation",
@@ -46,9 +44,6 @@ export const en_us_workbench_page = {
     },
     delete: {
       description: "Confirm deleting the selected file and all of its translation entries …?",
-    },
-    close_project: {
-      description: "Confirm closing the current project …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

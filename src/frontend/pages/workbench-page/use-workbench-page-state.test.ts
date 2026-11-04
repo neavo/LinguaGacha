@@ -1,3 +1,7 @@
+const lifecycle = vi.hoisted(() => ({ can_close: true, request_close: vi.fn() }));
+vi.mock("@frontend/app/session/project-lifecycle/project-lifecycle-context", () => ({
+  useProjectLifecycle: () => lifecycle,
+}));
 import { type JSX, act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -374,6 +378,27 @@ describe("useWorkbenchPageState", () => {
     });
     await flush_async_updates();
   }
+
+  it("关闭入口使用公共流程，文件写入期间锁定", async () => {
+    lifecycle.can_close = true;
+    lifecycle.request_close.mockClear();
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: { getState: () => create_project_store_state({}) },
+    };
+    await render_hook();
+    act(() => latest_state?.request_close_project());
+    expect(lifecycle.request_close).toHaveBeenCalledOnce();
+    const pending = Promise.withResolvers<ReturnType<typeof create_project_write_result>>();
+    enqueue_api_response("/api/workbench/file/reset", () => pending.promise);
+    act(() => latest_state?.request_reset_file("old.txt"));
+    await act(async () => {
+      void latest_state?.confirm_dialog();
+    });
+    expect(latest_state?.can_close_project).toBe(false);
+    await act(async () => pending.resolve(create_project_write_result()));
+    expect(latest_state?.can_close_project).toBe(true);
+  });
 
   it("最后一次信号与工作台无关时仍会在首次挂载全量刷新", async () => {
     runtime_fixture.current = {

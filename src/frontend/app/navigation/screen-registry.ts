@@ -9,7 +9,6 @@ import { GlossaryPage } from "@frontend/pages/glossary-page/page";
 import { LaboratoryPage } from "@frontend/pages/laboratory-page/page";
 import { ModelPage } from "@frontend/pages/model-page/page";
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
-import { ProjectPage } from "@frontend/pages/project-page/page";
 import { TextPreservePage } from "@frontend/pages/text-preserve-page/page";
 import { TextReplacementPage } from "@frontend/pages/text-replacement-page/page";
 import { ToolboxPage } from "@frontend/pages/toolbox-page/page";
@@ -30,10 +29,6 @@ function PostTranslationReplacementScreen(): ReturnType<typeof createElement> {
 // 导航 route 到页面组件与标题 key 的唯一映射。
 export const SCREEN_REGISTRY: ScreenRegistry = {
   knowledge: { component: KnowledgePage, title_key: "knowledge_page.title" },
-  "project-home": {
-    component: ProjectPage,
-    title_key: "project_page.title",
-  },
   model: {
     component: ModelPage,
     title_key: "model_page.title",

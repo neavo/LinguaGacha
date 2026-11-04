@@ -1,4 +1,5 @@
 export const zh_cn_agent_page = {
+  project_required: "请首先创建或者打开工程文件 …",
   document: {
     conversation: "对话",
     view: "查看",

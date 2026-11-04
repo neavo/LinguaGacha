@@ -16,7 +16,7 @@ import { ko_kr_model_page } from "./model-page";
 import { ko_kr_post_translation_replacement_page } from "./post-translation-replacement-page";
 import { ko_kr_pre_translation_replacement_page } from "./pre-translation-replacement-page";
 import { ko_kr_preset_editor } from "./preset-editor";
-import { ko_kr_project_page } from "./project-page";
+import { ko_kr_project } from "./project";
 import { ko_kr_proofreading_page } from "./proofreading-page";
 import { ko_kr_quality_rule_editor } from "./quality-rule-editor";
 import { ko_kr_task_progress } from "./task-progress";
@@ -45,7 +45,7 @@ export const ko_kr_messages = {
   post_translation_replacement_page: ko_kr_post_translation_replacement_page,
   pre_translation_replacement_page: ko_kr_pre_translation_replacement_page,
   preset_editor: ko_kr_preset_editor,
-  project_page: ko_kr_project_page,
+  project: ko_kr_project,
   proofreading_page: ko_kr_proofreading_page,
   quality_rule_editor: ko_kr_quality_rule_editor,
   task_progress: ko_kr_task_progress,

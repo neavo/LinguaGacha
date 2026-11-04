@@ -1,9 +1,8 @@
-import type { zh_cn_project_page } from "../zh-CN/project-page";
+import type { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
-export const ja_jp_project_page = {
-  title: "プロジェクト",
+export const ja_jp_project = {
   create: {
-    title: "新しいプロジェクト",
+    title: "プロジェクトを作成",
     subtitle: "元ファイルから、または空の .lg を作成。作成後は元ファイル不要",
     drop_title: "クリックまたは元ファイルをドロップ",
     ready_status: "元ファイルを {COUNT} 個選択しました",
@@ -22,20 +21,19 @@ export const ja_jp_project_page = {
   },
   open: {
     title: "プロジェクトを開く",
-    subtitle: ".lg を開き、翻訳進捗・ルールを引き継いで再開",
     drop_title: "クリックまたは .lg ファイルをドロップ",
-    recent_title: "最近開いた項目",
-    empty: "最近開いたプロジェクトはありません",
     loading_toast: "プロジェクトを読み込み中 …",
-    preview_unavailable: "プロジェクトのプレビューを読み込めませんでした …",
-    action: "プロジェクトを開く",
     remove_unavailable: "最近使った項目を削除できません。しばらくしてから再試行してください …",
     newer_app_version_description:
       "このファイルの対象アプリバージョンは <emphasis>v{VERSION}</emphasis> です。古いバージョンで開くとデータが破損する可能性があります。続けて開きますか …?",
     missing_file_description: "プロジェクトファイルが利用できません。一覧から削除しますか …?",
   },
+  close: {
+    action: "プロジェクトを閉じる",
+    confirm: "現在のプロジェクトを閉じますか …?",
+    failed: "プロジェクトを閉じられませんでした。しばらくしてから再試行してください …",
+  },
   preview: {
-    title: "プロジェクト概要",
     file_count: "ファイル数",
     files: "{COUNT} 個のファイル",
     created_at: "作成日時",
@@ -72,4 +70,4 @@ export const ja_jp_project_page = {
     wolf: "WOLF 公式翻訳ツールから出力したゲームテキスト",
     trans: "Translator++ プロジェクトファイル",
   },
-} satisfies LocaleMessageSchema<typeof zh_cn_project_page>;
+} satisfies LocaleMessageSchema<typeof zh_cn_project>;

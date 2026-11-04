@@ -15,12 +15,9 @@ export const ja_jp_workbench_page = {
   },
   feedback: {
     no_valid_file: "追加できる有効なファイルがありません",
-    close_project_failed:
-      "プロジェクトを閉じられませんでした。しばらくしてから再試行してください …",
   },
   action: {
     add_file: "追加",
-    close_project: "プロジェクトを閉じる",
     rename: "名前を変更",
     reset: "ファイルデータをリセット",
     translation_task: "翻訳",
@@ -46,9 +43,6 @@ export const ja_jp_workbench_page = {
     },
     delete: {
       description: "選択したファイルと、そのすべての翻訳項目を削除しますか …?",
-    },
-    close_project: {
-      description: "現在のプロジェクトを閉じますか …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

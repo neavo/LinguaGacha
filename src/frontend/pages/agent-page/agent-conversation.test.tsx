@@ -1,3 +1,15 @@
+const project_state = vi.hoisted(() => ({ loaded: true }));
+const lifecycle = vi.hoisted(() => ({
+  busy: false,
+  can_close: true,
+  request_close: vi.fn(),
+  show_create_dialog: vi.fn(),
+  request_open: vi.fn(),
+  open_recent_project: vi.fn(),
+}));
+vi.mock("@frontend/app/session/project-lifecycle/project-lifecycle-context", () => ({
+  useProjectLifecycle: () => lifecycle,
+}));
 import { AgentTimelineStore } from "@frontend/app/session/agent/agent-timeline-store";
 vi.mock("./use-agent-mention-files", () => ({
   useAgentMentionFiles: () => ({ files: [], status: "idle" }),
@@ -170,7 +182,8 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state.current,
   useDesktopState: () => ({
     initial_state_status: "ready",
-    settings_snapshot: settings_state.snapshot,
+    project_snapshot: project_state,
+    settings_snapshot: { ...settings_state.snapshot, recent_projects: [] },
     apply_settings_snapshot: settings_state.apply_snapshot,
   }),
 }));
@@ -229,6 +242,9 @@ describe("AgentConversation", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
+    project_state.loaded = true;
+    lifecycle.can_close = true;
+    lifecycle.request_close.mockClear();
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
@@ -277,6 +293,44 @@ describe("AgentConversation", () => {
     return container;
   }
 
+  it("无工程发送和附件共用拦截，草稿保留", async () => {
+    project_state.loaded = false;
+    lifecycle.can_close = false;
+    const send = vi.fn();
+    const input = build_state({}).input;
+    input.draft.write({ text: "待发送草稿", attachments: [] });
+    const view = await render_page({ send, input });
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(send).not.toHaveBeenCalled();
+    expect(input.draft.read()).toEqual({ text: "待发送草稿", attachments: [] });
+    expect(push_toast).toHaveBeenCalledWith("warning", "agent_page.project_required");
+    const picker = vi.spyOn(view.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__file-trigger")!.click(),
+    );
+    expect(picker).not.toHaveBeenCalled();
+    picker.mockRestore();
+    const file = new File(["data"], "source.txt");
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: { files: [file], getData: () => "" } });
+    await act(async () => view.querySelector(".cm-content")!.dispatchEvent(paste));
+    expect(input.draft.read()).toEqual({ text: "待发送草稿", attachments: [] });
+    expect(push_toast).toHaveBeenCalledTimes(3);
+  });
+  it.each([false, true])("关闭工程指令排在首位且遵循可用性 %s", async (can_close) => {
+    lifecycle.can_close = can_close;
+    const view = await render_page();
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__instructions-trigger")!.click(),
+    );
+    const first = view.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+    )!;
+    expect(first.textContent).toContain("project.close.action");
+    expect(first.disabled).toBe(!can_close);
+    await act(async () => first.click());
+    expect(lifecycle.request_close).toHaveBeenCalledTimes(can_close ? 1 : 0);
+  });
   it.each(["success", "failure"] as const)(
     "运行中保存审批偏好，%s 后展示已确认设置",
     async (outcome) => {

@@ -1,4 +1,5 @@
 export const de_de_agent_page = {
+  project_required: "Bitte zuerst eine Projektdatei erstellen oder öffnen …",
   document: {
     conversation: "Unterhaltung",
     view: "Ansehen",

@@ -1,8 +1,7 @@
-import { zh_cn_project_page } from "../zh-CN/project-page";
+import { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
 
-export const en_us_project_page = {
-  title: "Project Home",
+export const en_us_project = {
   create: {
     title: "Create Project",
     subtitle: "Select source or create an empty self-contained .lg project",
@@ -23,21 +22,20 @@ export const en_us_project_page = {
   },
   open: {
     title: "Open Project",
-    subtitle: "Load .lg to continue with saved progress and rules",
     drop_title: "Click or Drag .lg File",
-    recent_title: "Recent Projects",
-    empty: "No recent projects",
     loading_toast: "Loading project …",
-    preview_unavailable: "Failed to read project preview …",
-    action: "Open Project",
     remove_unavailable:
       "Unable to remove this recent project entry right now. Please try again later …",
     newer_app_version_description:
       "This file targets app version <emphasis>v{VERSION}</emphasis>. Opening it with an older app version may corrupt data. Do you confirm that you want to continue …?",
     missing_file_description: "The project file is invalid. Remove it from the list …?",
   },
+  close: {
+    action: "Close",
+    confirm: "Confirm closing the current project …?",
+    failed: "Failed to close the project. Please try again later …",
+  },
   preview: {
-    title: "Project overview",
     file_count: "File count",
     files: "{COUNT} files",
     created_at: "Created At",
@@ -74,4 +72,4 @@ export const en_us_project_page = {
     wolf: "Game Text Exported by the Official WOLF Translation Tool",
     trans: "Translator++ Project File",
   },
-} satisfies LocaleMessageSchema<typeof zh_cn_project_page>;
+} satisfies LocaleMessageSchema<typeof zh_cn_project>;

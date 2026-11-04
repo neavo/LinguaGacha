@@ -17,7 +17,6 @@ type WorkbenchDialogsProps = {
 const CONFIRM_DESCRIPTION_KEY_BY_KIND = {
   "reset-file": "workbench_page.dialog.reset.description",
   "delete-file": "workbench_page.dialog.delete.description",
-  "close-project": "workbench_page.dialog.close_project.description",
 } as const satisfies Partial<Record<NonNullable<WorkbenchDialogState["kind"]>, LocaleKey>>;
 
 /** 将工作台对话状态映射为统一确认或动作弹窗。 */

@@ -43,7 +43,7 @@ describe("AppNavigationProvider", () => {
     await act(async () => {
       root.render(
         <AppNavigationProvider
-          selected_route="project-home"
+          selected_route="agent"
           navigate_to_route={navigate_to_route}
           agent_input_request={{ text: "审校请求" }}
           clear_agent_input_request={clear_agent_input_request}
@@ -58,10 +58,10 @@ describe("AppNavigationProvider", () => {
     expect(navigate_to_route).toHaveBeenCalledWith("workbench");
 
     await act(async () => buttons[1]?.click());
-    expect(container.querySelector("output")?.textContent).toBe("project-home:角色名:src");
+    expect(container.querySelector("output")?.textContent).toBe("agent:角色名:src");
 
     await act(async () => buttons[2]?.click());
-    expect(container.querySelector("output")?.textContent).toBe("project-home:none:none");
+    expect(container.querySelector("output")?.textContent).toBe("agent:none:none");
 
     await act(async () => buttons[3]?.click());
     expect(navigate_to_route).toHaveBeenLastCalledWith("agent", {

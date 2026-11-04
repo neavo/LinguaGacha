@@ -108,7 +108,7 @@ export function TranslationTransferPage(): JSX.Element {
       <PathSelectionField title={title}>
         <PathSelectionCard
           icon={icon}
-          title={t("project_page.open.drop_title")}
+          title={t("project.open.drop_title")}
           summary={path === null ? null : { name: extract_file_name(path), path }}
           clear_label={t("app.action.reset")}
           on_clear={() => set_path(field, null)}

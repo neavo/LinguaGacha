@@ -13,11 +13,9 @@ export const zh_cn_workbench_page = {
   },
   feedback: {
     no_valid_file: "没有可添加的有效文件",
-    close_project_failed: "关闭工程失败 …",
   },
   action: {
     add_file: "添加",
-    close_project: "关闭工程",
     rename: "重命名",
     reset: "重置文件数据",
     translation_task: "翻译",
@@ -42,9 +40,6 @@ export const zh_cn_workbench_page = {
     },
     delete: {
       description: "是否确认删除所选文件及其所有翻译条目 …?",
-    },
-    close_project: {
-      description: "是否确认关闭当前工程 …?",
     },
   },
 } as const;

@@ -3,8 +3,7 @@ type WorkbenchActionKind =
   | "inherit-import-files"
   | "reset-file"
   | "rename-file"
-  | "delete-file"
-  | "close-project";
+  | "delete-file";
 
 export type WorkbenchDialogState = {
   kind: WorkbenchActionKind | null;

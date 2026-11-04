@@ -1,0 +1,98 @@
+.project-lifecycle {
+  --project-lifecycle-muted: var(--muted-foreground);
+  --project-lifecycle-subtitle: var(--muted-foreground);
+  --project-lifecycle-source: var(--primary);
+}
+
+.project-lifecycle__formats {
+  display: flex;
+  flex-direction: column;
+  /* 分组保持内容高度，空间不足时由外层滚动，避免第一组标签压到第二组标题上。 */
+  overflow-y: auto;
+  gap: 18px;
+}
+
+.project-lifecycle__format-group {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.project-lifecycle__selection--source {
+  --path-selection-card-tone: var(--project-lifecycle-source);
+}
+
+.project-lifecycle__section-title {
+  font-size: var(--ui-font-size-14);
+  line-height: 1.5;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.project-lifecycle__format-tags {
+  display: flex;
+  min-height: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-lifecycle__format-tag {
+  max-width: 100%;
+  height: 30px;
+  gap: 8px;
+  padding-block: 4px;
+}
+
+.project-lifecycle__format-extension {
+  color: var(--project-lifecycle-muted);
+}
+
+.project-lifecycle__preview-panel {
+  min-height: 0;
+  font-size: var(--ui-font-size-13);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.project-lifecycle__preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.project-lifecycle__preview-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.project-lifecycle__preview-label {
+  flex: 0 0 auto;
+  color: var(--project-lifecycle-subtitle);
+}
+
+.project-lifecycle__preview-value {
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+}
+
+.project-lifecycle__language-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.project-lifecycle__version-emphasis {
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}

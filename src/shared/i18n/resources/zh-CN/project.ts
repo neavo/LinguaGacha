@@ -1,7 +1,6 @@
-export const zh_cn_project_page = {
-  title: "工程主页",
+export const zh_cn_project = {
   create: {
-    title: "新建工程",
+    title: "创建工程",
     subtitle: "选择源文件或直接创建空工程，创建完成后即不再需要源文件",
     drop_title: "点击或拖拽源文件",
     ready_status: "已选择 {COUNT} 个源文件",
@@ -20,20 +19,19 @@ export const zh_cn_project_page = {
   },
   open: {
     title: "打开工程",
-    subtitle: "加载现有的 .lg 工程文件以继承翻译进度、翻译规则继续工作",
     drop_title: "点击或拖拽 .lg 文件",
-    recent_title: "最近打开",
-    empty: "暂无最近打开的工程",
     loading_toast: "正在加载工程 …",
-    preview_unavailable: "读取工程预览失败 …",
-    action: "打开工程",
     remove_unavailable: "移除最近使用记录失败 …",
     newer_app_version_description:
       "此文件对应的应用版本为 <emphasis>v{VERSION}</emphasis>，使用低版本应用打开可能导致数据损坏，是否确认继续打开 …?",
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",
   },
+  close: {
+    action: "关闭工程",
+    confirm: "是否确认关闭当前工程 …?",
+    failed: "关闭工程失败 …",
+  },
   preview: {
-    title: "工程概览",
     file_count: "文件数量",
     files: "{COUNT} 个文件",
     created_at: "创建时间",

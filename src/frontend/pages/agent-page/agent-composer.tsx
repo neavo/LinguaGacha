@@ -42,6 +42,7 @@ type AgentComposerProps = {
   approval_disabled: boolean;
   model_selection: ModelSelectionController;
   input_state: AgentInputState;
+  before_attach?: (() => boolean) | undefined;
   on_send: (message: AgentMessageInput) => void;
   on_agent_model_select: (change: ModelSelectionInput) => void;
   on_approval_mode_change: (approval_mode: AgentApprovalMode) => void;
@@ -79,6 +80,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       instructions={props.instructions}
       input_state={props.input_state}
       on_submit={props.on_send}
+      before_attach={props.before_attach}
       render_actions={({ has_content, uploads_pending }, add_file, open_instructions) => {
         const continuing_queue = props.can_continue_queue && !running && !locked;
         // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。

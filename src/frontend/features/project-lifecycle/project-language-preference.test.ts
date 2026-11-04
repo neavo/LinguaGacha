@@ -31,11 +31,11 @@ describe("新建工程语言偏好", () => {
     ],
     [
       { source_language: "ZH-HANT", target_language: "KO" },
-      { source_language: "JA", target_language: "KO" },
+      { source_language: DEFAULT_PROJECT_LANGUAGE_SETTINGS.source_language, target_language: "KO" },
     ],
     [
       { source_language: "EN", target_language: "ALL" },
-      { source_language: "EN", target_language: "ZH" },
+      { source_language: "EN", target_language: DEFAULT_PROJECT_LANGUAGE_SETTINGS.target_language },
     ],
     [
       { source_language: 1, target_language: "KO" },
@@ -43,7 +43,10 @@ describe("新建工程语言偏好", () => {
     ],
     [
       { source_language: "ALL", target_language: null },
-      { source_language: "ALL", target_language: "ZH" },
+      {
+        source_language: "ALL",
+        target_language: DEFAULT_PROJECT_LANGUAGE_SETTINGS.target_language,
+      },
     ],
   ])("逐字段恢复 %j，沿用语言领域规则", (value, expected) => {
     const raw = JSON.stringify(value);

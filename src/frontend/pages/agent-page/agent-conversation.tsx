@@ -1,5 +1,7 @@
+import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
+import { AgentProjectEntry } from "./agent-project-entry";
 import { AppContentState } from "@frontend/widgets/app-content-state";
-import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import type { AgentApprovalMode } from "@domain/setting";
 import { format_agent_reference } from "@shared/agent-reference";
 import { type JSX, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -12,6 +14,7 @@ import {
   Drama,
   FileOutput,
   Shrink,
+  SquarePower,
   Sparkles,
 } from "lucide-react";
 
@@ -100,8 +103,18 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const agent_actions = useAgentChatActions();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
-  const { settings_snapshot, apply_settings_snapshot, initial_state_status } = useDesktopState();
+  const { project_snapshot, settings_snapshot, apply_settings_snapshot, initial_state_status } =
+    useDesktopState();
   const translation_generation = useTranslationGeneration();
+  const project_lifecycle = useProjectLifecycle();
+  const [project_attention, set_project_attention] = useState(0);
+  // 发送与附件共用入口，草稿仍由常驻 Store 持有。
+  const require_project = useCallback((): boolean => {
+    if (project_snapshot.loaded) return true;
+    push_toast("warning", t("agent_page.project_required"));
+    set_project_attention((value) => value + 1);
+    return false;
+  }, [project_snapshot.loaded, t]);
   const [approval_updating, set_approval_updating] = useState(false); // 保存期间禁用模式选择。
   const page_ref = useRef<HTMLDivElement | null>(null);
   const conversation_ref = useRef<HTMLElement | null>(null);
@@ -243,6 +256,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   /** 普通发送继续使用底部 Composer。历史修订已由消息原位编辑器独立承接。 */
   const submit_message = (message: AgentMessageInput): void => {
     if (active_inline_edit !== null) return;
+    if (!require_project()) return;
     if (thinking_off_confirmation_required) {
       set_pending_thinking_off_action({ kind: "send", message });
       return;
@@ -295,6 +309,14 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   }, [agent_actions, show_command_error]);
   /** 主 Composer 的宿主指令目录。动作不进入消息正文或原位编辑器。 */
   const instructions: readonly AgentMentionInstruction[] = [
+    {
+      id: "close_project",
+      icon: SquarePower,
+      title: t("project.close.action"),
+      description: "",
+      disabled: !project_lifecycle.can_close,
+      execute: project_lifecycle.request_close,
+    },
     {
       // 译文生成属于工程级动作，可用性由生成流程自身判定，不受 Agent 会话空闲约束。
       id: "generate_translation",
@@ -639,6 +661,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
             className="agent-page__status-zone"
             inert={input_transition.locked || undefined}
           >
+            <AgentProjectEntry key={project_attention} attention={project_attention} />
             <AgentTaskStatus doing={controls.doing} running={is_running} />
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
@@ -698,6 +721,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               inert={input_transition.locked || undefined}
             >
               <AgentComposer
+                before_attach={require_project}
                 ref={composer_ref}
                 file_drop_target_ref={page_ref}
                 locked={!active || active_inline_edit !== null || input_transition.locked}

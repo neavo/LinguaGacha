@@ -21,7 +21,7 @@ export function ProjectLanguageDialog(props: ProjectLanguageDialogProps): JSX.El
   return (
     <AppPageDialog
       open={props.open}
-      title={t("project_page.create.language_dialog_title")}
+      title={t("project.create.language_dialog_title")}
       size="sm"
       onClose={props.on_close}
       primaryAction={{
@@ -30,7 +30,7 @@ export function ProjectLanguageDialog(props: ProjectLanguageDialogProps): JSX.El
         onSelect: props.on_confirm,
       }}
     >
-      <div className="project-home__language-list">
+      <div className="project-lifecycle__language-list">
         <SettingCardRow
           variant="group"
           action_width="content"

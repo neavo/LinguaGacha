@@ -1,6 +1,7 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_agent_page = {
+  project_required: "まずプロジェクトファイルを作成または開いてください …",
   document: {
     conversation: "会話",
     view: "表示",

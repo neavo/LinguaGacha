@@ -29,7 +29,7 @@ vi.mock("./state/use-desktop-state", () => ({
 }));
 vi.mock("./navigation/screen-registry", () => ({
   SCREEN_REGISTRY: {
-    "project-home": { component: () => null, title_key: "app.metadata.app_name" },
+    agent: { component: () => null, title_key: "app.metadata.app_name" },
   },
 }));
 vi.mock("./appearance/appearance-provider", () => ({

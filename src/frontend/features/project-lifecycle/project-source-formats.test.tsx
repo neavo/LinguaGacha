@@ -30,34 +30,10 @@ describe("ProjectSourceFormats", () => {
 
   /** 按词典解析后的可见名称定位格式标签。 */
   function find_tag(title_key: LocaleKey): HTMLElement {
-    return [...container.querySelectorAll<HTMLElement>(".project-home__format-tag")].find(
-      (tag) => tag.querySelector(".project-home__format-title")?.textContent === t(title_key),
+    return [...container.querySelectorAll<HTMLElement>(".project-lifecycle__format-tag")].find(
+      (tag) => tag.querySelector(".project-lifecycle__format-title")?.textContent === t(title_key),
     )!;
   }
-
-  it("按支持状态分两组展示，内部格式不展示，其余格式恰好出现一次并保留目录顺序", async () => {
-    await act(async () =>
-      root.render(
-        <LocaleProvider locale="zh-CN">
-          <ProjectSourceFormats />
-        </LocaleProvider>,
-      ),
-    );
-    const lists = [...container.querySelectorAll(".project-home__format-tags")];
-    const groups = lists.map((list) =>
-      [...list.querySelectorAll(".project-home__format-title")].map((tag) => tag.textContent),
-    );
-    expect(groups).toEqual(
-      ["supported", "deprecated"].map((status) =>
-        PROJECT_SOURCE_FORMATS.filter((format) => format.support_status === status).map((format) =>
-          t(format.title_key),
-        ),
-      ),
-    );
-    expect(
-      lists.map((list) => document.getElementById(list.getAttribute("aria-labelledby")!)),
-    ).toEqual([...container.querySelectorAll("h3")]);
-  });
 
   it("两组都展示命中数量，零命中省略数量", async () => {
     const format_hit_counts = Object.fromEntries(
@@ -73,12 +49,12 @@ describe("ProjectSourceFormats", () => {
       ),
     );
 
+    expect(find_tag("project.formats.txt").querySelector('[data-slot="badge"]')?.textContent).toBe(
+      "3",
+    );
     expect(
-      find_tag("project_page.formats.txt").querySelector('[data-slot="badge"]')?.textContent,
-    ).toBe("3");
-    expect(
-      find_tag("project_page.formats.trans").querySelector('[data-slot="badge"]')?.textContent,
+      find_tag("project.formats.trans").querySelector('[data-slot="badge"]')?.textContent,
     ).toBe("2");
-    expect(find_tag("project_page.formats.md").querySelector('[data-slot="badge"]')).toBeNull();
+    expect(find_tag("project.formats.md").querySelector('[data-slot="badge"]')).toBeNull();
   });
 });

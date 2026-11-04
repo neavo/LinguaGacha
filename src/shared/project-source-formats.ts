@@ -1,13 +1,13 @@
 import type { LocaleKey } from "./i18n";
 
-/** 后端来源发现、摘要统计和工程主页共用的格式目录。 */
+/** 后端来源发现、摘要统计和工程创建界面共用的格式目录。 */
 export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
     id: "generic",
     support_status: "internal",
     extension: ".generic",
-    title_key: "project_page.formats.generic",
+    title_key: "project.formats.generic",
     description_keys: [],
   },
   {
@@ -15,7 +15,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "txt",
     support_status: "supported",
     extension: ".txt",
-    title_key: "project_page.formats.txt",
+    title_key: "project.formats.txt",
     description_keys: [],
   },
   {
@@ -23,7 +23,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "md",
     support_status: "supported",
     extension: ".md",
-    title_key: "project_page.formats.md",
+    title_key: "project.formats.md",
     description_keys: [],
   },
   {
@@ -31,7 +31,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "ass",
     support_status: "supported",
     extension: ".ass",
-    title_key: "project_page.formats.ass",
+    title_key: "project.formats.ass",
     description_keys: [],
   },
   {
@@ -39,7 +39,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "ssa",
     support_status: "supported",
     extension: ".ssa",
-    title_key: "project_page.formats.ssa",
+    title_key: "project.formats.ssa",
     description_keys: [],
   },
   {
@@ -47,7 +47,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "lrc",
     support_status: "supported",
     extension: ".lrc",
-    title_key: "project_page.formats.lrc",
+    title_key: "project.formats.lrc",
     description_keys: [],
   },
   {
@@ -55,7 +55,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "srt",
     support_status: "supported",
     extension: ".srt",
-    title_key: "project_page.formats.srt",
+    title_key: "project.formats.srt",
     description_keys: [],
   },
   {
@@ -63,7 +63,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "vtt",
     support_status: "supported",
     extension: ".vtt",
-    title_key: "project_page.formats.vtt",
+    title_key: "project.formats.vtt",
     description_keys: [],
   },
   {
@@ -71,7 +71,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "pdf",
     support_status: "supported",
     extension: ".pdf",
-    title_key: "project_page.formats.pdf",
+    title_key: "project.formats.pdf",
     description_keys: [],
   },
   {
@@ -79,7 +79,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "epub",
     support_status: "supported",
     extension: ".epub",
-    title_key: "project_page.formats.epub",
+    title_key: "project.formats.epub",
     description_keys: [],
   },
   {
@@ -87,11 +87,11 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "json",
     support_status: "supported",
     extension: ".json",
-    title_key: "project_page.formats.json",
+    title_key: "project.formats.json",
     description_keys: [
-      "project_page.formats.mtool",
-      "project_page.formats.sextractor",
-      "project_page.formats.vntextpatch",
+      "project.formats.mtool",
+      "project.formats.sextractor",
+      "project.formats.vntextpatch",
     ],
   },
   {
@@ -100,8 +100,8 @@ export const PROJECT_SOURCE_FORMATS = [
     file_type: "GODOT",
     support_status: "supported",
     extension: ".exe",
-    title_key: "project_page.formats.godot",
-    description_keys: ["project_page.formats.godot", "project_page.formats.action_game_maker"],
+    title_key: "project.formats.godot",
+    description_keys: ["project.formats.godot", "project.formats.action_game_maker"],
   },
   {
     source_kind: "game",
@@ -109,7 +109,7 @@ export const PROJECT_SOURCE_FORMATS = [
     file_type: "RENPY",
     support_status: "supported",
     extension: ".exe",
-    title_key: "project_page.formats.renpy",
+    title_key: "project.formats.renpy",
     description_keys: [],
   },
   {
@@ -118,7 +118,7 @@ export const PROJECT_SOURCE_FORMATS = [
     file_type: "TYRANO",
     support_status: "supported",
     extension: ".exe",
-    title_key: "project_page.formats.tyrano",
+    title_key: "project.formats.tyrano",
     description_keys: [],
   },
   {
@@ -127,7 +127,7 @@ export const PROJECT_SOURCE_FORMATS = [
     file_type: "WOLFRPG",
     support_status: "supported",
     extension: ".exe",
-    title_key: "project_page.formats.wolfrpg",
+    title_key: "project.formats.wolfrpg",
     description_keys: [],
   },
   {
@@ -136,7 +136,7 @@ export const PROJECT_SOURCE_FORMATS = [
     file_type: "RPGMAKER_MV_MZ",
     support_status: "supported",
     extension: ".exe",
-    title_key: "project_page.formats.rpgmaker_mv_mz",
+    title_key: "project.formats.rpgmaker_mv_mz",
     description_keys: [],
   },
   {
@@ -145,7 +145,7 @@ export const PROJECT_SOURCE_FORMATS = [
     file_type: "RPGMAKER_RGSS",
     support_status: "supported",
     extension: ".exe",
-    title_key: "project_page.formats.rpgmaker_rgss",
+    title_key: "project.formats.rpgmaker_rgss",
     description_keys: [],
   },
   {
@@ -153,7 +153,7 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "rpy",
     support_status: "deprecated",
     extension: ".rpy",
-    title_key: "project_page.formats.rpy",
+    title_key: "project.formats.rpy",
     description_keys: [],
   },
   {
@@ -161,11 +161,11 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "xlsx",
     support_status: "deprecated",
     extension: ".xlsx",
-    title_key: "project_page.formats.xlsx",
+    title_key: "project.formats.xlsx",
     description_keys: [
-      "project_page.formats.sextractor",
-      "project_page.formats.trans_export",
-      "project_page.formats.wolf",
+      "project.formats.sextractor",
+      "project.formats.trans_export",
+      "project.formats.wolf",
     ],
   },
   {
@@ -173,14 +173,14 @@ export const PROJECT_SOURCE_FORMATS = [
     id: "trans",
     support_status: "deprecated",
     extension: ".trans",
-    title_key: "project_page.formats.trans",
+    title_key: "project.formats.trans",
     description_keys: [],
   },
 ] as const satisfies ReadonlyArray<{
   source_kind: "file" | "game";
   id: string;
   file_type?: GameFileType;
-  support_status: "supported" | "deprecated" | "internal"; // 只表达产品支持策略，来源发现与统计仍使用完整目录。`internal` 格式由 AGENT 产出，工程主页不展示
+  support_status: "supported" | "deprecated" | "internal"; // 只表达产品支持策略，来源发现与统计仍使用完整目录。`internal` 格式由 AGENT 产出，工程创建界面不展示
   extension: string;
   title_key: LocaleKey;
   description_keys: readonly LocaleKey[];

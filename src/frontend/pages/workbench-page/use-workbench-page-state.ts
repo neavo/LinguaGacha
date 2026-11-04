@@ -1,3 +1,4 @@
+import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import {
   push_error_toast,
   push_toast,
@@ -248,14 +249,10 @@ export type UseWorkbenchPageStateResult = {
 
 /** 工作台拥有项目文件查询、选择状态和文件写入交互。 */
 export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
+  const project_lifecycle = useProjectLifecycle();
   const { t } = useI18n();
 
-  const {
-    project_snapshot,
-    commit_project_write,
-    refresh_batch_translation,
-    refresh_project_snapshot,
-  } = useDesktopState();
+  const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
   const project_change_signal = useProjectChangeSignal();
   const runtime_snapshot = useRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
@@ -496,8 +493,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   const can_delete_selected_files =
     can_edit_files &&
     selected_entry_ids.some((entry_id) => entries.some((entry) => entry.rel_path === entry_id));
-  const can_close_project =
-    project_snapshot.loaded && !is_runtime_busy(runtime_snapshot) && !is_write_running;
+  const can_close_project = project_lifecycle.can_close && !is_write_running;
 
   const set_dialog_submitting = useCallback((next_submitting: boolean): void => {
     set_dialog_state((previous_state) => {
@@ -610,16 +606,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
       "warning",
       issue === "multiple" ? t("app.drop.multiple_unavailable") : t("app.drop.unavailable"),
     );
-  }
-
-  /** 关闭工程先进入确认状态。 */
-  function request_close_project(): void {
-    set_dialog_state({
-      kind: "close-project",
-      target_rel_paths: [],
-      pending_path: null,
-      submitting: false,
-    });
   }
 
   /** 冻结待改名文件，新名称由改名弹窗校验后提交。 */
@@ -748,28 +734,8 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         set_dialog_state(close_dialog_state());
         return;
       }
-
-      if (current_dialog_state.kind === "close-project") {
-        set_is_write_running(true);
-        try {
-          await api_fetch("/api/session/project/close", {});
-          await refresh_project_snapshot();
-          set_snapshot(EMPTY_SNAPSHOT);
-          set_file_op_running(false);
-          apply_selection_state(create_empty_selection_state());
-          await refresh_batch_translation();
-          set_dialog_state(close_dialog_state());
-        } finally {
-          set_is_write_running(false);
-        }
-      }
     } catch (error) {
-      const fallback_message =
-        current_dialog_state.kind === "close-project"
-          ? t("workbench_page.feedback.close_project_failed")
-          : t("app.feedback.operation_failed");
-
-      push_error_toast(fallback_message, error);
+      push_error_toast(t("app.feedback.operation_failed"), error);
       set_dialog_submitting(false);
     }
   }
@@ -815,7 +781,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     request_add_file,
     request_add_files_from_paths,
     notify_add_file_drop_issue,
-    request_close_project,
+    request_close_project: project_lifecycle.request_close,
     request_rename_file,
     request_reset_file,
     request_delete_selected_files,
