@@ -2,7 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { DEFAULT_PYTHON_VERSION } from "./environment";
 import type { PythonApi } from "./index";
+
+const INSTALLED = `${DEFAULT_PYTHON_VERSION}.8`; // 模拟解释器须属于默认次版本，补丁号任意。
 
 const calls = vi.hoisted(() => ({ uv: vi.fn(), python_process: vi.fn() }));
 
@@ -21,9 +24,9 @@ beforeEach(async () => {
     ...calls,
   }));
   root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-python-"));
-  directory = path.join(root, "environments/3.13");
+  directory = path.join(root, "environments", DEFAULT_PYTHON_VERSION);
   venv = path.join(directory, ".venv");
-  selected = path.join(root, "interpreters/cpython-3.13.8/python.exe");
+  selected = path.join(root, `interpreters/cpython-${INSTALLED}/python.exe`);
   fail = "";
   prefix = "";
   calls.uv.mockReset().mockImplementation(async (args: string[]) => {
@@ -35,7 +38,7 @@ beforeEach(async () => {
     if (args[0] === "python" && args[1] === "find") return selected;
     if (args[0] === "python" && args[1] === "list")
       return JSON.stringify([
-        { version: "3.13.8", path: selected },
+        { version: INSTALLED, path: selected },
         { version: "3.14.0", path: null },
         { version: "3.13.1", path: process.execPath },
       ]);
@@ -68,7 +71,7 @@ beforeEach(async () => {
   });
   calls.python_process.mockReset().mockImplementation(async () =>
     JSON.stringify({
-      version: "3.13.8",
+      version: INSTALLED,
       prefix: prefix || venv,
       basePrefix: path.dirname(selected),
       baseExecutable: selected,
@@ -104,7 +107,7 @@ it("并行安装保留两次声明，排队时复制参数，失败后可恢复�
     "# remove broken",
   );
   expect(fs.existsSync(path.join(directory, ".incomplete"))).toBe(false);
-  await expect(env.info()).resolves.toMatchObject({ version: "3.13.8", directory });
+  await expect(env.info()).resolves.toMatchObject({ version: INSTALLED, directory });
 });
 
 it.each(["missing-config", "base-prefix", "incomplete"])(
@@ -169,7 +172,7 @@ it("版本和包参数收窄，list 过滤外部解释器且不初始化环境",
   expect(() => env.install(sparse)).toThrow(TypeError);
   expect(() => env.run(sparse)).toThrow(TypeError);
   calls.uv.mockClear();
-  await expect(python.list()).resolves.toEqual([{ version: "3.13.8", executable: selected }]);
+  await expect(python.list()).resolves.toEqual([{ version: INSTALLED, executable: selected }]);
   expect(calls.uv).toHaveBeenCalledOnce();
 });
 

@@ -31,6 +31,7 @@ import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { BackendResources } from "../../../bootstrap/backend-resources";
 import { BackendServices } from "../../../bootstrap/backend-services";
 import { AgentWorkspaceService } from "../service";
+import { DEFAULT_PYTHON_VERSION } from "../../python/environment";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 
@@ -91,8 +92,7 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   const inspectSources = vi.fn(async (sources: string[]) =>
     sources.map((source_path) => ({
       source_path,
-      file_count: 1,
-      contains_game: false,
+      files: [{ path: source_path, kind: "file" as const }],
       godot_packs: [],
       failures: [],
     })),
@@ -126,8 +126,7 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     sources: [
       {
         source_path: "work/input.txt",
-        file_count: 1,
-        contains_game: false,
+        files: [{ path: "work/input.txt", kind: "file" }],
         godot_packs: [],
         failures: [],
       },
@@ -889,10 +888,10 @@ it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
     import { python } from '@lg/python';
     import assert from 'node:assert/strict';
     const env = python.environment(); await env.ensure();
-    assert.equal((await env.info()).version, '3.13.8');
     await env.install([${JSON.stringify(wheel_path)}]);
     await env.run(['-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
-    assert.ok((await python.list()).some(entry => entry.version === '3.13.8'));
+    const { version } = await env.info();
+    assert.ok((await python.list()).some(entry => entry.version === version));
     console.log('python ready');
   `,
       AbortSignal.timeout(30_000),
@@ -902,7 +901,7 @@ it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
       "搭档的 Python",
     );
 
-    const project = path.join(python_root, "environments/3.13");
+    const project = path.join(python_root, "environments", DEFAULT_PYTHON_VERSION);
     const manifest = path.join(project, "pyproject.toml");
     await writeFile(
       manifest,
@@ -983,9 +982,7 @@ it.skipIf(
     const installed = await run(
       `
       import { python } from '@lg/python';
-      import assert from 'node:assert/strict';
       const env = python.environment(); await env.ensure();
-      assert.equal((await env.info()).version, '3.13.8');
       await env.install(['Pillow', 'fonttools']);
       await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
     `,
@@ -993,24 +990,28 @@ it.skipIf(
       resolveProxy,
     );
     expect(String(output_content(installed.stdout)).trim()).toBe("(2, 2)");
-    const sentinel = path.join(python_root, "environments/3.13/.venv/upgrade-sentinel");
+    const sentinel = path.join(
+      python_root,
+      "environments",
+      DEFAULT_PYTHON_VERSION,
+      ".venv/upgrade-sentinel",
+    );
     await writeFile(sentinel, "keep healthy installation");
     const upgraded = await run(
       `
       import { python } from '@lg/python';
       import assert from 'node:assert/strict';
-      const env = python.environment({version: '3.13'}); await env.upgrade();
-      const info = await env.info();
-      assert.match(info.version, /^3\\.13\\./);
-      assert.notEqual(info.version, '3.13.8');
-      assert.ok((await python.list()).some(entry => entry.version === '3.13.8'));
+      const env = python.environment();
+      const before = (await env.info()).version;
+      await env.upgrade();
+      assert.notEqual((await env.info()).version, before);
+      assert.ok((await python.list()).some(entry => entry.version === before));
       await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
-      console.log(info.version);
     `,
       AbortSignal.timeout(90_000),
       resolveProxy,
     );
-    expect(String(output_content(upgraded.stdout))).toMatch(/\(2, 2\)[\r\n]+3\.13\./u);
+    expect(String(output_content(upgraded.stdout)).trim()).toBe("(2, 2)");
     expect(await readFile(sentinel, "utf8")).toBe("keep healthy installation");
     await run(
       `import { python } from '@lg/python'; await python.environment().upgrade();`,
@@ -1038,7 +1039,14 @@ it.skipIf(
 
 /** 固定归档只通过本地镜像安装，正常测试不访问解释器下载服务。 */
 async function install_test_python(): Promise<void> {
-  const archive = await readFile(process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE!);
+  const archive_path = process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE!;
+  // 补丁版本取自官方文件名。次版本须匹配默认值，避免后续准备时另行下载解释器。
+  const version = /cpython-(\d+\.\d+\.\d+)/u.exec(path.basename(archive_path))?.[1];
+  if (!version?.startsWith(`${DEFAULT_PYTHON_VERSION}.`))
+    throw new Error(
+      `Python archive must keep its official cpython-${DEFAULT_PYTHON_VERSION}.<patch> name.`,
+    );
+  const archive = await readFile(archive_path);
   const mirror = createServer((_request, response) => response.end(archive));
   await new Promise<void>((resolve) => mirror.listen(0, "127.0.0.1", resolve));
   const address = mirror.address();
@@ -1067,7 +1075,7 @@ async function install_test_python(): Promise<void> {
         "--no-config",
         "python",
         "install",
-        "3.13.8",
+        version,
         "--no-bin",
         "--no-registry",
         "--mirror",

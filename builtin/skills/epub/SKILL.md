@@ -9,30 +9,7 @@ description: 读取、分析或翻译 EPUB 文件时使用。用户要求生成�
 
 ## 阅读原稿
 
-先读取 `sources/<file_path>/META-INF/container.xml`，从 `rootfile` 的 `full-path` 找到 OPF。下面使用示例资产 `小说/第一章.epub`，将目标替换为当前文件身份：
-
-```js
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-const root = path.join('sources', '小说/第一章.epub');
-console.log(await readFile(path.join(root, 'META-INF/container.xml'), 'utf8'));
-```
-
-根据实际 `full-path` 读取 OPF，查看 `manifest` 的资源清单和 `spine` 的阅读顺序。`spine` 中的 `itemref.idref` 对应 `manifest` 中的 `item.id`，正文位置由该资源的 `href` 决定。下面假设 OPF 为 `OEBPS/content.opf`：
-
-```js
-const opfPath = 'OEBPS/content.opf';
-console.log(await readFile(path.join(root, opfPath), 'utf8'));
-```
-
-按 `spine` 顺序选择需要的章节，直接读取对应 XHTML。`href` 相对 OPF 所在目录解析，图片、样式及链接则相对引用它们的文档解析。处理 URL 片段与编码时，分离片段并只解码一次，解析后的本地路径须留在当前书籍目录内。下面假设目标资源的 `href` 为 `Text/chapter01.xhtml`：
-
-```js
-const chapterPath = path.join(root, path.dirname(opfPath), 'Text/chapter01.xhtml');
-console.log(await readFile(chapterPath, 'utf8'));
-```
-
-图片和其他资源同样按成员路径读取原始字节。目录可能位于导航 XHTML 或 NCX 中，与正文顺序共同确定阅读结构。结果以包内路径和章节位置定位。
+EPUB 在 `sources/<file_path>/` 展开为包内目录，例如 `sources/小说/第一章.epub/`。按标准结构读取：`META-INF/container.xml` 指向 OPF，`spine` 给出阅读顺序，导航 XHTML 或 NCX 给出目录。解析后的本地路径须留在当前书籍目录内，结果以包内路径和章节位置定位。
 
 ## 生成独立 EPUB
 
@@ -40,7 +17,9 @@ console.log(await readFile(chapterPath, 'utf8'));
 
 ```js
 import JSZip from 'jszip';
-import { readdir, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+const root = path.join('sources', '小说/第一章.epub');
 const output = new JSZip();
 output.file('mimetype', 'application/epub+zip', { compression: 'STORE', createFolders: false });
 async function copyMembers(directory, prefix = '') {

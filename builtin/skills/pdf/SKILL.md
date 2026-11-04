@@ -9,7 +9,7 @@ description: 阅读、翻译、审校或排版预览 PDF 文件时使用。
 
 通过 `ws.contract.datasets.pages.path` 读取 `pages`，身份与字段以对应 `reference` 为准。原稿读取位置为 `sources/<file_path>`。`page` 是从 1 开始的原稿页码，MuPDF 的页索引从 0 开始。
 
-翻译和审校按 `translation` 的页面流程执行，页面模型、提交规则和交付要求以其中为准。本技能补充 PDF 专属的读取、译稿写法、排版和预览方法。
+翻译和审校按 `translation` 的页面流程执行，页面模型和交付要求以其中为准。本技能补充 PDF 专属的读取、译稿写法、排版和预览方法。
 
 ## 应用接口
 
@@ -93,86 +93,7 @@ await writeFile('work/edited-1.png', renderPdfPage(edited, { page: 1, scale: 2 }
 await ws.emitImage('work/edited-1.png');
 ```
 
-### 拼接相关区域
-
-先确认区域间的阅读顺序和关联，再拼接。不同页面的裁剪使用一致比例，保留来源页与坐标记录。大量页面拼成一张图会挤压小字的可用像素，按连贯内容分组。
-
-以下示例纵向组合两张已经裁剪好的图片，并保留间隔。总画布超过本次看图尺寸时，优先缩小调查范围。
-
-```js
-import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from '@lg/pdf/mupdf';
-const images = [];
-try {
-  for (const file of ['work/region-1.png', 'work/region-2.png']) {
-    images.push(new mupdf.Image(new Uint8Array(await readFile(file))));
-  }
-  const gap = 24;
-  const width = Math.max(...images.map(image => image.getWidth()));
-  const height = images.reduce((sum, image) => sum + image.getHeight(), 0) + gap;
-  const pixels = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, width, height], false);
-  try {
-    pixels.clear(255);
-    const device = new mupdf.DrawDevice(mupdf.Matrix.identity, pixels);
-    try {
-      let y = 0;
-      for (const image of images) {
-        device.fillImage(image, [image.getWidth(), 0, 0, image.getHeight(), 0, y], 1);
-        y += image.getHeight() + gap;
-      }
-      device.close();
-    } finally { device.destroy(); }
-    await writeFile('work/joined.png', pixels.asPNG());
-  } finally { pixels.destroy(); }
-} finally {
-  for (const image of images) image.destroy();
-}
-await ws.emitImage('work/joined.png', { maxEdge: 3840 });
-```
-
-### 区域标注与中文文字
-
-标注用于定位检查证据。文字放在内容外的空白带，框线避开待读文字。保留原始图片，修改工作副本。
-
-MuPDF 的 `zh-Hans` 字体可绘制简体中文。按实际文字检查缺字、尺寸和换行，文字布局由脚本明确安排。
-
-```js
-import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from '@lg/pdf/mupdf';
-const image = new mupdf.Image(new Uint8Array(await readFile('work/detail.png')));
-try {
-  const header = 80;
-  const pixels = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB,
-    [0, 0, image.getWidth(), image.getHeight() + header], false);
-  try {
-    pixels.clear(255);
-    const device = new mupdf.DrawDevice(mupdf.Matrix.identity, pixels);
-    try {
-      device.fillImage(image, [image.getWidth(), 0, 0, image.getHeight(), 0, header], 1);
-      const font = new mupdf.Font('zh-Hans');
-      try {
-        const text = new mupdf.Text();
-        try {
-          text.showString(font, [28, 0, 0, -28, 16, 48], '检查区域：核对图例与单位');
-          device.fillText(text, mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, [0, 0, 0], 1);
-        } finally { text.destroy(); }
-      } finally { font.destroy(); }
-      const outline = new mupdf.Path();
-      const stroke = new mupdf.StrokeState({
-        lineWidth: 2, lineCap: 'Butt', lineJoin: 'Miter', miterLimit: 10,
-      });
-      try {
-        outline.rect(10, header + 10, image.getWidth() - 10, header + image.getHeight() - 10);
-        device.strokePath(outline, stroke, mupdf.Matrix.identity,
-          mupdf.ColorSpace.DeviceRGB, [0.85, 0.15, 0.1], 1);
-      } finally { stroke.destroy(); outline.destroy(); }
-      device.close();
-    } finally { device.destroy(); }
-    await writeFile('work/annotated.png', pixels.asPNG());
-  } finally { pixels.destroy(); }
-} finally { image.destroy(); }
-await ws.emitImage('work/annotated.png', { maxEdge: 3840 });
-```
+需要拼接多个区域，或在图片上标注、绘制中文时，读取 `references/image-tools.md`。
 
 亮度、伽马或颜色调整只用于辅助观察，数值、图例和颜色语义仍与原图核对。
 
@@ -251,6 +172,4 @@ await ws.emitImage(image_path);
 
 预览使用读取时的快照，正式提交重新判定当前工程事实。单页变化不影响邻页指纹，原稿摘要变化会使该文件的旧指纹失效，此时重读快照并更新变更清单。
 
-预览 PDF 用于内部排版检查，默认不在回复中提供其文件或所在目录的下载链接。用户明确要求查看或下载预览时，提供标为“排版预览”的链接，并说明它基于工程现值还是未提交草稿。
-
-正式 PDF 由用户通过应用导出。
+预览 PDF 用于内部排版检查，默认不在回复中提供其文件或所在目录的下载链接。用户明确要求查看或下载预览时，提供标为“排版预览”的链接，并说明它基于工程现值还是未提交草稿。正式 PDF 按 `project-operation` 的「生成与交付」生成。

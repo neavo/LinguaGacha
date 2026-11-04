@@ -291,7 +291,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - 共享租约、环境准备与时限：`npm test -- src/backend/agent/execution src/backend/agent/node`。
 - npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
 - Python 环境与模型声明：`npm test -- src/backend/agent/python`。常规测试使用自有夹具。
-- SDK 加载、原生 IPC 与 Python 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。设置 `LINGUAGACHA_TEST_PYTHON_ARCHIVE` 为当前平台 CPython 3.13.8 的官方归档，启用本地镜像集成测试。归档地址用随附 uv 的 `python list 3.13.8 --all-versions --output-format json` 查询。缺少归档时相关场景报告跳过。
+- SDK 加载、原生 IPC 与 Python 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。设置 `LINGUAGACHA_TEST_PYTHON_ARCHIVE` 为当前平台、默认次版本的 CPython 官方归档，启用本地镜像集成测试。归档保留官方文件名，测试从中读取补丁版本。再设置 `LINGUAGACHA_TEST_PYTHON_ONLINE` 时会验证补丁升级，此时选择非最新补丁。归档地址用随附 uv 的 `python list <次版本> --all-versions --only-downloads --output-format json` 查询。缺少归档时相关场景报告跳过。
 - Python 在线发行验收额外设置 `LINGUAGACHA_TEST_PYTHON_ONLINE=1`，验证代理下载、原生包、补丁升级和搬移恢复。
 - MuPDF 实例与字节边界：`npm test -- src/backend/file/pdf/pdf-document.test.ts`。
 - 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。

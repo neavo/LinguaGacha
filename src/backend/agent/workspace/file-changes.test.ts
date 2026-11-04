@@ -36,8 +36,7 @@ it.each([
     return [
       {
         source_path: source_path!,
-        file_count: kind === "source" ? 0 : 1,
-        contains_game: false,
+        files: kind === "source" ? [] : [{ path: source_path!, kind: "file" }],
         godot_packs: [],
         failures: [],
       },
@@ -52,4 +51,33 @@ it.each([
   });
   expect(result.rejected.map((row) => row.reason)).toEqual(reasons);
   expect(result.rejected.map((row) => row.line)).toEqual(kind === "duplicate" ? [1, 2] : [1]);
+});
+
+it("替换来源包含多个资产时拒绝提交", async () => {
+  const source_path = "work/replacement";
+  const result = await preview_file_changes({
+    parsed: {
+      batch: create_empty_agent_workspace_intent_batch(),
+      files: {
+        creates: [],
+        updates: [{ file_path: "script.txt", source_path, line: 1 }],
+        deletes: [],
+      },
+      rejected: [],
+    },
+    current: [{ path: "script.txt", file_type: "TXT" }],
+    stale: false,
+    resolve: (source) => source,
+    inspect: async () => [
+      {
+        source_path,
+        files: ["a.txt", "b.txt"].map((name) => ({ path: `${source_path}/${name}`, kind: "file" })),
+        godot_packs: [],
+        failures: [],
+      },
+    ],
+  });
+  expect(result.rejected).toMatchObject([
+    { scope: "files", op: "update", line: 1, source_path, reason: "source_failed" },
+  ]);
 });

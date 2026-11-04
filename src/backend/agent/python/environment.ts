@@ -3,12 +3,14 @@ import { default_native_fs as fs } from "../../../native/native-fs";
 import { enqueue_python, python_configuration, python_json, python_process, uv } from "./runtime";
 import type { PythonApi, PythonEnvironment, PythonInfo, PythonInstallation } from "./types";
 
-const DEFAULT_PYTHON_VERSION = "3.13"; // 默认次版本保持稳定，避免应用升级隐式新建依赖环境。
+// 默认取发版时的次新 CPython 次版本，兼顾三方 wheel 覆盖与 bugfix 支持期。
+// 新次版本发布后人工更新，不在运行时推算，避免 uv 版本列表变化时隐式新建依赖环境。
+export const DEFAULT_PYTHON_VERSION = "3.14";
 
 /** 版本只能选择次版本，不能被 uv 解释为路径或命令选项。 */
 function version_input(value: string): string {
   if (typeof value !== "string" || !/^3\.(?:0|[1-9]\d*)$/u.test(value))
-    throw new TypeError("Python version must be an explicit CPython minor version, e.g. 3.13.");
+    throw new TypeError("Python version must be an explicit CPython minor version, e.g. 3.14.");
   return value;
 }
 

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentRunOutputSnapshot, AgentToolEntry } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import * as tool_output from "./agent-tool-output";
+import * as tool_payload from "./agent-tool-payload";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
@@ -120,30 +120,27 @@ describe("AgentToolDetailDialog", () => {
     expect(output?.textContent).toContain("警告");
   });
 
-  it("workspace_run 输入直接显示保持原文的 JavaScript 程序", async () => {
-    const script = "const contract = ws.contract;\nconsole.log(contract.limits);";
-    await render_dialog(tool_running("workspace_run", JSON.stringify({ script })));
+  it("workspace_run 输入展开并高亮脚本，同时保留其他参数", async () => {
+    const script = "const a = 1;\nconsole.log(a);";
+    await render_dialog(
+      tool_running("workspace_run", JSON.stringify({ script, timeout_seconds: 1800 })),
+    );
 
     const input = document.body.querySelector<HTMLElement>(
       '.cm-content[aria-label="agent_page.tool.input"]',
     );
     expect(
       [...(input?.querySelectorAll(".cm-line") ?? [])].map((line) => line.textContent),
-    ).toEqual(script.split("\n"));
-    expect(input?.querySelector(".cm-line span")).not.toBeNull();
-  });
-
-  it("workspace_run 输入包含其他字段时完整显示 JSON", async () => {
-    const input_value = { script: "console.log({});", timeout: 1 };
-    await render_dialog(tool_running("workspace_run", JSON.stringify(input_value)));
-
-    const input = document.body.querySelector<HTMLElement>(
-      '.cm-content[aria-label="agent_page.tool.input"]',
+    ).toEqual(
+      expect.arrayContaining([
+        "    const a = 1;",
+        "    console.log(a);",
+        '  "timeout_seconds": 1800',
+      ]),
     );
-    const input_text = [...(input?.querySelectorAll(".cm-line") ?? [])]
-      .map((line) => line.textContent)
-      .join("\n");
-    expect(JSON.parse(input_text)).toEqual(input_value);
+    const keyword = input?.querySelector(".cm-viewer-keyword");
+    expect(keyword?.textContent).toBe("const");
+    expect(keyword?.closest(".cm-viewer-text")).not.toBeNull();
   });
 
   it("非 JSON 输出保持模型原文并使用纯文本查看器", async () => {
@@ -179,7 +176,7 @@ describe("AgentToolDetailDialog", () => {
   });
 
   it("隐藏结果延迟格式化，切换和刷新复用文档，实际 DOM 显示多行文本", async () => {
-    const format = vi.spyOn(tool_output, "format_agent_tool_output");
+    const format = vi.spyOn(tool_payload, "format_agent_tool_payload");
     await render_dialog(tool_running("any_tool", "{}"));
     const entry = tool_success(
       "any_tool",
@@ -187,12 +184,12 @@ describe("AgentToolDetailDialog", () => {
       JSON.stringify({ data: JSON.stringify({ text: " \r\n一\n\n\t二\n\t " }) }),
     );
     await render_dialog(entry);
-    expect(format).not.toHaveBeenCalled();
+    expect(format).toHaveBeenCalledTimes(1);
     const tabs = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
     const input_tab = tabs.find((tab) => tab.textContent === "agent_page.tool.input");
     const output_tab = tabs.find((tab) => tab.textContent === "agent_page.tool.output");
     await act(async () => output_tab?.click());
-    expect(format).toHaveBeenCalledTimes(1);
+    expect(format).toHaveBeenCalledTimes(2);
     const output = document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]');
     expect([...output!.querySelectorAll(".cm-line")].map((line) => line.textContent)).toEqual(
       expect.arrayContaining(["      一", "      ", "      \t二"]),
@@ -205,9 +202,9 @@ describe("AgentToolDetailDialog", () => {
     );
     await act(async () => input_tab?.click());
     await act(async () => output_tab?.click());
-    expect(format).toHaveBeenCalledTimes(1);
-    await render_dialog({ ...entry, status: "success", output: ['{"new": 2}'] });
     expect(format).toHaveBeenCalledTimes(2);
+    await render_dialog({ ...entry, status: "success", output: ['{"new": 2}'] });
+    expect(format).toHaveBeenCalledTimes(3);
     expect(
       document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]')?.textContent,
     ).toContain('"new": 2');

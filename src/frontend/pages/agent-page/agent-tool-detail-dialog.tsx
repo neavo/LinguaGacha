@@ -1,23 +1,21 @@
 import { type JSX, memo, useMemo, useState } from "react";
 
-import { is_json_record } from "@domain/json";
 import type { AgentToolEntry } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAgentRunOutput } from "@frontend/app/session/agent/agent-chat-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@frontend/shadcn/tabs";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
-import type {
-  AppEditorSyntax,
-  AppViewerRange,
-} from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import {
   AGENT_STATUS_LABEL_KEYS,
   useAgentElapsed,
 } from "@frontend/pages/agent-page/agent-entry-status";
 import { AgentStatusMark } from "@frontend/pages/agent-page/agent-status-mark";
-import { format_agent_tool_output } from "./agent-tool-output";
+import { format_agent_tool_payload } from "./agent-tool-payload";
 import { format_agent_tool_label } from "./agent-tool-label";
+
+// 只声明代码字段，工具新增其他参数时仍完整显示载荷。
+const AGENT_TOOL_CODE_INPUT_KEYS: Readonly<Record<string, string>> = { workspace_run: "script" };
 
 type AgentToolPayloadChannel = "input" | "output";
 type AgentToolPayloadOptions = {
@@ -27,11 +25,7 @@ type AgentToolPayloadOptions = {
   | { channel: "input"; content: string }
   | { channel: "output"; content: readonly string[] | null }
 );
-type AgentToolPayloadDocument = {
-  text: string;
-  syntax: AppEditorSyntax;
-  ranges?: readonly AppViewerRange[];
-};
+type AgentToolPayloadDocument = ReturnType<typeof format_agent_tool_payload>;
 
 type AgentToolDetailDialogProps = {
   entry: AgentToolEntry;
@@ -141,7 +135,6 @@ const AgentToolPayload = memo(function AgentToolPayload(
     <AppEditor
       variant="viewer"
       value={payload.text}
-      syntax={payload.syntax}
       ranges={payload.ranges}
       aria_label={props.aria_label}
       class_name="agent-tool-detail__viewer"
@@ -149,42 +142,12 @@ const AgentToolPayload = memo(function AgentToolPayload(
   );
 });
 
-/** JSON 载荷按语义格式化，工作区脚本输入直接展示实际执行的 JavaScript 正文。 */
+/** 输入与输出共用格式化规则，只有声明的输入字段叠加代码高亮。 */
 function resolve_agent_tool_payload(options: AgentToolPayloadOptions): AgentToolPayloadDocument {
   if (options.content === null) {
-    return { text: options.fallback ?? "", syntax: "plain" };
+    return { text: options.fallback ?? "", ranges: [] };
   }
-
-  if (options.channel === "output") {
-    return { ...format_agent_tool_output(options.content), syntax: "plain" };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(options.content) as unknown;
-  } catch {
-    return { text: options.content, syntax: "plain" };
-  }
-
-  if (options.tool_name === "workspace_run") {
-    const script = read_workspace_run(parsed);
-    if (script !== null) {
-      return { text: script, syntax: "typescript" };
-    }
-  }
-
-  return {
-    text: JSON.stringify(parsed, null, 2),
-    syntax: "json",
-  };
-}
-
-/** 只在结构完整匹配当前工具契约时提取脚本，使显示内容覆盖调用的全部输入。 */
-function read_workspace_run(value: unknown): string | null {
-  if (!is_json_record(value) || Object.keys(value).length !== 1) {
-    return null;
-  }
-
-  const script = value["script"];
-  return typeof script === "string" && script.length > 0 ? script : null;
+  return options.channel === "input"
+    ? format_agent_tool_payload([options.content], AGENT_TOOL_CODE_INPUT_KEYS[options.tool_name])
+    : format_agent_tool_payload(options.content);
 }

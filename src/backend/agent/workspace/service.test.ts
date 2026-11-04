@@ -121,6 +121,68 @@ describe("AgentWorkspaceService", () => {
     ).toBe("new");
   });
 
+  it("实际变化只有知识时免审批，未变化的条目不影响判断", async () => {
+    const fixture = await create_fixture(temp_dir);
+    const updated = { path: "decision.md", text: "old decision" };
+    const deleted = { path: "handoff.md", text: "completed task" };
+    fixture.knowledge.push(updated, deleted);
+    await run_workspace(fixture);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.knowledge.creates, [
+      { path: "format.md", text: "format findings" },
+    ]);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.knowledge.updates, [
+      {
+        path: updated.path,
+        text: "new decision",
+        fp: project_knowledge_fingerprint(updated.path, updated.text),
+      },
+    ]);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.knowledge.deletes, [
+      { path: deleted.path, fp: project_knowledge_fingerprint(deleted.path, deleted.text) },
+    ]);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: fixture.items[0]!.dst },
+    ]);
+    const approve = vi.fn(async () => undefined);
+
+    expect(await fixture.service.apply_workspace(approve)).toMatchObject({
+      status: "applied",
+      applied: {
+        knowledge: { created: ["format.md"], updated: [updated.path], deleted: [deleted.path] },
+      },
+      rejected: [],
+    });
+    expect(approve).not.toHaveBeenCalled();
+    expect(fixture.write_store).toHaveBeenCalledOnce();
+  });
+
+  it("知识与条目混合提交先请求审批，再提交同一批变化", async () => {
+    const fixture = await create_fixture(temp_dir);
+    await run_workspace(fixture);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.knowledge.creates, [
+      { path: "decision.md", text: "translation decision" },
+    ]);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
+    ]);
+    const approve = vi.fn(async () => {
+      expect(fixture.write_store).not.toHaveBeenCalled();
+    });
+
+    expect(await fixture.service.apply_workspace(approve)).toMatchObject({
+      status: "applied",
+      applied: {
+        knowledge: { created: ["decision.md"], updated: [], deleted: [] },
+        items: { updated: 1 },
+      },
+      rejected: [],
+    });
+    expect(approve).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ knowledge: 1, items: 1 }),
+    );
+    expect(fixture.write_store).toHaveBeenCalledOnce();
+  });
+
   it("分享工程中的非法知识路径不能写出快照目录", async () => {
     const fixture = await create_fixture(temp_dir);
     fixture.knowledge.push({ path: "../outside.md", text: "must stay in database" });
@@ -152,7 +214,12 @@ describe("AgentWorkspaceService", () => {
     const source_path = "work/replacement.txt";
     const resolved = path.join(fixture.workspace_root, source_path);
     fixture.inspect_sources.mockResolvedValue([
-      { source_path: resolved, file_count: 1, contains_game: false, godot_packs: [], failures: [] },
+      {
+        source_path: resolved,
+        files: [{ path: resolved, kind: "file" }],
+        godot_packs: [],
+        failures: [],
+      },
     ]);
     fs.writeFileSync(
       path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.updates),
@@ -1679,8 +1746,10 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const inspect_sources = vi.fn<ProjectContentService["inspect_sources"]>(async (sources) =>
     sources.map((source_path) => ({
       source_path,
-      file_count: 3,
-      contains_game: false,
+      files: ["a.txt", "b.txt", "c.txt"].map((name) => ({
+        path: path.join(source_path, name),
+        kind: "file" as const,
+      })),
       godot_packs: [],
       failures: [],
     })),

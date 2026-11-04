@@ -1,6 +1,6 @@
-import { tags } from "@lezer/highlight";
+import { highlightTree, tagHighlighter, tags, type Tag } from "@lezer/highlight";
 
-import { javascript } from "@codemirror/lang-javascript";
+import { javascript, javascriptLanguage } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -26,11 +26,20 @@ import {
 } from "@codemirror/view";
 
 export type AppEditorSyntax = "plain" | "markdown" | "json" | "typescript";
-/** 展示文档的有序语义范围，由文本生产者提供，与编辑校验标记独立。 */
+type AppCodeTokenKind =
+  | "property"
+  | "string"
+  | "number"
+  | "keyword"
+  | "definition"
+  | "type"
+  | "comment";
+
+/** 由文本生产者按 `start` 升序提供；正文块范围内可包含词法范围，与编辑校验标记独立。 */
 export type AppViewerRange = {
   start: number;
   end: number;
-  kind: "property" | "string" | "number" | "keyword" | "text";
+  kind: AppCodeTokenKind | "text";
 };
 
 const viewer_decorations: Record<AppViewerRange["kind"], Decoration> = {
@@ -38,6 +47,9 @@ const viewer_decorations: Record<AppViewerRange["kind"], Decoration> = {
   string: Decoration.mark({ class: "cm-viewer-string" }),
   number: Decoration.mark({ class: "cm-viewer-number" }),
   keyword: Decoration.mark({ class: "cm-viewer-keyword" }),
+  definition: Decoration.mark({ class: "cm-viewer-definition" }),
+  type: Decoration.mark({ class: "cm-viewer-type" }),
+  comment: Decoration.mark({ class: "cm-viewer-comment" }),
   text: Decoration.mark({ class: "cm-viewer-text" }),
 };
 
@@ -71,15 +83,36 @@ type MarkdownPalette = {
   separator: string;
 };
 
-type CodePalette = {
-  property: string;
-  string: string;
-  number: string;
-  keyword: string;
-  definition: string;
-  type: string;
-  comment: string;
-};
+type CodePalette = Record<AppCodeTokenKind, string>;
+
+const CODE_TOKEN_TAGS: readonly { tag: Tag | readonly Tag[]; kind: AppCodeTokenKind }[] = [
+  {
+    tag: [tags.definition(tags.variableName), tags.function(tags.variableName)],
+    kind: "definition",
+  },
+  { tag: tags.propertyName, kind: "property" },
+  { tag: tags.typeName, kind: "type" },
+  { tag: tags.string, kind: "string" },
+  { tag: tags.number, kind: "number" },
+  { tag: [tags.bool, tags.null, tags.keyword], kind: "keyword" },
+  { tag: tags.comment, kind: "comment" },
+];
+const javascript_viewer_highlighter = tagHighlighter(
+  CODE_TOKEN_TAGS.map(({ tag, kind }) => ({ tag, class: kind })),
+);
+
+/** 与编辑器共用语义色映射，范围使用解析器的 UTF-16 偏移。 */
+export function read_javascript_viewer_ranges(source: string): AppViewerRange[] {
+  const ranges: AppViewerRange[] = [];
+  highlightTree(
+    javascriptLanguage.parser.parse(source),
+    javascript_viewer_highlighter,
+    (start, end, kind) => {
+      ranges.push({ start, end, kind: kind as AppCodeTokenKind }); // 高亮器的类名只来自 `CODE_TOKEN_TAGS`
+    },
+  );
+  return ranges;
+}
 
 type EditorPalette = {
   background: string;
@@ -344,6 +377,7 @@ export function create_app_editor_text_mark_hover_extension(marks_ref: {
 }
 
 /** 生成只包含 CodeMirror 运行色的明暗主题，布局仍由组件 CSS 拥有。 */
+/** 查看器语义色与编辑器使用同一调色板，正文底色独立叠加。 */
 function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
   return EditorView.theme(
     {
@@ -354,10 +388,9 @@ function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
       ".cm-content": {
         caretColor: "var(--primary)",
       },
-      ".cm-viewer-property": { color: palette.code.property },
-      ".cm-viewer-string": { color: palette.code.string },
-      ".cm-viewer-number": { color: palette.code.number },
-      ".cm-viewer-keyword": { color: palette.code.keyword },
+      ...Object.fromEntries(
+        Object.entries(palette.code).map(([kind, color]) => [`.cm-viewer-${kind}`, { color }]),
+      ),
       ".cm-viewer-text": { backgroundColor: palette.active_line_background },
       ".cm-cursor, .cm-dropCursor": {
         borderLeftColor: "var(--primary)",
@@ -437,18 +470,9 @@ function create_markdown_highlight_extension(palette: EditorPalette): Extension 
 /** JSON 与 TypeScript 共用代码语义色，保持语言之间的调色板一致。 */
 function create_code_highlight_extension(palette: EditorPalette): Extension {
   return syntaxHighlighting(
-    HighlightStyle.define([
-      {
-        tag: [tags.definition(tags.variableName), tags.function(tags.variableName)],
-        color: palette.code.definition,
-      },
-      { tag: tags.propertyName, color: palette.code.property },
-      { tag: tags.typeName, color: palette.code.type },
-      { tag: tags.string, color: palette.code.string },
-      { tag: tags.number, color: palette.code.number },
-      { tag: [tags.bool, tags.null, tags.keyword], color: palette.code.keyword },
-      { tag: tags.comment, color: palette.code.comment },
-    ]),
+    HighlightStyle.define(
+      CODE_TOKEN_TAGS.map(({ tag, kind }) => ({ tag, color: palette.code[kind] })),
+    ),
   );
 }
 
