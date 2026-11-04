@@ -141,9 +141,9 @@ export async function preview_file_changes(args: {
       const [inspection] = await args.inspect([row.source_path!], row.godot_pack_orders);
       if (
         !inspection ||
-        inspection.file_count === 0 ||
+        inspection.files.length === 0 ||
         inspection.failures.length ||
-        (op === "update" && inspection.file_count !== 1)
+        (op === "update" && inspection.files.length !== 1)
       )
         rejected.push({
           scope: "files",
@@ -155,7 +155,7 @@ export async function preview_file_changes(args: {
             inspection?.failures.map((failure) => failure.message).join("\n") ||
             "No supported files found.",
         });
-      else if (op === "create") created += inspection.file_count;
+      else if (op === "create") created += inspection.files.length;
     } catch (error) {
       rejected.push({
         scope: "files",

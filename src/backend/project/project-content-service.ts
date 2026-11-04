@@ -157,8 +157,11 @@ export class ProjectContentService {
           );
           inspections.push({
             source_path,
-            file_count: entries.filter((entry) => entry.source.kind !== "failure").length,
-            contains_game: entries.some((entry) => entry.source.kind === "game"),
+            files: entries.flatMap((entry) =>
+              entry.source.kind === "failure"
+                ? []
+                : [{ path: entry.source_path, kind: entry.source.kind }],
+            ),
             godot_packs: entries.flatMap((entry) =>
               entry.source.kind === "game" && entry.source.file_type === "GODOT"
                 ? [godot_pack_preview(entry.source.game)]

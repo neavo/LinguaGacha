@@ -1,20 +1,23 @@
 import type { JsonValue } from "@domain/json";
-import type { AppViewerRange } from "@frontend/widgets/app-editor/app-editor-code-mirror";
+import {
+  read_javascript_viewer_ranges,
+  type AppViewerRange,
+} from "@frontend/widgets/app-editor/app-editor-code-mirror";
 
-type AgentToolOutput = {
+type AgentToolPayload = {
   text: string;
   ranges: readonly AppViewerRange[];
 };
 
 /** 只解释完整 JSON 编码，普通数字字符串与字面量转义保持文本语义。 */
-function read_output_value(value: JsonValue): JsonValue {
+function read_payload_value(value: JsonValue): JsonValue {
   while (typeof value === "string") {
     const candidate = value.trimStart();
     if (!/^[{["]/u.test(candidate)) break;
     try {
       value = JSON.parse(candidate) as JsonValue;
     } catch {
-      // 普通正文、混合日志与不完整 JSON 都是有效工具输出。
+      // 普通正文、混合日志与不完整 JSON 都是有效工具载荷。
       break;
     }
   }
@@ -22,7 +25,7 @@ function read_output_value(value: JsonValue): JsonValue {
 }
 
 /** 阅读正文统一使用 LF，只裁剪首尾空白行，保留内容行缩进和内部空行。 */
-function clean_output_text(text: string): string {
+function clean_payload_text(text: string): string {
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");
   let start = 0;
   let end = lines.length;
@@ -31,13 +34,16 @@ function clean_output_text(text: string): string {
   return lines.slice(start, end).join("\n");
 }
 
-/** 每块独立解释 JSON 并补齐行尾，共用一份阅读文档和高亮坐标；原始块由会话保留。 */
-export function format_agent_tool_output(contents: readonly string[]): AgentToolOutput {
+/** 输入与输出逐块解释 JSON 并补齐行尾，共用阅读文档和高亮坐标；原始块由会话保留。 */
+export function format_agent_tool_payload(
+  contents: readonly string[],
+  code_key?: string,
+): AgentToolPayload {
   const chunks: string[] = [];
   const ranges: AppViewerRange[] = [];
   let length = 0;
   for (const content of contents) {
-    const block = format_output_block(content);
+    const block = format_payload_block(content, code_key);
     const text = `${block.text}\n`;
     chunks.push(text);
     for (const range of block.ranges) {
@@ -49,20 +55,20 @@ export function format_agent_tool_output(contents: readonly string[]): AgentTool
 }
 
 /** 单块递归解释完整 JSON，先整理正文再写入文本和高亮，保证偏移准确。 */
-function format_output_block(content: string): AgentToolOutput {
+function format_payload_block(content: string, code_key?: string): AgentToolPayload {
   let root: JsonValue;
   try {
     root = JSON.parse(content) as JsonValue;
   } catch {
-    return { text: clean_output_text(content), ranges: [] };
+    return { text: clean_payload_text(content), ranges: [] };
   }
-  root = read_output_value(root);
-  if (typeof root === "string") return { text: clean_output_text(root), ranges: [] };
+  root = read_payload_value(root);
+  if (typeof root === "string") return { text: clean_payload_text(root), ranges: [] };
 
   const chunks: string[] = [];
   const ranges: AppViewerRange[] = [];
   let length = 0; // 与 CodeMirror 一致，范围使用 UTF-16 偏移
-  /** 按输出顺序记录不重叠范围，编辑器可直接构建装饰集合。 */
+  /** 按文本顺序记录范围，正文块先于块内词法范围，编辑器可直接构建装饰集合。 */
   const append = (text: string, kind?: AppViewerRange["kind"]): void => {
     if (kind !== undefined && text.length > 0) {
       ranges.push({ start: length, end: length + text.length, kind });
@@ -70,16 +76,35 @@ function format_output_block(content: string): AgentToolOutput {
     chunks.push(text);
     length += text.length;
   };
+  /** 在最终缩进文本上计算词法偏移，让代码高亮与正文底色共用坐标。 */
+  const write_text_block = (text: string, indent: string, code: boolean): void => {
+    const block = indent + "  " + text.replaceAll("\n", "\n" + indent + "  ");
+    append("\n");
+    const start = length;
+    append(block, "text");
+    if (code) {
+      for (const range of read_javascript_viewer_ranges(block)) {
+        ranges.push({ ...range, start: start + range.start, end: start + range.end });
+      }
+    }
+    append("\n" + indent);
+  };
   /** 结构递归与多行正文共用输出游标，正文中的标点不再作为 JSON 解析。 */
-  const write = (raw: JsonValue, depth: number): void => {
-    const value = read_output_value(raw);
+  const write = (raw: JsonValue, depth: number, key?: string): void => {
     const indent = "  ".repeat(depth);
+    // 根对象的代码字段保留源码，避免 `[1, 2]` 等合法脚本被递归解码成 JSON。
+    if (depth === 1 && key !== undefined && key === code_key && typeof raw === "string") {
+      const source = clean_payload_text(raw);
+      if (source.length > 0) {
+        write_text_block(source, indent, true);
+        return;
+      }
+    }
+    const value = read_payload_value(raw);
     if (typeof value === "string") {
-      const text = clean_output_text(value);
+      const text = clean_payload_text(value);
       if (text.includes("\n")) {
-        append("\n");
-        append(indent + "  " + text.replaceAll("\n", "\n" + indent + "  "), "text");
-        append("\n" + indent);
+        write_text_block(text, indent, false);
       } else {
         append(JSON.stringify(text), "string");
       }
@@ -93,7 +118,7 @@ function format_output_block(content: string): AgentToolOutput {
           append(JSON.stringify(key), "property");
           append(": ");
         }
-        write(array ? value[Number(key)]! : value[key]!, depth + 1);
+        write(array ? value[Number(key)]! : value[key]!, depth + 1, array ? undefined : key);
         if (index < keys.length - 1) append(",");
       });
       if (keys.length > 0) append("\n" + indent);

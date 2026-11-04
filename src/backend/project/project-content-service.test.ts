@@ -471,6 +471,28 @@ describe("ProjectContentService", () => {
       await database.close();
     }
   });
+  it("来源识别按输入顺序列出内置资产，未匹配格式不计为失败", async () => {
+    const { database, service } = await create_service();
+    const directory = project_path("mixed");
+    const supported = path.join(directory, "a.txt");
+    const unsupported = path.join(directory, "b.bin");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(supported, "こんにちは");
+    fs.writeFileSync(unsupported, "binary");
+    try {
+      expect(await service.inspect_sources([unsupported, directory])).toEqual([
+        { source_path: unsupported, files: [], godot_packs: [], failures: [] },
+        {
+          source_path: directory,
+          files: [{ path: supported, kind: "file" }],
+          godot_packs: [],
+          failures: [],
+        },
+      ]);
+    } finally {
+      await database.close();
+    }
+  });
   it("来源识别在扫描期间响应调用方取消", async () => {
     const { database, service } = await create_service();
     const source = project_path("cancel.txt");
@@ -551,9 +573,6 @@ describe("ProjectContentService", () => {
     const before = await database.get_all_items(lg_path);
     const source = project_path("a.txt");
     fs.writeFileSync(source, "こんにちは\nこんにちは");
-    expect(await service.inspect_sources([source])).toMatchObject([
-      { file_count: 1, contains_game: false, failures: [] },
-    ]);
     const result = await service.apply_file_changes({
       projectPath: lg_path,
       source: "test",
@@ -633,8 +652,7 @@ describe("ProjectContentService", () => {
           );
         expect(await service.inspect_sources([game])).toMatchObject([
           {
-            file_count: 1,
-            contains_game: true,
+            files: [{ path: game, kind: "game" }],
             godot_packs: [{ game_root: game, external_pcks: ["game.pck", "patch.pck"] }],
             failures: [],
           },

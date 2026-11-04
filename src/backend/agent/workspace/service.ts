@@ -865,7 +865,9 @@ export class AgentWorkspaceService {
           revisions: pick_apply_revisions(this.options.cache.snapshot().sectionRevisions),
         };
       }
-      await request_approval?.(summarize_applied_changes(preview.applied));
+      // 只按预演后的实际变化决定审批，拒绝或未变化的内容不参与判断。
+      if (Object.keys(preview.applied).some((scope) => scope !== "knowledge"))
+        await request_approval?.(summarize_applied_changes(preview.applied));
 
       let write_ack: AgentWorkspaceStoreResult;
       try {

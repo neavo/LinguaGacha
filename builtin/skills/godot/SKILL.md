@@ -188,7 +188,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 |`source_issues.jsonl` 有本游戏的记录|涉及的成员，其中的文字可能仍显示原文|
 |有 `selected` 为 `false` 的语言表|系统语言或游戏内语言菜单选中这些 locale 时，游戏仍显示其中的原文|
 |`game_files.reference.txt` 列出 C# 或 Mono 的 DLL、GDExtension 原生库|其中的文字仍显示原文|
-|`game_files.reference.txt` 列出文本格式的 `.tscn`、`.tres`，或其他自定义数据文件|其中的文字仍显示原文|
+|`game_files.reference.txt` 列出文本格式的 `.tscn`、`.tres`，或其他自定义数据文件|未作为通用数据处理时，其中的文字仍显示原文|
 
 每次交付都说明：
 

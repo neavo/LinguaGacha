@@ -1,15 +1,18 @@
 import { expect, it, vi } from "vitest";
-import { execute_inspect_sources_request } from "./inspect-sources";
+import {
+  execute_inspect_sources_request,
+  type WorkspaceInspectSourcesPort,
+} from "./inspect-sources";
 it("来源请求在父进程验证后交给领域端口", async () => {
-  const inspect = vi.fn(async (sources: string[]) =>
-    sources.map((source_path) => ({
-      source_path,
-      file_count: 1,
-      contains_game: false,
+  const inspections = [
+    {
+      source_path: "work/a.txt",
+      files: [{ path: "work/a.txt", kind: "file" as const }],
       godot_packs: [],
       failures: [],
-    })),
-  );
+    },
+  ];
+  const inspect = vi.fn<WorkspaceInspectSourcesPort>(async () => inspections);
   const signal = new AbortController().signal;
   await expect(
     execute_inspect_sources_request(
@@ -25,5 +28,6 @@ it("来源请求在父进程验证后交给领域端口", async () => {
       signal,
       inspect,
     ),
-  ).toMatchObject([{ source_path: "work/a.txt", file_count: 1 }]);
+  ).toEqual(inspections);
+  expect(inspect).toHaveBeenCalledExactlyOnceWith(["work/a.txt"], signal);
 });

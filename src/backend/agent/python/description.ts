@@ -12,7 +12,7 @@ interface PythonEnvironment {
   run(args: readonly string[]): Promise<void>; // 执行 python <args>，输出写入本工具日志
 }
 interface PythonApi {
-  environment(options?: Readonly<{ version?: string }>): PythonEnvironment; // 同步选择次版本，默认 "3.13"
+  environment(options?: Readonly<{ version?: string }>): PythonEnvironment; // 同步选择次版本，省略时使用应用默认次版本
   list(): Promise<readonly PythonInstallation[]>; // 应用已安装的解释器
 }
 declare const python: PythonApi;

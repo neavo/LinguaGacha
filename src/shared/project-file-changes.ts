@@ -1,10 +1,9 @@
 import type { GodotPackOrder, GodotPackPreview } from "./godot";
 
-/** 逐个来源返回只读识别结果，供审批计数和游戏确认使用。 */
+/** 按输入顺序返回内置能力识别的来源资产，未匹配格式不计为失败。 */
 export type SourceInspection = {
   source_path: string;
-  file_count: number;
-  contains_game: boolean;
+  files: { path: string; kind: "file" | "game" }[];
   godot_packs: GodotPackPreview[];
   failures: { path: string; message: string }[];
 };

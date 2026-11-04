@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   app_editor_whitespace_extension,
+  read_javascript_viewer_ranges,
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_syntax_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
@@ -78,5 +79,24 @@ describe("resolve_app_editor_syntax_extensions", () => {
     expect(editor_view === null ? null : syntaxTree(editor_view.state).topNode.type.name).toBe(
       "JsonText",
     );
+  });
+});
+
+describe("read_javascript_viewer_ranges", () => {
+  it("按 UTF-16 位置返回有序词法范围", () => {
+    const source = 'const f = (a) => "🌸" + 1; // c';
+    const ranges = read_javascript_viewer_ranges(source);
+    expect(ranges.map(({ start, end, kind }) => [source.slice(start, end), kind])).toEqual(
+      expect.arrayContaining([
+        ["const", "keyword"],
+        ["f", "definition"],
+        ['"🌸"', "string"],
+        ["1", "number"],
+        ["// c", "comment"],
+      ]),
+    );
+    for (let index = 1; index < ranges.length; index++) {
+      expect(ranges[index]!.start).toBeGreaterThanOrEqual(ranges[index - 1]!.end);
+    }
   });
 });

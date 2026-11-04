@@ -1,4 +1,5 @@
 import { agent_tool_call } from "../../../test/agent-tool-fixture";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
@@ -9,14 +10,16 @@ import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 import { check_typescript } from "../../../test/typescript-fixture";
 
 describe("workspace_run", () => {
-  it("模型可见的通用记录和生成接口声明可独立编译", () => {
+  it("模型可见的来源识别声明与真实契约双向兼容，通用记录可编译", () => {
     const tool = create_tool(async () => ({ images: [], execution: workspace_execution() }));
     const declaration = [...tool.description.matchAll(/```ts\n([\s\S]*?)\n```/gu)].find((match) =>
       match[1]!.includes("type GenericItems"),
     )![1]!;
     check_typescript([
-      declaration.replace("declare module '@lg/project'", "declare namespace Project") +
-        `
+      `import type { SourceInspection } from ${JSON.stringify(path.resolve("src/shared/project-file-changes.ts").replaceAll("\\", "/"))};
+      ${declaration.replace("declare module '@lg/project'", "declare namespace Project")}
+      const inspections: SourceInspection[] = await Project.inspectSources(['input']);
+      const described: Project.SourceInspection[] = inspections;
       const records: GenericItems = [{ message: 'text', locator: { record: 1, private: [true, null] } }];
       // @ts-expect-error 正文必须是字符串。
       const invalid: GenericItems = [{ message: 3 }];
