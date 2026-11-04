@@ -2,6 +2,33 @@ import { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_project = {
+  language: {
+    // 非中文界面共用语言码，新增语言只需维护这一份映射。
+    short: {
+      ALL: "ALL",
+      ZH: "ZH",
+      "ZH-HANT": "ZH-HANT",
+      EN: "EN",
+      JA: "JA",
+      KO: "KO",
+      RU: "RU",
+      AR: "AR",
+      DE: "DE",
+      FR: "FR",
+      PL: "PL",
+      ES: "ES",
+      IT: "IT",
+      PT: "PT",
+      HU: "HU",
+      TR: "TR",
+      TH: "TH",
+      ID: "ID",
+      VI: "VI",
+    },
+    title: "Project Languages",
+    source_description: "Set the language of the input text",
+    target_description: "Set the language of the output text",
+  },
   create: {
     title: "Create Project",
     subtitle: "Select source or create an empty self-contained .lg project",
@@ -18,7 +45,6 @@ export const en_us_project = {
       translation_prompt: "Translation Prompt",
     },
     action: "Create Project",
-    language_dialog_title: "Project Languages",
   },
   open: {
     title: "Open Project",

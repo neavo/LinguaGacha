@@ -4,12 +4,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_function_settings_page = {
   title: "Function Settings",
   fields: {
-    source_language: {
-      description: "Set the language of the input text",
-    },
-    target_language: {
-      description: "Set the language of the output text",
-    },
     preceding_lines_threshold: {
       title: "Preceding Context Entries",
       description:

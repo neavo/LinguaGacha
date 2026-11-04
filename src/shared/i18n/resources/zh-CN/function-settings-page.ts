@@ -1,12 +1,6 @@
 export const zh_cn_function_settings_page = {
   title: "功能设置",
   fields: {
-    source_language: {
-      description: "设置输入文本的语言",
-    },
-    target_language: {
-      description: "设置输出文本的语言",
-    },
     preceding_lines_threshold: {
       title: "参考前文条目数",
       description: "设置每个任务携带的参考前文条目数，会增加 Token 消耗，默认禁用",

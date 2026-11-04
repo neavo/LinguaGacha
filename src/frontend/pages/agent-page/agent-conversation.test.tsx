@@ -1,4 +1,7 @@
-const project_state = vi.hoisted(() => ({ loaded: true }));
+const project_state = vi.hoisted(() => ({
+  loaded: true,
+  languages: { source_language: "JA", target_language: "ZH" },
+}));
 const lifecycle = vi.hoisted(() => ({
   busy: false,
   can_close: true,

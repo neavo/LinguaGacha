@@ -1506,7 +1506,8 @@
 .agent-composer__instructions-trigger,
 .agent-composer__reset,
 .agent-composer__model-trigger,
-.agent-composer__approval-trigger {
+.agent-composer__approval-trigger,
+.agent-composer__language-trigger {
   padding-inline: 4px;
   color: var(--muted-foreground);
   font-size: var(--ui-font-size-12);
@@ -1526,7 +1527,8 @@
   white-space: nowrap;
 }
 
-.agent-composer__approval-trigger {
+.agent-composer__approval-trigger,
+.agent-composer__language-trigger {
   flex: 0 0 auto;
 }
 

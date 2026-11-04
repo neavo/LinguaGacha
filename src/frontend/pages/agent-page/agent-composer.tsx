@@ -1,5 +1,5 @@
 import type { AgentApprovalMode } from "@domain/setting";
-import type { JSX, Ref, RefObject } from "react";
+import type { JSX, ReactNode, Ref, RefObject } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import {
@@ -26,6 +26,7 @@ type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
   file_drop_target_ref?: RefObject<HTMLElement | null>;
   locked?: boolean;
+  language_control: ReactNode;
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[];
   state: AgentChatStatus; // 同一会话状态决定发送与停止收尾的可用性
@@ -115,6 +116,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           can_submit,
           actions: (
             <AgentTaskToolbar
+              language_control={props.language_control}
               add_file={add_file}
               open_instructions={open_instructions}
               locked={locked}

@@ -188,6 +188,7 @@ describe("AgentComposer", () => {
       root?.render(
         <TooltipProvider delay={0}>
           <AgentComposer
+            language_control={null}
             skills={[]}
             state="idle"
             stop_disabled={false}

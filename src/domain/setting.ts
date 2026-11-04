@@ -38,7 +38,7 @@ export const AGENT_APPROVAL_MODES = ["manual", "auto"] as const;
 export type AgentApprovalMode = (typeof AGENT_APPROVAL_MODES)[number];
 export const RECENT_PROJECT_SETTING_SCHEMA = Type.Object({
   path: Type.String(), // 最近工程路径。
-  name: Type.String(), // 最近工程展示名。
+  name: Type.String(), // 从路径生成的完整文件名，包含扩展名。
   updated_at: Type.String(), // 最近工程访问时间文本。
 });
 export type RecentProjectSetting = Static<typeof RECENT_PROJECT_SETTING_SCHEMA>;
@@ -176,7 +176,7 @@ export class Setting {
     const filtered_items = this.read_recent_projects().filter((item) => item.path !== project_path);
     filtered_items.unshift({
       path: project_path,
-      name: Setting.build_recent_project_display_name(project_path),
+      name: build_recent_project_display_name(project_path),
       updated_at: timestamp,
     });
     return new Setting({
@@ -248,13 +248,6 @@ export class Setting {
   public static normalize_project_save_mode(value: unknown): ProjectSaveMode {
     return is_project_save_mode(value) ? value : "MANUAL";
   }
-
-  /** 兼容两种路径分隔符，从文件名去除最后一个扩展名。 */
-  private static build_recent_project_display_name(project_path: string): string {
-    const base = project_path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "";
-    const dot_index = base.lastIndexOf(".");
-    return dot_index > 0 ? base.slice(0, dot_index) : base;
-  }
 }
 
 // 项目保存模式写入设置前先确认合法值，避免页面草稿值落盘
@@ -304,7 +297,12 @@ function normalize_number_setting(value: unknown, fallback: number): number {
   return Number.isFinite(number_value) ? number_value : fallback;
 }
 
-/** 规范化最近工程记录并过滤缺失路径的条目。 */
+/** 新增和读取记录共用文件名规则，保留扩展名并兼容两种路径分隔符。 */
+function build_recent_project_display_name(project_path: string): string {
+  return project_path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "";
+}
+
+/** 展示名始终取自路径，使旧记录读取后立即显示完整文件名。 */
 function normalize_recent_project_settings(value: unknown): RecentProjectSetting[] {
   if (!Array.isArray(value)) {
     return [];
@@ -313,11 +311,14 @@ function normalize_recent_project_settings(value: unknown): RecentProjectSetting
     .filter((item): item is JsonRecord => {
       return typeof item === "object" && item !== null && !Array.isArray(item);
     })
-    .map((item) => ({
-      path: String(item["path"] ?? "").trim(),
-      name: String(item["name"] ?? "").trim(),
-      updated_at: String(item["updated_at"] ?? "").trim(),
-    }))
+    .map((item) => {
+      const path = String(item["path"] ?? "").trim();
+      return {
+        path,
+        name: build_recent_project_display_name(path),
+        updated_at: String(item["updated_at"] ?? "").trim(),
+      };
+    })
     .filter((item) => item.path !== "");
 }
 

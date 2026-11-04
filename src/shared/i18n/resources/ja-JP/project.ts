@@ -1,6 +1,13 @@
+import { en_us_project } from "../en-US/project";
 import type { zh_cn_project } from "../zh-CN/project";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_project = {
+  language: {
+    short: en_us_project.language.short,
+    title: "プロジェクトの言語",
+    source_description: "入力テキストの言語を設定します",
+    target_description: "出力テキストの言語を設定します",
+  },
   create: {
     title: "プロジェクトを作成",
     subtitle: "元ファイルから、または空の .lg を作成。作成後は元ファイル不要",
@@ -17,7 +24,6 @@ export const ja_jp_project = {
       translation_prompt: "翻訳プロンプト",
     },
     action: "プロジェクトを作成",
-    language_dialog_title: "プロジェクトの言語",
   },
   open: {
     title: "プロジェクトを開く",

@@ -51,6 +51,7 @@ import {
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-chat-context";
 import { AgentDecision } from "./agent-decision";
+import { AgentLanguageControl } from "./agent-language-control";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
@@ -721,6 +722,12 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               inert={input_transition.locked || undefined}
             >
               <AgentComposer
+                language_control={
+                  <AgentLanguageControl
+                    locked={!active || active_inline_edit !== null || input_transition.locked}
+                    disconnected={unavailable_reason === "disconnected"}
+                  />
+                }
                 before_attach={require_project}
                 ref={composer_ref}
                 file_drop_target_ref={page_ref}

@@ -241,12 +241,12 @@ describe("AppSettingService", () => {
       recent_projects: [
         {
           path: "E:/Novel/alpha.lg",
-          name: "alpha",
+          name: "alpha.lg",
           updated_at: "2026-05-16T09:30:05.012",
         },
         {
           path: "E:/Novel/beta.lg",
-          name: "beta",
+          name: "beta.lg",
           updated_at: "2026-05-16T09:30:05.012",
         },
       ],
@@ -255,7 +255,7 @@ describe("AppSettingService", () => {
       recent_projects: [
         {
           path: "E:/Novel/alpha.lg",
-          name: "alpha",
+          name: "alpha.lg",
           updated_at: "2026-05-16T09:30:05.012",
         },
       ],
