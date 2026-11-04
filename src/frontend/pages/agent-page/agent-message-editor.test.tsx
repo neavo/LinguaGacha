@@ -1,3 +1,4 @@
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 import { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
 import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "@frontend/app/session/agent/agent-input-history";
 import type { AgentFileCandidate } from "@shared/agent-reference";
@@ -49,6 +50,8 @@ const chat_mocks = vi.hoisted(() => ({
   api_fetch: vi.fn(),
   open_event_stream: vi.fn(),
 }));
+const file_mocks = vi.hoisted(() => ({ toast: vi.fn(), path: vi.fn<(file: File) => string>() }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: file_mocks.toast }));
 const image_mocks = vi.hoisted(() => ({ upload: vi.fn() }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
@@ -98,6 +101,12 @@ describe("AgentMessageEditor", () => {
 
   beforeEach(() => {
     mention_files.files = [];
+    file_mocks.toast.mockClear();
+    file_mocks.path.mockReset().mockReturnValue("");
+    vi.stubGlobal(
+      "desktopApp",
+      create_desktop_bridge_api_mock({ methods: { getPathForFile: file_mocks.path } }),
+    );
     image_mocks.upload.mockImplementation(async (_path: string, file: File) =>
       uploaded_file(`webp-${file.name}`),
     );
@@ -110,6 +119,7 @@ describe("AgentMessageEditor", () => {
     root = null;
     default_input_state = null;
     image_mocks.upload.mockClear();
+    vi.unstubAllGlobals();
   });
 
   it("技能失效时恢复原文并保留编辑器和撤销历史，重新启用后恢复块", async () => {
@@ -613,6 +623,70 @@ describe("AgentMessageEditor", () => {
     ]);
   });
 
+  it.each(["drop", "editor-drop", "paste", "picker"] as const)(
+    "%s 将图片和文本上传，其余路径逐行插入选区并支持撤销",
+    async (source) => {
+      const input_state = create_input_state();
+      const view = await render_editor({ input_state });
+      const editor = get_editor(view);
+      await set_document(editor, "前文替换后文", 2);
+      await act(async () => editor.dispatch({ selection: EditorSelection.range(2, 4) }));
+      const files = [
+        new File([], "photo.PNG"),
+        new File([], "notes.JSON", { type: "application/octet-stream" }),
+        new File([], "book.pdf"),
+        new File([], "archive file"),
+      ];
+      file_mocks.path.mockImplementation((file) => `E:\\资料\\${file.name}`);
+      await add_files(view, files, source);
+      const text = "前文\nE:\\资料\\book.pdf\nE:\\资料\\archive file\n后文";
+      expect(editor.state.doc.toString()).toBe(text);
+      expect(input_state.draft.read()).toEqual({
+        text,
+        attachments: image_attachments("webp-photo.PNG", "webp-notes.JSON"),
+      });
+      expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
+      expect(image_mocks.upload.mock.calls.map((call) => (call[1] as File).name)).toEqual([
+        "photo.PNG",
+        "notes.JSON",
+      ]);
+      expect(file_mocks.toast).not.toHaveBeenCalled();
+      await act(async () => {
+        undo(editor);
+      });
+      expect(editor.state.doc.toString()).toBe("前文替换后文");
+    },
+  );
+
+  it("多个无路径文件只提示一次，同时保留可上传文件与可用路径", async () => {
+    const input_state = create_input_state();
+    const view = await render_editor({ input_state });
+    file_mocks.path
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("E:/book.pdf");
+    await add_files(
+      view,
+      [
+        new File([], "virtual.zip"),
+        new File([], "virtual.docx"),
+        new File([], "book.pdf"),
+        new File([], "notes.txt"),
+      ],
+      "paste",
+    );
+    expect(input_state.draft.read()).toEqual({
+      text: "E:/book.pdf",
+      attachments: image_attachments("webp-notes.txt"),
+    });
+    expect(file_mocks.toast).toHaveBeenCalledExactlyOnceWith(
+      "warning",
+      "agent_page.error.invalid_file_path",
+      { description: "virtual.zip\nvirtual.docx" },
+    );
+    expect(image_mocks.upload).toHaveBeenCalledOnce();
+  });
+
   it("文件选择返回时遵循当前编辑锁", async () => {
     const input_state = create_input_state();
     const view = await render_editor({ input_state });
@@ -1070,4 +1144,30 @@ async function dispatch_key(
     content.dispatchEvent(event);
   });
   return event;
+}
+
+/** 通过用户文件入口验证分流，正文拖放还要经过 CodeMirror 的事件接管。 */
+async function add_files(
+  view: HTMLElement,
+  files: File[],
+  source: "drop" | "editor-drop" | "paste" | "picker",
+): Promise<void> {
+  await act(async () => {
+    if (source === "picker") {
+      const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input")!;
+      Object.defineProperty(input, "files", { configurable: true, value: files });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+    const event = new Event(source === "paste" ? "paste" : "drop", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, source === "paste" ? "clipboardData" : "dataTransfer", {
+      value: { types: ["Files"], files },
+    });
+    const target =
+      source === "editor-drop" ? get_editor(view).contentDOM : view.querySelector("form")!;
+    target.dispatchEvent(event);
+  });
 }

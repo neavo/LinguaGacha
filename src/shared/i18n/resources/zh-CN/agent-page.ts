@@ -154,6 +154,7 @@ export const zh_cn_agent_page = {
   upload: { uploading: "正在上传", failed: "上传失败" },
   file_saved: "文件已保存",
   error: {
+    invalid_file_path: "无效的文件路径 …",
     decision: "决定提交失败 …",
     restore: "会话恢复失败 …",
     connection: "连接中断，正在等待重连 …",

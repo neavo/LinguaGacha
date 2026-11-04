@@ -1,3 +1,4 @@
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
   type JSX,
@@ -58,6 +59,36 @@ import {
 import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-input-draft";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AgentFileDropTarget } from "./agent-file-drop-target";
+
+/** 编辑器按扩展名选择上传附件，图片格式对应后端 `read_image_type`。 */
+const AGENT_UPLOAD_EXTENSIONS: readonly string[] = Object.freeze([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "bmp",
+  "avif",
+  "txt",
+  "json",
+  "jsonl",
+  "md",
+  "markdown",
+  "ini",
+  "csv",
+  "tsv",
+  "yaml",
+  "yml",
+  "toml",
+  "xml",
+  "log",
+  "srt",
+  "ass",
+  "ssa",
+  "vtt",
+  "po",
+  "pot",
+  "lrc",
+]);
 
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
@@ -247,9 +278,8 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       </AppButton>
     ) : null,
   );
-  // CodeMirror 扩展只创建一次，文件拖放读取当前上传权限。
-  const can_append_files_ref = useRef(can_append_files);
-  can_append_files_ref.current = can_append_files;
+  // CodeMirror 扩展只创建一次，通过 ref 调用当前文件分流入口。
+  const append_files_ref = useRef<(files: Iterable<File>) => void>(() => undefined);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_state.revision;
@@ -298,11 +328,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                 const transfer = event.dataTransfer;
                 if (transfer === null || !Array.from(transfer.types).includes("Files"))
                   return false;
-                // 在 CodeMirror 读取文本文件前消费事件，上传只进入当前编辑器的草稿。
+                // 在 CodeMirror 读取文本文件前消费事件，交给统一文件入口。
                 event.preventDefault();
                 event.stopPropagation();
-                if (can_append_files_ref.current)
-                  input_state_ref.current.draft.append(transfer.files);
+                append_files_ref.current(transfer.files);
                 return true;
               },
             }),
@@ -521,10 +550,43 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     draft.write({ ...draft.read(), attachments });
   }, []);
 
-  /** 输入只交给常驻草稿，上传状态和取消由草稿自身拥有。 */
+  /** 附件交给常驻草稿，其余本机文件以独立行写入正文，保留原路径。 */
   const append_files = (files: Iterable<File>): void => {
-    if (can_append_files) props.input_state.draft.append(files);
+    const view = view_ref.current;
+    if (!can_append_files || view === null) return;
+    const uploads: File[] = [];
+    const paths: string[] = [];
+    const skipped: string[] = [];
+    for (const file of files) {
+      const extension = file.name.includes(".") ? file.name.split(".").at(-1)!.toLowerCase() : "";
+      if (AGENT_UPLOAD_EXTENSIONS.includes(extension)) {
+        uploads.push(file);
+        continue;
+      }
+      const path = window.desktopApp.getPathForFile(file); // 虚拟 File 没有磁盘路径，Electron 返回空串。
+      if (path === "") skipped.push(file.name);
+      else paths.push(path);
+    }
+    if (paths.length > 0) {
+      const { from, to } = view.state.selection.main;
+      // 路径独占一行，选区两侧已有换行时直接复用。
+      const before = from > 0 && view.state.sliceDoc(from - 1, from) !== "\n" ? "\n" : "";
+      const after =
+        to < view.state.doc.length && view.state.sliceDoc(to, to + 1) !== "\n" ? "\n" : "";
+      const text = before + paths.join("\n") + after;
+      view.dispatch({
+        changes: { from, to, insert: text },
+        selection: EditorSelection.cursor(from + text.length),
+      });
+      view.focus();
+    }
+    if (uploads.length > 0) props.input_state.draft.append(uploads);
+    if (skipped.length > 0)
+      push_toast("warning", t("agent_page.error.invalid_file_path"), {
+        description: skipped.join("\n"),
+      });
   };
+  append_files_ref.current = append_files;
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
   const remove_attachment = (index: number): void => {
