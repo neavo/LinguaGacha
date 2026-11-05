@@ -9,35 +9,21 @@ import { QUALITY_RULE_KINDS, QualityRule } from "../../../domain/quality";
 
 const workspaces: string[] = [];
 
-it("知识的创建、更新和删除按 JSONL 收窄，坏行不进入意图", async () => {
+it("知识整篇更新按 JSONL 收窄，坏行不进入意图", async () => {
   const workspace = create_workspace();
-  write(
-    workspace,
-    AGENT_WORKSPACE_CHANGE_PATHS.knowledge.creates,
-    JSON.stringify({ path: "a.md", text: "多行\n正文" }),
-  );
   write(
     workspace,
     AGENT_WORKSPACE_CHANGE_PATHS.knowledge.updates,
     [
-      JSON.stringify({ path: "b.md", fp: "abcd", text: "" }),
-      JSON.stringify({ path: "bad.md", fp: "abcd", text: null }),
+      JSON.stringify({ fp: "abcd", text: "多行\n正文" }),
+      JSON.stringify({ path: "notes.md", fp: "abcd", text: "旧结构" }),
     ].join("\n"),
-  );
-  write(
-    workspace,
-    AGENT_WORKSPACE_CHANGE_PATHS.knowledge.deletes,
-    JSON.stringify({ path: "c.md", fp: "abcd" }),
   );
   const parsed = await prepare_agent_workspace_changes({
     nativeFs: new NativeFs(),
     workspacePath: workspace,
   });
-  expect(parsed.batch.knowledge).toEqual([
-    { op: "create", path: "a.md", text: "多行\n正文", line: 1 },
-    { op: "update", path: "b.md", fp: "abcd", text: "", line: 1 },
-    { op: "delete", path: "c.md", fp: "abcd", line: 1 },
-  ]);
+  expect(parsed.batch.knowledge).toEqual([{ fp: "abcd", text: "多行\n正文", line: 1 }]);
   expect(parsed.rejected).toMatchObject([
     { scope: "knowledge", line: 2, reason: "invalid_change" },
   ]);

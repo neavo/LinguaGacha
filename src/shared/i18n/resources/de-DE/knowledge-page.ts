@@ -5,10 +5,11 @@ export const de_de_knowledge_page = {
   knowledge: "Projektwissen",
   empty: {
     user: "Keine Benutzer-Skills",
-    knowledge: "Kein Projektwissen",
   },
   readonly: "Schreibgeschützt",
   personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
+  knowledge_description:
+    "Mit dem Projekt gespeicherte Einstellungen, Konventionen und Fortschritte",
   install: {
     title: "Installationsanleitung",
     description: "Sende den Skill-Link an AGENT und bitte ihn, den Skill zu installieren",

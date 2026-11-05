@@ -1,5 +1,7 @@
-import type { KnowledgeDocument, KnowledgeIntent } from "../../shared/project-knowledge";
-import { resolve_knowledge_changes, type KnowledgeWrite } from "./project-knowledge";
+import {
+  project_knowledge_fingerprint,
+  project_knowledge_text_too_large,
+} from "./project-knowledge";
 import type { AppliedFiles } from "../../shared/project-file-changes";
 import { insert_by_sort } from "./insert-by-sort";
 import type { PDFDocumentRecord, PDFPageRecord } from "../../shared/pdf";
@@ -58,6 +60,12 @@ export type AgentWorkspaceItemUpdateIntent = Readonly<{
   update: ProjectItemManualUpdate;
 }>;
 
+export type AgentWorkspaceKnowledgeUpdateIntent = Readonly<{
+  line: number;
+  fp: string;
+  text: string;
+}>;
+
 export type AgentWorkspacePromptUpdateIntent = Readonly<{
   line: number;
   kind: PromptKind;
@@ -95,7 +103,7 @@ export type AgentWorkspaceQualityIntents = Readonly<{
 }>;
 
 export type AgentWorkspaceIntentBatch = Readonly<{
-  knowledge: readonly KnowledgeIntent[];
+  knowledge: readonly AgentWorkspaceKnowledgeUpdateIntent[];
   pages: readonly AgentWorkspacePageUpdateIntent[];
   items: readonly AgentWorkspaceItemUpdateIntent[];
   prompts: readonly AgentWorkspacePromptUpdateIntent[];
@@ -103,7 +111,7 @@ export type AgentWorkspaceIntentBatch = Readonly<{
 }>;
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
-  knowledge: readonly KnowledgeDocument[];
+  knowledge: string | null; // 已保存的知识正文，本批不涉及或尚未保存时为 null
   pdfDocuments: readonly PDFDocumentRecord[];
   items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
@@ -118,7 +126,7 @@ export type AgentWorkspaceQualitySummary = Readonly<{
 }>;
 
 export type AgentWorkspaceAppliedSummary = Readonly<{
-  knowledge?: Readonly<{ created: string[]; updated: string[]; deleted: string[] }>;
+  knowledge?: Readonly<{ updated: number }>;
   files?: AppliedFiles;
   pages?: Readonly<{ updated: number }>;
   items?: Readonly<{ updated: number }>;
@@ -137,7 +145,7 @@ export type AgentWorkspacePromptWrite = Readonly<{
 }>;
 
 export type AgentWorkspaceWriteResolution = Readonly<{
-  knowledgeChanges: KnowledgeWrite[];
+  knowledgeChange: string | null;
   pageChanges: PDFPageRecord[];
   itemChanges: ProjectItemWriteChange[];
   qualityChanges: AgentWorkspaceQualityWrite[];
@@ -228,7 +236,7 @@ export function resolve_agent_workspace_writes(args: {
   current: AgentWorkspaceCurrentFacts;
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
-  const knowledge = resolve_knowledge_changes(args.current.knowledge, args.batch.knowledge);
+  const knowledge = resolve_knowledge(args.batch.knowledge, args.current.knowledge);
   const pages = resolve_agent_workspace_page_updates(args.batch.pages, args.current.pdfDocuments);
   const current_items = args.current.items
     .map(read_item_write_record)
@@ -260,13 +268,13 @@ export function resolve_agent_workspace_writes(args: {
   ) as Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
   const prompt_kinds = prompt_result.changes.map((change) => change.kind);
   return {
-    knowledgeChanges: knowledge.writes,
+    knowledgeChange: knowledge.change,
     pageChanges: pages.changes,
     itemChanges: item_changes,
     qualityChanges: quality_changes,
     promptChanges: prompt_result.changes,
     applied: {
-      ...(knowledge.summary === null ? {} : { knowledge: knowledge.summary }),
+      ...(knowledge.change === null ? {} : { knowledge: { updated: 1 } }),
       ...(pages.changes.length ? { pages: { updated: pages.changes.length } } : {}),
       ...(item_changes.length === 0 ? {} : { items: { updated: item_changes.length } }),
       ...(quality_changes.length === 0 ? {} : { quality: quality_summary }),
@@ -387,6 +395,40 @@ function resolve_items(
     });
   }
   return { changes, rejected, candidates };
+}
+
+/** 知识与提示词同样整篇替换，同批多行须基于同一指纹给出同一正文。 */
+function resolve_knowledge(
+  intents: readonly AgentWorkspaceKnowledgeUpdateIntent[],
+  stored: string | null,
+): {
+  change: string | null;
+  rejected: AgentWorkspaceRejectedChange[];
+  candidates: AgentWorkspaceKnowledgeUpdateIntent[];
+} {
+  const first = intents[0];
+  if (first === undefined) return { change: null, rejected: [], candidates: [] };
+  const line = Math.min(...intents.map((intent) => intent.line));
+  const reject = (reason: AgentWorkspaceRejectionReason, message?: string) => ({
+    change: null,
+    rejected: [
+      {
+        scope: "knowledge" as const,
+        op: "update" as const,
+        line,
+        reason,
+        ...(message === undefined ? {} : { message }),
+      },
+    ],
+    candidates: [],
+  });
+  const fp = project_knowledge_fingerprint(stored);
+  if (intents.some((intent) => intent.fp !== fp)) return reject("fp_mismatch");
+  if (intents.some((intent) => intent.text !== first.text)) return reject("merge_conflict");
+  if (project_knowledge_text_too_large(first.text))
+    return reject("invalid_change", "knowledge_document_too_large");
+  if (first.text === stored) return { change: null, rejected: [], candidates: [] };
+  return { change: first.text, rejected: [], candidates: [{ line, fp, text: first.text }] };
 }
 
 /** 同 kind prompt 的同值行去重，异值行按对象冲突处理。 */

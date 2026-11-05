@@ -17,8 +17,7 @@ it.each([
   const parsed: ParsedAgentWorkspaceChanges = {
     batch: {
       ...create_empty_agent_workspace_intent_batch(),
-      knowledge:
-        kind === "knowledge" ? [{ op: "create", line: 1, path: "note.md", text: "note" }] : [],
+      knowledge: kind === "knowledge" ? [{ line: 1, fp: "test", text: "note" }] : [],
       items: kind === "mixed" ? [{ item_id: 1, fp: "test", line: 1, update: { dst: "译文" } }] : [],
     },
     files: {

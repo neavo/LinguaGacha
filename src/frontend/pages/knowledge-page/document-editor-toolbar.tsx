@@ -9,14 +9,14 @@ import "./document-editor.css";
 /** 文件与角色编辑共用导航、保存反馈和危险操作，具体写入由各自编辑状态拥有。 */
 export function DocumentEditorToolbar(props: {
   path: string[];
-  confirm_description: string;
+  confirm_description?: string; // 仅在提供 action 时使用
   status: "saved" | "modified" | "save_failed" | "conflict" | null; // 在途保存也显示已修改。
   recovery?: ReactNode;
   busy: boolean;
   locked: boolean;
   action?: "delete" | "reset" | undefined;
   on_back: () => void;
-  on_action: () => Promise<boolean>;
+  on_action?: () => Promise<boolean>;
 }): JSX.Element {
   const { t } = useI18n();
   const [confirming, set_confirming] = useState(false);
@@ -100,7 +100,7 @@ export function DocumentEditorToolbar(props: {
           </span>
         }
       />
-      {props.action && (
+      {props.action && props.on_action && (
         <AppConfirmDialog
           open={confirming}
           confirmDisabled={props.locked}
@@ -108,7 +108,7 @@ export function DocumentEditorToolbar(props: {
           description={props.confirm_description}
           onClose={() => set_confirming(false)}
           onConfirm={async () => {
-            if (!props.locked && (await props.on_action())) set_confirming(false);
+            if (!props.locked && (await props.on_action?.())) set_confirming(false);
           }}
         />
       )}

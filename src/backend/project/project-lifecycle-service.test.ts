@@ -1,6 +1,5 @@
 import { resolve_app_locale } from "../../domain/app-language";
 import { format_i18n_message } from "../../shared/i18n";
-import { KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT } from "../../shared/project-knowledge";
 import { FileFormatService } from "../file/file-format-service";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { evb_fixture } from "../../test/evb-fixture";
@@ -55,13 +54,11 @@ describe("ProjectLifecycleService", () => {
         path: project,
         source_paths: [source],
       });
-      const documents = await database.list_knowledge(project);
-      expect(documents).toHaveLength(1);
-      expect(documents[0]).toMatchObject({ path: KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT });
-      expect(documents[0]!.text).toContain(
-        format_i18n_message(resolve_app_locale(language), "project_knowledge.create"),
+      const text = await database.read_knowledge(project);
+      expect(text).toContain(
+        `# ${format_i18n_message(resolve_app_locale(language), "project_knowledge.title")}`,
       );
-      expect(documents[0]!.text).toContain(source);
+      expect(text).toContain(source);
     } finally {
       await database.close();
     }

@@ -299,7 +299,6 @@ export class ProjectContentService {
       const { itemIdsByFile, ...result } = await this.write_store.apply_file_changes({
         ...args,
         sourceRecord: {
-          action: "import",
           paths: args.sourcePaths ?? [],
           locale: resolve_app_locale(this.app_settings.read_app_language()),
         },
@@ -579,7 +578,6 @@ export class ProjectContentService {
             revisionSections: ["files", "items"],
             source: "project_import_files",
             sourceRecord: {
-              action: "import",
               paths: source_paths,
               locale: resolve_app_locale(this.app_settings.read_app_language()),
             },

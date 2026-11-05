@@ -1,6 +1,6 @@
 import { create_file_generator } from "../tools/generate-files";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
-import { project_knowledge_entry } from "../../project/project-knowledge";
+import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
 import type { ProjectContentService } from "../../project/project-content-service";
 import { preview_file_changes } from "./file-changes";
@@ -206,10 +206,11 @@ export class AgentWorkspaceService {
         | "get_all_meta"
         | "read_asset_content"
         | "read_pdf_document"
-        | "list_knowledge"
+        | "read_knowledge"
         | "read_pdf_documents"
         | "read_file_counts"
       >;
+      knowledge: Pick<ProjectKnowledgeService, "read">; // 投影与知识页共用补位模板
       runtimeGate: {
         run_agent_project_write<T>(operation: (signal: AbortSignal) => Promise<T> | T): Promise<T>;
       };
@@ -540,9 +541,9 @@ export class AgentWorkspaceService {
     const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
       ? await this.options.database.read_pdf_documents(project_path)
       : [];
-    const knowledge = await this.options.database.list_knowledge(project_path);
+    const knowledge = await this.options.knowledge.read(project_path);
     const project_meta: JsonRecord = {
-      knowledge: knowledge.map(project_knowledge_entry),
+      knowledge: { fp: knowledge.fp },
       ...language,
       counts: {
         files: snapshot_files.length,
@@ -559,11 +560,9 @@ export class AgentWorkspaceService {
     try {
       // 所有并行写入必须结算后再清理。否则迟到写入会在失败目录删除后复活半成品。
       const write_results = await Promise.allSettled([
-        ...knowledge.map((document) =>
-          this.native_fs.write_file(
-            path.join(this.root_path, AGENT_WORKSPACE_PATHS.knowledge, document.path),
-            document.text,
-          ),
+        this.native_fs.write_file(
+          path.join(this.root_path, AGENT_WORKSPACE_PATHS.knowledge),
+          knowledge.text,
         ),
         ...Object.entries(AGENT_WORKSPACE_REFERENCES).map(([relative_path, content]) =>
           this.native_fs.write_file(path.join(this.root_path, relative_path), content),
@@ -813,8 +812,8 @@ export class AgentWorkspaceService {
         const quality = this.options.cache.quality.readBlock(); // 读取边界已校验规则，预演只借用当前事实。
         const current: AgentWorkspaceCurrentFacts = {
           knowledge: parsed.batch.knowledge.length
-            ? await this.options.database.list_knowledge(active.projectPath)
-            : [],
+            ? await this.options.database.read_knowledge(active.projectPath)
+            : null,
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
           pdfDocuments: (
             await Promise.all(
@@ -1196,11 +1195,7 @@ function summarize_applied_changes(
     return summary === undefined ? 0 : summary.created + summary.updated + summary.deleted;
   };
   return {
-    knowledge: applied.knowledge
-      ? applied.knowledge.created.length +
-        applied.knowledge.updated.length +
-        applied.knowledge.deleted.length
-      : 0,
+    knowledge: applied.knowledge?.updated ?? 0,
     files: 0,
     items: applied.items?.updated ?? 0,
     pages: applied.pages?.updated ?? 0,
@@ -1271,27 +1266,19 @@ function normalize_workspace_rejections(
     ? read_workspace_json(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.projectMeta))[
         "knowledge"
       ]
-    : [];
-  const baseline_knowledge = new Map(
-    (Array.isArray(knowledge_meta) ? knowledge_meta : [])
-      .filter(is_json_record)
-      .map((row) => [String(row["path"]).toLowerCase(), String(row["fp"])]),
-  );
+    : undefined;
+  const baseline_knowledge = is_json_record(knowledge_meta)
+    ? String(knowledge_meta["fp"])
+    : undefined;
   return rejections.map((rejection) => {
     if (rejection.reason !== "fp_mismatch" && rejection.reason !== "target_missing")
       return rejection;
-    if (rejection.scope === "knowledge") {
-      const key = String(rejection["path"]).replaceAll("\\", "/").toLowerCase();
-      const fp = baseline_knowledge.get(key);
-      const intents = batch.knowledge.filter(
-        (intent) => intent.path.replaceAll("\\", "/").toLowerCase() === key,
-      );
-      return fp !== undefined &&
-        intents.length > 0 &&
-        intents.every((intent) => intent.op !== "create" && intent.fp === fp)
+    if (rejection.scope === "knowledge")
+      return baseline_knowledge !== undefined &&
+        batch.knowledge.length > 0 &&
+        batch.knowledge.every((intent) => intent.fp === baseline_knowledge)
         ? rejection
         : { ...rejection, reason: "invalid_change" };
-    }
     if (rejection.scope === "pages") {
       const fp = baseline_pages.get(JSON.stringify([rejection["file_path"], rejection["page"]]));
       const intents = batch.pages.filter(

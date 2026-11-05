@@ -281,8 +281,8 @@ export class ProjectDatabase {
     }
   }
   /** 在数据库串行读作用域内取得知识正文。 */
-  public list_knowledge(project_path: string) {
-    return this.read(project_path, (db) => db.list_knowledge(project_path));
+  public read_knowledge(project_path: string) {
+    return this.read(project_path, (db) => db.read_knowledge(project_path));
   }
 
   public get_all_meta(

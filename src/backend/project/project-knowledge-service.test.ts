@@ -7,9 +7,10 @@ import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "./project-session-state";
 import { ProjectWriteStore } from "./project-write-store";
 import { ProjectKnowledgeService } from "./project-knowledge-service";
+import { project_knowledge_file } from "./project-knowledge";
 import { adapt_project_change } from "./project-write-event-adapter";
 
-it("知识接口按单篇指纹保存并发布分区事件，运行占用拒绝写入", async () => {
+it("旧工程读取时补模板，首次保存才落盘，之后按指纹保存并发布分区事件", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-knowledge-"));
   const project = path.join(temporary.path, "test.lg");
   const db = new ProjectDatabase("1.0.0");
@@ -23,36 +24,32 @@ it("知识接口按单篇指纹保存并发布分区事件，运行占用拒绝�
       () => undefined,
       (change) => adapt_project_change(session, change),
     );
-    const service = new ProjectKnowledgeService(db, session, writes, gate);
-    const created = await service.save({ path: "a.md", text: "first" });
+    const service = new ProjectKnowledgeService(db, session, writes, gate, {
+      read_app_language: () => "EN",
+    });
+    const template = await service.read();
+    expect(template).toEqual(project_knowledge_file(null, "en-US"));
+    expect(await db.read_knowledge(project)).toBeNull();
+    const created = await service.save({ fp: template.fp, text: "first" });
     expect(created.changes[0]).toMatchObject({
       updatedSections: ["knowledge"],
       sectionRevisions: { knowledge: 1 },
     });
-    await service.save({ path: "b.md", text: "unrelated" });
-    const updated = await service.save({ path: "a.md", text: "second", fp: created.document.fp });
+    expect(created.document.text).toBe("first");
+    const updated = await service.save({ fp: created.document.fp, text: "second" });
     expect(updated.document.text).toBe("second");
-    expect(await service.list()).toEqual([
-      { path: "a.md", fp: updated.document.fp },
-      { path: "b.md", fp: expect.any(String) },
-    ]);
-    await expect(
-      service.save({ path: "a.md", text: "stale", fp: created.document.fp }),
-    ).rejects.toMatchObject({ code: "data.revision_conflict" });
-    await expect(service.save({ path: "A.md", text: "collision" })).rejects.toMatchObject({
+    await expect(service.save({ fp: created.document.fp, text: "stale" })).rejects.toMatchObject({
+      code: "data.revision_conflict",
+    });
+    await expect(service.save({ text: "missing fp" })).rejects.toMatchObject({
       code: "request.validation_failed",
     });
     const lease = gate.begin_runtime("agent");
-    await expect(service.delete({ path: "a.md", fp: updated.document.fp })).rejects.toMatchObject({
+    await expect(service.save({ fp: updated.document.fp, text: "busy" })).rejects.toMatchObject({
       code: "runtime.busy",
     });
-    expect((await service.read({ path: "a.md" })).text).toBe("second");
     gate.finish_runtime(lease);
-    await service.delete({ path: "a.md", fp: updated.document.fp });
-    await expect(
-      service.save({ path: "a.md", text: "stale", fp: updated.document.fp }),
-    ).rejects.toMatchObject({ code: "data.revision_conflict" });
-    await expect(service.read({ path: "a.md" })).rejects.toMatchObject({ code: "file.not_found" });
+    expect((await service.read()).text).toBe("second");
   } finally {
     await db.close();
   }

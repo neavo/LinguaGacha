@@ -283,6 +283,7 @@ export class BackendServices {
         session_state,
         write_store,
         this.runtime_gate,
+        this.app_setting_service,
       ),
       summary: new ProjectSummaryService(session_state, this.cache_manager),
       content: new ProjectContentService(

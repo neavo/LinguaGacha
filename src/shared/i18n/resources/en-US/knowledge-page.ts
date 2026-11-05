@@ -5,10 +5,10 @@ export const en_us_knowledge_page = {
   knowledge: "Project knowledge",
   empty: {
     user: "No user skills",
-    knowledge: "No project knowledge",
   },
   readonly: "Read-only",
   personality_description: "Personality settings for your intelligent assistant",
+  knowledge_description: "Settings, conventions and progress saved with the project",
   install: {
     title: "Installation guide",
     description: "Send the skill link to AGENT and ask it to install the skill",

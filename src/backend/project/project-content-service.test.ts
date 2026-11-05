@@ -1,5 +1,3 @@
-import { format_i18n_message } from "../../shared/i18n";
-import { KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT } from "../../shared/project-knowledge";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import {
@@ -421,11 +419,8 @@ describe("ProjectContentService", () => {
         conflict_action: "skip",
         expected_section_revisions: { files: 0, items: 0 },
       });
-      let document = (await database.list_knowledge(lg_path))[0]!;
-      expect(document.path).toBe(KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT);
-      expect(document.text).toContain(format_i18n_message("zh-CN", "project_knowledge.import"));
-      expect(document.text).toContain(temp_dir);
-      const before = document.text;
+      const before = (await database.read_knowledge(lg_path))!;
+      expect(before).toContain(temp_dir);
       await service.apply_file_changes({
         projectPath: lg_path,
         source: "agent_workspace_apply",
@@ -437,9 +432,9 @@ describe("ProjectContentService", () => {
         deletes: ["source.txt"],
         signal: new AbortController().signal,
       });
-      document = (await database.list_knowledge(lg_path))[0]!;
-      expect(document.text.startsWith(before)).toBe(true);
-      expect(document.text).toContain(source);
+      const after = (await database.read_knowledge(lg_path))!;
+      expect(after.startsWith(before)).toBe(true);
+      expect(after).toContain(source);
     } finally {
       await database.close();
     }

@@ -1,7 +1,7 @@
 export const en_us_project_knowledge = {
-  title: "Local source paths",
-  description: "Paths to the original sources on the user’s disk, recorded at import time",
-  create: "Create project",
-  import: "Add files",
-  separator: ", ",
+  title: "Project knowledge",
+  decisions: "User decisions",
+  materials: "Materials and formats",
+  tasks: "Tasks in progress",
+  paths: "Local paths",
 } as const;

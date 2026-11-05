@@ -1,7 +1,7 @@
 export const zh_cn_project_knowledge = {
-  title: "原始来源路径",
-  description: "导入时记录的原始来源在用户磁盘上的路径",
-  create: "创建工程",
-  import: "添加文件",
-  separator: "、",
+  title: "工程知识",
+  decisions: "用户决定",
+  materials: "材料与格式",
+  tasks: "进行中任务",
+  paths: "本地路径",
 } as const;

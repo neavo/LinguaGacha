@@ -5,10 +5,10 @@ export const ja_jp_knowledge_page = {
   knowledge: "工程ナレッジ",
   empty: {
     user: "ユーザースキルはありません",
-    knowledge: "工程ナレッジはありません",
   },
   readonly: "読み取り専用",
   personality_description: "アシスタントのキャラクター設定",
+  knowledge_description: "工程と一緒に保存される設定・取り決め・進捗",
   install: {
     title: "インストールガイド",
     description: "スキルのリンクを AGENT に送り、「このスキルをインストールして」と伝えてください",
