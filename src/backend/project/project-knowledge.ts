@@ -9,7 +9,7 @@ import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 export type KnowledgeSourceRecord = Readonly<{ paths: readonly string[]; locale: Locale }>;
 
 /** 模板章节的固定顺序，与 `knowledge-creator` 技能的章节表一一对应。 */
-const PROJECT_KNOWLEDGE_SECTIONS = ["decisions", "materials", "tasks", "paths"] as const;
+const PROJECT_KNOWLEDGE_SECTIONS = ["decisions", "materials", "paths"] as const;
 
 /**
  * 指纹绑定已保存的正文，尚未保存时绑定空基线。
