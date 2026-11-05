@@ -1,4 +1,4 @@
-import type { KnowledgeDocument } from "../../shared/project-knowledge";
+import { PROJECT_KNOWLEDGE_DOCUMENT } from "../../shared/project-knowledge";
 import { database_error } from "./database-error";
 import { read_project_revision } from "../../domain/project-revision";
 import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
@@ -138,31 +138,24 @@ export class ProjectDatabaseAccess {
     return this.with_project_connection(project_path, (db) => this.read_all_meta(db));
   }
 
-  /** 直接读取持久化知识，返回值由调用方生成索引或正文。 */
-  public list_knowledge(project_path: string): KnowledgeDocument[] {
-    return this.with_project_connection(project_path, (db) =>
-      db
-        .prepare("SELECT path, text FROM knowledge ORDER BY path")
-        .all()
-        .map((row) => ({ path: row_text(row, "path"), text: row_text(row, "text") })),
-    );
+  /** 单篇知识沿用路径主键表，固定以文档名为键，其余行不再读取。 */
+  public read_knowledge(project_path: string): string | null {
+    return this.with_project_connection(project_path, (db) => {
+      const row = db
+        .prepare("SELECT text FROM knowledge WHERE path = ?")
+        .get(PROJECT_KNOWLEDGE_DOCUMENT);
+      return row === undefined ? null : row_text(row, "text");
+    });
   }
 
-  /** 工程层先校验路径和正文，调用方事务负责原子提交。 */
-  public set_knowledge(project_path: string, path: string, text: string): void {
+  /** 工程层先校验正文，调用方事务负责原子提交。 */
+  public set_knowledge(project_path: string, text: string): void {
     this.with_project_connection(project_path, (db) =>
       db
         .prepare(
           "INSERT INTO knowledge(path, text) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET text = excluded.text",
         )
-        .run(path, text),
-    );
-  }
-
-  /** 只删除指定文档，知识生命周期由工程写入层拥有。 */
-  public delete_knowledge(project_path: string, path: string): void {
-    this.with_project_connection(project_path, (db) =>
-      db.prepare("DELETE FROM knowledge WHERE path = ?").run(path),
+        .run(PROJECT_KNOWLEDGE_DOCUMENT, text),
     );
   }
 

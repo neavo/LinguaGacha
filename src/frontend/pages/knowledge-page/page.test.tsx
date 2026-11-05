@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { AgentSkillEntry, AgentSkillIdentity } from "@shared/agent-skills";
-import type { DocumentListGroupHelp } from "./document-list";
 import { KnowledgePage } from "./page";
 import { zh_cn_knowledge_page } from "@shared/i18n/resources/zh-CN/knowledge-page";
 
@@ -27,11 +26,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => ({ owner: mocks.owner }),
   useDesktopState: () => ({ settings_snapshot: mocks.settings }),
 }));
-vi.mock("./project-knowledge", () => ({
-  ProjectKnowledgeGroup: ({ help }: { help: DocumentListGroupHelp }) => (
-    <button aria-label={help.label} onClick={help.on_click} />
-  ),
-}));
+vi.mock("./project-knowledge", () => ({ ProjectKnowledgeEditor: () => null }));
 vi.mock("./skill-editor", () => ({
   SkillEditor: ({ skill, on_back }: { skill: AgentSkillIdentity; on_back: () => void }) => (
     <button onClick={on_back}>

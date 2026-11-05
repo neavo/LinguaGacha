@@ -24,13 +24,7 @@ export async function preview_file_changes(args: {
     updates: parsed.files.updates.map((entry) => ({ ...entry })),
   };
   const other = [
-    ...parsed.batch.knowledge.map((row) => ({
-      scope: "knowledge" as const,
-      op: row.op,
-      line: row.line,
-      path: row.path,
-    })),
-    ...(["items", "pages", "prompts"] as const).flatMap((scope) =>
+    ...(["knowledge", "items", "pages", "prompts"] as const).flatMap((scope) =>
       parsed.batch[scope].map((row) => ({ scope, op: "update" as const, line: row.line })),
     ),
     ...Object.values(parsed.batch.quality).flatMap((group) =>

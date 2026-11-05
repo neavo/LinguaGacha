@@ -138,6 +138,7 @@ export class GuiBackendBootstrap {
         cache: services.state.cache,
         proofreading: services.proofreading.query,
         database: resources.database,
+        knowledge: services.project.knowledge,
         runtimeGate: services.state.runtimeGate,
         writeStore: services.state.writes,
         files: services.project.content,

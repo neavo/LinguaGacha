@@ -7,6 +7,7 @@ import type {
   AgentSkillSource,
   AgentSkillsSnapshot,
 } from "@shared/agent-skills";
+import { PROJECT_KNOWLEDGE_DOCUMENT } from "@shared/project-knowledge";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -28,14 +29,14 @@ import {
   type DocumentListRowProps,
 } from "./document-list";
 import { PersonalityEditor } from "./personality-editor";
-import { ProjectKnowledgeEditor, ProjectKnowledgeGroup } from "./project-knowledge";
+import { ProjectKnowledgeEditor } from "./project-knowledge";
 import { SkillEditor } from "./skill-editor";
 import "./knowledge-page.css";
 
 type KnowledgePageEntry =
   | { kind: "personality" }
   | { kind: "skill"; skill: AgentSkillIdentity }
-  | { kind: "project_knowledge"; path: string };
+  | { kind: "project_knowledge" };
 
 /** 两类新增内容都交给 AGENT，指南文案按分组区分。 */
 type AgentGuide = "install" | "knowledge_create";
@@ -51,9 +52,7 @@ export function KnowledgePage(): JSX.Element {
       </div>
       {selected?.kind === "personality" && <PersonalityEditor on_back={back} />}
       {selected?.kind === "skill" && <SkillEditor skill={selected.skill} on_back={back} />}
-      {selected?.kind === "project_knowledge" && (
-        <ProjectKnowledgeEditor path={selected.path} on_back={back} />
-      )}
+      {selected?.kind === "project_knowledge" && <ProjectKnowledgeEditor on_back={back} />}
     </>
   );
 }
@@ -155,11 +154,19 @@ function KnowledgeList({
           </DragDropProvider>
         )}
       </DocumentListGroup>
-      <ProjectKnowledgeGroup
-        active={active}
+      <DocumentListGroup
+        title={t("knowledge_page.knowledge")}
         help={guide_help("knowledge_create")}
-        on_open={(path) => on_open({ kind: "project_knowledge", path })}
-      />
+      >
+        <Card render={<ul />} className="document-list__rows">
+          <DocumentListRow
+            name={PROJECT_KNOWLEDGE_DOCUMENT}
+            description={t("knowledge_page.knowledge_description")}
+            open_disabled={false}
+            on_open={() => on_open({ kind: "project_knowledge" })}
+          />
+        </Card>
+      </DocumentListGroup>
       <AppActionDialog
         open={guide_open}
         description={t(`knowledge_page.${guide}.description`)}

@@ -1,9 +1,4 @@
-export const KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT = "local-source-paths.md";
+/** 每个工程只有一篇知识文档，数据库键、工作区投影和页面标题共用这个名称。 */
+export const PROJECT_KNOWLEDGE_DOCUMENT = "project-knowledge.md";
 
-export type KnowledgeDocument = Readonly<{ path: string; text: string }>;
-export type KnowledgeEntry = Readonly<{ path: string; description?: string; fp: string }>;
-export type KnowledgeFile = KnowledgeDocument & Readonly<{ fp: string }>;
-export type KnowledgeIntent =
-  | Readonly<{ op: "create"; line: number; path: string; text: string }>
-  | Readonly<{ op: "update"; line: number; path: string; fp: string; text: string }>
-  | Readonly<{ op: "delete"; line: number; path: string; fp: string }>;
+export type KnowledgeFile = Readonly<{ text: string; fp: string }>;

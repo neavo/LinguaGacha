@@ -353,6 +353,7 @@ it("删除变更目录后继续执行技能、提交和重置", async () => {
       cache: services.state.cache,
       proofreading: services.proofreading.query,
       database: resources.database,
+      knowledge: services.project.knowledge,
       runtimeGate: {
         run_agent_project_write: async (operation) => operation(new AbortController().signal),
       },

@@ -61,10 +61,8 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/diagnostics/renderer-error", (body) => context.recordRendererError(body));
 
   const knowledge = services.project.knowledge;
-  context.postJson("/api/project/knowledge/list", () => knowledge.list());
-  context.postJson("/api/project/knowledge/read", (body) => knowledge.read(body));
+  context.postJson("/api/project/knowledge/read", () => knowledge.read());
   context.postJson("/api/project/knowledge/save", (body) => knowledge.save(body));
-  context.postJson("/api/project/knowledge/delete", (body) => knowledge.delete(body));
   const lifecycle = services.project.lifecycle;
   context.postJson("/api/session/project/manifest", () => services.project.readManifest());
   context.postJson("/api/session/project/snapshot", () => lifecycle.get_project_snapshot());

@@ -8,7 +8,7 @@ import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider"
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { DOCUMENT_AUTOSAVE_DELAY_MS } from "./use-autosave-document";
-import type { KnowledgeFile } from "@shared/project-knowledge";
+import { PROJECT_KNOWLEDGE_DOCUMENT, type KnowledgeFile } from "@shared/project-knowledge";
 import { KnowledgePage } from "./page";
 
 const mocks = vi.hoisted(() => ({
@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   commit: vi.fn(),
   toast: vi.fn(),
   owner: null as string | null,
-  seq: 0,
   settings: {},
 }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
@@ -33,55 +32,31 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
     commit_project_write: mocks.commit,
   }),
   useRuntimeSnapshot: () => ({ owner: mocks.owner }),
-  useProjectChangeSignal: () => ({
-    seq: mocks.seq,
-    reason: "test",
-    updated_sections: ["knowledge"],
-    results: [],
-  }),
 }));
 
-describe("知识页面的工程知识分组", () => {
+describe("工程知识编辑器", () => {
   let root: Root;
   let host: HTMLDivElement;
-  let disk: Map<string, KnowledgeFile>;
+  let disk: KnowledgeFile;
   beforeEach(async () => {
     mocks.owner = null;
-    mocks.seq = 0;
     mocks.toast.mockReset();
     mocks.api.mockReset();
     mocks.commit.mockReset();
-    disk = new Map(["b.md", "a.md"].map((path) => [path, { path, text: "original", fp: "1" }]));
+    disk = { text: "original", fp: "1" };
     mocks.commit.mockImplementation(async ({ run }: { run: () => Promise<unknown> }) => ({
       payload: await run(),
     }));
-    mocks.api.mockImplementation(
-      async (url: string, body: { path?: string; text?: string; fp?: string }) => {
-        if (url === "/api/skills/snapshot") return { skills: [] };
-        if (url.endsWith("/list")) return [...disk.values()].map(({ path, fp }) => ({ path, fp }));
-        const file = disk.get(body.path!);
-        if (url.endsWith("/read")) {
-          if (!file) throw new DesktopApiError({ code: "file.not_found" });
-          return { ...file };
-        }
-        if (body.fp !== undefined && body.fp !== file?.fp)
-          throw new DesktopApiError({ code: "data.revision_conflict" });
-        if (url.endsWith("/save")) {
-          const document = {
-            path: body.path!,
-            text: body.text!,
-            fp: String(Number(file?.fp ?? 0) + 1),
-          };
-          disk.set(document.path, document);
-          return { accepted: true, changes: [], document };
-        }
-        if (url.endsWith("/delete")) {
-          disk.delete(body.path!);
-          return { accepted: true, changes: [] };
-        }
-        throw new Error(url);
-      },
-    );
+    mocks.api.mockImplementation(async (url: string, body: { text?: string; fp?: string }) => {
+      if (url === "/api/skills/snapshot") return { skills: [] };
+      if (url.endsWith("/read")) return { ...disk };
+      if (body.fp !== disk.fp) throw new DesktopApiError({ code: "data.revision_conflict" });
+      if (url.endsWith("/save")) {
+        disk = { text: body.text!, fp: String(Number(disk.fp) + 1) };
+        return { accepted: true, changes: [], document: { ...disk } };
+      }
+      throw new Error(url);
+    });
     host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await render();
@@ -146,69 +121,48 @@ describe("知识页面的工程知识分组", () => {
     await act(async () => vi.advanceTimersByTimeAsync(DOCUMENT_AUTOSAVE_DELAY_MS));
   }
 
-  it("排序、分区刷新和自动保存贯通统一写入入口，重读失败保留列表，确实为空才显示空态", async () => {
-    const group = host.querySelector('section[aria-label="工程知识"]')!;
-    const headings = () =>
-      [...group.querySelectorAll(".document-list__heading")].map((node) => node.textContent);
-    expect(headings()).toEqual(["a.md", "b.md"]);
-    disk.set("notes/world.md", { path: "notes/world.md", text: "new", fp: "1" });
-    mocks.seq += 1;
-    await render();
-    expect(headings()).toEqual(["a.md", "b.md", "notes/world.md"]);
-    await click("notes/world.md");
-    const list_reads = () => mocks.api.mock.calls.filter(([url]) => url.endsWith("/list")).length;
-    const before = list_reads();
-    mocks.seq += 1;
-    await render();
-    expect(list_reads()).toBe(before);
-    await edit("---\ndescription: 世界设定\n---\nnew note");
+  it("打开单篇知识，自动保存贯通统一写入入口", async () => {
+    await click(PROJECT_KNOWLEDGE_DOCUMENT);
+    expect(view().state.doc.toString()).toBe("original");
+    await edit("new note");
     await save();
-    expect(disk.get("notes/world.md")?.text).toContain("new note");
+    expect(disk.text).toBe("new note");
+    expect(mocks.api).toHaveBeenCalledWith("/api/project/knowledge/save", {
+      fp: "1",
+      text: "new note",
+    });
     expect(mocks.commit).toHaveBeenCalledWith(
       expect.objectContaining({ operation: "knowledge.save" }),
     );
     await click("返回");
     expect(host.querySelector<HTMLElement>(".knowledge-page__list")?.hidden).toBe(false);
-    expect(group.querySelector(".document-list__empty")).toBeNull();
-    mocks.api.mockRejectedValueOnce(new Error("offline"));
-    mocks.seq += 1;
-    await render();
-    expect(mocks.toast).toHaveBeenCalledOnce();
-    expect(headings()).toEqual(["a.md", "b.md", "notes/world.md"]);
-    disk.clear();
-    mocks.seq += 1;
-    await render();
-    expect(group.querySelector(".document-list__rows")).toBeNull();
-    expect(group.querySelector(".document-list__empty")).not.toBeNull();
   });
 
   it("冲突保留草稿，放弃读取最新正文，覆盖先取最新指纹", async () => {
-    await click("a.md");
-    disk.set("a.md", { path: "a.md", text: "external", fp: "2" });
+    await click(PROJECT_KNOWLEDGE_DOCUMENT);
+    disk = { text: "external", fp: "2" };
     await edit("draft");
     await save();
     expect(view().state.doc.toString()).toBe("draft");
     expect(host.textContent).toContain("覆盖");
     await click("放弃修改");
     expect(view().state.doc.toString()).toBe("external");
-    disk.set("a.md", { path: "a.md", text: "external again", fp: "3" });
+    disk = { text: "external again", fp: "3" };
     await edit("chosen");
     await save();
     await click("覆盖");
-    expect(disk.get("a.md")).toMatchObject({ text: "chosen", fp: "4" });
+    expect(disk).toEqual({ text: "chosen", fp: "4" });
     expect(mocks.api).toHaveBeenCalledWith("/api/project/knowledge/save", {
-      path: "a.md",
       fp: "3",
       text: "chosen",
     });
   });
 
-  it("运行占用只读，Ctrl+S 立即保存，删除需要确认", async () => {
-    await click("a.md");
+  it("运行占用只读，Ctrl+S 立即保存", async () => {
+    await click(PROJECT_KNOWLEDGE_DOCUMENT);
     mocks.owner = "batch_translation";
     await render();
     expect(host.querySelector(".cm-content")?.getAttribute("contenteditable")).toBe("false");
-    expect(host.querySelector<HTMLButtonElement>('button[aria-label="删除"]')?.disabled).toBe(true);
     mocks.owner = null;
     await render();
     await edit("saved now");
@@ -217,16 +171,6 @@ describe("知识页面的工程知识分组", () => {
         .querySelector(".document-editor")!
         .dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true })),
     );
-    expect(disk.get("a.md")?.text).toBe("saved now");
-    await click("删除");
-    expect(disk.has("a.md")).toBe(true);
-    await click("取消");
-    expect(disk.has("a.md")).toBe(true);
-    await click("删除");
-    await click("确认");
-    expect(disk.has("a.md")).toBe(false);
-    expect(mocks.commit).toHaveBeenCalledWith(
-      expect.objectContaining({ operation: "knowledge.delete" }),
-    );
+    expect(disk.text).toBe("saved now");
   });
 });

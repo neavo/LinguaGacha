@@ -1,4 +1,3 @@
-import type { KnowledgeIntent } from "../../../shared/project-knowledge";
 import type { Static } from "@earendil-works/pi-ai";
 import type { AgentWorkspacePageUpdateIntent } from "../../project/agent-workspace-page-write";
 import path from "node:path";
@@ -16,6 +15,7 @@ import {
   create_empty_agent_workspace_intent_batch,
   type AgentWorkspaceIntentBatch,
   type AgentWorkspaceItemUpdateIntent,
+  type AgentWorkspaceKnowledgeUpdateIntent,
   type AgentWorkspacePromptUpdateIntent,
   type AgentWorkspaceQualityCreateIntent,
   type AgentWorkspaceQualityDeleteIntent,
@@ -24,7 +24,7 @@ import {
 } from "../../project/agent-workspace-write";
 
 import {
-  AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS,
+  AGENT_WORKSPACE_KNOWLEDGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_FILE_SCHEMAS,
   AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
   AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA,
@@ -139,34 +139,17 @@ export async function prepare_agent_workspace_changes(args: {
         });
     }
   }
-  const knowledge: KnowledgeIntent[] = [];
-  for (const operation of AGENT_WORKSPACE_CHANGE_OPERATIONS) {
-    for (const row of await read_change_rows(
-      args.nativeFs,
-      path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.knowledge[operation]),
-    )) {
-      if (operation === "creates" && Check(AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS.creates, row.value))
-        knowledge.push({ ...row.value, line: row.line, op: "create" });
-      else if (
-        operation === "updates" &&
-        Check(AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS.updates, row.value)
-      )
-        knowledge.push({ ...row.value, line: row.line, op: "update" });
-      else if (
-        operation === "deletes" &&
-        Check(AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS.deletes, row.value)
-      )
-        knowledge.push({ ...row.value, line: row.line, op: "delete" });
-      else
-        rejected.push(
-          invalid_change(
-            AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS[operation],
-            row,
-            "knowledge",
-            operation === "creates" ? "create" : operation === "updates" ? "update" : "delete",
-          ),
-        );
-    }
+  const knowledge: AgentWorkspaceKnowledgeUpdateIntent[] = [];
+  for (const row of await read_change_rows(
+    args.nativeFs,
+    path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.knowledge.updates),
+  )) {
+    if (Check(AGENT_WORKSPACE_KNOWLEDGE_UPDATE_SCHEMA, row.value))
+      knowledge.push({ ...row.value, line: row.line });
+    else
+      rejected.push(
+        invalid_change(AGENT_WORKSPACE_KNOWLEDGE_UPDATE_SCHEMA, row, "knowledge", "update"),
+      );
   }
   return { batch: { items, prompts, quality, pages, knowledge }, files, rejected };
 }

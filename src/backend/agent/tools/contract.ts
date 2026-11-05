@@ -13,7 +13,7 @@ import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import {
-  AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS,
+  AGENT_WORKSPACE_KNOWLEDGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_FILE_SCHEMAS,
   AGENT_WORKSPACE_FP_SCHEMA,
   AGENT_WORKSPACE_PAGE_SCHEMA,
@@ -66,12 +66,10 @@ const sort_notes = [
 /** 参考资料随工作区提供给模型，说明提交副作用和跨记录关系。 */
 const reference_notes: Readonly<Record<string, readonly string[]>> = {
   knowledge: [
-    "`path` 相对 `knowledge/`，以 `.md` 结尾，每段须为跨平台合法文件名。路径比较不区分大小写，同一路径不能既是文档又是目录。",
-    `\`fp\` 从 \`project_meta.json\` 的 \`knowledge\` 复制。\`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。frontmatter 可省略，有则须为 YAML 映射，其中 \`description\` 须为字符串。`,
-    "新建只用于尚不存在的路径。同批每个路径只出现一次，改名时同批删除旧路径并新建新路径。",
+    `\`fp\` 从 \`project_meta.json\` 的 \`knowledge\` 复制。\`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。`,
   ],
   project_meta: [
-    "`files` 列出全部资产，原稿位于 `sources/<file_path>`。`knowledge` 列出工程知识，正文位于 `knowledge/<path>`。",
+    `\`files\` 列出全部资产，原稿位于 \`sources/<file_path>\`。\`knowledge\` 是工程知识的指纹，正文位于 \`${AGENT_WORKSPACE_PATHS.knowledge}\`。`,
   ],
   // 文件变更没有同名数据集，规则自成主题，读取元数据时不必加载写入约束。
   files: [
@@ -144,7 +142,7 @@ const definition = {
     },
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
-      purpose: "工程语言、完整数量、文件顺序与知识索引",
+      purpose: "工程语言、完整数量、文件顺序与知识指纹",
       schema: AGENT_WORKSPACE_PROJECT_META_SCHEMA,
       reference: reference_path("project_meta"),
     },
@@ -169,16 +167,13 @@ const definition = {
     ...quality_entry_datasets,
   },
   changes: {
-    knowledge: Object.fromEntries(
-      AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
-        operation,
-        {
-          path: AGENT_WORKSPACE_CHANGE_PATHS.knowledge[operation],
-          schema: AGENT_WORKSPACE_KNOWLEDGE_SCHEMAS[operation],
-          reference: reference_path("knowledge"),
-        },
-      ]),
-    ),
+    knowledge: {
+      updates: {
+        path: AGENT_WORKSPACE_CHANGE_PATHS.knowledge.updates,
+        schema: AGENT_WORKSPACE_KNOWLEDGE_UPDATE_SCHEMA,
+        reference: reference_path("knowledge"),
+      },
+    },
     files: Object.fromEntries(
       AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
         operation,
