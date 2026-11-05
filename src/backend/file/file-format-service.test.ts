@@ -1,7 +1,6 @@
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { read_resource } from "./godot/resource";
 import { read_pack } from "./godot/pack";
-import { godot_pack_preview } from "./godot/source";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { read_godot_metadata } from "./godot/item";
 import { read_translation } from "./godot/translation";
@@ -20,6 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NativeFs } from "../../native/native-fs";
 import { write_zip } from "../../test/zip-fixture";
 import { FileFormatService } from "./file-format-service";
+import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
 import { create_renpy_fixture, compiled_fixture } from "../../test/renpy-fixture";
 import { read_renpy_metadata } from "./renpy/item";
 import { read_renpy_format_metadata } from "./renpy/profile";
@@ -161,10 +161,8 @@ describe("FileFormatService", () => {
       create_pdf_execution(),
       native,
     );
-    const entries = await service.with_source_directories([bad, good], (signal) =>
-      service.collect_source_file_entries([bad, good], signal),
-    );
-    expect(entries.map((entry) => entry.source.kind)).toEqual(["failure", "file"]);
+    const result = await service.summarize_source_files([bad, good]);
+    expect(result.source_file_count).toBe(1);
   });
 
   it("已展开游戏的零包预览也检查正式执行前新增的包", async () => {
@@ -173,10 +171,8 @@ describe("FileFormatService", () => {
       service = create_service();
     for (const [name, bytes] of create_godot_fixture())
       native.write_file_sync(path.join(temp.path, name), bytes);
-    const [entry] = await service.collect_source_file_entries([temp.path]);
-    if (entry?.source.kind !== "game" || entry.source.file_type !== "GODOT")
-      throw new Error("Expected Godot source");
-    expect(godot_pack_preview(entry.source.game).external_pcks).toEqual([]);
+    const preview = await service.summarize_source_files([temp.path]);
+    expect(preview.godot_packs?.[0]?.external_pcks).toEqual([]);
     native.write_file_sync(
       path.join(temp.path, "extra.pck"),
       godot_pack_fixture(create_godot_fixture()),
@@ -372,7 +368,7 @@ describe("FileFormatService", () => {
     });
   });
 
-  it("来源发现按真实路径去重并跳过未支持扩展名", async () => {
+  it("源文件摘要按去重后的互斥扩展名统计", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-file-format-service-"),
     );
@@ -387,19 +383,18 @@ describe("FileFormatService", () => {
     fs.writeFileSync(path.join(source_a, "nested", "a.md"), "markdown", "utf-8");
     fs.writeFileSync(ignored, "ignored", "utf-8");
     fs.writeFileSync(path.join(source_b, "c.json"), "{}", "utf-8");
-    const entries = await service.collect_source_file_entries([
-      "",
-      source_a,
-      first_txt,
-      ignored,
-      source_b,
-      source_a,
-    ]);
-    expect(entries.map((entry) => entry.source)).toEqual([
-      { kind: "file", format: "txt" },
-      { kind: "file", format: "md" },
-      { kind: "file", format: "json" },
-    ]);
+    const expected_format_hit_counts = Object.fromEntries(
+      PROJECT_SOURCE_FORMATS.map((format) => [format.id, 0]),
+    );
+    Object.assign(expected_format_hit_counts, { txt: 1, md: 1, json: 1 });
+
+    expect(
+      await service.summarize_source_files(["", source_a, first_txt, ignored, source_b, source_a]),
+    ).toEqual({
+      contains_game: false,
+      source_file_count: 3,
+      format_hit_counts: expected_format_hit_counts,
+    });
   });
 
   it("收集单文件路径时使用文件名作为工程相对路径", async () => {
@@ -451,7 +446,7 @@ describe("FileFormatService", () => {
   });
 });
 
-it("识别失败与正常来源共同进入只读发现结果，正式导入重新识别", async () => {
+it("识别失败与正常来源共同进入只读摘要，正式导入重新识别", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-discover-"));
   const source = path.join(temp.path, "bad.exe"),
     text = path.join(temp.path, "ok.txt");
@@ -462,8 +457,8 @@ it("识别失败与正常来源共同进入只读发现结果，正式导入重�
     { target_language: "ZH" },
     async () => null,
   );
-  const entries = await service.collect_source_file_entries([temp.path]);
-  expect(entries.map((entry) => entry.source.kind)).toEqual(["failure", "file"]);
+  const summary = await service.summarize_source_files([temp.path]);
+  expect(summary.source_file_count).toBe(1);
   expect(fs.readdirSync(temp.path).sort()).toEqual(["bad.exe", "ok.txt"]);
   fs.writeFileSync(
     source,
@@ -488,7 +483,7 @@ it("识别失败与正常来源共同进入只读发现结果，正式导入重�
     },
   });
 });
-it("正式导入先拒绝根目录恢复材料，来源发现只读", async () => {
+it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-recovery-"));
   const native = new NativeFs();
   native.write_file_sync(path.join(temp.path, "data/System.json"), "{}");
@@ -502,9 +497,8 @@ it("正式导入先拒绝根目录恢复材料，来源发现只读", async () =
     async () => null,
     native,
   );
-  const entries = await service.collect_source_file_entries([temp.path]);
-  expect(entries).toHaveLength(1);
-  const entry = entries[0]!;
+  expect((await service.summarize_source_files([temp.path])).source_file_count).toBe(1);
+  const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
   await expect(service.prepare_source(entry)).rejects.toThrow(
     "Unknown game recovery layout: " + path.join(workspace, "rollback"),
   );
@@ -593,7 +587,7 @@ it.each(["read", "existing-read"])("导入 %s 失败保留准备结果并允许�
   );
 });
 
-it("产品门面完成来源发现、准备、容器、翻译与导出", async () => {
+it("产品门面完成来源摘要、准备、容器、翻译与导出", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-product-"));
   const root = path.join(temp.path, "game"),
     native = new NativeFs(),
@@ -610,10 +604,11 @@ it("产品门面完成来源发现、准备、容器、翻译与导出", async (
     { source_path: carrier, rel_path: "game.pck" },
   ]);
   expect(unsupported!.source).toEqual({ kind: "file", format: undefined });
-  const entries = await service.collect_source_file_entries([root]);
-  expect(entries).toHaveLength(1);
-  const entry = entries[0]!;
-  expect(entry.file_type).toBe("GODOT");
+  expect(await service.summarize_source_files([root])).toMatchObject({
+    source_file_count: 1,
+    format_hit_counts: { godot: 1 },
+  });
+  const entry = (await service.collect_source_file_entries([root]))[0]!;
   const container = await service.prepare_source(entry);
   const parsed = await service.parse_asset(entry.rel_path, container.content, entry.file_type);
   if (parsed.kind !== "items") throw new Error("Expected game items");

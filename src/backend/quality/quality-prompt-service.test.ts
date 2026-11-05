@@ -25,7 +25,7 @@ describe("QualityPromptService", () => {
     cleanup_databases.push(database);
     const { service, session_state, app_root } = create_service(database);
     const project_path = path.join(create_temp_dir(), "overrides.lg");
-    await database.create_project(project_path, "overrides");
+    await database.create_project(project_path);
     session_state.mark_loaded(project_path);
     const template_dir = path.join(app_root, "builtin", "translation_prompt", "template", "zh");
     fs.mkdirSync(template_dir, { recursive: true });
@@ -126,7 +126,7 @@ describe("QualityPromptService", () => {
     cleanup_databases.push(database);
     const { service, session_state, published } = create_service(database);
     const project_path = path.join(create_temp_dir(), "prompt.lg");
-    await database.create_project(project_path, "prompt");
+    await database.create_project(project_path);
     session_state.mark_loaded(project_path);
 
     await service.save({

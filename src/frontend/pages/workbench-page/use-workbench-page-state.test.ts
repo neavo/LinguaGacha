@@ -38,7 +38,7 @@ type RuntimeFixture = {
 };
 
 type WorkbenchPickerFixture = {
-  pickWorkbenchFilePath: ReturnType<typeof vi.fn<() => Promise<DesktopPathPickResult>>>;
+  pickSourceFilePaths: ReturnType<typeof vi.fn<() => Promise<DesktopPathPickResult>>>;
 };
 
 type ToastFixture = {
@@ -62,7 +62,7 @@ const runtime_fixture: { current: RuntimeFixture } = {
 
 const workbench_picker_fixture: { current: WorkbenchPickerFixture } = {
   current: {
-    pickWorkbenchFilePath: vi.fn<() => Promise<DesktopPathPickResult>>(),
+    pickSourceFilePaths: vi.fn<() => Promise<DesktopPathPickResult>>(),
   },
 };
 
@@ -347,7 +347,7 @@ describe("useWorkbenchPageState", () => {
     runtime_fixture.current = create_runtime_fixture();
 
     toast_fixture.current = create_toast_fixture();
-    workbench_picker_fixture.current.pickWorkbenchFilePath.mockReset();
+    workbench_picker_fixture.current.pickSourceFilePaths.mockReset();
     vi.mocked(api_fetch).mockReset();
     api_route_queues.clear();
   });
@@ -479,7 +479,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("选择器添加文件会委托到同一条按路径解析流程", async () => {
-    workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
+    workbench_picker_fixture.current.pickSourceFilePaths.mockResolvedValue({
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });
@@ -587,7 +587,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("选择不继承会直接提交 import-files", async () => {
-    workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
+    workbench_picker_fixture.current.pickSourceFilePaths.mockResolvedValue({
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });

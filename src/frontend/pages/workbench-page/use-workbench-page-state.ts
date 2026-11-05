@@ -593,7 +593,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
       return;
     }
 
-    const result = await window.desktopApp.pickWorkbenchFilePath();
+    const result = await window.desktopApp.pickSourceFilePaths();
     if (result.canceled || result.paths.length === 0) {
       return;
     }

@@ -12,13 +12,17 @@
   gap: 12px;
 }
 
+.project-lifecycle__format-group:first-of-type {
+  margin-top: 8px;
+}
+
 /* 与 Markdown 提示块同一视觉语言：左侧细线与同色浅底。 */
 .project-lifecycle__notice {
   display: flex;
   flex-shrink: 0;
   align-items: flex-start;
   gap: 8px;
-  margin: 0;
+  margin: 16px 0 0;
   border-left: 1px solid var(--project-lifecycle-notice);
   background: color-mix(in srgb, var(--project-lifecycle-notice) 6%, transparent);
   padding: 10px 12px;
@@ -33,6 +37,9 @@
 }
 
 .project-lifecycle__section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--ui-font-size-14);
   line-height: 1.5;
   letter-spacing: 0;
@@ -98,4 +105,15 @@
 .project-lifecycle__version-emphasis {
   color: var(--primary);
   overflow-wrap: anywhere;
+}
+
+.project-lifecycle__notice-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.project-lifecycle__section-title svg {
+  width: 14px;
+  height: 14px;
+  color: var(--project-lifecycle-muted);
 }

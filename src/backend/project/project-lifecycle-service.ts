@@ -50,6 +50,7 @@ import {
 } from "../../domain/project-settings";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
+import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   compute_project_prefilter_write,
@@ -360,53 +361,47 @@ export class ProjectLifecycleService {
       const default_preset_input = this.default_preset_reader.read();
       let snapshot!: ProjectDataSnapshot; // 初始化事务同步产出，失败时数据库入口抛错并清理新文件。
 
-      await this.database.create_project(
-        project_path,
-        this.build_project_name(source_paths, project_path),
-        (writer) => {
-          this.write_default_presets(writer, project_path, default_preset_input);
-          const source_text = append_source_record(null, {
-            action: "create",
-            paths: source_paths,
-            locale: resolve_app_locale(this.app_setting_service.read_app_language()),
-          });
-          if (source_text !== null) {
-            writer.set_knowledge(project_path, KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT, source_text);
-            writer.bump_section_revisions(project_path, ["knowledge"]);
-          }
-          for (const file of parsed_draft.files) {
-            writer.add_asset(
-              project_path,
-              file.rel_path,
-              file.content,
-              file.file_type,
-              file.pdf_document,
-              file.sort_index,
-            );
-          }
-          writer.set_items(
+      await this.database.create_project(project_path, (writer) => {
+        this.write_default_presets(writer, project_path, default_preset_input);
+        const source_text = append_source_record(null, {
+          action: "create",
+          paths: source_paths,
+          locale: resolve_app_locale(this.app_setting_service.read_app_language()),
+        });
+        if (source_text !== null) {
+          writer.set_knowledge(project_path, KNOWLEDGE_LOCAL_SOURCE_PATHS_DOCUMENT, source_text);
+          writer.bump_section_revisions(project_path, ["knowledge"]);
+        }
+        for (const file of parsed_draft.files) {
+          writer.add_asset(
             project_path,
-            build_project_item_persistent_records(prefilter_output.items) as unknown as JsonValue[],
+            file.rel_path,
+            file.content,
+            file.file_type,
+            file.pdf_document,
+            file.sort_index,
           );
-          writer.upsert_meta_entries(
-            project_path,
-            this.build_project_settings_meta({
-              project_settings,
-              prefilter_output,
-            }) as unknown as JsonRecord,
-          );
-          writer.upsert_meta_entries(project_path, {
-            "migration.asset_file_type_complete": true,
-          });
-          // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。
-          snapshot = new ProjectDataReader(writer).read_snapshot(
-            project_path,
-            Object.values(prefilter_output.items).sort(
-              (left, right) => left.item_id - right.item_id,
-            ),
-          );
-        },
-      );
+        }
+        writer.set_items(
+          project_path,
+          build_project_item_persistent_records(prefilter_output.items) as unknown as JsonValue[],
+        );
+        writer.upsert_meta_entries(
+          project_path,
+          this.build_project_settings_meta({
+            project_settings,
+            prefilter_output,
+          }) as unknown as JsonRecord,
+        );
+        writer.upsert_meta_entries(project_path, {
+          "migration.asset_file_type_complete": true,
+        });
+        // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。
+        snapshot = new ProjectDataReader(writer).read_snapshot(
+          project_path,
+          Object.values(prefilter_output.items).sort((left, right) => left.item_id - right.item_id),
+        );
+      });
 
       saved_assets = parsed_draft.files.length; // 激活失败仍由外层回执保留已经提交的资产数量。
       const response = await this.activate_project(project_path, snapshot);
@@ -626,6 +621,18 @@ export class ProjectLifecycleService {
   }
 
   /**
+   * 汇总可导入源文件总数和互斥格式命中数，不向 renderer 暴露展开后的本地文件路径
+   */
+  public async summarize_source_files(body: JsonRecord): Promise<ProjectSourceFileSummary> {
+    const source_paths = this.normalize_source_paths(body["source_paths"]);
+    // 来源摘要只统计格式命中，项目语言尚未选择时使用默认值。
+    const summary = await this.create_format_service(
+      DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+    ).summarize_source_files(source_paths);
+    return { ...summary, project_name: this.build_default_project_name(source_paths) };
+  }
+
+  /**
    * 构建项目语言、预过滤处理记录与进度 meta
    */
   private build_project_settings_meta(args: {
@@ -649,12 +656,12 @@ export class ProjectLifecycleService {
     return !(key in meta) && !(key in read_json_record(meta["prefilter_config"]));
   }
 
-  /**
-   * 新建工程名优先使用第一个源路径名称，否则使用输出文件名
-   */
-  private build_project_name(source_paths: string[], project_path: string): string {
-    const source_path = source_paths[0];
-    return source_path === undefined ? path.parse(project_path).name : path.basename(source_path);
+  /** 默认名由能判断文件类型的后端生成，落盘后只以 `.lg` 文件名为工程名。 */
+  private build_default_project_name(source_paths: string[]): string {
+    const first = source_paths[0];
+    if (first === undefined) return "";
+    if (source_paths.length > 1) return path.basename(path.dirname(first));
+    return this.native_fs.stat(first).isDirectory() ? path.basename(first) : path.parse(first).name;
   }
 
   /**

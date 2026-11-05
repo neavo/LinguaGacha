@@ -86,7 +86,7 @@ async function create_service(
   const database = new ProjectDatabase("1.0.0");
   const session_state = new ProjectSessionState();
   const lg_path = project_path("demo.lg");
-  await database.create_project(lg_path, "demo");
+  await database.create_project(lg_path);
   session_state.mark_loaded(lg_path);
   const publisher =
     project_change_publisher === undefined

@@ -196,7 +196,7 @@ async function pick_path(
 ): Promise<DesktopPathPickResult> {
   const main_window = options.getMainWindow();
   switch (request.kind) {
-    case "game-directory":
+    case "source-directory":
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openDirectory"],
       });
@@ -227,7 +227,7 @@ async function pick_path(
         request.default_name,
         build_project_file_filters(await create_dialog_text_resolver(options)),
       );
-    case "workbench-files":
+    case "source-files":
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openFile", "multiSelections"],
       });

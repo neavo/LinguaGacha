@@ -31,7 +31,7 @@ it("工作台同步读取提交缓存，PDF 修改、文本提交及文件删除
   });
   const summaries = vi.spyOn(DatabaseAccess.prototype, "read_pdf_summaries");
   try {
-    await database.create_project(project, "test", (writer) => {
+    await database.create_project(project, (writer) => {
       writer.add_asset(project, "book.pdf", bytes, "PDF", document);
       writer.add_asset(project, "script.txt", Buffer.from("こんにちは"), "TXT", null);
       writer.set_items(project, [create_item({})]);

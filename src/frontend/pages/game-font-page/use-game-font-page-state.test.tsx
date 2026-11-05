@@ -48,7 +48,7 @@ describe("useGameFontPageState", () => {
         methods: {
           pickGameFontFilePath: vi.fn(async () => ({ canceled: false, paths: [FONT_PATH] })),
           pickGameExecutablePath: vi.fn(async () => ({ canceled: false, paths: [GAME_PATH] })),
-          pickGameDirectoryPath: vi.fn(async () => ({ canceled: true, paths: [] })),
+          pickSourceDirectoryPath: vi.fn(async () => ({ canceled: true, paths: [] })),
         },
       }),
     });

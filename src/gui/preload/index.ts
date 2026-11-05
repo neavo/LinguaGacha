@@ -146,8 +146,8 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async pickProjectSavePath(default_name: string): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "project-save", default_name });
   },
-  async pickWorkbenchFilePath(): Promise<DesktopPathPickResult> {
-    return invoke_path_picker({ kind: "workbench-files" });
+  async pickSourceFilePaths(): Promise<DesktopPathPickResult> {
+    return invoke_path_picker({ kind: "source-files" });
   },
   /** 将默认目录交给宿主，复用最近目录和取消结果的处理。 */
   async pickDirectory(default_path?: string): Promise<DesktopPathPickResult> {
@@ -176,9 +176,9 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async pickGameExecutablePath(): Promise<DesktopPathPickResult> {
     return invoke_path_picker({ kind: "game-executable" });
   },
-  /** 以目录定位游戏，并将目录本身作为后续选择的起点。 */
-  async pickGameDirectoryPath(): Promise<DesktopPathPickResult> {
-    return invoke_path_picker({ kind: "game-directory" });
+  /** 选择来源目录，并将目录本身作为后续选择的起点。 */
+  async pickSourceDirectoryPath(): Promise<DesktopPathPickResult> {
+    return invoke_path_picker({ kind: "source-directory" });
   },
 };
 
@@ -202,7 +202,7 @@ async function invoke_path_picker(intent: DesktopPathPickIntent): Promise<Deskto
 
 /** 目录选择结果直接保存，文件选择结果取其父目录。 */
 function is_directory_pick(intent: DesktopPathPickIntent): boolean {
-  return intent.kind === "directory" || intent.kind === "game-directory";
+  return intent.kind === "directory" || intent.kind === "source-directory";
 }
 
 /** 恢复最近选择目录；存储不可用时交由宿主使用默认目录。 */

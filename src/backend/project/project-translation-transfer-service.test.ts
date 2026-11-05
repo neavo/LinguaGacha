@@ -20,7 +20,7 @@ let session: ProjectSessionState;
 /** 创建带条目的真实工程，关闭语言过滤让状态只由本例决定。 */
 async function create_project(name: string, items: Record<string, unknown>[]): Promise<string> {
   const file = path.join(directory, `${name}.lg`);
-  await database.create_project(file, name);
+  await database.create_project(file);
   await database.transaction(file, (writer) => {
     writer.set_items(
       file,

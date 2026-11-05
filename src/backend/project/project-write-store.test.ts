@@ -1256,7 +1256,7 @@ describe("ProjectWriteStore", () => {
     const database = new ProjectDatabase("1.0.0");
     const project_event_handler = options.projectEventHandler ?? vi.fn();
     const published_changes: ProjectCommittedChange[] = [];
-    await database.create_project(project_path, name);
+    await database.create_project(project_path);
     cleanup_callbacks.push(async () => await database.close());
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     return {

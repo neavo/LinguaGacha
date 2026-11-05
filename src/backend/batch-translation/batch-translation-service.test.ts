@@ -223,7 +223,7 @@ it.each([
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-targets-"));
   const project_path = path.join(directory.path, "targets.lg");
   const database = new ProjectDatabase("1.0.0");
-  await database.create_project(project_path, "targets");
+  await database.create_project(project_path);
   const original = ["PROCESSED", "EXCLUDED", "NONE"].map((status, index) =>
     create_item({
       id: index + 1,
@@ -371,7 +371,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-batch-history-"));
   const project_path = path.join(directory.path, "history.lg");
   const database = new ProjectDatabase("1.0.0");
-  await database.create_project(project_path, "history");
+  await database.create_project(project_path);
   await database.transaction(project_path, (writer) =>
     writer.set_items(project_path, [
       {

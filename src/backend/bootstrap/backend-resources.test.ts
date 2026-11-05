@@ -33,7 +33,7 @@ describe("BackendResources", () => {
       expect(resources.metadata.read_version()).toBe("1.2.3");
       const project_path = path.join(app_root, "version.lg");
       fs.writeFileSync(path.join(app_root, "version.txt"), "9.0.0");
-      await resources.database.create_project(project_path, "version");
+      await resources.database.create_project(project_path);
       expect((await resources.database.get_all_meta(project_path)).target_app_version).toBe(
         "1.2.3",
       );

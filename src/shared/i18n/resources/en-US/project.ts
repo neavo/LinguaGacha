@@ -30,12 +30,22 @@ export const en_us_project = {
     target_description: "Set the language of the output text",
   },
   create: {
+    drop_title: "Click or Drag Source File",
+    ready_status: "{COUNT} source files selected",
+    unavailable: "The selection contains no supported source files",
     title: "Create Project",
     loading_toast: "Creating project …",
     success: "Project created …",
-    add_files_draft: {
-      prompt: "Please add the following files to the project:",
-      placeholder: "[Enter file paths here or drag files here]",
+    agent_draft: {
+      translate: "Please help me complete the translation, strictly following these steps:",
+      import_and_translate:
+        "Identify translatable content from the following paths and add it to the project in a suitable form. Then help me complete the translation, strictly following these steps:",
+      path_placeholder: "[Enter file paths here or drag files here]",
+      steps: {
+        glossary: "Extract terminology",
+        translate: "Translate the full text",
+        review: "Review the translation",
+      },
     },
     default_preset_loaded: "Default presets loaded: {NAMES} …",
     default_presets: {
@@ -70,8 +80,12 @@ export const en_us_project = {
     progress: "Progress",
   },
   formats: {
+    title_tooltip: "Faster, better, and more reliable",
+    deprecated_tooltip: "No longer the best choice. Please use the formats above first",
+    empty_project_hint:
+      "No need to select files. Click “{ACTION}”, then drag files into the AGENT input box …!",
     generic: "Generic data",
-    title: "Specially Optimized File Formats",
+    title: "Specially Optimized Formats",
     txt: "Plain Text",
     md: "Markdown",
     ass: "ASS Subtitles",
@@ -92,9 +106,9 @@ export const en_us_project = {
     wolfrpg: "WOLFRPG game files",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ Game File",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce Game File",
-    deprecated_title: "File Formats Losing Optimization Soon",
+    deprecated_title: "Specially Optimized Formats (Support Ending Soon)",
     any_format_notice:
-      "In theory, files in any format can be translated, even if they are not listed above …!",
+      "Games, subtitles, and ebooks in other formats are supported too, even if they are not listed above",
     rpy: "RenPy Game Text",
     xlsx: "XLSX Game Text",
     trans_export: "Translator++ Game Text",

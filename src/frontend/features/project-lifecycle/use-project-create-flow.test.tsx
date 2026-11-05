@@ -1,3 +1,6 @@
+import { find_agent_reference_ranges } from "@shared/agent-reference";
+import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
+import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -63,6 +66,7 @@ async function mount() {
   act(() => flow.show());
 }
 beforeEach(async () => {
+  vi.useFakeTimers();
   vi.clearAllMocks();
   desktop_descriptor = Object.getOwnPropertyDescriptor(window, "desktopApp");
   localStorage.removeItem(PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY);
@@ -89,13 +93,16 @@ beforeEach(async () => {
 afterEach(async () => {
   await act(async () => root.unmount());
   localStorage.removeItem(PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY);
+  vi.useRealTimers();
   vi.restoreAllMocks();
   if (desktop_descriptor) Object.defineProperty(window, "desktopApp", desktop_descriptor);
   else Reflect.deleteProperty(window, "desktopApp");
 });
 /** 从语言确认入口推进创建。 */
 async function create() {
-  act(() => flow.open_language_dialog());
+  await act(async () => {
+    await flow.open_language_dialog();
+  });
   expect(flow.is_language_dialog_open).toBe(true);
   await act(async () => flow.confirm_language_dialog());
 }
@@ -104,22 +111,27 @@ it.each([
   ["SOURCE", "E:/manual.lg"],
   ["MANUAL", "E:/manual.lg"],
   ["FIXED", expect.stringMatching(/^E:\/fixed\/lg_project_.+\.lg$/u)],
-])("%s 保存模式创建空工程，成功后提示并预置添加文件草稿", async (mode, path) => {
+])("%s 保存模式创建空工程，成功等待 3 秒后预置翻译草稿", async (mode, path) => {
   mocks.state.settings_snapshot.project_save_mode = mode;
   mocks.state.settings_snapshot.glossary_default_preset = "test-preset";
   await create();
   expect(mocks.api).toHaveBeenCalledWith("/api/session/project/create", {
     path,
+    source_paths: [],
     languages: expect.any(Object),
   });
+  await act(async () => vi.advanceTimersByTimeAsync(2_999));
+  expect(mocks.loaded).not.toHaveBeenCalled();
+  expect(flow.source_selection_disabled).toBe(true);
+  await act(async () => vi.advanceTimersByTimeAsync(1));
   expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
-  expect(mocks.toast).toHaveBeenCalledWith("success", t("project.create.success"));
-  expect(mocks.toast).toHaveBeenCalledWith("info", expect.stringContaining("术语表"));
+  expect(mocks.toast).toHaveBeenCalledWith("success", expect.any(String));
+  expect(mocks.toast).toHaveBeenCalledWith("info", expect.any(String));
   expect(flow.open).toBe(false);
   const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
-  expect(request.text.startsWith(t("project.create.add_files_draft.prompt"))).toBe(true);
+  expect(find_agent_reference_ranges(request.text)).toHaveLength(3);
   expect(request.text.slice(request.selection!.from, request.selection!.to)).toBe(
-    t("project.create.add_files_draft.placeholder"),
+    t("project.create.agent_draft.path_placeholder"),
   );
 });
 
@@ -132,7 +144,7 @@ it("取消保存位置不创建也不预置草稿", async () => {
   expect(mocks.api).not.toHaveBeenCalled();
   expect(mocks.navigate).not.toHaveBeenCalled();
   expect(flow.open).toBe(true);
-  expect(flow.is_creating_project).toBe(false);
+  expect(flow.source_selection_disabled).toBe(false);
 });
 
 it("创建失败保留弹窗与语言，重试成功后关闭，重挂载恢复语言偏好", async () => {
@@ -143,6 +155,7 @@ it("创建失败保留弹窗与语言，重试成功后关闭，重挂载恢复�
   expect(mocks.navigate).not.toHaveBeenCalled();
   expect(flow.open).toBe(true);
   await create();
+  await act(async () => vi.advanceTimersByTimeAsync(3_000));
   expect(mocks.api).toHaveBeenLastCalledWith(
     "/api/session/project/create",
     expect.objectContaining({ languages: { source_language: "JA", target_language: "EN" } }),
@@ -151,4 +164,90 @@ it("创建失败保留弹窗与语言，重试成功后关闭，重挂载恢复�
   await act(async () => root.unmount());
   await mount();
   expect(flow.create_languages).toEqual({ source_language: "JA", target_language: "EN" });
+});
+
+const game_summary = {
+  source_file_count: 1,
+  project_name: "Game.v1.2",
+  format_hit_counts: { godot: 1 },
+  contains_game: true,
+  godot_packs: [
+    {
+      game_root: "E:/games/Game.v1.2",
+      game_name: "Game.v1.2",
+      external_pcks: ["base.pck", "patch.pck"],
+    },
+  ],
+};
+
+it("游戏来源依次确认备份、语言和包顺序，按摘要名称在来源目录创建", async () => {
+  mocks.api.mockResolvedValueOnce(game_summary);
+  await act(async () => flow.handle_select_source_paths(["E:/games/Game.v1.2"]));
+  act(() => {
+    void flow.open_language_dialog();
+  });
+  expect(flow.backup_confirm.dialog_props.open).toBe(true);
+  expect(flow.is_language_dialog_open).toBe(false);
+  await act(async () => flow.backup_confirm.finish(true));
+  expect(flow.is_language_dialog_open).toBe(true);
+  await act(async () => flow.confirm_language_dialog());
+  expect(flow.pack_order.dialog_props.games).toEqual(game_summary.godot_packs);
+  expect(mocks.loaded).not.toHaveBeenCalled();
+  await act(async () => flow.pack_order.dialog_props.on_confirm());
+  expect(window.desktopApp.pickProjectSavePath).not.toHaveBeenCalled();
+  expect(mocks.api).toHaveBeenLastCalledWith("/api/session/project/create", {
+    source_paths: ["E:/games/Game.v1.2"],
+    path: "E:/games/Game.v1.2.lg",
+    godot_pack_orders: [
+      { game_root: "E:/games/Game.v1.2", ordered_pcks: ["base.pck", "patch.pck"] },
+    ],
+    languages: expect.any(Object),
+  });
+  expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
+  const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
+  expect(request.selection).toBeUndefined();
+  expect(find_agent_reference_ranges(request.text)).toHaveLength(3);
+});
+
+it("来源摘要补齐无效计数，无可用文件或请求失败时清空并提示", async () => {
+  for (const failure of [false, true]) {
+    mocks.api.mockResolvedValueOnce({
+      source_file_count: 2.8,
+      format_hit_counts: { txt: 1.9, md: -3, epub: "bad", json: true, srt: [2] },
+      godot_packs: false,
+    });
+    await act(async () => flow.handle_select_source_paths(["E:/text.txt"]));
+    expect(flow.selected_source).toMatchObject({
+      source_file_count: 2,
+      format_hit_counts: { txt: 1, md: 0, epub: 0, godot: 0, json: 0, srt: 0 },
+      project_name: "",
+      contains_game: false,
+      godot_packs: [],
+    });
+    if (failure) mocks.api.mockRejectedValueOnce(new Error("unavailable"));
+    else mocks.api.mockResolvedValueOnce({ source_file_count: 0 });
+    await act(async () => flow.handle_select_source_paths(["E:/invalid.bin"]));
+    expect(flow.selected_source).toBeNull();
+    expect(flow.source_selection_disabled).toBe(false);
+    expect(mocks.toast).toHaveBeenLastCalledWith("warning", expect.any(String));
+  }
+});
+
+it("包列表变化时重新摘要原始来源并保留创建入口", async () => {
+  mocks.api.mockResolvedValueOnce({ ...game_summary, contains_game: false, godot_packs: [] });
+  await act(async () => flow.handle_select_source_paths(["E:/games/Game.v1.2"]));
+  mocks.api.mockRejectedValueOnce(
+    new DesktopApiError({
+      code: "request.validation_failed",
+      details: { action: GODOT_PACK_ORDER_REFRESH_ACTION },
+    }),
+  );
+  mocks.api.mockResolvedValueOnce(game_summary);
+  await create();
+  expect(mocks.api).toHaveBeenLastCalledWith("/api/session/source-files/summary", {
+    source_paths: ["E:/games/Game.v1.2"],
+  });
+  expect(flow.selected_source?.godot_packs).toEqual(game_summary.godot_packs);
+  expect(flow.open).toBe(true);
+  expect(mocks.error).toHaveBeenCalledOnce();
 });

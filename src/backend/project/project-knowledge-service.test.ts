@@ -14,7 +14,7 @@ it("知识接口按单篇指纹保存并发布分区事件，运行占用拒绝�
   const project = path.join(temporary.path, "test.lg");
   const db = new ProjectDatabase("1.0.0");
   try {
-    await db.create_project(project, "test");
+    await db.create_project(project);
     const session = new ProjectSessionState();
     await session.mark_loaded(project);
     const gate = new RuntimeOperationGate();

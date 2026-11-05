@@ -7,7 +7,7 @@ import { assert_game_directory_ready } from "./shared/game/directory";
 import { source_diagnostic, type SourceDiagnostic } from "./shared/game/preparation";
 import type { PreparedRead, PreparedSource } from "./file-format-types";
 import type { GodotPackOrder } from "../../shared/godot";
-import { apply_godot_pack_order } from "./godot/source";
+import { apply_godot_pack_order, godot_pack_preview } from "./godot/source";
 import { GAME_ENGINES, prepare_game_source } from "./shared/game/engines";
 import type { GameImport } from "./shared/game/source-files";
 import { GameFormat } from "./shared/game/format";
@@ -51,6 +51,27 @@ import {
   type FileFormatServiceConfig,
   type ProjectSourceFileEntry,
 } from "./file-format-types";
+import {
+  PROJECT_SOURCE_FORMATS,
+  type ProjectSourceFormatHitCounts,
+  type ProjectSourceFileSummary,
+  type SourceConfirmations,
+} from "../../shared/project-source-formats";
+
+/** 新建和追加导入共用写入前的确认事实，避免两个入口漏掉备份或包顺序确认。 */
+export function read_source_confirmations(
+  entries: readonly DiscoveredSource[],
+): SourceConfirmations {
+  const godot_packs = entries.flatMap((entry) =>
+    entry.source.kind === "game" && entry.source.file_type === "GODOT"
+      ? [godot_pack_preview(entry.source.game)]
+      : [],
+  );
+  return {
+    contains_game: entries.some((entry) => entry.source.kind === "game"),
+    ...(godot_packs.length ? { godot_packs } : {}),
+  };
+}
 
 /** 文件格式门面负责来源准备，并按固定配置分发解析和写回。 */
 export class FileFormatService {
@@ -225,7 +246,7 @@ export class FileFormatService {
     return this.game_directory_operations.run(directories, operation, signal);
   }
 
-  /** 新建和预览共用发现结果，正式导入重新识别本次选定来源。 */
+  /** 新建、摘要和预览共用发现结果，正式导入重新识别本次选定来源。 */
   public async collect_source_file_entries(
     source_paths: string[],
     signal?: AbortSignal,
@@ -470,6 +491,42 @@ export class FileFormatService {
       content: this.native_fs.read_file(entry.source_path),
       directory_changed: false,
       diagnostics: [],
+    };
+  }
+
+  /**
+   * 按文件发现的同一去重口径汇总总数和互斥扩展名命中数，不提前解析文件内容。
+   */
+  public async summarize_source_files(
+    source_paths: string[],
+  ): Promise<Omit<ProjectSourceFileSummary, "project_name">> {
+    const entries = await this.with_source_directories(source_paths, (signal) =>
+      this.collect_source_file_entries(source_paths, signal),
+    );
+    const source_files = entries.filter((entry) => entry.source.kind !== "failure");
+    const format_hit_counts = Object.fromEntries(
+      PROJECT_SOURCE_FORMATS.map((format) => [format.id, 0]),
+    ) as ProjectSourceFormatHitCounts;
+
+    for (const source_file of source_files) {
+      const source = source_file.source;
+      const format_id =
+        source.kind === "game"
+          ? PROJECT_SOURCE_FORMATS.find(
+              (format) => format.source_kind === "game" && format.file_type === source.file_type,
+            )?.id
+          : source.kind === "file"
+            ? source.format
+            : undefined;
+      if (format_id !== undefined) {
+        format_hit_counts[format_id] += 1;
+      }
+    }
+
+    return {
+      ...read_source_confirmations(source_files),
+      source_file_count: source_files.length,
+      format_hit_counts,
     };
   }
 

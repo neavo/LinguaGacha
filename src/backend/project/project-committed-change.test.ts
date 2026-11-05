@@ -11,7 +11,7 @@ it("规范行增量与修订使用提交快照，不受后续数据库变化影�
   const project = path.join(directory, "project.lg");
   const database = new ProjectDatabase("1.0.0");
   try {
-    await database.create_project(project, "test");
+    await database.create_project(project);
     await database.transaction(project, (writer) =>
       writer.set_items(project, [
         create_item({
@@ -56,7 +56,7 @@ it.each(["items", "files", "pdf"] as const)("提交快照只读取实际变化�
   const project = path.join(temp.path, "project.lg");
   const database = new ProjectDatabase("1.0.0");
   try {
-    await database.create_project(project, "test");
+    await database.create_project(project);
     await database.transaction(project, (writer) =>
       writer.add_asset(project, "script.txt", Buffer.from("original"), "TXT", null),
     );

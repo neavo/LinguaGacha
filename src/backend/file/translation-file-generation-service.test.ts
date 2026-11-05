@@ -44,7 +44,7 @@ it("渲染校验开始前已关闭真实工程连接，校验失败保留文件�
   const session = new ProjectSessionState();
   const failure = new Error("invalid markdown");
   try {
-    await database.create_project(project, "test", (writer) =>
+    await database.create_project(project, (writer) =>
       writer.add_asset(project, "book.pdf", bytes, "PDF", document),
     );
     await session.mark_loaded(project);

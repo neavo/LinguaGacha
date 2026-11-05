@@ -14,7 +14,7 @@ export function ProjectLifecycleProvider(props: { children: ReactNode }): JSX.El
   const create = useProjectCreateFlow(run_project_load);
   const open = useProjectOpenFlow(run_project_load);
   const close = useProjectCloseFlow();
-  const busy = create.is_creating_project || open.is_opening_project || close.closing;
+  const busy = create.source_selection_disabled || open.is_opening_project || close.closing;
   return (
     <ProjectLifecycleContext.Provider
       value={{

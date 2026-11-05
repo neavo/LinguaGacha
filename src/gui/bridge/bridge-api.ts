@@ -32,7 +32,7 @@ export interface DesktopBridgeApi {
   launchUpdate: (request: DesktopUpdateLaunchRequest) => Promise<DesktopUpdateLaunchResult>; // 复制并启动更新器后由 main 进入统一退出链路
   pickProjectFilePath: (default_path?: string) => Promise<DesktopPathPickResult>; // 打开已有工程可指定起始目录，最终路径由 main 确认
   pickProjectSavePath: (default_name: string) => Promise<DesktopPathPickResult>; // 工程保存路径由 renderer 给出默认名，main 负责系统对话框确认
-  pickWorkbenchFilePath: () => Promise<DesktopPathPickResult>; // 工作台追加文件入口允许多选，去重与解析不放在 preload
+  pickSourceFilePaths: () => Promise<DesktopPathPickResult>; // 来源文件入口允许多选，格式识别留给后端
   pickDirectory: (default_path?: string) => Promise<DesktopPathPickResult>; // 目录选择可带入默认路径，最终路径由 main 确认
   pickGlossaryImportFilePath: () => Promise<DesktopPathPickResult>; // 术语导入导出只暴露路径选择，具体格式读写由业务流程处理
   pickGlossaryExportPath: (default_name: string) => Promise<DesktopPathPickResult>; // 术语导出路径由 main 保存对话框确认，序列化格式由业务流程按后缀决定
@@ -40,5 +40,5 @@ export interface DesktopBridgeApi {
   pickPromptExportFilePath: () => Promise<DesktopPathPickResult>; // Prompt 导出路径由 main 保存对话框确认，renderer 不直接访问文件系统
   pickGameFontFilePath: () => Promise<DesktopPathPickResult>; // 修改游戏字体只开放后端可读取内部名称的字体格式
   pickGameExecutablePath: () => Promise<DesktopPathPickResult>; // 游戏以启动程序定位，后端据此识别引擎与封装
-  pickGameDirectoryPath: () => Promise<DesktopPathPickResult>; // 游戏目录与启动程序共用后端识别和修改流程
+  pickSourceDirectoryPath: () => Promise<DesktopPathPickResult>; // 来源目录入口只返回目录
 }

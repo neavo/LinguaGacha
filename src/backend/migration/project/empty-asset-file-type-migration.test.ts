@@ -14,7 +14,7 @@ it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成�
   const xlsx = new Uint8Array(await workbook.xlsx.writeBuffer());
   const database = new ProjectDatabase("1.0.0");
   try {
-    await database.create_project(project, "old", (database) => {
+    await database.create_project(project, (database) => {
       database.add_asset(project, "object.json", Buffer.from("{}"), "NONE", null);
       database.add_asset(project, "array.json", Buffer.from("[]"), "NONE", null);
       database.add_asset(project, "broken.json", Buffer.from("{"), "NONE", null);

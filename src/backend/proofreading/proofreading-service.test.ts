@@ -40,7 +40,7 @@ async function create_service(task_busy = false): Promise<{
   cleanup_databases.push(database);
   const session_state = new ProjectSessionState();
   const lg_path = path.join(temp_dir, "proofreading.lg");
-  await database.create_project(lg_path, "proofreading");
+  await database.create_project(lg_path);
   await database.transaction(lg_path, (writer) =>
     writer.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null),
   );
