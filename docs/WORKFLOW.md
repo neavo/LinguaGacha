@@ -127,13 +127,17 @@ Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处�
 |测试配置或广泛共享基础设施|受影响的测试项目|
 |影响范围无法可靠界定|`npm test`|
 
-[vitest.config.ts](../buildtools/vitest/vitest.config.ts) 划分两个项目：
+[vitest.config.ts](../buildtools/vitest/vitest.config.ts) 划分三个项目：
 
 - `node`：后端、CLI、共享逻辑、Electron main 和构建工具。
+- `integration`：消费完整部署工作区的测试，文件清单由 Vitest 配置维护。
 - `renderer`：前端与 preload 桥接，使用 `jsdom` 和 renderer 初始化。
+
+测试入口自动准备所需资源。`integration` 在普通测试完成后并发运行。
 
 ```powershell
 npm test -- --project node <测试文件路径...>
+npm test -- --project integration <测试文件路径...>
 npm test -- --project renderer <测试文件路径...>
 ```
 
@@ -213,14 +217,13 @@ PDF 来源、页面写入、排版或译文生成变化时，按影响选择：
 
 [pdf-worker.test.ts](../src/backend/file/pdf/pdf-worker.test.ts) 验证独立部署线程的计算、打印回调、取消与重启。
 
-[pdf-host.test.ts](../src/native/pdf-host.test.ts) 验证真实 Electron 打印与取消。执行前准备工作区依赖和打印资源：
+[pdf-host.test.ts](../src/native/pdf-host.test.ts) 验证真实 Electron 打印与取消。集成测试入口自动准备工作区依赖和打印资源：
 
 ```powershell
-node buildtools/resources/build.mjs --development
-npm test -- --project node src/native/pdf-host.test.ts
+npm test -- --project integration src/native/pdf-host.test.ts
 ```
 
-- 已完成构建时，直接使用现有产物。
+- 验证发行资源时，通过 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定工作区目录。
 - `LINGUAGACHA_PDF_QA_DIR` 指定视觉检查产物目录。
 - 发行包打印资源见 [发行包运行验证](#发行包运行验证)。
 
@@ -254,7 +257,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
 
-运行 Ren’Py 解析测试前执行 `node buildtools/resources/build.mjs --development`。发行解析资源使用下方 `prepare-worker.test.ts` 入口验证。
+Ren’Py 解析测试自动准备所需资源。发行解析资源使用下方 `prepare-worker.test.ts` 入口验证。
 
 根安装使用 `npm ci`，保证依赖来源可复现。
 
@@ -288,7 +291,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 
 ### Agent 共享执行环境
 
-- 共享租约、环境准备与时限：`npm test -- src/backend/agent/execution src/backend/agent/node`。
+- 环境准备、执行时限与错误回执：`npm test -- src/backend/agent/execution src/backend/agent/node`。
 - npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
 - Python 环境与模型声明：`npm test -- src/backend/agent/python`。常规测试使用自有夹具。
 - SDK 加载、原生 IPC 与 Python 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。设置 `LINGUAGACHA_TEST_PYTHON_ARCHIVE` 为当前平台、默认次版本的 CPython 官方归档，启用本地镜像集成测试。归档保留官方文件名，测试从中读取补丁版本。再设置 `LINGUAGACHA_TEST_PYTHON_ONLINE` 时会验证补丁升级，此时选择非最新补丁。归档地址用随附 uv 的 `python list <次版本> --all-versions --only-downloads --output-format json` 查询。缺少归档时相关场景报告跳过。
@@ -297,6 +300,6 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。
 - Windows Node 启动器：在 `buildtools/builder/node/` 执行 `go test ./...`，验证 Unicode、空参数、stdio 和退出码。
-- 构建变化执行 `npm run build`，再设置上表的发行可执行文件与工作区目录，运行 `runtime.test.ts`、`npm/index.test.ts` 和 `bootstrap.test.ts`。检查 npm 运行文件、可搬移种子及目标架构的辅助程序。
+- 构建变化执行 `npm run build`，再设置上表的发行可执行文件与工作区目录，运行 `npm/index.test.ts` 和 `bootstrap.test.ts`。检查 npm 运行文件、可搬移种子及目标架构的辅助程序。
 - uv 部署验证：`npm test -- buildtools/builder/uv.test.mjs buildtools/builder/native-tools.test.mjs`。发行工作区 `bin/<platform>-<arch>/uv[.exe] --version` 应与 `workspaceRuntimeTools.uv` 一致。Windows 发行验收运行上述 Python 在线集成测试。
 - macOS/Linux 须在对应平台验收共享锁描述符、进程组启动门、正常收尾、停止及监管程序退出。跨平台编译只能证明代码可构建，不能替代平台生命周期实测。

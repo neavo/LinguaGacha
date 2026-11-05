@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { build } from "vite";
-import { expect, it } from "vitest";
+import { inject, expect, it } from "vitest";
 import {
   configure_javascript_parser,
   decode_javascript_string,
@@ -59,8 +59,7 @@ it("普通字符串与模板片段保留 UTF-16 范围及完整性", () => {
 
 it("仓库外 Electron 从部署目录加载原生绑定并生成可解析的字符串写回", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-js-deployment-"));
-  const runtime =
-    process.env["LINGUAGACHA_TEST_WORKSPACE_RUNTIME"] ?? path.resolve("build/resources/workspace");
+  const runtime = inject("workspaceRuntimeDirectory");
   const electron =
     process.env["LINGUAGACHA_TEST_ELECTRON"] ??
     (createRequire(import.meta.url)("electron") as string);

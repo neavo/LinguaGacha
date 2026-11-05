@@ -3,7 +3,7 @@ import { configure_python_parser } from "../renpy/python-syntax";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { inject, expect, it } from "vitest";
 import { create_item } from "../../../domain/item";
 import { RenpyRpyFormat } from "./renpy-rpy-format";
 
@@ -21,7 +21,7 @@ it("原始资产缺失时拒绝导出 Ren’Py 脚本", async () => {
   expect(fs.readdirSync(temp_dir.path)).toEqual([]);
 });
 
-configure_python_parser(path.resolve("build/resources/workspace"));
+configure_python_parser(inject("workspaceRuntimeDirectory"));
 
 it.each([
   ['"Alice" happy -sad', " happy -sad"],

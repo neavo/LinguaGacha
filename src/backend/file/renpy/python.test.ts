@@ -1,9 +1,8 @@
-import path from "node:path";
-import { expect, it } from "vitest";
+import { inject, expect, it } from "vitest";
 import { encode_python, decode_python, paragraph_text } from "./python";
 import { configure_python_parser, PythonSession } from "./python-syntax";
 
-configure_python_parser(path.resolve("build/resources/workspace"));
+configure_python_parser(inject("workspaceRuntimeDirectory"));
 
 it.each([
   ["A  B", "A  B"],

@@ -7,15 +7,14 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
-import { expect, it } from "vitest";
+import { inject, expect, it } from "vitest";
 import { create_pdf_fixture } from "../backend/file/pdf/test-support";
 import * as mupdf from "mupdf";
 
 it("真实打印保持图文分页、隔离脚本并在取消后继续调度", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-pdf-host-"));
   try {
-    const runtime =
-      process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME ?? path.resolve("build/resources/workspace");
+    const runtime = inject("workspaceRuntimeDirectory");
     await fs.symlink(
       path.join(runtime, "node_modules"),
       path.join(directory, "node_modules"),
@@ -58,6 +57,7 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
       import { create_pdf_host } from ${JSON.stringify(pathToFileURL(path.join(directory, "bundle/host.mjs")).href)};
       import * as mupdf from "mupdf";
       import { build_pdf_document, render_pdf_page } from ${JSON.stringify(pathToFileURL(path.join(directory, "bundle/document.mjs")).href)};
+      app.setPath('userData', ${JSON.stringify(path.join(directory, "user-data"))}); // 并发 Electron 实例各用独立缓存。
       app.commandLine.appendSwitch('disable-gpu');
       void (async () => {
       await app.whenReady();
@@ -65,9 +65,7 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
       try {
         const host = create_pdf_host(${JSON.stringify({
           stylesPath: path.resolve(runtime, "..", "pdf-print.css"),
-          fontsDirectory: process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME
-            ? path.resolve(runtime, "..", "fonts")
-            : path.resolve("public/fonts"),
+          fontsDirectory: path.resolve(runtime, "..", "fonts"),
         })});
         const source = new Uint8Array(await fs.readFile(${JSON.stringify(path.join(directory, "source.pdf"))}));
         const document = JSON.parse(await fs.readFile(${JSON.stringify(path.join(directory, "document.json"))}, 'utf8'));
@@ -117,15 +115,18 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
             };
           });
         }
+        const cancellation = Promise.withResolvers();
+        let guard;
         when_script_waits(() => {
           following = host({kind:'print_pdf',html:'<p>Agent after preview</p>'});
+          // 只计取消收尾时间，窗口加载和字体准备由外层进程超时约束。
+          guard = setTimeout(() => cancellation.reject(new Error('Cancellation did not settle')), 3000);
           interrupted.abort(reason);
         });
-        let guard;
         try {
           await assert.rejects(Promise.race([
             host({kind:'print_pdf',html:'<p>Preview to cancel</p>'}, interrupted.signal),
-            new Promise((_resolve,reject) => { guard=setTimeout(() => reject(new Error('Cancellation did not settle')),3000); }),
+            cancellation.promise,
           ]), error => error === reason);
         } finally { clearTimeout(guard); }
         assert.ok((await following).length > 0);

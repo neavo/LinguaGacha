@@ -1,6 +1,5 @@
-import path from "node:path";
 import { configure_python_parser } from "../renpy/python-syntax";
-import { describe, expect, it } from "vitest";
+import { inject, describe, expect, it } from "vitest";
 
 import type { Item } from "../../../domain/item";
 import { RenpyExtractor } from "./extractor";
@@ -88,4 +87,4 @@ function extract(lines: string[]): Promise<Item[]> {
   return new RenpyExtractor().extract(parse_document(lines), "script.rpy");
 }
 
-configure_python_parser(path.resolve("build/resources/workspace"));
+configure_python_parser(inject("workspaceRuntimeDirectory"));

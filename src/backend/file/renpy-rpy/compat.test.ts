@@ -1,7 +1,6 @@
 import { RENPY_EXTRA_VERSION } from "./types";
-import path from "node:path";
 import { configure_python_parser } from "../renpy/python-syntax";
-import { describe, expect, it } from "vitest";
+import { inject, describe, expect, it } from "vitest";
 
 import { type Item, create_item } from "../../../domain/item";
 import { sha1_hex } from "./lexer";
@@ -190,4 +189,4 @@ it("重建历史项目条目保留空正文、空姓名与人工状态", async (
   expect(item).toMatchObject({ dst: "", name_dst: null, status: "PROCESSED" });
 });
 
-configure_python_parser(path.resolve("build/resources/workspace"));
+configure_python_parser(inject("workspaceRuntimeDirectory"));

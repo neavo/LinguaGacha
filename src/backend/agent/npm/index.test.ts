@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import { cp, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { inject, afterAll, beforeAll, expect, it, vi } from "vitest";
 import npm_package from "npm/package.json";
 import type { AgentProcessOutput } from "../process-output";
 import { AgentExecutionRuntime } from "../execution/runtime";
@@ -22,15 +22,7 @@ let sequence = 0;
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "lg-npm-中文 空格-"));
-  runtime = path.join(root, "resources/workspace");
-  if (process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME)
-    await cp(process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME, runtime, { recursive: true });
-  else
-    execFileSync(
-      process.execPath,
-      [path.resolve("buildtools/resources/build.mjs"), path.dirname(runtime), "--development"],
-      { windowsHide: true, stdio: "pipe" },
-    );
+  runtime = inject("workspaceRuntimeDirectory");
   const pkg = path.join(root, "fixture");
   await mkdir(pkg);
   await writeFile(
