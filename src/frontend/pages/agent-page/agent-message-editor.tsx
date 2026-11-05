@@ -23,7 +23,6 @@ import {
   EditorState,
   StateField,
   Transaction,
-  type Extension,
   type TransactionSpec,
 } from "@codemirror/state";
 import {
@@ -102,7 +101,7 @@ type MentionQuery = {
   text: string;
 };
 
-/** 指令入口代写的查询前缀；`at` 是其中 @ 的位置。 */
+/** 指令入口代写的查询前缀。`at` 记录其中 `@` 的位置。 */
 type InstructionTrigger = Readonly<{ from: number; at: number; text: string }>;
 
 /** 页面动作通过编辑器事务同步草稿，选区与焦点由 CodeMirror 管理。 */
@@ -169,7 +168,6 @@ const mention_tokens_field = StateField.define<DecorationSet>({
     ];
   },
 });
-const mention_token_extension: Extension = [mention_tokens_field];
 
 /** 主输入与原位编辑共享正文、附件和键盘交互，按草稿 revision 同步 CodeMirror。 */
 export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element {
@@ -232,11 +230,11 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
           files: file_query.files,
           instructions: props.instructions ?? [],
         });
-  const matching_skills = candidate_groups.skills;
-  const matching_files = candidate_groups.files;
-  const matching_instructions = candidate_groups.instructions;
-  const matching_candidates = [...matching_skills, ...matching_files, ...matching_instructions];
-  const instruction_start = matching_skills.length + matching_files.length; // 指令组首项的跨分组索引
+  const menu_groups = ["skills", "instructions", "files"] as const; // 渲染与键盘导航共用顺序。
+  const matching_candidates = menu_groups.flatMap((group) => candidate_groups[group]);
+  const instruction_start = matching_candidates.findIndex(
+    (candidate) => candidate.kind === "instruction",
+  );
   const editor_read_only = props.read_only;
   const menu_open =
     !assistant_editing && mention_query !== null && !editor_read_only && !menu_suppressed;
@@ -313,7 +311,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
               resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
             ),
             placeholder_compartment.of(placeholder(placeholder_text)),
-            mention_token_extension,
+            mention_tokens_field,
             drawSelection(),
             history(),
             EditorView.lineWrapping,
@@ -486,8 +484,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     if (trigger === null || view === null) return;
     if (menu_open && mention_query?.from === trigger.at) {
       if (mention_query.text !== "") instruction_trigger_ref.current = null;
-      // 文件候选异步加载会改变跨分组索引，加载结束后再定位指令组。
-      else if (file_query.status !== "loading") {
+      else if (instruction_start >= 0) {
         set_menu_index(instruction_start);
         menu_ref.current
           ?.querySelector('[aria-labelledby="agent-mention-instructions-label"]')
@@ -502,9 +499,9 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       changes: { from: trigger.from, to },
       annotations: Transaction.addToHistory.of(false),
     });
-  }, [file_query.status, instruction_start, mention_query, menu_open]);
+  }, [instruction_start, mention_query, menu_open]);
 
-  /** 技能写入 marker；指令移除筛选文本后立即执行，不进入消息或草稿历史。 */
+  /** 引用写入正文。指令移除查询后立即执行。 */
   const select_candidate = (candidate: AgentMentionCandidate): void => {
     const view = view_ref.current;
     const query = view === null ? null : find_mention_query(view.state);
@@ -648,7 +645,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     },
   }));
 
-  /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent Chat Store 原子更新。 */
+  /** 编辑器提交当前草稿。`AgentChatStore` 在受理后原子更新历史与草稿。 */
   const submit = (): void => {
     const view = view_ref.current;
     if (view === null || !actions.can_submit) return;
@@ -686,57 +683,32 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       ) : null}
       {menu_open && (
         <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
-          {matching_skills.length > 0 && (
-            <div
-              className="agent-mention-menu__group"
-              role="group"
-              aria-labelledby="agent-mention-skills-label"
-            >
-              <div id="agent-mention-skills-label" className="agent-mention-menu__group-label">
-                {t("agent_page.mention.groups.skills")}
-              </div>
-              {matching_skills.map((candidate, index) => render_candidate(candidate, index))}
-            </div>
-          )}
-          {(matching_files.length > 0 ||
-            file_query.status === "loading" ||
-            file_query.status === "error") && (
-            <div
-              className="agent-mention-menu__group"
-              role="group"
-              aria-labelledby="agent-mention-files-label"
-            >
-              <div id="agent-mention-files-label" className="agent-mention-menu__group-label">
-                {t("agent_page.mention.groups.files")}
-              </div>
-              {matching_files.map((candidate, index) =>
-                render_candidate(candidate, matching_skills.length + index),
-              )}
-              {file_query.status === "loading" && (
-                <p className="agent-mention-menu__empty">{t("agent_page.mention.files.loading")}</p>
-              )}
-              {file_query.status === "error" && (
-                <p className="agent-mention-menu__empty">{t("agent_page.mention.files.error")}</p>
-              )}
-            </div>
-          )}
-          {matching_instructions.length > 0 && (
-            <div
-              className="agent-mention-menu__group"
-              role="group"
-              aria-labelledby="agent-mention-instructions-label"
-            >
+          {menu_groups.map((group) => {
+            const candidates = candidate_groups[group];
+            const file_status = group === "files" ? file_query.status : null;
+            if (candidates.length === 0 && file_status !== "loading" && file_status !== "error")
+              return null;
+            const start = matching_candidates.findIndex((candidate) => candidate === candidates[0]); // 空组没有候选，不消费索引。
+            const label_id = `agent-mention-${group}-label`;
+            return (
               <div
-                id="agent-mention-instructions-label"
-                className="agent-mention-menu__group-label"
+                key={group}
+                className="agent-mention-menu__group"
+                role="group"
+                aria-labelledby={label_id}
               >
-                {t("agent_page.mention.groups.instructions")}
+                <div id={label_id} className="agent-mention-menu__group-label">
+                  {t(`agent_page.mention.groups.${group}`)}
+                </div>
+                {candidates.map((candidate, index) => render_candidate(candidate, start + index))}
+                {(file_status === "loading" || file_status === "error") && (
+                  <p className="agent-mention-menu__empty">
+                    {t(`agent_page.mention.files.${file_status}`)}
+                  </p>
+                )}
               </div>
-              {matching_instructions.map((candidate, index) =>
-                render_candidate(candidate, matching_skills.length + matching_files.length + index),
-              )}
-            </div>
-          )}
+            );
+          })}
           {matching_candidates.length === 0 &&
             file_query.status !== "loading" &&
             file_query.status !== "error" && (
@@ -846,12 +818,12 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       (menu_index_ref.current + delta + matching_candidates_ref.current.length) %
       matching_candidates_ref.current.length;
     set_menu_index(next_index);
-    // 键盘活动项需要显式滚入视野；鼠标接管活动项时保持菜单位置。
+    // 键盘活动项需要显式滚入视野。鼠标接管活动项时保持菜单位置。
     scroll_mention_candidate_into_view(next_index);
     return true;
   }
 
-  /** 仅从视觉首行进入历史；越过最新消息时恢复原始草稿，两端都消费按键。 */
+  /** 历史导航从视觉首行进入。越过最新消息时恢复原始草稿。 */
   function navigate_input_history(view: EditorView, direction: "older" | "newer"): boolean {
     if (view.composing || view.state.readOnly) return false;
     const navigation = input_history_navigation_ref.current;
@@ -943,7 +915,7 @@ function create_mention_token_decorations(text: string): DecorationSet {
   );
 }
 
-/** 输入框中的 mention 视觉块；光标只能停在完整 marker 两侧。 */
+/** 引用块把光标限制在完整标记两侧。 */
 class MentionTokenWidget extends WidgetType {
   private static readonly CURSOR_GAP_PX = 1;
   private readonly marker: string;

@@ -7,7 +7,7 @@ import { type Locale } from "@domain/app-language";
 const DEFAULT_FILE_CANDIDATE_LIMIT = 3; // 默认展示数量由产品要求确定。
 const SEARCH_FILE_CANDIDATE_LIMIT = 20; // 限制搜索菜单规模。
 
-/** 页面提供宿主指令的显示状态与即时动作；它不进入消息协议。 */
+/** 页面提供宿主指令的状态与即时动作。指令不进入消息协议。 */
 export type AgentMentionInstruction = Readonly<{
   id: string;
   icon: LucideIcon;
@@ -17,7 +17,7 @@ export type AgentMentionInstruction = Readonly<{
   execute: () => void;
 }>;
 
-/** 候选只保留渲染与选择所需事实；文件和技能写入正文，指令立即执行宿主动作。 */
+/** 文件和技能候选提供正文引用。指令候选提供宿主动作。 */
 export type AgentMentionCandidate = Readonly<
   | {
       kind: "skill" | "file";
@@ -29,7 +29,7 @@ export type AgentMentionCandidate = Readonly<
   | (AgentMentionInstruction & { kind: "instruction"; key: string })
 >;
 
-/** 分组保持渲染顺序显式，连续活动索引由 Composer 跨分组统一计算。 */
+/** 候选按用途分组，显示顺序与活动索引由编辑器统一维护。 */
 type AgentMentionCandidateGroups = Readonly<{
   skills: readonly AgentMentionCandidate[];
   instructions: readonly AgentMentionCandidate[];
@@ -45,7 +45,7 @@ type CreateAgentMentionCandidatesArgs = Readonly<{
   files?: readonly AgentFileCandidate[];
 }>;
 
-/** 统一投影菜单分组；稳定指令名与本地化标题都可以用于筛选。 */
+/** 按查询生成候选分组。指令同时支持稳定名称和本地化文案。 */
 export function create_agent_mention_candidates(
   args: CreateAgentMentionCandidatesArgs,
 ): AgentMentionCandidateGroups {
@@ -77,12 +77,13 @@ export function create_agent_mention_candidates(
     }));
 
   const terms = query_text.trim().split(/\s+/u).filter(Boolean);
+  const searching_files = terms.length > 0;
   const matching_files = (args.files ?? []).filter((file) =>
-    terms.every((term) => file.path.toLocaleLowerCase(args.locale).includes(term)),
+    searching_files
+      ? terms.every((term) => file.path.toLocaleLowerCase(args.locale).includes(term))
+      : file.kind === "workspace",
   );
-  // 保留来源顺序，默认精简展示，搜索始终匹配完整列表。
-  const file_limit =
-    terms.length === 0 ? DEFAULT_FILE_CANDIDATE_LIMIT : SEARCH_FILE_CANDIDATE_LIMIT;
+  const file_limit = searching_files ? SEARCH_FILE_CANDIDATE_LIMIT : DEFAULT_FILE_CANDIDATE_LIMIT;
   const files = matching_files.slice(0, file_limit).map((file): AgentMentionCandidate => ({
     kind: "file",
     key: `${file.kind}:${file.path}`,
@@ -93,7 +94,7 @@ export function create_agent_mention_candidates(
         : `${t("agent_page.mention.files.upload")} · ${format_file_size(file.size)}`,
     insertText: format_agent_reference(file),
   }));
-  return { skills, files, instructions };
+  return { skills, instructions, files };
 }
 
 /** 文件大小只用于候选摘要，原始字节数仍由后端持有。 */

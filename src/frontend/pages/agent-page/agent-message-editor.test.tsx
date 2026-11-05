@@ -41,9 +41,12 @@ type RenderEditorOptions = Partial<
 
 type TestAgentInputState = AgentInputState & { accept_message: () => void };
 
-const mention_files = vi.hoisted(() => ({ files: [] as AgentFileCandidate[] }));
+const mention_files = vi.hoisted(() => ({
+  files: [] as AgentFileCandidate[],
+  status: "ready" as "loading" | "ready" | "error",
+}));
 vi.mock("./use-agent-mention-files", () => ({
-  useAgentMentionFiles: () => ({ files: mention_files.files, status: "ready" }),
+  useAgentMentionFiles: () => mention_files,
 }));
 const chat_mocks = vi.hoisted(() => ({
   api_get: vi.fn(),
@@ -101,6 +104,7 @@ describe("AgentMessageEditor", () => {
 
   beforeEach(() => {
     mention_files.files = [];
+    mention_files.status = "ready";
     file_mocks.toast.mockClear();
     file_mocks.path.mockReset().mockReturnValue("");
     vi.stubGlobal(
@@ -173,42 +177,103 @@ describe("AgentMessageEditor", () => {
     expect(on_submit).not.toHaveBeenCalled();
   });
 
-  it("常用指令入口代写 @ 并定位指令，用户未输入筛选时关闭或选中都恢复原文", async () => {
-    const view = await render_editor({
-      instructions: [
-        {
-          id: "compact_context",
-          icon: Shrink,
-          title: "压缩上下文",
-          description: "",
-          disabled: false,
-          execute: vi.fn(),
-        },
-      ],
-    });
-    const editor = get_editor(view);
-    const open = view.querySelector<HTMLButtonElement>(".agent-composer__instructions-trigger")!;
-    await set_document(editor, "前文", 2);
+  it.each(["loading", "error"] as const)(
+    "文件状态为 %s 时指令入口立即定位，关闭或选中恢复原文",
+    async (status) => {
+      mention_files.status = status;
+      const options = {
+        instructions: [
+          {
+            id: "compact_context",
+            icon: Shrink,
+            title: "压缩上下文",
+            description: "",
+            disabled: false,
+            execute: vi.fn(),
+          },
+        ],
+      };
+      const view = await render_editor(options);
+      const editor = get_editor(view);
+      const open = view.querySelector<HTMLButtonElement>(".agent-composer__instructions-trigger")!;
+      await set_document(editor, "前文", 2);
 
-    await act(async () => open.click());
-    expect(editor.state.doc.toString()).toBe("前文 @");
-    expect(
-      view.querySelector('button[data-kind="instruction"]')?.getAttribute("aria-selected"),
-    ).toBe("true");
-    await dispatch_key(editor.contentDOM, "Escape");
-    expect(editor.state.doc.toString()).toBe("前文");
+      await act(async () => open.click());
+      expect(editor.state.doc.toString()).toBe("前文 @");
+      expect(
+        view.querySelector('button[data-kind="instruction"]')?.getAttribute("aria-selected"),
+      ).toBe("true");
+      expect(
+        view.querySelector(
+          '[aria-labelledby="agent-mention-files-label"] .agent-mention-menu__empty',
+        )?.textContent,
+      ).toBe(`agent_page.mention.files.${status}`);
+      mention_files.status = "ready";
+      mention_files.files = [{ kind: "workspace", path: "章节.txt", count: 1, unit: "items" }];
+      await render_editor(options);
+      expect(
+        view.querySelector('button[data-kind="instruction"]')?.getAttribute("aria-selected"),
+      ).toBe("true");
+      await dispatch_key(editor.contentDOM, "Escape");
+      expect(editor.state.doc.toString()).toBe("前文");
 
-    await act(async () => open.click());
-    await dispatch_key(editor.contentDOM, "Enter");
-    expect(editor.state.doc.toString()).toBe("前文");
+      await act(async () => open.click());
+      await dispatch_key(editor.contentDOM, "Enter");
+      expect(editor.state.doc.toString()).toBe("前文");
 
-    await act(async () => open.click());
-    await act(async () =>
-      editor.dispatch({ changes: { from: 4, insert: "压" }, selection: EditorSelection.cursor(5) }),
-    );
-    await dispatch_key(editor.contentDOM, "Escape");
-    expect(editor.state.doc.toString()).toBe("前文 @压");
-  });
+      await act(async () => open.click());
+      await act(async () =>
+        editor.dispatch({
+          changes: { from: 4, insert: "压" },
+          selection: EditorSelection.cursor(5),
+        }),
+      );
+      await dispatch_key(editor.contentDOM, "Escape");
+      expect(editor.state.doc.toString()).toBe("前文 @压");
+    },
+  );
+
+  it.each(["", "共同"])(
+    "默认与搜索菜单按技能、指令、文件顺序展示并支持跨组选择：%j",
+    async (query) => {
+      mention_files.files = [
+        { kind: "upload", path: "uploads/共同.txt", size: 10 },
+        { kind: "workspace", path: "共同.txt", count: 1, unit: "items" },
+      ];
+      const view = await render_editor({
+        skills: [{ ...skills[0]!, name: "共同技能" }],
+        instructions: [
+          {
+            id: "command",
+            icon: Shrink,
+            title: "共同指令",
+            description: "",
+            disabled: false,
+            execute: vi.fn(),
+          },
+        ],
+      });
+      const editor = get_editor(view);
+      const text = `@${query}`;
+      await set_document(editor, text, text.length);
+      const options = [...view.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+      expect(options.map((option) => option.dataset.kind)).toEqual(
+        query === "" ? ["skill", "instruction", "file"] : ["skill", "instruction", "file", "file"],
+      );
+      await dispatch_key(editor.contentDOM, "ArrowDown");
+      expect(options[1]!.getAttribute("aria-selected")).toBe("true");
+      await dispatch_key(editor.contentDOM, "ArrowDown");
+      const selected = view.querySelector<HTMLButtonElement>(
+        '[role="option"][aria-selected="true"]',
+      )!;
+      expect(selected.dataset.kind).toBe("file");
+      expect(editor.contentDOM.getAttribute("aria-activedescendant")).toBe(selected.id);
+      await dispatch_key(editor.contentDOM, "Enter");
+      expect(editor.state.doc.toString()).toBe(
+        query === "" ? '@workspace_file("共同.txt") ' : '@upload_file("uploads/共同.txt") ',
+      );
+    },
+  );
 
   it("打开中的 mention 菜单随技能集合更新并保留草稿", async () => {
     const view = await render_editor();
