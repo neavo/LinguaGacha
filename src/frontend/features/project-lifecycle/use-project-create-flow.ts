@@ -1,6 +1,9 @@
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { AgentInputRequest } from "@frontend/app/navigation/types";
-import { format_agent_reference } from "@shared/agent-reference";
+import {
+  format_agent_input_steps,
+  type AgentInputStep,
+} from "@frontend/app/navigation/agent-input-steps";
 import { useState } from "react";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
@@ -110,29 +113,24 @@ function collect_loaded_default_preset_names(
 const EMPTY_PROJECT_LOADING_MS = 3_000; // 空工程创建太快，留出完成的实感。
 // 草稿固定为术语、翻译和审校三步，后两步共用翻译技能。
 const TRANSLATION_STEPS = [
-  { label_key: "project.create.agent_draft.steps.glossary", skill: "glossary" },
-  { label_key: "project.create.agent_draft.steps.translate", skill: "translation" },
-  { label_key: "project.create.agent_draft.steps.review", skill: "translation" },
-] as const;
+  { label_key: "app.agent_input.steps.glossary", skill: "glossary" },
+  { label_key: "app.agent_input.steps.translate", skill: "translation" },
+  { label_key: "app.agent_input.steps.review", skill: "translation" },
+] as const satisfies readonly AgentInputStep[];
 
-/** 空工程选中路径占位行，输入或拖入文件可直接替换。 */
+/** 有来源时只给步骤，空工程先请求导入，没有拖入路径时选中占位行。 */
 function build_agent_draft(
   t: ReturnType<typeof useI18n>["t"],
   has_source: boolean,
+  import_paths: readonly string[],
 ): AgentInputRequest {
-  const prompt = t(
-    has_source
-      ? "project.create.agent_draft.translate"
-      : "project.create.agent_draft.import_and_translate",
-  );
+  const steps = format_agent_input_steps(t, TRANSLATION_STEPS);
+  if (has_source) return { text: steps };
+  const prompt = t("project.create.agent_draft.import");
   const placeholder = t("project.create.agent_draft.path_placeholder");
-  const steps = TRANSLATION_STEPS.map(
-    (step, index) =>
-      `${index + 1}. ${t(step.label_key)} ${format_agent_reference({ kind: "skill", name: step.skill })}`,
-  ).join("\n");
   return {
-    text: `${prompt}${has_source ? "" : `\n${placeholder}`}\n\n${steps}`,
-    ...(!has_source && {
+    text: `${prompt}\n${import_paths.join("\n") || placeholder}\n\n${steps}`,
+    ...(import_paths.length === 0 && {
       selection: { from: prompt.length + 1, to: prompt.length + 1 + placeholder.length },
     }),
   };
@@ -147,6 +145,8 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
   const pack_order = useGodotPackOrder();
   const backup_confirm = useGameBackupConfirm();
   const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
+  // 两个创建入口互斥写入来源与 Agent 导入路径，重新进入时清除另一个入口的残留。
+  const [import_paths, set_import_paths] = useState<readonly string[]>([]);
   const [is_source_checking, set_is_source_checking] = useState(false);
   const [is_creating_project, set_is_creating_project] = useState(false);
   const [is_language_dialog_open, set_is_language_dialog_open] = useState(false);
@@ -227,16 +227,17 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
 
   /**
    * 按保存模式解析新建工程输出路径，固定目录缺失时先请求用户选择。
-   * 空工程没有来源目录，源目录模式改为手动选择保存位置。
+   * 既没有来源也没有拖入路径时，源目录模式改为手动选择保存位置。
    */
   async function resolve_project_output_path(
-    source: SelectedSource | null,
+    anchor_path: string | undefined,
+    project_name: string | undefined,
   ): Promise<string | null> {
-    const default_file_name = build_default_project_file_name(source?.project_name);
+    const default_file_name = build_default_project_file_name(project_name);
     const save_mode = settings_snapshot.project_save_mode;
 
-    if (save_mode === "SOURCE" && source !== null) {
-      return join_path(extract_parent_dir(source.source_paths[0]!), default_file_name);
+    if (save_mode === "SOURCE" && anchor_path !== undefined) {
+      return join_path(extract_parent_dir(anchor_path), default_file_name);
     }
 
     if (save_mode === "MANUAL" || save_mode === "SOURCE") {
@@ -296,7 +297,10 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
       const source_paths = selected_source?.source_paths ?? [];
       const godot_pack_orders = await pack_order.request_order(selected_source?.godot_packs);
       if (godot_pack_orders === null) return;
-      const output_path = await resolve_project_output_path(selected_source);
+      const output_path = await resolve_project_output_path(
+        selected_source?.source_paths[0] ?? import_paths[0],
+        selected_source?.project_name,
+      );
       if (output_path === null || output_path === "") {
         return;
       }
@@ -341,7 +345,7 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
           ),
         );
       }
-      navigate_to_agent(build_agent_draft(t, source_paths.length > 0));
+      navigate_to_agent(build_agent_draft(t, source_paths.length > 0, import_paths));
     } catch (error) {
       if (
         selected_source !== null &&
@@ -362,12 +366,21 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
     push_toast("warning", t("app.drop.select_unavailable"));
   }
 
+  /** 拖入路径由 Agent 导入，创建阶段只确认语言与保存位置。 */
+  function start_from_paths(paths: readonly string[]): void {
+    set_selected_source(null);
+    set_import_paths(paths);
+    set_is_language_dialog_open(true);
+  }
+
   return {
     open,
     show: () => {
       clear_selected_source();
+      set_import_paths([]);
       set_open(true);
     },
+    start_from_paths,
     close: () => set_open(false),
     selected_source,
     source_selection_disabled,

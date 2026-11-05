@@ -26,7 +26,7 @@ export type ProofreadingLookupIntent = {
   scope: "src" | "dst" | "all";
 };
 
-/** 消费导航请求时替换草稿并清空附件。选区使用新正文的字符位置。 */
+/** 预置指令追加到 Agent 草稿末尾并保留附件。选区相对请求正文，由编辑器顺移。 */
 export type AgentInputRequest = Readonly<{
   text: string;
   selection?: Readonly<{ from: number; to: number }>;

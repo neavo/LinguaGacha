@@ -1,4 +1,3 @@
-import { find_agent_reference_ranges } from "@shared/agent-reference";
 import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { act } from "react";
@@ -110,8 +109,8 @@ async function create() {
 it.each([
   ["SOURCE", "E:/manual.lg"],
   ["MANUAL", "E:/manual.lg"],
-  ["FIXED", expect.stringMatching(/^E:\/fixed\/lg_project_.+\.lg$/u)],
-])("%s 保存模式创建空工程，成功等待 3 秒后预置翻译草稿", async (mode, path) => {
+  ["FIXED", expect.stringMatching(/^E:\/fixed\/[^/]+\.lg$/u)],
+])("%s 保存模式创建空工程，加载完成后预置翻译草稿", async (mode, path) => {
   mocks.state.settings_snapshot.project_save_mode = mode;
   mocks.state.settings_snapshot.glossary_default_preset = "test-preset";
   await create();
@@ -120,16 +119,14 @@ it.each([
     source_paths: [],
     languages: expect.any(Object),
   });
-  await act(async () => vi.advanceTimersByTimeAsync(2_999));
   expect(mocks.loaded).not.toHaveBeenCalled();
   expect(flow.source_selection_disabled).toBe(true);
-  await act(async () => vi.advanceTimersByTimeAsync(1));
+  await act(async () => vi.runAllTimersAsync());
   expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
   expect(mocks.toast).toHaveBeenCalledWith("success", expect.any(String));
   expect(mocks.toast).toHaveBeenCalledWith("info", expect.any(String));
   expect(flow.open).toBe(false);
   const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
-  expect(find_agent_reference_ranges(request.text)).toHaveLength(3);
   expect(request.text.slice(request.selection!.from, request.selection!.to)).toBe(
     t("project.create.agent_draft.path_placeholder"),
   );
@@ -155,7 +152,7 @@ it("创建失败保留弹窗与语言，重试成功后关闭，重挂载恢复�
   expect(mocks.navigate).not.toHaveBeenCalled();
   expect(flow.open).toBe(true);
   await create();
-  await act(async () => vi.advanceTimersByTimeAsync(3_000));
+  await act(async () => vi.runAllTimersAsync());
   expect(mocks.api).toHaveBeenLastCalledWith(
     "/api/session/project/create",
     expect.objectContaining({ languages: { source_language: "JA", target_language: "EN" } }),
@@ -179,6 +176,36 @@ const game_summary = {
     },
   ],
 };
+
+it("拖入创建清除旧来源，按首个路径保存并预填全部路径，重新打开对话框清除拖入意图", async () => {
+  mocks.api.mockResolvedValueOnce(game_summary);
+  await act(async () => flow.handle_select_source_paths(["E:/games/Game.v1.2"]));
+  act(() => flow.close());
+  act(() => flow.start_from_paths(["E:/src/a.txt", "E:/src/b"]));
+  expect(flow.open).toBe(false);
+  expect(flow.is_language_dialog_open).toBe(true);
+  expect(flow.backup_confirm.dialog_props.open).toBe(false);
+  await act(async () => flow.confirm_language_dialog());
+  expect(mocks.api).toHaveBeenLastCalledWith("/api/session/project/create", {
+    source_paths: [],
+    path: expect.stringMatching(/^E:\/src\/[^/]+\.lg$/u),
+    languages: expect.any(Object),
+  });
+  expect(window.desktopApp.pickProjectSavePath).not.toHaveBeenCalled();
+  await act(async () => vi.runAllTimersAsync());
+  const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
+  expect(request.text).toContain("E:/src/a.txt\nE:/src/b");
+  expect(request.text).not.toContain(t("project.create.agent_draft.path_placeholder"));
+  expect(request.selection).toBeUndefined();
+
+  act(() => flow.show());
+  await create();
+  expect(window.desktopApp.pickProjectSavePath).toHaveBeenCalledOnce();
+  await act(async () => vi.runAllTimersAsync());
+  const next_request: AgentInputRequest = mocks.navigate.mock.calls[1]![0];
+  expect(next_request.text).not.toContain("E:/src/");
+  expect(next_request.selection).toBeDefined();
+});
 
 it("游戏来源依次确认备份、语言和包顺序，按摘要名称在来源目录创建", async () => {
   mocks.api.mockResolvedValueOnce(game_summary);
@@ -206,7 +233,6 @@ it("游戏来源依次确认备份、语言和包顺序，按摘要名称在来�
   expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
   const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
   expect(request.selection).toBeUndefined();
-  expect(find_agent_reference_ranges(request.text)).toHaveLength(3);
 });
 
 it("来源摘要补齐无效计数，无可用文件或请求失败时清空并提示", async () => {

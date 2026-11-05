@@ -1,4 +1,5 @@
 import { find_agent_reference_ranges } from "@shared/agent-reference";
+import { read_file_paths } from "@frontend/app/desktop/source-paths";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
@@ -14,7 +15,7 @@ import {
 } from "react";
 import { FileText, Paperclip, Sparkles, SquareSlash } from "lucide-react";
 
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, isolateHistory } from "@codemirror/commands";
 import {
   Annotation,
   Compartment,
@@ -106,9 +107,9 @@ type InstructionTrigger = Readonly<{ from: number; at: number; text: string }>;
 
 /** 页面动作通过编辑器事务同步草稿，选区与焦点由 CodeMirror 管理。 */
 export type AgentMessageEditorHandle = {
-  write_draft: (text: string, selection?: Readonly<{ from: number; to: number }>) => boolean;
+  append_draft: (text: string, selection?: Readonly<{ from: number; to: number }>) => boolean;
   add_response_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
-  drop_files: (files: readonly File[], allow_uploads: boolean) => void;
+  drop_files: (files: readonly File[]) => void;
   focus: () => void;
 };
 
@@ -550,22 +551,15 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     const view = view_ref.current;
     if (!can_append_files || view === null) return;
     const uploads: File[] = [];
-    const paths: string[] = [];
-    const skipped: string[] = [];
+    const path_files: File[] = [];
     for (const file of files) {
       if (allow_uploads && can_upload_file(file)) {
         uploads.push(file);
         continue;
       }
-      let path = "";
-      try {
-        path = window.desktopApp.getPathForFile(file);
-      } catch {
-        // 拖拽源无法提供本机路径时，与虚拟文件一起反馈。
-      }
-      if (path === "") skipped.push(file.name);
-      else paths.push(path);
+      path_files.push(file);
     }
+    const { paths, skipped } = read_file_paths(path_files);
     if (paths.length > 0) {
       const { from, to } = view.state.selection.main;
       // 路径独占一行，选区两侧已有换行时直接复用。
@@ -586,14 +580,13 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       });
   };
   /** 拖放整批上传或整批录入路径，避免混合动作。 */
-  const drop_files = (files: readonly File[], allow_uploads: boolean): void => {
-    const upload = allow_uploads && files.every(can_upload_file);
-    insert_files(files, upload);
+  const drop_files = (files: readonly File[]): void => {
+    insert_files(files, files.every(can_upload_file));
   };
   drop_files_ref.current = (files) => {
     if (!can_append_files) return;
     if (props.on_drop_files) props.on_drop_files(Array.from(files));
-    else if (props.before_attach?.() !== false) drop_files(Array.from(files), true);
+    else if (props.before_attach?.() !== false) drop_files(Array.from(files));
   };
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
@@ -619,12 +612,24 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   useImperativeHandle(props.ref, () => ({
     drop_files,
-    /** 外部草稿替换退出历史导航。编辑锁阻止写入时返回 `false`，调用方可在解锁后重试。 */
-    write_draft(text, selection) {
+    /** 预置指令只追加正文。编辑锁阻止写入时返回 `false`，供解锁后重试。 */
+    append_draft(text, selection) {
       const view = view_ref.current;
       if (view === null || editor_read_only) return false;
-      input_history_navigation_ref.current = null;
-      write_agent_message_text(view, text, undefined, selection);
+      const base = view.state.doc.toString().trim();
+      const offset = base === "" ? 0 : base.length + 1; // 请求选区相对预置正文，需加上已有正文与换行的长度。
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: base === "" ? text : `${base}\n${text}`,
+        },
+        selection: selection
+          ? EditorSelection.range(offset + selection.from, offset + selection.to)
+          : EditorSelection.cursor(offset + text.length),
+        scrollIntoView: true, // 长草稿追加后将新内容带入可视区。
+        annotations: isolateHistory.of("full"), // 预置指令单独撤销，避免连带撤销前后输入。
+      });
       view.focus();
       return true;
     },
@@ -898,19 +903,16 @@ function can_start_input_history(view: EditorView): boolean {
   return view.moveToLineBoundary(selection.main, false, true).head === 0;
 }
 
-/** 用单次事务同步正文和选区，默认将光标放在末尾。 */
+/** 用单次事务同步正文，并将光标放在末尾。 */
 function write_agent_message_text(
   view: EditorView,
   text: string,
-  annotations?: TransactionSpec["annotations"],
-  selection?: Readonly<{ from: number; to: number }>,
+  annotations: NonNullable<TransactionSpec["annotations"]>,
 ): void {
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: text },
-    selection: selection
-      ? EditorSelection.range(selection.from, selection.to)
-      : EditorSelection.cursor(text.length),
-    ...(annotations === undefined ? {} : { annotations }),
+    selection: EditorSelection.cursor(text.length),
+    annotations,
   });
 }
 

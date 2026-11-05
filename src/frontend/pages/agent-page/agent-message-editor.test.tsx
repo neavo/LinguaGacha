@@ -422,7 +422,7 @@ describe("AgentMessageEditor", () => {
     const editor_ref = createRef<AgentMessageEditorHandle>();
     const on_submit = vi.fn();
     const view = await render_editor({ editor_ref, input_state, on_submit });
-    await act(async () => editor_ref.current?.write_draft('  检查 @skill("glossary-audit")  '));
+    await act(async () => editor_ref.current?.append_draft('  检查 @skill("glossary-audit")  '));
     await click_send(view);
     expect(on_submit).toHaveBeenCalledWith({
       text: '检查 @skill("glossary-audit")',
@@ -432,6 +432,42 @@ describe("AgentMessageEditor", () => {
     await render_editor({ editor_ref, input_state, on_submit });
     expect(get_editor(view).state.doc.toString()).toBe("");
   });
+
+  it.each([
+    { draft: "\n  原草稿  \n\n", prefix: "原草稿\n", selection: { from: 3, to: 7 } },
+    { draft: " \n\n ", prefix: "", selection: undefined },
+  ])(
+    "预置指令追加到修剪后的草稿 $draft，保留附件且可一次撤销",
+    async ({ draft, prefix, selection }) => {
+      const input_state = create_input_state();
+      const attachments: AgentMessageAttachment[] = [
+        uploaded_file("existing"),
+        { kind: "response_annotation", selectedText: "引用正文", comment: "批注" },
+      ];
+      input_state.draft.write({ text: "", attachments });
+      const editor_ref = createRef<AgentMessageEditorHandle>();
+      const view = await render_editor({ input_state, editor_ref });
+      const editor = get_editor(view);
+      const text = "导入：[路径]";
+      await set_document(editor, draft, draft.length);
+      await act(async () => {
+        expect(editor_ref.current?.append_draft(text, selection)).toBe(true);
+      });
+      expect(input_state.draft.read()).toEqual({ text: prefix + text, attachments });
+      expect(editor.hasFocus).toBe(true);
+      if (selection) {
+        expect(
+          editor.state.sliceDoc(editor.state.selection.main.from, editor.state.selection.main.to),
+        ).toBe("[路径]");
+      } else {
+        expect(editor.state.selection.main.head).toBe(text.length);
+      }
+      await act(async () => {
+        expect(undo(editor)).toBe(true);
+      });
+      expect(input_state.draft.read()).toEqual({ text: draft, attachments });
+    },
+  );
 
   it("文件选择后允许发送纯图片并从预览删除", async () => {
     const on_submit = vi.fn();

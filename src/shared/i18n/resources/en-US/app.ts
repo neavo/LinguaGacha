@@ -199,13 +199,21 @@ export const en_us_app = {
     builder_preceding_context: "Preceding context (for reference only):",
     builder_following_context: "Following context (for reference only):",
   },
+  agent_input: {
+    steps_intro: "Follow these steps:",
+    steps: {
+      glossary: "Extract terminology",
+      translate: "Translate the full text",
+      review: "Review the translation",
+      generate: "Generate all translations",
+    },
+  },
   translation_generation: {
+    agent_request: "Help me generate all translations",
     action: "Generate Translation",
     confirmation: {
       generic_description:
         "This project contains generic data packages. Use AGENT to generate all translations. Direct generation will skip these packages.",
-      generate_all:
-        "Generate all translations for this project, including generic data packages, and verify the deliverables.",
       description: "Confirm generating currently available translation files …?",
       checking: "Checking project files and proofreading warnings …",
       check_failed:

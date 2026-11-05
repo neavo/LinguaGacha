@@ -209,13 +209,21 @@ export const de_de_app = {
     builder_preceding_context: "Vorheriger Kontext (nur als Referenz):",
     builder_following_context: "Folgender Kontext (nur als Referenz):",
   },
+  agent_input: {
+    steps_intro: "Führe diese Schritte aus:",
+    steps: {
+      glossary: "Terminologie extrahieren",
+      translate: "Gesamten Text übersetzen",
+      review: "Übersetzung prüfen",
+      generate: "Alle Übersetzungen erzeugen",
+    },
+  },
   translation_generation: {
+    agent_request: "Hilf mir, alle Übersetzungen zu erzeugen",
     action: "Übersetzung erstellen",
     confirmation: {
       generic_description:
         "Dieses Projekt enthält generische Datenpakete. Verwende AGENT, um alle Übersetzungen zu erzeugen. Die direkte Erzeugung überspringt diese Pakete.",
-      generate_all:
-        "Erzeuge alle Übersetzungen dieses Projekts einschließlich der generischen Datenpakete und prüfe die Ergebnisse.",
       description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
       checking: "Projektdateien und Korrekturwarnungen werden geprüft …",
       check_failed:

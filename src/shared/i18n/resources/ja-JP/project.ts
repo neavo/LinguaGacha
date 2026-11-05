@@ -16,11 +16,8 @@ export const ja_jp_project = {
     loading_toast: "プロジェクトを作成中 …",
     success: "プロジェクトを作成しました …",
     agent_draft: {
-      translate: "以下の手順を厳守して翻訳を完了してください：",
-      import_and_translate:
-        "以下のパスから翻訳可能な内容を識別し、適切な形式でプロジェクトに追加してから、以下の手順を厳守して翻訳を完了してください：",
+      import: "以下のパスから翻訳可能な内容を識別し、適切な形式でプロジェクトに追加してください：",
       path_placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
-      steps: { glossary: "用語を抽出", translate: "全文を翻訳", review: "訳文を校正" },
     },
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
     default_presets: {
