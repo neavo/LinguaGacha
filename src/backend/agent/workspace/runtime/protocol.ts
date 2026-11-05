@@ -12,6 +12,7 @@ import type { Static } from "@earendil-works/pi-ai";
 import type { WorkspacePrintPDFRequest, WorkspacePrintPDFResult } from "../../tools/print-pdf";
 import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
 import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
+import type { UvConfiguration } from "../../uv/types";
 
 export type WorkspaceRequest =
   | { kind: "resolve_proxy"; url: string }
@@ -37,7 +38,7 @@ export type AgentWorkspaceRuntimeParentMessage =
       nodeRoot: string;
       runtimeDirectory: string; // 当前应用规范化的运行目录，应用 SDK 不依赖用户安装树
       moduleRoots: readonly string[]; // 带尾斜线的原目录 file: URL，含逻辑入口与真实位置
-      python: Readonly<{ pythonRoot: string; uvExecutable: string }>;
+      uv: UvConfiguration;
     }
   | {
       type: "response";

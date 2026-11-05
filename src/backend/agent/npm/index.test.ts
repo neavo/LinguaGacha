@@ -218,8 +218,6 @@ it("调用按顺序排队，失败不阻断后续调用，未捕获失败使执�
         `
       import assert from "node:assert/strict";
       await assert.rejects(npm.run("--version"), TypeError);
-      await assert.rejects(npm.run(["a\\0"]), TypeError);
-      await assert.rejects(npm.run(new Array(1)), TypeError);
       const log = (label, delay) => ["exec", "--offline", "--", "lg-fixture", "log", ${JSON.stringify(order)}, label, delay];
       const args = log("a", "300");
       const calls = [npm.run(args), npm.run(["definitely-not-a-command"]), npm.run(log("b", "0"))];

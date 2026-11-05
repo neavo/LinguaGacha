@@ -25,7 +25,7 @@ import { AgentWorkspaceRunner, AgentWorkspaceRunError } from "./runner";
 import type { AgentProcessOutput } from "../../process-output";
 import { AGENT_WORKSPACE_RUN_ROOT } from "./policy";
 import { create_pdf_fixture } from "../../../file/pdf/test-support";
-import { DEFAULT_PYTHON_VERSION } from "../../python/environment";
+import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 
@@ -623,17 +623,17 @@ it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", as
   }
 }, 30_000);
 
-it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
+it("根脚本可调用 uv，子进程和 worker 作为标准 Node 运行", async () => {
   await writeFile(
     path.join(workspace, "work/descendant.mjs"),
     `import assert from 'node:assert/strict';
-     import { python } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/python/index.mjs")).href)};
+     import { uv } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/uv/index.mjs")).href)};
      import { npm } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/npm/index.mjs")).href)};
      import { inspectSources } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/project/index.mjs")).href)};
      import { printPdf } from ${JSON.stringify(pathToFileURL(path.join(runtime, "node_modules/@lg/pdf/index.mjs")).href)};
      await assert.rejects(inspectSources([]), /not bound/);
      await assert.rejects(printPdf(''), /not bound/);
-     assert.throws(() => python.environment(), /not bound/);
+     await assert.rejects(uv.run(["--version"]), /not bound/);
      await assert.rejects(npm.run(["--version"]), /not bound/);
      console.log(typeof globalThis.ws);`,
   );
@@ -641,6 +641,8 @@ it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
     import { fork } from 'node:child_process';
     import { Worker } from 'node:worker_threads';
     import { once } from 'node:events';
+    import { uv } from '@lg/uv';
+    await uv.run(['--version']);
     await once(fork('work/descendant.mjs'), 'exit');
     await once(new Worker(new URL('../descendant.mjs', import.meta.url)), 'exit');
     console.log(typeof ws);
@@ -650,11 +652,12 @@ it("脚本创建的子进程和 worker 作为标准 Node 运行", async () => {
     "object",
     "undefined",
     "undefined",
+    expect.stringContaining(`uv ${app_package.workspaceRuntimeTools.uv}`),
   ]);
 });
 
 it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
-  "真实 Python SDK 安装本地 wheel、执行、搬移恢复与取消后代",
+  "真实 uv 安装本地 wheel、执行、搬移后重建环境与取消后代",
   async () => {
     await install_test_python();
     const wheel = new JSZip();
@@ -674,13 +677,9 @@ it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
     await writeFile(wheel_path, await wheel.generateAsync({ type: "nodebuffer" }));
     const initial = await run(
       `
-    import { python } from '@lg/python';
-    import assert from 'node:assert/strict';
-    const env = python.environment(); await env.ensure();
-    await env.install([${JSON.stringify(wheel_path)}]);
-    await env.run(['-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
-    const { version } = await env.info();
-    assert.ok((await python.list()).some(entry => entry.version === version));
+    import { uv } from '@lg/uv';
+    await uv.run(['add', ${JSON.stringify(wheel_path)}]);
+    await uv.run(['run', 'python', '-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
     console.log('python ready');
   `,
       AbortSignal.timeout(30_000),
@@ -690,36 +689,15 @@ it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
       "搭档的 Python",
     );
 
-    const project = path.join(python_root, "environments", DEFAULT_PYTHON_VERSION);
-    const manifest = path.join(project, "pyproject.toml");
-    await writeFile(
-      manifest,
-      (await readFile(manifest, "utf8")).replace(
-        '"lg-python-fixture"',
-        '"lg-python-fixture<1,>=10"',
-      ),
-    );
-    await writeFile(path.join(project, ".incomplete"), "");
-    await run(
-      `
-      import { python } from '@lg/python';
-      const env = python.environment();
-      await env.remove(['lg-python-fixture']);
-      await env.run(['-c', 'import importlib.util; assert importlib.util.find_spec("lg_python_fixture") is None']);
-      await env.install([${JSON.stringify(wheel_path)}]);
-    `,
-      AbortSignal.timeout(30_000),
-    );
-
+    // 次版本链接与 venv 都记录绝对路径，搬移后由 uv 自行重建，应用不另做恢复。
     const moved = path.join(root, "移动后的 Python");
     await rename(python_root, moved);
     python_root = moved;
     const recovered = await run(
       `
-    import { python } from '@lg/python';
-    const env = python.environment();
-    await env.run(['-c', 'import lg_python_fixture; print(lg_python_fixture.value)']);
-    await env.remove(['lg-python-fixture']);
+    import { uv } from '@lg/uv';
+    await uv.run(['run', 'python', '-c', 'import lg_python_fixture; print(lg_python_fixture.value)']);
+    await uv.run(['remove', 'lg-python-fixture']);
   `,
       AbortSignal.timeout(30_000),
     );
@@ -731,9 +709,9 @@ it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
       `import subprocess,sys,os,json,time\nchild=subprocess.Popen([sys.executable,'-c','import time; time.sleep(300)'])\nopen('work/python-pids.json','w').write(json.dumps([os.getpid(),child.pid]))\ntime.sleep(300)\n`,
     );
     const controller = new AbortController();
-    const stopped = new Error("stop Python SDK");
+    const stopped = new Error("stop uv SDK");
     const pending = run(
-      `import {python} from '@lg/python'; const env = python.environment(); await env.run(['work/python-wait.py']);`,
+      `import {uv} from '@lg/uv'; await uv.run(['run', 'python', 'work/python-wait.py']);`,
       controller.signal,
     ).catch((error: unknown) => error);
     try {
@@ -756,66 +734,34 @@ it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
   90_000,
 );
 
-it.skipIf(
-  !process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE || !process.env.LINGUAGACHA_TEST_PYTHON_ONLINE,
-)(
-  "真实 Python 经应用代理下载，健康升级复用安装树且搬移后恢复原生 wheel",
+it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ONLINE)(
+  "真实 uv 经应用代理下载解释器与原生 wheel，搬移后恢复",
   async () => {
     python_root = path.join(root, "online Python");
-    await install_test_python();
     const routes: string[] = [];
     const resolveProxy = async (url: string) => {
       routes.push(url);
       return "DIRECT";
     };
+    const probe = `['run', 'python', '-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']`;
     const installed = await run(
       `
-      import { python } from '@lg/python';
-      const env = python.environment(); await env.ensure();
-      await env.install(['Pillow', 'fonttools']);
-      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
+      import { uv } from '@lg/uv';
+      await uv.run(['add', 'Pillow', 'fonttools']);
+      await uv.run(${probe});
     `,
       AbortSignal.timeout(90_000),
       resolveProxy,
     );
     expect(String(output_content(installed.stdout)).trim()).toBe("(2, 2)");
-    const sentinel = path.join(
-      python_root,
-      "environments",
-      DEFAULT_PYTHON_VERSION,
-      ".venv/upgrade-sentinel",
-    );
-    await writeFile(sentinel, "keep healthy installation");
-    const upgraded = await run(
-      `
-      import { python } from '@lg/python';
-      import assert from 'node:assert/strict';
-      const env = python.environment();
-      const before = (await env.info()).version;
-      await env.upgrade();
-      assert.notEqual((await env.info()).version, before);
-      assert.ok((await python.list()).some(entry => entry.version === before));
-      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
-    `,
-      AbortSignal.timeout(90_000),
-      resolveProxy,
-    );
-    expect(String(output_content(upgraded.stdout)).trim()).toBe("(2, 2)");
-    expect(await readFile(sentinel, "utf8")).toBe("keep healthy installation");
-    await run(
-      `import { python } from '@lg/python'; await python.environment().upgrade();`,
-      AbortSignal.timeout(30_000),
-    );
-    expect(await readFile(sentinel, "utf8")).toBe("keep healthy installation");
     const moved = path.join(root, "online moved Python");
     await rename(python_root, moved);
     python_root = moved;
     const recovered = await run(
       `
-      import { python } from '@lg/python';
-      const env = python.environment();
-      await env.run(['-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']);
-      await env.remove(['Pillow', 'fonttools']);
+      import { uv } from '@lg/uv';
+      await uv.run(${probe});
+      await uv.run(['remove', 'Pillow', 'fonttools']);
     `,
       AbortSignal.timeout(30_000),
     );

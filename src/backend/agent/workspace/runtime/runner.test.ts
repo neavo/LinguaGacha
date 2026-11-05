@@ -328,7 +328,7 @@ function build_runner(
       nodeRoot: directory,
       runtimeDirectory: directory,
       nodeExecutable: process.execPath,
-      python: { pythonRoot: directory, uvExecutable: process.execPath },
+      uv: { pythonRoot: directory, uvExecutable: process.execPath },
       with_environment,
     } as AgentExecutionRuntime,
     paths: {

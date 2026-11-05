@@ -76,7 +76,7 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
   return (
     <AppPageDialog
       open
-      size="xl"
+      size="viewport"
       title={title}
       onClose={props.on_close}
       bodyClassName="overflow-hidden p-0"
