@@ -81,7 +81,7 @@ export function create_agent_workspace_run_tool(options: {
       "- 程序失败、停止或超时后，已完成的文件写入仍然保留，继续前检查受影响的文件，复用完整内容并修复未完成或损坏的部分",
       "- 超时多半源于脚本缺陷，例如遗留的定时器、worker 或连接使程序无法退出，等待无响应的网络，正则回溯，全量两两比较。按超时回执中的无输出秒数处理，不盲目调大时限重试：",
       "  - 长时间没有输出表示程序卡住，用小样本复现并修复脚本",
-      "  - 仍有输出时按进度估算总耗时，超出时限则改进算法或从已保存结果分批续跑",
+      "  - 仍有输出时按进度估算总耗时，超出时限时先改进算法或从已保存结果分批续跑，无法通过修改脚本缩短时才按估算调大时限",
       "",
       "### 工作区数据",
       "",
@@ -146,7 +146,7 @@ export function create_agent_workspace_run_tool(options: {
           Type.Integer({
             minimum: minTimeoutSeconds,
             maximum: maxTimeoutSeconds,
-            description: `执行时限秒数，省略时为 ${defaultTimeoutSeconds}。时限包含执行环境准备及脚本启动的 npm、Python。仅在调用前已知耗时较长时调大，例如首次使用 Python 或安装依赖`,
+            description: `执行时限秒数，省略时为 ${defaultTimeoutSeconds}，先使用默认值，超时时按「失败与恢复」调整`,
           }),
         ),
       },
