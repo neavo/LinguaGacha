@@ -49,14 +49,7 @@
     </details>
 - Besorgen Sie sich Zugang zu einer zuverlässigen KI-Modellschnittstelle. Empfehlung:
   - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ], keine Grafikkarte erforderlich
-- Starten Sie die Anwendung
-  - Ziehen Sie die `zu übersetzenden Dateien` auf die Seite, um ein Projekt zu erstellen
-  - Legen Sie auf der Seite `Grundeinstellungen` die Ausgangs- und Zielsprache sowie weitere erforderliche Angaben fest
-  - Wählen Sie auf der Seite `AGENT` ein Modell aus und klicken Sie nacheinander auf die vorgegebenen Anweisungen, um folgende Schritte auszuführen:
-    - `Terminologie extrahieren`　`👈👈 Optional, aber empfohlen; wichtig für die Qualität`
-    - `Vollständigen Text übersetzen`
-    - `Automatisch Korrektur lesen`　`👈👈 Optional, aber empfohlen; wichtig für die Qualität`
-  - Klicken Sie auf der Seite `AGENT` oder `Werkbank` auf die Option zum Generieren der Übersetzung
+- Starten Sie die Anwendung, ziehen Sie die `zu übersetzenden Dateien` auf die Seite und drücken Sie die Eingabetaste!
 
 ## Anleitungen 📝
 - Einstieg
@@ -97,8 +90,11 @@
 | `.trans` Projektdateien | `.trans` | Quelle: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Unterstützung endet bald` |
 
 ## Neueste Updates 📅
-- 20261029 v0.132.1
-  - Korrekturen und Verbesserungen [#1049](../../issues/1049) [#1050](../../issues/1050) [#1052](../../issues/1052) [#1053](../../issues/1053) [#1054](../../issues/1054)
+- 20261105 v0.140.0
+  - Eine völlig neue `Native Harness`-Version
+  - Unterstützt `theoretisch` alle `Spiele`, `Untertitel` und `E-Books`
+  - Lernt selbstständig, hält automatisch Erfahrungen aus jedem Lokalisierungsprojekt fest und wird mit der Zeit immer versierter
+  - Als eigenständiges `voll ausgestattetes AGENT`-Tool mit freier Ausgabe im Alltag nutzbar
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)

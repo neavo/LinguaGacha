@@ -53,14 +53,7 @@
     </details>
 - Obtain a reliable AI model interface. Recommended:
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (No GPU required)
-- Launch the application:
-  - Drag the `files to translate` onto the page to create a project
-  - Configure essential information such as source and target languages on the `Basic Settings` page
-  - Select a model on the `AGENT` page, then click the preset instructions in the interface in order to complete the following steps:
-    - `Glossary Extraction`　`👈👈 Optional but recommended; important for translation quality`
-    - `Full Text Translation`
-    - `Automatic Proofreading`　`👈👈 Optional but recommended; important for translation quality`
-  - Click Generate Translation on the `AGENT` or `Workbench` page
+- Launch the application, drag the `files to translate` onto the page, and press Enter!
 
 ## User Guide 📝
 - Getting Started
@@ -101,8 +94,11 @@
 | `.trans` project files | `.trans` | Source: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Support ending soon` |
 
 ## Recent Updates 📅
-- 20261029 v0.132.1
-  - Fixes and improvements [#1049](../../issues/1049) [#1050](../../issues/1050) [#1052](../../issues/1052) [#1053](../../issues/1053) [#1054](../../issues/1054)
+- 20261105 v0.140.0
+  - An all-new `Native Harness` version
+  - Supports `in theory` all `games`, `subtitles`, and `e-books`
+  - Learns on its own, automatically recording experience from each localization project and becoming more proficient over time
+  - Can be used independently for everyday tasks as a `full-featured AGENT` tool with unrestricted output
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)
