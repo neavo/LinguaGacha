@@ -8,7 +8,7 @@ import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 /** 导入时选择的来源路径，旧工程首次补记时按界面语言生成模板。 */
 export type KnowledgeSourceRecord = Readonly<{ paths: readonly string[]; locale: Locale }>;
 
-/** 模板章节的固定顺序，与 `knowledge-creator` 技能的章节表一一对应。 */
+/** 模板章节的固定顺序，与 `knowledge` 技能的章节表一一对应。 */
 const PROJECT_KNOWLEDGE_SECTIONS = ["decisions", "materials", "paths"] as const;
 
 /**

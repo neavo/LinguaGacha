@@ -332,7 +332,7 @@ export class AgentWorkspaceRunner {
             nodeRoot: this.execution.nodeRoot,
             runtimeDirectory: runtime_directory,
             moduleRoots: skill_roots,
-            python: this.execution.python,
+            uv: this.execution.uv,
           });
           await owner.settle(signal);
         } catch (error) {

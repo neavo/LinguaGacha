@@ -20,7 +20,7 @@
 
 从 `read_skill` 的 `base_url` 定位原包资源和脚本，使用 `new URL("scripts/example.mjs", base_url)` 导入。相对资源基于 `import.meta.url` 定位，当前工作目录属于工作区。
 
-技能包内不放 `node_modules`。正文列出脚本依赖的第三方包。命令行工具通过 `@lg/npm` 调用，文件参数使用绝对路径。Python 脚本通过 `@lg/python` 执行。
+技能包内不放 `node_modules`。正文列出脚本依赖的第三方包。命令行工具通过 `@lg/npm` 调用，文件参数使用绝对路径。Python 依赖与脚本通过 `@lg/uv` 管理和执行。
 
 编写程序时按当前工具声明核对包名和 `ws` 接口，工程数据结构通过 `ws.contract` 指向的参考读取，技能中的流程与术语使用实际接口名称。
 

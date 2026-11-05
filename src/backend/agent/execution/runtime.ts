@@ -7,6 +7,7 @@ import { WorkspaceProxy } from "../../network/workspace-proxy";
 import type { ProxyResolver } from "../../network/proxy-route";
 import { AppError } from "../../../shared/error";
 import { read_agent_process_output, type AgentProcessOutput } from "../process-output";
+import type { UvConfiguration } from "../uv/types";
 
 /** 本次执行的两路日志与时限，日志路径相对于工作区。 */
 export type AgentExecutionRequest = Readonly<{
@@ -36,7 +37,7 @@ export class AgentExecutionRuntime {
   public readonly nodeExecutable: string;
   public readonly runtimeDirectory: string; // 随应用版本固定的运行资源。
   public readonly nodeRoot: string; // 跨应用更新保留的用户 npm 工程。
-  public readonly python: Readonly<{ pythonRoot: string; uvExecutable: string }>;
+  public readonly uv: UvConfiguration; // 经 IPC 固定根脚本使用的 uv 与共享数据根。
   private readonly lock: string;
   private active: Promise<unknown> | undefined; // 关闭等待整个操作结算，不能只等目标进程。
   private controller: AbortController | undefined; // 应用关闭与调用方取消合并到本次操作。
@@ -59,7 +60,7 @@ export class AgentExecutionRuntime {
     this.runtimeDirectory = path.resolve(options.runtimeDirectory);
     this.nodeRoot = path.resolve(options.paths.get_agent_node_root_dir());
     this.lock = options.paths.get_agent_execution_lock_path();
-    this.python = Object.freeze({
+    this.uv = Object.freeze({
       pythonRoot: path.resolve(options.paths.get_agent_python_root_dir()),
       uvExecutable: path.join(
         this.runtimeDirectory,

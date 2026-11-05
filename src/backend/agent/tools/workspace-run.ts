@@ -15,7 +15,7 @@ import {
 import { format_agent_workspace_typescript_api } from "../workspace/runtime/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
 import app_package from "../../../../package.json";
-import { PYTHON_DESCRIPTION } from "../python/description";
+import { UV_DESCRIPTION } from "../uv/description";
 import { NPM_DESCRIPTION } from "../npm/description";
 
 const { defaultTimeoutSeconds, minTimeoutSeconds, maxTimeoutSeconds } =
@@ -48,13 +48,13 @@ export function create_agent_workspace_run_tool(options: {
       "  - `@lg/pdf`、`@lg/pdf/mupdf`：PDF 读取、渲染与打印，用法见 `pdf` 技能",
       "  - `@lg/utils/literal-matcher`：应用判定字面命中与规范化文本的规则",
       "  - `@lg/npm`：应用随附的 npm，管理共享 npm 工程与调用包提供的命令行工具",
-      "  - `@lg/python`：应用管理的 Python 解释器、依赖与程序执行",
+      "  - `@lg/uv`：应用随附的 uv，管理共享 Python 工程与执行 Python 程序",
       "- 第三方包从共享 npm 工程加载，缺少的包先用 `@lg/npm` 安装，再在新的调用中导入",
       `- 共享工程初始提供 ${app_package.workspaceRuntimePackages.agent.join("、")}`,
       "",
       NPM_DESCRIPTION,
       "",
-      PYTHON_DESCRIPTION,
+      UV_DESCRIPTION,
       "",
       "### 文件与进程",
       "",
