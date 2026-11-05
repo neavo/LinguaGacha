@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { build } from "vite";
 
-import { expect, it } from "vitest";
+import { inject, expect, it } from "vitest";
 import { parse_ruby, select_ruby_strings, read_ruby_strings, write_ruby_strings } from "./ruby";
 
 it.each([
@@ -117,8 +117,7 @@ it.each([false, true])(
 
 it("部署目录的 Prism WASM 在仓库外 Electron 主线程和 worker 中解析并写回", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-runtime-"));
-  const runtime =
-    process.env["LINGUAGACHA_TEST_WORKSPACE_RUNTIME"] ?? path.resolve("build/resources/workspace");
+  const runtime = inject("workspaceRuntimeDirectory");
   const electron =
     process.env["LINGUAGACHA_TEST_ELECTRON"] ??
     (createRequire(import.meta.url)("electron") as string);

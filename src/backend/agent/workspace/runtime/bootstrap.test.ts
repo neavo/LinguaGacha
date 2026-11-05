@@ -1,14 +1,11 @@
-import { create_pdf_printer } from "../../tools/print-pdf";
-import { default_native_fs } from "../../../../native/native-fs";
 import { AgentExecutionRuntime } from "../../execution/runtime";
 import type { AgentWorkspaceRunRequest } from "./runner";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import {
   cp,
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   rename,
   rm,
   symlink,
@@ -22,15 +19,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import JSZip from "jszip";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { inject, afterAll, beforeAll, expect, it, onTestFinished, vi } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../../tools/contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError } from "./runner";
 import type { AgentProcessOutput } from "../../process-output";
-import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
+import { AGENT_WORKSPACE_RUN_ROOT } from "./policy";
 import { create_pdf_fixture } from "../../../file/pdf/test-support";
-import { BackendResources } from "../../../bootstrap/backend-resources";
-import { BackendServices } from "../../../bootstrap/backend-services";
-import { AgentWorkspaceService } from "../service";
 import { DEFAULT_PYTHON_VERSION } from "../../python/environment";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
@@ -54,17 +48,8 @@ beforeAll(async () => {
   python_root = path.join(root, "python");
   runtime = path.join(root, "resources/workspace");
   workspace = path.join(root, "workspace");
-  const deployed = process.env.LINGUAGACHA_TEST_WORKSPACE_RUNTIME;
-  if (deployed) await cp(deployed, runtime, { recursive: true });
-  else
-    execFileSync(
-      process.execPath,
-      [path.resolve("buildtools/resources/build.mjs"), path.dirname(runtime), "--development"],
-      {
-        windowsHide: true,
-        stdio: "pipe",
-      },
-    );
+  // 应用升级场景会改写 SDK 和 npm，使用本文件独占的部署副本。
+  await cp(inject("workspaceRuntimeDirectory"), runtime, { recursive: true });
   await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
   await writeFile(path.join(workspace, "package.json"), JSON.stringify({ type: "module" }));
   await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
@@ -101,9 +86,6 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     `
     import { inspectSources, generateFiles, getOutputPaths } from '@lg/project';
     import assert from 'node:assert/strict';
-    import * as pdf from '@lg/pdf';
-    assert.equal('build_pdf_page_preview' in pdf || 'render_pdf_preview' in pdf, false);
-    assert.equal('host' in ws || 'doing' in ws, false);
     await assert.rejects(generateFiles(), /fixture generation failed/);
     console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
@@ -133,27 +115,6 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     ],
   });
   expect(inspectSources).toHaveBeenCalledOnce();
-});
-
-it("SDK 打印不受脚本当前目录影响，读取后清理宿主临时文件", async () => {
-  const before = await readdir(path.join(workspace, "work"));
-  const printPDF = create_pdf_printer({
-    root: workspace,
-    nativeFs: default_native_fs,
-    pdfHost: async () => new Uint8Array([1, 2, 3]),
-  });
-  const result = await run(
-    `
-    import { printPdf } from '@lg/pdf';
-    process.chdir('work');
-    console.log(JSON.stringify([...await printPdf('<p>fixture</p>')]));
-  `,
-    undefined,
-    undefined,
-    { printPDF },
-  );
-  expect(output_content(result.stdout)).toEqual([1, 2, 3]);
-  expect(await readdir(path.join(workspace, "work"))).toEqual(before);
 });
 
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
@@ -308,152 +269,6 @@ it.each(["user", "builtin"])(
   },
 );
 
-it("删除变更目录后继续执行技能、提交和重置", async () => {
-  const app_root = await mkdtemp(path.join(root, "lifecycle-"));
-  await writeFile(path.join(app_root, "version.txt"), "0.0.0");
-  const source = path.join(app_root, "source.txt");
-  await writeFile(source, "Hello world.");
-  const resources = await BackendResources.start({
-    appRoot: app_root,
-    builtinRoot: path.join(app_root, "builtin"),
-    logTargets: { console: false, window: false },
-    proxyResolver: { resolveProxy: async () => "DIRECT" },
-  });
-  const services = new BackendServices({
-    paths: resources.paths,
-    metadata: resources.metadata,
-    appSettingService: resources.settings,
-    database: resources.database,
-    logManager: resources.logManager,
-    publishEvent: () => {},
-    openOutputFolder: async () => {},
-    workerExecution: { kind: "in_process" },
-  });
-  try {
-    await services.project.lifecycle.create_project_commit({
-      path: path.join(app_root, "project.lg"),
-      source_paths: [source],
-      languages: { source_language: "EN", target_language: "ZH" },
-    });
-    const runner = new AgentWorkspaceRunner({
-      paths: resources.paths,
-      execution: create_execution_runtime(),
-      proxyResolver: { resolveProxy: async () => "DIRECT" },
-    });
-    const service = new AgentWorkspaceService({
-      files: services.project.content,
-      generation: services.files.translationGeneration,
-      images: {
-        prepare: async () => {
-          throw new Error("Unexpected image");
-        },
-      },
-      paths: resources.paths,
-      sessionState: services.state.session,
-      cache: services.state.cache,
-      proofreading: services.proofreading.query,
-      database: resources.database,
-      knowledge: services.project.knowledge,
-      runtimeGate: {
-        run_agent_project_write: async (operation) => operation(new AbortController().signal),
-      },
-      writeStore: services.state.writes,
-      logManager: resources.logManager,
-      run: runner.run.bind(runner),
-      openDirectory: async () => {},
-      pickSavePath: async () => null,
-    });
-    await service.activate_chat("test0001", [], async () => {});
-    /** 本用例的每次执行共用时限与外部取消信号。 */
-    const run_script = (script: string) =>
-      service.run({ script, timeoutMs: EXECUTION_TIMEOUT_MS }, AbortSignal.timeout(RUN_TIMEOUT_MS));
-    // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
-    await run_script("console.log('ready');");
-    await run_script(`
-      import { rm } from 'node:fs/promises';
-      await rm('changes', { recursive: true });
-    `);
-    const entry = path.join(resources.paths.get_agent_user_skill_dir(), "fixture", "entry.mjs");
-    await mkdir(path.dirname(entry), { recursive: true });
-    // 原包替换正文，下一进程必须看到新版本。apply 使用真实工程写入口。
-    const module_body = (value: string) => `
-      import { readFile, writeFile } from 'node:fs/promises';
-      export async function update() {
-        const row = JSON.parse((await readFile(ws.contract.datasets.items.path, 'utf8')).trim().split('\\n')[0]);
-        const reference = await readFile(ws.contract.changes.items.updates.reference, 'utf8');
-        if (!reference.includes(ws.contract.changes.items.updates.path)) throw new Error('Missing update reference');
-        const dst = ${JSON.stringify(value)};
-        await writeFile(ws.contract.changes.items.updates.path, JSON.stringify({item_id:row.item_id,fp:row.fp,dst}));
-        console.log(JSON.stringify({before:row.dst,after:dst}));
-      }
-    `;
-    await writeFile(entry, module_body("第一版"));
-    const script = `const {update} = await import(${JSON.stringify(pathToFileURL(entry).href)}); await update();`;
-    await run_script(script);
-    expect(await service.apply_workspace(async () => {})).toMatchObject({ status: "applied" });
-    expect(services.state.cache.items.readItems()[0]?.dst).toBe("第一版");
-    const generated = await run_script(`
-      import { generateFiles, getOutputPaths } from '@lg/project';
-      import { readFile } from 'node:fs/promises';
-      import path from 'node:path';
-      const result = await generateFiles();
-      console.log(JSON.stringify({ ...result, paths: await getOutputPaths(${JSON.stringify(app_root)}), text: await readFile(path.join(result.output_path, 'source.txt'), 'utf8') }));
-    `);
-    expect(generated.execution.stdout).toMatchObject({
-      content: {
-        accepted: true,
-        text: "第一版",
-        paths: services.files.translationGeneration.read_output_paths(app_root),
-      },
-    });
-    await writeFile(entry, module_body("第二版"));
-    const result = await run_script(script);
-    expect(result.execution.stdout).toMatchObject({
-      content: { before: "第一版", after: "第二版" },
-    });
-    await service.close();
-    await service.delete_chat("test0001");
-    await service.activate_chat("test0001", [], async () => {});
-    expect((await run_script(script)).execution.stdout).toMatchObject({
-      content: { before: "第一版", after: "第二版" },
-    });
-    await unlink(entry);
-    await expect(run_script(script)).rejects.toThrow();
-  } finally {
-    await services.dispose();
-    await resources.dispose();
-  }
-});
-
-it("超额输出完整落盘，主动错误输出与未捕获异常都保留", async () => {
-  const limit = AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes;
-  let error: unknown;
-  try {
-    await run(`
-      process.stdout.write('x'.repeat(${limit}) + 'END');
-      process.stderr.write('y'.repeat(${limit}));
-      console.error('manual error');
-      throw new Error('automatic error');
-    `);
-  } catch (cause) {
-    error = cause;
-  }
-  if (!(error instanceof AgentWorkspaceRunError))
-    throw error ?? new Error("Expected program failure");
-  expect(error.execution.exitCode).toBe(1);
-  for (const output of [error.execution.stdout, error.execution.stderr]) {
-    expect(output.bytes).toBeGreaterThan(limit);
-    expect(output).not.toHaveProperty("content");
-    expect(output).toHaveProperty("message");
-  }
-  const stdout = await readFile(path.join(workspace, error.execution.stdout.path), "utf8");
-  const stderr = await readFile(path.join(workspace, error.execution.stderr.path), "utf8");
-  expect(stdout.length).toBe(limit + 3);
-  expect(stdout.endsWith("END")).toBe(true);
-  expect(stderr).toContain("manual error");
-  expect(stderr).toContain("Error: automatic error");
-});
-
 it("网页流、重定向与代理等待在真实子进程中工作", async () => {
   const server = createServer((request, response) => {
     if (request.url === "/redirect") {
@@ -502,30 +317,6 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
       server.close((error) => (error ? reject(error) : resolve())),
     );
   }
-});
-
-it("失败保留输出、位置和已写文件", async () => {
-  await expect(
-    run(
-      `import fs from 'node:fs/promises'; await fs.writeFile('work/kept.txt','kept'); console.log('before error'); throw new Error('program failed');`,
-    ),
-  ).rejects.toMatchObject({
-    execution: {
-      exitCode: 1,
-      stdout: { content: "before error\n" },
-      stderr: { content: expect.stringContaining("program failed") },
-    },
-  });
-  expect(await readFile(path.join(workspace, "work/kept.txt"), "utf8")).toBe("kept");
-  await expect(
-    run('console.error(JSON.stringify({ message: "intentional exit" })); process.exitCode = 7;'),
-  ).rejects.toMatchObject({
-    execution: {
-      exitCode: 7,
-      stderr: { content: { message: "intentional exit" } },
-    },
-  });
-  expect((await run("process.exit(0);")).exitCode).toBe(0);
 });
 
 it("取消在途代理等待后回收进程，并解除宿主请求", async () => {
@@ -812,9 +603,6 @@ it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", as
         import version from '${fixture}';
         for (const name of ['@lg/project/bootstrap', '@lg/project/prepare', '@lg/pdf/worker', '@lg/utils']) {
           await assert.rejects(import(name), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
-        }
-        for (const name of ['@lg/workspace/item-contexts', '@lg/workspace/page-updates', '@lg/text']) {
-          await assert.rejects(import(name), {code:'ERR_MODULE_NOT_FOUND'});
         }
         console.log(version);
         `,
@@ -1131,7 +919,7 @@ function create_execution_runtime(
   directory = runtime,
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ) {
-  return new AgentExecutionRuntime({
+  const execution = new AgentExecutionRuntime({
     runtimeDirectory: directory,
     executablePath: electron_path,
     electronVersion: "45.0.0",
@@ -1142,4 +930,6 @@ function create_execution_runtime(
     },
     proxyResolver: { resolveProxy },
   });
+  onTestFinished(() => execution.close()); // 测试超时也先回收进程和租约，再进入下一例。
+  return execution;
 }

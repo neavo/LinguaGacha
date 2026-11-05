@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { setTimeout } from "node:timers/promises";
-import { beforeAll, afterAll, expect, it, vi } from "vitest";
+import { inject, beforeAll, afterAll, expect, it, vi } from "vitest";
 import { GamePrepareWorker } from "./prepare-worker";
 import { build_worker_threads_backend_worker_execution_from_desktop_bundle_dir } from "../../../worker/worker-execution";
 import { evb_fixture } from "../../../../test/evb-fixture";
@@ -39,7 +39,7 @@ it("RenPy 通过正式准备线程展开并释放归档句柄", async () => {
     pathToFileURL(path.join(runtime, "main/game-prepare-worker-entry.js")),
     undefined,
     undefined,
-    path.resolve("build/resources/workspace"),
+    inject("workspaceRuntimeDirectory"),
   );
   try {
     const result = await worker.run({ kind: "game", file_type: "RENPY", game, staging });
@@ -402,12 +402,7 @@ it("仓库外真实 Electron 加载部署准备线程并等待退出", async () 
     path.join(runtime, "main/game-prepare-worker-entry.js");
   const result = await promisify(execFile)(
     electron,
-    [
-      path.join(temp.path, "bundle/smoke.mjs"),
-      worker_entry,
-      process.env["LINGUAGACHA_TEST_WORKSPACE_RUNTIME"] ??
-        path.resolve("build/resources/workspace"),
-    ],
+    [path.join(temp.path, "bundle/smoke.mjs"), worker_entry, inject("workspaceRuntimeDirectory")],
     {
       cwd: temp.path,
       windowsHide: true,

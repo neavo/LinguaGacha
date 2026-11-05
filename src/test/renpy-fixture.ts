@@ -1,3 +1,4 @@
+import { inject } from "vitest";
 import { configure_python_parser, PythonSession } from "../backend/file/renpy/python-syntax";
 import { extract_script } from "../backend/file/renpy/extract";
 import { read_member } from "../backend/file/renpy/member";
@@ -9,7 +10,7 @@ import { deflateSync } from "node:zlib";
 import { pickle_string } from "../backend/file/renpy/pickle";
 import { NativeFs } from "../native/native-fs";
 
-configure_python_parser(path.resolve("build/resources/workspace"));
+configure_python_parser(inject("workspaceRuntimeDirectory"));
 
 /** 测试从字节建立成员分析并完整提取，`member` 供写回测试使用。 */
 export async function extract_fixture(bytes: Uint8Array, python2 = false) {

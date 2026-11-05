@@ -1,11 +1,11 @@
 import { setImmediate } from "node:timers/promises";
-import { expect, it } from "vitest";
+import { inject, expect, it } from "vitest";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { configure_python_parser, PythonSession } from "./python-syntax";
 
-configure_python_parser(path.resolve("build/resources/workspace"));
+configure_python_parser(inject("workspaceRuntimeDirectory"));
 
 it("UTF-16 坐标覆盖括号、缩进、CRLF 和相邻常量，调用位置来自语法结构", async () => {
   using session = await PythonSession.create();
@@ -141,7 +141,7 @@ it("运行资源缺失报告配置路径，恢复配置后可以继续操作", a
       path.join(temp.path, "python/tree-sitter-python.wasm"),
     );
   } finally {
-    configure_python_parser(path.resolve("build/resources/workspace"));
+    configure_python_parser(inject("workspaceRuntimeDirectory"));
   }
   using session = await PythonSession.create();
   expect((await session.analyze({ source: "'available'", mode: "eval" })).constants[0]?.value).toBe(
