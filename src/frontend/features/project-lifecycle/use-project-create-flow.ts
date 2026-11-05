@@ -1,17 +1,33 @@
+import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import type { AgentInputRequest } from "@frontend/app/navigation/types";
+import { format_agent_reference } from "@shared/agent-reference";
 import { useState } from "react";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
+import { extract_parent_dir } from "@frontend/app/desktop/path";
+import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
-import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
+import { useGameBackupConfirm } from "@frontend/features/game-backup-confirm/use-game-backup-confirm";
+import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
 import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
+import {
+  PROJECT_SOURCE_FORMATS,
+  type ProjectSourceFormatHitCounts,
+  type ProjectSourceFileSummary,
+} from "@shared/project-source-formats";
 import type { ProjectLanguageKey } from "@domain/project-settings";
 import {
   read_project_language_preference,
   save_project_language_preference,
 } from "./project-language-preference";
 import type { RunProjectLoad } from "./use-project-load";
+/** 已选择的源路径与后端摘要，后端提供默认工程名。 */
+type SelectedSource = ProjectSourceFileSummary & {
+  source_paths: string[]; // 创建工程时原样提交的归一化用户选择
+};
 
 /** 新建工程提交后的公开载荷。 */
 type ProjectCreateCommitPayload = {
@@ -53,10 +69,27 @@ function join_path(directory_path: string, file_name: string): string {
   return `${normalized_directory}${path_separator}${file_name}`;
 }
 
-/** 空工程没有来源名称，使用本地时间生成默认 `.lg` 文件名。 */
-function build_default_project_file_name(): string {
+/** 有来源时沿用源名称，空工程使用本地时间生成默认 `.lg` 文件名。 */
+function build_default_project_file_name(project_name: string | undefined): string {
+  if (project_name) return `${project_name}.lg`;
   const timestamp = format_local_timestamp(new Date().toISOString())!;
   return `lg_project_${timestamp.replace(/[-:]/gu, "").replace(" ", "_")}.lg`;
+}
+
+/** 源文件格式命中数归一为非负整数，供格式标签展示。 */
+function normalize_count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+/** API 边界按共享目录补齐全部格式计数，缺失或无效值归零。 */
+function normalize_project_source_format_hit_counts(value: unknown): ProjectSourceFormatHitCounts {
+  const record =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return Object.fromEntries(
+    PROJECT_SOURCE_FORMATS.map((format) => [format.id, normalize_count(record[format.id])]),
+  ) as ProjectSourceFormatHitCounts;
 }
 
 /** 收集非空默认预设名称，用于新建成功后的信息提示。 */
@@ -74,12 +107,47 @@ function collect_loaded_default_preset_names(
   });
 }
 
+const EMPTY_PROJECT_LOADING_MS = 3_000; // 空工程创建太快，留出完成的实感。
+// 草稿固定为术语、翻译和审校三步，后两步共用翻译技能。
+const TRANSLATION_STEPS = [
+  { label_key: "project.create.agent_draft.steps.glossary", skill: "glossary" },
+  { label_key: "project.create.agent_draft.steps.translate", skill: "translation" },
+  { label_key: "project.create.agent_draft.steps.review", skill: "translation" },
+] as const;
+
+/** 空工程选中路径占位行，输入或拖入文件可直接替换。 */
+function build_agent_draft(
+  t: ReturnType<typeof useI18n>["t"],
+  has_source: boolean,
+): AgentInputRequest {
+  const prompt = t(
+    has_source
+      ? "project.create.agent_draft.translate"
+      : "project.create.agent_draft.import_and_translate",
+  );
+  const placeholder = t("project.create.agent_draft.path_placeholder");
+  const steps = TRANSLATION_STEPS.map(
+    (step, index) =>
+      `${index + 1}. ${t(step.label_key)} ${format_agent_reference({ kind: "skill", name: step.skill })}`,
+  ).join("\n");
+  return {
+    text: `${prompt}${has_source ? "" : `\n${placeholder}`}\n\n${steps}`,
+    ...(!has_source && {
+      selection: { from: prompt.length + 1, to: prompt.length + 1 + placeholder.length },
+    }),
+  };
+}
+
 /** 创建意图随应用会话常驻，工程加载导致页面卸载后仍能完成收尾。 */
 export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
   const { settings_snapshot, refresh_settings } = useDesktopState();
-  const { navigate_to_agent } = useAppNavigation();
 
   const { t } = useI18n();
+  const { navigate_to_agent } = useAppNavigation();
+  const pack_order = useGodotPackOrder();
+  const backup_confirm = useGameBackupConfirm();
+  const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
+  const [is_source_checking, set_is_source_checking] = useState(false);
   const [is_creating_project, set_is_creating_project] = useState(false);
   const [is_language_dialog_open, set_is_language_dialog_open] = useState(false);
   // 新建语言草稿由创建流程持有，取消或创建失败后保留本次选择。
@@ -87,14 +155,91 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
     read_project_language_preference,
   );
   const [open, set_open] = useState(false);
+  const source_selection_disabled = is_source_checking || is_creating_project; // 摘要与创建共用来源快照，期间冻结所有编辑入口。
+
+  /** 清空本次创建的来源选择。 */
+  function clear_selected_source(): void {
+    set_selected_source(null);
+  }
+
+  /** 选择一个或多个源路径后，让后端按支持格式收集真实导入文件。 */
+  async function handle_select_source_paths(source_paths: string[]): Promise<void> {
+    const normalized_source_paths = normalize_source_paths(source_paths);
+    if (normalized_source_paths.length === 0) {
+      set_selected_source(null);
+      push_toast("warning", t("project.create.unavailable"));
+      return;
+    }
+
+    set_is_source_checking(true);
+
+    try {
+      const payload = await api_fetch<Partial<ProjectSourceFileSummary>>(
+        "/api/session/source-files/summary",
+        {
+          source_paths: normalized_source_paths,
+        },
+      );
+      const source_file_count = normalize_count(payload.source_file_count);
+
+      if (source_file_count === 0) {
+        set_selected_source(null);
+        push_toast("warning", t("project.create.unavailable"));
+      } else {
+        set_selected_source({
+          source_paths: normalized_source_paths,
+          godot_packs: Array.isArray(payload.godot_packs) ? payload.godot_packs : [],
+          project_name: typeof payload.project_name === "string" ? payload.project_name : "",
+          contains_game: payload.contains_game === true,
+          source_file_count,
+          format_hit_counts: normalize_project_source_format_hit_counts(payload.format_hit_counts),
+        });
+      }
+    } catch {
+      set_selected_source(null);
+      push_toast("warning", t("project.create.unavailable"));
+    } finally {
+      set_is_source_checking(false);
+    }
+  }
+
+  /** 打开系统文件选择器，保留多选结果的完整路径集合。 */
+  async function handle_select_source_file(): Promise<void> {
+    const result = await window.desktopApp.pickSourceFilePaths();
+    const selected_path = result.paths[0] ?? null;
+    if (result.canceled || selected_path === null) {
+      return;
+    }
+
+    await handle_select_source_paths(result.paths);
+  }
+
+  /** 打开系统目录选择器，目录模式只返回单个根路径。 */
+  async function handle_select_source_folder(): Promise<void> {
+    const result = await window.desktopApp.pickSourceDirectoryPath();
+    const selected_path = result.paths[0] ?? null;
+    if (result.canceled || selected_path === null) {
+      return;
+    }
+
+    await handle_select_source_paths([selected_path]);
+  }
 
   /**
    * 按保存模式解析新建工程输出路径，固定目录缺失时先请求用户选择。
-   * 空工程没有来源目录，源目录模式与手动模式一样选择保存位置。
+   * 空工程没有来源目录，源目录模式改为手动选择保存位置。
    */
-  async function resolve_project_output_path(): Promise<string | null> {
-    const default_file_name = build_default_project_file_name();
-    if (settings_snapshot.project_save_mode !== "FIXED") {
+  async function resolve_project_output_path(
+    source: SelectedSource | null,
+  ): Promise<string | null> {
+    const default_file_name = build_default_project_file_name(source?.project_name);
+    const save_mode = settings_snapshot.project_save_mode;
+
+    if (save_mode === "SOURCE" && source !== null) {
+      return join_path(extract_parent_dir(source.source_paths[0]!), default_file_name);
+    }
+
+    if (save_mode === "MANUAL" || save_mode === "SOURCE") {
       const result = await window.desktopApp.pickProjectSavePath(default_file_name);
       return result.canceled ? null : (result.paths[0] ?? null);
     }
@@ -117,9 +262,17 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
     return join_path(fixed_directory, default_file_name);
   }
 
-  /** 倒计时结束后进入语言确认，确认后才选择保存路径并创建。 */
-  function open_language_dialog(): void {
-    if (!is_creating_project) set_is_language_dialog_open(true);
+  /**
+   * 点击创建先提示备份原生游戏，再选择项目语言，确认后才进入保存路径与创建流程。
+   * 未选择来源时创建空工程。
+   */
+  async function open_language_dialog(): Promise<void> {
+    if (source_selection_disabled) {
+      return;
+    }
+    if (!(await backup_confirm.request_confirm(selected_source?.contains_game === true))) return;
+
+    set_is_language_dialog_open(true);
   }
 
   /** 确认即保存偏好，再使用同一份语言快照创建工程。 */
@@ -130,9 +283,9 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
     void handle_create_project(languages);
   }
 
-  /** 提交新建空工程请求，成功后提示并在 AGENT 中预置添加文件草稿。 */
+  /** 提交新建工程请求，成功后刷新会话、任务和最近工程。 */
   async function handle_create_project(languages: ProjectLanguageDraft): Promise<void> {
-    if (is_creating_project) {
+    if (source_selection_disabled) {
       return;
     }
 
@@ -140,7 +293,10 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
 
     try {
       const loaded_default_preset_names = collect_loaded_default_preset_names(settings_snapshot, t);
-      const output_path = await resolve_project_output_path();
+      const source_paths = selected_source?.source_paths ?? [];
+      const godot_pack_orders = await pack_order.request_order(selected_source?.godot_packs);
+      if (godot_pack_orders === null) return;
+      const output_path = await resolve_project_output_path(selected_source);
       if (output_path === null || output_path === "") {
         return;
       }
@@ -150,10 +306,22 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
       await run_project_load({
         message: t("project.create.loading_toast"),
         request: async () => {
-          const create_payload = await api_fetch<ProjectCreateCommitPayload>(
+          const create_request = api_fetch<ProjectCreateCommitPayload>(
             "/api/session/project/create",
-            { path: normalized_output_path, languages },
+            {
+              source_paths,
+              ...(godot_pack_orders.length ? { godot_pack_orders } : {}),
+              path: normalized_output_path,
+              languages,
+            },
           );
+          // 只延长空工程的成功等待，请求失败时立即退出。
+          const [create_payload] = await Promise.all([
+            create_request,
+            source_paths.length === 0
+              ? new Promise<void>((resolve) => setTimeout(resolve, EMPTY_PROJECT_LOADING_MS))
+              : undefined,
+          ]);
           const created_project_path =
             typeof create_payload.project?.path === "string" &&
             create_payload.project.path.trim() !== ""
@@ -173,26 +341,47 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
           ),
         );
       }
-      // 选中占位行，让输入或拖入文件直接替换它。
-      const prompt = t("project.create.add_files_draft.prompt");
-      const text = `${prompt}\n${t("project.create.add_files_draft.placeholder")}`;
-      navigate_to_agent({ text, selection: { from: prompt.length + 1, to: text.length } });
+      navigate_to_agent(build_agent_draft(t, source_paths.length > 0));
     } catch (error) {
+      if (
+        selected_source !== null &&
+        error instanceof DesktopApiError &&
+        error.details.action === GODOT_PACK_ORDER_REFRESH_ACTION
+      ) {
+        await handle_select_source_paths(selected_source.source_paths);
+      }
+
       push_error_toast(t("app.feedback.create_failed"), error);
     } finally {
       set_is_creating_project(false);
     }
   }
 
+  /** 批量拖入只可能缺少可读取路径，保留选择并提示改用选择器。 */
+  function handle_drop_issue(): void {
+    push_toast("warning", t("app.drop.select_unavailable"));
+  }
+
   return {
     open,
-    show: () => set_open(true),
+    show: () => {
+      clear_selected_source();
+      set_open(true);
+    },
     close: () => set_open(false),
-    is_creating_project,
+    selected_source,
+    source_selection_disabled,
     is_language_dialog_open,
     create_languages,
     set_create_languages,
     set_is_language_dialog_open,
+    pack_order,
+    backup_confirm,
+    clear_selected_source,
+    handle_select_source_file,
+    handle_select_source_folder,
+    handle_select_source_paths,
+    handle_drop_issue,
     open_language_dialog,
     confirm_language_dialog,
   };

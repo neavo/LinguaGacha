@@ -12,7 +12,6 @@ import {
   type DialogShortcut,
 } from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
-import { useConfirmDelay } from "@frontend/widgets/interactions/use-confirm-delay";
 
 type AppPageDialogSize = "sm" | "md" | "lg" | "xl" | "viewport";
 type AppPageDialogDismissBehavior = "default" | "escape-only";
@@ -22,7 +21,6 @@ type AppPageDialogPrimaryAction = {
   shortcut: DialogShortcut; // 含多行输入时用 `save`，避免与换行争用回车
   onSelect: () => void | Promise<void>;
   disabled?: boolean;
-  delayed?: boolean; // 打开后先倒计时再开放主操作，留出阅读时间
   tooltip?: string; // 主操作有额外后果时的悬停说明
 };
 
@@ -58,12 +56,8 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
   const size = props.size ?? "md";
   const submitting = props.submitting ?? false;
   const primary_action = props.primaryAction;
-  const remaining_seconds = useConfirmDelay(props.open, primary_action?.delayed === true);
   const primary_enabled =
-    primary_action !== undefined &&
-    !submitting &&
-    remaining_seconds === 0 &&
-    primary_action.disabled !== true; // 按钮与按键共用执行权限，绑定提示始终保留
+    primary_action !== undefined && !submitting && primary_action.disabled !== true; // 按钮与按键共用执行权限，绑定提示始终保留
   const close_label =
     props.closeLabel ?? t(primary_action === undefined ? "app.action.close" : "app.action.cancel");
   const popup_ref = useRef<HTMLDivElement>(null);
@@ -81,7 +75,7 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
         }}
       >
         {submitting ? <Spinner data-icon="inline-start" /> : null}
-        {remaining_seconds > 0 ? `${remaining_seconds}s` : primary_action.label}
+        {primary_action.label}
         <ShortcutKbd action={primary_action.shortcut} />
       </AppButton>
     );

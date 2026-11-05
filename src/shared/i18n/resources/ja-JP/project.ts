@@ -9,12 +9,18 @@ export const ja_jp_project = {
     target_description: "出力テキストの言語を設定します",
   },
   create: {
+    drop_title: "クリックまたは元ファイルをドロップ",
+    ready_status: "元ファイルを {COUNT} 個選択しました",
+    unavailable: "選択した内容に対応するソースファイルがありません",
     title: "プロジェクトを作成",
     loading_toast: "プロジェクトを作成中 …",
     success: "プロジェクトを作成しました …",
-    add_files_draft: {
-      prompt: "次のファイルをプロジェクトに追加してください：",
-      placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
+    agent_draft: {
+      translate: "以下の手順を厳守して翻訳を完了してください：",
+      import_and_translate:
+        "以下のパスから翻訳可能な内容を識別し、適切な形式でプロジェクトに追加してから、以下の手順を厳守して翻訳を完了してください：",
+      path_placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
+      steps: { glossary: "用語を抽出", translate: "全文を翻訳", review: "訳文を校正" },
     },
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
     default_presets: {
@@ -48,8 +54,12 @@ export const ja_jp_project = {
     progress: "翻訳進捗",
   },
   formats: {
+    title_tooltip: "より速く、より高品質で、より安定",
+    deprecated_tooltip: "現在は最適な選択ではありません。上記の形式を優先してください",
+    empty_project_hint:
+      "ファイルを選ばずに「{ACTION}」をクリックし、AGENT の入力欄にファイルをドラッグするだけ …!",
     generic: "汎用データ",
-    title: "特に最適化されたファイル形式",
+    title: "特に最適化された形式",
     txt: "プレーンテキスト",
     md: "Markdown",
     ass: "ASS 字幕",
@@ -70,9 +80,8 @@ export const ja_jp_project = {
     wolfrpg: "WOLFRPG ゲームファイル",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ ゲームファイル",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce ゲームファイル",
-    deprecated_title: "最適化終了予定のファイル形式",
-    any_format_notice:
-      "理論上はあらゆるファイル形式を翻訳できます。上記の一覧にない形式でも問題ありません …!",
+    deprecated_title: "特に最適化された形式（対応終了予定）",
+    any_format_notice: "上記にない形式のゲーム、字幕、電子書籍にも対応しています",
     rpy: "RenPy ゲームテキスト",
     xlsx: "XLSX ゲームテキスト",
     trans_export: "Translator++ から出力したゲームテキスト",

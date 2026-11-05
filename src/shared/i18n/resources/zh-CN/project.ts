@@ -26,12 +26,18 @@ export const zh_cn_project = {
     target_description: "设置输出文本的语言",
   },
   create: {
+    drop_title: "点击或拖拽源文件",
+    ready_status: "已选 {COUNT} 个",
+    unavailable: "所选内容中没有支持的源文件",
     title: "创建工程",
     loading_toast: "正在创建工程 …",
     success: "工程创建成功 …",
-    add_files_draft: {
-      prompt: "帮我把以下文件添加到工程：",
-      placeholder: "[在此输入文件路径或者将文件拖到这里]",
+    agent_draft: {
+      translate: "请帮我完成翻译，严格遵循以下步骤：",
+      import_and_translate:
+        "请从以下路径中识别可翻译内容并以合适的形式添加到工程中，然后帮我完成翻译，严格遵循以下步骤：",
+      path_placeholder: "[在此输入文件路径或者将文件拖到这里]",
+      steps: { glossary: "提取术语", translate: "翻译全文", review: "审校译文" },
     },
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     default_presets: {
@@ -65,8 +71,11 @@ export const zh_cn_project = {
     progress: "翻译进度",
   },
   formats: {
+    title_tooltip: "更快更好更稳定",
+    deprecated_tooltip: "已不是最佳选择，请优先使用上述格式",
+    empty_project_hint: "无需选择文件，直接点击「{ACTION}」，再将文件拖入 AGENT 输入框即可 …!",
     generic: "通用数据",
-    title: "特别优化的文件格式",
+    title: "特别优化的格式",
     txt: "纯文本",
     md: "Markdown",
     ass: "ASS 字幕",
@@ -87,8 +96,8 @@ export const zh_cn_project = {
     wolfrpg: "WOLFRPG 游戏文件",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ 游戏文件",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce 游戏文件",
-    deprecated_title: "即将停止优化的文件格式",
-    any_format_notice: "理论上支持所有文件格式的翻译，不在上述列表也没问题 …!",
+    deprecated_title: "特别优化的格式（即将停止）",
+    any_format_notice: "其它格式的游戏、字幕和电子书也都支持，不在上述列表也没问题",
     rpy: "RenPy 游戏文本",
     xlsx: "XLSX 游戏文本",
     trans_export: "Translator++ 导出游戏文本",

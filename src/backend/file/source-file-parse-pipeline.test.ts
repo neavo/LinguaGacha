@@ -159,7 +159,7 @@ describe("SourceFileParsePipeline", () => {
     const database = new ProjectDatabase("1.0.0");
     const project_path = path.join(temp_dir.path, "project.lg");
     try {
-      await database.create_project(project_path, "文件类型", (database) => {
+      await database.create_project(project_path, (database) => {
         for (const file of draft.files) {
           database.add_asset(
             project_path,

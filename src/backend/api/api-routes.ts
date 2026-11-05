@@ -70,6 +70,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/session/project/snapshot", () => lifecycle.get_project_snapshot());
   context.postJson("/api/session/project/close", () => lifecycle.unload_project());
   context.postJson("/api/session/project/preview", (body) => lifecycle.get_project_preview(body));
+  context.postJson("/api/session/source-files/summary", (body) =>
+    lifecycle.summarize_source_files(body),
+  );
   context.postJson("/api/session/project/open", (body) => lifecycle.load_project(body));
   context.postJson("/api/session/project/create", (body) => lifecycle.create_project_commit(body));
 

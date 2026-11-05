@@ -31,7 +31,7 @@ it("打开事务只删除登记成员，保留字节与译文，异常资产不�
   );
   const corrupt = Buffer.from("unreadable");
   try {
-    await database.create_project(project, "fixture", (writer) => {
+    await database.create_project(project, (writer) => {
       writer.add_asset(project, "game.rpgmaker", mixed, "RPGMAKER_MV_MZ", null, 2);
       writer.add_asset(project, "empty.rpgmaker", empty, "RPGMAKER_MV_MZ", null, 5);
       writer.add_asset(project, "bad.rpgmaker", corrupt, "RPGMAKER_MV_MZ", null, 8);

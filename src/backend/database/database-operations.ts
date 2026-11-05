@@ -200,7 +200,6 @@ export class ProjectDatabase {
   /** 排他创建文件，失败时按提交状态决定是否删除本次新文件。 */
   public async create_project(
     project_path: string,
-    name: string,
     initialize?: (writer: ProjectDatabaseAccess) => void,
   ): Promise<void> {
     await this.schedule(project_path, async () => {
@@ -222,7 +221,7 @@ export class ProjectDatabase {
             this.apply_project_storage_mode(normalized, record.db);
             return this.execute_transaction(record, (writer) => {
               const now = new Date().toISOString();
-              writer.upsert_meta_entries(normalized, { name, created_at: now, updated_at: now });
+              writer.upsert_meta_entries(normalized, { created_at: now, updated_at: now });
               initialize?.(writer);
             });
           },

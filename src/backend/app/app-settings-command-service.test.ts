@@ -35,7 +35,7 @@ async function create_service() {
   settings.save_setting({ mtool_optimizer_enable: true, skip_duplicate_source_text_enable: true });
   const session = new ProjectSessionState();
   const project_path = path.join(root, "test.lg");
-  await database.create_project(project_path, "test");
+  await database.create_project(project_path);
   // 项目语言属于工程事实，应用开关同步时必须原样保留。
   await database.transaction(project_path, (writer) =>
     writer.upsert_meta_entries(project_path, {

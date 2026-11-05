@@ -14,7 +14,7 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
   const epub_content = await create_epub_fixture("<ruby>漢<rt>かん</rt></ruby>");
   const database = new ProjectDatabase("1.0.0");
   try {
-    await database.create_project(project_path, "fixture", (database) => {
+    await database.create_project(project_path, (database) => {
       database.add_asset(project_path, "book.epub", epub_content, "EPUB", null);
       database.add_asset(project_path, "demo.md", Buffer.from("正文"), "MD", null);
       database.set_rule_text(project_path, "CUSTOM_PROMPT_EN", "旧提示词");

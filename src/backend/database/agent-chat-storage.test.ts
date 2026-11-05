@@ -24,7 +24,7 @@ it("读取批次中的写入已提交后关闭失败，保留已提交错误", a
   roots.push(root);
   const file = path.join(root, "project.lg");
   const database = new ProjectDatabase("1.0.0");
-  await database.create_project(file, "test");
+  await database.create_project(file);
   const store = database.open_agent_store(file);
   const failure = new Error("close failed");
   vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
@@ -46,7 +46,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
   const file = path.join(root, "project.lg");
   const copy = path.join(root, "copy.lg");
   const database = new ProjectDatabase("1.0.0");
-  await database.create_project(file, "测试");
+  await database.create_project(file, (writer) => writer.set_meta(file, "probe", "测试"));
   const store = database.open_agent_store(file);
   await store.create("-t75szF5");
   const state = defineDoc({
@@ -148,7 +148,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
   await sdk.close(BACKGROUND_CONTEXT);
   await restored.reset();
   expect(await restored.read()).toBeNull();
-  expect(await reopened.get_all_meta(copy)).toMatchObject({ name: "测试" });
+  expect(await reopened.get_all_meta(copy)).toMatchObject({ probe: "测试" });
   await restored.close();
   await reopened.close();
 });
@@ -158,7 +158,7 @@ it("读取工程时拒绝无效激活指针和缺失登记", async () => {
   roots.push(root);
   const file = path.join(root, "project.lg");
   const database = new ProjectDatabase("1.0.0");
-  await database.create_project(file, "测试");
+  await database.create_project(file);
   const store = database.open_agent_store(file);
   try {
     await store.create("-t75szF5");

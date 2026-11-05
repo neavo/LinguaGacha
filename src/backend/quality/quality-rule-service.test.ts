@@ -477,7 +477,7 @@ describe("QualityRuleService", () => {
     const project_event_bus = vi.fn();
     const lg_path = path.join(app_root, "quality.lg");
     const publisher = create_test_project_change_publisher(lg_path);
-    await database.create_project(lg_path, "quality");
+    await database.create_project(lg_path);
     session_state.mark_loaded(lg_path);
     const runtime_gate = create_runtime_gate(runtime_owner);
     return {

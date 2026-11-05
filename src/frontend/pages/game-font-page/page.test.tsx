@@ -40,7 +40,7 @@ describe("GameFontPage", () => {
       value: create_desktop_bridge_api_mock({
         methods: {
           pickGameFontFilePath: vi.fn(async () => ({ canceled: false, paths: [FONT_PATH] })),
-          pickGameDirectoryPath: vi.fn(async () => ({ canceled: false, paths: [GAME_PATH] })),
+          pickSourceDirectoryPath: vi.fn(async () => ({ canceled: false, paths: [GAME_PATH] })),
         },
       }),
     });

@@ -68,6 +68,32 @@ describe("ProjectLifecycleService", () => {
   });
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
+  it("来源摘要按文件、目录和多路径给出默认工程名，根目录与空来源使用空名", async () => {
+    const root = create_temp_dir();
+    const folder = path.join(root, "Game.v1.2");
+    fs.mkdirSync(folder);
+    const file = write_file(path.join(folder, "novel.part.txt"), "原文");
+    const second = write_file(path.join(folder, "second.txt"), "原文");
+    const service = create_service({ database: create_database() });
+    for (const [source_paths, expected] of [
+      [[file], "novel.part"],
+      [[folder], "Game.v1.2"],
+      [[file, second], "Game.v1.2"],
+      [
+        [
+          path.join(path.parse(root).root, "missing-a.txt"),
+          path.join(path.parse(root).root, "missing-b.txt"),
+        ],
+        "",
+      ],
+      [[], ""],
+    ] as const) {
+      expect(
+        (await service.summarize_source_files({ source_paths: [...source_paths] })).project_name,
+      ).toBe(expected);
+    }
+  });
+
   it.each([false, true])("正式创建只发现一次，游戏通知先于本批全部准备：%s", async (games) => {
     const root = create_temp_dir();
     const paths = games
@@ -100,7 +126,7 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("新建确认的包顺序传到准备，错误顺序不创建工程", async () => {
+  it("新建来源摘要只读，确认顺序传到准备，错误顺序不创建工程", async () => {
     const root = create_temp_dir(),
       game = path.join(root, "ordered"),
       project = path.join(root, "ordered.lg");
@@ -117,6 +143,14 @@ describe("ProjectLifecycleService", () => {
     const database = new ProjectDatabase("1.0.0"),
       service = create_service({ database });
     try {
+      expect((await service.summarize_source_files({ source_paths: [game] })).godot_packs).toEqual([
+        {
+          game_root: game,
+          game_name: "ordered",
+          external_pcks: ["game.pck", "patch2.pck", "patch10.pck"],
+        },
+      ]);
+      expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch10.pck", "patch2.pck"]);
       await expect(
         service.create_project_commit({
           path: project,
@@ -224,7 +258,7 @@ describe("ProjectLifecycleService", () => {
     const publish = vi.fn();
     try {
       if (operation === "load") {
-        await database.create_project(project_path, "old");
+        await database.create_project(project_path);
         await database.transaction(project_path, (writer) =>
           writer.set_meta(project_path, "updated_at", "before"),
         );
@@ -281,7 +315,7 @@ describe("ProjectLifecycleService", () => {
   it.each(["close", "cache"])("加载提交后 %s 失败保留事实与恢复信息", async (phase) => {
     const project_path = path.join(create_temp_dir(), "scope.lg");
     const database = new ProjectDatabase("1.0.0");
-    await database.create_project(project_path, "scope");
+    await database.create_project(project_path);
     await database.transaction(project_path, (writer) =>
       writer.set_meta(project_path, "updated_at", "before"),
     );
@@ -410,7 +444,7 @@ describe("ProjectLifecycleService", () => {
     const project_path = path.join(create_temp_dir(), "duplicates.lg");
     const database = new ProjectDatabase("1.0.0");
     try {
-      await database.create_project(project_path, "duplicates", (database) => {
+      await database.create_project(project_path, (database) => {
         database.set_meta(project_path, "skip_duplicate_source_text_enable", enabled);
         database.set_meta(project_path, "mtool_optimizer_enable", true);
         database.set_items(project_path, [
@@ -1005,7 +1039,6 @@ describe("ProjectLifecycleService", () => {
       const broken_path = files.find((file) => file.source_path === broken)!.target_rel_path;
       await lifecycle.create_project_commit({ path: imported, source_paths: [] });
       expect(await database.get_all_asset_records(imported)).toEqual([]);
-      expect((await database.get_all_meta(imported))["name"]).toBe("imported");
       const request = { files, conflict_action: "replace" };
       await content.import_files({
         ...request,
@@ -1122,7 +1155,7 @@ describe("ProjectLifecycleService", () => {
     const project_event_handler = vi.fn();
     const service = create_service({ database, session_state, project_event_handler });
     try {
-      await database.create_project(project_path, "newer");
+      await database.create_project(project_path);
       await database.transaction(project_path, (writer) =>
         writer.set_meta(project_path, "target_app_version", "2.0.0"),
       );
@@ -1145,7 +1178,7 @@ describe("ProjectLifecycleService", () => {
   it("preview 在任务运行时读取另一工程的磁盘概览并保留当前会话", async () => {
     const project_path = path.join(create_temp_dir(), "preview.lg");
     const database = new ProjectDatabase("1.0.0");
-    await database.create_project(project_path, "preview");
+    await database.create_project(project_path);
     const session_state = create_session_state({ loaded: true, projectPath: "current.lg" });
     const project_event_handler = vi.fn();
     const service = create_service({

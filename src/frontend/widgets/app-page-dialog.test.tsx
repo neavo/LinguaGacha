@@ -23,7 +23,6 @@ describe("AppPageDialog", () => {
     container?.remove();
     container = null;
     root = null;
-    vi.useRealTimers();
   });
 
   /** 挂载弹窗，由可见按钮与按键观察组件行为。 */
@@ -122,31 +121,6 @@ describe("AppPageDialog", () => {
     expect(read_button("保存")).toBe(save);
     expect(save.disabled).toBe(false);
     press(document.body.querySelector('input[aria-label="名称"]')!, { key: "Enter" });
-    expect(on_select).toHaveBeenCalledOnce();
-  });
-
-  it("延迟主操作倒计时结束前按钮与按键都不执行", () => {
-    vi.useFakeTimers();
-    const on_select = vi.fn();
-    render_dialog(
-      <AppPageDialog
-        open
-        title="创建"
-        primaryAction={{ label: "创建", shortcut: "submit", delayed: true, onSelect: on_select }}
-        onClose={vi.fn()}
-      >
-        正文
-      </AppPageDialog>,
-    );
-
-    const countdown = read_button("3s")!;
-    expect(countdown.disabled).toBe(true);
-    press(document.body.querySelector('[data-slot="dialog-content"]')!, { key: "Enter" });
-    expect(on_select).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(3_000));
-    expect(read_button("创建")).toBe(countdown);
-    expect(countdown.disabled).toBe(false);
-    press(document.body.querySelector('[data-slot="dialog-content"]')!, { key: "Enter" });
     expect(on_select).toHaveBeenCalledOnce();
   });
 

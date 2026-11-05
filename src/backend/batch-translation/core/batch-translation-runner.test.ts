@@ -184,7 +184,7 @@ describe("BatchTranslationRunner", () => {
     const builtin_root = create_template_root();
     const project_path = path.join(builtin_root, "retained.lg");
     const database = new ProjectDatabase("1.0.0");
-    await database.create_project(project_path, "test");
+    await database.create_project(project_path);
     const statuses = [
       "NONE",
       "PROCESSED",
@@ -347,7 +347,7 @@ describe("BatchTranslationRunner", () => {
       const builtin_root = create_template_root();
       const project_path = path.join(builtin_root, "task.lg");
       const database = new ProjectDatabase("1.0.0");
-      await database.create_project(project_path, "test");
+      await database.create_project(project_path);
       await database.transaction(project_path, (writer) =>
         writer.set_items(project_path, [
           create_item({

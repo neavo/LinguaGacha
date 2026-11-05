@@ -22,7 +22,7 @@ afterEach(async () => {
 /** 真实临时工程同时验证作用域读写与持久化格式。 */
 async function create_database_project(name: string) {
   const lg_path = project_path(name + ".lg");
-  await database.create_project(lg_path, name);
+  await database.create_project(lg_path);
   return { database, lg_path };
 }
 /** 所有资产与工程均限制在本例目录。 */

@@ -254,7 +254,7 @@ describe("BatchTranslationProjectStore", () => {
       } as unknown as ComputeWorkerClient,
     });
     const published_changes: ProjectCommittedChange[] = [];
-    await database.create_project(project_path, "task");
+    await database.create_project(project_path);
     session_state.mark_loaded(project_path);
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     cleanup_callbacks.push(async () => await database.close());

@@ -336,7 +336,7 @@ async function project() {
   roots.push(root);
   const file = path.join(root, "project.lg");
   const database = new ProjectDatabase("1.0.0");
-  await database.create_project(file, "持久化");
+  await database.create_project(file);
   return { database, file };
 }
 /** 以无模型配置打开历史，模型只在新指令前注册。 */

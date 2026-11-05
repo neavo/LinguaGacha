@@ -299,7 +299,7 @@ describe("桌面 IPC 宿主", () => {
       paths: ["C:/project/demo.lg"],
     });
     await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, { kind: "workbench-files", default_directory: "D:/recent" }),
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "source-files", default_directory: "D:/recent" }),
     ).resolves.toEqual({
       canceled: false,
       paths: ["C:/project/new.txt"],
@@ -363,7 +363,7 @@ describe("桌面 IPC 宿主", () => {
     for (const [kind, properties] of [
       ["game-font-file", ["openFile"]],
       ["game-executable", ["openFile"]],
-      ["game-directory", ["openDirectory"]],
+      ["source-directory", ["openDirectory"]],
     ] as const) {
       await expect(
         invoke(IPC_CHANNEL_PICK_PATH, { kind, default_directory: null }),
@@ -399,7 +399,7 @@ describe("桌面 IPC 宿主", () => {
 
     await expect(
       invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "game-directory",
+        kind: "source-directory",
         default_directory: null,
       }),
     ).resolves.toEqual({

@@ -46,7 +46,7 @@ export function create_desktop_bridge_api_mock(
     launchUpdate: async () => ({ status: "launched" }),
     pickProjectFilePath: async () => ({ canceled: true, paths: [] }),
     pickProjectSavePath: async () => ({ canceled: true, paths: [] }),
-    pickWorkbenchFilePath: async () => ({ canceled: true, paths: [] }),
+    pickSourceFilePaths: async () => ({ canceled: true, paths: [] }),
     pickDirectory: async () => ({ canceled: true, paths: [] }),
     pickGlossaryImportFilePath: async () => ({ canceled: true, paths: [] }),
     pickGlossaryExportPath: async () => ({ canceled: true, paths: [] }),
@@ -54,7 +54,7 @@ export function create_desktop_bridge_api_mock(
     pickPromptExportFilePath: async () => ({ canceled: true, paths: [] }),
     pickGameFontFilePath: async () => ({ canceled: true, paths: [] }),
     pickGameExecutablePath: async () => ({ canceled: true, paths: [] }),
-    pickGameDirectoryPath: async () => ({ canceled: true, paths: [] }),
+    pickSourceDirectoryPath: async () => ({ canceled: true, paths: [] }),
     ...overrides.methods,
   };
 }

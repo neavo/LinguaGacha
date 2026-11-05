@@ -155,7 +155,7 @@ export function useGameFontPageState() {
     confirm_open: phase === "confirming",
     pick_font_file: () => pick(() => window.desktopApp.pickGameFontFilePath(), "font_path"),
     pick_game_executable: () => pick(() => window.desktopApp.pickGameExecutablePath(), "game_path"),
-    pick_game_directory: () => pick(() => window.desktopApp.pickGameDirectoryPath(), "game_path"),
+    pick_game_directory: () => pick(() => window.desktopApp.pickSourceDirectoryPath(), "game_path"),
     drop_path: (field: GamePathField, path: string) =>
       run_exclusive(() => update_path(field, path)),
     clear_path: (field: GamePathField) => run_exclusive(() => update_path(field, null)),

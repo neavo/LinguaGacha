@@ -10,12 +10,22 @@ export const de_de_project = {
     target_description: "Legt die Sprache des Ausgabetexts fest",
   },
   create: {
+    drop_title: "Klicken oder Quelldatei hierher ziehen",
+    ready_status: "{COUNT} Quelldateien ausgewählt",
+    unavailable: "Die Auswahl enthält keine unterstützten Quelldateien",
     title: "Projekt erstellen",
     loading_toast: "Projekt wird erstellt …",
     success: "Projekt erstellt …",
-    add_files_draft: {
-      prompt: "Bitte füge die folgenden Dateien zum Projekt hinzu:",
-      placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
+    agent_draft: {
+      translate: "Bitte schließe die Übersetzung ab und halte dich dabei genau an diese Schritte:",
+      import_and_translate:
+        "Erkenne übersetzbare Inhalte unter den folgenden Pfaden und füge sie in geeigneter Form zum Projekt hinzu. Schließe dann die Übersetzung ab und halte dich dabei genau an diese Schritte:",
+      path_placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
+      steps: {
+        glossary: "Terminologie extrahieren",
+        translate: "Gesamten Text übersetzen",
+        review: "Übersetzung prüfen",
+      },
     },
     default_preset_loaded: "Standard-Voreinstellungen geladen: {NAMES} …",
     default_presets: {
@@ -50,8 +60,12 @@ export const de_de_project = {
     progress: "Fortschritt",
   },
   formats: {
+    title_tooltip: "Schneller, besser und zuverlässiger",
+    deprecated_tooltip: "Nicht mehr die beste Wahl. Bitte bevorzuge die oben genannten Formate",
+    empty_project_hint:
+      "Wähle keine Dateien aus. Klicke auf „{ACTION}“ und ziehe die Dateien dann in das AGENT-Eingabefeld …!",
     generic: "Generische Daten",
-    title: "Speziell optimierte Dateiformate",
+    title: "Besonders optimierte Formate",
     txt: "Nur Text",
     md: "Markdown",
     ass: "ASS-Untertitel",
@@ -72,9 +86,9 @@ export const de_de_project = {
     wolfrpg: "WOLFRPG-Spieldateien",
     rpgmaker_mv_mz: "RPGMAKER MV/MZ Spieldatei",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce Spieldatei",
-    deprecated_title: "Dateiformate, deren Optimierung bald endet",
+    deprecated_title: "Besonders optimierte Formate (Unterstützung endet bald)",
     any_format_notice:
-      "Theoretisch lassen sich Dateien in jedem Format übersetzen, auch wenn sie oben nicht aufgeführt sind …!",
+      "Spiele, Untertitel und E-Books in anderen Formaten werden ebenfalls unterstützt, auch wenn sie oben nicht aufgeführt sind",
     rpy: "RenPy-Spieltext",
     xlsx: "XLSX-Spieltext",
     trans_export: "Translator++ Spieltext",

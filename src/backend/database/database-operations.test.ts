@@ -41,7 +41,7 @@ async function create_database_project(
 ): Promise<{ database: ProjectDatabase; lg_path: string }> {
   const database = create_database();
   const lg_path = project_path(`${name}.lg`);
-  await database.create_project(lg_path, name);
+  await database.create_project(lg_path, (writer) => writer.set_meta(lg_path, "probe", name));
   return { database, lg_path };
 }
 
@@ -95,7 +95,7 @@ function create_legacy_project(lg_path: string, name: string): void {
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(
-    "name",
+    "probe",
     JsonTool.stringifyStrict(name),
   );
 }
@@ -138,7 +138,7 @@ it("真实 Electron 的预览和高版本确认等待保持单文件及原始字
     const file = ${JSON.stringify(path.join(temp_dir, "electron.lg"))};
     const database = new ProjectDatabase('1.0.0');
     try {
-      await database.create_project(file, 'electron');
+      await database.create_project(file);
       await database.transaction(file, writer => writer.set_meta(file, 'target_app_version', '2.0.0'));
       const original = fs.readFileSync(file);
       const check = () => {
@@ -246,7 +246,7 @@ describe("ProjectDatabase", () => {
     const finish = Promise.withResolvers<void>();
     const close = vi.spyOn(DatabaseSync.prototype, "close");
     const read = (reader: ProjectDatabaseAccess) => {
-      expect(reader.get_all_meta(lg_path).name).toBe("scope-timing");
+      expect(reader.get_all_meta(lg_path).probe).toBe("scope-timing");
       expect(close).not.toHaveBeenCalled();
       return 42;
     };
@@ -317,9 +317,9 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     const target = project_path("existing.lg");
     fs.writeFileSync(target, "existing content");
-    await expect(
-      (async () => await database.create_project(target, "replacement"))(),
-    ).rejects.toThrow(expect.objectContaining({ code: "project.already_exists" }));
+    await expect((async () => await database.create_project(target))()).rejects.toThrow(
+      expect.objectContaining({ code: "project.already_exists" }),
+    );
     expect(fs.readFileSync(target, "utf8")).toBe("existing content");
   });
 
@@ -335,14 +335,14 @@ describe("ProjectDatabase", () => {
         throw Object.assign(new Error("database is locked"), { errcode: 5 });
       return original.call(this, sql);
     });
-    await expect((async () => await database.create_project(target, "failed"))()).rejects.toThrow(
+    await expect((async () => await database.create_project(target))()).rejects.toThrow(
       expect.objectContaining({ code: "database.busy" }),
     );
     expect(fs.existsSync(target)).toBe(false);
     expect(has_project_sidecar(target)).toBe(false);
     failure.mockRestore();
-    await database.create_project(target, "retry");
-    expect(await read_meta(database, target, "name", "")).toBe("retry");
+    await database.create_project(target, (writer) => writer.set_meta(target, "probe", "retry"));
+    expect(await read_meta(database, target, "probe", "")).toBe("retry");
   });
 
   it("提交后关闭失败保留工程并明确禁止重放写入", async () => {
@@ -352,7 +352,10 @@ describe("ProjectDatabase", () => {
       throw new Error("close failed");
     });
     await expect(
-      (async () => await database.create_project(target, "committed"))(),
+      (async () =>
+        await database.create_project(target, (writer) =>
+          writer.set_meta(target, "probe", "committed"),
+        ))(),
     ).rejects.toThrow(
       expect.objectContaining({
         code: "data.committed_sync_failed",
@@ -361,7 +364,7 @@ describe("ProjectDatabase", () => {
     );
     expect(fs.existsSync(target)).toBe(true);
     await database.close();
-    expect(await read_meta(database, target, "name", "")).toBe("committed");
+    expect(await read_meta(database, target, "probe", "")).toBe("committed");
   });
 
   it("新建失败且清理失败时保留两个异常与残留文件", async () => {
@@ -374,7 +377,7 @@ describe("ProjectDatabase", () => {
     });
     let failure: unknown;
     try {
-      await database.create_project(target, "failed", () => {
+      await database.create_project(target, () => {
         throw new Error("initialize failed");
       });
     } catch (error) {
@@ -438,9 +441,9 @@ describe("ProjectDatabase", () => {
         await exited;
         await database.prepare(target);
         await database.transaction(target, (writer) =>
-          writer.set_meta(target, "name", "available"),
+          writer.set_meta(target, "probe", "available"),
         );
-        expect(await read_meta(database, target, "name", "")).toBe("available");
+        expect(await read_meta(database, target, "probe", "")).toBe("available");
       } finally {
         if (child.exitCode === null) child.kill();
         await exited;
@@ -453,7 +456,7 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     const lg_path = project_path("auto-vacuum-full.lg");
 
-    await database.create_project(lg_path, "auto-vacuum-full");
+    await database.create_project(lg_path);
 
     expect(read_auto_vacuum_mode(lg_path)).toBe(1);
   });
@@ -473,7 +476,7 @@ describe("ProjectDatabase", () => {
     const database = create_database();
 
     await database.prepare(lg_path);
-    expect(await read_meta(database, lg_path, "name", "")).toBe("legacy-auto-vacuum");
+    expect(await read_meta(database, lg_path, "probe", "")).toBe("legacy-auto-vacuum");
 
     expect(read_auto_vacuum_mode(lg_path)).toBe(1);
     expect(fs.statSync(lg_path).size).toBeLessThan(size_before_open);
@@ -495,7 +498,7 @@ describe("ProjectDatabase", () => {
     });
 
     await database.prepare(lg_path);
-    expect(await read_meta(database, lg_path, "name", "")).toBe("deferred-auto-vacuum");
+    expect(await read_meta(database, lg_path, "probe", "")).toBe("deferred-auto-vacuum");
     expect(vacuum_failed).toBe(true);
     expect(read_auto_vacuum_mode(lg_path)).toBe(0);
   });
@@ -571,14 +574,14 @@ describe("ProjectDatabase", () => {
       code: "data.committed_sync_failed",
       public_details: { committed: true },
     });
-    expect(await read_meta(database, target_path, "name", null)).toBe("cleanup-new");
+    expect(await read_meta(database, target_path, "probe", null)).toBe("cleanup-new");
   });
 
   it("普通 scoped 操作结束后不常驻 WAL 副文件", async () => {
     const database = create_database();
     const lg_path = project_path("scoped.lg");
 
-    await database.create_project(lg_path, "scoped");
+    await database.create_project(lg_path);
     await database.transaction(lg_path, (writer) =>
       writer.set_meta(lg_path, "target_language", "ZH"),
     );
@@ -701,7 +704,7 @@ describe("ProjectDatabase", () => {
   it("事务失败时回滚已排队写入", async () => {
     const database = create_database();
     const lg_path = project_path("rollback.lg");
-    await database.create_project(lg_path, "rollback");
+    await database.create_project(lg_path);
 
     await expect(
       database.transaction(lg_path, (database) => {
@@ -721,7 +724,7 @@ describe("ProjectDatabase", () => {
 
     await expect(
       (async () =>
-        await database.create_project(lg_path, "create-rollback", (database) => {
+        await database.create_project(lg_path, (database) => {
           database.set_meta(lg_path, "target_language", "ZH");
           throw new Error("rollback");
         }))(),

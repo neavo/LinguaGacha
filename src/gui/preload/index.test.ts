@@ -136,16 +136,16 @@ describe("preload desktop bridge", () => {
       .mockResolvedValueOnce({ canceled: false, paths: ["F:/games/demo"] })
       .mockResolvedValueOnce({ canceled: true, paths: [] });
 
-    await bridge.pickWorkbenchFilePath();
+    await bridge.pickSourceFilePaths();
     expect(electron_mock.invoke).toHaveBeenNthCalledWith(1, IPC_CHANNEL_PICK_PATH, {
-      kind: "workbench-files",
+      kind: "source-files",
       default_directory: null,
     });
     expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("E:/novel");
 
-    await bridge.pickGameDirectoryPath();
+    await bridge.pickSourceDirectoryPath();
     expect(electron_mock.invoke).toHaveBeenNthCalledWith(2, IPC_CHANNEL_PICK_PATH, {
-      kind: "game-directory",
+      kind: "source-directory",
       default_directory: "E:/novel",
     });
     expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("F:/games/demo");

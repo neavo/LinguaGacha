@@ -42,7 +42,7 @@ export type DesktopPathPickResult = {
 export type DesktopPathPickIntent =
   | { kind: "project-file"; default_path?: string }
   | { kind: "project-save"; default_name: string }
-  | { kind: "workbench-files" }
+  | { kind: "source-files" }
   | { kind: "directory"; default_path?: string }
   | { kind: "glossary-import" }
   | { kind: "glossary-export"; default_name: string }
@@ -50,7 +50,7 @@ export type DesktopPathPickIntent =
   | { kind: "prompt-export" }
   | { kind: "game-font-file" }
   | { kind: "game-executable" }
-  | { kind: "game-directory" };
+  | { kind: "source-directory" };
 
 export type DesktopPathPickIpcRequest = DesktopPathPickIntent & {
   default_directory: string | null; // Electron 43 期间由 preload 注入浏览器本地保存的全局最近目录
