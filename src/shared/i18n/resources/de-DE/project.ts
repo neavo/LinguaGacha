@@ -17,15 +17,9 @@ export const de_de_project = {
     loading_toast: "Projekt wird erstellt …",
     success: "Projekt erstellt …",
     agent_draft: {
-      translate: "Bitte schließe die Übersetzung ab und halte dich dabei genau an diese Schritte:",
-      import_and_translate:
-        "Erkenne übersetzbare Inhalte unter den folgenden Pfaden und füge sie in geeigneter Form zum Projekt hinzu. Schließe dann die Übersetzung ab und halte dich dabei genau an diese Schritte:",
+      import:
+        "Erkenne übersetzbare Inhalte unter den folgenden Pfaden und füge sie in geeigneter Form zum Projekt hinzu:",
       path_placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
-      steps: {
-        glossary: "Terminologie extrahieren",
-        translate: "Gesamten Text übersetzen",
-        review: "Übersetzung prüfen",
-      },
     },
     default_preset_loaded: "Standard-Voreinstellungen geladen: {NAMES} …",
     default_presets: {

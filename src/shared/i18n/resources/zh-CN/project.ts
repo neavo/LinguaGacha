@@ -33,11 +33,8 @@ export const zh_cn_project = {
     loading_toast: "正在创建工程 …",
     success: "工程创建成功 …",
     agent_draft: {
-      translate: "请帮我完成翻译，严格遵循以下步骤：",
-      import_and_translate:
-        "请从以下路径中识别可翻译内容并以合适的形式添加到工程中，然后帮我完成翻译，严格遵循以下步骤：",
+      import: "请从以下路径中识别可翻译内容并以合适的形式添加到工程中：",
       path_placeholder: "[在此输入文件路径或者将文件拖到这里]",
-      steps: { glossary: "提取术语", translate: "翻译全文", review: "审校译文" },
     },
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     default_presets: {

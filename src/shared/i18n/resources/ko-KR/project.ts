@@ -16,11 +16,8 @@ export const ko_kr_project = {
     loading_toast: "프로젝트 생성 중 …",
     success: "프로젝트를 만들었습니다 …",
     agent_draft: {
-      translate: "다음 단계를 엄격히 따라 번역을 완료해 주세요:",
-      import_and_translate:
-        "다음 경로에서 번역 가능한 내용을 찾아 적절한 형식으로 프로젝트에 추가한 다음, 다음 단계를 엄격히 따라 번역을 완료해 주세요:",
+      import: "다음 경로에서 번역 가능한 내용을 찾아 적절한 형식으로 프로젝트에 추가해 주세요:",
       path_placeholder: "[여기에 파일 경로를 입력하거나 파일을 끌어다 놓으세요]",
-      steps: { glossary: "용어 추출", translate: "전체 텍스트 번역", review: "번역문 검토" },
     },
     default_preset_loaded: "기본 프리셋을 자동으로 불러왔습니다: {NAMES} …",
     default_presets: {

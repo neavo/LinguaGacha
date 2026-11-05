@@ -195,12 +195,21 @@ export const zh_cn_app = {
     builder_preceding_context: "参考前文（仅供参考）：",
     builder_following_context: "参考后文（仅供参考）：",
   },
+  agent_input: {
+    steps_intro: "按步骤执行：",
+    steps: {
+      glossary: "提取术语",
+      translate: "翻译全文",
+      review: "审校译文",
+      generate: "生成全部译文",
+    },
+  },
   translation_generation: {
+    agent_request: "帮我生成全部译文",
     action: "生成译文",
     confirmation: {
       generic_description:
         "工程包含通用数据包。请使用 AGENT 生成全部译文。直接生成将跳过这些通用数据包。",
-      generate_all: "生成本工程全部译文，包括通用数据包，并验证交付结果。",
       description: "是否确认生成当前可用译文 …?",
       checking: "正在检查工程文件和校对警告 …",
       check_failed: "检查工程文件或校对警告失败，仍可继续生成当前译文 …",

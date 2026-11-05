@@ -37,15 +37,9 @@ export const en_us_project = {
     loading_toast: "Creating project …",
     success: "Project created …",
     agent_draft: {
-      translate: "Please help me complete the translation, strictly following these steps:",
-      import_and_translate:
-        "Identify translatable content from the following paths and add it to the project in a suitable form. Then help me complete the translation, strictly following these steps:",
+      import:
+        "Identify translatable content from the following paths and add it to the project in a suitable form:",
       path_placeholder: "[Enter file paths here or drag files here]",
-      steps: {
-        glossary: "Extract terminology",
-        translate: "Translate the full text",
-        review: "Review the translation",
-      },
     },
     default_preset_loaded: "Default presets loaded: {NAMES} …",
     default_presets: {

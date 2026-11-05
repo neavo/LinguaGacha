@@ -203,13 +203,21 @@ export const ja_jp_app = {
     builder_preceding_context: "前の文脈（参照のみ）：",
     builder_following_context: "後の文脈（参照のみ）：",
   },
+  agent_input: {
+    steps_intro: "以下の手順で実行してください：",
+    steps: {
+      glossary: "用語を抽出",
+      translate: "全文を翻訳",
+      review: "訳文を校正",
+      generate: "すべての訳文を生成",
+    },
+  },
   translation_generation: {
+    agent_request: "すべての訳文を生成して",
     action: "訳文を出力",
     confirmation: {
       generic_description:
         "このプロジェクトには汎用データパッケージが含まれます。すべての訳文を生成するには AGENT を使用してください。直接生成すると、これらのパッケージはスキップされます。",
-      generate_all:
-        "汎用データパッケージを含む、このプロジェクトのすべての訳文を生成し、成果物を検証してください。",
       description: "現在利用できる訳文を出力しますか …?",
       checking: "プロジェクトのファイルと校正警告を確認中 …",
       check_failed: "ファイルまたは校正警告の確認に失敗しました。現在の訳文は生成できます …",

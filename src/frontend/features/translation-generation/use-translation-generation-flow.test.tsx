@@ -122,7 +122,6 @@ describe("useTranslationGenerationFlow", () => {
         ...(total_count > 0 ? [{ kind: "skill", name: "translation" }] : []),
         { kind: "skill", name: "project-operation" },
       ]);
-      expect(text).toContain("app.translation_generation.confirmation.generate_all");
       expect(latest_flow?.state.phase).toBe("closed");
     },
   );

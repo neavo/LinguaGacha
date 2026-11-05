@@ -11,7 +11,17 @@ import type { ProofreadingWarningSummary } from "@shared/proofreading/proofreadi
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import {
+  format_agent_input_steps,
+  type AgentInputStep,
+} from "@frontend/app/navigation/agent-input-steps";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+
+// 有校对警告时先审校，再生成全部译文。
+const TRANSLATION_GENERATION_STEPS = [
+  { label_key: "app.agent_input.steps.review", skill: "translation" },
+  { label_key: "app.agent_input.steps.generate", skill: "project-operation" },
+] as const satisfies readonly AgentInputStep[];
 
 type TranslationGenerationReadyState = {
   phase: "ready";
@@ -157,7 +167,7 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
     }
   }, [apply_state, settings_snapshot.translation_save_mode, t]);
 
-  /** 进入 Agent 时用当前任务建议替换草稿。 */
+  /** 进入 Agent 时追加当前任务的预置指令。 */
   const jump_to_agent = useCallback((): void => {
     const current_state = state_ref.current;
     if (
@@ -169,16 +179,10 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
     request_generation_ref.current += 1;
     apply_state({ phase: "closed" });
     navigate_to_agent({
-      text: [
-        ...(current_state.summary.total_count > 0
-          ? [
-              t("agent_page.empty.suggestions.review_translation"),
-              format_agent_reference({ kind: "skill", name: "translation" }),
-            ]
-          : []),
-        t("app.translation_generation.confirmation.generate_all"),
-        format_agent_reference({ kind: "skill", name: "project-operation" }),
-      ].join(" "),
+      text:
+        current_state.summary.total_count > 0
+          ? format_agent_input_steps(t, TRANSLATION_GENERATION_STEPS)
+          : `${t("app.translation_generation.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
     });
   }, [apply_state, navigate_to_agent, t]);
 

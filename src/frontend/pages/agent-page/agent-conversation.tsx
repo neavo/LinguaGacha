@@ -1,4 +1,5 @@
 import { AgentFileDropTarget } from "./agent-file-drop-target";
+import { read_file_paths } from "@frontend/app/desktop/source-paths";
 import { AgentProjectOpenDialog } from "./agent-project-open-dialog";
 import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import { AgentProjectEntry } from "./agent-project-entry";
@@ -64,7 +65,7 @@ import { useAgentFollowLatest } from "./agent-scroll";
 import { useAgentInputTransition } from "./use-agent-input-transition";
 import "./agent-page.css";
 
-/** 空会话任务入口按配置顺序展示，关联技能加载后可用。 */
+/** 空会话任务入口按配置顺序展示，预置指令不依赖已加载技能。 */
 const AGENT_TASK_SUGGESTIONS = [
   {
     skillName: "roleplay",
@@ -515,15 +516,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       controls.transport !== "ready"
     )
       return;
-    if (!composer_ref.current?.write_draft(request.text, request.selection)) return;
-    input.draft.write({ text: request.text, attachments: [] }); // 导航请求开始新任务，清空旧附件。
+    if (!composer_ref.current?.append_draft(request.text, request.selection)) return;
     consumed_input_request.current = request;
     clear_agent_input_request();
   }, [
     active,
     agent_input_request,
     clear_agent_input_request,
-    input,
     controls.transport,
     active_inline_edit,
     input_transition.locked,
@@ -573,24 +572,23 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     controls.command === null &&
     !project_lifecycle.busy &&
     dropped_project === null;
-  /** 整页与正文拖放共用入口，打开工程不经过附件权限检查。 */
+  /** 无工程时整批路径进入打开或创建流程，任一路径不可用则整批放弃。 */
   function handle_file_drop(files: readonly File[]): void {
     if (!file_drop_enabled || files.length === 0) return; // 正文编辑器直接调用此入口，仍须检查页面权限。
-    const file = files[0]!;
-    if (!project_snapshot.loaded && files.length === 1 && file.name.toLowerCase().endsWith(".lg")) {
-      try {
-        const path = window.desktopApp.getPathForFile(file);
-        if (path !== "") {
-          set_dropped_project(path);
-          return;
-        }
-      } catch {
-        // 不可用路径与虚拟文件统一反馈，保留输入。
-      }
-      push_toast("warning", t("agent_page.error.invalid_file_path"), { description: file.name });
+    if (project_snapshot.loaded) {
+      composer_ref.current?.drop_files(files);
       return;
     }
-    composer_ref.current?.drop_files(files, project_snapshot.loaded);
+    const { paths, skipped } = read_file_paths(files);
+    if (skipped.length > 0) {
+      push_toast("warning", t("agent_page.error.invalid_file_path"), {
+        description: skipped.join("\n"),
+      });
+      return;
+    }
+    const first = paths[0]!;
+    if (paths.length === 1 && first.toLowerCase().endsWith(".lg")) set_dropped_project(first);
+    else project_lifecycle.create_from_paths(paths);
   }
 
   return (
@@ -633,7 +631,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                   type="button"
                   className="agent-page__suggestion"
                   onClick={() =>
-                    composer_ref.current?.write_draft(
+                    composer_ref.current?.append_draft(
                       t("agent_page.empty.suggestions.capabilities"),
                     )
                   }
@@ -643,15 +641,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                     {t("agent_page.empty.suggestions.capabilities")}
                   </span>
                 </button>
-                {AGENT_TASK_SUGGESTIONS.filter((suggestion) =>
-                  skills.some((skill) => skill.name === suggestion.skillName),
-                ).map(({ skillName, suggestionKey, Icon }) => (
+                {AGENT_TASK_SUGGESTIONS.map(({ skillName, suggestionKey, Icon }) => (
                   <button
                     key={suggestionKey}
                     type="button"
                     className="agent-page__suggestion"
                     onClick={() =>
-                      composer_ref.current?.write_draft(
+                      composer_ref.current?.append_draft(
                         `${t(suggestionKey)} ${format_agent_reference({ kind: "skill", name: skillName })}`,
                       )
                     }

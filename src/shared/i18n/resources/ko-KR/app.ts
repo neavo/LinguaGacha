@@ -196,13 +196,21 @@ export const ko_kr_app = {
     builder_preceding_context: "앞 문맥 (참고용):",
     builder_following_context: "뒤 문맥 (참고용):",
   },
+  agent_input: {
+    steps_intro: "다음 단계대로 진행해 주세요:",
+    steps: {
+      glossary: "용어 추출",
+      translate: "전체 텍스트 번역",
+      review: "번역문 검토",
+      generate: "모든 번역 생성",
+    },
+  },
   translation_generation: {
+    agent_request: "모든 번역을 생성해 줘",
     action: "번역문 생성",
     confirmation: {
       generic_description:
         "이 프로젝트에는 범용 데이터 패키지가 있습니다. 모든 번역을 생성하려면 AGENT를 사용하세요. 직접 생성하면 이 패키지를 건너뜁니다.",
-      generate_all:
-        "범용 데이터 패키지를 포함한 프로젝트의 모든 번역을 생성하고 결과물을 검증하세요.",
       description: "현재 사용 가능한 번역문을 생성할까요 …?",
       checking: "프로젝트 파일 및 교정 경고 확인 중 …",
       check_failed:

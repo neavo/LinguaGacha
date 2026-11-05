@@ -8,6 +8,7 @@ import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-
 
 type ProjectLanguageDialogProps = {
   open: boolean;
+  title?: string | undefined;
   languages: Record<ProjectLanguageKey, string>; // 调用方持有本次编辑草稿
   disabled?: boolean;
   submitting?: boolean;
@@ -23,7 +24,7 @@ export function ProjectLanguageDialog(props: ProjectLanguageDialogProps): JSX.El
   return (
     <AppPageDialog
       open={props.open}
-      title={t("project.language.title")}
+      title={props.title ?? t("project.language.title")}
       size="sm"
       onClose={props.on_close}
       submitting={props.submitting === true}

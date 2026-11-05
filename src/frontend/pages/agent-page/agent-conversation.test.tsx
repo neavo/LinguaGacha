@@ -20,6 +20,7 @@ const lifecycle = vi.hoisted(() => ({
   can_close: true,
   request_close: vi.fn(),
   show_create_dialog: vi.fn(),
+  create_from_paths: vi.fn(),
   request_open: vi.fn(),
   open_recent_project: vi.fn(),
 }));
@@ -260,6 +261,7 @@ describe("AgentConversation", () => {
   beforeEach(() => {
     project_state.loaded = true;
     lifecycle.busy = false;
+    lifecycle.create_from_paths.mockClear();
     lifecycle.request_open.mockClear();
     vi.stubGlobal(
       "desktopApp",
@@ -318,17 +320,20 @@ describe("AgentConversation", () => {
   }
 
   it.each([".agent-page", ".cm-content"])(
-    "无工程时从 %s 拖入文件录入路径，忙碌时拒绝",
+    "无工程时从 %s 拖入文件创建工程，忙碌时拒绝",
     async (selector) => {
       project_state.loaded = false;
       const input = build_state().input;
+      input.draft.write({ text: "原草稿", attachments: [] });
       const view = await render_page({ input });
       await drop_image(view.querySelector(selector)!, "photo.png");
-      expect(input.draft.read()).toEqual({ text: "E:/資料/photo.png", attachments: [] });
+      expect(lifecycle.create_from_paths).toHaveBeenCalledExactlyOnceWith(["E:/資料/photo.png"]);
+      expect(input.draft.read()).toEqual({ text: "原草稿", attachments: [] });
       lifecycle.busy = true;
       await render_page({ input });
       await drop_image(view.querySelector(selector)!, "ignored.png");
-      expect(input.draft.read().text).toBe("E:/資料/photo.png");
+      expect(lifecycle.create_from_paths).toHaveBeenCalledOnce();
+      expect(input.draft.read().text).toBe("原草稿");
       expect(lifecycle.request_open).not.toHaveBeenCalled();
     },
   );
@@ -361,7 +366,7 @@ describe("AgentConversation", () => {
     },
   );
 
-  it("无工程时多个文件包含工程也全部录入路径", async () => {
+  it("无工程时多个文件包含工程也全部交给创建流程", async () => {
     project_state.loaded = false;
     const input = build_state().input;
     const view = await render_page({ input });
@@ -370,9 +375,35 @@ describe("AgentConversation", () => {
       value: { types: ["Files"], files: [new File([], "a.lg"), new File([], "b.txt")] },
     });
     await act(async () => view.querySelector(".cm-content")!.dispatchEvent(event));
-    expect(input.draft.read()).toEqual({ text: "E:/資料/a.lg\nE:/資料/b.txt", attachments: [] });
+    expect(lifecycle.create_from_paths).toHaveBeenCalledExactlyOnceWith([
+      "E:/資料/a.lg",
+      "E:/資料/b.txt",
+    ]);
+    expect(input.draft.read()).toEqual({ text: "", attachments: [] });
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
     expect(lifecycle.request_open).not.toHaveBeenCalled();
+  });
+
+  it("无工程时任一路径读取失败则整批拒绝", async () => {
+    project_state.loaded = false;
+    const read_path = vi.fn((file: File) =>
+      file.name === "invalid.txt" ? "" : `E:/資料/${file.name}`,
+    );
+    vi.stubGlobal(
+      "desktopApp",
+      create_desktop_bridge_api_mock({ methods: { getPathForFile: read_path } }),
+    );
+    const view = await render_page();
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", {
+      value: { types: ["Files"], files: [new File([], "valid.txt"), new File([], "invalid.txt")] },
+    });
+    await act(async () => view.querySelector(".cm-content")!.dispatchEvent(event));
+    expect(read_path).toHaveBeenCalledTimes(2);
+    expect(lifecycle.create_from_paths).not.toHaveBeenCalled();
+    expect(push_toast).toHaveBeenCalledWith("warning", "agent_page.error.invalid_file_path", {
+      description: "invalid.txt",
+    });
   });
 
   it("无工程发送和附件共用拦截，草稿保留", async () => {
@@ -472,10 +503,11 @@ describe("AgentConversation", () => {
     expect(editor.state.selection.main.to).toBe(3);
   });
 
-  it("导航替换草稿和附件、聚焦选中占位文字，重渲染不重复覆盖", async () => {
+  it("导航请求转交选区且只消费一次", async () => {
     const input = build_state().input;
-    input.draft.write({ text: "原草稿", attachments: [uploaded_file("old")] });
-    const text = "安装：[链接]";
+    const attachments = [uploaded_file("old")];
+    input.draft.write({ text: "原草稿", attachments });
+    const text = "导入：[路径]";
     navigation.agent_input_request = {
       text,
       selection: { from: 3, to: text.length },
@@ -483,18 +515,15 @@ describe("AgentConversation", () => {
     const send = vi.fn();
     const view = await render_page({ input, send });
     const editor = EditorView.findFromDOM(view.querySelector(".cm-editor")!)!;
-    expect(input.draft.read()).toEqual({ text, attachments: [] });
     expect(
       editor.state.sliceDoc(editor.state.selection.main.from, editor.state.selection.main.to),
-    ).toBe("[链接]");
-    expect(editor.hasFocus).toBe(true);
+    ).toBe("[路径]");
+    const expected_text = `原草稿\n${text}`;
+    expect(input.draft.read()).toEqual({ text: expected_text, attachments });
     expect(send).not.toHaveBeenCalled();
-    expect(navigation.clear_agent_input_request).toHaveBeenCalledTimes(1);
-    await act(async () =>
-      editor.dispatch({ changes: { from: 0, to: text.length, insert: "用户已修改" } }),
-    );
     await render_page({ input, send });
-    expect(input.draft.read().text).toBe("用户已修改");
+    expect(input.draft.read()).toEqual({ text: expected_text, attachments });
+    expect(navigation.clear_agent_input_request).toHaveBeenCalledOnce();
   });
 
   it("会话恢复完成后才消费导航请求", async () => {
@@ -515,7 +544,7 @@ describe("AgentConversation", () => {
     expect(input.draft.read().text).toBe("原草稿");
     expect(navigation.clear_agent_input_request).not.toHaveBeenCalled();
     await render_page({ input, command: null });
-    expect(input.draft.read().text).toBe("安装请求");
+    expect(input.draft.read().text).toBe("原草稿\n安装请求");
     expect(navigation.clear_agent_input_request).toHaveBeenCalledTimes(1);
   });
 
@@ -565,12 +594,17 @@ describe("AgentConversation", () => {
 
   it("空会话建议写入草稿而不直接发送", async () => {
     const send = vi.fn(async () => undefined);
-    const view = await render_page({ entries: [], send });
-    const suggestion = view.querySelector<HTMLButtonElement>(".agent-page__suggestion");
+    const view = await render_page({ entries: [], skills: [], send });
+    const suggestion = [
+      ...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion"),
+    ].find((button) =>
+      button.textContent?.includes("agent_page.empty.suggestions.translate_full_text"),
+    );
     const editor = view.querySelector<HTMLElement>(".cm-content");
     const submit = get_button_by_label(view, "agent_page.action.send");
     const suggestion_text = suggestion?.textContent?.trim();
-    if (suggestion === null || suggestion_text === undefined) throw new Error("缺少起始任务。");
+    if (suggestion === undefined || suggestion_text === undefined)
+      throw new Error("缺少翻译任务。");
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
 
     await act(async () => suggestion.click());
