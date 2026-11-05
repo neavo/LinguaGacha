@@ -57,6 +57,12 @@ export const ko_kr_agent_page = {
     },
     groups: { files: "파일", skills: "스킬", instructions: "명령" },
     instructions: {
+      update_file: {
+        title: "파일 업데이트",
+        description:
+          "번역을 유지하면서 파일을 업데이트합니다. 소설, 게임 콘텐츠 업데이트 등에 적합합니다",
+        request: "다음 파일로 프로젝트의 해당 파일을 업데이트하고 기존 번역을 유지해 주세요:",
+      },
       compact_context: {
         title: "컨텍스트 압축",
         unnecessary: "현재 컨텍스트가 적어 압축할 필요가 없습니다",

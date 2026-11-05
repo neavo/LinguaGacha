@@ -19,7 +19,6 @@ export const de_de_project = {
     agent_draft: {
       import:
         "Erkenne übersetzbare Inhalte unter den folgenden Pfaden und füge sie in geeigneter Form zum Projekt hinzu:",
-      path_placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
     },
     default_preset_loaded: "Standard-Voreinstellungen geladen: {NAMES} …",
     default_presets: {

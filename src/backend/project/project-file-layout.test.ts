@@ -25,8 +25,6 @@ it.each([
   ],
   [{ file_path: "a", new_file_path: "B", line: 1 }],
   [{ file_path: "a", new_file_path: "b/note.txt", line: 1 }],
-  [{ file_path: "a", godot_pack_orders: [], line: 1 }],
-  [{ file_path: "a", source_path: "work/a.txt", new_file_path: "new.txt", line: 1 }],
 ])("拒绝交换、链式及路径占用冲突 %#", (...updates) => {
   expect(() => resolve_project_file_layout(current, [], updates)).toThrow();
 });

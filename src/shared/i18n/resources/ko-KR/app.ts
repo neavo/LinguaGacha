@@ -198,6 +198,7 @@ export const ko_kr_app = {
   },
   agent_input: {
     steps_intro: "다음 단계대로 진행해 주세요:",
+    path_placeholder: "[여기에 파일 경로를 입력하거나 파일을 끌어다 놓으세요]",
     steps: {
       glossary: "용어 추출",
       translate: "전체 텍스트 번역",

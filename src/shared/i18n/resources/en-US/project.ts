@@ -39,7 +39,6 @@ export const en_us_project = {
     agent_draft: {
       import:
         "Identify translatable content from the following paths and add it to the project in a suitable form:",
-      path_placeholder: "[Enter file paths here or drag files here]",
     },
     default_preset_loaded: "Default presets loaded: {NAMES} …",
     default_presets: {

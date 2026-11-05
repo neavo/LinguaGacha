@@ -201,6 +201,7 @@ export const en_us_app = {
   },
   agent_input: {
     steps_intro: "Follow these steps:",
+    path_placeholder: "[Enter file paths here or drag files here]",
     steps: {
       glossary: "Extract terminology",
       translate: "Translate the full text",

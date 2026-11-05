@@ -211,6 +211,7 @@ export const de_de_app = {
   },
   agent_input: {
     steps_intro: "Führe diese Schritte aus:",
+    path_placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
     steps: {
       glossary: "Terminologie extrahieren",
       translate: "Gesamten Text übersetzen",

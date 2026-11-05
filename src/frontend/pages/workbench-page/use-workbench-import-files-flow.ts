@@ -1,5 +1,6 @@
 import { GODOT_PACK_ORDER_REFRESH_ACTION } from "@shared/godot";
 import type { GodotPackOrder } from "@shared/godot";
+import type { ImportInheritanceMode } from "@shared/translation-inheritance";
 import { useGodotPackOrder } from "@frontend/features/godot-pack-order/use-godot-pack-order";
 import { useGameBackupConfirm } from "@frontend/features/game-backup-confirm/use-game-backup-confirm";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
@@ -235,7 +236,7 @@ export function useWorkbenchImportFilesFlow(
   const execute_import_files_request = useCallback(
     async (
       pending_request: PendingImportFilesRequest,
-      inheritance_mode: "none" | "inherit",
+      inheritance_mode: ImportInheritanceMode,
     ): Promise<void> => {
       // 文件修订固定名称归属，条目修订仍取提交时的最新快照。
       const state = options.get_planning_state();

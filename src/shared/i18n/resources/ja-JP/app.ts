@@ -205,6 +205,7 @@ export const ja_jp_app = {
   },
   agent_input: {
     steps_intro: "以下の手順で実行してください：",
+    path_placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
     steps: {
       glossary: "用語を抽出",
       translate: "全文を翻訳",

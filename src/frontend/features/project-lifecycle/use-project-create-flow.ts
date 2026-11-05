@@ -2,6 +2,7 @@ import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { AgentInputRequest } from "@frontend/app/navigation/types";
 import {
   format_agent_input_steps,
+  format_agent_path_request,
   type AgentInputStep,
 } from "@frontend/app/navigation/agent-input-steps";
 import { useState } from "react";
@@ -126,14 +127,7 @@ function build_agent_draft(
 ): AgentInputRequest {
   const steps = format_agent_input_steps(t, TRANSLATION_STEPS);
   if (has_source) return { text: steps };
-  const prompt = t("project.create.agent_draft.import");
-  const placeholder = t("project.create.agent_draft.path_placeholder");
-  return {
-    text: `${prompt}\n${import_paths.join("\n") || placeholder}\n\n${steps}`,
-    ...(import_paths.length === 0 && {
-      selection: { from: prompt.length + 1, to: prompt.length + 1 + placeholder.length },
-    }),
-  };
+  return format_agent_path_request(t, t("project.create.agent_draft.import"), import_paths, steps);
 }
 
 /** 创建意图随应用会话常驻，工程加载导致页面卸载后仍能完成收尾。 */

@@ -6,9 +6,9 @@ import {
 } from "../../shared/project/project-asset-paths";
 import { is_portable_file_name } from "../../shared/utils/file-name";
 import { insert_by_sort } from "./insert-by-sort";
-import type { ProjectFileCreate } from "../../shared/project-file-changes";
 
-export type ProjectFileUpdate = Partial<ProjectFileCreate> & {
+/** 更新只调整资产身份与位置，内容变化通过新增后删除完成。 */
+export type ProjectFileUpdate = {
   file_path: string;
   new_file_path?: string;
   sort?: number;
@@ -31,10 +31,6 @@ export function resolve_project_file_layout(
   const remaining = current.filter((file) => !deleted.has(file.path));
   const layout = remaining.map((file) => {
     const update = updates.find((entry) => entry.file_path === file.path);
-    if (update?.godot_pack_orders !== undefined && update.source_path === undefined)
-      throw new AppError("request.validation_failed");
-    if (update?.source_path !== undefined && update.new_file_path !== undefined)
-      throw new AppError("request.validation_failed");
     const target =
       update?.new_file_path === undefined
         ? file.path
