@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, utimes, writeFile } from "node:fs/promises";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,7 +15,7 @@ vi.mock("../../../native/supervisor", () => ({
   },
 }));
 
-it("环境准备与脚本共用唯一截止信号，超时回执保留日志", async () => {
+it("环境准备与脚本共用唯一截止信号，超时回执保留日志与无输出秒数", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-execution-deadline-"));
   await mkdir(path.join(root.path, "runtime"));
   await writeFile(path.join(root.path, "runtime/prepare.mjs"), "");
@@ -45,13 +45,16 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志", a
       async (owner, _env, signal) => {
         expect(owner.launch).toHaveBeenCalledWith(expect.any(Object), signal);
         await writeFile(path.join(workspace, "deadline.out"), "before deadline");
+        const silent_since = new Date(Date.now() - 120_000); // 两路日志最后一次写入在 120 秒前
+        for (const log of ["deadline.out", "deadline.err"])
+          await utimes(path.join(workspace, log), silent_since, silent_since);
         deadline.abort(new DOMException("test deadline", "TimeoutError"));
         signal.throwIfAborted();
       },
     );
     const error: unknown = await pending.catch((error: unknown) => error);
     expect(error).toMatchObject({
-      message: "Workspace execution timed out after 45 seconds.",
+      message: "Workspace execution timed out after 45 seconds. No output in the last 120 seconds.",
       execution: { stdout: { content: "before deadline" }, exitCode: null },
       cause: deadline.signal.reason,
     });

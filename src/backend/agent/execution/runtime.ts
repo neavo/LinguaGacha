@@ -86,12 +86,19 @@ export class AgentExecutionRuntime {
     try {
       return await operation;
     } catch (error) {
-      if (deadline.aborted && effective.reason === deadline.reason && error === effective.reason)
+      if (deadline.aborted && effective.reason === deadline.reason && error === effective.reason) {
+        // 无输出秒数让 Agent 区分卡住与仍在推进。两路日志在执行前创建，从未输出时即为整段执行时长。
+        const last_output = Math.max(
+          ...[request.stdoutPath, request.stderrPath].map(
+            (log) => default_native_fs.stat(path.join(request.workspacePath, log)).mtimeMs,
+          ),
+        );
         throw new AgentExecutionError(
-          `Workspace execution timed out after ${request.timeoutMs / 1000} seconds.`,
+          `Workspace execution timed out after ${request.timeoutMs / 1000} seconds. No output in the last ${Math.round((Date.now() - last_output) / 1000)} seconds.`,
           this.result(request, { exitCode: null, signal: null }),
           { cause: error },
         );
+      }
       throw error;
     } finally {
       this.active = undefined;
