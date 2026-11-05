@@ -55,6 +55,11 @@ export const zh_cn_agent_page = {
     },
     groups: { files: "文件", skills: "技能", instructions: "指令" },
     instructions: {
+      update_file: {
+        title: "更新文件",
+        description: "保留译文的同时更新文件，适用于小说、游戏内容更新等场景",
+        request: "请用以下文件更新工程中的对应文件，并保留已有译文：",
+      },
       compact_context: {
         title: "压缩上下文",
         unnecessary: "当前上下文较少，无需压缩",

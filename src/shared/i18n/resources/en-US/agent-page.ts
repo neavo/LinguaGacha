@@ -55,6 +55,12 @@ export const en_us_agent_page = {
     },
     groups: { files: "Files", skills: "Skills", instructions: "Instructions" },
     instructions: {
+      update_file: {
+        title: "Update files",
+        description: "Update files while keeping translations, for novel or game content updates",
+        request:
+          "Update the corresponding project files with the following files and keep the existing translations:",
+      },
       compact_context: {
         title: "Compact context",
         unnecessary: "The current context is small and does not need compaction",

@@ -197,6 +197,7 @@ export const zh_cn_app = {
   },
   agent_input: {
     steps_intro: "按步骤执行：",
+    path_placeholder: "[在此输入文件路径或者将文件拖到这里]",
     steps: {
       glossary: "提取术语",
       translate: "翻译全文",

@@ -15,6 +15,7 @@ import {
   BookOpenText,
   Bot,
   Drama,
+  FileDiff,
   FileOutput,
   Shrink,
   SquarePower,
@@ -38,6 +39,7 @@ import { useTranslationGeneration } from "@frontend/app/session/translation-gene
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import { format_agent_path_request } from "@frontend/app/navigation/agent-input-steps";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
@@ -330,6 +332,23 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       description: "",
       disabled: !translation_generation.can_request_generation,
       execute: translation_generation.request_generation,
+    },
+    {
+      // 只预置草稿，流程由技能决定，不受会话空闲约束。
+      id: "update_file",
+      icon: FileDiff,
+      title: t("agent_page.mention.instructions.update_file.title"),
+      description: t("agent_page.mention.instructions.update_file.description"),
+      disabled: !project_snapshot.loaded,
+      execute: () => {
+        const request = format_agent_path_request(
+          t,
+          t("agent_page.mention.instructions.update_file.request"),
+          [],
+          format_agent_reference({ kind: "skill", name: "project-operation" }),
+        );
+        composer_ref.current?.append_draft(request.text, request.selection);
+      },
     },
     {
       id: "compact_context",

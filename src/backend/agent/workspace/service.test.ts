@@ -166,72 +166,6 @@ describe("AgentWorkspaceService", () => {
     );
   });
 
-  it("替换解析失败按目标定位回执，修复后提交保留调用方来源路径", async () => {
-    const fixture = await create_fixture(temp_dir);
-    await run_workspace(fixture);
-    const source_path = "work/replacement.txt";
-    const resolved = path.join(fixture.workspace_root, source_path);
-    fixture.inspect_sources.mockResolvedValue([
-      {
-        source_path: resolved,
-        files: [{ path: resolved, kind: "file" }],
-        godot_packs: [],
-        failures: [],
-      },
-    ]);
-    fs.writeFileSync(
-      path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.updates),
-      JSON.stringify({ file_path: "script.txt", source_path }),
-    );
-    fixture.apply_file_changes.mockResolvedValueOnce({
-      kind: "source_failed",
-      directory_changes: [],
-      failures: [{ file_path: "script.txt", source_path: resolved, message: "bad records" }],
-    });
-    expect(await fixture.service.apply_workspace()).toMatchObject({
-      status: "rejected",
-      destroyed: false,
-      rejected: [{ op: "update", file_path: "script.txt", reason: "source_failed", line: 1 }],
-    });
-    fixture.apply_file_changes.mockResolvedValueOnce({
-      kind: "applied",
-      write: { accepted: true, changes: [] },
-      sectionRevisions: { files: 2, items: 2 },
-      directory_changes: [],
-      files: {
-        created: [],
-        updated: 1,
-        deleted: 0,
-        replaced: [
-          {
-            file_path: "script.txt",
-            source_path: resolved,
-            items: 2,
-            pages: 0,
-            inherited: 1,
-            contested: [[42]],
-          },
-        ],
-      },
-    });
-    expect(await fixture.service.apply_workspace()).toMatchObject({
-      status: "applied",
-      applied: {
-        files: {
-          replaced: [
-            { file_path: "script.txt", source_path, items: 2, inherited: 1, contested: [[42]] },
-          ],
-        },
-      },
-    });
-    expect(fixture.apply_file_changes).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        sourcePaths: [],
-        updates: [expect.objectContaining({ file_path: "script.txt", source_path: resolved })],
-      }),
-    );
-  });
-
   it.each(["none", "update", "delete"])(
     "文件审批合计实际文件数，回执保留明细：%s",
     async (operation) => {
@@ -346,6 +280,7 @@ describe("AgentWorkspaceService", () => {
     expect(await fixture.service.apply_workspace()).toMatchObject({
       status: "rejected",
       destroyed: false,
+      rejected: [{ op: "create", line: 1, reason: "source_failed" }],
       directory_changes: ["game"],
     });
     fixture.apply_file_changes.mockRejectedValueOnce(
@@ -1719,12 +1654,13 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       sectionRevisions: { files: 2, items: 2 },
       directory_changes: [],
       files: {
-        replaced: [],
         created: request.creates.map((entry) => ({
           source_path: entry.source_path,
           files: 3,
           items: 4,
           pages: 0,
+          inherited: 0,
+          contested: [],
           renamed: [],
           parse_failed: [],
         })),

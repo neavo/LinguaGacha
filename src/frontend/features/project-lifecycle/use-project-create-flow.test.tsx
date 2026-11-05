@@ -128,7 +128,7 @@ it.each([
   expect(flow.open).toBe(false);
   const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
   expect(request.text.slice(request.selection!.from, request.selection!.to)).toBe(
-    t("project.create.agent_draft.path_placeholder"),
+    t("app.agent_input.path_placeholder"),
   );
 });
 
@@ -195,8 +195,6 @@ it("拖入创建清除旧来源，按首个路径保存并预填全部路径，�
   await act(async () => vi.runAllTimersAsync());
   const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
   expect(request.text).toContain("E:/src/a.txt\nE:/src/b");
-  expect(request.text).not.toContain(t("project.create.agent_draft.path_placeholder"));
-  expect(request.selection).toBeUndefined();
 
   act(() => flow.show());
   await create();

@@ -956,12 +956,9 @@ export class AgentWorkspaceService {
           source: "agent_workspace_apply",
           expectedSectionRevisions: { files: active.revisions.files ?? 0 },
           revisionSections: ["files"],
-          sourcePaths: [
-            ...parsed.files.creates,
-            ...parsed.files.updates.filter((row) => row.source_path !== undefined),
-          ]
-            .filter((row) => path.isAbsolute(row.source_path!))
-            .map((row) => row.source_path!),
+          sourcePaths: parsed.files.creates
+            .filter((row) => path.isAbsolute(row.source_path))
+            .map((row) => row.source_path),
           creates: preview.files.creates,
           updates: preview.files.updates,
           deletes: preview.files.deletes.map((row) => row.file_path),
@@ -970,30 +967,19 @@ export class AgentWorkspaceService {
       );
       if (result.kind === "source_failed")
         return reject(
-          result.failures.map((failure) => {
-            const update = preview.files.updates.find((row) => row.file_path === failure.file_path);
-            const create = preview.files.creates.find(
-              (row) => row.source_path === failure.source_path,
-            );
-            return {
-              scope: "files",
-              op: update ? "update" : "create",
-              reason: "source_failed",
-              line: (update ?? create)!.line,
-              ...(update ? { file_path: update.file_path } : {}),
-              ...failure,
-            };
-          }),
+          result.failures.map((failure) => ({
+            scope: "files",
+            op: "create",
+            reason: "source_failed",
+            line: preview.files.creates.find((row) => row.source_path === failure.source_path)!
+              .line,
+            ...failure,
+          })),
           result.directory_changes,
         );
       // 对外回执保留调用方的路径表示，实际读取使用解析后的本机路径。
       const files = {
         ...result.files,
-        replaced: result.files.replaced.map((entry) => ({
-          ...entry,
-          source_path: parsed.files.updates.find((row) => row.file_path === entry.file_path)!
-            .source_path!,
-        })),
         created: result.files.created.map((entry, index) => ({
           ...entry,
           source_path: parsed.files.creates[index]!.source_path,

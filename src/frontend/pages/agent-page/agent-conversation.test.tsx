@@ -745,6 +745,28 @@ describe("AgentConversation", () => {
     expect(request_generation).toHaveBeenCalledOnce();
   });
 
+  it("从 mention 菜单选择更新文件指令后预置草稿并选中路径占位行", async () => {
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({ send });
+    const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
+    if (editor === null) throw new Error("缺少 Composer");
+    await act(async () =>
+      editor.dispatch({
+        changes: { from: 0, insert: "@update" },
+        selection: EditorSelection.cursor(7),
+      }),
+    );
+    const instruction = view.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+    );
+    if (instruction === null) throw new Error("缺少更新文件指令");
+
+    await act(async () => instruction.click());
+    const { from, to } = editor.state.selection.main;
+    expect(editor.state.sliceDoc(from, to)).toBe("app.agent_input.path_placeholder");
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it.each(["batch_translation", "model_test"] as const)(
     "%s 占用时暂停额外 Agent 执行入口",
     async (owner) => {

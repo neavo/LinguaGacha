@@ -55,6 +55,13 @@ export const de_de_agent_page = {
     },
     groups: { files: "Dateien", skills: "Skills", instructions: "Befehle" },
     instructions: {
+      update_file: {
+        title: "Dateien aktualisieren",
+        description:
+          "Dateien aktualisieren und Übersetzungen beibehalten, etwa bei Roman- oder Spiel-Updates",
+        request:
+          "Aktualisiere die entsprechenden Projektdateien mit den folgenden Dateien und behalte vorhandene Übersetzungen bei:",
+      },
       compact_context: {
         title: "Kontext komprimieren",
         unnecessary: "Der aktuelle Kontext ist klein und muss nicht komprimiert werden",

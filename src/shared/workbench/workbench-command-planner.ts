@@ -1,4 +1,5 @@
 import type { SourceConfirmations } from "../project-source-formats";
+import type { ImportInheritanceMode } from "../translation-inheritance";
 type WorkbenchCommandSection = "files" | "items" | "pdf";
 type WorkbenchSectionRevisions = Record<string, number | undefined>;
 
@@ -6,9 +7,6 @@ type WorkbenchPlannerFileRecord = {
   file_type?: string; // PDF 内容重置需要其独立 revision
   rel_path: string; // 后端 query 返回的项目内相对路径
 };
-
-// 继承模式只表达用户意图，候选选择和最终译文继承由后端完成。
-type WorkbenchTranslationInheritanceMode = "none" | "inherit";
 
 export type WorkbenchFileConflictAction = "skip" | "replace";
 
@@ -161,7 +159,7 @@ export function create_workbench_import_files_plan(args: {
   state: WorkbenchCommandPlanningState;
   preview: WorkbenchImportFilesPreview;
   conflict_action: WorkbenchFileConflictAction;
-  inheritance_mode?: WorkbenchTranslationInheritanceMode;
+  inheritance_mode?: ImportInheritanceMode; // 只表达用户意图，候选选择和最终继承由后端完成。
 }): WorkbenchCommandPlan {
   const files = args.preview.files
     .filter((file) => args.conflict_action === "replace" || !file.conflict)

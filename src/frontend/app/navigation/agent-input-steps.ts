@@ -1,5 +1,6 @@
 import type { LocaleKey, TextResolver } from "@shared/i18n";
 import { format_agent_reference } from "@shared/agent-reference";
+import type { AgentInputRequest } from "@frontend/app/navigation/types";
 
 export type AgentInputStep = Readonly<{ label_key: LocaleKey; skill: string }>;
 
@@ -13,4 +14,20 @@ export function format_agent_input_steps(
       `${index + 1}. ${t(step.label_key)} ${format_agent_reference({ kind: "skill", name: step.skill })}`,
   );
   return `${t("app.agent_input.steps_intro")}\n${lines.join("\n")}`;
+}
+
+/** 提示行后接路径行，没有路径时选中占位行，供用户输入或拖入文件替换。 */
+export function format_agent_path_request(
+  t: TextResolver,
+  prompt: string,
+  paths: readonly string[],
+  suffix: string,
+): AgentInputRequest {
+  const placeholder = t("app.agent_input.path_placeholder");
+  return {
+    text: `${prompt}\n${paths.join("\n") || placeholder}\n\n${suffix}`,
+    ...(paths.length === 0 && {
+      selection: { from: prompt.length + 1, to: prompt.length + 1 + placeholder.length },
+    }),
+  };
 }

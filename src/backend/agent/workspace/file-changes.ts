@@ -64,21 +64,15 @@ export async function preview_file_changes(args: {
       file_path: row.file_path,
     })),
   ];
-  const sources = [
-    ...files.creates.map((row) => ({ row, op: "create" as const })),
-    ...files.updates
-      .filter((row) => row.source_path !== undefined)
-      .map((row) => ({ row, op: "update" as const })),
-  ];
-  for (const { row, op } of sources) {
+  for (const row of files.creates) {
     try {
-      row.source_path = args.resolve(row.source_path!);
+      row.source_path = args.resolve(row.source_path);
     } catch (error) {
       rejected.push({
         scope: "files",
-        op,
+        op: "create",
         line: row.line,
-        source_path: row.source_path!,
+        source_path: row.source_path,
         reason: "invalid_change",
         message: String(error),
       });
@@ -130,32 +124,27 @@ export async function preview_file_changes(args: {
     );
   }
   let created = 0;
-  for (const { row, op } of sources) {
+  for (const row of files.creates) {
     try {
-      const [inspection] = await args.inspect([row.source_path!], row.godot_pack_orders);
-      if (
-        !inspection ||
-        inspection.files.length === 0 ||
-        inspection.failures.length ||
-        (op === "update" && inspection.files.length !== 1)
-      )
+      const [inspection] = await args.inspect([row.source_path], row.godot_pack_orders);
+      if (!inspection || inspection.files.length === 0 || inspection.failures.length)
         rejected.push({
           scope: "files",
-          op,
+          op: "create",
           line: row.line,
-          source_path: row.source_path!,
+          source_path: row.source_path,
           reason: "source_failed",
           message:
             inspection?.failures.map((failure) => failure.message).join("\n") ||
             "No supported files found.",
         });
-      else if (op === "create") created += inspection.files.length;
+      else created += inspection.files.length;
     } catch (error) {
       rejected.push({
         scope: "files",
-        op,
+        op: "create",
         line: row.line,
-        source_path: row.source_path!,
+        source_path: row.source_path,
         reason:
           is_app_error(error) && error.code === "request.validation_failed"
             ? "invalid_change"

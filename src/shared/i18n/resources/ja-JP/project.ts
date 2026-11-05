@@ -17,7 +17,6 @@ export const ja_jp_project = {
     success: "プロジェクトを作成しました …",
     agent_draft: {
       import: "以下のパスから翻訳可能な内容を識別し、適切な形式でプロジェクトに追加してください：",
-      path_placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
     },
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
     default_presets: {

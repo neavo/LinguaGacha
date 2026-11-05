@@ -57,6 +57,12 @@ export const ja_jp_agent_page = {
     },
     groups: { files: "ファイル", skills: "スキル", instructions: "指示" },
     instructions: {
+      update_file: {
+        title: "ファイルを更新",
+        description: "訳文を保ったままファイルを更新します。小説やゲームの内容更新などに",
+        request:
+          "以下のファイルでプロジェクト内の対応するファイルを更新し、既存の訳文を保持してください：",
+      },
       compact_context: {
         title: "コンテキストを圧縮",
         unnecessary: "コンテキストが少ないため、圧縮は不要です",

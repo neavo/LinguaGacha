@@ -34,7 +34,6 @@ export const zh_cn_project = {
     success: "工程创建成功 …",
     agent_draft: {
       import: "请从以下路径中识别可翻译内容并以合适的形式添加到工程中：",
-      path_placeholder: "[在此输入文件路径或者将文件拖到这里]",
     },
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     default_presets: {

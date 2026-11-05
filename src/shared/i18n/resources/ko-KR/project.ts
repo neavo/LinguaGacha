@@ -17,7 +17,6 @@ export const ko_kr_project = {
     success: "프로젝트를 만들었습니다 …",
     agent_draft: {
       import: "다음 경로에서 번역 가능한 내용을 찾아 적절한 형식으로 프로젝트에 추가해 주세요:",
-      path_placeholder: "[여기에 파일 경로를 입력하거나 파일을 끌어다 놓으세요]",
     },
     default_preset_loaded: "기본 프리셋을 자동으로 불러왔습니다: {NAMES} …",
     default_presets: {

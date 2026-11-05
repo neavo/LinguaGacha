@@ -201,7 +201,7 @@ export class ProjectContentService {
       }
     | {
         kind: "source_failed";
-        failures: { source_path: string; file_path?: string; message: string }[];
+        failures: { source_path: string; message: string }[];
         directory_changes: string[];
       }
   > {
@@ -220,7 +220,7 @@ export class ProjectContentService {
       directory_changes: [],
     };
     let entries: (DiscoveredSource & { record: number; original_path: string })[] = []; // 保留来源记录归属和命名前路径。
-    const failures: { source_path: string; file_path?: string; message: string }[] = [];
+    const failures: { source_path: string; message: string }[] = [];
     if (args.creates.length) {
       const service = await this.create_format_service(args.projectPath);
       parsed = await service.with_source_directories(
@@ -258,33 +258,6 @@ export class ProjectContentService {
         });
       }
     }
-    const replacements = args.updates.filter((update) => update.source_path !== undefined);
-    if (replacements.length) {
-      const replacement_result = await this.parse_import_file_commands(
-        args.projectPath,
-        current_assets,
-        replacements.map((update) => ({
-          source_path: update.source_path!,
-          target_rel_path: update.file_path,
-        })),
-        args.signal,
-        replacements.flatMap((update) => update.godot_pack_orders ?? []),
-      ).catch((error: unknown) => {
-        throw source_operation_error(error, parsed.directory_changes);
-      });
-      this.log_source_diagnostics(replacement_result.failures, replacement_result.warnings);
-      parsed.directory_changes.push(...replacement_result.directory_changes);
-      for (const failure of replacement_result.failures) {
-        // 游戏识别会把 EXE 来源归一到根目录，回执须按目标资产找回原始变更。
-        const update = replacements.find((entry) => entry.file_path === failure.rel_path)!;
-        failures.push({
-          source_path: update.source_path!,
-          file_path: update.file_path,
-          message: String(failure.error),
-        });
-      }
-      parsed.file_drafts.push(...replacement_result.file_drafts);
-    }
     if (failures.length)
       return { kind: "source_failed", failures, directory_changes: parsed.directory_changes };
     try {
@@ -294,8 +267,13 @@ export class ProjectContentService {
         current_assets.filter((asset) =>
           occupied.some((file) => file.path === asset.path && file.previous_path === asset.path),
         ),
-        new Set(replacements.map((update) => update.file_path)),
+        new Set(
+          entries
+            .filter((entry) => args.creates[entry.record]!.inheritance_mode === "inherit")
+            .map((entry) => entry.rel_path),
+        ),
       );
+      // 新增名称已避开现有资产，准备结果不会产生替换。
       const { itemIdsByFile, ...result } = await this.write_store.apply_file_changes({
         ...args,
         sourceRecord: {
@@ -303,7 +281,6 @@ export class ProjectContentService {
           locale: resolve_app_locale(this.app_settings.read_app_language()),
         },
         creates: prepared.creates,
-        replacements: prepared.replacements,
       });
       return {
         kind: "applied",
@@ -311,19 +288,6 @@ export class ProjectContentService {
         directory_changes: parsed.directory_changes,
         files: {
           updated: args.updates.length,
-          replaced: replacements.map((update) => {
-            const file = prepared.replacements.find((file) => file.path === update.file_path)!;
-            return {
-              file_path: file.path,
-              source_path: update.source_path!,
-              items: file.items.length,
-              pages: file.pdfDocument?.pages.length ?? 0,
-              inherited: prepared.inherited.get(file.path) ?? 0,
-              contested: (prepared.contested.get(file.path) ?? []).map((group) =>
-                group.map((index) => itemIdsByFile.get(file.path)![index]!),
-              ),
-            };
-          }),
           deleted: args.deletes.length,
           created: args.creates.map((create, record) => {
             const source_entries = entries.filter((entry) => entry.record === record);
@@ -336,6 +300,15 @@ export class ProjectContentService {
               pages: drafts.reduce(
                 (count, file) => count + (file.pdf_document?.pages.length ?? 0),
                 0,
+              ),
+              inherited: [...paths].reduce(
+                (count, path) => count + (prepared.inherited.get(path) ?? 0),
+                0,
+              ),
+              contested: [...paths].flatMap((path) =>
+                (prepared.contested.get(path) ?? []).map((group) =>
+                  group.map((index) => itemIdsByFile.get(path)![index]!),
+                ),
               ),
               renamed: source_entries
                 .filter(

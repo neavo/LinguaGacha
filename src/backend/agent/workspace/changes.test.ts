@@ -38,6 +38,7 @@ describe("Agent workspace change parser", () => {
       JSON.stringify({
         source_path: "work/game",
         godot_pack_orders: [{ game_root: "D:/game", ordered_pcks: ["a.pck", "b.pck"] }],
+        inheritance_mode: "inherit",
       }),
     );
     write(
@@ -47,11 +48,6 @@ describe("Agent workspace change parser", () => {
         { file_path: "a.txt", new_file_path: "folder/a.txt", sort: -1 },
         { file_path: "b.txt" },
         { file_path: "c.txt", sort: 1.5 },
-        {
-          file_path: "game.godot",
-          source_path: "work/game",
-          godot_pack_orders: [{ game_root: "D:/game", ordered_pcks: ["b.pck", "a.pck"] }],
-        },
       ]
         .map((row) => JSON.stringify(row))
         .join("\n"),
@@ -65,15 +61,11 @@ describe("Agent workspace change parser", () => {
       nativeFs: new NativeFs(),
       workspacePath: workspace,
     });
-    expect(parsed.files.creates).toMatchObject([{ line: 1, source_path: "work/game" }]);
+    expect(parsed.files.creates).toMatchObject([
+      { line: 1, source_path: "work/game", inheritance_mode: "inherit" },
+    ]);
     expect(parsed.files.updates).toEqual([
       { line: 1, file_path: "a.txt", new_file_path: "folder/a.txt", sort: -1 },
-      {
-        line: 4,
-        file_path: "game.godot",
-        source_path: "work/game",
-        godot_pack_orders: [{ game_root: "D:/game", ordered_pcks: ["b.pck", "a.pck"] }],
-      },
     ]);
     expect(parsed.files.deletes).toEqual([{ line: 1, file_path: "b.txt" }]);
     expect(parsed.rejected.map((row) => [row.scope, row.line])).toEqual([

@@ -198,7 +198,7 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
-  it("多文件替换的争议回执按文件分组并使用实际提交 ID，新增文件不继承", async () => {
+  it("新增按记录继承，争议回执使用实际提交 ID，缺省不继承", async () => {
     const { database, service, lg_path } = await create_service();
     const source = project_path("replacement.generic");
     const extra = project_path("extra.txt");
@@ -221,8 +221,6 @@ describe("ProjectContentService", () => {
     try {
       await database.transaction(lg_path, (writer) => {
         writer.add_asset(lg_path, "old.txt", Buffer.from("old"), "TXT", null);
-        for (const file_path of ["a.generic", "b.generic"])
-          writer.add_asset(lg_path, file_path, content, "GENERIC", null);
         writer.set_items(lg_path, [
           ...["少数", "多数", "多数"].map((dst, index) =>
             create_persistent_item({
@@ -248,8 +246,6 @@ describe("ProjectContentService", () => {
             dst: "再见",
             status: "PROCESSED",
           }),
-          create_persistent_item({ item_id: 200, file_path: "a.generic", src: "旧甲" }),
-          create_persistent_item({ item_id: 300, file_path: "b.generic", src: "旧乙" }),
         ]);
       });
       const result = await service.apply_file_changes({
@@ -257,32 +253,23 @@ describe("ProjectContentService", () => {
         source: "agent_workspace_apply",
         expectedSectionRevisions: { files: 0 },
         revisionSections: ["files"],
-        creates: [{ source_path: extra }],
-        updates: ["a.generic", "b.generic"].map((file_path, index) => ({
-          file_path,
-          source_path: source,
-          sort: 1 - index,
-          line: index + 1,
-        })),
+        creates: [{ source_path: source, inheritance_mode: "inherit" }, { source_path: extra }],
+        updates: [],
         deletes: [],
         signal: new AbortController().signal,
       });
       if (result.kind !== "applied") throw new Error("expected applied result");
       const saved = await database.get_all_items(lg_path);
-      for (const file_path of ["a.generic", "b.generic"]) {
-        const disputed = saved.filter(
-          (item) => item["file_path"] === file_path && item["src"] === "こんにちは",
-        );
-        expect(disputed).toHaveLength(2);
-        expect(result.files.replaced.find((file) => file.file_path === file_path)).toEqual({
-          file_path,
-          source_path: source,
-          items: 5,
-          pages: 0,
-          inherited: 3,
-          contested: [disputed.map((item) => item["id"])],
-        });
-      }
+      const disputed = saved.filter(
+        (item) => item["file_path"] === "replacement.generic" && item["src"] === "こんにちは",
+      );
+      expect(disputed).toHaveLength(2);
+      expect(result.files.created[0]).toMatchObject({
+        source_path: source,
+        items: 5,
+        inherited: 3,
+        contested: [disputed.map((item) => item["id"])],
+      });
       expect(saved.find((item) => item["file_path"] === "extra.txt")).toMatchObject({
         dst: "",
         status: "NONE",
@@ -292,7 +279,7 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("通用包离线重置、整包替换继承与坏包失败共用真实资产事务", async () => {
+  it("通用包离线重置、更新继承与坏包解析失败共用真实资产事务", async () => {
     const { database, service, lg_path } = await create_service();
     const source = project_path("data.generic");
     const binary = new Uint8Array([0, 255, 128, 0]);
@@ -347,50 +334,56 @@ describe("ProjectContentService", () => {
         source: "agent_workspace_apply",
         revisionSections: ["files" as const],
         creates: [],
+        updates: [],
         deletes: [],
         signal: new AbortController().signal,
-        updates: [{ file_path: "data.generic", source_path: source, sort: 0, line: 1 }],
       };
       const revision = async () => ({
         files: get_section_revision(await database.get_all_meta(lg_path), "files"),
       });
+      // 更新先以新名称新增并继承，再在同一批中删除旧资产并改回旧名。
       expect(
         await service.apply_file_changes({
           ...request,
+          creates: [{ source_path: source, inheritance_mode: "inherit" }],
           expectedSectionRevisions: await revision(),
         }),
       ).toMatchObject({
         kind: "applied",
-        files: { replaced: [{ file_path: "data.generic", items: 3, inherited: 2, contested: [] }] },
+        files: {
+          created: [
+            {
+              items: 3,
+              inherited: 2,
+              contested: [],
+              renamed: [{ from: "data.generic", to: "data_2.generic" }],
+            },
+          ],
+        },
       });
-      const replaced = await database.get_all_items(lg_path);
-      expect(replaced.map((item) => [item["row"], item["src"], item["dst"]])).toEqual([
-        [0, "さようなら", "再见"],
-        [1, "こんにちは", "你好"],
-        [2, "新しい", ""],
-      ]);
-      expect(replaced.every((item) => !items.some((old) => old["id"] === item["id"]))).toBe(true);
-      const saved = await database.read_asset_content(lg_path, "data.generic");
-      expect((await read_zip_fixture(saved!)).get("originals/data.bin")).toEqual(binary);
-      const before = await database.get_all_meta(lg_path);
-      fs.writeFileSync(source, await write_zip(new Map([["items.json", '[{"message":3}]']])));
-      const extra = project_path("extra.txt");
-      fs.writeFileSync(extra, "追加");
       expect(
         await service.apply_file_changes({
           ...request,
-          creates: [{ source_path: extra }],
+          updates: [{ file_path: "data_2.generic", new_file_path: "data.generic", line: 1 }],
+          deletes: ["data.generic"],
           expectedSectionRevisions: await revision(),
         }),
-      ).toMatchObject({ kind: "source_failed" });
-      expect(await database.get_all_items(lg_path)).toEqual(replaced);
-      expect(await database.read_asset_content(lg_path, "data.generic")).toEqual(saved);
-      expect(await database.get_asset_count(lg_path)).toBe(1);
-      expect(await database.get_all_meta(lg_path)).toEqual(before);
+      ).toMatchObject({ kind: "applied" });
+      const updated = await database.get_all_items(lg_path);
+      expect(
+        updated.map((item) => [item["file_path"], item["row"], item["src"], item["dst"]]),
+      ).toEqual([
+        ["data.generic", 0, "さようなら", "再见"],
+        ["data.generic", 1, "こんにちは", "你好"],
+        ["data.generic", 2, "新しい", ""],
+      ]);
+      expect(updated.every((item) => !items.some((old) => old["id"] === item["id"]))).toBe(true);
+      const saved = await database.read_asset_content(lg_path, "data.generic");
+      expect((await read_zip_fixture(saved!)).get("originals/data.bin")).toEqual(binary);
+      fs.writeFileSync(source, await write_zip(new Map([["items.json", '[{"message":3}]']])));
       expect(
         await service.apply_file_changes({
           ...request,
-          updates: [],
           creates: [{ source_path: source }],
           expectedSectionRevisions: await revision(),
         }),
@@ -509,47 +502,40 @@ describe("ProjectContentService", () => {
       await database.close();
     }
   });
-  it.each([false, true])(
-    "来源准备后的失败保留目录变化，工程事务未写入（包含替换：%s）",
-    async (replace) => {
-      const { database, service, lg_path } = await create_service();
-      const first = project_path("first.txt"),
-        second = project_path("second.txt");
-      fs.writeFileSync(first, "こんにちは");
-      fs.writeFileSync(second, "こんにちは");
-      if (replace)
-        await database.transaction(lg_path, (writer) =>
-          writer.add_asset(lg_path, "old.txt", Buffer.from("old"), "TXT", null),
-        );
-      const controller = new AbortController();
-      vi.spyOn(FileFormatService.prototype, "prepare_source")
-        .mockResolvedValueOnce({
-          content: Buffer.from("こんにちは"),
-          directory_changed: true,
-          diagnostics: [],
-        })
-        .mockImplementationOnce(async () => {
-          controller.abort();
-          throw new Error("shutdown");
-        });
-      await expect(
-        service.apply_file_changes({
-          projectPath: lg_path,
-          source: "test",
-          expectedSectionRevisions: { files: 0 },
-          revisionSections: ["files"],
-          creates: [{ source_path: first }, ...(!replace ? [{ source_path: second }] : [])],
-          updates: replace ? [{ file_path: "old.txt", source_path: second, line: 1 }] : [],
-          deletes: [],
-          signal: controller.signal,
-        }),
-      ).rejects.toMatchObject({
-        public_details: { source_operation: { directory_changes: [first] } },
+  it("来源准备后的失败保留目录变化，工程事务未写入", async () => {
+    const { database, service, lg_path } = await create_service();
+    const first = project_path("first.txt"),
+      second = project_path("second.txt");
+    fs.writeFileSync(first, "こんにちは");
+    fs.writeFileSync(second, "こんにちは");
+    const controller = new AbortController();
+    vi.spyOn(FileFormatService.prototype, "prepare_source")
+      .mockResolvedValueOnce({
+        content: Buffer.from("こんにちは"),
+        directory_changed: true,
+        diagnostics: [],
+      })
+      .mockImplementationOnce(async () => {
+        controller.abort();
+        throw new Error("shutdown");
       });
-      expect(await database.get_asset_count(lg_path)).toBe(replace ? 1 : 0);
-      await database.close();
-    },
-  );
+    await expect(
+      service.apply_file_changes({
+        projectPath: lg_path,
+        source: "test",
+        expectedSectionRevisions: { files: 0 },
+        revisionSections: ["files"],
+        creates: [{ source_path: first }, { source_path: second }],
+        updates: [],
+        deletes: [],
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({
+      public_details: { source_operation: { directory_changes: [first] } },
+    });
+    expect(await database.get_asset_count(lg_path)).toBe(0);
+    await database.close();
+  });
   it("定向新增保留旧条目身份和译文，预过滤只作用于新资产", async () => {
     const { database, service, lg_path } = await create_service();
     await database.transaction(lg_path, (writer) => {
@@ -626,65 +612,55 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it.each(["create", "replace"])(
-    "文件 %s 按确认顺序准备 Godot 外部包并报告目录变化",
-    async (operation) => {
-      const { database, service, lg_path } = await create_service();
-      const game = project_path("agent-game");
-      fs.mkdirSync(game);
-      for (const [name, text] of [
-        ["game.pck", "base"],
-        ["patch.pck", "patch"],
-      ] as const)
-        fs.writeFileSync(
-          path.join(game, name),
-          godot_pack_fixture(new Map([...create_godot_fixture(), ["main.gd", Buffer.from(text)]])),
-        );
-      try {
-        if (operation === "replace")
-          await database.transaction(lg_path, (writer) =>
-            writer.add_asset(lg_path, "agent-game.godot", Buffer.from("old"), "GODOT", null),
-          );
-        expect(await service.inspect_sources([game])).toMatchObject([
+  it("文件新增按确认顺序准备 Godot 外部包并报告目录变化", async () => {
+    const { database, service, lg_path } = await create_service();
+    const game = project_path("agent-game");
+    fs.mkdirSync(game);
+    for (const [name, text] of [
+      ["game.pck", "base"],
+      ["patch.pck", "patch"],
+    ] as const)
+      fs.writeFileSync(
+        path.join(game, name),
+        godot_pack_fixture(new Map([...create_godot_fixture(), ["main.gd", Buffer.from(text)]])),
+      );
+    try {
+      expect(await service.inspect_sources([game])).toMatchObject([
+        {
+          files: [{ path: game, kind: "game" }],
+          godot_packs: [{ game_root: game, external_pcks: ["game.pck", "patch.pck"] }],
+          failures: [],
+        },
+      ]);
+      expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch.pck"]);
+      const result = await service.apply_file_changes({
+        projectPath: lg_path,
+        source: "agent_workspace_apply",
+        expectedSectionRevisions: { files: 0 },
+        revisionSections: ["files"],
+        creates: [
           {
-            files: [{ path: game, kind: "game" }],
-            godot_packs: [{ game_root: game, external_pcks: ["game.pck", "patch.pck"] }],
-            failures: [],
+            source_path: game,
+            godot_pack_orders: [{ game_root: game, ordered_pcks: ["patch.pck", "game.pck"] }],
           },
-        ]);
-        expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch.pck"]);
-        const source = {
-          source_path: game,
-          godot_pack_orders: [{ game_root: game, ordered_pcks: ["patch.pck", "game.pck"] }],
-        };
-        const result = await service.apply_file_changes({
-          projectPath: lg_path,
-          source: "agent_workspace_apply",
-          expectedSectionRevisions: { files: 0 },
-          revisionSections: ["files"],
-          creates: operation === "create" ? [source] : [],
-          updates:
-            operation === "replace" ? [{ ...source, file_path: "agent-game.godot", line: 1 }] : [],
-          deletes: [],
-          signal: new AbortController().signal,
-        });
-        expect(result).toMatchObject({
-          kind: "applied",
-          files:
-            operation === "create"
-              ? { created: [{ files: 1 }] }
-              : { replaced: [{ file_path: "agent-game.godot" }] },
-          directory_changes: [game],
-        });
-        expect(fs.readFileSync(path.join(game, "main.gd"), "utf8")).toBe("base");
-        expect(await database.get_all_asset_records(lg_path)).toMatchObject([
-          { path: "agent-game.godot", file_type: "GODOT" },
-        ]);
-      } finally {
-        await database.close();
-      }
-    },
-  );
+        ],
+        updates: [],
+        deletes: [],
+        signal: new AbortController().signal,
+      });
+      expect(result).toMatchObject({
+        kind: "applied",
+        files: { created: [{ files: 1 }] },
+        directory_changes: [game],
+      });
+      expect(fs.readFileSync(path.join(game, "main.gd"), "utf8")).toBe("base");
+      expect(await database.get_all_asset_records(lg_path)).toMatchObject([
+        { path: "agent-game.godot", file_type: "GODOT" },
+      ]);
+    } finally {
+      await database.close();
+    }
+  });
 
   it("追加导入的只读包预览和正式请求共用覆盖顺序", async () => {
     const { database, service } = await create_service();
