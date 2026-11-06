@@ -775,6 +775,9 @@ describe("AgentConversation", () => {
 
     await act(async () => instruction.click());
     const { from, to } = editor.state.selection.main;
+    expect(editor.state.doc.toString()).toBe(
+      '@skill("project-operation")\nagent_page.mention.instructions.update_file.request\napp.agent_input.path_placeholder',
+    );
     expect(editor.state.sliceDoc(from, to)).toBe("app.agent_input.path_placeholder");
     expect(send).not.toHaveBeenCalled();
   });
