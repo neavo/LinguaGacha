@@ -68,10 +68,10 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
   const conversationId = 1 as ConversationId;
   const messages: Message[] = [
     { role: "user", content: "查询", timestamp: 1 },
-    fauxAssistantMessage([
-      fauxText("准备查询"),
-      fauxToolCall("query", { value: 1 }, { id: "call" }),
-    ]),
+    fauxAssistantMessage(
+      [fauxText("准备查询"), fauxToolCall("query", { value: 1 }, { id: "call" })],
+      { stopReason: "toolUse" },
+    ),
     {
       role: "toolResult",
       toolCallId: "call",

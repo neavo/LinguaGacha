@@ -1,4 +1,4 @@
-import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { EntryRecord } from "@earendil-works/pi-durable";
 import { is_json_record } from "../../domain/json";
 import {
@@ -7,6 +7,13 @@ import {
   type AgentAssistantMessageParts,
   type AgentEntryStatus,
 } from "../../shared/agent";
+
+/** SDK 仅受理 `toolUse` 回复中的工具调用，时间线和日志共用这一边界。 */
+export function read_agent_tool_calls(message: AssistantMessage): ToolCall[] {
+  return message.stopReason === "toolUse"
+    ? message.content.filter((part) => part.type === "toolCall")
+    : [];
+}
 
 /** 日志与时间线共用 SDK 结果状态，取消由已提交的诊断码证明。 */
 export function read_agent_tool_result_status(
