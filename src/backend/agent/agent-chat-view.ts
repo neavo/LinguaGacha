@@ -12,7 +12,11 @@ import type {
 import type { JsonValue } from "@earendil-works/chord";
 import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { project_assistant_message_parts, read_agent_tool_result_status } from "./agent-message";
+import {
+  project_assistant_message_parts,
+  read_agent_tool_calls,
+  read_agent_tool_result_status,
+} from "./agent-message";
 import { read_agent_input, type AgentInputRecord, type AgentChatData } from "./agent-chat-data";
 import { read_agent_compaction_result } from "./agent-compaction";
 
@@ -346,8 +350,7 @@ export class AgentChatView {
           );
         }
         if (parts === null) this.remove(id);
-        for (const call of message.content) {
-          if (call.type !== "toolCall") continue;
+        for (const call of read_agent_tool_calls(message)) {
           const id = `tool:${record.id}:${call.id}`;
           this.calls.set(call.id, id);
           this.put(

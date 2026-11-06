@@ -2645,6 +2645,35 @@ describe("AgentService", () => {
     expect(diagnostics()).toEqual([]);
   });
 
+  it("工具参数生成中停止不产生执行条目或工具日志，重开沿用同一历史", async () => {
+    vi.useFakeTimers();
+    const { service, workspace, session_state, log_append, diagnostics } = await create_service();
+    const run = vi.spyOn(workspace, "run");
+    fake_agent_state.mode = "tool_only";
+    fake_agent_state.stream_token_size = 1;
+    fake_agent_state.stream_tokens_per_second = 40;
+
+    await service.send_message({ text: "开始工具调用", attachments: [] });
+    await vi.advanceTimersByTimeAsync(200); // 让 SDK 提交部分工具参数，再触发停止。
+    await service.stop();
+    await vi.runAllTimersAsync();
+    await wait_for_idle(service);
+    const snapshot = service.get_snapshot();
+    expect(snapshot.entries).toMatchObject([{ kind: "user_message", status: "stopped" }]);
+    expect(run).not.toHaveBeenCalled();
+    expect(
+      log_append.mock.calls.filter(
+        ([payload]) =>
+          payload.content.event === "tool_start" || payload.content.event === "tool_end",
+      ),
+    ).toEqual([]);
+
+    await session_state.mark_loaded("other.lg");
+    await session_state.mark_loaded("test.lg");
+    expect(service.get_snapshot().entries).toEqual(snapshot.entries);
+    expect(diagnostics()).toEqual([]);
+  });
+
   it.each(["user", "reset", "project_change", "shutdown"] as const)(
     "取消脚本只记录一条完整终态，停止来源为 %s",
     async (reason) => {

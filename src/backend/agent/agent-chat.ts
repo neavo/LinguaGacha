@@ -58,6 +58,7 @@ import { AgentChatView, assistant_entry_id } from "./agent-chat-view";
 import { AgentContextBudget, read_agent_chat_context } from "./agent-chat-context";
 import { append_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
 import { AgentRuntimeLog, type AgentStopReason } from "./agent-runtime-log";
+import { read_agent_tool_calls } from "./agent-message";
 import {
   agent_tool_result,
   normalize_agent_tool_error,
@@ -377,14 +378,13 @@ export class AgentChat {
           if (change.type === "entry") {
             for (const message of change.value.model ?? []) {
               if (message.role === "assistant")
-                for (const call of message.content) {
-                  if (call.type === "toolCall")
-                    chat.log.handle_event({
-                      type: "tool_execution_start",
-                      toolCallId: call.id,
-                      toolName: call.name,
-                      args: call.arguments,
-                    });
+                for (const call of read_agent_tool_calls(message)) {
+                  chat.log.handle_event({
+                    type: "tool_execution_start",
+                    toolCallId: call.id,
+                    toolName: call.name,
+                    args: call.arguments,
+                  });
                 }
               // 工具结果是日志终态的唯一入口，校验失败和取消也由 SDK 回执封口。
               if (message.role === "toolResult")
