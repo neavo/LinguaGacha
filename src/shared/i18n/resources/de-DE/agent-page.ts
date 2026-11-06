@@ -39,6 +39,7 @@ export const de_de_agent_page = {
     },
   },
   input: {
+    no_project_placeholder: "Dateien oder Ordner zum Übersetzen hierher ziehen …",
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Befehl wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
     newline: "Neue Zeile",

@@ -163,7 +163,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
 
   useActionShortcut({
     action: "follow_latest",
-    enabled: active,
+    enabled: active && project_snapshot.loaded,
     allow_in_text_editing: true,
     on_trigger: toggle_follow_latest,
   });
@@ -753,7 +753,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 />
               </div>
             ) : null}
-            {follow_latest_control}
+            {project_snapshot.loaded && follow_latest_control}
           </div>
 
           <div className="agent-page__operation-zone">
@@ -775,6 +775,11 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               inert={input_transition.locked || undefined}
             >
               <AgentComposer
+                placeholder={t(
+                  project_snapshot.loaded
+                    ? "agent_page.input.placeholder"
+                    : "agent_page.input.no_project_placeholder",
+                )}
                 language_control={
                   <AgentLanguageControl
                     locked={!active || active_inline_edit !== null || input_transition.locked}

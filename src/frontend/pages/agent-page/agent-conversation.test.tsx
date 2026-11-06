@@ -319,6 +319,18 @@ describe("AgentConversation", () => {
     return container;
   }
 
+  it("工程打开和关闭时同步切换主输入占位文本与无障碍标签", async () => {
+    for (const loaded of [false, true, false]) {
+      project_state.loaded = loaded;
+      const view = await render_page();
+      const expected = loaded
+        ? "agent_page.input.placeholder"
+        : "agent_page.input.no_project_placeholder";
+      expect(view.querySelector(".cm-placeholder")?.textContent).toBe(expected);
+      expect(view.querySelector(".cm-content")?.getAttribute("aria-label")).toBe(expected);
+    }
+  });
+
   it.each([".agent-page", ".cm-content"])(
     "无工程时从 %s 拖入文件创建工程，忙碌时拒绝",
     async (selector) => {
@@ -886,6 +898,25 @@ describe("AgentConversation", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(button.getAttribute("aria-keyshortcuts")).toBe("Control+E");
+  });
+
+  it("工程打开和关闭时同步切换跟随按钮与快捷键入口", async () => {
+    for (const loaded of [false, true, false]) {
+      project_state.loaded = loaded;
+      const view = await render_page();
+      const button = view.querySelector('[aria-label="agent_page.action.follow_latest"]');
+      expect(button !== null).toBe(loaded);
+      const editor = view.querySelector<HTMLElement>(".cm-content");
+      if (editor === null) throw new Error("缺少消息编辑器");
+      const event = new KeyboardEvent("keydown", {
+        key: "e",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => editor.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(loaded);
+    }
   });
 
   it("离开底部自动取消跟随，按钮显式恢复并归底", async () => {

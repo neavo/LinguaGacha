@@ -41,6 +41,7 @@ export const ja_jp_agent_page = {
     },
   },
   input: {
+    no_project_placeholder: "翻訳対象のファイルやフォルダーをドラッグしてください …",
     placeholder: "タスクを入力するか、@ でスキルや指示を選択 …",
     edit_assistant_placeholder: "モデルの返信を編集 …",
     newline: "改行",

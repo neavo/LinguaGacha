@@ -23,6 +23,7 @@ import type { AgentMentionInstruction } from "./agent-mention";
 export type AgentComposerHandle = AgentMessageEditorHandle;
 type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling" | "disconnected";
 type AgentComposerProps = {
+  placeholder: string;
   ref?: Ref<AgentComposerHandle>;
   on_drop_files?: (files: readonly File[]) => void;
   locked?: boolean;
@@ -74,6 +75,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   );
   return (
     <AgentMessageEditor
+      placeholder={props.placeholder}
       ref={props.ref}
       on_drop_files={props.on_drop_files}
       read_only={editor_read_only}
