@@ -2,23 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import {
-  resolve_workspace_runtime_directory,
-  resolve_workspace_runtime_entry,
-} from "./workspace-runtime";
-
-it.each([
-  [true, path.join("E:/app/resources", "workspace")],
-  [false, path.join("E:/project", "build/resources/workspace")],
-])("按运行模式定位整套资源 packaged=%s", (packaged, expected) => {
-  expect(
-    resolve_workspace_runtime_directory({
-      packaged,
-      resourcesPath: "E:/app/resources",
-      projectRoot: "E:/project",
-    }),
-  ).toBe(expected);
-});
+import { resolve_workspace_runtime_entry } from "./workspace-runtime";
 
 it("私有启动入口从独立运行目录定位，缺失时报告应用安装损坏", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "lg-runtime-entries-"));

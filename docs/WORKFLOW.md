@@ -58,7 +58,8 @@
 |Linux CLI 帮助|`./LinguaGacha.AppImage --cli translate --help`|
 
 - `npm run dev` 按输入变化准备静态依赖与宿主平台工具，每次重新打包工作区代码。首次构建可能下载依赖与 uv 归档。
-- 需要强制重新准备时，删除开发缓存 `build/resources/.development-cache` 或 `build/resources/`。
+- 开发与发行产物使用独立目录，支持调试期间构建发行包。构建期间修改共享源码仍可能影响发行输入。
+- 需要强制重新准备时，删除开发缓存 `build/dev/resources/.development-cache` 或 `build/dev/resources/`。
 - 资源构建按输出目录互斥。`npm run build` 始终重新准备资源，发行构建不复用开发缓存。
 - `npm run build` 包含 TypeScript 检查和静态资源生成，`afterPack` 再按实际目标部署原生工具。开发与发行的原生工具准备均需要 Go 工具链。
 - CLI 命令按实际安装位置定位可执行文件，参数和资源扩展名以帮助为准。
@@ -243,7 +244,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 
 构建、Vite、electron-builder、`afterPack` 或发布资产变化时，运行 `npm run build`。
 
-- 统一资源入口：`node buildtools/resources/build.mjs [输出根目录] [--development]`。缺省生成 `build/resources/`，自定义输出放在仓库外。
+- 统一资源入口：`node buildtools/resources/build.mjs [输出根目录] [--development]`。发行资源默认生成到 `build/resources/`。`--development` 默认生成到 `build/dev/resources/`。自定义输出放在仓库外。
 - 开发和仓库外集成测试使用 `--development` 准备宿主原生工具。发行构建由 `afterPack` 部署目标架构的工具。
 - 资源规则和构建边界使用 `npm test -- buildtools/resources buildtools/builder/native-tools.test.mjs` 验证。
 

@@ -1,5 +1,4 @@
 import { resolve_app_resources } from "../native/app-resources";
-import { resolve_workspace_runtime_directory } from "../native/workspace-runtime";
 import { configure_app_proxy } from "../native/app-proxy";
 import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
@@ -65,19 +64,14 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   const app_resources = resolve_app_resources({
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
-    projectRoot: app.getAppPath(),
-  });
-  const workspace_runtime_directory = resolve_workspace_runtime_directory({
-    packaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    projectRoot: process.cwd(),
+    projectRoot: app_root,
   });
   const pdf_host = create_pdf_host(app_resources);
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
     builtinRoot: app_resources.builtinRoot,
-    workspaceRuntimeDirectory: workspace_runtime_directory,
+    workspaceRuntimeDirectory: app_resources.workspaceRuntimeDirectory,
     pdfHost: pdf_host,
     imageHost: prepare_agent_image,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
