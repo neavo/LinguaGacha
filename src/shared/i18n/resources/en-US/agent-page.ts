@@ -120,6 +120,7 @@ export const en_us_agent_page = {
     retry: "Context compaction failed · Click to retry",
   },
   action: {
+    help: "Help",
     fork: "Fork",
     send: "Send",
     stop: "Stop",

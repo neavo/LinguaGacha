@@ -122,6 +122,7 @@ export const ja_jp_agent_page = {
     retry: "コンテキストを圧縮できませんでした · クリックして再試行",
   },
   action: {
+    help: "ヘルプ",
     fork: "分岐",
     send: "送信",
     stop: "停止",

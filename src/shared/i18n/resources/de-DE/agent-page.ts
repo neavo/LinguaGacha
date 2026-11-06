@@ -121,6 +121,7 @@ export const de_de_agent_page = {
     retry: "Kontextkomprimierung fehlgeschlagen · Zum Wiederholen klicken",
   },
   action: {
+    help: "Hilfe",
     fork: "Abzweigen",
     send: "Senden",
     stop: "Stoppen",
