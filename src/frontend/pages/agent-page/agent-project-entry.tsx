@@ -1,4 +1,3 @@
-import { Spinner } from "@frontend/shadcn/spinner";
 import { useState, type JSX } from "react";
 import { FileClock, FileInput, FilePlus, X } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -36,8 +35,9 @@ function RecentProjectEntry(props: { path: string; name: string }): JSX.Element 
         </TooltipTrigger>
         <TooltipContent align="start" className="agent-project-entry__preview project-lifecycle">
           <p className="break-all">{props.path}</p>
-          {preview.status === "loading" && <Spinner />}
-          {preview.status === "ready" && <ProjectPreviewSummary preview={preview.preview} />}
+          {(preview.status === "loading" || preview.status === "ready") && (
+            <ProjectPreviewSummary preview={preview.status === "ready" ? preview.preview : null} />
+          )}
         </TooltipContent>
       </Tooltip>
       <button

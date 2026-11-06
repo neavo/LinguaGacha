@@ -6,7 +6,6 @@ import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { ProjectPreviewSummary } from "@frontend/features/project-lifecycle/project-preview";
 import { useProjectPreview } from "@frontend/features/project-lifecycle/use-project-preview";
 import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
-import { Spinner } from "@frontend/shadcn/spinner";
 
 /** 拖入工程先预览，确认后的打开与版本检查交给常驻生命周期。 */
 export function AgentProjectOpenDialog(props: { path: string; on_close: () => void }): JSX.Element {
@@ -29,12 +28,10 @@ export function AgentProjectOpenDialog(props: { path: string; on_close: () => vo
       contentClassName="project-lifecycle"
       description={null}
       details={
-        preview.status === "ready" ? (
-          <ProjectPreviewSummary preview={preview.preview} />
-        ) : preview.status === "failed" ? (
+        preview.status === "failed" ? (
           <p>{t("app.feedback.load_failed")}</p>
         ) : (
-          <Spinner />
+          <ProjectPreviewSummary preview={preview.status === "ready" ? preview.preview : null} />
         )
       }
       primaryAction={{
