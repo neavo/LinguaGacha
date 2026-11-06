@@ -56,6 +56,10 @@ export const de_de_agent_page = {
     },
     groups: { files: "Dateien", skills: "Skills", instructions: "Befehle" },
     instructions: {
+      generate_translation: {
+        description:
+          "Übersetzungsdateien oder einen Lokalisierungspatch aus den Übersetzungsdaten des Projekts erstellen",
+      },
       update_file: {
         title: "Dateien aktualisieren",
         description:
@@ -65,7 +69,8 @@ export const de_de_agent_page = {
       },
       compact_context: {
         title: "Kontext komprimieren",
-        unnecessary: "Der aktuelle Kontext ist klein und muss nicht komprimiert werden",
+        description: "Nachrichtenverlauf komprimieren und verfügbaren Kontextplatz freigeben",
+        unnecessary: "Noch kein Nachrichtenverlauf zum Komprimieren",
       },
     },
     no_matches: "Keine passenden Einträge …",

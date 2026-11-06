@@ -299,7 +299,7 @@ describe("AgentMessageEditor", () => {
           id: "compact_context",
           icon: Shrink,
           title: "压缩上下文",
-          description: "当前上下文较少，无需压缩",
+          description: "暂无可压缩的历史消息",
           disabled: true,
           execute: on_compact,
         },
@@ -945,7 +945,7 @@ describe("AgentMessageEditor", () => {
           id: "compact_context",
           icon: Shrink,
           title: "压缩上下文",
-          description: "当前上下文较少，无需压缩",
+          description: "暂无可压缩的历史消息",
           disabled,
           execute: on_compact,
         },
@@ -967,7 +967,7 @@ describe("AgentMessageEditor", () => {
       });
       const tooltip = document.body.querySelector('[role="tooltip"]');
       expect(tooltip?.textContent).toContain("压缩上下文");
-      expect(tooltip?.textContent).toContain("当前上下文较少，无需压缩");
+      expect(tooltip?.textContent).toContain("暂无可压缩的历史消息");
       expect(row.getAttribute("aria-selected")).toBe(disabled ? "false" : "true");
       expect(on_compact).not.toHaveBeenCalled();
     } finally {

@@ -56,6 +56,9 @@ export const zh_cn_agent_page = {
     },
     groups: { files: "文件", skills: "技能", instructions: "指令" },
     instructions: {
+      generate_translation: {
+        description: "使用工程内的译文数据生成译文文件或汉化补丁",
+      },
       update_file: {
         title: "更新文件",
         description: "保留译文的同时更新文件，适用于小说、游戏内容更新等场景",
@@ -63,7 +66,8 @@ export const zh_cn_agent_page = {
       },
       compact_context: {
         title: "压缩上下文",
-        unnecessary: "当前上下文较少，无需压缩",
+        description: "压缩历史消息，释放可用上下文空间",
+        unnecessary: "暂无可压缩的历史消息",
       },
     },
     no_matches: "没有匹配的条目 …",

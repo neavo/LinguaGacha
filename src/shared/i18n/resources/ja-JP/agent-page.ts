@@ -58,6 +58,10 @@ export const ja_jp_agent_page = {
     },
     groups: { files: "ファイル", skills: "スキル", instructions: "指示" },
     instructions: {
+      generate_translation: {
+        description:
+          "プロジェクト内の訳文データから訳文ファイルまたはローカライズパッチを生成します",
+      },
       update_file: {
         title: "ファイルを更新",
         description: "訳文を保ったままファイルを更新します。小説やゲームの内容更新などに",
@@ -66,7 +70,8 @@ export const ja_jp_agent_page = {
       },
       compact_context: {
         title: "コンテキストを圧縮",
-        unnecessary: "コンテキストが少ないため、圧縮は不要です",
+        description: "履歴メッセージを圧縮し、使用可能なコンテキスト容量を空けます",
+        unnecessary: "圧縮できる履歴メッセージはまだありません",
       },
     },
     no_matches: "一致する項目がありません …",

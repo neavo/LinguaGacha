@@ -58,6 +58,9 @@ export const ko_kr_agent_page = {
     },
     groups: { files: "파일", skills: "스킬", instructions: "명령" },
     instructions: {
+      generate_translation: {
+        description: "프로젝트의 번역문 데이터로 번역문 파일 또는 현지화 패치를 생성합니다",
+      },
       update_file: {
         title: "파일 업데이트",
         description:
@@ -66,7 +69,8 @@ export const ko_kr_agent_page = {
       },
       compact_context: {
         title: "컨텍스트 압축",
-        unnecessary: "현재 컨텍스트가 적어 압축할 필요가 없습니다",
+        description: "대화 기록을 압축해 사용 가능한 컨텍스트 공간을 확보합니다",
+        unnecessary: "아직 압축할 대화 기록이 없습니다",
       },
     },
     no_matches: "일치하는 항목이 없습니다 …",
