@@ -120,6 +120,7 @@ type AgentMessageEditorProps = {
   presentation?: "composer" | "inline" | undefined;
   role?: "user" | "assistant" | undefined;
   read_only: boolean;
+  placeholder?: string | undefined; // 主输入由页面提供工程提示，原位编辑沿用角色文案。
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[] | undefined;
   input_state: AgentInputState;
@@ -175,11 +176,13 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const { resolved_theme } = useAppearance();
   const inline = props.presentation === "inline";
   const assistant_editing = props.role === "assistant";
-  const placeholder_text = t(
-    assistant_editing
-      ? "agent_page.input.edit_assistant_placeholder"
-      : "agent_page.input.placeholder",
-  );
+  const placeholder_text =
+    props.placeholder ??
+    t(
+      assistant_editing
+        ? "agent_page.input.edit_assistant_placeholder"
+        : "agent_page.input.placeholder",
+    );
   const host_ref = useRef<HTMLDivElement | null>(null);
   const form_ref = useRef<HTMLFormElement | null>(null);
   const file_input_ref = useRef<HTMLInputElement | null>(null);
