@@ -31,7 +31,7 @@
   - Subtitles in ten seconds, a novel in one minute, a game in five minutes
 - Built-in `AGENT` mode that automatically completes various tasks through conversation `👈👈 Exclusive Feature`
   - No technical knowledge required: translate and play
-  - Covers all major engines: `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
+  - Covers all major engines: `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
@@ -92,6 +92,7 @@
 | `.rpy` game text | `.rpy` | `👈 Support ending soon` |
 | `.xlsx` game text | `.xlsx` | Source: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747)　`👈 Support ending soon` |
 | `.trans` project files | `.trans` | Source: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Support ending soon` |
+| `Games` `subtitles` `e-books` in other formats | Any | Identified and processed by `AGENT` automatically |
 
 ## Recent Updates 📅
 - 20261105 v0.140.0

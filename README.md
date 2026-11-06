@@ -27,7 +27,7 @@
   - 十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
 - 内置 `AGENT` 模式，通过对话自动完成各种任务　`👈👈 独家绝技`
   - 无需任何技术知识，游戏即翻即玩
-  - 主流引擎全覆盖 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
+  - 主流引擎全覆盖 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
@@ -88,6 +88,7 @@
 | `.rpy` 游戏文本 | `.rpy` | `👈 即将停止支持` |
 | `.xlsx` 游戏文本 | `.xlsx` | 来源 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747)　`👈 即将停止支持` |
 | `.trans` 项目文件 | `.trans` | 来源 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 即将停止支持` |
+| 其它格式的 `游戏` `字幕` `电子书` | 任意 | 由 `AGENT` 自动识别与处理 |
 
 ## 近期更新 📅
 - 20261105 v0.140.0

@@ -27,7 +27,7 @@
   - 자막 한 편은 10초, 소설 한 권은 1분, 게임 한 편은 5분
 - 대화를 통해 다양한 작업을 자동으로 수행하는 `AGENT` 모드 내장　`👈👈 독보적인 기능`
   - 기술 지식 없이도 게임을 번역 후 바로 플레이 가능
-  - 주요 엔진 전체 지원 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `ACTION GAME MAKER`
+  - 주요 엔진 전체 지원 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
 
 ## 기본 사용 흐름 🛸
 - [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 앱을 다운로드합니다
@@ -88,6 +88,7 @@
 | `.rpy` 게임 텍스트 | `.rpy` | `👈 지원 종료 예정` |
 | `.xlsx` 게임 텍스트 | `.xlsx` | 출처 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)　`👈 지원 종료 예정` |
 | `.trans` 프로젝트 파일 | `.trans` | 출처 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 지원 종료 예정` |
+| 기타 형식의 `게임` `자막` `전자책` | 모든 형식 | `AGENT`가 자동으로 식별하고 처리 |
 
 ## 최근 업데이트 📅
 - 20261105 v0.140.0
