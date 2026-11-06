@@ -1798,6 +1798,7 @@
 .agent-project-entry__recent-open {
   width: 100%;
   min-width: 0;
+  transition-property: color, border-color, transform; /* 背景与覆盖按钮同步切换。 */
 }
 /* 悬停停留在中性灰阶，与描边的固定入口保持同一强度。 */
 .agent-project-entry__recent:hover .agent-project-entry__recent-open,
@@ -1817,7 +1818,7 @@
   height: 24px;
   border: 0.5px solid var(--border);
   border-radius: var(--ui-radius-button);
-  background: color-mix(in srgb, var(--secondary), var(--foreground) 8%);
+  background: var(--secondary);
   color: var(--foreground);
   opacity: 0;
   pointer-events: none;
@@ -1848,7 +1849,6 @@
   .agent-project-entry__recent-remove {
     opacity: 1;
     pointer-events: auto;
-    background: var(--secondary);
   }
 }
 .agent-project-entry__preview {

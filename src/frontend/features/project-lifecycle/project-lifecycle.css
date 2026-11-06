@@ -102,6 +102,11 @@
   text-align: right;
 }
 
+/* 加载占位与本地时间共用列宽，避免摘要就绪时浮层扩宽并重新换行。 */
+.project-lifecycle__preview-time {
+  min-width: 19ch;
+}
+
 .project-lifecycle__version-emphasis {
   color: var(--primary);
   overflow-wrap: anywhere;
