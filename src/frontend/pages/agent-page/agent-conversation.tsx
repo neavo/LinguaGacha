@@ -329,7 +329,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       id: "generate_translation",
       icon: FileOutput,
       title: t("app.translation_generation.action"),
-      description: "",
+      description: t("agent_page.mention.instructions.generate_translation.description"),
       disabled: !translation_generation.can_request_generation,
       execute: translation_generation.request_generation,
     },
@@ -353,10 +353,11 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       id: "compact_context",
       icon: Shrink,
       title: t("agent_page.mention.instructions.compact_context.title"),
-      description:
-        instruction_ready && !controls.context.compactable
-          ? t("agent_page.mention.instructions.compact_context.unnecessary")
-          : "",
+      description: t(
+        instruction_ready && !controls.context.compactable // 会话忙碌时禁用原因不在可压缩性，沿用功能说明
+          ? "agent_page.mention.instructions.compact_context.unnecessary"
+          : "agent_page.mention.instructions.compact_context.description",
+      ),
       disabled: !compact_available,
       execute: compact_context,
     },

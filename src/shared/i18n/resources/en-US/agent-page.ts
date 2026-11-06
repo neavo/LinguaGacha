@@ -56,6 +56,10 @@ export const en_us_agent_page = {
     },
     groups: { files: "Files", skills: "Skills", instructions: "Instructions" },
     instructions: {
+      generate_translation: {
+        description:
+          "Generate translated files or a localization patch from the project's translation data",
+      },
       update_file: {
         title: "Update files",
         description: "Update files while keeping translations, for novel or game content updates",
@@ -64,7 +68,8 @@ export const en_us_agent_page = {
       },
       compact_context: {
         title: "Compact context",
-        unnecessary: "The current context is small and does not need compaction",
+        description: "Compact message history to free up available context space",
+        unnecessary: "No message history to compact yet",
       },
     },
     no_matches: "No matching items …",
