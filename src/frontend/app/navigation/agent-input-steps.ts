@@ -21,11 +21,11 @@ export function format_agent_path_request(
   t: TextResolver,
   prompt: string,
   paths: readonly string[],
-  suffix: string,
+  suffix = "",
 ): AgentInputRequest {
   const placeholder = t("app.agent_input.path_placeholder");
   return {
-    text: `${prompt}\n${paths.join("\n") || placeholder}\n\n${suffix}`,
+    text: `${prompt}\n${paths.join("\n") || placeholder}${suffix ? `\n\n${suffix}` : ""}`,
     ...(paths.length === 0 && {
       selection: { from: prompt.length + 1, to: prompt.length + 1 + placeholder.length },
     }),

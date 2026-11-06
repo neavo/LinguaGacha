@@ -343,9 +343,8 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       execute: () => {
         const request = format_agent_path_request(
           t,
-          t("agent_page.mention.instructions.update_file.request"),
+          `${format_agent_reference({ kind: "skill", name: "project-operation" })}\n${t("agent_page.mention.instructions.update_file.request")}`,
           [],
-          format_agent_reference({ kind: "skill", name: "project-operation" }),
         );
         composer_ref.current?.append_draft(request.text, request.selection);
       },
