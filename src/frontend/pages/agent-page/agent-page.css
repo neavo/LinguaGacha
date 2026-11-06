@@ -375,8 +375,10 @@
 }
 
 .agent-attachment__preview {
-  display: grid;
-  place-items: center;
+  /* Flex 让图片百分比尺寸直接跟随外框，避免固有宽高比撑高 Grid 自动轨道。 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 24px;
   width: 24px;
   height: 24px;
