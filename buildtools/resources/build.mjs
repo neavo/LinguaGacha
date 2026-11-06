@@ -13,14 +13,10 @@ import { prepare_development_resources, read_development_inputs } from "./develo
 const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 /** 资源入口独占输出根目录，各步骤只写自己的产物，原生工具按运行场景部署。 */
-export async function build_resources({
-  root = PROJECT_ROOT,
-  output = path.join(root, "build/resources"),
-  development = false,
-} = {}) {
+export async function build_resources({ root = PROJECT_ROOT, development = false, output } = {}) {
   root = path.resolve(root);
-  output = path.resolve(output);
-  const default_output = path.join(root, "build/resources");
+  const default_output = path.join(root, development ? "build/dev/resources" : "build/resources");
+  output = path.resolve(output === undefined ? default_output : output);
   // 仓库内只清理约定的资源根，外部输出也不能包含源码工程。
   if (
     path.relative(default_output, output) !== "" &&
@@ -30,6 +26,7 @@ export async function build_resources({
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
   const lock = JSON.parse(await readFile(path.join(root, "package-lock.json"), "utf8"));
   const npm = path.join(root, "node_modules/npm/bin/npm-cli.js");
+  // 使用项目锁定的 npm，避免宿主版本改变依赖解析。
   const runNpm = async (cwd, args) =>
     (
       await execa(process.execPath, [npm, ...args], {
@@ -45,6 +42,7 @@ export async function build_resources({
   const release = await lockfile.lock(output, { realpath: false });
   try {
     const workspace = path.join(output, "workspace");
+    // 缓存失效或发行构建时整体重建静态资源。
     const prepare = async () => {
       await rm(output, { recursive: true, force: true });
       await mkdir(output, { recursive: true });

@@ -9,16 +9,18 @@ export function resolve_app_resources(args: {
   builtinRoot: string; // 后端读取的版本内置资产
   fontsDirectory: string; // 界面与 PDF 共用的字体
   stylesPath: string; // PDF 打印样式
+  workspaceRuntimeDirectory: string; // 后端和工作区进程共用的部署资源
 } {
+  const resources = args.packaged
+    ? args.resourcesPath
+    : path.join(args.projectRoot, "build/dev/resources");
   return {
     builtinRoot: path.join(args.packaged ? args.resourcesPath : args.projectRoot, "builtin"),
     fontsDirectory: path.join(
       args.packaged ? args.resourcesPath : path.join(args.projectRoot, "public"),
       "fonts",
     ),
-    stylesPath: path.join(
-      args.packaged ? args.resourcesPath : path.join(args.projectRoot, "build/resources"),
-      "pdf-print.css",
-    ),
+    stylesPath: path.join(resources, "pdf-print.css"),
+    workspaceRuntimeDirectory: path.join(resources, "workspace"),
   };
 }

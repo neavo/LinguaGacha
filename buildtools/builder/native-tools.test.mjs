@@ -25,6 +25,7 @@ async function fixture() {
   const workspaceDirectory = path.join(appDirectory, "resources/workspace");
   await mkdir(appDirectory);
   const calls = [];
+  // 模拟 Go 的输出文件，保留真实部署 IO。
   const run = async (_command, args, options) => {
     calls.push({ args, options });
     if (args[0] === "build") {
@@ -33,13 +34,13 @@ async function fixture() {
       await writeFile(output, options.env.GOARCH);
     }
   };
+  // 提供本地 uv 归档解压结果。
   const download = async (_version, filename) => {
     const source = path.join(root, "uv");
     await mkdir(source, { recursive: true });
     await writeFile(path.join(source, filename.endsWith(".zip") ? "uv.exe" : "uv"), "uv");
     return path.join(root, "uv");
   };
-  // 替身在返回前写出产物，部署仍通过真实文件系统验证。
   return { root, appDirectory, workspaceDirectory, calls, run, download };
 }
 
@@ -77,6 +78,24 @@ it.each(["linux", "darwin"])("%s 发行安装监管器、uv 和 exec 启动脚�
   });
   const bin = path.join(test.workspaceDirectory, `bin/${platform}-arm64`);
   expect((await readdir(bin)).sort()).toEqual(["node", "npm", "npx", "supervisor", "uv"].sort());
+});
+
+it("并行部署只写各自的目录，不共用原生工具中转产物", async () => {
+  const test = await fixture();
+  const development = path.join(test.root, "development/workspace");
+  await Promise.all([
+    deploy_workspace_tools({
+      ...test,
+      workspaceDirectory: development,
+      platform: "win32",
+      arch: "x64",
+    }),
+    deploy_packaged_tools({ ...test, platform: "win32", arch: "x64" }),
+  ]);
+  const outputs = test.calls
+    .filter(({ args }) => args[0] === "build")
+    .map(({ args }) => args[args.indexOf("-o") + 1]);
+  expect(new Set(outputs).size).toBe(outputs.length);
 });
 
 it.each([

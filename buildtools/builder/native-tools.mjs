@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Arch } from "builder-util";
 import { deploy_uv } from "./uv.mjs";
@@ -26,8 +26,14 @@ export async function deploy_packaged_tools({
 }) {
   if (platform === "win32") {
     for (const name of ["cli", "berserker"]) {
-      const binary = await build_native_tool({ root, name, platform, arch, run });
-      await copyFile(binary, path.join(appDirectory, `${name}.exe`));
+      await build_native_tool({
+        root,
+        name,
+        platform,
+        arch,
+        run,
+        binary: path.join(appDirectory, `${name}.exe`),
+      });
     }
   }
   await deploy_workspace_tools({ root, workspaceDirectory, platform, arch, run, download });
@@ -43,16 +49,24 @@ export async function deploy_workspace_tools({
   download,
 }) {
   const directory = path.join(workspaceDirectory, "bin", `${platform}-${arch}`);
-  const supervisor = await build_native_tool({ root, name: "supervisor", platform, arch, run });
-  await mkdir(directory, { recursive: true });
-  await copyFile(
-    supervisor,
-    path.join(directory, platform === "win32" ? "supervisor.exe" : "supervisor"),
-  );
+  await build_native_tool({
+    root,
+    name: "supervisor",
+    platform,
+    arch,
+    run,
+    binary: path.join(directory, platform === "win32" ? "supervisor.exe" : "supervisor"),
+  });
   await deploy_uv({ root, workspaceDirectory, platform, arch, download });
   if (platform === "win32") {
-    const node = await build_native_tool({ root, name: "node", platform, arch, run });
-    await copyFile(node, path.join(directory, "node.exe"));
+    await build_native_tool({
+      root,
+      name: "node",
+      platform,
+      arch,
+      run,
+      binary: path.join(directory, "node.exe"),
+    });
     for (const name of ["npm", "npx"])
       await writeFile(
         path.join(directory, `${name}.cmd`),
@@ -73,18 +87,11 @@ export async function deploy_workspace_tools({
   }
 }
 
-/** 宿主测试通过后才交叉构建，产物缺失直接阻止部署。 */
-async function build_native_tool({ root, name, platform, arch, run }) {
+/** 直接构建到调用方的部署目录，避免开发与发行共用可写中转产物。 */
+async function build_native_tool({ root, name, platform, arch, run, binary }) {
   if (!GO_OS[platform] || !GO_ARCH[arch])
     throw new Error(`Unsupported native target: ${platform}-${arch}`);
   const cwd = path.join(root, "buildtools/builder", name);
-  const binary = path.join(
-    root,
-    "build/builder",
-    name,
-    `${platform}-${arch}`,
-    platform === "win32" ? `${name}.exe` : name,
-  );
   await mkdir(path.dirname(binary), { recursive: true });
   try {
     // 测试固定使用宿主平台与架构，交叉构建只影响最终可执行文件。
@@ -127,5 +134,4 @@ async function build_native_tool({ root, name, platform, arch, run }) {
     throw new Error(`Cannot read native tool: ${binary}`, { cause });
   }
   if (!info.isFile()) throw new Error(`Native tool is not a file: ${binary}`);
-  return binary;
 }

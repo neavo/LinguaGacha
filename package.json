@@ -5,7 +5,7 @@
   "description": "Next Generation AI translator for novels, games, subtitles, and more",
   "author": "neavo",
   "type": "module",
-  "main": "build/dist-electron/index.js",
+  "main": "build/dev/dist-electron/index.js",
   "scripts": {
     "build": "npm run typecheck && electron-vite build --config buildtools/vite/electron.vite.config.ts && node buildtools/resources/build.mjs && electron-builder --config buildtools/builder/electron-builder.config.ts",
     "check": "node ./buildtools/check/index.mjs",

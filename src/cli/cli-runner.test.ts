@@ -30,7 +30,7 @@ const backend_resources = {
 };
 
 vi.mock("electron", () => ({
-  app: { whenReady: mocks.when_ready, getAppPath: () => "E:/app.asar" },
+  app: { whenReady: mocks.when_ready, isPackaged: false },
   session: { defaultSession: { resolveProxy: mocks.resolve_proxy } },
 }));
 
@@ -117,7 +117,7 @@ describe("run_cli_command", () => {
     const resource_options = mocks.resource_options[0] as BackendResourceOptions;
     expect(resource_options).toMatchObject({
       appRoot: "E:/App",
-      builtinRoot: path.join("E:/app.asar", "builtin"),
+      builtinRoot: path.join("E:/App", "builtin"),
       logTargets: { console: false, window: false },
     });
     await expect(
@@ -131,6 +131,7 @@ describe("run_cli_command", () => {
       database: backend_resources.database,
       logManager: backend_resources.logManager,
       workerExecution: { kind: "in_process" } satisfies BackendWorkerExecution,
+      workspaceRuntimeDirectory: path.join("E:/App", "build/dev/resources/workspace"),
     });
     expect(mocks.run_cli_job).toHaveBeenCalledWith(backend_services, command, expect.any(Object));
   });
