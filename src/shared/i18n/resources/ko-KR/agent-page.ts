@@ -122,6 +122,7 @@ export const ko_kr_agent_page = {
     retry: "컨텍스트 압축에 실패했습니다 · 클릭하여 다시 시도",
   },
   action: {
+    help: "도움말",
     fork: "분기",
     send: "전송",
     stop: "중지",

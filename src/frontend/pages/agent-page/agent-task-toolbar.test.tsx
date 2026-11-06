@@ -4,8 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AgentTaskToolbar } from "./agent-task-toolbar";
 
+const mocks = vi.hoisted(() => ({ open_external_url: vi.fn() }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
+}));
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  open_external_url: mocks.open_external_url,
 }));
 
 describe("AgentTaskToolbar", () => {
@@ -17,6 +21,23 @@ describe("AgentTaskToolbar", () => {
     root = null;
     container = null;
     vi.useRealTimers();
+    mocks.open_external_url.mockReset();
+  });
+
+  it("底栏末项在任务不可用时仍打开 Wiki 首页", async () => {
+    const view = await render({
+      can_reset: false,
+      disconnected: true,
+      approval_disabled: true,
+      open_instructions: <button type="button">instructions</button>,
+    });
+    const buttons = [...view.querySelectorAll<HTMLButtonElement>("button")];
+    const help = buttons.find((button) => button.textContent === "agent_page.action.help")!;
+    expect(buttons.at(-1)).toBe(help);
+    await act(async () => help.click());
+    expect(mocks.open_external_url).toHaveBeenCalledExactlyOnceWith(
+      "https://github.com/neavo/LinguaGacha/wiki",
+    );
   });
 
   it("新任务按钮与输入中的快捷键共用可用性", async () => {

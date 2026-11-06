@@ -1,5 +1,6 @@
 import { type JSX, type ReactNode, useState } from "react";
 import {
+  BadgeHelp,
   ChevronDown,
   MessageSquarePlus,
   ShieldCheck,
@@ -10,6 +11,7 @@ import type { ModelSelectionInput } from "@shared/model-selection";
 import type { AgentApprovalMode } from "@domain/setting";
 import type { AgentContextSnapshot, AgentUsageSnapshot } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { useExternalLink } from "@frontend/app/desktop/use-external-link";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -24,6 +26,8 @@ import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-
 import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { AgentComposerModelControls } from "./agent-composer-model-controls";
+
+const AGENT_HELP_URL = "https://github.com/neavo/LinguaGacha/wiki";
 
 /** 工具栏菜单随底部交互锁关闭，模型配置请求的可用性由模型控件管理。 */
 export function AgentTaskToolbar(props: {
@@ -43,6 +47,7 @@ export function AgentTaskToolbar(props: {
   on_approval_mode_change: (mode: AgentApprovalMode) => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const open_external_link = useExternalLink();
   const [approval_open, set_approval_open] = useState(false); // 当前审批菜单的展开状态
   // 在提交菜单前清除展开状态，交互区恢复时菜单保持关闭。
   if (props.locked && approval_open) set_approval_open(false);
@@ -163,6 +168,16 @@ export function AgentTaskToolbar(props: {
       </AppDropdownMenu>
       {props.language_control}
       {props.open_instructions}
+      <AppButton
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="agent-composer__help"
+        onClick={() => void open_external_link(AGENT_HELP_URL)}
+      >
+        <BadgeHelp aria-hidden="true" />
+        <span>{t("agent_page.action.help")}</span>
+      </AppButton>
     </>
   );
 }
