@@ -130,6 +130,7 @@ describe("BackendRuntimeClient", () => {
     await expect(start).resolves.toEqual(READY);
     expect(worker.worker_data).toEqual({
       appRoot: "E:/app",
+      defaultAppLanguage: "JA",
       builtinRoot: "E:/app.asar/builtin",
       workspaceRuntimeDirectory: "E:/runtime",
     });
@@ -331,6 +332,7 @@ function create_client(
     client: new BackendRuntimeClient({
       workerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
       appRoot: "E:/app",
+      defaultAppLanguage: "JA",
       builtinRoot: "E:/app.asar/builtin",
       workspaceRuntimeDirectory: "E:/runtime",
       resolveProxy: resolve_proxy,

@@ -38,23 +38,12 @@ export function resolve_prompt_template_language(app_language: unknown): Transla
   return normalize_app_language(app_language) === "ZH" ? "zh" : "en";
 }
 
-/** 界面设置尚不可用时按宿主语言选择文案，未知值使用中文。 */
-export function resolve_app_language_from_locale_tag(locale_tag: unknown): AppLanguage {
-  const primary_language =
-    String(locale_tag ?? "")
-      .trim()
-      .split("-")[0] ?? "";
-  return normalize_app_language(primary_language);
-}
-
-/** 每种主语言只有一个发行变体，按系统偏好顺序匹配，全部不支持时使用英文。 */
-export function resolve_system_locale(preferred_languages: readonly string[]): Locale {
+/** 按系统偏好顺序匹配主语言。每种主语言只有一个发行变体。全部不支持时使用英文。 */
+export function resolve_system_app_language(preferred_languages: readonly string[]): AppLanguage {
   for (const preferred_language of preferred_languages) {
-    const primary_language = preferred_language.trim().toLowerCase().split("-")[0];
-    const definition = APP_LANGUAGE_DEFINITIONS.find(
-      ({ locale }) => locale.split("-")[0] === primary_language,
-    );
-    if (definition !== undefined) return definition.locale;
+    const primary_language = preferred_language.trim().toUpperCase().split("-")[0];
+    const definition = APP_LANGUAGE_DEFINITIONS.find(({ code }) => code === primary_language);
+    if (definition !== undefined) return definition.code;
   }
-  return "en-US";
+  return "EN";
 }

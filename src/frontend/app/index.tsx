@@ -64,7 +64,7 @@ import {
 import type { DesktopUpdateDownloadProgress, DesktopUpdateDownloadResult } from "@gui/bridge-types";
 import {
   normalize_app_language,
-  resolve_app_language_from_locale_tag,
+  resolve_system_app_language,
   resolve_app_locale,
   type AppLanguage,
 } from "@domain/app-language";
@@ -537,7 +537,7 @@ function RendererDiagnosticsSync(props: {
 function read_initial_log_window_app_language(): AppLanguage {
   const stored_language = window.localStorage.getItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY);
   return stored_language === null
-    ? resolve_app_language_from_locale_tag(window.navigator.language)
+    ? resolve_system_app_language(window.navigator.languages)
     : normalize_app_language(stored_language);
 }
 

@@ -11,6 +11,14 @@ import { Check } from "typebox/value";
 
 describe("设置快照", () => {
   it.each([
+    [{}, "JA"],
+    [{ app_language: "ZH" }, "ZH"],
+    [{ app_language: "unknown" }, "ZH"],
+  ])("仅缺失语言采用宿主默认值：%j", (payload, expected) => {
+    expect(Setting.from_json(payload, "JA").to_snapshot().app_language).toBe(expected);
+  });
+
+  it.each([
     ["E:\\工程\\renpy_01.lg", "renpy_01.lg"],
     ["/projects/novel.v2.LG", "novel.v2.LG"],
   ])("旧最近工程名称按实际文件名恢复后缀：%s", (path, name) => {

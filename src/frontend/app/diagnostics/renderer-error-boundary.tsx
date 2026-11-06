@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { create_text_resolver } from "@shared/i18n";
 import { type Locale } from "@domain/app-language";
-import { resolve_app_language_from_locale_tag, resolve_app_locale } from "@domain/app-language";
+import { resolve_system_app_language, resolve_app_locale } from "@domain/app-language";
 
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
 import "./renderer-error-boundary.css";
@@ -63,5 +63,5 @@ export class RendererErrorBoundary extends Component<
 
 /** 错误边界可能在语言 Provider 之外渲染，故从宿主语言选择兜底文案。 */
 function read_error_boundary_locale(): Locale {
-  return resolve_app_locale(resolve_app_language_from_locale_tag(window.navigator.language));
+  return resolve_app_locale(resolve_system_app_language(window.navigator.languages));
 }

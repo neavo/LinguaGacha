@@ -1838,6 +1838,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     create_pdf_fixture(["Same extracted text", "Same extracted text", null]),
   );
   const resources = await BackendResources.start({
+    defaultAppLanguage: "ZH",
     appRoot: directory.path,
     builtinRoot: path.join(directory.path, "builtin"),
     logTargets: { console: false, window: false },

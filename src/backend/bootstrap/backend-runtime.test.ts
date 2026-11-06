@@ -53,6 +53,7 @@ describe("run_backend_runtime", () => {
   it.each([true, false])("图片宿主取消等待清理回包，回包成功=%s 时保留取消原因", async (ok) => {
     const port = create_port();
     await run_backend_runtime({
+      defaultAppLanguage: "JA",
       appRoot: "E:/app",
       builtinRoot: "E:/app/builtin",
       moduleUrl: import.meta.url,
@@ -118,6 +119,7 @@ describe("run_backend_runtime", () => {
   it("发布 ready，并通过结构化消息处理宿主能力与控制请求", async () => {
     const port = create_port();
     await run_backend_runtime({
+      defaultAppLanguage: "JA",
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
@@ -141,6 +143,7 @@ describe("run_backend_runtime", () => {
       pickSavePath: (name: string) => Promise<string | null>;
     };
     expect(bootstrap_options).toMatchObject({
+      defaultAppLanguage: "JA",
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
     });
@@ -200,6 +203,7 @@ describe("run_backend_runtime", () => {
   it("取消宿主等待立即以原始原因结算，迟到响应无效", async () => {
     const port = create_port();
     await run_backend_runtime({
+      defaultAppLanguage: "JA",
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
@@ -232,6 +236,7 @@ describe("run_backend_runtime", () => {
   it("runtime 关闭时拒绝尚未结算的保存请求", async () => {
     const port = create_port();
     await run_backend_runtime({
+      defaultAppLanguage: "JA",
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
@@ -256,6 +261,7 @@ describe("run_backend_runtime", () => {
     const port = create_port();
 
     await run_backend_runtime({
+      defaultAppLanguage: "JA",
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,

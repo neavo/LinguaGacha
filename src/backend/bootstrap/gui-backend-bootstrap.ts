@@ -1,3 +1,4 @@
+import type { AppLanguage } from "../../domain/app-language";
 import { AgentExecutionRuntime } from "../agent/execution/runtime";
 import { AgentPersonalityService } from "../agent/agent-personality-service";
 import { AgentSkillsService } from "../agent/agent-skills-service";
@@ -22,6 +23,7 @@ import { BackendServices } from "./backend-services";
 type GuiBackendBootstrapState = "idle" | "starting" | "ready" | "stopping" | "stopped" | "failed";
 
 export interface GuiBackendBootstrapOptions {
+  defaultAppLanguage: AppLanguage; // 宿主解析的首次设置默认语言。
   pdfHost?: PDFHost;
   imageHost: AgentImageHost;
   appRoot: string; // 安装根与便携数据位置

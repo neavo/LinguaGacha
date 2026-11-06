@@ -1,3 +1,4 @@
+import { resolve_system_app_language } from "../domain/app-language";
 import { resolve_app_resources } from "../native/app-resources";
 import { app, session } from "electron";
 import { configure_app_proxy } from "../native/app-proxy";
@@ -27,6 +28,7 @@ export async function run_cli_command(
   });
   const resources = await BackendResources.start({
     appRoot: app_root,
+    defaultAppLanguage: resolve_system_app_language(app.getPreferredSystemLanguages()),
     builtinRoot: app_resources.builtinRoot,
     logTargets: { console: false, window: false },
     proxyResolver: {
