@@ -1,3 +1,4 @@
+import { resolve_system_app_language } from "../domain/app-language";
 import { resolve_app_resources } from "../native/app-resources";
 import { configure_app_proxy } from "../native/app-proxy";
 import { app, BrowserWindow, session, shell } from "electron";
@@ -70,6 +71,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
+    defaultAppLanguage: resolve_system_app_language(app.getPreferredSystemLanguages()),
     builtinRoot: app_resources.builtinRoot,
     workspaceRuntimeDirectory: app_resources.workspaceRuntimeDirectory,
     pdfHost: pdf_host,

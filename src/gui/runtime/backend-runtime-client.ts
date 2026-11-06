@@ -41,6 +41,7 @@ export class BackendRuntimeClient {
   public constructor(
     private readonly options: {
       workerEntryUrl: URL;
+      defaultAppLanguage: AppLanguage;
       appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
       builtinRoot: string; // 真实内置资源根必须显式跨线程传递
       workspaceRuntimeDirectory: string; // 当前版本的工作区包与只读资源根
@@ -62,6 +63,7 @@ export class BackendRuntimeClient {
     const worker = new Worker(this.options.workerEntryUrl, {
       workerData: {
         appRoot: this.options.appRoot,
+        defaultAppLanguage: this.options.defaultAppLanguage,
         builtinRoot: this.options.builtinRoot,
         workspaceRuntimeDirectory: this.options.workspaceRuntimeDirectory,
       },

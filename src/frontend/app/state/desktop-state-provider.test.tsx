@@ -477,6 +477,20 @@ describe("DesktopStateProvider", () => {
     });
   }
 
+  it("首帧采用系统偏好，初始化完成后采用已保存的语言", async () => {
+    vi.spyOn(window.navigator, "languages", "get").mockReturnValue(["fr-FR", "ja-JP"]);
+    const languages: string[] = [];
+    /** 记录首帧和后端快照接管后的语言。 */
+    function LanguageProbe(): null {
+      languages.push(useDesktopState().settings_snapshot.app_language);
+      return null;
+    }
+    install_runtime_api_mock({ settings: { app_language: "DE" } });
+    await mount_runtime(create_event_source_stub().event_source, <LanguageProbe />);
+    expect(languages[0]).toBe("JA");
+    expect(languages.at(-1)).toBe("DE");
+  });
+
   it("初始化失败保留失败状态，重试后应用完整快照", async () => {
     let state: ReturnType<typeof useDesktopState> | null = null;
     /** 读取初始化状态，验证失败后可从公开入口重试。 */

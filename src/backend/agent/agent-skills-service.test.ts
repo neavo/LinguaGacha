@@ -22,7 +22,7 @@ function fixture() {
   });
   fs.mkdirSync(path.dirname(paths.get_config_path()), { recursive: true });
   const publish = vi.fn();
-  const settings = new AppSettingService(paths, { publish });
+  const settings = new AppSettingService(paths, "ZH", { publish });
   const log = { warning: vi.fn() };
   const gate = new RuntimeOperationGate();
   const service = new AgentSkillsService(paths, settings, log, gate);
@@ -90,7 +90,7 @@ describe("技能管理", () => {
       document: { ...saved.document!, name: " Upper_case   技能 " },
     });
     expect(renamed.skill.name).toBe("Upper_case 技能");
-    const settings = new AppSettingService(f.paths, { publish: vi.fn() });
+    const settings = new AppSettingService(f.paths, "ZH", { publish: vi.fn() });
     expect(settings.read_setting().agent_skills).toMatchObject({
       disabled: { user: ["Upper_case 技能"] },
       user_order: ["Upper_case 技能"],

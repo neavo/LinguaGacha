@@ -30,7 +30,11 @@ const backend_resources = {
 };
 
 vi.mock("electron", () => ({
-  app: { whenReady: mocks.when_ready, isPackaged: false },
+  app: {
+    whenReady: mocks.when_ready,
+    isPackaged: false,
+    getPreferredSystemLanguages: () => ["fr-FR", "de-AT"],
+  },
   session: { defaultSession: { resolveProxy: mocks.resolve_proxy } },
 }));
 
@@ -88,6 +92,7 @@ describe("run_cli_command", () => {
     configured.resolve();
     await pending;
     expect(mocks.resource_options).toHaveLength(1);
+    expect(mocks.resource_options[0]).toMatchObject({ defaultAppLanguage: "DE" });
   });
 
   it("代理配置失败向 CLI 错误出口传播并阻止 Backend 启动", async () => {

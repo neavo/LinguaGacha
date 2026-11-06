@@ -614,6 +614,7 @@ function create_options(app_root: string) {
   fs.writeFileSync(path.join(builtin_root, "personality.md"), "Test personality.");
   return {
     appRoot: app_root,
+    defaultAppLanguage: "ZH" as const,
     builtinRoot: builtin_root,
     logTargets: { console: false, window: false },
     imageHost: async (): Promise<never> => {

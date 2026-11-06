@@ -28,6 +28,19 @@ afterEach(() => {
 });
 
 describe("AppSettingService", () => {
+  it.each([undefined, { request_timeout: 45 }])(
+    "缺少语言时采用宿主默认值并持久化，配置=%j",
+    (config) => {
+      const { paths, config_path } = create_service();
+      if (config !== undefined) write_config(config_path, config);
+      const service = new AppSettingService(paths, "JA");
+      expect(service.read_app_language()).toBe("JA");
+      expect(service.get_app_settings().settings.app_language).toBe("JA");
+      expect(read_config(config_path).app_language).toBe("JA");
+      expect(new AppSettingService(paths, "DE").read_app_language()).toBe("JA");
+    },
+  );
+
   it("旧配置保留前文并补后文默认值，新后文进入落盘和事件快照", () => {
     const { service, paths, config_path, events } = create_service();
     write_config(config_path, { preceding_lines_threshold: 7 });
@@ -93,7 +106,7 @@ describe("AppSettingService", () => {
     expect(service.read_app_language()).toBe("DE");
     service.update_app_settings({ request_timeout: 45 });
     expect(read_config(config_path)["app_language"]).toBe("DE");
-    const restored = new AppSettingService(paths);
+    const restored = new AppSettingService(paths, "JA");
     expect(restored.read_app_language()).toBe("DE");
     restored.update_app_settings({ app_language: "JA" });
     expect(new AppSettingService(paths).read_app_language()).toBe("JA");
@@ -285,7 +298,7 @@ function create_service(): {
     platform: "win32",
   });
   const events: SettingsStreamMessage[] = [];
-  const service = new AppSettingService(paths, {
+  const service = new AppSettingService(paths, "ZH", {
     publish: (topic, payload) => {
       events.push({ topic, payload });
     },

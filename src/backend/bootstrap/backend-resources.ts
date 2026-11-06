@@ -1,3 +1,4 @@
+import type { AppLanguage } from "../../domain/app-language";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
@@ -10,6 +11,7 @@ import type { LogTargets } from "../../shared/log";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 
 export interface BackendResourceOptions {
+  defaultAppLanguage: AppLanguage; // 宿主解析的首次设置默认语言。
   appRoot: string; // 安装根与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   logTargets?: Partial<LogTargets>; // 入口按 GUI 或 CLI 选择日志出口
@@ -51,7 +53,7 @@ export class BackendResources {
         t_main_log("app.log.app_version", { VERSION: metadata.read_version() }),
         log_manager,
       );
-      const settings = new AppSettingService(paths);
+      const settings = new AppSettingService(paths, options.defaultAppLanguage);
       set_main_log_language_reader(() => settings.read_app_language());
       proxy_http_client = new ProxyHttpClient(options.proxyResolver);
       proxy_http_client.install_as_global_fetch();

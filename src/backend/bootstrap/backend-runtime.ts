@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentImageHostResult } from "../../shared/agent-image";
 
-import { normalize_app_language } from "../../domain/app-language";
+import { normalize_app_language, type AppLanguage } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
 import type {
   BackendRuntimeHostOperation,
@@ -33,6 +33,7 @@ type PendingHostRequest = {
 
 /** GUI Backend 的完整生命周期只存在于 runtime worker 内。 */
 export async function run_backend_runtime(args: {
+  defaultAppLanguage: AppLanguage;
   appRoot: string; // 安装根继续决定版本与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   moduleUrl: string;
@@ -99,6 +100,7 @@ export async function run_backend_runtime(args: {
       return result;
     },
     appRoot: args.appRoot,
+    defaultAppLanguage: args.defaultAppLanguage,
     builtinRoot: args.builtinRoot,
     proxyResolver: proxy_resolver,
     openDirectory: async (path) => {

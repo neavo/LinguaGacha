@@ -1,6 +1,6 @@
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { create_text_resolver } from "@shared/i18n";
-import { resolve_app_locale } from "@domain/app-language";
+import { resolve_app_locale, resolve_system_app_language } from "@domain/app-language";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
@@ -137,7 +137,9 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   );
   const initial_request_ref = useRef(0); // 重试或卸载后，仅当前初始化请求可以应用快照。
   const [settings_snapshot, write_settings_snapshot] = useState<SettingsSnapshot>(() =>
-    normalize_setting_snapshot({}),
+    normalize_setting_snapshot({
+      app_language: resolve_system_app_language(window.navigator.languages),
+    }),
   );
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);

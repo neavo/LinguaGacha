@@ -31,6 +31,7 @@ describe("BackendResources", () => {
 
     try {
       expect(resources.metadata.read_version()).toBe("1.2.3");
+      expect(resources.settings.read_app_language()).toBe("JA");
       const project_path = path.join(app_root, "version.lg");
       fs.writeFileSync(path.join(app_root, "version.txt"), "9.0.0");
       await resources.database.create_project(project_path);
@@ -139,6 +140,7 @@ describe("BackendResources", () => {
 function create_options() {
   return {
     appRoot: app_root,
+    defaultAppLanguage: "JA" as const,
     builtinRoot: path.resolve(process.cwd(), "builtin"),
     logTargets: { console: false, window: false },
     proxyResolver: { resolveProxy: async () => "DIRECT" },

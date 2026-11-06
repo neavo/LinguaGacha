@@ -90,6 +90,7 @@ vi.mock("electron", () => ({
       mocks.app_listeners.set(event, listener);
     }),
     whenReady: vi.fn(() => Promise.resolve()),
+    getPreferredSystemLanguages: () => ["fr-FR", "ja-JP"],
     exit: mocks.app_exit,
     quit: mocks.app_quit,
   },
@@ -185,6 +186,7 @@ describe("run_gui_entry", () => {
     await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
 
     expect(mocks.backend_instances[0]).toMatchObject({
+      defaultAppLanguage: "JA",
       workerEntryUrl: worker_url,
       appRoot: process.cwd(),
       builtinRoot: path.join(process.cwd(), "builtin"),

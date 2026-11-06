@@ -1,7 +1,7 @@
 import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
 import { read_json_boolean, type JsonRecord, type JsonValue } from "./json";
-import { normalize_app_language, APP_LANGUAGE_DEFINITIONS } from "./app-language";
+import { normalize_app_language, APP_LANGUAGE_DEFINITIONS, type AppLanguage } from "./app-language";
 import { normalize_model_selection } from "./model";
 import { normalize_agent_skill_settings } from "./agent-skill-settings";
 
@@ -125,10 +125,10 @@ export class Setting {
   }
 
   /**
-   * 从 userdata 设置文件或页面 payload 反序列化，并只保留当前已知设置字段
+   * 读取已知设置字段。仅缺失 `app_language` 时采用传入的默认语言。
    */
-  public static from_json(payload: unknown): Setting {
-    const setting = { ...DEFAULT_SETTING };
+  public static from_json(payload: unknown, default_app_language: AppLanguage = "ZH"): Setting {
+    const setting: JsonRecord = { ...DEFAULT_SETTING, app_language: default_app_language };
     if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
       for (const [key, value] of Object.entries(payload as JsonRecord)) {
         if (key in DEFAULT_SETTING) {

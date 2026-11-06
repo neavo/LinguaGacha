@@ -27,6 +27,7 @@ describe("Backend Runtime worker 入口", () => {
       {
         builtinRoot: "E:/app.asar/builtin",
         workspaceRuntimeDirectory: "E:/runtime",
+        defaultAppLanguage: "JA",
       },
     ],
     [
@@ -34,6 +35,7 @@ describe("Backend Runtime worker 入口", () => {
       {
         appRoot: "E:/app",
         workspaceRuntimeDirectory: "E:/runtime",
+        defaultAppLanguage: "JA",
       },
     ],
     ["workspaceRuntimeDirectory", { appRoot: "E:/app", builtinRoot: "E:/app.asar/builtin" }],
@@ -47,6 +49,22 @@ describe("Backend Runtime worker 入口", () => {
     await expect(import("./backend-runtime-worker-entry")).rejects.toThrow(`missing ${field}`);
   });
 
+  it.each([undefined, "fr-FR"])("拒绝无效的默认应用语言 %s", async (defaultAppLanguage) => {
+    vi.doMock("node:worker_threads", () => ({
+      parentPort: {},
+      workerData: {
+        appRoot: "E:/app",
+        builtinRoot: "E:/builtin",
+        workspaceRuntimeDirectory: "E:/runtime",
+        defaultAppLanguage,
+      },
+    }));
+    await expect(import("./backend-runtime-worker-entry")).rejects.toThrow(
+      "valid defaultAppLanguage",
+    );
+    expect(run_backend_runtime).not.toHaveBeenCalled();
+  });
+
   it("把收窄后的 workerData 和 parentPort 交给运行时", async () => {
     const parent_port = {};
     vi.doMock("node:worker_threads", () => ({
@@ -56,6 +74,7 @@ describe("Backend Runtime worker 入口", () => {
           appRoot: "E:/app",
           builtinRoot: "E:/app.asar/builtin",
           workspaceRuntimeDirectory: "E:/runtime",
+          defaultAppLanguage: "JA",
         },
       },
       parentPort: parent_port,
@@ -63,6 +82,7 @@ describe("Backend Runtime worker 入口", () => {
         appRoot: "E:/app",
         builtinRoot: "E:/app.asar/builtin",
         workspaceRuntimeDirectory: "E:/runtime",
+        defaultAppLanguage: "JA",
       },
     }));
 
@@ -72,6 +92,7 @@ describe("Backend Runtime worker 入口", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       workspaceRuntimeDirectory: "E:/runtime",
+      defaultAppLanguage: "JA",
       moduleUrl: expect.stringContaining("backend-runtime-worker-entry"),
       port: parent_port,
     });

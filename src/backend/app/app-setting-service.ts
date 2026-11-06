@@ -1,10 +1,11 @@
+import type { AppLanguage } from "../../domain/app-language";
 import type { SettingsSnapshotResponse } from "../../shared/settings";
 import type { SettingSnapshot } from "../../domain/setting";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { AppPathService } from "./app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { Setting } from "../../domain/setting";
-import { NativeFs, default_native_fs } from "../../native/native-fs";
+import { default_native_fs } from "../../native/native-fs";
 
 interface AppSettingsStreamPublisher {
   publish: (topic: string, payload: JsonRecord) => void; // settings.changed 走公开 stream topic，避免设置更新绕回旧运行态同步链路
@@ -16,25 +17,23 @@ interface AppSettingsStreamPublisher {
 export class AppSettingService {
   private readonly paths: AppPathService; // 提供 config.json 的唯一落点
   private stream_publisher: AppSettingsStreamPublisher | null; // 只广播 settings.changed
-  private readonly native_fs: NativeFs; // 统一设置文件读写和长路径策略
   private setting_cache: Setting | null = null; // 运行期配置事实，外部手改不做热加载
   private transient_overrides: JsonRecord | null = null; // 只服务 CLI 单次任务，不写回 config.json
 
   /**
-   * 初始化 AppSettingService 依赖，保持配置写入口与事件出口清晰。
+   * 注入配置路径、首次默认语言和设置事件出口。
    */
   public constructor(
     paths: AppPathService,
+    private readonly default_app_language: AppLanguage = "ZH", // 仅缺失字段采用宿主默认语言。
     stream_publisher: AppSettingsStreamPublisher | null = null,
-    native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
     this.stream_publisher = stream_publisher;
-    this.native_fs = native_fs;
   }
 
   /**
-   * 绑定运行期 stream 出口；Gateway 生命周期重建 stream hub 时只更新这个引用。
+   * 绑定设置事件出口。Gateway 重建 stream hub 时更新该引用。
    */
   public set_stream_publisher(stream_publisher: AppSettingsStreamPublisher | null): void {
     this.stream_publisher = stream_publisher;
@@ -52,12 +51,12 @@ export class AppSettingService {
    */
   public get_app_settings(): SettingsSnapshotResponse {
     const setting = this.read_setting_entity();
-    this.save_setting(setting.to_json() as JsonRecord);
+    this.save_setting(setting.to_json());
     return { settings: setting.to_snapshot() };
   }
 
   /**
-   * 保存白名单字段；跨工程命令延后广播，待两个存储完成后发布设置
+   * 保存白名单字段。跨工程命令在两个存储完成后发布设置。
    */
   public update_app_settings(request: JsonRecord, publish = true): SettingsSnapshotResponse {
     let setting = this.read_setting_entity();
@@ -69,8 +68,8 @@ export class AppSettingService {
       changed_keys.push(key);
     }
     if (changed_keys.length > 0) {
-      this.save_setting(setting.to_json() as JsonRecord);
-      if (publish) this.publish_settings_changed(changed_keys, setting.to_json() as JsonRecord);
+      this.save_setting(setting.to_json());
+      if (publish) this.publish_settings_changed(changed_keys, setting.to_json());
     }
     return { settings: setting.to_snapshot() };
   }
@@ -83,8 +82,8 @@ export class AppSettingService {
     let setting = this.read_setting_entity();
     if (project_path !== "") {
       setting = setting.with_recent_project_added(project_path, this.build_local_iso_timestamp());
-      this.save_setting(setting.to_json() as JsonRecord);
-      this.publish_settings_changed(["recent_projects"], setting.to_json() as JsonRecord);
+      this.save_setting(setting.to_json());
+      this.publish_settings_changed(["recent_projects"], setting.to_json());
     }
     return { settings: setting.to_snapshot() };
   }
@@ -97,8 +96,8 @@ export class AppSettingService {
     let setting = this.read_setting_entity();
     if (project_path !== "") {
       setting = setting.with_recent_project_removed(project_path);
-      this.save_setting(setting.to_json() as JsonRecord);
-      this.publish_settings_changed(["recent_projects"], setting.to_json() as JsonRecord);
+      this.save_setting(setting.to_json());
+      this.publish_settings_changed(["recent_projects"], setting.to_json());
     }
     return { settings: setting.to_snapshot() };
   }
@@ -107,7 +106,7 @@ export class AppSettingService {
    * 读取完整设置对象副本，业务服务不能直接触碰 config.json。
    */
   public read_setting(): JsonRecord {
-    const setting = this.read_setting_entity().to_json() as JsonRecord;
+    const setting = this.read_setting_entity().to_json();
     if (this.transient_overrides === null) {
       return setting;
     }
@@ -120,7 +119,7 @@ export class AppSettingService {
   public save_setting(setting: JsonRecord): void {
     const config_path = this.paths.get_config_path();
     const normalized_setting = Setting.from_json(setting);
-    this.native_fs.write_file_sync(
+    default_native_fs.write_file_sync(
       config_path,
       JsonTool.stringifyStrict(normalized_setting.to_json(), { indent: 4 }),
     );
@@ -142,7 +141,7 @@ export class AppSettingService {
   }
 
   /**
-   * 从缓存或磁盘读取设置实体；磁盘读取只在服务生命周期内发生一次。
+   * 读取设置实体。每个服务实例只读取一次磁盘。
    */
   private read_setting_entity(): Setting {
     if (this.setting_cache !== null) {
@@ -150,10 +149,10 @@ export class AppSettingService {
     }
     const config_path = this.paths.get_config_path();
     let payload: unknown = {};
-    if (this.native_fs.exists(config_path)) {
-      payload = JsonTool.parseStrict(this.native_fs.read_file(config_path)) as unknown;
+    if (default_native_fs.exists(config_path)) {
+      payload = JsonTool.parseStrict(default_native_fs.read_file(config_path)) as unknown;
     }
-    this.setting_cache = Setting.from_json(payload);
+    this.setting_cache = Setting.from_json(payload, this.default_app_language);
     return this.setting_cache;
   }
 
