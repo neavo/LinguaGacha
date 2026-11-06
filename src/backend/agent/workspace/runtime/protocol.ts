@@ -35,6 +35,7 @@ export type AgentWorkspaceRuntimeParentMessage =
   | {
       type: "start";
       userSkillDirectory: string; // 应用级用户技能目录，直接写入并跨会话保留
+      fontsDirectory: string; // 应用随附字体目录，只读
       nodeRoot: string;
       runtimeDirectory: string; // 当前应用规范化的运行目录，应用 SDK 不依赖用户安装树
       moduleRoots: readonly string[]; // 带尾斜线的原目录 file: URL，含逻辑入口与真实位置

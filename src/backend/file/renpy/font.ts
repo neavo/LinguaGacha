@@ -1,3 +1,4 @@
+// 内置技能 `renpy` 的「字体」一节复述本文件的修改规律，改动时同步更新。
 import type { GameFont } from "../shared/game/font-replace";
 import { RENPY_FONT_FILE, RENPY_GENERATED_MARKER } from "./generated";
 

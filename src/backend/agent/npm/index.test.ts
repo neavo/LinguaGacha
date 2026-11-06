@@ -89,6 +89,7 @@ async function create_fixture(
   await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
   const execution = new AgentExecutionRuntime({
     runtimeDirectory: runtime,
+    fontsDirectory: path.join(runtime, "fonts"),
     executablePath: electron,
     electronVersion: "45.0.0",
     paths: {

@@ -36,6 +36,7 @@ export class AgentExecutionError extends Error {
 export class AgentExecutionRuntime {
   public readonly nodeExecutable: string;
   public readonly runtimeDirectory: string; // 随应用版本固定的运行资源。
+  public readonly fontsDirectory: string; // 应用随附字体，Agent 工作区只读引用。
   public readonly nodeRoot: string; // 跨应用更新保留的用户 npm 工程。
   public readonly uv: UvConfiguration; // 经 IPC 固定根脚本使用的 uv 与共享数据根。
   private readonly lock: string;
@@ -47,6 +48,7 @@ export class AgentExecutionRuntime {
   public constructor(
     private readonly options: {
       runtimeDirectory: string;
+      fontsDirectory: string;
       executablePath?: string;
       electronVersion?: string;
       paths: Pick<
@@ -58,6 +60,7 @@ export class AgentExecutionRuntime {
   ) {
     this.nodeExecutable = path.resolve(options.executablePath ?? process.execPath);
     this.runtimeDirectory = path.resolve(options.runtimeDirectory);
+    this.fontsDirectory = path.resolve(options.fontsDirectory);
     this.nodeRoot = path.resolve(options.paths.get_agent_node_root_dir());
     this.lock = options.paths.get_agent_execution_lock_path();
     this.uv = Object.freeze({

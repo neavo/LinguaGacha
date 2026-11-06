@@ -1,9 +1,9 @@
 ---
 name: godot
-description: 翻译、审校或分析 Godot 4 游戏前必须加载。
+description: 翻译、审校、分析、修改 Godot 或 ACTION GAME MAKER 游戏前必须加载。
 ---
 
-本技能只提供 Godot 引擎知识，翻译、审校和提交流程按 `translation` 执行。
+本技能只提供 Godot 引擎知识。ACTION GAME MAKER 基于 Godot 二次开发，按本技能处理。翻译、审校和提交流程按 `translation` 执行。
 
 # 原稿与条目
 
@@ -193,3 +193,13 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 每次交付都说明：
 
 - 可见文本补漏和依赖协调依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。
+
+# 字体
+
+本引擎在百宝箱「修改游戏字体」的支持范围内。修改字体前用 `ask_user` 建议用户改用百宝箱。用户接受时结束本次修改。
+
+- 资源仍在 PCK 或 EXE 内嵌包中时，先展开为散装目录再修改。
+- `.import` 文件的 `[remap]` 节为 `type="FontFile"` 时，只把该节的 `path` 指向新字体资源，其余内容不变。
+- 新字体资源是只设置 `data` 属性的二进制 `FontFile` 资源。
+- 未单独指定字体的控件使用默认主题字体。在游戏根目录 `override.cfg` 末尾追加 `[gui]` 节，把 `theme/custom_font` 设为新字体资源。
+- 项目设置 `application/config/disable_project_settings_override` 为 `true` 时，引擎不读取 `override.cfg`。

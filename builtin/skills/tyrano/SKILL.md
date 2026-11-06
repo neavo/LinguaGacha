@@ -1,6 +1,6 @@
 ---
 name: tyrano
-description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必须加载。
+description: 翻译、审校、分析、修改 Tyrano（TyranoScript、TyranoBuilder）游戏前必须加载。
 ---
 
 本技能只提供 TyranoScript 引擎知识，翻译、审校和提交流程按 `translation` 执行。
@@ -100,9 +100,18 @@ description: 翻译、审校或分析 TyranoScript / TyranoBuilder 游戏前必�
 |---|---|
 |`source_issues.jsonl` 有本游戏的记录，或有语法错误、未产生条目的脚本块|涉及的成员和脚本块，其中的文字可能仍显示原文|
 |脚本加载 `<app>/data/` 外或扩展名不是 `.ks`、`.js` 的文本文件|这些文件不在原稿中，未作为通用数据处理时，其中的文字仍显示原文|
-|脚本用 Canvas 或插件自行绘制文字|应用的字体替换只覆盖消息框、文字层和选项按钮，这些文字可能缺字|
+|脚本用 Canvas 或插件自行绘制文字|字体替换只覆盖消息框、文字层和选项按钮，这些文字可能缺字|
 |补漏中发现远程加载或运行时拼出的文本|这些文本没有完整条目，游戏中可能仍显示原文|
 
 每次交付都说明：
 
 - 可见文本补漏和依赖协调依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。
+
+# 字体
+
+本引擎在百宝箱「修改游戏字体」的支持范围内。修改字体前用 `ask_user` 建议用户改用百宝箱。用户接受时结束本次修改。
+
+- 新增字体文件和声明 `@font-face` 的样式表，在主样式表 `tyrano/tyrano.css` 开头 `@import` 该样式表。
+- 主样式表开头有 BOM 时，`@import` 放在 BOM 之后。
+- 字体规则作用于 `#tyrano_base` 下的 `p`、`.message_inner`、`.glink_button` 和 `.text_box`，并使用 `!important`。
+- 新增文件不得覆盖游戏已有的同名文件。

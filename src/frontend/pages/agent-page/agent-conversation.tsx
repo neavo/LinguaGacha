@@ -20,6 +20,7 @@ import {
   Shrink,
   SquarePower,
   Sparkles,
+  Type,
 } from "lucide-react";
 
 import type { ModelSelectionInput } from "@shared/model-selection";
@@ -334,6 +335,18 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       execute: translation_generation.request_generation,
     },
     {
+      id: "compact_context",
+      icon: Shrink,
+      title: t("agent_page.mention.instructions.compact_context.title"),
+      description: t(
+        instruction_ready && !controls.context.compactable // 会话忙碌时禁用原因不在可压缩性，沿用功能说明
+          ? "agent_page.mention.instructions.compact_context.unnecessary"
+          : "agent_page.mention.instructions.compact_context.description",
+      ),
+      disabled: !compact_available,
+      execute: compact_context,
+    },
+    {
       // 只预置草稿，流程由技能决定，不受会话空闲约束。
       id: "update_file",
       icon: FileDiff,
@@ -350,16 +363,26 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       },
     },
     {
-      id: "compact_context",
-      icon: Shrink,
-      title: t("agent_page.mention.instructions.compact_context.title"),
-      description: t(
-        instruction_ready && !controls.context.compactable // 会话忙碌时禁用原因不在可压缩性，沿用功能说明
-          ? "agent_page.mention.instructions.compact_context.unnecessary"
-          : "agent_page.mention.instructions.compact_context.description",
-      ),
-      disabled: !compact_available,
-      execute: compact_context,
+      // 只预置草稿，流程由引擎技能决定，不受会话空闲约束。
+      id: "change_game_font",
+      icon: Type,
+      title: t("game_font_page.title"),
+      description: t("agent_page.mention.instructions.change_game_font.description"),
+      disabled: !project_snapshot.loaded,
+      execute: () => {
+        const request = format_agent_path_request(
+          t,
+          t("agent_page.mention.instructions.change_game_font.font_file"),
+          [],
+          format_agent_path_request(
+            t,
+            t("agent_page.mention.instructions.change_game_font.game_path"),
+            [],
+            t("agent_page.mention.instructions.change_game_font.request"),
+          ).text,
+        );
+        composer_ref.current?.append_draft(request.text, request.selection);
+      },
     },
   ];
 

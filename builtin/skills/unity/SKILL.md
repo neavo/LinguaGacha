@@ -1,6 +1,6 @@
 ---
 name: unity
-description: 翻译、审校、分析 Unity 游戏，或提取、写回、交付 Unity 资源中的文本前必须加载。
+description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必须加载。
 ---
 
 本技能提供 Unity 资源定位、解析与写回方法。导入和通用数据封装按 `project-operation` 和 `generic-data` 执行，翻译与审校按 `translation` 执行。

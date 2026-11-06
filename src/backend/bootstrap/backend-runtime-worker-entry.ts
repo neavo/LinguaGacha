@@ -8,31 +8,31 @@ if (parentPort === null) {
   throw new Error("Backend runtime worker is missing parentPort.");
 }
 
-const data = workerData as {
-  appRoot?: unknown;
-  defaultAppLanguage?: unknown;
-  builtinRoot?: unknown;
-  workspaceRuntimeDirectory?: unknown;
-};
-if (typeof data.appRoot !== "string" || data.appRoot === "") {
-  throw new Error("Backend runtime worker is missing appRoot.");
-}
-if (typeof data.builtinRoot !== "string" || data.builtinRoot === "") {
-  throw new Error("Backend runtime worker is missing builtinRoot.");
-}
-if (typeof data.workspaceRuntimeDirectory !== "string" || data.workspaceRuntimeDirectory === "") {
-  throw new Error("Backend runtime worker is missing workspaceRuntimeDirectory.");
+const data = workerData as Record<string, unknown>;
+
+/** 路径字段都由宿主解析后注入，缺失或为空说明入口装配错误。 */
+function read_path(key: string): string {
+  const value = data[key];
+  if (typeof value !== "string" || value === "")
+    throw new Error(`Backend runtime worker is missing ${key}.`);
+  return value;
 }
 
-if (!is_app_language(data.defaultAppLanguage)) {
+const appRoot = read_path("appRoot");
+const builtinRoot = read_path("builtinRoot");
+const workspaceRuntimeDirectory = read_path("workspaceRuntimeDirectory");
+const fontsDirectory = read_path("fontsDirectory");
+const defaultAppLanguage = data["defaultAppLanguage"];
+if (!is_app_language(defaultAppLanguage)) {
   throw new Error("Backend runtime worker is missing a valid defaultAppLanguage.");
 }
 
 void run_backend_runtime({
-  defaultAppLanguage: data.defaultAppLanguage,
-  appRoot: data.appRoot,
-  builtinRoot: data.builtinRoot,
-  workspaceRuntimeDirectory: data.workspaceRuntimeDirectory,
+  defaultAppLanguage,
+  appRoot,
+  builtinRoot,
+  workspaceRuntimeDirectory,
+  fontsDirectory,
   moduleUrl: import.meta.url,
   port: parentPort,
 });

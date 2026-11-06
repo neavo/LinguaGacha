@@ -1,3 +1,4 @@
+// 内置技能 `tyrano` 的「字体」一节复述本文件的修改规律，改动时同步更新。
 import assert from "node:assert/strict";
 import type { NativeFs } from "../../../native/native-fs";
 import type { GameFont } from "../shared/game/font-replace";

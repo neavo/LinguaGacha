@@ -1,3 +1,4 @@
+// 内置技能 `godot` 的「字体」一节复述本文件的修改规律，改动时同步更新。
 import { read_resource, patch_resource } from "./resource";
 import assert from "node:assert/strict";
 import { GODOT_RESOURCE_MAX_BYTES, pad, string, u32, u64 } from "./binary";

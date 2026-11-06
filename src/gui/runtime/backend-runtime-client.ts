@@ -45,6 +45,7 @@ export class BackendRuntimeClient {
       appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
       builtinRoot: string; // 真实内置资源根必须显式跨线程传递
       workspaceRuntimeDirectory: string; // 当前版本的工作区包与只读资源根
+      fontsDirectory: string; // 应用随附字体，Agent 工作区只读引用
       pdfHost?: PDFHost;
       imageHost: AgentImageHost;
       resolveProxy: (url: string) => Promise<string>;
@@ -66,6 +67,7 @@ export class BackendRuntimeClient {
         defaultAppLanguage: this.options.defaultAppLanguage,
         builtinRoot: this.options.builtinRoot,
         workspaceRuntimeDirectory: this.options.workspaceRuntimeDirectory,
+        fontsDirectory: this.options.fontsDirectory,
       },
     });
     this.worker = worker;

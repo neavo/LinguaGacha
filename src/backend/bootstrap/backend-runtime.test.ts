@@ -58,6 +58,7 @@ describe("run_backend_runtime", () => {
       builtinRoot: "E:/app/builtin",
       moduleUrl: import.meta.url,
       workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
+      fontsDirectory: "E:/app/fonts",
       port,
     });
     const { imageHost } = runtime_mocks.constructor_options[0] as { imageHost: AgentImageHost };
@@ -124,6 +125,7 @@ describe("run_backend_runtime", () => {
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
       workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
+      fontsDirectory: "E:/app/fonts",
       port,
     });
 
@@ -208,6 +210,7 @@ describe("run_backend_runtime", () => {
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
       workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
+      fontsDirectory: "E:/app/fonts",
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -241,6 +244,7 @@ describe("run_backend_runtime", () => {
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
       workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
+      fontsDirectory: "E:/app/fonts",
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -266,6 +270,7 @@ describe("run_backend_runtime", () => {
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
       workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
+      fontsDirectory: "E:/app/fonts",
       port,
     });
 

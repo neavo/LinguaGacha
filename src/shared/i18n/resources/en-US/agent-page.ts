@@ -66,6 +66,13 @@ export const en_us_agent_page = {
         request:
           "Update the corresponding project files with the following files and keep the existing translations:",
       },
+      change_game_font: {
+        description: "Change the font to support more languages or improve text rendering",
+        font_file: "Font file:",
+        game_path: "Game path:",
+        request:
+          "Change the game to the target font and follow these rules:\n1. If no font file is specified, use the app font\n2. If no game path is specified, change the game of the current project\n3. Ask the user only when you truly cannot determine what the task requires",
+      },
       compact_context: {
         title: "Compact context",
         description: "Compact message history to free up available context space",

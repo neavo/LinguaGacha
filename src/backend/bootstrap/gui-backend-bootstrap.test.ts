@@ -622,6 +622,7 @@ function create_options(app_root: string) {
     },
     proxyResolver: { resolveProxy: async () => "DIRECT" },
     workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
+    fontsDirectory: path.join(app_root, "fonts"),
     openDirectory: async () => undefined,
     pickSavePath: async () => null,
     workerExecution: { kind: "in_process" as const },
