@@ -1,6 +1,6 @@
 ---
 name: xlsx
-description: 读取、分析或翻译 XLSX 表格时使用。用户要求生成或编辑工程外的独立 XLSX 文件时也使用。
+description: 翻译、审校、分析、修改 XLSX 文件前必须加载。
 ---
 
 # XLSX 文件处理

@@ -22,6 +22,7 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志与�
   const workspace = path.join(root.path, "workspace");
   const execution = new AgentExecutionRuntime({
     runtimeDirectory: root.path,
+    fontsDirectory: path.join(root.path, "fonts"),
     executablePath: process.execPath,
     electronVersion: "45.0.0",
     paths: {

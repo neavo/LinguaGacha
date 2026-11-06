@@ -329,6 +329,7 @@ export class AgentWorkspaceRunner {
           send({
             type: "start",
             userSkillDirectory: user_skill_directory,
+            fontsDirectory: this.execution.fontsDirectory,
             nodeRoot: this.execution.nodeRoot,
             runtimeDirectory: runtime_directory,
             moduleRoots: skill_roots,

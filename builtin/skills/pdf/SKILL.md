@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: 阅读、翻译、审校或排版预览 PDF 文件时使用。
+description: 翻译、审校、分析、修改 PDF 文件前必须加载。
 ---
 
 # PDF 处理能力

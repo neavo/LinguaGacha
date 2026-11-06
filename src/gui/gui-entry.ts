@@ -74,6 +74,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     defaultAppLanguage: resolve_system_app_language(app.getPreferredSystemLanguages()),
     builtinRoot: app_resources.builtinRoot,
     workspaceRuntimeDirectory: app_resources.workspaceRuntimeDirectory,
+    fontsDirectory: app_resources.fontsDirectory,
     pdfHost: pdf_host,
     imageHost: prepare_agent_image,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),

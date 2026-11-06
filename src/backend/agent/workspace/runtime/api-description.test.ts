@@ -19,6 +19,7 @@ ws.emitImage("work/detail.png", { maxEdge: 3840 });
 ws.emitImage("work/detail.png", { maxEdge: "3840" });
 const reference: string = ws.contract.datasets.items.reference;
 const skillDirectory: string = ws.userSkillDirectory;
+const fontsDirectory: string = ws.fontsDirectory;
 // @ts-expect-error 旧阶段写入方法已移除。
 ws.doing("检查章节");
 // @ts-expect-error 领域能力不属于 ws。

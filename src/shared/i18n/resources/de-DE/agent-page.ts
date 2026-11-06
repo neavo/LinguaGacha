@@ -67,6 +67,14 @@ export const de_de_agent_page = {
         request:
           "Aktualisiere die entsprechenden Projektdateien mit den folgenden Dateien und behalte vorhandene Übersetzungen bei:",
       },
+      change_game_font: {
+        description:
+          "Schrift ändern, um mehr Sprachen zu unterstützen oder die Darstellung zu verbessern",
+        font_file: "Schriftdatei:",
+        game_path: "Spielpfad:",
+        request:
+          "Ändere die Schrift des Spiels in die Zielschrift und beachte dabei folgende Regeln:\n1. Ist keine Schriftdatei angegeben, verwende die App-Schrift\n2. Ist kein Spielpfad angegeben, ändere das Spiel des aktuellen Projekts\n3. Frage nur nach, wenn sich die Anforderungen wirklich nicht selbst klären lassen",
+      },
       compact_context: {
         title: "Kontext komprimieren",
         description: "Nachrichtenverlauf komprimieren und verfügbaren Kontextplatz freigeben",

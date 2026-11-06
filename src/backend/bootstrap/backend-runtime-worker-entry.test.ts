@@ -4,6 +4,15 @@ const { run_backend_runtime } = vi.hoisted(() => ({ run_backend_runtime: vi.fn()
 
 vi.mock("./backend-runtime", () => ({ run_backend_runtime }));
 
+/** 宿主注入的完整 workerData，用例按需删改单个字段。 */
+const WORKER_DATA = {
+  appRoot: "E:/app",
+  builtinRoot: "E:/app.asar/builtin",
+  workspaceRuntimeDirectory: "E:/runtime",
+  fontsDirectory: "E:/fonts",
+  defaultAppLanguage: "JA",
+} as const;
+
 describe("Backend Runtime worker 入口", () => {
   afterEach(() => {
     run_backend_runtime.mockReset();
@@ -21,43 +30,25 @@ describe("Backend Runtime worker 入口", () => {
     await expect(import("./backend-runtime-worker-entry")).rejects.toThrow("missing parentPort");
   });
 
-  it.each([
-    [
-      "appRoot",
-      {
-        builtinRoot: "E:/app.asar/builtin",
-        workspaceRuntimeDirectory: "E:/runtime",
-        defaultAppLanguage: "JA",
-      },
-    ],
-    [
-      "builtinRoot",
-      {
-        appRoot: "E:/app",
-        workspaceRuntimeDirectory: "E:/runtime",
-        defaultAppLanguage: "JA",
-      },
-    ],
-    ["workspaceRuntimeDirectory", { appRoot: "E:/app", builtinRoot: "E:/app.asar/builtin" }],
-  ])("缺少 %s 时拒绝启动", async (field, worker_data) => {
-    vi.doMock("node:worker_threads", () => ({
-      default: { parentPort: {}, workerData: worker_data },
-      parentPort: {},
-      workerData: worker_data,
-    }));
+  it.each(["appRoot", "builtinRoot", "workspaceRuntimeDirectory", "fontsDirectory"])(
+    "缺少 %s 时拒绝启动",
+    async (field) => {
+      const worker_data: Record<string, unknown> = { ...WORKER_DATA };
+      delete worker_data[field];
+      vi.doMock("node:worker_threads", () => ({
+        default: { parentPort: {}, workerData: worker_data },
+        parentPort: {},
+        workerData: worker_data,
+      }));
 
-    await expect(import("./backend-runtime-worker-entry")).rejects.toThrow(`missing ${field}`);
-  });
+      await expect(import("./backend-runtime-worker-entry")).rejects.toThrow(`missing ${field}`);
+    },
+  );
 
   it.each([undefined, "fr-FR"])("拒绝无效的默认应用语言 %s", async (defaultAppLanguage) => {
     vi.doMock("node:worker_threads", () => ({
       parentPort: {},
-      workerData: {
-        appRoot: "E:/app",
-        builtinRoot: "E:/builtin",
-        workspaceRuntimeDirectory: "E:/runtime",
-        defaultAppLanguage,
-      },
+      workerData: { ...WORKER_DATA, defaultAppLanguage },
     }));
     await expect(import("./backend-runtime-worker-entry")).rejects.toThrow(
       "valid defaultAppLanguage",
@@ -68,31 +59,15 @@ describe("Backend Runtime worker 入口", () => {
   it("把收窄后的 workerData 和 parentPort 交给运行时", async () => {
     const parent_port = {};
     vi.doMock("node:worker_threads", () => ({
-      default: {
-        parentPort: parent_port,
-        workerData: {
-          appRoot: "E:/app",
-          builtinRoot: "E:/app.asar/builtin",
-          workspaceRuntimeDirectory: "E:/runtime",
-          defaultAppLanguage: "JA",
-        },
-      },
+      default: { parentPort: parent_port, workerData: WORKER_DATA },
       parentPort: parent_port,
-      workerData: {
-        appRoot: "E:/app",
-        builtinRoot: "E:/app.asar/builtin",
-        workspaceRuntimeDirectory: "E:/runtime",
-        defaultAppLanguage: "JA",
-      },
+      workerData: WORKER_DATA,
     }));
 
     await import("./backend-runtime-worker-entry");
 
     expect(run_backend_runtime).toHaveBeenCalledWith({
-      appRoot: "E:/app",
-      builtinRoot: "E:/app.asar/builtin",
-      workspaceRuntimeDirectory: "E:/runtime",
-      defaultAppLanguage: "JA",
+      ...WORKER_DATA,
       moduleUrl: expect.stringContaining("backend-runtime-worker-entry"),
       port: parent_port,
     });

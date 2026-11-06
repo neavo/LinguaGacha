@@ -1,6 +1,6 @@
 ---
 name: epub
-description: 读取、分析或翻译 EPUB 文件时使用。用户要求生成或编辑工程外的独立 EPUB 文件时也使用。
+description: 翻译、审校、分析、修改 EPUB 文件前必须加载。
 ---
 
 # EPUB 文件处理

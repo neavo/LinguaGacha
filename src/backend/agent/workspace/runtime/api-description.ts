@@ -1,7 +1,6 @@
 import { describe_emit_image } from "../../tools/emit-image";
 import { describe_doing } from "../../tools/doing";
 import { describe_workspace_contract } from "../../tools/contract";
-import { describe_user_skill_directory } from "../../tools/user-skill-directory";
 
 /**
  * 使用 TypeScript 声明紧凑描述参数、联合类型与返回结构，减少模型能力说明的 token 开销。
@@ -15,7 +14,8 @@ export function format_agent_workspace_typescript_api(): string {
     "declare const ws: Readonly<{",
     ...[
       contract.member,
-      describe_user_skill_directory(),
+      "/** 用户技能根目录的绝对路径，可读写，不同工程共用，工作区重置时保留。 */\nuserSkillDirectory: string;",
+      "/** 应用随附字体目录的绝对路径，只读。`LGBaseFont` 是应用界面字体。 */\nfontsDirectory: string;",
       describe_emit_image(),
       describe_doing(),
     ].map((member) =>

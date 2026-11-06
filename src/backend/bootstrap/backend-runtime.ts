@@ -38,6 +38,7 @@ export async function run_backend_runtime(args: {
   builtinRoot: string; // 当前版本只读内置资产根
   moduleUrl: string;
   workspaceRuntimeDirectory: string;
+  fontsDirectory: string; // 应用随附字体，Agent 工作区只读引用
   port: BackendRuntimePort;
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
@@ -114,6 +115,7 @@ export async function run_backend_runtime(args: {
       return result;
     },
     workspaceRuntimeDirectory: args.workspaceRuntimeDirectory,
+    fontsDirectory: args.fontsDirectory,
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),
   });

@@ -1,3 +1,4 @@
+// 内置技能 `rpgmaker` 的「字体」一节复述本文件的修改规律，改动时同步更新。
 import assert from "node:assert/strict";
 import path from "node:path";
 import { GAME_FONT_EXTENSIONS } from "../../../shared/game-font";

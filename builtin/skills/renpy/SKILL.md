@@ -1,6 +1,6 @@
 ---
 name: renpy
-description: 翻译、审校或分析 RenPy 游戏前必须加载。
+description: 翻译、审校、分析、修改 RenPy 游戏前必须加载。
 ---
 
 本技能只提供 Ren'Py 引擎知识，翻译、审校和提交流程按 `translation` 执行。
@@ -165,3 +165,11 @@ f-string 产生 `write_mode` 为 `source` 的 `code` 条目，例如 `f"Hello {n
 
 - 读档后，存档和历史记录中已保存的文本仍显示原文。
 - 可见文本补漏和「显示与程序值」判断依据静态代码调查，无法证明没有遗漏。建议用户在游戏中抽查，并用截图定位遗漏。
+
+# 字体
+
+本引擎在百宝箱「修改游戏字体」的支持范围内。修改字体前用 `ask_user` 建议用户改用百宝箱。用户接受时结束本次修改。
+
+- 在 `game/` 下放置 `DejaVuSans.ttf` 和 `DejaVuSans-Bold.ttf`，替换引擎的默认正文字体和粗体。
+- 游戏自带的 `.ttf`、`.otf` 字体按原路径覆盖，不改样式中的引用。
+- `language` 为 `western` 的样式只在空格处断行，中日韩文本不会换行。在 `init 1999 python` 中把这些样式改为 `unicode`。

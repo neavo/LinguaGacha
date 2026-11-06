@@ -1,3 +1,4 @@
+// 内置技能 `wolfrpg` 的「字体」一节复述本文件的修改规律，改动时同步更新。
 import assert from "node:assert/strict";
 import { encode_wolf_string, replace_wolf_slots } from "./binary";
 import { read_wolf_game } from "./game-data";

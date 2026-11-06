@@ -8,6 +8,7 @@ import type { bind_doing } from "../../tools/doing";
 export type AgentWorkspaceRuntimeApi = Readonly<{
   contract: AgentWorkspaceRuntimeContract;
   userSkillDirectory: string; // 应用级可写技能根，独立于工程快照
+  fontsDirectory: string; // 应用随附字体，只读
   emitImage: ReturnType<typeof bind_emit_image>;
   setDoing: ReturnType<typeof bind_doing>;
 }>;
@@ -15,12 +16,7 @@ export type AgentWorkspaceRuntimeApi = Readonly<{
 /** 装配已初始化的公开能力，冻结 `ws` 外壳以保护绑定关系。 */
 export function create_agent_workspace_runtime_api(
   contract: unknown,
-  user_skill_directory: string,
-  tools: Pick<AgentWorkspaceRuntimeApi, "emitImage" | "setDoing">,
+  members: Omit<AgentWorkspaceRuntimeApi, "contract">,
 ): AgentWorkspaceRuntimeApi {
-  return Object.freeze({
-    userSkillDirectory: user_skill_directory,
-    ...tools,
-    contract: create_workspace_contract(contract),
-  });
+  return Object.freeze({ ...members, contract: create_workspace_contract(contract) });
 }

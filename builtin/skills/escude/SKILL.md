@@ -1,6 +1,6 @@
 ---
 name: escude
-description: 翻译、审校、分析 Escude 游戏，或提取、写回、交付其中的文本前必须加载。
+description: 翻译、审校、分析、修改 Escude 游戏前必须加载。
 ---
 
 本技能只提供 Escude 引擎知识。导入、通用数据封装与写回按 `project-operation` 和 `generic-data` 执行，翻译与审校按 `translation` 执行。

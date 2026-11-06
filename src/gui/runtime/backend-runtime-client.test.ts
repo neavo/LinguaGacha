@@ -133,6 +133,7 @@ describe("BackendRuntimeClient", () => {
       defaultAppLanguage: "JA",
       builtinRoot: "E:/app.asar/builtin",
       workspaceRuntimeDirectory: "E:/runtime",
+      fontsDirectory: "E:/fonts",
     });
 
     const language = client.readAppLanguage();
@@ -335,6 +336,7 @@ function create_client(
       defaultAppLanguage: "JA",
       builtinRoot: "E:/app.asar/builtin",
       workspaceRuntimeDirectory: "E:/runtime",
+      fontsDirectory: "E:/fonts",
       resolveProxy: resolve_proxy,
       openDirectory: open_directory,
       pickSavePath: pick_save_path,

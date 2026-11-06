@@ -191,6 +191,7 @@ describe("run_gui_entry", () => {
       appRoot: process.cwd(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       workspaceRuntimeDirectory: path.join(process.cwd(), "build/dev/resources/workspace"),
+      fontsDirectory: path.join(process.cwd(), "public/fonts"),
     });
     expect(mocks.update_options).toEqual([
       {

@@ -867,6 +867,7 @@ function create_execution_runtime(
 ) {
   const execution = new AgentExecutionRuntime({
     runtimeDirectory: directory,
+    fontsDirectory: path.join(root, "fonts"),
     executablePath: electron_path,
     electronVersion: "45.0.0",
     paths: {

@@ -57,7 +57,9 @@ async function start_workspace_runtime(): Promise<void> {
   client.install_as_global_fetch();
   const contract: unknown = JSON.parse(await readFile("contract.json", "utf8"));
   Object.defineProperty(globalThis, "ws", {
-    value: create_agent_workspace_runtime_api(contract, start.userSkillDirectory, {
+    value: create_agent_workspace_runtime_api(contract, {
+      userSkillDirectory: start.userSkillDirectory,
+      fontsDirectory: start.fontsDirectory,
       emitImage: bind_emit_image(request_channel),
       setDoing: bind_doing(request_channel),
     }),

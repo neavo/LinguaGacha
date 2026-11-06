@@ -64,6 +64,13 @@ export const zh_cn_agent_page = {
         description: "保留译文的同时更新文件，适用于小说、游戏内容更新等场景",
         request: "请用以下文件更新工程中的对应文件，并保留已有译文：",
       },
+      change_game_font: {
+        description: "通过修改字体支持更多语言或获得更佳的显示效果",
+        font_file: "字体文件：",
+        game_path: "游戏路径：",
+        request:
+          "请将游戏修改为目标字体，遵循以下规则：\n1、没有指定字体文件时默认使用应用字体\n2、没有指定游戏路径时默认修改当前工程对应的游戏\n3、确实无法自主判断任务需求时，向用户提问",
+      },
       compact_context: {
         title: "压缩上下文",
         description: "压缩历史消息，释放可用上下文空间",

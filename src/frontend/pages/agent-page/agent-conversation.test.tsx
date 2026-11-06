@@ -757,27 +757,35 @@ describe("AgentConversation", () => {
     expect(request_generation).toHaveBeenCalledOnce();
   });
 
-  it("从 mention 菜单选择更新文件指令后预置草稿并选中路径占位行", async () => {
+  it.each([
+    [
+      "@update",
+      '@skill("project-operation")\nagent_page.mention.instructions.update_file.request\napp.agent_input.path_placeholder',
+    ],
+    [
+      "@change_game_font",
+      "agent_page.mention.instructions.change_game_font.font_file\napp.agent_input.path_placeholder\n\nagent_page.mention.instructions.change_game_font.game_path\napp.agent_input.path_placeholder\n\nagent_page.mention.instructions.change_game_font.request",
+    ],
+  ])("从 mention 菜单选择 %s 指令后预置草稿并选中首个路径占位行", async (query, draft) => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({ send });
     const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
     if (editor === null) throw new Error("缺少 Composer");
     await act(async () =>
       editor.dispatch({
-        changes: { from: 0, insert: "@update" },
-        selection: EditorSelection.cursor(7),
+        changes: { from: 0, insert: query },
+        selection: EditorSelection.cursor(query.length),
       }),
     );
     const instruction = view.querySelector<HTMLButtonElement>(
       '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
     );
-    if (instruction === null) throw new Error("缺少更新文件指令");
+    if (instruction === null) throw new Error("缺少预置草稿指令");
 
     await act(async () => instruction.click());
     const { from, to } = editor.state.selection.main;
-    expect(editor.state.doc.toString()).toBe(
-      '@skill("project-operation")\nagent_page.mention.instructions.update_file.request\napp.agent_input.path_placeholder',
-    );
+    expect(editor.state.doc.toString()).toBe(draft);
+    expect(from).toBe(draft.indexOf("app.agent_input.path_placeholder"));
     expect(editor.state.sliceDoc(from, to)).toBe("app.agent_input.path_placeholder");
     expect(send).not.toHaveBeenCalled();
   });
