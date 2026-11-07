@@ -84,7 +84,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       return result.canceled ? null : (result.paths[0] ?? null);
     },
     onUnexpectedExit: (error) => {
-      try_show_native_error_dialog("LinguaGacha 后端异常退出", error.message);
+      try_show_native_error_dialog("LinguaGacha backend exited unexpectedly", error.message);
       void quit_app_after_backend_shutdown(1);
     },
   });
@@ -193,7 +193,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       } catch (error) {
         exit_code = 1;
         try_show_native_error_dialog(
-          "LinguaGacha 退出失败 / Shutdown failed",
+          "LinguaGacha failed to shut down",
           error instanceof Error ? error.message : String(error),
         );
       } finally {
@@ -275,8 +275,8 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         }
       }
       try {
-        const message = error instanceof Error ? error.message : "Backend 启动失败。";
-        try_show_native_error_dialog("LinguaGacha 启动失败", message);
+        const message = error instanceof Error ? error.message : "The backend failed to start.";
+        try_show_native_error_dialog("LinguaGacha failed to start", message);
       } finally {
         await quit_app_after_backend_shutdown(1);
       }

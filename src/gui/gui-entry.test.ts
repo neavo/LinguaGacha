@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => {
   }
 
   return {
+    preferred_languages: vi.fn(() => ["fr-FR", "ja-JP"]),
     app_listeners,
     backend_instances,
     ready,
@@ -90,7 +91,7 @@ vi.mock("electron", () => ({
       mocks.app_listeners.set(event, listener);
     }),
     whenReady: vi.fn(() => Promise.resolve()),
-    getPreferredSystemLanguages: () => ["fr-FR", "ja-JP"],
+    getPreferredSystemLanguages: mocks.preferred_languages,
     exit: mocks.app_exit,
     quit: mocks.app_quit,
   },
@@ -139,6 +140,7 @@ describe("run_gui_entry", () => {
     mocks.backend_instances.length = 0;
     mocks.update_options.length = 0;
     vi.clearAllMocks();
+    mocks.preferred_languages.mockReturnValue(["fr-FR", "ja-JP"]);
     mocks.backend_start.mockResolvedValue(mocks.ready);
     mocks.backend_stop.mockResolvedValue(undefined);
     mocks.dispose_pdf.mockResolvedValue(undefined);
@@ -159,6 +161,7 @@ describe("run_gui_entry", () => {
   });
 
   it("代理配置失败阻止 Backend 启动并显示启动错误", async () => {
+    mocks.preferred_languages.mockReturnValue(["pt-PT"]);
     mocks.configure_proxy.mockRejectedValueOnce(new Error("LG_PROXY invalid"));
     const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     run_gui_entry({
@@ -169,11 +172,13 @@ describe("run_gui_entry", () => {
     expect(mocks.backend_start).not.toHaveBeenCalled();
     expect(mocks.create_main_window).not.toHaveBeenCalled();
     expect(mocks.show_native_error).toHaveBeenCalledWith(
-      "LinguaGacha 启动失败",
+      "LinguaGacha failed to start",
       "LG_PROXY invalid",
     );
     expect(stderr).toHaveBeenCalledWith("[startup] LG_PROXY invalid\n");
     expect(mocks.dispose_pdf).toHaveBeenCalledOnce();
+    expect(mocks.backend_read_language).not.toHaveBeenCalled();
+    stderr.mockRestore();
   });
 
   it("Backend ready 后以 Electron 默认会话装配更新器、IPC 和窗口", async () => {
@@ -337,12 +342,16 @@ describe("run_gui_entry", () => {
       });
       if (stage !== "launch") expect(mocks.launch_update).not.toHaveBeenCalled();
       expect(mocks.dispose_pdf).toHaveBeenCalledOnce();
-      expect(mocks.show_native_error).toHaveBeenCalled();
+      expect(mocks.show_native_error).toHaveBeenCalledWith(
+        "LinguaGacha failed to shut down",
+        stage === "launch" ? "launch failed" : "cleanup failed",
+      );
       expect(mocks.app_exit).toHaveBeenCalledExactlyOnceWith(1);
     },
   );
 
   it("Backend 意外退出时显示原生错误并走故障退出码", async () => {
+    mocks.preferred_languages.mockReturnValue(["pt-AO"]);
     run_gui_entry({
       desktopBundleDir: "E:/app/dist-electron",
       backendRuntimeWorkerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
@@ -356,6 +365,10 @@ describe("run_gui_entry", () => {
     on_unexpected_exit(new Error("worker gone"));
     await vi.waitFor(() => expect(mocks.app_exit).toHaveBeenCalledWith(1));
 
-    expect(mocks.show_native_error).toHaveBeenCalledWith(expect.any(String), "worker gone");
+    expect(mocks.show_native_error).toHaveBeenCalledWith(
+      "LinguaGacha backend exited unexpectedly",
+      "worker gone",
+    );
+    expect(mocks.backend_read_language).not.toHaveBeenCalled();
   });
 });
