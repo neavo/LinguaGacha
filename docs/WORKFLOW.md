@@ -110,8 +110,8 @@ Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处�
 |格式化脚本支持的文件变化|`npm run format -- --check <文件路径...>`|
 
 - 已运行 `npm run build` 时，使用其内置 TypeScript 检查结果。
-- `npm run typecheck` 使用固定版本的 `tsrs`，通过 `-b` 检查 renderer、node 和 test 三个项目，并复用各自的增量缓存。显式关闭 `--fast`，保持默认检查行为。声明契约测试使用同一编译器。
-- 升级 `tsrs` 时，对照其对应 TypeScript 版本的全量诊断，并验证增量检查、声明契约测试和构建。升级前后分别测量全量与增量耗时，避免把缓存失效计为日常开销。
+- `npm run typecheck` 使用 `tsrs`，通过 `-b` 检查 renderer、node 和 test 三个项目，并复用各自的增量缓存。显式关闭 `--fast`，保持默认检查行为。声明契约测试使用同一编译器。
+- 升级 `tsrs` 时，对照其对应 TypeScript 版本的全量诊断，并验证增量检查、声明契约测试和构建。
 - `tsrs` 当前提供 Windows x64 命令行包，尚不支持 Windows `--watch` 和项目本地编辑器 SDK。编辑器继续使用其现有 TypeScript 服务。
 - lint 包含前端 `react/only-export-components` 检查。
 - `npm run check` 覆盖分层、迁移、错误、文案和样式边界。
@@ -261,6 +261,8 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 Ren’Py 解析测试自动准备所需资源。发行解析资源使用下方 `prepare-worker.test.ts` 入口验证。
 
 根安装使用 `npm ci`，保证依赖来源可复现。
+
+npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它精确版本须有具体兼容理由。
 
 安装时保留 optional dependencies，`tsrs` 需要其中与构建宿主匹配的原生包。选择原生包依据宿主 Node 架构，与 Electron 的打包目标架构无关。
 
