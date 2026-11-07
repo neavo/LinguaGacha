@@ -54,25 +54,25 @@
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (GPU不要)
 - アプリケーションを起動し、`翻訳するファイル` をページにドラッグして、Enter を押すだけ！
 
-## 使い方チュートリアル - English 📝
-- Getting Started
-  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
-  - [File Format Support](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)
-- Model Setup
-  - [Model Management](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)
-- Feature Description
-  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/AgentEN)　　[Proofreading](https://github.com/neavo/LinguaGacha/wiki/ProofreadingEN)
-  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
-  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Advanced Features](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
-- Engine Best Practices
-  - [Best Practices for High-Quality Translation of Godot Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
-  - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
-  - [Best Practices for High-Quality Translation of Tyrano Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
-  - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
-  - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
-- Community Notes
-  - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
-- You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
+## 使い方チュートリアル 📝
+- はじめに
+  - [基本チュートリアル](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈 手順に沿って学べる、初心者必読のチュートリアル`
+  - [対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)
+- モデル設定
+  - [モデル管理](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)
+- 機能説明
+  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/AgentEN)　　[校正](https://github.com/neavo/LinguaGacha/wiki/ProofreadingEN)
+  - [用語集](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[テキスト保護](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[テキスト置換](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
+  - [MTool オプティマイザー](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[コマンドラインモード](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[高度な機能](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
+- エンジン別ガイド
+  - [Godot ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
+  - [RenPy ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
+  - [Tyrano ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
+  - [WOLFRPG ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
+  - [RPGMAKER ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
+- コミュニティの経験談
+  - [複雑な暗号化のない Kirikiri ゲームの機械翻訳メモ](https://github.com/neavo/LinguaGacha/discussions/181)
+- 各機能の詳しい説明は [Wiki](https://github.com/neavo/LinguaGacha/wiki) をご覧ください
 
 ## 対応フォーマット 🏷️
 | 種類 | 形式 | 説明 |
@@ -94,6 +94,10 @@
 | その他の形式の `ゲーム` `字幕` `電子書籍` | 任意 | `AGENT` が自動で識別・処理 |
 
 ## 最近の更新 📅
+- 20261107 v0.140.1
+  - UI 言語に `ポルトガル語` を追加 @gabriexlss
+  - 修正と改善
+
 - 20261105 v0.140.0
   - 新しく生まれ変わった `Native Harness` バージョン
   - `理論上` あらゆる `ゲーム` `字幕` `電子書籍` に対応

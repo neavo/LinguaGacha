@@ -91,6 +91,10 @@
 | `Spiele` `Untertitel` `E-Books` in anderen Formaten | Beliebig | Werden von `AGENT` automatisch erkannt und verarbeitet |
 
 ## Neueste Updates 📅
+- 20261107 v0.140.1
+  - `Portugiesisch` als UI-Sprache hinzugefügt @gabriexlss
+  - Fehlerbehebungen und Verbesserungen
+
 - 20261105 v0.140.0
   - Eine völlig neue `Native Harness`-Version
   - Unterstützt `theoretisch` alle `Spiele`, `Untertitel` und `E-Books`

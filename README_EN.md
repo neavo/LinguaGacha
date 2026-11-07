@@ -95,6 +95,10 @@
 | `Games` `subtitles` `e-books` in other formats | Any | Identified and processed by `AGENT` automatically |
 
 ## Recent Updates 📅
+- 20261107 v0.140.1
+  - Added `Portuguese` as a UI language @gabriexlss
+  - Fixes and improvements
+
 - 20261105 v0.140.0
   - An all-new `Native Harness` version
   - Supports `in theory` all `games`, `subtitles`, and `e-books`
