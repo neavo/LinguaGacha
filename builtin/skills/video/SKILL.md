@@ -14,27 +14,30 @@ description: 导入、识别、翻译、审校视频或音频，或生成视频�
 |`items.json`|字幕记录，下标是条目行号。`message` 为原文，`start`、`end` 为整片秒数，`kind` 为 `dialogue` 或 `screen`，可选 `an` 为画面位置（ASS 小键盘编号）。导入时为 `[]`|
 |`render.mjs`|可选，用户要求固定的定制渲染|
 
-包内不保存译文，译文只在工程条目中。脚本位于本技能的 `scripts/`，用 `read_skill` 返回的 `base_url` 定位：`media.py` 负责检查、切段、解析、合并与打包，`recognize.mjs` 负责逐段请求，`render.mjs` 是默认渲染。每个资产使用独立的工作目录 `work/video/<资产名>/`，目录结构与包相同。
+包内不保存译文，译文只在工程条目中。脚本位于本技能的 `scripts/`，用 `read_skill` 返回的 `base_url` 定位：`media.mjs` 负责检查、切段、解析、合并与打包，`recognize.mjs` 负责逐段请求，`render.mjs` 是默认渲染。每个资产使用独立的工作目录 `work/video/<资产名>/`，目录结构与包相同。
 
 流程与其他格式一致：导入只切段封装，不请求模型。识别属于翻译阶段，在用户要求翻译时执行。
 
 ## 导入
 
 ```js
-import { fileURLToPath } from 'node:url';
-import { uv } from '@lg/uv';
-const media = fileURLToPath(new URL('scripts/media.py', base_url));
-await uv.run(['add', 'imageio-ffmpeg==0.8.1', 'numpy==2.5.4', 'json-repair==0.64.6']);
-await uv.run(['run', 'python', media, 'inspect', 'D:/Videos/ep01.mkv']);
+import { npm } from '@lg/npm';
+await npm.run(['install', '--save-exact',
+  `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
+  'jsonrepair@3.15.0', 'jszip@3.10.2']);
+const media = await import(new URL('scripts/media.mjs', base_url).href);
+console.log(await media.inspect('D:/Videos/ep01.mkv'));
 ```
 
-`inspect` 输出时长、原画面尺寸和各类流。`video` 为 `null` 表示纯音频，封面图片不算画面。
+依赖缺失时执行上述安装。平台子包直接包含二进制。后续执行重新导入 `media.mjs`。用 `console.log` 查看函数返回的结果。
 
-- 有文本字幕流（如 `subrip`、`ass`、`mov_text`、`webvtt`）时，先用 `ask_user` 询问是否改为提取字幕。提取字幕比识别准确，用 ffmpeg 导出为 `.srt` 或 `.ass` 后按 `project-operation` 导入。图形字幕不是文本，不能直接提取。
-- 有多条音轨时，请用户选择。`prepare` 的 `--track` 是 `audio` 列表中从零开始的位置。
+`inspect` 返回时长、原画面尺寸和各类流。`video` 为 `null` 表示纯音频，封面图片不算画面。
 
-1. 运行 `media.py prepare <来源> work/video/<资产名> --track <音轨>`。脚本按停顿切成不超过 210 秒的分段并转码，纯音频补黑色画面。中断后用同一命令续跑。
-2. 运行 `media.py pack work/video/<资产名> work/video/<原视频主名>.video`。包超过 900 MiB 时，请用户先拆分原素材。
+- 有文本字幕流（如 `subrip`、`ass`、`mov_text`、`webvtt`）时，先用 `ask_user` 询问是否改为提取字幕。提取字幕比识别准确，用 `media.ffmpeg(['-i', 来源, '-map', 流编号, 输出路径])` 导出为 `.srt` 或 `.ass` 后按 `project-operation` 导入。图形字幕不是文本，不能直接提取。
+- 有多条音轨时，请用户选择。`prepare` 的 `track` 是 `audio` 列表中从零开始的位置。
+
+1. 调用 `await media.prepare(来源, 'work/video/<资产名>', { track: 音轨 })`。脚本按停顿切成不超过 210 秒的分段并转码，纯音频补黑色画面。中断后用相同参数续跑。旧 Python 导入半成品需要新工作目录。已完成的分段、响应和修正行仍可用于识别与提交。
+2. 调用 `await media.pack('work/video/<资产名>', 'work/video/<原视频主名>.video')`。包超过 900 MiB 时，请用户先拆分原素材。
 3. 按 `project-operation` 新增该资产。识别前回执的条目数为 0。
 
 ## 识别
@@ -45,7 +48,7 @@ await uv.run(['run', 'python', media, 'inspect', 'D:/Videos/ep01.mkv']);
 
 ### 提示词
 
-基线模板如下。输出格式是 `media.py parse` 的解析契约，保持每行一个对象及 `start`、`end`、`kind`、`src`、`dst` 字段。其余要求按内容调整，例如节目类型、说话人、画面文字取舍。需要区分说话人时可以要求输出字符串字段 `name`，它成为条目的姓名。语言取自 `project_meta.json`，写成语言名称。术语取自 `glossary` 数据集，每项保留 `src` 与 `dst`，没有术语时写 `[]`。
+基线模板如下。输出格式是 `media.parse` 的解析契约，保持每行一个对象及 `start`、`end`、`kind`、`src`、`dst` 字段。其余要求按内容调整，例如节目类型、说话人、画面文字取舍。需要区分说话人时可以要求输出字符串字段 `name`，它成为条目的姓名。语言取自 `project_meta.json`，写成语言名称。术语取自 `glossary` 数据集，每项保留 `src` 与 `dst`，没有术语时写 `[]`。
 
 ```text
 为这段视频生成双语字幕。原文语言：{原文语言}。译文语言：{译文语言}。
@@ -73,7 +76,7 @@ await recognize('work/video/ep01', { prompt });
 
 ### 质控
 
-运行 `media.py parse <工作目录>`。脚本把每段响应换算为整片时间，写入 `NNN.rows.json`，已存在的文件保留不覆盖，修正直接改这个文件。随后输出每段的事实：
+调用 `console.log(await media.parse(工作目录))`。脚本把每段响应换算为整片时间，写入 `NNN.rows.json`，已存在的文件保留不覆盖，修正直接改这个文件。返回的质控摘要包含：
 
 |字段|含义|
 |---|---|
@@ -85,14 +88,14 @@ await recognize('work/video/ep01', { prompt });
 这些只是事实，由你结合内容判断如何处理：
 
 - 阅读识别结果，核对原文与译文是否对应，否定、数字、人名和因果是否一致，`dialogue` 与 `screen` 是否混淆，是否有复读、时间越界或错位。分段交界处可能有被切开或重复的句子和画面文字，合并为一行。
-- 需要看画面时，用 `imageio_ffmpeg.get_ffmpeg_exe()` 从 `segments/NNN.mp4` 截帧，再用 `ws.emitImage` 查看。分段内时间是整片时间减去该段 `start`。小字仍看不清时从原素材截帧。
+- 需要看画面时，用 `await media.ffmpeg(['-ss', String(分段内秒数), '-i', 分段路径, '-frames:v', '1', 输出图片路径])` 从 `segments/NNN.mp4` 截帧，再用 `ws.emitImage` 查看。分段内时间是整片时间减去该段 `start`。小字仍看不清时从原素材截帧。
 - 只依据画面、上下文或用户提供的证据修改。不能凭剧情常识补写台词或反转否定。无法确认的内容列为待确认项告诉用户。
 - 局部问题直接改 `NNN.rows.json`。整段质量差时重新请求该段，必要时调整提示词。重新请求会产生费用，同一分段反复不理想时，用 `ask_user` 说明问题再决定。
 
 ### 提交
 
-1. 运行 `media.py items <工作目录>`。脚本合并各段的行，写出 `items.json` 和 `translations.json`。后者保存识别译文，不进包。
-2. 运行 `media.py pack <工作目录> work/video/<原视频主名>.video`。
+1. 调用 `console.log(await media.items(工作目录))`。脚本合并各段的行，写出 `items.json` 和 `translations.json`。后者保存识别译文，不进包。
+2. 调用 `await media.pack(工作目录, 'work/video/<原视频主名>.video')`。
 3. 按 `project-operation` 的「更新文件」提交并继承译文。继承保留原文未变条目的已有译文。之后按 `row_number` 找到仍未完成的条目，确认 `src` 一致，用当前 `item_id` 和 `fp` 把 `translations.json` 中非空的 `dst` 写入 `changes.items`。
 4. 核对被拒绝的条目和完成统计。
 
