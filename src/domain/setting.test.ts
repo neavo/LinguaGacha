@@ -11,6 +11,23 @@ import { Check } from "typebox/value";
 
 describe("设置快照", () => {
   it.each([
+    ["builtin:01_文言文风格.txt", ""],
+    ["builtin:01_pre_modern_style.txt", ""],
+    ["builtin:02_文学措辞风格.txt", ""],
+    ["builtin:02_literary_diction_style.txt", ""],
+    ["user:01_文言文风格.txt", "user:01_文言文风格.txt"],
+    ["builtin:fixture.txt", "builtin:fixture.txt"],
+  ])("清理已移除的内置文风默认引用，保留其他选择：%s", (preset, expected) => {
+    const input = { translation_custom_prompt_default_preset: preset };
+    expect(Setting.from_json(input).to_json()["translation_custom_prompt_default_preset"]).toBe(
+      expected,
+    );
+    expect(normalize_setting_snapshot(input).translation_custom_prompt_default_preset).toBe(
+      expected,
+    );
+  });
+
+  it.each([
     [{}, "JA"],
     [{ app_language: "ZH" }, "ZH"],
     [{ app_language: "unknown" }, "ZH"],

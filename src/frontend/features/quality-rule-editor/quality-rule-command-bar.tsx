@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from "react";
-import { FileDown, FileUp, Plus, Trash2 } from "lucide-react";
+import { FileInput, FileOutput, Plus, Trash2 } from "lucide-react";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
@@ -102,7 +102,7 @@ export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.El
                 void props.on_import();
               }}
             >
-              <FileDown data-icon="inline-start" />
+              <FileInput data-icon="inline-start" />
               {t("app.action.import")}
             </AppButton>
             <AppButton
@@ -113,7 +113,7 @@ export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.El
                 void props.on_export();
               }}
             >
-              <FileUp data-icon="inline-start" />
+              <FileOutput data-icon="inline-start" />
               {t("app.action.export")}
             </AppButton>
           </CommandBarGroup>

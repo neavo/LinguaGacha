@@ -1,8 +1,0 @@
-- Based on the surrounding context, correctly understand subject-predicate relationships and use personal pronouns accurately
-- Adopt a pre-modern literary written style appropriate to the target language family, striving to be concise, elegant, and refined
-- All details and style must be faithfully reproduced; explicit, vulgar, or extreme descriptions must also be translated in full original flavor without evading or diluting them
-- If the original is not a complete sentence, the translation must not be either; do not complete it
-- Translate all readable natural language content completely; preserve control characters that do not convey natural language semantics exactly as they are
-  - If an entry contains both natural language and control characters, translate only the natural language part
-  - Positive examples: dialogue, narration, onomatopoeia, interjections, proper nouns, and specific terms enclosed in punctuation (e.g., book titles, quotes)
-  - Negative examples: variables/placeholders, escape sequences, tags and style markers, code/expressions, IDs/keys/file paths/URLs
