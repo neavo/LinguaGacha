@@ -13,6 +13,7 @@ const skills = [
       "de-DE": "Glossar prüfen",
       "ja-JP": "用語を校正",
       "ko-KR": "용어 교정",
+      "pt-BR": "Revisar glossário",
     },
   },
 ];

@@ -5,6 +5,7 @@ export const APP_LANGUAGE_DEFINITIONS = [
   { code: "KO", locale: "ko-KR", name: "한국어" },
   { code: "EN", locale: "en-US", name: "English" },
   { code: "DE", locale: "de-DE", name: "Deutsch" },
+  { code: "PT", locale: "pt-BR", name: "Português (Brasil)" },
 ] as const;
 
 export type AppLanguage = (typeof APP_LANGUAGE_DEFINITIONS)[number]["code"];

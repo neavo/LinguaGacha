@@ -81,6 +81,7 @@ const TEST_SKILLS: AgentChatSnapshot["skills"] = [
       "de-DE": "Glossar prüfen",
       "ja-JP": "Glossar prüfen",
       "ko-KR": "Glossar prüfen",
+      "pt-BR": "Revisar glossário",
     },
   },
   {
@@ -91,6 +92,7 @@ const TEST_SKILLS: AgentChatSnapshot["skills"] = [
       "de-DE": "Korpus durchsuchen",
       "ja-JP": "Korpus durchsuchen",
       "ko-KR": "Korpus durchsuchen",
+      "pt-BR": "Pesquisar corpus",
     },
   },
 ];

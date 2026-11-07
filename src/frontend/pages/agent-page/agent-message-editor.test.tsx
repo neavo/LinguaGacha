@@ -83,6 +83,7 @@ const skills = [
       "de-DE": "Glossar prüfen",
       "ja-JP": "Glossar prüfen",
       "ko-KR": "Glossar prüfen",
+      "pt-BR": "Revisar glossário",
     },
   },
   {
@@ -93,6 +94,7 @@ const skills = [
       "de-DE": "Korpus durchsuchen",
       "ja-JP": "Korpus durchsuchen",
       "ko-KR": "Korpus durchsuchen",
+      "pt-BR": "Pesquisar corpus",
     },
   },
 ];
@@ -329,6 +331,7 @@ describe("AgentMessageEditor", () => {
             "de-DE": "",
             "ja-JP": "",
             "ko-KR": "",
+            "pt-BR": "",
           },
         })),
       });

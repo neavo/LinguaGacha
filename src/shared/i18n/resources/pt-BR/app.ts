@@ -1,0 +1,307 @@
+import { zh_cn_app } from "../zh-CN/app";
+import type { LocaleMessageSchema } from "../../types";
+
+export const pt_br_app = {
+  godot_pack_order: {
+    title: "Prioridade do pacote de recursos",
+    description:
+      "Pacotes de recursos posteriores substituem recursos de mesmo nome em pacotes anteriores",
+  },
+  game_backup_warning: "Faça um backup de todo o diretório do jogo antes de prosseguir …!",
+  media: {
+    zoom_out: "Diminuir zoom",
+    zoom_in: "Aumentar zoom",
+    reset_zoom: "Redefinir zoom",
+  },
+  metadata: {
+    app_name: "LinguaGacha",
+  },
+  model: {
+    catalog_updated: "Banco de dados de modelos atualizado",
+    type: {
+      preset: "Modelos Pré-definidos",
+      google: "Modelos Google Personalizados",
+      openai: "Modelos OpenAI Personalizados",
+      openai_responses: "Modelos OpenAI Responses Personalizados",
+      anthropic: "Modelos Anthropic Personalizados",
+    },
+    selection: {
+      label: "Selecionar modelo",
+      unavailable: "Nenhum modelo disponível",
+    },
+    thinking_level: {
+      default: "Manter padrão",
+      default_description:
+        "Não envia dados de nível de reflexão; segue a configuração padrão da plataforma",
+      off: "Desativado",
+      low: "Baixo",
+      medium: "Médio",
+      high: "Alto",
+      xhigh: "Muito Alto",
+      max: "MÁXIMO",
+    },
+  },
+  action: {
+    move_to_top: "Mover para o Topo",
+    move_to_bottom: "Mover para o Final",
+    add: "Adicionar",
+    cancel: "Cancelar",
+    confirm: "Confirmar",
+    close: "Fechar",
+    create: "Criar",
+    delete: "Excluir",
+    edit: "Editar",
+    export: "Exportar",
+    import: "Importar",
+    preset: "Predefinição",
+    reset: "Redefinir",
+    retry: "Tentar novamente",
+    save: "Salvar",
+    skip: "Ignorar",
+    overwrite: "Substituir",
+    replace: "Substituir",
+    handle_with_agent: "Processar com AGENTE",
+    loading: "Carregando",
+    select_file: "Selecionar Arquivo",
+    select_folder: "Selecionar Pasta",
+  },
+  feedback: {
+    activate_link: "Falha ao processar o link …",
+    load_failed: "Falha ao carregar …",
+    refresh_failed: "Falha ao atualizar …",
+    query_failed: "Falha na consulta …",
+    modify_failed: "Falha na alteração …",
+    create_failed: "Falha na criação …",
+    delete_failed: "Falha na exclusão …",
+    rename_failed: "Falha ao renomear …",
+    import_failed: "Falha na importação …",
+    export_failed: "Falha na exportação …",
+    copy_failed: "Falha ao copiar …",
+    read_failed: "Falha na leitura …",
+    operation_running: "Executando operação …",
+    operation_success: "Operação bem-sucedida …",
+    operation_failed: "Operação falhou …",
+    content_unavailable: "Conteúdo indisponível",
+    save_failed: "Falha ao salvar …",
+    model_request_failed: "Falha na requisição ao modelo …",
+    validation_failed: "Parâmetros de requisição inválidos",
+    initial_load_failed: "Não foi possível carregar os dados do aplicativo. Tente novamente …",
+    export_success: "Dados exportados com sucesso",
+    import_success: "Dados importados com sucesso",
+    no_valid_data: "Nenhum dado válido",
+    update_failed: "Falha na atualização …",
+    project_settings_aligned: "Configurações do projeto sincronizadas com as configurações atuais",
+  },
+  error_boundary: {
+    eyebrow: "Ambiente do Renderizador",
+    title: "Erro em tempo de execução da página",
+    description:
+      "Esta janela alternou para a visualização protegida e os detalhes do erro foram salvos nos registros …",
+  },
+  project_settings_alignment: {
+    field: {
+      mtool_optimizer_enable: "Otimizador MTool",
+      skip_duplicate_source_text_enable: "Ignorar texto original duplicado",
+    },
+  },
+  close_confirm: {
+    description: "Confirma o encerramento do aplicativo …?",
+  },
+  quality_rule_import: {
+    duplicate_description: "{COUNT} regras duplicadas foram detectadas. Escolha como tratá-las …",
+  },
+  update: {
+    action: "Atualizar",
+    restart_confirm: "Reiniciar e Atualizar",
+    launching: "Processando …",
+  },
+  drop: {
+    select_multiple_unavailable: "Apenas um arquivo ou pasta pode ser solto por vez",
+    select_unavailable:
+      "O caminho local do arquivo solto está indisponível no momento. Use o seletor de arquivos …",
+    multiple_unavailable: "Apenas um arquivo pode ser solto por vez",
+    unavailable:
+      "O caminho local do arquivo solto está indisponível no momento. Use o seletor de importação …",
+    import_here: "Solte para importar o arquivo de regras",
+  },
+  toggle: {
+    option: {
+      disabled: "DESLIGADO",
+      enabled: "LIGADO",
+    },
+  },
+  state: {
+    disabled: "Desativado",
+    enabled: "Ativado",
+  },
+  editor: {
+    line_wrap: "Quebra automática de linha",
+  },
+  tooltip: {
+    value: "{TITLE} · {VALUE}",
+  },
+  drag: {
+    enabled: "Arraste para reordenar",
+    disabled: "Arrasto desativado",
+    handle: "Arrastar",
+  },
+  language: {
+    ALL: "Todos",
+    ZH: "Chinês",
+    "ZH-HANT": "Chinês Tradicional",
+    EN: "Inglês",
+    JA: "Japonês",
+    KO: "Coreano",
+    RU: "Russo",
+    AR: "Árabe",
+    DE: "Alemão",
+    FR: "Francês",
+    PL: "Polonês",
+    ES: "Espanhol",
+    IT: "Italiano",
+    PT: "Português",
+    HU: "Húngaro",
+    TR: "Turco",
+    TH: "Tailandês",
+    ID: "Indonésio",
+    VI: "Vietnamita",
+  },
+  navigation_action: {
+    expand_sidebar: "Expandir barra lateral",
+    collapse_sidebar: "Recolher barra lateral",
+    appearance: "Aparência",
+    font: "Fonte",
+    font_size: "Tamanho da fonte",
+    font_size_option: { normal: "Padrão", larger: "Fonte maior", largest: "Fonte máxima" },
+    font_option: {
+      lg_base: "LGBase",
+      system: "Fonte do Sistema",
+    },
+    theme: "Tema",
+    theme_option: {
+      system: "Seguir o Sistema",
+      light: "Claro",
+      dark: "Escuro",
+    },
+    language: "Idioma",
+    logs: "Registros",
+  },
+  profile: {
+    status: "Ciallo～(∠・ω< )⌒✮",
+    status_tooltip: "Página inicial",
+    update_available: "Baixar nova versão …!",
+    update_available_tooltip: "Abrir janela de confirmação de atualização",
+  },
+  prompt: {
+    source: "Origem",
+    builder_control_character_samples: "Exemplos de caracteres de controle (manter como estão):",
+    builder_glossary_header:
+      "Glossário (aplicar conforme o contexto e nota do termo) <Termo Original> -> <Termo Traduzido> #<Nota do Termo>:",
+    builder_input: "Entrada (traduza cada entrada, mantendo as quebras de linha internas):",
+    builder_preceding_context: "Contexto anterior (apenas para referência):",
+    builder_following_context: "Contexto posterior (apenas para referência):",
+  },
+  agent_input: {
+    steps_intro: "Siga estas etapas:",
+    path_placeholder: "[Insira os caminhos dos arquivos aqui ou arraste arquivos]",
+    steps: {
+      glossary: "Extrair terminologias",
+      translate: "Traduzir o texto completo",
+      review: "Revisar a tradução",
+      generate: "Gerar todas as traduções",
+    },
+  },
+  translation_generation: {
+    agent_request: "Ajude-me a gerar todas as traduções",
+    action: "Gerar Tradução",
+    confirmation: {
+      generic_description:
+        "Este projeto contém pacotes de dados genéricos. Use o AGENTE para gerar todas as traduções. A geração direta ignorará esses pacotes.",
+      description: "Confirma a geração dos arquivos de tradução disponíveis no momento …?",
+      checking: "Verificando arquivos do projeto e avisos de revisão …",
+      check_failed:
+        "Não foi possível verificar os arquivos do projeto ou avisos de revisão. Você ainda pode gerar as traduções atuais …",
+      warning_description:
+        "Detectados {COUNT} avisos de revisão. Avisos não indicam necessariamente erros, mas recomendamos executar ao menos uma revisão automática com o AGENTE antes. Continuar gerando a tradução …?",
+      retry_check: "Verificar Novamente",
+      generate_directly: "Gerar Diretamente",
+    },
+    directory: {
+      translated: "Traduzido",
+      bilingual: "Traduzido_Bilingue",
+    },
+    log: {
+      started: "Gerando arquivos de tradução …",
+      succeeded: "Arquivos de tradução gerados com sucesso …",
+      failed: "Falha na geração dos arquivos de tradução …",
+      open_output_folder_failed: "Falha ao abrir a pasta de saída …",
+    },
+  },
+  native_file_filter: {
+    project: "Projeto LinguaGacha",
+    supported_json_xlsx_files: "Arquivos suportados (*.json *.xlsx)",
+    json_files: "Arquivos JSON (*.json)",
+    excel_files: "Arquivos Excel (*.xlsx)",
+    supported_txt_files: "Arquivos suportados (*.txt)",
+    font_files: "Arquivos de fonte (*.ttf)",
+    executable_files: "Arquivos executáveis (*.exe)",
+  },
+  diagnostic: {
+    agent: {
+      web_search_provider_failed: "Falha na requisição ao provedor de busca na web …",
+      skill_load_failed: "Falha no carregamento de habilidade do agente …",
+    },
+    api_gateway: {
+      direct_route_failed: "Falha no processamento de rota direta do API Gateway …",
+    },
+    default_preset: {
+      prompt_load_failed: "Falha ao carregar predefinição de prompt padrão …",
+      quality_rule_load_failed: "Falha ao carregar predefinição de regras de qualidade padrão …",
+    },
+    lifecycle: {
+      app_start_failed: "Falha ao iniciar o LinguaGacha …",
+      backend_gateway_start_failed: "Falha na inicialização do Backend / Gateway …",
+      main_fatal_uncaught:
+        "Processo principal do Electron capturou uma exceção fatal não tratada …",
+    },
+    renderer: {
+      main_frame_load_failed: "Falha ao carregar quadro principal do renderizador …",
+      process_exited: "Processo do renderizador encerrado …",
+      reported_error: "Renderizador capturou um erro de estado do frontend …",
+      subframe_load_failed: "Falha ao carregar subquadro do renderizador …",
+      window_unresponsive: "A janela parou de responder …",
+    },
+  },
+  log: {
+    api_test_fail: "Falha no teste de API …",
+    api_test_key: "Chave em teste:",
+    api_test_messages: "Prompts da tarefa:",
+    api_test_result: "Testadas {COUNT} APIs no total: {SUCCESS} com sucesso, {FAILURE} com falha …",
+    api_test_result_failure: "Chaves que falharam:",
+    api_test_response_result: "Resposta do Modelo:",
+    api_test_timeout: "Tempo limite da requisição esgotado ({SECONDS}s)",
+    api_test_token_info:
+      "Tempo da tarefa: {TIME} segundos, tokens de entrada {PT}, tokens de raciocínio {RT}, tokens de saída {CT}",
+    app_version: "LinguaGacha v{VERSION} …",
+    default_preset_loaded: "Predefinições padrão carregadas automaticamente: {NAMES} …",
+    engine_api_model: "Modelo de API",
+    engine_api_name: "Nome da API",
+    engine_api_url: "URL da API",
+    engine_task_done: "Tarefa concluída …",
+    engine_task_fail:
+      "A tarefa não foi concluída; alguns dados permanecem não processados. Verifique os resultados …",
+    engine_task_rule_analysis: "Análise de Regras:",
+    engine_task_thinking_process: "Processo de Reflexão:",
+    engine_task_stop: "Tarefa interrompida …",
+    engine_task_success:
+      "Tempo da tarefa: {TIME} segundos, {LINES} linhas de texto, tokens de entrada {PT}, tokens de raciocínio {RT}, tokens de saída {CT}",
+    model_response_invalid: "O modelo retornou dados inválidos …",
+    request_failed: "Falha na requisição: {ERROR} …",
+    request_timeout: "Tempo limite da requisição de rede esgotado",
+    system_closed_dropped: "Sistema de registros desligado; descartando novo registro: {MESSAGE}",
+    translation_task_result: "Resultado da Tradução:",
+    translation_response_partially_invalid: "Algumas traduções falharam na validação …",
+  },
+  sort: { ascending: "Crescente", descending: "Decrescente", clear: "Limpar ordenação" },
+  language_role: { source: "Idioma de Origem", target: "Idioma de Destino" },
+} satisfies LocaleMessageSchema<typeof zh_cn_app>;

@@ -15,6 +15,7 @@ describe("应用语言", () => {
     ["DE", "de-DE", "en"],
     ["JA", "ja-JP", "en"],
     ["KO", "ko-KR", "en"],
+    ["PT", "pt-BR", "en"],
   ] as const)("%s 统一投影到界面和提示词资源语言", (app_language, locale, prompt_language) => {
     expect(resolve_app_locale(app_language)).toBe(locale);
     expect(resolve_prompt_template_language(app_language)).toBe(prompt_language);
@@ -31,6 +32,7 @@ describe("应用语言", () => {
     expect(resolve_app_language_from_locale_tag("ko-KR")).toBe("KO");
     expect(resolve_app_language_from_locale_tag("de-DE")).toBe("DE");
     expect(resolve_app_language_from_locale_tag("en-US")).toBe("EN");
+    expect(resolve_app_language_from_locale_tag("pt-BR")).toBe("PT");
     expect(resolve_app_language_from_locale_tag("fr-FR")).toBe("ZH");
   });
 
@@ -41,6 +43,8 @@ describe("应用语言", () => {
     [["en-GB", "ja-JP"], "en-US"],
     [["fr-FR", "ja-JP"], "ja-JP"],
     [["ko-KR", "ja-JP"], "ko-KR"],
+    [["pt-BR"], "pt-BR"],
+    [["pt-PT"], "pt-BR"],
     [["fr-FR"], "en-US"],
     [[], "en-US"],
   ] as const)("系统偏好 %j 选择发行包支持的 %s", (preferred_languages, locale) => {
