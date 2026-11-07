@@ -26,14 +26,17 @@ description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必�
 |来源|特征|处理|
 |---|---|---|
 |`MonoBehaviour` 序列化字段|对白表、本地化表、技能与物品数据等，通常是正文主体|按字段提取|
-|`TextMeshProUGUI`、`Text` 的 `m_text`|界面静态文字|运行时代码可能覆盖显示内容，抽样核对消费代码|
+|`TextMeshProUGUI` 的 `m_text`|TextMeshPro 界面静态文字|运行时代码可能覆盖显示内容，抽样核对消费代码|
+|`UnityEngine.UI.Text` 的 `m_Text`|旧版 UI 界面静态文字，字段名首字母大写|同上|
 |`TextAsset` 的 `m_Script`|CSV、JSON 或自定义脚本，也可能是图片差分等二进制数据|按内容格式处理，零星源语言字符不能证明是正文|
-|程序集硬编码字符串|Mono 在 `Assembly-CSharp.dll` 的 `#US` 字符串堆，IL2CPP 在 `global-metadata.dat`|写回需要修改程序集或元数据。与资源中相同的文案是另一个写回位置，分别记录|
+|程序集硬编码字符串|Mono 在 `Assembly-CSharp.dll` 的 `#US` 字符串堆，IL2CPP 在 `global-metadata.dat`|按引用位置判断用途，见下文|
 |贴图|图片中的文字|不处理|
 
 本地化表常为每个键保存多种语言的值，语言编号不是跨游戏的标准。从实际记录确认源语言对应的编号，提取该语言的值并写回同一位置。
 
 同名资源可能同时存在于主资源、`sharedassets` 和 Addressables 资源包中。沿实际加载链路确认生效的实例再提取。
+
+字符串堆只保存字面量，不能说明哪些内容用于显示，含源语言文字的字面量也可能是日志或资源键。Mono 从方法体的 `ldstr` 指令找到每处引用，IL2CPP 在 `GameAssembly.dll` 中定位引用代码。记录程序集、类型、方法和指令位置，再按消费代码判断用途。同一字面量兼作键和显示文本时，按 `generic-data` 保留原值，在显示调用点处理。写回需要修改程序集或元数据，与资源中相同的文案是另一个写回位置，分别记录。
 
 # 定位与解析
 
@@ -41,7 +44,7 @@ description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必�
 
 ## 读取入口
 
-所有 Unity 处理脚本在首次读取类型树前导入 [scripts/typetree.py](scripts/typetree.py) 模块统一关闭当前进程的 C 类型树读取器，使用 Python 路径，以解决兼容性带来的速度问题。
+使用 [scripts/typetree.py](scripts/typetree.py) 读取 `MonoBehaviour`，统一修复生成节点并核对对象头部。读取沿用 UnityPy 默认路径，支持 C 扩展的环境使用 C 加速器。
 
 从本技能 `read_skill` 返回的 `base_url` 复制脚本到任务 Python 脚本所在目录。包内写回程序依赖它时，一并放入 `.generic` 包，按 `generic-data` 保留依赖版本。
 
@@ -51,7 +54,7 @@ await mkdir('work/py', { recursive: true });
 await copyFile(new URL('scripts/typetree.py', base_url), 'work/py/typetree.py');
 ```
 
-`read_monobehaviour(obj, generated_nodes=None)` 优先读取资源自带的完整类型树。资源缺少类型树时，传入生成节点，函数先修复再读取。函数保留完整长度检查，并将脚本引用与独立解析的对象头部核对。返回值是 `(tree, nodes)`，写回复用返回的节点。资源自带类型树读取失败时保留错误，先调查失败原因。
+`read_monobehaviour` 优先读取资源自带的完整类型树。资源缺少类型树时，传入生成节点，函数先修复再读取。函数保留完整长度检查，并将脚本引用与独立解析的对象头部核对。返回值是 `(tree, nodes)`，写回复用返回的节点。资源自带类型树读取失败时保留错误，先调查失败原因。
 
 ## 对象定位
 
@@ -70,21 +73,23 @@ await copyFile(new URL('scripts/typetree.py', base_url), 'work/py/typetree.py');
 
 ### 生成类型树的已知缺陷
 
-以下问题已在 Unity 6000.0、Mono、UnityPy 1.25.4、`TypeTreeGeneratorAPI` 0.0.10 的样本上确认，其他版本或 IL2CPP 构建需先用样本核验。
+以下问题已在 UnityPy 1.25.4、`TypeTreeGeneratorAPI` 0.0.10 的样本上确认，其他版本或 IL2CPP 构建需先用样本核验。
 
 - 列表类型名：生成 `List<string>` 等列表时，外层节点的类型名被写成元素类型，例如 `string`。UnityPy 按单个值读取该节点，后续数据全部错位。症状是同一个类的部分对象解析成功，其余对象报 `Negative length read from TypeTree`、`read_str out of bounds` 或读取长度不符。列表恰好为空的对象能够成功，因为空列表与空字符串的字节相同。
 - 头部对齐：生成节点的根级 `m_Enabled` 缺少 4 字节对齐标记，读出的 `m_Script` 是错误值。按同一错误布局重新序列化仍可能得到相同字节，因此需要与 `parse_monobehaviour_head()` 的结果核对。
-- 多态引用：使用 `[SerializeReference]` 的样本含 `m_Type` 为 `managedReference` 或 `ManagedReferencesRegistry` 的节点，后者的 `m_Name` 可以是 `references`。当前生成节点无法正确读取这些样本。关闭 C 读取器只缩短失败耗时，仍需调查类型信息和字段布局。
+- 不参与序列化的字段：生成器会把 Unity 不序列化的字段加入类型树。已确认的是多维数组，例如 `Node[,] grid` 生成为单个 `Node grid` 节点，节点本身无法区分。症状是同类对象全部读取失败。从程序集字段签名确认字段不参与序列化后，将字段路径传给 `unserialized_fields`。按序列化规则判断，不按游戏类名维护特例，也不放宽完整长度检查。
+- 多态引用：使用 `[SerializeReference]` 的样本含 `m_Type` 为 `managedReference` 或 `ManagedReferencesRegistry` 的节点，后者的 `m_Name` 可以是 `references`。当前生成节点无法正确读取这些样本，需单独调查类型信息和字段布局。
 
-`read_monobehaviour` 内部调用 `repair_generated_tree(root)`，在独立节点中修复列表类型名和头部对齐。原节点保持原值，其他节点属性保留。发现多态引用时抛出 `NotImplementedError`。C 读取器开关使用 UnityPy 内部接口，升级依赖或处理其他版本、构建方式时，先核验代表样本。
+`read_monobehaviour` 内部调用 `repair_generated_tree(root, unserialized_fields)`，在独立节点中修复列表类型名和头部对齐，并删除调用者确认不参与序列化的字段。字段路径从根节点的子字段开始以 `.` 连接，例如 `settings.cells`，未命中时报错。资源自带类型树时不使用该参数。原节点保持原值，其他节点属性保留。发现多态引用时抛出 `NotImplementedError`。升级依赖或处理其他版本、构建方式时，先核验代表样本。
 
 ```python
 from typetree import read_monobehaviour
 
 generated = None
+unserialized = ()  # 按程序集签名确认不参与序列化的字段路径，例如 ("grid",)。
 if obj.serialized_type is None or obj.serialized_type.node is None:
     generated = generator.get_nodes_up(assembly, fullname)
-tree, nodes = read_monobehaviour(obj, generated)
+tree, nodes = read_monobehaviour(obj, generated, unserialized)
 # 修改已确认的显示字段后，读取和写回使用同一节点。
 changed_bytes = obj.save_typetree(tree, nodes=nodes)
 ```
@@ -93,13 +98,19 @@ changed_bytes = obj.save_typetree(tree, nodes=nodes)
 
 确认可翻译类型与字段后，检查同类对象和字段的完整集合，每个待提取对象都需读取成功。字符扫描只用于发现入口，纯汉字、拉丁字母或符号组成的显示文本也可能需要处理。多语言表按已确认的语言编号选择记录。
 
-按字段用途区分显示文本、资源键和开发备注。统计归组时保留字段名，只把数组下标归一化，避免把 `Text`、`Name` 和控制字段合并后丢失判断依据。未命中的类型按 `generic-data` 抽样核对，解析失败的对象记录容器、文件、`path_id`、类型和原因。
+按字段用途区分显示文本、资源键和开发备注。统计归组时保留字段名，只把数组下标归一化，避免把 `Text`、`Name` 和控制字段合并后丢失判断依据。候选对象按 `generic-data` 的全量清单归类，清单条目使用完整对象身份。未命中的类型给出排除依据，解析失败的对象记录容器、文件、`path_id`、类型和原因。
 
 # 写回与验证
 
 序列化字符串包含长度、UTF-8 正文和对齐填充。译文长度改变会移动后续数据，使用 `save_typetree` 按已验证的类型树重新序列化对象。
 
-同一容器中的文本放在同一个通用数据包里共同写回，分开打包会相互覆盖。修改后保存整个容器，核对压缩方式与原文件一致。按 `generic-data` 验证真实文本变化，重新加载后用完整对象身份读回目标字段、同一对象的其他字段和脚本引用。抽样比较未修改对象的原始字节。资源读回成功只证明样本结构有效，运行时加载与显示仍需按本次改动核验。
+同一容器中的文本放在同一个通用数据包里共同写回，分开打包会相互覆盖。修改后保存整个容器。按 `generic-data` 的全量机械比较验证写回，保存后重新加载容器，逐项核对：
+
+- 对象身份与类型树：用完整对象身份定位每个修改对象，以写回时的节点读回，通过完整长度与头部检查。核对目标字段、同一对象的其他字段和脚本引用。
+- 未修改对象：容器内其余对象逐一比较原始字节或哈希。
+- 容器与资源流：压缩方式、外部引用和 `.resS` 等资源流与原文件一致。
+
+资源读回成功只证明结构有效，运行时加载与显示仍需按本次改动核验。
 
 UnityPy 1.25.4 的 `Environment.save(pack="original", out_path=...)` 只保存标记为已修改的顶层文件，返回 `None`。`out_path` 目录需提前创建。对于单个资源包，可明确保存对应容器：
 
