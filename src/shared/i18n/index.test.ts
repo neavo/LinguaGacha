@@ -30,6 +30,7 @@ describe("shared i18n", () => {
     expect(create_text_resolver("de-DE")("app.action.confirm")).toBe(
       MESSAGE_MAP_BY_LOCALE["de-DE"].get("app.action.confirm"),
     );
+    expect(create_text_resolver("pt-BR")("app.action.confirm")).toBe("Confirmar");
   });
 });
 
