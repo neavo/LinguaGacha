@@ -16,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BackendResources } from "./backend-resources";
 import { BackendServices } from "./backend-services";
 import { AgentService } from "../agent/agent-service";
-import { WebSearchService } from "../agent/web-search-service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 
 import { GuiBackendBootstrap } from "./gui-backend-bootstrap";
@@ -564,7 +563,7 @@ describe("GuiBackendBootstrap 集成", () => {
     const original_fetch = globalThis.fetch;
     const bootstrap = new GuiBackendBootstrap(create_options(directory.path));
     const started = await bootstrap.start();
-    const failures = Array.from({ length: 5 }, (_, index) => new Error("cleanup " + index));
+    const failures = [new Error("gateway cleanup")];
     const stop_gateway = ApiGatewayServer.prototype.stop;
     vi.spyOn(ApiGatewayServer.prototype, "stop").mockImplementationOnce(async function (
       this: ApiGatewayServer,
@@ -572,13 +571,14 @@ describe("GuiBackendBootstrap 集成", () => {
       await stop_gateway.call(this);
       throw failures[0];
     });
-    for (const [index, prototype] of [
+    for (const prototype of [
       AgentService.prototype,
-      WebSearchService.prototype,
       BackendServices.prototype,
       BackendResources.prototype,
-    ].entries()) {
-      fail_after_dispose(prototype, failures[index + 1]!);
+    ]) {
+      const failure = new Error(`${prototype.constructor.name} cleanup`);
+      failures.push(failure);
+      fail_after_dispose(prototype, failure);
     }
     try {
       await expect(bootstrap.stop()).rejects.toMatchObject({ errors: failures });

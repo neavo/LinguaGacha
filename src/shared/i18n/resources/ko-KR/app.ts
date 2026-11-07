@@ -243,7 +243,6 @@ export const ko_kr_app = {
   },
   diagnostic: {
     agent: {
-      web_search_provider_failed: "웹 검색 공급자 요청에 실패했습니다 …",
       skill_load_failed: "Agent 스킬을 불러오지 못했습니다 …",
     },
     api_gateway: {

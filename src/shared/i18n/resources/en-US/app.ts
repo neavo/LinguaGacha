@@ -246,7 +246,6 @@ export const en_us_app = {
   },
   diagnostic: {
     agent: {
-      web_search_provider_failed: "Web search provider request failed …",
       skill_load_failed: "Agent skill loading failed …",
     },
     api_gateway: {

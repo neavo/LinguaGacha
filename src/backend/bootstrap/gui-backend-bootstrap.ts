@@ -6,7 +6,6 @@ import type { PDFHost } from "../../shared/pdf";
 import type { AgentImageHost } from "../../shared/agent-image";
 import { AgentImageService } from "../agent/agent-image-service";
 import { AgentService } from "../agent/agent-service";
-import { WebSearchService } from "../agent/web-search-service";
 import { AgentWorkspaceService } from "../agent/workspace/service";
 import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { ApiGatewayServer } from "../api/api-gateway-server";
@@ -52,7 +51,6 @@ export class GuiBackendBootstrap {
   private agent: AgentService | null = null;
   private execution: AgentExecutionRuntime | null = null; // Agent 停止后统一释放共享执行资源。
   private images: AgentImageService | null = null; // 关闭 Gateway 前取消模型图片准备，排空正在受理的发送请求
-  private web_search: WebSearchService | null = null;
   private gateway: ApiGatewayServer | null = null;
   private start_promise: Promise<GuiBackendBootstrapStartResult> | null = null; // stop 等待在途启动后再释放资源
   private stop_promise: Promise<void> | null = null; // 并发 stop 共用一次清理，清理期间拒绝 start
@@ -115,11 +113,6 @@ export class GuiBackendBootstrap {
         workerExecution: this.options.workerExecution,
       });
       this.services = services;
-      const web_search = new WebSearchService(
-        resources.metadata.read_version_or_default(),
-        resources.logManager,
-      );
-      this.web_search = web_search;
       const images = new AgentImageService(this.options.imageHost);
       this.images = images;
       // runner 与 catalog 共用同一 AppPathService，避免重复维护可写数据根的选择。
@@ -172,7 +165,6 @@ export class GuiBackendBootstrap {
         userAgent: resources.metadata.build_linguagacha_user_agent(),
         sessionState: services.state.session,
         runtimeGate: services.state.runtimeGate,
-        webSearch: web_search.search,
         workspace,
         logManager: resources.logManager,
         publish: (topic, payload) => event_stream.publish(topic, payload),
@@ -270,10 +262,6 @@ export class GuiBackendBootstrap {
     const execution = this.execution;
     this.execution = null;
     await collect_failure(failures, async () => await execution?.close());
-
-    const web_search = this.web_search;
-    this.web_search = null;
-    await collect_failure(failures, async () => await web_search?.dispose());
 
     this.event_stream?.stop();
     this.event_stream = null;

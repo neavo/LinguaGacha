@@ -256,7 +256,6 @@ export const de_de_app = {
   },
   diagnostic: {
     agent: {
-      web_search_provider_failed: "Anfrage beim Websuchanbieter fehlgeschlagen …",
       skill_load_failed: "Agent-Skill-Laden fehlgeschlagen …",
     },
     api_gateway: {
