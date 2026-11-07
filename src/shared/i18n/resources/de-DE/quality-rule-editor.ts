@@ -12,16 +12,16 @@ export const de_de_quality_rule_editor = {
   },
   feedback: {
     regex_invalid: "Ungültiger regulärer Ausdruck",
-    source_required: "Quelltext ist erforderlich",
+    source_required: "Ausgangstext ist erforderlich",
   },
   fields: {
     rule: "Regel",
-    source: "Quelle",
+    source: "Ausgangstext",
     hit: "Treffer",
   },
   filter: {
     clear: "Löschen",
-    placeholder: "Abfrage …",
+    placeholder: "Suchen …",
     regex: "Regex",
     regex_tooltip_label: "Regex-Modus",
     scope: {

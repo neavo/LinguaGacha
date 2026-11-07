@@ -34,7 +34,7 @@ export const zh_cn_app = {
       low: "低",
       medium: "中",
       high: "高",
-      xhigh: "特高",
+      xhigh: "极高",
       max: "MAX",
     },
   },
@@ -186,15 +186,6 @@ export const zh_cn_app = {
     update_available: "点击下载新版本 …!",
     update_available_tooltip: "打开更新确认框",
   },
-  prompt: {
-    source: "原文",
-    builder_control_character_samples: "控制字符示例（原样保留）：",
-    builder_glossary_header:
-      "术语表（根据语境与术语说明采用）<术语原文> -> <术语译文> #<术语说明>:",
-    builder_input: "输入（逐条翻译，保留条内换行）：",
-    builder_preceding_context: "参考前文（仅供参考）：",
-    builder_following_context: "参考后文（仅供参考）：",
-  },
   agent_input: {
     steps_intro: "按步骤执行：",
     path_placeholder: "[在此输入文件路径或者将文件拖到这里]",
@@ -241,7 +232,7 @@ export const zh_cn_app = {
   },
   diagnostic: {
     agent: {
-      skill_load_failed: "Agent 技能加载失败 …",
+      skill_load_failed: "AGENT 技能加载失败 …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway 直接路由处理失败 …",

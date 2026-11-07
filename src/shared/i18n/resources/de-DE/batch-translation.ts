@@ -3,7 +3,7 @@ import type { LocaleMessageSchema } from "../../types";
 export const de_de_batch_translation = {
   menu: {
     progress: "Fortschritt",
-    tooltip: "Quelltext in die Zielsprache übersetzen",
+    tooltip: "Ausgangstext in die Zielsprache übersetzen",
   },
   summary: {
     empty: "Inaktiv",
@@ -21,7 +21,7 @@ export const de_de_batch_translation = {
     output_tokens: "Ausgabe-Token",
     waveform_title: "Echtzeit-Geschwindigkeit",
     metrics_title: "Statistiken",
-    active_requests: "Echtzeit-Aufgaben",
+    active_requests: "Aktive Aufgaben",
   },
   feedback: {
     stats_refresh_failed:

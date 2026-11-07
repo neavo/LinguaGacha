@@ -18,11 +18,11 @@ export const en_us_app = {
   model: {
     catalog_updated: "Model database updated",
     type: {
-      preset: "Preset Models",
-      google: "Custom Google Models",
-      openai: "Custom OpenAI Models",
-      openai_responses: "Custom OpenAI Responses Models",
-      anthropic: "Custom Anthropic Models",
+      preset: "Preset models",
+      google: "Custom Google models",
+      openai: "Custom OpenAI models",
+      openai_responses: "Custom OpenAI Responses models",
+      anthropic: "Custom Anthropic models",
     },
     selection: {
       label: "Select model",
@@ -40,8 +40,8 @@ export const en_us_app = {
     },
   },
   action: {
-    move_to_top: "Move to Top",
-    move_to_bottom: "Move to Bottom",
+    move_to_top: "Move to top",
+    move_to_bottom: "Move to bottom",
     add: "Add",
     cancel: "Cancel",
     confirm: "Confirm",
@@ -60,8 +60,8 @@ export const en_us_app = {
     replace: "Replace",
     handle_with_agent: "Handle with AGENT",
     loading: "Loading",
-    select_file: "Select File",
-    select_folder: "Select Folder",
+    select_file: "Select file",
+    select_folder: "Select folder",
   },
   feedback: {
     activate_link: "Failed to process the link …",
@@ -110,7 +110,7 @@ export const en_us_app = {
   },
   update: {
     action: "Update",
-    restart_confirm: "Restart and Update",
+    restart_confirm: "Restart and update",
     launching: "Processing …",
   },
   drop: {
@@ -173,11 +173,11 @@ export const en_us_app = {
     font_size_option: { normal: "Standard", larger: "Larger font", largest: "Even larger font" },
     font_option: {
       lg_base: "LGBase",
-      system: "System Font",
+      system: "System font",
     },
     theme: "Theme",
     theme_option: {
-      system: "Follow System",
+      system: "Follow system",
       light: "Light",
       dark: "Dark",
     },
@@ -189,15 +189,6 @@ export const en_us_app = {
     status_tooltip: "Homepage",
     update_available: "Download new version …!",
     update_available_tooltip: "Open the update confirmation dialog",
-  },
-  prompt: {
-    source: "Source",
-    builder_control_character_samples: "Control character samples (keep as-is):",
-    builder_glossary_header:
-      "Glossary (apply per context and Term Note) <Original Term> -> <Translated Term> #<Term Note>:",
-    builder_input: "Input (translate each entry, keep in-entry line breaks):",
-    builder_preceding_context: "Preceding context (for reference only):",
-    builder_following_context: "Following context (for reference only):",
   },
   agent_input: {
     steps_intro: "Follow these steps:",
@@ -211,7 +202,7 @@ export const en_us_app = {
   },
   translation_generation: {
     agent_request: "Help me generate all translations",
-    action: "Generate Translation",
+    action: "Generate translation",
     confirmation: {
       generic_description:
         "This project contains generic data packages. Use AGENT to generate all translations. Direct generation will skip these packages.",
@@ -221,8 +212,8 @@ export const en_us_app = {
         "Could not check project files or proofreading warnings. You can still generate the current translations …",
       warning_description:
         "Detected {COUNT} proofreading warnings. Warnings do not necessarily indicate errors, but we recommend running at least one automatic review with AGENT first. Continue generating the translation …?",
-      retry_check: "Check Again",
-      generate_directly: "Generate Directly",
+      retry_check: "Check again",
+      generate_directly: "Generate directly",
     },
     directory: {
       translated: "Translated",
@@ -236,7 +227,7 @@ export const en_us_app = {
     },
   },
   native_file_filter: {
-    project: "LinguaGacha Project",
+    project: "LinguaGacha project",
     supported_json_xlsx_files: "Supported files (*.json *.xlsx)",
     json_files: "JSON files (*.json)",
     excel_files: "Excel files (*.xlsx)",
@@ -246,7 +237,7 @@ export const en_us_app = {
   },
   diagnostic: {
     agent: {
-      skill_load_failed: "Agent skill loading failed …",
+      skill_load_failed: "AGENT skill loading failed …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway direct route handling failed …",
@@ -270,24 +261,24 @@ export const en_us_app = {
   },
   log: {
     api_test_fail: "API test failed …",
-    api_test_key: "Testing Key:",
-    api_test_messages: "Task Prompts:",
+    api_test_key: "Testing key:",
+    api_test_messages: "Task prompts:",
     api_test_result: "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …",
-    api_test_result_failure: "Failed Keys:",
-    api_test_response_result: "Model Response:",
+    api_test_result_failure: "Failed keys:",
+    api_test_response_result: "Model response:",
     api_test_timeout: "Request timed out ({SECONDS}s)",
     api_test_token_info:
       "Task time {TIME} seconds, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "Default presets loaded automatically: {NAMES} …",
-    engine_api_model: "API Model",
-    engine_api_name: "API Name",
+    engine_api_model: "API model",
+    engine_api_name: "API name",
     engine_api_url: "API URL",
     engine_task_done: "Task completed …",
     engine_task_fail:
       "Task failed to complete, some data remains unprocessed. Please check the results …",
-    engine_task_rule_analysis: "Rule Analysis:",
-    engine_task_thinking_process: "Thinking Process:",
+    engine_task_rule_analysis: "Rule analysis:",
+    engine_task_thinking_process: "Thinking process:",
     engine_task_stop: "Task stopped …",
     engine_task_success:
       "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
@@ -295,9 +286,9 @@ export const en_us_app = {
     request_failed: "Request failed: {ERROR} …",
     request_timeout: "Network request timed out",
     system_closed_dropped: "Log system is shut down; dropping new log: {MESSAGE}",
-    translation_task_result: "Translation Result:",
+    translation_task_result: "Translation result:",
     translation_response_partially_invalid: "Some translations failed validation …",
   },
   sort: { ascending: "Ascending", descending: "Descending", clear: "Clear sort" },
-  language_role: { source: "Source Language", target: "Target Language" },
+  language_role: { source: "Source language", target: "Target language" },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

@@ -2,19 +2,19 @@ import { zh_cn_game_font_page } from "../zh-CN/game-font-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const pt_br_game_font_page = {
-  title: "Modificar Fonte do Jogo",
+  title: "Alterar fonte do jogo",
   fields: {
     game: { title: "Jogo", description: "Clique ou arraste o executável ou a pasta do jogo" },
     font_file: {
-      title: "Arquivo de Fonte",
+      title: "Arquivo de fonte",
       description: "Clique ou arraste o arquivo de fonte",
-      hint: "Suporta TTF",
+      hint: "Compatível com TTF",
     },
   },
   action: {
-    pick_executable: "Selecionar Executável do Jogo",
-    pick_directory: "Selecionar Pasta do Jogo",
-    start: "Modificar",
+    pick_executable: "Selecionar executável do jogo",
+    pick_directory: "Selecionar pasta do jogo",
+    start: "Alterar",
   },
   feedback: {
     inspect_failed: "Falha na detecção …",

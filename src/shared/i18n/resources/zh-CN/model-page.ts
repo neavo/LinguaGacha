@@ -45,7 +45,7 @@ export const zh_cn_model_page = {
     },
   },
   confirm: {
-    logout: { description: "是否确认退出登录 …？" },
+    logout: { description: "是否确认退出登录 …?" },
     delete: {
       description: "是否确认删除模型 …?",
     },

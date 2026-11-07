@@ -95,7 +95,7 @@ export const de_de_app = {
     project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen",
   },
   error_boundary: {
-    eyebrow: "Renderer-Laufzeit",
+    eyebrow: "Renderer Runtime",
     title: "Seiten-Laufzeitfehler",
     description:
       "Dieses Fenster wurde in die geschützte Ansicht gewechselt, und die Fehlerdetails wurden in die Protokolle geschrieben …",
@@ -103,15 +103,14 @@ export const de_de_app = {
   project_settings_alignment: {
     field: {
       mtool_optimizer_enable: "MTool-Optimierer",
-      skip_duplicate_source_text_enable: "Doppelten Quelltext überspringen",
+      skip_duplicate_source_text_enable: "Doppelten Ausgangstext überspringen",
     },
   },
   close_confirm: {
     description: "Anwendung wirklich beenden …?",
   },
   quality_rule_import: {
-    duplicate_description:
-      "{COUNT} doppelte Regeln wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …",
+    duplicate_description: "{COUNT} doppelte Regeln erkannt. Bitte Vorgehensweise wählen …",
   },
   update: {
     action: "Aktualisieren",
@@ -122,10 +121,10 @@ export const de_de_app = {
     select_multiple_unavailable:
       "Es kann nur eine Datei oder ein Ordner gleichzeitig abgelegt werden",
     select_unavailable:
-      "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl …",
+      "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte stattdessen per Klick auswählen …",
     multiple_unavailable: "Es kann nur eine Datei gleichzeitig abgelegt werden",
     unavailable:
-      "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte verwenden Sie stattdessen die Dateiauswahl …",
+      "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte stattdessen per Klick importieren …",
     import_here: "Zum Importieren der Regeldatei loslassen",
   },
   toggle: {
@@ -200,15 +199,6 @@ export const de_de_app = {
     update_available: "Neue Version herunterladen …!",
     update_available_tooltip: "Update-Bestätigungsdialog öffnen",
   },
-  prompt: {
-    source: "Ausgangstext",
-    builder_control_character_samples: "Steuerzeichen-Beispiele (unverändert beibehalten):",
-    builder_glossary_header:
-      "Glossar (je nach Kontext und Begriffshinweis anwenden) <Originalbegriff> -> <Übersetzter Begriff> #<Begriffshinweis>:",
-    builder_input: "Eingabe (jeden Eintrag übersetzen, Zeilenumbrüche im Eintrag beibehalten):",
-    builder_preceding_context: "Vorheriger Kontext (nur als Referenz):",
-    builder_following_context: "Folgender Kontext (nur als Referenz):",
-  },
   agent_input: {
     steps_intro: "Führe diese Schritte aus:",
     path_placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
@@ -216,19 +206,19 @@ export const de_de_app = {
       glossary: "Terminologie extrahieren",
       translate: "Gesamten Text übersetzen",
       review: "Übersetzung prüfen",
-      generate: "Alle Übersetzungen erzeugen",
+      generate: "Alle Übersetzungen erstellen",
     },
   },
   translation_generation: {
-    agent_request: "Hilf mir, alle Übersetzungen zu erzeugen",
+    agent_request: "Hilf mir, alle Übersetzungen zu erstellen",
     action: "Übersetzung erstellen",
     confirmation: {
       generic_description:
-        "Dieses Projekt enthält generische Datenpakete. Verwende AGENT, um alle Übersetzungen zu erzeugen. Die direkte Erzeugung überspringt diese Pakete.",
+        "Dieses Projekt enthält generische Datenpakete. Bitte alle Übersetzungen mit AGENT erstellen. Die direkte Erstellung überspringt diese Pakete.",
       description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
       checking: "Projektdateien und Korrekturwarnungen werden geprüft …",
       check_failed:
-        "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Die aktuellen Übersetzungen können dennoch erzeugt werden …",
+        "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Die aktuellen Übersetzungen können dennoch erstellt werden …",
       warning_description:
         "Es wurden {COUNT} Korrekturwarnungen erkannt. Warnungen weisen nicht unbedingt auf Fehler hin. Wir empfehlen jedoch, zuerst mindestens eine automatische Prüfung mit AGENT durchzuführen. Mit dem Erstellen der Übersetzung fortfahren …?",
       retry_check: "Erneut prüfen",
@@ -256,7 +246,7 @@ export const de_de_app = {
   },
   diagnostic: {
     agent: {
-      skill_load_failed: "Agent-Skill-Laden fehlgeschlagen …",
+      skill_load_failed: "AGENT-Skill konnte nicht geladen werden …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway-Direkt-Routing fehlgeschlagen …",
@@ -297,7 +287,7 @@ export const de_de_app = {
     engine_api_url: "API-URL",
     engine_task_done: "Aufgabe abgeschlossen …",
     engine_task_fail:
-      "Aufgabe konnte nicht abgeschlossen werden, einige Daten bleiben unbearbeitet. Bitte überprüfen Sie die Ergebnisse …",
+      "Aufgabe nicht vollständig abgeschlossen, einige Daten sind noch unbearbeitet. Bitte die Ergebnisse prüfen …",
     engine_task_rule_analysis: "Regelanalyse:",
     engine_task_thinking_process: "Denkprozess:",
     engine_task_stop: "Aufgabe gestoppt …",

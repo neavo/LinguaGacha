@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { TextQualitySnapshot } from "../../../shared/text/text-processing";
 import type { TranslationActor, TranslationRequestItem } from "./translation-item";
-import { format_i18n_message } from "../../../shared/i18n";
 import { PromptBuilder } from "./work-unit-prompt-builder";
 
 const template_roots: string[] = [];
@@ -144,16 +143,12 @@ describe("PromptBuilder", () => {
       [{ src: "previous" }],
       [{ src: "following" }],
     );
-    expect(prompt.messages[1]?.content).toContain(
-      format_i18n_message("en-US", "app.prompt.builder_following_context"),
-    );
+    expect(prompt.messages[1]?.content).toContain("Following context (for reference only):");
     expect(prompt.messages[0]?.content).toContain("Translation prefix");
     expect(prompt.messages[0]?.content).toContain("Translate from Japanese to Chinese.");
+    expect(prompt.messages[1]?.content).toContain("Preceding context (for reference only):");
     expect(prompt.messages[1]?.content).toContain(
-      format_i18n_message("en-US", "app.prompt.builder_preceding_context"),
-    );
-    expect(prompt.messages[1]?.content).toContain(
-      format_i18n_message("en-US", "app.prompt.builder_input"),
+      "Input (translate each entry, keep in-entry line breaks):",
     );
   });
 

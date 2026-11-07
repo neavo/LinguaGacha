@@ -20,23 +20,23 @@ export const en_us_log_window_page = {
     message: "Message",
   },
   action: {
-    return_to_top: "Back to Top",
+    return_to_top: "Back to top",
   },
   search: {
     placeholder: "Search loaded logs…",
     clear: "Clear",
     regex: "Regex",
-    regex_tooltip_label: "Regex Mode",
+    regex_tooltip_label: "Regex mode",
     regex_invalid: "Invalid regular expression",
     scope: {
       label: "Scope",
-      tooltip_label: "Log Scope",
+      tooltip_label: "Log scope",
     },
   },
   detail: {
     title: "Detail",
-    previous: "Previous Entry",
-    next: "Next Entry",
+    previous: "Previous entry",
+    next: "Next entry",
     maximize: "Maximize",
     minimize: "Minimize",
     empty: "Select a log entry to view details …",
@@ -46,7 +46,7 @@ export const en_us_log_window_page = {
     content: {
       source_text: "Source",
       translated_text: "Translation",
-      error: "Error Details",
+      error: "Error details",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_log_window_page>;

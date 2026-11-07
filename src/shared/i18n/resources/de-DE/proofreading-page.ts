@@ -28,11 +28,11 @@ export const de_de_proofreading_page = {
   },
   fields: {
     status: "Status",
-    source: "Quelle",
+    source: "Ausgangstext",
     translation: "Übersetzung",
   },
   search: {
-    placeholder: "Abfrage …",
+    placeholder: "Suchen …",
     clear: "Löschen",
     replace_placeholder: "Ersetzen …",
     replace_clear: "Löschen",

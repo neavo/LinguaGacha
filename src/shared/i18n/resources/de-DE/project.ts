@@ -35,15 +35,15 @@ export const de_de_project = {
     drop_title: "Klicken oder .lg-Datei hierher ziehen",
     loading_toast: "Projekt wird geladen …",
     remove_unavailable:
-      "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut …",
+      "Dieser Eintrag der zuletzt verwendeten Projekte kann derzeit nicht entfernt werden. Bitte später erneut versuchen …",
     newer_app_version_description:
-      "Diese Datei ist für App-Version <emphasis>v{VERSION}</emphasis> vorgesehen. Das Öffnen mit einer älteren App-Version kann Daten beschädigen. Möchten Sie die Datei trotzdem öffnen …?",
+      "Diese Datei ist für App-Version <emphasis>v{VERSION}</emphasis> vorgesehen. Das Öffnen mit einer älteren App-Version kann Daten beschädigen. Trotzdem öffnen …?",
     missing_file_description: "Die Projektdatei ist ungültig. Aus der Liste entfernen …?",
   },
   close: {
     action: "Schließen",
     confirm: "Aktuelles Projekt wirklich schließen …?",
-    failed: "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut …",
+    failed: "Projekt konnte nicht geschlossen werden. Bitte später erneut versuchen …",
   },
   preview: {
     file_count: "Dateianzahl",
@@ -54,9 +54,10 @@ export const de_de_project = {
   },
   formats: {
     title_tooltip: "Schneller, besser und zuverlässiger",
-    deprecated_tooltip: "Nicht mehr die beste Wahl. Bitte bevorzuge die oben genannten Formate",
+    deprecated_tooltip:
+      "Nicht mehr die beste Wahl. Bitte bevorzugt die oben genannten Formate verwenden",
     empty_project_hint:
-      "Wähle keine Dateien aus. Klicke auf „{ACTION}“ und ziehe die Dateien dann in das AGENT-Eingabefeld …!",
+      "Keine Dateien auswählen: Einfach auf „{ACTION}“ klicken und die Dateien dann in das AGENT-Eingabefeld ziehen …!",
     generic: "Generische Daten",
     title: "Besonders optimierte Formate",
     txt: "Nur Text",

@@ -7,7 +7,7 @@ export const pt_br_app = {
     description:
       "Pacotes de recursos posteriores substituem recursos de mesmo nome em pacotes anteriores",
   },
-  game_backup_warning: "Faça um backup de todo o diretório do jogo antes de prosseguir …!",
+  game_backup_warning: "Faça um backup de toda a pasta do jogo antes de prosseguir …!",
   media: {
     zoom_out: "Diminuir zoom",
     zoom_in: "Aumentar zoom",
@@ -19,11 +19,11 @@ export const pt_br_app = {
   model: {
     catalog_updated: "Banco de dados de modelos atualizado",
     type: {
-      preset: "Modelos Pré-definidos",
-      google: "Modelos Google Personalizados",
-      openai: "Modelos OpenAI Personalizados",
-      openai_responses: "Modelos OpenAI Responses Personalizados",
-      anthropic: "Modelos Anthropic Personalizados",
+      preset: "Modelos predefinidos",
+      google: "Modelos Google personalizados",
+      openai: "Modelos OpenAI personalizados",
+      openai_responses: "Modelos OpenAI Responses personalizados",
+      anthropic: "Modelos Anthropic personalizados",
     },
     selection: {
       label: "Selecionar modelo",
@@ -32,18 +32,18 @@ export const pt_br_app = {
     thinking_level: {
       default: "Manter padrão",
       default_description:
-        "Não envia dados de nível de reflexão; segue a configuração padrão da plataforma",
-      off: "Desativado",
-      low: "Baixo",
-      medium: "Médio",
-      high: "Alto",
-      xhigh: "Muito Alto",
-      max: "MÁXIMO",
+        "Não envia dados de nível de raciocínio; segue a configuração padrão da plataforma",
+      off: "Off",
+      low: "Low",
+      medium: "Medium",
+      high: "High",
+      xhigh: "Extra High",
+      max: "MAX",
     },
   },
   action: {
-    move_to_top: "Mover para o Topo",
-    move_to_bottom: "Mover para o Final",
+    move_to_top: "Mover para o topo",
+    move_to_bottom: "Mover para o final",
     add: "Adicionar",
     cancel: "Cancelar",
     confirm: "Confirmar",
@@ -58,12 +58,12 @@ export const pt_br_app = {
     retry: "Tentar novamente",
     save: "Salvar",
     skip: "Ignorar",
-    overwrite: "Substituir",
+    overwrite: "Sobrescrever",
     replace: "Substituir",
-    handle_with_agent: "Processar com AGENTE",
+    handle_with_agent: "Processar com o AGENT",
     loading: "Carregando",
-    select_file: "Selecionar Arquivo",
-    select_folder: "Selecionar Pasta",
+    select_file: "Selecionar arquivo",
+    select_folder: "Selecionar pasta",
   },
   feedback: {
     activate_link: "Falha ao processar o link …",
@@ -80,7 +80,7 @@ export const pt_br_app = {
     read_failed: "Falha na leitura …",
     operation_running: "Executando operação …",
     operation_success: "Operação bem-sucedida …",
-    operation_failed: "Operação falhou …",
+    operation_failed: "Falha na operação …",
     content_unavailable: "Conteúdo indisponível",
     save_failed: "Falha ao salvar …",
     model_request_failed: "Falha na requisição ao modelo …",
@@ -93,10 +93,10 @@ export const pt_br_app = {
     project_settings_aligned: "Configurações do projeto sincronizadas com as configurações atuais",
   },
   error_boundary: {
-    eyebrow: "Ambiente do Renderizador",
+    eyebrow: "Renderer Runtime",
     title: "Erro em tempo de execução da página",
     description:
-      "Esta janela alternou para a visualização protegida e os detalhes do erro foram salvos nos registros …",
+      "Esta janela alternou para a visualização protegida e os detalhes do erro foram gravados nos logs …",
   },
   project_settings_alignment: {
     field: {
@@ -112,7 +112,7 @@ export const pt_br_app = {
   },
   update: {
     action: "Atualizar",
-    restart_confirm: "Reiniciar e Atualizar",
+    restart_confirm: "Reiniciar e atualizar",
     launching: "Processando …",
   },
   drop: {
@@ -126,8 +126,8 @@ export const pt_br_app = {
   },
   toggle: {
     option: {
-      disabled: "DESLIGADO",
-      enabled: "LIGADO",
+      disabled: "NÃO",
+      enabled: "SIM",
     },
   },
   state: {
@@ -148,7 +148,7 @@ export const pt_br_app = {
   language: {
     ALL: "Todos",
     ZH: "Chinês",
-    "ZH-HANT": "Chinês Tradicional",
+    "ZH-HANT": "Chinês tradicional",
     EN: "Inglês",
     JA: "Japonês",
     KO: "Coreano",
@@ -172,19 +172,19 @@ export const pt_br_app = {
     appearance: "Aparência",
     font: "Fonte",
     font_size: "Tamanho da fonte",
-    font_size_option: { normal: "Padrão", larger: "Fonte maior", largest: "Fonte máxima" },
+    font_size_option: { normal: "Padrão", larger: "Fonte maior", largest: "Fonte ainda maior" },
     font_option: {
       lg_base: "LGBase",
-      system: "Fonte do Sistema",
+      system: "Fonte do sistema",
     },
     theme: "Tema",
     theme_option: {
-      system: "Seguir o Sistema",
+      system: "Seguir o sistema",
       light: "Claro",
       dark: "Escuro",
     },
     language: "Idioma",
-    logs: "Registros",
+    logs: "Logs",
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
@@ -192,20 +192,11 @@ export const pt_br_app = {
     update_available: "Baixar nova versão …!",
     update_available_tooltip: "Abrir janela de confirmação de atualização",
   },
-  prompt: {
-    source: "Origem",
-    builder_control_character_samples: "Exemplos de caracteres de controle (manter como estão):",
-    builder_glossary_header:
-      "Glossário (aplicar conforme o contexto e nota do termo) <Termo Original> -> <Termo Traduzido> #<Nota do Termo>:",
-    builder_input: "Entrada (traduza cada entrada, mantendo as quebras de linha internas):",
-    builder_preceding_context: "Contexto anterior (apenas para referência):",
-    builder_following_context: "Contexto posterior (apenas para referência):",
-  },
   agent_input: {
     steps_intro: "Siga estas etapas:",
     path_placeholder: "[Insira os caminhos dos arquivos aqui ou arraste arquivos]",
     steps: {
-      glossary: "Extrair terminologias",
+      glossary: "Extrair termos",
       translate: "Traduzir o texto completo",
       review: "Revisar a tradução",
       generate: "Gerar todas as traduções",
@@ -213,22 +204,22 @@ export const pt_br_app = {
   },
   translation_generation: {
     agent_request: "Ajude-me a gerar todas as traduções",
-    action: "Gerar Tradução",
+    action: "Gerar tradução",
     confirmation: {
       generic_description:
-        "Este projeto contém pacotes de dados genéricos. Use o AGENTE para gerar todas as traduções. A geração direta ignorará esses pacotes.",
+        "Este projeto contém pacotes de dados genéricos. Use o AGENT para gerar todas as traduções. A geração direta ignorará esses pacotes.",
       description: "Confirma a geração dos arquivos de tradução disponíveis no momento …?",
       checking: "Verificando arquivos do projeto e avisos de revisão …",
       check_failed:
         "Não foi possível verificar os arquivos do projeto ou avisos de revisão. Você ainda pode gerar as traduções atuais …",
       warning_description:
-        "Detectados {COUNT} avisos de revisão. Avisos não indicam necessariamente erros, mas recomendamos executar ao menos uma revisão automática com o AGENTE antes. Continuar gerando a tradução …?",
-      retry_check: "Verificar Novamente",
-      generate_directly: "Gerar Diretamente",
+        "Detectados {COUNT} avisos de revisão. Avisos não indicam necessariamente erros, mas recomendamos executar ao menos uma revisão automática com o AGENT antes. Continuar gerando a tradução …?",
+      retry_check: "Verificar novamente",
+      generate_directly: "Gerar diretamente",
     },
     directory: {
       translated: "Traduzido",
-      bilingual: "Traduzido_Bilingue",
+      bilingual: "Traduzido_Bilíngue",
     },
     log: {
       started: "Gerando arquivos de tradução …",
@@ -239,16 +230,16 @@ export const pt_br_app = {
   },
   native_file_filter: {
     project: "Projeto LinguaGacha",
-    supported_json_xlsx_files: "Arquivos suportados (*.json *.xlsx)",
+    supported_json_xlsx_files: "Arquivos compatíveis (*.json *.xlsx)",
     json_files: "Arquivos JSON (*.json)",
     excel_files: "Arquivos Excel (*.xlsx)",
-    supported_txt_files: "Arquivos suportados (*.txt)",
+    supported_txt_files: "Arquivos compatíveis (*.txt)",
     font_files: "Arquivos de fonte (*.ttf)",
     executable_files: "Arquivos executáveis (*.exe)",
   },
   diagnostic: {
     agent: {
-      skill_load_failed: "Falha no carregamento de habilidade do agente …",
+      skill_load_failed: "Falha ao carregar habilidade do AGENT …",
     },
     api_gateway: {
       direct_route_failed: "Falha no processamento de rota direta do API Gateway …",
@@ -277,7 +268,7 @@ export const pt_br_app = {
     api_test_messages: "Prompts da tarefa:",
     api_test_result: "Testadas {COUNT} APIs no total: {SUCCESS} com sucesso, {FAILURE} com falha …",
     api_test_result_failure: "Chaves que falharam:",
-    api_test_response_result: "Resposta do Modelo:",
+    api_test_response_result: "Resposta do modelo:",
     api_test_timeout: "Tempo limite da requisição esgotado ({SECONDS}s)",
     api_test_token_info:
       "Tempo da tarefa: {TIME} segundos, tokens de entrada {PT}, tokens de raciocínio {RT}, tokens de saída {CT}",
@@ -289,18 +280,18 @@ export const pt_br_app = {
     engine_task_done: "Tarefa concluída …",
     engine_task_fail:
       "A tarefa não foi concluída; alguns dados permanecem não processados. Verifique os resultados …",
-    engine_task_rule_analysis: "Análise de Regras:",
-    engine_task_thinking_process: "Processo de Reflexão:",
+    engine_task_rule_analysis: "Análise de regras:",
+    engine_task_thinking_process: "Processo de raciocínio:",
     engine_task_stop: "Tarefa interrompida …",
     engine_task_success:
       "Tempo da tarefa: {TIME} segundos, {LINES} linhas de texto, tokens de entrada {PT}, tokens de raciocínio {RT}, tokens de saída {CT}",
     model_response_invalid: "O modelo retornou dados inválidos …",
     request_failed: "Falha na requisição: {ERROR} …",
     request_timeout: "Tempo limite da requisição de rede esgotado",
-    system_closed_dropped: "Sistema de registros desligado; descartando novo registro: {MESSAGE}",
-    translation_task_result: "Resultado da Tradução:",
+    system_closed_dropped: "Sistema de logs desligado; descartando novo log: {MESSAGE}",
+    translation_task_result: "Resultado da tradução:",
     translation_response_partially_invalid: "Algumas traduções falharam na validação …",
   },
   sort: { ascending: "Crescente", descending: "Decrescente", clear: "Limpar ordenação" },
-  language_role: { source: "Idioma de Origem", target: "Idioma de Destino" },
+  language_role: { source: "Idioma de origem", target: "Idioma de destino" },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

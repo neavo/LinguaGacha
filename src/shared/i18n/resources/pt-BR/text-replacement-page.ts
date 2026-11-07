@@ -6,6 +6,6 @@ export const pt_br_text_replacement_page = {
     replacement: "Substituição",
   },
   rule: {
-    regex: "Expressão Regular",
+    regex: "Expressão regular",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

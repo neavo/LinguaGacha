@@ -2,9 +2,9 @@ import { zh_cn_text_preserve_page } from "../zh-CN/text-preserve-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const pt_br_text_preserve_page = {
-  title: "Preservação de Texto",
+  title: "Preservação de texto",
   mode: {
-    label: "Modo de Preservação de Texto",
+    label: "Modo de preservação de texto",
     content_html:
       "Preserva trechos de texto como fragmentos de código, caracteres de controle e tags de estilo que não devem ser traduzidos, evitando traduções incorretas" +
       "<br>" +
@@ -20,7 +20,7 @@ export const pt_br_text_preserve_page = {
     },
   },
   fields: {
-    note: "Observações (Apenas para referência, sem efeito prático)",
+    note: "Observações (apenas para referência, sem efeito prático)",
   },
   filter: {
     scope: {

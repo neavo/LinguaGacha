@@ -10,7 +10,7 @@ export const en_us_model_page = {
     login: "Click to sign in",
     logout: "Sign out",
   },
-  title: "Model Management",
+  title: "Model management",
   category: {
     preset: {
       description: "Built-in preset models of the application",
@@ -33,9 +33,9 @@ export const en_us_model_page = {
     reset: "Reset model",
     delete: "Delete model",
     copy: "Duplicate",
-    basic_settings: "Basic Settings",
-    task_settings: "Task Settings",
-    advanced_settings: "Advanced Settings",
+    basic_settings: "Basic settings",
+    task_settings: "Task settings",
+    advanced_settings: "Advanced settings",
     input: "Input",
     fetch: "Fetch",
     test: "Test",
@@ -48,7 +48,7 @@ export const en_us_model_page = {
     },
   },
   confirm: {
-    logout: { description: "Are you sure you want to sign out …?" },
+    logout: { description: "Confirm signing out …?" },
     delete: {
       description: "Confirm deleting the model …?",
     },
@@ -75,15 +75,15 @@ export const en_us_model_page = {
       default: "Keep default",
     },
     context_window: {
-      title: "Context Window",
+      title: "Context window",
       description: "Only applies to AGENT tasks; 0 = automatic",
     },
     max_output_tokens: {
-      title: "Maximum Output Length",
+      title: "Maximum output length",
       description: "Only applies to AGENT tasks; 0 = automatic",
     },
     name: {
-      title: "Model Name",
+      title: "Model name",
       description: "Enter a model name used only for display inside the application",
       placeholder: "Please enter model name …",
     },
@@ -93,34 +93,34 @@ export const en_us_model_page = {
       placeholder: "Please enter API URL …",
     },
     api_key: {
-      title: "API Key",
+      title: "API key",
       description:
-        "Enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456, multiple keys can be entered for polling, one key per line",
-      placeholder: "Please enter API Key …",
+        "Enter an API key, e.g., sk-d0daba12345678fd8eb7b8d31c123456. Enter multiple keys one per line to use them in rotation",
+      placeholder: "Please enter API key …",
     },
     model_id: {
-      title: "Model Identifier",
+      title: "Model identifier",
       description: "Current model identifier: {MODEL}",
       placeholder: "Please enter model identifier …",
     },
     thinking: {
-      title: "Thinking Level",
+      title: "Thinking level",
       description: "Configure the model's thinking behavior, which affects time and usage",
     },
     input_token_limit: {
-      title: "Input Token Limit",
+      title: "Input token limit",
       description: "Maximum number of tokens allowed for each task input",
     },
     output_token_limit: {
-      title: "Output Token Limit",
+      title: "Output token limit",
       description: "Maximum number of tokens allowed for each task output, 0 = Automatic",
     },
     rpm_limit: {
-      title: "Requests Per Minute Limit (RPM)",
+      title: "Requests per minute limit (RPM)",
       description: "Limits how many requests this model can send per minute, 0 = Automatic",
     },
     concurrency_limit: {
-      title: "Concurrent Task Limit",
+      title: "Concurrent task limit",
       description: "Limits how many tasks this model can run concurrently, 0 = Automatic",
     },
     top_p: {
@@ -132,13 +132,13 @@ export const en_us_model_page = {
       description: "Please be careful, invalid values may cause errors",
     },
     extra_headers: {
-      title: "Custom Request Headers",
+      title: "Custom request headers",
       description:
         "Please set with caution, incorrect values may cause abnormal results or request errors",
       placeholder: 'Example: {"Authorization": "Bearer xxx"}',
     },
     extra_body: {
-      title: "Custom Request Body",
+      title: "Custom request body",
       description:
         "Please set with caution, incorrect values may cause abnormal results or request errors",
       placeholder: 'Example: {"seed": 42}',

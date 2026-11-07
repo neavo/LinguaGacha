@@ -589,7 +589,7 @@ describe("pi-ai 请求适配", () => {
     expect(payload).toHaveProperty("reasoning_effort", "high");
   });
 
-  it.each(["grok-4.6", "grok-4.7"] as const)("%s 在原生端点发送特高思考字段", async (model_id) => {
+  it.each(["grok-4.6", "grok-4.7"] as const)("%s 在原生端点发送极高思考字段", async (model_id) => {
     const grok_request = resolve_request({
       api_format: "OpenAI",
       api_url: "https://api.x.ai/v1",

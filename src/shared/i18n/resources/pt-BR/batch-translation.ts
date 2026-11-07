@@ -4,7 +4,7 @@ import type { LocaleMessageSchema } from "../../types";
 export const pt_br_batch_translation = {
   menu: {
     progress: "Progresso",
-    tooltip: "Traduzir o texto de origem para o idioma de destino",
+    tooltip: "Traduzir o texto original para o idioma de destino",
   },
   summary: {
     empty: "Ocioso",
@@ -14,15 +14,15 @@ export const pt_br_batch_translation = {
   },
   detail: {
     provider: "Provedor",
-    elapsed_time: "Tempo Decorrido",
-    remaining_time: "Tempo Restante",
-    average_speed: "Velocidade Média",
-    input_tokens: "Tokens de Entrada",
-    reasoning_tokens: "Tokens de Raciocínio",
-    output_tokens: "Tokens de Saída",
-    waveform_title: "Velocidade em Tempo Real",
+    elapsed_time: "Tempo decorrido",
+    remaining_time: "Tempo restante",
+    average_speed: "Velocidade média",
+    input_tokens: "Tokens de entrada",
+    reasoning_tokens: "Tokens de raciocínio",
+    output_tokens: "Tokens de saída",
+    waveform_title: "Velocidade em tempo real",
     metrics_title: "Estatísticas",
-    active_requests: "Tarefas em Tempo Real",
+    active_requests: "Tarefas ativas",
   },
   feedback: {
     stats_refresh_failed: "Falha ao atualizar as estatísticas de tradução do projeto …",

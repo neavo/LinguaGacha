@@ -94,10 +94,10 @@ export const ko_kr_proofreading_page = {
   feedback: {
     loading_toast: "데이터 불러오는 중 …",
     selection_failed: "선택 영역을 읽지 못했습니다 …",
-    replace_failed: "치환 실패 …",
+    replace_failed: "바꾸기 실패 …",
     retranslate_failed: "재번역 실패 …",
     clear_translation_failed: "번역문 비우기 실패 …",
-    replace_done: "치환 완료: {N}개 변경",
+    replace_done: "바꾸기 완료: {N}개 변경",
     replace_no_change: "바꿀 내용이 없습니다",
     no_match: "일치하는 항목이 없습니다",
     regex_invalid: "정규식이 잘못되었습니다",

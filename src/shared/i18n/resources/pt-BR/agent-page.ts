@@ -1,18 +1,18 @@
 export const pt_br_agent_page = {
-  project_required: "Por favor, crie ou abra um arquivo de projeto primeiro …",
+  project_required: "Crie ou abra um arquivo de projeto primeiro …",
   document: {
     conversation: "Conversa",
     view: "Visualizar",
     save_as: "Salvar como",
-    open_folder: "Abrir pasta recipiente",
+    open_folder: "Abrir pasta do arquivo",
   },
   batch_translation_model: {
-    follow: "Seguir Agente",
-    follow_option: "Usar o modelo do AGENTE",
+    follow: "Igual ao AGENT",
+    follow_option: "Usar o modelo do AGENT",
     tooltip: "Modelo usado pela ferramenta de tradução em lote",
   },
-  title: "AGENTE",
-  thinking: "Pensando",
+  title: "AGENT",
+  thinking: "Raciocínio",
   thinking_active: "Pensando",
   diagram: {
     render_failed: "Falha ao renderizar diagrama. Exibindo código-fonte Mermaid …",
@@ -31,9 +31,9 @@ export const pt_br_agent_page = {
   empty: {
     message: "「Aibō」, o que faremos agora?  ( •̀ ᗜ •́ )つ▱",
     suggestions: {
-      capabilities: "Apresente suas habilidades",
-      roleplay: "Iniciar encenação (roleplay)",
-      extract_terminology: "Ajude-me a extrair terminologias",
+      capabilities: "Apresente suas capacidades",
+      roleplay: "Iniciar roleplay",
+      extract_terminology: "Ajude-me a extrair termos",
       translate_full_text: "Ajude-me a traduzir o texto completo",
       review_translation: "Ajude-me a revisar e corrigir a tradução",
     },
@@ -48,7 +48,7 @@ export const pt_br_agent_page = {
   mention: {
     files: {
       workspace: "Arquivo do espaço de trabalho",
-      upload: "Enviar",
+      upload: "Enviado",
       items: "{COUNT} entradas",
       pages: "{COUNT} páginas",
       loading: "Carregando lista de arquivos …",
@@ -113,7 +113,7 @@ export const pt_br_agent_page = {
       text_preserve: "{count} regras de preservação de texto",
       pre_replacement: "{count} regras de pré-substituição",
       post_replacement: "{count} regras de pós-substituição",
-      knowledge: "Conhecimento: {count} documentos",
+      knowledge: "Conhecimento do projeto: {count} documentos",
       prompts: "{count} prompts personalizados",
     },
     reject: "Rejeitar",
@@ -139,7 +139,7 @@ export const pt_br_agent_page = {
     send: "Enviar",
     stop: "Parar",
     applying: "Aplicando alterações do projeto; isso não pode ser interrompido até a conclusão",
-    new_task: "Nova Tarefa",
+    new_task: "Nova tarefa",
     add_file: "Arquivos",
     common_instructions: "Instruções",
     continue: "Continuar",
@@ -165,7 +165,7 @@ export const pt_br_agent_page = {
     fork: "Criar uma nova conversa bifurcando a partir desta resposta?",
     new_task: "Confirma o início de uma nova tarefa de conversa …?",
     thinking_off:
-      "A inteligência do AGENTE será significativamente reduzida com o raciocínio do modelo desativado. Confirma continuar …?",
+      "A inteligência do AGENT nas tarefas cai significativamente com o raciocínio do modelo desativado. Confirma continuar …?",
   },
   status: {
     running: "Processando",

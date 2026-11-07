@@ -12,22 +12,22 @@ export const pt_br_quality_rule_editor = {
   },
   feedback: {
     regex_invalid: "Expressão regular inválida",
-    source_required: "O texto de origem é obrigatório",
+    source_required: "O texto original é obrigatório",
   },
   fields: {
     rule: "Regra",
-    source: "Origem",
+    source: "Original",
     hit: "Correspondências",
   },
   filter: {
     clear: "Limpar",
-    placeholder: "Consultar …",
+    placeholder: "Pesquisar …",
     regex: "Regex",
     regex_tooltip_label: "Modo Regex",
     scope: {
       all: "Todos",
       label: "Escopo",
-      tooltip_label: "Escopo da Pesquisa",
+      tooltip_label: "Escopo da pesquisa",
     },
   },
   hit: {

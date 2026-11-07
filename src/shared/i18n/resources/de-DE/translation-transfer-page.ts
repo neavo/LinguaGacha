@@ -14,7 +14,7 @@ export const de_de_translation_transfer_page = {
       overwrite_description: "Bei Konflikten die Übersetzung aus dem Quellprojekt verwenden",
     },
   },
-  action: { start: "Neues Projekt erzeugen" },
+  action: { start: "Neues Projekt erstellen" },
   feedback: {
     result: "Ergänzt {FILLED} · Ersetzt {REPLACED} · Nicht zugeordnet {UNMATCHED}",
   },

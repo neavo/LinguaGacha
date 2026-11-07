@@ -4,11 +4,11 @@ import type { LocaleMessageSchema } from "../../types";
 export const pt_br_preset_editor = {
   action: {
     apply: "Importar",
-    cancel_default: "Cancelar Predefinição Padrão",
-    delete: "Excluir Predefinição",
+    cancel_default: "Cancelar predefinição padrão",
+    delete: "Excluir predefinição",
     rename: "Renomear",
-    save: "Salvar Predefinição",
-    set_default: "Definir como Predefinição Padrão",
+    save: "Salvar predefinição",
+    set_default: "Definir como predefinição padrão",
   },
   confirm: {
     delete: {

@@ -6,14 +6,14 @@ export const pt_br_custom_prompt_page = {
     discard: "Descartar alterações não salvas",
     waiting: "Aguarde a conclusão da tarefa atual antes de salvar …",
   },
-  title: "Prompts Personalizados",
+  title: "Prompts personalizados",
   header: {
     description_html:
       "Adicione requisitos adicionais de tradução, como contexto da história e estilos de escrita, por meio de prompts personalizados",
   },
   section: {
-    prefix_label: "Prefixo Fixo",
-    suffix_label: "Sufixo Fixo",
+    prefix_label: "Prefixo fixo",
+    suffix_label: "Sufixo fixo",
   },
   confirm: {
     reset: {

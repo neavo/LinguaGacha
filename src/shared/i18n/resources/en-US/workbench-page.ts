@@ -7,7 +7,7 @@ export const en_us_workbench_page = {
     item: "Items",
   },
   table: {
-    file_name: "File Name",
+    file_name: "File name",
     progress: "Progress",
   },
   feedback: {
@@ -16,17 +16,17 @@ export const en_us_workbench_page = {
   action: {
     add_file: "Add",
     rename: "Rename",
-    reset: "Reset File Data",
+    reset: "Reset file data",
     translation_task: "Translation",
-    start_translation: "Start Translation",
-    reset_task_all: "Reset All Data",
+    start_translation: "Start translation",
+    reset_task_all: "Reset all data",
   },
   dialog: {
     start_translation: {
       agent_recommended: "We recommend using AGENT for higher-quality translations …!",
       agent_required:
         "This project contains complex data that must be handled by AGENT. We recommend using AGENT for higher-quality translations …!",
-      translate_directly: "Translate Directly",
+      translate_directly: "Translate directly",
     },
     import_conflict: {
       description: "{COUNT} files with the same name were detected. Choose how to handle them …",
@@ -34,7 +34,7 @@ export const en_us_workbench_page = {
     inherit_import: {
       description: "Use completed translations to fill the imported files …?",
       fill: "Fill",
-      do_not_fill: "Do Not Fill",
+      do_not_fill: "Do not fill",
     },
     rename: {
       exists: "A file or folder with this name already exists",
