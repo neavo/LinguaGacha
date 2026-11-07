@@ -241,7 +241,6 @@ export const zh_cn_app = {
   },
   diagnostic: {
     agent: {
-      web_search_provider_failed: "网页搜索来源请求失败 …",
       skill_load_failed: "Agent 技能加载失败 …",
     },
     api_gateway: {

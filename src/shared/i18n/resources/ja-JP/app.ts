@@ -249,7 +249,6 @@ export const ja_jp_app = {
   },
   diagnostic: {
     agent: {
-      web_search_provider_failed: "ウェブ検索プロバイダーへのリクエストに失敗しました …",
       skill_load_failed: "Agent スキルを読み込めませんでした …",
     },
     api_gateway: {

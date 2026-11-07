@@ -41,7 +41,6 @@ import type { MutableModels } from "@earendil-works/pi-ai/models";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentChatChange, AgentChatEvent } from "../../shared/agent";
-import type { AgentWebSearchPort } from "./tools/web-search";
 import * as workspace_tools from "./tools/workspace-run";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -1159,7 +1158,7 @@ describe("AgentService", () => {
         originalHeight: 1,
       })),
     };
-    const { service } = await create_service(true, undefined, undefined, undefined, images);
+    const { service } = await create_service({ images });
     await service.send_message({
       text: "image",
       attachments: [uploaded_file("raw")],
@@ -1358,13 +1357,7 @@ describe("AgentService", () => {
       });
       const images = { clear: vi.fn(), prepare: vi.fn(async () => image) };
       images.prepare.mockImplementationOnce(() => pending_image);
-      const { service, skills } = await create_service(
-        true,
-        undefined,
-        undefined,
-        undefined,
-        images,
-      );
+      const { service, skills } = await create_service({ images });
       const sending = service.send_message({ text: "图片", attachments: [uploaded_file("raw")] });
       const rejected =
         interruption === "failure"
@@ -2115,7 +2108,7 @@ describe("AgentService", () => {
   });
 
   it("恢复失败轮次时保留公开工具历史，并以隐藏消息继续原 user", async () => {
-    const { service } = await create_service(true);
+    const { service } = await create_service();
     fake_agent_state.mode = "tools_error";
     await service.send_message({ text: "原任务", attachments: [] });
     await wait_for_idle(service);
@@ -2214,7 +2207,7 @@ describe("AgentService", () => {
   });
 
   it("认证失效时仍可修改最新 assistant，并保留此前完整工具历史", async () => {
-    const { service } = await create_service(true);
+    const { service } = await create_service();
     fake_agent_state.mode = "tools";
     await service.send_message({ text: "开始", attachments: [] });
     await wait_for_idle(service);
@@ -2459,21 +2452,8 @@ describe("AgentService", () => {
     },
   );
 
-  it("仅在宿主搜索能力可用时注册 web_search", async () => {
-    const web_search = vi.fn<AgentWebSearchPort>(async () => ({
-      provider: "exa",
-      text: "搜索结果",
-    }));
-    const { service } = await create_service(true, web_search);
-
-    await service.send_message({ text: "读取网页", attachments: [] });
-    await wait_for_idle(service);
-
-    expect(fake_agent_state.tool_names.at(-1)).toContain("web_search");
-  });
-
   it("预览读取在请求前后校验会话，重置期间的旧响应失效", async () => {
-    const { service, workspace } = await create_service(true);
+    const { service, workspace } = await create_service();
     const chatId = service.get_snapshot().chatId;
     expect(await service.read_workspace_document({ chatId, path: "work/report.md" })).toEqual({
       chatId,
@@ -3809,7 +3789,7 @@ describe("AgentService", () => {
         throw new Error("decode failed");
       }),
     };
-    const { service } = await create_service(true, undefined, undefined, undefined, images);
+    const { service } = await create_service({ images });
     fake_agent_state.mode = "pending";
     await service.send_message({ text: "第一轮", attachments: [] });
     const file_message = { text: "文件", attachments: [uploaded_file("broken")] };
@@ -3840,16 +3820,12 @@ describe("AgentService", () => {
     async (action) => {
       const prepared = Promise.withResolvers<import("../../shared/agent-image").AgentImage>();
       const prepare = vi.fn(() => prepared.promise);
-      const { service, runtime_gate, diagnostics } = await create_service(
-        true,
-        undefined,
-        undefined,
-        undefined,
-        {
+      const { service, runtime_gate, diagnostics } = await create_service({
+        images: {
           clear: vi.fn(),
           prepare,
         },
-      );
+      });
       fake_agent_state.mode = "pending";
       await service.send_message({ text: "第一轮", attachments: [] });
       await service.send_message({ text: "图片", attachments: [uploaded_file("pending")] });
@@ -4022,12 +3998,9 @@ describe("AgentService", () => {
     const run = vi.fn<
       import("../batch-translation/batch-translation-service").BatchTranslationService["run_under_agent"]
     >(async () => ({ status: "done", progress: normalize_batch_translation_progress({}) }));
-    const { service, select_agent_model, select_batch_translation_model } = await create_service(
-      true,
-      undefined,
-      undefined,
-      { run_under_agent: run },
-    );
+    const { service, select_agent_model, select_batch_translation_model } = await create_service({
+      batch_translation: { run_under_agent: run },
+    });
     select_batch_translation_model(model_id);
     await service.send_message({ text: "执行翻译", attachments: [] });
     await wait_for_idle(service);
@@ -4059,13 +4032,9 @@ describe("AgentService", () => {
     const run = vi.fn<
       import("../batch-translation/batch-translation-service").BatchTranslationService["run_under_agent"]
     >(async () => ({ status: "done", progress: normalize_batch_translation_progress({}) }));
-    const fixture = await create_service(
-      true,
-      undefined,
-      undefined,
-      { run_under_agent: run },
-      undefined,
-      {
+    const fixture = await create_service({
+      batch_translation: { run_under_agent: run },
+      catalog: {
         read_models: () => [
           {
             id: "next-model",
@@ -4078,7 +4047,7 @@ describe("AgentService", () => {
           },
         ],
       },
-    );
+    });
     fixture.select_agent_model("next");
 
     await fixture.service.send_message({ text: "执行翻译", attachments: [] });
@@ -4114,8 +4083,10 @@ describe("AgentService", () => {
           throw new BatchTranslationCompletionError(result, new Error("cleanup failed"));
         return result;
       });
-      const { service, log_append } = await create_service(true, undefined, undefined, {
-        run_under_agent: run,
+      const { service, log_append } = await create_service({
+        batch_translation: {
+          run_under_agent: run,
+        },
       });
       await service.send_message({ text: "翻译工程", attachments: [] });
 
@@ -4176,24 +4147,26 @@ describe("AgentService", () => {
       });
       let signal: AbortSignal | undefined;
       let received_lease: import("../runtime-operation-gate").RuntimeLease | undefined;
-      const { service, runtime_gate } = await create_service(true, undefined, undefined, {
-        run_under_agent: async (lease, parent) => {
-          received_lease = lease;
-          signal = parent;
-          await pending;
-          return {
-            status: parent.aborted ? "stopped" : "done",
-            progress: {
-              start_time: 0,
-              time: 0,
-              total_line: 2,
-              processed_line: 2,
-              total_tokens: 0,
-              total_input_tokens: 0,
-              total_reasoning_tokens: 0,
-              total_output_tokens: 0,
-            },
-          };
+      const { service, runtime_gate } = await create_service({
+        batch_translation: {
+          run_under_agent: async (lease, parent) => {
+            received_lease = lease;
+            signal = parent;
+            await pending;
+            return {
+              status: parent.aborted ? "stopped" : "done",
+              progress: {
+                start_time: 0,
+                time: 0,
+                total_line: 2,
+                processed_line: 2,
+                total_tokens: 0,
+                total_input_tokens: 0,
+                total_reasoning_tokens: 0,
+                total_output_tokens: 0,
+              },
+            };
+          },
         },
       });
       await service.send_message({ text: "翻译当前工程", attachments: [] });
@@ -4229,7 +4202,7 @@ describe("AgentService", () => {
   );
 
   it("资源未加载时拒绝启动模型回合", async () => {
-    const { service } = await create_service(false);
+    const { service } = await create_service({ load_resources: false });
 
     await expect(service.send_message({ text: "开始", attachments: [] })).rejects.toThrow(
       expect.objectContaining({ code: "runtime.internal_invariant" }),
@@ -4275,15 +4248,10 @@ describe("AgentService", () => {
   });
 
   /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentChat 仍走生产实现。 */
-  async function create_service(
+  async function create_service({
     load_resources = true,
-    web_search?: AgentWebSearchPort,
-    workspace?: AgentWorkspacePort,
-    batch_translation?: Pick<
-      import("../batch-translation/batch-translation-service").BatchTranslationService,
-      "run_under_agent"
-    >,
-    images: ConstructorParameters<typeof AgentService>[0]["images"] = {
+    batch_translation,
+    images = {
       clear: vi.fn(),
       prepare: async (data) => ({
         data: Buffer.from(data).toString("base64"),
@@ -4294,8 +4262,13 @@ describe("AgentService", () => {
         originalHeight: 1,
       }),
     },
-    catalog: PiModelCatalogReader = { read_models: read_builtin_pi_models },
-  ): Promise<{
+    catalog = { read_models: read_builtin_pi_models },
+  }: {
+    load_resources?: boolean;
+    batch_translation?: ConstructorParameters<typeof AgentService>[0]["batchTranslation"];
+    images?: ConstructorParameters<typeof AgentService>[0]["images"];
+    catalog?: PiModelCatalogReader;
+  } = {}): Promise<{
     workspace: AgentWorkspacePort;
     service: AgentService;
     skills: AgentSkillsService;
@@ -4355,40 +4328,38 @@ describe("AgentService", () => {
         };
       },
     };
-    const effective_workspace =
-      workspace ??
-      ({
-        uploads: fake_uploads(),
-        list_files: async () => [],
-        activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
-        read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
-        describe_file: vi.fn(),
-        read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
-        invalidate_links: vi.fn(),
-        create_chat: vi.fn(async () => randomUUID()),
-        activate_chat: vi.fn(async () => undefined),
-        close: vi.fn(async () => undefined),
-        delete_chat: vi.fn(async () => undefined),
-        cancel_uploads: vi.fn(),
-        run: vi.fn<AgentWorkspacePort["run"]>(async () => {
-          await wait_for_held_tool();
-          return { images: [], execution: workspace_execution({ items: read_items() }) };
-        }),
-        apply_workspace: vi.fn(async (request_approval) => {
-          await request_approval?.({
-            pages: 0,
-            items: 1,
-            glossary: 0,
-            textPreserve: 0,
-            preReplacement: 0,
-            postReplacement: 0,
-            files: 0,
-            prompts: 0,
-          });
-          await wait_for_held_tool();
-          return { status: "applied" };
-        }),
-      } satisfies AgentWorkspacePort);
+    const workspace = {
+      uploads: fake_uploads(),
+      list_files: async () => [],
+      activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
+      read_document: vi.fn(async () => ({ path: "work/report.md", content: "报告" })),
+      describe_file: vi.fn(),
+      read_document_image: vi.fn(async () => ({ bytes: new Uint8Array(), mime: "image/png" })),
+      invalidate_links: vi.fn(),
+      create_chat: vi.fn(async () => randomUUID()),
+      activate_chat: vi.fn(async () => undefined),
+      close: vi.fn(async () => undefined),
+      delete_chat: vi.fn(async () => undefined),
+      cancel_uploads: vi.fn(),
+      run: vi.fn<AgentWorkspacePort["run"]>(async () => {
+        await wait_for_held_tool();
+        return { images: [], execution: workspace_execution({ items: read_items() }) };
+      }),
+      apply_workspace: vi.fn(async (request_approval) => {
+        await request_approval?.({
+          pages: 0,
+          items: 1,
+          glossary: 0,
+          textPreserve: 0,
+          preReplacement: 0,
+          postReplacement: 0,
+          files: 0,
+          prompts: 0,
+        });
+        await wait_for_held_tool();
+        return { status: "applied" };
+      }),
+    } satisfies AgentWorkspacePort;
 
     /** 把单个工具停在执行体内，分别验证普通工具与原子 apply 的 stop 语义。 */
     async function wait_for_held_tool(): Promise<void> {
@@ -4452,15 +4423,13 @@ describe("AgentService", () => {
       userAgent: "LinguaGacha/Test",
       sessionState: session_state,
       runtimeGate: runtime_gate,
-      webSearch: web_search,
-      workspace: effective_workspace,
+      workspace,
       logManager: { append: log_append },
       publish,
     });
     if (load_resources) await service.load_resources();
     publish.mockClear();
-    if (vi.isMockFunction(effective_workspace.invalidate_links))
-      effective_workspace.invalidate_links.mockClear();
+    workspace.invalidate_links.mockClear();
     services.push(service);
     return {
       set_approval_mode: (value) => {
@@ -4470,7 +4439,7 @@ describe("AgentService", () => {
         personality = value;
       },
       service,
-      workspace: effective_workspace,
+      workspace,
       skills,
       publish,
       read_items,

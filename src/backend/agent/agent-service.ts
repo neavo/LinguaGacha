@@ -54,7 +54,6 @@ import { load_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
 import { create_agent_read_skill_tool } from "./tools/read-skill";
 import { create_agent_ask_user_tool } from "./tools/ask-user";
 import { AgentInputQueue } from "./agent-input-queue";
-import { create_agent_web_search_tool, type AgentWebSearchPort } from "./tools/web-search";
 import type { AgentWorkspacePort } from "./workspace/service";
 import { create_agent_workspace_run_tool } from "./tools/workspace-run";
 import { format_agent_skills_for_system_prompt } from "./agent-skills";
@@ -94,7 +93,6 @@ type AgentServiceOptions = {
   userAgent: string;
   sessionState: ProjectSessionState;
   runtimeGate: RuntimeOperationGate;
-  webSearch: AgentWebSearchPort | undefined;
   workspace: AgentWorkspacePort;
   images: Pick<AgentImageService, "prepare" | "clear">;
   logManager: Pick<LogManager, "append">;
@@ -133,7 +131,6 @@ export class AgentService {
   private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
   private readonly runtime_gate: RuntimeOperationGate;
-  private readonly web_search: AgentWebSearchPort | undefined;
   private readonly workspace: AgentWorkspacePort;
   private readonly images: AgentServiceOptions["images"];
   private readonly log_manager: AgentServiceOptions["logManager"];
@@ -178,7 +175,6 @@ export class AgentService {
     this.user_agent = options.userAgent;
     this.session_state = options.sessionState;
     this.runtime_gate = options.runtimeGate;
-    this.web_search = options.webSearch;
     this.workspace = options.workspace;
     this.images = options.images;
     this.log_manager = options.logManager;
@@ -1093,7 +1089,6 @@ export class AgentService {
         approval: this.workspace_approval_port(),
       }),
       create_agent_read_skill_tool(() => this.skills.get_current()),
-      ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
     ];
   }
   /** 每个可见增量参与速度统计，公开速度按时间窗口合并。 */
