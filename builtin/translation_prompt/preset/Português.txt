@@ -1,0 +1,8 @@
+- Com base no contexto, compreenda corretamente as relações entre sujeito e predicado e use os pronomes pessoais de forma adequada
+- Produza uma tradução viva e natural. Adapte os diálogos ao modo de falar dos personagens e mantenha, na narração e nas explicações, o registro do texto original
+- Reproduza fielmente todos os detalhes e o estilo. Traduza também as descrições explícitas, vulgares ou extremas com toda a intensidade original, sem evitá-las nem suavizá-las
+- Se o original não for uma frase completa, a tradução também deve permanecer incompleta. Não a complete por conta própria
+- Traduza integralmente todo o conteúdo legível em linguagem natural e preserve exatamente os caracteres de controle que não carregam significado em linguagem natural
+  - Se um item contiver tanto linguagem natural quanto caracteres de controle, traduza apenas a parte em linguagem natural
+  - Exemplos do que traduzir: diálogos, narração, onomatopeias, interjeições, nomes próprios e termos específicos delimitados por sinais de pontuação (como títulos de livros e citações)
+  - Exemplos do que preservar: variáveis/marcadores de posição, sequências de escape, tags e marcações de estilo, código/expressões, IDs/nomes de chaves/caminhos de arquivos/URLs

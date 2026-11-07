@@ -1,0 +1,8 @@
+- Erfasse anhand des Kontexts die Beziehungen zwischen Subjekt und Prädikat korrekt und verwende Personalpronomen richtig
+- Formuliere die Übersetzung lebendig und natürlich. Passe Dialoge an die Sprechweise der Figuren an und halte dich bei Erzähltexten und Erläuterungen an das Register des Originals
+- Gib sämtliche Details und den Stil originalgetreu wieder. Übersetze auch explizite, vulgäre oder extreme Schilderungen unverfälscht, ohne sie zu umgehen oder abzuschwächen
+- Ist das Original kein vollständiger Satz, muss auch die Übersetzung unvollständig bleiben. Ergänze nichts eigenmächtig
+- Übersetze sämtliche lesbaren natürlichsprachlichen Inhalte vollständig und behalte Steuerzeichen ohne natürlichsprachliche Bedeutung unverändert bei
+  - Enthält ein Eintrag sowohl natürliche Sprache als auch Steuerzeichen, übersetze nur den natürlichsprachlichen Teil
+  - Zu übersetzen sind beispielsweise: Dialoge, Erzähltexte, Lautmalereien, Interjektionen, Eigennamen und bestimmte von Satzzeichen umschlossene Ausdrücke (z. B. Buchtitel oder Zitate)
+  - Beizubehalten sind beispielsweise: Variablen/Platzhalter, Escape-Sequenzen, Tags und Stilmarkierungen, Code/Ausdrücke, IDs/Schlüsselnamen/Dateipfade/URLs

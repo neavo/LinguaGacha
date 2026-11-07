@@ -113,6 +113,14 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
 
 const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
 
+// 旧文风预设没有等价替代项。清空默认引用，避免新建工程反复读取失效文件。
+const REMOVED_TRANSLATION_PROMPT_PRESETS = new Set([
+  "builtin:01_文言文风格.txt",
+  "builtin:01_pre_modern_style.txt",
+  "builtin:02_文学措辞风格.txt",
+  "builtin:02_literary_diction_style.txt",
+]);
+
 /**
  * `Setting` 是 `userdata/config.json` 的业务实体。
  */
@@ -208,6 +216,12 @@ export class Setting {
    * 归一设置字段，防止未知类型写入设置文件
    */
   public static normalize_value(key: string, value: JsonValue): JsonValue {
+    if (
+      key === "translation_custom_prompt_default_preset" &&
+      typeof value === "string" &&
+      REMOVED_TRANSLATION_PROMPT_PRESETS.has(value)
+    )
+      return "";
     if (key === "agent_approval_mode") return normalize_agent_approval_mode(value);
     if (key === "agent_personality") return typeof value === "string" ? value : null;
     if (key === "agent_skills") return normalize_agent_skill_settings(value);
