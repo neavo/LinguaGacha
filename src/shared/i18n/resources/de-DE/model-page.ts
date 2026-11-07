@@ -48,7 +48,7 @@ export const de_de_model_page = {
     },
   },
   confirm: {
-    logout: { description: "Möchten Sie sich wirklich abmelden …?" },
+    logout: { description: "Wirklich abmelden …?" },
     delete: {
       description: "Modell wirklich löschen …?",
     },
@@ -61,8 +61,8 @@ export const de_de_model_page = {
     delete_last_one: "In jeder Kategorie muss mindestens ein Modell verbleiben …",
     agent_limits_adjusted:
       "Ungültige Einstellungen wurden automatisch auf eine gültige Konfiguration angepasst …",
-    json_format_error: "JSON-Formatfehler. Bitte geben Sie ein gültiges JSON-Objekt ein …",
-    test_failed: "Fehler beim Testen des Modells. Bitte versuchen Sie es später erneut …",
+    json_format_error: "JSON-Formatfehler. Bitte ein gültiges JSON-Objekt eingeben …",
+    test_failed: "Modelltest fehlgeschlagen. Bitte später erneut versuchen …",
   },
   fields: {
     speed: {
@@ -86,8 +86,7 @@ export const de_de_model_page = {
     },
     name: {
       title: "Modellname",
-      description:
-        "Geben Sie einen Modellnamen ein, der nur zur Anzeige innerhalb der Anwendung verwendet wird",
+      description: "Modellname, der nur zur Anzeige in der Anwendung dient",
       placeholder: "Bitte Modellnamen eingeben …",
     },
     api_url: {
@@ -132,11 +131,11 @@ export const de_de_model_page = {
     },
     top_p: {
       title: "top_p",
-      description: "Bitte seien Sie vorsichtig, ungültige Werte können Fehler verursachen",
+      description: "Vorsichtig einstellen, ungültige Werte können Fehler verursachen",
     },
     temperature: {
       title: "temperature",
-      description: "Bitte seien Sie vorsichtig, ungültige Werte können Fehler verursachen",
+      description: "Vorsichtig einstellen, ungültige Werte können Fehler verursachen",
     },
     extra_headers: {
       title: "Benutzerdefinierte Anfrage-Header",

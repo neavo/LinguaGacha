@@ -32,11 +32,11 @@ export const ja_jp_app = {
       default: "既定のまま",
       default_description:
         "思考レベルのデータを一切送信せず、プラットフォームの既定の設定に従います",
-      off: "オフ",
-      low: "低",
-      medium: "中",
-      high: "高",
-      xhigh: "非常に高い",
+      off: "Off",
+      low: "Low",
+      medium: "Medium",
+      high: "High",
+      xhigh: "Extra High",
       max: "MAX",
     },
   },
@@ -192,16 +192,8 @@ export const ja_jp_app = {
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
     status_tooltip: "ホームページ",
-    update_available: "クリックして新しいバージョンをダウンロード！",
+    update_available: "クリックして新しいバージョンをダウンロード …!",
     update_available_tooltip: "更新の確認画面を開く",
-  },
-  prompt: {
-    source: "原文",
-    builder_control_character_samples: "制御文字の例（そのまま保持）：",
-    builder_glossary_header: "用語集（文脈と用語説明に応じて採用）<原語> -> <訳語> #<用語説明>:",
-    builder_input: "入力（項目ごとに翻訳し、項目内の改行を保持）：",
-    builder_preceding_context: "前の文脈（参照のみ）：",
-    builder_following_context: "後の文脈（参照のみ）：",
   },
   agent_input: {
     steps_intro: "以下の手順で実行してください：",
@@ -215,17 +207,17 @@ export const ja_jp_app = {
   },
   translation_generation: {
     agent_request: "すべての訳文を生成して",
-    action: "訳文を出力",
+    action: "訳文を生成",
     confirmation: {
       generic_description:
         "このプロジェクトには汎用データパッケージが含まれます。すべての訳文を生成するには AGENT を使用してください。直接生成すると、これらのパッケージはスキップされます。",
-      description: "現在利用できる訳文を出力しますか …?",
+      description: "現在利用できる訳文を生成しますか …?",
       checking: "プロジェクトのファイルと校正警告を確認中 …",
       check_failed: "ファイルまたは校正警告の確認に失敗しました。現在の訳文は生成できます …",
       warning_description:
-        "校正の警告が {COUNT} 件検出されました。警告は必ずしも誤りを示すものではありませんが、先に AGENT で少なくとも 1 回は自動校正することをおすすめします。このまま訳文を出力しますか …?",
+        "校正の警告が {COUNT} 件検出されました。警告は必ずしも誤りを示すものではありませんが、先に AGENT で少なくとも 1 回は自動校正することをおすすめします。このまま訳文を生成しますか …?",
       retry_check: "再確認",
-      generate_directly: "直接出力",
+      generate_directly: "直接生成",
     },
     directory: {
       translated: "訳文",
@@ -249,7 +241,7 @@ export const ja_jp_app = {
   },
   diagnostic: {
     agent: {
-      skill_load_failed: "Agent スキルを読み込めませんでした …",
+      skill_load_failed: "AGENT スキルを読み込めませんでした …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway の直接ルート処理に失敗しました …",

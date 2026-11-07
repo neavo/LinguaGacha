@@ -29,8 +29,8 @@ export const de_de_text_preserve_page = {
     },
   },
   feedback: {
-    unknown_error: "Der Vorgang ist fehlgeschlagen. Bitte versuchen Sie es später erneut …",
+    unknown_error: "Der Vorgang ist fehlgeschlagen. Bitte später erneut versuchen …",
     mode_refresh_pending:
-      "Der Textschutz-Modus wurde aktualisiert und der Korrektur-Cache wird noch aktualisiert. Bitte überprüfen Sie es in Kürze erneut …",
+      "Der Textschutz-Modus wurde geändert, der Korrektur-Cache wird noch aktualisiert. Bitte das Ergebnis in Kürze erneut prüfen …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>;

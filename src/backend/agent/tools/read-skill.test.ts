@@ -124,6 +124,7 @@ function create_fixture(source: "user" | "builtin", name: string, body: string) 
           "de-DE": `${name} 描述`,
           "ja-JP": `${name} 描述`,
           "ko-KR": `${name} 描述`,
+          "pt-BR": `${name} 描述`,
         },
         disableModelInvocation: false,
       },

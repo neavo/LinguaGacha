@@ -31,11 +31,11 @@ export const ko_kr_app = {
     thinking_level: {
       default: "기본값 유지",
       default_description: "생각 수준 데이터를 전혀 보내지 않고 플랫폼의 기본 설정을 따릅니다",
-      off: "끄기",
-      low: "낮음",
-      medium: "보통",
-      high: "높음",
-      xhigh: "매우 높음",
+      off: "Off",
+      low: "Low",
+      medium: "Medium",
+      high: "High",
+      xhigh: "Extra High",
       max: "MAX",
     },
   },
@@ -57,7 +57,7 @@ export const ko_kr_app = {
     save: "저장",
     skip: "건너뛰기",
     overwrite: "덮어쓰기",
-    replace: "치환",
+    replace: "바꾸기",
     handle_with_agent: "AGENT로 처리",
     loading: "불러오는 중",
     select_file: "파일 선택",
@@ -184,17 +184,8 @@ export const ko_kr_app = {
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
     status_tooltip: "홈페이지",
-    update_available: "클릭하여 새 버전 다운로드!",
+    update_available: "클릭하여 새 버전 다운로드 …!",
     update_available_tooltip: "업데이트 확인 창 열기",
-  },
-  prompt: {
-    source: "원문",
-    builder_control_character_samples: "제어 문자 예시 (그대로 유지):",
-    builder_glossary_header:
-      "용어집 (문맥과 용어 설명에 따라 적용) <원문 용어> -> <번역 용어> #<용어 설명>:",
-    builder_input: "입력 (항목별로 번역하고 항목 내 줄바꿈 유지):",
-    builder_preceding_context: "앞 문맥 (참고용):",
-    builder_following_context: "뒤 문맥 (참고용):",
   },
   agent_input: {
     steps_intro: "다음 단계대로 진행해 주세요:",
@@ -243,7 +234,7 @@ export const ko_kr_app = {
   },
   diagnostic: {
     agent: {
-      skill_load_failed: "Agent 스킬을 불러오지 못했습니다 …",
+      skill_load_failed: "AGENT 스킬을 불러오지 못했습니다 …",
     },
     api_gateway: {
       direct_route_failed: "API Gateway 직접 경로 처리에 실패했습니다 …",

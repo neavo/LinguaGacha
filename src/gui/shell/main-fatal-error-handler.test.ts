@@ -40,7 +40,10 @@ describe("install_main_fatal_error_handler", () => {
         }),
       }),
     );
-    expect(try_show_native_error_dialog).toHaveBeenCalled();
+    expect(try_show_native_error_dialog).toHaveBeenCalledWith(
+      "LinguaGacha encountered a fatal error",
+      "The app will exit. Please check the diagnostic logs.",
+    );
     expect(record_host_diagnostic.mock.invocationCallOrder[0]).toBeLessThan(
       quit_after_backend_shutdown.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );

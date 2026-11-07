@@ -3,7 +3,7 @@
 <p align='center'>Ein Textübersetzer der nächsten Generation, der Romane, Spiele, Untertitel und mehr mit KI auf Knopfdruck übersetzt</p>
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ]
+- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT_BR.md) ]
 
 ## Überblick 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) ist ein KI-gestützter Textübersetzer der nächsten Generation

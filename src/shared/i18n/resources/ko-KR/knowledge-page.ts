@@ -30,7 +30,7 @@ export const ko_kr_knowledge_page = {
     files: "파일",
     create_file: "새 파일",
     create_directory: "새 폴더",
-    rename: "이름 변경",
+    rename: "이름 바꾸기",
     delete: "삭제",
     delete_file_confirm: "파일을 삭제하시겠습니까 …?",
     delete_directory_confirm: "폴더를 삭제하시겠습니까 …?",

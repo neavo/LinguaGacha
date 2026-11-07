@@ -3,6 +3,7 @@ import { en_us_messages } from "./resources/en-US";
 import { de_de_messages } from "./resources/de-DE";
 import { ja_jp_messages } from "./resources/ja-JP";
 import { ko_kr_messages } from "./resources/ko-KR";
+import { pt_br_messages } from "./resources/pt-BR";
 import type { Locale } from "../../domain/app-language";
 import type { LocaleMessageSchema } from "./types";
 
@@ -53,6 +54,7 @@ export const MESSAGE_MAP_BY_LOCALE: Readonly<Record<Locale, ReadonlyMap<LocaleKe
   "de-DE": build_message_map(de_de_messages),
   "ja-JP": build_message_map(ja_jp_messages),
   "ko-KR": build_message_map(ko_kr_messages),
+  "pt-BR": build_message_map(pt_br_messages),
 };
 
 /** 解析消息并替换已提供的参数；缺失消息以键名暴露诊断线索。 */

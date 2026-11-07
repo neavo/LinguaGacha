@@ -39,10 +39,10 @@ export const de_de_log_window_page = {
     next: "Nächster Eintrag",
     maximize: "Maximieren",
     minimize: "Minimieren",
-    empty: "Wählen Sie einen Protokolleintrag aus, um Details anzuzeigen …",
+    empty: "Protokolleintrag auswählen, um Details anzuzeigen …",
     loading: "Protokolldetail wird geladen …",
     unavailable:
-      "Das Protokolldetail wurde aus dem aktuellen Prozessspeicher entfernt. Bitte überprüfen Sie die Protokolldatei …",
+      "Das Protokolldetail wurde aus dem aktuellen Prozessspeicher entfernt. Bitte die Protokolldatei prüfen …",
     content: {
       source_text: "Ausgangstext",
       translated_text: "Übersetzung",

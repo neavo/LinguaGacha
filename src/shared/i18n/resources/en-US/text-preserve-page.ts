@@ -2,9 +2,9 @@ import { zh_cn_text_preserve_page } from "../zh-CN/text-preserve-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_text_preserve_page = {
-  title: "Text Preserve",
+  title: "Text preserve",
   mode: {
-    label: "Text Preserve Mode",
+    label: "Text preserve mode",
     content_html:
       "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation" +
       "<br>" +
@@ -20,7 +20,7 @@ export const en_us_text_preserve_page = {
     },
   },
   fields: {
-    note: "Remarks (For reference only, no actual effect)",
+    note: "Remarks (for reference only, no actual effect)",
   },
   filter: {
     scope: {

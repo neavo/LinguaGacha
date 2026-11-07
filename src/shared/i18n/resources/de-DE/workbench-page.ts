@@ -30,8 +30,7 @@ export const de_de_workbench_page = {
       translate_directly: "Direkt übersetzen",
     },
     import_conflict: {
-      description:
-        "{COUNT} Dateien mit demselben Namen wurden erkannt. Wählen Sie, wie damit umgegangen werden soll …",
+      description: "{COUNT} Dateien mit demselben Namen erkannt. Bitte Vorgehensweise wählen …",
     },
     inherit_import: {
       description:
