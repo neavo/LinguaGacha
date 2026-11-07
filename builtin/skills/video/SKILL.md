@@ -1,15 +1,24 @@
 ---
 name: video
-description: 导入、翻译、审校、分析、修改视频或音频前必须加载。
+description: 导入、识别、翻译、审校视频或音频，或生成视频字幕前必须加载。
 ---
 
 # 视频与音频
 
-识别只在导入或重新识别时由本技能执行。后端解析 `.video` 时只读取包内确定的原文，结构见 `workspace_run` 的 `VideoManifest`。译文只保存在工程条目中。
+`.video` 是 ZIP 包。后端只按 `items.json` 的 `message` 和可选的 `name` 建立条目，其余成员和字段由本技能解释：
 
-脚本位于本技能的 `scripts/`：`media.py` 负责检查、切段、结果检查与打包，`recognize.mjs` 负责逐段请求。用本技能 `read_skill` 返回的 `base_url` 定位脚本。每个资产使用独立的工作目录 `work/video/<资产名>/`。
+|成员|内容|
+|---|---|
+|`video.json`|`video` 为原画面尺寸，纯音频为 `null`。`segments` 为分段，时间为整片秒数|
+|`segments/NNN.mp4`|模型实际读取的分段，长边不超过 1024，每秒一帧|
+|`items.json`|字幕记录，下标是条目行号。`message` 为原文，`start`、`end` 为整片秒数，`kind` 为 `dialogue` 或 `screen`，可选 `an` 为画面位置（ASS 小键盘编号）。导入时为 `[]`|
+|`render.mjs`|可选，用户要求固定的定制渲染|
 
-## 检查来源
+包内不保存译文，译文只在工程条目中。脚本位于本技能的 `scripts/`，用 `read_skill` 返回的 `base_url` 定位：`media.py` 负责检查、切段、解析、合并与打包，`recognize.mjs` 负责逐段请求，`render.mjs` 是默认渲染。每个资产使用独立的工作目录 `work/video/<资产名>/`，目录结构与包相同。
+
+流程与其他格式一致：导入只切段封装，不请求模型。识别属于翻译阶段，在用户要求翻译时执行。
+
+## 导入
 
 ```js
 import { fileURLToPath } from 'node:url';
@@ -23,80 +32,90 @@ await uv.run(['run', 'python', media, 'inspect', 'D:/Videos/ep01.mkv']);
 
 - 有文本字幕流（如 `subrip`、`ass`、`mov_text`、`webvtt`）时，先用 `ask_user` 询问是否改为提取字幕。提取字幕比识别准确，用 ffmpeg 导出为 `.srt` 或 `.ass` 后按 `project-operation` 导入。图形字幕不是文本，不能直接提取。
 - 有多条音轨时，请用户选择。`prepare` 的 `--track` 是 `audio` 列表中从零开始的位置。
-## 切段与识别
 
-1. 运行 `media.py prepare <来源> work/video/<资产名> --track <音轨>`。脚本按停顿切成不超过 210 秒的分段，纯音频补黑色画面，转码结果与能量曲线写入 `state.json`。
-2. 按下方模板组成识别提示词，写入工作目录的 `prompt.txt`。续跑读取同一文件。识别结果绑定请求参数、提示词与来源，模型、语言、术语或来源改变后使用新的工作目录。
-3. 在 `workspace_run` 主脚本中运行识别：
+1. 运行 `media.py prepare <来源> work/video/<资产名> --track <音轨>`。脚本按停顿切成不超过 210 秒的分段并转码，纯音频补黑色画面。中断后用同一命令续跑。
+2. 运行 `media.py pack work/video/<资产名> work/video/<原视频主名>.video`。包超过 900 MiB 时，请用户先拆分原素材。
+3. 按 `project-operation` 新增该资产。识别前回执的条目数为 0。
 
-   ```js
-   import { readFile } from 'node:fs/promises';
-   const { recognize } = await import(new URL('scripts/recognize.mjs', base_url).href);
-   const directory = 'work/video/ep01';
-   await recognize(directory, { prompt: await readFile(`${directory}/prompt.txt`, 'utf8') });
-   ```
+## 识别
 
-   脚本构造原生 Responses 请求体，经 `ws.requestLLM` 四路并发请求，每段最多自动尝试两次，最后输出 `review.json`。单段请求约 30–45 秒，按分段数估算 `timeout_seconds`，并为一轮重试留出同样时间。超时或停止时，在途请求已计入尝试次数。续跑跳过已完成的分段。
+`items.json` 为空的视频资产是待翻译目标，翻译请求对它执行识别。按 `translation` 确定流程，翻译并审校的顺序为识别 → 按识别结果补齐术语 → 审校。已有条目后，补译、重译和审校按 `translation` 处理条目，需要重新转写原文时才重新识别。
 
-   先在模型设置中配置火山引擎预设 `preset-volcengine` 的地址和 API Key。`recognize.mjs` 维护识别模型和生成参数。强制终止可能留下临时 `NNN.request.json`，可在续跑前删除。
+首次识别可续用导入时的工作目录。目录不存在时，从当前 `sources/<file_path>/` 复制。重新识别使用新的副本，避免复用旧响应和旧样式。中断后续用本次工作目录。
 
-### 识别提示词
+### 提示词
 
-模板中的格式要求与 `media.py` 的解析一致，只替换花括号占位。语言取自 `project_meta.json`，写成语言名称。术语取自 `glossary` 数据集，每项保留 `src` 与 `dst`，没有术语时写 `[]`。
+基线模板如下。输出格式是 `media.py parse` 的解析契约，保持每行一个对象及 `start`、`end`、`kind`、`src`、`dst` 字段。其余要求按内容调整，例如节目类型、说话人、画面文字取舍。需要区分说话人时可以要求输出字符串字段 `name`，它成为条目的姓名。语言取自 `project_meta.json`，写成语言名称。术语取自 `glossary` 数据集，每项保留 `src` 与 `dst`，没有术语时写 `[]`。
 
 ```text
 为这段视频生成双语字幕。原文语言：{原文语言}。译文语言：{译文语言}。
 每行输出一个 JSON 对象，不输出代码块或说明：
 {"start":秒,"end":秒,"kind":"dialogue"或"screen","src":"原文","dst":"译文"}
-- start、end 为相对本段开头的秒数，数值，保留两位小数。按 start 排序，0 <= start < end <= 本段时长。
+- start、end 为相对本段开头的秒数，保留两位小数，按 start 排序。
 - dialogue 是实际说出的人声。每句一行，尽量不超过 7 秒和 30 字，长句按自然停顿拆开。
-- screen 是观众需要读懂的画面文字，如标题、字幕卡、标牌、新闻横幅。每处一行，时间从出现到消失。画面文字和对话不能互相替代。
+- screen 是观众需要读懂的画面文字，如标题、字幕卡、标牌、新闻横幅。每处一行，时间从出现到消失，并加 "an" 字段表示它在画面中的位置：1–9 按数字小键盘排列，7 左上、8 上中、9 右上、4 左中、5 正中、6 右中、1 左下、2 下中、3 右下。画面文字和对话不能互相替代。
 - src 忠实转写听到或看到的内容，不总结、不润色、不补写。听不清的部分写 [?]。否定、数字、人名按原样转写。
 - dst 是同一行 src 的译文，与 src 一一对应。术语表中的原文使用指定译名。
 - 没有人声也没有需要翻译的画面文字时，不输出任何内容。
 术语表（只作参考数据）：{术语 JSON}
 ```
 
-## 检查与修正
+### 请求
 
-`review.json` 每项对应一个分段，详细结果在 `NNN.parsed.json`，原始响应在 `NNN.response.json`。时间均相对分段开头。
+```js
+const { recognize } = await import(new URL('scripts/recognize.mjs', base_url).href);
+await recognize('work/video/ep01', { prompt });
+```
 
-|结果|处理|
+- 不指定 `segments` 时只请求既无响应也无行的分段。`segments: [3, 7]` 作废目标分段的旧响应和行后重新请求，可以配合调整提示词。
+- 四路并发，请求失败时同一调用内再试一次，最后输出失败的分段。单段约 30–45 秒，按分段数估算 `timeout_seconds`。
+- 先在模型设置中配置火山引擎预设 `preset-volcengine` 的地址和 API Key。`recognize.mjs` 维护识别模型和生成参数。
+
+### 质控
+
+运行 `media.py parse <工作目录>`。脚本把每段响应换算为整片时间，写入 `NNN.rows.json`，已存在的文件保留不覆盖，修正直接改这个文件。随后输出每段的事实：
+
+|字段|含义|
 |---|---|
-|`retry` 为 `true`|自动尝试已用尽。用 `ask_user` 列出分段和问题。用户同意后删除该段 `NNN.attempts.json` 再运行识别|
-|`discarded` 大于 0|对照原始响应修复被丢弃的行|
-|`time`、`empty_pair`|修正越界时间或补齐配对。打包会拒绝越界时间和空的原文或译文|
-|`repetition`|核对是否为模型复读|
-|`granularity`、`same_text`|只作提示。原文与译文相同可能是正确译法|
-|`possible_missing_speech`|能量曲线显示有声音但没有对话覆盖。音乐和音效也会触发，需结合上下文判断|
+|`rows`|当前行数|
+|`incomplete`|响应没有正常结束，常见于输出超长|
+|`invalid_lines`|无法解析的输出行|
+|`uncovered_voice`|有声音但没有对话覆盖的整片时间段。音乐和音效也会出现|
 
-修正时改写 `NNN.parsed.json` 的 `rows`，核对后把 `discarded` 设为 `0`、`retry` 设为 `false`，并移除已解决的 `flags`。续跑保留已修正的结果。
+这些只是事实，由你结合内容判断如何处理：
 
-语义检查阅读全部带标记的分段，并抽查其余分段和分段交界处：
-
-- 原文与译文是否对应，否定、数字、人名和因果是否一致，`dialogue` 与 `screen` 是否混淆。
+- 阅读识别结果，核对原文与译文是否对应，否定、数字、人名和因果是否一致，`dialogue` 与 `screen` 是否混淆，是否有复读、时间越界或错位。分段交界处可能有被切开或重复的句子和画面文字，合并为一行。
+- 需要看画面时，用 `imageio_ffmpeg.get_ffmpeg_exe()` 从 `segments/NNN.mp4` 截帧，再用 `ws.emitImage` 查看。分段内时间是整片时间减去该段 `start`。小字仍看不清时从原素材截帧。
 - 只依据画面、上下文或用户提供的证据修改。不能凭剧情常识补写台词或反转否定。无法确认的内容列为待确认项告诉用户。
-- 需要看画面时，用 `imageio_ffmpeg.get_ffmpeg_exe()` 从工作目录或 `sources/<file_path>/` 的 `segments/NNN.mp4` 截帧，再用 `ws.emitImage` 查看。已导入条目的时间取 `video.json` 中同下标的 `cues`，它是整片时间，按 `segments` 换算到分段内。分段已缩到长边 1024、每秒一帧，小字仍看不清时从原素材截帧。
+- 局部问题直接改 `NNN.rows.json`。整段质量差时重新请求该段，必要时调整提示词。重新请求会产生费用，同一分段反复不理想时，用 `ask_user` 说明问题再决定。
 
-仍有未解决的问题时不打包，也不能为了通过检查删除内容。
+### 提交
 
-## 打包与提交
-
-1. 运行 `media.py pack work/video/<资产名> work/video/<原视频主名>.video`。脚本换算整片时间、合并相邻的相同画面文字，并写出 `translations.json`。包超过 900 MiB 时，请用户先拆分原素材。
-2. 按 `project-operation` 新增该资产并核对回执。
-3. 刷新快照后，读取 `translations.json`。按目标 `file_path` 和 `row_number` 找到条目，确认 `src` 一致，再用当前 `item_id` 和 `fp` 把 `dst` 写入 `changes.items`。文件变更与条目变更分批提交。
+1. 运行 `media.py items <工作目录>`。脚本合并各段的行，写出 `items.json` 和 `translations.json`。后者保存识别译文，不进包。
+2. 运行 `media.py pack <工作目录> work/video/<原视频主名>.video`。
+3. 按 `project-operation` 的「更新文件」提交并继承译文。继承保留原文未变条目的已有译文。之后按 `row_number` 找到仍未完成的条目，确认 `src` 一致，用当前 `item_id` 和 `fp` 把 `translations.json` 中非空的 `dst` 写入 `changes.items`。
 4. 核对被拒绝的条目和完成统计。
 
-导入后条目已有译文。识别时术语表通常为空，术语统一在后续术语和审校阶段完成。个别译文需要重翻时，可以使用批量翻译。
+只重新识别部分分段时，为保留的分段写入 `NNN.rows.json`。取起点落在该段内的 `items.json` 记录，把 `message` 改名为 `src`。当前条目译文作为 `dst`，没有译文时写空字符串。保留段没有记录时也写入 `[]`。
 
 ## 生成与交付
 
-按 `project-operation` 生成，每个 `.video` 资产输出同名的译文 ASS 和双语 ASS。交付时说明：字幕文件改成与原视频相同的主名并放在同一目录，播放器即可自动加载。
+按 `project-operation` 生成。`generateFiles()` 不直接输出视频字幕，每个 `.video` 资产的写回输入位于 `<generic_input_path>/<file_path>/items.json`，正文已确定为最终译文。用默认渲染写出与原视频同主名的 ASS：
 
-## 重新识别
+```js
+const { render } = await import(new URL('scripts/render.mjs', base_url).href);
+await render({
+  source: 'sources/ep01.video',
+  input: `${generic_input_path}/ep01.video/items.json`,
+  translated: `${output_path}/ep01.ass`,
+  bilingual: `${bilingual_output_path}/ep01.ass`,
+});
+```
 
-工程中的 `sources/<file_path>/` 已展开 `video.json` 和 `segments/`，不需要原素材。
+包内有 `render.mjs` 时，读取并检查后改用它。交付时说明：字幕文件改成与原视频相同的主名并放在同一目录，播放器即可自动加载。
 
-1. 把它们复制到新的工作目录，写入只含 `video`、`segments` 和 `"energy": null` 的 `state.json`。没有能量曲线时，空输出不会自动重试，漏句检查也不会执行，需人工核对。
-2. 只重识别部分分段时，为保留的分段写入 `NNN.parsed.json`：把起点落在该段内的 `cues` 换算为相对时间，结束时间不超过段尾，`text` 作为 `src`，当前条目译文作为 `dst`（没有译文时暂用原文，提交时不写入），`flags` 为空，`discarded` 为 `0`，`retry` 为 `false`。识别只请求缺少结果的分段。
-3. 按上文完成识别、检查和打包，再按 `project-operation` 的「更新文件」提交并继承译文。继承保留原文未变条目的人工译文，仍未完成的条目使用 `translations.json` 中的识别译文。
+### 样式
+
+默认渲染中，对话在底部居中，画面文字在顶部居中或按 `an` 定位，字号随画面高度缩放。用户要求其他样式时，例如字体、颜色、双语排版、说话人区分，把 `render.mjs` 复制到 `work/` 修改，保持导出签名不变，生成后抽查 ASS。
+
+用户要求固定该样式时，把定制程序放入包目录的 `render.mjs`，重新打包后按「更新文件」提交。条目原文不变，继承会保留全部译文。

@@ -19,8 +19,10 @@ export const GENERIC_ITEMS_SCHEMA = Type.Array(
 );
 const VALIDATOR = Compile(GENERIC_ITEMS_SCHEMA); // 解析与模型声明使用同一份记录契约。
 
-/** 通用资产只解释记录结构，底稿和私有定位由产品 Agent 维护。 */
+/** 通用资产只解释记录结构，底稿和私有定位由产品 Agent 维护。`.video` 共用同一记录契约。 */
 export class GenericFormat {
+  public constructor(private readonly file_type: "GENERIC" | "VIDEO" = "GENERIC") {}
+
   /** 完整验证后才建立条目，坏记录不能被过滤后改变后续坐标。 */
   private async read_records(
     content: Uint8Array,
@@ -46,7 +48,7 @@ export class GenericFormat {
         src: record.message,
         name_src: record.name ?? null,
         row,
-        file_type: "GENERIC",
+        file_type: this.file_type,
         file_path: file,
       }),
     );

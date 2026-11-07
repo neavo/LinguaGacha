@@ -693,29 +693,22 @@ it.each(["missing", "mismatch"])("MESSAGEJSON %s 在本文件写入前报告错�
   expect(fs.readFileSync(path.join(temp.path, "story.json"), "utf8")).toBe("existing output");
 });
 
-it.each([false, true])("视频资产导出 ASS 与双语字幕，空字幕=%s", async (empty) => {
+it.each([false, true])("视频资产只输出写回输入，空记录=%s", async (empty) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-video-export-"));
   const service = create_service();
-  const content = await write_zip(
-    new Map([
-      [
-        "video.json",
-        JSON.stringify({
-          video: null,
-          segments: [{ path: "segments/000.mp4", start: 0, end: 10 }],
-          cues: empty ? [] : [{ start: 0, end: 2, kind: "dialogue", text: "原文" }],
-        }),
-      ],
-      ["segments/000.mp4", "media"],
-    ]),
-  );
+  const records = empty ? [] : [{ message: "原文", start: 0, end: 2, kind: "dialogue" }];
+  const content = await write_zip(new Map([["items.json", JSON.stringify(records)]]));
   const parsed = await service.parse_asset("movie.video", content);
   expect(parsed).toMatchObject({ kind: "items", file_type: "VIDEO" });
   if (parsed.kind !== "items") throw new Error("Expected items");
+  expect(parsed.items.map((item) => [item.src, item.row, item.file_type])).toEqual(
+    empty ? [] : [["原文", 0, "VIDEO"]],
+  );
   const paths = {
     translated_path: path.join(temp.path, "translated"),
     bilingual_path: path.join(temp.path, "bilingual"),
   };
+  const generic_path = path.join(temp.path, "generic");
   await service.write_items(
     parsed.items.map((item) => ({ ...item, dst: "译文", status: "PROCESSED" })),
     {
@@ -723,10 +716,10 @@ it.each([false, true])("视频资产导出 ASS 与双语字幕，空字幕=%s", 
       source_files: [{ path: "movie.video", file_type: "VIDEO" }],
       asset_reader: () => Buffer.from(content),
     },
+    generic_path,
   );
-  const translated = fs.readFileSync(path.join(paths.translated_path, "movie.ass"), "utf8");
-  const bilingual = fs.readFileSync(path.join(paths.bilingual_path, "movie.ass"), "utf8");
-  expect(translated).toContain("[Events]");
-  if (!empty) expect(bilingual).toContain("原文\\N译文");
-  else expect(bilingual).toBe(translated);
+  expect(fs.existsSync(paths.translated_path)).toBe(false);
+  expect(
+    JSON.parse(fs.readFileSync(path.join(generic_path, "movie.video/items.json"), "utf8")),
+  ).toEqual(records.map((record) => ({ ...record, message: "译文" })));
 });

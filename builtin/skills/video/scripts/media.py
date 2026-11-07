@@ -1,4 +1,4 @@
-"""视频技能的确定性处理；网络和凭据由工作区宿主负责。"""
+"""视频技能负责确定性处理。网络和凭据归工作区宿主，质量判断归 Agent。"""
 
 import argparse
 import json
@@ -7,7 +7,6 @@ import re
 import subprocess
 import tempfile
 import zipfile
-from difflib import SequenceMatcher
 from itertools import pairwise
 from pathlib import Path
 
@@ -20,11 +19,9 @@ HOP_SECONDS = 0.1
 SAMPLE_RATE = 16000
 SILENCE_DB = -40
 MIN_PAUSE = 3  # 100ms 格数
-PACKAGE_MAX_BYTES = 900 * 1024 * 1024
-DISCARD_RATIO = 0.1
 UNCOVERED_SECONDS = 5
-SCREEN_MERGE_SECONDS = 1
-REPETITION_SIMILARITY = 0.9
+PACKAGE_MAX_BYTES = 900 * 1024 * 1024
+CUSTOM_RENDERER = "render.mjs"
 
 
 def save(file, value):
@@ -74,7 +71,7 @@ def inspect(source):
 
 
 def energy(source, track):
-    """整片只计算一次能量曲线，供切段与覆盖检查复用。"""
+    """按 100ms 计算音轨能量，供切段与声音覆盖统计复用。"""
     # PCM 写临时文件并映射，长素材不把整段解码音频复制进内存。
     with tempfile.TemporaryDirectory() as directory:
         pcm = Path(directory) / "audio.pcm"
@@ -135,7 +132,7 @@ def cuts(duration, db):
 
 
 def prepare(source, directory, track):
-    """固定来源身份后转码，已发布的分段可以续用。"""
+    """把素材切段转码为包目录，已发布的分段可以续用。"""
     source, root = Path(source).resolve(), Path(directory)
     root.mkdir(parents=True, exist_ok=True)
     info = inspect(source)
@@ -150,32 +147,34 @@ def prepare(source, directory, track):
         "mtime_ns": source.stat().st_mtime_ns,
         "track": track,
     }
-    state_file = root / "state.json"
-    if state_file.exists():
-        state = load(state_file)
-        if state["source"] != identity:
-            raise ValueError("来源或音轨已变化，请使用新的工作目录")
-    else:
+    identity_file = root / "source.json"  # 只用于续跑，不进入包。
+    if identity_file.exists() and load(identity_file) != identity:
+        raise ValueError("来源或音轨已变化，请使用新的工作目录")
+    save(identity_file, identity)
+    manifest_file = root / "video.json"
+    if not manifest_file.exists():
         db = energy(source, track) if info["audio"] else None
-        boundaries = cuts(info["duration"], db)
-        state = {
-            "source": identity,
-            "video": info["video"],
-            "segments": [
-                {"path": f"segments/{i:03}.mp4", "start": start, "end": end}
-                for i, (start, end) in enumerate(pairwise(boundaries))
-            ],
-            "energy": db.tolist() if db is not None else None,
-        }
-        save(state_file, state)
-    for i, segment in enumerate(state["segments"]):
+        save(
+            manifest_file,
+            {
+                "video": info["video"],
+                "segments": [
+                    {"path": f"segments/{i:03}.mp4", "start": start, "end": end}
+                    for i, (start, end) in enumerate(pairwise(cuts(info["duration"], db)))
+                ],
+            },
+        )
+    if not (root / "items.json").exists():
+        save(root / "items.json", [])
+    manifest = load(manifest_file)
+    for i, segment in enumerate(manifest["segments"]):
         target = root / segment["path"]
         if target.exists():
             continue
         target.parent.mkdir(exist_ok=True)
         temporary = target.with_suffix(".tmp.mp4")
         args = ["-v", "error", "-y", "-ss", str(segment["start"]), "-i", str(source)]
-        if state["video"] is None:
+        if manifest["video"] is None:
             args += ["-f", "lavfi", "-i", "color=c=black:s=256x144:r=1", "-map", "1:v:0"]
         else:
             args += [
@@ -186,7 +185,7 @@ def prepare(source, directory, track):
             ]
         if info["audio"]:
             args += ["-map", f"0:a:{track}", "-c:a", "aac", "-b:a", "48k", "-ac", "1"]
-        if state["video"] is None:
+        if manifest["video"] is None:
             args += ["-shortest"]
         args += [
             "-t",
@@ -205,7 +204,7 @@ def prepare(source, directory, track):
         ]
         ffmpeg(args)
         temporary.replace(target)
-        print(f"转码 {i + 1}/{len(state['segments'])}", flush=True)
+        print(f"转码 {i + 1}/{len(manifest['segments'])}", flush=True)
 
 
 def visible_text(response):
@@ -223,203 +222,152 @@ def number(value):
     return type(value) in (int, float) and math.isfinite(value)
 
 
-def analyze(response, segment, db):
-    """保留合法行并报告问题，重试决策只针对整段失败。"""
-    text = visible_text(response)
-    rows, discarded, flags = [], 0, []
-    duration = segment["end"] - segment["start"]
-    previous = 0
-    for line in text.splitlines():
-        if not line.strip() or line.strip().startswith("```"):
-            continue
-        try:
-            row = repair_json(line, return_objects=True)
-            if (
-                not isinstance(row, dict)
-                or row.get("kind") not in ("dialogue", "screen")
-                or not all(isinstance(row.get(key), str) for key in ("src", "dst"))
-                or not all(number(row.get(key)) for key in ("start", "end"))
-            ):
-                raise ValueError("结构错误")
-        except (ValueError, TypeError):
-            discarded += 1
-            continue
-        index = len(rows)
-        if not 0 <= row["start"] < row["end"] <= duration or row["start"] < previous:
-            flags.append({"row": index, "reason": "time"})
-        previous = row["start"]
-        if not row["src"].strip() or not row["dst"].strip():
-            flags.append({"row": index, "reason": "empty_pair"})
-        span = row["end"] - row["start"]
-        if span > 7 or (span > 0 and len(row["src"]) / span > 30):
-            flags.append({"row": index, "reason": "granularity"})
-        if row["src"] == row["dst"]:
-            flags.append({"row": index, "reason": "same_text"})
-        if len(rows) >= 2 and all(
-            SequenceMatcher(None, row["src"], previous_row["src"]).ratio() >= REPETITION_SIMILARITY
-            for previous_row in rows[-2:]
-        ):
-            flags.append({"row": index, "reason": "repetition"})
-        rows.append({key: row[key] for key in ("start", "end", "kind", "src", "dst")})
-    active = (
-        np.array([], dtype=bool)
-        if db is None
-        else np.asarray(db[round(segment["start"] * 10) : math.ceil(segment["end"] * 10)])
-        >= SILENCE_DB
-    )
-    uncovered = active.copy()
+def uncovered_voice(file, segment, rows):
+    """列出有声音但没有对话覆盖的整片时间段。音乐和音效同样计入。"""
+    if not inspect(file)["audio"]:
+        return []
+    voiced = energy(file, 0) >= SILENCE_DB
     for row in rows:
-        if row["kind"] == "dialogue":
-            uncovered[max(0, int(row["start"] * 10)) : max(0, math.ceil(row["end"] * 10))] = False
-    longest = current = 0
-    for value in uncovered:
-        current = current + 1 if value else 0
-        longest = max(longest, current)
-    if longest * HOP_SECONDS >= UNCOVERED_SECONDS:
-        flags.append({"reason": "possible_missing_speech"})
-    # 音乐同样会触发能量检查，疑似漏句交给 Agent 复核。
-    retry = (
-        response.get("status") != "completed"
-        or bool(response.get("incomplete_details"))
-        or (not text.strip() and bool(active.any()))
-        or discarded / max(1, len(rows) + discarded) > DISCARD_RATIO
-        or any(flag["reason"] == "repetition" for flag in flags)
-    )
-    return {"rows": rows, "discarded": discarded, "flags": flags, "retry": retry}
+        if row.get("kind") == "dialogue" and number(row.get("start")) and number(row.get("end")):
+            first = max(0, int((row["start"] - segment["start"]) / HOP_SECONDS))
+            voiced[first : max(first, math.ceil((row["end"] - segment["start"]) / HOP_SECONDS))] = (
+                False
+            )
+    spans, begin = [], None
+    for i, value in enumerate([*voiced, False]):
+        if value and begin is None:
+            begin = i
+        elif not value and begin is not None:
+            if (i - begin) * HOP_SECONDS >= UNCOVERED_SECONDS:
+                spans.append(
+                    [
+                        round(segment["start"] + begin * HOP_SECONDS, 1),
+                        round(segment["start"] + i * HOP_SECONDS, 1),
+                    ]
+                )
+            begin = None
+    return spans
 
 
-def analyze_files(directory):
-    """只解析尚未发布的结果，续跑保留人工修正。"""
+def parse(directory):
+    """把响应转为整片时间的行并输出事实摘要，已有的行保留 Agent 的修正。"""
     root = Path(directory)
-    state = load(root / "state.json")
     summary = []
-    for i, segment in enumerate(state["segments"]):
-        raw = root / f"{i:03}.response.json"
-        parsed = root / f"{i:03}.parsed.json"
-        if parsed.exists():
-            result = load(parsed)
-        elif raw.exists():
-            result = analyze(load(raw), segment, state["energy"])
-            save(parsed, result)
-        else:
+    for i, segment in enumerate(load(root / "video.json")["segments"]):
+        response_file, rows_file = root / f"{i:03}.response.json", root / f"{i:03}.rows.json"
+        if not response_file.exists() and not rows_file.exists():
             summary.append({"index": i, "missing": True})
             continue
+        response = load(response_file) if response_file.exists() else {}
+        rows, invalid = [], []
+        for line in visible_text(response).splitlines():
+            text = line.strip()
+            if not text or text.startswith("```"):
+                continue
+            row = repair_json(text, return_objects=True)
+            if isinstance(row, dict) and number(row.get("start")) and number(row.get("end")):
+                # 模型输出分段内时间，换算后整个工作目录只使用整片时间。
+                rows.append(
+                    {
+                        **row,
+                        "start": round(row["start"] + segment["start"], 3),
+                        "end": round(row["end"] + segment["start"], 3),
+                    }
+                )
+            else:
+                invalid.append(text)
+        if rows_file.exists():
+            rows = load(rows_file)
+        else:
+            save(rows_file, rows)
         summary.append(
-            {"index": i, **{key: value for key, value in result.items() if key != "rows"}}
+            {
+                "index": i,
+                "start": segment["start"],
+                "end": segment["end"],
+                "rows": len(rows),
+                "incomplete": response_file.exists()
+                and (
+                    response.get("status") != "completed"
+                    or bool(response.get("incomplete_details"))
+                ),
+                "invalid_lines": invalid,
+                "uncovered_voice": uncovered_voice(root / segment["path"], segment, rows),
+            }
         )
-    save(root / "review.json", summary)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def items(directory):
+    """合并各段字幕为包内记录。译文另存为提交材料。"""
+    root = Path(directory)
+    segments = load(root / "video.json")["segments"]
+    rows = []
+    for i in range(len(segments)):
+        rows_file = root / f"{i:03}.rows.json"
+        if not rows_file.exists():
+            raise ValueError(f"分段 {i} 尚无识别结果")
+        rows += load(rows_file)
+    for i, row in enumerate(rows):
+        if (
+            not (
+                number(row.get("start"))
+                and number(row.get("end"))
+                and 0 <= row["start"] < row["end"] <= segments[-1]["end"]
+            )
+            or row.get("kind") not in ("dialogue", "screen")
+            or not isinstance(row.get("src"), str)
+            or not row["src"].strip()
+            or not isinstance(row.get("dst"), str)
+        ):
+            raise ValueError(f"第 {i} 行不合法：{json.dumps(row, ensure_ascii=False)}")
+    rows.sort(key=lambda row: row["start"])  # 校验后排序，坏时间不能参与比较。
+    save(
+        root / "items.json",
+        [
+            {**{k: v for k, v in row.items() if k not in ("src", "dst")}, "message": row["src"]}
+            for row in rows
+        ],
+    )
+    save(
+        root / "translations.json",
+        [{"row_number": i, "src": row["src"], "dst": row["dst"]} for i, row in enumerate(rows)],
+    )
+    print(json.dumps({"items": len(rows)}, ensure_ascii=False))
 
 
 def pack(directory, output):
-    """合并原文字幕并发布独立译文表，包内不保存译文。"""
+    """把包目录中的清单、记录、分段和可选的定制渲染程序封装为 .video。"""
     root = Path(directory)
-    state = load(root / "state.json")
-    cues = []
-    for i, segment in enumerate(state["segments"]):
-        parsed = load(root / f"{i:03}.parsed.json")
-        if parsed["retry"] or parsed["discarded"]:
-            raise ValueError(f"分段 {i} 尚有未解决的检查问题")
-        for row in parsed["rows"]:
-            if (
-                not all(number(row.get(key)) for key in ("start", "end"))
-                or not 0 <= row["start"] < row["end"] <= segment["end"] - segment["start"]
-                or row["kind"] not in ("dialogue", "screen")
-                or not row["src"].strip()
-                or not row["dst"].strip()
-            ):
-                raise ValueError(f"分段 {i} 字幕不合法")
-            cues.append(
-                {
-                    **row,
-                    "start": row["start"] + segment["start"],
-                    "end": min(row["end"] + segment["start"], segment["end"]),
-                }
-            )
-    # 保留亚百分秒时间，ASS 生成时才按输出精度取整。
-    cues.sort(key=lambda row: row["start"])
-    merged, screens = [], {}  # 每条画面文字只与最近的同文字幕合并。
-    for cue in cues:
-        previous = screens.get(cue["src"]) if cue["kind"] == "screen" else None
-        if (
-            previous is not None
-            and cue["start"] <= previous["end"] + SCREEN_MERGE_SECONDS
-            and cue["dst"] == previous["dst"]
-        ):
-            previous["end"] = max(previous["end"], cue["end"])
-        else:
-            merged.append(cue)
-            if cue["kind"] == "screen":
-                screens[cue["src"]] = cue
-    manifest = {
-        "video": state["video"],
-        "segments": state["segments"],
-        "cues": [
-            {"start": cue["start"], "end": cue["end"], "kind": cue["kind"], "text": cue["src"]}
-            for cue in merged
-        ],
-    }
-    video = manifest["video"]
-    if video is not None and (
-        not isinstance(video, dict)
-        or set(video) != {"width", "height"}
-        or any(type(value) is not int or value <= 0 for value in video.values())
-    ):
-        raise ValueError("原视频尺寸不合法")
-    if not manifest["segments"]:
-        raise ValueError("缺少分段")
-    end = 0
-    paths = set()
-    for segment in manifest["segments"]:
-        if (
-            not all(number(segment[key]) for key in ("start", "end"))
-            or segment["start"] != end
-            or segment["end"] <= end
-            or not re.fullmatch(r"segments/[^/\\]+\.mp4", segment["path"])
-            or segment["path"] in paths
-            or not (root / segment["path"]).is_file()
-        ):
-            raise ValueError("分段清单不合法")
-        paths.add(segment["path"])
-        end = segment["end"]
-    if any(cue["end"] > end for cue in merged):
-        raise ValueError("字幕超出素材时长")
-    payload = json.dumps(manifest, ensure_ascii=False).encode("utf-8")
-    if (
-        sum((root / segment["path"]).stat().st_size for segment in manifest["segments"])
-        + len(payload)
-        > PACKAGE_MAX_BYTES
-    ):
-        raise ValueError("包超过 900 MiB，请拆分原素材后导入")
+    manifest = load(root / "video.json")
+    load(root / "items.json")  # 记录缺失或损坏时不打包。
+    members = ["video.json", "items.json", *(segment["path"] for segment in manifest["segments"])]
+    if (root / CUSTOM_RENDERER).exists():
+        members.append(CUSTOM_RENDERER)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(".tmp.video")
     with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_STORED) as archive:
-        archive.writestr("video.json", payload)
-        for segment in manifest["segments"]:
-            archive.write(root / segment["path"], segment["path"])
+        for member in members:
+            archive.write(root / member, member)
     if temporary.stat().st_size > PACKAGE_MAX_BYTES:
         temporary.unlink()
         raise ValueError("包超过 900 MiB，请拆分原素材后导入")
     temporary.replace(output)
-    save(
-        root / "translations.json",
-        [{"row_number": i, "src": cue["src"], "dst": cue["dst"]} for i, cue in enumerate(merged)],
-    )
-    print(json.dumps({"package": str(output), "cues": len(merged)}, ensure_ascii=False))
+    print(json.dumps({"package": str(output), "members": len(members)}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
     # 命令只分发确定性处理，网络请求由工作区主脚本执行。
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    probe = commands.add_parser("inspect")
-    probe.add_argument("source")
+    commands.add_parser("inspect").add_argument("source")
     prep = commands.add_parser("prepare")
     prep.add_argument("source")
     prep.add_argument("directory")
     prep.add_argument("--track", type=int, default=0)
-    check = commands.add_parser("analyze")
-    check.add_argument("directory")
+    commands.add_parser("parse").add_argument("directory")
+    commands.add_parser("items").add_argument("directory")
     package = commands.add_parser("pack")
     package.add_argument("directory")
     package.add_argument("output")
@@ -428,7 +376,9 @@ if __name__ == "__main__":
         print(json.dumps(inspect(args.source), ensure_ascii=False, indent=2))
     elif args.command == "prepare":
         prepare(args.source, args.directory, args.track)
-    elif args.command == "analyze":
-        analyze_files(args.directory)
+    elif args.command == "parse":
+        parse(args.directory)
+    elif args.command == "items":
+        items(args.directory)
     elif args.command == "pack":
         pack(args.directory, args.output)

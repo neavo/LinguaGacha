@@ -18,7 +18,7 @@ description: 添加、导入或更新工程文件，调查材料中有哪些可�
 3. 按识别能力的边界核对结果：
    - `kind` 为 `game` 的资产由引擎识别，游戏是否成立以识别结果为准。
    - `kind` 为 `file` 的资产只按扩展名对应解析器，不检查内容。抽样核对内容是否符合该格式。例如 `.json` 对象按「键为原文、字符串值为译文」解析，数组按带 `message` 字段的消息列表解析，其他用途的 JSON 会产生错误条目。
-4. 识别结果未覆盖的视频或纯音频，按 `video` 识别并封装为 `.video`。其他未覆盖、或内容与对应格式不符的材料，按 `generic-data` 调查其中是否有需要翻译的文本，有则提取并封装为 `.generic`，再识别产出的包。
+4. 识别结果未覆盖的视频或纯音频，按 `video` 切段并封装为 `.video`。其他未覆盖、或内容与对应格式不符的材料，按 `generic-data` 调查其中是否有需要翻译的文本，有则提取并封装为 `.generic`，再识别产出的包。
 
 ```js
 import { inspectSources } from '@lg/project';
@@ -71,7 +71,7 @@ console.log(JSON.stringify(result, null, 2));
 
 ## 回执与恢复
 
-- `inspectSources` 只识别来源，不能证明内容解析成功。新增回执 `parse_failed` 中的资产已经加入工程。告诉用户哪些文件解析失败，不说成新增失败。PDF 可能没有条目，但有页面。
+- `inspectSources` 只识别来源，不能证明内容解析成功。新增回执 `parse_failed` 中的资产已经加入工程。告诉用户哪些文件解析失败，不说成新增失败。PDF 可能没有条目，但有页面。`.video` 在识别前没有条目。
 - `invalid_change` 提示 Godot 包集合已变化时，重新识别来源，与用户确认新的完整顺序。
 - 错误 `data.committed_sync_failed` 时，先重读工程确认已生效的文件变更，避免重复提交。
 
@@ -97,10 +97,10 @@ console.log(JSON.stringify(result, null, 2));
 
 ## 生成与交付
 
-1. 按 `project_meta.json` 的 `files` 中的 `file_type` 加载对应的格式技能。有 `GENERIC` 时加载 `generic-data`。
+1. 按 `project_meta.json` 的 `files` 中的 `file_type` 加载对应的格式技能。有 `GENERIC` 时加载 `generic-data`，有 `VIDEO` 时加载 `video`。
 2. `counts.items_with_warnings` 大于零，且用户本次尚未决定是否审校、本对话也未完成审校时，用 `ask_user` 询问。第一项为直接生成，第二项为先审校再生成。选择审校时加载 `translation`。完成审校后继续。
 3. 提交本次交付所需的工程变更。再调用 `@lg/project` 的 `generateFiles()`。
-4. 有 `GENERIC` 时，按 `generic-data` 用 `generic_input_path` 中的写回输入还原目标格式。写回输入属于工作材料，不放入成果。
+4. 有 `GENERIC` 时，按 `generic-data` 用 `generic_input_path` 中的写回输入还原目标格式。有 `VIDEO` 时，按 `video` 渲染字幕。写回输入属于工作材料，不放入成果。
 5. 对照 `files` 核对原生产物与通用写回成果的完整集合。路径重叠时结合真实加载方式安排合并。带 `.reference` 标记的文件须结合资产来源和格式技能判断，不能只凭名称作为可安装文件交付。用户要求打包时，打包核对后的成果。
 6. 确定交付目录：
    - 用户指定了位置时，调用 `getOutputPaths(该目录)`。
