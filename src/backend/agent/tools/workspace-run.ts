@@ -1,7 +1,8 @@
+import { VIDEO_MANIFEST_MEMBER, VIDEO_SCHEMA } from "../../file/video/video-format";
 import { GENERIC_ITEMS_MEMBER, GENERIC_ITEMS_SCHEMA } from "../../file/generic/generic-format";
 import { create_schema_renderer } from "../workspace/schema-description";
 import { summarize_images } from "./emit-image";
-import { Type } from "@earendil-works/pi-ai";
+import { Type, type TSchema } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
@@ -106,8 +107,14 @@ export function create_agent_workspace_run_tool(options: {
       `调用前先提交必要译文。\`generateFiles()\` 生成到 \`${AGENT_WORKSPACE_WORK_ROOT}/\` 下的暂存目录，返回本机绝对路径：\`output_path\` 只含已支持格式的可安装产物，\`bilingual_output_path\` 为双语对照，\`generic_input_path\` 为通用写回输入目录。\`pdf_files\` 报告 PDF 页面结果。生成与交付流程见 \`project-operation\` 技能。`,
       "`getOutputPaths(directory?)` 按应用设置计算交付目录，传入绝对路径时改用该父目录。`manual` 为 `true` 表示用户设置为每次手动选择。返回的目录名已避开现有同名目录，但不会预先创建。",
       `每个通用包是 ZIP，根目录 \`${GENERIC_ITEMS_MEMBER}\` 使用下列结构，其余成员保存解析与写回所需底稿。数组下标是条目行号。写回输入为 \`<generic_input_path>/<file_path>/${GENERIC_ITEMS_MEMBER}\`，记录数与源数组相同，正文与姓名已确定，私有字段保留。Agent 根据私有定位写回底稿。`,
+      `每个视频包是 ZIP，根目录 \`${VIDEO_MANIFEST_MEMBER}\` 使用 \`VideoManifest\`，用法见 \`video\` 技能。\`video\` 是原画面尺寸，纯音频为 \`null\`。时间均为整片秒数：\`segments\` 从 0 开始首尾相接，\`cues\` 按 \`start\` 排列且 \`start < end\`。\`cues\` 下标是条目行号，包内只保存原文，译文在条目中。`,
       "```ts",
-      create_schema_renderer(new Map([[GENERIC_ITEMS_SCHEMA, "GenericItems"]])).declarations(),
+      create_schema_renderer(
+        new Map<TSchema, string>([
+          [GENERIC_ITEMS_SCHEMA, "GenericItems"],
+          [VIDEO_SCHEMA, "VideoManifest"],
+        ]),
+      ).declarations(),
       "declare module '@lg/project' {",
       "  type SourceInspection = { source_path: string; files: Array<{ path: string; kind: 'file' | 'game' }>; godot_packs: Array<Readonly<{ game_root: string; game_name: string; external_pcks: readonly string[] }>>; failures: Array<{ path: string; message: string }> };",
       "  function inspectSources(source_paths: string[]): Promise<SourceInspection[]>;",

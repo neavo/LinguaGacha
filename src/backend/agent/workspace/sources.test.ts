@@ -34,6 +34,7 @@ it.each([
   ["RPGMAKER_MV_MZ", "game.zip.rpgmaker"],
   ["EPUB", "小说/书.epub"],
   ["GENERIC", "data.generic"],
+  ["VIDEO", "movie.video"],
 ])("%s 按资产相对路径展开并保留所有成员字节", async (file_type, file_path) => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));
   const zip = new JSZip();
@@ -92,7 +93,7 @@ it.each(["Data/System.rvdata2.reference.json", "game_files.reference.txt/real.js
   },
 );
 
-it.each(["GODOT", "EPUB", "GENERIC"])(
+it.each(["GODOT", "EPUB", "GENERIC", "VIDEO"])(
   "%s 拒绝越界容器成员，外部路径没有写入",
   async (file_type) => {
     using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-rm-"));

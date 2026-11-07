@@ -692,3 +692,41 @@ it.each(["missing", "mismatch"])("MESSAGEJSON %s 在本文件写入前报告错�
   );
   expect(fs.readFileSync(path.join(temp.path, "story.json"), "utf8")).toBe("existing output");
 });
+
+it.each([false, true])("视频资产导出 ASS 与双语字幕，空字幕=%s", async (empty) => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-video-export-"));
+  const service = create_service();
+  const content = await write_zip(
+    new Map([
+      [
+        "video.json",
+        JSON.stringify({
+          video: null,
+          segments: [{ path: "segments/000.mp4", start: 0, end: 10 }],
+          cues: empty ? [] : [{ start: 0, end: 2, kind: "dialogue", text: "原文" }],
+        }),
+      ],
+      ["segments/000.mp4", "media"],
+    ]),
+  );
+  const parsed = await service.parse_asset("movie.video", content);
+  expect(parsed).toMatchObject({ kind: "items", file_type: "VIDEO" });
+  if (parsed.kind !== "items") throw new Error("Expected items");
+  const paths = {
+    translated_path: path.join(temp.path, "translated"),
+    bilingual_path: path.join(temp.path, "bilingual"),
+  };
+  await service.write_items(
+    parsed.items.map((item) => ({ ...item, dst: "译文", status: "PROCESSED" })),
+    {
+      paths,
+      source_files: [{ path: "movie.video", file_type: "VIDEO" }],
+      asset_reader: () => Buffer.from(content),
+    },
+  );
+  const translated = fs.readFileSync(path.join(paths.translated_path, "movie.ass"), "utf8");
+  const bilingual = fs.readFileSync(path.join(paths.bilingual_path, "movie.ass"), "utf8");
+  expect(translated).toContain("[Events]");
+  if (!empty) expect(bilingual).toContain("原文\\N译文");
+  else expect(bilingual).toBe(translated);
+});

@@ -1,3 +1,4 @@
+import type { WorkspaceVideoPort } from "../tools/request-video";
 import { create_file_generator } from "../tools/generate-files";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
@@ -223,6 +224,7 @@ export class AgentWorkspaceService {
         "generate_staging_files" | "read_output_paths"
       >;
       pdfHost?: PDFHost | undefined;
+      requestVideo?: WorkspaceVideoPort;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -721,6 +723,15 @@ export class AgentWorkspaceService {
               ...logs,
               timeoutMs: request.timeoutMs,
               emitImage: image_output.emitImage,
+              ...(this.options.requestVideo
+                ? {
+                    requestVideo: (input, signal) =>
+                      this.options.requestVideo!(
+                        { ...input, file: path.resolve(this.root_path, input.file) },
+                        signal,
+                      ),
+                  }
+                : {}),
               ...(request.doing === undefined ? {} : { doing: request.doing }),
               inspectSources: async (sources, signal) => {
                 const resolved = sources.map((source) => this.resolve_source_path(source));

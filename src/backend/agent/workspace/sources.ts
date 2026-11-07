@@ -89,7 +89,8 @@ export async function write_agent_workspace_sources(args: {
       if (
         is_game_file_type(file.file_type) ||
         file.file_type === "EPUB" ||
-        file.file_type === "GENERIC"
+        file.file_type === "GENERIC" ||
+        file.file_type === "VIDEO"
       ) {
         const engine = is_game_file_type(file.file_type) ? GAME_ENGINES[file.file_type] : null;
         const container = engine

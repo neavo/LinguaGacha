@@ -10,6 +10,9 @@ describe("Agent Workspace 工具说明投影", () => {
 ws.emitImage("work/page.png");
 const doing: Promise<void> = ws.setDoing("检查章节");
 ws.setDoing(null);
+const video: Promise<string> = ws.requestVideo("work/segment.mp4", "字幕");
+// @ts-expect-error 视频请求必须提供提示词。
+ws.requestVideo("work/segment.mp4");
 // @ts-expect-error 阶段只接受文本或 null。
 ws.setDoing(1);
 // @ts-expect-error 清空必须显式传入 null。

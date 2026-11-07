@@ -1,3 +1,4 @@
+import { VideoFormat } from "./video/video-format";
 import { GenericFormat, GENERIC_ITEMS_MEMBER } from "./generic/generic-format";
 import { group_items } from "./shared/file-format-helpers";
 import { collect_game_file_list } from "./shared/game/source-files";
@@ -83,6 +84,7 @@ export class FileFormatService {
 
   private readonly native_fs: NativeFs; // 文件发现与字幕写入复用的磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
+  private readonly video = new VideoFormat();
   private readonly generic = new GenericFormat();
   private readonly txt: TXTFormat;
   private readonly md: MDV2Format;
@@ -157,6 +159,7 @@ export class FileFormatService {
       ".trans": "TRANS",
       ".pdf": "PDF",
       ".generic": "GENERIC",
+      ".video": "VIDEO",
     };
     let type =
       (file_type === "NONE" ? undefined : file_type) ??
@@ -210,6 +213,7 @@ export class FileFormatService {
       };
     const formats = {
       GENERIC: this.generic,
+      VIDEO: this.video,
       TXT: this.txt,
       MD_V2: this.md,
       ASS: this.ass,
@@ -612,18 +616,22 @@ export class FileFormatService {
       const file_items = by_file.get(file) ?? [];
       const file_type = record.file_type as ItemFileType;
       const subtitle = this.read_subtitle_format(file_type);
-      if (!subtitle) continue;
+      if (!subtitle && file_type !== "VIDEO") continue;
       const asset = await context.asset_reader(file);
       if (asset === null) throw new AppError("file.not_found", { public_details: { file } });
-      const text = await decode_text_content(asset);
-      const output = subtitle.format.render_text(text, file_items, file);
+      const output =
+        file_type === "VIDEO"
+          ? await this.video.render(asset, file_items, file)
+          : subtitle!.format.render_text(await decode_text_content(asset), file_items, file);
+      const output_file =
+        file_type === "VIDEO" ? file.slice(0, -path.extname(file).length) + ".ass" : file;
       // 格式计算和校验完成后才落盘，避免单语写出后才发现双语结构错误。
       await this.native_fs.write_file(
-        path.join(context.paths.translated_path, file),
+        path.join(context.paths.translated_path, output_file),
         output.translated,
       );
       await this.native_fs.write_file(
-        path.join(context.paths.bilingual_path, file),
+        path.join(context.paths.bilingual_path, output_file),
         output.bilingual,
       );
     }

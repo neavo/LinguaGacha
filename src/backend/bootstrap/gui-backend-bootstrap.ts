@@ -1,3 +1,4 @@
+import { create_video_requester } from "../agent/tools/request-video";
 import type { AppLanguage } from "../../domain/app-language";
 import { AgentExecutionRuntime } from "../agent/execution/runtime";
 import { AgentPersonalityService } from "../agent/agent-personality-service";
@@ -142,6 +143,7 @@ export class GuiBackendBootstrap {
         generation: services.files.translationGeneration,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
+        requestVideo: create_video_requester(() => resources.settings.read_setting()),
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,

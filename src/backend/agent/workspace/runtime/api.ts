@@ -5,8 +5,11 @@ import {
 import type { bind_emit_image } from "../../tools/emit-image";
 import type { bind_doing } from "../../tools/doing";
 
+import type { bind_request_video } from "../../tools/request-video";
+
 export type AgentWorkspaceRuntimeApi = Readonly<{
   contract: AgentWorkspaceRuntimeContract;
+  requestVideo: ReturnType<typeof bind_request_video>;
   userSkillDirectory: string; // 应用级可写技能根，独立于工程快照
   fontsDirectory: string; // 应用随附字体，只读
   emitImage: ReturnType<typeof bind_emit_image>;

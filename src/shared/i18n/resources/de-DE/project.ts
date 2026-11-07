@@ -53,6 +53,7 @@ export const de_de_project = {
     progress: "Fortschritt",
   },
   formats: {
+    video: "Video",
     title_tooltip: "Schneller, besser und zuverlässiger",
     deprecated_tooltip:
       "Nicht mehr die beste Wahl. Bitte bevorzugt die oben genannten Formate verwenden",

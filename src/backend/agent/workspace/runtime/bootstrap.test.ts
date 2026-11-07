@@ -831,7 +831,13 @@ async function run(
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
   tools: Pick<
     AgentWorkspaceRunRequest,
-    "printPDF" | "inspectSources" | "generateFiles" | "getOutputPaths" | "emitImage" | "doing"
+    | "printPDF"
+    | "inspectSources"
+    | "generateFiles"
+    | "getOutputPaths"
+    | "emitImage"
+    | "doing"
+    | "requestVideo"
   > = {},
   directory = runtime,
 ) {
@@ -880,3 +886,54 @@ function create_execution_runtime(
   onTestFinished(() => execution.close()); // 测试超时也先回收进程和租约，再进入下一例。
   return execution;
 }
+
+it("视频请求通过真实 IPC 返回，停止等待宿主结算", async () => {
+  const completed = '{"status":"completed"}';
+  const result = await run(
+    "console.log(JSON.stringify({ response: await ws.requestVideo('work/segment.mp4', '字幕') }))",
+    undefined,
+    undefined,
+    {
+      requestVideo: async (request) => {
+        expect(request).toEqual({
+          kind: "request_video",
+          file: "work/segment.mp4",
+          prompt: "字幕",
+        });
+        return completed;
+      },
+    },
+  );
+  expect(output_content(result.stdout)).toEqual({ response: completed });
+  const started = Promise.withResolvers<AbortSignal>();
+  const cancelled = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const controller = new AbortController();
+  let settled = false;
+  const pending = run(
+    "await ws.requestVideo('work/segment.mp4', '字幕')",
+    controller.signal,
+    undefined,
+    {
+      requestVideo: async (_request, signal) => {
+        signal.addEventListener("abort", () => cancelled.resolve(), { once: true });
+        started.resolve(signal);
+        await release.promise;
+        return completed;
+      },
+    },
+  ).finally(() => {
+    settled = true;
+  });
+  const rejected = expect(pending).rejects.toThrow();
+  try {
+    const signal = await started.promise;
+    controller.abort(new Error("stop video"));
+    await cancelled.promise;
+    expect(signal.aborted).toBe(true);
+    expect(settled).toBe(false);
+  } finally {
+    release.resolve();
+    await rejected;
+  }
+});

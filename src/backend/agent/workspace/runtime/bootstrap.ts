@@ -1,3 +1,4 @@
+import { bind_request_video } from "../../tools/request-video";
 import { bind_emit_image } from "../../tools/emit-image";
 import { bind_doing } from "../../tools/doing";
 import { bind_uv } from "../../uv/runtime";
@@ -61,6 +62,7 @@ async function start_workspace_runtime(): Promise<void> {
       userSkillDirectory: start.userSkillDirectory,
       fontsDirectory: start.fontsDirectory,
       emitImage: bind_emit_image(request_channel),
+      requestVideo: bind_request_video(request_channel),
       setDoing: bind_doing(request_channel),
     }),
   });
