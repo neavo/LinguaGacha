@@ -26,7 +26,7 @@ await uv.run(['run', 'python', media, 'inspect', 'D:/Videos/ep01.mkv']);
 ## 切段与识别
 
 1. 运行 `media.py prepare <来源> work/video/<资产名> --track <音轨>`。脚本按停顿切成不超过 210 秒的分段，纯音频补黑色画面，转码结果与能量曲线写入 `state.json`。
-2. 按下方模板组成识别提示词，写入工作目录的 `prompt.txt`。续跑读取同一文件。识别结果绑定提示词与来源，语言、术语或来源改变后使用新的工作目录。
+2. 按下方模板组成识别提示词，写入工作目录的 `prompt.txt`。续跑读取同一文件。识别结果绑定请求参数、提示词与来源，模型、语言、术语或来源改变后使用新的工作目录。
 3. 在 `workspace_run` 主脚本中运行识别：
 
    ```js
@@ -36,7 +36,9 @@ await uv.run(['run', 'python', media, 'inspect', 'D:/Videos/ep01.mkv']);
    await recognize(directory, { prompt: await readFile(`${directory}/prompt.txt`, 'utf8') });
    ```
 
-   脚本经 `ws.requestVideo` 四路并发请求，每段最多自动尝试两次，最后输出 `review.json`。单段请求约 30–45 秒，按分段数估算 `timeout_seconds`，并为一轮重试留出同样时间。超时或停止时，在途请求已计入尝试次数。续跑跳过已完成的分段。
+   脚本构造原生 Responses 请求体，经 `ws.requestLLM` 四路并发请求，每段最多自动尝试两次，最后输出 `review.json`。单段请求约 30–45 秒，按分段数估算 `timeout_seconds`，并为一轮重试留出同样时间。超时或停止时，在途请求已计入尝试次数。续跑跳过已完成的分段。
+
+   先在模型设置中配置火山引擎预设 `preset-volcengine` 的地址和 API Key。`recognize.mjs` 维护识别模型和生成参数。强制终止可能留下临时 `NNN.request.json`，可在续跑前删除。
 
 ### 识别提示词
 

@@ -837,7 +837,7 @@ async function run(
     | "getOutputPaths"
     | "emitImage"
     | "doing"
-    | "requestVideo"
+    | "requestLLM"
   > = {},
   directory = runtime,
 ) {
@@ -887,18 +887,19 @@ function create_execution_runtime(
   return execution;
 }
 
-it("视频请求通过真实 IPC 返回，停止等待宿主结算", async () => {
+it("模型请求通过真实 IPC 返回，停止等待宿主结算", async () => {
   const completed = '{"status":"completed"}';
   const result = await run(
-    "console.log(JSON.stringify({ response: await ws.requestVideo('work/segment.mp4', '字幕') }))",
+    "console.log(JSON.stringify({ response: await ws.requestLLM({ config_id: 'fixture', api: 'responses', body_file: 'work/request.json' }) }))",
     undefined,
     undefined,
     {
-      requestVideo: async (request) => {
+      requestLLM: async (request) => {
         expect(request).toEqual({
-          kind: "request_video",
-          file: "work/segment.mp4",
-          prompt: "字幕",
+          kind: "request_llm",
+          config_id: "fixture",
+          api: "responses",
+          body_file: "work/request.json",
         });
         return completed;
       },
@@ -911,11 +912,11 @@ it("视频请求通过真实 IPC 返回，停止等待宿主结算", async () =>
   const controller = new AbortController();
   let settled = false;
   const pending = run(
-    "await ws.requestVideo('work/segment.mp4', '字幕')",
+    "await ws.requestLLM({ config_id: 'fixture', api: 'responses', body_file: 'work/request.json' })",
     controller.signal,
     undefined,
     {
-      requestVideo: async (_request, signal) => {
+      requestLLM: async (_request, signal) => {
         signal.addEventListener("abort", () => cancelled.resolve(), { once: true });
         started.resolve(signal);
         await release.promise;
@@ -928,7 +929,7 @@ it("视频请求通过真实 IPC 返回，停止等待宿主结算", async () =>
   const rejected = expect(pending).rejects.toThrow();
   try {
     const signal = await started.promise;
-    controller.abort(new Error("stop video"));
+    controller.abort(new Error("stop LLM"));
     await cancelled.promise;
     expect(signal.aborted).toBe(true);
     expect(settled).toBe(false);

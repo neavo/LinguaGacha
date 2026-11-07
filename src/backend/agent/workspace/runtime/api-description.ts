@@ -1,5 +1,6 @@
 import { describe_emit_image } from "../../tools/emit-image";
 import { describe_doing } from "../../tools/doing";
+import { describe_request_llm } from "../../tools/request-llm";
 import { describe_workspace_contract } from "../../tools/contract";
 
 /**
@@ -18,7 +19,7 @@ export function format_agent_workspace_typescript_api(): string {
       "/** 应用随附字体目录的绝对路径，只读。`LGBaseFont` 是应用界面字体。 */\nfontsDirectory: string;",
       describe_emit_image(),
       describe_doing(),
-      "/** 用火山引擎预设发送一次视频识别请求，模型与参数由宿主固定，不重试。file 为小于 50 MB 的 mp4，工作区相对路径或本机绝对路径。返回脱敏的原始响应文本，调用方解析并检查状态与可见输出。用法见 `video` 技能。 */\nrequestVideo(file: string, prompt: string): Promise<string>;",
+      describe_request_llm(),
     ].map((member) =>
       member
         .split("\n")

@@ -14,10 +14,10 @@ import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
 import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
 import type { UvConfiguration } from "../../uv/types";
 
-import type { WorkspaceVideoRequest } from "../../tools/request-video";
+import type { WorkspaceLLMRequest } from "../../tools/request-llm";
 
 export type WorkspaceRequest =
-  | WorkspaceVideoRequest
+  | WorkspaceLLMRequest
   | { kind: "resolve_proxy"; url: string }
   | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
   | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>

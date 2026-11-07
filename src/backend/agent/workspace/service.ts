@@ -1,4 +1,4 @@
-import type { WorkspaceVideoPort } from "../tools/request-video";
+import type { WorkspaceLLMPort } from "../tools/request-llm";
 import { create_file_generator } from "../tools/generate-files";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
@@ -224,7 +224,7 @@ export class AgentWorkspaceService {
         "generate_staging_files" | "read_output_paths"
       >;
       pdfHost?: PDFHost | undefined;
-      requestVideo?: WorkspaceVideoPort;
+      createLLMRequester?: () => WorkspaceLLMPort;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -716,6 +716,7 @@ export class AgentWorkspaceService {
                   }),
               );
         try {
+          const request_llm = this.options.createLLMRequester?.(); // 本次脚本的并发请求共用配置快照。
           const execution = await this.options.run(
             {
               workspacePath: this.root_path,
@@ -723,11 +724,11 @@ export class AgentWorkspaceService {
               ...logs,
               timeoutMs: request.timeoutMs,
               emitImage: image_output.emitImage,
-              ...(this.options.requestVideo
+              ...(request_llm
                 ? {
-                    requestVideo: (input, signal) =>
-                      this.options.requestVideo!(
-                        { ...input, file: path.resolve(this.root_path, input.file) },
+                    requestLLM: (input, signal) =>
+                      request_llm(
+                        { ...input, body_file: path.resolve(this.root_path, input.body_file) },
                         signal,
                       ),
                   }
