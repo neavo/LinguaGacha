@@ -3,7 +3,7 @@
 <p align='center'>AI로 소설, 게임, 자막 등 다양한 텍스트를 클릭 한 번으로 번역하는 차세대 텍스트 번역기</p>
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT_BR.md) ]
+- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT.md) ]
 
 ## 개요 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)는 AI 기술을 활용한 차세대 텍스트 번역기입니다
