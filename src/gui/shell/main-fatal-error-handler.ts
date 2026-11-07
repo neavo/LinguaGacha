@@ -62,7 +62,10 @@ function handle_main_fatal_error(
     is_app_shutdown_in_progress: args.options.isAppShutdownInProgress(),
   };
   const snapshot = to_app_error_log_snapshot(error, { fatal: true, context });
-  try_show_native_error_dialog("LinguaGacha 已遇到致命错误", "已写入诊断日志，应用将退出。");
+  try_show_native_error_dialog(
+    "LinguaGacha encountered a fatal error",
+    "The app will exit. Please check the diagnostic logs.",
+  );
 
   // fatal 诊断必须先进入 worker 日志，再启动同一 worker 的关闭流程，避免并发 stop 丢日志。
   void (async () => {

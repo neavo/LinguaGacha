@@ -12,14 +12,14 @@ export const de_de_knowledge_page = {
     "Mit dem Projekt gespeicherte Einstellungen, Konventionen und Fortschritte",
   install: {
     title: "Installationsanleitung",
-    description: "Sende den Skill-Link an AGENT und bitte ihn, den Skill zu installieren",
+    description: "Skill-Link an AGENT senden und um die Installation des Skills bitten",
     placeholder: "[Skill-Link hier eingeben]",
     request: "Bitte installiere diesen Skill für mich: {PLACEHOLDER}",
   },
   knowledge_create: {
     title: "Erfassungsanleitung",
     description:
-      "Teile AGENT die Einstellungen, Vereinbarungen oder Erkenntnisse mit, die festgehalten werden sollen, und es legt daraus Projektwissen an",
+      "AGENT die festzuhaltenden Einstellungen, Vereinbarungen oder Erkenntnisse mitteilen, daraus wird Projektwissen angelegt",
     placeholder: "[Hier beschreiben, was festgehalten werden soll]",
     request: "Bitte halte dies als Projektwissen fest: {PLACEHOLDER}",
   },

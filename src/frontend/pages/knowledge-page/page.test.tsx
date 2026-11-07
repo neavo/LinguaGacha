@@ -47,6 +47,7 @@ function skill(name: string, source: "builtin" | "user"): AgentSkillEntry {
       "de-DE": "Beschreibung",
       "ja-JP": "説明",
       "ko-KR": "설명",
+      "pt-BR": "Descrição",
     },
   };
 }

@@ -21,13 +21,13 @@ export const en_us_quality_rule_editor = {
   },
   filter: {
     clear: "Clear",
-    placeholder: "Query …",
+    placeholder: "Search …",
     regex: "Regex",
-    regex_tooltip_label: "Regex Mode",
+    regex_tooltip_label: "Regex mode",
     scope: {
       all: "All",
       label: "Scope",
-      tooltip_label: "Search Scope",
+      tooltip_label: "Search scope",
     },
   },
   hit: {

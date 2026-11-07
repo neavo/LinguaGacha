@@ -114,7 +114,7 @@ export const de_de_agent_page = {
       pre_replacement: "{count} Vorersetzungsregeln",
       post_replacement: "{count} Nachersetzungsregeln",
       knowledge: "Projektwissen: {count} Dokumente",
-      prompts: "{count} benutzerdefinierte Prompts",
+      prompts: "{count} eigene Prompts",
     },
     reject: "Ablehnen",
     allow_once: "Diesen Schreibvorgang erlauben",

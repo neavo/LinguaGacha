@@ -9,7 +9,7 @@ export const de_de_custom_prompt_page = {
   title: "Eigene Prompts",
   header: {
     description_html:
-      "Fügen Sie zusätzliche Übersetzungsanforderungen wie Handlungseinstellungen und Schreibstile über benutzerdefinierte Prompts hinzu",
+      "Zusätzliche Übersetzungsanforderungen wie Story-Hintergrund und Schreibstil über eigene Prompts hinzufügen",
   },
   section: {
     prefix_label: "Festes Präfix",

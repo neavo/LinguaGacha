@@ -47,7 +47,7 @@ export const ja_jp_model_page = {
     },
   },
   confirm: {
-    logout: { description: "ログアウトしますか …？" },
+    logout: { description: "ログアウトしますか …?" },
     delete: {
       description: "モデルを削除しますか …?",
     },

@@ -5,7 +5,7 @@ export const ko_kr_preset_editor = {
     apply: "가져오기",
     cancel_default: "기본 프리셋 해제",
     delete: "프리셋 삭제",
-    rename: "이름 변경",
+    rename: "이름 바꾸기",
     save: "프리셋 저장",
     set_default: "기본 프리셋으로 설정",
   },

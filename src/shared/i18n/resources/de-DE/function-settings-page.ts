@@ -53,6 +53,6 @@ export const de_de_function_settings_page = {
     request_timeout_invalid:
       "Das Anfrage-Timeout muss eine Zahl innerhalb des gültigen Bereichs sein …",
     pick_directory_failed:
-      "Ordnerauswahl fehlgeschlagen. Bitte wählen Sie das feste Speicherverzeichnis erneut aus …",
+      "Ordnerauswahl fehlgeschlagen. Bitte den festen Speicherordner erneut auswählen …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_function_settings_page>;

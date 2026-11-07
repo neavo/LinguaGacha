@@ -6,14 +6,14 @@ export const en_us_custom_prompt_page = {
     discard: "Discard unsaved changes",
     waiting: "Wait for the current task to finish before saving …",
   },
-  title: "Custom Prompts",
+  title: "Custom prompts",
   header: {
     description_html:
       "Add extra translation requirements such as story settings and writing styles via custom prompts",
   },
   section: {
-    prefix_label: "Fixed Prefix",
-    suffix_label: "Fixed Suffix",
+    prefix_label: "Fixed prefix",
+    suffix_label: "Fixed suffix",
   },
   confirm: {
     reset: {

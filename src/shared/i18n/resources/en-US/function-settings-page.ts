@@ -2,25 +2,25 @@ import { zh_cn_function_settings_page } from "../zh-CN/function-settings-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_function_settings_page = {
-  title: "Function Settings",
+  title: "Function settings",
   fields: {
     preceding_lines_threshold: {
-      title: "Preceding Context Entries",
+      title: "Preceding context entries",
       description:
         "Set the number of preceding text entries included as context in each task. This increases token usage. Disabled by default.",
     },
     following_lines_threshold: {
-      title: "Following Context Entries",
+      title: "Following context entries",
       description:
         "Set the number of following text entries included as context in each task. This increases token usage. Disabled by default.",
     },
     request_timeout: {
-      title: "Request Timeout",
+      title: "Request timeout",
       description:
         "Maximum wait for a model reply, in seconds. The task fails if no reply arrives in time.",
     },
     project_save_mode: {
-      title: "Project Save Location",
+      title: "Project save location",
       description: "Set the save location for project files when creating a new project",
       options: {
         manual: "Choose every time",
@@ -29,7 +29,7 @@ export const en_us_function_settings_page = {
       },
     },
     translation_save_mode: {
-      title: "Translation Save Location",
+      title: "Translation save location",
       description: "Set where translation files are saved when generating translations",
       options: {
         manual: "Choose every time",
@@ -38,7 +38,7 @@ export const en_us_function_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "Open Output Folder When Translation File Is Generated",
+      title: "Open output folder when translation file is generated",
       description:
         "When enabled, the output folder will be opened after the translated file is generated successfully",
     },

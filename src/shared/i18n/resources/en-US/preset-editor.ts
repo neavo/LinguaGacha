@@ -4,11 +4,11 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_preset_editor = {
   action: {
     apply: "Import",
-    cancel_default: "Cancel Default Preset",
-    delete: "Delete Preset",
+    cancel_default: "Cancel default preset",
+    delete: "Delete preset",
     rename: "Rename",
-    save: "Save Preset",
-    set_default: "Set as Default Preset",
+    save: "Save preset",
+    set_default: "Set as default preset",
   },
   confirm: {
     delete: {

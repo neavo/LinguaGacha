@@ -20,6 +20,31 @@ import type { TranslationRequestItem, TranslationPromptMode } from "./translatio
 import { format_glossary_entry, type GlossaryEntry } from "../../../shared/quality/glossary";
 
 /**
+ * 模型输入说明只有中英两套模板语言，与提示词模板同处后端，不进入多语言界面词典。
+ */
+const PROMPT_BUILDER_TEXT = Object.freeze({
+  zh: {
+    source: "原文",
+    control_character_samples: "控制字符示例（原样保留）：",
+    glossary_header: "术语表（根据语境与术语说明采用）<术语原文> -> <术语译文> #<术语说明>:",
+    input: "输入（逐条翻译，保留条内换行）：",
+    preceding_context: "参考前文（仅供参考）：",
+    following_context: "参考后文（仅供参考）：",
+  },
+  en: {
+    source: "Source",
+    control_character_samples: "Control character samples (keep as-is):",
+    glossary_header:
+      "Glossary (apply per context and Term Note) <Original Term> -> <Translated Term> #<Term Note>:",
+    input: "Input (translate each entry, keep in-entry line breaks):",
+    preceding_context: "Preceding context (for reference only):",
+    following_context: "Following context (for reference only):",
+  },
+} as const satisfies Record<TranslationPromptLanguage, Record<string, string>>);
+
+type PromptBuilderTextKey = keyof (typeof PROMPT_BUILDER_TEXT)["en"];
+
+/**
  * 提示词构造所需的最小配置快照，worker 只读取语言与提示词增强开关
  */
 export type PromptBuilderConfig = Pick<
@@ -81,8 +106,8 @@ export class PromptBuilder {
     const instruction_text = this.build_main(mode);
     // 日志回显参考段。待翻译输入由日志 pairs 单独承载。
     const console_log = [
-      this.build_context(precedings, "app.prompt.builder_preceding_context"),
-      this.build_context(followings, "app.prompt.builder_following_context"),
+      this.build_context(precedings, "preceding_context"),
+      this.build_context(followings, "following_context"),
       this.build_glossary(" -> "),
       this.build_control_characters_samples(samples),
     ].filter((section) => section !== "");
@@ -150,7 +175,7 @@ export class PromptBuilder {
   /**
    * 参考上下文只放 user prompt，避免系统指令随上下文变化
    */
-  private build_context(items: TextTaskItemRecord[], title: LocaleKey): string {
+  private build_context(items: TextTaskItemRecord[], title: PromptBuilderTextKey): string {
     if (items.length === 0) {
       return "";
     }
@@ -159,7 +184,7 @@ export class PromptBuilder {
         .trim()
         .replaceAll("\n", "\\n"),
     );
-    return `${this.t(title)}\n${lines.join("\n")}`;
+    return `${this.text(title)}\n${lines.join("\n")}`;
   }
 
   /**
@@ -173,7 +198,7 @@ export class PromptBuilder {
       return "";
     }
     return include_header
-      ? `${this.t("app.prompt.builder_glossary_header")}\n${result.join("\n")}`
+      ? `${this.text("glossary_header")}\n${result.join("\n")}`
       : result.join("\n");
   }
 
@@ -185,7 +210,7 @@ export class PromptBuilder {
     if (unique_samples.length === 0) {
       return "";
     }
-    return `${this.t("app.prompt.builder_control_character_samples")}\n${unique_samples.join(", ")}`;
+    return `${this.text("control_character_samples")}\n${unique_samples.join(", ")}`;
   }
 
   /**
@@ -201,13 +226,18 @@ export class PromptBuilder {
         }),
       )
       .join("\n");
-    return `${this.t("app.prompt.builder_input")}\n\`\`\`jsonline\n${inputs}\n\`\`\``;
+    return `${this.text("input")}\n\`\`\`jsonline\n${inputs}\n\`\`\``;
   }
 
   /**
    * 模型输入说明及其日志回显使用模板语言，避免同一次请求混用 UI 语言。
    */
-  private t(key: LocaleKey): string {
+  private text(key: PromptBuilderTextKey): string {
+    return PROMPT_BUILDER_TEXT[resolve_prompt_template_language(this.config.app_language)][key];
+  }
+
+  /** 语言名与界面共用词典，按模板语言读取。 */
+  private language_name(key: LocaleKey): string {
     const locale =
       resolve_prompt_template_language(this.config.app_language) === "zh" ? "zh-CN" : "en-US";
     return format_i18n_message(locale, key);
@@ -232,12 +262,11 @@ export class PromptBuilder {
     }
     return {
       prompt_language,
-      source_language: this.t(
+      source_language:
         source_code === null || source_code === "ALL"
-          ? "app.prompt.source"
-          : `app.language.${source_code}`,
-      ),
-      target_language: this.t(`app.language.${target_code}`),
+          ? this.text("source")
+          : this.language_name(`app.language.${source_code}`),
+      target_language: this.language_name(`app.language.${target_code}`),
     };
   }
 

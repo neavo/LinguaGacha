@@ -91,7 +91,7 @@ export const ja_jp_agent_page = {
     user_comment: "コメント",
     comment_placeholder: "選択したテキストへのコメントを入力 …",
   },
-  context_usage_warning: "まもなくコンテキスト圧縮",
+  context_usage_warning: "まもなくコンテキストを自動圧縮します",
   usage: {
     input: "入力",
     output: "出力",
@@ -113,7 +113,7 @@ export const ja_jp_agent_page = {
       text_preserve: "テキスト保護ルール {count} 件",
       pre_replacement: "翻訳前置換ルール {count} 件",
       post_replacement: "翻訳後置換ルール {count} 件",
-      knowledge: "工程ナレッジ {count} 件",
+      knowledge: "プロジェクトナレッジ {count} 件",
       prompts: "カスタムプロンプト {count} 件",
     },
     reject: "拒否",
