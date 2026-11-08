@@ -99,6 +99,12 @@ export const APP_ERROR_DEFINITIONS = {
     status: 404,
     severity: "expected",
   },
+  "model.responses_incompatible": {
+    message:
+      "This request requires an API Key OpenAIResponses model. For media recognition, select a supported model in Function models.",
+    status: 409,
+    severity: "expected",
+  },
   "model.provider_failed": {
     message: "The model service request failed.",
     status: 502,

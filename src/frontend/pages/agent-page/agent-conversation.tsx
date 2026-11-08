@@ -272,8 +272,8 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     void send_message(message);
   };
 
-  /** 已有对话关闭思考前保存整份选择，确认后一次提交模型与等级。 */
-  const change_agent_model_selection = (change: ModelSelectionInput): void => {
+  /** 已有对话关闭思考前保存选择。返回 true 通知入口让出模态焦点。 */
+  const change_agent_model_selection = (change: ModelSelectionInput): boolean => {
     const next_model = model_selection.snapshot.models.find(
       (model) => model.id === change.model_id,
     );
@@ -285,9 +285,10 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       next_level === "OFF"
     ) {
       set_pending_thinking_off_action({ kind: "select_model", change });
-      return;
+      return true;
     }
     void model_selection.select_model({ target: "agent", ...change });
+    return false;
   };
 
   /** 审批偏好使用应用设置链路，保存成功前展示已确认的模式。 */

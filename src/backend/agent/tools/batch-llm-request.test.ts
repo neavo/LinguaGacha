@@ -1,17 +1,10 @@
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { expect, it, vi } from "vitest";
 import { agent_tool_call } from "../../../test/agent-tool-fixture";
-import {
-  project_model_configs,
-  type BatchRequestSummary,
-} from "../../batch-request/batch-request-service";
+import type { BatchRequestSummary } from "../../batch-request/batch-request-service";
 import { create_agent_batch_llm_request_tool } from "./batch-llm-request";
 
-it("配置投影的身份通过新参数传入批量工具，旧参数不再接受", async () => {
-  const [config] = project_model_configs({
-    models: [{ id: "saved-config", name: "Fixture", model_id: "vendor-model" }],
-  });
-  expect(config).toMatchObject({ model_config_id: "saved-config", model_id: "vendor-model" });
+it("显式配置与音视频用途互斥，合法参数传给批量执行入口", async () => {
   const summary: BatchRequestSummary = {
     run_id: "run",
     status: "done",
@@ -31,13 +24,27 @@ it("配置投影的身份通过新参数传入批量工具，旧参数不再接�
       name: tool.name,
       arguments: args,
     } as ToolCall);
-  const request = { model_config_id: config!.model_config_id, request_file: "work/requests.json" };
+  const request = {
+    model: { config_id: "saved-config" },
+    request_file: "work/requests.json",
+  };
   expect(validate(request)).toEqual(request);
-  expect(() =>
-    validate({ config_id: "saved-config", manifest_file: "work/requests.json" }),
-  ).toThrow();
   const signal = new AbortController().signal;
   const result = await tool.execute(request, ...agent_tool_call("batch", signal));
-  expect(run).toHaveBeenCalledWith("saved-config", "work/requests.json", signal);
+  expect(run).toHaveBeenCalledWith(request, signal);
   expect(result.details).toEqual(summary);
+  const media = { model: { usage: "media" }, request_file: "work/requests.json" };
+  expect(validate(media)).toEqual(media);
+  await tool.execute(media, ...agent_tool_call("media", signal));
+  expect(run).toHaveBeenLastCalledWith(media, signal);
+  for (const invalid of [
+    { request_file: "x" },
+    { model: { usage: "media" } },
+    { model: { usage: "media", config_id: "saved-config" }, request_file: "x" },
+    { model: {}, request_file: "x" },
+    { model: { usage: "other" }, request_file: "x" },
+    { model: { usage: "media" }, request_file: "" },
+    { model: { usage: "media" }, request_file: "  " },
+  ])
+    expect(() => validate(invalid)).toThrow();
 });

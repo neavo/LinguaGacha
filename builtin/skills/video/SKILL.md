@@ -90,8 +90,9 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 ## 请求与读取
 
 1. `recognize.request(工作目录, { prompt, ranges? })` 写出 `batch_llm_request` 的请求清单，返回 `request_file`。省略 `ranges` 时请求全部分段。支持 `responses` 协议的接入点不一定支持视频。
-2. 批量完成后，`recognize.read(工作目录, result_file)` 把响应换算为整片时间，写入候选文件 `candidate`，返回各区间的行数、`incomplete`（输出没有正常结束，常见于超长）、无法解析的行数，以及失败的区间。读取不改动草稿。
-3. 首轮用各区间的 `rows` 组成 `rows.json`。失败或不完整的区间留作核对对象。
+2. 首轮识别、重新识别和局部补查均调用 `batch_llm_request({ model: { usage: "media" }, request_file })`。
+3. 批量完成后，`recognize.read(工作目录, result_file)` 把响应换算为整片时间，写入候选文件 `candidate`，返回各区间的行数、`incomplete`（输出没有正常结束，常见于超长）、无法解析的行数，以及失败的区间。读取不改动草稿。
+4. 首轮用各区间的 `rows` 组成 `rows.json`。失败或不完整的区间留作核对对象。
 
 每个请求载荷可达数十 MB，批量结束后可以删除请求目录中的 `.request.json`。
 

@@ -1,3 +1,4 @@
+import { SettingsList } from "@frontend/widgets/settings-list/settings-list";
 import type { JSX } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
@@ -51,37 +52,35 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
       onClose={props.onClose}
       bodyClassName="overflow-hidden p-0"
     >
-      <div className="model-page__dialog-scroll">
-        <div className="model-page__setting-list">
-          {THRESHOLD_FIELDS.filter(
-            (field) => field !== "output_token_limit" || model.auth_type !== "oauth",
-          ).map((field) => (
-            <SettingCardRow
-              key={field}
-              variant="group"
-              title={t(`model_page.fields.${field}.title`)}
-              description={t(`model_page.fields.${field}.description`)}
-              action={
-                <Input
-                  className="model-page__field"
-                  aria-label={t(`model_page.fields.${field}.title`)}
-                  type="number"
-                  min={THRESHOLD_INPUT_MIN}
-                  max={THRESHOLD_INPUT_MAX}
-                  step={1}
-                  disabled={props.readonly}
-                  value={model.threshold[field]}
-                  onChange={(event) => {
-                    void props.onPatch({
-                      threshold: { [field]: normalize_number_input(event.target.value) },
-                    });
-                  }}
-                />
-              }
-            />
-          ))}
-        </div>
-      </div>
+      <SettingsList>
+        {THRESHOLD_FIELDS.filter(
+          (field) => field !== "output_token_limit" || model.auth_type !== "oauth",
+        ).map((field) => (
+          <SettingCardRow
+            key={field}
+            variant="group"
+            title={t(`model_page.fields.${field}.title`)}
+            description={t(`model_page.fields.${field}.description`)}
+            action={
+              <Input
+                className="model-page__field"
+                aria-label={t(`model_page.fields.${field}.title`)}
+                type="number"
+                min={THRESHOLD_INPUT_MIN}
+                max={THRESHOLD_INPUT_MAX}
+                step={1}
+                disabled={props.readonly}
+                value={model.threshold[field]}
+                onChange={(event) => {
+                  void props.onPatch({
+                    threshold: { [field]: normalize_number_input(event.target.value) },
+                  });
+                }}
+              />
+            }
+          />
+        ))}
+      </SettingsList>
     </AppPageDialog>
   );
 }

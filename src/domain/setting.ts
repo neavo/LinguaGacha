@@ -105,6 +105,7 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
 
     agent: "",
     agent_batch_translation: null,
+    agent_media: null,
   },
   models: null,
   agent_skills: { disabled: { builtin: [], user: [] }, user_order: [] },

@@ -234,7 +234,6 @@ export class BackendServices {
     this.batchRequests = new BatchRequestService(
       this.batchTasks,
       this.request_rate_pool,
-      this.app_setting_service,
       llm_client,
       new NativeResponsesClient(user_agent, this.modelCatalog),
       this.modelAuth,

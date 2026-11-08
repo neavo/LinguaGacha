@@ -23,7 +23,12 @@ describe("ModelSelectionMenu", () => {
     root = createRoot(host);
     controller = {
       snapshot: {
-        model_selection: { translation: "a", agent: "", agent_batch_translation: null },
+        model_selection: {
+          translation: "a",
+          agent: "",
+          agent_batch_translation: null,
+          agent_media: null,
+        },
         models: [
           {
             id: "a",

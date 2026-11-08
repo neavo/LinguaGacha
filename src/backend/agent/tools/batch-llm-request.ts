@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type, type Static } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import {
   BatchRequestCompletionError,
@@ -12,13 +12,42 @@ import {
   normalize_agent_tool_error,
 } from "../tool-definition";
 
+// 工具协议要求普通对象根，互斥选模放在必填的 `model` 内。
+const BATCH_LLM_REQUEST_SCHEMA = Type.Object(
+  {
+    model: Type.Union([
+      Type.Object(
+        {
+          config_id: Type.String({
+            minLength: 1,
+            pattern: "\\S",
+            description: "从 `model_configs.json` 的 `model_config_id` 读取配置 ID",
+          }),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Object(
+        {
+          usage: Type.Literal("media", {
+            description: "用户选择的音视频模型，跟随时使用当前主控生效配置",
+          }),
+        },
+        { additionalProperties: false },
+      ),
+    ]),
+    request_file: Type.String({
+      minLength: 1,
+      pattern: "\\S",
+      description: "请求清单 JSON 文件的工作区相对路径或本机绝对路径",
+    }),
+  },
+  { additionalProperties: false },
+);
+export type BatchLlmRequestInput = Static<typeof BATCH_LLM_REQUEST_SCHEMA>;
+
 /** 顶层顺序工具等待请求和文件发布，正文只保存在工作区。 */
 export function create_agent_batch_llm_request_tool(
-  run: (
-    model_config_id: string,
-    request_file: string,
-    signal: AbortSignal,
-  ) => Promise<BatchRequestSummary>,
+  run: (input: BatchLlmRequestInput, signal: AbortSignal) => Promise<BatchRequestSummary>,
 ): ToolRegistration {
   return define_agent_tool({
     name: "batch_llm_request",
@@ -28,7 +57,10 @@ export function create_agent_batch_llm_request_tool(
       "",
       "### 执行",
       "",
-      "- 用 `workspace_run` 准备清单和输入文件。从 `model_configs.json` 选择 `model_config_id`，模型、生成参数与限流采用本次启动时的设置。",
+      "- 用 `workspace_run` 准备清单和输入文件。",
+      '- 音视频首轮识别、重新识别和补查使用 `model: { usage: "media" }`。后端采用用户的音视频模型。不兼容时请用户调整功能模型。更换模型须由用户选择。',
+      '- 其它独立请求用 `model: { config_id: "配置 ID" }` 选择 `model_configs.json` 中的配置。',
+      "- 同批模型、生成参数与限流固定。",
       '- 清单格式：`{"format":"messages","requests":[{"id":"001","input_file":"inputs/001.json"}]}`。`requests` 非空，`id` 为唯一非空字符串。',
       `- \`request_file\` 相对工作区，\`input_file\` 相对清单目录，均支持绝对路径。每个 JSON 文件不超过 ${NATIVE_REQUEST_MAX_BYTES / 1_000_000} MB，运行期间不要改写。`,
       '- `messages` 支持文本协议及 OAuth。输入示例：`{"messages":[{"role":"user","content":"归纳这段材料。"}]}`。消息数组非空，角色仅限 `system`、`user`，正文为字符串。',
@@ -50,27 +82,11 @@ export function create_agent_batch_llm_request_tool(
       "- 逐项路径相对索引目录。文本读取 `response.text`、`response.thinking`，原生响应读取脱敏的 `response.raw`，失败原因读取 `error`。",
       "- 出错仍保留已发布成果。续跑只处理失败或未完成项，无回执的请求再次发送可能重复计费。",
     ].join("\n"),
-    parameters: Type.Object(
-      {
-        model_config_id: Type.String({
-          minLength: 1,
-          description: "从 `model_configs.json` 选择的已保存模型配置 ID",
-        }),
-        request_file: Type.String({
-          minLength: 1,
-          description: "请求清单 JSON 文件的工作区相对路径或本机绝对路径",
-        }),
-      },
-      { additionalProperties: false },
-    ),
+    parameters: BATCH_LLM_REQUEST_SCHEMA,
     execute: async (input, _api, context) => {
       try {
         return agent_tool_result(
-          await run(
-            input.model_config_id,
-            input.request_file,
-            context.abortSignal ?? new AbortController().signal,
-          ),
+          await run(input, context.abortSignal ?? new AbortController().signal),
         );
       } catch (error) {
         if (error instanceof BatchRequestCompletionError) {

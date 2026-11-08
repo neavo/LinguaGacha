@@ -8,10 +8,17 @@ export const ja_jp_agent_page = {
     save_as: "名前を付けて保存",
     open_folder: "ファイルの場所を開く",
   },
-  batch_translation_model: {
-    follow: "同じモデル",
-    follow_option: "AGENT と同じモデルを使用",
-    tooltip: "一括翻訳ツールで使用するモデル",
+  function_models: {
+    title: "機能別モデル",
+    agent: "メインモデル",
+    translation: "翻訳モデル",
+    media: "音声・動画モデル",
+    agent_description: "タスクの流れを制御するメインモデル",
+    translation_description:
+      "一括翻訳に使用するモデル。使用するタイミングはメインモデルが判断します。",
+    media_description:
+      "音声・動画認識に使用するモデル。使用するタイミングはメインモデルが判断します。\n<emphasis>多くのモデルは音声・動画入力に対応していない</emphasis>点にご注意ください。doubao と gemini を推奨します。",
+    follow: "メインモデルに従う",
   },
   title: "AGENT",
   thinking: "思考過程",

@@ -152,6 +152,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "tools",
   length_responses_remaining: 0,
   batch_mode: false,
+  media_mode: false,
   batch_request_on_retry: false,
   batch_retries: 0,
   abort_count: 0,
@@ -345,6 +346,18 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
   }
   const after_tool_call =
     context.messages.findLast((message) => message.role !== "system")?.role === "toolResult";
+  if (fake_agent_state.media_mode) {
+    return after_tool_call
+      ? fauxAssistantMessage("识别完成")
+      : fauxAssistantMessage(
+          fauxToolCall(
+            "batch_llm_request",
+            { model: { usage: "media" }, request_file: "work/requests.json" },
+            { id: "media" },
+          ),
+          { stopReason: "toolUse" },
+        );
+  }
   if (fake_agent_state.batch_mode) {
     const retry = after_tool_call && fake_agent_state.batch_retries-- > 0;
     return after_tool_call && !retry
@@ -355,7 +368,7 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
               ? "batch_llm_request"
               : "batch_item_translation",
             retry && fake_agent_state.batch_request_on_retry
-              ? { model_config_id: "fixture", request_file: "work/requests.json" }
+              ? { model: { config_id: "fixture" }, request_file: "work/requests.json" }
               : { item_statuses: ["NONE"] },
             { id: "batch-translation" },
           ),
@@ -542,6 +555,7 @@ describe("AgentService", () => {
 
   beforeEach(() => {
     fake_agent_state.batch_mode = false;
+    fake_agent_state.media_mode = false;
     fake_agent_state.batch_request_on_retry = false;
     fake_agent_state.batch_retries = 0;
     fake_agent_state.mode = "success";
@@ -3999,6 +4013,46 @@ describe("AgentService", () => {
     );
   });
 
+  it.each([null, "media"])("音视频用途 %s 与翻译模型独立，后续批次读取新选择", async (id) => {
+    fake_agent_state.media_mode = true;
+    const run = vi
+      .fn<import("../batch-request/batch-request-service").BatchRequestService["run"]>()
+      .mockResolvedValue({
+        run_id: "r",
+        status: "done",
+        total: 1,
+        succeeded: 1,
+        failed: 0,
+        unfinished: 0,
+        usage: null,
+        result_file: "result.json",
+      });
+    const f = await create_service({ batch_requests: { run } });
+    f.select_batch_translation_model("next");
+    f.select_media_model(id);
+    await f.service.send_message({ text: "识别", attachments: [] });
+    await wait_for_idle(f.service);
+    expect(run).toHaveBeenCalledTimes(1);
+    const execution = run.mock.calls[0]![3];
+    expect(execution.model).toMatchObject(
+      id === null
+        ? { id: "active", model_id: "test-model", api_key: "secret" }
+        : {
+            id: "media",
+            model_id: "media-model",
+            api_url: "https://media.test/v1",
+            api_key: "media-key",
+            thinking: { level: "HIGH" },
+            generation: { temperature: 0.4 },
+          },
+    );
+    f.select_media_model("next");
+    await f.service.send_message({ text: "补查", attachments: [] });
+    await wait_for_idle(f.service);
+    expect(run.mock.calls[1]![3].model).toMatchObject({ id: "next", model_id: "next-model" });
+    expect(execution.config_snapshot["model_selection"]).toMatchObject({ agent_media: id });
+  });
+
   it.each([null, "next"])("批量翻译按保存偏好 %s 直接执行并跟随下一轮主模型", async (model_id) => {
     fake_agent_state.batch_mode = true;
     const run = vi.fn<
@@ -4269,6 +4323,7 @@ describe("AgentService", () => {
   async function create_service({
     load_resources = true,
     batch_translation,
+    batch_requests,
     images = {
       clear: vi.fn(),
       prepare: async (data) => ({
@@ -4283,6 +4338,7 @@ describe("AgentService", () => {
     catalog = { read_models: read_builtin_pi_models },
   }: {
     load_resources?: boolean;
+    batch_requests?: ConstructorParameters<typeof AgentService>[0]["batchRequests"];
     batch_translation?: ConstructorParameters<typeof AgentService>[0]["batchTranslation"];
     images?: ConstructorParameters<typeof AgentService>[0]["images"];
     catalog?: PiModelCatalogReader;
@@ -4298,6 +4354,7 @@ describe("AgentService", () => {
     set_app_language: (app_language: AppLanguage) => void;
     runtime_gate: RuntimeOperationGate;
     select_batch_translation_model: (model_id: string | null) => void;
+    select_media_model: (model_id: string | null) => void;
     set_personality: (value: string | null) => void;
     set_approval_mode: (value: AgentApprovalMode) => void;
     session_state: ProjectSessionState;
@@ -4307,6 +4364,7 @@ describe("AgentService", () => {
     const read_items = vi.fn<() => JsonRecord[]>(() => []);
     let agent_model_id: "active" | "next" = "active";
     let batch_model_id: string | null = null;
+    let media_model_id: string | null = null;
     let app_language: AppLanguage = "ZH";
     let personality: string | null = null;
     let approval_mode: AgentApprovalMode = "manual";
@@ -4320,8 +4378,18 @@ describe("AgentService", () => {
             translation: "active",
             agent: agent_model_id,
             agent_batch_translation: batch_model_id,
+            agent_media: media_model_id,
           },
           models: [
+            {
+              id: "media",
+              model_id: "media-model",
+              api_url: "https://media.test/v1",
+              api_key: "media-key",
+              api_format: "OpenAIResponses",
+              thinking: { level: "HIGH" },
+              generation: { temperature: 0.4 },
+            },
             {
               id: "active",
               name: "Test",
@@ -4421,7 +4489,7 @@ describe("AgentService", () => {
       },
     };
     const service = new AgentService({
-      batchRequests: {
+      batchRequests: batch_requests ?? {
         run: async () => {
           throw new Error("Unexpected batch request");
         },
@@ -4479,6 +4547,9 @@ describe("AgentService", () => {
         app_language = next_app_language;
       },
       runtime_gate,
+      select_media_model: (id) => {
+        media_model_id = id;
+      },
       select_batch_translation_model: (id) => {
         batch_model_id = id;
       },

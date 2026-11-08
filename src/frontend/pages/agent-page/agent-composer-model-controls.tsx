@@ -1,6 +1,6 @@
 import { type ModelAgentLimits, AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
-import { type JSX, useState, type ReactNode } from "react";
-import { BookOpenText, Bot, ChevronDown, Circle, CircleCheck } from "lucide-react";
+import { Fragment, type JSX, useState, type ReactNode } from "react";
+import { Network, Bot, ChevronDown } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import type { AgentUsageSnapshot } from "@shared/agent";
 
@@ -17,9 +17,9 @@ import {
   AppDropdownMenu,
   AppDropdownMenuContent,
   AppDropdownMenuTrigger,
-  AppDropdownMenuItem,
-  AppDropdownMenuSeparator,
 } from "@frontend/widgets/app-dropdown-menu";
+
+import { AgentFunctionModelsDialog } from "./agent-function-models-dialog";
 
 /** 输入底栏的模型选择、上下文用量和思考等级共用一个配置控制器。 */
 export function AgentComposerModelControls(props: {
@@ -28,12 +28,13 @@ export function AgentComposerModelControls(props: {
   context_tokens: number | null;
   context_limits: ModelAgentLimits | null;
   usage: AgentUsageSnapshot;
-  on_agent_model_select: (change: ModelSelectionInput) => void;
+  on_agent_model_select: (change: ModelSelectionInput) => boolean;
 }): JSX.Element {
   const { t } = useI18n();
   // 菜单 Portal 位于输入区之外，随底部交互锁关闭并释放菜单状态。
-  const [open_menu, set_open_menu] = useState<"model" | "batch" | null>(null);
-  if (props.locked && open_menu !== null) set_open_menu(null);
+  const [model_menu_open, set_model_menu_open] = useState(false);
+  if (props.locked && model_menu_open) set_model_menu_open(false);
+  const [functions_open, set_functions_open] = useState(false);
   const model_controls_disabled =
     props.locked === true || props.controller.loading || props.controller.updating;
   const selected_model = read_selected_model(props.controller, "agent");
@@ -56,23 +57,16 @@ export function AgentComposerModelControls(props: {
           maxTokens: limits.max_output_tokens,
         });
 
-  const batch_model_id = props.controller.snapshot.model_selection.agent_batch_translation;
-  const batch_model = props.controller.snapshot.models.find((model) => model.id === batch_model_id);
-  const batch_label =
-    batch_model_id === null
-      ? t("agent_page.batch_translation_model.follow")
-      : batch_model?.name || batch_model?.id || t("app.model.selection.unavailable");
-  const batch_thinking_label =
-    batch_model === undefined
-      ? null
-      : t(MODEL_THINKING_LEVEL_LABEL_KEY[batch_model.thinking_level]);
-  const batch_tooltip = t("agent_page.batch_translation_model.tooltip");
-  const FollowModelIcon = batch_model_id === null ? CircleCheck : Circle;
+  const function_rows = [
+    ["agent", t("agent_page.function_models.agent")],
+    ["agent_batch_translation", t("agent_page.function_models.translation")],
+    ["agent_media", t("agent_page.function_models.media")],
+  ] as const;
   return (
     <>
       <ModelMenuButton
-        open={open_menu === "model"}
-        on_open_change={(open) => set_open_menu(open ? "model" : null)}
+        open={model_menu_open}
+        on_open_change={set_model_menu_open}
         disabled={model_controls_disabled}
         label={
           context_usage === null
@@ -126,44 +120,55 @@ export function AgentComposerModelControls(props: {
           disabled={model_controls_disabled}
         />
       </ModelMenuButton>
-      <ModelMenuButton
-        open={open_menu === "batch"}
-        on_open_change={(open) => set_open_menu(open ? "batch" : null)}
-        disabled={model_controls_disabled}
-        label={`${batch_tooltip}: ${batch_label}${batch_thinking_label === null ? "" : ` · ${batch_thinking_label}`}`}
-        icon={<BookOpenText aria-hidden="true" />}
-        name={batch_label}
-        thinking_label={batch_thinking_label}
-        tooltip={<p>{batch_tooltip}</p>}
-      >
-        <AppDropdownMenuItem
-          aria-current={batch_model_id === null ? "true" : undefined}
-          disabled={model_controls_disabled}
-          onClick={() => {
-            void props.controller.select_model({
-              target: "agent_batch_translation",
-              model_id: null,
-            });
-          }}
-        >
-          <FollowModelIcon aria-hidden="true" />
-          <span>{t("agent_page.batch_translation_model.follow_option")}</span>
-        </AppDropdownMenuItem>
-        <AppDropdownMenuSeparator />
-        <ModelSelectionOptions
-          models={props.controller.snapshot.models}
-          value={batch_model_id ?? ""}
-          disabled={model_controls_disabled}
-          on_select={(change) => {
-            void props.controller.select_model({ target: "agent_batch_translation", ...change });
-          }}
+      <Tooltip disabled={functions_open}>
+        <TooltipTrigger
+          render={
+            <TooltipTarget>
+              <AppButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="agent-composer__model-trigger"
+                disabled={model_controls_disabled}
+                onClick={() => set_functions_open(true)}
+              >
+                <Network aria-hidden="true" />
+                {t("agent_page.function_models.title")}
+              </AppButton>
+            </TooltipTarget>
+          }
         />
-      </ModelMenuButton>
+        <TooltipContent>
+          <div className="agent-function-models__tooltip">
+            {function_rows.map(([usage, label]) => {
+              const id = props.controller.snapshot.model_selection[usage];
+              const model = props.controller.snapshot.models.find((item) => item.id === id);
+              const name =
+                id === null
+                  ? t("agent_page.function_models.follow")
+                  : model?.name || model?.id || t("app.model.selection.unavailable");
+              return (
+                <Fragment key={usage}>
+                  <span>{label}</span>
+                  <span>{name}</span>
+                </Fragment>
+              );
+            })}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+      <AgentFunctionModelsDialog
+        open={functions_open}
+        on_close={() => set_functions_open(false)}
+        locked={props.locked === true}
+        controller={props.controller}
+        on_agent_model_select={props.on_agent_model_select}
+      />
     </>
   );
 }
 
-/** 两个模型入口共享外观与提示，菜单内容由各自选择语义组合。 */
+/** 主控快捷入口组合模型菜单、等级与会话统计提示。 */
 function ModelMenuButton(props: {
   open: boolean;
   on_open_change: (open: boolean) => void;

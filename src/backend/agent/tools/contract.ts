@@ -70,7 +70,7 @@ const reference_notes: Readonly<Record<string, readonly string[]>> = {
   ],
   model_configs: [
     "每次 `workspace_run` 刷新。投影只包含非敏感配置身份和客户端支持的输入模式。模型的输入能力仍须单独确认。",
-    "`batch_llm_request` 使用 `model_config_id` 选择配置，执行时重新校验。",
+    "`batch_llm_request` 的独立请求将 `model_config_id` 传入 `model.config_id`。音视频识别将 `model.usage` 设为 `media`。后端按用户的功能模型偏好选模。",
   ],
   project_meta: [
     `\`files\` 列出全部资产，原稿位于 \`sources/<file_path>\`。\`knowledge\` 是工程知识的指纹，正文位于 \`${AGENT_WORKSPACE_PATHS.knowledge}\`。`,

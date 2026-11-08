@@ -1,3 +1,4 @@
+import { read_config_model_records } from "../model/model-config-resolver";
 import { create_agent_batch_llm_request_tool } from "./tools/batch-llm-request";
 import {
   BatchRequestCompletionError,
@@ -19,7 +20,7 @@ import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-state";
-import type { Model } from "../../domain/model";
+import { Model } from "../../domain/model";
 import { create_agent_batch_item_translation_tool } from "./tools/batch-item-translation";
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -52,7 +53,11 @@ import type { LogManager } from "../log/log-manager";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
-import { register_agent_model, resolve_agent_batch_translation_model } from "./agent-model";
+import {
+  register_agent_model,
+  resolve_agent_batch_translation_model,
+  resolve_agent_function_model,
+} from "./agent-model";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import { load_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
@@ -1015,18 +1020,31 @@ export class AgentService {
   /** 产品工具复用后端服务与当前租约，统一经过错误和参数边界。 */
   private create_tools() {
     return [
-      create_agent_batch_llm_request_tool(async (model_config_id, request_file, signal) => {
+      create_agent_batch_llm_request_tool(async (input, signal) => {
         const execution = this.require_execution();
         if (execution.batchStopped)
           throw new AgentToolError({ code: "batch_task.stopped", stop_source: "user" });
         this.runtime_gate.assert_current_runtime(execution.lease, "agent");
+        signal.throwIfAborted();
+        const config_snapshot = structuredClone(this.settings.read_setting());
+        let model: Model;
+        if ("usage" in input.model) {
+          model = resolve_agent_function_model(config_snapshot, this.model_config!, "agent_media");
+        } else {
+          const config_id = input.model.config_id;
+          const raw = read_config_model_records(config_snapshot).find(
+            (item) => item["id"] === config_id,
+          );
+          if (raw === undefined) throw new AppErrors.AppError("model.not_found");
+          model = Model.from_json(raw, input.model.config_id);
+        }
         try {
           const result = await this.batch_requests.run(
             execution.lease,
             signal,
             this.workspace.root_path,
-            model_config_id,
-            request_file,
+            { model: model.to_json(), config_snapshot },
+            input.request_file,
           );
           if (this.execution === execution && result.stop_source === "user")
             execution.batchStopped = true;

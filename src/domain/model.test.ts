@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { is_json_record } from "./json";
 import { AGENT_COMPACTION_RESERVE_TOKENS, DEFAULT_MODEL_AGENT_CONFIG } from "./model-agent";
-import { MODEL_TYPES, Model, normalize_model_selection } from "./model";
+import { Model, normalize_model_selection } from "./model";
 
 describe("Model", () => {
   it("速度配置补齐默认值，并通过序列化保留选择", () => {
@@ -125,10 +125,7 @@ describe("Model", () => {
     expect(Model.normalize_thinking_level("unknown")).toBe("OFF");
   });
 
-  it("模型类型注册表统一决定排序、自定义模板和思考配置", () => {
-    expect(Model.custom_types()).toEqual(MODEL_TYPES.slice(1));
-    expect(Model.resolve_type_sort_order("CUSTOM_OPENAI_RESPONSES")).toBe(3);
-    expect(Model.resolve_type_sort_order("unknown")).toBe(99);
+  it("模型类型映射到对应模板", () => {
     expect(Model.resolve_template_filename("CUSTOM_OPENAI_RESPONSES")).toBe(
       "preset_model_custom_openai_responses.json",
     );
@@ -138,7 +135,7 @@ describe("Model", () => {
     expect(Model.resolve_template_filename("PRESET")).toBeNull();
   });
 
-  it("模型选择规范化并默认跟随 Agent 批量翻译模型", () => {
+  it("模型选择规范化，缺失的功能用途默认跟随主控", () => {
     expect(
       normalize_model_selection({
         translation: " translation-model ",
@@ -151,6 +148,7 @@ describe("Model", () => {
 
       agent: "agent-model",
       agent_batch_translation: null,
+      agent_media: null,
     });
   });
 });

@@ -1,3 +1,4 @@
+import { SettingsList } from "@frontend/widgets/settings-list/settings-list";
 import { type JSX, useState } from "react";
 
 import {
@@ -298,195 +299,193 @@ export function ModelAdvancedSettingsDialog(
       onClose={props.onClose}
       bodyClassName="overflow-hidden p-0"
     >
-      <div className="model-page__dialog-scroll">
-        <div className="model-page__setting-list">
-          {AGENT_LIMIT_FIELDS.map((field_config) => (
-            <SettingCardRow
-              variant="group"
-              key={field_config.field_name}
-              title={t(field_config.title_key)}
-              description={t(field_config.description_key)}
-              action={
-                <Input
-                  className="model-page__field"
-                  type="number"
-                  min={0}
-                  step={1}
-                  inputMode="numeric"
-                  value={agent_limit_draft[field_config.field_name]}
-                  disabled={props.readonly}
-                  aria-label={t(field_config.title_key)}
-                  onChange={(event) => {
-                    set_agent_limit_draft({
-                      ...agent_limit_draft,
-                      [field_config.field_name]: event.target.value,
-                    });
-                  }}
-                  onBlur={commit_agent_limits}
-                />
-              }
-            />
-          ))}
+      <SettingsList>
+        {AGENT_LIMIT_FIELDS.map((field_config) => (
+          <SettingCardRow
+            variant="group"
+            key={field_config.field_name}
+            title={t(field_config.title_key)}
+            description={t(field_config.description_key)}
+            action={
+              <Input
+                className="model-page__field"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                value={agent_limit_draft[field_config.field_name]}
+                disabled={props.readonly}
+                aria-label={t(field_config.title_key)}
+                onChange={(event) => {
+                  set_agent_limit_draft({
+                    ...agent_limit_draft,
+                    [field_config.field_name]: event.target.value,
+                  });
+                }}
+                onBlur={commit_agent_limits}
+              />
+            }
+          />
+        ))}
 
-          {model.auth_type === "oauth"
-            ? null
-            : GENERATION_FIELD_CONFIGS.map((field_config) => {
-                const current_value = generation_values[field_config.field_name];
-                const current_text = generation_texts[field_config.field_name];
-                const current_enabled = model.generation[field_config.enabled_key];
+        {model.auth_type === "oauth"
+          ? null
+          : GENERATION_FIELD_CONFIGS.map((field_config) => {
+              const current_value = generation_values[field_config.field_name];
+              const current_text = generation_texts[field_config.field_name];
+              const current_enabled = model.generation[field_config.enabled_key];
 
-                return (
-                  <Card variant="group" key={field_config.field_name}>
-                    <CardContent className="model-page__advanced-card-content">
-                      <div className="model-page__advanced-card-head">
-                        <div className="model-page__advanced-card-copy">
-                          <CardTitle>{t(field_config.title_key)}</CardTitle>
-                          <CardDescription>{t(field_config.description_key)}</CardDescription>
-                        </div>
+              return (
+                <Card variant="group" key={field_config.field_name}>
+                  <CardContent className="model-page__advanced-card-content">
+                    <div className="model-page__advanced-card-head">
+                      <div className="model-page__advanced-card-copy">
+                        <CardTitle>{t(field_config.title_key)}</CardTitle>
+                        <CardDescription>{t(field_config.description_key)}</CardDescription>
+                      </div>
 
-                        <div className="model-page__advanced-inline-control">
-                          {current_enabled ? (
-                            <div className="model-page__advanced-number-field">
-                              <Input
-                                type="number"
-                                min={field_config.min}
-                                max={field_config.max}
-                                step={field_config.step}
-                                inputMode="decimal"
-                                value={current_text}
-                                disabled={props.readonly}
-                                onChange={(event) => {
-                                  const next_text = event.target.value;
+                      <div className="model-page__advanced-inline-control">
+                        {current_enabled ? (
+                          <div className="model-page__advanced-number-field">
+                            <Input
+                              type="number"
+                              min={field_config.min}
+                              max={field_config.max}
+                              step={field_config.step}
+                              inputMode="decimal"
+                              value={current_text}
+                              disabled={props.readonly}
+                              onChange={(event) => {
+                                const next_text = event.target.value;
+                                set_generation_texts((previous_state) => {
+                                  return {
+                                    ...previous_state,
+                                    [field_config.field_name]: next_text,
+                                  };
+                                });
+                              }}
+                              onBlur={() => {
+                                const trimmed_text = current_text.trim();
+                                const parsed_value = Number(trimmed_text);
+                                if (trimmed_text !== "" && Number.isFinite(parsed_value)) {
+                                  const normalized_value = normalize_generation_value(
+                                    field_config,
+                                    parsed_value,
+                                  );
+                                  set_generation_values((previous_state) => {
+                                    return {
+                                      ...previous_state,
+                                      [field_config.field_name]: normalized_value,
+                                    };
+                                  });
                                   set_generation_texts((previous_state) => {
                                     return {
                                       ...previous_state,
-                                      [field_config.field_name]: next_text,
+                                      [field_config.field_name]: normalized_value.toFixed(2),
                                     };
                                   });
-                                }}
-                                onBlur={() => {
-                                  const trimmed_text = current_text.trim();
-                                  const parsed_value = Number(trimmed_text);
-                                  if (trimmed_text !== "" && Number.isFinite(parsed_value)) {
-                                    const normalized_value = normalize_generation_value(
-                                      field_config,
-                                      parsed_value,
-                                    );
-                                    set_generation_values((previous_state) => {
-                                      return {
-                                        ...previous_state,
-                                        [field_config.field_name]: normalized_value,
-                                      };
-                                    });
-                                    set_generation_texts((previous_state) => {
-                                      return {
-                                        ...previous_state,
-                                        [field_config.field_name]: normalized_value.toFixed(2),
-                                      };
-                                    });
 
-                                    if (normalized_value !== current_value) {
-                                      void props.onPatch({
-                                        generation: {
-                                          [field_config.field_name]: normalized_value,
-                                        },
-                                      });
-                                    }
-                                  } else {
-                                    set_generation_texts((previous_state) => {
-                                      return {
-                                        ...previous_state,
-                                        [field_config.field_name]: current_value.toFixed(2),
-                                      };
+                                  if (normalized_value !== current_value) {
+                                    void props.onPatch({
+                                      generation: {
+                                        [field_config.field_name]: normalized_value,
+                                      },
                                     });
                                   }
-                                }}
-                              />
-                            </div>
-                          ) : null}
+                                } else {
+                                  set_generation_texts((previous_state) => {
+                                    return {
+                                      ...previous_state,
+                                      [field_config.field_name]: current_value.toFixed(2),
+                                    };
+                                  });
+                                }
+                              }}
+                            />
+                          </div>
+                        ) : null}
 
-                          <BooleanSegmentedToggle
-                            aria_label={t(field_config.title_key)}
-                            value={current_enabled}
-                            className="model-page__advanced-toggle-group"
-                            stretch
-                            disabled={props.readonly}
-                            on_value_change={(next_value) => {
-                              void props.onPatch({
-                                generation: {
-                                  [field_config.enabled_key]: next_value,
-                                },
-                              });
-                            }}
-                          />
-                        </div>
+                        <BooleanSegmentedToggle
+                          aria_label={t(field_config.title_key)}
+                          value={current_enabled}
+                          className="model-page__advanced-toggle-group"
+                          stretch
+                          disabled={props.readonly}
+                          on_value_change={(next_value) => {
+                            void props.onPatch({
+                              generation: {
+                                [field_config.enabled_key]: next_value,
+                              },
+                            });
+                          }}
+                        />
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-
-          {REQUEST_JSON_FIELD_CONFIGS.map((field_config) => {
-            const draft = request_json_drafts[field_config.field_name];
-            const enabled = model.request[field_config.enabled_field_name];
-            const read_only = props.readonly || !enabled;
-
-            return (
-              <Card variant="group" key={field_config.field_name}>
-                <CardContent className="model-page__advanced-card-content">
-                  <div className="model-page__advanced-card-head">
-                    <div className="model-page__advanced-card-copy">
-                      <CardTitle>{t(field_config.title_key)}</CardTitle>
-                      <CardDescription>{t(field_config.description_key)}</CardDescription>
                     </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
 
-                    <div className="model-page__advanced-inline-control">
-                      <BooleanSegmentedToggle
-                        aria_label={t(field_config.title_key)}
-                        value={enabled}
-                        className="model-page__advanced-toggle-group"
-                        stretch
-                        disabled={props.readonly}
-                        on_value_change={(next_value) => {
-                          void props.onPatch({
-                            request: {
-                              [field_config.enabled_field_name]: next_value,
-                            },
-                          });
-                        }}
-                      />
-                    </div>
+        {REQUEST_JSON_FIELD_CONFIGS.map((field_config) => {
+          const draft = request_json_drafts[field_config.field_name];
+          const enabled = model.request[field_config.enabled_field_name];
+          const read_only = props.readonly || !enabled;
+
+          return (
+            <Card variant="group" key={field_config.field_name}>
+              <CardContent className="model-page__advanced-card-content">
+                <div className="model-page__advanced-card-head">
+                  <div className="model-page__advanced-card-copy">
+                    <CardTitle>{t(field_config.title_key)}</CardTitle>
+                    <CardDescription>{t(field_config.description_key)}</CardDescription>
                   </div>
 
-                  <div className="model-page__request-editor">
-                    <AppEditor
-                      class_name="model-page__request-editor-control"
-                      syntax="json"
-                      value={draft.text}
-                      placeholder={t(field_config.placeholder_key)}
+                  <div className="model-page__advanced-inline-control">
+                    <BooleanSegmentedToggle
                       aria_label={t(field_config.title_key)}
-                      read_only={read_only}
-                      invalid={draft.invalid}
-                      on_change={(next_value) => {
-                        set_request_json_drafts((previous_drafts) => ({
-                          ...previous_drafts,
-                          [field_config.field_name]: {
-                            text: next_value,
-                            invalid: false,
+                      value={enabled}
+                      className="model-page__advanced-toggle-group"
+                      stretch
+                      disabled={props.readonly}
+                      on_value_change={(next_value) => {
+                        void props.onPatch({
+                          request: {
+                            [field_config.enabled_field_name]: next_value,
                           },
-                        }));
+                        });
                       }}
-                      on_blur={
-                        read_only ? undefined : () => commit_request_json(field_config.field_name)
-                      }
                     />
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
+                </div>
+
+                <div className="model-page__request-editor">
+                  <AppEditor
+                    class_name="model-page__request-editor-control"
+                    syntax="json"
+                    value={draft.text}
+                    placeholder={t(field_config.placeholder_key)}
+                    aria_label={t(field_config.title_key)}
+                    read_only={read_only}
+                    invalid={draft.invalid}
+                    on_change={(next_value) => {
+                      set_request_json_drafts((previous_drafts) => ({
+                        ...previous_drafts,
+                        [field_config.field_name]: {
+                          text: next_value,
+                          invalid: false,
+                        },
+                      }));
+                    }}
+                    on_blur={
+                      read_only ? undefined : () => commit_request_json(field_config.field_name)
+                    }
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </SettingsList>
     </AppPageDialog>
   );
 }

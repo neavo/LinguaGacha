@@ -27,6 +27,7 @@ const response = (): LLMRequestResult => ({
   cancelled: false,
   timeout: false,
 });
+/** 每次启动复制设置，模拟 Agent 入口向批量服务交付快照。 */
 async function setup(
   request: LLMClientPort["request"] = async () => response(),
   fetcher?: typeof fetch,
@@ -44,6 +45,7 @@ async function setup(
         name: "Fixture",
         api_url: "https://example.test/v1",
         api_format: "OpenAIResponses",
+        auth_type: "api_key",
         api_key: "private",
         model_id: "model",
         thinking: { level: "HIGH" },
@@ -54,7 +56,6 @@ async function setup(
   const service = new BatchRequestService(
     tasks,
     new RequestRatePool(),
-    { read_setting: () => settings },
     { request },
     new NativeResponsesClient("test", { read_models: () => [] }, fetcher),
     { bind: () => "session" },
@@ -77,21 +78,47 @@ async function setup(
     service,
     settings,
     write_manifest,
-    run: () => service.run(lease, new AbortController().signal, root, "fixture", "manifest.json"),
+    run: () =>
+      service.run(
+        lease,
+        new AbortController().signal,
+        root,
+        { model: structuredClone(settings.models[0]!), config_snapshot: structuredClone(settings) },
+        "manifest.json",
+      ),
   };
 }
 describe("batch request", () => {
-  it("文本批次逐项发布结果，坏正文只失败本项，配置快照固定", async () => {
+  it("同批后续请求固定配置，下一批采用新快照", async () => {
+    const request = vi.fn<LLMClientPort["request"]>();
+    const f = await setup(request);
+    await f.write_manifest([
+      { id: "one", input_file: "good.json" },
+      { id: "two", input_file: "good.json" },
+    ]);
+    request.mockImplementation(async () => {
+      f.settings.models[0]!.model_id = "next-model";
+      f.settings.models[0]!.api_url = "https://next.test/v1";
+      return response();
+    });
+    await f.run();
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const [input] of request.mock.calls)
+      expect(input.model).toMatchObject({ model_id: "model", api_url: "https://example.test/v1" });
+    await f.run();
+    expect(request.mock.calls[2]![0].model).toMatchObject({
+      model_id: "next-model",
+      api_url: "https://next.test/v1",
+    });
+    await f.tasks.dispose();
+  });
+  it("文本批次逐项发布结果，坏正文只失败本项", async () => {
     const request = vi.fn<LLMClientPort["request"]>().mockResolvedValue(response());
     const f = await setup(request);
     await f.write_manifest([
       { id: "first", input_file: "good.json" },
       { id: "second", input_file: "bad.json" },
     ]);
-    request.mockImplementation(async () => {
-      f.settings.models[0]!.model_id = "changed";
-      return response();
-    });
     const summary = await f.run();
     expect(summary).toMatchObject({
       status: "done",
@@ -111,11 +138,6 @@ describe("batch request", () => {
       id: "first",
       status: "succeeded",
       response: { format: "messages", text: "ok" },
-    });
-    expect(f.settings.models[0]!.model_id).toBe("changed");
-    expect(request.mock.calls[0]![0].model).toMatchObject({
-      model_id: "model",
-      thinking: { level: "HIGH" },
     });
     expect(
       read_batch_task_snapshot(
@@ -162,6 +184,10 @@ describe("batch request", () => {
       }),
     );
     const summary = await f.run();
+    for (const [url, options] of fetcher.mock.calls) {
+      expect(String(url)).toBe("https://example.test/v1/responses");
+      expect(JSON.parse(String(options?.body))).toMatchObject({ model: "model" });
+    }
     expect(summary).toMatchObject({
       status: "done",
       succeeded: 1,
@@ -184,7 +210,12 @@ describe("batch request", () => {
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
     f.settings.models[0]!.api_format = "OpenAI";
-    await expect(f.run()).rejects.toThrow("responses requires");
+    await expect(f.run()).rejects.toMatchObject({ code: "model.responses_incompatible" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    f.settings.models[0]!.api_format = "OpenAIResponses";
+    f.settings.models[0]!.auth_type = "oauth";
+    f.settings.models[0]!.api_url = "https://api.openai.com/v1";
+    await expect(f.run()).rejects.toMatchObject({ code: "model.responses_incompatible" });
     expect(fetcher).toHaveBeenCalledTimes(2);
     await f.tasks.dispose();
   });

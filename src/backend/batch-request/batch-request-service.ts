@@ -11,7 +11,6 @@ import {
 } from "../../domain/batch-task";
 import { default_native_fs as fs } from "../../native/native-fs";
 import type { RuntimeLease } from "../runtime-operation-gate";
-import type { AppSettingService } from "../app/app-setting-service";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import { read_config_model_records } from "../model/model-config-resolver";
 import { read_model_request_snapshot, read_request_timeout_ms } from "../llm/llm-request";
@@ -59,6 +58,8 @@ type ResultIndex = {
   status: "succeeded" | "failed" | "unfinished";
   result_file: string | null;
 };
+/** 调用入口独立拥有的模型与应用设置快照，同批派发和重试保持一致。 */
+export type BatchRequestConfig = { model: JsonRecord; config_snapshot: JsonRecord };
 export type BatchRequestSummary = {
   run_id: string;
   status: BatchTaskResult["status"];
@@ -106,7 +107,6 @@ export class BatchRequestService {
   public constructor(
     private readonly tasks: BatchTaskRuntime,
     private readonly rates: RequestRatePool,
-    private readonly settings: Pick<AppSettingService, "read_setting">,
     private readonly client: LLMClientPort,
     private readonly native: NativeResponsesClient,
     private readonly auth: Pick<ChatGPTAuthService, "bind">,
@@ -116,16 +116,12 @@ export class BatchRequestService {
     lease: RuntimeLease,
     signal: AbortSignal,
     root: string,
-    model_config_id: string,
+    execution: BatchRequestConfig,
     request_file: string,
   ): Promise<BatchRequestSummary> {
     signal.throwIfAborted();
-    const settings = structuredClone(this.settings.read_setting());
-    const record = read_config_model_records(settings).find(
-      (entry) => entry["id"] === model_config_id,
-    );
-    if (!record) throw new Error(`Model configuration not found: ${model_config_id}`);
-    const model = Model.from_json(record, model_config_id).to_json();
+    const { model, config_snapshot: settings } = execution;
+    const model_config_id = String(model["id"] ?? "");
     const config = read_model_request_snapshot(model, { user_agent: "" });
     const manifest_path = path.resolve(root, request_file);
     const raw = await read_batch_request_json(manifest_path);
@@ -138,9 +134,7 @@ export class BatchRequestService {
       manifest.format === "responses" &&
       (config.api_format !== "OpenAIResponses" || config.auth_type !== "api_key")
     )
-      throw new Error(
-        "responses requires API Key OpenAIResponses; messages supports the saved text protocols and OAuth.",
-      );
+      throw new AppError("model.responses_incompatible");
     const ids = new Set<string>();
     for (const entry of manifest.requests) {
       if (!entry.id.trim() || ids.has(entry.id))

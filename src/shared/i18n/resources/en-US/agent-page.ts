@@ -6,10 +6,17 @@ export const en_us_agent_page = {
     save_as: "Save as",
     open_folder: "Open containing folder",
   },
-  batch_translation_model: {
-    follow: "Same as AGENT",
-    follow_option: "Use the AGENT model",
-    tooltip: "Model used by the batch translation tool",
+  function_models: {
+    title: "Function models",
+    agent: "Main model",
+    translation: "Translation model",
+    media: "Media model",
+    agent_description: "Main model for the task workflow",
+    translation_description:
+      "Model used for batch translation. The main model decides when to use it.",
+    media_description:
+      "Model used for audio and video recognition. The main model decides when to use it.\nPlease note that <emphasis>most models do not support audio and video input</emphasis>. doubao and gemini are recommended.",
+    follow: "Follow main model",
   },
   title: "AGENT",
   thinking: "Thinking",

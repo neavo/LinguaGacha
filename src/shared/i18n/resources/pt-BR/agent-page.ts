@@ -6,10 +6,17 @@ export const pt_br_agent_page = {
     save_as: "Salvar como",
     open_folder: "Abrir pasta do arquivo",
   },
-  batch_translation_model: {
-    follow: "Igual ao AGENT",
-    follow_option: "Usar o modelo do AGENT",
-    tooltip: "Modelo usado pela ferramenta de tradução em lote",
+  function_models: {
+    title: "Modelos por função",
+    agent: "Modelo principal",
+    translation: "Modelo de tradução",
+    media: "Modelo de mídia",
+    agent_description: "Modelo principal do fluxo de tarefas",
+    translation_description:
+      "Modelo usado para tradução em lote. O modelo principal decide quando usá-lo.",
+    media_description:
+      "Modelo usado para reconhecimento de áudio e vídeo. O modelo principal decide quando usá-lo.\nObserve que <emphasis>a maioria dos modelos não aceita entradas de áudio e vídeo</emphasis>. Recomendamos doubao e gemini.",
+    follow: "Seguir modelo principal",
   },
   title: "AGENT",
   thinking: "Raciocínio",

@@ -16,6 +16,7 @@ import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../llm/llm-typ
 import { collect_api_keys, read_model_request_snapshot } from "../llm/llm-request";
 import {
   MODEL_USAGES,
+  AGENT_FUNCTION_USAGES,
   Model,
   is_model_thinking_level,
   is_pinned_model,
@@ -176,14 +177,19 @@ export class ModelService {
   /** 模型选择和显式等级在同一配置副本中校验，并由唯一出口保存一次。 */
   public select_model(request: JsonRecord): ModelSelectionSnapshot {
     const target = request["target"];
-    if (target !== "translation" && target !== "agent" && target !== "agent_batch_translation") {
+    if (
+      target !== "translation" &&
+      target !== "agent" &&
+      target !== "agent_batch_translation" &&
+      target !== "agent_media"
+    ) {
       throw new AppErrors.AppError("request.validation_failed", {
         public_details: { field: "target" },
       });
     }
     const value = request["model_id"];
     if (
-      !(value === null && target === "agent_batch_translation") &&
+      !(value === null && (target === "agent_batch_translation" || target === "agent_media")) &&
       (typeof value !== "string" || value.trim() === "")
     ) {
       throw new AppErrors.AppError("request.validation_failed", {
@@ -217,7 +223,8 @@ export class ModelService {
       }
     }
     const selection = normalize_model_selection(config["model_selection"]);
-    if (target === "agent_batch_translation") selection[target] = model_id;
+    if (target === "agent_batch_translation" || target === "agent_media")
+      selection[target] = model_id;
     else if (model_id !== null) selection[target] = model_id;
     config["models"] = models as unknown as JsonValue;
     config["model_selection"] = selection;
@@ -878,11 +885,9 @@ export class ModelService {
         selection[usage] = fallback_id;
       }
     }
-    if (
-      selection.agent_batch_translation !== null &&
-      !available_ids.has(selection.agent_batch_translation)
-    ) {
-      selection.agent_batch_translation = null;
+    for (const usage of AGENT_FUNCTION_USAGES) {
+      if (selection[usage] !== null && !available_ids.has(selection[usage]))
+        selection[usage] = null;
     }
     return selection;
   }

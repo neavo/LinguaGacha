@@ -6,10 +6,16 @@ export const zh_cn_agent_page = {
     save_as: "另存为",
     open_folder: "打开所在文件夹",
   },
-  batch_translation_model: {
-    follow: "保持一致",
-    follow_option: "与 AGENT 模型保持一致",
-    tooltip: "批量翻译工具使用的模型",
+  function_models: {
+    title: "功能模型",
+    agent: "主控模型",
+    translation: "翻译模型",
+    media: "音视频模型",
+    agent_description: "任务流程的主控模型",
+    translation_description: "批量翻译时使用的模型，由主控模型判断使用时机",
+    media_description:
+      "音视频识别时使用的模型，由主控模型判断使用时机\n请注意，<emphasis>大多数模型不支持音视频输入</emphasis>，推荐使用 doubao gemini",
+    follow: "跟随主控模型",
   },
   title: "AGENT",
   thinking: "思考过程",

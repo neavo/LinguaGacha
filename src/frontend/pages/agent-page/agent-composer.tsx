@@ -46,7 +46,7 @@ type AgentComposerProps = {
   input_state: AgentInputState;
   before_attach?: (() => boolean) | undefined;
   on_send: (message: AgentMessageInput) => void;
-  on_agent_model_select: (change: ModelSelectionInput) => void;
+  on_agent_model_select: (change: ModelSelectionInput) => boolean;
   on_approval_mode_change: (approval_mode: AgentApprovalMode) => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
