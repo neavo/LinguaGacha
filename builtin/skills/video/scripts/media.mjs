@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { finished, pipeline } from "node:stream/promises";
 import { npm } from "@lg/npm";
+import { MODELS, analyze, ready } from "./speech.mjs";
 
 const MAX_SECONDS = 210; // 单个分段的时长上限。
 const CUT_WINDOWS = [
@@ -13,22 +14,16 @@ const CUT_WINDOWS = [
   [120, 180],
 ]; // 优先靠近段尾切开，避免分段过短。
 const CUT_GAP_SECONDS = 0.3; // 可以作为切点的最短无人声空隙。
-const UNCOVERED_SECONDS = 0.3; // 报告的最短未覆盖人声。门槛越长，短句漏识别越难发现。
-const SAMPLE_RATE = 16000; // Silero 的输入采样率。
-const VAD_FRAME = 512; // sherpa 每次调用只合并判断一次，必须逐帧送入。
-const VAD_BUFFER_SECONDS = 90; // 须大于 maxSpeechDuration。
-// Silero 参数是漏句检出与复核量的实测折中，调整后需重新评估。
-const VAD = Object.freeze({
-  threshold: 0.3,
-  minSilenceDuration: 0.1,
-  minSpeechDuration: 0.1,
-  windowSize: VAD_FRAME,
-  maxSpeechDuration: 60,
-});
 const PACKAGE_MAX_BYTES = 900 * 1024 * 1024; // 包体积上限，超出时拆分原素材。
 const STDERR_MAX_CHARS = 64 * 1024; // 只保留诊断尾部，避免长转码日志持续占用内存。
+const DOWNLOAD_IDLE_SECONDS = 60; // 模型下载连续无数据的上限。
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
 const ROW_KINDS = ["dialogue", "screen"]; // 对话与画面文字。
+/** 模型读取的视频编码。分段与补查片段共用，保证两者的画面与音质一致。 */
+export const ENCODE = Object.freeze([
+  ...["-c:v", "libx264", "-crf", "30", "-preset", "medium", "-pix_fmt", "yuv420p"],
+  ...["-c:a", "aac", "-b:a", "48k", "-ac", "1", "-movflags", "+faststart"],
+]);
 
 /** 第三方依赖装在共享 npm 工程，在用到时才加载，缺失时本文件仍可导入并检查。 */
 const PACKAGES = Object.freeze({
@@ -38,16 +33,9 @@ const PACKAGES = Object.freeze({
   jszip: "^3.10.2",
 });
 
-/** 固定版本的 Silero VAD 模型，所有工程共用。共享 npm 工程固定为 userdata/node，据此定位 userdata/models。 */
-const SPEECH_MODEL = Object.freeze({
-  file: path.resolve(npm.directory, "..", "models", "silero_vad", "v6.2.3.onnx"),
-  url: "https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/src/silero_vad/data/silero_vad.onnx",
-  sha256: "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
-});
-
 export const load = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取工作目录中的 JSON 材料。
 export const prefix = (index) => String(index).padStart(3, "0"); // 分段文件名前缀。
-const round = (value, places) => Number(value.toFixed(places)); // 时间写入前统一精度。
+const round = (value) => Number(value.toFixed(2)); // 切点统一精度。
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value); // 普通对象。
 
 /** 只有缺失表示尚未生成，权限与其他 IO 错误保留。 */
@@ -73,65 +61,65 @@ export async function save(file, value) {
   }
 }
 
-/** 模型存在且与固定版本一致。sherpa 加载缺失或损坏的模型时不报错，只会静默得到空结果。 */
-async function model_ready() {
-  try {
-    const bytes = await readFile(SPEECH_MODEL.file);
-    return createHash("sha256").update(bytes).digest("hex") === SPEECH_MODEL.sha256;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
 /** 列出尚未就绪的依赖与模型。包按共享 npm 工程中实际安装的目录判断，与工作区模块解析一致。 */
 export async function missing() {
-  const packages = [];
+  const packages = [],
+    models = [];
   for (const [name, range] of Object.entries(PACKAGES))
     if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
       packages.push(`${name}@${range}`);
-  return { packages, model: (await model_ready()) ? null : SPEECH_MODEL };
+  for (const model of Object.values(MODELS)) if (!(await ready(model))) models.push(model);
+  return { packages, models };
 }
 
-/** 字幕行的结构与时间是否可用。坏时间不能参与排序和区间运算。 */
-export function valid_row(row, duration) {
-  return (
-    record(row) &&
-    Number.isFinite(row.start) &&
-    Number.isFinite(row.end) &&
-    0 <= row.start &&
-    row.start < row.end &&
-    row.end <= duration &&
-    ROW_KINDS.includes(row.kind) &&
-    typeof row.src === "string" &&
-    row.src.trim() !== "" &&
-    typeof row.dst === "string"
-  );
-}
-
-/** 排序并合并相接或重叠的区间。 */
-function union(spans) {
-  const result = [];
-  for (const [start, end] of [...spans].sort((a, b) => a[0] - b[0])) {
-    const last = result.at(-1);
-    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
-    else result.push([start, end]);
-  }
-  return result;
-}
-
-/** 从有序区间中扣除另一组有序且不重叠的区间。 */
-function subtract(spans, cover) {
-  const result = [];
-  for (let [start, end] of spans) {
-    for (const [a, b] of cover) {
-      if (b <= start || a >= end) continue;
-      if (a > start) result.push([start, a]);
-      start = b;
+/**
+ * 安装缺失的依赖并下载模型。模型边下载边校验，哈希一致才发布，中断不会留下可被误用的文件。
+ * 实测连接可能不报错地停止传输，长时间收不到数据时中止，由调用者重新执行。
+ */
+export async function setup() {
+  const { packages, models } = await missing();
+  if (packages.length) await npm.run(["install", ...packages]);
+  for (const model of models) {
+    await mkdir(path.dirname(model.file), { recursive: true });
+    const temporary = model.file + ".tmp";
+    const hash = createHash("sha256");
+    const controller = new AbortController();
+    let timer;
+    const idle = () => {
+      clearTimeout(timer);
+      timer = setTimeout(
+        () =>
+          controller.abort(
+            new Error(`下载 ${DOWNLOAD_IDLE_SECONDS} 秒没有进展，请重新调用 setup()`),
+          ),
+        DOWNLOAD_IDLE_SECONDS * 1000,
+      );
+    };
+    try {
+      idle();
+      const response = await fetch(model.url, { signal: controller.signal });
+      if (!response.ok || !response.body)
+        throw new Error(`下载失败 (${response.status})：${model.url}`);
+      await pipeline(
+        Readable.fromWeb(response.body),
+        new Transform({
+          transform(chunk, _encoding, callback) {
+            idle();
+            hash.update(chunk);
+            callback(null, chunk);
+          },
+        }),
+        createWriteStream(temporary),
+        { signal: controller.signal },
+      );
+      if (hash.digest("hex") !== model.sha256) throw new Error(`模型校验失败：${model.url}`);
+      await rename(temporary, model.file);
+    } finally {
+      clearTimeout(timer);
+      await rm(temporary, { force: true });
     }
-    if (end > start) result.push([start, end]);
   }
-  return result;
+  return missing();
 }
 
 /** 唯一的 ffmpeg 进程入口。进程树的停止和超时归工作区宿主。 */
@@ -197,30 +185,11 @@ export async function inspect(source) {
 }
 
 /**
- * 整片人声区间，单位为整片秒数。
+ * 一次解码完成人声检测与本地识别。
  * 只选音轨时，部分容器会以音轨自身起点为零点；补齐起点并保留画面流，零点才与分段转码一致。
  */
-async function speech(source, track) {
-  if (!(await model_ready())) throw new Error("人声模型缺失或不一致，先按 media.missing() 补齐");
-  const { default: sherpa } = await import("sherpa-onnx-node");
-  const vad = new sherpa.Vad(
-    {
-      sileroVad: { model: SPEECH_MODEL.file, ...VAD },
-      sampleRate: SAMPLE_RATE,
-      numThreads: 1,
-      provider: "cpu",
-      debug: 0,
-    },
-    VAD_BUFFER_SECONDS,
-  );
-  const spans = [];
-  // 及时取出已完成的人声区间，检测器不再积累音频样本。
-  const drain = () => {
-    for (; !vad.isEmpty(); vad.pop()) {
-      const { start, samples } = vad.front(false); // Electron 不支持外部 ArrayBuffer。
-      spans.push([start / SAMPLE_RATE, (start + samples.length) / SAMPLE_RATE]);
-    }
-  };
+async function listen(source, track, language) {
+  let result;
   await execute(
     [
       "-v",
@@ -234,7 +203,7 @@ async function speech(source, track) {
       "-ac",
       "1",
       "-ar",
-      String(SAMPLE_RATE),
+      "16000",
       "-f",
       "s16le",
       "pipe:1",
@@ -246,35 +215,9 @@ async function speech(source, track) {
       "null",
       "-",
     ],
-    {
-      consume: async (stream) => {
-        const frame = new Float32Array(VAD_FRAME);
-        let filled = 0,
-          low; // 跨数据块保留尚未配对的低字节。
-        for await (const chunk of stream) {
-          for (const byte of chunk) {
-            if (low === undefined) {
-              low = byte;
-              continue;
-            }
-            frame[filled++] = (((byte << 24) >> 16) | low) / 32768; // 小端 s16，高字节带符号。
-            low = undefined;
-            if (filled === VAD_FRAME) {
-              vad.acceptWaveform(frame);
-              drain();
-              filled = 0;
-            }
-          }
-        }
-        if (low !== undefined) throw new Error("PCM 采样不完整");
-        if (filled) vad.acceptWaveform(frame.slice(0, filled));
-        vad.flush();
-        drain();
-      },
-    },
+    { consume: async (stream) => (result = await analyze(stream, language)) },
   );
-  // 模型会按 maxSpeechDuration 拆开长语音，相接的区间不是停顿。
-  return union(spans).map(([start, end]) => [round(start, 2), round(end, 2)]);
+  return result;
 }
 
 /** 在靠近段尾的无人声空隙中点切开，没有空隙时按上限硬切。音轨结束后的画面也算空隙。 */
@@ -305,13 +248,16 @@ function cuts(duration, voiced) {
         break;
       }
     }
-    points.push(round(cut, 2));
+    points.push(round(cut));
   }
   return [...points, duration];
 }
 
-/** 来源身份匹配后续用已发布的分段，转码成功才替换临时文件。 */
-export async function prepare(source, directory, { track = 0 } = {}) {
+/**
+ * 导入：人声检测、本地识别、切段与转码。来源身份匹配后续用已发布的分段，转码成功才替换临时文件。
+ * 本地识别结果随包保存，识别阶段不依赖导入时的工作目录。
+ */
+export async function prepare(source, directory, { track = 0, language } = {}) {
   source = path.resolve(source);
   const info = await inspect(source);
   if (!Number.isInteger(track) || track < 0 || (info.audio.length && track >= info.audio.length))
@@ -324,6 +270,7 @@ export async function prepare(source, directory, { track = 0 } = {}) {
     size: Number(details.size),
     mtime_ns: String(details.mtimeNs),
     track,
+    language: language ?? null,
   };
   const identityFile = path.join(directory, "source.json");
   const manifestFile = path.join(directory, "video.json");
@@ -333,25 +280,26 @@ export async function prepare(source, directory, { track = 0 } = {}) {
       !record(previous) ||
       Object.entries(identity).some(([key, value]) => previous[key] !== value)
     )
-      throw new Error("来源或音轨已变化，请使用新的工作目录");
+      throw new Error("来源、音轨或语言已变化，请使用新的工作目录");
   } else {
     if (await exists(manifestFile)) throw new Error("工作目录缺少来源身份，请使用新的工作目录");
     await save(identityFile, identity);
   }
   if (!(await exists(manifestFile))) {
     // 已发布的切点决定响应的相对时间，之后不再因分析变化重切。
-    const voiced = info.audio.length ? await speech(source, track) : null;
-    const points = cuts(info.duration, voiced);
+    const { speech, asr } = info.audio.length
+      ? await listen(source, track, language)
+      : { speech: null, asr: null };
+    const points = cuts(info.duration, speech);
     await save(manifestFile, {
       video: info.video,
-      speech: voiced,
+      speech,
+      asr,
       segments: points
         .slice(0, -1)
         .map((start, i) => ({ path: `segments/${prefix(i)}.mp4`, start, end: points[i + 1] })),
     });
   }
-  const itemsFile = path.join(directory, "items.json");
-  if (!(await exists(itemsFile))) await save(itemsFile, []);
   const manifest = await load(manifestFile);
   for (const [i, segment] of manifest.segments.entries()) {
     const target = path.join(directory, segment.path);
@@ -368,24 +316,9 @@ export async function prepare(source, directory, { track = 0 } = {}) {
         "-vf",
         "fps=1,scale=w='min(1024,iw)':h='min(1024,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
       );
-    if (info.audio.length)
-      args.push("-map", `0:a:${track}`, "-c:a", "aac", "-b:a", "48k", "-ac", "1");
+    if (info.audio.length) args.push("-map", `0:a:${track}`);
     if (manifest.video === null) args.push("-shortest");
-    args.push(
-      "-t",
-      String(segment.end - segment.start),
-      "-c:v",
-      "libx264",
-      "-crf",
-      "30",
-      "-preset",
-      "medium",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      temporary,
-    );
+    args.push("-t", String(segment.end - segment.start), ...ENCODE, temporary);
     try {
       await ffmpeg(args);
       await rename(temporary, target);
@@ -394,126 +327,57 @@ export async function prepare(source, directory, { track = 0 } = {}) {
     }
     console.log(`转码 ${i + 1}/${manifest.segments.length}`);
   }
-  return manifest;
-}
-
-/** 人声与对话行的对照，只是证据，不判断字幕对错。无音轨时为 null。 */
-function evidence(voiced, segment, rows, duration) {
-  if (voiced === null) return { uncovered_speech: null, unsupported_dialogue: null };
-  const dialogue = rows.flatMap((row, index) =>
-    valid_row(row, duration) && row.kind === "dialogue"
-      ? [{ index, start: row.start, end: row.end }]
-      : [],
-  );
-  const inside = voiced.flatMap(([start, end]) =>
-    end > segment.start && start < segment.end
-      ? [[Math.max(start, segment.start), Math.min(end, segment.end)]]
-      : [],
-  );
   return {
-    uncovered_speech: subtract(inside, union(dialogue.map(({ start, end }) => [start, end])))
-      .filter(([start, end]) => end - start >= UNCOVERED_SECONDS)
-      .map(([start, end]) => [round(start, 2), round(end, 2)]),
-    unsupported_dialogue: dialogue
-      .filter((row) => !voiced.some(([start, end]) => start < row.end && end > row.start))
-      .map(({ index }) => index),
+    segments: manifest.segments.length,
+    speech: manifest.speech?.length ?? null,
+    asr: manifest.asr?.length ?? null,
   };
 }
 
-/** 响应时间换算为整片时间，已有修正行拥有优先权。每次按当前行重新质控。 */
-export async function parse(directory) {
-  const { jsonrepair, JSONRepairError } = await import("jsonrepair");
-  const { speech: voiced, segments } = await load(path.join(directory, "video.json"));
-  const duration = segments.at(-1).end;
-  const summary = [];
-  for (const [i, segment] of segments.entries()) {
-    const responseFile = path.join(directory, `${prefix(i)}.response.json`);
-    const rowsFile = path.join(directory, `${prefix(i)}.rows.json`);
-    const hasResponse = await exists(responseFile),
-      hasRows = await exists(rowsFile);
-    if (!hasResponse && !hasRows) {
-      summary.push({ index: i, missing: true });
-      continue;
-    }
-    const savedResponse = hasResponse ? await load(responseFile) : {};
-    const response =
-      savedResponse.response?.format === "responses"
-        ? (savedResponse.response.raw ?? {})
-        : savedResponse;
-    const text = (response.output ?? [])
-      .flatMap((entry) => entry.content ?? [])
-      .filter((part) => part.type === "output_text")
-      .map((part) => part.text ?? "")
-      .join("\n");
-    let rows = [];
-    const invalid = [];
-    for (const line of text.split(/\r?\n/u)) {
-      const text = line.trim();
-      if (!text || text.startsWith("```")) continue;
-      let row;
-      try {
-        row = JSON.parse(jsonrepair(text));
-      } catch (error) {
-        if (!(error instanceof JSONRepairError || error instanceof SyntaxError)) throw error;
-        invalid.push(text); // 单行模型输出损坏只进入质控摘要。
-        continue;
-      }
-      if (record(row) && Number.isFinite(row.start) && Number.isFinite(row.end))
-        rows.push({
-          ...row,
-          start: round(row.start + segment.start, 3),
-          end: round(row.end + segment.start, 3),
-        });
-      else invalid.push(text);
-    }
-    if (hasRows) rows = await load(rowsFile);
-    else await save(rowsFile, rows);
-    summary.push({
-      index: i,
-      start: segment.start,
-      end: segment.end,
-      rows: rows.length,
-      incomplete:
-        hasResponse && (response.status !== "completed" || Boolean(response.incomplete_details)),
-      invalid_lines: invalid,
-      invalid_rows: rows.flatMap((row, index) => (valid_row(row, duration) ? [] : [index])),
-      ...evidence(voiced, segment, rows, duration),
-    });
-  }
-  return summary;
+/** 字幕行的结构与时间是否可用。坏时间不能参与排序和区间运算，姓名须符合后端记录契约。 */
+export function valid_row(row, duration) {
+  return (
+    record(row) &&
+    Number.isFinite(row.start) &&
+    Number.isFinite(row.end) &&
+    0 <= row.start &&
+    row.start < row.end &&
+    row.end <= duration &&
+    ROW_KINDS.includes(row.kind) &&
+    typeof row.src === "string" &&
+    row.src.trim() !== "" &&
+    typeof row.dst === "string" &&
+    (row.name === undefined || typeof row.name === "string")
+  );
 }
 
-/** 校验并合并字幕，原文进包，译文留作工程提交材料。 */
-export async function items(directory) {
-  const { segments } = await load(path.join(directory, "video.json"));
-  const duration = segments.at(-1).end;
-  const rows = [];
-  for (const i of segments.keys()) {
-    const file = path.join(directory, `${prefix(i)}.rows.json`);
-    if (!(await exists(file))) throw new Error(`分段 ${i} 尚无识别结果`);
-    for (const [index, row] of (await load(file)).entries()) {
-      if (!valid_row(row, duration))
-        throw new Error(`分段 ${i} 第 ${index} 行不合法：${JSON.stringify(row)}`);
-      rows.push(row);
-    }
-  }
-  rows.sort((a, b) => a.start - b.start);
-  await save(
-    path.join(directory, "items.json"),
-    rows.map(({ src, dst: _dst, ...row }) => ({ ...row, message: src })),
-  );
-  await save(
-    path.join(directory, "translations.json"),
-    rows.map(({ src, dst }, row_number) => ({ row_number, src, dst })),
-  );
-  return { items: rows.length };
-}
-
-/** 只打包清单指定的交付材料，失败时保留已有完整包。 */
+/**
+ * 校验字幕草稿并打包。`rows.json` 全部合法才写出 `items.json`，原文进包，译文写入 `translations.json` 供提交使用。
+ * 没有草稿时沿用已有的 `items.json`，导入阶段为空记录。失败时保留已有完整包。
+ */
 export async function pack(directory, output) {
   const { default: JSZip } = await import("jszip");
   const manifest = await load(path.join(directory, "video.json"));
-  await load(path.join(directory, "items.json"));
+  const rowsFile = path.join(directory, "rows.json"),
+    itemsFile = path.join(directory, "items.json");
+  if (await exists(rowsFile)) {
+    const rows = await load(rowsFile);
+    if (!Array.isArray(rows)) throw new Error("rows.json 必须是数组");
+    const duration = manifest.segments.at(-1).end;
+    const invalid = rows.findIndex((row) => !valid_row(row, duration));
+    if (invalid !== -1)
+      throw new Error(`rows.json 第 ${invalid} 行不合法：${JSON.stringify(rows[invalid])}`);
+    const sorted = [...rows].sort((a, b) => a.start - b.start);
+    await save(
+      itemsFile,
+      sorted.map(({ src, dst: _dst, ...row }) => ({ ...row, message: src })),
+    );
+    await save(
+      path.join(directory, "translations.json"),
+      sorted.map(({ src, dst }, row_number) => ({ row_number, src, dst })),
+    );
+  } else if (!(await exists(itemsFile))) await save(itemsFile, []);
+  const items = await load(itemsFile);
   const members = ["video.json", "items.json", ...manifest.segments.map((segment) => segment.path)];
   if (await exists(path.join(directory, CUSTOM_RENDERER))) members.push(CUSTOM_RENDERER);
   const zip = new JSZip(),
@@ -554,5 +418,5 @@ export async function pack(directory, output) {
     );
     await rm(temporary, { force: true });
   }
-  return { package: output, members: members.length };
+  return { package: output, items: items.length };
 }
