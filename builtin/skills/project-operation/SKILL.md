@@ -18,7 +18,7 @@ description: 添加、导入或更新工程文件，调查材料中有哪些可�
 3. 按识别能力的边界核对结果：
    - `kind` 为 `game` 的资产由引擎识别，游戏是否成立以识别结果为准。
    - `kind` 为 `file` 的资产只按扩展名对应解析器，不检查内容。抽样核对内容是否符合该格式。例如 `.json` 对象按「键为原文、字符串值为译文」解析，数组按带 `message` 字段的消息列表解析，其他用途的 JSON 会产生错误条目。
-4. 识别结果未覆盖的视频或纯音频，按 `video` 切段并封装为 `.video`。其他未覆盖、或内容与对应格式不符的材料，按 `generic-data` 调查其中是否有需要翻译的文本，有则提取并封装为 `.generic`，再识别产出的包。
+4. 识别结果未覆盖的视频或纯音频，按 `video` 封装为 `.video`。其他未覆盖、或内容与对应格式不符的材料，按 `generic-data` 调查其中是否有需要翻译的文本，有则提取并封装为 `.generic`，再识别产出的包。
 
 ```js
 import { inspectSources } from '@lg/project';
@@ -71,7 +71,7 @@ console.log(JSON.stringify(result, null, 2));
 
 ## 回执与恢复
 
-- `inspectSources` 只识别来源，不能证明内容解析成功。新增回执 `parse_failed` 中的资产已经加入工程。告诉用户哪些文件解析失败，不说成新增失败。PDF 可能没有条目，但有页面。`.video` 在识别前没有条目。
+- `inspectSources` 只识别来源，不能证明内容解析成功。新增回执 `parse_failed` 中的资产已经加入工程。告诉用户哪些文件解析失败，不说成新增失败。PDF 可能没有条目，但有页面。`.video` 的条目数按 `video` 核对。
 - `invalid_change` 提示 Godot 包集合已变化时，重新识别来源，与用户确认新的完整顺序。
 - 错误 `data.committed_sync_failed` 时，先重读工程确认已生效的文件变更，避免重复提交。
 

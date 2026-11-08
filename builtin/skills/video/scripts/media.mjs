@@ -254,8 +254,8 @@ function cuts(duration, voiced) {
 }
 
 /**
- * 导入：人声检测、本地识别、切段与转码。来源身份匹配后续用已发布的分段，转码成功才替换临时文件。
- * 本地识别结果随包保存，识别阶段不依赖导入时的工作目录。
+ * 准备媒体与初始原文。来源身份匹配后续用已发布的分段。
+ * 转码成功才替换临时文件。本地识别证据随包保存，供后续核对。
  */
 export async function prepare(source, directory, { track = 0, language } = {}) {
   source = path.resolve(source);
@@ -327,14 +327,30 @@ export async function prepare(source, directory, { track = 0, language } = {}) {
     }
     console.log(`转码 ${i + 1}/${manifest.segments.length}`);
   }
+  const itemsFile = path.join(directory, "items.json");
+  const hasItems = await exists(itemsFile); // 续跑保留已编辑的原文，包括有意清空的记录。
+  const items = hasItems
+    ? await load(itemsFile)
+    : (manifest.asr ?? []).map(([start, end, message]) => ({
+        start,
+        end,
+        message,
+        kind: "dialogue",
+      }));
+  validate_items(items, manifest.segments.at(-1).end);
+  if (!hasItems) await save(itemsFile, items);
   return {
+    items: items.length,
     segments: manifest.segments.length,
     speech: manifest.speech?.length ?? null,
     asr: manifest.asr?.length ?? null,
   };
 }
 
-/** 字幕行的结构与时间是否可用。坏时间不能参与排序和区间运算，姓名须符合后端记录契约。 */
+/**
+ * 字幕行的结构与时间是否可用。坏时间不能参与排序和区间运算，姓名须符合后端记录契约。
+ * 可选 `dst` 是视频识别的译文，只留在工作目录。
+ */
 export function valid_row(row, duration) {
   return (
     record(row) &&
@@ -344,44 +360,42 @@ export function valid_row(row, duration) {
     row.start < row.end &&
     row.end <= duration &&
     ROW_KINDS.includes(row.kind) &&
-    typeof row.src === "string" &&
-    row.src.trim() !== "" &&
-    typeof row.dst === "string" &&
-    (row.name === undefined || typeof row.name === "string")
+    typeof row.message === "string" &&
+    row.message.trim() !== "" &&
+    (row.name === undefined || typeof row.name === "string") &&
+    (row.dst === undefined || typeof row.dst === "string")
   );
 }
 
+/** 保留数组坐标，坏记录必须整批修正，不能过滤或排序后悄悄改变译文归属。 */
+function validate_items(items, duration) {
+  if (!Array.isArray(items)) throw new Error("items.json 必须是数组");
+  const invalid = items.findIndex((item) => !valid_row(item, duration));
+  if (invalid !== -1)
+    throw new Error(`items.json 第 ${invalid} 行不合法：${JSON.stringify(items[invalid])}`);
+}
+
 /**
- * 校验字幕草稿并打包。`rows.json` 全部合法才写出 `items.json`，原文进包，译文写入 `translations.json` 供提交使用。
- * 没有草稿时沿用已有的 `items.json`，导入阶段为空记录。失败时保留已有完整包。
+ * 校验原文记录并打包，缺少记录表示准备未完成。失败时保留已有完整包。
+ * 译文只属于工程条目，包内 `items.json` 去掉 `dst`，数组顺序即提交后的 `row_number`。
  */
 export async function pack(directory, output) {
   const { default: JSZip } = await import("jszip");
   const manifest = await load(path.join(directory, "video.json"));
-  const rowsFile = path.join(directory, "rows.json"),
-    itemsFile = path.join(directory, "items.json");
-  if (await exists(rowsFile)) {
-    const rows = await load(rowsFile);
-    if (!Array.isArray(rows)) throw new Error("rows.json 必须是数组");
-    const duration = manifest.segments.at(-1).end;
-    const invalid = rows.findIndex((row) => !valid_row(row, duration));
-    if (invalid !== -1)
-      throw new Error(`rows.json 第 ${invalid} 行不合法：${JSON.stringify(rows[invalid])}`);
-    const sorted = [...rows].sort((a, b) => a.start - b.start);
-    await save(
-      itemsFile,
-      sorted.map(({ src, dst: _dst, ...row }) => ({ ...row, message: src })),
-    );
-    await save(
-      path.join(directory, "translations.json"),
-      sorted.map(({ src, dst }, row_number) => ({ row_number, src, dst })),
-    );
-  } else if (!(await exists(itemsFile))) await save(itemsFile, []);
-  const items = await load(itemsFile);
-  const members = ["video.json", "items.json", ...manifest.segments.map((segment) => segment.path)];
+  const items = await load(path.join(directory, "items.json"));
+  validate_items(items, manifest.segments.at(-1).end);
+  const members = ["video.json", ...manifest.segments.map((segment) => segment.path)];
   if (await exists(path.join(directory, CUSTOM_RENDERER))) members.push(CUSTOM_RENDERER);
   const zip = new JSZip(),
     inputs = [];
+  zip.file(
+    "items.json",
+    JSON.stringify(
+      items.map(({ dst: _dst, ...row }) => row),
+      null,
+      2,
+    ),
+  );
   for (const member of members) {
     // 每次消费才打开文件，分段多时也不同时占用全部文件句柄。
     const input = Readable.from(
