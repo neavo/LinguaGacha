@@ -1,3 +1,4 @@
+import { createBatchTaskSnapshotStore } from "@frontend/app/state/batch-task-snapshot-store";
 import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -23,6 +24,7 @@ describe("desktop state hooks", () => {
     const change_source = createProjectChangeSignalStore();
     const stores: DesktopStateStores = {
       batch_translation: createBatchTranslationSnapshotStore(),
+      batch_task: createBatchTaskSnapshotStore(),
       runtime: createRuntimeActivityStore(),
       projectChange: change_source,
     };

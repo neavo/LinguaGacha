@@ -260,6 +260,10 @@ export function register_api_routes(context: ApiRouteContext): void {
 
   const batch_translation = services.batchTranslation;
   context.postJson("/api/batch-translation/start", (body) => batch_translation.start(body));
-  context.postJson("/api/batch-translation/stop", () => batch_translation.stop());
-  context.postJson("/api/batch-translation/snapshot", () => batch_translation.get_snapshot());
+  context.postJson("/api/batch-task/stop", async (body) => {
+    if (typeof body["run_id"] !== "string") throw new AppError("request.validation_failed");
+    const accepted = await services.batchTasks.request_stop(body["run_id"]);
+    return { accepted, ...(await batch_translation.get_snapshot()) };
+  });
+  context.postJson("/api/batch-task/snapshot", () => batch_translation.get_snapshot());
 }

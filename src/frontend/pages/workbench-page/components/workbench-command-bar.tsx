@@ -1,15 +1,15 @@
 import type { JSX } from "react";
-import { build_translation_task_summary_display } from "@frontend/features/batch-translation/batch-translation-display";
+import { build_translation_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
 import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "lucide-react";
 
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
-import type { BatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
+import type { BatchTask } from "@frontend/app/session/batch-task/use-batch-task";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { TranslationTaskActionKind } from "@shared/batch-translation/batch-translation";
 
 import type { ProjectTranslationStats } from "@shared/project-translation-stats";
 import { WorkbenchTranslationMenu } from "@frontend/pages/workbench-page/components/workbench-translation-menu";
-import { BatchTranslationSummary } from "@frontend/features/batch-translation/batch-translation-summary";
+import { BatchTaskSummary } from "@frontend/features/batch-task/batch-task-summary";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
@@ -26,7 +26,7 @@ import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 type WorkbenchCommandBarProps = {
   can_start_translation: boolean;
   on_request_start_translation: () => void;
-  batch_translation_task: BatchTranslationTask;
+  batch_task: BatchTask;
   translation_stats: ProjectTranslationStats | null;
   can_edit_files: boolean;
   can_delete_selected_files: boolean;
@@ -52,11 +52,8 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const { t } = useI18n();
   const model_selection = useModelSelection();
   const active_translation_task_action_kind: TranslationTaskActionKind | null =
-    props.batch_translation_task.task_confirm_state?.kind ?? null;
-  const summary = build_translation_task_summary_display(
-    props.batch_translation_task.translation_task_metrics,
-    t,
-  );
+    props.batch_task.task_confirm_state?.kind ?? null;
+  const summary = build_translation_task_summary_display(props.batch_task.task_metrics, t);
   const add_file_disabled = !props.can_edit_files;
   const delete_file_disabled = !props.can_delete_selected_files;
   const actions: CommandAction[] = [
@@ -110,15 +107,15 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         <>
           <CommandBarGroup>
             <WorkbenchTranslationMenu
-              active={props.batch_translation_task.translation_task_metrics.active}
+              active={props.batch_task.task_metrics.active}
               workbench_stats={props.translation_stats}
-              disabled={props.batch_translation_task.translation_task_menu_disabled}
-              busy={props.batch_translation_task.translation_task_menu_busy}
+              disabled={props.batch_task.translation_task_menu_disabled}
+              busy={props.batch_task.translation_task_menu_busy}
               model_selection={model_selection}
               active_task_action_kind={active_translation_task_action_kind}
               can_start={props.can_start_translation}
               on_request_start={props.on_request_start_translation}
-              on_request_reset={props.batch_translation_task.request_task_action_confirmation}
+              on_request_reset={props.batch_task.request_task_action_confirmation}
             />
           </CommandBarGroup>
           <CommandBarSeparator />
@@ -150,12 +147,12 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         </>
       }
       hint={
-        <BatchTranslationSummary
+        <BatchTaskSummary
           variant="capsule"
           open_tooltip_on_start={true}
           display={summary}
-          completion_percent={props.translation_stats?.completion_percent ?? null}
-          on_open={props.batch_translation_task.open_translation_detail_sheet}
+          completion_percent={props.batch_task.task_metrics.completion_percent}
+          on_open={props.batch_task.open_task_detail_sheet}
         />
       }
     />

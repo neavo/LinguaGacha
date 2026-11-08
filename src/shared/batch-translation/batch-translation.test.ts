@@ -1,16 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  normalize_batch_translation_progress,
-  normalize_batch_translation_run_progress,
-  type BatchTranslationRequestRecovery,
-} from "../../domain/batch-translation";
+import { normalize_batch_translation_progress } from "../../domain/batch-translation";
+import type { BatchTaskRequestRecovery } from "../../domain/batch-task";
 import {
   create_empty_batch_translation_snapshot,
   should_open_translation_generation_followup,
   normalize_batch_translation_snapshot,
-  clone_translation_task_snapshot,
-  resolve_translation_task_display_snapshot,
-  resolve_translation_task_metrics,
 } from "./batch-translation";
 
 describe("批量翻译展示", () => {
@@ -24,7 +18,7 @@ describe("批量翻译展示", () => {
         // 模拟 HTTP / SSE 收到不符合静态类型的外部载荷。
         batch_translation: {
           status: "running",
-          request_recovery: request_recovery as unknown as BatchTranslationRequestRecovery,
+          request_recovery: request_recovery as unknown as BatchTaskRequestRecovery,
         },
       }).request_recovery,
     ).toEqual(expected);
@@ -35,7 +29,7 @@ describe("批量翻译展示", () => {
       batch_translation: { status: "running", request_recovery: recovery },
     });
     recovery.retry_count = 99;
-    expect(clone_translation_task_snapshot(snapshot).request_recovery).toEqual({
+    expect(structuredClone(snapshot).request_recovery).toEqual({
       phase: "waiting",
       retry_count: 4,
       retry_at: 123_000,
@@ -49,57 +43,11 @@ describe("批量翻译展示", () => {
   });
   it.each(["standalone", "agent", null] as const)("任务来源 %s 经归一与复制保留", (source) => {
     const snapshot = normalize_batch_translation_snapshot({ batch_translation: { source } });
-    expect(clone_translation_task_snapshot(snapshot).source).toBe(source);
-  });
-  it("运行指标消费本轮数据，传输与历史复制保留工程累计事实", () => {
-    const snapshot = normalize_batch_translation_snapshot({
-      batch_translation: {
-        status: "running",
-        operation: "translate",
-        progress: normalize_batch_translation_progress({
-          total_line: 100,
-          processed_line: 70,
-          failed_line: 10,
-          time: 100,
-          total_output_tokens: 1000,
-        }),
-        run_progress: normalize_batch_translation_run_progress({
-          total_line: 10,
-          processed_line: 0,
-          failed_line: 4,
-          start_time: 10,
-          total_output_tokens: 40,
-        }),
-      },
-    });
-    const clone = clone_translation_task_snapshot(snapshot);
-    expect(resolve_translation_task_metrics({ snapshot: clone, now_seconds: 20 })).toMatchObject({
-      elapsed_seconds: 10,
-      remaining_seconds: 15,
-      average_generation_speed: 4,
-    });
-    expect(clone.progress.total_line).toBe(100);
-    expect(clone.operation).toBe("translate");
-    expect(clone.run_progress).not.toBe(snapshot.run_progress);
+    expect(structuredClone(snapshot).source).toBe(source);
   });
 
   it("未提供任务来源时保留空值", () => {
     expect(normalize_batch_translation_snapshot({}).source).toBeNull();
-  });
-  it("运行配置经传输与历史复制保留，缺失配置保持为空", () => {
-    const config = {
-      model_name: "执行模型",
-      model_id: "model",
-      thinking_level: "HIGH" as const,
-      source_language: "JA",
-      target_language: "ZH",
-    };
-    const snapshot = normalize_batch_translation_snapshot({ batch_translation: { config } });
-    const cloned = clone_translation_task_snapshot(snapshot);
-    config.model_name = "新默认模型";
-    expect(cloned.config?.model_name).toBe("执行模型");
-    expect(cloned.config).not.toBe(snapshot.config);
-    expect(normalize_batch_translation_snapshot({}).config).toBeUndefined();
   });
   it("停止来源随 HTTP 归一与快照复制保留", () => {
     const snapshot = normalize_batch_translation_snapshot({
@@ -109,7 +57,7 @@ describe("批量翻译展示", () => {
         stop_source: "user",
       },
     });
-    expect(clone_translation_task_snapshot(snapshot)).toMatchObject({
+    expect(structuredClone(snapshot)).toMatchObject({
       status: "stopped",
       stop_source: "user",
     });
@@ -124,55 +72,11 @@ describe("批量翻译展示", () => {
       },
     });
     expect(snapshot.pending_item_ids).toEqual([2, 3]);
-    const cloned = clone_translation_task_snapshot(snapshot);
+    const cloned = structuredClone(snapshot);
     cloned.progress.processed_line = 9;
     expect(cloned.pending_item_ids).not.toBe(snapshot.pending_item_ids);
     expect(snapshot.progress.processed_line).toBe(3);
     expect(snapshot.pending_item_ids).toEqual([2, 3]);
-  });
-  it("已知总量的当前快照优先于历史停止态", () => {
-    const snapshot = create_empty_batch_translation_snapshot();
-    snapshot.progress.total_line = 2;
-    expect(
-      resolve_translation_task_display_snapshot({
-        current_snapshot: snapshot,
-        last_snapshot: { ...snapshot, status: "stopping" },
-      }),
-    ).toBe(snapshot);
-  });
-  it("空闲当前快照回退到有结果的历史终态", () => {
-    const snapshot = create_empty_batch_translation_snapshot();
-    const last = create_empty_batch_translation_snapshot();
-    last.progress.processed_line = 2;
-    last.status = "done";
-    expect(
-      resolve_translation_task_display_snapshot({
-        current_snapshot: snapshot,
-        last_snapshot: last,
-      }),
-    ).toBe(last);
-  });
-  it("任务行进度用于剩余时间，用量用于生成速度", () => {
-    const snapshot = create_empty_batch_translation_snapshot();
-    snapshot.status = "running";
-    Object.assign(snapshot.progress, {
-      total_line: 4,
-      processed_line: 2,
-      total_tokens: 90,
-      total_input_tokens: 40,
-      total_reasoning_tokens: 20,
-      total_output_tokens: 30,
-      start_time: 2,
-    });
-    expect(resolve_translation_task_metrics({ snapshot, now_seconds: 8 })).toMatchObject({
-      active: true,
-      elapsed_seconds: 6,
-      remaining_seconds: 6,
-      average_generation_speed: 50 / 6,
-      input_tokens: 40,
-      reasoning_tokens: 20,
-      output_tokens: 30,
-    });
   });
 });
 

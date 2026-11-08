@@ -1,3 +1,5 @@
+import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
+import { read_batch_task_snapshot } from "@shared/batch-task";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { create_text_resolver } from "@shared/i18n";
 import { resolve_app_locale, resolve_system_app_language } from "@domain/app-language";
@@ -143,6 +145,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   );
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
+  const batch_task_store = useRef(createBatchTaskSnapshotStore()).current;
   const task_snapshot_store_ref = useRef(createBatchTranslationSnapshotStore());
   const sync_task_snapshot = useCallback((snapshot: BatchTranslationSnapshot): void => {
     task_snapshot_store_ref.current.applySnapshot(snapshot);
@@ -154,6 +157,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   const project_change_store_ref = useRef(createProjectChangeSignalStore());
   const state_stores_ref = useRef<DesktopStateStores>({
     batch_translation: task_snapshot_store_ref.current,
+    batch_task: batch_task_store,
     runtime: runtime_snapshot_store_ref.current,
     projectChange: project_change_store_ref.current,
   });
@@ -352,11 +356,12 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
   // 主动刷新与初始化共用批量翻译快照，并由 Store 裁决 revision
   const refresh_batch_translation = useCallback(async (): Promise<BatchTranslationSnapshot> => {
-    const payload = await api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {});
+    const payload = await api_fetch<TaskSnapshotPayload>("/api/batch-task/snapshot", {});
+    batch_task_store.applySnapshot(read_batch_task_snapshot(payload));
     const next_snapshot = normalize_batch_translation_snapshot(payload);
     sync_task_snapshot(next_snapshot);
     return next_snapshot;
-  }, [sync_task_snapshot]);
+  }, [sync_task_snapshot, batch_task_store]);
 
   /** SSE 解析失败时从同一公开快照入口恢复，不借 task 状态推导 owner。 */
   const refresh_runtime = useCallback(async (): Promise<RuntimeActivitySnapshot> => {
@@ -616,12 +621,13 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       const [next_settings, next_project, next_task, next_runtime] = await Promise.all([
         api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
         api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {}),
-        api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {}),
+        api_fetch<TaskSnapshotPayload>("/api/batch-task/snapshot", {}),
         api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {}),
       ]);
       if (token !== initial_request_ref.current) return;
       // 四份载荷先完成归一，再通过各状态拥有者一起应用。
       const project = normalize_project_snapshot(next_project);
+      batch_task_store.applySnapshot(read_batch_task_snapshot(next_task));
       const task = normalize_batch_translation_snapshot(next_task);
       const runtime = normalize_runtime_activity_snapshot(next_runtime);
       apply_settings_snapshot(next_settings);
@@ -645,6 +651,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     }
   }, [
     apply_settings_snapshot,
+    batch_task_store,
     report_state_error,
     sync_project_snapshot,
     sync_task_snapshot,
@@ -713,6 +720,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     schedulerRef: refresh_scheduler_ref,
     applySettingsSnapshot: apply_settings_snapshot,
     applyTaskSnapshot: sync_task_snapshot,
+    applyBatchTaskSnapshot: batch_task_store.applySnapshot,
     applyRuntimeSnapshot: sync_runtime_snapshot,
     refreshSettings: refresh_settings,
     refreshRuntime: refresh_runtime,

@@ -106,7 +106,7 @@ export type AgentExecution = {
   recoveryTask: TaskId | null;
   steer: SubmittedInput | null;
   retrySteer: SubmittedInput | null;
-  translationStopped: boolean; // 用户停止批量翻译后，本轮拒绝再次启动。
+  batchStopped: boolean; // 用户停止任一批量工具后，本轮拒绝从两个入口再次启动。
 };
 
 type ChatOptions = {
@@ -474,7 +474,7 @@ export class AgentChat {
       recoveryTask: null,
       steer: null,
       retrySteer: null,
-      translationStopped: false,
+      batchStopped: false,
     };
     this.execution = execution;
     return execution;

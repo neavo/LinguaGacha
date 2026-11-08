@@ -129,43 +129,55 @@ describe("LLMClient", () => {
     });
   });
 
-  it("真实适配器返回字符串用量时保留正文并按数值累计", async () => {
-    const { openAICompletionsApi } = await vi.importActual<
-      typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
-    >("@earendil-works/pi-ai/api/openai-completions.lazy");
-    api_mocks.openai.mockImplementationOnce(openAICompletionsApi().stream);
-    // 替代 HTTP 响应，保留 SDK 对供应商原始字段的解析。
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        `data: ${JSON.stringify({
-          id: "test",
-          object: "chat.completion.chunk",
-          created: 0,
-          model: "gpt-5-mini",
-          choices: [
-            { index: 0, delta: { role: "assistant", content: "有效译文" }, finish_reason: "stop" },
-          ],
-          usage: {
-            prompt_tokens: "10",
-            completion_tokens: "8",
-            prompt_tokens_details: { cached_tokens: "2", cache_write_tokens: "3" },
-            completion_tokens_details: { reasoning_tokens: "3" },
-          },
-        })}\n\ndata: [DONE]\n\n`,
-        { headers: { "Content-Type": "text/event-stream" } },
-      ),
-    );
-    await expect(
-      create_client().request(create_body(), new AbortController().signal),
-    ).resolves.toEqual(
-      create_result({
-        response_result: "有效译文",
-        input_tokens: 10,
-        reasoning_tokens: 3,
-        output_tokens: 5,
-      }),
-    );
-  });
+  it.each([true, false])(
+    "真实适配器保留已知计数，SDK 补零不代表完整用量：%s",
+    async (has_usage) => {
+      const { openAICompletionsApi } = await vi.importActual<
+        typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
+      >("@earendil-works/pi-ai/api/openai-completions.lazy");
+      api_mocks.openai.mockImplementationOnce(openAICompletionsApi().stream);
+      // 替代 HTTP 响应，保留 SDK 对供应商原始字段的解析。
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          `data: ${JSON.stringify({
+            id: "test",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "gpt-5-mini",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "有效译文" },
+                finish_reason: "stop",
+              },
+            ],
+            ...(has_usage
+              ? {
+                  usage: {
+                    prompt_tokens: "10",
+                    completion_tokens: "8",
+                    prompt_tokens_details: { cached_tokens: "2", cache_write_tokens: "3" },
+                    completion_tokens_details: { reasoning_tokens: "3" },
+                  },
+                }
+              : {}),
+          })}\n\ndata: [DONE]\n\n`,
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+      );
+      await expect(
+        create_client().request(create_body(), new AbortController().signal),
+      ).resolves.toEqual(
+        create_result({
+          response_result: "有效译文",
+          usage_complete: false,
+          input_tokens: has_usage ? 10 : 0,
+          reasoning_tokens: has_usage ? 3 : 0,
+          output_tokens: has_usage ? 5 : 0,
+        }),
+      );
+    },
+  );
 
   it("SDK 错误归一后仍保留 HTTP 响应的重试事实", async () => {
     api_mocks.openai.mockImplementation(() => {
@@ -663,6 +675,7 @@ function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestRes
     output_tokens: 0,
     cancelled: false,
     timeout: false,
+    usage_complete: false,
     ...overrides,
   };
 }

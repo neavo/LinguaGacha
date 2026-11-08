@@ -1,3 +1,4 @@
+import type { BatchTaskRuntime } from "../../backend/batch-task/batch-task-runtime";
 import type { ProjectSummaryService } from "../../backend/project/project-summary-service";
 import { default_native_fs as fs } from "../../native/native-fs";
 import os from "node:os";
@@ -36,7 +37,8 @@ export interface CLIJobServices {
       "create_project_commit" | "apply_task_input" | "unload_project"
     >;
   };
-  batchTranslation: Pick<BatchTranslationService, "subscribe" | "start_current_project">;
+  batchTasks: Pick<BatchTaskRuntime, "subscribe">;
+  batchTranslation: Pick<BatchTranslationService, "start_current_project">;
   files: {
     translationGeneration: Pick<TranslationFileGenerationService, "generate_files_to_directory">;
   };
@@ -181,9 +183,7 @@ async function start_and_wait_for_translation(
   services: CLIJobServices,
   reporter: CLIJobStatusReporter,
 ): Promise<void> {
-  const unsubscribe = services.batchTranslation.subscribe((snapshot) =>
-    reporter.emit_progress(snapshot),
-  );
+  const unsubscribe = services.batchTasks.subscribe((snapshot) => reporter.emit_progress(snapshot));
   try {
     const handle = await services.batchTranslation.start_current_project({
       mode: "new",

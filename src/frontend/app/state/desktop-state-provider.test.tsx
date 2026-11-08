@@ -421,7 +421,7 @@ function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
         },
       };
     }
-    if (path === "/api/batch-translation/snapshot") {
+    if (path === "/api/batch-task/snapshot") {
       return {
         batch_translation: options.batch_translation ?? {
           status: "idle",
@@ -661,7 +661,7 @@ describe("DesktopStateProvider", () => {
       await state_handle.refresh_batch_translation();
     });
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-translation/snapshot", {});
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-task/snapshot", {});
   });
 
   it("应用设置变更会更新设置快照且不额外触发项目缓存刷新信号", async () => {
@@ -919,12 +919,12 @@ describe("DesktopStateProvider", () => {
     });
     await wait_for_condition(() => {
       return event_stream.event_source.addEventListener.mock.calls.some(
-        (call) => call[0] === "batch_translation.snapshot_changed",
+        (call) => call[0] === "batch_task.snapshot_changed",
       );
     });
 
     await act(async () => {
-      event_stream.emit("batch_translation.snapshot_changed", {
+      event_stream.emit("batch_task.snapshot_changed", {
         batch_translation: {
           status: "running",
 
@@ -946,7 +946,7 @@ describe("DesktopStateProvider", () => {
     });
 
     await act(async () => {
-      event_stream.emit("batch_translation.snapshot_changed", {
+      event_stream.emit("batch_task.snapshot_changed", {
         batch_translation: {
           status: "running",
 
@@ -1437,7 +1437,7 @@ describe("DesktopStateProvider", () => {
       if (path === "/api/session/project/snapshot") {
         return { project: { path: project_path, loaded: true } };
       }
-      if (path === "/api/batch-translation/snapshot") {
+      if (path === "/api/batch-task/snapshot") {
         return { batch_translation: { status: "idle" } };
       }
       if (path === "/api/runtime/snapshot") {
@@ -1601,7 +1601,7 @@ describe("DesktopStateProvider", () => {
         qualityStatisticsScope: "all",
         eventId: "test-2",
       });
-      event_stream.emit("batch_translation.snapshot_changed", {
+      event_stream.emit("batch_task.snapshot_changed", {
         batch_translation: {
           status: "running",
         },

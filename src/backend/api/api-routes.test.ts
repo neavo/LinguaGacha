@@ -120,8 +120,8 @@ const POST_PATHS = new Set([
   "/api/models/list-available",
   "/api/models/test",
   "/api/batch-translation/start",
-  "/api/batch-translation/stop",
-  "/api/batch-translation/snapshot",
+  "/api/batch-task/stop",
+  "/api/batch-task/snapshot",
 ]);
 
 describe("register_api_routes", () => {

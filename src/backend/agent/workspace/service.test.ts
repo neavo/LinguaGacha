@@ -64,7 +64,6 @@ import {
 } from "./runtime/policy";
 
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
-import type { WorkspaceLLMPort } from "../tools/request-llm";
 
 const VALID_WORKSPACE_RUN = { script: "console.log(null);", timeoutMs: 180_000 };
 
@@ -78,43 +77,6 @@ describe("AgentWorkspaceService", () => {
   afterEach(() => {
     fs.rmSync(temp_dir, { recursive: true, force: true });
     vi.restoreAllMocks();
-  });
-
-  it("每次执行创建模型请求端口，并按工作区解析请求体路径", async () => {
-    const fixture = await create_fixture(temp_dir);
-    const ports: WorkspaceLLMPort[] = [];
-    fixture.create_llm_requester.mockImplementation(() => {
-      const port = vi.fn<WorkspaceLLMPort>().mockResolvedValue("response");
-      ports.push(port);
-      return port;
-    });
-    fixture.run.mockImplementation(async (request, signal) => {
-      for (const body_file of ["work/body.json", path.join(temp_dir, "absolute.json")]) {
-        expect(
-          await request.requestLLM!(
-            { kind: "request_llm", config_id: "fixture", api: "responses", body_file },
-            signal,
-          ),
-        ).toBe("response");
-      }
-      return workspace_execution();
-    });
-    await run_workspace(fixture);
-    await run_workspace(fixture);
-    expect(fixture.create_llm_requester).toHaveBeenCalledTimes(2);
-    for (const port of ports) {
-      expect(port).toHaveBeenCalledTimes(2);
-      expect(port).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({ body_file: path.join(fixture.workspace_root, "work/body.json") }),
-        expect.any(AbortSignal),
-      );
-      expect(port).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({ body_file: path.join(temp_dir, "absolute.json") }),
-        expect.any(AbortSignal),
-      );
-    }
   });
 
   it("知识投影与元数据共用指纹，知识修订刷新正文，旧指纹按漂移拒绝", async () => {
@@ -1131,6 +1093,35 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readdirSync(fixture.workspace_root).sort()).toEqual([...environment_files].sort());
   });
 
+  it.each(["cancel", "script", "host"] as const)(
+    "停止期间的工作区 %s 保留实际取消或失败回执",
+    async (outcome) => {
+      const fixture = await create_fixture(temp_dir);
+      await run_workspace(fixture);
+      const controller = new AbortController();
+      const failure =
+        outcome === "script"
+          ? new AgentWorkspaceRunError("脚本失败", workspace_execution({ completed: 1 }))
+          : new Error("host disconnected");
+      fixture.run.mockImplementationOnce(async () => {
+        controller.abort();
+        throw outcome === "cancel" ? controller.signal.reason : failure;
+      });
+      const result = await fixture.service
+        .run(VALID_WORKSPACE_RUN, controller.signal)
+        .catch((error: unknown) => error);
+      if (outcome === "cancel") expect(result).toBe(controller.signal.reason);
+      else
+        expect(result).toMatchObject({
+          cause: failure,
+          public_details: {
+            action: "workspace_run",
+            ...(outcome === "script" ? { stdout: { content: { completed: 1 } } } : {}),
+          },
+        });
+    },
+  );
+
   it("脚本错误和 runtime 故障保留已经写入的工作文件与阶段", async () => {
     const fixture = await create_fixture(temp_dir);
     let doing: string | null = null;
@@ -1173,7 +1164,6 @@ describe("AgentWorkspaceService", () => {
         stderrPath: `${run_path}.stderr.log`,
         timeoutMs: VALID_WORKSPACE_RUN.timeoutMs,
         doing: write_doing,
-        requestLLM: expect.any(Function),
         printPDF: expect.any(Function),
         generateFiles: expect.any(Function),
         getOutputPaths: expect.any(Function),
@@ -1213,35 +1203,6 @@ describe("AgentWorkspaceService", () => {
       }),
     );
   });
-
-  it.each(["cancel", "script", "host"] as const)(
-    "停止期间的工作区 %s 保留实际取消或失败回执",
-    async (outcome) => {
-      const fixture = await create_fixture(temp_dir);
-      await run_workspace(fixture);
-      const controller = new AbortController();
-      const failure =
-        outcome === "script"
-          ? new AgentWorkspaceRunError("脚本失败", workspace_execution({ completed: 1 }))
-          : new Error("host disconnected");
-      fixture.run.mockImplementationOnce(async () => {
-        controller.abort();
-        throw outcome === "cancel" ? controller.signal.reason : failure;
-      });
-      const result = await fixture.service
-        .run(VALID_WORKSPACE_RUN, controller.signal)
-        .catch((error: unknown) => error);
-      if (outcome === "cancel") expect(result).toBe(controller.signal.reason);
-      else
-        expect(result).toMatchObject({
-          cause: failure,
-          public_details: {
-            action: "workspace_run",
-            ...(outcome === "script" ? { stdout: { content: { completed: 1 } } } : {}),
-          },
-        });
-    },
-  );
 
   it("apply 只提交显式 change，成功后销毁快照并保留 work", async () => {
     const fixture = await create_fixture(temp_dir);
@@ -1708,9 +1669,8 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       },
     }),
   );
-  const create_llm_requester = vi.fn<() => WorkspaceLLMPort>(() => async () => "response");
   const service = new AgentWorkspaceService({
-    createLLMRequester: create_llm_requester,
+    readModelConfigs: () => [],
     generation: {
       read_output_paths: () => {
         throw new Error("Unexpected output paths");
@@ -1751,7 +1711,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   });
   await service.activate_chat("test0001", [], async () => {});
   return {
-    create_llm_requester,
     service,
     cache,
     prepare_image,
@@ -1909,6 +1868,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       languages: { source_language: "EN", target_language: "ZH" },
     });
     const workspace = new AgentWorkspaceService({
+      readModelConfigs: () => [],
       files: services.project.content,
       generation: services.files.translationGeneration,
       images: {

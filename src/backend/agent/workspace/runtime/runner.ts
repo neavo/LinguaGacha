@@ -4,7 +4,6 @@ import {
   type WorkspaceGetOutputPathsPort,
   type WorkspaceGenerateFilesPort,
 } from "../../tools/generate-files";
-import { execute_llm_request, type WorkspaceLLMPort } from "../../tools/request-llm";
 import type { WorkspaceRequest } from "./protocol";
 import { execute_image_request } from "../../tools/emit-image";
 import { execute_doing_request } from "../../tools/doing";
@@ -42,7 +41,6 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
     generateFiles?: WorkspaceGenerateFilesPort;
     getOutputPaths?: WorkspaceGetOutputPathsPort;
     printPDF?: WorkspacePrintPDFPort;
-    requestLLM?: WorkspaceLLMPort;
     inspectSources?: WorkspaceInspectSourcesPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
     emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
     doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
@@ -234,8 +232,6 @@ export class AgentWorkspaceRunner {
         requests.set(id, controller);
         // 生命周期归 runner，参数校验与业务执行归具体工具。
         const execute = async () => {
-          if (request.kind === "request_llm")
-            return execute_llm_request(request, controller.signal, run_request.requestLLM);
           if (request.kind === "doing")
             return execute_doing_request(request, controller.signal, run_request.doing);
           if (request.kind === "emit_image")

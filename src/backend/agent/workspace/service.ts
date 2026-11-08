@@ -1,4 +1,3 @@
-import type { WorkspaceLLMPort } from "../tools/request-llm";
 import { create_file_generator } from "../tools/generate-files";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
@@ -163,7 +162,7 @@ export class AgentWorkspaceService {
   }
 
   /** 所有相对路径绑定当前会话目录。 */
-  private get root_path(): string {
+  public get root_path(): string {
     if (this.chat_id === null) throw new AppErrors.AppError("project.not_loaded");
     return this.directories.path(this.chat_id);
   }
@@ -224,7 +223,7 @@ export class AgentWorkspaceService {
         "generate_staging_files" | "read_output_paths"
       >;
       pdfHost?: PDFHost | undefined;
-      createLLMRequester?: () => WorkspaceLLMPort;
+      readModelConfigs: () => JsonRecord[];
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -716,7 +715,10 @@ export class AgentWorkspaceService {
                   }),
               );
         try {
-          const request_llm = this.options.createLLMRequester?.(); // 本次脚本的并发请求共用配置快照。
+          await this.native_fs.write_file(
+            path.join(this.root_path, "model_configs.json"),
+            JSON.stringify(this.options.readModelConfigs(), null, 2),
+          );
           const execution = await this.options.run(
             {
               workspacePath: this.root_path,
@@ -724,15 +726,6 @@ export class AgentWorkspaceService {
               ...logs,
               timeoutMs: request.timeoutMs,
               emitImage: image_output.emitImage,
-              ...(request_llm
-                ? {
-                    requestLLM: (input, signal) =>
-                      request_llm(
-                        { ...input, body_file: path.resolve(this.root_path, input.body_file) },
-                        signal,
-                      ),
-                  }
-                : {}),
               ...(request.doing === undefined ? {} : { doing: request.doing }),
               inspectSources: async (sources, signal) => {
                 const resolved = sources.map((source) => this.resolve_source_path(source));
@@ -1160,6 +1153,7 @@ export class AgentWorkspaceService {
 /** AgentService 通过工作区公开操作管理生命周期、执行工具与交付文件。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
+  | "root_path"
   | "list_files"
   | "run"
   | "apply_workspace"

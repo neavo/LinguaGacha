@@ -1,4 +1,5 @@
-import type { LLMClientPort } from "../../llm/llm-types";
+import { read_request_timeout_ms } from "../../llm/llm-request";
+import type { LLMRequestBody, LLMRequestResult, LLMClientPort } from "../../llm/llm-types";
 import type { ChatGPTAuthService } from "../../auth/chatgpt-auth-service";
 import type { LogManager } from "../../log/log-manager";
 import type { ProjectExecutionSettings } from "../../../domain/project-settings";
@@ -7,14 +8,14 @@ import type {
   WorkUnitExecutor,
   WorkUnitExecutionResult,
 } from "../protocol/work-unit";
-import type { BatchTranslationRuntime } from "../batch-translation-runtime";
+import type { BatchTranslationState } from "../batch-translation-state";
 import type { BatchTranslationProjectStore } from "../batch-translation-project-store";
 import type { TranslationPlanner } from "../planning/translation-planner";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-processing";
 import { AppError } from "../../../shared/error";
 import { prepare_translation_targets } from "../planning/translation-targets";
 
-import type { BatchTranslationRunHandle } from "../batch-translation-runtime";
+import type { BatchTranslationRunHandle } from "../batch-translation-state";
 import type {
   BatchTranslationOperation,
   BatchTranslationStartMode,
@@ -28,8 +29,8 @@ import type {
 import type { TranslationCommitEntry } from "./translation-pipeline";
 import type { TranslationContext } from "../planning/translation-plan-types";
 import { plan_translation_retry } from "../planning/translation-retry";
-import { RequestRatePool } from "./request-rate";
-import { TranslationRequestScheduler } from "./translation-request-scheduler";
+import { resolve_request_limits, type RequestRatePool } from "../../batch-task/request-rate";
+import { RequestScheduler } from "../../batch-task/request-scheduler";
 import { TranslationPipeline } from "./translation-pipeline";
 import { TranslationProgressAccumulator } from "./progress-accumulator";
 import { TranslationLogReplay } from "./log-replay";
@@ -56,6 +57,7 @@ export type BatchTranslationRunContext = Readonly<{
  * BatchTranslationRunner 依赖由 BackendServices 注入，保证后台任务只通过固定端口读写工程事实
  */
 export interface BatchTranslationRunnerOptions {
+  ratePool: RequestRatePool;
   auth?: Pick<ChatGPTAuthService, "bind">;
   builtinRoot: string; // 用于任务启动日志读取提示词模板，保持宿主与 worker 内置资产根一致
   taskStore: Pick<
@@ -66,7 +68,7 @@ export interface BatchTranslationRunnerOptions {
     | "update_translation_progress"
   >; // 任务编排器只依赖项目任务事实的公开能力
   taskRuntime: Pick<
-    BatchTranslationRuntime,
+    BatchTranslationState,
     | "update_request_state"
     | "is_current"
     | "publish_targets"
@@ -93,12 +95,13 @@ export class BatchTranslationRunner {
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 初始切块与 token 缓存复用入口。
   private readonly log_replay: TranslationLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
-  private readonly rate_pool = new RequestRatePool(); // 同一模型资源跨任务复用速率时钟。
+  private readonly rate_pool: RequestRatePool; // 同一模型资源跨任务复用速率时钟。
   private readonly llm_client: BatchTranslationRunnerOptions["llmClient"]; // 父线程真实请求入口，由本轮调度器统一派发。
   /**
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
   public constructor(options: BatchTranslationRunnerOptions) {
+    this.rate_pool = options.ratePool;
     this.builtin_root = options.builtinRoot;
     this.task_store = options.taskStore;
     this.task_runtime = options.taskRuntime;
@@ -129,11 +132,11 @@ export class BatchTranslationRunner {
         throw new Error("ChatGPT authentication is not configured");
       await this.task_runtime.publish_status(handle, "running");
       await this.task_runtime.publish_config(handle, {
+        model_config_id: run_context.model.id,
+        ...resolve_request_limits(run_context.model),
         model_name: run_context.model.name,
         model_id: run_context.model.model_id,
         thinking_level: run_context.model.thinking.level,
-        source_language: run_context.config_snapshot.source_language,
-        target_language: run_context.config_snapshot.target_language,
       });
       app_language = run_context.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
@@ -156,10 +159,18 @@ export class BatchTranslationRunner {
         prepared.target_ids,
       );
       const rate = this.rate_pool.resolve(run_context.model);
-      const request_scheduler = new TranslationRequestScheduler({
-        ...(auth_session === undefined ? {} : { auth_session }),
+      const request_scheduler = new RequestScheduler({
         model: run_context.model,
-        client: this.llm_client,
+        timeout_ms: read_request_timeout_ms(run_context.config_snapshot),
+        dispatch: (body: LLMRequestBody, key, signal) =>
+          this.llm_client.request(
+            {
+              ...body,
+              ...(auth_session === undefined ? {} : { auth_session }),
+              model: { ...run_context.model, api_key: key },
+            },
+            signal,
+          ),
         rate,
         on_state: (state) => this.task_runtime.update_request_state(handle, state),
         on_failure: (key_index, error) =>
@@ -248,7 +259,7 @@ export class BatchTranslationRunner {
     context: TranslationContext,
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
-    request_scheduler: TranslationRequestScheduler,
+    request_scheduler: RequestScheduler<LLMRequestBody, LLMRequestResult>,
     signal: AbortSignal,
   ) {
     const result = await this.executor_client.execute_unit(

@@ -1,3 +1,8 @@
+import { create_agent_batch_llm_request_tool } from "./tools/batch-llm-request";
+import {
+  BatchRequestCompletionError,
+  type BatchRequestService,
+} from "../batch-request/batch-request-service";
 import { AgentCompactionError } from "./agent-compaction";
 import { randomUUID } from "node:crypto";
 import type { ProjectDatabase } from "../database/database-operations";
@@ -13,7 +18,7 @@ import type { AgentFilesResponse } from "../../shared/agent-reference";
 import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
-import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
+import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-state";
 import type { Model } from "../../domain/model";
 import { create_agent_batch_item_translation_tool } from "./tools/batch-item-translation";
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
@@ -84,6 +89,7 @@ type AgentServiceOptions = {
   auth?: ChatGPTAuthService;
   skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
   catalog: PiModelCatalogReader;
+  batchRequests: Pick<BatchRequestService, "run">;
   batchTranslation: Pick<
     import("../batch-translation/batch-translation-service").BatchTranslationService,
     "run_under_agent"
@@ -124,6 +130,7 @@ type LoadedAgentResources = Readonly<{
 export class AgentService {
   private readonly auth: ChatGPTAuthService | undefined;
   private readonly catalog: PiModelCatalogReader;
+  private readonly batch_requests: AgentServiceOptions["batchRequests"];
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
@@ -164,6 +171,7 @@ export class AgentService {
     this.auth = options.auth;
     this.catalog = options.catalog;
     this.batch_translation = options.batchTranslation;
+    this.batch_requests = options.batchRequests;
     this.paths = options.paths;
     this.settings = options.settings;
     this.skills = options.skills;
@@ -865,7 +873,7 @@ export class AgentService {
     queuedId?: string,
   ): ReturnType<AgentChat["submit"]> {
     execution.phase = "running";
-    execution.translationStopped = false;
+    execution.batchStopped = false;
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
@@ -1007,10 +1015,36 @@ export class AgentService {
   /** 产品工具复用后端服务与当前租约，统一经过错误和参数边界。 */
   private create_tools() {
     return [
+      create_agent_batch_llm_request_tool(async (model_config_id, request_file, signal) => {
+        const execution = this.require_execution();
+        if (execution.batchStopped)
+          throw new AgentToolError({ code: "batch_task.stopped", stop_source: "user" });
+        this.runtime_gate.assert_current_runtime(execution.lease, "agent");
+        try {
+          const result = await this.batch_requests.run(
+            execution.lease,
+            signal,
+            this.workspace.root_path,
+            model_config_id,
+            request_file,
+          );
+          if (this.execution === execution && result.stop_source === "user")
+            execution.batchStopped = true;
+          return result;
+        } catch (error) {
+          if (
+            error instanceof BatchRequestCompletionError &&
+            this.execution === execution &&
+            error.summary.stop_source === "user"
+          )
+            execution.batchStopped = true;
+          throw error;
+        }
+      }),
       create_agent_batch_item_translation_tool(async (request, thinking_downgrade, signal) => {
         const execution = this.require_execution();
         // 用户停止后本轮不再启动翻译，明确拒绝以免把上次运行的事实当作本次结果。
-        if (execution.translationStopped)
+        if (execution.batchStopped)
           throw new AgentToolError({ code: "batch_translation.stopped", stop_source: "user" });
         this.session_state.require_loaded_project_path();
         signal.throwIfAborted();
@@ -1029,7 +1063,7 @@ export class AgentService {
             request,
           );
           if (this.execution === execution && result.stop_source === "user")
-            execution.translationStopped = true;
+            execution.batchStopped = true;
           return result;
         } catch (error) {
           if (
@@ -1037,7 +1071,7 @@ export class AgentService {
             this.execution === execution &&
             error.result.stop_source === "user"
           )
-            execution.translationStopped = true;
+            execution.batchStopped = true;
           throw error;
         }
       }),

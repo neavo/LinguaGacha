@@ -91,7 +91,7 @@ describe("LogDetailView", () => {
     expect(view.querySelector(".log-detail-view__error pre")?.textContent).toContain("at generate");
   });
 
-  it("Agent JSON 区分字段与字符串高亮并保留正文语义", () => {
+  it("Agent JSON 区分字段与字符串高亮并保留正文语义", async () => {
     const content: LogContent = {
       kind: "agent",
       event: "message",
@@ -100,13 +100,17 @@ describe("LogDetailView", () => {
     const view = render_detail(content);
     expect(JSON.parse(read_editor_text(view))).toEqual(content);
 
-    // 字段和值的语义区分由此验证，具体配色由公共编辑器拥有。
-    const spans = [...view.querySelectorAll<HTMLElement>(".cm-content .cm-line span")];
-    const property = spans.find((span) => span.textContent === '"event"');
-    const string = spans.find((span) => span.textContent === '"message"');
-    expect(property?.className).toBeTruthy();
-    expect(string?.className).toBeTruthy();
-    expect(property?.className).not.toBe(string?.className);
+    // CodeMirror 可在首帧后完成解析，断言等待实际高亮结果。
+    await act(async () => {
+      await vi.waitFor(() => {
+        const spans = [...view.querySelectorAll<HTMLElement>(".cm-content .cm-line span")];
+        const property = spans.find((span) => span.textContent === '"event"');
+        const string = spans.find((span) => span.textContent === '"message"');
+        expect(property?.className).toBeTruthy();
+        expect(string?.className).toBeTruthy();
+        expect(property?.className).not.toBe(string?.className);
+      });
+    });
   });
 
   it("切换到普通错误文本撤销 JSON 高亮并显示诊断字段", () => {

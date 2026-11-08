@@ -4,7 +4,7 @@ import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-d
 import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
+import { useBatchTaskSession } from "@frontend/app/session/batch-task/batch-task-session-context";
 import { useWorkbenchPageState } from "@frontend/pages/workbench-page/use-workbench-page-state";
 import { WorkbenchCommandBar } from "@frontend/pages/workbench-page/components/workbench-command-bar";
 import { WorkbenchDialogs } from "@frontend/pages/workbench-page/components/workbench-dialogs";
@@ -19,7 +19,7 @@ import "@frontend/pages/workbench-page/workbench-page.css";
 export function WorkbenchPage(): JSX.Element {
   const { t } = useI18n();
   const { navigate_to_agent } = useAppNavigation();
-  const { batch_translation_task } = useBatchTranslationSession();
+  const { batch_task } = useBatchTaskSession();
   const translation_generation = useTranslationGeneration();
   const workbench_state = useWorkbenchPageState();
   const translation_stats = useProjectTranslationStats();
@@ -32,7 +32,7 @@ export function WorkbenchPage(): JSX.Element {
   const can_start_translation =
     workbench_state.cache_status === "ready" &&
     !workbench_state.readonly &&
-    !batch_translation_task.translation_task_menu_disabled &&
+    !batch_task.translation_task_menu_disabled &&
     (requires_agent || workbench_state.entries.some((entry) => entry.progress.total_count > 0));
 
   // 文件刷新、运行占用或工程切换后结束旧选择，避免沿用过期的文件判断。
@@ -77,7 +77,7 @@ export function WorkbenchPage(): JSX.Element {
       <WorkbenchCommandBar
         can_start_translation={can_start_translation}
         on_request_start_translation={() => set_start_dialog_open(true)}
-        batch_translation_task={batch_translation_task}
+        batch_task={batch_task}
         translation_stats={translation_stats}
         can_edit_files={workbench_state.can_edit_files}
         can_delete_selected_files={workbench_state.can_delete_selected_files}
@@ -105,7 +105,7 @@ export function WorkbenchPage(): JSX.Element {
                   label: t("workbench_page.dialog.start_translation.translate_directly"),
                   onSelect: () => {
                     set_start_dialog_open(false);
-                    void batch_translation_task.request_start_or_continue_translation();
+                    void batch_task.request_start_or_continue_translation();
                   },
                 }
           }

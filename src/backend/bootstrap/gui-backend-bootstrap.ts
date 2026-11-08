@@ -1,4 +1,4 @@
-import { create_llm_requester } from "../agent/tools/request-llm";
+import { project_model_configs } from "../batch-request/batch-request-service";
 import type { AppLanguage } from "../../domain/app-language";
 import { AgentExecutionRuntime } from "../agent/execution/runtime";
 import { AgentPersonalityService } from "../agent/agent-personality-service";
@@ -143,7 +143,7 @@ export class GuiBackendBootstrap {
         generation: services.files.translationGeneration,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
-        createLLMRequester: () => create_llm_requester(resources.settings.read_setting()),
+        readModelConfigs: () => project_model_configs(resources.settings.read_setting()),
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
@@ -162,6 +162,7 @@ export class GuiBackendBootstrap {
         catalog: services.modelCatalog,
         images,
         batchTranslation: services.batchTranslation,
+        batchRequests: services.batchRequests,
         paths: resources.paths,
         settings: resources.settings,
         userAgent: resources.metadata.build_linguagacha_user_agent(),

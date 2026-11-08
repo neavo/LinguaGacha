@@ -6,10 +6,11 @@ export const de_de_batch_translation = {
     tooltip: "Ausgangstext in die Zielsprache übersetzen",
   },
   summary: {
+    done: "Beendet",
     empty: "Inaktiv",
     stopping: "Wird gestoppt",
     detail_tooltip: "Zum Anzeigen der Details klicken",
-    running: "Wird übersetzt",
+    running: "In Bearbeitung",
   },
   detail: {
     provider: "Anbieter",
@@ -42,7 +43,7 @@ export const de_de_batch_translation = {
   confirm: {
     reset_all_description:
       "Übersetzungsfortschritt für das gesamte Projekt wirklich zurücksetzen …?",
-    stop_description: "Aktuelle Übersetzungsaufgabe wirklich stoppen …?",
+    stop_description: "Aktuelle Aufgabe wirklich stoppen …?",
   },
   action: { stop: "Stoppen" },
 } satisfies LocaleMessageSchema<typeof zh_cn_batch_translation>;

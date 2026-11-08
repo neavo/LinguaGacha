@@ -24,9 +24,14 @@ export interface LLMRequestBody {
 /**
  * LLM 请求端口只返回真实请求事实，不返回业务 item 或解析后的候选。
  */
-export interface LLMRequestResult {
+export interface LLMRequestResult extends LLMRequestFacts {
   response_think: string; // 只用于日志展示和分析，不参与译文解析
   response_result: string; // 正常终态的模型正文，可为空并由消费方按任务协议校验
+}
+
+/** 传输共有事实，与正文格式和业务结果无关。 */
+export interface LLMRequestFacts {
+  usage_complete?: boolean; // 缺失回执的费用不可推算，业务层保留已知用量及完整性。
   input_tokens: number; // token 计数用于任务统计，缺失时由客户端归零
   reasoning_tokens: number; // 供应商报告的思考 token 子集，缺失时归零
   output_tokens: number; // 只表示扣除思考后的输出 token
@@ -36,7 +41,7 @@ export interface LLMRequestResult {
   http_received_at?: number; // 真实响应接收时间，毫秒。
   retry_after_ms?: number; // 服务端要求的有效等待时长，由请求调度器应用策略。
   request_error?: LogError; // 保留供应商或传输异常错误，缺失表示没有请求级失败
-  retryable?: boolean; // false 表示配置、授权或套餐额度问题，调度器必须结束执行。
+  retryable?: boolean; // false 表示不再进行网络重试，业务边界决定单项失败或整批结束。
   response_error?: LogError; // 内容拒绝、输出截断或意外工具调用等响应失败，由调用方决定后续处理。
 }
 

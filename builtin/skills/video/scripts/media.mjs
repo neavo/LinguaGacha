@@ -332,7 +332,11 @@ export async function parse(directory) {
       summary.push({ index: i, missing: true });
       continue;
     }
-    const response = hasResponse ? await load(responseFile) : {};
+    const savedResponse = hasResponse ? await load(responseFile) : {};
+    const response =
+      savedResponse.response?.format === "responses"
+        ? (savedResponse.response.raw ?? {})
+        : savedResponse;
     const text = (response.output ?? [])
       .flatMap((entry) => entry.content ?? [])
       .filter((part) => part.type === "output_text")
@@ -369,7 +373,7 @@ export async function parse(directory) {
       incomplete:
         hasResponse && (response.status !== "completed" || Boolean(response.incomplete_details)),
       invalid_lines: invalid,
-      uncovered_voice: await uncovered_voice(path.join(directory, segment.path), segment, rows),
+      uncovered_voice: await uncovered_voice(path.resolve(directory, segment.path), segment, rows),
     });
   }
   return summary;

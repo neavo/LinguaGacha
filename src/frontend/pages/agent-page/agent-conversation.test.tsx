@@ -34,9 +34,9 @@ vi.mock("./use-agent-mention-files", () => ({
 import type { AgentInputRequest } from "@frontend/app/navigation/types";
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { uploaded_file } from "../../../test/agent-upload-fixture";
-vi.mock("@frontend/app/session/batch-translation/batch-translation-session-context", () => ({
-  useBatchTranslationSession: () => ({
-    batch_translation_task: { translation_task_metrics: { active: false } },
+vi.mock("@frontend/app/session/batch-task/batch-task-session-context", () => ({
+  useBatchTaskSession: () => ({
+    batch_task: { task_metrics: { active: false } },
   }),
 }));
 import { act, StrictMode } from "react";

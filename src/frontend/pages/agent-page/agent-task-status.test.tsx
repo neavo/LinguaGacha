@@ -1,25 +1,23 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  resolve_translation_task_metrics,
-  create_empty_batch_translation_snapshot,
-} from "@shared/batch-translation/batch-translation";
+import { batch_task_metrics, empty_batch_task_snapshot } from "@shared/batch-task";
+import { empty_batch_task_progress } from "@domain/batch-task";
 import { AgentTaskStatus } from "./agent-task-status";
 
 const task = vi.hoisted(() => ({
-  metrics: {} as ReturnType<typeof resolve_translation_task_metrics>,
+  metrics: {} as ReturnType<typeof batch_task_metrics>,
   open: vi.fn(),
   percent: null as number | null,
 }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/session/batch-translation/batch-translation-session-context", () => ({
-  useBatchTranslationSession: () => ({
-    batch_translation_task: {
-      translation_task_metrics: task.metrics,
-      open_translation_detail_sheet: task.open,
+vi.mock("@frontend/app/session/batch-task/batch-task-session-context", () => ({
+  useBatchTaskSession: () => ({
+    batch_task: {
+      task_metrics: task.metrics,
+      open_task_detail_sheet: task.open,
     },
   }),
 }));
@@ -47,19 +45,22 @@ describe("AgentTaskStatus", () => {
     running = true,
   ): Promise<HTMLDivElement> {
     task.percent = percent;
-    task.metrics = resolve_translation_task_metrics({
-      snapshot: {
-        ...create_empty_batch_translation_snapshot(),
+    task.metrics = batch_task_metrics(
+      {
+        ...empty_batch_task_snapshot(),
         status,
-        progress: {
-          ...create_empty_batch_translation_snapshot().progress,
-          start_time: 10,
-          total_output_tokens: 100,
-          total_line: 400,
-        },
+        progress:
+          percent === null
+            ? null
+            : {
+                ...empty_batch_task_progress("item", 400),
+                start_time: 10,
+                output_tokens: 100,
+                succeeded: percent * 4,
+              },
       },
-      now_seconds: 20,
-    });
+      20,
+    );
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
@@ -100,7 +101,7 @@ describe("AgentTaskStatus", () => {
     expect(view.innerHTML).toBe("");
   });
 
-  it("工程统计就绪后将完成率传入摘要", async () => {
+  it("本轮目标就绪后将处理进度传入摘要", async () => {
     const view = await render("running", null, null);
     expect(view.querySelector('[role="progressbar"]')).toBeNull();
     await render("running", null, 80);

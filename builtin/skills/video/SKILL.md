@@ -14,7 +14,7 @@ description: 导入、识别、翻译、审校视频或音频，或生成视频�
 |`items.json`|字幕记录，下标是条目行号。`message` 为原文，`start`、`end` 为整片秒数，`kind` 为 `dialogue` 或 `screen`，可选 `an` 为画面位置（ASS 小键盘编号）。导入时为 `[]`|
 |`render.mjs`|可选，用户要求固定的定制渲染|
 
-包内不保存译文，译文只在工程条目中。脚本位于本技能的 `scripts/`，用 `read_skill` 返回的 `base_url` 定位：`media.mjs` 负责检查、切段、解析、合并与打包，`recognize.mjs` 负责逐段请求，`render.mjs` 是默认渲染。每个资产使用独立的工作目录 `work/video/<资产名>/`，目录结构与包相同。
+包内不保存译文，译文只在工程条目中。脚本位于本技能的 `scripts/`，用 `read_skill` 返回的 `base_url` 定位：`media.mjs` 负责检查、切段、解析、合并与打包，`recognize.mjs` 负责准备请求清单与采用识别结果，`render.mjs` 是默认渲染。每个资产使用独立的工作目录 `work/video/<资产名>/`，目录结构与包相同。
 
 流程与其他格式一致：导入只切段封装，不请求模型。识别属于翻译阶段，在用户要求翻译时执行。
 
@@ -22,9 +22,9 @@ description: 导入、识别、翻译、审校视频或音频，或生成视频�
 
 ```js
 import { npm } from '@lg/npm';
-await npm.run(['install', '--save-exact',
-  `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
-  'jsonrepair@3.15.0', 'jszip@3.10.2']);
+await npm.run(['install',
+  `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@^5.2.5`,
+  'jsonrepair@^3.15.0', 'jszip@^3.10.2']);
 const media = await import(new URL('scripts/media.mjs', base_url).href);
 console.log(await media.inspect('D:/Videos/ep01.mkv'));
 ```
@@ -65,18 +65,28 @@ console.log(await media.inspect('D:/Videos/ep01.mkv'));
 
 ### 请求
 
+先在 `workspace_run` 中读取 `model_configs.json`，选择用户配置的、支持 `responses` 的接入点。模型、思考等级、输出上限、并发和请求时限由模型设置拥有。协议支持不代表模型支持视频。
+
 ```js
-const { recognize } = await import(new URL('scripts/recognize.mjs', base_url).href);
-await recognize('work/video/ep01', { prompt });
+const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
+console.log(await recognize.prepare('work/video/ep01', { prompt }));
 ```
 
-- 不指定 `segments` 时只请求既无响应也无行的分段。`segments: [3, 7]` 作废目标分段的旧响应和行后重新请求，可以配合调整提示词。
-- 四路并发，请求失败时同一调用内再试一次，最后输出失败的分段。单段约 30–45 秒，按分段数估算 `timeout_seconds`。
-- 先在模型设置中配置火山引擎预设 `preset-volcengine` 的地址和 API Key。`recognize.mjs` 维护识别模型和生成参数。
+`prepare` 逐段写入请求文件，返回 `request_file`。`requested: 0` 时无需请求。不指定 `segments` 时跳过已有响应或修正行的分段。指定 `segments: [3, 7]` 时建立独立请求材料，保留旧响应和修正行。
+
+接着在顶层调用 `batch_llm_request`，传入选定的 `model_config_id` 和准备好的 `request_file`。整批不受工作区脚本时限约束。工具返回 `result_file` 后，再执行：
+
+```js
+console.log(await recognize.collect('work/video/ep01', result_file));
+```
+
+`collect` 返回候选目录 `candidate` 和成功、失败分段。先对候选目录解析与质控，再用 `await recognize.accept('work/video/ep01', candidate, 已审阅分段数组)` 采用结果。提交使用主目录。候选失败保留旧字幕。
+
+续跑只为失败或未完成分段准备新清单。已经成功的结果可以直接读取，不能再次付费请求。没有本地回执的请求可能已经计费，重试前说明这项不确定性。工具正常收尾后，可以清理本次 `prepare` 目录中的 `.request.json` 大载荷副本，保留清单与结果。
 
 ### 质控
 
-调用 `console.log(await media.parse(工作目录))`。脚本把每段响应换算为整片时间，写入 `NNN.rows.json`，已存在的文件保留不覆盖，修正直接改这个文件。返回的质控摘要包含：
+调用 `console.log(await media.parse(候选目录))`。脚本把每段响应换算为整片时间，写入 `NNN.rows.json`，已存在的文件保留不覆盖，修正直接改这个文件。返回的质控摘要包含：
 
 |字段|含义|
 |---|---|

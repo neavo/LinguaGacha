@@ -237,7 +237,7 @@ describe("桌面 IPC 宿主", () => {
     const payload = {
       route: "workbench",
       event: {
-        topic: "batch_translation.snapshot_changed",
+        topic: "batch_task.snapshot_changed",
       },
     };
     await register_handlers({

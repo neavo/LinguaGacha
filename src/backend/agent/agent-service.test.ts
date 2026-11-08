@@ -17,7 +17,7 @@ import { workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
-import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
+import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -152,6 +152,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "tools",
   length_responses_remaining: 0,
   batch_mode: false,
+  batch_request_on_retry: false,
   batch_retries: 0,
   abort_count: 0,
   system_prompts: [] as string[],
@@ -350,8 +351,12 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       ? fauxAssistantMessage("翻译完成")
       : fauxAssistantMessage(
           fauxToolCall(
-            "batch_item_translation",
-            { item_statuses: ["NONE"] },
+            retry && fake_agent_state.batch_request_on_retry
+              ? "batch_llm_request"
+              : "batch_item_translation",
+            retry && fake_agent_state.batch_request_on_retry
+              ? { model_config_id: "fixture", request_file: "work/requests.json" }
+              : { item_statuses: ["NONE"] },
             { id: "batch-translation" },
           ),
           { stopReason: "toolUse" },
@@ -537,6 +542,7 @@ describe("AgentService", () => {
 
   beforeEach(() => {
     fake_agent_state.batch_mode = false;
+    fake_agent_state.batch_request_on_retry = false;
     fake_agent_state.batch_retries = 0;
     fake_agent_state.mode = "success";
     fake_agent_state.abort_count = 0;
@@ -4057,11 +4063,17 @@ describe("AgentService", () => {
     expect(run.mock.calls[0]?.[2].thinking.level).toBe("OFF");
   });
 
-  it.each([{ cleanup_failed: false }, { cleanup_failed: true }])(
+  it.each([
+    { cleanup_failed: false, switch_tool: false },
+    { cleanup_failed: true, switch_tool: false },
+    { cleanup_failed: false, switch_tool: true },
+    { cleanup_failed: true, switch_tool: true },
+  ])(
     "用户停止后同轮暂停，后续用户轮次可继续，$cleanup_failed",
-    async ({ cleanup_failed }) => {
+    async ({ cleanup_failed, switch_tool }) => {
       fake_agent_state.batch_mode = true;
       fake_agent_state.batch_retries = 2;
+      fake_agent_state.batch_request_on_retry = switch_tool;
       const progress = {
         start_time: 0,
         time: 0,
@@ -4106,8 +4118,14 @@ describe("AgentService", () => {
             : [],
         );
       expect(outputs.slice(1)).toEqual([
-        { code: "batch_translation.stopped", stop_source: "user" },
-        { code: "batch_translation.stopped", stop_source: "user" },
+        {
+          code: switch_tool ? "batch_task.stopped" : "batch_translation.stopped",
+          stop_source: "user",
+        },
+        {
+          code: switch_tool ? "batch_task.stopped" : "batch_translation.stopped",
+          stop_source: "user",
+        },
       ]);
       if (cleanup_failed) {
         expect(
@@ -4329,6 +4347,7 @@ describe("AgentService", () => {
       },
     };
     const workspace = {
+      root_path: skill_test_fixture.app_root,
       uploads: fake_uploads(),
       list_files: async () => [],
       activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
@@ -4402,6 +4421,11 @@ describe("AgentService", () => {
       },
     };
     const service = new AgentService({
+      batchRequests: {
+        run: async () => {
+          throw new Error("Unexpected batch request");
+        },
+      },
       database,
       skills,
       catalog,

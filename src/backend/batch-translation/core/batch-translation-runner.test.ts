@@ -1,3 +1,5 @@
+import { BatchTaskRuntime } from "../../batch-task/batch-task-runtime";
+import { RequestRatePool } from "../../batch-task/request-rate";
 import type { BatchTranslationRunCommand } from "./batch-translation-runner";
 import { CacheManager } from "../../cache/cache-manager";
 import { ProjectDatabase } from "../../database/database-operations";
@@ -23,10 +25,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { get_section_revision } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { RuntimeOperationGate } from "../../runtime-operation-gate";
-import {
-  BatchTranslationCompletionError,
-  BatchTranslationRuntime,
-} from "../batch-translation-runtime";
+import { BatchTranslationCompletionError, BatchTranslationState } from "../batch-translation-state";
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
 import type {
   TranslationWorkUnit,
@@ -69,8 +68,9 @@ describe("BatchTranslationRunner", () => {
   it.each([true, false])(
     "准备失败与已确定零目标分别保留未知和零统计：%s",
     async (preparation_failed) => {
-      const runtime = create_task_runtime();
+      const { runtime } = create_task_runtime();
       const runner = new BatchTranslationRunner({
+        ratePool: new RequestRatePool(),
         llmClient: create_unused_llm_client(),
         builtinRoot: create_template_root(),
         taskStore: create_task_store({
@@ -124,7 +124,7 @@ describe("BatchTranslationRunner", () => {
       builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
-    const runtime = create_task_runtime();
+    const { runtime } = create_task_runtime();
     const items = [1, 2, 3].map((id) => create_pending_item(id, "demo.txt", `原文${id}。`));
     const original = structuredClone(items);
     const committed: MutableJsonRecord[] = [];
@@ -144,6 +144,7 @@ describe("BatchTranslationRunner", () => {
       };
     });
     const runner = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: { request },
       builtinRoot: builtin_root,
       taskRuntime: runtime,
@@ -210,9 +211,11 @@ describe("BatchTranslationRunner", () => {
     await database.transaction(project_path, (writer) => writer.set_items(project_path, originals));
     const session = new ProjectSessionState();
     session.mark_loaded(project_path);
-    const runtime = new BatchTranslationRuntime(session, database, new RuntimeOperationGate());
+    const tasks = new BatchTaskRuntime(session, new RuntimeOperationGate());
+    const runtime = new BatchTranslationState(session, database, tasks);
     const frames: BatchTranslationSnapshot[] = [];
-    runtime.subscribe((snapshot) => {
+    tasks.subscribe(async () => {
+      const snapshot = await runtime.build_snapshot();
       frames.push(snapshot);
     });
     const cache = new CacheManager({
@@ -240,6 +243,7 @@ describe("BatchTranslationRunner", () => {
     try {
       await cache.warmProject(project_path);
       const runner = new BatchTranslationRunner({
+        ratePool: new RequestRatePool(),
         builtinRoot: builtin_root,
         taskStore: store,
         taskRuntime: runtime,
@@ -290,11 +294,12 @@ describe("BatchTranslationRunner", () => {
   });
 
   it.each([false, true])("提交失败只在已提交事实存在时结算成功与耗尽：%s", async (committed) => {
-    const runtime = create_task_runtime();
+    const { runtime } = create_task_runtime();
     const failure = committed
       ? new AppError("data.committed_sync_failed")
       : new Error("transaction failed");
     const runner = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       builtinRoot: create_template_root(),
       taskRuntime: runtime,
       taskStore: create_task_store({
@@ -363,9 +368,11 @@ describe("BatchTranslationRunner", () => {
       const session = new ProjectSessionState();
       session.mark_loaded(project_path);
       const reader = database;
-      const runtime = new BatchTranslationRuntime(session, reader, new RuntimeOperationGate());
+      const tasks = new BatchTaskRuntime(session, new RuntimeOperationGate());
+      const runtime = new BatchTranslationState(session, reader, tasks);
       const pending_snapshots: number[][] = [];
-      runtime.subscribe((snapshot) => {
+      tasks.subscribe(async () => {
+        const snapshot = await runtime.build_snapshot();
         if (snapshot.status === "running" && snapshot.run_progress?.processed_line === 1)
           pending_snapshots.push([...snapshot.pending_item_ids]);
       });
@@ -395,6 +402,7 @@ describe("BatchTranslationRunner", () => {
         await cache.warmProject(project_path);
         vi.useFakeTimers();
         const runner = new BatchTranslationRunner({
+          ratePool: new RequestRatePool(),
           builtinRoot: builtin_root,
           taskStore: store,
           taskRuntime: runtime,
@@ -471,8 +479,9 @@ describe("BatchTranslationRunner", () => {
   it("Runner 将指定模型传给规划器，并发布同源任务摘要", async () => {
     const model_ids: string[] = [];
     const done = create_status_waiter("done");
-    const task_runtime = create_task_runtime(done.listener);
+    const { runtime: task_runtime, tasks } = create_task_runtime(done.listener);
     const task_engine = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: create_template_root(),
       taskStore: create_task_store(),
@@ -507,7 +516,7 @@ describe("BatchTranslationRunner", () => {
     );
     await done.promise;
     expect(model_ids).toEqual(["chosen"]);
-    expect((await task_runtime.build_snapshot()).config).toMatchObject({
+    expect(tasks.build_snapshot().config).toMatchObject({
       model_name: "已选择接入点",
       model_id: "translation-model",
     });
@@ -521,10 +530,11 @@ describe("BatchTranslationRunner", () => {
     };
     const progress_snapshots: MutableJsonRecord[] = [];
     const done = create_status_waiter("done");
-    const task_runtime = create_task_runtime(done.listener, () => ({
+    const { runtime: task_runtime, tasks } = create_task_runtime(done.listener, () => ({
       translation_extras,
     }));
-    task_runtime.subscribe((snapshot) => {
+    tasks.subscribe(async () => {
+      const snapshot = await task_runtime.build_snapshot();
       if (snapshot.status === "running") {
         progress_snapshots.push({
           ...snapshot.progress,
@@ -532,6 +542,7 @@ describe("BatchTranslationRunner", () => {
       }
     });
     const task_engine = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -567,13 +578,15 @@ describe("BatchTranslationRunner", () => {
   });
 
   it("终态 listener 失败时仍释放任务锁", async () => {
-    const task_runtime = create_task_runtime();
-    task_runtime.subscribe((snapshot) => {
+    const { runtime: task_runtime, tasks } = create_task_runtime();
+    tasks.subscribe(async () => {
+      const snapshot = await task_runtime.build_snapshot();
       if (snapshot.status === "done") {
         throw new Error("terminal listener failed");
       }
     });
     const task_engine = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -585,31 +598,26 @@ describe("BatchTranslationRunner", () => {
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, {
-      operation: "translate",
-      item_statuses: ["NONE"],
-      mode: "new",
-    });
-    await wait_until(
-      async () =>
-        !["requested", "running", "stopping"].includes(
-          (await task_runtime.build_snapshot()).status,
-        ),
+    const handle = task_runtime.begin_standalone();
+    await task_runtime.execute(handle, () =>
+      task_engine.run(
+        handle,
+        { operation: "translate", item_statuses: ["NONE"], mode: "new" },
+        create_run_context(),
+      ),
     );
-
-    await expect(task_runtime.build_snapshot()).resolves.toMatchObject({
-      status: "done",
-    });
-    await task_runtime.dispose();
+    await expect(handle.completion).rejects.toMatchObject({ result: { status: "error" } });
+    await expect(task_runtime.build_snapshot()).resolves.toMatchObject({ status: "error" });
   });
 
   it("executor 基础设施失败终止任务且不进入内容切分", async () => {
     const finished = create_status_waiter("error");
-    const runtime = create_task_runtime(finished.listener);
+    const { runtime } = create_task_runtime(finished.listener);
     const execute = vi.fn(async () => {
       throw new AppError("worker.failed");
     });
     const runner = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({ get_translation_items: () => [create_pending_item()] }),
@@ -638,7 +646,7 @@ describe("BatchTranslationRunner", () => {
         execution: { kind: "in_process" },
       });
       const finished = create_status_waiter(action === "recover" ? "done" : "stopped");
-      const runtime = create_task_runtime(finished.listener);
+      const { runtime, tasks } = create_task_runtime(finished.listener);
       const committed: MutableJsonRecord[] = [];
       const items = [
         create_pending_item(1),
@@ -671,6 +679,7 @@ describe("BatchTranslationRunner", () => {
         };
       });
       const runner = new BatchTranslationRunner({
+        ratePool: new RequestRatePool(),
         llmClient: { request },
         builtinRoot: builtin_root,
         taskRuntime: runtime,
@@ -709,7 +718,7 @@ describe("BatchTranslationRunner", () => {
           recovered = true;
           await vi.advanceTimersByTimeAsync(10_000);
         } else {
-          await runtime.request_stop();
+          await tasks.request_stop(handle.run_id);
         }
         await finished.promise;
         expect(await handle.completion).toMatchObject({
@@ -752,7 +761,7 @@ describe("BatchTranslationRunner", () => {
       execution: { kind: "in_process" },
     });
     const recoveries: NonNullable<BatchTranslationSnapshot["request_recovery"]>[] = [];
-    const runtime = create_task_runtime((snapshot) => {
+    const { runtime } = create_task_runtime((snapshot) => {
       if (snapshot.request_recovery !== null) recoveries.push(snapshot.request_recovery);
     });
     const committed: MutableJsonRecord[] = [];
@@ -784,6 +793,7 @@ describe("BatchTranslationRunner", () => {
       return stream;
     });
     const runner = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       builtinRoot: builtin_root,
       taskRuntime: runtime,
       executorClient: pool,
@@ -849,13 +859,14 @@ describe("BatchTranslationRunner", () => {
       execution: { kind: "in_process" },
     });
     const done = create_status_waiter("done");
-    const runtime = create_task_runtime(done.listener);
+    const { runtime } = create_task_runtime(done.listener);
     const committed: MutableJsonRecord[] = [];
     const prompts: string[] = [];
     const run_context = create_run_context(1, 32, { source_language: "JA", target_language: "ZH" });
     const responses = ["无法对应的合并译文", "甲的完整译文", "乙的译文"];
     try {
       const runner = new BatchTranslationRunner({
+        ratePool: new RequestRatePool(),
         builtinRoot: builtin_root,
         taskStore: create_task_store({
           get_translation_items: () => [
@@ -924,9 +935,10 @@ describe("BatchTranslationRunner", () => {
   it("翻译切块使用注入 token 计数器而不是字符长度估算", async () => {
     const executed_batches: number[][] = []; // 记录 executor 可见的 chunk 分组，证明长文本仍可被 fake token 预算合并
     const done = create_status_waiter("done");
-    const task_runtime = create_task_runtime(done.listener);
+    const { runtime: task_runtime } = create_task_runtime(done.listener);
     const run_context = create_run_context(1, 16);
     const task_engine = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -979,11 +991,12 @@ describe("BatchTranslationRunner", () => {
     const builtin_root = create_template_root();
     const logs: string[] = [];
     const done = create_status_waiter("done");
-    const task_runtime = create_task_runtime(done.listener);
+    const { runtime: task_runtime } = create_task_runtime(done.listener);
     const run_context = create_run_context(1, 512, {
       prompt_enhancement_enable: false,
     });
     const task_engine = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: builtin_root,
       taskStore: create_task_store({
@@ -1021,8 +1034,9 @@ describe("BatchTranslationRunner", () => {
     const execution = new Promise<WorkUnitExecutionResult>((resolve) => {
       release_execution = resolve;
     });
-    const task_runtime = create_task_runtime();
+    const { runtime: task_runtime } = create_task_runtime();
     const task_engine = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -1117,43 +1131,33 @@ describe("BatchTranslationRunner", () => {
   function create_task_runtime(
     listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void = () => undefined,
     read_meta: (() => JsonRecord) | null = null,
-  ): BatchTranslationRuntime {
+  ): { runtime: BatchTranslationState; tasks: BatchTaskRuntime } {
     const session_state = new ProjectSessionState();
     if (read_meta !== null) {
-      session_state.mark_loaded("E:/Project/batch-translation-runtime-test.lg");
+      session_state.mark_loaded("E:/Project/batch-translation-state-test.lg");
     }
-    const runtime = new BatchTranslationRuntime(
+    const tasks = new BatchTaskRuntime(session_state, new RuntimeOperationGate());
+    const runtime = new BatchTranslationState(
       session_state,
       {
         get_all_meta: () => read_meta?.() ?? {},
         get_section_revision: () => 0,
       } as unknown as ProjectDatabase,
-      new RuntimeOperationGate(),
+      tasks,
     );
-    runtime.subscribe(listener);
-    return runtime;
+    tasks.subscribe(async () => listener(await runtime.build_snapshot()));
+    return { runtime, tasks };
   }
 
   /** 通过真实运行态预约任务，默认使用独立的执行配置。 */
   async function start_task(
     task_engine: BatchTranslationRunner,
-    task_runtime: BatchTranslationRuntime,
+    task_runtime: BatchTranslationState,
     command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext = create_run_context(),
   ): Promise<void> {
     const handle = task_runtime.begin_standalone(command.operation);
     await task_runtime.execute(handle, () => task_engine.run(handle, command, run_context));
-  }
-
-  /** 等待终态发布失败后的异步资源释放。 */
-  async function wait_until(predicate: () => boolean | Promise<boolean>): Promise<void> {
-    for (let index = 0; index < 10; index += 1) {
-      if (await predicate()) {
-        return;
-      }
-      await Promise.resolve();
-    }
-    expect(await predicate()).toBe(true);
   }
 
   /**

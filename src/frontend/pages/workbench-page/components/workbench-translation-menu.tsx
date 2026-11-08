@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { BrushCleaning, Play, ScanText } from "lucide-react";
 
-import "@frontend/features/batch-translation/batch-translation.css";
+import "@frontend/features/batch-task/batch-task.css";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { ModelSelectionMenu } from "@frontend/features/model-selection/model-selection-menu";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";

@@ -1,3 +1,4 @@
+import type { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
 import { createContext } from "react";
 import type { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
@@ -48,6 +49,7 @@ export type SettingsSnapshotPayload = {
 // Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
 export type DesktopStateStores = {
+  batch_task: ReturnType<typeof createBatchTaskSnapshotStore>;
   batch_translation: ReturnType<typeof createBatchTranslationSnapshotStore>;
   runtime: ReturnType<typeof createRuntimeActivityStore>;
   projectChange: ProjectChangeSignalSource;

@@ -68,6 +68,10 @@ const reference_notes: Readonly<Record<string, readonly string[]>> = {
   knowledge: [
     `\`fp\` 从 \`project_meta.json\` 的 \`knowledge\` 复制。\`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。`,
   ],
+  model_configs: [
+    "每次 `workspace_run` 刷新。投影只包含非敏感配置身份和客户端支持的输入模式。模型的输入能力仍须单独确认。",
+    "`batch_llm_request` 使用 `model_config_id` 选择配置，执行时重新校验。",
+  ],
   project_meta: [
     `\`files\` 列出全部资产，原稿位于 \`sources/<file_path>\`。\`knowledge\` 是工程知识的指纹，正文位于 \`${AGENT_WORKSPACE_PATHS.knowledge}\`。`,
   ],
@@ -139,6 +143,21 @@ const definition = {
       schema: AGENT_WORKSPACE_PAGE_SCHEMA,
       reference: reference_path("pages"),
       purpose: "全部原稿页面，每行对应一个原稿页",
+    },
+    model_configs: {
+      path: "model_configs.json",
+      purpose: "可供 `batch_llm_request` 选择的非敏感配置身份",
+      reference: reference_path("model_configs"),
+      schema: Type.Array(
+        Type.Object({
+          model_config_id: Type.String(),
+          name: Type.String(),
+          model_id: Type.String(),
+          api_format: Type.String(),
+          auth_type: Type.String(),
+          formats: Type.Array(Type.Union([Type.Literal("messages"), Type.Literal("responses")])),
+        }),
+      ),
     },
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,

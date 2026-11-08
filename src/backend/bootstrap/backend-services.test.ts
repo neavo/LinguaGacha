@@ -27,7 +27,7 @@ vi.mock("../batch-translation/planning/planning-worker-pool", () => {
 
 import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
-import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
+import { BatchTranslationState } from "../batch-translation/batch-translation-state";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 
 const TEST_APP_ROOT = "E:/linguagacha-backend-test";
@@ -92,8 +92,9 @@ describe("BackendServices", () => {
     const services = new BackendServices(options);
     try {
       await services.state.session.clear();
-      expect(options.publishEvent).toHaveBeenCalledWith("batch_translation.snapshot_changed", {
+      expect(options.publishEvent).toHaveBeenCalledWith("batch_task.snapshot_changed", {
         batch_translation: await services.batchTranslation.snapshot(),
+        batch_task: services.batchTasks.build_snapshot(),
       });
     } finally {
       await services.dispose();
@@ -101,6 +102,31 @@ describe("BackendServices", () => {
     vi.mocked(options.publishEvent).mockClear();
     await services.state.session.clear();
     expect(options.publishEvent).not.toHaveBeenCalled();
+  });
+
+  it("通用任务发布不读取翻译业务投影", async () => {
+    const options = create_backend_services_options();
+    const services = new BackendServices(options);
+    const read_translation = vi
+      .spyOn(services.batchTranslation, "snapshot")
+      .mockRejectedValue(new Error("unavailable translation projection"));
+    try {
+      const lease = services.state.runtimeGate.begin_runtime("agent");
+      const handle = services.batchTasks.begin_under_agent(
+        lease,
+        new AbortController().signal,
+        "request",
+      );
+      await services.batchTasks.execute(handle, async () => "done");
+      await expect(handle.completion).resolves.toMatchObject({ status: "done" });
+      expect(read_translation).not.toHaveBeenCalled();
+      expect(options.publishEvent).toHaveBeenCalledWith("batch_task.snapshot_changed", {
+        batch_task: expect.objectContaining({ kind: "request", status: "done" }),
+      });
+      services.state.runtimeGate.finish_runtime(lease);
+    } finally {
+      await services.dispose();
+    }
   });
 
   it("实际运行租约的取得与释放均发布快照，关闭后解除订阅", async () => {
@@ -144,7 +170,7 @@ describe("BackendServices", () => {
       release_task_runtime = resolve;
     });
     const dispose_spy = vi
-      .spyOn(BatchTranslationRuntime.prototype, "dispose")
+      .spyOn(BatchTranslationState.prototype, "dispose")
       .mockImplementation(async () => await task_runtime_dispose);
     const services = new BackendServices(create_backend_services_options());
 

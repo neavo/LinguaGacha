@@ -6,10 +6,11 @@ export const ja_jp_batch_translation = {
     tooltip: "原文を指定した言語に翻訳します",
   },
   summary: {
+    done: "終了",
     empty: "タスクなし",
     stopping: "停止処理中",
     detail_tooltip: "クリックして詳細を表示",
-    running: "翻訳中",
+    running: "処理中",
   },
   detail: {
     provider: "接続先",
@@ -38,7 +39,7 @@ export const ja_jp_batch_translation = {
   },
   confirm: {
     reset_all_description: "プロジェクト全体の翻訳進捗をリセットしますか …?",
-    stop_description: "現在の翻訳タスクを停止しますか …?",
+    stop_description: "現在のタスクを停止してもよろしいですか …?",
   },
   action: { stop: "停止" },
 } satisfies LocaleMessageSchema<typeof zh_cn_batch_translation>;

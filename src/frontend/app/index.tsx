@@ -23,7 +23,7 @@ import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import { AgentChatProvider } from "@frontend/app/session/agent/agent-chat-provider";
 import { ProjectTranslationStatsProvider } from "@frontend/app/session/project-translation-stats-provider";
-import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-provider";
+import { BatchTaskSessionProvider } from "@frontend/app/session/batch-task/batch-task-session-provider";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-provider";
 import {
   api_fetch,
@@ -464,11 +464,11 @@ function AppContent(): JSX.Element {
                       <ProjectLifecycleProvider>
                         <TranslationGenerationProvider>
                           <ProjectTranslationStatsProvider>
-                            <BatchTranslationSessionProvider>
+                            <BatchTaskSessionProvider>
                               <QualityRuleStatisticsProvider>
                                 <ScreenComponent />
                               </QualityRuleStatisticsProvider>
-                            </BatchTranslationSessionProvider>
+                            </BatchTaskSessionProvider>
                           </ProjectTranslationStatsProvider>
                         </TranslationGenerationProvider>
                       </ProjectLifecycleProvider>
