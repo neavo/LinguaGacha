@@ -15,12 +15,13 @@ it("宿主为每次生成选择独立的工作目录并透传生成结果", asyn
     pdf_files: [],
   }));
   const generate = create_file_generator(root, { generate_staging_files });
-  const first = await generate(),
-    second = await generate();
+  const first = await generate(["book.txt"]),
+    second = await generate(["book.txt"]);
   expect(first.output_path).not.toBe(second.output_path);
   for (const result of [first, second])
     expect(path.dirname(result.output_path)).toBe(path.join(root, "work"));
   expect(first).toBe(await generate_staging_files.mock.results[0]!.value);
+  expect(generate_staging_files).toHaveBeenCalledWith(first.output_path, ["book.txt"]);
 });
 
 it("生成请求拒绝脚本指定路径，取消后不进入生成端口", async () => {
@@ -31,25 +32,39 @@ it("生成请求拒绝脚本指定路径，取消后不进入生成端口", asyn
     pdf_files: [],
   }));
   const controller = new AbortController();
+  for (const bilingual_files of [undefined, true, [1]]) {
+    await expect(
+      execute_generate_files_request(
+        { kind: "generate_files", bilingual_files },
+        controller.signal,
+        generate,
+      ),
+    ).rejects.toThrow();
+  }
   await expect(
     execute_generate_files_request(
-      { kind: "generate_files", output_path: "outside" },
+      { kind: "generate_files", bilingual_files: [], output_path: "outside" },
       controller.signal,
       generate,
     ),
   ).rejects.toThrow();
   controller.abort();
   await expect(
-    execute_generate_files_request({ kind: "generate_files" }, controller.signal, generate),
+    execute_generate_files_request(
+      { kind: "generate_files", bilingual_files: [] },
+      controller.signal,
+      generate,
+    ),
   ).rejects.toThrow();
   expect(generate).not.toHaveBeenCalled();
   expect(
     await execute_generate_files_request(
-      { kind: "generate_files" },
+      { kind: "generate_files", bilingual_files: ["book.txt"] },
       new AbortController().signal,
       generate,
     ),
   ).toMatchObject({ accepted: true });
+  expect(generate).toHaveBeenCalledExactlyOnceWith(["book.txt"]);
 });
 
 it("交付目录请求校验绝对路径、拒绝多余字段，并转发手动选择", async () => {

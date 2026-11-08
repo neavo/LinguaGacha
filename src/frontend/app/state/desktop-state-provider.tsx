@@ -79,6 +79,7 @@ type ProjectManifestPayload = {
 const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
   path: "",
   loaded: false,
+  file_count: 0,
   languages: null,
 };
 
@@ -89,6 +90,8 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   return {
     path: String(snapshot.path ?? ""),
     loaded,
+    file_count:
+      loaded && Number.isInteger(snapshot.file_count) ? Math.max(0, snapshot.file_count!) : 0,
     languages:
       loaded && is_json_record(snapshot.languages)
         ? read_project_language_settings(snapshot.languages)
@@ -96,11 +99,13 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   };
 }
 
-/** project 分区变化表示项目设置已提交，项目快照需要补读。 */
-function has_project_settings_change(
+/** 工程设置和文件集合共同决定公开工程快照。 */
+function has_project_snapshot_change(
   events: readonly Pick<ProjectChangeEventForState, "updatedSections">[],
 ): boolean {
-  return events.some((event) => event.updatedSections.includes("project"));
+  return events.some((event) =>
+    event.updatedSections.some((section) => section === "project" || section === "files"),
+  );
 }
 
 /** 汇总写入回流涉及的 section，用于页面刷新信号。 */
@@ -546,7 +551,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     ]);
     for (const queued_change of queued_project_changes) {
       const applied = await apply_project_change_event_immediately(queued_change);
-      if (applied && has_project_settings_change([queued_change])) await refresh_project_snapshot();
+      if (applied && has_project_snapshot_change([queued_change])) await refresh_project_snapshot();
     }
     set_project_session_status("ready");
   }, [
@@ -579,7 +584,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       for (const change_event of result.changes) {
         await apply_project_change_event_immediately(change_event);
         if (
-          has_project_settings_change([change_event]) &&
+          has_project_snapshot_change([change_event]) &&
           change_event.projectPath === read_project_state_identity().path
         ) {
           // 事件可以去重，写入方仍须确认已提交快照后再撤下草稿。
@@ -594,7 +599,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   const apply_project_change_batch_with_snapshot = useCallback(
     (change_events: readonly ProjectChangeEventForState[]): void => {
       apply_project_state_change_batch(change_events);
-      if (!has_project_settings_change(change_events)) return;
+      if (!has_project_snapshot_change(change_events)) return;
       void refresh_project_snapshot().catch((error: unknown) => {
         report_state_error(error, {
           source: "sse",

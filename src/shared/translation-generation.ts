@@ -13,7 +13,7 @@ export type TranslationFileGenerationRequest = {
 export type TranslationFileGenerationResult = {
   accepted: true;
   output_path: string;
-  bilingual_output_path: string;
+  bilingual_output_path: string; // 双语成果的目标位置，未生成双语时目录不存在。
   generic_input_path?: string; // 暂存生成的通用写回输入，尚未还原为目标格式。
   pdf_files: PDFFileGenerationResult[];
 };

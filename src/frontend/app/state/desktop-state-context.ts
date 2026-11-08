@@ -17,6 +17,7 @@ export type SettingsSnapshot = SettingSnapshot;
 export type ProjectSnapshot = {
   path: string;
   loaded: boolean;
+  file_count: number; // 统计工程资产，零文本条目的 PDF 也计入。
   languages: ProjectLanguageSettings | null; // 已加载项目的语言事实，未加载时为 null
 };
 

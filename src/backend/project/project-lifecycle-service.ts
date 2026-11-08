@@ -98,7 +98,10 @@ export class ProjectLifecycleService {
 
   private readonly log_manager: LogManager; // 记录生命周期解析失败和诊断，响应体不扩大公开协议
 
-  private readonly cache: Pick<CacheManager, "installProject" | "clearProject" | "languages">; // 安装已提交事实，失败会阻断 loaded。
+  private readonly cache: Pick<
+    CacheManager,
+    "installProject" | "clearProject" | "languages" | "files"
+  >; // 安装已提交事实，失败会阻断 loaded。
 
   private readonly write_store: ProjectWriteStore; // loaded 工程任务输入统一交给运行期唯一写入口
 
@@ -117,7 +120,7 @@ export class ProjectLifecycleService {
     app_setting_service: AppSettingService,
     paths: AppPathService,
     log_manager: LogManager,
-    cache: Pick<CacheManager, "installProject" | "clearProject" | "languages">,
+    cache: Pick<CacheManager, "installProject" | "clearProject" | "languages" | "files">,
     write_store: ProjectWriteStore,
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
@@ -140,7 +143,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取当前工程快照。公开 loaded/path 只来自 会话权威
+   * 会话提供工程身份，缓存提供已提交的文件数量和语言。
    */
   public async get_project_snapshot(): Promise<JsonRecord> {
     const state = this.session_state.snapshot();
@@ -148,6 +151,7 @@ export class ProjectLifecycleService {
       project: {
         path: state.projectPath,
         loaded: state.loaded,
+        file_count: state.loaded ? this.cache.files.readFileEntries().length : 0,
         languages: state.loaded ? this.cache.languages.readBlock() : null,
       },
     };
@@ -292,7 +296,7 @@ export class ProjectLifecycleService {
     try {
       this.cache.installProject(project_path, snapshot);
       await this.session_state.mark_loaded(project_path);
-      return this.build_loaded_project_response(project_path, snapshot.languages);
+      return await this.get_project_snapshot();
     } catch (cause) {
       if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
       throw new AppErrors.AppError("data.committed_sync_failed", {
@@ -601,12 +605,7 @@ export class ProjectLifecycleService {
       } else {
         await this.session_state.clear();
       }
-      return {
-        project: {
-          path: "",
-          loaded: false,
-        },
-      };
+      return await this.get_project_snapshot();
     });
   }
 
@@ -722,22 +721,6 @@ export class ProjectLifecycleService {
       parsed_path.dir,
       `${parsed_path.name}_${timestamp_suffix}_${sequence.toString()}${extension}`,
     );
-  }
-
-  /**
-   * 构建包含已提交项目语言的 loaded 响应
-   */
-  private build_loaded_project_response(
-    project_path: string,
-    languages: ProjectLanguageSettings,
-  ): JsonRecord {
-    return {
-      project: {
-        path: project_path,
-        loaded: true,
-        languages,
-      },
-    };
   }
 
   /**

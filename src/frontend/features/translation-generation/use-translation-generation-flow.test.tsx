@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   workbench: vi.fn(),
   push_toast: vi.fn(),
   navigate_to_agent: vi.fn(),
-  project_snapshot: { loaded: true, path: "E:/demo/sample.lg" },
+  project_snapshot: { loaded: true, file_count: 1, path: "E:/demo/sample.lg" },
   settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
 }));
 
@@ -56,12 +56,14 @@ describe("useTranslationGenerationFlow", () => {
   beforeEach(() => {
     vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock());
     mocks.api_fetch.mockReset();
-    mocks.workbench
-      .mockReset()
-      .mockResolvedValue({ projectPath: "E:/demo/sample.lg", snapshot: { entries: [] } });
+    mocks.workbench.mockReset().mockResolvedValue({
+      projectPath: "E:/demo/sample.lg",
+      snapshot: { entries: [{ file_type: "TXT" }] },
+    });
     mocks.push_toast.mockReset();
     mocks.navigate_to_agent.mockReset();
     mocks.project_snapshot.loaded = true;
+    mocks.project_snapshot.file_count = 1;
     mocks.project_snapshot.path = "E:/demo/sample.lg";
     mocks.settings_snapshot.translation_save_mode = "PROJECT";
     mocks.settings_snapshot.translation_fixed_path = "";
@@ -93,6 +95,47 @@ describe("useTranslationGenerationFlow", () => {
     await act(async () => Promise.resolve());
   }
 
+  it("空工程禁用入口，添加首个文件后恢复，删除最后一个文件关闭确认", async () => {
+    mocks.project_snapshot.file_count = 0;
+    await render_probe();
+    expect(latest_flow?.can_request_generation).toBe(false);
+    act(() => latest_flow?.request_generation());
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+    expect(mocks.workbench).not.toHaveBeenCalled();
+    mocks.project_snapshot.file_count = 1;
+    mocks.api_fetch.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      warningSummary: { total_count: 0, entries: [] },
+    });
+    await render_probe();
+    expect(latest_flow?.can_request_generation).toBe(true);
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state.phase).toBe("ready");
+    mocks.project_snapshot.file_count = 0;
+    await render_probe();
+    expect(latest_flow?.can_request_generation).toBe(false);
+    expect(latest_flow?.state.phase).toBe("closed");
+    mocks.api_fetch.mockClear();
+    await act(async () => latest_flow?.confirm_generation());
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+  });
+
+  it("预检发现资产已清空时结束流程", async () => {
+    mocks.api_fetch.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      warningSummary: { total_count: 0, entries: [] },
+    });
+    mocks.workbench.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      snapshot: { entries: [] },
+    });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state.phase).toBe("closed");
+  });
+
   it.each([
     { total_count: 3, has_generic: false },
     { total_count: 2, has_generic: true },
@@ -107,7 +150,9 @@ describe("useTranslationGenerationFlow", () => {
       mocks.workbench.mockResolvedValue({
         projectPath: mocks.project_snapshot.path,
         snapshot: {
-          entries: has_generic ? [{ file_type: "GENERIC", rel_path: "renamed.txt" }] : [],
+          entries: has_generic
+            ? [{ file_type: "GENERIC", rel_path: "renamed.txt" }]
+            : [{ file_type: "TXT" }],
         },
       });
       await render_probe();

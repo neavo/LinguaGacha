@@ -86,8 +86,8 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     `
     import { inspectSources, generateFiles, getOutputPaths } from '@lg/project';
     import assert from 'node:assert/strict';
-    await assert.rejects(generateFiles(), /fixture generation failed/);
-    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
+    await assert.rejects(generateFiles([]), /fixture generation failed/);
+    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
     undefined,
     undefined,

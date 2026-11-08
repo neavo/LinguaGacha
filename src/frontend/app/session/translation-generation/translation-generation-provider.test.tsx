@@ -8,7 +8,7 @@ import type { TranslationGenerationFlow } from "@frontend/features/translation-g
 const api_fetch = vi.hoisted(() =>
   vi.fn(async () => ({
     projectPath: "test.lg",
-    snapshot: { entries: [] },
+    snapshot: { entries: [{ file_type: "TXT" }] },
     warningSummary: { total_count: 0, entries: [] },
   })),
 );
@@ -25,7 +25,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({
-    project_snapshot: { loaded: true, path: "test.lg" },
+    project_snapshot: { loaded: true, file_count: 1, path: "test.lg" },
     settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
   }),
 }));

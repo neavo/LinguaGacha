@@ -13,9 +13,16 @@ export async function inspectSources(source_paths: string[]): Promise<SourceInsp
   return result;
 }
 
-/** 生成已支持格式及通用数据的写回输入，输出目录由宿主选定。 */
-export async function generateFiles(): Promise<TranslationFileGenerationResult> {
-  const result = await workspace_requests().call({ kind: "generate_files" });
+/**
+ * 生成单语成果及通用写回输入。
+ * `bilingual_files` 使用 `project_meta.json` 中的资产 `file_path`。空数组表示仅单语。
+ * 双语范围按 `project-operation` 确认。通用包、视频和 PDF 的双语成果由 Agent 按格式能力制作。
+ * 返回的双语目录可能尚不存在。
+ */
+export async function generateFiles(
+  bilingual_files: string[],
+): Promise<TranslationFileGenerationResult> {
+  const result = await workspace_requests().call({ kind: "generate_files", bilingual_files });
   if (typeof result !== "object" || result === null || !("accepted" in result))
     throw new Error("Invalid generate_files response.");
   return result;

@@ -83,7 +83,7 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
   /** 读取当前工程文件与校对摘要，并隔离旧项目或旧请求结果。 */
   const load_generation_check = useCallback((): void => {
     const project = project_ref.current;
-    if (!project.loaded) {
+    if (!project.loaded || project.file_count === 0) {
       return;
     }
     const generation = ++request_generation_ref.current;
@@ -100,6 +100,10 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
           response.projectPath !== project.path ||
           workbench.projectPath !== project.path
         ) {
+          return;
+        }
+        if (workbench.snapshot.entries.length === 0) {
+          apply_state({ phase: "closed" });
           return;
         }
         apply_state({
@@ -195,20 +199,24 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
     apply_state({ phase: "closed" });
   }, [apply_state]);
 
-  // 项目切换或关闭时，跨路由译文生成流程不得保留旧工程确认状态。
+  // 工程切换、关闭或删除最后一个文件时，淘汰确认状态和仍在途的请求。
   useEffect(() => {
-    if (previous_project_identity_ref.current === project_identity) {
+    if (
+      previous_project_identity_ref.current === project_identity &&
+      project_snapshot.file_count > 0
+    ) {
       return;
     }
     previous_project_identity_ref.current = project_identity;
     request_generation_ref.current += 1;
     apply_state({ phase: "closed" });
-  }, [apply_state, project_identity]);
+  }, [apply_state, project_identity, project_snapshot.file_count]);
 
   return useMemo(
     () => ({
       state,
-      can_request_generation: project_snapshot.loaded && state.phase === "closed",
+      can_request_generation:
+        project_snapshot.loaded && project_snapshot.file_count > 0 && state.phase === "closed",
       request_generation,
       retry_check,
       confirm_generation,
@@ -220,6 +228,7 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
       confirm_generation,
       jump_to_agent,
       project_snapshot.loaded,
+      project_snapshot.file_count,
       request_generation,
       retry_check,
       state,

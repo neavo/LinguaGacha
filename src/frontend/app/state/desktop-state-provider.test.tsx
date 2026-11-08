@@ -45,6 +45,7 @@ type RuntimeSnapshot = {
   runtimeOwner: "batch_translation" | "agent" | "model_test" | null;
   requestTimeout: number;
   projectTargetLanguage: string | null;
+  projectFileCount: number;
 };
 
 type StateHandle = Pick<
@@ -189,6 +190,7 @@ function RuntimeProbe(props: {
       runtimeOwner: runtime_snapshot.owner,
       requestTimeout: state.settings_snapshot.request_timeout,
       projectTargetLanguage: state.project_snapshot.languages?.target_language ?? null,
+      projectFileCount: state.project_snapshot.file_count,
     });
   }, [
     props,
@@ -393,6 +395,7 @@ function create_project_read_response(
 }
 
 type RuntimeApiMockOptions = {
+  project_file_count?: number;
   settings?: Record<string, unknown>;
   project_languages?: Record<string, unknown>;
   project_path?: string;
@@ -417,6 +420,7 @@ function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
         project: {
           path: project_path,
           loaded: true,
+          file_count: options.project_file_count ?? 0,
           languages: options.project_languages ?? { source_language: "JA", target_language: "ZH" },
         },
       };
@@ -1347,6 +1351,39 @@ describe("DesktopStateProvider", () => {
       proofreadingReason: "translation_reset",
       proofreadingMode: "full",
     });
+  });
+
+  it("文件增删通过 SSE 刷新共享工程文件数量", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    const options: RuntimeApiMockOptions = { project_file_count: 0 };
+    install_runtime_api_mock(options);
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
+    await wait_for_condition(() => snapshots.at(-1)?.workbenchSeq === 1);
+    expect(snapshots.at(-1)?.projectFileCount).toBe(0);
+    for (const [revision, count] of [
+      [2, 1],
+      [3, 0],
+    ] as const) {
+      options.project_file_count = count;
+      await act(async () => {
+        event_stream.emit("project.data_changed", {
+          source: "workbench_files",
+          projectPath: "E:/demo/demo.lg",
+          projectRevision: revision,
+          updatedSections: ["files"],
+          sectionRevisions: { files: revision },
+          qualityStatisticsScope: "all",
+          eventId: `files-${revision}`,
+        });
+      });
+      await flush_state_refresh_window();
+      await wait_for_condition(() => snapshots.at(-1)?.projectFileCount === count);
+    }
   });
 
   it("files full 会直接发布文件全量刷新信号", async () => {

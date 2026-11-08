@@ -162,7 +162,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 # 生成与交付
 
-`generateFiles()` 之后，用 `render({ source, input, translated, bilingual })` 写出与原视频同主名的 ASS：
+`generateFiles(bilingual_files)` 之后，用 `render({ source, input, translated, bilingual })` 写出与原视频同主名的 ASS：
 
 - `source` 是 `sources/` 中的包目录。
 - `input` 是 `<generic_input_path>/<file_path>/items.json`。

@@ -40,6 +40,7 @@ type GenerationTarget = Readonly<{
   paths: GeneratedFilePaths;
   generic_path?: string; // 提供目录时才生成通用写回输入。
   skip_pdf: boolean;
+  bilingual_files?: readonly string[]; // Agent 明确选择双语资产，GUI 和 CLI 沿用格式默认输出。
 }>;
 
 export type OutputFolderOpener = (output_path: string) => Promise<void>;
@@ -105,6 +106,7 @@ export class TranslationFileGenerationService {
   /** 工作材料与可交付产物分开存放，交付前由 Agent 核对完整集合。 */
   public async generate_staging_files(
     output_dir: string,
+    bilingual_files: readonly string[],
   ): Promise<TranslationFileGenerationResult> {
     return this.run_generation(
       (project_path, setting) =>
@@ -114,6 +116,7 @@ export class TranslationFileGenerationService {
             bilingual_path: path.resolve(output_dir, "bilingual"),
           },
           generic_path: path.resolve(output_dir, "generic"),
+          bilingual_files,
           skip_pdf: false,
         }),
       false,
@@ -198,6 +201,12 @@ export class TranslationFileGenerationService {
       read_project_language_settings(await this.database.get_all_meta(project_path)),
     );
     const assets = await this.database.get_all_asset_records(project_path);
+    if (assets.length === 0) throw new AppError("project.no_files");
+    // 资产被移除或改名后，旧清单必须在写盘前报错，避免悄悄漏掉双语成果。
+    for (const file of target.bilingual_files ?? []) {
+      if (!assets.some((asset) => asset.path === file))
+        throw new AppError("file.not_found", { public_details: { file } });
+    }
     // 重复译文填充只修改导出副本。
     const items = (await this.database.get_all_items(project_path)).map((item) =>
       create_item(item),
@@ -211,7 +220,7 @@ export class TranslationFileGenerationService {
     this.fill_duplicated_translations(items);
     const { paths, generic_path } = target;
     this.native_fs.make_dir(paths.translated_path);
-    this.native_fs.make_dir(paths.bilingual_path);
+    if (target.bilingual_files === undefined) this.native_fs.make_dir(paths.bilingual_path);
     const format_service = new FileFormatService(
       this.game_directory_operations,
       { target_language: config.target_language },
@@ -226,6 +235,7 @@ export class TranslationFileGenerationService {
         source_files: assets,
       },
       generic_path,
+      target.bilingual_files,
     );
     const pdf_files = await this.write_pdf_files(project_path, paths, documents);
     return {

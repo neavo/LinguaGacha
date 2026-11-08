@@ -538,6 +538,7 @@ export class FileFormatService {
     items: Item[],
     context: FileFormatServiceWriteContext,
     generic_path?: string, // 通用写回输入仅在调用方指定独立目录时生成。
+    bilingual_files?: readonly string[],
   ): Promise<void> {
     const { paths, asset_reader } = context;
     const failures: unknown[] = [];
@@ -549,9 +550,9 @@ export class FileFormatService {
         failures.push(error);
       }
     }
-    await this.txt.write_to_path(items, paths);
+    await this.txt.write_to_path(items, paths, bilingual_files);
     await this.md.write_to_path(items, paths);
-    await this.write_subtitles(items, context);
+    await this.write_subtitles(items, context, bilingual_files);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
     if (generic_path !== undefined) {
@@ -576,7 +577,7 @@ export class FileFormatService {
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy_rpy.write_to_path(items, paths, asset_reader);
-    await this.epub.write_to_path(items, paths, asset_reader);
+    await this.epub.write_to_path(items, paths, asset_reader, bilingual_files);
     if (failures.length === 1) throw failures[0];
     if (failures.length) throw new AggregateError(failures, "Game assets could not be exported");
   }
@@ -604,6 +605,7 @@ export class FileFormatService {
   private async write_subtitles(
     items: Item[],
     context: FileFormatServiceWriteContext,
+    bilingual_files?: readonly string[],
   ): Promise<void> {
     const by_file = new Map<string, Item[]>();
     for (const item of items) {
@@ -626,10 +628,11 @@ export class FileFormatService {
         path.join(context.paths.translated_path, file),
         output.translated,
       );
-      await this.native_fs.write_file(
-        path.join(context.paths.bilingual_path, file),
-        output.bilingual,
-      );
+      if (bilingual_files === undefined || bilingual_files.includes(file))
+        await this.native_fs.write_file(
+          path.join(context.paths.bilingual_path, file),
+          output.bilingual,
+        );
     }
   }
 
