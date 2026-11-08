@@ -1,35 +1,57 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { finished, pipeline } from "node:stream/promises";
-import JSZip from "jszip";
-import { jsonrepair, JSONRepairError } from "jsonrepair";
+import { npm } from "@lg/npm";
 
-const MAX_SECONDS = 210;
-const HOP_SECONDS = 0.1;
-const SAMPLE_RATE = 16000;
-const HOP_SAMPLES = SAMPLE_RATE * HOP_SECONDS;
-const SAMPLE_SCALE = 32768;
-const SILENCE_DB = -40;
-const MIN_PAUSE = 3; // 100ms 格数。
+const MAX_SECONDS = 210; // 单个分段的时长上限。
 const CUT_WINDOWS = [
   [180, 210],
   [120, 180],
-];
-const UNCOVERED_SECONDS = 5;
-const PACKAGE_MAX_BYTES = 900 * 1024 * 1024;
+]; // 优先靠近段尾切开，避免分段过短。
+const CUT_GAP_SECONDS = 0.3; // 可以作为切点的最短无人声空隙。
+const UNCOVERED_SECONDS = 0.3; // 报告的最短未覆盖人声。门槛越长，短句漏识别越难发现。
+const SAMPLE_RATE = 16000; // Silero 的输入采样率。
+const VAD_FRAME = 512; // sherpa 每次调用只合并判断一次，必须逐帧送入。
+const VAD_BUFFER_SECONDS = 90; // 须大于 maxSpeechDuration。
+// Silero 参数是漏句检出与复核量的实测折中，调整后需重新评估。
+const VAD = Object.freeze({
+  threshold: 0.3,
+  minSilenceDuration: 0.1,
+  minSpeechDuration: 0.1,
+  windowSize: VAD_FRAME,
+  maxSpeechDuration: 60,
+});
+const PACKAGE_MAX_BYTES = 900 * 1024 * 1024; // 包体积上限，超出时拆分原素材。
 const STDERR_MAX_CHARS = 64 * 1024; // 只保留诊断尾部，避免长转码日志持续占用内存。
-const CUSTOM_RENDERER = "render.mjs";
+const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
+const ROW_KINDS = ["dialogue", "screen"]; // 对话与画面文字。
 
-const load = async (file) => JSON.parse(await readFile(file, "utf8"));
-const round = (value, places) => Number(value.toFixed(places));
-const prefix = (index) => String(index).padStart(3, "0");
-const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+/** 第三方依赖装在共享 npm 工程，在用到时才加载，缺失时本文件仍可导入并检查。 */
+const PACKAGES = Object.freeze({
+  [`ffmpeg-static-electron-v5-${process.platform}-${process.arch}`]: "^5.2.5",
+  "sherpa-onnx-node": "^2.0.1",
+  jsonrepair: "^3.15.0",
+  jszip: "^3.10.2",
+});
+
+/** 固定版本的 Silero VAD 模型，所有工程共用。共享 npm 工程固定为 userdata/node，据此定位 userdata/models。 */
+const SPEECH_MODEL = Object.freeze({
+  file: path.resolve(npm.directory, "..", "models", "silero_vad", "v6.2.3.onnx"),
+  url: "https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/src/silero_vad/data/silero_vad.onnx",
+  sha256: "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
+});
+
+export const load = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取工作目录中的 JSON 材料。
+export const prefix = (index) => String(index).padStart(3, "0"); // 分段文件名前缀。
+const round = (value, places) => Number(value.toFixed(places)); // 时间写入前统一精度。
+const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value); // 普通对象。
 
 /** 只有缺失表示尚未生成，权限与其他 IO 错误保留。 */
-async function exists(file) {
+export async function exists(file) {
   try {
     await access(file);
     return true;
@@ -40,7 +62,7 @@ async function exists(file) {
 }
 
 /** 原子发布 JSON，续跑只读取完整结果。 */
-async function save(file, value) {
+export async function save(file, value) {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = file + ".tmp";
   try {
@@ -51,7 +73,68 @@ async function save(file, value) {
   }
 }
 
-/** 安装归技能准备步骤。进程树的停止和超时归工作区宿主。 */
+/** 模型存在且与固定版本一致。sherpa 加载缺失或损坏的模型时不报错，只会静默得到空结果。 */
+async function model_ready() {
+  try {
+    const bytes = await readFile(SPEECH_MODEL.file);
+    return createHash("sha256").update(bytes).digest("hex") === SPEECH_MODEL.sha256;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+/** 列出尚未就绪的依赖与模型。包按共享 npm 工程中实际安装的目录判断，与工作区模块解析一致。 */
+export async function missing() {
+  const packages = [];
+  for (const [name, range] of Object.entries(PACKAGES))
+    if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
+      packages.push(`${name}@${range}`);
+  return { packages, model: (await model_ready()) ? null : SPEECH_MODEL };
+}
+
+/** 字幕行的结构与时间是否可用。坏时间不能参与排序和区间运算。 */
+export function valid_row(row, duration) {
+  return (
+    record(row) &&
+    Number.isFinite(row.start) &&
+    Number.isFinite(row.end) &&
+    0 <= row.start &&
+    row.start < row.end &&
+    row.end <= duration &&
+    ROW_KINDS.includes(row.kind) &&
+    typeof row.src === "string" &&
+    row.src.trim() !== "" &&
+    typeof row.dst === "string"
+  );
+}
+
+/** 排序并合并相接或重叠的区间。 */
+function union(spans) {
+  const result = [];
+  for (const [start, end] of [...spans].sort((a, b) => a[0] - b[0])) {
+    const last = result.at(-1);
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else result.push([start, end]);
+  }
+  return result;
+}
+
+/** 从有序区间中扣除另一组有序且不重叠的区间。 */
+function subtract(spans, cover) {
+  const result = [];
+  for (let [start, end] of spans) {
+    for (const [a, b] of cover) {
+      if (b <= start || a >= end) continue;
+      if (a > start) result.push([start, a]);
+      start = b;
+    }
+    if (end > start) result.push([start, end]);
+  }
+  return result;
+}
+
+/** 唯一的 ffmpeg 进程入口。进程树的停止和超时归工作区宿主。 */
 async function execute(args, { check = true, consume } = {}) {
   const { default: binary } = await import(
     `ffmpeg-static-electron-v5-${process.platform}-${process.arch}`
@@ -113,9 +196,31 @@ export async function inspect(source) {
   };
 }
 
-/** 只保留每 100ms 的能量，PCM 的采样和窗口边界可以跨 stdout 数据块。 */
-async function energy(source, track) {
-  const values = [];
+/**
+ * 整片人声区间，单位为整片秒数。
+ * 只选音轨时，部分容器会以音轨自身起点为零点；补齐起点并保留画面流，零点才与分段转码一致。
+ */
+async function speech(source, track) {
+  if (!(await model_ready())) throw new Error("人声模型缺失或不一致，先按 media.missing() 补齐");
+  const { default: sherpa } = await import("sherpa-onnx-node");
+  const vad = new sherpa.Vad(
+    {
+      sileroVad: { model: SPEECH_MODEL.file, ...VAD },
+      sampleRate: SAMPLE_RATE,
+      numThreads: 1,
+      provider: "cpu",
+      debug: 0,
+    },
+    VAD_BUFFER_SECONDS,
+  );
+  const spans = [];
+  // 及时取出已完成的人声区间，检测器不再积累音频样本。
+  const drain = () => {
+    for (; !vad.isEmpty(); vad.pop()) {
+      const { start, samples } = vad.front(false); // Electron 不支持外部 ArrayBuffer。
+      spans.push([start / SAMPLE_RATE, (start + samples.length) / SAMPLE_RATE]);
+    }
+  };
   await execute(
     [
       "-v",
@@ -124,6 +229,8 @@ async function energy(source, track) {
       source,
       "-map",
       `0:a:${track}`,
+      "-af",
+      "aresample=first_pts=0",
       "-ac",
       "1",
       "-ar",
@@ -131,79 +238,76 @@ async function energy(source, track) {
       "-f",
       "s16le",
       "pipe:1",
+      "-map",
+      "0:V:0?",
+      "-c",
+      "copy",
+      "-f",
+      "null",
+      "-",
     ],
     {
       consume: async (stream) => {
-        let byte, // 跨数据块保留尚未配对的低字节。
-          samples = 0,
-          sum = 0;
-        const append = () => {
-          values.push(20 * Math.log10(Math.max(Math.sqrt(sum / HOP_SAMPLES), 1e-6)));
-          samples = 0;
-          sum = 0;
-        };
+        const frame = new Float32Array(VAD_FRAME);
+        let filled = 0,
+          low; // 跨数据块保留尚未配对的低字节。
         for await (const chunk of stream) {
-          for (const value of chunk) {
-            if (byte === undefined) {
-              byte = value;
+          for (const byte of chunk) {
+            if (low === undefined) {
+              low = byte;
               continue;
             }
-            const unsigned = byte | (value << 8);
-            const sample =
-              (unsigned >= SAMPLE_SCALE ? unsigned - SAMPLE_SCALE * 2 : unsigned) / SAMPLE_SCALE;
-            byte = undefined;
-            sum += sample * sample;
-            if (++samples === HOP_SAMPLES) append();
+            frame[filled++] = (((byte << 24) >> 16) | low) / 32768; // 小端 s16，高字节带符号。
+            low = undefined;
+            if (filled === VAD_FRAME) {
+              vad.acceptWaveform(frame);
+              drain();
+              filled = 0;
+            }
           }
         }
-        if (byte !== undefined) throw new Error("PCM 采样不完整");
-        if (samples) append(); // 尾窗口按补零计算，保持与完整窗口相同的分母。
+        if (low !== undefined) throw new Error("PCM 采样不完整");
+        if (filled) vad.acceptWaveform(frame.slice(0, filled));
+        vad.flush();
+        drain();
       },
     },
   );
-  return values;
+  // 模型会按 maxSpeechDuration 拆开长语音，相接的区间不是停顿。
+  return union(spans).map(([start, end]) => [round(start, 2), round(end, 2)]);
 }
 
-/** 优先在靠近段尾的停顿切开，无停顿时选择低能量点。 */
-function cuts(duration, db) {
-  const result = [0];
-  while (duration - result.at(-1) > MAX_SECONDS) {
-    const start = Math.round(result.at(-1) / HOP_SECONDS);
-    let cut;
-    if (db) {
-      for (const [lower, upper] of CUT_WINDOWS) {
-        let best = 0,
-          middle = 0,
-          run = 0;
-        for (
-          let i = start + lower / HOP_SECONDS;
-          i < Math.min(start + upper / HOP_SECONDS, db.length);
-          i++
-        ) {
-          run = db[i] < SILENCE_DB ? run + 1 : 0;
-          if (run > best) {
-            best = run;
-            middle = i - run + 1 + Math.floor(run / 2);
-          }
-        }
-        if (best >= MIN_PAUSE) {
-          cut = middle * HOP_SECONDS;
-          break;
-        }
+/** 在靠近段尾的无人声空隙中点切开，没有空隙时按上限硬切。音轨结束后的画面也算空隙。 */
+function cuts(duration, voiced) {
+  const gaps = [];
+  if (voiced) {
+    let previous = 0;
+    for (const [start, end] of [...voiced, [duration, duration]]) {
+      if (start > previous) gaps.push([previous, start]);
+      previous = Math.max(previous, end);
+    }
+  }
+  const points = [0];
+  while (duration - points.at(-1) > MAX_SECONDS) {
+    const from = points.at(-1);
+    let cut = from + MAX_SECONDS;
+    for (const [lower, upper] of CUT_WINDOWS) {
+      let best;
+      for (const gap of gaps) {
+        // 跨越窗口边缘的长空隙按窗口内部分计算，不能因此错过停顿。
+        const start = Math.max(gap[0], from + lower),
+          end = Math.min(gap[1], from + upper);
+        if (end - start >= CUT_GAP_SECONDS && (!best || end - start > best[1] - best[0]))
+          best = [start, end];
       }
-      if (cut === undefined) {
-        const lo = start + CUT_WINDOWS[1][0] / HOP_SECONDS;
-        const hi = Math.min(start + MAX_SECONDS / HOP_SECONDS, db.length);
-        if (hi > lo) {
-          let best = lo;
-          for (let i = lo + 1; i < hi; i++) if (db[i] < db[best]) best = i;
-          cut = best * HOP_SECONDS;
-        }
+      if (best) {
+        cut = (best[0] + best[1]) / 2;
+        break;
       }
     }
-    result.push(round(cut ?? result.at(-1) + MAX_SECONDS, 2));
+    points.push(round(cut, 2));
   }
-  return [...result, duration];
+  return [...points, duration];
 }
 
 /** 来源身份匹配后续用已发布的分段，转码成功才替换临时文件。 */
@@ -229,15 +333,18 @@ export async function prepare(source, directory, { track = 0 } = {}) {
       !record(previous) ||
       Object.entries(identity).some(([key, value]) => previous[key] !== value)
     )
-      throw new Error("来源、音轨或续跑身份格式已变化，请使用新的工作目录");
+      throw new Error("来源或音轨已变化，请使用新的工作目录");
   } else {
     if (await exists(manifestFile)) throw new Error("工作目录缺少来源身份，请使用新的工作目录");
     await save(identityFile, identity);
   }
   if (!(await exists(manifestFile))) {
-    const points = cuts(info.duration, info.audio.length ? await energy(source, track) : null);
+    // 已发布的切点决定响应的相对时间，之后不再因分析变化重切。
+    const voiced = info.audio.length ? await speech(source, track) : null;
+    const points = cuts(info.duration, voiced);
     await save(manifestFile, {
       video: info.video,
+      speech: voiced,
       segments: points
         .slice(0, -1)
         .map((start, i) => ({ path: `segments/${prefix(i)}.mp4`, start, end: points[i + 1] })),
@@ -290,40 +397,36 @@ export async function prepare(source, directory, { track = 0 } = {}) {
   return manifest;
 }
 
-/** 从有声区间扣除对话覆盖，音乐与音效仍计入剩余区间。 */
-async function uncovered_voice(file, segment, rows) {
-  if (!(await inspect(file)).audio.length) return [];
-  const voiced = (await energy(file, 0)).map((db) => db >= SILENCE_DB);
-  for (const row of rows) {
-    if (row.kind === "dialogue" && Number.isFinite(row.start) && Number.isFinite(row.end)) {
-      const first = Math.max(0, Math.trunc((row.start - segment.start) / HOP_SECONDS));
-      voiced.fill(
-        false,
-        first,
-        Math.max(first, Math.ceil((row.end - segment.start) / HOP_SECONDS)),
-      );
-    }
-  }
-  const spans = [];
-  let begin;
-  for (let i = 0; i <= voiced.length; i++) {
-    if (voiced[i] && begin === undefined) begin = i;
-    else if (!voiced[i] && begin !== undefined) {
-      if ((i - begin) * HOP_SECONDS >= UNCOVERED_SECONDS)
-        spans.push([
-          round(segment.start + begin * HOP_SECONDS, 1),
-          round(segment.start + i * HOP_SECONDS, 1),
-        ]);
-      begin = undefined;
-    }
-  }
-  return spans;
+/** 人声与对话行的对照，只是证据，不判断字幕对错。无音轨时为 null。 */
+function evidence(voiced, segment, rows, duration) {
+  if (voiced === null) return { uncovered_speech: null, unsupported_dialogue: null };
+  const dialogue = rows.flatMap((row, index) =>
+    valid_row(row, duration) && row.kind === "dialogue"
+      ? [{ index, start: row.start, end: row.end }]
+      : [],
+  );
+  const inside = voiced.flatMap(([start, end]) =>
+    end > segment.start && start < segment.end
+      ? [[Math.max(start, segment.start), Math.min(end, segment.end)]]
+      : [],
+  );
+  return {
+    uncovered_speech: subtract(inside, union(dialogue.map(({ start, end }) => [start, end])))
+      .filter(([start, end]) => end - start >= UNCOVERED_SECONDS)
+      .map(([start, end]) => [round(start, 2), round(end, 2)]),
+    unsupported_dialogue: dialogue
+      .filter((row) => !voiced.some(([start, end]) => start < row.end && end > row.start))
+      .map(({ index }) => index),
+  };
 }
 
-/** 响应时间换算为整片时间，已有修正行拥有优先权。 */
+/** 响应时间换算为整片时间，已有修正行拥有优先权。每次按当前行重新质控。 */
 export async function parse(directory) {
+  const { jsonrepair, JSONRepairError } = await import("jsonrepair");
+  const { speech: voiced, segments } = await load(path.join(directory, "video.json"));
+  const duration = segments.at(-1).end;
   const summary = [];
-  for (const [i, segment] of (await load(path.join(directory, "video.json"))).segments.entries()) {
+  for (const [i, segment] of segments.entries()) {
     const responseFile = path.join(directory, `${prefix(i)}.response.json`);
     const rowsFile = path.join(directory, `${prefix(i)}.rows.json`);
     const hasResponse = await exists(responseFile),
@@ -373,7 +476,8 @@ export async function parse(directory) {
       incomplete:
         hasResponse && (response.status !== "completed" || Boolean(response.incomplete_details)),
       invalid_lines: invalid,
-      uncovered_voice: await uncovered_voice(path.resolve(directory, segment.path), segment, rows),
+      invalid_rows: rows.flatMap((row, index) => (valid_row(row, duration) ? [] : [index])),
+      ...evidence(voiced, segment, rows, duration),
     });
   }
   return summary;
@@ -382,30 +486,18 @@ export async function parse(directory) {
 /** 校验并合并字幕，原文进包，译文留作工程提交材料。 */
 export async function items(directory) {
   const { segments } = await load(path.join(directory, "video.json"));
+  const duration = segments.at(-1).end;
   const rows = [];
   for (const i of segments.keys()) {
     const file = path.join(directory, `${prefix(i)}.rows.json`);
     if (!(await exists(file))) throw new Error(`分段 ${i} 尚无识别结果`);
-    rows.push(...(await load(file)));
+    for (const [index, row] of (await load(file)).entries()) {
+      if (!valid_row(row, duration))
+        throw new Error(`分段 ${i} 第 ${index} 行不合法：${JSON.stringify(row)}`);
+      rows.push(row);
+    }
   }
-  for (const [i, row] of rows.entries()) {
-    if (
-      !record(row) ||
-      !(
-        Number.isFinite(row.start) &&
-        Number.isFinite(row.end) &&
-        0 <= row.start &&
-        row.start < row.end &&
-        row.end <= segments.at(-1).end
-      ) ||
-      !["dialogue", "screen"].includes(row.kind) ||
-      typeof row.src !== "string" ||
-      !row.src.trim() ||
-      typeof row.dst !== "string"
-    )
-      throw new Error(`第 ${i} 行不合法：${JSON.stringify(row)}`);
-  }
-  rows.sort((a, b) => a.start - b.start); // 校验后排序，坏时间不能参与比较。
+  rows.sort((a, b) => a.start - b.start);
   await save(
     path.join(directory, "items.json"),
     rows.map(({ src, dst: _dst, ...row }) => ({ ...row, message: src })),
@@ -419,6 +511,7 @@ export async function items(directory) {
 
 /** 只打包清单指定的交付材料，失败时保留已有完整包。 */
 export async function pack(directory, output) {
+  const { default: JSZip } = await import("jszip");
   const manifest = await load(path.join(directory, "video.json"));
   await load(path.join(directory, "items.json"));
   const members = ["video.json", "items.json", ...manifest.segments.map((segment) => segment.path)];

@@ -5,46 +5,45 @@ description: 导入、识别、翻译、审校视频或音频，或生成视频�
 
 # 视频与音频
 
-`.video` 是 ZIP 包。后端只按 `items.json` 的 `message` 和可选的 `name` 建立条目，其余成员和字段由本技能解释：
+目标是得到忠实于实际声音和画面的双语字幕：台词不漏、不臆造，时间贴合说话，观众需要读懂的画面文字单独保留。
+
+## 包与工作目录
+
+`.video` 是 ZIP 包。后端只按 `items.json` 的 `message` 和可选的 `name` 建立条目，其余成员和字段由本技能解释。时间均为整片秒数。
 
 |成员|内容|
 |---|---|
-|`video.json`|`video` 为原画面尺寸，纯音频为 `null`。`segments` 为分段，时间为整片秒数|
+|`video.json`|`video` 为原画面尺寸，纯音频为 `null`。`speech` 为导入时检测到的人声区间，无音轨为 `null`。`segments` 为分段|
 |`segments/NNN.mp4`|模型实际读取的分段，长边不超过 1024，每秒一帧|
-|`items.json`|字幕记录，下标是条目行号。`message` 为原文，`start`、`end` 为整片秒数，`kind` 为 `dialogue` 或 `screen`，可选 `an` 为画面位置（ASS 小键盘编号）。导入时为 `[]`|
+|`items.json`|字幕记录，下标是条目行号。`message` 为原文，`start`、`end` 为时间，`kind` 为 `dialogue` 或 `screen`，可选 `an` 为画面位置（ASS 小键盘编号）|
 |`render.mjs`|可选，用户要求固定的定制渲染|
 
-包内不保存译文，译文只在工程条目中。脚本位于本技能的 `scripts/`，用 `read_skill` 返回的 `base_url` 定位：`media.mjs` 负责检查、切段、解析、合并与打包，`recognize.mjs` 负责准备请求清单与采用识别结果，`render.mjs` 是默认渲染。每个资产使用独立的工作目录 `work/video/<资产名>/`，目录结构与包相同。
+译文只保存在工程条目中，不进包。每个资产使用独立的工作目录 `work/video/<资产名>/`，结构与包相同。`scripts/` 中的脚本分工如下：
 
-流程与其他格式一致：导入只切段封装，不请求模型。识别属于翻译阶段，在用户要求翻译时执行。
+- `media.mjs`：检查、切段、质控、合并与打包。
+- `recognize.mjs`：识别请求与采用。
+- `render.mjs`：默认渲染。
+
+开始操作前用 `media.missing()` 检查依赖与人声模型。有缺失时：
+
+1. 告诉用户首次使用需要下载约 100 MB 的功能组件，请保持网络畅通。
+2. 把 `packages` 一次交给 `npm.run(['install', ...])`。
+3. 按 `model` 中的地址下载模型，哈希一致后保存到 `file`。
 
 ## 导入
 
-```js
-import { npm } from '@lg/npm';
-await npm.run(['install',
-  `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@^5.2.5`,
-  'jsonrepair@^3.15.0', 'jszip@^3.10.2']);
-const media = await import(new URL('scripts/media.mjs', base_url).href);
-console.log(await media.inspect('D:/Videos/ep01.mkv'));
-```
+导入只切段封装，不请求模型。
 
-依赖缺失时执行上述安装。平台子包直接包含二进制。后续执行重新导入 `media.mjs`。用 `console.log` 查看函数返回的结果。
+- 有文本字幕流时，先用 `ask_user` 询问是否改为提取字幕。提取比识别准确，用 `media.ffmpeg(args)` 导出后按 `project-operation` 导入。
+- 有多条音轨时请用户选择。`track` 是 `media.inspect(来源)` 返回的 `audio` 中从零开始的位置。
 
-`inspect` 返回时长、原画面尺寸和各类流。`video` 为 `null` 表示纯音频，封面图片不算画面。
-
-- 有文本字幕流（如 `subrip`、`ass`、`mov_text`、`webvtt`）时，先用 `ask_user` 询问是否改为提取字幕。提取字幕比识别准确，用 `media.ffmpeg(['-i', 来源, '-map', 流编号, 输出路径])` 导出为 `.srt` 或 `.ass` 后按 `project-operation` 导入。图形字幕不是文本，不能直接提取。
-- 有多条音轨时，请用户选择。`prepare` 的 `track` 是 `audio` 列表中从零开始的位置。
-
-1. 调用 `await media.prepare(来源, 'work/video/<资产名>', { track: 音轨 })`。脚本按停顿切成不超过 210 秒的分段并转码，纯音频补黑色画面。中断后用相同参数续跑。旧 Python 导入半成品需要新工作目录。已完成的分段、响应和修正行仍可用于识别与提交。
-2. 调用 `await media.pack('work/video/<资产名>', 'work/video/<原视频主名>.video')`。包超过 900 MiB 时，请用户先拆分原素材。
-3. 按 `project-operation` 新增该资产。识别前回执的条目数为 0。
+用 `media.prepare(来源, 工作目录, { track })` 切段。中断后用相同参数续跑。完成后用 `media.pack(工作目录, 'work/video/<原视频主名>.video')` 打包，再按 `project-operation` 新增。
 
 ## 识别
 
-`items.json` 为空的视频资产是待翻译目标，翻译请求对它执行识别。按 `translation` 确定流程，翻译并审校的顺序为识别 → 按识别结果补齐术语 → 审校。已有条目后，补译、重译和审校按 `translation` 处理条目，需要重新转写原文时才重新识别。
+识别同时产出原文和译文，取代 `translation` 流程中的翻译步骤。它在用户要求翻译时执行。识别前没有原文，需要补齐术语时在识别后进行。已有条目后，补译、重译和审校按 `translation` 处理条目。需要重新转写原文时才重新识别。
 
-首次识别可续用导入时的工作目录。目录不存在时，从当前 `sources/<file_path>/` 复制。重新识别使用新的副本，避免复用旧响应和旧样式。中断后续用本次工作目录。
+首次识别可续用导入时的工作目录，目录不存在时从当前 `sources/<file_path>/` 复制。重新识别使用新的副本，避免复用旧响应和旧样式。
 
 ### 提示词
 
@@ -65,70 +64,67 @@ console.log(await media.inspect('D:/Videos/ep01.mkv'));
 
 ### 请求
 
-先在 `workspace_run` 中读取 `model_configs.json`，选择用户配置的、支持 `responses` 的接入点。模型、思考等级、输出上限、并发和请求时限由模型设置拥有。协议支持不代表模型支持视频。
+`recognize.prepare(工作目录, { prompt, segments? })` 写出 `batch_llm_request` 的请求清单。
 
-```js
-const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
-console.log(await recognize.prepare('work/video/ep01', { prompt }));
-```
+- 不指定 `segments` 时，跳过已有响应或修正行的分段。
+- 指定 `segments` 时，为这些分段建立独立的请求材料，旧响应和修正行保留。
 
-`prepare` 逐段写入请求文件，返回 `request_file`。`requested: 0` 时无需请求。不指定 `segments` 时跳过已有响应或修正行的分段。指定 `segments: [3, 7]` 时建立独立请求材料，保留旧响应和修正行。
+支持 `responses` 协议的接入点不一定支持视频。
 
-接着在顶层调用 `batch_llm_request`，传入选定的 `model_config_id` 和准备好的 `request_file`。整批不受工作区脚本时限约束。工具返回 `result_file` 后，再执行：
+`recognize.collect(工作目录, result_file)` 把成功的响应放入独立的候选目录。采用前，候选不影响工作目录。每个请求载荷可达数十 MB，批量结束后可以删除 `prepare` 目录中的 `.request.json`。
 
-```js
-console.log(await recognize.collect('work/video/ep01', result_file));
-```
+## 质控与修正
 
-`collect` 返回候选目录 `candidate` 和成功、失败分段。先对候选目录解析与质控，再用 `await recognize.accept('work/video/ep01', candidate, 已审阅分段数组)` 采用结果。提交使用主目录。候选失败保留旧字幕。
-
-续跑只为失败或未完成分段准备新清单。已经成功的结果可以直接读取，不能再次付费请求。没有本地回执的请求可能已经计费，重试前说明这项不确定性。工具正常收尾后，可以清理本次 `prepare` 目录中的 `.request.json` 大载荷副本，保留清单与结果。
-
-### 质控
-
-调用 `console.log(await media.parse(候选目录))`。脚本把每段响应换算为整片时间，写入 `NNN.rows.json`，已存在的文件保留不覆盖，修正直接改这个文件。返回的质控摘要包含：
+`media.parse(目录)` 把响应换算为整片时间，写入 `NNN.rows.json`。已存在的文件不覆盖，修正直接改这个文件。每次调用都按当前行返回各分段的事实：
 
 |字段|含义|
 |---|---|
-|`rows`|当前行数|
 |`incomplete`|响应没有正常结束，常见于输出超长|
 |`invalid_lines`|无法解析的输出行|
-|`uncovered_voice`|有声音但没有对话覆盖的整片时间段。音乐和音效也会出现|
+|`invalid_rows`|结构或时间不合法的行号，修正后才能采用|
+|`uncovered_speech`|检测到人声、但没有 `dialogue` 覆盖的时间段，至少 0.3 秒。无音轨时为 `null`|
+|`unsupported_dialogue`|时间范围内完全没有人声的 `dialogue` 行号|
 
-这些只是事实，由你结合内容判断如何处理：
+这些字段只提供线索，需要结合内容判断：
 
-- 阅读识别结果，核对原文与译文是否对应，否定、数字、人名和因果是否一致，`dialogue` 与 `screen` 是否混淆，是否有复读、时间越界或错位。分段交界处可能有被切开或重复的句子和画面文字，合并为一行。
-- 需要看画面时，用 `await media.ffmpeg(['-ss', String(分段内秒数), '-i', 分段路径, '-frames:v', '1', 输出图片路径])` 从 `segments/NNN.mp4` 截帧，再用 `ws.emitImage` 查看。分段内时间是整片时间减去该段 `start`。小字仍看不清时从原素材截帧。
-- 只依据画面、上下文或用户提供的证据修改。不能凭剧情常识补写台词或反转否定。无法确认的内容列为待确认项告诉用户。
-- 局部问题直接改 `NNN.rows.json`。整段质量差时重新请求该段，必要时调整提示词。重新请求会产生费用，同一分段反复不理想时，用 `ask_user` 说明问题再决定。
+- 人声检测针对说话声。配乐和音效大多不会出现，歌声、喊叫、人群声和背景台词会出现。
+- 没有告警不能证明完整。约一成漏掉的单句不会留下告警，短句的比例更高。
+- `uncovered_speech` 可能来自漏句、时间偏移或结尾截短，也可能是无需翻译的声音。
+- `unsupported_dialogue` 可能来自臆造或时间错位。约一成真实台词也会出现在这里，多为短促的语气词、喘息和低语，不能据此删除。
+- `screen` 的时间由画面决定，不参与人声对照。
+- 多人同时说话时，字幕可以重叠。
 
-### 提交
+识别特有的问题包括 `dialogue` 与 `screen` 混淆和复读。分段交界处的句子和画面文字可能被切开或重复，重复的合并为一行。译文质量按 `translation` 的审校处理。
 
-1. 调用 `console.log(await media.items(工作目录))`。脚本合并各段的行，写出 `items.json` 和 `translations.json`。后者保存识别译文，不进包。
-2. 调用 `await media.pack(工作目录, 'work/video/<原视频主名>.video')`。
-3. 按 `project-operation` 的「更新文件」提交并继承译文。继承保留原文未变条目的已有译文。之后按 `row_number` 找到仍未完成的条目，确认 `src` 一致，用当前 `item_id` 和 `fp` 把 `translations.json` 中非空的 `dst` 写入 `changes.items`。
-4. 核对被拒绝的条目和完成统计。
+修正只依据实际证据：
 
-只重新识别部分分段时，为保留的分段写入 `NNN.rows.json`。取起点落在该段内的 `items.json` 记录，把 `message` 改名为 `src`。当前条目译文作为 `dst`，没有译文时写空字符串。保留段没有记录时也写入 `[]`。
+- 时间贴合说话的起止。一段内的对话整体偏移时，可以统一平移，`screen` 不跟随。
+- 不能为了消除告警把字幕拉长去覆盖整段声音，这会掩盖真正漏掉的句子。
+- 需要看画面时从分段截帧。分段内时间是整片时间减去该段 `start`。小字看不清时从原素材截帧。
+- 需要知道实际说了什么，或连续对白中每句的位置时，重新请求所在分段，并在提示词中指出要核对的时间段。
+- 不能凭字数、剧情或常识推算台词和时间。
+- 重新请求会产生费用。同一分段反复不理想时，用 `ask_user` 说明问题再决定。
+
+告警都有了解释后，用 `recognize.accept(工作目录, 候选目录, 已审阅分段数组)` 采用。它只接受结构合法的行。
+
+## 提交
+
+`media.items(工作目录)` 合并各段的行，写出 `items.json` 和 `translations.json`。`translations.json` 保存识别译文，不进包。打包后按 `project-operation` 的「更新文件」提交并继承译文。继承只保留原文未变条目的译文。其余条目按 `row_number` 确认 `src` 一致后，用当前 `item_id` 和 `fp` 把非空的 `dst` 写入 `changes.items`。
+
+只重新识别部分分段时，为保留的分段写入 `NNN.rows.json`：
+
+- 取起点落在该段内的 `items.json` 记录，`message` 改名为 `src`。
+- 当前条目译文作为 `dst`，没有译文时写空字符串。
+- 该段没有记录时写 `[]`。
 
 ## 生成与交付
 
-按 `project-operation` 生成。`generateFiles()` 不直接输出视频字幕，每个 `.video` 资产的写回输入位于 `<generic_input_path>/<file_path>/items.json`，正文已确定为最终译文。用默认渲染写出与原视频同主名的 ASS：
+`generateFiles()` 之后，用 `render({ source, input, translated, bilingual })` 写出与原视频同主名的 ASS：
 
-```js
-const { render } = await import(new URL('scripts/render.mjs', base_url).href);
-await render({
-  source: 'sources/ep01.video',
-  input: `${generic_input_path}/ep01.video/items.json`,
-  translated: `${output_path}/ep01.ass`,
-  bilingual: `${bilingual_output_path}/ep01.ass`,
-});
-```
+- `source` 是 `sources/` 中的包目录。
+- `input` 是 `<generic_input_path>/<file_path>/items.json`。
+- `translated` 与 `bilingual` 是译文与双语输出路径。
 
-包内有 `render.mjs` 时，读取并检查后改用它。交付时说明：字幕文件改成与原视频相同的主名并放在同一目录，播放器即可自动加载。
+包内有 `render.mjs` 时，读取并检查后改用它。交付时告诉用户：字幕与原视频同名并放在同一目录，播放器即可自动加载。
 
-### 样式
-
-默认渲染中，对话在底部居中，画面文字在顶部居中或按 `an` 定位，字号随画面高度缩放。用户要求其他样式时，例如字体、颜色、双语排版、说话人区分，把 `render.mjs` 复制到 `work/` 修改，保持导出签名不变，生成后抽查 ASS。
-
-用户要求固定该样式时，把定制程序放入包目录的 `render.mjs`，重新打包后按「更新文件」提交。条目原文不变，继承会保留全部译文。
+默认渲染中，对话在底部居中，画面文字在顶部居中或按 `an` 定位，字号随画面高度缩放。用户要求其他样式时，把 `render.mjs` 复制到 `work/` 修改，保持导出签名不变。用户要求固定该样式时，放入包目录的 `render.mjs`，重新打包后按「更新文件」提交。条目原文不变，继承会保留全部译文。

@@ -1,25 +1,9 @@
-import { readFile, writeFile, rename, access, stat, mkdir, mkdtemp } from "node:fs/promises";
+import { readFile, writeFile, mkdir, mkdtemp } from "node:fs/promises";
 import path from "node:path";
-const VIDEO_INPUT_MAX_BYTES = 50_000_000;
-const VIDEO_REQUEST_MAX_BYTES = 64_000_000;
-/** 只用已校验的分段序号生成文件名。 */
-const prefix = (index) => String(index).padStart(3, "0");
-/** 缺失表示尚无成果，其余读取错误继续上抛。 */
-const exists = async (file) =>
-  access(file).then(
-    () => true,
-    (error) => {
-      if (error.code === "ENOENT") return false;
-      throw error;
-    },
-  );
-/** 读取本次工作目录中的 JSON 材料。 */
-const load = async (file) => JSON.parse(await readFile(file, "utf8"));
-/** 完整写入后再替换目标，失败保留旧成果。 */
-async function save(file, value) {
-  await writeFile(file + ".tmp", JSON.stringify(value, null, 2));
-  await rename(file + ".tmp", file);
-}
+import { exists, load, prefix, save, valid_row } from "./media.mjs";
+
+const VIDEO_INPUT_MAX_BYTES = 50_000_000; // 单个视频输入的接口上限。
+const VIDEO_REQUEST_MAX_BYTES = 64_000_000; // 单个请求体的接口上限。
 
 /** 逐项准备原生载荷。重识别只建立新材料，已有人工修正仍保留。 */
 export async function prepare(directory, { prompt, segments: targets }) {
@@ -47,11 +31,9 @@ export async function prepare(directory, { prompt, segments: targets }) {
   const requests = [];
   for (const index of queue) {
     const file = path.join(root, video.segments[index].path);
-    const info = await stat(file);
-    if (!info.isFile() || info.size === 0 || info.size >= VIDEO_INPUT_MAX_BYTES)
-      throw new Error("视频分段必须为非空且小于 50 MB 的文件");
     const bytes = await readFile(file);
-    if (bytes.length >= VIDEO_INPUT_MAX_BYTES) throw new Error("视频分段超过 50 MB");
+    if (bytes.length === 0 || bytes.length >= VIDEO_INPUT_MAX_BYTES)
+      throw new Error("视频分段必须非空且小于 50 MB");
     const body = JSON.stringify({
       input: [
         {
@@ -117,10 +99,11 @@ export async function collect(directory, result_file) {
   return { candidate, succeeded, failed };
 }
 
-/** 调用方审阅候选行后显式采用，缺少候选行时保留原成果。 */
+/** 调用方审阅候选行后显式采用。全部候选通过结构校验才写入，失败时保留原成果。 */
 export async function accept(directory, candidate, segments) {
   const root = path.resolve(directory);
   const video = await load(path.join(root, "video.json"));
+  const duration = video.segments.at(-1).end;
   const prepared = [];
   for (const index of new Set(segments)) {
     if (!Number.isInteger(index) || !video.segments[index]) throw new Error(`分段 ${index} 不存在`);
@@ -128,6 +111,8 @@ export async function accept(directory, candidate, segments) {
     const rows = await load(path.join(candidate, `${prefix(index)}.rows.json`));
     if (!Array.isArray(rows) || response.status !== "succeeded")
       throw new Error(`分段 ${index} 尚未完成质控准备`);
+    const invalid = rows.findIndex((row) => !valid_row(row, duration));
+    if (invalid !== -1) throw new Error(`分段 ${index} 第 ${invalid} 行不合法`);
     prepared.push({ index, response, rows });
   }
   for (const { index, response, rows } of prepared) {
