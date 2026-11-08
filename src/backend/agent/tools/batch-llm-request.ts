@@ -1,3 +1,4 @@
+import { AGENT_MODEL_USAGES } from "../../../domain/model";
 import { Type, type Static } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import {
@@ -12,29 +13,13 @@ import {
   normalize_agent_tool_error,
 } from "../tool-definition";
 
-// 工具协议要求普通对象根，互斥选模放在必填的 `model` 内。
+// 工具只消费用户配置的用途，模型身份由后端解析。
 const BATCH_LLM_REQUEST_SCHEMA = Type.Object(
   {
-    model: Type.Union([
-      Type.Object(
-        {
-          config_id: Type.String({
-            minLength: 1,
-            pattern: "\\S",
-            description: "从 `model_configs.json` 的 `model_config_id` 读取配置 ID",
-          }),
-        },
-        { additionalProperties: false },
-      ),
-      Type.Object(
-        {
-          usage: Type.Literal("media", {
-            description: "用户选择的音视频模型，跟随时使用当前主控生效配置",
-          }),
-        },
-        { additionalProperties: false },
-      ),
-    ]),
+    model_usage: Type.Union(
+      AGENT_MODEL_USAGES.map((usage) => Type.Literal(usage)),
+      { description: "必填模型用途：agent 主控、agent_batch_translation 翻译、agent_media 音视频" },
+    ),
     request_file: Type.String({
       minLength: 1,
       pattern: "\\S",
@@ -58,8 +43,8 @@ export function create_agent_batch_llm_request_tool(
       "### 执行",
       "",
       "- 用 `workspace_run` 准备清单和输入文件。",
-      '- 音视频首轮识别、重新识别和补查使用 `model: { usage: "media" }`。后端采用用户的音视频模型。不兼容时请用户调整功能模型。更换模型须由用户选择。',
-      '- 其它独立请求用 `model: { config_id: "配置 ID" }` 选择 `model_configs.json` 中的配置。',
+      "- 使用必填的 `model_usage` 选择 `agent`、`agent_batch_translation` 或 `agent_media`，从 `function_models.json` 查看输入格式。",
+      "- 音视频首轮识别、重新识别和补查使用 `agent_media`。不兼容时请用户调整功能模型。",
       "- 同批模型、生成参数与限流固定。",
       '- 清单格式：`{"format":"messages","requests":[{"id":"001","input_file":"inputs/001.json"}]}`。`requests` 非空，`id` 为唯一非空字符串。',
       `- \`request_file\` 相对工作区，\`input_file\` 相对清单目录，均支持绝对路径。每个 JSON 文件不超过 ${NATIVE_REQUEST_MAX_BYTES / 1_000_000} MB，运行期间不要改写。`,

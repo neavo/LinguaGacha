@@ -85,6 +85,45 @@ function sync_full(
 }
 
 describe("proofreading-reader", () => {
+  it("警告总数只统计成功译文，每种警告按条目去重，增量修正后同步更新", () => {
+    const reader = createProofreadingReader();
+    expect(reader.read_warning_count()).toBe(0);
+    sync_full(reader, {
+      projectId: "warnings.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 2,
+      quality: create_quality(),
+      processingConfig: create_processing_config(),
+      upsertItems: [
+        create_item({
+          item_id: 1,
+          src: "HP",
+          dst: "かな",
+          name_src: "Alice",
+          name_dst: "かな",
+          status: "PROCESSED",
+        }),
+        create_item({ item_id: 2, src: "HP", dst: "かな", status: "NONE" }),
+      ],
+    });
+    expect(reader.read_warning_count()).toBe(2);
+    reader.apply_item_delta({
+      projectId: "warnings.lg",
+      revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
+      upsertItems: [
+        create_item({
+          item_id: 1,
+          src: "HP",
+          dst: "生命值",
+          name_src: "Alice",
+          name_dst: "艾丽丝",
+          status: "PROCESSED",
+        }),
+      ],
+    });
+    expect(reader.read_warning_count()).toBe(0);
+  });
+
   it("增量维护计数和默认顺序，文件归属变化使旧视图失效", () => {
     const reader = createProofreadingReader();
     const input: ProofreadingSyncInput = {
@@ -152,7 +191,6 @@ describe("proofreading-reader", () => {
     expect(reader.build_filter_panel({ filters: updated.defaultFilters })).toEqual(
       fresh.build_filter_panel({ filters: full.defaultFilters }),
     );
-    expect(reader.read_warning_summary()).toEqual(fresh.read_warning_summary());
   });
 
   it("标点警告进入筛选和统计，并在译文修正后增量清除", () => {
@@ -184,10 +222,6 @@ describe("proofreading-reader", () => {
         .filter((row) => row.kind === "item")[0]
         ?.item.warnings.map((warning) => warning.code),
     ).toEqual(["PUNCTUATION_MISMATCH"]);
-    expect(service.read_warning_summary()).toEqual({
-      total_count: 1,
-      entries: [{ code: "PUNCTUATION_MISMATCH", count: 1 }],
-    });
 
     service.apply_item_delta({
       projectId: "E:/demo/sample.lg",
@@ -203,7 +237,6 @@ describe("proofreading-reader", () => {
         .rows.filter((row) => row.kind === "item")[0]?.item.warnings,
     ).toEqual([]);
     expect(service.read_list_view(query).row_count).toBe(0);
-    expect(service.read_warning_summary()).toEqual({ total_count: 0, entries: [] });
   });
 
   it("姓名增量修正刷新窗口与警告计数，返回证据不共享缓存引用", () => {
@@ -232,10 +265,6 @@ describe("proofreading-reader", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(service.read_warning_summary()).toEqual({
-      total_count: 1,
-      entries: [{ code: "FOREIGN_CHAR_RESIDUE", count: 1 }],
-    });
     const first = service.read_items_by_row_ids({ row_ids: ["1"] })[0]!;
     const residue = first.warnings.find((warning) => warning.code === "FOREIGN_CHAR_RESIDUE")!;
     residue.fragments[0] = "changed";
@@ -262,7 +291,6 @@ describe("proofreading-reader", () => {
     expect(row?.kind === "item" ? row.item.warnings : null).toEqual([
       { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: ["かな"] },
     ]);
-    expect(service.read_warning_summary().total_count).toBe(1);
   });
 
   it("默认筛选选中翻译成功和尚未完成两组", () => {
@@ -1117,7 +1145,6 @@ it("混合窗口统一工程顺序、页面状态、筛选与计数，并保留�
     without_glossary_miss_count: 5,
     glossary_term_entries: [],
   });
-  expect(reader.read_warning_summary()).toEqual({ total_count: 0, entries: [] });
   reader.sync_files([files[1]!, files[0]!, files[2]!], 2);
   expect(reader.read_list_window({ view_id: all_view.view_id, start: 0, count: 10 }).rows).toEqual(
     [],

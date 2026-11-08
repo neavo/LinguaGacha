@@ -537,7 +537,7 @@ export class FileFormatService {
   public async write_items(
     items: Item[],
     context: FileFormatServiceWriteContext,
-    generic_path?: string, // 通用写回输入仅在调用方指定独立目录时生成。
+    writeback_path?: string, // 通用与视频写回输入仅在调用方指定独立目录时生成。
     bilingual_files?: readonly string[],
   ): Promise<void> {
     const { paths, asset_reader } = context;
@@ -555,7 +555,7 @@ export class FileFormatService {
     await this.write_subtitles(items, context, bilingual_files);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
-    if (generic_path !== undefined) {
+    if (writeback_path !== undefined) {
       // 视频字幕的样式与渲染归 Agent，与通用数据共用写回输入。
       const groups = { GENERIC: group_items(items, "GENERIC"), VIDEO: group_items(items, "VIDEO") };
       for (const file of context.source_files) {
@@ -569,7 +569,7 @@ export class FileFormatService {
           file.path,
         );
         await this.native_fs.write_file(
-          path.join(generic_path, file.path, GENERIC_ITEMS_MEMBER),
+          path.join(writeback_path, file.path, GENERIC_ITEMS_MEMBER),
           output,
         );
       }

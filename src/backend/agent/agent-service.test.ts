@@ -352,7 +352,7 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       : fauxAssistantMessage(
           fauxToolCall(
             "batch_llm_request",
-            { model: { usage: "media" }, request_file: "work/requests.json" },
+            { model_usage: "agent_media", request_file: "work/requests.json" },
             { id: "media" },
           ),
           { stopReason: "toolUse" },
@@ -368,7 +368,7 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
               ? "batch_llm_request"
               : "batch_item_translation",
             retry && fake_agent_state.batch_request_on_retry
-              ? { model: { config_id: "fixture" }, request_file: "work/requests.json" }
+              ? { model_usage: "agent", request_file: "work/requests.json" }
               : { item_statuses: ["NONE"] },
             { id: "batch-translation" },
           ),

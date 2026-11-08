@@ -361,9 +361,9 @@ export class TranslationWorkUnitRunner {
   ): WorkUnitLogEntry[] {
     const app_language = normalize_setting_snapshot(context.request.config_snapshot).app_language;
     const ended_at = Date.now();
-    const stats = this.t(app_language, "app.log.engine_task_success", {
+    const stats = this.t(app_language, "app.log.task_stats", {
       CT: String(response.output_tokens),
-      LINES: String(context.request_items.length),
+      COUNT: String(context.request_items.length),
       PT: String(response.input_tokens),
       RT: String(response.reasoning_tokens),
       TIME: ((ended_at - context.start_time) / 1000).toFixed(2),
@@ -392,19 +392,19 @@ export class TranslationWorkUnitRunner {
     const sections: Array<{ title: string; text: string }> = [];
     if (response.response_think.trim() !== "") {
       sections.push({
-        title: this.t(app_language, "app.log.engine_task_thinking_process"),
+        title: this.t(app_language, "app.log.thinking_process"),
         text: response.response_think.trim(),
       });
     }
     if (response_parts.rule_analysis_text.trim() !== "") {
       sections.push({
-        title: this.t(app_language, "app.log.engine_task_rule_analysis"),
+        title: this.t(app_language, "app.log.rule_analysis"),
         text: response_parts.rule_analysis_text.trim(),
       });
     }
     if (response_parts.translation_text.trim() !== "") {
       sections.push({
-        title: this.t(app_language, "app.log.translation_task_result"),
+        title: this.t(app_language, "app.log.model_response"),
         text: response_parts.translation_text.trim(),
       });
     }

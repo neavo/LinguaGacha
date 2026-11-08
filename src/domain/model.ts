@@ -73,6 +73,20 @@ export function is_pinned_model(model: Readonly<{ id?: unknown; type?: unknown }
 /** 可跟随用途以 null 表示跟随，失效选择也恢复为 null。 */
 export const AGENT_FUNCTION_USAGES = ["agent_batch_translation", "agent_media"] as const;
 export type AgentFunctionUsage = (typeof AGENT_FUNCTION_USAGES)[number];
+/** 批量工具只允许按这些用途解析用户配置。 */
+export const AGENT_MODEL_USAGES = ["agent", ...AGENT_FUNCTION_USAGES] as const;
+export type AgentModelUsage = (typeof AGENT_MODEL_USAGES)[number];
+/** 工作区只接收输入格式摘要，失效用途单独标为 `null`。 */
+export type AgentModelsSummary = Readonly<
+  Record<
+    AgentModelUsage,
+    Readonly<{
+      name: string;
+      model_id: string;
+      formats: readonly ("messages" | "responses")[];
+    }> | null
+  >
+>;
 
 /** 执行用途与可跟随主控的功能模型偏好。 */
 export type ModelSelection = {

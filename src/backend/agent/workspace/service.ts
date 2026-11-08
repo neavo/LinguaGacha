@@ -7,6 +7,7 @@ import { preview_file_changes } from "./file-changes";
 import type { ParsedAgentWorkspaceChanges } from "./changes";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
+import type { AgentModelsSummary } from "../../../domain/model";
 import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
 import type { AgentWorkspaceWarning } from "./schema";
 import { create_image_output, summarize_images } from "../tools/emit-image";
@@ -121,6 +122,7 @@ export type AgentWorkspaceImage = Readonly<{ path: string; image: AgentImage }>;
 
 /** 一次工作区执行的输入，`output` 只供界面观察运行中的日志末尾。 */
 export type AgentWorkspaceRunInput = Readonly<{
+  functionModels: AgentModelsSummary;
   script: string;
   timeoutMs: number;
   doing?: AgentWorkspaceRunRequest["doing"];
@@ -223,7 +225,6 @@ export class AgentWorkspaceService {
         "generate_staging_files" | "read_output_paths"
       >;
       pdfHost?: PDFHost | undefined;
-      readModelConfigs: () => JsonRecord[];
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -716,9 +717,13 @@ export class AgentWorkspaceService {
               );
         try {
           await this.native_fs.write_file(
-            path.join(this.root_path, "model_configs.json"),
-            JSON.stringify(this.options.readModelConfigs(), null, 2),
+            path.join(this.root_path, AGENT_WORKSPACE_PATHS.functionModels),
+            JSON.stringify(request.functionModels, null, 2),
           );
+          // 旧会话可能残留全量模型目录，刷新时一并移除。
+          await this.native_fs.remove_async(path.join(this.root_path, "model_configs.json"), {
+            force: true,
+          });
           const execution = await this.options.run(
             {
               workspacePath: this.root_path,

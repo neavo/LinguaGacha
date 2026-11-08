@@ -572,7 +572,7 @@ export class ModelService {
       source: "model",
     });
     this.log_manager?.info(
-      `${this.t(app_language, "app.log.api_test_messages")}\n${this.format_model_test_messages_for_log(messages)}`,
+      `${this.t(app_language, "app.log.request_messages")}\n${this.format_model_test_messages_for_log(messages)}`,
       { source: "model" },
     );
   }
@@ -587,21 +587,22 @@ export class ModelService {
   ): void {
     if (result.response_think === "") {
       this.log_manager?.info(
-        `${this.t(app_language, "app.log.api_test_response_result")}\n${result.response_result}`,
+        `${this.t(app_language, "app.log.model_response")}\n${result.response_result}`,
         { source: "model" },
       );
     } else {
       this.log_manager?.info(
-        `${this.t(app_language, "app.log.engine_task_thinking_process")}\n${result.response_think}`,
+        `${this.t(app_language, "app.log.thinking_process")}\n${result.response_think}`,
         { source: "model" },
       );
       this.log_manager?.info(
-        `${this.t(app_language, "app.log.api_test_response_result")}\n${result.response_result}`,
+        `${this.t(app_language, "app.log.model_response")}\n${result.response_result}`,
         { source: "model" },
       );
     }
     this.log_manager?.info(
-      this.t(app_language, "app.log.api_test_token_info", {
+      this.t(app_language, "app.log.task_stats", {
+        COUNT: "1",
         CT: result.output_tokens.toString(),
         PT: result.input_tokens.toString(),
         RT: result.reasoning_tokens.toString(),

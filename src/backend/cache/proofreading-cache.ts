@@ -26,7 +26,6 @@ import type {
   ProofreadingFilterPanelState,
   ProofreadingListView,
   ProofreadingItemRecord,
-  ProofreadingWarningSummary,
 } from "../../shared/proofreading/proofreading-types";
 import type { ProofreadingListWindow } from "../../shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
@@ -113,9 +112,9 @@ export class ProofreadingCache {
     return this.query_current(() => this.reader.read_warning_page(query));
   }
 
-  /** 读取当前评估运行态中的 warning 类型计数。 */
-  public async warningSummary(): Promise<ProofreadingCacheResult<ProofreadingWarningSummary>> {
-    return this.query_current(() => this.reader.read_warning_summary());
+  /** 生成前读取当前评估的警告总数，不创建列表视图。 */
+  public async warningCount(): Promise<ProofreadingCacheResult<number>> {
+    return this.query_current(() => this.reader.read_warning_count());
   }
 
   /**

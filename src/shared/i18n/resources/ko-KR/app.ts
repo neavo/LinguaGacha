@@ -40,6 +40,7 @@ export const ko_kr_app = {
     },
   },
   action: {
+    next: "다음",
     move_to_top: "맨 위로 이동",
     move_to_bottom: "맨 아래로 이동",
     add: "추가",
@@ -198,17 +199,18 @@ export const ko_kr_app = {
     },
   },
   translation_generation: {
+    agent_request_without_review: "교정 단계를 건너뛰고 모든 번역문을 생성해 주세요.",
     agent_request: "모든 번역을 생성해 줘",
     action: "번역문 생성",
     confirmation: {
       generic_description:
-        "이 프로젝트에는 범용 데이터 패키지가 있습니다. 모든 번역을 생성하려면 AGENT를 사용하세요. 직접 생성하면 이 패키지를 건너뜁니다.",
+        "이 프로젝트에는 오디오·동영상 또는 범용 데이터 패키지가 있습니다. 직접 생성하면 이 파일을 건너뜁니다. AGENT로 처리해 주세요 …",
       description: "현재 사용 가능한 번역문을 생성할까요 …?",
       checking: "프로젝트 파일 및 교정 경고 확인 중 …",
       check_failed:
-        "프로젝트 파일 또는 교정 경고를 확인하지 못했습니다. 현재 번역을 생성할 수 있습니다 …",
+        "프로젝트 파일 또는 교정 경고를 확인하지 못했습니다. 다시 확인하거나 AGENT에 처리를 맡기세요 …",
       warning_description:
-        "교정 경고가 {COUNT}개 감지되었습니다. 경고가 반드시 오류를 의미하지는 않지만, 먼저 AGENT로 자동 교정을 최소 한 번 실행하는 것을 권장합니다. 번역문을 계속 생성할까요 …?",
+        "교정 경고가 {COUNT}개 감지되었습니다. 경고가 반드시 오류를 의미하지는 않지만, 먼저 AGENT로 자동 교정을 최소 한 번 실행하는 것을 권장합니다. 계속 진행할까요 …?",
       retry_check: "다시 확인",
       generate_directly: "직접 생성",
     },
@@ -257,32 +259,36 @@ export const ko_kr_app = {
     },
   },
   log: {
+    task_started:
+      "작업 시작: {RUN} · {NAME} / {MODEL} · {FORMAT} · {TOTAL}개 · 동시 실행 {CONCURRENCY} · RPM {RPM}",
+    task_finished:
+      "작업 종료: {RUN} · {STATUS} · 성공 {SUCCEEDED} · 실패 {FAILED} · 미완료 {UNFINISHED} · 중지 출처 {STOP}\n{PATH}",
+    publish_failed: "결과 게시 실패: {ERROR}",
+    usage_incomplete: "사용량 불완전, 누락분 알 수 없음",
     api_test_fail: "API 테스트에 실패했습니다 …",
     api_test_key: "테스트 중인 키:",
-    api_test_messages: "작업 프롬프트:",
+    request_messages: "작업 프롬프트:",
     api_test_result: "API {COUNT}개 테스트 완료, 성공 {SUCCESS}개, 실패 {FAILURE}개 …",
     api_test_result_failure: "실패한 키:",
-    api_test_response_result: "모델 응답 내용:",
+    model_response: "모델 응답 내용:",
     api_test_timeout: "요청 시간 초과({SECONDS}초)",
-    api_test_token_info: "소요 시간 {TIME}초, 입력 {PT} Tokens, 생각 {RT} Tokens, 출력 {CT} Tokens",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "기본 프리셋을 자동으로 불러왔습니다: {NAMES} …",
-    engine_api_model: "API 모델",
-    engine_api_name: "API 이름",
-    engine_api_url: "API 주소",
-    engine_task_done: "작업이 완료되었습니다 …",
-    engine_task_fail:
+    model_id: "API 모델",
+    model_name: "API 이름",
+    api_url: "API 주소",
+    task_done: "작업이 완료되었습니다 …",
+    task_failed:
       "일부 작업이 완료되지 않았습니다. 미처리 데이터가 있으니 처리 결과를 확인해 주세요 …",
-    engine_task_rule_analysis: "규칙 분석:",
-    engine_task_thinking_process: "생각 과정:",
-    engine_task_stop: "작업이 중지되었습니다 …",
-    engine_task_success:
-      "소요 시간 {TIME}초, 텍스트 {LINES}줄, 입력 {PT} Tokens, 생각 {RT} Tokens, 출력 {CT} Tokens",
+    rule_analysis: "규칙 분석:",
+    thinking_process: "생각 과정:",
+    task_stopped: "작업이 중지되었습니다 …",
+    task_stats:
+      "소요 시간 {TIME}초, 처리 항목 {COUNT}개, 입력 {PT} Tokens, 생각 {RT} Tokens, 출력 {CT} Tokens",
     model_response_invalid: "모델이 반환한 데이터가 유효하지 않습니다 …",
     request_failed: "요청 실패: {ERROR} …",
     request_timeout: "네트워크 요청 시간 초과",
     system_closed_dropped: "로그 시스템이 종료되어 새 로그를 버렸습니다: {MESSAGE}",
-    translation_task_result: "번역 결과:",
     translation_response_partially_invalid: "일부 번역문이 검증을 통과하지 못했습니다 …",
   },
   sort: { ascending: "오름차순", descending: "내림차순", clear: "정렬 해제" },

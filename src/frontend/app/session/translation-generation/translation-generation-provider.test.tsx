@@ -9,7 +9,8 @@ const api_fetch = vi.hoisted(() =>
   vi.fn(async () => ({
     projectPath: "test.lg",
     snapshot: { entries: [{ file_type: "TXT" }] },
-    warningSummary: { total_count: 0, entries: [] },
+    sectionRevisions: { files: 0 },
+    warningCount: 0,
   })),
 );
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch }));
@@ -34,7 +35,7 @@ vi.mock("@frontend/features/translation-generation/translation-generation-dialog
     state.phase === "closed" ? null : <div role="dialog" />,
 }));
 
-/** 两个入口模拟工作台与 Agent，共享当前工程的一次译文生成流程。 */
+/** 两个入口模拟工作台与任务完成通知，共享当前工程的一次译文生成流程。 */
 function GenerationEntry(): JSX.Element {
   const flow = useTranslationGeneration();
   return <button onClick={flow.request_generation}>生成译文</button>;

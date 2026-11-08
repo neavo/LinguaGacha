@@ -27,17 +27,17 @@ export class TranslationLogReplay {
     this.append_text("info", "", "engine");
     this.append_text(
       "info",
-      `${this.t(app_language, "app.log.engine_api_name")} - ${String(model["name"] ?? "")}`,
+      `${this.t(app_language, "app.log.model_name")} - ${String(model["name"] ?? "")}`,
       "engine",
     );
     this.append_text(
       "info",
-      `${this.t(app_language, "app.log.engine_api_url")} - ${String(model["api_url"] ?? "")}`,
+      `${this.t(app_language, "app.log.api_url")} - ${String(model["api_url"] ?? "")}`,
       "engine",
     );
     this.append_text(
       "info",
-      `${this.t(app_language, "app.log.engine_api_model")} - ${String(model["model_id"] ?? "")}`,
+      `${this.t(app_language, "app.log.model_id")} - ${String(model["model_id"] ?? "")}`,
       "engine",
     );
     this.append_text("info", "", "engine");
@@ -54,10 +54,10 @@ export class TranslationLogReplay {
   public task_run_finish(status: "stopped" | "done" | "error", app_language: unknown): void {
     const message =
       status === "done"
-        ? this.t(app_language, "app.log.engine_task_done")
+        ? this.t(app_language, "app.log.task_done")
         : status === "stopped"
-          ? this.t(app_language, "app.log.engine_task_stop")
-          : this.t(app_language, "app.log.engine_task_fail");
+          ? this.t(app_language, "app.log.task_stopped")
+          : this.t(app_language, "app.log.task_failed");
     this.append_text("info", "", "engine");
     this.append_text(status === "error" ? "warning" : "info", message, "engine");
     this.append_text("info", "", "engine");

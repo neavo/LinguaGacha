@@ -4,7 +4,7 @@ import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import type { BatchRequestSummary } from "../../batch-request/batch-request-service";
 import { create_agent_batch_llm_request_tool } from "./batch-llm-request";
 
-it("显式配置与音视频用途互斥，合法参数传给批量执行入口", async () => {
+it("三个用途可调用，旧格式与未知用途在派发前拒绝", async () => {
   const summary: BatchRequestSummary = {
     run_id: "run",
     status: "done",
@@ -25,7 +25,7 @@ it("显式配置与音视频用途互斥，合法参数传给批量执行入口"
       arguments: args,
     } as ToolCall);
   const request = {
-    model: { config_id: "saved-config" },
+    model_usage: "agent",
     request_file: "work/requests.json",
   };
   expect(validate(request)).toEqual(request);
@@ -33,18 +33,19 @@ it("显式配置与音视频用途互斥，合法参数传给批量执行入口"
   const result = await tool.execute(request, ...agent_tool_call("batch", signal));
   expect(run).toHaveBeenCalledWith(request, signal);
   expect(result.details).toEqual(summary);
-  const media = { model: { usage: "media" }, request_file: "work/requests.json" };
-  expect(validate(media)).toEqual(media);
-  await tool.execute(media, ...agent_tool_call("media", signal));
-  expect(run).toHaveBeenLastCalledWith(media, signal);
+  for (const model_usage of ["agent_batch_translation", "agent_media"]) {
+    const media = { model_usage, request_file: "work/requests.json" };
+    expect(validate(media)).toEqual(media);
+    await tool.execute(media, ...agent_tool_call("media", signal));
+    expect(run).toHaveBeenLastCalledWith(media, signal);
+  }
   for (const invalid of [
     { request_file: "x" },
-    { model: { usage: "media" } },
-    { model: { usage: "media", config_id: "saved-config" }, request_file: "x" },
-    { model: {}, request_file: "x" },
-    { model: { usage: "other" }, request_file: "x" },
-    { model: { usage: "media" }, request_file: "" },
-    { model: { usage: "media" }, request_file: "  " },
+    { model: { usage: "media" }, request_file: "x" },
+    { model: { config_id: "saved-config" }, request_file: "x" },
+    { model_usage: "agent_media", request_file: "" },
+    { model_usage: "agent_media", request_file: "  " },
+    { model_usage: "other", request_file: "x" },
   ])
     expect(() => validate(invalid)).toThrow();
 });

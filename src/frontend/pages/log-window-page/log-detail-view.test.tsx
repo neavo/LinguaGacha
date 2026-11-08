@@ -81,6 +81,21 @@ describe("LogDetailView", () => {
     expect(view.textContent).not.toContain("不应单独展示的错误消息");
   });
 
+  it("请求结果共用摘要和段落，省略翻译对照", () => {
+    const view = render_detail({
+      kind: "request_result",
+      run_id: "run",
+      request_id: "one",
+      started_at: "start",
+      ended_at: "end",
+      summary: ["请求完成"],
+      sections: [{ title: "响应正文", text: "完整回答" }],
+    });
+    expect(view.textContent).toContain("请求完成");
+    expect(view.textContent).toContain("完整回答");
+    expect(view.querySelector(".log-detail-view__result")).toBeNull();
+  });
+
   it("可读正文使用纯文本编辑器，诊断单独展示", () => {
     const text = "译文生成失败 …\n原始原因";
     const view = render_detail(

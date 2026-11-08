@@ -237,6 +237,7 @@ export class BackendServices {
       llm_client,
       new NativeResponsesClient(user_agent, this.modelCatalog),
       this.modelAuth,
+      this.logManager,
     );
     const lifecycle = new ProjectLifecycleService(
       this.game_directory_operations,
@@ -365,6 +366,8 @@ export class BackendServices {
     };
     this.files = {
       translationGeneration: new TranslationFileGenerationService(
+        this.runtime_gate,
+        write_store,
         this.game_directory_operations,
         options.database,
         this.app_setting_service,

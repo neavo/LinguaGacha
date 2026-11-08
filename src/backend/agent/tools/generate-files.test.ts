@@ -13,6 +13,7 @@ it("宿主为每次生成选择独立的工作目录并透传生成结果", asyn
     output_path,
     bilingual_output_path: "bilingual",
     pdf_files: [],
+    excluded_files: [],
   }));
   const generate = create_file_generator(root, { generate_staging_files });
   const first = await generate(["book.txt"]),
@@ -30,6 +31,7 @@ it("生成请求拒绝脚本指定路径，取消后不进入生成端口", asyn
     output_path: "output",
     bilingual_output_path: "bilingual",
     pdf_files: [],
+    excluded_files: [],
   }));
   const controller = new AbortController();
   for (const bilingual_files of [undefined, true, [1]]) {

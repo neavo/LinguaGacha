@@ -106,7 +106,7 @@ console.log(JSON.stringify(result, null, 2));
 1. 按 `project_meta.json` 的 `files` 中的 `file_type` 加载对应的格式技能。有 `GENERIC` 时加载 `generic-data`，有 `VIDEO` 时加载 `video`。
 2. `counts.items_with_warnings` 大于零，且用户本次尚未决定是否审校、本对话也未完成审校时，用 `ask_user` 询问。第一项为直接生成，第二项为先审校再生成。选择审校时加载 `translation`。完成审校后继续。
 3. 提交本次交付所需的工程变更。再调用 `@lg/project` 的 `generateFiles(bilingual_files)`。
-4. 有 `GENERIC` 时，按 `generic-data` 用 `generic_input_path` 中的写回输入还原目标格式。有 `VIDEO` 时，按 `video` 渲染字幕。宿主未生成的双语成果按对应格式制作并验证。写回输入属于工作材料，不放入成果。
+4. 对照工程文件集合核对暂存生成范围。`excluded_files` 尚未处理。`writeback.files` 仍需完成格式处理。按 `generic-data` 或 `video` 处理 `writeback.input_path` 中的写回输入。宿主未生成的双语成果按对应格式制作并验证。写回输入不作为成果交付。
 5. 对照 `files` 核对原生产物与通用写回成果的完整集合。路径重叠时结合真实加载方式安排合并。带 `.reference` 标记的文件须结合资产来源和格式技能判断，不能只凭名称作为可安装文件交付。用户要求打包时，打包核对后的成果。
 6. 确定交付目录：
    - 用户指定了位置时，调用 `getOutputPaths(该目录)`。

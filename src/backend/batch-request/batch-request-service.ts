@@ -1,8 +1,11 @@
+import { build_batch_request_result_log } from "./batch-request-log";
+import { create_text_resolver } from "../../shared/i18n";
+import { resolve_app_locale } from "../../domain/app-language";
+import type { LogManager } from "../log/log-manager";
 import { AppError } from "../../shared/error";
 import path from "node:path";
 import { Type } from "typebox";
 import { Check } from "typebox/value";
-import { Model } from "../../domain/model";
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import {
   empty_batch_task_progress,
@@ -12,13 +15,14 @@ import {
 import { default_native_fs as fs } from "../../native/native-fs";
 import type { RuntimeLease } from "../runtime-operation-gate";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
-import { read_config_model_records } from "../model/model-config-resolver";
 import { read_model_request_snapshot, read_request_timeout_ms } from "../llm/llm-request";
 import type { LLMClientPort, LLMMessage, LLMRequestFacts } from "../llm/llm-types";
 import { NATIVE_REQUEST_MAX_BYTES, NativeResponsesClient } from "../llm/native-responses";
 import { BatchTaskRuntime, BatchTaskCompletionError } from "../batch-task/batch-task-runtime";
 import { RequestRatePool, resolve_request_limits } from "../batch-task/request-rate";
 import { RequestScheduler } from "../batch-task/request-scheduler";
+
+const BATCH_REQUEST_LOG_SOURCE = "batch-request";
 
 const BATCH_REQUEST_MANIFEST_SCHEMA = Type.Object(
   {
@@ -110,6 +114,7 @@ export class BatchRequestService {
     private readonly client: LLMClientPort,
     private readonly native: NativeResponsesClient,
     private readonly auth: Pick<ChatGPTAuthService, "bind">,
+    private readonly log: Pick<LogManager, "append">,
   ) {}
   /** 固定配置并校验清单，再有界派发请求和发布结果。 */
   public async run(
@@ -121,6 +126,7 @@ export class BatchRequestService {
   ): Promise<BatchRequestSummary> {
     signal.throwIfAborted();
     const { model, config_snapshot: settings } = execution;
+    const t = create_text_resolver(resolve_app_locale(settings["app_language"]));
     const model_config_id = String(model["id"] ?? "");
     const config = read_model_request_snapshot(model, { user_agent: "" });
     const manifest_path = path.resolve(root, request_file);
@@ -170,6 +176,39 @@ export class BatchRequestService {
       usage: result.progress,
       result_file,
     });
+    /** 批次日志采用完成链的最终状态，包含发布或事件收尾失败。 */
+    const log_end = (result: BatchTaskResult, error?: unknown) => {
+      const value = summary(result);
+      this.log.append({
+        source: BATCH_REQUEST_LOG_SOURCE,
+        level:
+          result.status === "error"
+            ? "error"
+            : result.status === "stopped" || value.failed > 0
+              ? "warning"
+              : "info",
+        content: [
+          t("app.log.task_finished", {
+            RUN: handle.run_id,
+            STATUS: result.status,
+            SUCCEEDED: String(value.succeeded),
+            FAILED: String(value.failed),
+            UNFINISHED: String(value.unfinished),
+            STOP: result.stop_source ?? "—",
+            PATH: result_file,
+          }),
+          t("app.log.task_stats", {
+            COUNT: String(value.total),
+            TIME: (result.progress?.time ?? 0).toFixed(2),
+            PT: String(result.progress?.input_tokens ?? 0),
+            RT: String(result.progress?.reasoning_tokens ?? 0),
+            CT: String(result.progress?.output_tokens ?? 0),
+          }),
+          ...(result.progress?.usage_complete === true ? [] : [t("app.log.usage_incomplete")]),
+        ].join("\n"),
+        ...(error === undefined ? {} : { error }),
+      });
+    };
     let directory_ready = false; // 目录建立后才尝试发布最终索引。
     try {
       await this.tasks.execute(
@@ -191,6 +230,19 @@ export class BatchRequestService {
           await publish_json(path.join(directory, "manifest.json"), {
             ...manifest,
             config: config_summary,
+          });
+          this.log.append({
+            source: BATCH_REQUEST_LOG_SOURCE,
+            level: "info",
+            content: t("app.log.task_started", {
+              RUN: handle.run_id,
+              NAME: config_summary.model_name,
+              MODEL: config.model_id,
+              FORMAT: manifest.format,
+              TOTAL: String(indexes.length),
+              CONCURRENCY: String(limits.concurrency_limit),
+              RPM: String(limits.rpm_limit),
+            }),
           });
           await this.tasks.publish_config(handle, config_summary);
           await this.tasks.publish_progress(handle, progress);
@@ -249,54 +301,107 @@ export class BatchRequestService {
               };
             },
             on_state: (state) => this.tasks.update_request_state(handle, state),
-            on_failure: () => {}, // 恢复状态由进度面板展示，避免每次重试重复追加错误。
+            on_failure: (key_index, error) =>
+              this.log.append({
+                source: BATCH_REQUEST_LOG_SOURCE,
+                level: "warning",
+                error,
+                content: `${handle.run_id} · ${t("app.log.request_failed", { ERROR: error.message })} (Key ${key_index + 1})`,
+              }),
           });
           /** 单项正文错误单独结算，文件发布错误交给整批收尾。 */
           const run_one = async (index: number) => {
             const entry = manifest.requests[index]!;
+            const started_at = Date.now();
+            let publishing = false; // 区分请求失败与成果发布失败。
             let result: RequestResult | undefined;
             let error: string | null = null;
             let payload: JsonRecord | undefined;
-            try {
-              const raw_input = await read_batch_request_json(entry.input_file);
-              if (
-                !is_json_record(raw_input) ||
-                (manifest.format === "messages" && !Check(MESSAGES_SCHEMA, raw_input))
-              )
-                throw new Error("Invalid request input.");
-              payload = raw_input;
-            } catch (failure) {
-              error = failure instanceof Error ? failure.message : "Input could not be read.";
-            }
-            if (active_signal.aborted) return;
-            if (payload !== undefined) {
-              result = await scheduler.request({ id: entry.id, payload }, active_signal);
-              if (result.cancelled || active_signal.aborted) return;
-              error =
-                result.request_error?.message ??
-                result.response_error?.message ??
-                (result.item_failure ? "Request failed." : null);
-            }
-            const status = error === null ? "succeeded" : "failed";
+            let input_error: unknown;
+            /** 每项只记录一次结果，完整响应保存在成果文件中。 */
+            const log_result = (
+              failure: string | null,
+              result_file: string | null,
+              cause?: unknown,
+            ) =>
+              this.log.append({
+                source: BATCH_REQUEST_LOG_SOURCE,
+                level: failure === null ? "info" : "error",
+                content: build_batch_request_result_log({
+                  run_id: handle.run_id,
+                  request_id: entry.id,
+                  started_at,
+                  format: manifest.format,
+                  payload,
+                  result,
+                  error: failure,
+                  result_file,
+                  t,
+                }),
+                ...(cause === undefined ? {} : { error: cause }),
+              });
             const relative = `results/${String(index + 1).padStart(6, "0")}.json`;
-            await publish_json(path.join(directory, relative), {
-              id: entry.id,
-              status,
-              usage:
-                result === undefined
-                  ? null
-                  : {
-                      input_tokens: result.input_tokens,
-                      reasoning_tokens: result.reasoning_tokens,
-                      output_tokens: result.output_tokens,
-                      complete: result.usage_complete,
-                    },
-              error,
-              response:
-                manifest.format === "responses"
-                  ? { format: "responses", raw: result?.response ?? null }
-                  : (result?.response ?? null),
-            });
+            let status: "succeeded" | "failed";
+            try {
+              try {
+                const raw_input = await read_batch_request_json(entry.input_file);
+                if (
+                  !is_json_record(raw_input) ||
+                  (manifest.format === "messages" && !Check(MESSAGES_SCHEMA, raw_input))
+                )
+                  throw new Error("Invalid request input.");
+                payload = raw_input;
+              } catch (failure) {
+                input_error = failure;
+                error = failure instanceof Error ? failure.message : "Input could not be read.";
+              }
+              if (active_signal.aborted) return;
+              if (payload !== undefined) {
+                result = await scheduler.request({ id: entry.id, payload }, active_signal);
+                if (result.cancelled || active_signal.aborted) return;
+                error =
+                  result.request_error?.message ??
+                  result.response_error?.message ??
+                  (result.item_failure ? "Request failed." : null);
+              }
+              status = error === null ? "succeeded" : "failed";
+              publishing = true;
+              await publish_json(path.join(directory, relative), {
+                id: entry.id,
+                status,
+                usage:
+                  result === undefined
+                    ? null
+                    : {
+                        input_tokens: result.input_tokens,
+                        reasoning_tokens: result.reasoning_tokens,
+                        output_tokens: result.output_tokens,
+                        complete: result.usage_complete,
+                      },
+                error,
+                response:
+                  manifest.format === "responses"
+                    ? { format: "responses", raw: result?.response ?? null }
+                    : (result?.response ?? null),
+              });
+            } catch (cause) {
+              if (
+                !(
+                  active_signal.aborted &&
+                  cause instanceof AppError &&
+                  cause.code === "runtime.cancelled"
+                )
+              ) {
+                const message = cause instanceof Error ? cause.message : String(cause);
+                log_result(
+                  publishing ? t("app.log.publish_failed", { ERROR: message }) : message,
+                  null,
+                  cause,
+                );
+              }
+              throw cause;
+            }
+            // 成果发布后才结算。后续事件失败由批次完成链报告。
             indexes[index] = { id: entry.id, status, result_file: relative };
             progress = {
               ...progress,
@@ -304,6 +409,11 @@ export class BatchRequestService {
               failed: progress.failed + Number(status === "failed"),
               time: Date.now() / 1000 - progress.start_time,
             };
+            log_result(
+              error,
+              path.join(directory, relative),
+              result?.request_error ?? result?.response_error ?? input_error,
+            );
             await this.tasks.publish_progress(handle, progress);
           };
           const pending = new Set<Promise<void>>(); // 成功请求释放额度，失败请求保留到统一收尾。
@@ -358,29 +468,15 @@ export class BatchRequestService {
             await publish_json(result_file, { ...summary(result), requests: indexes });
         },
       );
-      return summary(await handle.completion);
+      const result = await handle.completion;
+      log_end(result);
+      return summary(result);
     } catch (error) {
-      if (error instanceof BatchTaskCompletionError)
+      if (error instanceof BatchTaskCompletionError) {
+        log_end(error.result, error.cause);
         throw new BatchRequestCompletionError(summary(error.result), error.cause);
+      }
       throw error;
     }
   }
-}
-
-/** 发现投影只发布可选择身份，绝不复制认证、地址或扩展请求配置。 */
-export function project_model_configs(settings: JsonRecord): JsonRecord[] {
-  return read_config_model_records(settings).map((entry) => {
-    const model = Model.from_json(entry, String(entry["id"] ?? ""));
-    return {
-      model_config_id: model.id,
-      name: model.name,
-      model_id: model.model_id,
-      api_format: model.api_format,
-      auth_type: model.auth_type,
-      formats:
-        model.api_format === "OpenAIResponses" && model.auth_type !== "oauth"
-          ? ["messages", "responses"]
-          : ["messages"],
-    };
-  });
 }

@@ -119,7 +119,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 ## 请求与读取
 
 1. `recognize.request(工作目录, { prompt, ranges? })` 写出 `batch_llm_request` 的请求清单，返回 `request_file`。省略 `ranges` 时请求待识别分段。
-2. 识别、重新识别和补查均调用 `batch_llm_request({ model: { usage: "media" }, request_file })`。
+2. 识别、重新识别和补查均调用 `batch_llm_request({ model_usage: "agent_media", request_file })`。
 3. 批量完成后，`recognize.read(工作目录, result_file)` 把响应换算为整片时间，写入候选文件 `candidate`，返回各区间的行数、`incomplete`（输出没有正常结束，常见于超长）、无法解析或不符合记录契约的行数，以及失败的区间。读取不改动 `items.json`。
 4. `recognize.apply(工作目录, candidate, ranges?)` 用候选替换 `items.json` 中对应区间的记录。采用整个分段时标记该分段已识别。
 
@@ -218,7 +218,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 `generateFiles(bilingual_files)` 之后，用 `render({ source, input, translated, bilingual })` 写出与原视频同主名的 ASS：
 
 - `source` 是 `sources/` 中的包目录。
-- `input` 是 `<generic_input_path>/<file_path>/items.json`。
+- `input` 是 `<writeback.input_path>/<file_path>/items.json`。
 - `translated` 与 `bilingual` 是译文与双语输出路径。
 
 包内有 `render.mjs` 时，读取并检查后改用它。交付时告诉用户：字幕与原视频同名并放在同一目录，播放器即可自动加载。

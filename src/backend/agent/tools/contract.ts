@@ -1,3 +1,4 @@
+import { AGENT_MODEL_USAGES } from "../../../domain/model";
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
 import { Check } from "typebox/value";
 import {
@@ -68,9 +69,9 @@ const reference_notes: Readonly<Record<string, readonly string[]>> = {
   knowledge: [
     `\`fp\` 从 \`project_meta.json\` 的 \`knowledge\` 复制。\`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。`,
   ],
-  model_configs: [
-    "每次 `workspace_run` 刷新。投影只包含非敏感配置身份和客户端支持的输入模式。模型的输入能力仍须单独确认。",
-    "`batch_llm_request` 的独立请求将 `model_config_id` 传入 `model.config_id`。音视频识别将 `model.usage` 设为 `media`。后端按用户的功能模型偏好选模。",
+  function_models: [
+    "每次 `workspace_run` 刷新三个用途的非敏感摘要。不可用用途为 `null`。输入能力仍须单独确认。",
+    "`batch_llm_request` 必填 `model_usage`。主控使用 `agent`，翻译使用 `agent_batch_translation`，音视频使用 `agent_media`。摘要仅用于发现，后端在工具启动时解析用户的当前选择。",
   ],
   project_meta: [
     `\`files\` 列出全部资产，原稿位于 \`sources/<file_path>\`。\`knowledge\` 是工程知识的指纹，正文位于 \`${AGENT_WORKSPACE_PATHS.knowledge}\`。`,
@@ -144,19 +145,30 @@ const definition = {
       reference: reference_path("pages"),
       purpose: "全部原稿页面，每行对应一个原稿页",
     },
-    model_configs: {
-      path: "model_configs.json",
-      purpose: "可供 `batch_llm_request` 选择的非敏感配置身份",
-      reference: reference_path("model_configs"),
-      schema: Type.Array(
-        Type.Object({
-          model_config_id: Type.String(),
-          name: Type.String(),
-          model_id: Type.String(),
-          api_format: Type.String(),
-          auth_type: Type.String(),
-          formats: Type.Array(Type.Union([Type.Literal("messages"), Type.Literal("responses")])),
-        }),
+    function_models: {
+      path: AGENT_WORKSPACE_PATHS.functionModels,
+      purpose: "主控、翻译与音视频用途的非敏感模型摘要",
+      reference: reference_path("function_models"),
+      schema: Type.Object(
+        Object.fromEntries(
+          AGENT_MODEL_USAGES.map((usage) => [
+            usage,
+            Type.Union([
+              Type.Null(),
+              Type.Object(
+                {
+                  name: Type.String(),
+                  model_id: Type.String(),
+                  formats: Type.Array(
+                    Type.Union([Type.Literal("messages"), Type.Literal("responses")]),
+                  ),
+                },
+                { additionalProperties: false },
+              ),
+            ]),
+          ]),
+        ),
+        { additionalProperties: false },
       ),
     },
     project_meta: {

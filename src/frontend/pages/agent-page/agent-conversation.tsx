@@ -36,7 +36,6 @@ import {
   useModelSelection,
 } from "@frontend/features/model-selection/use-model-selection";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
@@ -112,7 +111,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const runtime_snapshot = useRuntimeSnapshot();
   const { project_snapshot, settings_snapshot, apply_settings_snapshot, initial_state_status } =
     useDesktopState();
-  const translation_generation = useTranslationGeneration();
   const project_lifecycle = useProjectLifecycle();
   const [dropped_project, set_dropped_project] = useState<string | null>(null);
   const [project_attention, set_project_attention] = useState(0);
@@ -332,8 +330,11 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       icon: FileOutput,
       title: t("app.translation_generation.action"),
       description: t("agent_page.mention.instructions.generate_translation.description"),
-      disabled: !translation_generation.can_request_generation,
-      execute: translation_generation.request_generation,
+      disabled: !project_snapshot.loaded || project_snapshot.file_count === 0,
+      execute: () =>
+        composer_ref.current?.append_draft(
+          `${t("app.translation_generation.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
+        ),
     },
     {
       id: "compact_context",

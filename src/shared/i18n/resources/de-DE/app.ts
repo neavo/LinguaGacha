@@ -43,6 +43,7 @@ export const de_de_app = {
     },
   },
   action: {
+    next: "Weiter",
     move_to_top: "An den Anfang verschieben",
     move_to_bottom: "An das Ende verschieben",
     add: "Hinzufügen",
@@ -210,17 +211,19 @@ export const de_de_app = {
     },
   },
   translation_generation: {
+    agent_request_without_review:
+      "Überspringe die Prüfung und hilf mir, alle Übersetzungen zu erstellen.",
     agent_request: "Hilf mir, alle Übersetzungen zu erstellen",
     action: "Übersetzung erstellen",
     confirmation: {
       generic_description:
-        "Dieses Projekt enthält generische Datenpakete. Bitte alle Übersetzungen mit AGENT erstellen. Die direkte Erstellung überspringt diese Pakete.",
+        "Dieses Projekt enthält Audio-/Videodateien oder generische Datenpakete. Die direkte Erstellung überspringt diese Dateien. Bitte mit AGENT bearbeiten …",
       description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
       checking: "Projektdateien und Korrekturwarnungen werden geprüft …",
       check_failed:
-        "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Die aktuellen Übersetzungen können dennoch erstellt werden …",
+        "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Erneut prüfen oder von AGENT bearbeiten lassen …",
       warning_description:
-        "Es wurden {COUNT} Korrekturwarnungen erkannt. Warnungen weisen nicht unbedingt auf Fehler hin. Wir empfehlen jedoch, zuerst mindestens eine automatische Prüfung mit AGENT durchzuführen. Mit dem Erstellen der Übersetzung fortfahren …?",
+        "Es wurden {COUNT} Korrekturwarnungen erkannt. Warnungen weisen nicht unbedingt auf Fehler hin. Wir empfehlen jedoch, zuerst mindestens eine automatische Prüfung mit AGENT durchzuführen. Fortfahren …?",
       retry_check: "Erneut prüfen",
       generate_directly: "Direkt erstellen",
     },
@@ -270,35 +273,38 @@ export const de_de_app = {
     },
   },
   log: {
+    task_started:
+      "Aufgabe gestartet: {RUN} · {NAME} / {MODEL} · {FORMAT} · {TOTAL} Anfragen · Parallelität {CONCURRENCY} · RPM {RPM}",
+    task_finished:
+      "Aufgabe beendet: {RUN} · {STATUS} · erfolgreich {SUCCEEDED} · fehlgeschlagen {FAILED} · offen {UNFINISHED} · Stoppquelle {STOP}\n{PATH}",
+    publish_failed: "Ergebnis konnte nicht veröffentlicht werden: {ERROR}",
+    usage_incomplete: "Verbrauch unvollständig; fehlender Anteil unbekannt",
     api_test_fail: "API-Test fehlgeschlagen …",
     api_test_key: "Teste Schlüssel:",
-    api_test_messages: "Aufgaben-Prompts:",
+    request_messages: "Aufgaben-Prompts:",
     api_test_result:
       "Insgesamt {COUNT} APIs getestet, {SUCCESS} erfolgreich, {FAILURE} fehlgeschlagen …",
     api_test_result_failure: "Fehlgeschlagene Schlüssel:",
-    api_test_response_result: "Modellantwort:",
+    model_response: "Modellantwort:",
     api_test_timeout: "Anfrage-Zeitüberschreitung ({SECONDS}s)",
-    api_test_token_info:
-      "Aufgabenzeit {TIME} Sekunden, Eingabe-Token {PT}, Denk-Token {RT}, Ausgabe-Token {CT}",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "Standard-Voreinstellungen automatisch geladen: {NAMES} …",
-    engine_api_model: "API-Modell",
-    engine_api_name: "API-Name",
-    engine_api_url: "API-URL",
-    engine_task_done: "Aufgabe abgeschlossen …",
-    engine_task_fail:
+    model_id: "API-Modell",
+    model_name: "API-Name",
+    api_url: "API-URL",
+    task_done: "Aufgabe abgeschlossen …",
+    task_failed:
       "Aufgabe nicht vollständig abgeschlossen, einige Daten sind noch unbearbeitet. Bitte die Ergebnisse prüfen …",
-    engine_task_rule_analysis: "Regelanalyse:",
-    engine_task_thinking_process: "Denkprozess:",
-    engine_task_stop: "Aufgabe gestoppt …",
-    engine_task_success:
-      "Aufgabenzeit {TIME} Sekunden, {LINES} Textzeilen, Eingabe-Token {PT}, Denk-Token {RT}, Ausgabe-Token {CT}",
+    rule_analysis: "Regelanalyse:",
+    thinking_process: "Denkprozess:",
+    task_stopped: "Aufgabe gestoppt …",
+    task_stats:
+      "Aufgabenzeit {TIME} Sekunden, {COUNT} Einträge, Eingabe-Token {PT}, Denk-Token {RT}, Ausgabe-Token {CT}",
     model_response_invalid: "Das Modell hat ungültige Daten zurückgegeben …",
     request_failed: "Anfrage fehlgeschlagen: {ERROR} …",
     request_timeout: "Zeitüberschreitung bei der Netzwerkanfrage",
     system_closed_dropped:
       "Protokollsystem ist heruntergefahren; neues Protokoll wird verworfen: {MESSAGE}",
-    translation_task_result: "Übersetzungsergebnis:",
     translation_response_partially_invalid: "Einige Übersetzungen konnten nicht validiert werden …",
   },
   sort: { ascending: "Aufsteigend", descending: "Absteigend", clear: "Sortierung aufheben" },

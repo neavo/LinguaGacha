@@ -1,4 +1,3 @@
-import { read_config_model_records } from "../model/model-config-resolver";
 import { create_agent_batch_llm_request_tool } from "./tools/batch-llm-request";
 import {
   BatchRequestCompletionError,
@@ -20,7 +19,7 @@ import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-state";
-import { Model } from "../../domain/model";
+import type { Model } from "../../domain/model";
 import { create_agent_batch_item_translation_tool } from "./tools/batch-item-translation";
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -56,7 +55,8 @@ import { AgentDecisionCoordinator } from "./agent-decision";
 import {
   register_agent_model,
   resolve_agent_batch_translation_model,
-  resolve_agent_function_model,
+  resolve_agent_model,
+  summarize_agent_models,
 } from "./agent-model";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
@@ -1027,17 +1027,8 @@ export class AgentService {
         this.runtime_gate.assert_current_runtime(execution.lease, "agent");
         signal.throwIfAborted();
         const config_snapshot = structuredClone(this.settings.read_setting());
-        let model: Model;
-        if ("usage" in input.model) {
-          model = resolve_agent_function_model(config_snapshot, this.model_config!, "agent_media");
-        } else {
-          const config_id = input.model.config_id;
-          const raw = read_config_model_records(config_snapshot).find(
-            (item) => item["id"] === config_id,
-          );
-          if (raw === undefined) throw new AppErrors.AppError("model.not_found");
-          model = Model.from_json(raw, input.model.config_id);
-        }
+        const model = resolve_agent_model(config_snapshot, this.model_config!, input.model_usage);
+        if (model === null) throw new AppErrors.AppError("model.not_found");
         try {
           const result = await this.batch_requests.run(
             execution.lease,
@@ -1106,6 +1097,10 @@ export class AgentService {
               {
                 script,
                 timeoutMs,
+                functionModels: summarize_agent_models(
+                  this.settings.read_setting(),
+                  this.model_config!,
+                ),
                 doing: async (text) => {
                   signal.throwIfAborted();
                   this.assert_execution(execution);

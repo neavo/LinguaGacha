@@ -1,9 +1,12 @@
+import { create_text_resolver } from "../../shared/i18n";
+import { log_error_from_message } from "../../shared/error";
+import { format_log_content_text, type LogAppendPayload } from "../../shared/log";
 import { read_batch_task_snapshot } from "../../shared/batch-task";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BatchRequestService, project_model_configs } from "./batch-request-service";
+import { BatchRequestService } from "./batch-request-service";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
 import { RequestRatePool } from "../batch-task/request-rate";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -53,12 +56,14 @@ async function setup(
       },
     ],
   };
+  const append = vi.fn<(payload: LogAppendPayload) => void>();
   const service = new BatchRequestService(
     tasks,
     new RequestRatePool(),
     { request },
     new NativeResponsesClient("test", { read_models: () => [] }, fetcher),
     { bind: () => "session" },
+    { append },
   );
   await fs.writeFile(
     path.join(root, "good.json"),
@@ -76,6 +81,7 @@ async function setup(
     gate,
     lease,
     service,
+    append,
     settings,
     write_manifest,
     run: () =>
@@ -147,6 +153,16 @@ describe("batch request", () => {
       kind: "request",
       progress: { total: 2, succeeded: 1, failed: 1 },
     });
+    const logs = f.append.mock.calls.map(([entry]) => entry);
+    const results = logs.filter(
+      (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
+    );
+    expect(results).toMatchObject([
+      { level: "info", content: { run_id: summary.run_id, request_id: "first" } },
+      { level: "error", content: { run_id: summary.run_id, request_id: "second" } },
+    ]);
+    expect(logs.at(-1)).toMatchObject({ level: "warning", source: "batch-request" });
+    expect(format_log_content_text(logs.at(-1)!.content)).toContain(summary.result_file);
     expect(f.gate.get_snapshot().owner).toBe("agent");
     await f.tasks.dispose();
   });
@@ -157,7 +173,12 @@ describe("batch request", () => {
         new Response(
           JSON.stringify({
             status: "completed",
-            output: [],
+            output: [
+              {
+                type: "message",
+                content: [{ type: "output_text", text: "readable private" }],
+              },
+            ],
             usage: { input_tokens: 2, output_tokens: 1 },
           }),
         ),
@@ -195,6 +216,11 @@ describe("batch request", () => {
       usage: { usage_complete: false },
     });
     const index = JSON.parse(await fs.readFile(summary.result_file, "utf8"));
+    const log_text = f.append.mock.calls
+      .map(([entry]) => format_log_content_text(entry.content))
+      .join("\n");
+    expect(log_text).toContain("readable");
+    expect(log_text).not.toContain("private");
     const failed = JSON.parse(
       await fs.readFile(
         path.resolve(path.dirname(summary.result_file), index.requests[1].result_file),
@@ -220,7 +246,73 @@ describe("batch request", () => {
     await f.tasks.dispose();
   });
 
-  it("重复 ID 在派发前拒绝，发现投影不包含认证秘密", async () => {
+  it("失败后换密钥成功只结算一次，日志采用累计用量", async () => {
+    const request = vi
+      .fn<LLMClientPort["request"]>()
+      .mockResolvedValueOnce({
+        ...response(),
+        request_error: log_error_from_message("temporary failure"),
+        usage_complete: true,
+      })
+      .mockResolvedValueOnce({ ...response(), usage_complete: true });
+    const f = await setup(request);
+    f.settings.models[0]!.api_key = "first\nsecond";
+    await f.write_manifest([{ id: "one", input_file: "good.json" }]);
+    try {
+      const value = await f.run();
+      expect(value).toMatchObject({
+        succeeded: 1,
+        failed: 0,
+        usage: { input_tokens: 4, reasoning_tokens: 2, output_tokens: 6, usage_complete: true },
+      });
+      const logs = f.append.mock.calls.map(([entry]) => entry);
+      expect(logs.filter((entry) => entry.level === "warning")).toHaveLength(1);
+      const results = logs.filter(
+        (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
+      );
+      expect(results).toHaveLength(1);
+      const content = results[0]!.content;
+      if (typeof content === "string" || content.kind !== "request_result")
+        throw new Error("Expected request result log");
+      expect(content.summary).toContain(
+        create_text_resolver("zh-CN")("app.log.task_stats", {
+          COUNT: "1",
+          TIME: ((Date.parse(content.ended_at) - Date.parse(content.started_at)) / 1000).toFixed(2),
+          PT: "4",
+          RT: "2",
+          CT: "6",
+        }),
+      );
+    } finally {
+      await f.tasks.dispose();
+    }
+  });
+
+  it.each(["progress", "completion"])("成果发布后 %s 事件失败保留逐项成功", async (event) => {
+    const f = await setup();
+    await f.write_manifest([{ id: "one", input_file: "good.json" }]);
+    f.tasks.subscribe((snapshot) => {
+      if (event === "completion" ? snapshot.status === "done" : snapshot.progress?.succeeded === 1)
+        throw new Error("event failure");
+    });
+    try {
+      await expect(f.run()).rejects.toMatchObject({
+        summary: { status: "error", succeeded: 1, unfinished: 0 },
+      });
+      const logs = f.append.mock.calls.map(([entry]) => entry);
+      expect(
+        logs.filter(
+          (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
+        ),
+      ).toMatchObject([{ level: "info" }]);
+      expect(logs.at(-1)).toMatchObject({ level: "error" });
+      expect(format_log_content_text(logs.at(-1)!.content)).toContain("error");
+    } finally {
+      await f.tasks.dispose();
+    }
+  });
+
+  it("重复 ID 在派发前拒绝", async () => {
     const request = vi.fn<LLMClientPort["request"]>();
     const f = await setup(request);
     await f.write_manifest([
@@ -229,7 +321,6 @@ describe("batch request", () => {
     ]);
     await expect(f.run()).rejects.toThrow("Duplicate");
     expect(request).not.toHaveBeenCalled();
-    expect(JSON.stringify(project_model_configs(f.settings))).not.toContain("private");
     await f.tasks.dispose();
   });
   it("停止等待真实请求收尾，已发布成果保留，迟到停止不取消后续批次", async () => {
@@ -294,6 +385,16 @@ describe("batch request", () => {
       summary: { status: "error", succeeded: 0, unfinished: 1, result_file: expect.any(String) },
     });
     expect(f.tasks.build_snapshot()).toMatchObject({ status: "error" });
+    const logs = f.append.mock.calls.map(([entry]) => entry);
+    expect(logs.at(-1)).toMatchObject({ level: "error" });
+    expect(
+      logs.filter(
+        (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
+      ),
+    ).toHaveLength(1);
+    expect(logs.map((entry) => format_log_content_text(entry.content)).join("\n")).toContain(
+      "disk failure",
+    );
     await f.tasks.dispose();
   });
 });

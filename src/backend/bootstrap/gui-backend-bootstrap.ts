@@ -1,4 +1,3 @@
-import { project_model_configs } from "../batch-request/batch-request-service";
 import type { AppLanguage } from "../../domain/app-language";
 import { AgentExecutionRuntime } from "../agent/execution/runtime";
 import { AgentPersonalityService } from "../agent/agent-personality-service";
@@ -143,7 +142,6 @@ export class GuiBackendBootstrap {
         generation: services.files.translationGeneration,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
-        readModelConfigs: () => project_model_configs(resources.settings.read_setting()),
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,

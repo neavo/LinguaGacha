@@ -68,7 +68,8 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     accepted: true as const,
     output_path: path.join(workspace, "work/output/translated"),
     bilingual_output_path: path.join(workspace, "work/output/bilingual"),
-    generic_input_path: path.join(workspace, "work/output/generic"),
+    excluded_files: [],
+    writeback: { input_path: path.join(workspace, "work/output/writeback"), files: [] },
     pdf_files: [],
   };
   const generateFiles = vi

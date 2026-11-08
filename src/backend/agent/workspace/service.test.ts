@@ -65,7 +65,11 @@ import {
 
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 
-const VALID_WORKSPACE_RUN = { script: "console.log(null);", timeoutMs: 180_000 };
+const VALID_WORKSPACE_RUN = {
+  functionModels: { agent: null, agent_batch_translation: null, agent_media: null },
+  script: "console.log(null);",
+  timeoutMs: 180_000,
+};
 
 describe("AgentWorkspaceService", () => {
   let temp_dir = "";
@@ -996,7 +1000,17 @@ describe("AgentWorkspaceService", () => {
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({ status: "unchanged" });
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
+    fs.writeFileSync(path.join(fixture.workspace_root, "model_configs.json"), "legacy");
     await run_workspace(fixture);
+    expect(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.functionModels),
+          "utf8",
+        ),
+      ),
+    ).toEqual(VALID_WORKSPACE_RUN.functionModels);
+    expect(fs.existsSync(path.join(fixture.workspace_root, "model_configs.json"))).toBe(false);
     fixture.snapshot.sectionRevisions.items = 2;
     await fixture.service.run(VALID_WORKSPACE_RUN, new AbortController().signal);
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
@@ -1670,7 +1684,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     }),
   );
   const service = new AgentWorkspaceService({
-    readModelConfigs: () => [],
     generation: {
       read_output_paths: () => {
         throw new Error("Unexpected output paths");
@@ -1868,7 +1881,6 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       languages: { source_language: "EN", target_language: "ZH" },
     });
     const workspace = new AgentWorkspaceService({
-      readModelConfigs: () => [],
       files: services.project.content,
       generation: services.files.translationGeneration,
       images: {
@@ -2095,10 +2107,22 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         )
       )["status"],
     ).toBe("applied");
-    const output = await services.files.translationGeneration.generate_files({
+    const generation_request = {
+      expected_section_revisions: {
+        files: (await services.project.summary.read()).sectionRevisions.files ?? 0,
+      },
       project_path: services.state.session.require_loaded_project_path(),
       output_directory: path.dirname(services.state.session.require_loaded_project_path()),
-    });
+    };
+    await expect(
+      services.files.translationGeneration.generate_files({
+        ...generation_request,
+        expected_section_revisions: {
+          files: generation_request.expected_section_revisions.files + 1,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "data.revision_conflict" });
+    const output = await services.files.translationGeneration.generate_files(generation_request);
     expect(pdfHost.mock.calls[0]?.[0].html).toContain(draft.translation.markdown);
     expect(output.pdf_files).toEqual([
       {

@@ -45,19 +45,10 @@ function create_cache(): ProofreadingCache {
         invalid_regex_message: null,
       },
     })),
+    warningCount: vi.fn(async () => ({ ...base_result, data: 3 })),
     warnings: vi.fn(async (query) => ({
       ...base_result,
       data: { total_item_count: 0, items: [], query },
-    })),
-    warningSummary: vi.fn(async () => ({
-      ...base_result,
-      data: {
-        total_count: 3,
-        entries: [
-          { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
-          { code: "GLOSSARY", count: 2 },
-        ],
-      },
     })),
     window: vi.fn(),
     rowIdsRange: vi.fn(),
@@ -85,6 +76,22 @@ function create_cache(): ProofreadingCache {
 }
 
 describe("ProofreadingQueryService", () => {
+  it("警告总数查询携带工程身份与计算修订，未加载工程时拒绝", async () => {
+    const session = new ProjectSessionState();
+    const cache = create_cache();
+    const service = new ProofreadingQueryService({ sessionState: session, cache });
+    await expect(service.query({ action: "warning_count" })).rejects.toMatchObject({
+      code: "project.not_loaded",
+    });
+    expect(cache.warningCount).not.toHaveBeenCalled();
+    await session.mark_loaded("E:/Project/demo.lg");
+    await expect(service.query({ action: "warning_count" })).resolves.toMatchObject({
+      projectPath: "E:/Project/demo.lg",
+      sectionRevisions: { items: 3, quality: 2, proofreading: 1 },
+      warningCount: 3,
+    });
+  });
+
   it("完整条目查询交给缓存并保留对应工程修订", async () => {
     const session = new ProjectSessionState();
     await session.mark_loaded("E:/Project/demo.lg");
@@ -196,27 +203,6 @@ describe("ProofreadingQueryService", () => {
         window_count: 11,
       }),
     );
-  });
-
-  it("warning_summary 返回当前校对运行态的类型计数", async () => {
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded("E:/Project/demo.lg");
-    const cache = create_cache();
-    const service = new ProofreadingQueryService({
-      sessionState: session_state,
-      cache,
-    });
-
-    await expect(service.query({ action: "warning_summary" })).resolves.toMatchObject({
-      projectPath: "E:/Project/demo.lg",
-      warningSummary: {
-        total_count: 3,
-        entries: [
-          { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
-          { code: "GLOSSARY", count: 2 },
-        ],
-      },
-    });
   });
 
   it("类型化 warning 查询保留 loaded-project 守卫且不扩张公开 action", async () => {
