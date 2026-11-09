@@ -13,7 +13,7 @@ description: 导入、识别、翻译、审校视频或音频，或生成视频�
 
 |成员|内容|
 |---|---|
-|`video.json`|`video` 为原画面尺寸，纯音频为 `null`。`speech` 为人声区间。`asr` 为本地识别窗口 `[start, end, text]`，只含有文字的窗口。`segments` 为分段，`recognized` 标记已采用视频识别结果，`attempts` 为请求次数。`review_seconds` 为已识别分段的补查累计时长|
+|`video.json`|`video` 为原画面尺寸，纯音频为 `null`。`speech` 为人声区间。`asr` 为本地识别的句级条目 `[start, end, text]`。`segments` 为分段，`recognized` 标记已采用视频识别结果，`attempts` 为视频请求次数|
 |`segments/NNN.mp4`|视频模型实际读取的分段，长边不超过 1024，每秒一帧|
 |`items.json`|字幕原文记录，下标是条目行号。`message` 为原文，`start`、`end` 为时间，`kind` 为 `dialogue` 或 `screen`，可选 `an` 为画面位置（ASS 小键盘编号）|
 |`render.mjs`|可选，用户要求固定的定制渲染|
@@ -47,7 +47,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 开始操作前调用 `media.missing()`，它返回缺失的 npm 包与模型。有缺失时：
 
 1. 告诉用户首次使用需要下载功能组件，大约 350 MB，请保持网络畅通。
-2. 调用 `media.setup()` 安装依赖并下载、校验模型。下载停滞或中断时报错，重新调用即可。
+2. 调用 `media.setup()` 安装依赖，并通过预置的 `aria2c` 下载、校验模型。下载失败或中断后重新调用，沿用保留的临时文件及 `.aria2` 文件续传。
 
 # 导入
 
@@ -58,7 +58,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 调用 `media.prepare(来源, 工作目录, { track, language })`，`language` 取 `project_meta.json` 的 `source_language`。一小时素材的本地识别需要几分钟，中断后用相同参数续跑。
 
-`prepare` 在缺少 `items.json` 时，将每个 ASR 窗口转为 `dialogue` 记录。窗口是初始条目边界，不按标点猜测逐句时间。已有 `items.json` 原样保留，包括空数组。
+`prepare` 在缺少 `items.json` 时，将每条 `asr` 转为 `dialogue` 记录。已有 `items.json` 原样保留，包括空数组。
 
 完成后用 `media.pack(工作目录, 'work/video/<原视频主名>.video')` 打包，按 `project-operation` 新增。核对准备返回的 `items`、打包记录数和新增回执的条目数。
 
@@ -129,10 +129,10 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 - 审阅后要采用空输出、截断输出或补查结果时，显式传入对应 `ranges`。
 - 失败的区间保留当前记录，列为核对对象。
 
-`request` 在准备时计数，超出上限即报错：
+`request` 在准备时按分段计数，超出上限即报错：
 
-- 每个待识别分段最多请求两次：首轮一次，原样重试一次。第二次仍未采用的分段降级，采信 ASR 原文。
-- 已识别分段的补查总时长不超过整片的 10%。预算用完后，剩余疑点记为未决。
+- 每个分段最多请求两次：首轮一次，之后重试或补查共一次。同一批次内一个分段的多个区间只计一次，同一分段的疑点放在同一批次补查。
+- 待识别分段第二次仍未采用时降级，采信 ASR 原文。已识别分段次数用完后，剩余疑点记为未决。
 - 用户按时间点反馈问题、要求重新识别，或更换模型后继续时，传入 `user_requested: true` 越过上限。其他情况不传。
 
 缩短窗口不能稳定减少空输出。空段原样重试一次通常就能恢复。
@@ -146,8 +146,8 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 |证据|可靠之处|常见问题|
 |---|---|---|
 |视频模型识别|音画一起转写，文字通常更干净。画面文字和说话人的唯一来源|整段输出为空，句子截断或几句合成一行，时间整体偏移，`dialogue` 与 `screen` 混淆，复读，分段交界处的句子被切开或重复|
-|本地识别 `asr`|导入时对整条时间轴的独立听写，每个窗口最长 20 秒。静音与配乐处没有文字，有文字通常意味着有人说话|同音误字，专名和术语写成片假名或近音词，数字按读音规范化，多人嘈杂场景整句丢失。不识别画面文字，没有说话人|
-|人声区间 `speech`|说明哪里有说话声|会漏掉成段对白，也包含歌声、喊叫和人群声。只有 `asr` 为 `null` 时才作为主要证据|
+|本地识别 `asr`|导入时对人声区间的独立听写，按 token 时间切成句子，起止接近说话。5.1、7.1 素材只听中置声道|同音误字，专名和术语写成片假名或近音词，数字按读音规范化，多人嘈杂场景整句丢失。人声检测漏掉的对白也没有文字。不识别画面文字，没有说话人|
+|人声区间 `speech`|说明哪里有说话声|会漏掉对白，也包含歌声、喊叫和人群声。只有 `asr` 为 `null` 时才作为主要证据|
 
 # 核对
 
@@ -159,7 +159,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 |`degraded`|已降级分段|
 |`invalid_rows`|结构或时间不合法的行号，打包前必须修正|
 |`evidence`|对照所用证据：`asr` 或 `speech`，无音轨时为 `null`|
-|`uncovered`|有证据但没有 `dialogue` 覆盖的时间段。使用 `asr` 时附带该窗口的识别文字|
+|`uncovered`|有证据但没有 `dialogue` 覆盖的时间段。使用 `asr` 时附带该句的识别文字|
 |`unsupported`|时间范围内没有任何证据的 `dialogue` 行号|
 
 `uncovered` 可能来自漏句、时间偏移或无需翻译的声音。`unsupported` 可能来自臆造或时间错位，短促的语气词也会出现在这里，不能据此直接删除。没有告警不能证明字幕正确。待识别和已降级分段的原文来自同一份 ASR，覆盖检查对它们没有意义。
@@ -174,7 +174,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 |顺序|做法|适用情况|
 |---|---|---|
-|本地证据|用 `asr` 文字补台词，用识别窗口与人声区间校准起止，截帧核对画面文字和说话人|视频模型漏句而本地听写清楚，时间偏移，画面文字或说话人存疑|
+|本地证据|用 `asr` 文字补台词，用 `asr` 句子与人声区间校准起止，截帧核对画面文字和说话人|视频模型漏句而本地听写清楚，时间偏移，画面文字或说话人存疑|
 |语义判断|结合上下文、术语表、画面和人物关系判断哪份听写成立。只能在已有读法中选择，或纠正明显的同音误字|一份听写与上下文矛盾，例如本地写成近音错字，或视频模型漏掉否定|
 |视频补查|按下文重新请求视频模型|两种读法都说得通且影响事实，或本地文字残缺无法还原|
 
@@ -231,7 +231,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 |条件|向用户说明|
 |---|---|
-|有已降级分段|这些时间段采用本地 ASR 原文或没有字幕，分句与时间是识别窗口粒度，画面文字未提取|
+|有已降级分段|这些时间段采用本地 ASR 原文或没有字幕，画面文字未提取，没有区分说话人|
 |有未决项|位置、两种读法或缺失的内容|
 |有音轨但 `asr` 为 `null`|漏句检查只依据人声区间，成段对白可能未被发现|
 |画面文字未逐镜头核对|画面文字可能遗漏或时间不准|

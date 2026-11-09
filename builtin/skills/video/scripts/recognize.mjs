@@ -6,9 +6,8 @@ import { union } from "./speech.mjs";
 const VIDEO_INPUT_MAX_BYTES = 50_000_000; // 单个视频输入的接口上限。
 const VIDEO_REQUEST_MAX_BYTES = 64_000_000; // 单个请求体的接口上限。
 const UNCOVERED_SECONDS = 0.3; // 只有人声区间时报告的最短未覆盖人声。
-const UNCOVERED_RATIO = 0.5; // 本地识别窗口被对白覆盖不足该比例时报告。
-const MAX_ATTEMPTS = 2; // 待识别分段的请求上限：首轮一次，原样重试一次。
-const REVIEW_RATIO = 0.1; // 已识别分段的补查总时长占整片的上限。
+const UNCOVERED_RATIO = 0.5; // 本地识别句子被对白覆盖不足该比例时报告。
+const MAX_ATTEMPTS = 2; // 每个分段的视频请求上限：首轮一次，重试或补查一次。
 const round = (value) => Number(value.toFixed(3)); // 换算后的时间精度。
 
 /** 请求 ID 即整片时间区间，结果回来时据此换算坐标，不需要另存映射。 */
@@ -31,7 +30,8 @@ const select = (segments, wanted) =>
 /**
  * 为整片时间区间准备 `responses` 载荷，不指定 `ranges` 时请求待识别的分段。
  * 区间等于分段时直接使用分段。更小的区间从所在分段裁出，须位于同一分段内。
- * 请求次数与补查时长在准备时计入 `video.json`，停止的批次也计入，超出上限即报错。
+ * 请求次数在准备时按分段计入 `video.json`，同一批次对一个分段只算一次，停止的批次也计入。
+ * 次数用完的分段不再请求：待识别的降级为本地 ASR 原文，已识别的剩余疑点记为未决。
  * `user_requested` 表示用户明确要求的请求，越过上限，适用情况由技能规定。
  */
 export async function request(directory, { prompt, ranges, user_requested = false }) {
@@ -42,9 +42,8 @@ export async function request(directory, { prompt, ranges, user_requested = fals
   const { segments } = manifest;
   ranges ??= select(segments, "pending");
   if (!ranges.length) throw new Error("没有待识别的分段");
-  const planned = new Map(),
-    touched = new Set();
-  let review = 0;
+  const planned = new Map(), // 相同区间只生成一份载荷。
+    touched = new Set(); // 同批每个分段只计一次请求。
   for (const range of ranges) {
     const { start, end } = range;
     const segment = segments.find((item) => item.start <= start && end <= item.end);
@@ -53,20 +52,16 @@ export async function request(directory, { prompt, ranges, user_requested = fals
     const id = range_id({ start, end });
     if (planned.has(id)) continue;
     planned.set(id, { id, start, end, segment });
-    if (segment.recognized) review += end - start;
-    else touched.add(segment); // 同一批次对一个分段只算一次请求。
+    touched.add(segment);
   }
   if (!user_requested) {
-    const degraded = [...touched].filter((segment) => status(segment) === "degraded");
-    if (degraded.length)
+    const spent = [...touched].filter((segment) => (segment.attempts ?? 0) >= MAX_ATTEMPTS);
+    if (spent.length)
       throw new Error(
-        `分段 ${degraded.map(({ start, end }) => `${start}-${end}`).join("、")} 已请求 ${MAX_ATTEMPTS} 次，已降级为本地 ASR 原文`,
+        `分段 ${spent.map(({ start, end }) => `${start}-${end}`).join("、")} 已请求 ${MAX_ATTEMPTS} 次，不再请求`,
       );
-    if ((manifest.review_seconds ?? 0) + review > REVIEW_RATIO * segments.at(-1).end)
-      throw new Error("补查预算已用完，剩余疑点记为未决");
   }
   for (const segment of touched) segment.attempts = (segment.attempts ?? 0) + 1;
-  manifest.review_seconds = (manifest.review_seconds ?? 0) + review;
   await mkdir(path.join(root, "recognition"), { recursive: true });
   const attempt = await mkdtemp(path.join(root, "recognition", "prepare-"));
   const requests = [];
@@ -235,7 +230,7 @@ const covered = ([start, end], cover) =>
 
 /**
  * 字幕原文与导入证据的对照，只提供线索，不判断字幕对错。
- * 有本地识别时以含文字的识别窗口为证据，否则退回人声区间。无音轨时证据为 `null`。
+ * 有本地识别时以识别出的句子为证据，否则退回人声区间。无音轨时证据为 `null`。
  */
 export async function check(directory) {
   const root = path.resolve(directory);

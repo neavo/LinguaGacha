@@ -35,10 +35,10 @@ function collect_files(start_paths) {
   return files.sort((left, right) => left.localeCompare(right));
 }
 
-/** 为规则提供文件范围与源码读取能力，测试和 CLI 共用这一构造入口。 */
-export function create_check_context({ project_root, files, source_reader, paths = {} }) {
-  return {
-    files,
+/** 执行一组规则，源码快照由 CLI 统一注入。 */
+function run_boundary_rules({ project_root, roots, rules }, source_reader, paths) {
+  const context = {
+    files: collect_files(roots),
     project_root,
     ...source_reader,
     /** 扩展名只改变导入写法，边界判断使用同一模块身份。 */
@@ -48,16 +48,6 @@ export function create_check_context({ project_root, files, source_reader, paths
     },
     relative_path: (file_path) => to_relative_path(project_root, file_path),
   };
-}
-
-/** 执行一组规则，源码快照由 CLI 统一注入。 */
-function run_boundary_rules({ project_root, roots, rules }, source_reader, paths) {
-  const context = create_check_context({
-    project_root,
-    files: collect_files(roots),
-    source_reader,
-    paths,
-  });
   return rules.flatMap((rule) => {
     return rule.check(context).map((error) => ({
       rule_name: rule.name,

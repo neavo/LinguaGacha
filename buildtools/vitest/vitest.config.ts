@@ -30,7 +30,7 @@ export default defineConfig({
           name: "node",
           environment: "node",
           globalSetup: ["./buildtools/vitest/global-setup.mjs"],
-          include: ["src/**/*.test.{ts,tsx}", "buildtools/**/*.test.mjs"],
+          include: ["src/**/*.test.{ts,tsx}"],
           exclude: [
             "src/frontend/**/*.test.{ts,tsx}",
             "src/gui/preload/**/*.test.{ts,tsx}",

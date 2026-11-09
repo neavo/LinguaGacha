@@ -57,7 +57,7 @@
 |macOS CLI 帮助|主程序运行 `LinguaGacha --cli translate --help`|
 |Linux CLI 帮助|`./LinguaGacha.AppImage --cli translate --help`|
 
-- `npm run dev` 按输入变化准备静态依赖与宿主平台工具，每次重新打包工作区代码。首次构建可能下载依赖与 uv 归档。
+- `npm run dev` 按输入变化准备静态依赖与宿主平台工具，每次重新打包工作区代码。首次构建可能下载依赖、uv 归档与 aria2 平台包。
 - 开发与发行产物使用独立目录，支持调试期间构建发行包。构建期间修改共享源码仍可能影响发行输入。
 - 需要强制重新准备时，删除开发缓存 `build/dev/resources/.development-cache` 或 `build/dev/resources/`。
 - 资源构建按输出目录互斥。`npm run build` 始终重新准备资源，发行构建不复用开发缓存。
@@ -123,14 +123,14 @@ Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处�
 
 |改动|范围|
 |---|---|
-|单域行为或测试用例|对应的 `*.test.ts`、`*.test.tsx` 或 `*.test.mjs`|
+|单域行为或测试用例|对应的 `*.test.ts` 或 `*.test.tsx`|
 |共享规则、状态写入口或公开契约|受影响的调用者、生产者和消费者|
 |测试配置或广泛共享基础设施|受影响的测试项目|
 |影响范围无法可靠界定|`npm test`|
 
 [vitest.config.ts](../buildtools/vitest/vitest.config.ts) 划分三个项目：
 
-- `node`：后端、CLI、共享逻辑、Electron main 和构建工具。
+- `node`：后端、CLI、共享逻辑和 Electron main。
 - `integration`：消费完整部署工作区的测试，文件清单由 Vitest 配置维护。
 - `renderer`：前端与 preload 桥接，使用 `jsdom` 和 renderer 初始化。
 
@@ -230,13 +230,7 @@ npm test -- --project integration src/native/pdf-host.test.ts
 
 ### 热更新与 Windows 工具
 
-renderer 热更新或运行态刷新变化时执行：
-
-```powershell
-npm test -- --project node buildtools/vite/renderer-runtime-reload.test.mjs
-```
-
-该测试使用真实 Vite 与隐藏 Electron 窗口。
+renderer 热更新或运行态刷新变化时，运行 `npm run dev`。保存文案和 React 组件后检查内容更新与交互状态保留，保存共享运行态模块后检查整页重载与状态重建。
 
 Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go module 中执行 `go test ./...`。更新器进程测试须在 Windows 执行。
 
@@ -246,7 +240,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 
 - 统一资源入口：`node buildtools/resources/build.mjs [输出根目录] [--development]`。发行资源默认生成到 `build/resources/`。`--development` 默认生成到 `build/dev/resources/`。自定义输出放在仓库外。
 - 开发和仓库外集成测试使用 `--development` 准备宿主原生工具。发行构建由 `afterPack` 部署目标架构的工具。
-- 资源规则和构建边界使用 `npm test -- buildtools/resources buildtools/builder/native-tools.test.mjs` 验证。
+- 资源规则和构建边界通过上述资源入口与 `npm run build` 验证，并检查下列产物与消费入口。
 
 按影响范围检查产物：
 
@@ -272,7 +266,7 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 
 |变化|验证入口|
 |---|---|
-|工作区依赖部署|[workspace.test.mjs](../buildtools/resources/workspace.test.mjs)|
+|工作区依赖部署|统一资源入口，以及 [npm SDK](../src/backend/agent/npm/index.test.ts) 与 [bootstrap](../src/backend/agent/workspace/runtime/bootstrap.test.ts) 的仓库外集成测试|
 |工作区入口定位|[workspace-runtime.test.ts](../src/native/workspace-runtime.test.ts)|
 |应用入口与合并后的 SDK|[index.test.ts](../src/index.test.ts) 的仓库外 ASAR 集成测试|
 |部署后的工作区执行|仓库外 Electron bootstrap 集成测试|
@@ -304,5 +298,6 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。
 - Windows Node 启动器：在 `buildtools/builder/node/` 执行 `go test ./...`，验证 Unicode、空参数、stdio 和退出码。
 - 构建变化执行 `npm run build`，再设置上表的发行可执行文件与工作区目录，运行 `npm/index.test.ts` 和 `bootstrap.test.ts`。检查 npm 运行文件、可搬移种子及目标架构的辅助程序。
-- uv 部署验证：`npm test -- buildtools/builder/uv.test.mjs buildtools/builder/native-tools.test.mjs`。发行工作区 `bin/<platform>-<arch>/uv[.exe] --version` 应与 `workspaceRuntimeTools.uv` 一致。Windows 发行验收运行上述 uv 在线集成测试。
+- uv 部署通过资源构建与上述 uv 集成测试验证。发行工作区 `bin/<platform>-<arch>/uv[.exe] --version` 应与 `workspaceRuntimeTools.uv` 一致。Windows 发行验收运行上述 uv 在线集成测试。
+- aria2 部署通过资源构建验证，运行时同步使用 `npm test -- src/backend/agent/execution` 验证。`bootstrap.test.ts` 验证命令与应用代理的接入。发行验收通过工作区执行 `aria2c --version`，版本应与 `workspaceRuntimeTools.aria2` 一致。
 - macOS/Linux 须在对应平台验收共享锁描述符、进程组启动门、正常收尾、停止及监管程序退出。跨平台编译只能证明代码可构建，不能替代平台生命周期实测。

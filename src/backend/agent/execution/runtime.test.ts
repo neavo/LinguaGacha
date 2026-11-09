@@ -19,6 +19,12 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志与�
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-execution-deadline-"));
   await mkdir(path.join(root.path, "runtime"));
   await writeFile(path.join(root.path, "runtime/prepare.mjs"), "");
+  const aria2 = path.join(root.path, "bin", `${process.platform}-${process.arch}`, "aria2");
+  await mkdir(aria2, { recursive: true });
+  await writeFile(
+    path.join(aria2, process.platform === "win32" ? "aria2c.exe" : "aria2c"),
+    "fixture",
+  );
   const workspace = path.join(root.path, "workspace");
   const execution = new AgentExecutionRuntime({
     runtimeDirectory: root.path,
@@ -29,6 +35,7 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志与�
       get_agent_node_root_dir: () => path.join(root.path, "node"),
       get_agent_python_root_dir: () => path.join(root.path, "python"),
       get_agent_execution_lock_path: () => path.join(root.path, "node.lock"),
+      get_user_data_path: (...parts) => path.join(root.path, "userdata", ...parts),
     },
     proxyResolver: { resolveProxy: async () => "DIRECT" },
   });

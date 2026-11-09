@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Readable, Transform } from "node:stream";
+import { Readable } from "node:stream";
 import { finished, pipeline } from "node:stream/promises";
 import { npm } from "@lg/npm";
 import { MODELS, analyze, ready } from "./speech.mjs";
@@ -16,13 +15,40 @@ const CUT_WINDOWS = [
 const CUT_GAP_SECONDS = 0.3; // 可以作为切点的最短无人声空隙。
 const PACKAGE_MAX_BYTES = 900 * 1024 * 1024; // 包体积上限，超出时拆分原素材。
 const STDERR_MAX_CHARS = 64 * 1024; // 只保留诊断尾部，避免长转码日志持续占用内存。
-const DOWNLOAD_IDLE_SECONDS = 60; // 模型下载连续无数据的上限。
+// 下载恢复与日志策略由 aria2 执行。
+const DOWNLOAD_OPTIONS = Object.freeze([
+  "--no-conf",
+  "--continue=true",
+  "--auto-file-renaming=false",
+  "--check-integrity=true",
+  "--connect-timeout=30",
+  "--timeout=60",
+  "--max-tries=3",
+  "--retry-wait=3",
+  "--file-allocation=none",
+  "--summary-interval=5",
+  "--enable-color=false",
+]);
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
 const ROW_KINDS = ["dialogue", "screen"]; // 对话与画面文字。
 /** 模型读取的视频编码。分段与补查片段共用，保证两者的画面与音质一致。 */
 export const ENCODE = Object.freeze([
-  ...["-c:v", "libx264", "-crf", "30", "-preset", "medium", "-pix_fmt", "yuv420p"],
-  ...["-c:a", "aac", "-b:a", "48k", "-ac", "1", "-movflags", "+faststart"],
+  "-c:v",
+  "libx264",
+  "-crf",
+  "30",
+  "-preset",
+  "medium",
+  "-pix_fmt",
+  "yuv420p",
+  "-c:a",
+  "aac",
+  "-b:a",
+  "48k",
+  "-ac",
+  "1",
+  "-movflags",
+  "+faststart",
 ]);
 
 /** 第三方依赖装在共享 npm 工程，在用到时才加载，缺失时本文件仍可导入并检查。 */
@@ -72,65 +98,37 @@ export async function missing() {
   return { packages, models };
 }
 
-/**
- * 安装缺失的依赖并下载模型。模型边下载边校验，哈希一致才发布，中断不会留下可被误用的文件。
- * 实测连接可能不报错地停止传输，长时间收不到数据时中止，由调用者重新执行。
- */
+/** 安装缺失依赖。aria2 校验通过后发布模型，中断保留临时文件供续传。 */
 export async function setup() {
   const { packages, models } = await missing();
   if (packages.length) await npm.run(["install", ...packages]);
   for (const model of models) {
     await mkdir(path.dirname(model.file), { recursive: true });
     const temporary = model.file + ".tmp";
-    const hash = createHash("sha256");
-    const controller = new AbortController();
-    let timer;
-    const idle = () => {
-      clearTimeout(timer);
-      timer = setTimeout(
-        () =>
-          controller.abort(
-            new Error(`下载 ${DOWNLOAD_IDLE_SECONDS} 秒没有进展，请重新调用 setup()`),
-          ),
-        DOWNLOAD_IDLE_SECONDS * 1000,
-      );
-    };
-    try {
-      idle();
-      const response = await fetch(model.url, { signal: controller.signal });
-      if (!response.ok || !response.body)
-        throw new Error(`下载失败 (${response.status})：${model.url}`);
-      await pipeline(
-        Readable.fromWeb(response.body),
-        new Transform({
-          transform(chunk, _encoding, callback) {
-            idle();
-            hash.update(chunk);
-            callback(null, chunk);
-          },
-        }),
-        createWriteStream(temporary),
-        { signal: controller.signal },
-      );
-      if (hash.digest("hex") !== model.sha256) throw new Error(`模型校验失败：${model.url}`);
-      await rename(temporary, model.file);
-    } finally {
-      clearTimeout(timer);
-      await rm(temporary, { force: true });
-    }
+    await execute(
+      "aria2c",
+      [
+        ...DOWNLOAD_OPTIONS,
+        `--checksum=sha-256=${model.sha256}`,
+        "--dir",
+        path.dirname(temporary),
+        "--out",
+        path.basename(temporary),
+        model.url,
+      ],
+      { stdout: "inherit" },
+    );
+    await rename(temporary, model.file);
   }
   return missing();
 }
 
-/** 唯一的 ffmpeg 进程入口。进程树的停止和超时归工作区宿主。 */
-async function execute(args, { check = true, consume } = {}) {
-  const { default: binary } = await import(
-    `ffmpeg-static-electron-v5-${process.platform}-${process.arch}`
-  );
-  const child = spawn(binary.path, ["-hide_banner", "-nostdin", ...args], {
+/** 外部工具共用日志与收尾。工作区宿主负责停止进程树和控制超时。 */
+async function execute(binary, args, { check = true, consume, stdout = "ignore" } = {}) {
+  const child = spawn(binary, args, {
     shell: false,
     windowsHide: true,
-    stdio: ["ignore", consume ? "pipe" : "ignore", "pipe"],
+    stdio: ["ignore", consume ? "pipe" : stdout, "pipe"],
   });
   let stderr = "",
     failure;
@@ -147,8 +145,9 @@ async function execute(args, { check = true, consume } = {}) {
   try {
     if (consume) await consume(child.stdout);
     const code = await closed;
-    if (failure) throw new Error("ffmpeg 启动失败", { cause: failure });
-    if (code === null || (check && code !== 0)) throw new Error(`ffmpeg 失败 (${code})：${stderr}`);
+    if (failure) throw new Error(`${path.basename(binary)} 启动失败`, { cause: failure });
+    if (code === null || (check && code !== 0))
+      throw new Error(`${path.basename(binary)} 失败 (${code})：${stderr}`);
     return stderr;
   } finally {
     // 消费 PCM 失败时也等待原生进程退出，再允许调用者继续处理文件。
@@ -158,14 +157,17 @@ async function execute(args, { check = true, consume } = {}) {
 }
 
 /** 截帧、提取字幕与转码共用二进制入口，参数直接传给 ffmpeg。 */
-export async function ffmpeg(args) {
-  await execute(args);
+export async function ffmpeg(args, options) {
+  const { default: binary } = await import(
+    `ffmpeg-static-electron-v5-${process.platform}-${process.arch}`
+  );
+  return execute(binary.path, ["-hide_banner", "-nostdin", ...args], options);
 }
 
 /** 读取时间轴与流信息，封面图片不算视频画面。 */
 export async function inspect(source) {
   // 无输出目标时 ffmpeg 返回非零，仍须检查实际读出的媒体信息。
-  const text = await execute(["-i", source], { check: false });
+  const text = await ffmpeg(["-i", source], { check: false });
   const duration = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/u.exec(text);
   if (!duration) throw new Error("无法读取媒体时长：" + text);
   const streams = text
@@ -186,11 +188,13 @@ export async function inspect(source) {
 
 /**
  * 一次解码完成人声检测与本地识别。
- * 只选音轨时，部分容器会以音轨自身起点为零点；补齐起点并保留画面流，零点才与分段转码一致。
+ * 部分容器以音轨起点为零点，补齐起点并保留画面流后与分段转码一致。
+ * 5.1、7.1 音轨的对白集中在中置声道，只取该声道识别，实测错误明显少于常规下混。
+ * 视频模型仍听常规下混，两份听写的输入不同，共同盲区更少。
  */
-async function listen(source, track, language) {
+async function listen(source, stream, track, language) {
   let result;
-  await execute(
+  await ffmpeg(
     [
       "-v",
       "error",
@@ -199,7 +203,9 @@ async function listen(source, track, language) {
       "-map",
       `0:a:${track}`,
       "-af",
-      "aresample=first_pts=0",
+      /\b[57]\.1\b/u.test(stream)
+        ? "aresample=first_pts=0,pan=mono|c0=FC"
+        : "aresample=first_pts=0",
       "-ac",
       "1",
       "-ar",
@@ -288,7 +294,7 @@ export async function prepare(source, directory, { track = 0, language } = {}) {
   if (!(await exists(manifestFile))) {
     // 已发布的切点决定响应的相对时间，之后不再因分析变化重切。
     const { speech, asr } = info.audio.length
-      ? await listen(source, track, language)
+      ? await listen(source, info.audio[track], track, language)
       : { speech: null, asr: null };
     const points = cuts(info.duration, speech);
     await save(manifestFile, {

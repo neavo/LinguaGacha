@@ -96,6 +96,7 @@ async function create_fixture(
       get_agent_node_root_dir: () => shared,
       get_agent_python_root_dir: () => path.join(root, "python"),
       get_agent_execution_lock_path: () => path.join(root, name, "node.lock"),
+      get_user_data_path: (...parts) => path.join(root, name, ...parts),
     },
     proxyResolver: { resolveProxy },
   });

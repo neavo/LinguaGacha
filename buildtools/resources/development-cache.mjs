@@ -19,7 +19,7 @@ const GO_BUILD_ENV = [
 ];
 
 /** 依赖安装、构建规则和 Go 工具共同决定静态资源，业务源码由 Vite 每次重建。 */
-export async function read_development_inputs(root, run = execa) {
+export async function read_development_inputs(root) {
   const hash = createHash("sha256");
   hash.update(JSON.stringify([process.version, process.platform, process.arch]));
   for (const file of ["package.json", "package-lock.json", "node_modules/.package-lock.json"])
@@ -41,7 +41,7 @@ export async function read_development_inputs(root, run = execa) {
   for (const name of ["supervisor", ...(process.platform === "win32" ? ["node"] : [])])
     hash.update(
       (
-        await run("go", ["env", "-json", ...GO_BUILD_ENV], {
+        await execa("go", ["env", "-json", ...GO_BUILD_ENV], {
           cwd: path.join(root, "buildtools/builder", name),
           windowsHide: true,
           env: { ...process.env, CGO_ENABLED: "0" },

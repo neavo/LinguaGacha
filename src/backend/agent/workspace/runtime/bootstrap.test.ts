@@ -320,6 +320,41 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
   }
 });
 
+it("预置 aria2 通过工作区 PATH 和应用代理下载", async () => {
+  const bytes = Buffer.from("aria2 fixture 中文内容\n");
+  const server = createServer((request, response) => {
+    if (request.url?.endsWith("/redirect")) {
+      response.writeHead(302, { location: "http://download.invalid/data" });
+      response.end();
+    } else response.end(bytes);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing server address");
+  const routes: string[] = [];
+  try {
+    await run(
+      `
+      import { execFileSync } from 'node:child_process';
+      execFileSync('aria2c', [
+        '--no-conf', '--dir=work', '--out=download.bin', 'http://download.invalid/redirect'
+      ], { stdio: 'inherit', windowsHide: true });
+    `,
+      undefined,
+      async (url) => {
+        routes.push(url);
+        return `PROXY 127.0.0.1:${address.port}`;
+      },
+    );
+    expect(await readFile(path.join(workspace, "work/download.bin"))).toEqual(bytes);
+    expect(routes).toContain("http://download.invalid/redirect");
+    expect(routes).toContain("http://download.invalid/data");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 it("取消在途代理等待后回收进程，并解除宿主请求", async () => {
   let started!: () => void;
   const ready = new Promise<void>((resolve) => {
@@ -875,6 +910,7 @@ function create_execution_runtime(
       get_agent_node_root_dir: () => path.join(root, "shared node"),
       get_agent_python_root_dir: () => python_root,
       get_agent_execution_lock_path: () => path.join(root, "node.lock"),
+      get_user_data_path: (...parts) => path.join(root, "userdata", ...parts),
     },
     proxyResolver: { resolveProxy },
   });
