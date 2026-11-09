@@ -41,13 +41,13 @@ description: 导入、识别、翻译、审校视频或音频，或生成视频�
 |`name`|可选，说话人|
 |`box`|可选，只用于 `screen`，格式同 `text[].box`。生成字幕时译文贴着它摆放|
 
-每个资产使用独立的工作目录 `work/video/<资产名>/`。目录中除包成员外还有 `text/<id>.jpg`（区间代表帧的裁图）、`sheets/`（图集）和 `recognition/`（视频模型补查材料），这些不打包。
+每个资产使用独立的工作目录 `work/video/<资产名>/`。目录中除包成员外还有 `text/<id>.jpg`（区间代表帧的裁图）、`sheets/`（图集）、`recognition/`（视频模型补查材料）和 `decoder.json`（本素材的解码方式选择），这些不打包。
 
 ## 脚本
 
 |脚本|入口|用途|
 |---|---|---|
-|`media.mjs`|`missing`、`setup`|检查、安装依赖与模型|
+|`media.mjs`|`missing`、`setup`|检查、准备依赖与模型|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白、检测画面文字，生成初始 `items.json`|
 ||`scan`|重新检测画面文字，生成裁图|
@@ -59,7 +59,7 @@ description: 导入、识别、翻译、审校视频或音频，或生成视频�
 ||`request`、`read`、`apply`|视频模型补查，仅用户要求时使用|
 |`render.mjs`|`render`|默认 ASS 渲染|
 
-脚本从本技能 `read_skill` 返回的 `base_url` 导入：
+识别与检测的计算由应用 SDK `@lg/media` 执行，`media.mjs` 负责工作目录、来源身份与打包。脚本从本技能 `read_skill` 返回的 `base_url` 导入：
 
 ```js
 const media = await import(new URL('scripts/media.mjs', base_url).href);
@@ -70,8 +70,10 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 开始操作前调用 `media.missing()`，它返回缺失的 npm 包、Python 包与模型。有缺失时：
 
-1. 告诉用户首次使用需要下载功能组件，大约 450 MB，请保持网络畅通。
-2. 调用 `media.setup()` 安装依赖，并通过预置的 `aria2c` 下载、校验模型。下载失败或中断后重新调用，沿用保留的临时文件及 `.aria2` 文件续传。
+1. 告诉用户首次使用需要下载功能组件，大约 450 MB，本机可用 GPU 加速时另需约 270 MB，请保持网络畅通。
+2. 调用 `media.setup()`。它安装依赖，通过预置的 `aria2c` 从多个镜像下载并校验模型，再测量本机适合用 CPU 还是 GPU。下载失败或中断后重新调用，沿用保留的临时文件续传。
+
+运行中 GPU 出错时，本次计算自动改用 CPU 完整重跑，之后也不再使用出错的 GPU 配置。硬件解码出错时同样改用软件解码重跑。日志会说明实际采用的配置，不需要你处理。报错提示组件未就绪时，重新调用 `media.setup()`。
 
 # 准备
 
@@ -79,7 +81,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 - 有多条音轨时请用户选择。`track` 是 `media.inspect(来源)` 返回的 `audio` 中从零开始的位置。
 - 有音轨时支持中、英、日、韩原文，以及 `ALL` 自动识别。其他语言会使 `prepare` 报错，告诉用户本功能不支持该语言的对白。
 
-调用 `media.prepare(来源, 工作目录, { track, language })`，`language` 取 `project_meta.json` 的 `source_language`。它同时运行本地 ASR 和画面检测，不请求付费模型。一小时素材需要几分钟到十几分钟，4K 素材更久，开始前告诉用户。中断后用相同参数续跑，已完成的部分不再重复。
+调用 `media.prepare(来源, 工作目录, { track, language })`，`language` 取 `project_meta.json` 的 `source_language`。它同时运行本地 ASR 和画面检测，不请求付费模型。一小时素材通常需要几分钟，没有 GPU 或 4K 素材更久，开始前告诉用户。中断后用相同参数续跑，已完成的部分不再重复。
 
 `prepare` 在缺少 `items.json` 时，把每条 `asr` 转为 `dialogue` 记录。已有 `items.json` 原样保留，包括空数组。`asr` 为 `[]` 表示执行了识别但没有产出文字。
 

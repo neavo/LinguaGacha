@@ -22,6 +22,7 @@ const WORKSPACE_PACKAGES = [
   },
   { name: "@lg/uv", entries: { index: "src/backend/agent/uv/index.ts" } },
   { name: "@lg/npm", entries: { index: "src/backend/agent/npm/index.ts" } },
+  { name: "@lg/media", entries: { index: "src/backend/agent/media/index.ts" } },
   {
     name: "@lg/pdf",
     entries: {
@@ -40,6 +41,7 @@ export async function build_workspace_resources({ root, output, manifest }) {
     "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
     "runtime/prepare": "src/backend/agent/node/prepare.ts",
     "runtime/pdf-worker": "src/backend/file/pdf/pdf-worker-entry.ts",
+    "runtime/media-worker": "src/backend/agent/media/worker.ts",
   };
   for (const definition of WORKSPACE_PACKAGES) {
     const { name, entries: package_entries } = definition;
@@ -83,6 +85,11 @@ export async function build_workspace_resources({ root, output, manifest }) {
       },
     },
   });
+  // 媒体前后处理 helper 由 `@lg/media` 以受控解释器直接运行。
+  await cp(
+    path.join(root, "src/backend/agent/media/media.py"),
+    path.join(output, "runtime/media.py"),
+  );
 }
 
 /** npm 拥有依赖解析，这里只复制后端依赖闭包，不清理其它步骤的产物。 */

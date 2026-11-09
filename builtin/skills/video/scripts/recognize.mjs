@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ffmpeg, load, locate, save, valid_row } from "./media.mjs";
-import { union } from "./speech.mjs";
+import { union } from "@lg/media";
 
 const MAX_SECONDS = 210; // 单个补查区间的时长上限，更长时模型常常空输出或截断。
 const VIDEO_INPUT_MAX_BYTES = 50_000_000; // 单个视频输入的接口上限。

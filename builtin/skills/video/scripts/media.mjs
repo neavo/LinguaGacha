@@ -1,46 +1,15 @@
-import { spawn } from "node:child_process";
 import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
-import { uv } from "@lg/uv";
-import { ASR_LANGUAGES, MODELS, MODELS_DIRECTORY, analyze, ready } from "./speech.mjs";
 
-const STDERR_MAX_CHARS = 64 * 1024; // 只保留诊断尾部，避免长转码日志持续占用内存。
+export { ASR_LANGUAGES, ffmpeg, inspect } from "@lg/media";
+
 const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
-// 下载恢复与日志策略由 aria2 执行。
-const DOWNLOAD_OPTIONS = Object.freeze([
-  "--no-conf",
-  "--continue=true",
-  "--auto-file-renaming=false",
-  "--check-integrity=true",
-  "--connect-timeout=30",
-  "--timeout=60",
-  "--max-tries=3",
-  "--retry-wait=3",
-  "--file-allocation=none",
-  "--summary-interval=5",
-  "--enable-color=false",
-]);
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
 const ROW_KINDS = ["dialogue", "screen"]; // 对话与画面文字。
-const TEXT_SCRIPT = fileURLToPath(new URL("text.py", import.meta.url)); // 画面检测、图集与校准。
-
-/** 第三方依赖装在共享 npm 工程，在用到时才加载，缺失时本文件仍可导入并检查。 */
-const PACKAGES = Object.freeze({
-  [`ffmpeg-static-electron-v5-${process.platform}-${process.arch}`]: "^5.2.5",
-  "sherpa-onnx-node": "^2.0.1",
-  jsonrepair: "^3.15.0",
-  jszip: "^3.10.2",
-});
-/** 画面检测的 Python 依赖，固定为实测版本。opencv 由 rapidocr 带入。 */
-const PYTHON_PACKAGES = Object.freeze(["rapidocr==3.10.0", "onnxruntime==1.31.1"]);
-/** PP-OCRv6 Small 检测模型，只做定位。由 aria2 下载校验，不用 RapidOCR 的自动下载。 */
-const DETECTOR = Object.freeze({
-  file: path.join(MODELS_DIRECTORY, "ppocr", "v6", "PP-OCRv6_det_small.onnx"),
-  url: "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx",
-  sha256: "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
-});
+/** 本技能自身的第三方依赖：补查结果修复与打包。识别与检测的依赖由 `@lg/media` 管理。 */
+const PACKAGES = Object.freeze({ jsonrepair: "^3.15.0", jszip: "^3.10.2" });
 
 export const load = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取工作目录中的 JSON 材料。
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value); // 普通对象。
@@ -68,114 +37,28 @@ export async function save(file, value) {
   }
 }
 
-/** 列出尚未就绪的依赖与模型。npm 包按共享工程中实际安装的目录判断，Python 包按共享工程的依赖声明判断。 */
-export async function missing() {
-  const packages = [],
-    models = [];
+/** 本技能缺少的 npm 包。 */
+async function own_packages() {
+  const packages = [];
   for (const [name, range] of Object.entries(PACKAGES))
     if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
       packages.push(`${name}@${range}`);
-  const project = path.join(uv.directory, "pyproject.toml");
-  const declared = (await exists(project)) ? await readFile(project, "utf8") : "";
-  // `uv run` 会按声明同步环境，读声明比启动一次 Python 快得多。
-  const python = PYTHON_PACKAGES.filter((spec) => !declared.includes(`"${spec}"`));
-  for (const model of [...Object.values(MODELS), DETECTOR])
-    if (!(await ready(model))) models.push(model);
-  return { packages, python, models };
+  return packages;
 }
 
-/** 安装缺失依赖。aria2 校验通过后发布模型，中断保留临时文件供续传。 */
+/** 列出尚未就绪的 npm 包、Python 依赖与模型。 */
+export async function missing() {
+  const result = await sdk.missing();
+  result.packages.push(...(await own_packages()));
+  return result;
+}
+
+/** 安装缺失依赖、下载校验模型并测量本机推理配置。中断后重新调用，下载从保留的临时文件续传。 */
 export async function setup() {
-  const { packages, python, models } = await missing();
+  const packages = await own_packages();
   if (packages.length) await npm.run(["install", ...packages]);
-  if (python.length) await uv.run(["add", ...PYTHON_PACKAGES]);
-  for (const model of models) {
-    await mkdir(path.dirname(model.file), { recursive: true });
-    const temporary = model.file + ".tmp";
-    await execute(
-      "aria2c",
-      [
-        ...DOWNLOAD_OPTIONS,
-        `--checksum=sha-256=${model.sha256}`,
-        "--dir",
-        path.dirname(temporary),
-        "--out",
-        path.basename(temporary),
-        model.url,
-      ],
-      { stdout: "inherit" },
-    );
-    await rename(temporary, model.file);
-  }
+  await sdk.setup();
   return missing();
-}
-
-/** 外部工具共用日志与收尾。工作区宿主负责停止进程树和控制超时。 */
-async function execute(binary, args, { check = true, consume, stdout = "ignore" } = {}) {
-  const child = spawn(binary, args, {
-    shell: false,
-    windowsHide: true,
-    stdio: ["ignore", consume ? "pipe" : stdout, "pipe"],
-  });
-  let stderr = "",
-    failure;
-  child.stderr.setEncoding("utf8");
-  child.stderr.on("data", (text) => {
-    stderr = (stderr + text).slice(-STDERR_MAX_CHARS);
-  });
-  const closed = new Promise((resolve) => {
-    child.once("error", (error) => {
-      failure = error;
-    });
-    child.once("close", (code) => resolve(code));
-  });
-  try {
-    if (consume) await consume(child.stdout);
-    const code = await closed;
-    if (failure) throw new Error(`${path.basename(binary)} 启动失败`, { cause: failure });
-    if (code === null || (check && code !== 0))
-      throw new Error(`${path.basename(binary)} 失败 (${code})：${stderr}`);
-    return stderr;
-  } finally {
-    // 消费 PCM 失败时也等待原生进程退出，再允许调用者继续处理文件。
-    if (child.exitCode === null && child.signalCode === null) child.kill();
-    await closed;
-  }
-}
-
-/** 随附 ffmpeg 的路径，Node 与 Python 两侧共用。 */
-async function ffmpeg_path() {
-  const { default: binary } = await import(
-    `ffmpeg-static-electron-v5-${process.platform}-${process.arch}`
-  );
-  return binary.path;
-}
-
-/** 截帧、提取字幕与转码共用二进制入口，参数直接传给 ffmpeg。 */
-export async function ffmpeg(args, options) {
-  return execute(await ffmpeg_path(), ["-hide_banner", "-nostdin", ...args], options);
-}
-
-/** 读取时间轴与流信息，封面图片不算视频画面。 */
-export async function inspect(source) {
-  // 无输出目标时 ffmpeg 返回非零，仍须检查实际读出的媒体信息。
-  const text = await ffmpeg(["-i", source], { check: false });
-  const duration = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/u.exec(text);
-  if (!duration) throw new Error("无法读取媒体时长：" + text);
-  const streams = text
-    .split(/\r?\n/u)
-    .filter((line) => /Stream #\d+:\d+/u.test(line))
-    .map((line) => line.trim());
-  const video = streams.find((line) => line.includes("Video:") && !line.includes("attached pic"));
-  const size = video && /\b(\d{2,})x(\d{2,})\b/u.exec(video);
-  if (video && !size) throw new Error("无法读取原视频尺寸");
-  return {
-    duration: Number(duration[1]) * 3600 + Number(duration[2]) * 60 + Number(duration[3]),
-    video: size ? { width: Number(size[1]), height: Number(size[2]) } : null,
-    audio: streams.filter((line) => line.includes("Audio:")),
-    subtitles: streams.filter((line) => line.includes("Subtitle:")),
-    streams,
-  };
 }
 
 /** 原文件身份。纳秒用字符串保存，避免 JSON 数字丢失精度。 */
@@ -189,80 +72,16 @@ async function identify(file) {
 }
 
 /**
- * 一次解码完成人声检测与本地识别。
- * 部分容器以音轨起点为零点，补齐起点并保留画面流后与画面检测的零点一致。
- * 5.1、7.1 音轨的对白集中在中置声道，只取该声道识别，实测错误明显少于常规下混。
+ * 检测整片文字区间，成功后再用新裁图替换 `text/`，不写 `video.json`，由调用者保存。
+ * 计算失败时保留原有裁图。
  */
-async function listen(source, stream, track, language) {
-  let result;
-  await ffmpeg(
-    [
-      "-v",
-      "error",
-      "-i",
-      source,
-      "-map",
-      `0:a:${track}`,
-      "-af",
-      /\b[57]\.1\b/u.test(stream)
-        ? "aresample=first_pts=0,pan=mono|c0=FC"
-        : "aresample=first_pts=0",
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-f",
-      "s16le",
-      "pipe:1",
-      "-map",
-      "0:V:0?",
-      "-c",
-      "copy",
-      "-f",
-      "null",
-      "-",
-    ],
-    { consume: async (stream) => (result = await analyze(stream, language)) },
-  );
-  return result;
-}
-
-/** 运行 `text.py` 的子命令。`uv.run` 不能读 stdin、输出只进日志，任务与结果都经工作目录中的文件传递。 */
-async function python(directory, command, job) {
-  const input = path.join(directory, `${command}.job.json`),
-    output = path.join(directory, `${command}.result.json`);
-  await save(input, job);
-  try {
-    await uv.run(["run", "python", TEXT_SCRIPT, command, input, output]);
-    return await load(output);
-  } finally {
-    await rm(input, { force: true });
-    await rm(output, { force: true });
-  }
-}
-
-/** 检测所需的原文件与画面参数。 */
-async function detection_job(directory, manifest) {
-  if (manifest.video === null) throw new Error("纯音频素材没有画面");
-  if (!(await ready(DETECTOR))) throw new Error("检测模型缺失或不一致，先按 media.missing() 补齐");
-  return {
-    ffmpeg: await ffmpeg_path(),
-    source: await locate(directory),
-    model: DETECTOR.file,
-    ...manifest.video,
-  };
-}
-
-/** 检测整片文字区间并重新生成裁图，不写 `video.json`，由调用者保存。 */
-async function detect(directory, manifest) {
-  const job = await detection_job(directory, manifest);
-  await rm(path.join(directory, "text"), { recursive: true, force: true }); // 区间编号重排，旧裁图不能混用。
-  const text = await python(directory, "scan", { ...job, out: directory });
-  // 区间终点是末次检测加 1 秒，片尾不足一秒的部分截到时长。
-  return text.map((region) => ({
-    ...region,
-    end: Math.min(region.end, manifest.duration),
-  }));
+async function detect(directory) {
+  const staging = path.join(directory, "text.staging");
+  const text = await sdk.scan(await locate(directory), { directory, out: staging });
+  const crops = path.join(directory, "text");
+  await rm(crops, { recursive: true, force: true }); // 区间编号重排，旧裁图不能混用。
+  await rename(staging, crops);
+  return text;
 }
 
 /**
@@ -273,7 +92,8 @@ export async function scan(directory) {
   directory = path.resolve(directory);
   const manifestFile = path.join(directory, "video.json");
   const manifest = await load(manifestFile);
-  manifest.text = await detect(directory, manifest);
+  if (manifest.video === null) throw new Error("纯音频素材没有画面");
+  manifest.text = await detect(directory);
   await save(manifestFile, manifest);
   return { text: manifest.text.length };
 }
@@ -286,13 +106,13 @@ export async function scan(directory) {
 export async function prepare(source, directory, { track = 0, language } = {}) {
   source = path.resolve(source);
   directory = path.resolve(directory);
-  const info = await inspect(source);
+  const info = await sdk.inspect(source);
   if (!Number.isInteger(track) || track < 0 || (info.audio.length && track >= info.audio.length))
     throw new Error("音轨不存在");
   if (info.video === null && !info.audio.length) throw new Error("素材没有音视频流");
-  if (info.audio.length && !Object.hasOwn(ASR_LANGUAGES, language))
+  if (info.audio.length && !Object.hasOwn(sdk.ASR_LANGUAGES, language))
     throw new Error(
-      `本地识别只支持 ${Object.keys(ASR_LANGUAGES).join("、")}，当前原文语言为 ${language}`,
+      `本地识别只支持 ${Object.keys(sdk.ASR_LANGUAGES).join("、")}，当前原文语言为 ${language}`,
     );
   const identity = {
     ...(await identify(source)),
@@ -320,12 +140,12 @@ export async function prepare(source, directory, { track = 0, language } = {}) {
     "asr" in manifest
       ? null
       : info.audio.length
-        ? listen(source, info.audio[track], track, language).then(commit)
+        ? sdk.listen(source, { track, language }).then(commit)
         : commit({ speech: null, asr: null }),
     "text" in manifest
       ? null
       : info.video
-        ? detect(directory, manifest).then((text) => commit({ text }))
+        ? detect(directory).then((text) => commit({ text }))
         : commit({ text: null }),
   ]);
   // 一条支路失败后仍等另一条保存完毕，续跑才能安全复用同一目录。
@@ -361,16 +181,12 @@ export async function sheets(directory, { ids } = {}) {
   const wanted = ids ? new Set(ids) : null;
   const out = path.join(directory, "sheets");
   await rm(out, { recursive: true, force: true });
-  return python(directory, "sheet", {
-    entries: text
+  return sdk.sheets(
+    text
       .filter((region) => !wanted || wanted.has(region.id))
-      .map(({ id, start }) => ({
-        id,
-        start,
-        file: path.join(directory, "text", `${id}.jpg`),
-      })),
+      .map(({ id, start }) => ({ id, start, file: path.join(directory, "text", `${id}.jpg`) })),
     out,
-  });
+  );
 }
 
 /**
@@ -380,7 +196,7 @@ export async function sheets(directory, { ids } = {}) {
 export async function refine(directory, rows) {
   directory = path.resolve(directory);
   const manifest = await load(path.join(directory, "video.json"));
-  const job = await detection_job(directory, manifest);
+  if (manifest.video === null) throw new Error("纯音频素材没有画面");
   const itemsFile = path.join(directory, "items.json");
   const items = await load(itemsFile);
   for (const row of rows)
@@ -390,9 +206,8 @@ export async function refine(directory, rows) {
       !items[row].box
     )
       throw new Error(`第 ${row} 行不是带 box 的 screen`);
-  const bounds = await python(directory, "refine", {
-    ...job,
-    duration: manifest.duration,
+  const bounds = await sdk.refine(await locate(directory), {
+    directory,
     rows: rows.map((row) => ({ ...items[row], row })),
   });
   const unresolved = [];
@@ -428,7 +243,7 @@ export async function relink(directory, file) {
   file = path.resolve(file);
   const manifestFile = path.join(path.resolve(directory), "video.json");
   const manifest = await load(manifestFile);
-  const info = await inspect(file);
+  const info = await sdk.inspect(file);
   if (
     Math.abs(info.duration - manifest.duration) > DURATION_TOLERANCE ||
     JSON.stringify(info.video) !== JSON.stringify(manifest.video)

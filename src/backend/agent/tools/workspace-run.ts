@@ -46,6 +46,7 @@ export function create_agent_workspace_run_tool(options: {
       "  - `@lg/project`：识别来源、生成原生产物和通用写回输入，用法见 `project-operation` 技能",
       "  - `@lg/project/item-contexts`：`queryItemContexts(items, item_ids)` 查询条目的同文件邻近语境。`items` 传入 `items` 数据集的完整数组或流，保持数据集顺序",
       "  - `@lg/pdf`、`@lg/pdf/mupdf`：PDF 读取、渲染与打印，用法见 `pdf` 技能",
+      "  - `@lg/media`：音视频本地识别与画面文字检测，用法见 `video` 技能",
       "  - `@lg/utils/literal-matcher`：应用判定字面命中与规范化文本的规则",
       "  - `@lg/npm`：应用随附的 npm，管理共享 npm 工程与调用包提供的命令行工具",
       "  - `@lg/uv`：应用随附的 uv，管理共享 Python 工程与执行 Python 程序",
