@@ -16,7 +16,7 @@ const VAD = Object.freeze({
 });
 const ASR_WINDOW_SECONDS = 20; // 实测 60 秒整窗明显掉字，20 秒内基本完整。
 const ASR_THREADS = 4; // 每个识别窗口的原生线程数。
-const ASR_CONCURRENCY = 4; // 同时持有原生流的窗口上限。
+const ASR_CONCURRENCY = 2; // 同时持有原生流的窗口上限。与画面检测（2×4）各占一半 CPU，两者可以同时运行。
 const PUNCTUATION = /[\s\p{P}]/gu; // 只含标点的识别结果没有台词。
 
 // 句级条目的显示限制。时间超限或字数超限的句子按 token 边界均衡拆开。
@@ -37,11 +37,17 @@ const SENTENCE_END = /[.?!。？！…]$/u;
 const CLAUSE_END = /[,，、;；:：]$/u;
 const CLAUSE_PREFERENCE = 0.25; // 逗号边界相对均分目标的偏好权重。
 
-/** 工程原文语言到 SenseVoice 语言的映射。其他语言不做本地识别，质控退回人声区间。 */
-const ASR_LANGUAGES = Object.freeze({ ZH: "zh", EN: "en", JA: "ja", KO: "ko", ALL: "auto" });
+/** 工程原文语言到 SenseVoice 语言的映射。有音轨的素材只支持这些语言，对白全部来自本地识别。 */
+export const ASR_LANGUAGES = Object.freeze({
+  ZH: "zh",
+  EN: "en",
+  JA: "ja",
+  KO: "ko",
+  ALL: "auto",
+});
 
 /** 共享 npm 工程固定为 userdata/node，模型放在同级的 userdata/models，所有工程共用。 */
-const MODELS_DIRECTORY = path.resolve(npm.directory, "..", "models");
+export const MODELS_DIRECTORY = path.resolve(npm.directory, "..", "models");
 // SenseVoiceSmall 来自阿里巴巴 FunASR，许可要求使用时注明来源与作者并保留模型名。
 const SENSEVOICE =
   "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/2365baeacb507f821a0c8120fcee3d484dba7a07";
@@ -93,11 +99,10 @@ export function union(spans) {
 /**
  * 消费 16 kHz 单声道 s16le 流，返回整片人声区间与本地识别的句级条目，单位为整片秒数。
  * 只识别人声区间：实测识别整条时间轴新增的误识别多于补回的漏句。
- * 不支持的语言 `asr` 为 null。
+ * 语言须在 `ASR_LANGUAGES` 中，由调用者在解码前检查。
  */
 export async function analyze(stream, source_language) {
-  const language = ASR_LANGUAGES[source_language] ?? null;
-  for (const model of language ? Object.values(MODELS) : [MODELS.vad])
+  for (const model of Object.values(MODELS))
     if (!(await ready(model))) throw new Error("语音模型缺失或不一致，先按 media.missing() 补齐");
   const { default: sherpa } = await import("sherpa-onnx-node");
   const vad = new sherpa.Vad(
@@ -110,19 +115,21 @@ export async function analyze(stream, source_language) {
     },
     VAD_BUFFER_SECONDS,
   );
-  const recognizer =
-    language &&
-    new sherpa.OfflineRecognizer({
-      featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
-      modelConfig: {
-        senseVoice: { model: MODELS.asr.file, language, useInverseTextNormalization: 1 },
-        tokens: MODELS.tokens.file,
-        numThreads: ASR_THREADS,
-        provider: "cpu",
-        debug: 0,
+  const recognizer = new sherpa.OfflineRecognizer({
+    featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
+    modelConfig: {
+      senseVoice: {
+        model: MODELS.asr.file,
+        language: ASR_LANGUAGES[source_language],
+        useInverseTextNormalization: 1,
       },
-      decodingMethod: "greedy_search",
-    });
+      tokens: MODELS.tokens.file,
+      numThreads: ASR_THREADS,
+      provider: "cpu",
+      debug: 0,
+    },
+    decodingMethod: "greedy_search",
+  });
   return analyze_pcm(stream, vad, recognizer);
 }
 
@@ -193,7 +200,6 @@ export async function analyze_pcm(stream, vad, recognizer) {
     for (; !vad.isEmpty(); vad.pop()) {
       const { start, samples } = vad.front(false); // Electron 不支持外部 ArrayBuffer。
       spans.push([start / SAMPLE_RATE, (start + samples.length) / SAMPLE_RATE]);
-      if (!recognizer) continue;
       const count = Math.ceil(samples.length / (ASR_WINDOW_SECONDS * SAMPLE_RATE));
       for (let i = 0; i < count; i++) {
         const from = Math.round((samples.length * i) / count),
@@ -219,7 +225,7 @@ export async function analyze_pcm(stream, vad, recognizer) {
   return {
     // 模型会按 maxSpeechDuration 拆开长语音，相接的区间不是停顿。
     speech: union(spans).map(([start, end]) => [round(start), round(end)]),
-    asr: recognizer ? asr.flat() : null,
+    asr: asr.flat(),
   };
 }
 
@@ -227,8 +233,9 @@ export async function analyze_pcm(stream, vad, recognizer) {
 const tidy = (text) => text.trim().replace(UNSPACED_GAP, "");
 
 /**
- * 将窗口内 token 时间换算为整片秒数，生成句级条目 `[start, end, text]`。
+ * 将窗口内 token 时间换算为整片秒数，生成句级条目 `{ start, end, text, tokens }`。
  * 标点 token 的时间常落在窗口末尾，句子边界只参考文字 token。
+ * `tokens` 只保留文字 token 的 `[原文, 起点]`，供按硬字幕拆句、合句时取切点。
  */
 export function sentences(from, end, tokens, timestamps) {
   const limit = DENSE.test(tokens.join("")) ? DENSE_CHARS : SPACED_CHARS;
@@ -298,7 +305,16 @@ export function sentences(from, end, tokens, timestamps) {
     const message = text(i, j);
     if (!message.replace(PUNCTUATION, "")) return [];
     const start = round(begin(i, j));
+    const words = [];
+    for (let k = i; k < j; k++) if (word(k)) words.push([tokens[k], round(at(k))]);
     // 相邻 token 起点可能相同，取整后仍须保持合法区间。
-    return [[start, Math.max(round(close(i, j)), round(start + 0.01)), message]];
+    return [
+      {
+        start,
+        end: Math.max(round(close(i, j)), round(start + 0.01)),
+        text: message,
+        tokens: words,
+      },
+    ];
   });
 }

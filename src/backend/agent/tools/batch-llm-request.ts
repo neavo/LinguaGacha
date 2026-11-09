@@ -44,7 +44,7 @@ export function create_agent_batch_llm_request_tool(
       "",
       "- 用 `workspace_run` 准备清单和输入文件。",
       "- 使用必填的 `model_usage` 选择 `agent`、`agent_batch_translation` 或 `agent_media`，从 `function_models.json` 查看输入格式。",
-      "- 音视频首轮识别、重新识别和补查使用 `agent_media`。不兼容时请用户调整功能模型。",
+      "- 音视频识别使用 `agent_media`。不兼容时请用户调整功能模型。",
       "- 同批模型、生成参数与限流固定。",
       '- 清单格式：`{"format":"messages","requests":[{"id":"001","input_file":"inputs/001.json"}]}`。`requests` 非空，`id` 为唯一非空字符串。',
       `- \`request_file\` 相对工作区，\`input_file\` 相对清单目录，均支持绝对路径。每个 JSON 文件不超过 ${NATIVE_REQUEST_MAX_BYTES / 1_000_000} MB，运行期间不要改写。`,
