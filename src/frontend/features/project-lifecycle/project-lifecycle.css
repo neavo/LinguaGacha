@@ -20,7 +20,7 @@
 .project-lifecycle__notice {
   display: flex;
   flex-shrink: 0;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   margin: 16px 0 0;
   border-left: 1px solid var(--project-lifecycle-notice);
@@ -32,7 +32,7 @@
 .project-lifecycle__notice svg {
   flex-shrink: 0;
   width: 16px;
-  height: 1.5em; /* 图标与首行文字居中对齐 */
+  height: 16px;
   color: var(--project-lifecycle-notice);
 }
 
