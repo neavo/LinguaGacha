@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 import { frontend_resolve_alias } from "../vite/project-paths.js";
 
-// 这些测试消费完整部署资源，统一构建一次后仍按文件并发执行。
+// 部署资源与真实宿主测试统一在普通测试结束后运行，避免进程启动与批量编译争抢资源。
 const INTEGRATION_TESTS = [
   "src/backend/agent/media/index.test.ts",
   "src/backend/agent/media/visualize.test.ts",
@@ -10,11 +10,14 @@ const INTEGRATION_TESTS = [
   "src/backend/agent/media/worker.test.ts",
   "src/backend/agent/npm/index.test.ts",
   "src/backend/agent/workspace/runtime/bootstrap.test.ts",
+  "src/backend/agent/workspace/runtime/module-resolution.test.ts",
   "src/backend/file/pdf/pdf-worker.test.ts",
   "src/backend/file/shared/javascript.test.ts",
   "src/backend/file/rpgmaker-rgss/ruby.test.ts",
   "src/backend/file/shared/game/prepare-worker.test.ts",
   "src/native/pdf-host.test.ts",
+  "src/native/app-locale.test.ts",
+  "src/native/native-fs.test.ts",
 ];
 
 export default defineConfig({

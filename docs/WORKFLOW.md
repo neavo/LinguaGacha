@@ -131,7 +131,7 @@ Markdown 与 YAML 使用文本或元数据检查，项目格式化脚本不处�
 [vitest.config.ts](../buildtools/vitest/vitest.config.ts) 划分三个项目：
 
 - `node`：后端、CLI、共享逻辑和 Electron main。
-- `integration`：消费完整部署工作区的测试，文件清单由 Vitest 配置维护。
+- `integration`：消费完整部署工作区或启动真实 Electron 宿主的测试，文件清单由 Vitest 配置维护。
 - `renderer`：前端与 preload 桥接，使用 `jsdom` 和 renderer 初始化。
 
 测试入口自动准备所需资源。`integration` 在普通测试完成后并发运行。
