@@ -177,6 +177,17 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 媒体推理
 
+Python 媒体行为可通过 `media.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。依赖版本见 `src/backend/agent/media/preparation.ts`：
+
+```powershell
+$mediaPythonProject = '<已准备媒体环境的 Python 项目目录，含 pyproject.toml>'
+$mediaTestFile = (Resolve-Path 'src/backend/agent/media/media.test.py').Path
+$mediaSourceDirectory = (Resolve-Path 'src/backend/agent/media').Path
+uv run --project $mediaPythonProject python -I -X utf8 $mediaTestFile $mediaSourceDirectory
+```
+
+验证部署产物时，将最后一个参数替换为其 `runtime` 目录。Windows 路径问题须在 Windows 验证。
+
 媒体路由和配置变化运行 `media/probe.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `preparation`、`channel`、`speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`；公开探查和资源检查契约同时运行工作区 `bootstrap.test.ts`。这些集成测试使用测试资源，不下载权重。
 
 真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 探查、识别、画面处理、显式设备选择与取消后重跑。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。

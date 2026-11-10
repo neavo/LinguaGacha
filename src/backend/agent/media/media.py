@@ -397,14 +397,21 @@ def iou(a, b):
     return inner / (area(a) + area(b) - inner or 1)
 
 
+def write_jpeg(file, image):
+    """通过 Python 写入 JPEG，避免依赖 OpenCV 的 Windows Unicode 路径支持。"""
+    success, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+    if not success:
+        raise OSError(f"无法编码 JPEG {file}")
+    file.write_bytes(encoded.tobytes())
+
+
 def crop(frame, rect, file):
     """按块裁图，四周留出块高的边距。"""
     height, width = frame.shape[:2]
     margin = CROP_MARGIN * (rect[3] - rect[1])
     x0, y0 = max(0, int(rect[0] - margin)), max(0, int(rect[1] - margin))
     x1, y1 = min(width, int(rect[2] + margin + 1)), min(height, int(rect[3] + margin + 1))
-    if not cv2.imwrite(str(file), frame[y0:y1, x0:x1], [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]):
-        raise OSError(f"无法写入裁图 {file}")  # OpenCV 写入失败也可能只返回 False。
+    write_jpeg(file, frame[y0:y1, x0:x1])
 
 
 def scan(channel, ffmpeg, source, width, height, out):
@@ -529,15 +536,16 @@ def sheet(channel, entries, out):
             cv2.putText(canvas, label, (x, y + SHEET_LABEL_HEIGHT - 6), LABEL_FONT, LABEL_SCALE, (255, 255, 255), LABEL_THICKNESS)
             canvas[y + SHEET_LABEL_HEIGHT : y + SHEET_LABEL_HEIGHT + image.shape[0], x : x + image.shape[1]] = image
         file = out / f"{len(sheets):03d}.jpg"
-        if not cv2.imwrite(str(file), canvas, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]):
-            raise OSError(f"无法写入图集 {file}")
+        write_jpeg(file, canvas)
         sheets.append({"file": str(file), "ids": [entry["id"] for entry, *_ in cells]})
 
     x = y = row = 0  # 下一格的位置；当前行的高度。
     for entry in entries:
-        image = cv2.imread(entry["file"])
+        data = np.fromfile(entry["file"], dtype=np.uint8)
+        # 空文件会触发 OpenCV 断言，统一按无法解码处理。
+        image = cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
         if image is None:
-            raise FileNotFoundError(f"缺少裁图 {entry['file']}，先调用 media.scan()")
+            raise ValueError(f"无法解码裁图 {entry['file']}")
         scale = min(1, SHEET_EDGE / image.shape[1], SHEET_CROP_HEIGHT / image.shape[0])
         image = cv2.resize(image, (max(1, round(image.shape[1] * scale)), max(1, round(image.shape[0] * scale))),
                            interpolation=cv2.INTER_AREA)  # fmt: skip
