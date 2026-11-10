@@ -130,6 +130,7 @@ it.each([
   expect(request.text.slice(request.selection!.from, request.selection!.to)).toBe(
     t("app.agent_input.path_placeholder"),
   );
+  expect(request.text).toContain(`\n\n${t("app.agent_input.steps_intro_after_instruction")}\n1. `);
 });
 
 it("取消保存位置不创建也不预置草稿", async () => {
@@ -231,6 +232,7 @@ it("游戏来源依次确认备份、语言和包顺序，按摘要名称在来�
   expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
   const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
   expect(request.selection).toBeUndefined();
+  expect(request.text.startsWith(`${t("app.agent_input.steps_intro")}\n1. `)).toBe(true);
 });
 
 it("来源摘要补齐无效计数，无可用文件或请求失败时清空并提示", async () => {

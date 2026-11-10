@@ -86,7 +86,8 @@ async function detect(directory) {
 
 /**
  * 以 1 fps 检测整片画面文字，写入 `video.json` 的 `text`，每个区间的代表帧裁图写入 `text/<id>.jpg`。
- * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成，结果与之前一致。
+ * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成。
+ * 检测模型随本机配置而定，区间编号和框只在本次结果内有效。
  */
 export async function scan(directory) {
   directory = path.resolve(directory);

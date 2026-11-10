@@ -21,20 +21,36 @@ const PPOCR_URLS = [
   "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/f8d7df21b3cde6d331224b5728d7dffb8058b8d1",
   "https://modelscope.cn/models/neavo7/PP-OCRv6-ONNX/resolve/45e0cc57a4ea02feed488b5a0508257142a6009c",
 ];
+const FSMN_URLS = [
+  "https://huggingface.co/neavo/FSMN-VAD-ONNX/resolve/2baa9f06b5d56e871d3d30a4d9b9836bc5f141dd",
+  "https://modelscope.cn/models/neavo7/FSMN-VAD-ONNX/resolve/3de348810c794315a5f36939717887df1b858af5",
+];
 const mirrors = (bases: readonly string[], file: string): string[] =>
   bases.map((base) => `${base}/${file}`);
 
 /**
  * 模型清单。版本变化通过修改清单发布，启动时不追踪远端最新权重。
  * SenseVoiceSmall 来自阿里巴巴 FunASR，许可要求注明来源与作者并保留模型名，许可文件随模型下载。
- * TEN-VAD 来自 Agora，许可为 Apache 2.0 附加条件，只用于本应用及其直接用户；k2-fsa 发布的版本附带前处理元数据。
+ * FSMN-Monophone VAD 来自 Alibaba / FunASR，模型许可为 Apache-2.0。
  */
 export const MEDIA_MODELS = Object.freeze({
   vad: {
-    file: "ten_vad/ten-vad.onnx",
-    size: 332211,
-    sha256: "718cb7eef47e3cf5ddbe7e967a7503f46b8b469c0706872f494dfa921b486206",
-    urls: ["https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/ten-vad.onnx"],
+    file: "fsmn_vad/model_quant.onnx",
+    size: 506744,
+    sha256: "5289eb2aa3c9af2d7a4284bcfa7c3ceb81d360814ed4203239b6c5d0569da8a1",
+    urls: mirrors(FSMN_URLS, "model_quant.onnx"),
+  },
+  vad_mvn: {
+    file: "fsmn_vad/am.mvn",
+    size: 8040,
+    sha256: "6820fef9687708c4fc3fab2530179c8fcea6262daa25514380056cd8f6eb1754",
+    urls: mirrors(FSMN_URLS, "am.mvn"),
+  },
+  vad_license: {
+    file: "fsmn_vad/LICENSE",
+    size: 11358,
+    sha256: "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    urls: mirrors(FSMN_URLS, "LICENSE"),
   },
   // CPU 使用官方动态 INT8 导出，目前没有内容相同的授权镜像。
   asr_cpu: {
@@ -58,7 +74,7 @@ export const MEDIA_MODELS = Object.freeze({
     sha256: "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc",
     urls: mirrors(W8A32_URLS, "tokens.txt"),
   },
-  mvn: {
+  asr_mvn: {
     file: "sensevoice/am.mvn",
     size: 11203,
     sha256: "29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5",
@@ -70,11 +86,17 @@ export const MEDIA_MODELS = Object.freeze({
     sha256: "7dba975a2069691db4992b0592d70828b330d2f8a30a71450f4e152a554e84f8",
     urls: mirrors(W8A32_URLS, "LICENSE"),
   },
-  det: {
+  det_cpu: {
     file: "ppocr/v6/PP-OCRv6_det_small.onnx",
     size: 9929594,
     sha256: "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
     urls: mirrors(PPOCR_URLS, "det/PP-OCRv6_det_small.onnx"),
+  },
+  det_gpu: {
+    file: "ppocr/v6/PP-OCRv6_det_medium.onnx",
+    size: 62119454,
+    sha256: "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
+    urls: mirrors(PPOCR_URLS, "det/PP-OCRv6_det_medium.onnx"),
   },
   ppocr_license: {
     file: "ppocr/v6/LICENSE",

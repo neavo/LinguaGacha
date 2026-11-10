@@ -194,18 +194,17 @@ export const pt_br_app = {
     update_available_tooltip: "Abrir janela de confirmação de atualização",
   },
   agent_input: {
-    steps_intro: "Siga estas etapas:",
+    steps_intro: "Execute as etapas em ordem:",
+    steps_intro_after_instruction: "Em seguida, execute as etapas em ordem:",
     path_placeholder: "[Insira os caminhos dos arquivos aqui ou arraste arquivos]",
     steps: {
       glossary: "Extrair termos",
       translate: "Traduzir o texto completo",
       review: "Revisar a tradução",
-      generate: "Gerar todas as traduções",
     },
   },
   translation_generation: {
-    agent_request_without_review: "Pule a etapa de revisão e me ajude a gerar todas as traduções.",
-    agent_request: "Ajude-me a gerar todas as traduções",
+    agent_request: "Gere todas as traduções sem realizar operações não relacionadas",
     action: "Gerar tradução",
     confirmation: {
       generic_description:

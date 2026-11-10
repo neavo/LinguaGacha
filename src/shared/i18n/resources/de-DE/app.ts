@@ -201,19 +201,17 @@ export const de_de_app = {
     update_available_tooltip: "Update-Bestätigungsdialog öffnen",
   },
   agent_input: {
-    steps_intro: "Führe diese Schritte aus:",
+    steps_intro: "Führe die Schritte der Reihe nach aus:",
+    steps_intro_after_instruction: "Führe anschließend die Schritte der Reihe nach aus:",
     path_placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
     steps: {
       glossary: "Terminologie extrahieren",
       translate: "Gesamten Text übersetzen",
       review: "Übersetzung prüfen",
-      generate: "Alle Übersetzungen erstellen",
     },
   },
   translation_generation: {
-    agent_request_without_review:
-      "Überspringe die Prüfung und hilf mir, alle Übersetzungen zu erstellen.",
-    agent_request: "Hilf mir, alle Übersetzungen zu erstellen",
+    agent_request: "Erzeuge alle Übersetzungen, ohne sachfremde Aktionen auszuführen",
     action: "Übersetzung erstellen",
     confirmation: {
       generic_description:

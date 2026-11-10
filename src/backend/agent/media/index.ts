@@ -5,15 +5,19 @@
 import path from "node:path";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { npm } from "../npm";
+import { CalibrationCleanupFailure } from "./calibration";
 import { uv } from "../uv";
 import {
+  DecodeFailure,
   calibrate_devices,
+  probe_gpu,
   helper,
   inference_cache,
   media_directories,
   operate,
   ORT_PACKAGE,
   ORT_VERSION,
+  read_json,
 } from "./engine";
 import {
   FFMPEG_PACKAGE,
@@ -41,11 +45,13 @@ const PYTHON_PACKAGES = Object.freeze([
 /** 任何机器都需要的 CPU 基础资源；GPU 权重只在本机 WebGPU 可用时准备。 */
 const BASE_MODELS: readonly MediaModel[] = [
   MEDIA_MODELS.vad,
+  MEDIA_MODELS.vad_mvn,
+  MEDIA_MODELS.vad_license,
   MEDIA_MODELS.asr_cpu,
   MEDIA_MODELS.tokens,
-  MEDIA_MODELS.mvn,
+  MEDIA_MODELS.asr_mvn,
   MEDIA_MODELS.sensevoice_license,
-  MEDIA_MODELS.det,
+  MEDIA_MODELS.det_cpu,
   MEDIA_MODELS.ppocr_license,
 ];
 const DECODER_CACHE = "decoder.json"; // 工作目录中的硬解选择，可重建，不进入资产包。
@@ -63,17 +69,6 @@ export type RefineRow = Readonly<{
 export type SheetEntry = Readonly<{ id: number; start: number; file: string }>;
 export type Sheet = { file: string; ids: number[] };
 
-function read_json(file: string): unknown {
-  try {
-    return JSON.parse(fs.read_text_file(file));
-  } catch (error) {
-    // 缺失或损坏的本机缓存都按没有处理，重新选择后覆盖。
-    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError)
-      return undefined;
-    throw error;
-  }
-}
-
 /** 列出尚未就绪的 npm 包、Python 依赖声明与模型。只读，不探测设备。 */
 export async function missing(): Promise<MediaMissing> {
   const packages: string[] = [];
@@ -89,9 +84,12 @@ export async function missing(): Promise<MediaMissing> {
   const declared = fs.exists(project) ? fs.read_text_file(project) : "";
   const python = PYTHON_PACKAGES.filter((spec) => !declared.includes(`"${spec}"`));
   const { models: directory } = media_directories();
-  const wanted = (await inference_cache())?.webgpu
-    ? [...BASE_MODELS, MEDIA_MODELS.asr_gpu]
-    : BASE_MODELS;
+  const profile = await inference_cache();
+  const wanted = [
+    ...BASE_MODELS,
+    ...(profile?.asr === "webgpu" ? [MEDIA_MODELS.asr_gpu] : []),
+    ...(profile && profile.det !== "cpu" ? [MEDIA_MODELS.det_gpu] : []),
+  ];
   const models: string[] = [];
   for (const model of wanted) if (!model_ready(directory, model)) models.push(model.file);
   return { packages, python, models };
@@ -101,7 +99,15 @@ export async function missing(): Promise<MediaMissing> {
  * 安装依赖、下载并校验模型，再测量本机推理配置。WebGPU 可用时补充 GPU 权重并重新测量。
  * CPU 权重始终保留，GPU 在运行中出错时可直接回退。
  */
-export async function setup(): Promise<MediaMissing> {
+let preparing: Promise<MediaMissing> | undefined;
+export function setup(): Promise<MediaMissing> {
+  preparing ??= prepare().finally(() => {
+    preparing = undefined;
+  });
+  return preparing;
+}
+
+async function prepare(): Promise<MediaMissing> {
   const { packages, python } = await missing();
   const ort = packages.filter((spec) => spec.startsWith(`${ORT_PACKAGE}@`));
   const others = packages.filter((spec) => !ort.includes(spec));
@@ -112,18 +118,29 @@ export async function setup(): Promise<MediaMissing> {
   const { models, runtime } = media_directories();
   const stats = path.join(runtime, "aria2-server-stat.txt");
   for (const model of BASE_MODELS) await download_model(models, stats, model);
-  let cache = (await inference_cache()) ?? (await calibrate_devices());
-  if (cache.webgpu) {
-    await download_model(models, stats, MEDIA_MODELS.asr_gpu);
-    if (!("webgpu" in cache.calibration.asr)) cache = await calibrate_devices();
+  const cache = await inference_cache();
+  if (cache?.complete && (await missing()).models.length === 0) return missing();
+  let gpu = false,
+    reason: string | undefined;
+  try {
+    await probe_gpu();
+    for (const model of [MEDIA_MODELS.det_gpu, MEDIA_MODELS.asr_gpu])
+      await download_model(models, stats, model);
+    gpu = true;
+  } catch (error) {
+    if (error instanceof CalibrationCleanupFailure) throw error;
+    reason = error instanceof Error ? error.message : String(error);
+    console.warn(`GPU 准备未完成，将验证 CPU 配置：${reason}`);
   }
+  await calibrate_devices(gpu, reason);
   return missing();
 }
 
 /** 计算前确认资源齐全，缺失时提示先准备，不让会话创建报出难以理解的错误。 */
 async function ensure_ready(): Promise<void> {
   const { packages, python, models } = await missing();
-  const absent = [...packages, ...python, ...models];
+  const optional = new Set([MEDIA_MODELS.asr_gpu.file, MEDIA_MODELS.det_gpu.file]);
+  const absent = [...packages, ...python, ...models.filter((file) => !optional.has(file))];
   if (absent.length)
     throw new Error(
       `Media components are not ready (${absent.join(", ")}); call media.setup() first.`,
@@ -157,7 +174,8 @@ export async function listen(
         track,
         center: /\b[57]\.1\b/u.test(stream), // 5.1、7.1 只取中置声道，实测错误明显少于常规下混。
         language: code,
-        mvn: path.join(media_directories().models, MEDIA_MODELS.mvn.file),
+        vad_mvn: path.join(media_directories().models, MEDIA_MODELS.vad_mvn.file),
+        asr_mvn: path.join(media_directories().models, MEDIA_MODELS.asr_mvn.file),
       },
       engine,
     ),
@@ -271,6 +289,7 @@ async function decoded<T>(
   try {
     return await run(hwaccel);
   } catch (error) {
+    if (!(error instanceof DecodeFailure)) throw error;
     console.warn(
       `硬件解码 ${hwaccel.name} 失败，改用软件解码重新执行：${error instanceof Error ? error.message : String(error)}`,
     );

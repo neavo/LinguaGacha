@@ -7,6 +7,7 @@
 首帧是任务 `{"command": ..., "args": {...}}`，末帧头为 `{"result": true}`、载荷是 JSON 结果，其余为推理请求与应答。
 """
 
+import importlib.util
 import json
 import math
 import os
@@ -31,21 +32,12 @@ PAYLOAD_MAX = 64 * 1024 * 1024  # 最大输入是 1920 长边画面的检测张�
 IN_FLIGHT = 2  # 每条处理分支的在途请求上限，前后处理与推理重叠一帧即可。
 
 SAMPLE_RATE = 16000
-# TEN-VAD 前处理移植自 sherpa-onnx `ten-vad-model.cc`，参数分段沿用 `voice-activity-detector.cc`。
-# 产品此前经 sherpa 运行该模型，阈值按其行为选定，这里逐项保持一致，包括省略音高特征。
-VAD_FRAME = 256
-VAD_BLOCK = 625  # 每次请求的帧数（10 秒），Worker 按顺序更新循环状态。
-VAD_THRESHOLD = 0.3
-VAD_MIN_SILENCE = int(SAMPLE_RATE * 0.1)
-VAD_MIN_SPEECH = int(SAMPLE_RATE * 0.1)
-VAD_MAX_SPEECH = int(SAMPLE_RATE * 60)
-VAD_LONG_THRESHOLD = 0.9  # sherpa 在缓冲超过最长语音后提高阈值，促使长段尽快结束。
-VAD_FFT = 1024
-VAD_WINDOW = np.hanning(768)[:VAD_FRAME].astype(np.float32)  # 模型元数据 `window` 的前 256 点。
-VAD_LOG_SCALE = 20.79441541679836  # log(32768²)
-# 固定哈希 ten-vad.onnx 元数据中的 `mean` 与 `inv_stddev`，第 41 维对应置零的音高。
-VAD_MEAN = np.array([-8.198236465454102, -6.265716552734375, -5.483818531036377, -4.758691310882568, -4.417088985443115, -4.142892837524414, -3.9128503799438477, -3.8459279537200928, -3.657090425491333, -3.723418712615967, -3.876134157180786, -3.843890905380249, -3.6904051303863525, -3.756065845489502, -3.6986961364746094, -3.650463104248047, -3.7004687786102295, -3.567321300506592, -3.4989001750946045, -3.47780704498291, -3.4588160514831543, -3.4449238777160645, -3.4013285636901855, -3.3062613010406494, -3.2785568237304688, -3.233250856399536, -3.1986160278320312, -3.204526424407959, -3.20879864692688, -3.257838010787964, -3.3813767433166504, -3.5340213775634766, -3.6408679485321045, -3.7268588542938232, -3.773730993270874, -3.8046672344207764, -3.8329010009765625, -3.8711204528808594, -3.9905929565429688, -4.480289459228516, 92.35690307617188], np.float32)  # fmt: skip
-VAD_INV_STDDEV = np.array([0.19357097148895264, 0.20091579854488373, 0.21281595528125763, 0.2159537374973297, 0.2157800942659378, 0.2154635488986969, 0.2154858261346817, 0.21429947018623352, 0.2150290459394455, 0.21551626920700073, 0.21563807129859924, 0.21644558012485504, 0.21756553649902344, 0.21917064487934113, 0.21956980228424072, 0.21896639466285706, 0.21917855739593506, 0.21918226778507233, 0.2180882692337036, 0.21738281846046448, 0.21772992610931396, 0.21805863082408905, 0.2181740552186966, 0.21616514027118683, 0.2161247283220291, 0.21615596115589142, 0.21565639972686768, 0.21353760361671448, 0.211558997631073, 0.21122492849826813, 0.2103833705186844, 0.2061973512172699, 0.20536264777183533, 0.20472995936870575, 0.20319722592830658, 0.2016449272632599, 0.20013532042503357, 0.19822297990322113, 0.19715245068073273, 0.19621542096138, 0.008679524064064026], np.float32)  # fmt: skip
+PCM_BLOCK = 10 * SAMPLE_RATE  # 解码读块，与 VAD 请求块无关，不构成算法边界。
+
+# -I 不搜索相邻目录，固定部署路径加载唯一的 VAD 模块。
+_vad_spec = importlib.util.spec_from_file_location("fsmn_vad", Path(__file__).with_name("fsmn_vad.py"))
+fsmn_vad = importlib.util.module_from_spec(_vad_spec)
+_vad_spec.loader.exec_module(fsmn_vad)
 
 # SenseVoice 官方前端（config.yaml frontend_conf）：80 维 Hamming fbank、LFR m=7 n=6、am.mvn 归一化。
 ASR_WINDOW = 20 * SAMPLE_RATE  # 实测 60 秒整窗明显掉字，20 秒内基本完整。
@@ -55,7 +47,6 @@ MAX_EDGE = 1920  # 解码长边上限，不放大。也是裁图的分辨率。
 # PP-OCR 检测的前后处理取自 RapidOCR 3.10.0 `ch_ppocr_det/utils.py`（Apache-2.0），参数为其默认值。
 DET_SIDE = 640  # 检测内部长边，按文字召回与耗时实测选定。
 DET_THRESH, DET_BOX_THRESH, DET_UNCLIP, DET_MIN_SIZE, DET_CANDIDATES = 0.3, 0.5, 1.6, 3, 1000
-MAX_BOX_HEIGHT = 0.5  # 合并多行文字前过滤误框成整幅画面的纹理，正常多行块仍可合并。
 LINE_GAP = 0.6  # 行间距小于较矮一行高度的该倍数时视为同一块（经验值），两行硬字幕合成一块。
 TRACK_IOU = 0.5  # 相邻帧的块交并比不低于该值时归入同一区间（经验值）。
 GAP_FRAMES = 1  # 区间允许连续漏检的帧数，弥补 640 检测偶尔的漏判。
@@ -127,7 +118,10 @@ class Channel:
                     future = self.pending.pop(header.get("id"), None)
                 if future is None:
                     raise ValueError(f"未知应答：{header}")
-                future.set_result((header, payload))
+                if "error" in header:
+                    future.set_exception(RuntimeError(header["error"]))
+                else:
+                    future.set_result((header, payload))
         except BaseException as error:  # noqa: BLE001 读线程退出原因转交所有等待者。
             with self.lock:
                 pending, self.pending = list(self.pending.values()), {}
@@ -158,6 +152,10 @@ def ffmpeg_process(args):
     return subprocess.Popen(args, stdout=subprocess.PIPE)
 
 
+class DecodeError(RuntimeError):
+    """仅由 FFmpeg 解码退出产生，供宿主选择软解重跑。"""
+
+
 def finish(process, consumed):
     """消费者提前停止时结束 ffmpeg；完整读完时要求正常退出。"""
     try:
@@ -165,109 +163,12 @@ def finish(process, consumed):
             process.kill()
         code = process.wait()
         if consumed and code != 0:
-            raise RuntimeError(f"ffmpeg 解码失败 ({code})")
+            raise DecodeError(f"ffmpeg 解码失败 ({code})")
     finally:
         process.stdout.close()
 
 
 # ---------------------------------------------------------------- 语音
-
-
-@cache
-def vad_mel():
-    """sherpa 使用的 librosa 式 slaney 梅尔滤波，40 个频带。"""
-    frame = knf.FrameExtractionOptions()
-    frame.samp_freq, frame.frame_length_ms = SAMPLE_RATE, 64  # 1024 点 FFT。
-    mel = knf.MelBanksOptions()
-    mel.num_bins, mel.low_freq, mel.high_freq = 40, 0, 8000
-    mel.is_librosa, mel.norm, mel.use_slaney_mel_scale, mel.floor_to_int_bin = True, "", True, True
-    return knf.MelBanks(mel, frame, 1.0).get_matrix().T.astype(np.float64)
-
-
-def vad_features(samples, last):
-    """把整数帧的 [-1, 1) 采样转为归一化特征 [帧数, 41]，`last` 是上一块末采样（已放大）。
-
-    预加重跨帧连续；每帧只取 256 点加窗，补零到 1024 点。
-    sherpa 原地计算功率谱时第 511 点读到被覆盖的 Nyquist 平方值，第 512 点保留第 256 点实部，这里如实复现。
-    """
-    scaled = samples.astype(np.float64) * 32768
-    previous = np.concatenate(([last], scaled[:-1]))
-    frames = (scaled - 0.97 * previous).astype(np.float32).reshape(-1, VAD_FRAME) * VAD_WINDOW
-    spectrum = np.fft.rfft(frames.astype(np.float64), VAD_FFT)
-    power = spectrum.real**2 + spectrum.imag**2
-    power[:, 511] = spectrum[:, 511].real ** 2 + (spectrum[:, 512].real ** 2) ** 2
-    power[:, 512] = spectrum[:, 256].real
-    mel = power[:, : vad_mel().shape[0]] @ vad_mel()
-    features = np.zeros((len(frames), 41), np.float32)
-    features[:, :40] = np.log(mel.astype(np.float32) + 1e-10) - VAD_LOG_SCALE
-    return (features - VAD_MEAN) * VAD_INV_STDDEV, float(scaled[-1])
-
-
-class Segmenter:
-    """sherpa VoiceActivityDetector 每次接收一帧时的分段规则，只跟踪采样位置。"""
-
-    def __init__(self):
-        self.threshold, self.triggered = VAD_THRESHOLD, False
-        self.current = self.temp_start = self.temp_end = 0
-        self.head = self.tail = 0  # 缓冲区间。
-        self.start = -1
-
-    def is_speech(self, prob):
-        """TenVadModel::IsSpeech，分支顺序与原实现一致。"""
-        threshold = self.threshold
-        self.current += VAD_FRAME
-        if prob > threshold and self.temp_end != 0:
-            self.temp_end = 0
-        if prob > threshold and self.temp_start == 0:
-            self.temp_start = self.current
-            return False
-        if prob > threshold and self.temp_start != 0 and not self.triggered:
-            if self.current - self.temp_start < VAD_MIN_SPEECH:
-                return False
-            self.triggered = True
-            return True
-        if prob < threshold and not self.triggered:
-            self.temp_start = self.temp_end = 0
-            return False
-        if prob > threshold - 0.15 and self.triggered:
-            return True
-        if prob > threshold and not self.triggered:
-            self.triggered = True
-            return True
-        if prob < threshold and self.triggered:
-            if self.temp_end == 0:
-                self.temp_end = self.current
-            if self.current - self.temp_end < VAD_MIN_SILENCE:
-                return True
-            self.temp_start = self.temp_end = 0
-            self.triggered = False
-            return False
-        return False
-
-    def accept(self, prob):
-        """处理一整帧，返回结束的人声 `(start, end)` 采样区间或 None。"""
-        self.threshold = VAD_LONG_THRESHOLD if self.tail - self.head > VAD_MAX_SPEECH else VAD_THRESHOLD
-        self.tail += VAD_FRAME
-        lead = self.tail - 2 * VAD_FRAME - VAD_MIN_SPEECH  # 起点向前补两帧与最短语音。
-        if self.is_speech(prob):
-            if self.start == -1:
-                self.start = max(lead, self.head)
-            return None
-        segment = None
-        if self.start != -1 and self.tail > self.head:
-            end = self.tail - VAD_MIN_SILENCE
-            segment, self.head = (self.start, end), end
-        if self.start == -1 and lead > self.head:
-            self.head = lead
-        self.start = -1
-        return segment
-
-    def flush(self):
-        """输入结束，进行中的语音截止到最后一个整帧。不足一帧的尾部不计入，与产品此前使用的 sherpa 版本一致。"""
-        if self.start == -1 or self.tail == self.head:
-            return None
-        segment, self.head, self.start = (self.start, self.tail), self.tail, -1
-        return segment if segment[1] > segment[0] else None
 
 
 @cache
@@ -298,7 +199,7 @@ def asr_features(samples, mvn):
     return ((feats[indices].reshape(-1, LFR_M * 80) + neg_mean) * inv_std)[None].astype(np.float32)
 
 
-def speech(channel, ffmpeg, source, track, center, language, mvn):
+def speech(channel, ffmpeg, source, track, center, language, asr_mvn, vad_mvn):
     """一次解码完成人声检测与识别。返回人声采样区间与各识别窗口的 token。
 
     部分容器以音轨起点为零点，补齐起点并保留画面流后与画面检测的零点一致。
@@ -309,8 +210,9 @@ def speech(channel, ffmpeg, source, track, center, language, mvn):
         [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-i", source, "-map", f"0:a:{track}", "-af", audio,
          "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "s16le", "pipe:1", "-map", "0:V:0?", "-c", "copy", "-f", "null", "-"]
     )  # fmt: skip
-    segmenter, spans, windows, inflight = Segmenter(), [], [], deque()
-    retained, offset, last = np.zeros(0, np.float32), 0, 0.0  # 缓冲中的采样及其起点。
+    frontend, segmenter = fsmn_vad.Frontend(vad_mvn), fsmn_vad.Segmenter()
+    spans, windows, inflight = [], [], deque()
+    retained, offset = np.zeros(0, np.float32), 0  # 缓冲中的采样及其起点。
 
     def settle(limit):
         while len(inflight) > limit:
@@ -325,31 +227,37 @@ def speech(channel, ffmpeg, source, track, center, language, mvn):
         for i in range(count):
             begin = start + math.floor((end - start) * i / count + 0.5)
             stop = start + math.floor((end - start) * (i + 1) / count + 0.5)
-            features = asr_features(retained[begin - offset : stop - offset], mvn)
+            features = asr_features(retained[begin - offset : stop - offset], asr_mvn)
             windows.append({"from": begin, "end": stop, "tokens": [], "timestamps": []})
             if features is not None:
+                settle(IN_FLIGHT - 1)
                 inflight.append((len(windows) - 1, channel.request("asr", features, language=language)))
-                settle(IN_FLIGHT)
+
+    def consume(final):
+        """把前端已就绪的特征块送去推理和分段，再释放分段与前端都不再需要的 PCM。"""
+        nonlocal retained, offset
+        while (batch := frontend.take(final)) is not None:
+            frame, features, last = batch
+            begin = frame * fsmn_vad.FRAME_SHIFT
+            end = (frame + features.shape[1] - 1) * fsmn_vad.FRAME_SHIFT + fsmn_vad.FRAME_LENGTH
+            scores = tensor(*channel.request("vad", features).result())
+            for start, stop in segmenter.accept(scores, retained[begin - offset:end - offset], last):
+                emit(start, stop)
+            # 未完成语音和下一批能量计算仍需 PCM。已复制的 ASR 特征不再持有它。
+            keep = min(segmenter.retained_sample, frontend.offset * fsmn_vad.FRAME_SHIFT)
+            retained, offset = retained[keep - offset:].copy(), keep
 
     consumed = False
     try:
-        block_bytes = VAD_BLOCK * VAD_FRAME * 2
-        while data := process.stdout.read(block_bytes):  # 读满一块或到达末尾。
+        while data := process.stdout.read(PCM_BLOCK * 2):
             if len(data) % 2:
                 raise ValueError("PCM 采样不完整")
             samples = np.frombuffer(data, "<i2").astype(np.float32) / 32768
             retained = np.concatenate((retained, samples))
-            whole = len(samples) // VAD_FRAME * VAD_FRAME  # 只有输入末尾会出现不足一帧的数据。
-            if whole:
-                features, last = vad_features(samples[:whole], last)
-                probs = tensor(*channel.request("vad", features).result())
-                for prob in probs:
-                    if (segment := segmenter.accept(float(prob))) is not None:
-                        emit(*segment)
-            drop = segmenter.head - offset  # 分段后缓冲头之前的采样不再需要。
-            retained, offset = retained[drop:], segmenter.head
-        if (segment := segmenter.flush()) is not None:
-            emit(*segment)
+            frontend.accept(samples)
+            consume(False)
+        frontend.accept(np.zeros(0, np.float32), final=True)
+        consume(True)
         settle(0)
         consumed = True
     finally:
@@ -459,7 +367,7 @@ def det_blocks(header, payload, frame):
     pred = tensor(header, payload)
     height = frame.shape[0]
     found = det_boxes(pred.reshape(pred.shape[-2:]), height, frame.shape[1])
-    return blocks([box for box in found if np.ptp(box[:, 1]) <= MAX_BOX_HEIGHT * height])
+    return blocks(found)
 
 
 def blocks(boxes):
@@ -549,8 +457,8 @@ def scan(channel, ffmpeg, source, width, height, out, hwaccel):
             track(second, frame, det_blocks(*future.result(), frame))
 
     for second, frame in enumerate(decode(ffmpeg, source, size, 1, hwaccel)):
+        settle(IN_FLIGHT - 1)
         inflight.append((second, frame, channel.request("det", det_input(frame))))
-        settle(IN_FLIGHT)
     settle(0)
     w, h = size
     return [
@@ -714,7 +622,8 @@ if __name__ == "__main__":
     reader.start()
     try:
         result = COMMANDS[job["command"]](channel, **job["args"])
-    except BaseException:
+    except BaseException as error:
+        channel.write({"error": str(error), "stage": "decode" if isinstance(error, DecodeError) else "compute"})
         traceback.print_exc()
         sys.stderr.flush()
         os._exit(1)  # 读线程仍阻塞在 stdin 上，解释器无法正常收尾。

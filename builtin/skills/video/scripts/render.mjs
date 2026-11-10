@@ -13,8 +13,8 @@ const TEXT_LEAD_SECONDS = 1; // 文字区间起点在 1 fps 下最多晚 1 秒�
 const SCREEN_GAP = 0.3; // 画面文字译文与原文框的间距（字号倍数）。
 const OUTLINE_COLOUR = "&H00000000"; // 描边：不透明黑色。
 const SHADOW_COLOUR = "&H80000000"; // 阴影：半透明黑色。
-const BOX_COLOUR = "&H40000000"; // 对白底框：约 75% 不透明。实测 &H60 时底下的硬字幕仍隐约可见。
-const BOX_PADDING = 8; // 底框内边距（ASS `Outline`）。
+const BOX_COLOUR = "&H40000000"; // 对白底框：约 75% 不透明。
+const BOX_PADDING = 8; // BorderStyle=4 使用 Shadow 控制整条字幕的底框留白。
 const TAIL_SECONDS = 0.2; // 对话结束后的阅读留白。
 const MIN_SECONDS = 0.7; // 对话的最短显示时长，避免短句一闪而过。
 
@@ -40,8 +40,8 @@ export async function render({ source, input, translated, bilingual }) {
     rect: [box[0] * width, box[1] * height, box[2] * width, box[3] * height],
   }));
   /** 三种 ASS 样式共用字段顺序，描边与底框参数由调用者指定。 */
-  const style = (name, align, border, outline, outline_colour, back_colour) =>
-    `Style: ${name},${FONT},${size},&H00FFFFFF,&H00FFFFFF,${outline_colour},${back_colour},0,0,0,0,100,100,0,0,${border},${outline},0,${align},${margin},${margin},${margin},1`;
+  const style = (name, align, border, outline, shadow, outline_colour, back_colour) =>
+    `Style: ${name},${FONT},${size},&H00FFFFFF,&H00FFFFFF,${outline_colour},${back_colour},0,0,0,0,100,100,0,0,${border},${outline},${shadow},${align},${margin},${margin},${margin},1`;
   const header = [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -51,10 +51,10 @@ export async function render({ source, input, translated, bilingual }) {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    style("Dialogue", 2, 1, 2, OUTLINE_COLOUR, SHADOW_COLOUR),
+    style("Dialogue", 2, 1, 2, 0, OUTLINE_COLOUR, SHADOW_COLOUR),
     // ASS 不能用行内标签切换 BorderStyle，底框只能另设样式。
-    style("DialogueBox", 2, 3, BOX_PADDING, BOX_COLOUR, BOX_COLOUR),
-    style("Screen", 8, 1, 2, OUTLINE_COLOUR, SHADOW_COLOUR),
+    style("DialogueBox", 2, 4, 2, BOX_PADDING, OUTLINE_COLOUR, BOX_COLOUR),
+    style("Screen", 8, 1, 2, 0, OUTLINE_COLOUR, SHADOW_COLOUR),
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

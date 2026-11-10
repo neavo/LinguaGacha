@@ -125,7 +125,7 @@ function build_agent_draft(
   has_source: boolean,
   import_paths: readonly string[],
 ): AgentInputRequest {
-  const steps = format_agent_input_steps(t, TRANSLATION_STEPS);
+  const steps = format_agent_input_steps(t, TRANSLATION_STEPS, !has_source); // 空工程的步骤接在导入请求之后。
   if (has_source) return { text: steps };
   return format_agent_path_request(t, t("project.create.agent_draft.import"), import_paths, steps);
 }

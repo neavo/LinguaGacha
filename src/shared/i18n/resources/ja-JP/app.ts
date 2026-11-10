@@ -197,18 +197,17 @@ export const ja_jp_app = {
     update_available_tooltip: "更新の確認画面を開く",
   },
   agent_input: {
-    steps_intro: "以下の手順で実行してください：",
+    steps_intro: "次の手順を順番に実行してください：",
+    steps_intro_after_instruction: "その後、次の手順を順番に実行してください：",
     path_placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
     steps: {
       glossary: "用語を抽出",
       translate: "全文を翻訳",
       review: "訳文を校正",
-      generate: "すべての訳文を生成",
     },
   },
   translation_generation: {
-    agent_request_without_review: "校正の手順をスキップして、すべての訳文を生成してください。",
-    agent_request: "すべての訳文を生成して",
+    agent_request: "すべての訳文を生成し、無関係な操作は行わないでください",
     action: "訳文を生成",
     confirmation: {
       generic_description:

@@ -192,18 +192,17 @@ export const en_us_app = {
     update_available_tooltip: "Open the update confirmation dialog",
   },
   agent_input: {
-    steps_intro: "Follow these steps:",
+    steps_intro: "Execute the steps in order:",
+    steps_intro_after_instruction: "Then execute the steps in order:",
     path_placeholder: "[Enter file paths here or drag files here]",
     steps: {
       glossary: "Extract terminology",
       translate: "Translate the full text",
       review: "Review the translation",
-      generate: "Generate all translations",
     },
   },
   translation_generation: {
-    agent_request_without_review: "Skip the review step and help me generate all translations.",
-    agent_request: "Help me generate all translations",
+    agent_request: "Generate all translations without performing unrelated operations",
     action: "Generate translation",
     confirmation: {
       generic_description:

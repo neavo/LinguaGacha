@@ -189,18 +189,17 @@ export const ko_kr_app = {
     update_available_tooltip: "업데이트 확인 창 열기",
   },
   agent_input: {
-    steps_intro: "다음 단계대로 진행해 주세요:",
+    steps_intro: "다음 단계를 순서대로 실행하세요:",
+    steps_intro_after_instruction: "그런 다음 다음 단계를 순서대로 실행하세요:",
     path_placeholder: "[여기에 파일 경로를 입력하거나 파일을 끌어다 놓으세요]",
     steps: {
       glossary: "용어 추출",
       translate: "전체 텍스트 번역",
       review: "번역문 검토",
-      generate: "모든 번역 생성",
     },
   },
   translation_generation: {
-    agent_request_without_review: "교정 단계를 건너뛰고 모든 번역문을 생성해 주세요.",
-    agent_request: "모든 번역을 생성해 줘",
+    agent_request: "관련 없는 작업은 수행하지 말고 모든 번역문을 생성하세요",
     action: "번역문 생성",
     confirmation: {
       generic_description:

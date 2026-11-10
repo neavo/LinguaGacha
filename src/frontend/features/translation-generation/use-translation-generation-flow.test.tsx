@@ -159,7 +159,7 @@ describe("useTranslationGenerationFlow", () => {
     pick.mockRestore();
   });
 
-  it.each(["warnings", "files"])("在 %s 阶段转交 Agent 时携带审校决定", async (step) => {
+  it.each(["warnings", "files"])("在 %s 阶段转交 Agent 时预填对应任务", async (step) => {
     mocks.warnings.mockResolvedValue({
       projectPath: mocks.project_snapshot.path,
       sectionRevisions: { files: 7 },
@@ -179,11 +179,9 @@ describe("useTranslationGenerationFlow", () => {
     expect(
       find_agent_reference_ranges(text).some(({ reference }) => reference.kind === "skill"),
     ).toBe(true);
-    expect(text).toContain(
-      step === "warnings"
-        ? "app.agent_input.steps.review"
-        : "app.translation_generation.agent_request_without_review",
-    );
+    // 审校只在 warnings 阶段显式出现，两条路径共用同一生成任务文案。
+    expect(text.includes("app.agent_input.steps.review")).toBe(step === "warnings");
+    expect(text).toContain('app.translation_generation.agent_request @skill("project-operation")');
     expect(mocks.api_fetch).not.toHaveBeenCalled();
     act(() => latest_flow?.request_generation());
     await flush_microtasks();

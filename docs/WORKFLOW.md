@@ -174,6 +174,21 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 发行包入口或资源定位见 [发行包运行验证](#发行包运行验证)。
 
+#### 媒体推理
+
+媒体路由和配置变化运行 `media/calibration.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `channel`、`speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`，它用模型替身验证部署后的流隔离与张量释放，不下载权重。
+
+真实媒体验收由 `media/index.test.ts` 显式启用。它使用真实工作区监管器准备独立共享环境，在部署目录执行 `fsmn_vad.test.py` 与 `media.test.py`，再完成 `listen`、`scan` 和 `refine`，最后验证取消后重跑。素材需包含语音和画面文字。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
+
+```powershell
+$env:LINGUAGACHA_MEDIA_SOURCE = '素材的绝对路径'
+$env:LINGUAGACHA_MEDIA_REPORT = '独立验收目录的绝对路径'
+$env:LINGUAGACHA_MEDIA_LANGUAGE = 'JA'
+npm test -- --project integration src/backend/agent/media/index.test.ts
+```
+
+`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。
+
 ### 原生游戏
 
 格式目录位于 `src/backend/file/`，按变化选择测试：

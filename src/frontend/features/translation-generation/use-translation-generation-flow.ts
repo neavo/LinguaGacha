@@ -197,14 +197,10 @@ export function useTranslationGenerationFlow(): TranslationGenerationFlow {
     if (current_state.phase === "ready" && current_state.step === "warnings") {
       text = format_agent_input_steps(t, [
         { label_key: "app.agent_input.steps.review", skill: "translation" },
-        { label_key: "app.agent_input.steps.generate", skill: "project-operation" },
+        { label_key: "app.translation_generation.agent_request", skill: "project-operation" },
       ]);
     } else {
-      const request_key =
-        current_state.phase === "ready" && current_state.warning_count > 0
-          ? "app.translation_generation.agent_request_without_review"
-          : "app.translation_generation.agent_request";
-      text = `${t(request_key)} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`;
+      text = `${t("app.translation_generation.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`;
     }
     request_generation_ref.current += 1;
     apply_state({ phase: "closed" });

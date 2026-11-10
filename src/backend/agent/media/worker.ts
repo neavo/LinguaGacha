@@ -3,13 +3,11 @@
  * 主线程直接加载 ORT 时，原生收尾可能在 `exit` 之后卡住进程；放在 Worker 内由宿主线程等待它自然退出。
  * 本入口由根脚本以文件 URL 启动，只用 Node 标准解析，不依赖工作区 SDK 钩子。
  */
-import { performance } from "node:perf_hooks";
 import { parentPort, workerData } from "node:worker_threads";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { tensor_shape } from "./channel";
 import { ASR_LANGUAGE_IDS, ASR_TEXT_NORM, ctc_decode } from "./speech";
 import type {
-  MediaCalibration,
   MediaDevice,
   MediaTask,
   MediaWorkerConfig,
@@ -32,16 +30,12 @@ type Ort = {
   Tensor: new (type: string, data: Float32Array | Int32Array, dims: readonly number[]) => OrtTensor;
 };
 
-const VAD_CONTEXT = 3; // TEN-VAD 每次输入最近三帧特征。
-const VAD_FEATURES = 41;
-const VAD_STATE = [1, 64];
-const CALIBRATION_ROUNDS = 3; // 预热一次后交替测量的轮数。
-// 校准用实际最大形状：20 秒识别窗口与 16:9 画面的检测输入。
-const CALIBRATION_SHAPES: Readonly<Record<Exclude<MediaTask, "vad">, readonly number[]>> = {
-  asr: [1, 333, 560],
-  det: [1, 3, 352, 640],
-};
-
+// FSMN 契约与 `fsmn_vad.py` 一致：LFR 400 维特征，每帧 248 个 pdf 得分。
+const VAD_FEATURES = 400;
+const VAD_PDFS = 248;
+const VAD_BLOCK = 6000; // 单次请求的特征帧上限，沿用上游离线约 60 秒分块。
+const VAD_STATE = [1, 128, 19, 1]; // 每个循环缓存的形状。
+const VAD_CACHES = 4; // `in_cache0..3` 与 `out_cache0..3` 一一对应。
 const config = workerData as MediaWorkerConfig;
 const port = parentPort!;
 const loaded = (await import(config.ort)) as Ort & { default?: Ort };
@@ -87,7 +81,6 @@ async function recognize(
   input: Float32Array,
   shape: number[],
   language: string,
-  device: MediaDevice,
 ) {
   const id = ASR_LANGUAGE_IDS[language];
   if (id === undefined) throw new Error(`Unsupported ASR language: ${language}`);
@@ -100,7 +93,7 @@ async function recognize(
   try {
     const logits = outputs.ctc_logits!;
     const data = float(logits.data);
-    if (device !== "cpu") check_finite(data);
+    check_finite(data);
     const length = Number((outputs.encoder_out_lens!.data as ArrayLike<number | bigint>)[0]);
     if (logits.dims.length !== 3 || !(length > 0 && length <= logits.dims[1]!))
       throw new Error(`Unexpected ASR output: ${JSON.stringify(logits.dims)} / ${length}`);
@@ -115,7 +108,6 @@ async function detect(
   session: OrtSession,
   input: Float32Array,
   shape: number[],
-  device: MediaDevice,
 ): Promise<{ shape: number[]; data: Float32Array<ArrayBuffer> }> {
   const outputs = await infer(session, {
     [session.inputNames[0]!]: new ort.Tensor("float32", input, shape),
@@ -123,21 +115,26 @@ async function detect(
   try {
     const output = outputs[session.outputNames[0]!]!;
     const data = new Float32Array(float(output.data)); // 复制到独立缓冲区再转移。
-    if (device !== "cpu") check_finite(data);
+    if (output.dims.join() !== [1, 1, ...shape.slice(-2)].join())
+      throw new Error(`Unexpected detection output: ${output.dims}`);
+    check_finite(data);
+    if (data.some((value) => value < 0 || value > 1))
+      throw new Error("Detection output is not a probability map.");
     return { shape: output.dims.slice(-2), data };
   } finally {
     for (const tensor of Object.values(outputs)) tensor.dispose();
   }
 }
 
-/** 一路音频的 TEN-VAD 循环状态，按帧顺序推进。 */
-type VadStream = { context: Float32Array; states: OrtTensor[] };
+/** 每路音频唯一拥有四个 FSMN 循环缓存。 */
+type VadStream = OrtTensor[];
 
 async function serve(): Promise<void> {
-  const models = config.models!;
-  const sessions = new Map<MediaTask, Promise<OrtSession>>();
+  const models = config.models;
+  const sessions = new Map<MediaTask, Promise<OrtSession>>(); // 按任务首次请求时创建。
   const streams = new Map<number, VadStream>();
-  let vocabulary: string[] | undefined;
+  let vocabulary: string[] | undefined; // ASR 首次请求时读取。
+  /** 同一任务共用一个会话，并发首请求共享同一个创建过程。 */
   const session = (task: MediaTask): Promise<OrtSession> => {
     let current = sessions.get(task);
     if (!current) {
@@ -148,6 +145,12 @@ async function serve(): Promise<void> {
     return current;
   };
 
+  /** 释放一路的全部缓存，重复释放空流无副作用。 */
+  const release = (stream: number): void => {
+    for (const tensor of streams.get(stream) ?? []) tensor.dispose();
+    streams.delete(stream);
+  };
+  /** 一路首次请求从零缓存开始。成功后新缓存替换旧缓存，失败则丢弃该路状态。 */
   const vad = async (
     stream: number,
     input: Float32Array,
@@ -156,52 +159,78 @@ async function serve(): Promise<void> {
     const model = await session("vad");
     let state = streams.get(stream);
     if (!state) {
-      state = {
-        context: new Float32Array(VAD_CONTEXT * VAD_FEATURES),
-        states: model.inputNames
-          .slice(1)
-          .map(() => new ort.Tensor("float32", new Float32Array(64), VAD_STATE)),
-      };
+      state = Array.from(
+        { length: VAD_CACHES },
+        () =>
+          new ort.Tensor(
+            "float32",
+            new Float32Array(VAD_STATE.reduce((size, n) => size * n)),
+            VAD_STATE,
+          ),
+      );
       streams.set(stream, state);
     }
-    const probs = new Float32Array(rows);
-    for (let row = 0; row < rows; row++) {
-      state.context.copyWithin(0, VAD_FEATURES);
-      state.context.set(
-        input.subarray(row * VAD_FEATURES, (row + 1) * VAD_FEATURES),
-        (VAD_CONTEXT - 1) * VAD_FEATURES,
-      );
-      const feeds: Record<string, OrtTensor> = {
-        [model.inputNames[0]!]: new ort.Tensor("float32", state.context.slice(), [
-          1,
-          VAD_CONTEXT,
-          VAD_FEATURES,
-        ]),
-      };
-      model.inputNames.slice(1).forEach((name, index) => (feeds[name] = state.states[index]!));
-      const outputs = await model.run(feeds); // 状态张量下一帧继续使用，不在此释放。
-      probs[row] = float(outputs[model.outputNames[0]!]!.data)[0]!;
-      state.states = model.outputNames.slice(1).map((name) => outputs[name]!);
+    const speech = new ort.Tensor("float32", input, [1, rows, VAD_FEATURES]);
+    let outputs: Record<string, OrtTensor> = {};
+    const owned = new Set<OrtTensor>();
+    try {
+      outputs = await model.run({
+        speech,
+        ...Object.fromEntries(state.map((tensor, i) => [`in_cache${i}`, tensor])),
+      });
+      const logits = outputs.logits;
+      if (Object.keys(outputs).length !== VAD_CACHES + 1)
+        throw new Error("Unexpected FSMN output count.");
+      if (!logits || logits.dims.join() !== [1, rows, VAD_PDFS].join())
+        throw new Error("Unexpected FSMN logits shape.");
+      check_finite(float(logits.data));
+      const next = Array.from({ length: VAD_CACHES }, (_, i) => {
+        const tensor = outputs[`out_cache${i}`];
+        if (!tensor || tensor.dims.join() !== VAD_STATE.join())
+          throw new Error("Unexpected FSMN cache shape.");
+        check_finite(float(tensor.data));
+        return tensor;
+      });
+      const result = new Float32Array(float(logits.data));
+      release(stream);
+      streams.set(stream, next);
+      for (const tensor of next) owned.add(tensor);
+      return result;
+    } catch (error) {
+      release(stream); // 失败不能留下半更新的流状态。
+      throw error;
+    } finally {
+      speech.dispose();
+      for (const tensor of Object.values(outputs)) if (!owned.has(tensor)) tensor.dispose();
     }
-    return probs;
   };
 
+  /** 推理请求总有应答，模型错误转为失败应答。释放与关闭消息没有应答。 */
   const handle = async (message: MediaWorkerRequest): Promise<MediaWorkerReply | undefined> => {
     if (message.type === "release") {
-      streams.delete(message.stream);
+      release(message.stream);
       return undefined;
     }
     if (message.type === "close") return undefined;
     const { id, kind, header } = message;
-    const device = models[kind].device;
     try {
       const input = new Float32Array(message.payload);
       const shape = tensor_shape(header, message.payload.byteLength);
       if (kind === "vad") {
-        if (shape.length !== 2 || shape[1] !== VAD_FEATURES)
+        if (
+          shape.length !== 3 ||
+          shape[0] !== 1 ||
+          shape[2] !== VAD_FEATURES ||
+          shape[1]! < 1 ||
+          shape[1]! > VAD_BLOCK
+        )
           throw new Error(`Unexpected VAD input: ${JSON.stringify(shape)}`);
-        const probs = await vad(message.stream, input, shape[0]!);
-        return { id, header: { dtype: "float32", shape: [probs.length] }, payload: probs.buffer };
+        const probs = await vad(message.stream, input, shape[1]!);
+        return {
+          id,
+          header: { dtype: "float32", shape: [1, shape[1]!, VAD_PDFS] },
+          payload: probs.buffer,
+        };
       }
       if (kind === "asr") {
         if (shape.length !== 3) throw new Error(`Unexpected ASR input: ${JSON.stringify(shape)}`);
@@ -212,16 +241,15 @@ async function serve(): Promise<void> {
           input,
           shape,
           String(header.language),
-          device,
         );
         return { id, header: result };
       }
       if (shape.length !== 4)
         throw new Error(`Unexpected detection input: ${JSON.stringify(shape)}`);
-      const result = await detect(await session("det"), input, shape, device);
+      const result = await detect(await session("det"), input, shape);
       return { id, header: { dtype: "float32", shape: result.shape }, payload: result.data.buffer };
     } catch (error) {
-      return { id, error: error instanceof Error ? error.message : String(error), device };
+      return { id, error: error instanceof Error ? error.message : String(error) };
     }
   };
 
@@ -232,7 +260,10 @@ async function serve(): Promise<void> {
       const reply = await handle(message);
       if (reply)
         port.postMessage(reply, "payload" in reply && reply.payload ? [reply.payload] : []);
-      if (message.type === "close") await shutdown(sessions);
+      if (message.type === "close") {
+        for (const stream of streams.keys()) release(stream);
+        await shutdown(sessions);
+      }
     });
   });
 }
@@ -256,68 +287,4 @@ function read_vocabulary(file: string): string[] {
   return vocabulary;
 }
 
-/** 合成输入：确定性的有限值，只用于计时与可用性检查。 */
-function synthetic(shape: readonly number[]): Float32Array {
-  const data = new Float32Array(shape.reduce((total, value) => total * value, 1));
-  for (let i = 0; i < data.length; i++) data[i] = Math.sin(i * 0.37);
-  return data;
-}
-
-/**
- * 校准：同一 Worker 内对每项任务的 CPU 与 GPU 配置各预热一次，再交替测量。
- * 某个配置创建或运行失败只记录原因，不影响其它配置；最后释放全部会话。
- */
-async function calibrate(): Promise<void> {
-  const result: MediaCalibration = { asr: {}, det: {} };
-  const vocabulary = read_vocabulary(config.tokens);
-  const created: OrtSession[] = [];
-  try {
-    for (const task of ["det", "asr"] as const) {
-      const shape = CALIBRATION_SHAPES[task];
-      const input = synthetic(shape);
-      const run = async (session: OrtSession, device: MediaDevice) => {
-        if (task === "asr")
-          await recognize(session, vocabulary, input.slice(), [...shape], "auto", device);
-        else {
-          const output = await detect(session, input.slice(), [...shape], device);
-          if (output.shape.join() !== shape.slice(-2).join())
-            throw new Error(`Unexpected detection output: ${output.shape}`);
-        }
-      };
-      const ready: [MediaDevice, OrtSession][] = [];
-      for (const [device, candidate] of Object.entries(config.calibrate![task]) as [
-        MediaDevice,
-        { file: string; threads: number },
-      ][]) {
-        try {
-          const session = await create(candidate.file, device, candidate.threads);
-          created.push(session);
-          await run(session, device); // 预热，同时检查输出。
-          ready.push([device, session]);
-          result[task][device] = [];
-        } catch (error) {
-          result[task][device] = error instanceof Error ? error.message : String(error);
-        }
-      }
-      for (let round = 0; round < CALIBRATION_ROUNDS; round++)
-        for (const [device, session] of ready) {
-          const timings = result[task][device];
-          if (!Array.isArray(timings)) continue;
-          const began = performance.now();
-          try {
-            await run(session, device);
-            timings.push(performance.now() - began);
-          } catch (error) {
-            result[task][device] = error instanceof Error ? error.message : String(error);
-          }
-        }
-    }
-  } finally {
-    for (const session of created) await session.release();
-  }
-  port.postMessage(result);
-  port.close();
-}
-
-if (config.calibrate) await calibrate();
-else await serve();
+await serve();
