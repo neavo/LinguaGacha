@@ -84,6 +84,7 @@ export class FileFormatService {
   private readonly native_fs: NativeFs; // 文件发现与字幕写入复用的磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly generic = new GenericFormat();
+  private readonly media = new GenericFormat("MEDIA");
   private readonly txt: TXTFormat;
   private readonly md: MDV2Format;
   private readonly ass: ASSFormat;
@@ -157,6 +158,7 @@ export class FileFormatService {
       ".trans": "TRANS",
       ".pdf": "PDF",
       ".generic": "GENERIC",
+      ".media": "MEDIA",
     };
     let type =
       (file_type === "NONE" ? undefined : file_type) ??
@@ -210,6 +212,7 @@ export class FileFormatService {
       };
     const formats = {
       GENERIC: this.generic,
+      MEDIA: this.media,
       TXT: this.txt,
       MD_V2: this.md,
       ASS: this.ass,
@@ -534,7 +537,8 @@ export class FileFormatService {
   public async write_items(
     items: Item[],
     context: FileFormatServiceWriteContext,
-    generic_path?: string, // 通用写回输入仅在调用方指定独立目录时生成。
+    writeback_path?: string, // 通用与视频写回输入仅在调用方指定独立目录时生成。
+    bilingual_files?: readonly string[],
   ): Promise<void> {
     const { paths, asset_reader } = context;
     const failures: unknown[] = [];
@@ -546,25 +550,26 @@ export class FileFormatService {
         failures.push(error);
       }
     }
-    await this.txt.write_to_path(items, paths);
+    await this.txt.write_to_path(items, paths, bilingual_files);
     await this.md.write_to_path(items, paths);
-    await this.write_subtitles(items, context);
+    await this.write_subtitles(items, context, bilingual_files);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
-    if (generic_path !== undefined) {
-      const generic_items = group_items(items, "GENERIC");
+    if (writeback_path !== undefined) {
+      // 视频字幕的样式与渲染归 Agent，与通用数据共用写回输入。
+      const groups = { GENERIC: group_items(items, "GENERIC"), MEDIA: group_items(items, "MEDIA") };
       for (const file of context.source_files) {
-        if (file.file_type !== "GENERIC") continue;
+        if (file.file_type !== "GENERIC" && file.file_type !== "MEDIA") continue;
         const asset = await asset_reader(file.path);
         if (asset === null)
           throw new AppError("file.not_found", { public_details: { file: file.path } });
         const output = await this.generic.render_text(
           asset,
-          generic_items.get(file.path) ?? [],
+          groups[file.file_type].get(file.path) ?? [],
           file.path,
         );
         await this.native_fs.write_file(
-          path.join(generic_path, file.path, GENERIC_ITEMS_MEMBER),
+          path.join(writeback_path, file.path, GENERIC_ITEMS_MEMBER),
           output,
         );
       }
@@ -572,7 +577,7 @@ export class FileFormatService {
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy_rpy.write_to_path(items, paths, asset_reader);
-    await this.epub.write_to_path(items, paths, asset_reader);
+    await this.epub.write_to_path(items, paths, asset_reader, bilingual_files);
     if (failures.length === 1) throw failures[0];
     if (failures.length) throw new AggregateError(failures, "Game assets could not be exported");
   }
@@ -600,6 +605,7 @@ export class FileFormatService {
   private async write_subtitles(
     items: Item[],
     context: FileFormatServiceWriteContext,
+    bilingual_files?: readonly string[],
   ): Promise<void> {
     const by_file = new Map<string, Item[]>();
     for (const item of items) {
@@ -622,10 +628,11 @@ export class FileFormatService {
         path.join(context.paths.translated_path, file),
         output.translated,
       );
-      await this.native_fs.write_file(
-        path.join(context.paths.bilingual_path, file),
-        output.bilingual,
-      );
+      if (bilingual_files === undefined || bilingual_files.includes(file))
+        await this.native_fs.write_file(
+          path.join(context.paths.bilingual_path, file),
+          output.bilingual,
+        );
     }
   }
 

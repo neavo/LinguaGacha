@@ -9,8 +9,8 @@ import {
 } from "./proofreading-types";
 import type { QualitySnapshot } from "../quality/quality-rule-state";
 import {
-  PROOFREADING_WARNING_CODES,
   PROOFREADING_OUTCOME_GROUPS,
+  PROOFREADING_WARNING_CODES,
   clone_proofreading_filter_options,
   create_empty_proofreading_filter_options,
   create_empty_proofreading_filter_panel_state,
@@ -26,7 +26,6 @@ import {
   type ProofreadingListView,
   type ProofreadingItemRecord,
   type ProofreadingSearchScope,
-  type ProofreadingWarningSummary,
   type ProofreadingWarningCode,
 } from "./proofreading-types";
 import {
@@ -186,7 +185,7 @@ type ProofreadingReaderState = {
   file_order: Map<string, number>; // 文件排列位置只由文件索引拥有。
   natural_row_ids: string[] | null; // 列表、警告查询与上下文共用自然顺序，变化后按需重建。
   outcome_count_by_code: Map<string, number>; // 全部状态用于筛选面板的可选结果。
-  translated_outcome_count_by_code: Map<string, number>; // 仅成功条目用于默认警告选项与警告摘要。
+  translated_outcome_count_by_code: Map<string, number>; // 成功条目共用默认警告选项与生成前计数。
   file_entries: { file_path: string; kind: "item" | "page" }[]; // 外层身份与顺序仅由文件同步拥有。
   glossary_term_count_map: Map<string, ProofreadingFilterPanelTermEntry>;
   defaultFilters: ProofreadingFilterOptions;
@@ -976,17 +975,12 @@ export function createProofreadingReader() {
           .map(create_proofreading_client_item),
       };
     },
-    /** 汇总当前成功译文的真实 warning，不创建 GUI 列表视图。 */
-    read_warning_summary(): ProofreadingWarningSummary {
-      if (state === null) {
-        return { total_count: 0, entries: [] };
-      }
-      const counts = state.translated_outcome_count_by_code;
-      const entries = PROOFREADING_WARNING_CODES.flatMap((code) => {
-        const count = counts.get(code) ?? 0;
-        return count === 0 ? [] : [{ code, count }];
-      });
-      return { total_count: entries.reduce((sum, entry) => sum + entry.count, 0), entries };
+    /** 仅统计成功译文的真实警告，同一条目每种警告计一次。 */
+    read_warning_count(): number {
+      return PROOFREADING_WARNING_CODES.reduce(
+        (total, code) => total + (state?.translated_outcome_count_by_code.get(code) ?? 0),
+        0,
+      );
     },
     /**
      * 失效视图返回空 view_id，空结果视图也能明确识别失效并重新查询

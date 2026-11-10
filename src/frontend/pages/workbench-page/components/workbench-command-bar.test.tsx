@@ -34,7 +34,10 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
     skipped_count: 0,
     completion_percent: 25,
   };
-  const translation_task_metrics = {
+  const task_metrics = {
+    status: "idle" as const,
+    total: 4,
+    completion_percent: 25,
     active: false,
     stopping: false,
     elapsed_seconds: 0,
@@ -49,16 +52,16 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
   return {
     can_start_translation: true,
     on_request_start_translation: vi.fn(),
-    batch_translation_task: {
-      translation_task_display_snapshot: null,
-      translation_task_metrics,
-      translation_waveform_history: [],
-      translation_detail_sheet_open: false,
+    batch_task: {
+      task_display_snapshot: null,
+      task_metrics,
+      task_waveform_history: [],
+      task_detail_sheet_open: false,
       task_confirm_state: null,
       translation_task_menu_disabled: false,
       translation_task_menu_busy: false,
-      open_translation_detail_sheet: () => {},
-      close_translation_detail_sheet: () => {},
+      open_task_detail_sheet: () => {},
+      close_task_detail_sheet: () => {},
       request_start_or_continue_translation: vi.fn(async () => {}),
       request_task_action_confirmation: () => {},
       confirm_task_action: async () => {},
@@ -144,7 +147,7 @@ describe("WorkbenchCommandBar", () => {
 
   it("运行中的摘要使用命令栏收到的工程完成率", async () => {
     const props = create_workbench_command_bar_props();
-    props.batch_translation_task.translation_task_metrics.active = true;
+    props.batch_task.task_metrics.active = true;
     await render_command_bar(props);
 
     expect(container?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe(

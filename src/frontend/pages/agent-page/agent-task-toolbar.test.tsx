@@ -125,7 +125,12 @@ describe("AgentTaskToolbar", () => {
             model_selection={{
               snapshot: {
                 models: [],
-                model_selection: { agent: "", translation: "", agent_batch_translation: null },
+                model_selection: {
+                  agent: "",
+                  translation: "",
+                  agent_batch_translation: null,
+                  agent_media: null,
+                },
               },
               loading: false,
               updating: false,

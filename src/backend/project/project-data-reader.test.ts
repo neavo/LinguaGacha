@@ -147,6 +147,7 @@ describe("ProjectDataReader", () => {
     const manifest = service.build_manifest({ loaded: true, projectPath: "E:/demo/demo.lg" });
 
     expect(manifest["counts"]).toEqual({ files: 2, items: 5 });
+    expect(manifest["project"]).toMatchObject({ loaded: true, file_count: 2 });
     expect(get_asset_count).toHaveBeenCalledWith("E:/demo/demo.lg");
     expect(get_item_count).toHaveBeenCalledWith("E:/demo/demo.lg");
     expect(get_all_items).not.toHaveBeenCalled();

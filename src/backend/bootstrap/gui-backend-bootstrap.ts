@@ -160,6 +160,7 @@ export class GuiBackendBootstrap {
         catalog: services.modelCatalog,
         images,
         batchTranslation: services.batchTranslation,
+        batchRequests: services.batchRequests,
         paths: resources.paths,
         settings: resources.settings,
         userAgent: resources.metadata.build_linguagacha_user_agent(),

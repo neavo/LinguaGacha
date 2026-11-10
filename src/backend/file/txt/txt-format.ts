@@ -32,14 +32,19 @@ export class TXTFormat {
   }
 
   /**
-   * 写出译文和双语文件，原译文相同时只输出一次
+   * 双语清单缺省时生成全部对照文件。原译文相同时只输出一次。
    */
-  public async write_to_path(items: Item[], paths: GeneratedFilePaths): Promise<void> {
+  public async write_to_path(
+    items: Item[],
+    paths: GeneratedFilePaths,
+    bilingual_files?: readonly string[],
+  ): Promise<void> {
     for (const [rel_path, group] of group_items(items, "TXT")) {
       await write_text_file(
         path.join(paths.translated_path, rel_path),
         group.map((item) => read_translation_for_generation(item) ?? item.src).join("\n"),
       );
+      if (bilingual_files !== undefined && !bilingual_files.includes(rel_path)) continue;
       const bilingual = group
         .map((item) => {
           const item_dst = read_translation_for_generation(item) ?? item.src;

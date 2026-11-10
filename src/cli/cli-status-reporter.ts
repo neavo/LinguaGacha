@@ -1,6 +1,5 @@
 import type { CLICommandName } from "./cli-parser";
-import type { JsonRecord, JsonValue } from "../domain/json";
-import type { BatchTranslationRunStatus } from "../domain/batch-translation";
+import type { BatchTaskProgress, BatchTaskStatus } from "../domain/batch-task";
 import { JsonTool } from "../shared/utils/json-tool";
 import type { SourceOperationResult } from "../shared/source-operation";
 
@@ -24,8 +23,7 @@ export interface CLIJsonStatusReporterOptions {
 
 interface CLIProgressInput {
   status: string;
-  progress: JsonRecord;
-  run_progress?: JsonRecord | undefined;
+  progress: Pick<BatchTaskProgress, "total" | "succeeded" | "failed"> | null;
 }
 
 /**
@@ -67,7 +65,7 @@ export class CLIJsonStatusReporter {
    * 从任务快照组装本轮进度；外部 stats 未变化时不重复刷屏。
    */
   public emit_progress(snapshot: CLIProgressInput): void {
-    const stats = build_cli_progress_stats(snapshot.run_progress ?? snapshot.progress);
+    const stats = build_cli_progress_stats(snapshot.progress);
     if (this.last_progress_key === null && is_empty_stats(stats)) {
       return;
     }
@@ -89,7 +87,7 @@ export class CLIJsonStatusReporter {
    * 输出最终态；成功和失败都由同一事件表达，进程退出码仍由 CLI 入口负责。
    */
   public emit_finished(
-    status: BatchTranslationRunStatus | "error",
+    status: BatchTaskStatus,
     error?: unknown,
     excluded_files: readonly string[] = [],
     source_operation?: SourceOperationResult,
@@ -143,30 +141,13 @@ function is_empty_stats(stats: CLIProgressStats): boolean {
   );
 }
 
-/**
- * 将内部 BatchTranslationProgress 转换为稳定 stats；外部字段不跟随内部 total_line 等命名变化。
- */
-export function build_cli_progress_stats(progress: JsonRecord): CLIProgressStats {
-  const total = Math.max(0, read_progress_count(progress["total_line"]));
-  const completed = clamp_count(read_progress_count(progress["processed_line"]), 0, total);
-  const failed = clamp_count(read_progress_count(progress["failed_line"]), 0, total - completed);
+/** 共享批次事实直接构造既有 JSONL 字段，百分比沿用 CLI 的成功口径。 */
+export function build_cli_progress_stats(progress: CLIProgressInput["progress"]): CLIProgressStats {
+  const total = progress?.total ?? 0;
+  const completed = progress?.succeeded ?? 0;
+  const failed = progress?.failed ?? 0;
   const skipped = 0;
-  const pending = Math.max(0, total - skipped - failed - completed);
-  const percent = total > 0 ? ((completed + skipped) / total) * 100 : 0;
+  const pending = total - failed - completed;
+  const percent = total > 0 ? (completed / total) * 100 : 0;
   return { total, skipped, failed, completed, pending, percent };
-}
-
-/**
- * 进度计数只接受有限数字并向下取整，避免 NaN 或小数进入外部协议。
- */
-function read_progress_count(value: JsonValue | undefined): number {
-  const number_value = Number(value ?? 0);
-  return Number.isFinite(number_value) ? Math.floor(number_value) : 0;
-}
-
-/**
- * 计数字段统一夹在合法区间内，保护外部协议不被内部异常快照污染。
- */
-function clamp_count(value: number, min_value: number, max_value: number): number {
-  return Math.min(max_value, Math.max(min_value, value));
 }

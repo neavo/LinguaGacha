@@ -13,6 +13,7 @@ import type { WorkspacePrintPDFRequest, WorkspacePrintPDFResult } from "../../to
 import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
 import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
 import type { UvConfiguration } from "../../uv/types";
+import type { MediaConfiguration } from "../../media/runtime";
 
 export type WorkspaceRequest =
   | { kind: "resolve_proxy"; url: string }
@@ -40,6 +41,7 @@ export type AgentWorkspaceRuntimeParentMessage =
       runtimeDirectory: string; // 当前应用规范化的运行目录，应用 SDK 不依赖用户安装树
       moduleRoots: readonly string[]; // 带尾斜线的原目录 file: URL，含逻辑入口与真实位置
       uv: UvConfiguration;
+      media: MediaConfiguration;
     }
   | {
       type: "response";

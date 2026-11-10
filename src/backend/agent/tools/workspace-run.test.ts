@@ -5,7 +5,6 @@ import { validateToolArguments } from "@earendil-works/pi-ai";
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 import { create_agent_workspace_run_tool } from "./workspace-run";
 import { AgentToolError } from "../tool-definition";
-import type { AgentWorkspacePort } from "../workspace/service";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 import { check_typescript } from "../../../test/typescript-fixture";
 
@@ -68,7 +67,7 @@ describe("workspace_run", () => {
     expect(JSON.stringify(result.details)).not.toContain("aW1hZ2U=");
   });
   it("时限采用默认值或显式秒数，校验范围后传递调用身份", async () => {
-    const run = vi.fn<AgentWorkspacePort["run"]>(async () => ({
+    const run = vi.fn<Parameters<typeof create_agent_workspace_run_tool>[0]["run"]>(async () => ({
       images: [],
       execution: workspace_execution(),
     }));
@@ -156,7 +155,7 @@ describe("workspace_run", () => {
   });
 });
 /** 注入工作区执行端口，刷新结果由会话集成测试验证。 */
-function create_tool(run: AgentWorkspacePort["run"]) {
+function create_tool(run: Parameters<typeof create_agent_workspace_run_tool>[0]["run"]) {
   return create_agent_workspace_run_tool({
     run,
     refresh_skills: async () => {},

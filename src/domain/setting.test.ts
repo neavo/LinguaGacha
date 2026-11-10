@@ -162,6 +162,7 @@ describe("设置快照", () => {
 
       agent: "agent-model",
       agent_batch_translation: null,
+      agent_media: null,
     });
     expect(setting).not.toHaveProperty(legacy_key);
   });

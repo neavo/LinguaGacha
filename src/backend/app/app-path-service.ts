@@ -158,6 +158,16 @@ export class AppPathService {
     return this.get_user_data_path("python");
   }
 
+  /** 模型下载成本高，独立于可重建的媒体缓存保留。 */
+  public get_agent_models_dir(): string {
+    return this.get_user_data_path("models");
+  }
+
+  /** 缓存目录同时承载准备锁，清理前须等待媒体任务退出。 */
+  public get_agent_media_cache_dir(): string {
+    return this.get_user_data_path("cache", "media");
+  }
+
   /** 保留 node.lock 的物理身份，让不同应用版本继续共享同一租约与 Windows Job。 */
   public get_agent_execution_lock_path(): string {
     return this.get_user_data_path("node.lock");

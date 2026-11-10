@@ -42,6 +42,7 @@ export const pt_br_app = {
     },
   },
   action: {
+    next: "Próximo",
     move_to_top: "Mover para o topo",
     move_to_bottom: "Mover para o final",
     add: "Adicionar",
@@ -193,27 +194,27 @@ export const pt_br_app = {
     update_available_tooltip: "Abrir janela de confirmação de atualização",
   },
   agent_input: {
-    steps_intro: "Siga estas etapas:",
+    steps_intro: "Execute as etapas em ordem:",
+    steps_intro_after_instruction: "Em seguida, execute as etapas em ordem:",
     path_placeholder: "[Insira os caminhos dos arquivos aqui ou arraste arquivos]",
     steps: {
       glossary: "Extrair termos",
       translate: "Traduzir o texto completo",
       review: "Revisar a tradução",
-      generate: "Gerar todas as traduções",
     },
   },
   translation_generation: {
-    agent_request: "Ajude-me a gerar todas as traduções",
+    agent_request: "Gere todas as traduções sem realizar operações não relacionadas",
     action: "Gerar tradução",
     confirmation: {
       generic_description:
-        "Este projeto contém pacotes de dados genéricos. Use o AGENT para gerar todas as traduções. A geração direta ignorará esses pacotes.",
+        "Este projeto contém arquivos de áudio/vídeo ou pacotes de dados genéricos. A geração direta ignorará esses arquivos. Use o AGENT para processá-los …",
       description: "Confirma a geração dos arquivos de tradução disponíveis no momento …?",
       checking: "Verificando arquivos do projeto e avisos de revisão …",
       check_failed:
-        "Não foi possível verificar os arquivos do projeto ou avisos de revisão. Você ainda pode gerar as traduções atuais …",
+        "Não foi possível verificar os arquivos do projeto ou avisos de revisão. Verifique novamente ou deixe o AGENT cuidar disso …",
       warning_description:
-        "Detectados {COUNT} avisos de revisão. Avisos não indicam necessariamente erros, mas recomendamos executar ao menos uma revisão automática com o AGENT antes. Continuar gerando a tradução …?",
+        "Detectados {COUNT} avisos de revisão. Avisos não indicam necessariamente erros, mas recomendamos executar ao menos uma revisão automática com o AGENT antes. Confirma que deseja continuar …?",
       retry_check: "Verificar novamente",
       generate_directly: "Gerar diretamente",
     },
@@ -263,33 +264,36 @@ export const pt_br_app = {
     },
   },
   log: {
+    task_started:
+      "Tarefa iniciada: {RUN} · {NAME} / {MODEL} · {FORMAT} · {TOTAL} solicitações · concorrência {CONCURRENCY} · RPM {RPM}",
+    task_finished:
+      "Tarefa encerrada: {RUN} · {STATUS} · sucesso {SUCCEEDED} · falha {FAILED} · pendentes {UNFINISHED} · origem da parada {STOP}\n{PATH}",
+    publish_failed: "Falha ao publicar o resultado: {ERROR}",
+    usage_incomplete: "uso incompleto; parte ausente desconhecida",
     api_test_fail: "Falha no teste de API …",
     api_test_key: "Chave em teste:",
-    api_test_messages: "Prompts da tarefa:",
+    request_messages: "Prompts da tarefa:",
     api_test_result: "Testadas {COUNT} APIs no total: {SUCCESS} com sucesso, {FAILURE} com falha …",
     api_test_result_failure: "Chaves que falharam:",
-    api_test_response_result: "Resposta do modelo:",
+    model_response: "Resposta do modelo:",
     api_test_timeout: "Tempo limite da requisição esgotado ({SECONDS}s)",
-    api_test_token_info:
-      "Tempo da tarefa: {TIME} segundos, tokens de entrada {PT}, tokens de raciocínio {RT}, tokens de saída {CT}",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "Predefinições padrão carregadas automaticamente: {NAMES} …",
-    engine_api_model: "Modelo de API",
-    engine_api_name: "Nome da API",
-    engine_api_url: "URL da API",
-    engine_task_done: "Tarefa concluída …",
-    engine_task_fail:
+    model_id: "Modelo de API",
+    model_name: "Nome da API",
+    api_url: "URL da API",
+    task_done: "Tarefa concluída …",
+    task_failed:
       "A tarefa não foi concluída; alguns dados permanecem não processados. Verifique os resultados …",
-    engine_task_rule_analysis: "Análise de regras:",
-    engine_task_thinking_process: "Processo de raciocínio:",
-    engine_task_stop: "Tarefa interrompida …",
-    engine_task_success:
-      "Tempo da tarefa: {TIME} segundos, {LINES} linhas de texto, tokens de entrada {PT}, tokens de raciocínio {RT}, tokens de saída {CT}",
+    rule_analysis: "Análise de regras:",
+    thinking_process: "Processo de raciocínio:",
+    task_stopped: "Tarefa interrompida …",
+    task_stats:
+      "Tempo da tarefa: {TIME} segundos, {COUNT} itens, tokens de entrada {PT}, tokens de raciocínio {RT}, tokens de saída {CT}",
     model_response_invalid: "O modelo retornou dados inválidos …",
     request_failed: "Falha na requisição: {ERROR} …",
     request_timeout: "Tempo limite da requisição de rede esgotado",
     system_closed_dropped: "Sistema de logs desligado; descartando novo log: {MESSAGE}",
-    translation_task_result: "Resultado da tradução:",
     translation_response_partially_invalid: "Algumas traduções falharam na validação …",
   },
   sort: { ascending: "Crescente", descending: "Decrescente", clear: "Limpar ordenação" },

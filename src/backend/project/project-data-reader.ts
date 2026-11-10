@@ -126,11 +126,14 @@ export class ProjectDataReader {
     const project_path = project_state.loaded ? project_state.projectPath : "";
     const meta = project_path === "" ? {} : this.get_all_meta(project_path);
     const section_revisions = this.build_section_revisions(meta);
+    const counts =
+      project_path === "" ? { files: 0, items: 0 } : this.build_manifest_counts(project_path);
     return {
       projectPath: project_path,
       project: {
         path: project_state.projectPath,
         loaded: project_state.loaded,
+        file_count: counts.files,
         languages:
           project_path === ""
             ? null
@@ -138,10 +141,7 @@ export class ProjectDataReader {
       },
       projectRevision: Math.max(...Object.values(section_revisions), 0),
       sectionRevisions: section_revisions as unknown as JsonValue,
-      counts:
-        project_path === ""
-          ? { files: 0, items: 0 }
-          : (this.build_manifest_counts(project_path) as unknown as JsonValue),
+      counts,
     };
   }
 
@@ -245,7 +245,7 @@ export class ProjectDataReader {
   /**
    * manifest counts 只用于项目页概览，不替代真实 section payload
    */
-  private build_manifest_counts(project_path: string): JsonRecord {
+  private build_manifest_counts(project_path: string): { files: number; items: number } {
     const asset_count = this.database.get_asset_count(project_path);
     const item_count = this.database.get_item_count(project_path);
     return {

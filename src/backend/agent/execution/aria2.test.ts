@@ -1,0 +1,37 @@
+import { chmod, mkdir, readFile, stat, unlink, utimes, writeFile } from "node:fs/promises";
+import { mkdtempDisposableSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { expect, it } from "vitest";
+import { prepare_aria2 } from "./aria2";
+
+it("运行副本按当前版本同步，内容相同时保留，缺失与损坏时恢复", async () => {
+  using temporary = mkdtempDisposableSync(path.join(os.tmpdir(), "lg-aria2-prepare-"));
+  const runtime = path.join(temporary.path, "runtime");
+  const source = path.join(runtime, "bin", `${process.platform}-${process.arch}`, "aria2");
+  const directory = path.join(temporary.path, "userdata/bin/aria2");
+  const executable = process.platform === "win32" ? "aria2c.exe" : "aria2c";
+  await mkdir(source, { recursive: true });
+  await writeFile(path.join(source, executable), executable);
+  if (process.platform !== "win32") await chmod(path.join(source, executable), 0o755);
+  prepare_aria2(runtime, directory);
+  const binary = path.join(directory, executable);
+  expect(await readFile(binary, "utf8")).toBe(executable);
+  if (process.platform !== "win32") expect((await stat(binary)).mode & 0o111).toBe(0o111);
+  const previous = new Date("2020-01-01T00:00:00Z");
+  await utimes(binary, previous, previous);
+  prepare_aria2(runtime, directory);
+  expect((await stat(binary)).mtimeMs).toBe(previous.getTime());
+  await writeFile(path.join(source, executable), "updated");
+  prepare_aria2(runtime, directory);
+  expect(await readFile(binary, "utf8")).toBe("updated");
+  await writeFile(binary, "corrupt");
+  prepare_aria2(runtime, directory);
+  expect(await readFile(binary, "utf8")).toBe("updated");
+  await unlink(binary);
+  prepare_aria2(runtime, directory);
+  expect(await readFile(binary, "utf8")).toBe("updated");
+  await unlink(path.join(source, executable));
+  expect(() => prepare_aria2(runtime, directory)).toThrow();
+  expect(await readFile(binary, "utf8")).toBe("updated");
+});

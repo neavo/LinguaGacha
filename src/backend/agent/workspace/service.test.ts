@@ -65,7 +65,11 @@ import {
 
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 
-const VALID_WORKSPACE_RUN = { script: "console.log(null);", timeoutMs: 180_000 };
+const VALID_WORKSPACE_RUN = {
+  functionModels: { agent: null, batch_translation: null, media: null },
+  script: "console.log(null);",
+  timeoutMs: 180_000,
+};
 
 describe("AgentWorkspaceService", () => {
   let temp_dir = "";
@@ -996,7 +1000,17 @@ describe("AgentWorkspaceService", () => {
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({ status: "unchanged" });
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
+    fs.writeFileSync(path.join(fixture.workspace_root, "model_configs.json"), "legacy");
     await run_workspace(fixture);
+    expect(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.functionModels),
+          "utf8",
+        ),
+      ),
+    ).toEqual(VALID_WORKSPACE_RUN.functionModels);
+    expect(fs.existsSync(path.join(fixture.workspace_root, "model_configs.json"))).toBe(false);
     fixture.snapshot.sectionRevisions.items = 2;
     await fixture.service.run(VALID_WORKSPACE_RUN, new AbortController().signal);
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
@@ -1093,6 +1107,35 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readdirSync(fixture.workspace_root).sort()).toEqual([...environment_files].sort());
   });
 
+  it.each(["cancel", "script", "host"] as const)(
+    "停止期间的工作区 %s 保留实际取消或失败回执",
+    async (outcome) => {
+      const fixture = await create_fixture(temp_dir);
+      await run_workspace(fixture);
+      const controller = new AbortController();
+      const failure =
+        outcome === "script"
+          ? new AgentWorkspaceRunError("脚本失败", workspace_execution({ completed: 1 }))
+          : new Error("host disconnected");
+      fixture.run.mockImplementationOnce(async () => {
+        controller.abort();
+        throw outcome === "cancel" ? controller.signal.reason : failure;
+      });
+      const result = await fixture.service
+        .run(VALID_WORKSPACE_RUN, controller.signal)
+        .catch((error: unknown) => error);
+      if (outcome === "cancel") expect(result).toBe(controller.signal.reason);
+      else
+        expect(result).toMatchObject({
+          cause: failure,
+          public_details: {
+            action: "workspace_run",
+            ...(outcome === "script" ? { stdout: { content: { completed: 1 } } } : {}),
+          },
+        });
+    },
+  );
+
   it("脚本错误和 runtime 故障保留已经写入的工作文件与阶段", async () => {
     const fixture = await create_fixture(temp_dir);
     let doing: string | null = null;
@@ -1174,35 +1217,6 @@ describe("AgentWorkspaceService", () => {
       }),
     );
   });
-
-  it.each(["cancel", "script", "host"] as const)(
-    "停止期间的工作区 %s 保留实际取消或失败回执",
-    async (outcome) => {
-      const fixture = await create_fixture(temp_dir);
-      await run_workspace(fixture);
-      const controller = new AbortController();
-      const failure =
-        outcome === "script"
-          ? new AgentWorkspaceRunError("脚本失败", workspace_execution({ completed: 1 }))
-          : new Error("host disconnected");
-      fixture.run.mockImplementationOnce(async () => {
-        controller.abort();
-        throw outcome === "cancel" ? controller.signal.reason : failure;
-      });
-      const result = await fixture.service
-        .run(VALID_WORKSPACE_RUN, controller.signal)
-        .catch((error: unknown) => error);
-      if (outcome === "cancel") expect(result).toBe(controller.signal.reason);
-      else
-        expect(result).toMatchObject({
-          cause: failure,
-          public_details: {
-            action: "workspace_run",
-            ...(outcome === "script" ? { stdout: { content: { completed: 1 } } } : {}),
-          },
-        });
-    },
-  );
 
   it("apply 只提交显式 change，成功后销毁快照并保留 work", async () => {
     const fixture = await create_fixture(temp_dir);
@@ -2093,10 +2107,22 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         )
       )["status"],
     ).toBe("applied");
-    const output = await services.files.translationGeneration.generate_files({
+    const generation_request = {
+      expected_section_revisions: {
+        files: (await services.project.summary.read()).sectionRevisions.files ?? 0,
+      },
       project_path: services.state.session.require_loaded_project_path(),
       output_directory: path.dirname(services.state.session.require_loaded_project_path()),
-    });
+    };
+    await expect(
+      services.files.translationGeneration.generate_files({
+        ...generation_request,
+        expected_section_revisions: {
+          files: generation_request.expected_section_revisions.files + 1,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "data.revision_conflict" });
+    const output = await services.files.translationGeneration.generate_files(generation_request);
     expect(pdfHost.mock.calls[0]?.[0].html).toContain(draft.translation.markdown);
     expect(output.pdf_files).toEqual([
       {

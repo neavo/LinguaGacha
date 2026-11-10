@@ -95,7 +95,7 @@ describe("GuiBackendBootstrap 集成", () => {
         ).rejects.toMatchObject({ code: "file.busy" });
         await expect(
           services.files.translationGeneration.generate_files_to_directory(temp.path),
-        ).rejects.toMatchObject({ code: "file.busy" });
+        ).rejects.toMatchObject({ code: "runtime.busy" });
         release.resolve();
         await pending;
         await expect(

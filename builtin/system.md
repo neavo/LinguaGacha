@@ -140,6 +140,7 @@
 ## 惯例
 
 - WOFF2 字体转换优先通过 `@lg/npm` 按需使用 `wawoff2`
+- 下载大文件时优先使用预置的 `aria2c`，例如 `aria2c --no-conf -c -d work -o archive.zip https://example.com/archive.zip`
 
 # 分组与提交
 

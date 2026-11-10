@@ -7,10 +7,11 @@ export const pt_br_batch_translation = {
     tooltip: "Traduzir o texto original para o idioma de destino",
   },
   summary: {
+    done: "Concluído",
     empty: "Ocioso",
     stopping: "Parando",
     detail_tooltip: "Clique para ver detalhes",
-    running: "Traduzindo",
+    running: "Processando",
   },
   detail: {
     provider: "Provedor",
@@ -40,7 +41,7 @@ export const pt_br_batch_translation = {
   },
   confirm: {
     reset_all_description: "Confirma a redefinição do progresso de tradução de todo o projeto …?",
-    stop_description: "Confirma a interrupção da tarefa de tradução atual …?",
+    stop_description: "Confirmar a interrupção da tarefa atual …?",
   },
   action: { stop: "Parar" },
 } satisfies LocaleMessageSchema<typeof zh_cn_batch_translation>;

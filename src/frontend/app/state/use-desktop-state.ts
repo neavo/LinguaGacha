@@ -51,3 +51,13 @@ export function useSyncBatchTranslationSnapshot() {
 export function useProjectChangeSignalSource(): ProjectChangeSignalSource {
   return useDesktopStateStores().projectChange;
 }
+
+/** 公共进度与停止始终消费后端同一批次。 */
+export function useBatchTaskSnapshot() {
+  const store = useDesktopStateStores().batch_task;
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+/** 命令回执与事件共用当前任务镜像的写入口。 */
+export function useSyncBatchTaskSnapshot() {
+  return useDesktopStateStores().batch_task.applySnapshot;
+}

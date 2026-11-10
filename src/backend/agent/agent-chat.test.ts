@@ -378,7 +378,7 @@ async function talk(chat: AgentChat, text: string) {
     recoveryTask: null,
     steer: null,
     retrySteer: null,
-    translationStopped: false,
+    batchStopped: false,
   };
   chat.execution = execution;
   const input = await chat.submit(
@@ -713,7 +713,7 @@ it("压缩后修订早期输入在受理时切换历史与旧意图，并采用�
     recoveryTask: null,
     steer: null,
     retrySteer: null,
-    translationStopped: false,
+    batchStopped: false,
   };
   chat.execution = execution;
   const accepted = await chat.submit(

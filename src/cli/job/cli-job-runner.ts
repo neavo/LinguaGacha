@@ -1,3 +1,4 @@
+import type { BatchTaskRuntime } from "../../backend/batch-task/batch-task-runtime";
 import type { ProjectSummaryService } from "../../backend/project/project-summary-service";
 import { default_native_fs as fs } from "../../native/native-fs";
 import os from "node:os";
@@ -36,7 +37,8 @@ export interface CLIJobServices {
       "create_project_commit" | "apply_task_input" | "unload_project"
     >;
   };
-  batchTranslation: Pick<BatchTranslationService, "subscribe" | "start_current_project">;
+  batchTasks: Pick<BatchTaskRuntime, "subscribe">;
+  batchTranslation: Pick<BatchTranslationService, "start_current_project">;
   files: {
     translationGeneration: Pick<TranslationFileGenerationService, "generate_files_to_directory">;
   };
@@ -59,7 +61,6 @@ export async function run_cli_job(
 
   try {
     assert_existing_inputs(command);
-    fs.make_dir(command.outputDir);
     temp_root = await fs.make_temp_dir(path.join(os.tmpdir(), "linguagacha-cli-"));
     const project_path = path.join(temp_root, "cli-job.lg");
     backend_services.app.settings.set_transient_overrides({
@@ -88,17 +89,21 @@ export async function run_cli_job(
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
     const { entries } = (await backend_services.project.summary.read()).snapshot;
-    excluded_files = entries
-      .filter((entry) => entry.file_type === "PDF" || entry.file_type === "GENERIC")
-      .map((entry) => entry.rel_path);
     if (entries.some((entry) => entry.progress.unit === "line" && entry.progress.total_count > 0))
       await start_and_wait_for_translation(backend_services, status_reporter);
-    await backend_services.files.translationGeneration.generate_files_to_directory(
-      command.outputDir,
-    );
+    const generated =
+      await backend_services.files.translationGeneration.generate_files_to_directory(
+        command.outputDir,
+      );
+    excluded_files = generated.excluded_files;
   } catch (error) {
-    if (is_app_error(error))
+    if (is_app_error(error)) {
       source_operation ??= read_source_operation_result(error.public_details?.source_operation);
+      if (Array.isArray(error.public_details?.excluded_files))
+        excluded_files = error.public_details.excluded_files.filter(
+          (file): file is string => typeof file === "string",
+        );
+    }
     failures.push(error);
   }
 
@@ -127,7 +132,7 @@ export async function run_cli_job(
       failures.length === 1
         ? failures[0]
         : new AggregateError(failures, "CLI job execution or temporary resource cleanup failed.");
-    status_reporter.emit_finished("error", error, [], source_operation);
+    status_reporter.emit_finished("error", error, excluded_files, source_operation);
     throw error;
   }
 
@@ -181,9 +186,7 @@ async function start_and_wait_for_translation(
   services: CLIJobServices,
   reporter: CLIJobStatusReporter,
 ): Promise<void> {
-  const unsubscribe = services.batchTranslation.subscribe((snapshot) =>
-    reporter.emit_progress(snapshot),
-  );
+  const unsubscribe = services.batchTasks.subscribe((snapshot) => reporter.emit_progress(snapshot));
   try {
     const handle = await services.batchTranslation.start_current_project({
       mode: "new",

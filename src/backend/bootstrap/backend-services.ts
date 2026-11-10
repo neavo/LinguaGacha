@@ -1,3 +1,7 @@
+import { BatchRequestService } from "../batch-request/batch-request-service";
+import { NativeResponsesClient } from "../llm/native-responses";
+import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
+import { RequestRatePool } from "../batch-task/request-rate";
 import { ProjectKnowledgeService } from "../project/project-knowledge-service";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { configure_python_parser } from "../file/renpy/python-syntax";
@@ -21,7 +25,7 @@ import { BatchTranslationRunner } from "../batch-translation/core/batch-translat
 import { PlanningWorkerPool } from "../batch-translation/planning/planning-worker-pool";
 import { TranslationPlanner } from "../batch-translation/planning/translation-planner";
 import { BatchTranslationProjectStore } from "../batch-translation/batch-translation-project-store";
-import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
+import { BatchTranslationState } from "../batch-translation/batch-translation-state";
 import { BatchTranslationService } from "../batch-translation/batch-translation-service";
 import { TranslationWorkerPool } from "../batch-translation/work-unit/translation-worker-pool";
 import {
@@ -60,7 +64,7 @@ import {
   type RuntimeActivitySnapshot,
 } from "../../shared/runtime-activity";
 
-const BATCH_TRANSLATION_SNAPSHOT_EVENT_TOPIC = "batch_translation.snapshot_changed";
+const BATCH_TASK_SNAPSHOT_EVENT_TOPIC = "batch_task.snapshot_changed";
 
 export interface BackendServicesOptions {
   pdfHost?: PDFHost | undefined;
@@ -135,7 +139,9 @@ export class BackendServices {
   private readonly game_prepare_worker: GamePrepareWorker;
   private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
-  private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
+  private readonly request_rate_pool = new RequestRatePool(); // 业务入口共用速率时钟，切换批次不重新获得冷启动额度。
+  public readonly batchTasks: BatchTaskRuntime;
+  private readonly task_runtime: BatchTranslationState; // 关闭时先等待任务收束，再释放执行池
   private readonly game_directory_operations: GameDirectoryOperations; // 所有文件服务共用目录占用，独立于模型运行。
   private readonly runtime_gate = new RuntimeOperationGate(); // 执行占用与工程写入共享的唯一门禁
   private readonly work_unit_worker_pool: TranslationWorkerPool;
@@ -150,6 +156,7 @@ export class BackendServices {
   public readonly quality: BackendQualityServices;
   public readonly files: BackendFileServices;
   public readonly model: ModelService;
+  public readonly batchRequests: BatchRequestService;
   public readonly batchTranslation: BatchTranslationService;
   public readonly logManager: LogManager;
   public readonly state: BackendServiceState;
@@ -222,7 +229,16 @@ export class BackendServices {
       this.cache_manager,
     );
 
-    this.task_runtime = new BatchTranslationRuntime(session_state, database, this.runtime_gate);
+    this.batchTasks = new BatchTaskRuntime(session_state, this.runtime_gate);
+    this.task_runtime = new BatchTranslationState(session_state, database, this.batchTasks);
+    this.batchRequests = new BatchRequestService(
+      this.batchTasks,
+      this.request_rate_pool,
+      llm_client,
+      new NativeResponsesClient(user_agent, this.modelCatalog),
+      this.modelAuth,
+      this.logManager,
+    );
     const lifecycle = new ProjectLifecycleService(
       this.game_directory_operations,
       options.database,
@@ -245,6 +261,7 @@ export class BackendServices {
       execution: options.workerExecution,
     });
     const task_engine = new BatchTranslationRunner({
+      ratePool: this.request_rate_pool,
       auth: this.modelAuth,
       llmClient: llm_client,
       builtinRoot: paths.get_builtin_root(),
@@ -349,6 +366,8 @@ export class BackendServices {
     };
     this.files = {
       translationGeneration: new TranslationFileGenerationService(
+        this.runtime_gate,
+        write_store,
         this.game_directory_operations,
         options.database,
         this.app_setting_service,
@@ -381,9 +400,14 @@ export class BackendServices {
       cache: this.cache_manager,
       writes: write_store,
     };
-    this.task_stream_unsubscribe = this.batchTranslation.subscribe((snapshot) => {
-      options.publishEvent(BATCH_TRANSLATION_SNAPSHOT_EVENT_TOPIC, {
-        batch_translation: snapshot as unknown as JsonRecord,
+    this.task_stream_unsubscribe = this.batchTasks.subscribe(async (snapshot) => {
+      options.publishEvent(BATCH_TASK_SNAPSHOT_EVENT_TOPIC, {
+        batch_task: snapshot as unknown as JsonRecord,
+        ...(snapshot.kind === "request"
+          ? {}
+          : {
+              batch_translation: (await this.batchTranslation.snapshot()) as unknown as JsonRecord,
+            }),
       });
     });
     this.runtime_stream_unsubscribe = this.runtime_gate.subscribe((snapshot) => {

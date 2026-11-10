@@ -183,6 +183,7 @@ function normalize_pi_result(
     response_think,
     response_result: finish_error === undefined ? contentText(message.content, "").trim() : "",
     ...usage,
+    usage_complete: false, // SDK 会为缺失用量补零，归一结果无法证明原始回执完整。
     cancelled: false,
     timeout: false,
     ...(finish_error === undefined
@@ -268,6 +269,7 @@ function empty_llm_result(overrides: Partial<LLMRequestResult> = {}): LLMRequest
     output_tokens: 0,
     cancelled: false,
     timeout: false,
+    usage_complete: false,
     ...overrides,
   };
 }

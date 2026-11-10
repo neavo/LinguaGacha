@@ -6,10 +6,17 @@ export const de_de_agent_page = {
     save_as: "Speichern unter",
     open_folder: "Übergeordneten Ordner öffnen",
   },
-  batch_translation_model: {
-    follow: "Wie AGENT",
-    follow_option: "AGENT-Modell verwenden",
-    tooltip: "Modell für das Stapelübersetzungswerkzeug",
+  function_models: {
+    title: "Untermodelle",
+    agent: "Hauptmodell",
+    translation: "Übersetzungsmodell",
+    media: "Medienmodell",
+    agent_description: "Hauptmodell zur Steuerung des Aufgabenablaufs",
+    translation_description:
+      "Modell für Stapelübersetzungen. Das Hauptmodell entscheidet, wann es eingesetzt wird.",
+    media_description:
+      "Modell für Audio- und Videoerkennung. Das Hauptmodell entscheidet, wann es eingesetzt wird.\nBitte beachten Sie, dass <emphasis>die meisten Modelle keine Audio- und Videoeingaben unterstützen</emphasis>. Empfohlen werden doubao und gemini.",
+    follow: "Hauptmodell folgen",
   },
   title: "AGENT",
   thinking: "Denkprozess",

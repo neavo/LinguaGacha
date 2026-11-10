@@ -1,3 +1,4 @@
+import { SettingsList } from "@frontend/widgets/settings-list/settings-list";
 import { LoaderCircle } from "lucide-react";
 import { type JSX, useEffect, useMemo, useState } from "react";
 
@@ -79,7 +80,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
         },
       }}
     >
-      <div className="model-page__dialog-scroll">
+      <SettingsList>
         <div className="model-page__selector-body">
           <Input
             autoFocus
@@ -124,7 +125,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
             )}
           </div>
         </div>
-      </div>
+      </SettingsList>
     </AppPageDialog>
   );
 }

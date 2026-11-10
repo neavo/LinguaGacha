@@ -1,4 +1,5 @@
 import type { TranslationRequestPort } from "../../protocol/translation-request";
+import { create_text_resolver } from "../../../../shared/i18n";
 import { Model } from "../../../../domain/model";
 import {
   build_project_execution_settings,
@@ -17,6 +18,7 @@ import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../../l
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 
 const cleanup_roots: string[] = [];
+const t = create_text_resolver("zh-CN");
 
 /** 日志状态断言只读取用户可见摘要，不依赖纯文本投影格式。 */
 function read_log_summary(entry: WorkUnitLogEntry | undefined): string {
@@ -578,9 +580,9 @@ describe("TranslationWorkUnitRunner", () => {
       );
 
       expect(read_translation_log(result.logs[0]).sections).toEqual([
-        { title: "思考过程：", text: "真实思考链" },
-        { title: "规则分析：", text: "[核心约束]：保持行数" },
-        { title: "翻译结果：", text: '{"id":0,"text":"你好"}' },
+        { title: t("app.log.thinking_process"), text: "真实思考链" },
+        { title: t("app.log.rule_analysis"), text: "[核心约束]：保持行数" },
+        { title: t("app.log.model_response"), text: '{"id":0,"text":"你好"}' },
       ]);
       expect(result.output).toMatchObject({
         kind: "translation",
@@ -607,7 +609,7 @@ describe("TranslationWorkUnitRunner", () => {
       items: [{ dst: "", status: "NONE" }],
     });
     expect(read_translation_log(result.logs[0]).sections).toEqual([
-      { title: "规则分析：", text: analysis },
+      { title: t("app.log.rule_analysis"), text: analysis },
     ]);
   });
 
@@ -631,7 +633,7 @@ describe("TranslationWorkUnitRunner", () => {
     });
     expect(read_translation_log(result.logs[0]).sections).toEqual([
       {
-        title: "翻译结果：",
+        title: t("app.log.model_response"),
         text: api_format === "SakuraLLM" ? text : JSON.stringify({ id: 0, text }),
       },
     ]);

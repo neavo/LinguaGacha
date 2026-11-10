@@ -6,7 +6,7 @@ import {
   normalize_batch_translation_progress,
   normalize_batch_translation_run_progress,
 } from "../../../domain/batch-translation";
-import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-runtime";
+import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-state";
 import { AppError } from "../../../shared/error";
 
 describe("Agent 条目批量翻译工具", () => {

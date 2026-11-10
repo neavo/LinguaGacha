@@ -6,7 +6,9 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AgentComposerModelControls } from "./agent-composer-model-controls";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({
+    t: (key: string) => key,
+  }),
 }));
 
 describe("AgentComposerModelControls", () => {
@@ -22,7 +24,12 @@ describe("AgentComposerModelControls", () => {
     on_agent_model_select.mockClear();
     controller = {
       snapshot: {
-        model_selection: { agent: "a", translation: "a", agent_batch_translation: null },
+        model_selection: {
+          agent: "a",
+          translation: "a",
+          agent_batch_translation: null,
+          agent_media: null,
+        },
         models: [
           {
             id: "a",
@@ -45,55 +52,24 @@ describe("AgentComposerModelControls", () => {
     container.remove();
   });
 
-  it("批量入口选择等级时一次提交模型与等级", async () => {
+  it("功能提示只在主控行更新模型名称，跟随项保留简短说明", async () => {
+    controller.snapshot.models.push({ ...controller.snapshot.models[0]!, id: "c", name: "媒体 C" });
+    controller.snapshot.model_selection.agent_media = "c";
     await render();
-    const batch = batch_trigger();
-    await act(async () => batch.click());
-    expect(
-      document.querySelector('[data-slot="dropdown-menu-item"]')?.getAttribute("aria-current"),
-    ).toBe("true");
-    await act(async () =>
-      document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
-    );
-    const model = [
-      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
-    ].find((item) => item.textContent === "模型 A")!;
-    await act(async () =>
-      model.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })),
-    );
-    const level = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
-      (item) => item.textContent === "app.model.thinking_level.high",
-    )!;
-    await act(async () => level.click());
-    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
-      target: "agent_batch_translation",
-      model_id: "a",
-      thinking_level: "HIGH",
-    });
-    expect(batch.getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("三个入口显示已选模型等级，批量跟随保留原文案", async () => {
+    const trigger = functions_trigger();
+    await act(async () => trigger.dispatchEvent(new FocusEvent("focusin", { bubbles: true })));
+    const tooltip = document.querySelector(".agent-function-models__tooltip")!;
+    expect(tooltip.children[3]!.textContent).toBe("agent_page.function_models.follow");
+    expect(tooltip.children[1]!.textContent).toBe("模型 A");
+    expect(tooltip.textContent).toContain("媒体 C");
+    controller.snapshot.models[0]!.name = "主控新名称";
     await render();
-    const main = main_trigger();
-    expect(main.textContent).toContain("模型 A·app.model.thinking_level.off");
-    expect(main.getAttribute("aria-label")).toContain("模型 A · app.model.thinking_level.off");
-    expect(batch_trigger().textContent).toContain("agent_page.batch_translation_model.follow");
-    expect(batch_trigger().querySelector(".agent-composer__model-thinking")).toBeNull();
-
-    controller.snapshot.models[0]!.thinking_level = "HIGH";
-    await render();
-    expect(batch_trigger().querySelector(".agent-composer__model-thinking")).toBeNull();
-
-    controller.snapshot.model_selection.agent_batch_translation = "a";
-    await render();
-    expect(batch_trigger().textContent).toContain("模型 A·app.model.thinking_level.high");
-
-    controller.snapshot.models[0]!.available_thinking_levels = ["DEFAULT"];
-    controller.snapshot.models[0]!.thinking_level = "DEFAULT";
-    await render();
-    expect(main_trigger().textContent).toContain("app.model.thinking_level.default");
-    expect(batch_trigger().textContent).toContain("app.model.thinking_level.default");
+    expect(tooltip.children[3]!.textContent).toBe("agent_page.function_models.follow");
+    expect(tooltip.children[1]!.textContent).toBe("主控新名称");
+    expect(tooltip.textContent).toContain("媒体 C");
+    await act(async () => trigger.click());
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
   it("四行提示显示累计统计与当前会话容量", async () => {
@@ -161,10 +137,10 @@ describe("AgentComposerModelControls", () => {
     )!;
   }
 
-  /** 按入口用途定位批量翻译按钮。 */
-  function batch_trigger(): HTMLButtonElement {
-    return container.querySelector<HTMLButtonElement>(
-      'button[aria-label^="agent_page.batch_translation_model.tooltip"]',
+  /** 按可见文案定位子模型入口。 */
+  function functions_trigger(): HTMLButtonElement {
+    return [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "agent_page.function_models.title",
     )!;
   }
 });

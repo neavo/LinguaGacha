@@ -113,15 +113,15 @@ export class ProofreadingQueryService {
       });
       return this.with_revision(result, { rows: result.data as unknown as JsonValue });
     }
+    if (action === "warning_count") {
+      const result = await this.cache.warningCount();
+      return this.with_revision(result, { warningCount: result.data });
+    }
     if (action === "filter_panel") {
       const result = await this.cache.filterPanel({
         filters: this.read_filters(request["filters"]),
       });
       return this.with_revision(result, { filterPanel: result.data as unknown as JsonValue });
-    }
-    if (action === "warning_summary") {
-      const result = await this.cache.warningSummary();
-      return this.with_revision(result, { warningSummary: result.data as unknown as JsonValue });
     }
     throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_proofreading_query_action", action },

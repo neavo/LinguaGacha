@@ -4,10 +4,7 @@ import type {
   BatchTranslationRunContext,
   BatchTranslationRunCommand,
 } from "./core/batch-translation-runner";
-import type {
-  BatchTranslationRuntime,
-  BatchTranslationRunHandle,
-} from "./batch-translation-runtime";
+import type { BatchTranslationState, BatchTranslationRunHandle } from "./batch-translation-state";
 import type { RuntimeLease } from "../runtime-operation-gate";
 import type { AppSettingService } from "../app/app-setting-service";
 import { Model } from "../../domain/model";
@@ -29,7 +26,6 @@ import {
   type AgentBatchTranslationRequest,
   type BatchTranslationResult,
   type BatchTranslationSnapshot,
-  type BatchTranslationSnapshotListener,
 } from "../../domain/batch-translation";
 
 /** 工作台、校对、CLI 和 Agent 共用的批量翻译入口。 */
@@ -37,15 +33,11 @@ export class BatchTranslationService {
   /** 组合翻译执行器、运行态与当前工程会话。 */
   public constructor(
     private readonly runner: BatchTranslationRunner,
-    private readonly runtime: BatchTranslationRuntime,
+    private readonly runtime: BatchTranslationState,
     private readonly session: ProjectSessionState,
     private readonly settings: Pick<AppSettingService, "read_setting">,
     private readonly languages: CacheReadPort["languages"], // 已提交的项目语言
   ) {}
-  /** 转接共享运行态的快照订阅。 */
-  public subscribe(listener: BatchTranslationSnapshotListener): () => void {
-    return this.runtime.subscribe(listener);
-  }
   /** 读取当前工程的完整翻译快照。 */
   public async snapshot(): Promise<BatchTranslationSnapshot> {
     return await this.runtime.build_snapshot();
@@ -123,14 +115,12 @@ export class BatchTranslationService {
     };
   }
 
-  /** 请求停止并回传权威快照。 */
-  public async stop(): Promise<MutableJsonRecord> {
-    const accepted = await this.runtime.request_stop();
-    return { accepted, batch_translation: (await this.snapshot()) as unknown as JsonValue };
-  }
   /** 包装 HTTP 与 SSE 共用的快照载荷。 */
   public async get_snapshot(): Promise<MutableJsonRecord> {
-    return { batch_translation: (await this.snapshot()) as unknown as JsonValue };
+    return {
+      batch_translation: (await this.snapshot()) as unknown as JsonValue,
+      batch_task: this.runtime.task_snapshot() as unknown as JsonValue,
+    };
   }
   /** 公开入口统一校验目的和范围，拒绝无效 ID，去重后保留首次顺序。 */
   private normalize_command(request: JsonRecord): BatchTranslationStartCommand {

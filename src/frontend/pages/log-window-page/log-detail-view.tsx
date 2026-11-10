@@ -60,57 +60,59 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
 
       {error_view}
 
-      <Card variant="group" className="log-detail-view__card log-detail-view__result">
-        <ol className="log-detail-view__items">
-          {content.pairs.map((pair, index) => (
-            <li key={index} className="log-detail-view__item">
-              <span className="log-detail-view__item-index">#{String(index + 1)}</span>
-              <dl className="log-detail-view__translation-pair">
-                <div className="log-detail-view__field">
-                  <dt>{t("log_window_page.detail.content.source_text")}</dt>
-                  <dd className="log-detail-view__text">
-                    {typeof pair.actor_src === "string" && pair.actor_src !== "" ? (
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Badge className="log-detail-view__name-badge">
-                              <span className="log-detail-view__name-badge-label">
-                                {pair.actor_src}
-                              </span>
-                            </Badge>
-                          }
-                        />
-                        <TooltipContent>{pair.actor_src}</TooltipContent>
-                      </Tooltip>
-                    ) : null}
-                    <span>{pair.src}</span>
-                  </dd>
-                </div>
-                <div className="log-detail-view__field log-detail-view__field--dst">
-                  <dt>{t("log_window_page.detail.content.translated_text")}</dt>
-                  <dd className="log-detail-view__text">
-                    {typeof pair.actor_dst === "string" && pair.actor_dst !== "" ? (
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Badge className="log-detail-view__name-badge">
-                              <span className="log-detail-view__name-badge-label">
-                                {pair.actor_dst}
-                              </span>
-                            </Badge>
-                          }
-                        />
-                        <TooltipContent>{pair.actor_dst}</TooltipContent>
-                      </Tooltip>
-                    ) : null}
-                    <span>{pair.dst}</span>
-                  </dd>
-                </div>
-              </dl>
-            </li>
-          ))}
-        </ol>
-      </Card>
+      {content.kind === "translation_result" ? (
+        <Card variant="group" className="log-detail-view__card log-detail-view__result">
+          <ol className="log-detail-view__items">
+            {content.pairs.map((pair, index) => (
+              <li key={index} className="log-detail-view__item">
+                <span className="log-detail-view__item-index">#{String(index + 1)}</span>
+                <dl className="log-detail-view__translation-pair">
+                  <div className="log-detail-view__field">
+                    <dt>{t("log_window_page.detail.content.source_text")}</dt>
+                    <dd className="log-detail-view__text">
+                      {typeof pair.actor_src === "string" && pair.actor_src !== "" ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Badge className="log-detail-view__name-badge">
+                                <span className="log-detail-view__name-badge-label">
+                                  {pair.actor_src}
+                                </span>
+                              </Badge>
+                            }
+                          />
+                          <TooltipContent>{pair.actor_src}</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      <span>{pair.src}</span>
+                    </dd>
+                  </div>
+                  <div className="log-detail-view__field log-detail-view__field--dst">
+                    <dt>{t("log_window_page.detail.content.translated_text")}</dt>
+                    <dd className="log-detail-view__text">
+                      {typeof pair.actor_dst === "string" && pair.actor_dst !== "" ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Badge className="log-detail-view__name-badge">
+                                <span className="log-detail-view__name-badge-label">
+                                  {pair.actor_dst}
+                                </span>
+                              </Badge>
+                            }
+                          />
+                          <TooltipContent>{pair.actor_dst}</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      <span>{pair.dst}</span>
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      ) : null}
 
       {content.sections.map((section, index) => (
         <Card

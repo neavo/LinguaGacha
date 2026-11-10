@@ -68,6 +68,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/session/project/snapshot", () => lifecycle.get_project_snapshot());
   context.postJson("/api/session/project/close", () => lifecycle.unload_project());
   context.postJson("/api/session/project/preview", (body) => lifecycle.get_project_preview(body));
+  context.postJson("/api/session/project/default-name", (body) =>
+    lifecycle.get_default_project_name(body),
+  );
   context.postJson("/api/session/source-files/summary", (body) =>
     lifecycle.summarize_source_files(body),
   );
@@ -260,6 +263,10 @@ export function register_api_routes(context: ApiRouteContext): void {
 
   const batch_translation = services.batchTranslation;
   context.postJson("/api/batch-translation/start", (body) => batch_translation.start(body));
-  context.postJson("/api/batch-translation/stop", () => batch_translation.stop());
-  context.postJson("/api/batch-translation/snapshot", () => batch_translation.get_snapshot());
+  context.postJson("/api/batch-task/stop", async (body) => {
+    if (typeof body["run_id"] !== "string") throw new AppError("request.validation_failed");
+    const accepted = await services.batchTasks.request_stop(body["run_id"]);
+    return { accepted, ...(await batch_translation.get_snapshot()) };
+  });
+  context.postJson("/api/batch-task/snapshot", () => batch_translation.get_snapshot());
 }

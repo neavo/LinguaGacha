@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AppPathService } from "../../app/app-path-service";
+import type { MediaConfiguration } from "../media/runtime";
 import { default_native_fs } from "../../../native/native-fs";
 import { Supervisor, type SupervisedProcessResult } from "../../../native/supervisor";
 import { resolve_workspace_runtime_entry } from "../../../native/workspace-runtime";
@@ -8,6 +9,7 @@ import type { ProxyResolver } from "../../network/proxy-route";
 import { AppError } from "../../../shared/error";
 import { read_agent_process_output, type AgentProcessOutput } from "../process-output";
 import type { UvConfiguration } from "../uv/types";
+import { prepare_aria2 } from "./aria2";
 
 /** 本次执行的两路日志与时限，日志路径相对于工作区。 */
 export type AgentExecutionRequest = Readonly<{
@@ -38,8 +40,10 @@ export class AgentExecutionRuntime {
   public readonly runtimeDirectory: string; // 随应用版本固定的运行资源。
   public readonly fontsDirectory: string; // 应用随附字体，Agent 工作区只读引用。
   public readonly nodeRoot: string; // 跨应用更新保留的用户 npm 工程。
+  public readonly media: MediaConfiguration; // 宿主固定媒体路径，根脚本通过 IPC 接收。
   public readonly uv: UvConfiguration; // 经 IPC 固定根脚本使用的 uv 与共享数据根。
-  private readonly lock: string;
+  private readonly lock: string; // 跨应用版本共用的执行租约路径。
+  private readonly aria2Directory: string; // 应用管理的共享命令目录。
   private active: Promise<unknown> | undefined; // 关闭等待整个操作结算，不能只等目标进程。
   private controller: AbortController | undefined; // 应用关闭与调用方取消合并到本次操作。
   private closed = false;
@@ -53,7 +57,12 @@ export class AgentExecutionRuntime {
       electronVersion?: string;
       paths: Pick<
         AppPathService,
-        "get_agent_node_root_dir" | "get_agent_execution_lock_path" | "get_agent_python_root_dir"
+        | "get_agent_node_root_dir"
+        | "get_agent_execution_lock_path"
+        | "get_agent_python_root_dir"
+        | "get_agent_models_dir"
+        | "get_agent_media_cache_dir"
+        | "get_user_data_path"
       >;
       proxyResolver: ProxyResolver;
     },
@@ -62,7 +71,13 @@ export class AgentExecutionRuntime {
     this.runtimeDirectory = path.resolve(options.runtimeDirectory);
     this.fontsDirectory = path.resolve(options.fontsDirectory);
     this.nodeRoot = path.resolve(options.paths.get_agent_node_root_dir());
+    this.media = Object.freeze({
+      modelsDirectory: path.resolve(options.paths.get_agent_models_dir()),
+      cacheDirectory: path.resolve(options.paths.get_agent_media_cache_dir()),
+      runtimeDirectory: this.runtimeDirectory,
+    });
     this.lock = options.paths.get_agent_execution_lock_path();
+    this.aria2Directory = options.paths.get_user_data_path("bin", "aria2");
     this.uv = Object.freeze({
       pythonRoot: path.resolve(options.paths.get_agent_python_root_dir()),
       uvExecutable: path.join(
@@ -124,6 +139,8 @@ export class AgentExecutionRuntime {
     let failure: unknown;
     let value: T | undefined;
     try {
+      prepare_aria2(this.runtimeDirectory, this.aria2Directory);
+      signal.throwIfAborted();
       proxy = await WorkspaceProxy.start(this.options.proxyResolver);
       const env = this.environment(proxy.url);
       const result = await owner.launch(
@@ -207,7 +224,7 @@ export class AgentExecutionRuntime {
     const path_key = Object.keys(env).find((name) => name.toLowerCase() === "path") ?? "PATH";
     return {
       ...env,
-      [path_key]: [bin, global_bin, env[path_key] ?? ""].join(path.delimiter),
+      [path_key]: [this.aria2Directory, bin, global_bin, env[path_key] ?? ""].join(path.delimiter),
       ELECTRON_RUN_AS_NODE: "1",
       NODE_OPTIONS: "",
       LG_NODE_ROOT: this.nodeRoot,

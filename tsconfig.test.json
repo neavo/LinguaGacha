@@ -9,7 +9,6 @@
   "include": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
-    "buildtools/**/*.test.ts",
     "src/test",
     "src/electron-env.d.ts",
     "src/frontend/vite-env.d.ts"

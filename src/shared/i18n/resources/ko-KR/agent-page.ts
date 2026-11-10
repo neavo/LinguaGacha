@@ -8,10 +8,16 @@ export const ko_kr_agent_page = {
     save_as: "다른 이름으로 저장",
     open_folder: "파일이 있는 폴더 열기",
   },
-  batch_translation_model: {
-    follow: "같은 모델 사용",
-    follow_option: "AGENT와 같은 모델 사용",
-    tooltip: "일괄 번역 도구에서 사용할 모델",
+  function_models: {
+    title: "하위 모델",
+    agent: "주 모델",
+    translation: "번역 모델",
+    media: "미디어 모델",
+    agent_description: "작업 흐름을 제어하는 주 모델",
+    translation_description: "일괄 번역에 사용하는 모델입니다. 주 모델이 사용 시점을 판단합니다.",
+    media_description:
+      "오디오 및 비디오 인식에 사용하는 모델입니다. 주 모델이 사용 시점을 판단합니다.\n<emphasis>대부분의 모델은 오디오 및 비디오 입력을 지원하지 않습니다</emphasis>. 이 점에 유의하세요. doubao와 gemini를 권장합니다.",
+    follow: "주 모델 따르기",
   },
   title: "AGENT",
   thinking: "생각 과정",

@@ -13,19 +13,13 @@ const UV_TARGETS = Object.freeze({
 });
 
 /** 开发与发行共用固定版本，禁止回退到宿主 PATH。 */
-export async function deploy_uv({
-  root,
-  workspaceDirectory,
-  platform,
-  arch,
-  download = getBinFromUrl,
-}) {
+export async function deploy_uv({ root, workspaceDirectory, platform, arch }) {
   const target = `${platform}-${arch}`;
   const filename = UV_TARGETS[target];
   if (!filename) throw new Error(`Unsupported uv target: ${target}`);
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
   // 当前下载器以 strip: 1 解压 tar.gz，六个目标均返回可执行文件所在目录。
-  const source = await download(
+  const source = await getBinFromUrl(
     manifest.workspaceRuntimeTools.uv,
     filename,
     undefined,

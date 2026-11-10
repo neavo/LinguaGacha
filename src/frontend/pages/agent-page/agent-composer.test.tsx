@@ -204,7 +204,12 @@ describe("AgentComposer", () => {
             model_selection={{
               snapshot: {
                 models: [],
-                model_selection: { translation: "", agent: "", agent_batch_translation: null },
+                model_selection: {
+                  translation: "",
+                  agent: "",
+                  agent_batch_translation: null,
+                  agent_media: null,
+                },
               },
               loading: false,
               updating: false,

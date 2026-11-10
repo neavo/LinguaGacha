@@ -1,3 +1,4 @@
+import type { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
 import { createContext } from "react";
 import type { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
@@ -16,6 +17,7 @@ export type SettingsSnapshot = SettingSnapshot;
 export type ProjectSnapshot = {
   path: string;
   loaded: boolean;
+  file_count: number; // 统计工程资产，零文本条目的 PDF 也计入。
   languages: ProjectLanguageSettings | null; // 已加载项目的语言事实，未加载时为 null
 };
 
@@ -48,6 +50,7 @@ export type SettingsSnapshotPayload = {
 // Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
 export type DesktopStateStores = {
+  batch_task: ReturnType<typeof createBatchTaskSnapshotStore>;
   batch_translation: ReturnType<typeof createBatchTranslationSnapshotStore>;
   runtime: ReturnType<typeof createRuntimeActivityStore>;
   projectChange: ProjectChangeSignalSource;

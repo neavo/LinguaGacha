@@ -131,6 +131,7 @@
     ]
   },
   "workspaceRuntimeTools": {
-    "uv": "0.13.7"
+    "uv": "0.13.7",
+    "aria2": "1.37.0"
   }
 }

@@ -5,6 +5,7 @@ import {
   is_model_type,
   normalize_model_selection,
   type ModelSelection,
+  type AgentFunctionUsage,
   type ModelThinkingLevel,
   type ModelType,
 } from "../domain/model";
@@ -16,12 +17,12 @@ export type ModelSelectionInput = {
   thinking_level?: ModelThinkingLevel;
 };
 
-/** 页面为菜单选择补充用途，跟随项只用于 Agent 批量翻译。 */
+/** 页面为菜单选择补充用途，跟随项用于 Agent 子模型。 */
 export type ModelSelectionChange =
   | (ModelSelectionInput & {
-      target: "translation" | "agent" | "agent_batch_translation";
+      target: "translation" | "agent" | AgentFunctionUsage;
     })
-  | { target: "agent_batch_translation"; model_id: null };
+  | { target: AgentFunctionUsage; model_id: null };
 
 /** 任务入口可见的非敏感模型摘要。 */
 export type ModelSelectionOption = JsonRecord & {

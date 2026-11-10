@@ -1,3 +1,5 @@
+import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
+import { read_batch_task_snapshot } from "@shared/batch-task";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { create_text_resolver } from "@shared/i18n";
 import { resolve_app_locale, resolve_system_app_language } from "@domain/app-language";
@@ -77,6 +79,7 @@ type ProjectManifestPayload = {
 const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
   path: "",
   loaded: false,
+  file_count: 0,
   languages: null,
 };
 
@@ -87,6 +90,8 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   return {
     path: String(snapshot.path ?? ""),
     loaded,
+    file_count:
+      loaded && Number.isInteger(snapshot.file_count) ? Math.max(0, snapshot.file_count!) : 0,
     languages:
       loaded && is_json_record(snapshot.languages)
         ? read_project_language_settings(snapshot.languages)
@@ -94,11 +99,13 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   };
 }
 
-/** project 分区变化表示项目设置已提交，项目快照需要补读。 */
-function has_project_settings_change(
+/** 工程设置和文件集合共同决定公开工程快照。 */
+function has_project_snapshot_change(
   events: readonly Pick<ProjectChangeEventForState, "updatedSections">[],
 ): boolean {
-  return events.some((event) => event.updatedSections.includes("project"));
+  return events.some((event) =>
+    event.updatedSections.some((section) => section === "project" || section === "files"),
+  );
 }
 
 /** 汇总写入回流涉及的 section，用于页面刷新信号。 */
@@ -143,6 +150,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   );
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
+  const batch_task_store = useRef(createBatchTaskSnapshotStore()).current;
   const task_snapshot_store_ref = useRef(createBatchTranslationSnapshotStore());
   const sync_task_snapshot = useCallback((snapshot: BatchTranslationSnapshot): void => {
     task_snapshot_store_ref.current.applySnapshot(snapshot);
@@ -154,6 +162,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   const project_change_store_ref = useRef(createProjectChangeSignalStore());
   const state_stores_ref = useRef<DesktopStateStores>({
     batch_translation: task_snapshot_store_ref.current,
+    batch_task: batch_task_store,
     runtime: runtime_snapshot_store_ref.current,
     projectChange: project_change_store_ref.current,
   });
@@ -352,11 +361,12 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
   // 主动刷新与初始化共用批量翻译快照，并由 Store 裁决 revision
   const refresh_batch_translation = useCallback(async (): Promise<BatchTranslationSnapshot> => {
-    const payload = await api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {});
+    const payload = await api_fetch<TaskSnapshotPayload>("/api/batch-task/snapshot", {});
+    batch_task_store.applySnapshot(read_batch_task_snapshot(payload));
     const next_snapshot = normalize_batch_translation_snapshot(payload);
     sync_task_snapshot(next_snapshot);
     return next_snapshot;
-  }, [sync_task_snapshot]);
+  }, [sync_task_snapshot, batch_task_store]);
 
   /** SSE 解析失败时从同一公开快照入口恢复，不借 task 状态推导 owner。 */
   const refresh_runtime = useCallback(async (): Promise<RuntimeActivitySnapshot> => {
@@ -541,7 +551,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     ]);
     for (const queued_change of queued_project_changes) {
       const applied = await apply_project_change_event_immediately(queued_change);
-      if (applied && has_project_settings_change([queued_change])) await refresh_project_snapshot();
+      if (applied && has_project_snapshot_change([queued_change])) await refresh_project_snapshot();
     }
     set_project_session_status("ready");
   }, [
@@ -574,7 +584,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       for (const change_event of result.changes) {
         await apply_project_change_event_immediately(change_event);
         if (
-          has_project_settings_change([change_event]) &&
+          has_project_snapshot_change([change_event]) &&
           change_event.projectPath === read_project_state_identity().path
         ) {
           // 事件可以去重，写入方仍须确认已提交快照后再撤下草稿。
@@ -589,7 +599,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   const apply_project_change_batch_with_snapshot = useCallback(
     (change_events: readonly ProjectChangeEventForState[]): void => {
       apply_project_state_change_batch(change_events);
-      if (!has_project_settings_change(change_events)) return;
+      if (!has_project_snapshot_change(change_events)) return;
       void refresh_project_snapshot().catch((error: unknown) => {
         report_state_error(error, {
           source: "sse",
@@ -616,12 +626,13 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       const [next_settings, next_project, next_task, next_runtime] = await Promise.all([
         api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
         api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {}),
-        api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {}),
+        api_fetch<TaskSnapshotPayload>("/api/batch-task/snapshot", {}),
         api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {}),
       ]);
       if (token !== initial_request_ref.current) return;
       // 四份载荷先完成归一，再通过各状态拥有者一起应用。
       const project = normalize_project_snapshot(next_project);
+      batch_task_store.applySnapshot(read_batch_task_snapshot(next_task));
       const task = normalize_batch_translation_snapshot(next_task);
       const runtime = normalize_runtime_activity_snapshot(next_runtime);
       apply_settings_snapshot(next_settings);
@@ -645,6 +656,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     }
   }, [
     apply_settings_snapshot,
+    batch_task_store,
     report_state_error,
     sync_project_snapshot,
     sync_task_snapshot,
@@ -713,6 +725,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     schedulerRef: refresh_scheduler_ref,
     applySettingsSnapshot: apply_settings_snapshot,
     applyTaskSnapshot: sync_task_snapshot,
+    applyBatchTaskSnapshot: batch_task_store.applySnapshot,
     applyRuntimeSnapshot: sync_runtime_snapshot,
     refreshSettings: refresh_settings,
     refreshRuntime: refresh_runtime,

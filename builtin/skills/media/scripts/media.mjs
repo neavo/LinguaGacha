@@ -1,0 +1,302 @@
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import * as sdk from "@lg/media";
+import { npm } from "@lg/npm";
+
+// `missing`、`setup` 按用途检查与准备依赖和模型，用途见技能的「环境准备」。
+export { ASR_LANGUAGES, ffmpeg, inspect, missing, setup } from "@lg/media";
+
+const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
+const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
+const ROW_KINDS = ["dialogue", "screen"]; // 对话与画面文字。
+export const load = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取工作目录中的 JSON 材料。
+const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value); // 普通对象。
+
+/** 只有缺失表示尚未生成，权限与其他 IO 错误保留。 */
+export async function exists(file) {
+  try {
+    await access(file);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+/** 原子发布 JSON，续跑只读取完整结果。 */
+export async function save(file, value) {
+  await mkdir(path.dirname(file), { recursive: true });
+  const temporary = file + ".tmp";
+  try {
+    await writeFile(temporary, JSON.stringify(value, null, 2));
+    await rename(temporary, file);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
+/** 按需安装本技能自己的 npm 依赖。识别与检测的依赖由 `@lg/media` 管理。 */
+export async function install(name, range) {
+  if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
+    await npm.run(["install", `${name}@${range}`]);
+}
+
+/** 原文件身份。纳秒用字符串保存，避免 JSON 数字丢失精度。 */
+async function identify(file) {
+  const details = await stat(file, { bigint: true });
+  return {
+    path: file,
+    size: Number(details.size),
+    mtime_ns: String(details.mtimeNs),
+  };
+}
+
+/**
+ * 检测整片文字区间，成功后再用新裁图替换 `text/`，不写 `media.json`，由调用者保存。
+ * 计算失败时保留原有裁图。
+ */
+async function detect(directory) {
+  const staging = path.join(directory, "text.staging");
+  const text = await sdk.scan(await locate(directory), { directory, out: staging });
+  const crops = path.join(directory, "text");
+  await rm(crops, { recursive: true, force: true }); // 区间编号重排，旧裁图不能混用。
+  await rename(staging, crops);
+  return text;
+}
+
+/**
+ * 以 1 fps 检测整片画面文字，写入 `media.json` 的 `text`，每个区间的代表帧裁图写入 `text/<id>.jpg`。
+ * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成。
+ * 检测模型随本机配置而定，区间编号和框只在本次结果内有效。
+ */
+export async function scan(directory) {
+  directory = path.resolve(directory);
+  const manifestFile = path.join(directory, "media.json");
+  const manifest = await load(manifestFile);
+  if (manifest.video === null) throw new Error("纯音频素材没有画面");
+  manifest.text = await detect(directory);
+  await save(manifestFile, manifest);
+  return { text: manifest.text.length };
+}
+
+/**
+ * 准备原文条目与证据，不请求付费模型。有音轨时只支持 `ASR_LANGUAGES` 中的原文语言。
+ * 来源身份写入 `media.json` 的 `source`，之后按它找回原文件。
+ * 音频识别与画面检测同时运行，各自完成后立即保存，中断后用相同参数续跑。
+ */
+export async function prepare(source, directory, { track = 0, language } = {}) {
+  source = path.resolve(source);
+  directory = path.resolve(directory);
+  const info = await sdk.inspect(source);
+  if (!Number.isInteger(track) || track < 0 || (info.audio.length && track >= info.audio.length))
+    throw new Error("音轨不存在");
+  if (info.video === null && !info.audio.length) throw new Error("素材没有音视频流");
+  if (info.audio.length && !Object.hasOwn(sdk.ASR_LANGUAGES, language))
+    throw new Error(
+      `本地识别只支持 ${Object.keys(sdk.ASR_LANGUAGES).join("、")}，当前原文语言为 ${language}`,
+    );
+  const identity = {
+    ...(await identify(source)),
+    track,
+    language: language ?? null,
+  };
+  const manifestFile = path.join(directory, "media.json");
+  let manifest;
+  if (await exists(manifestFile)) {
+    manifest = await load(manifestFile);
+    if (
+      !record(manifest.source) ||
+      Object.entries(identity).some(([key, value]) => manifest.source[key] !== value)
+    )
+      throw new Error("来源、音轨或语言已变化，请使用新的工作目录");
+  } else {
+    manifest = { source: identity, duration: info.duration, video: info.video };
+    await save(manifestFile, manifest);
+  }
+  // 两条支路各写各的字段，保存排队进行，避免同时写同一个文件。
+  let saving = Promise.resolve();
+  const commit = (fields) =>
+    (saving = saving.then(() => save(manifestFile, Object.assign(manifest, fields))));
+  const results = await Promise.allSettled([
+    "asr" in manifest
+      ? null
+      : info.audio.length
+        ? sdk.listen(source, { track, language }).then(commit)
+        : commit({ speech: null, asr: null }),
+    "text" in manifest
+      ? null
+      : info.video
+        ? detect(directory).then((text) => commit({ text }))
+        : commit({ text: null }),
+  ]);
+  // 一条支路失败后仍等另一条保存完毕，续跑才能安全复用同一目录。
+  for (const result of results) if (result.status === "rejected") throw result.reason;
+  const itemsFile = path.join(directory, "items.json");
+  const hasItems = await exists(itemsFile); // 续跑保留已编辑的原文，包括有意清空的记录。
+  const items = hasItems
+    ? await load(itemsFile)
+    : (manifest.asr ?? []).map(({ start, end, text }) => ({
+        start,
+        end,
+        message: text,
+        kind: "dialogue",
+      }));
+  validate_items(items, manifest.duration);
+  if (!hasItems) await save(itemsFile, items);
+  return {
+    items: items.length,
+    speech: manifest.speech?.length ?? null,
+    asr: manifest.asr?.length ?? null,
+    text: manifest.text?.length ?? null,
+  };
+}
+
+/**
+ * 把文字区间的代表帧裁图拼成图集，供 `ws.emitImage` 查看。省略 `ids` 时包含全部区间。
+ * 返回 `[{ file, ids }]`，每张图集不超过 1280×1280。
+ */
+export async function sheets(directory, { ids } = {}) {
+  directory = path.resolve(directory);
+  const { text } = await load(path.join(directory, "media.json"));
+  if (!text) throw new Error("没有文字区间");
+  const wanted = ids ? new Set(ids) : null;
+  const out = path.join(directory, "sheets");
+  await rm(out, { recursive: true, force: true });
+  return sdk.sheets(
+    text
+      .filter((region) => !wanted || wanted.has(region.id))
+      .map(({ id, start }) => ({ id, start, file: path.join(directory, "text", `${id}.jpg`) })),
+    out,
+  );
+}
+
+/**
+ * 在原文件上以高帧率校准带 `box` 的 `screen` 行的起止时间，直接写回 `items.json`。
+ * 边界不在原时间前后 1 秒内时保持原值，这些行在 `unresolved` 中返回。
+ */
+export async function refine(directory, rows) {
+  directory = path.resolve(directory);
+  const manifest = await load(path.join(directory, "media.json"));
+  if (manifest.video === null) throw new Error("纯音频素材没有画面");
+  const itemsFile = path.join(directory, "items.json");
+  const items = await load(itemsFile);
+  for (const row of rows)
+    if (
+      !valid_row(items[row], manifest.duration) ||
+      items[row].kind !== "screen" ||
+      !items[row].box
+    )
+      throw new Error(`第 ${row} 行不是带 box 的 screen`);
+  const bounds = await sdk.refine(await locate(directory), {
+    directory,
+    rows: rows.map((row) => ({ ...items[row], row })),
+  });
+  const unresolved = [];
+  for (const { row, start, end } of bounds) {
+    const next = { ...items[row], start, end };
+    // 两个边界都有效才整行采用，未决行保留原时间。
+    if (valid_row(next, manifest.duration)) items[row] = next;
+    else unresolved.push(row);
+  }
+  await save(itemsFile, items);
+  return { refined: rows.length - unresolved.length, unresolved };
+}
+
+/**
+ * 按 `media.json` 记录的身份找回原文件。路径不存在或大小、修改时间不一致时报错，
+ * 由 Agent 请用户提供新路径后调用 `relink`。
+ */
+export async function locate(directory) {
+  const { source } = await load(path.join(path.resolve(directory), "media.json"));
+  let current = null;
+  try {
+    current = await identify(source.path);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (current?.size !== source.size || current.mtime_ns !== source.mtime_ns)
+    throw new Error(`原文件 ${source.path} 不存在或已变化，请用户提供新路径后调用 media.relink()`);
+  return source.path;
+}
+
+/** 改用新的原文件路径。核对时长、画面尺寸和所选音轨后更新身份。 */
+export async function relink(directory, file) {
+  file = path.resolve(file);
+  const manifestFile = path.join(path.resolve(directory), "media.json");
+  const manifest = await load(manifestFile);
+  const info = await sdk.inspect(file);
+  if (
+    Math.abs(info.duration - manifest.duration) > DURATION_TOLERANCE ||
+    JSON.stringify(info.video) !== JSON.stringify(manifest.video)
+  )
+    throw new Error("新文件的时长或画面尺寸与原素材不一致");
+  if (manifest.asr !== null && !info.audio[manifest.source.track])
+    throw new Error("新文件缺少原来选择的音轨");
+  manifest.source = { ...manifest.source, ...(await identify(file)) };
+  await save(manifestFile, manifest);
+  return manifest.source;
+}
+
+/** `box` 是归一化的 `[x0, y0, x1, y1]`。 */
+const valid_box = (box) =>
+  Array.isArray(box) &&
+  box.length === 4 &&
+  box.every((value) => Number.isFinite(value) && 0 <= value && value <= 1) &&
+  box[0] < box[2] &&
+  box[1] < box[3];
+
+/**
+ * 字幕行的结构与时间是否可用。坏时间不能参与排序和区间运算，姓名须符合后端记录契约。
+ * `box` 只属于 `screen`，误写到对白上会让渲染不按预期避让。
+ */
+export function valid_row(row, duration) {
+  return (
+    record(row) &&
+    Number.isFinite(row.start) &&
+    Number.isFinite(row.end) &&
+    0 <= row.start &&
+    row.start < row.end &&
+    row.end <= duration &&
+    ROW_KINDS.includes(row.kind) &&
+    typeof row.message === "string" &&
+    row.message.trim() !== "" &&
+    (row.name === undefined || typeof row.name === "string") &&
+    (row.box === undefined || (row.kind === "screen" && valid_box(row.box)))
+  );
+}
+
+/** 保留数组坐标，坏记录必须整批修正，不能过滤或排序后悄悄改变译文归属。 */
+function validate_items(items, duration) {
+  if (!Array.isArray(items)) throw new Error("items.json 必须是数组");
+  const invalid = items.findIndex((item) => !valid_row(item, duration));
+  if (invalid !== -1)
+    throw new Error(`items.json 第 ${invalid} 行不合法：${JSON.stringify(items[invalid])}`);
+}
+
+/**
+ * 校验原文记录并打包，失败时保留已有完整包。包里只有 JSON 和可选的定制渲染，媒体按 `source` 找回。
+ * 数组顺序即提交后的 `row_number`。
+ */
+export async function pack(directory, output) {
+  await install("jszip", "^3.10.2");
+  const { default: JSZip } = await import("jszip");
+  const manifest = await load(path.join(directory, "media.json"));
+  const items = await load(path.join(directory, "items.json"));
+  validate_items(items, manifest.duration);
+  const members = ["media.json", "items.json"];
+  if (await exists(path.join(directory, CUSTOM_RENDERER))) members.push(CUSTOM_RENDERER);
+  const zip = new JSZip();
+  for (const member of members) zip.file(member, await readFile(path.join(directory, member)));
+  await mkdir(path.dirname(output), { recursive: true });
+  const temporary = output + ".tmp.media";
+  try {
+    await writeFile(
+      temporary,
+      await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
+    );
+    await rename(temporary, output);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+  return { package: output, items: items.length };
+}
