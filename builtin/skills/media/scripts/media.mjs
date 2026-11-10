@@ -3,14 +3,12 @@ import path from "node:path";
 import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
 
-export { ASR_LANGUAGES, ffmpeg, inspect } from "@lg/media";
+// `missing`、`setup` 按用途检查与准备依赖和模型，用途见技能的「环境准备」。
+export { ASR_LANGUAGES, ffmpeg, inspect, missing, setup } from "@lg/media";
 
 const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
 const ROW_KINDS = ["dialogue", "screen"]; // 对话与画面文字。
-/** 本技能自身的第三方依赖：补查结果修复与打包。识别与检测的依赖由 `@lg/media` 管理。 */
-const PACKAGES = Object.freeze({ jsonrepair: "^3.15.0", jszip: "^3.10.2" });
-
 export const load = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取工作目录中的 JSON 材料。
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value); // 普通对象。
 
@@ -37,28 +35,10 @@ export async function save(file, value) {
   }
 }
 
-/** 本技能缺少的 npm 包。 */
-async function own_packages() {
-  const packages = [];
-  for (const [name, range] of Object.entries(PACKAGES))
-    if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
-      packages.push(`${name}@${range}`);
-  return packages;
-}
-
-/** 列出尚未就绪的 npm 包、Python 依赖与模型。 */
-export async function missing() {
-  const result = await sdk.missing();
-  result.packages.push(...(await own_packages()));
-  return result;
-}
-
-/** 安装缺失依赖、下载校验模型并测量本机推理配置。中断后重新调用，下载从保留的临时文件续传。 */
-export async function setup() {
-  const packages = await own_packages();
-  if (packages.length) await npm.run(["install", ...packages]);
-  await sdk.setup();
-  return missing();
+/** 按需安装本技能自己的 npm 依赖。识别与检测的依赖由 `@lg/media` 管理。 */
+export async function install(name, range) {
+  if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
+    await npm.run(["install", `${name}@${range}`]);
 }
 
 /** 原文件身份。纳秒用字符串保存，避免 JSON 数字丢失精度。 */
@@ -72,7 +52,7 @@ async function identify(file) {
 }
 
 /**
- * 检测整片文字区间，成功后再用新裁图替换 `text/`，不写 `video.json`，由调用者保存。
+ * 检测整片文字区间，成功后再用新裁图替换 `text/`，不写 `media.json`，由调用者保存。
  * 计算失败时保留原有裁图。
  */
 async function detect(directory) {
@@ -85,13 +65,13 @@ async function detect(directory) {
 }
 
 /**
- * 以 1 fps 检测整片画面文字，写入 `video.json` 的 `text`，每个区间的代表帧裁图写入 `text/<id>.jpg`。
+ * 以 1 fps 检测整片画面文字，写入 `media.json` 的 `text`，每个区间的代表帧裁图写入 `text/<id>.jpg`。
  * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成。
  * 检测模型随本机配置而定，区间编号和框只在本次结果内有效。
  */
 export async function scan(directory) {
   directory = path.resolve(directory);
-  const manifestFile = path.join(directory, "video.json");
+  const manifestFile = path.join(directory, "media.json");
   const manifest = await load(manifestFile);
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
   manifest.text = await detect(directory);
@@ -101,7 +81,7 @@ export async function scan(directory) {
 
 /**
  * 准备原文条目与证据，不请求付费模型。有音轨时只支持 `ASR_LANGUAGES` 中的原文语言。
- * 来源身份写入 `video.json` 的 `source`，之后按它找回原文件。
+ * 来源身份写入 `media.json` 的 `source`，之后按它找回原文件。
  * 音频识别与画面检测同时运行，各自完成后立即保存，中断后用相同参数续跑。
  */
 export async function prepare(source, directory, { track = 0, language } = {}) {
@@ -120,7 +100,7 @@ export async function prepare(source, directory, { track = 0, language } = {}) {
     track,
     language: language ?? null,
   };
-  const manifestFile = path.join(directory, "video.json");
+  const manifestFile = path.join(directory, "media.json");
   let manifest;
   if (await exists(manifestFile)) {
     manifest = await load(manifestFile);
@@ -177,7 +157,7 @@ export async function prepare(source, directory, { track = 0, language } = {}) {
  */
 export async function sheets(directory, { ids } = {}) {
   directory = path.resolve(directory);
-  const { text } = await load(path.join(directory, "video.json"));
+  const { text } = await load(path.join(directory, "media.json"));
   if (!text) throw new Error("没有文字区间");
   const wanted = ids ? new Set(ids) : null;
   const out = path.join(directory, "sheets");
@@ -196,7 +176,7 @@ export async function sheets(directory, { ids } = {}) {
  */
 export async function refine(directory, rows) {
   directory = path.resolve(directory);
-  const manifest = await load(path.join(directory, "video.json"));
+  const manifest = await load(path.join(directory, "media.json"));
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
   const itemsFile = path.join(directory, "items.json");
   const items = await load(itemsFile);
@@ -223,11 +203,11 @@ export async function refine(directory, rows) {
 }
 
 /**
- * 按 `video.json` 记录的身份找回原文件。路径不存在或大小、修改时间不一致时报错，
+ * 按 `media.json` 记录的身份找回原文件。路径不存在或大小、修改时间不一致时报错，
  * 由 Agent 请用户提供新路径后调用 `relink`。
  */
 export async function locate(directory) {
-  const { source } = await load(path.join(path.resolve(directory), "video.json"));
+  const { source } = await load(path.join(path.resolve(directory), "media.json"));
   let current = null;
   try {
     current = await identify(source.path);
@@ -242,7 +222,7 @@ export async function locate(directory) {
 /** 改用新的原文件路径。核对时长、画面尺寸和所选音轨后更新身份。 */
 export async function relink(directory, file) {
   file = path.resolve(file);
-  const manifestFile = path.join(path.resolve(directory), "video.json");
+  const manifestFile = path.join(path.resolve(directory), "media.json");
   const manifest = await load(manifestFile);
   const info = await sdk.inspect(file);
   if (
@@ -298,16 +278,17 @@ function validate_items(items, duration) {
  * 数组顺序即提交后的 `row_number`。
  */
 export async function pack(directory, output) {
+  await install("jszip", "^3.10.2");
   const { default: JSZip } = await import("jszip");
-  const manifest = await load(path.join(directory, "video.json"));
+  const manifest = await load(path.join(directory, "media.json"));
   const items = await load(path.join(directory, "items.json"));
   validate_items(items, manifest.duration);
-  const members = ["video.json", "items.json"];
+  const members = ["media.json", "items.json"];
   if (await exists(path.join(directory, CUSTOM_RENDERER))) members.push(CUSTOM_RENDERER);
   const zip = new JSZip();
   for (const member of members) zip.file(member, await readFile(path.join(directory, member)));
   await mkdir(path.dirname(output), { recursive: true });
-  const temporary = output + ".tmp.video";
+  const temporary = output + ".tmp.media";
   try {
     await writeFile(
       temporary,

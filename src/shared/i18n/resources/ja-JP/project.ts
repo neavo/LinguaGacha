@@ -50,7 +50,7 @@ export const ja_jp_project = {
     progress: "翻訳進捗",
   },
   formats: {
-    video: "動画",
+    media: "音声・動画",
     title_tooltip: "より速く、より高品質で、より安定",
     deprecated_tooltip: "現在は最適な選択ではありません。上記の形式を優先してください",
     empty_project_hint:

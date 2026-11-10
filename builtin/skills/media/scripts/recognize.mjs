@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ffmpeg, load, locate, save, valid_row } from "./media.mjs";
+import { ffmpeg, install, load, locate, save, valid_row } from "./media.mjs";
 import { union } from "@lg/media";
 
 const MAX_SECONDS = 210; // 单个补查区间的时长上限，更长时模型常常空输出或截断。
@@ -41,7 +41,7 @@ export async function request(directory, { prompt, ranges }) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("必须提供识别提示词");
   if (!Array.isArray(ranges) || !ranges.length) throw new Error("必须指定补查区间");
   const root = path.resolve(directory);
-  const { duration, video, source } = await load(path.join(root, "video.json"));
+  const { duration, video, source } = await load(path.join(root, "media.json"));
   const file = await locate(root);
   const planned = new Map(); // 相同区间只生成一份载荷。
   for (const range of ranges) {
@@ -108,6 +108,7 @@ export async function request(directory, { prompt, ranges }) {
  * 结果写入独立候选文件，由 `apply` 采用。失败项只列出，已有原文继续保留。
  */
 export async function read(directory, result_file) {
+  await install("jsonrepair", "^3.15.0");
   const { jsonrepair, JSONRepairError } = await import("jsonrepair");
   const root = path.resolve(directory);
   const result = await load(result_file);
@@ -214,7 +215,7 @@ const covered = ([start, end], cover) =>
 /** 字幕原文与本地证据的对照，只提供线索，不判断字幕对错。无音轨时两项线索为 `null`。 */
 export async function check(directory) {
   const root = path.resolve(directory);
-  const { duration, speech, asr } = await load(path.join(root, "video.json"));
+  const { duration, speech, asr } = await load(path.join(root, "media.json"));
   const rows = await load(path.join(root, "items.json"));
   const dialogue = rows.flatMap((row, index) =>
     valid_row(row, duration) && row.kind === "dialogue"

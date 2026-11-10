@@ -73,7 +73,7 @@ export const en_us_project = {
     progress: "Progress",
   },
   formats: {
-    video: "Video",
+    media: "Audio and Video",
     title_tooltip: "Faster, better, and more reliable",
     deprecated_tooltip: "No longer the best choice. Please use the formats above first",
     empty_project_hint:

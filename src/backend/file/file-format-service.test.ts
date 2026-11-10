@@ -698,11 +698,11 @@ it.each([false, true])("视频资产只输出写回输入，空记录=%s", async
   const service = create_service();
   const records = empty ? [] : [{ message: "原文", start: 0, end: 2, kind: "dialogue" }];
   const content = await write_zip(new Map([["items.json", JSON.stringify(records)]]));
-  const parsed = await service.parse_asset("movie.video", content);
-  expect(parsed).toMatchObject({ kind: "items", file_type: "VIDEO" });
+  const parsed = await service.parse_asset("movie.media", content);
+  expect(parsed).toMatchObject({ kind: "items", file_type: "MEDIA" });
   if (parsed.kind !== "items") throw new Error("Expected items");
   expect(parsed.items.map((item) => [item.src, item.row, item.file_type])).toEqual(
-    empty ? [] : [["原文", 0, "VIDEO"]],
+    empty ? [] : [["原文", 0, "MEDIA"]],
   );
   const paths = {
     translated_path: path.join(temp.path, "translated"),
@@ -713,13 +713,13 @@ it.each([false, true])("视频资产只输出写回输入，空记录=%s", async
     parsed.items.map((item) => ({ ...item, dst: "译文", status: "PROCESSED" })),
     {
       paths,
-      source_files: [{ path: "movie.video", file_type: "VIDEO" }],
+      source_files: [{ path: "movie.media", file_type: "MEDIA" }],
       asset_reader: () => Buffer.from(content),
     },
     generic_path,
   );
   expect(fs.existsSync(paths.translated_path)).toBe(false);
   expect(
-    JSON.parse(fs.readFileSync(path.join(generic_path, "movie.video/items.json"), "utf8")),
+    JSON.parse(fs.readFileSync(path.join(generic_path, "movie.media/items.json"), "utf8")),
   ).toEqual(records.map((record) => ({ ...record, message: "译文" })));
 });

@@ -178,7 +178,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 媒体路由和配置变化运行 `media/calibration.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `channel`、`speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`，它用模型替身验证部署后的流隔离与张量释放，不下载权重。
 
-真实媒体验收由 `media/index.test.ts` 显式启用。它使用真实工作区监管器准备独立共享环境，在部署目录执行 `fsmn_vad.test.py` 与 `media.test.py`，再完成 `listen`、`scan` 和 `refine`，最后验证取消后重跑。素材需包含语音和画面文字。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
+真实媒体验收由 `media/index.test.ts` 显式启用。它使用真实工作区监管器准备独立共享环境，在部署目录执行 `fsmn_vad.test.py`，完成 `listen`，最后验证取消后重跑。素材含画面时，它追加准备检测用途，执行 `media.test.py` 并完成 `scan` 和 `refine`。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
 
 ```powershell
 $env:LINGUAGACHA_MEDIA_SOURCE = '素材的绝对路径'
@@ -188,6 +188,17 @@ npm test -- --project integration src/backend/agent/media/index.test.ts
 ```
 
 `LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。
+
+可视化验收不下载模型。报告目录应位于仓库外，保留独立环境与运行日志：
+
+```powershell
+$env:LINGUAGACHA_VISUALIZE_REPORT = '<仓库外验收目录绝对路径>'
+npm test -- --project integration src/backend/agent/media/visualize.test.ts
+```
+
+该入口在部署环境执行 `visualize.test.py`。正式资源还需用当前技能脚本生成字幕并做视觉检查。长音频验收记录实际耗时、进程峰值内存和临时空间，并完整解码检查成片。
+
+界面、PDF 与字幕烧录共用 `public/fonts/` 中的 TTF 字体。更新字体资源后，验证字体加载及中日韩、拉丁文、等宽文字和 emoji 显示。
 
 ### 原生游戏
 

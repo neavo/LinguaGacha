@@ -84,7 +84,7 @@ export class FileFormatService {
   private readonly native_fs: NativeFs; // 文件发现与字幕写入复用的磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly generic = new GenericFormat();
-  private readonly video = new GenericFormat("VIDEO");
+  private readonly media = new GenericFormat("MEDIA");
   private readonly txt: TXTFormat;
   private readonly md: MDV2Format;
   private readonly ass: ASSFormat;
@@ -158,7 +158,7 @@ export class FileFormatService {
       ".trans": "TRANS",
       ".pdf": "PDF",
       ".generic": "GENERIC",
-      ".video": "VIDEO",
+      ".media": "MEDIA",
     };
     let type =
       (file_type === "NONE" ? undefined : file_type) ??
@@ -212,7 +212,7 @@ export class FileFormatService {
       };
     const formats = {
       GENERIC: this.generic,
-      VIDEO: this.video,
+      MEDIA: this.media,
       TXT: this.txt,
       MD_V2: this.md,
       ASS: this.ass,
@@ -557,9 +557,9 @@ export class FileFormatService {
     await this.write_messagejson(items, context);
     if (writeback_path !== undefined) {
       // 视频字幕的样式与渲染归 Agent，与通用数据共用写回输入。
-      const groups = { GENERIC: group_items(items, "GENERIC"), VIDEO: group_items(items, "VIDEO") };
+      const groups = { GENERIC: group_items(items, "GENERIC"), MEDIA: group_items(items, "MEDIA") };
       for (const file of context.source_files) {
-        if (file.file_type !== "GENERIC" && file.file_type !== "VIDEO") continue;
+        if (file.file_type !== "GENERIC" && file.file_type !== "MEDIA") continue;
         const asset = await asset_reader(file.path);
         if (asset === null)
           throw new AppError("file.not_found", { public_details: { file: file.path } });

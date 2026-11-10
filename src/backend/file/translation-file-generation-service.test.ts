@@ -132,7 +132,7 @@ function create_database(
 }
 
 describe("TranslationFileGenerationService", () => {
-  it.each(["GENERIC", "VIDEO"])(
+  it.each(["GENERIC", "MEDIA"])(
     "仅含 %s 时直接生成报告原因与排除清单，且不创建目录",
     async (file_type) => {
       const session = new ProjectSessionState();
@@ -312,7 +312,7 @@ describe("TranslationFileGenerationService", () => {
       create_database(
         [
           ...items,
-          create_item({ ...items[0]!, file_path: "movie.video", file_type: "VIDEO" }),
+          create_item({ ...items[0]!, file_path: "movie.media", file_type: "MEDIA" }),
           create_item({
             file_path: "native.txt",
             file_type: "TXT",
@@ -323,7 +323,7 @@ describe("TranslationFileGenerationService", () => {
         ],
         {
           "data.generic": { content, file_type: "GENERIC" },
-          "movie.video": { content, file_type: "VIDEO" },
+          "movie.media": { content, file_type: "MEDIA" },
           "empty.generic": {
             content: Buffer.from(await write_zip(new Map([["items.json", "[]"]]))),
             file_type: "GENERIC",
@@ -344,14 +344,14 @@ describe("TranslationFileGenerationService", () => {
     expect(fs.readFileSync(path.join(gui.output_path, "native.txt"), "utf8")).toBe("译文");
     expect(fs.existsSync(path.join(gui.output_path, "data.generic"))).toBe(false);
     expect(fs.existsSync(path.join(gui.output_path, "empty.generic"))).toBe(false);
-    expect(gui.excluded_files).toEqual(["data.generic", "movie.video", "empty.generic"]);
+    expect(gui.excluded_files).toEqual(["data.generic", "movie.media", "empty.generic"]);
     const generated = await service.generate_staging_files(path.join(temp_dir, "agent"), []);
     expect(generated.excluded_files).toEqual([]);
     expect(generated.writeback!.files).toEqual(gui.excluded_files);
     expect(
       JSON.parse(
         fs.readFileSync(
-          path.join(generated.writeback!.input_path, "movie.video/items.json"),
+          path.join(generated.writeback!.input_path, "movie.media/items.json"),
           "utf8",
         ),
       ),

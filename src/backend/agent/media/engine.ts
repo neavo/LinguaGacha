@@ -27,18 +27,18 @@ export class DecodeFailure extends Error {}
 export const ORT_PACKAGE = "onnxruntime-node";
 export const ORT_VERSION = "1.31.1"; // 经过 Worker 生命周期与 WebGPU 验证的版本。
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 本机配置缓存的有效期。
-const CONFIG_VERSION = 3; // 线程、路由、前处理或选择规则变化时递增，使旧缓存失效。
+const CONFIG_VERSION = 4; // 线程、路由、前处理或选择规则变化时递增，使旧缓存失效。
 const CALIBRATION_LAUNCHES = 2; // 完整候选、独立进程退出和双档计时共同决定配置。
 const CPU_PROFILE: MediaProfile = { asr: "cpu", det: "cpu" };
-/** 已选配置与选择依据。`complete` 为假表示 GPU 准备未完成，下次 `setup()` 会重新校准。 */
+/** 已选配置与选择依据。`complete` 只列出准备完成的任务，其余任务下次准备时重试。 */
 type InferenceCache = Readonly<
-  MediaProfile & {
+  Partial<MediaProfile> & {
     key: string;
     expires: number;
-    complete: boolean;
+    complete: readonly ("asr" | "det")[];
     reasons: Readonly<Record<string, string>>;
     calibration: MediaCalibration;
-    mixed: MediaMeasurement;
+    mixed?: Readonly<{ profile: MediaProfile; measurement: MediaMeasurement }>;
   }
 >;
 
@@ -61,7 +61,7 @@ export function read_json(file: string): unknown {
 
 const model_file = (model: { file: string }): string =>
   path.join(media_directories().models, model.file);
-const runtime_file = (name: string): string =>
+export const runtime_file = (name: string): string =>
   path.join(npm_configuration().runtimeDirectory, "runtime", name);
 
 /**
@@ -159,7 +159,7 @@ export async function operate<T>(action: (engine: Engine) => Promise<T>): Promis
 let synced: Promise<void> | undefined; // 每个根进程同步一次共享 Python 环境。
 
 /** 共享 uv 工程 `.venv` 中的解释器。不使用 PATH 中的 Python，也不在 Worker 中安装依赖。 */
-async function python(): Promise<string> {
+export async function python(): Promise<string> {
   synced ??= uv.run(["sync", "--inexact"]).catch((error: unknown) => {
     synced = undefined;
     throw error;
@@ -284,9 +284,9 @@ export async function inference_cache(): Promise<InferenceCache | undefined> {
   const value = read_json(cache_path()) as InferenceCache | undefined;
   return value?.key === cache_key() &&
     value.expires > Date.now() &&
-    ["cpu", "webgpu"].includes(value.asr) &&
-    ["cpu", "webgpu_single", "webgpu_dual"].includes(value.det) &&
-    typeof value.complete === "boolean"
+    (value.asr === undefined || ["cpu", "webgpu"].includes(value.asr)) &&
+    (value.det === undefined || ["cpu", "webgpu_single", "webgpu_dual"].includes(value.det)) &&
+    Array.isArray(value.complete)
     ? value
     : undefined;
 }
@@ -310,7 +310,7 @@ async function forget_devices(task: "asr" | "det" | undefined, reason: string): 
 }
 
 /** 配置与路径在父进程解析，执行核心和校准子进程不访问共享环境绑定。 */
-function worker_config(profile: MediaProfile, probe = false): MediaWorkerConfig {
+function worker_config(profile: MediaProfile, probe?: "asr" | "det"): MediaWorkerConfig {
   const model = (key: keyof typeof MEDIA_MODELS, device: "cpu" | "webgpu", threads = 4) => ({
     file: model_file(MEDIA_MODELS[key]),
     device,
@@ -321,9 +321,9 @@ function worker_config(profile: MediaProfile, probe = false): MediaWorkerConfig 
     tokens: model_file(MEDIA_MODELS.tokens),
     models: {
       vad: model("vad", "cpu", 1),
-      asr: model(profile.asr === "cpu" ? "asr_cpu" : "asr_gpu", profile.asr),
+      asr: model(profile.asr === "cpu" || probe === "asr" ? "asr_cpu" : "asr_gpu", profile.asr),
       det: model(
-        profile.det === "cpu" || probe ? "det_cpu" : "det_gpu",
+        profile.det === "cpu" || probe === "det" ? "det_cpu" : "det_gpu",
         profile.det === "cpu" ? "cpu" : "webgpu",
       ),
     },
@@ -337,33 +337,48 @@ async function inference_profile(): Promise<MediaProfile> {
   const { models } = media_directories();
   return {
     asr: cache.asr === "webgpu" && model_ready(models, MEDIA_MODELS.asr_gpu) ? "webgpu" : "cpu",
-    det: cache.det !== "cpu" && model_ready(models, MEDIA_MODELS.det_gpu) ? cache.det : "cpu",
+    det:
+      cache.det && cache.det !== "cpu" && model_ready(models, MEDIA_MODELS.det_gpu)
+        ? cache.det
+        : "cpu",
   };
 }
 
-/** 在独立校准子进程中测量一个候选。 */
-const measure = (profile: MediaProfile, task: "asr" | "det" | "mixed" | "probe") =>
+/** 在独立校准子进程中测量一个候选。探测只在父进程改用 CPU 权重，子进程照常测量。 */
+const measure = (profile: MediaProfile, task: "asr" | "det" | "mixed", probe = false) =>
   run_calibration(runtime_file("media-calibrate.mjs"), {
     profile,
-    config: worker_config(profile, task === "probe"),
+    config: worker_config(profile, probe && task !== "mixed" ? task : undefined),
     worker: runtime_file("media-worker.mjs"),
     task,
   });
 
 /** GPU 探测也必须等到独立进程关闭，不将它当成性能结论。 */
-export async function probe_gpu(): Promise<void> {
-  await measure({ asr: "cpu", det: "webgpu_single" }, "probe");
+export async function probe_gpu(task: "asr" | "det"): Promise<void> {
+  await measure(
+    task === "asr" ? { asr: "webgpu", det: "cpu" } : { asr: "cpu", det: "webgpu_single" },
+    task,
+    true,
+  );
 }
 
-/** 父进程在完整候选及组合通过后一次发布缓存。 */
-export async function calibrate_devices(gpu: boolean, reason?: string): Promise<void> {
-  const calibration: MediaCalibration = { asr: {}, det: {} };
-  const reasons: Record<string, string> = reason ? { preparation: reason } : {};
-  for (const task of ["det", "asr"] as const) {
+/** 按任务复用测量；只有两种任务就绪且组合变化时才验证并发。调用方持有准备锁。 */
+export async function calibrate_devices(
+  tasks: readonly ("asr" | "det")[],
+  gpu: ReadonlySet<"asr" | "det">,
+  failures: Readonly<Record<string, string>>,
+): Promise<void> {
+  const previous = await inference_cache();
+  const calibration: MediaCalibration = previous?.calibration ?? { asr: {}, det: {} };
+  const reasons: Record<string, string> = { ...previous?.reasons };
+  for (const task of tasks) {
+    calibration[task] = {};
+    for (const key of Object.keys(reasons)) if (key.startsWith(`${task}:`)) delete reasons[key];
+    if (failures[task]) reasons[`${task}:preparation`] = failures[task]!;
     const candidates =
       task === "det"
-        ? (["cpu", ...(gpu ? (["webgpu_single", "webgpu_dual"] as const) : [])] as const)
-        : (["cpu", ...(gpu ? (["webgpu"] as const) : [])] as const);
+        ? ["cpu", ...(gpu.has(task) ? ["webgpu_single", "webgpu_dual"] : [])]
+        : ["cpu", ...(gpu.has(task) ? ["webgpu"] : [])];
     for (let launch = 0; launch < CALIBRATION_LAUNCHES; launch++) {
       for (const candidate of launch % 2 ? [...candidates].reverse() : candidates) {
         if (reasons[`${task}:${candidate}`]) continue;
@@ -381,29 +396,31 @@ export async function calibrate_devices(gpu: boolean, reason?: string): Promise<
       }
     }
   }
-  let profile = select_profile(calibration);
-  let mixed: MediaMeasurement;
-  for (;;) {
-    try {
-      mixed = await measure(profile, "mixed");
-      break;
-    } catch (error) {
-      if (error instanceof CalibrationCleanupFailure) throw error;
-      if (profile.asr === "cpu" && profile.det === "cpu") throw error;
-      reasons[`mixed:${profile.asr}:${profile.det}`] =
-        error instanceof Error ? error.message : String(error);
-      profile = profile.asr !== "cpu" ? { ...profile, asr: "cpu" } : CPU_PROFILE;
+  const ready = (["asr", "det"] as const).filter((task) => calibration[task].cpu);
+  let profile = select_profile(calibration, ready);
+  let mixed = previous?.mixed;
+  if (ready.length === 2 && (!mixed || JSON.stringify(mixed.profile) !== JSON.stringify(profile))) {
+    for (;;) {
+      try {
+        mixed = { profile, measurement: await measure(profile, "mixed") };
+        break;
+      } catch (error) {
+        if (error instanceof CalibrationCleanupFailure) throw error;
+        if (profile.asr === "cpu" && profile.det === "cpu") throw error;
+        reasons[`mixed:${profile.asr}:${profile.det}`] =
+          error instanceof Error ? error.message : String(error);
+        profile = profile.asr !== "cpu" ? { ...profile, asr: "cpu" } : CPU_PROFILE;
+      }
     }
   }
-  const cache: InferenceCache = {
-    ...profile,
+  write_cache({
+    ...Object.fromEntries(ready.map((task) => [task, profile[task]])),
     key: cache_key(),
     expires: Date.now() + CACHE_TTL_MS,
-    complete: !reason,
+    complete: ready.filter((task) => !reasons[`${task}:preparation`]),
     reasons,
     calibration,
-    mixed,
-  };
-  write_cache(cache);
-  console.log(`媒体推理配置：识别 ${cache.asr}，检测 ${cache.det}`);
+    ...(mixed ? { mixed } : {}),
+  });
+  console.log(`媒体推理配置：${ready.map((task) => `${task} ${profile[task]}`).join("，")}`);
 }

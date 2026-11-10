@@ -1,6 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const fake = vi.hoisted(() => ({ close: vi.fn(async () => undefined), created: vi.fn() }));
+const fake = vi.hoisted(() => ({
+  close: vi.fn(async () => undefined),
+  created: vi.fn(),
+  cache: "",
+  measure: vi.fn(),
+}));
 vi.mock("./inference-engine", async (original) => {
   const actual = await original<typeof import("./inference-engine")>();
   return {
@@ -14,6 +19,10 @@ vi.mock("./inference-engine", async (original) => {
     },
   };
 });
+vi.mock("./calibration", async (original) => ({
+  ...(await original<typeof import("./calibration")>()),
+  run_calibration: fake.measure,
+}));
 vi.mock("../npm", () => ({ npm: { directory: "/shared/node" } }));
 vi.mock("../npm/runtime", () => ({ npm_configuration: () => ({ runtimeDirectory: "/runtime" }) }));
 vi.mock("node:module", () => ({
@@ -21,7 +30,12 @@ vi.mock("node:module", () => ({
 }));
 vi.mock("../../../native/native-fs", () => ({
   default_native_fs: {
+    ensure_parent_dir: () => undefined,
+    write_file_atomic: (_file: string, text: string) => {
+      fake.cache = text;
+    },
     read_text_file: () => {
+      if (fake.cache) return fake.cache;
       throw Object.assign(new Error("not cached"), { code: "ENOENT" });
     },
   },
@@ -29,6 +43,15 @@ vi.mock("../../../native/native-fs", () => ({
 
 beforeEach(() => {
   vi.resetModules();
+  fake.cache = "";
+  fake.measure.mockReset().mockResolvedValue({
+    timings: [
+      [1, 1, 1],
+      [1, 1, 1],
+    ],
+    prepare: 1,
+    close: 1,
+  });
   fake.created.mockClear();
   fake.close.mockReset().mockResolvedValue(undefined);
 });
@@ -70,4 +93,24 @@ it("preserves the original failure when the one allowed CPU rerun also fails", a
     cause: cpu,
   });
   expect(action).toHaveBeenCalledTimes(2);
+});
+
+it("retains partial calibration and measures the mixed profile only when both tasks are ready", async () => {
+  const { calibrate_devices, inference_cache, probe_gpu } = await import("./engine");
+  await probe_gpu("asr");
+  expect(fake.measure.mock.calls.at(-1)?.[1].config.models.asr.file).toMatch(
+    /sensevoice.model_quant/u,
+  );
+  fake.measure.mockClear();
+  await calibrate_devices(["asr"], new Set(), {});
+  expect((await inference_cache())?.det).toBeUndefined();
+  expect((await inference_cache())?.complete).toEqual(["asr"]);
+  expect(fake.measure.mock.calls.map((call) => call[1].task)).toEqual(["asr", "asr"]);
+  fake.measure.mockClear();
+  await calibrate_devices(["det"], new Set(), {});
+  expect(fake.measure.mock.calls.map((call) => call[1].task)).toEqual(["det", "det", "mixed"]);
+  expect((await inference_cache())?.complete).toEqual(["asr", "det"]);
+  fake.measure.mockClear();
+  await calibrate_devices(["det"], new Set(), {});
+  expect(fake.measure.mock.calls.map((call) => call[1].task)).toEqual(["det", "det"]);
 });

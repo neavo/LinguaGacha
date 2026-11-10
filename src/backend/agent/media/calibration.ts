@@ -63,18 +63,25 @@ function faster(
 /**
  * CPU 是基线。检测双路须同时快于 CPU 和单路才采用，只有一种 GPU 方案合格时直接采用它。
  * CPU 基线无效说明基础配置故障，不能静默选择 CPU。
+ * 只校验 `tasks` 中任务的基线，未准备的任务取 CPU。
  */
-export function select_profile(results: MediaCalibration): MediaProfile {
+export function select_profile(
+  results: MediaCalibration,
+  tasks: readonly ("asr" | "det")[] = ["asr", "det"],
+): MediaProfile {
   const cpu_asr = results.asr.cpu,
     cpu_det = results.det.cpu;
-  if (!valid_runs(cpu_asr) || !valid_runs(cpu_det))
+  if (
+    (tasks.includes("asr") && !valid_runs(cpu_asr)) ||
+    (tasks.includes("det") && !valid_runs(cpu_det))
+  )
     throw new Error("Invalid CPU calibration baseline.");
   const single = results.det.webgpu_single,
     dual = results.det.webgpu_dual;
-  const one = faster(single, cpu_det),
-    two = faster(dual, cpu_det);
+  const one = tasks.includes("det") && faster(single, cpu_det!),
+    two = tasks.includes("det") && faster(dual, cpu_det!);
   return {
-    asr: faster(results.asr.webgpu, cpu_asr) ? "webgpu" : "cpu",
+    asr: tasks.includes("asr") && faster(results.asr.webgpu, cpu_asr!) ? "webgpu" : "cpu",
     det: two && (!one || faster(dual, single!)) ? "webgpu_dual" : one ? "webgpu_single" : "cpu",
   };
 }

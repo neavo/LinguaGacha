@@ -31,7 +31,7 @@ export type MediaCalibrationJob = Readonly<{
   profile: MediaProfile;
   config: MediaWorkerConfig;
   worker: string;
-  task: "asr" | "det" | "mixed" | "probe";
+  task: "asr" | "det" | "mixed";
 }>;
 
 export type MediaWorkerRequest =

@@ -22,10 +22,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from functools import cache
 from pathlib import Path
 
-import cv2
-import kaldi_native_fbank as knf
 import numpy as np
-import pyclipper
 
 HEADER_MAX = 64 * 1024  # 与 channel.ts 一致。
 PAYLOAD_MAX = 64 * 1024 * 1024  # 最大输入是 1920 长边画面的检测张量，约 3 MB。
@@ -33,11 +30,6 @@ IN_FLIGHT = 2  # 每条处理分支的在途请求上限，前后处理与推理
 
 SAMPLE_RATE = 16000
 PCM_BLOCK = 10 * SAMPLE_RATE  # 解码读块，与 VAD 请求块无关，不构成算法边界。
-
-# -I 不搜索相邻目录，固定部署路径加载唯一的 VAD 模块。
-_vad_spec = importlib.util.spec_from_file_location("fsmn_vad", Path(__file__).with_name("fsmn_vad.py"))
-fsmn_vad = importlib.util.module_from_spec(_vad_spec)
-_vad_spec.loader.exec_module(fsmn_vad)
 
 # SenseVoice 官方前端（config.yaml frontend_conf）：80 维 Hamming fbank、LFR m=7 n=6、am.mvn 归一化。
 ASR_WINDOW = 20 * SAMPLE_RATE  # 实测 60 秒整窗明显掉字，20 秒内基本完整。
@@ -56,7 +48,7 @@ SHEET_EDGE = 1280  # 图集边长。画布越大，送进模型前被服务商�
 SHEET_CROP_HEIGHT = 160  # 裁图在图集中的最大高度。
 SHEET_LABEL_HEIGHT = 24  # 裁图上方标签行的高度。
 SHEET_GAP = 8  # 图集中裁图的间距。
-LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS = 0, 0.6, 2  # 0 是 cv2.FONT_HERSHEY_SIMPLEX，模块加载时尚未导入 cv2。
 REFINE_FPS = 8  # 边界校准的检测帧率。
 REFINE_WINDOW = 1  # 边界前后各取的秒数，覆盖 1 fps 区间的起止误差。
 REFINE_IOU = 0.3  # 校准时块与条目 `box` 的交并比下限。高帧率下淡入淡出的块更小，阈值放宽。
@@ -70,7 +62,21 @@ CALIBRATE_DIFF = 6  # 软硬解同帧的平均绝对差上限（0–255），只
 # 帧率与片段秒数。整片扫描取较长片段，使进程启动开销不掩盖稳定吞吐；校准沿用实际短窗口。
 CALIBRATE_MODES = {"scan": (1, 60), "refine": (REFINE_FPS, 2 * REFINE_WINDOW)}
 
-cv2.setNumThreads(1)  # 推理在 Worker 中，图像处理不必再开线程争抢 CPU。
+
+def initialize(command):
+    """按命令导入依赖。各用途只准备自己的 Python 包，纯音频识别不能因缺少图像依赖而失败。"""
+    global cv2, pyclipper, knf, fsmn_vad
+    if command == "speech":
+        import kaldi_native_fbank as knf
+        # -I 不搜索相邻目录，固定部署路径加载 VAD。
+        spec = importlib.util.spec_from_file_location("fsmn_vad", Path(__file__).with_name("fsmn_vad.py"))
+        fsmn_vad = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fsmn_vad)
+    else:
+        import cv2
+        cv2.setNumThreads(1)  # 推理在 Worker 中，图像处理不再争抢 CPU。
+        if command in ("scan", "refine"):
+            import pyclipper
 
 
 def log(message):
@@ -621,6 +627,7 @@ if __name__ == "__main__":
     reader = threading.Thread(target=channel.listen)
     reader.start()
     try:
+        initialize(job["command"])
         result = COMMANDS[job["command"]](channel, **job["args"])
     except BaseException as error:
         channel.write({"error": str(error), "stage": "decode" if isinstance(error, DecodeError) else "compute"})

@@ -7,9 +7,9 @@ import { run_window_task } from "./window-task";
 
 // 打印声明复用界面字体文件，字重与等宽字体缩放决定 PDF 排版。
 const PRINT_FONTS = [
-  ["LGBaseFont", "LGBaseFont-Regular.woff2", "400", ""],
-  ["LGBaseFont", "LGBaseFont-Bold.woff2", "500 700", ""],
-  ["LGMono", "MonaspaceNeon.woff2", "400 700", "size-adjust:90%;"],
+  ["LGBaseFont", "LGBaseFont-Regular.ttf", "400", ""],
+  ["LGBaseFont", "LGBaseFont-Bold.ttf", "500 700", ""],
+  ["LGMono", "MonaspaceNeon.ttf", "400 700", "size-adjust:90%;"],
 ] as const;
 
 const PDF_HOST_TIMEOUT_MS = 120_000;
@@ -61,7 +61,7 @@ export function create_pdf_host(resources: {
         print_styles ??=
           PRINT_FONTS.map(([family, file, weight, extra]) => {
             const bytes = default_native_fs.read_file(path.join(resources.fontsDirectory, file));
-            return `@font-face{font-family:"${family}";src:url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2");font-weight:${weight};font-style:normal;${extra}}`;
+            return `@font-face{font-family:"${family}";src:url(data:font/ttf;base64,${bytes.toString("base64")}) format("truetype");font-weight:${weight};font-style:normal;${extra}}`;
           }).join("\n") +
           "\n" +
           default_native_fs.read_text_file(resources.stylesPath);

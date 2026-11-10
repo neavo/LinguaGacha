@@ -13,7 +13,7 @@ const WORKSPACE_PACKAGES = [
     name: "@lg/project",
     entries: {
       index: "src/backend/agent/project/index.ts",
-      "item-contexts": "src/backend/agent/workspace/runtime/item-contexts.ts",
+      "item-contexts": "src/backend/agent/project/item-contexts.ts",
     },
   },
   {
@@ -87,7 +87,7 @@ export async function build_workspace_resources({ root, output, manifest }) {
     },
   });
   // 媒体前后处理 helper 由 `@lg/media` 以受控解释器直接运行。
-  for (const file of ["media.py", "fsmn_vad.py"])
+  for (const file of ["media.py", "fsmn_vad.py", "visualize.py"])
     await cp(path.join(root, "src/backend/agent/media", file), path.join(output, "runtime", file));
 }
 

@@ -14,6 +14,9 @@ spec = importlib.util.spec_from_file_location("media", runtime / "media.py")
 media = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(media)
 
+media.initialize("scan")  # 本文件同时检查检测与语音，两组依赖都加载。
+media.initialize("speech")
+
 # 真实 DB 后处理链保留高竖排候选，scan/refine 共用 det_blocks。
 pred = np.zeros((100, 100), np.float32)
 pred[10:90, 40:55] = 0.99

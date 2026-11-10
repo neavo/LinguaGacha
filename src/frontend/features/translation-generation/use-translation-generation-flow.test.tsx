@@ -124,7 +124,7 @@ describe("useTranslationGenerationFlow", () => {
       snapshot: {
         entries: [
           { file_type: "TXT", rel_path: "native.txt" },
-          ...(has_agent_files ? [{ file_type: "VIDEO", rel_path: "movie.video" }] : []),
+          ...(has_agent_files ? [{ file_type: "MEDIA", rel_path: "movie.media" }] : []),
         ],
       },
     });
@@ -168,7 +168,7 @@ describe("useTranslationGenerationFlow", () => {
     mocks.workbench.mockResolvedValue({
       projectPath: mocks.project_snapshot.path,
       sectionRevisions: { files: 7 },
-      snapshot: { entries: [{ file_type: "VIDEO", rel_path: "movie.video" }] },
+      snapshot: { entries: [{ file_type: "MEDIA", rel_path: "movie.media" }] },
     });
     await render_probe();
     act(() => latest_flow?.request_generation());
@@ -225,7 +225,7 @@ describe("useTranslationGenerationFlow", () => {
     expect(latest_flow?.state.phase).toBe("closed");
   });
 
-  it.each(["GENERIC", "VIDEO"])("%s 文件报告范围，交给 Agent 只预填生成任务", async (file_type) => {
+  it.each(["GENERIC", "MEDIA"])("%s 文件报告范围，交给 Agent 只预填生成任务", async (file_type) => {
     mocks.warnings.mockResolvedValue({
       projectPath: mocks.project_snapshot.path,
       sectionRevisions: { files: 9 },
@@ -266,7 +266,7 @@ describe("useTranslationGenerationFlow", () => {
     mocks.workbench.mockResolvedValueOnce({
       projectPath: mocks.project_snapshot.path,
       sectionRevisions: { files: 7 },
-      snapshot: { entries: [{ file_type: "VIDEO", rel_path: "video" }] },
+      snapshot: { entries: [{ file_type: "MEDIA", rel_path: "video" }] },
     });
     await render_probe();
     act(() => latest_flow?.request_generation());
@@ -367,7 +367,7 @@ describe("useTranslationGenerationFlow", () => {
     mocks.workbench.mockResolvedValueOnce({
       projectPath: mocks.project_snapshot.path,
       sectionRevisions: { files: 8 },
-      snapshot: { entries: [{ file_type: "VIDEO", rel_path: "new" }] },
+      snapshot: { entries: [{ file_type: "MEDIA", rel_path: "new" }] },
     });
     await act(async () => latest_flow?.confirm_generation());
     expect(latest_flow?.state).toMatchObject({

@@ -30,7 +30,7 @@ function read_job(value: unknown): MediaCalibrationJob {
   if (!value || typeof value !== "object") throw new Error("Invalid calibration job.");
   const job = value as MediaCalibrationJob;
   if (
-    !["asr", "det", "mixed", "probe"].includes(job.task) ||
+    !["asr", "det", "mixed"].includes(job.task) ||
     !["cpu", "webgpu"].includes(job.profile?.asr) ||
     !["cpu", "webgpu_single", "webgpu_dual"].includes(job.profile?.det) ||
     !path.isAbsolute(job.worker ?? "") ||
@@ -59,8 +59,7 @@ const infer = (engine: Engine, { task, shape, input }: Input) =>
 process.once("message", async (value: unknown) => {
   try {
     const job = read_job(value);
-    const tasks: Input["task"][] =
-      job.task === "mixed" ? ["asr", "det"] : [job.task === "probe" ? "det" : job.task];
+    const tasks: Input["task"][] = job.task === "mixed" ? ["asr", "det"] : [job.task];
     const began = performance.now();
     const engine = new Engine(job.profile, job.config, job.worker);
     const inputs = tasks.map((task) =>

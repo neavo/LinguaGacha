@@ -42,12 +42,18 @@ it("rejects a failed CPU baseline and malformed timings", () => {
   expect(valid_measurement({ timings: [[1]], prepare: 0, close: 0 })).toBe(false);
 });
 
+it("selects speech without claiming a detector baseline and validates only requested tasks", () => {
+  const partial = { asr: { cpu: measured(100), webgpu: measured(70) }, det: {} };
+  expect(select_profile(partial, ["asr"])).toEqual({ asr: "webgpu", det: "cpu" });
+  expect(() => select_profile(partial, ["det"])).toThrow("CPU");
+});
+
 it("accepts calibration only after valid data and successful process close", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "media calibration "));
   const file = path.join(directory, "candidate.mjs");
   const model = { file, device: "cpu", threads: 4 } as const;
   const job: MediaCalibrationJob = {
-    task: "probe",
+    task: "det",
     profile: { asr: "cpu", det: "cpu" },
     worker: file,
     config: {

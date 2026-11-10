@@ -50,7 +50,7 @@ export const ko_kr_project = {
     progress: "번역 진행률",
   },
   formats: {
-    video: "동영상",
+    media: "오디오·동영상",
     title_tooltip: "더 빠르고, 더 좋고, 더 안정적으로",
     deprecated_tooltip: "더 이상 최선의 선택이 아닙니다. 위의 형식을 우선 사용해 주세요",
     empty_project_hint:
