@@ -325,4 +325,5 @@ it.skipIf(process.platform !== "win32")(
     });
     expect(result.stdout).toContain("native-delete-ok");
   },
+  60_000, // 覆盖编译、子进程的 30 秒时限与清理，避免测试先结束后删除仍在使用的夹具。
 );

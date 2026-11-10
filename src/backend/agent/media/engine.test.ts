@@ -24,7 +24,6 @@ vi.mock("./calibration", async (original) => ({
   run_calibration: fake.measure,
 }));
 vi.mock("../npm", () => ({ npm: { directory: "/shared/node" } }));
-vi.mock("../npm/runtime", () => ({ npm_configuration: () => ({ runtimeDirectory: "/runtime" }) }));
 vi.mock("node:module", () => ({
   createRequire: () => ({ resolve: () => "/shared/node/node_modules/onnxruntime-node/index.js" }),
 }));
@@ -41,8 +40,14 @@ vi.mock("../../../native/native-fs", () => ({
   },
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetModules();
+  const { bind_media } = await import("./runtime");
+  bind_media({
+    modelsDirectory: "/models",
+    cacheDirectory: "/cache/media",
+    runtimeDirectory: "/runtime",
+  });
   fake.cache = "";
   fake.measure.mockReset().mockResolvedValue({
     timings: [
