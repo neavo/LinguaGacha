@@ -6,7 +6,7 @@ import { union } from "@lg/media";
 const MAX_SECONDS = 210; // 单个补查区间的时长上限，更长时模型常常空输出或截断。
 const VIDEO_INPUT_MAX_BYTES = 50_000_000; // 单个视频输入的接口上限。
 const VIDEO_REQUEST_MAX_BYTES = 64_000_000; // 单个请求体的接口上限。
-const UNCOVERED_RATIO = 0.5; // 本地识别句子被对白覆盖不足该比例时报告。
+const UNCOVERED_MIN_SECONDS = 1; // 过滤人声与对白边缘的小缝，与 ASR 并入短句的 1 秒门槛一致。
 const round = (value) => Number(value.toFixed(3)); // 换算后的时间精度。
 /** 模型读取的视频编码：每秒一帧、长边 1024，单声道低码率音频。 */
 const ENCODE = Object.freeze([
@@ -34,8 +34,8 @@ const same = (a, b) => a.start === b.start && a.end === b.end; // 区间相同�
 const inside = (row, { start, end }) => start <= row.start && row.start < end; // 记录按起点归属区间。
 
 /**
- * 视频模型补查，只在用户明确要求时使用。为整片时间区间从原文件裁出片段，写出 `responses` 请求清单。
- * 次数由用户控制，不设预算。
+ * 视频模型补查 ASR 解决不了的区间。为整片时间区间从原文件裁出片段，写出 `responses` 请求清单。
+ * 区间与次数由用户确认，不设预算。
  */
 export async function request(directory, { prompt, ranges }) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("必须提供识别提示词");
@@ -56,12 +56,13 @@ export async function request(directory, { prompt, ranges }) {
     planned.set(range_id(range), { start, end });
   }
   await mkdir(path.join(root, "recognition"), { recursive: true });
-  const attempt = await mkdtemp(path.join(root, "recognition", "prepare-"));
+  const attempt = await mkdtemp(path.join(root, "recognition", "prepare-")); // 每次准备独占目录，重试不覆盖上次的请求与结果。
   const requests = [];
   for (const [id, { start, end }] of planned) {
     const clip = path.join(attempt, `${requests.length}.mp4`);
     const args = ["-v", "error", "-y", "-ss", String(start), "-t", String(end - start)];
     args.push("-i", file);
+    // 视频输入必须有画面，纯音频补一条低分辨率黑画面。
     if (video === null)
       args.push("-f", "lavfi", "-i", "color=c=black:s=256x144:r=1", "-map", "1:v:0", "-shortest");
     else
@@ -164,6 +165,7 @@ export async function read(directory, result_file) {
       rows,
     });
   }
+  // 候选按结果目录命名，多批结果各自保留，由 `apply` 选择采用哪一批。
   const candidate = path.join(
     root,
     "recognition",
@@ -194,7 +196,7 @@ export async function apply(directory, candidate, ranges) {
   if (adopted.length !== ranges.length) throw new Error("ranges 中有候选文件不存在的区间");
   // 空输出和截断输出不能抹掉已有对白，整批检查后再采用。
   if (adopted.some((range) => range.incomplete || !range.rows.length))
-    throw new Error("候选包含空输出或截断输出，请取得完整对白后再采用");
+    throw new Error("候选包含空输出或截断输出，只传入完整且非空的区间");
   for (const range of adopted)
     items = [
       ...items.filter((row) => row.kind !== "dialogue" || !inside(row, range)),
@@ -212,7 +214,25 @@ export async function apply(directory, candidate, ranges) {
 const covered = ([start, end], cover) =>
   cover.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(end, b) - Math.max(start, a)), 0);
 
-/** 字幕原文与本地证据的对照，只提供线索，不判断字幕对错。无音轨时两项线索为 `null`。 */
+/** 区间去掉一组已合并区间后剩下的部分。 */
+function subtract([start, end], cover) {
+  const rest = [];
+  let cursor = start;
+  for (const [a, b] of cover) {
+    if (b <= cursor) continue;
+    if (a >= end) break;
+    if (a > cursor) rest.push([cursor, a]);
+    cursor = b;
+  }
+  if (cursor < end) rest.push([cursor, end]);
+  return rest;
+}
+
+/**
+ * 字幕原文与本地证据的对照，只提供线索，不判断字幕对错。无音轨时两项线索为 `null`。
+ * `uncovered` 按 token 起点归属 ASR 句子。相邻句的句尾留白可能伸进缺口，
+ * 按整句时间归属会把 ASR 没出字的缺口误标为已有识别文字。
+ */
 export async function check(directory) {
   const root = path.resolve(directory);
   const { duration, speech, asr } = await load(path.join(root, "media.json"));
@@ -226,10 +246,18 @@ export async function check(directory) {
   return {
     invalid_rows: rows.flatMap((row, index) => (valid_row(row, duration) ? [] : [index])),
     uncovered:
-      asr &&
-      asr
-        .filter(({ start, end }) => covered([start, end], cover) < UNCOVERED_RATIO * (end - start))
-        .map(({ start, end, text }) => ({ start, end, asr: text })),
+      speech &&
+      speech
+        .flatMap((span) => subtract(span, cover))
+        .filter(([start, end]) => end - start >= UNCOVERED_MIN_SECONDS)
+        .map(([start, end]) => ({
+          start,
+          end,
+          asr: asr
+            .filter(({ tokens }) => tokens.some(([, at]) => start <= at && at < end))
+            .map(({ text }) => text)
+            .join(" "),
+        })),
     unsupported:
       speech &&
       dialogue.filter(({ span }) => covered(span, speech) === 0).map(({ index }) => index),
