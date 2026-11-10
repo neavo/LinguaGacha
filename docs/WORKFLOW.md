@@ -176,9 +176,9 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 媒体推理
 
-媒体路由和配置变化运行 `media/calibration.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `preparation`、`channel`、`speech` 测试。校准入口和 Worker 变化分别运行集成测试 `media/calibrate.test.ts`、`media/worker.test.ts`。这些集成测试使用模型替身，不下载权重。
+媒体路由和配置变化运行 `media/probe.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `preparation`、`channel`、`speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`；公开探查和资源检查契约同时运行工作区 `bootstrap.test.ts`。这些集成测试使用测试资源，不下载权重。
 
-真实媒体验收由 `media/index.test.ts` 显式启用。它验证识别、画面处理、显式设备选择与取消后重跑。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
+真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 探查、识别、画面处理、显式设备选择与取消后重跑。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
 
 ```powershell
 $env:LINGUAGACHA_MEDIA_SOURCE = '素材的绝对路径'
@@ -189,7 +189,7 @@ npm test -- --project integration src/backend/agent/media/index.test.ts
 
 `LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。
 
-可视化验收不下载模型。报告目录应位于仓库外，保留独立环境与运行日志：
+可视化验收通过统一准备入口下载并复用完整媒体资源。报告目录应位于仓库外，保留独立环境与运行日志：
 
 ```powershell
 $env:LINGUAGACHA_VISUALIZE_REPORT = '<仓库外验收目录绝对路径>'
@@ -317,13 +317,12 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 - 环境准备、执行时限与错误回执：`npm test -- src/backend/agent/execution src/backend/agent/node`。
 - npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
 - uv SDK 与模型声明：`npm test -- src/backend/agent/uv src/backend/agent/workspace/runtime/command.test.ts`。
-- SDK 加载、原生 IPC 与 uv 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。设置 `LINGUAGACHA_TEST_PYTHON_ARCHIVE` 为当前平台、默认次版本的 CPython 官方归档，启用本地镜像集成测试。归档保留官方文件名，测试从中读取补丁版本。归档地址用随附 uv 的 `python list <次版本> --only-downloads --output-format json` 查询。缺少归档时相关场景报告跳过。
-- uv 在线发行验收设置 `LINGUAGACHA_TEST_PYTHON_ONLINE=1`，验证代理下载、原生包和搬移恢复，无需归档。
+- SDK 加载、原生 IPC 与 uv 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。Python 验收自动准备并缓存解释器，首次运行需要联网。用例使用本地 wheel 验证环境搬移和后代进程取消。
 - MuPDF 实例与字节边界：`npm test -- src/backend/file/pdf/pdf-document.test.ts`。
 - 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。
 - Windows Node 启动器：在 `buildtools/builder/node/` 执行 `go test ./...`，验证 Unicode、空参数、stdio 和退出码。
 - 构建变化执行 `npm run build`，再设置上表的发行可执行文件与工作区目录，运行 `npm/index.test.ts` 和 `bootstrap.test.ts`。检查 npm 运行文件、可搬移种子及目标架构的辅助程序。
-- uv 部署通过资源构建与上述 uv 集成测试验证。发行工作区 `bin/<platform>-<arch>/uv[.exe] --version` 应与 `workspaceRuntimeTools.uv` 一致。Windows 发行验收运行上述 uv 在线集成测试。
+- uv 部署通过资源构建与上述 uv 集成测试验证。发行工作区 `bin/<platform>-<arch>/uv[.exe] --version` 应与 `workspaceRuntimeTools.uv` 一致。Windows 发行验收运行上述工作区集成测试。
 - aria2 部署通过资源构建验证，运行时同步使用 `npm test -- src/backend/agent/execution` 验证。`bootstrap.test.ts` 验证命令与应用代理的接入。发行验收通过工作区执行 `aria2c --version`，版本应与 `workspaceRuntimeTools.aria2` 一致。
 - macOS/Linux 须在对应平台验收共享锁描述符、进程组启动门、正常收尾、停止及监管程序退出。跨平台编译只能证明代码可构建，不能替代平台生命周期实测。

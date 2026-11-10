@@ -1,4 +1,4 @@
-// 准备与运行故障降级共用同一写锁，等待已有持有者完成。
+// 共享环境准备使用跨进程写锁，等待已有持有者完成。
 export const MEDIA_PREPARE_LOCK_RETRY = Object.freeze({
   retries: 1e6,
   minTimeout: 500,

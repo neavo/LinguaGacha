@@ -3,8 +3,16 @@ import path from "node:path";
 import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
 
-// `missing`、`setup` 按用途检查与准备依赖和模型，用途见技能的「环境准备」。
-export { ASR_LANGUAGES, ffmpeg, inspect, missing, setup } from "@lg/media";
+// 完整环境准备与 GPU 探查分开，设备由 AGENT 在每次推理调用中明确传入。
+export {
+  ASR_LANGUAGES,
+  DeviceFailure,
+  ffmpeg,
+  inspect,
+  missing,
+  setup,
+  probe_gpu,
+} from "@lg/media";
 
 const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
@@ -57,7 +65,7 @@ async function identify(file) {
  */
 async function detect(directory, options, commit) {
   const staging = path.join(directory, "text.staging");
-  const measured = await sdk.scan(await locate(directory), { out: staging, ...options });
+  const text = await sdk.scan(await locate(directory), { out: staging, ...options });
   const crops = path.join(directory, "text");
   const backup = path.join(directory, "text.previous");
   // 清单发布失败时恢复旧裁图，避免原区间编号指向新图片。
@@ -66,45 +74,44 @@ async function detect(directory, options, commit) {
   if (hadCrops) await rename(crops, backup);
   try {
     await rename(staging, crops);
-    await commit({ text: measured.result });
+    await commit({ text });
   } catch (error) {
     await rm(crops, { recursive: true, force: true });
     if (hadCrops) await rename(backup, crops);
     throw error;
   }
   await rm(backup, { recursive: true, force: true });
-  return measured.execution;
 }
 
 /**
  * 以 1 fps 检测整片画面文字，写入 `media.json` 的 `text`，每个区间的代表帧裁图写入 `text/<id>.jpg`。
  * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成。
- * 检测模型随本机配置而定，区间编号和框只在本次结果内有效。
+ * 检测模型随指定设备而定，区间编号和框只在本次结果内有效。
  */
 export async function scan(directory, { device } = {}) {
   directory = path.resolve(directory);
   const manifestFile = path.join(directory, "media.json");
   const manifest = await load(manifestFile);
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
-  const execution = await detect(directory, { device }, async (fields) => {
+  await detect(directory, { device }, async (fields) => {
     await save(manifestFile, { ...manifest, ...fields });
     Object.assign(manifest, fields);
   });
-  return { text: manifest.text.length, execution };
+  return { text: manifest.text.length };
 }
 
 /**
  * 准备原文条目与证据，不请求付费模型。有音轨时只支持 `ASR_LANGUAGES` 中的原文语言。
  * 来源身份写入 `media.json` 的 `source`，之后按它找回原文件。
  * 音频识别与画面检测同时运行，各自完成后立即保存，中断后用相同参数续跑。
+ * `device` 必须是 `cpu` 或 `gpu`，只按该设备执行，失败后由调用者决定是否换设备续跑。
  */
 export async function prepare(source, directory, { track = 0, language, device, rerun = [] } = {}) {
   source = path.resolve(source);
   directory = path.resolve(directory);
   if (!Array.isArray(rerun) || rerun.some((step) => !["speech", "text"].includes(step)))
     throw new Error("rerun 只接受 speech、text");
-  if (device !== undefined && !["cpu", "gpu"].includes(device))
-    throw new Error("device 只接受 cpu、gpu");
+  if (!["cpu", "gpu"].includes(device)) throw new Error("device 只接受 cpu、gpu");
   const info = await sdk.inspect(source);
   if (!Number.isInteger(track) || track < 0 || (info.audio.length && track >= info.audio.length))
     throw new Error("音轨不存在");
@@ -138,15 +145,13 @@ export async function prepare(source, directory, { track = 0, language, device, 
       await save(manifestFile, { ...manifest, ...fields });
       Object.assign(manifest, fields);
     }));
-  const execution = {};
   const steps = { speech: "reused", text: "reused" };
   const results = await Promise.allSettled([
     "asr" in manifest && !rerun.includes("speech")
       ? null
       : info.audio.length
-        ? sdk.listen(source, { track, language, device }).then(async (measured) => {
-            await commit(measured.result);
-            execution.speech = measured.execution;
+        ? sdk.listen(source, { track, language, device }).then(async (result) => {
+            await commit(result);
             steps.speech = rerun.includes("speech") ? "rerun" : "executed";
           })
         : commit({ speech: null, asr: null }).then(() => {
@@ -155,8 +160,7 @@ export async function prepare(source, directory, { track = 0, language, device, 
     "text" in manifest && !rerun.includes("text")
       ? null
       : info.video
-        ? detect(directory, { device }, commit).then((result) => {
-            execution.text = result;
+        ? detect(directory, { device }, commit).then(() => {
             steps.text = rerun.includes("text") ? "rerun" : "executed";
           })
         : commit({ text: null }).then(() => {
@@ -164,7 +168,13 @@ export async function prepare(source, directory, { track = 0, language, device, 
           }),
   ]);
   // 一条支路失败后仍等另一条保存完毕，续跑才能安全复用同一目录。
-  for (const result of results) if (result.status === "rejected") throw result.reason;
+  const failures = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+  // 保留每条失败，关闭错误不能被另一支的设备或文件错误遮蔽。
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, "媒体并行处理失败，请检查全部分支错误");
   const itemsFile = path.join(directory, "items.json");
   const hasItems = await exists(itemsFile); // 续跑保留已编辑的原文，包括有意清空的记录。
   const items = hasItems
@@ -179,7 +189,6 @@ export async function prepare(source, directory, { track = 0, language, device, 
   if (!hasItems) await save(itemsFile, items);
   return {
     steps,
-    execution,
     items: items.length,
     speech: manifest.speech?.length ?? null,
     asr: manifest.asr?.length ?? null,
@@ -223,7 +232,7 @@ export async function refine(directory, rows, { device } = {}) {
       !items[row].box
     )
       throw new Error(`第 ${row} 行不是带 box 的 screen`);
-  const { result: bounds, execution } = await sdk.refine(await locate(directory), {
+  const bounds = await sdk.refine(await locate(directory), {
     device,
     rows: rows.map((row) => ({ ...items[row], row })),
   });
@@ -235,7 +244,7 @@ export async function refine(directory, rows, { device } = {}) {
     else unresolved.push(row);
   }
   await save(itemsFile, items);
-  return { refined: rows.length - unresolved.length, unresolved, execution };
+  return { refined: rows.length - unresolved.length, unresolved };
 }
 
 /**

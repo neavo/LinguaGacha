@@ -34,7 +34,7 @@ export async function visualize(
   source: string,
   options: VisualizeOptions,
 ): Promise<VisualizeResult> {
-  await ensure_ready(["visualize"]);
+  await ensure_ready();
   const info = await inspect(source);
   if (info.video !== null) throw new Error("Visualization requires audio-only media.");
   if (!Number.isInteger(options.track) || options.track < 0 || !info.audio[options.track])

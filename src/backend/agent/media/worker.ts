@@ -1,6 +1,6 @@
 /**
  * 媒体推理 Worker：唯一导入 onnxruntime-node、创建与释放会话的位置。
- * 主线程直接加载 ORT 时，原生收尾可能在 `exit` 之后卡住进程；放在 Worker 内由宿主线程等待它自然退出。
+ * 主线程直接加载 ORT 时，原生收尾可能在 `exit` 之后卡住进程。放在 Worker 内由宿主线程等待它自然退出。
  * 本入口由根脚本以文件 URL 启动，只用 Node 标准解析，不依赖工作区 SDK 钩子。
  */
 import { parentPort, workerData } from "node:worker_threads";
@@ -47,7 +47,7 @@ function create(file: string, device: MediaDevice, threads: number): Promise<Ort
     executionProviders: [device],
     intraOpNumThreads: threads,
     interOpNumThreads: 1,
-    logSeverityLevel: 3, // 只记录错误；算子分配到 CPU 的提示属于预期。
+    logSeverityLevel: 3, // 只记录错误。算子分配到 CPU 的提示属于预期。
   });
 }
 
@@ -236,14 +236,10 @@ async function serve(): Promise<void> {
         if (shape.length !== 3) throw new Error(`Unexpected ASR input: ${JSON.stringify(shape)}`);
         vocabulary ??= read_vocabulary(config.tokens);
         const model = await session("asr");
-        const start = performance.now();
         const result = await recognize(model, vocabulary, input, shape, String(header.language));
         return {
           id,
-          header: {
-            ...result,
-            ...(header.measure === true ? { inference_ms: performance.now() - start } : {}),
-          },
+          header: result,
         };
       }
       if (shape.length !== 4)

@@ -1,11 +1,13 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { AgentExecutionRuntime } from "../../execution/runtime";
 import type { AgentWorkspaceRunRequest } from "./runner";
-import { execFile } from "node:child_process";
 import {
   cp,
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rename,
   rm,
   symlink,
@@ -17,7 +19,6 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 import JSZip from "jszip";
 import { inject, afterAll, beforeAll, expect, it, onTestFinished, vi } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../../tools/contract";
@@ -25,11 +26,10 @@ import { AgentWorkspaceRunner, AgentWorkspaceRunError } from "./runner";
 import type { AgentProcessOutput } from "../../process-output";
 import { AGENT_WORKSPACE_RUN_ROOT } from "./policy";
 import { create_pdf_fixture } from "../../../file/pdf/test-support";
-import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
-import { FFMPEG_PACKAGE } from "../../media/ffmpeg";
+import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -65,32 +65,23 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it("媒体 SDK 使用宿主指定的模型与缓存目录，独立于 npm 工程位置", async () => {
+it("媒体 SDK 使用宿主指定的模型目录并拒绝缺失资源的探查", async () => {
   const { file, size } = MEDIA_MODELS.vad;
   await run(`
     import assert from 'node:assert/strict';
-    import { mkdir, writeFile, access, rm } from 'node:fs/promises';
+    import { mkdir, writeFile, rm } from 'node:fs/promises';
     import path from 'node:path';
-    import { npm } from '@lg/npm';
     import * as media from '@lg/media';
     const models = ${JSON.stringify(path.join(root, "media storage/models"))};
-    const cache = ${JSON.stringify(path.join(root, "cache/media"))};
     const model = ${JSON.stringify({ file, size })};
-    assert.ok((await media.missing(['speech'])).models.includes(model.file));
+    assert.ok((await media.missing()).models.includes(model.file));
     const file = path.join(models, model.file);
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, Buffer.alloc(model.size));
-    assert.ok(!(await media.missing(['speech'])).models.includes(model.file));
-    // 只替代安装元数据，使真实 setup、目录创建与文件锁无需联网即可执行。
-    const ffmpeg = path.join(npm.directory, 'node_modules', ${JSON.stringify(FFMPEG_PACKAGE)});
-    await mkdir(ffmpeg, { recursive: true });
-    await writeFile(path.join(ffmpeg, 'package.json'), '{}');
+    assert.ok(!(await media.missing()).models.includes(model.file));
     try {
-      assert.deepEqual(await media.setup(['ffmpeg']), { packages: [], python: [], models: [] });
-      await access(cache);
-      await assert.rejects(access(path.join(cache, 'prepare.lock')), { code: 'ENOENT' });
+      await assert.rejects(media.probe_gpu(), /Media components are not ready/);
     } finally {
-      await rm(ffmpeg, { recursive: true });
       await rm(file);
     }
   `);
@@ -725,173 +716,104 @@ it("根脚本可调用 uv，子进程和 worker 作为标准 Node 运行", async
   ]);
 });
 
-it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE)(
-  "真实 uv 安装本地 wheel、执行、搬移后重建环境与取消后代",
-  async () => {
-    await install_test_python();
-    const wheel = new JSZip();
-    const metadata = "lg_python_fixture-1.0.0.dist-info";
-    const files = {
-      "lg_python_fixture.py": "value = '搭档的 Python'\n",
-      [`${metadata}/METADATA`]: "Metadata-Version: 2.1\nName: lg-python-fixture\nVersion: 1.0.0\n",
-      [`${metadata}/WHEEL`]:
-        "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
-    };
-    for (const [name, content] of Object.entries(files)) wheel.file(name, content);
-    wheel.file(
-      `${metadata}/RECORD`,
-      [...Object.keys(files), `${metadata}/RECORD`].map((name) => `${name},,`).join("\n"),
-    );
-    const wheel_path = path.join(workspace, "work/lg_python_fixture-1.0.0-py3-none-any.whl");
-    await writeFile(wheel_path, await wheel.generateAsync({ type: "nodebuffer" }));
-    const initial = await run(
-      `
-    import { uv } from '@lg/uv';
-    await uv.run(['add', ${JSON.stringify(wheel_path)}]);
-    await uv.run(['run', 'python', '-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
-    console.log('python ready');
-  `,
-      AbortSignal.timeout(30_000),
-    );
-    expect(output_content(initial.stdout)).toBe("python ready\n");
-    expect(await readFile(path.join(workspace, "work/python-result.txt"), "utf8")).toBe(
-      "搭档的 Python",
-    );
-
-    // 次版本链接与 venv 都记录绝对路径，搬移后由 uv 自行重建，应用不另做恢复。
-    const moved = path.join(root, "移动后的 Python");
-    await rename(python_root, moved);
-    python_root = moved;
-    const recovered = await run(
-      `
-    import { uv } from '@lg/uv';
-    await uv.run(['run', 'python', '-c', 'import lg_python_fixture; print(lg_python_fixture.value)']);
-    await uv.run(['remove', 'lg-python-fixture']);
-  `,
-      AbortSignal.timeout(30_000),
-    );
-    expect(String(output_content(recovered.stdout)).trim()).toBe("搭档的 Python");
-
-    const pids_path = path.join(workspace, "work/python-pids.json");
-    await writeFile(
-      path.join(workspace, "work/python-wait.py"),
-      `import subprocess,sys,os,json,time\nchild=subprocess.Popen([sys.executable,'-c','import time; time.sleep(300)'])\nopen('work/python-pids.json','w').write(json.dumps([os.getpid(),child.pid]))\ntime.sleep(300)\n`,
-    );
-    const controller = new AbortController();
-    const stopped = new Error("stop uv SDK");
-    const pending = run(
-      `import {uv} from '@lg/uv'; await uv.run(['run', 'python', 'work/python-wait.py']);`,
-      controller.signal,
-    ).catch((error: unknown) => error);
-    try {
-      let pids: number[] = [];
-      await vi.waitFor(
-        async () => {
-          pids = JSON.parse(await readFile(pids_path, "utf8"));
-          expect(pids).toHaveLength(2);
-        },
-        { timeout: 15_000 },
-      );
-      controller.abort(stopped);
-      expect(await pending).toBe(stopped);
-      for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
-    } finally {
-      controller.abort(stopped);
-      await pending;
-    }
-  },
-  90_000,
-);
-
-it.skipIf(!process.env.LINGUAGACHA_TEST_PYTHON_ONLINE)(
-  "真实 uv 经应用代理下载解释器与原生 wheel，搬移后恢复",
-  async () => {
-    python_root = path.join(root, "online Python");
-    const routes: string[] = [];
-    const resolveProxy = async (url: string) => {
-      routes.push(url);
-      return "DIRECT";
-    };
-    const probe = `['run', 'python', '-c', 'from PIL import Image; from fontTools.ttLib import TTFont; print(Image.new("RGB", (2, 2)).size)']`;
-    const installed = await run(
-      `
-      import { uv } from '@lg/uv';
-      await uv.run(['add', 'Pillow', 'fonttools']);
-      await uv.run(${probe});
-    `,
-      AbortSignal.timeout(90_000),
-      resolveProxy,
-    );
-    expect(String(output_content(installed.stdout)).trim()).toBe("(2, 2)");
-    const moved = path.join(root, "online moved Python");
-    await rename(python_root, moved);
-    python_root = moved;
-    const recovered = await run(
-      `
-      import { uv } from '@lg/uv';
-      await uv.run(${probe});
-      await uv.run(['remove', 'Pillow', 'fonttools']);
-    `,
-      AbortSignal.timeout(30_000),
-    );
-    expect(String(output_content(recovered.stdout)).trim()).toBe("(2, 2)");
-    expect(routes.some((url) => url.includes("pythonhosted.org"))).toBe(true);
-    expect(routes.some((url) => url.includes("astral.sh") || url.includes("github"))).toBe(true);
-  },
-  180_000,
-);
-
-/** 固定归档只通过本地镜像安装，正常测试不访问解释器下载服务。 */
-async function install_test_python(): Promise<void> {
-  const archive_path = process.env.LINGUAGACHA_TEST_PYTHON_ARCHIVE!;
-  // 补丁版本取自官方文件名。次版本须匹配默认值，避免后续准备时另行下载解释器。
-  const version = /cpython-(\d+\.\d+\.\d+)/u.exec(path.basename(archive_path))?.[1];
-  if (!version?.startsWith(`${DEFAULT_PYTHON_VERSION}.`))
-    throw new Error(
-      `Python archive must keep its official cpython-${DEFAULT_PYTHON_VERSION}.<patch> name.`,
-    );
-  const archive = await readFile(archive_path);
-  const mirror = createServer((_request, response) => response.end(archive));
-  await new Promise<void>((resolve) => mirror.listen(0, "127.0.0.1", resolve));
-  const address = mirror.address();
-  if (!address || typeof address === "string") throw new Error("Invalid Python mirror address.");
+it("真实 uv 安装本地 wheel，搬移后恢复并取消后代", async () => {
+  python_root = path.join(root, "managed Python");
+  // 复用 uv 托管的解释器，搬移和取消使用独立副本。
   const uv = path.join(
     runtime,
     "bin",
     `${process.platform}-${process.arch}`,
     process.platform === "win32" ? "uv.exe" : "uv",
   );
-  const env = { ...process.env };
-  for (const key of Object.keys(env))
-    if (/^(?:UV_|PYTHON|PIP_|CONDA_|VIRTUAL_ENV$|https?_proxy|all_proxy|no_proxy)/iu.test(key))
-      delete env[key];
-  Object.assign(env, {
-    UV_PYTHON_INSTALL_DIR: path.join(python_root, "interpreters"),
-    UV_CACHE_DIR: path.join(python_root, "cache"),
-    UV_PYTHON_BIN_DIR: path.join(python_root, "bin"),
-    UV_PYTHON_INSTALL_BIN: "0",
-    UV_PYTHON_INSTALL_REGISTRY: "0",
+  await promisify(execFile)(
+    uv,
+    ["--no-config", "python", "install", DEFAULT_PYTHON_VERSION, "--no-bin", "--no-registry"],
+    { windowsHide: true, timeout: 180_000 },
+  );
+  const { stdout } = await promisify(execFile)(
+    uv,
+    ["--no-config", "python", "find", "--managed-python", "--no-project", DEFAULT_PYTHON_VERSION],
+    { windowsHide: true, timeout: 30_000 },
+  );
+  const executable = await realpath(stdout.trim());
+  const installation =
+    process.platform === "win32"
+      ? path.dirname(executable)
+      : path.dirname(path.dirname(executable));
+  await cp(installation, path.join(python_root, "interpreters", path.basename(installation)), {
+    recursive: true,
   });
+  const wheel = new JSZip();
+  const metadata = "lg_python_fixture-1.0.0.dist-info";
+  const files = {
+    "lg_python_fixture.py": "value = '搭档的 Python'\n",
+    [`${metadata}/METADATA`]: "Metadata-Version: 2.1\nName: lg-python-fixture\nVersion: 1.0.0\n",
+    [`${metadata}/WHEEL`]:
+      "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+  };
+  for (const [name, content] of Object.entries(files)) wheel.file(name, content);
+  wheel.file(
+    `${metadata}/RECORD`,
+    [...Object.keys(files), `${metadata}/RECORD`].map((name) => `${name},,`).join("\n"),
+  );
+  const wheel_path = path.join(workspace, "work/lg_python_fixture-1.0.0-py3-none-any.whl");
+  await writeFile(wheel_path, await wheel.generateAsync({ type: "nodebuffer" }));
+  const initial = await run(
+    `
+    import { uv } from '@lg/uv';
+    await uv.run(['add', ${JSON.stringify(wheel_path)}, '--offline']);
+    await uv.run(['run', '--offline', 'python', '-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
+    console.log('python ready');
+  `,
+    AbortSignal.timeout(30_000),
+  );
+  expect(output_content(initial.stdout)).toBe("python ready\n");
+  expect(await readFile(path.join(workspace, "work/python-result.txt"), "utf8")).toBe(
+    "搭档的 Python",
+  );
+
+  // 次版本链接与 venv 都记录绝对路径，搬移后由 uv 自行重建，应用不另做恢复。
+  const moved = path.join(root, "移动后的 Python");
+  await rename(python_root, moved);
+  python_root = moved;
+  const recovered = await run(
+    `
+    import { uv } from '@lg/uv';
+    await uv.run(['run', '--offline', 'python', '-c', 'import lg_python_fixture; print(lg_python_fixture.value)']);
+    await uv.run(['remove', 'lg-python-fixture', '--offline']);
+  `,
+    AbortSignal.timeout(30_000),
+  );
+  expect(String(output_content(recovered.stdout)).trim()).toBe("搭档的 Python");
+
+  const pids_path = path.join(workspace, "work/python-pids.json");
+  await writeFile(
+    path.join(workspace, "work/python-wait.py"),
+    `import subprocess,sys,os,json,time\nchild=subprocess.Popen([sys.executable,'-c','import time; time.sleep(300)'])\nopen('work/python-pids.json','w').write(json.dumps([os.getpid(),child.pid]))\ntime.sleep(300)\n`,
+  );
+  const controller = new AbortController();
+  const stopped = new Error("stop uv SDK");
+  const pending = run(
+    `import {uv} from '@lg/uv'; await uv.run(['run', '--offline', 'python', 'work/python-wait.py']);`,
+    controller.signal,
+  ).catch((error: unknown) => error);
   try {
-    await promisify(execFile)(
-      uv,
-      [
-        "--no-config",
-        "python",
-        "install",
-        version,
-        "--no-bin",
-        "--no-registry",
-        "--mirror",
-        `http://127.0.0.1:${address.port}`,
-      ],
-      { env, windowsHide: true, timeout: 30_000 },
+    let pids: number[] = [];
+    await vi.waitFor(
+      async () => {
+        pids = JSON.parse(await readFile(pids_path, "utf8"));
+        expect(pids).toHaveLength(2);
+      },
+      { timeout: 15_000 },
     );
+    controller.abort(stopped);
+    expect(await pending).toBe(stopped);
+    for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
   } finally {
-    mirror.closeAllConnections();
-    await new Promise<void>((resolve) => mirror.close(() => resolve()));
+    controller.abort(stopped);
+    await pending;
   }
-}
+}, 300_000);
 
 /** 使用真实准备和 IPC 启动链，每次执行拥有独立脚本与日志。 */
 async function run(

@@ -5,11 +5,9 @@ const fake = vi.hoisted(() => ({
   npm: vi.fn(),
   uv: vi.fn(),
   download: vi.fn(),
-  calibrate: vi.fn(),
   installed: new Set<string>(),
   declared: "",
   models: new Set<string>(),
-  cache: undefined as { device: "cpu" | "gpu" } | undefined,
 }));
 vi.mock("./runtime", () => ({
   MEDIA_PREPARE_LOCK_RETRY: {},
@@ -21,20 +19,22 @@ vi.mock("proper-lockfile", () => ({ default: { lock: async () => async () => und
 vi.mock("../../../native/native-fs", () => ({
   default_native_fs: {
     exists: () => true,
-    read_text_file: () => fake.declared,
+    read_text_file: (file: string) => {
+      if (!file.endsWith("package.json")) return fake.declared;
+      if (
+        [...fake.installed].some((name) =>
+          file.replaceAll("\\", "/").endsWith(`${name}/package.json`),
+        )
+      )
+        return JSON.stringify({ version: "1.31.1" });
+      throw Object.assign(new Error("not installed"), { code: "ENOENT" });
+    },
     make_dir_async: async () => undefined,
   },
 }));
 vi.mock("./engine", () => ({
   ORT_PACKAGE: "onnxruntime-node",
   ORT_VERSION: "1.31.1",
-  read_json: (file: string) =>
-    [...fake.installed].some((name) => file.replaceAll("\\", "/").endsWith(`${name}/package.json`))
-      ? { version: "1.31.1" }
-      : undefined,
-  inference_cache: async () => fake.cache,
-  calibrate_devices: fake.calibrate,
-  validate_device: () => undefined,
 }));
 vi.mock("./models", async (original) => ({
   ...(await original<typeof import("./models")>()),
@@ -47,10 +47,6 @@ beforeEach(() => {
   fake.installed.clear();
   fake.models.clear();
   fake.declared = "";
-  fake.cache = undefined;
-  fake.calibrate.mockImplementation(async () => {
-    fake.cache = { device: "cpu" };
-  });
   fake.npm.mockImplementation(async (args: string[]) => {
     for (const spec of args.slice(1).filter((arg) => !arg.startsWith("--")))
       fake.installed.add(spec.split("@")[0]!);
@@ -68,50 +64,27 @@ beforeEach(() => {
   );
 });
 
-it("资源齐全时仍重建缺失的推理配置", async () => {
+it("prepares all models and components, rechecking existing models without reinstalling packages", async () => {
   const { missing, setup } = await import("./preparation");
-  await setup(["speech"]);
-  fake.calibrate.mockClear();
-  fake.cache = undefined; // 模型仍在，配置丢失需要重建。
-  expect(await missing(["speech"])).toEqual({ packages: [], python: [], models: [] });
-  await setup(["speech"]);
-  expect(fake.calibrate).toHaveBeenCalledOnce();
+  expect((await missing()).models).toEqual(Object.values(MEDIA_MODELS).map((model) => model.file));
+  expect(await setup()).toEqual({ packages: [], python: [], models: [] });
+  expect(fake.models).toEqual(new Set(Object.values(MEDIA_MODELS).map((model) => model.file)));
+  fake.npm.mockClear();
+  fake.uv.mockClear();
+  fake.download.mockClear();
+  await setup();
+  expect(fake.npm).not.toHaveBeenCalled();
+  expect(fake.uv).not.toHaveBeenCalled();
+  expect(fake.download).toHaveBeenCalledTimes(Object.keys(MEDIA_MODELS).length);
 });
 
-it("prepares visualization without inference packages, weights or calibration", async () => {
+it("surfaces preparation failures and can resume using already prepared resources", async () => {
   const { missing, setup } = await import("./preparation");
-  const before = await missing(["visualize"]);
-  expect(before.packages.some((spec) => spec.startsWith("onnxruntime-node@"))).toBe(false);
-  expect(before.models).toEqual([]);
-  expect(await setup(["visualize"])).toEqual({ packages: [], python: [], models: [] });
-  expect(fake.calibrate).not.toHaveBeenCalled();
-});
-
-it("对白准备排除文字检测权重，追加用途时复用已完成的校准", async () => {
-  const { setup } = await import("./preparation");
-  expect(await setup(["speech"])).toEqual({ packages: [], python: [], models: [] });
-  expect(fake.models.has(MEDIA_MODELS.det_cpu.file)).toBe(false);
-  fake.cache = { device: "cpu" };
-  expect(await setup(["speech", "text"])).toEqual({ packages: [], python: [], models: [] });
-  expect(fake.calibrate).toHaveBeenCalledOnce();
-});
-
-it("text-only preparation uses the same speech benchmark, explicit GPU only prepares models", async () => {
-  const { setup, missing } = await import("./preparation");
-  fake.calibrate.mockImplementationOnce(async () => {
-    fake.cache = { device: "gpu" };
+  fake.download.mockImplementationOnce(async (_directory, _stats, model) => {
+    fake.models.add(model.file);
   });
-  await setup(["text"]);
-  expect(fake.models.has(MEDIA_MODELS.det_gpu.file)).toBe(true);
-  expect(fake.models.has(MEDIA_MODELS.asr_cpu.file)).toBe(true);
-  expect(fake.models.has(MEDIA_MODELS.asr_gpu.file)).toBe(true);
-  expect(fake.calibrate).toHaveBeenCalledOnce();
-  fake.calibrate.mockClear();
-  fake.cache = { device: "cpu" };
-  fake.models.delete(MEDIA_MODELS.det_gpu.file);
-  expect((await missing(["text"], { device: "gpu" })).models).toContain(MEDIA_MODELS.det_gpu.file);
-  await setup(["text"], { device: "gpu" });
-  expect(fake.models.has(MEDIA_MODELS.det_gpu.file)).toBe(true);
-  expect(fake.calibrate).not.toHaveBeenCalled();
-  expect(fake.cache).toEqual({ device: "cpu" });
+  fake.download.mockRejectedValueOnce(new Error("download interrupted"));
+  await expect(setup()).rejects.toThrow("download interrupted");
+  expect((await missing()).models.length).toBe(Object.keys(MEDIA_MODELS).length - 1);
+  expect(await setup()).toEqual({ packages: [], python: [], models: [] });
 });

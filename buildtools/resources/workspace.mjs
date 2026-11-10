@@ -41,7 +41,6 @@ export async function build_workspace_resources({ root, output, manifest }) {
     "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
     "runtime/prepare": "src/backend/agent/node/prepare.ts",
     "runtime/pdf-worker": "src/backend/file/pdf/pdf-worker-entry.ts",
-    "runtime/media-calibrate": "src/backend/agent/media/calibrate.ts",
     "runtime/media-worker": "src/backend/agent/media/worker.ts",
   };
   for (const definition of WORKSPACE_PACKAGES) {
