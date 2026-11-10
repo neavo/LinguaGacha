@@ -13,7 +13,7 @@ const ENCODE = Object.freeze([
   "-c:v",
   "libx264",
   "-crf",
-  "30",
+  "28",
   "-preset",
   "medium",
   "-pix_fmt",
