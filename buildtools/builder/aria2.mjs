@@ -30,11 +30,12 @@ export async function deploy_aria2({ root, workspaceDirectory, platform, arch })
     );
     const directory = path.join(workspaceDirectory, "bin", `${platform}-${arch}`, "aria2");
     const executable = platform === "win32" ? "aria2c.exe" : "aria2c";
-    await execa(
-      "tar",
-      ["-xzf", path.join(temporary, filename), "-C", temporary, `package/bin/${executable}`],
-      { windowsHide: true, stdio: "inherit" },
-    );
+    // 使用相对归档路径，避免 GNU tar 将 Windows 盘符解释为远程主机。
+    await execa("tar", ["-xzf", filename, `package/bin/${executable}`], {
+      cwd: temporary,
+      windowsHide: true,
+      stdio: "inherit",
+    });
     await mkdir(directory, { recursive: true });
     await copyFile(
       path.join(temporary, "package", "bin", executable),
