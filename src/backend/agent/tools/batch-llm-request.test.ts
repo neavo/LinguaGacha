@@ -4,7 +4,7 @@ import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import type { BatchRequestSummary } from "../../batch-request/batch-request-service";
 import { create_agent_batch_llm_request_tool } from "./batch-llm-request";
 
-it("三个用途可调用，旧格式与未知用途在派发前拒绝", async () => {
+it("按用途派发请求，无效参数在派发前拒绝", async () => {
   const summary: BatchRequestSummary = {
     run_id: "run",
     status: "done",
@@ -24,27 +24,20 @@ it("三个用途可调用，旧格式与未知用途在派发前拒绝", async (
       name: tool.name,
       arguments: args,
     } as ToolCall);
-  const request = {
-    model_usage: "agent",
-    request_file: "work/requests.json",
-  };
-  expect(validate(request)).toEqual(request);
   const signal = new AbortController().signal;
-  const result = await tool.execute(request, ...agent_tool_call("batch", signal));
-  expect(run).toHaveBeenCalledWith(request, signal);
-  expect(result.details).toEqual(summary);
-  for (const model_usage of ["agent_batch_translation", "agent_media"]) {
-    const media = { model_usage, request_file: "work/requests.json" };
-    expect(validate(media)).toEqual(media);
-    await tool.execute(media, ...agent_tool_call("media", signal));
-    expect(run).toHaveBeenLastCalledWith(media, signal);
+  for (const model_usage of ["agent", "batch_translation", "media"]) {
+    const request = { model_usage, request_file: "work/requests.json" };
+    expect(validate(request)).toEqual(request);
+    const result = await tool.execute(request, ...agent_tool_call("batch", signal));
+    expect(run).toHaveBeenLastCalledWith(request, signal);
+    expect(result.details).toEqual(summary);
   }
   for (const invalid of [
     { request_file: "x" },
     { model: { usage: "media" }, request_file: "x" },
     { model: { config_id: "saved-config" }, request_file: "x" },
-    { model_usage: "agent_media", request_file: "" },
-    { model_usage: "agent_media", request_file: "  " },
+    { model_usage: "media", request_file: "" },
+    { model_usage: "media", request_file: "  " },
     { model_usage: "other", request_file: "x" },
   ])
     expect(() => validate(invalid)).toThrow();

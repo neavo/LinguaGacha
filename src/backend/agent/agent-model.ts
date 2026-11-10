@@ -28,6 +28,12 @@ import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import { observe_chatgpt_request } from "../llm/chatgpt-request";
 import { read_config_model_records, resolve_model_for_usage } from "../model/model-config-resolver";
 
+// 工具用途映射到原有持久化字段，保留用户已保存的模型选择。
+const AGENT_MODEL_SELECTION_KEYS = {
+  batch_translation: "agent_batch_translation",
+  media: "agent_media",
+} as const;
+
 /** 主控使用生效配置。固定用途读取保存配置。副本隔离嵌套请求参数。 */
 export function resolve_agent_model(
   config: JsonRecord,
@@ -35,14 +41,16 @@ export function resolve_agent_model(
   usage: AgentModelUsage,
 ): Model | null {
   if (usage === "agent") return Model.from_json(agent_model.to_json(), agent_model.id);
-  const model_id = normalize_model_selection(config["model_selection"])[usage];
+  const model_id = normalize_model_selection(config["model_selection"])[
+    AGENT_MODEL_SELECTION_KEYS[usage]
+  ];
   if (model_id === null) return Model.from_json(agent_model.to_json(), agent_model.id);
   const raw = read_config_model_records(config).find((item) => item["id"] === model_id);
   if (raw === undefined) return null;
   return Model.from_json(structuredClone(raw), model_id);
 }
 
-/** 摘要只用于发现输入格式，执行入口仍按当前设置解析用途。 */
+/** 摘要用于准备请求。执行入口按当前设置解析用途。 */
 export function summarize_agent_models(config: JsonRecord, agent_model: Model): AgentModelsSummary {
   return Object.fromEntries(
     AGENT_MODEL_USAGES.map((usage) => {
@@ -71,7 +79,7 @@ export function resolve_agent_batch_translation_model(
   catalog: readonly PiCatalogModel[],
   thinking_downgrade: boolean,
 ): Model {
-  const model = resolve_agent_model(config, agent_model, "agent_batch_translation");
+  const model = resolve_agent_model(config, agent_model, "batch_translation");
   if (model === null) throw new AppErrors.AppError("model.not_found");
   if (!thinking_downgrade) return model;
   // 能力集合按等级升序排列；`DEFAULT` 表示平台默认，不参与最低等级选择。

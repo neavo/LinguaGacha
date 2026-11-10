@@ -74,9 +74,9 @@ export function is_pinned_model(model: Readonly<{ id?: unknown; type?: unknown }
 export const AGENT_FUNCTION_USAGES = ["agent_batch_translation", "agent_media"] as const;
 export type AgentFunctionUsage = (typeof AGENT_FUNCTION_USAGES)[number];
 /** 批量工具只允许按这些用途解析用户配置。 */
-export const AGENT_MODEL_USAGES = ["agent", ...AGENT_FUNCTION_USAGES] as const;
+export const AGENT_MODEL_USAGES = ["agent", "batch_translation", "media"] as const;
 export type AgentModelUsage = (typeof AGENT_MODEL_USAGES)[number];
-/** 工作区只接收输入格式摘要，失效用途单独标为 `null`。 */
+/** 工作区只接收请求格式摘要，失效用途单独标为 `null`。 */
 export type AgentModelsSummary = Readonly<
   Record<
     AgentModelUsage,

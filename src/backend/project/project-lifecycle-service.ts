@@ -617,9 +617,18 @@ export class ProjectLifecycleService {
     return { preview: await this.database.read_project_preview(project_path) };
   }
 
-  /**
-   * 汇总可导入源文件总数和互斥格式命中数，不向 renderer 暴露展开后的本地文件路径
-   */
+  /** AGENT 创建只需要名称，避免为命名扫描或解析待导入来源。 */
+  public get_default_project_name(
+    body: JsonRecord,
+  ): Pick<ProjectSourceFileSummary, "project_name"> {
+    return {
+      project_name: this.build_default_project_name(
+        this.normalize_source_paths(body["source_paths"]),
+      ),
+    };
+  }
+
+  /** 汇总可导入文件计数与格式，命名与 AGENT 拖入创建共用同一规则。 */
   public async summarize_source_files(body: JsonRecord): Promise<ProjectSourceFileSummary> {
     const source_paths = this.normalize_source_paths(body["source_paths"]);
     // 来源摘要只统计格式命中，项目语言尚未选择时使用默认值。

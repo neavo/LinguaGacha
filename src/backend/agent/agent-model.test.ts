@@ -734,18 +734,18 @@ it("音视频跟随生效模型，固定选择独立解析且副本不污染设�
       },
     ],
   };
-  const following = resolve_agent_model(config, active, "agent_media");
+  const following = resolve_agent_model(config, active, "media");
   expect(following!.model_id).toBe("active-version");
   following!.thinking.level = "OFF";
   expect(active.thinking.level).toBe("HIGH");
   config.model_selection.agent_media = "c";
-  const media = resolve_agent_model(config, active, "agent_media");
+  const media = resolve_agent_model(config, active, "media");
   expect(media!.model_id).toBe("media-version");
   expect(media!.thinking.level).toBe("HIGH");
   (media!.request.extra_body["metadata"] as JsonRecord)["tag"] = "changed";
   expect(config.models[0]!.request.extra_body.metadata.tag).toBe("original");
   config.model_selection.agent_media = "missing";
-  expect(resolve_agent_model(config, active, "agent_media")).toBeNull();
+  expect(resolve_agent_model(config, active, "media")).toBeNull();
 });
 
 it("主控采用生效配置，同 ID 固定用途采用保存值，摘要仅发布可用用途的非敏感字段", () => {
@@ -765,11 +765,11 @@ it("主控采用生效配置，同 ID 固定用途采用保存值，摘要仅发
   expect(resolve_agent_model(config, active, "agent")!.model_id).toBe("active");
   expect(summarize_agent_models(config, active)).toEqual({
     agent: { name: "生效", model_id: "active", formats: ["messages"] },
-    agent_batch_translation: {
+    batch_translation: {
       name: "保存",
       model_id: "saved",
       formats: ["messages", "responses"],
     },
-    agent_media: null,
+    media: null,
   });
 });

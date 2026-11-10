@@ -76,6 +76,7 @@ beforeEach(async () => {
   };
   mocks.api.mockReset().mockImplementation(async (path: string) => {
     if (path.endsWith("/create")) return { project: { path: "E:/actual.lg" } };
+    if (path.endsWith("/default-name")) return { project_name: "src" };
     return {};
   });
   Object.defineProperty(window, "desktopApp", {
@@ -189,7 +190,7 @@ it("拖入创建清除旧来源，按首个路径保存并预填全部路径，�
   await act(async () => flow.confirm_language_dialog());
   expect(mocks.api).toHaveBeenLastCalledWith("/api/session/project/create", {
     source_paths: [],
-    path: expect.stringMatching(/^E:\/src\/[^/]+\.lg$/u),
+    path: "E:/src/src.lg",
     languages: expect.any(Object),
   });
   expect(window.desktopApp.pickProjectSavePath).not.toHaveBeenCalled();
@@ -204,6 +205,37 @@ it("拖入创建清除旧来源，按首个路径保存并预填全部路径，�
   const next_request: AgentInputRequest = mocks.navigate.mock.calls[1]![0];
   expect(next_request.text).not.toContain("E:/src/");
   expect(next_request.selection).toBeDefined();
+});
+
+it.each(["MANUAL", "FIXED"])("拖入创建在 %s 模式沿用后端名称", async (mode) => {
+  mocks.state.settings_snapshot.project_save_mode = mode;
+  mocks.api.mockResolvedValueOnce({ project_name: "Game.v1.2" });
+  act(() => flow.start_from_paths(["E:/games/Game.v1.2"]));
+  await act(async () => flow.confirm_language_dialog());
+  expect(mocks.api).toHaveBeenCalledWith("/api/session/project/default-name", {
+    source_paths: ["E:/games/Game.v1.2"],
+  });
+  if (mode === "MANUAL") {
+    expect(window.desktopApp.pickProjectSavePath).toHaveBeenCalledWith("Game.v1.2.lg");
+  }
+  expect(mocks.api).toHaveBeenLastCalledWith("/api/session/project/create", {
+    source_paths: [],
+    path: mode === "MANUAL" ? "E:/manual.lg" : "E:/fixed/Game.v1.2.lg",
+    languages: expect.any(Object),
+  });
+  await act(async () => vi.runAllTimersAsync());
+});
+
+it("拖入名称查询失败时提示错误并停止创建，再次确认可以重试", async () => {
+  act(() => flow.start_from_paths(["E:/src/a.txt"]));
+  mocks.api.mockRejectedValueOnce(new Error("name lookup failed"));
+  await act(async () => flow.confirm_language_dialog());
+  expect(mocks.error).toHaveBeenCalledOnce();
+  expect(mocks.api).not.toHaveBeenCalledWith("/api/session/project/create", expect.anything());
+  expect(flow.source_selection_disabled).toBe(false);
+  await create();
+  await act(async () => vi.runAllTimersAsync());
+  expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
 });
 
 it("游戏来源依次确认备份、语言和包顺序，按摘要名称在来源目录创建", async () => {

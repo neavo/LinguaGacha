@@ -66,7 +66,7 @@ import {
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 
 const VALID_WORKSPACE_RUN = {
-  functionModels: { agent: null, agent_batch_translation: null, agent_media: null },
+  functionModels: { agent: null, batch_translation: null, media: null },
   script: "console.log(null);",
   timeoutMs: 180_000,
 };

@@ -198,7 +198,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 - 区间外延到句子边界，相近的区间合并为一段。
 
 1. `recognize.request(工作目录, { prompt, ranges })` 从原文件裁出 `ranges`（`[{ start, end }]` 整片时间，每段不超过 210 秒）并写出请求清单，返回 `request_file`。
-2. 调用 `batch_llm_request({ model_usage: "agent_media", request_file })`。
+2. 调用 `batch_llm_request({ model_usage: "media", request_file })`。
 3. `recognize.read(工作目录, result_file)` 把响应换算为整片时间写入候选文件 `candidate`，返回各区间的行数、`incomplete`（输出没有正常结束）、无法解析或不符合契约的行数，以及失败的区间。
 4. 审阅候选后，`recognize.apply(工作目录, candidate, ranges)` 用完整且非空的候选替换区间内的 `dialogue`。区间内的 `screen` 保持不变。
 

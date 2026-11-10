@@ -352,7 +352,7 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       : fauxAssistantMessage(
           fauxToolCall(
             "batch_llm_request",
-            { model_usage: "agent_media", request_file: "work/requests.json" },
+            { model_usage: "media", request_file: "work/requests.json" },
             { id: "media" },
           ),
           { stopReason: "toolUse" },

@@ -291,9 +291,18 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
       const source_paths = selected_source?.source_paths ?? [];
       const godot_pack_orders = await pack_order.request_order(selected_source?.godot_packs);
       if (godot_pack_orders === null) return;
+      // AGENT 来源只查询名称，文件发现与导入留给后续对话。
+      let project_name = selected_source?.project_name;
+      if (project_name === undefined && import_paths.length > 0) {
+        const payload = await api_fetch<Pick<ProjectSourceFileSummary, "project_name">>(
+          "/api/session/project/default-name",
+          { source_paths: import_paths },
+        );
+        project_name = payload.project_name;
+      }
       const output_path = await resolve_project_output_path(
         selected_source?.source_paths[0] ?? import_paths[0],
-        selected_source?.project_name,
+        project_name,
       );
       if (output_path === null || output_path === "") {
         return;
