@@ -95,15 +95,10 @@
 | `Games` `subtitles` `e-books` in other formats | Any | Identified and processed by `AGENT` automatically |
 
 ## Recent Updates 📅
-- 20261107 v0.140.1
-  - Added `Portuguese` as a UI language @gabriexlss
-  - Fixes and improvements
-
-- 20261105 v0.140.0
-  - An all-new `Native Harness` version
-  - Supports `in theory` all `games`, `subtitles`, and `e-books`
-  - Learns on its own, automatically recording experience from each localization project and becoming more proficient over time
-  - Can be used independently for everyday tasks as a `full-featured AGENT` tool with unrestricted output
+- 20261110 v0.141.0
+  - Added `Audio (ASMR)` translation [#1085](../../pull/1085)
+  - Added `Video` translation [#1085](../../pull/1085)
+  - Fixes and improvements [#1083](../../issues/1083) [#1084](../../issues/1084)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)

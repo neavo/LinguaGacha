@@ -91,15 +91,10 @@
 | `Spiele` `Untertitel` `E-Books` in anderen Formaten | Beliebig | Werden von `AGENT` automatisch erkannt und verarbeitet |
 
 ## Neueste Updates 📅
-- 20261107 v0.140.1
-  - `Portugiesisch` als UI-Sprache hinzugefügt @gabriexlss
-  - Fehlerbehebungen und Verbesserungen
-
-- 20261105 v0.140.0
-  - Eine völlig neue `Native Harness`-Version
-  - Unterstützt `theoretisch` alle `Spiele`, `Untertitel` und `E-Books`
-  - Lernt selbstständig, hält automatisch Erfahrungen aus jedem Lokalisierungsprojekt fest und wird mit der Zeit immer versierter
-  - Als eigenständiges `voll ausgestattetes AGENT`-Tool mit freier Ausgabe im Alltag nutzbar
+- 20261110 v0.141.0
+  - Übersetzung von `Audio (ASMR)` hinzugefügt [#1085](../../pull/1085)
+  - Übersetzung von `Videos` hinzugefügt [#1085](../../pull/1085)
+  - Fehlerbehebungen und Verbesserungen [#1083](../../issues/1083) [#1084](../../issues/1084)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)

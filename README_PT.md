@@ -95,15 +95,10 @@
 | `Jogos`, `legendas` e `e-books` em outros formatos | Qualquer | Identificados e processados automaticamente pelo `AGENTE` |
 
 ## Atualizações Recentes 📅
-- 20261107 v0.140.1
-  - Adicionado `Português` como idioma da interface @gabriexlss
-  - Correções e melhorias
-
-- 20261105 v0.140.0
-  - Uma versão totalmente nova com `Native Harness`
-  - Suporta `em teoria` todos os `jogos`, `legendas` e `e-books`
-  - Aprende por conta própria, registrando automaticamente a experiência de cada projeto de localização e se tornando cada vez mais eficiente
-  - Pode ser usado de forma independente no dia a dia como uma ferramenta `AGENTE com todos os recursos` e saída livre
+- 20261110 v0.141.0
+  - Adicionada tradução de `áudio (ASMR)` [#1085](../../pull/1085)
+  - Adicionada tradução de `vídeo` [#1085](../../pull/1085)
+  - Correções e melhorias [#1083](../../issues/1083) [#1084](../../issues/1084)
 
 ## Guia de Desenvolvimento 🛠️
 - Instale [Go](https://go.dev) e [`Node.js`](https://nodejs.org)
