@@ -7,20 +7,6 @@ import { npm } from "../npm";
 const STDERR_MAX_CHARS = 64 * 1024; // 只保留诊断尾部，避免长转码日志持续占用内存。
 export const FFMPEG_PACKAGE = `ffmpeg-static-electron-v5-${process.platform}-${process.arch}`;
 
-/**
- * 硬解候选：显存中按帧率取帧后再下载，避免回传被丢弃的帧。
- * 只有 Windows d3d11va 经过实测，其它平台不可用时校准自然选择软件解码。
- */
-const HWACCELS: Readonly<Partial<Record<NodeJS.Platform, readonly (readonly [string, string])[]>>> =
-  {
-    win32: [["d3d11va", "d3d11"]],
-    darwin: [["videotoolbox", "videotoolbox_vld"]],
-    linux: [
-      ["vaapi", "vaapi"],
-      ["cuda", "cuda"],
-    ],
-  };
-
 export type MediaInfo = {
   duration: number;
   video: { width: number; height: number } | null;
@@ -33,9 +19,6 @@ export type ExecuteOptions = Readonly<{
   consume?: (stdout: Readable) => Promise<void>;
   stdout?: "ignore" | "inherit";
 }>;
-/** Python 解码时插入的硬解参数。 */
-export type Hwaccel = Readonly<{ name: string; input: readonly string[]; filter: string }>;
-
 /** 外部工具共用日志与收尾，返回 stderr 尾部。工作区宿主负责停止进程树和控制超时。 */
 export async function execute(
   binary: string,
@@ -112,23 +95,4 @@ export async function inspect(source: string): Promise<MediaInfo> {
 /** 第一条真正的视频流，包含编码、像素格式与分辨率。 */
 export function video_stream(streams: readonly string[]): string | undefined {
   return streams.find((line) => line.includes("Video:") && !line.includes("attached pic"));
-}
-
-/** 当前 ffmpeg 构建声明支持、且本平台有候选的硬解方式。下载格式按源位深选择。 */
-export async function hwaccel_candidates(stream: string): Promise<Hwaccel[]> {
-  let output = ""; // 列表写在 stdout。
-  await ffmpeg(["-hwaccels"], {
-    consume: async (stdout) => {
-      for await (const chunk of stdout) output += String(chunk);
-    },
-  });
-  const listed = new Set(output.split(/\s+/u));
-  const deep = Number(/p(\d+)(?:le|be)\b/u.exec(stream)?.[1] ?? 8) > 8; // 如 yuv420p10le。
-  return (HWACCELS[process.platform] ?? [])
-    .filter(([name]) => listed.has(name))
-    .map(([name, surface]) => ({
-      name,
-      input: ["-hwaccel", name, "-hwaccel_output_format", surface],
-      filter: `hwdownload,format=${deep ? "p010le" : "nv12"}`,
-    }));
 }

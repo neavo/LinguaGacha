@@ -5,11 +5,15 @@ export type MediaTask = "vad" | "asr" | "det";
 /** 只支持 CPU 与 WebGPU 两种执行配置。 */
 export type MediaDevice = "cpu" | "webgpu";
 export type MediaModelConfig = Readonly<{ file: string; device: MediaDevice; threads: number }>;
-/** 本机选定的完整推理配置。ASR 始终单路，检测可选 GPU 单路或双路。 */
-export type MediaProfile = Readonly<{
-  asr: MediaDevice;
-  det: "cpu" | "webgpu_single" | "webgpu_dual";
+/** 显式设备只覆盖当前调用。省略时使用自动配置。 */
+export type DeviceOptions = Readonly<{ device?: "cpu" | "gpu" | undefined }>;
+/** 返回实际执行路径，供调用方确认手动纠错或自动回退。 */
+export type MediaExecution = Readonly<{
+  requested: "auto" | "cpu" | "gpu";
+  actual: "cpu" | "gpu";
+  fallback_reason?: string;
 }>;
+export type MediaResult<T> = Readonly<{ result: T; execution: MediaExecution }>;
 
 /** 父进程解析好的 ORT 入口与模型路径，Worker 和校准子进程不访问共享环境绑定。 */
 export type MediaWorkerConfig = Readonly<{
@@ -18,20 +22,11 @@ export type MediaWorkerConfig = Readonly<{
   models: Readonly<Record<MediaTask, MediaModelConfig>>;
 }>;
 
-/** 一次校准子进程的测量：两个输入档各一行批次耗时，另记准备与释放耗时，单位毫秒。 */
-export type MediaMeasurement = Readonly<{
-  timings: readonly (readonly number[])[];
-  prepare: number;
-  close: number;
-}>;
-/** 各任务候选的多次独立启动测量，键为候选名。 */
-export type MediaCalibration = Record<"asr" | "det", Record<string, MediaMeasurement[]>>;
-/** `probe` 只验证 GPU 能运行并正常退出，`mixed` 验证最终组合。 */
+/** 单次 20 秒输入的测量，单位毫秒；首次推理不包含会话创建。 */
+export type MediaMeasurement = Readonly<{ inference: number; prepare: number; close: number }>;
 export type MediaCalibrationJob = Readonly<{
-  profile: MediaProfile;
   config: MediaWorkerConfig;
   worker: string;
-  task: "asr" | "det" | "mixed";
 }>;
 
 export type MediaWorkerRequest =

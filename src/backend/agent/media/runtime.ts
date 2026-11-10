@@ -1,3 +1,10 @@
+// 准备与运行故障降级共用同一写锁，等待已有持有者完成。
+export const MEDIA_PREPARE_LOCK_RETRY = Object.freeze({
+  retries: 1e6,
+  minTimeout: 500,
+  maxTimeout: 5000,
+});
+
 export type MediaConfiguration = Readonly<{
   modelsDirectory: string;
   cacheDirectory: string;

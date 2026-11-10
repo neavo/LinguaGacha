@@ -55,9 +55,9 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     // media.test.py 同时检查检测后处理，只在准备了检测用途时执行。
     for (const test of ${JSON.stringify(["fsmn_vad.test.py", "media.test.py"].map((file) => path.resolve("src/backend/agent/media", file)))})
       if (info.video || test.endsWith('fsmn_vad.test.py')) await uv.run(['run', 'python', '-I', test, ${JSON.stringify(path.join(runtime, "runtime"))}]);
-    const listened = await media.listen(source, {language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} });
-    const scanned = info.video ? await media.scan(source, {directory:'work/scan', out:'work/scan/text'}) : [];
-    const refined = info.video ? await media.refine(source, {directory:'work/scan', rows:scanned.slice(0,2).map((x,row)=>({...x,row}))}) : [];
+    const { result: listened } = await media.listen(source, {language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} });
+    const scanned = info.video ? (await media.scan(source, {out:'work/scan/text'})).result : [];
+    const refined = info.video ? (await media.refine(source, {rows:scanned.slice(0,2).map((x,row)=>({...x,row}))})).result : [];
     await fs.writeFile('work/result.json', JSON.stringify({versions:process.versions, elapsed:Date.now()-began, listened, scanned, refined, video:info.video}, null, 2));
     console.log('completed', listened.asr.length, scanned.length, refined.length);
   `,
@@ -87,6 +87,40 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
       ) as { listened: { speech: number[][] }; scanned: unknown[]; video: unknown };
       expect(report.listened.speech.length).toBeGreaterThan(0);
       if (report.video) expect(report.scanned.length).toBeGreaterThan(0);
+      // 显式设备覆盖在独立运行中验收，短片只验证双路执行与正常退出。
+      if (report.video) {
+        const overridePath = `${AGENT_WORKSPACE_RUN_ROOT}/override.mjs`;
+        await writeFile(
+          path.join(workspace, overridePath),
+          `
+          import * as media from '@lg/media';
+          import fs from 'node:fs/promises';
+          import assert from 'node:assert/strict';
+          const cacheFile = ${JSON.stringify(path.join(root, "cache/media/inference.json"))};
+          const before = await fs.readFile(cacheFile, 'utf8');
+          await media.setup(['text'], {device:'gpu'});
+          await media.ffmpeg(['-y','-i',${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))},'-t','2','-c','copy','work/short.mp4']);
+          const result = await media.scan('work/short.mp4', {out:'work/override/text',device:'gpu'});
+          assert.equal(result.execution.requested, 'gpu');
+          assert.ok(['cpu','gpu'].includes(result.execution.actual));
+          if(result.execution.actual==='cpu') assert.ok(result.execution.fallback_reason);
+          assert.equal(await fs.readFile(cacheFile,'utf8'),before);
+          await fs.writeFile('work/override.json',JSON.stringify(result.execution));
+          console.log('explicit device completed',JSON.stringify(result.execution));
+        `,
+        );
+        const override = await runner.run(
+          {
+            workspacePath: workspace,
+            scriptPath: overridePath,
+            timeoutMs: 120_000,
+            stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/override.stdout.log`,
+            stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/override.stderr.log`,
+          },
+          AbortSignal.timeout(120_000),
+        );
+        expect(override.exitCode).toBe(0);
+      }
       const retryPath = `${AGENT_WORKSPACE_RUN_ROOT}/retry.mjs`;
       await writeFile(
         path.join(workspace, retryPath),
@@ -94,7 +128,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
         import * as media from '@lg/media';
         console.log('inference starting');
         const result = await media.listen(${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))}, {language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")}});
-        console.log('inference completed', result.asr.length);
+        console.log('inference completed', result.result.asr.length);
       `,
       );
       const request = {

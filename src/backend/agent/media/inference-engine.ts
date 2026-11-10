@@ -1,7 +1,6 @@
 import { Worker } from "node:worker_threads";
 import type { ChannelHeader } from "./channel";
 import type {
-  MediaProfile,
   MediaTask,
   MediaWorkerConfig,
   MediaWorkerReply,
@@ -11,16 +10,8 @@ import type {
 /** 资源收尾的统一等待上限。超时说明原生或子进程收尾卡住，只能交给工作区监管器。 */
 export const CLOSE_TIMEOUT_MS = 30_000;
 
-/** 运行中 GPU 会话失败。`task` 缺失表示无法归因到单项任务。 */
-export class DeviceFailure extends Error {
-  constructor(
-    message: string,
-    readonly task: "asr" | "det" | undefined,
-    options?: ErrorOptions,
-  ) {
-    super(message, options);
-  }
-}
+/** GPU 会话失败触发整次调用的 CPU 重跑。 */
+export class DeviceFailure extends Error {}
 
 /** 派发通道：`audio`（CPU 音频）、`asr_gpu`、`det0`、`det1`，各对应一个 Worker。 */
 type Lane = string;
@@ -31,7 +22,6 @@ export class Engine {
   private readonly pending = new Map<
     number,
     Readonly<{
-      kind: MediaTask;
       lane: Lane;
       resolve: (reply: Reply) => void;
       reject: (error: Error) => void;
@@ -45,16 +35,14 @@ export class Engine {
   private shutdown_error: Error | undefined; // 关闭期间 Worker 报出的错误。
 
   constructor(
-    readonly profile: MediaProfile,
     private readonly config: MediaWorkerConfig,
     private readonly worker_file: string,
   ) {}
 
   /** 按配置选择通道。检测双路按检测序号轮转。 */
   private lane(kind: MediaTask): Lane {
-    if (kind === "det")
-      return `det${this.detection++ % (this.profile.det === "webgpu_single" ? 1 : 2)}`;
-    return kind === "asr" && this.profile.asr === "webgpu" ? "asr_gpu" : "audio";
+    if (kind === "det") return `det${this.detection++ % 2}`;
+    return kind === "asr" && this.config.models.asr.device === "webgpu" ? "asr_gpu" : "audio";
   }
 
   /** 通道的 Worker 按需创建。非关闭期间的退出或错误都使整个引擎失败。 */
@@ -66,23 +54,16 @@ export class Engine {
       worker.on("message", (reply: MediaWorkerReply) => this.settle(reply));
       worker.on("error", (error) => {
         if (this.closing) this.shutdown_error ??= error;
-        this.fail(this.attribute(lane, undefined, error));
+        this.fail(this.attribute(lane, error));
       });
       void exited.then((code) => {
         if (!this.closing || code !== 0)
-          this.fail(
-            this.attribute(lane, undefined, new Error(`Media inference worker exited (${code}).`)),
-          );
+          this.fail(this.attribute(lane, new Error(`Media inference worker exited (${code}).`)));
       });
       current = { worker, exited };
       this.workers.set(lane, current);
     }
     return current.worker;
-  }
-
-  /** 引擎已失败，共享使用者需要换新引擎。 */
-  get failed(): boolean {
-    return this.failure !== undefined;
   }
 
   /** 为一个 helper 分配流编号，区分各路 VAD 状态。 */
@@ -92,7 +73,7 @@ export class Engine {
 
   /** helper 结束后丢弃它的 VAD 循环状态。 */
   release(stream: number): void {
-    if (!this.failed) this.workers.get("audio")?.worker.postMessage({ type: "release", stream });
+    if (!this.failure) this.workers.get("audio")?.worker.postMessage({ type: "release", stream });
   }
 
   /** 载荷所在的 ArrayBuffer 转移给 Worker，调用者之后不能再使用它。 */
@@ -109,7 +90,7 @@ export class Engine {
     const id = this.next++;
     const lane = this.lane(kind);
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { kind, lane, resolve, reject });
+      this.pending.set(id, { lane, resolve, reject });
       const message: MediaWorkerRequest = {
         type: "infer",
         id,
@@ -121,9 +102,7 @@ export class Engine {
       try {
         this.worker(lane).postMessage(message, [payload.buffer]);
       } catch (error) {
-        this.fail(
-          this.attribute(lane, kind, error instanceof Error ? error : new Error(String(error))),
-        );
+        this.fail(this.attribute(lane, error instanceof Error ? error : new Error(String(error))));
       }
     });
   }
@@ -160,17 +139,17 @@ export class Engine {
     if (!pending) return this.fail(new Error(`Unknown media worker reply: ${reply.id}`));
     this.pending.delete(reply.id);
     if ("error" in reply) {
-      const error = this.attribute(pending.lane, pending.kind, new Error(reply.error));
+      const error = this.attribute(pending.lane, new Error(reply.error));
       pending.reject(error);
       if (error instanceof DeviceFailure) this.fail(error);
     } else pending.resolve(reply);
   }
 
-  /** GPU 通道上的错误按设备失败处理，可归因时记录到具体任务。CPU 错误保持原样。 */
-  private attribute(lane: Lane, kind: MediaTask | undefined, error: Error): Error {
-    if (lane !== "asr_gpu" && !(lane.startsWith("det") && this.profile.det !== "cpu")) return error;
-    const task = kind === "asr" || kind === "det" ? kind : undefined;
-    return new DeviceFailure(error.message, task, { cause: error });
+  /** 只把 GPU 通道错误标记为设备失败，CPU 错误保持原样。 */
+  private attribute(lane: Lane, error: Error): Error {
+    if (lane !== "asr_gpu" && !(lane.startsWith("det") && this.config.models.det.device !== "cpu"))
+      return error;
+    return new DeviceFailure(error.message, { cause: error });
   }
 
   /** 记录首个失败，拒绝全部在途请求并开始关闭。 */
@@ -179,7 +158,7 @@ export class Engine {
     this.failure = error;
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
-    // 等待者在获取或释放引擎时各自收到关闭结果，这里只避免未处理的拒绝。
+    // 调用方在关闭引擎时收到收尾结果，这里只避免未处理的拒绝。
     this.close().catch(() => undefined);
   }
 }

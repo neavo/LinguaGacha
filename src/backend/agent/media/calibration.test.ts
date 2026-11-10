@@ -3,49 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
-import { run_calibration, select_profile, valid_measurement } from "./calibration";
+import { run_calibration, select_device, valid_measurement } from "./calibration";
 import type { MediaCalibrationJob, MediaMeasurement } from "./worker-protocol";
 
-const measured = (short: number, long = short): MediaMeasurement[] => [
-  {
-    timings: [
-      [short, short, short],
-      [long, long, long],
-    ],
-    prepare: 1,
-    close: 1,
-  },
-];
+const measured = (inference: number): MediaMeasurement => ({ inference, prepare: 1, close: 1 });
 
-it("compares complete candidates across both input sizes", () => {
-  const calibration = {
-    asr: { cpu: measured(100), webgpu: measured(80) },
-    det: { cpu: measured(100), webgpu_single: measured(80), webgpu_dual: measured(70) },
-  };
-  expect(select_profile(calibration)).toEqual({ asr: "webgpu", det: "webgpu_single" });
-  calibration.det.webgpu_dual = measured(60);
-  expect(select_profile(calibration).det).toBe("webgpu_dual");
-  calibration.det.webgpu_single = measured(90);
-  expect(select_profile(calibration).det).toBe("webgpu_dual");
-  calibration.det.webgpu_dual = measured(50, 101);
-  expect(select_profile(calibration).det).toBe("cpu");
-  expect(select_profile({ asr: { cpu: measured(100) }, det: { cpu: measured(100) } })).toEqual({
-    asr: "cpu",
-    det: "cpu",
-  });
-});
-
-it("rejects a failed CPU baseline and malformed timings", () => {
-  expect(() => select_profile({ asr: {}, det: { cpu: measured(100) } })).toThrow("CPU");
-  expect(valid_measurement(measured(NaN)[0])).toBe(false);
-  expect(valid_measurement(measured(0)[0])).toBe(false);
-  expect(valid_measurement({ timings: [[1]], prepare: 0, close: 0 })).toBe(false);
-});
-
-it("selects speech without claiming a detector baseline and validates only requested tasks", () => {
-  const partial = { asr: { cpu: measured(100), webgpu: measured(70) }, det: {} };
-  expect(select_profile(partial, ["asr"])).toEqual({ asr: "webgpu", det: "cpu" });
-  expect(() => select_profile(partial, ["det"])).toThrow("CPU");
+it("uses the inclusive 30 percent threshold and rejects invalid measurements", () => {
+  expect(select_device(measured(100), measured(70))).toBe("gpu");
+  expect(select_device(measured(100), measured(70.01))).toBe("cpu");
+  expect(select_device(measured(100))).toBe("cpu");
+  expect(() => select_device(measured(0))).toThrow("CPU");
+  expect(valid_measurement(measured(NaN))).toBe(false);
+  expect(valid_measurement({ ...measured(1), close: -1 })).toBe(false);
 });
 
 it("accepts calibration only after valid data and successful process close", async () => {
@@ -53,8 +22,6 @@ it("accepts calibration only after valid data and successful process close", asy
   const file = path.join(directory, "candidate.mjs");
   const model = { file, device: "cpu", threads: 4 } as const;
   const job: MediaCalibrationJob = {
-    task: "det",
-    profile: { asr: "cpu", det: "cpu" },
     worker: file,
     config: {
       ort: pathToFileURL(file).href,
@@ -62,7 +29,7 @@ it("accepts calibration only after valid data and successful process close", asy
       models: { vad: model, asr: model, det: model },
     },
   };
-  const value = measured(1)[0]!;
+  const value = measured(1);
   const send = `process.once('message',()=>process.send(${JSON.stringify(value)}`;
   try {
     // 子进程夹具只观察父进程的完成契约，不消费生产配置。

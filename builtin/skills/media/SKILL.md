@@ -60,7 +60,7 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 |`name`|可选，说话人|
 |`box`|可选，只用于 `screen`，格式同 `text[].box`。生成字幕时译文贴着它摆放|
 
-每个资产使用独立的工作目录 `work/media/<资产名>/`。视频的工作目录中除包成员外还有 `text/<id>.jpg`（区间代表帧的裁图）、`sheets/`（图集）和 `translations.json`（待写入工程的画面文字译文）。两支都可能有 `recognition/`（视频模型补查材料）和 `decoder.json`（本素材的解码方式选择）。这些不打包。
+每个资产使用独立的工作目录 `work/media/<资产名>/`。视频的工作目录中除包成员外还有 `text/<id>.jpg`（区间代表帧的裁图）、`sheets/`（图集）和 `translations.json`（待写入工程的画面文字译文）。两支都可能有 `recognition/`（视频模型补查材料）。这些不打包。
 
 ## 脚本
 
@@ -86,7 +86,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 # 环境准备
 
-`media.missing(用途)` 只读检查，返回缺失的 npm 包、Python 包与模型。`media.setup(用途)` 安装依赖，通过预置的 `aria2c` 从多个镜像下载并校验模型，再测量本机适合用 CPU 还是 GPU。用途是数组，只准备当前步骤需要的部分：
+`media.missing(用途)` 返回缺失的组件和模型。`media.setup(用途)` 下载资源并选择运行设备。用途是数组，按当前步骤选择：
 
 |用途|用于|
 |---|---|
@@ -97,10 +97,22 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 1. 先准备 `ffmpeg`，用 `inspect` 确定分支。
 2. 识别前按分支准备：视频有音轨时 `['speech', 'text']`，视频无音轨时 `['text']`，纯音频只要 `['speech']`。`render` 不需要准备，成片只需要 `visualize`。
-3. 用 `missing` 检查当前用途的资源缺口。有缺口时，告诉用户需要下载的大约 500M 的组件，提醒用户保持网络畅通。资源齐全时也调用 `setup`。它会复用有效配置。配置失效时重新校准。
-4. 下载失败或中断后重新调用，沿用保留的临时文件续传。只有 GPU 组件下载失败时，它仍完成 CPU 准备，日志说明原因，再次调用会重试 GPU。
+3. 单独调用 `missing` 并返回结果。有缺口时，先告诉用户需要下载大约 500M 的组件，并提醒保持网络畅通。随后在新的调用中执行 `setup`。资源齐全时也调用 `setup`，它会复用有效配置。
+4. 下载失败或中断后，重新调用 `setup` 续传。GPU 资源准备失败时仍可用 CPU 处理。组件未就绪的错误会列出需要准备的用途。
 
-`missing` 返回空只表示可以计算，不代表已启用 GPU。运行中 GPU 出错时，本次计算自动改用 CPU 完整重跑，之后也不再使用出错的 GPU 配置。硬件解码出错时同样改用软件解码重跑。日志会说明实际采用的配置，不需要你处理。报错提示组件未就绪时，按错误中列出的用途重新调用 `setup`。
+准备和检查阶段会实时输出日志。GPU 运行失败时，处理会自动改用 CPU 重跑一次。
+
+## 设备纠错与重跑
+
+默认自动选择设备。需要纠错时，在 `missing`、`setup` 和处理调用中传入相同的 `device: 'cpu'` 或 `'gpu'`。设备选择只覆盖本次调用。
+
+- 重跑对白：`prepare(来源, 工作目录, { track, language, device, rerun: ['speech'] })`。重跑画面检测时用 `rerun: ['text']`。省略 `rerun` 会复用已有结果。
+- 重新检测画面：`scan(工作目录, { device })`。
+- 重算指定行的时间：`refine(工作目录, 行号数组, { device })`。
+
+核对返回的 `execution.actual` 和 `execution.fallback_reason`。`prepare` 的 `execution` 按 `speech`、`text` 分组，只包含本次执行的步骤。
+
+`prepare` 重跑保留已有 `items.json`。根据新证据审阅条目，再打包和更新工程。新检测结果的区间编号可能变化。
 
 # 来源调查
 

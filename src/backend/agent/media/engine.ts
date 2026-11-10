@@ -2,45 +2,46 @@
  * 一次计算操作的资源所有权：根线程持有 Python helper 与推理 Worker，桥接两者的请求，
  * 等全部资源退出后才返回结果。GPU 配置在运行中出错时，整次操作以 CPU 重跑一次。
  */
+import lockfile from "proper-lockfile";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CLOSE_TIMEOUT_MS, Engine, DeviceFailure } from "./inference-engine";
-import { CalibrationCleanupFailure, run_calibration, select_profile } from "./calibration";
+import { CalibrationCleanupFailure, run_calibration, select_device } from "./calibration";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { npm } from "../npm";
-import { media_configuration } from "./runtime";
+import { media_configuration, MEDIA_PREPARE_LOCK_RETRY } from "./runtime";
 import { uv } from "../uv";
 import { encode_frame, FrameReader, type ChannelHeader } from "./channel";
 import { MEDIA_MODELS, model_ready } from "./models";
 import type {
-  MediaCalibration,
+  DeviceOptions,
+  MediaResult,
   MediaMeasurement,
-  MediaProfile,
+  MediaDevice,
   MediaWorkerConfig,
 } from "./worker-protocol";
 
-/** helper 报告的 FFmpeg 解码失败，调用者据此改用软件解码重跑。 */
-export class DecodeFailure extends Error {}
-
 export const ORT_PACKAGE = "onnxruntime-node";
-export const ORT_VERSION = "1.31.1"; // 经过 Worker 生命周期与 WebGPU 验证的版本。
-const CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 缓存键未覆盖硬件与驱动变化，定期在准备阶段重新测量。
-const CONFIG_VERSION = 4; // 线程、路由、前处理或选择规则变化时递增，使旧缓存失效。
-const CALIBRATION_LAUNCHES = 2; // 完整候选、独立进程退出和双档计时共同决定配置。
-const CPU_PROFILE: MediaProfile = { asr: "cpu", det: "cpu" };
-/** 已选配置与选择依据。`complete` 只列出准备完成的任务，其余任务下次准备时重试。 */
-type InferenceCache = Readonly<
-  Partial<MediaProfile> & {
-    key: string;
-    expires: number;
-    complete: readonly ("asr" | "det")[];
-    reasons: Readonly<Record<string, string>>;
-    calibration: MediaCalibration;
-    mixed?: Readonly<{ profile: MediaProfile; measurement: MediaMeasurement }>;
-  }
->;
+export const ORT_VERSION = "1.31.1";
+const CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 缓存键不含驱动版本，定期重新检查设备。
+const CONFIG_VERSION = 5; // 选型规则或运行配置变化时使旧缓存失效。
+/** 只保存默认设备和选择依据，显式纠错不写入这里。 */
+type InferenceCache = Readonly<{
+  key: string;
+  expires: number;
+  device: "cpu" | "gpu";
+  reason: string;
+  cpu: MediaMeasurement;
+  gpu?: MediaMeasurement;
+}>;
+
+/** 设备来自 AGENT 脚本，未知值必须在资源准备前拒绝。 */
+export function validate_device(device: DeviceOptions["device"]): void {
+  if (device !== undefined && device !== "cpu" && device !== "gpu")
+    throw new Error("Media device must be cpu or gpu.");
+}
 
 /** 读取本机可重建的 JSON 缓存。缺失或损坏都按没有处理，由下次写入覆盖。 */
 export function read_json(file: string): unknown {
@@ -71,82 +72,70 @@ function ort_entry(): string {
   return pathToFileURL(entry).href;
 }
 
-/** 并发操作共用的引擎。最后一个使用者负责关闭，`drained` 在关闭完成后兑现。 */
-type SharedEngine = { engine: Engine; users: number; drained: Promise<void>; drain: () => void };
-let shared: SharedEngine | undefined; // 所有 helper 关闭后，最后一个使用者释放引擎。
-let gate: Promise<unknown> = Promise.resolve(); // 串行创建引擎。
-let cpu_only = false; // 本进程出现过 GPU 故障后不再使用 GPU。
-let shutdown_failure: unknown; // 无法确认资源退出时记录，之后的操作一律失败。
+// 无法确认旧资源已退出时，监管器必须结束本次运行，后续调用不能再创建资源。
+let shutdown_failure: unknown;
 
-/** 复用仍健康的共享引擎，否则等旧引擎关闭后按当前配置新建。 */
-function acquire(): Promise<Engine> {
-  const next = gate.then(async () => {
-    if (shutdown_failure) throw shutdown_failure;
-    if (shared && shared.users > 0 && !shared.engine.failed) {
-      shared.users++;
-      return shared.engine;
-    }
-    // 故障重跑同时等待其他操作的 helper，避免旧进程继续写文件。
-    if (shared) await shared.drained;
-    if (shutdown_failure) throw shutdown_failure;
-    const profile = cpu_only ? CPU_PROFILE : await inference_profile();
-    let drain!: () => void;
-    const drained = new Promise<void>((resolve) => {
-      drain = resolve;
-    });
-    shared = {
-      engine: new Engine(profile, worker_config(profile), runtime_file("media-worker.mjs")),
-      users: 1,
-      drained,
-      drain,
-    };
-    return shared.engine;
-  });
-  gate = next.catch(() => undefined); // 本次失败由等待者处理，创建队列仍须能继续排空。
-  return next;
-}
-
-/** 归还引擎。失败的引擎须等全部使用者归还并关闭后才返回，避免旧资源与重跑并存。 */
-async function release(engine: Engine): Promise<void> {
-  const owner = shared;
-  if (!owner || owner.engine !== engine) return engine.close();
-  owner.users--;
-  if (owner.users === 0) {
-    try {
-      await engine.close();
-    } catch (error) {
-      shutdown_failure = error;
-      cpu_only = true;
-      await forget_devices(undefined, error instanceof Error ? error.message : String(error));
-    } finally {
-      if (shared === owner) shared = undefined;
-      owner.drain();
-    }
-  } else if (!engine.failed) return;
-  await owner.drained;
-  if (shutdown_failure) throw shutdown_failure;
-}
-
-/** 在共享 Worker 上执行一次计算操作；GPU 故障时废弃本轮结果，以 CPU 重跑一次。 */
-export async function operate<T>(action: (engine: Engine) => Promise<T>): Promise<T> {
+/** 每次调用拥有自己的引擎。设备覆盖和故障不改变并行调用的配置。 */
+export async function operate<T>(
+  action: (engine: Engine) => Promise<T>,
+  task: "asr" | "det",
+  { device }: DeviceOptions = {},
+): Promise<MediaResult<T>> {
+  validate_device(device);
   let first: DeviceFailure | undefined;
+  const cache = await inference_cache();
+  let actual = device ?? cache?.device ?? "cpu";
+  const gpu_model = task === "asr" ? MEDIA_MODELS.asr_gpu : MEDIA_MODELS.det_gpu;
+  let reason: string | undefined;
+  if (actual === "gpu" && !model_ready(media_configuration().modelsDirectory, gpu_model)) {
+    if (device === "gpu")
+      throw new Error(
+        `GPU model missing; call media.setup(["${task === "asr" ? "speech" : "text"}"], { device: "gpu" }) first.`,
+      );
+    actual = "cpu";
+    reason = "GPU model is missing.";
+  }
   for (;;) {
-    const engine = await acquire();
+    if (shutdown_failure) throw shutdown_failure;
+    const engine = new Engine(
+      worker_config(actual === "gpu" ? "webgpu" : "cpu"),
+      runtime_file("media-worker.mjs"),
+    );
     try {
-      return await action(engine);
+      const result = await action(engine);
+      return {
+        result,
+        execution: {
+          requested: device ?? "auto",
+          actual,
+          ...(reason ? { fallback_reason: reason } : {}),
+        },
+      };
     } catch (error) {
       if (first)
         throw new Error(`CPU rerun failed after a GPU failure (${first.message}).`, {
           cause: error,
         });
-      if (!(error instanceof DeviceFailure)) throw error;
+      if (!(error instanceof DeviceFailure) || actual === "cpu") throw error;
       first = error;
-      cpu_only = true;
-      await forget_devices(error.task, error.message);
-      console.warn(`媒体推理的 GPU 配置失败，结束本轮计算并改用 CPU 重新执行：${error.message}`);
+      actual = "cpu";
+      reason = error.message;
+      console.warn(`媒体推理 GPU 失败，回收后以 CPU 重跑：${reason}`);
     } finally {
-      await release(engine);
+      await close_engine(engine);
     }
+    // 旧资源完全退出后才更新默认值。显式设备失败不影响下一次自动选择。
+    if (device === undefined && cache) await disable_gpu(cache, first!.message);
+  }
+}
+
+/** 退出失败使本次运行不可继续，保留故障供监管器收尾。 */
+async function close_engine(engine: Engine): Promise<void> {
+  try {
+    await engine.close();
+  } catch (error) {
+    shutdown_failure = error;
+    throw error;
   }
 }
 
@@ -204,11 +193,7 @@ export async function helper(
     try {
       for (const { header, payload } of reader.push(chunk)) {
         if ("error" in header) {
-          fail(
-            header.stage === "decode"
-              ? new DecodeFailure(String(header.error))
-              : new Error(String(header.error)),
-          );
+          fail(new Error(String(header.error)));
           continue;
         }
         if ("result" in header) {
@@ -278,9 +263,7 @@ export async function inference_cache(): Promise<InferenceCache | undefined> {
   const value = read_json(cache_path()) as InferenceCache | undefined;
   return value?.key === cache_key() &&
     value.expires > Date.now() &&
-    (value.asr === undefined || ["cpu", "webgpu"].includes(value.asr)) &&
-    (value.det === undefined || ["cpu", "webgpu_single", "webgpu_dual"].includes(value.det)) &&
-    Array.isArray(value.complete)
+    ["cpu", "gpu"].includes(value.device)
     ? value
     : undefined;
 }
@@ -291,20 +274,23 @@ function write_cache(cache: InferenceCache): void {
   fs.write_file_atomic(cache_path(), JSON.stringify(cache, null, 2));
 }
 
-/** 运行时设备错误只让对应任务改用 CPU，其它任务的选择保留。 */
-async function forget_devices(task: "asr" | "det" | undefined, reason: string): Promise<void> {
-  const cache = await inference_cache();
-  if (!cache) return;
-  const tasks = task ? [task] : (["asr", "det"] as const);
-  write_cache({
-    ...cache,
-    ...Object.fromEntries(tasks.map((name) => [name, "cpu"])),
-    reasons: { ...cache.reasons, ...Object.fromEntries(tasks.map((name) => [name, reason])) },
+/** 与 setup 共用准备锁，运行失败不能覆盖另一进程刚发布的新配置。 */
+async function disable_gpu(previous: InferenceCache, reason: string): Promise<void> {
+  const release = await lockfile.lock(path.join(media_configuration().cacheDirectory, "prepare"), {
+    realpath: false,
+    retries: MEDIA_PREPARE_LOCK_RETRY,
   });
+  try {
+    const current = await inference_cache();
+    if (current?.key === previous.key && current.expires === previous.expires)
+      write_cache({ ...current, device: "cpu", reason });
+  } finally {
+    await release();
+  }
 }
 
 /** 配置与路径在父进程解析，执行核心和校准子进程不访问共享环境绑定。 */
-function worker_config(profile: MediaProfile, probe?: "asr" | "det"): MediaWorkerConfig {
+function worker_config(device: MediaDevice): MediaWorkerConfig {
   const model = (key: keyof typeof MEDIA_MODELS, device: "cpu" | "webgpu", threads = 4) => ({
     file: model_file(MEDIA_MODELS[key]),
     device,
@@ -315,106 +301,45 @@ function worker_config(profile: MediaProfile, probe?: "asr" | "det"): MediaWorke
     tokens: model_file(MEDIA_MODELS.tokens),
     models: {
       vad: model("vad", "cpu", 1),
-      asr: model(profile.asr === "cpu" || probe === "asr" ? "asr_cpu" : "asr_gpu", profile.asr),
-      det: model(
-        profile.det === "cpu" || probe === "det" ? "det_cpu" : "det_gpu",
-        profile.det === "cpu" ? "cpu" : "webgpu",
-      ),
+      asr: model(device === "cpu" ? "asr_cpu" : "asr_gpu", device),
+      det: model(device === "cpu" ? "det_cpu" : "det_gpu", device),
     },
   };
 }
 
-/** 正式计算使用的配置：缓存失效或所选 GPU 权重缺失时使用 CPU 基线，不在计算中下载或校准。 */
-async function inference_profile(): Promise<MediaProfile> {
-  const cache = await inference_cache();
-  if (!cache) return CPU_PROFILE;
-  const { modelsDirectory: models } = media_configuration();
-  return {
-    asr: cache.asr === "webgpu" && model_ready(models, MEDIA_MODELS.asr_gpu) ? "webgpu" : "cpu",
-    det:
-      cache.det && cache.det !== "cpu" && model_ready(models, MEDIA_MODELS.det_gpu)
-        ? cache.det
-        : "cpu",
-  };
-}
-
-/** 在独立校准子进程中测量一个候选。探测只在父进程改用 CPU 权重，子进程照常测量。 */
-const measure = (profile: MediaProfile, task: "asr" | "det" | "mixed", probe = false) =>
-  run_calibration(runtime_file("media-calibrate.mjs"), {
-    profile,
-    config: worker_config(profile, probe && task !== "mixed" ? task : undefined),
-    worker: runtime_file("media-worker.mjs"),
-    task,
-  });
-
-/** GPU 探测也必须等到独立进程关闭，不将它当成性能结论。 */
-export async function probe_gpu(task: "asr" | "det"): Promise<void> {
-  await measure(
-    task === "asr" ? { asr: "webgpu", det: "cpu" } : { asr: "cpu", det: "webgpu_single" },
-    task,
-    true,
+/** 单一语音基准，CPU/GPU 各执行一次。调用方持有准备锁。 */
+export async function calibrate_devices(): Promise<void> {
+  const measure = (device: MediaDevice) =>
+    run_calibration(runtime_file("media-calibrate.mjs"), {
+      config: worker_config(device),
+      worker: runtime_file("media-worker.mjs"),
+    });
+  console.log("媒体检查：CPU 执行一次 20 秒语音输入，等待进程退出");
+  const cpu = await measure("cpu");
+  console.log(
+    `媒体检查 CPU：准备 ${cpu.prepare.toFixed(0)} ms，推理 ${cpu.inference.toFixed(0)} ms，关闭 ${cpu.close.toFixed(0)} ms`,
   );
-}
-
-/** 按任务复用测量；只有两种任务就绪且组合变化时才验证并发。调用方持有准备锁。 */
-export async function calibrate_devices(
-  tasks: readonly ("asr" | "det")[],
-  gpu: ReadonlySet<"asr" | "det">,
-  failures: Readonly<Record<string, string>>,
-): Promise<void> {
-  const previous = await inference_cache();
-  const calibration: MediaCalibration = previous?.calibration ?? { asr: {}, det: {} };
-  const reasons: Record<string, string> = { ...previous?.reasons };
-  for (const task of tasks) {
-    calibration[task] = {};
-    for (const key of Object.keys(reasons)) if (key.startsWith(`${task}:`)) delete reasons[key];
-    if (failures[task]) reasons[`${task}:preparation`] = failures[task]!;
-    const candidates =
-      task === "det"
-        ? ["cpu", ...(gpu.has(task) ? ["webgpu_single", "webgpu_dual"] : [])]
-        : ["cpu", ...(gpu.has(task) ? ["webgpu"] : [])];
-    for (let launch = 0; launch < CALIBRATION_LAUNCHES; launch++) {
-      for (const candidate of launch % 2 ? [...candidates].reverse() : candidates) {
-        if (reasons[`${task}:${candidate}`]) continue;
-        const profile: MediaProfile =
-          task === "det"
-            ? { asr: "cpu", det: candidate as MediaProfile["det"] }
-            : { asr: candidate as MediaProfile["asr"], det: "cpu" };
-        try {
-          (calibration[task][candidate] ??= []).push(await measure(profile, task));
-        } catch (error) {
-          if (candidate === "cpu" || error instanceof CalibrationCleanupFailure) throw error;
-          delete calibration[task][candidate];
-          reasons[`${task}:${candidate}`] = error instanceof Error ? error.message : String(error);
-        }
-      }
-    }
+  let gpu: MediaMeasurement | undefined;
+  let reason = "GPU 推理耗时未降低至少 30%，使用 CPU。";
+  try {
+    console.log("媒体检查：GPU 执行一次相同输入，等待进程退出");
+    gpu = await measure("webgpu");
+    console.log(
+      `媒体检查 GPU：准备 ${gpu.prepare.toFixed(0)} ms，推理 ${gpu.inference.toFixed(0)} ms，关闭 ${gpu.close.toFixed(0)} ms`,
+    );
+  } catch (error) {
+    if (error instanceof CalibrationCleanupFailure) throw error;
+    reason = error instanceof Error ? error.message : String(error);
   }
-  const ready = (["asr", "det"] as const).filter((task) => calibration[task].cpu);
-  let profile = select_profile(calibration, ready);
-  let mixed = previous?.mixed;
-  if (ready.length === 2 && (!mixed || JSON.stringify(mixed.profile) !== JSON.stringify(profile))) {
-    for (;;) {
-      try {
-        mixed = { profile, measurement: await measure(profile, "mixed") };
-        break;
-      } catch (error) {
-        if (error instanceof CalibrationCleanupFailure) throw error;
-        if (profile.asr === "cpu" && profile.det === "cpu") throw error;
-        reasons[`mixed:${profile.asr}:${profile.det}`] =
-          error instanceof Error ? error.message : String(error);
-        profile = profile.asr !== "cpu" ? { ...profile, asr: "cpu" } : CPU_PROFILE;
-      }
-    }
-  }
+  const device = select_device(cpu, gpu);
+  if (device === "gpu") reason = "GPU 推理耗时降低至少 30%。";
   write_cache({
-    ...Object.fromEntries(ready.map((task) => [task, profile[task]])),
     key: cache_key(),
     expires: Date.now() + CACHE_TTL_MS,
-    complete: ready.filter((task) => !reasons[`${task}:preparation`]),
-    reasons,
-    calibration,
-    ...(mixed ? { mixed } : {}),
+    device,
+    reason,
+    cpu,
+    ...(gpu ? { gpu } : {}),
   });
-  console.log(`媒体推理配置：${ready.map((task) => `${task} ${profile[task]}`).join("，")}`);
+  console.log(`媒体默认设备：${device}。${reason}`);
 }

@@ -235,14 +235,16 @@ async function serve(): Promise<void> {
       if (kind === "asr") {
         if (shape.length !== 3) throw new Error(`Unexpected ASR input: ${JSON.stringify(shape)}`);
         vocabulary ??= read_vocabulary(config.tokens);
-        const result = await recognize(
-          await session("asr"),
-          vocabulary,
-          input,
-          shape,
-          String(header.language),
-        );
-        return { id, header: result };
+        const model = await session("asr");
+        const start = performance.now();
+        const result = await recognize(model, vocabulary, input, shape, String(header.language));
+        return {
+          id,
+          header: {
+            ...result,
+            ...(header.measure === true ? { inference_ms: performance.now() - start } : {}),
+          },
+        };
       }
       if (shape.length !== 4)
         throw new Error(`Unexpected detection input: ${JSON.stringify(shape)}`);

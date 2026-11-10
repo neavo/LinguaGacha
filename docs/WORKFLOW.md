@@ -176,9 +176,9 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 媒体推理
 
-媒体路由和配置变化运行 `media/calibration.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `channel`、`speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`，它用模型替身验证部署后的流隔离与张量释放，不下载权重。
+媒体路由和配置变化运行 `media/calibration.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `preparation`、`channel`、`speech` 测试。校准入口和 Worker 变化分别运行集成测试 `media/calibrate.test.ts`、`media/worker.test.ts`。这些集成测试使用模型替身，不下载权重。
 
-真实媒体验收由 `media/index.test.ts` 显式启用。它使用真实工作区监管器准备独立共享环境，在部署目录执行 `fsmn_vad.test.py`，完成 `listen`，最后验证取消后重跑。素材含画面时，它追加准备检测用途，执行 `media.test.py` 并完成 `scan` 和 `refine`。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
+真实媒体验收由 `media/index.test.ts` 显式启用。它验证识别、画面处理、显式设备选择与取消后重跑。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
 
 ```powershell
 $env:LINGUAGACHA_MEDIA_SOURCE = '素材的绝对路径'
