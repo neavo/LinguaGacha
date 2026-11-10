@@ -15,7 +15,6 @@ import struct
 import subprocess
 import sys
 import threading
-import time
 import traceback
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -53,14 +52,6 @@ REFINE_FPS = 8  # 边界校准的检测帧率。
 REFINE_WINDOW = 1  # 边界前后各取的秒数，覆盖 1 fps 区间的起止误差。
 REFINE_IOU = 0.3  # 校准时块与条目 `box` 的交并比下限。高帧率下淡入淡出的块更小，阈值放宽。
 REFINE_WORKERS = 2  # 同时校准的边界数，解码与检测请求交替进行。
-
-# 硬解校准：软硬交替测量，每种用途最多 3 组，总预算 20 秒，未达改善门槛时用软件解码。
-CALIBRATE_PAIRS = 3
-CALIBRATE_BUDGET = 20
-CALIBRATE_GAIN = 0.15  # 与推理配置选择共用的改善门槛，防止测量噪声。
-CALIBRATE_DIFF = 6  # 软硬解同帧的平均绝对差上限（0–255），只容许色彩转换的微差。
-# 帧率与片段秒数。整片扫描取较长片段，使进程启动开销不掩盖稳定吞吐；校准沿用实际短窗口。
-CALIBRATE_MODES = {"scan": (1, 60), "refine": (REFINE_FPS, 2 * REFINE_WINDOW)}
 
 
 def initialize(command):
@@ -158,10 +149,6 @@ def ffmpeg_process(args):
     return subprocess.Popen(args, stdout=subprocess.PIPE)
 
 
-class DecodeError(RuntimeError):
-    """仅由 FFmpeg 解码退出产生，供宿主选择软解重跑。"""
-
-
 def finish(process, consumed):
     """消费者提前停止时结束 ffmpeg；完整读完时要求正常退出。"""
     try:
@@ -169,7 +156,7 @@ def finish(process, consumed):
             process.kill()
         code = process.wait()
         if consumed and code != 0:
-            raise DecodeError(f"ffmpeg 解码失败 ({code})")
+            raise RuntimeError(f"ffmpeg 解码失败 ({code})")
     finally:
         process.stdout.close()
 
@@ -280,16 +267,16 @@ def frame_size(width, height):
     return round(width * scale), round(height * scale)
 
 
-def decode(ffmpeg, source, size, fps, hwaccel=None, start=None, duration=None):
+def decode(ffmpeg, source, size, fps, start=None, duration=None):
     """按固定帧率逐帧产出 BGR 画面。`start_time=0` 使第 i 帧正好是第 i/fps 秒，与音频零点一致。
 
-    硬解时先在显存中按帧率取帧，再下载到内存缩放，避免回传被丢弃的帧。
+    FFmpeg 自动选择硬件解码，输出普通内存帧供缩放与检测消费。
     """
     width, height = size
-    args = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", *(hwaccel["input"] if hwaccel else [])]
+    args = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-hwaccel", "auto"]
     if start is not None:
         args += ["-ss", str(start), "-t", str(duration)]
-    filters = [f"fps={fps}:start_time=0", *([hwaccel["filter"]] if hwaccel else []), f"scale={width}:{height}"]
+    filters = [f"fps={fps}:start_time=0", f"scale={width}:{height}"]
     process = ffmpeg_process(
         args + ["-i", source, "-map", "0:V:0", "-an", "-sn", "-vf", ",".join(filters), "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
     )  # fmt: skip
@@ -420,7 +407,7 @@ def crop(frame, rect, file):
         raise OSError(f"无法写入裁图 {file}")  # OpenCV 写入失败也可能只返回 False。
 
 
-def scan(channel, ffmpeg, source, width, height, out, hwaccel):
+def scan(channel, ffmpeg, source, width, height, out):
     """1 fps 检测整片，按位置把块串成区间，每个区间保存文字框最大那一帧的裁图到 `out`。
 
     `start` 是首次检测到的秒数，`end` 是最后一次检测到的秒数加 1，`box` 是各帧块的归一化并集。
@@ -462,7 +449,7 @@ def scan(channel, ffmpeg, source, width, height, out, hwaccel):
             second, frame, future = inflight.popleft()
             track(second, frame, det_blocks(*future.result(), frame))
 
-    for second, frame in enumerate(decode(ffmpeg, source, size, 1, hwaccel)):
+    for second, frame in enumerate(decode(ffmpeg, source, size, 1)):
         settle(IN_FLIGHT - 1)
         inflight.append((second, frame, channel.request("det", det_input(frame))))
     settle(0)
@@ -480,7 +467,7 @@ def scan(channel, ffmpeg, source, width, height, out, hwaccel):
     ]  # fmt: skip
 
 
-def refine(channel, ffmpeg, source, width, height, duration, rows, hwaccel):
+def refine(channel, ffmpeg, source, width, height, duration, rows):
     """在每个边界前后各 REFINE_WINDOW 秒内按 REFINE_FPS 解码，二分查找文字出现或消失的那一帧。
 
     在无字的窗口端点与有字的条目中点之间二分，只需检测约 5 帧。
@@ -493,7 +480,7 @@ def refine(channel, ffmpeg, source, width, height, duration, rows, hwaccel):
         row, edge, rising = task  # rising 为真时找文字出现，否则找文字消失。
         box = [row["box"][0] * size[0], row["box"][1] * size[1], row["box"][2] * size[0], row["box"][3] * size[1]]
         begin, end = max(0.0, edge - REFINE_WINDOW), min(duration, edge + REFINE_WINDOW)
-        frames = list(decode(ffmpeg, source, size, REFINE_FPS, hwaccel, begin, end - begin))
+        frames = list(decode(ffmpeg, source, size, REFINE_FPS, begin, end - begin))
         if not frames:
             return None
 
@@ -524,55 +511,6 @@ def refine(channel, ffmpeg, source, width, height, duration, rows, hwaccel):
     with ThreadPoolExecutor(REFINE_WORKERS) as executor:
         bounds = list(executor.map(boundary, tasks))
     return [{"row": row["row"], "start": bounds[2 * i], "end": bounds[2 * i + 1]} for i, row in enumerate(rows)]
-
-
-def calibrate(channel, ffmpeg, source, width, height, duration, candidates):
-    """对整片扫描与短窗口校准分别实测软硬解，返回各用途选中的候选序号或 None。
-
-    每组在同一片段上交替运行软件与候选，计入进程启动、解码、缩放与管道读取。
-    帧数、尺寸不同或画面差异超出色彩微差时淘汰该候选。
-    """
-    size, began = frame_size(width, height), time.monotonic()
-    choice, timings = {}, {}
-    for mode, (fps, seconds) in CALIBRATE_MODES.items():
-        span = min(seconds, duration)
-        best = None
-        for index, hwaccel in enumerate(candidates):
-            soft, hard = [], []
-            for pair in range(CALIBRATE_PAIRS):
-                if time.monotonic() - began > CALIBRATE_BUDGET:
-                    break
-                start = max(0.0, (duration - span) * (pair + 1) / (CALIBRATE_PAIRS + 1))
-                try:
-                    measured = [measure(ffmpeg, source, size, fps, accel, start, span) for accel in (None, hwaccel)]
-                except RuntimeError as error:  # 候选不能打开当前流，属于正常淘汰。
-                    log(f"硬解候选 {index} 不可用：{error}")
-                    soft = []
-                    break
-                (soft_time, soft_frames), (hard_time, hard_frames) = measured
-                if len(soft_frames) != len(hard_frames) or any(
-                    a.shape != b.shape or np.abs(a.astype(np.int16) - b).mean() > CALIBRATE_DIFF
-                    for a, b in zip(soft_frames, hard_frames)
-                ):
-                    log(f"硬解候选 {index} 的画面与软件解码不一致")
-                    soft = []
-                    break
-                soft.append(soft_time)
-                hard.append(hard_time)
-            if soft:
-                timings[f"{mode}:{index}"] = {"software": soft, "hardware": hard}
-                gain = 1 - float(np.median(hard)) / float(np.median(soft))
-                if gain >= CALIBRATE_GAIN and (best is None or gain > best[1]):
-                    best = (index, gain)
-        choice[mode] = None if best is None else best[0]
-    return {"choice": choice, "timings": timings}
-
-
-def measure(ffmpeg, source, size, fps, hwaccel, start, duration):
-    """完整读取一个片段的耗时与画面。"""
-    began = time.monotonic()
-    frames = [frame.copy() for frame in decode(ffmpeg, source, size, fps, hwaccel, start, duration)]
-    return time.monotonic() - began, frames
 
 
 def sheet(channel, entries, out):
@@ -619,7 +557,7 @@ def sheet(channel, entries, out):
     return sheets
 
 
-COMMANDS = {"speech": speech, "scan": scan, "refine": refine, "calibrate": calibrate, "sheet": sheet}
+COMMANDS = {"speech": speech, "scan": scan, "refine": refine, "sheet": sheet}
 
 if __name__ == "__main__":
     channel = Channel()
@@ -630,7 +568,7 @@ if __name__ == "__main__":
         initialize(job["command"])
         result = COMMANDS[job["command"]](channel, **job["args"])
     except BaseException as error:
-        channel.write({"error": str(error), "stage": "decode" if isinstance(error, DecodeError) else "compute"})
+        channel.write({"error": str(error)})
         traceback.print_exc()
         sys.stderr.flush()
         os._exit(1)  # 读线程仍阻塞在 stdin 上，解释器无法正常收尾。

@@ -52,16 +52,28 @@ async function identify(file) {
 }
 
 /**
- * 检测整片文字区间，成功后再用新裁图替换 `text/`，不写 `media.json`，由调用者保存。
+ * 检测完成后替换裁图，由调用者发布清单；清单失败时恢复旧裁图。
  * 计算失败时保留原有裁图。
  */
-async function detect(directory) {
+async function detect(directory, options, commit) {
   const staging = path.join(directory, "text.staging");
-  const text = await sdk.scan(await locate(directory), { directory, out: staging });
+  const measured = await sdk.scan(await locate(directory), { out: staging, ...options });
   const crops = path.join(directory, "text");
-  await rm(crops, { recursive: true, force: true }); // 区间编号重排，旧裁图不能混用。
-  await rename(staging, crops);
-  return text;
+  const backup = path.join(directory, "text.previous");
+  // 清单发布失败时恢复旧裁图，避免原区间编号指向新图片。
+  await rm(backup, { recursive: true, force: true });
+  const hadCrops = await exists(crops);
+  if (hadCrops) await rename(crops, backup);
+  try {
+    await rename(staging, crops);
+    await commit({ text: measured.result });
+  } catch (error) {
+    await rm(crops, { recursive: true, force: true });
+    if (hadCrops) await rename(backup, crops);
+    throw error;
+  }
+  await rm(backup, { recursive: true, force: true });
+  return measured.execution;
 }
 
 /**
@@ -69,14 +81,16 @@ async function detect(directory) {
  * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成。
  * 检测模型随本机配置而定，区间编号和框只在本次结果内有效。
  */
-export async function scan(directory) {
+export async function scan(directory, { device } = {}) {
   directory = path.resolve(directory);
   const manifestFile = path.join(directory, "media.json");
   const manifest = await load(manifestFile);
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
-  manifest.text = await detect(directory);
-  await save(manifestFile, manifest);
-  return { text: manifest.text.length };
+  const execution = await detect(directory, { device }, async (fields) => {
+    await save(manifestFile, { ...manifest, ...fields });
+    Object.assign(manifest, fields);
+  });
+  return { text: manifest.text.length, execution };
 }
 
 /**
@@ -84,9 +98,13 @@ export async function scan(directory) {
  * 来源身份写入 `media.json` 的 `source`，之后按它找回原文件。
  * 音频识别与画面检测同时运行，各自完成后立即保存，中断后用相同参数续跑。
  */
-export async function prepare(source, directory, { track = 0, language } = {}) {
+export async function prepare(source, directory, { track = 0, language, device, rerun = [] } = {}) {
   source = path.resolve(source);
   directory = path.resolve(directory);
+  if (!Array.isArray(rerun) || rerun.some((step) => !["speech", "text"].includes(step)))
+    throw new Error("rerun 只接受 speech、text");
+  if (device !== undefined && !["cpu", "gpu"].includes(device))
+    throw new Error("device 只接受 cpu、gpu");
   const info = await sdk.inspect(source);
   if (!Number.isInteger(track) || track < 0 || (info.audio.length && track >= info.audio.length))
     throw new Error("音轨不存在");
@@ -113,21 +131,37 @@ export async function prepare(source, directory, { track = 0, language } = {}) {
     manifest = { source: identity, duration: info.duration, video: info.video };
     await save(manifestFile, manifest);
   }
-  // 两条支路各写各的字段，保存排队进行，避免同时写同一个文件。
+  // 分支只在结果完整后发布，保存排队避免同时覆盖清单。
   let saving = Promise.resolve();
   const commit = (fields) =>
-    (saving = saving.then(() => save(manifestFile, Object.assign(manifest, fields))));
+    (saving = saving.then(async () => {
+      await save(manifestFile, { ...manifest, ...fields });
+      Object.assign(manifest, fields);
+    }));
+  const execution = {};
+  const steps = { speech: "reused", text: "reused" };
   const results = await Promise.allSettled([
-    "asr" in manifest
+    "asr" in manifest && !rerun.includes("speech")
       ? null
       : info.audio.length
-        ? sdk.listen(source, { track, language }).then(commit)
-        : commit({ speech: null, asr: null }),
-    "text" in manifest
+        ? sdk.listen(source, { track, language, device }).then(async (measured) => {
+            await commit(measured.result);
+            execution.speech = measured.execution;
+            steps.speech = rerun.includes("speech") ? "rerun" : "executed";
+          })
+        : commit({ speech: null, asr: null }).then(() => {
+            steps.speech = "skipped";
+          }),
+    "text" in manifest && !rerun.includes("text")
       ? null
       : info.video
-        ? detect(directory).then((text) => commit({ text }))
-        : commit({ text: null }),
+        ? detect(directory, { device }, commit).then((result) => {
+            execution.text = result;
+            steps.text = rerun.includes("text") ? "rerun" : "executed";
+          })
+        : commit({ text: null }).then(() => {
+            steps.text = "skipped";
+          }),
   ]);
   // 一条支路失败后仍等另一条保存完毕，续跑才能安全复用同一目录。
   for (const result of results) if (result.status === "rejected") throw result.reason;
@@ -144,6 +178,8 @@ export async function prepare(source, directory, { track = 0, language } = {}) {
   validate_items(items, manifest.duration);
   if (!hasItems) await save(itemsFile, items);
   return {
+    steps,
+    execution,
     items: items.length,
     speech: manifest.speech?.length ?? null,
     asr: manifest.asr?.length ?? null,
@@ -174,7 +210,7 @@ export async function sheets(directory, { ids } = {}) {
  * 在原文件上以高帧率校准带 `box` 的 `screen` 行的起止时间，直接写回 `items.json`。
  * 边界不在原时间前后 1 秒内时保持原值，这些行在 `unresolved` 中返回。
  */
-export async function refine(directory, rows) {
+export async function refine(directory, rows, { device } = {}) {
   directory = path.resolve(directory);
   const manifest = await load(path.join(directory, "media.json"));
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
@@ -187,8 +223,8 @@ export async function refine(directory, rows) {
       !items[row].box
     )
       throw new Error(`第 ${row} 行不是带 box 的 screen`);
-  const bounds = await sdk.refine(await locate(directory), {
-    directory,
+  const { result: bounds, execution } = await sdk.refine(await locate(directory), {
+    device,
     rows: rows.map((row) => ({ ...items[row], row })),
   });
   const unresolved = [];
@@ -199,7 +235,7 @@ export async function refine(directory, rows) {
     else unresolved.push(row);
   }
   await save(itemsFile, items);
-  return { refined: rows.length - unresolved.length, unresolved };
+  return { refined: rows.length - unresolved.length, unresolved, execution };
 }
 
 /**

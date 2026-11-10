@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { DeviceFailure, Engine } from "./inference-engine";
-import type { MediaProfile, MediaTask, MediaWorkerConfig } from "./worker-protocol";
+import type { MediaTask, MediaWorkerConfig } from "./worker-protocol";
 
 let directory: string;
 const engines: Engine[] = [];
@@ -14,7 +14,8 @@ afterEach(async () => {
   await Promise.allSettled(engines.splice(0).map((engine) => engine.close()));
   await rm(directory, { recursive: true, force: true });
 });
-async function create(profile: MediaProfile): Promise<Engine> {
+/** 使用回显 Worker 观察实际路由和故障归属。 */
+async function create(): Promise<Engine> {
   const file = path.join(directory, "worker.mjs");
   await writeFile(
     file,
@@ -31,9 +32,13 @@ parentPort.on('message', (m) => {
   const config: MediaWorkerConfig = {
     ort: "unused",
     tokens: "unused",
-    models: { vad: model, asr: model, det: model },
+    models: {
+      vad: model,
+      asr: { ...model, device: "webgpu" },
+      det: { ...model, device: "webgpu" },
+    },
   };
-  const engine = new Engine(profile, config, file);
+  const engine = new Engine(config, file);
   engines.push(engine);
   return engine;
 }
@@ -41,7 +46,7 @@ const request = (engine: Engine, kind: MediaTask, fail = false) =>
   engine.request(0, kind, { fail }, new Uint8Array(0));
 
 it("round-robins detection independently of interleaved audio requests", async () => {
-  const engine = await create({ asr: "webgpu", det: "webgpu_dual" });
+  const engine = await create();
   const replies = await Promise.all(
     ["det", "vad", "det", "asr", "det", "asr", "det"].map((kind) =>
       request(engine, kind as MediaTask),
@@ -55,12 +60,11 @@ it("round-robins detection independently of interleaved audio requests", async (
   await engine.close();
 });
 
-it("attributes failures to the dispatched task and keeps VAD failures on CPU", async () => {
-  const engine = await create({ asr: "webgpu", det: "webgpu_dual" });
+it("marks GPU failures for rerun and keeps VAD errors on CPU", async () => {
+  const engine = await create();
   await expect(request(engine, "vad", true)).rejects.not.toBeInstanceOf(DeviceFailure);
   const error = await request(engine, "det", true).catch((error: unknown) => error);
   expect(error).toBeInstanceOf(DeviceFailure);
-  expect((error as DeviceFailure).task).toBe("det");
   await expect(request(engine, "asr")).rejects.toBe(error);
   await engine.close();
 });

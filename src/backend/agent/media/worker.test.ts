@@ -41,7 +41,6 @@ export const InferenceSession={ create:async()=>({
     models: { vad: model, asr: model, det: model },
   };
   const engine = new Engine(
-    { asr: "cpu", det: "cpu" },
     config,
     path.join(inject("workspaceRuntimeDirectory"), "runtime/media-worker.mjs"),
   );
