@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { parseSync, Visitor } from "oxc-parser";
 
 /** 每次检查独占源码快照，所有规则共享按需读取的文本、AST 和导入列表。 */
-export function create_source_reader(read = (file_path) => readFileSync(file_path, "utf8")) {
+export function create_source_reader() {
   const sources = new Map();
 
   /** 首次访问固定文本快照，后续解析与导入提取共用同一记录。 */
   function read_source(file_path) {
     let source = sources.get(file_path);
     if (source === undefined) {
-      source = { content: read(file_path), ast: undefined, imports: undefined };
+      source = { content: readFileSync(file_path, "utf8"), ast: undefined, imports: undefined };
       sources.set(file_path, source);
     }
     return source;

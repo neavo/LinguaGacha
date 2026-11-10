@@ -3,6 +3,7 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Arch } from "builder-util";
 import { deploy_uv } from "./uv.mjs";
+import { deploy_aria2 } from "./aria2.mjs";
 
 const GO_ARCH = { x64: "amd64", arm64: "arm64" };
 const GO_OS = { win32: "windows", darwin: "darwin", linux: "linux" };
@@ -21,8 +22,6 @@ export async function deploy_packaged_tools({
   workspaceDirectory,
   platform,
   arch,
-  run = execa,
-  download,
 }) {
   if (platform === "win32") {
     for (const name of ["cli", "berserker"]) {
@@ -31,40 +30,31 @@ export async function deploy_packaged_tools({
         name,
         platform,
         arch,
-        run,
         binary: path.join(appDirectory, `${name}.exe`),
       });
     }
   }
-  await deploy_workspace_tools({ root, workspaceDirectory, platform, arch, run, download });
+  await deploy_workspace_tools({ root, workspaceDirectory, platform, arch });
 }
 
 /** 开发与测试补齐宿主工具，发行调用方显式提供目标平台与架构。 */
-export async function deploy_workspace_tools({
-  root,
-  workspaceDirectory,
-  platform,
-  arch,
-  run = execa,
-  download,
-}) {
+export async function deploy_workspace_tools({ root, workspaceDirectory, platform, arch }) {
   const directory = path.join(workspaceDirectory, "bin", `${platform}-${arch}`);
   await build_native_tool({
     root,
     name: "supervisor",
     platform,
     arch,
-    run,
     binary: path.join(directory, platform === "win32" ? "supervisor.exe" : "supervisor"),
   });
-  await deploy_uv({ root, workspaceDirectory, platform, arch, download });
+  await deploy_uv({ root, workspaceDirectory, platform, arch });
+  await deploy_aria2({ root, workspaceDirectory, platform, arch });
   if (platform === "win32") {
     await build_native_tool({
       root,
       name: "node",
       platform,
       arch,
-      run,
       binary: path.join(directory, "node.exe"),
     });
     for (const name of ["npm", "npx"])
@@ -88,14 +78,14 @@ export async function deploy_workspace_tools({
 }
 
 /** 直接构建到调用方的部署目录，避免开发与发行共用可写中转产物。 */
-async function build_native_tool({ root, name, platform, arch, run, binary }) {
+async function build_native_tool({ root, name, platform, arch, binary }) {
   if (!GO_OS[platform] || !GO_ARCH[arch])
     throw new Error(`Unsupported native target: ${platform}-${arch}`);
   const cwd = path.join(root, "buildtools/builder", name);
   await mkdir(path.dirname(binary), { recursive: true });
   try {
     // 测试固定使用宿主平台与架构，交叉构建只影响最终可执行文件。
-    await run("go", ["test", "./..."], {
+    await execa("go", ["test", "./..."], {
       cwd,
       env: {
         ...process.env,
@@ -105,7 +95,7 @@ async function build_native_tool({ root, name, platform, arch, run, binary }) {
       },
       stdio: "inherit",
     });
-    await run(
+    await execa(
       "go",
       [
         "build",

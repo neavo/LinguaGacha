@@ -329,29 +329,31 @@ describe("ModelService 配置管理", () => {
     }
   });
 
-  it("批量翻译偏好独立保存，删除模型恢复跟随", async () => {
-    const { service, app_setting_service } = await create_model_service([
-      create_model({ id: "a", type: "CUSTOM_OPENAI" }),
-      create_model({ id: "b", type: "CUSTOM_OPENAI" }),
-    ]);
-    const original = service.get_selection_snapshot().model_selection;
-    expect(original.agent_batch_translation).toBeNull();
-    expect(() =>
-      service.select_model({ target: "agent_batch_translation", model_id: "missing" }),
-    ).toThrow(expect.objectContaining({ code: "model.not_found" }));
-    const selected = service.select_model({ target: "agent_batch_translation", model_id: "b" });
-    expect(selected.model_selection).toEqual({ ...original, agent_batch_translation: "b" });
-    expect(app_setting_service.read_setting()["model_selection"]).toEqual(selected.model_selection);
-    expect(
-      service.select_model({ target: "agent_batch_translation", model_id: null }).model_selection
-        .agent_batch_translation,
-    ).toBeNull();
-    service.select_model({ target: "agent_batch_translation", model_id: "b" });
-    service.delete_model({ model_id: "b" });
-    expect(service.get_selection_snapshot().model_selection.agent_batch_translation).toBeNull();
-  });
+  it.each(["agent_batch_translation", "agent_media"] as const)(
+    "%s 独立保存，删除模型恢复跟随",
+    async (target) => {
+      const { service, app_setting_service } = await create_model_service([
+        create_model({ id: "a", type: "CUSTOM_OPENAI" }),
+        create_model({ id: "b", type: "CUSTOM_OPENAI" }),
+      ]);
+      const original = service.get_selection_snapshot().model_selection;
+      expect(original[target]).toBeNull();
+      expect(() => service.select_model({ target, model_id: "missing" })).toThrow(
+        expect.objectContaining({ code: "model.not_found" }),
+      );
+      const selected = service.select_model({ target, model_id: "b" });
+      expect(selected.model_selection).toEqual({ ...original, [target]: "b" });
+      expect(app_setting_service.read_setting()["model_selection"]).toEqual(
+        selected.model_selection,
+      );
+      expect(service.select_model({ target, model_id: null }).model_selection[target]).toBeNull();
+      service.select_model({ target, model_id: "b" });
+      service.delete_model({ model_id: "b" });
+      expect(service.get_selection_snapshot().model_selection[target]).toBeNull();
+    },
+  );
 
-  it.each(["translation", "agent_batch_translation"])(
+  it.each(["translation", "agent_batch_translation", "agent_media"])(
     "%s 组合选择和模型全局等级保存一次",
     async (target) => {
       const { service, app_setting_service } = await create_model_service([
@@ -394,6 +396,7 @@ describe("ModelService 配置管理", () => {
     { target: "translation", model_id: null },
     { target: "agent", model_id: "a", thinking_level: "HIGH" },
     { target: "agent_batch_translation", model_id: null, thinking_level: "HIGH" },
+    { target: "agent_media", model_id: null, thinking_level: "HIGH" },
     { target: "translation", model_id: "a", thinking_level: "UNKNOWN" },
     { target: "translation", model_id: "a", thinking_level: "MAX" },
   ])("非法组合在保存前拒绝：%j", async (request) => {
@@ -866,6 +869,7 @@ describe("ModelService 配置管理", () => {
       translation: selection.models[0]!.id,
       agent: selection.models[0]!.id,
       agent_batch_translation: null,
+      agent_media: null,
     });
     expect(
       read_config_model_records(app_setting_service.read_setting()).every(

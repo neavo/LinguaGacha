@@ -54,6 +54,7 @@ function create_project_snapshot(overrides: Partial<ProjectSnapshot> = {}): Proj
     path: "E:/demo/sample.lg",
     loaded: true,
     languages: null,
+    file_count: 0,
     ...overrides,
   };
 }

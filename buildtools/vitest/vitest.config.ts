@@ -4,6 +4,10 @@ import { frontend_resolve_alias } from "../vite/project-paths.js";
 
 // 这些测试消费完整部署资源，统一构建一次后仍按文件并发执行。
 const INTEGRATION_TESTS = [
+  "src/backend/agent/media/index.test.ts",
+  "src/backend/agent/media/visualize.test.ts",
+  "src/backend/agent/media/models.test.ts",
+  "src/backend/agent/media/worker.test.ts",
   "src/backend/agent/npm/index.test.ts",
   "src/backend/agent/workspace/runtime/bootstrap.test.ts",
   "src/backend/file/pdf/pdf-worker.test.ts",
@@ -30,7 +34,7 @@ export default defineConfig({
           name: "node",
           environment: "node",
           globalSetup: ["./buildtools/vitest/global-setup.mjs"],
-          include: ["src/**/*.test.{ts,tsx}", "buildtools/**/*.test.mjs"],
+          include: ["src/**/*.test.{ts,tsx}"],
           exclude: [
             "src/frontend/**/*.test.{ts,tsx}",
             "src/gui/preload/**/*.test.{ts,tsx}",

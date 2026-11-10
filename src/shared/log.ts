@@ -40,19 +40,23 @@ export type LogTranslationPair = {
   actor_dst?: string | null; // 字段存在表示角色模式，null 表示该行没有译名
 };
 
+/** 两类结果共用摘要、段落和处理时间，身份及翻译对照由各自业务提供。 */
+export type LogResultContent = {
+  summary: string[];
+  sections: LogTextSection[];
+  started_at: string;
+  ended_at: string;
+} & (
+  | { kind: "translation_result"; pairs: LogTranslationPair[] }
+  | { kind: "request_result"; run_id: string; request_id: string }
+);
+
 /** 日志正文的跨进程判别联合；文件保存完整结构，控制台和列表消费纯文本投影。 */
 export type LogContent =
   | string
   | { kind: "text"; text: string } // 已组装的可读正文，异常详情独立保存与展示。
   | (JsonRecord & { kind: "agent" })
-  | {
-      kind: "translation_result";
-      summary: string[]; // 统计、状态和重试摘要
-      sections: LogTextSection[]; // 模型响应过程
-      pairs: LogTranslationPair[]; // 按输入顺序排列的翻译对照
-      started_at: string; // worker 开始模型请求的时间
-      ended_at: string; // worker 完成响应处理的时间
-    };
+  | LogResultContent;
 
 /** 文件与详情共用的日志事实，查询身份和输出显隐由各自边界补齐。 */
 export interface LogRecord {
@@ -134,26 +138,29 @@ export function read_log_content(value: unknown): LogContent | null {
     case "agent":
       // Agent 正文只按 JSON 展示；事件字段由后端生产者约束，不在读取端重复定义。
       return structuredClone(content) as JsonRecord & { kind: "agent" };
-    case "translation_result": {
+    case "translation_result":
+    case "request_result": {
       const summary = read_string_array(content["summary"]);
       const sections = read_text_sections(content["sections"]);
-      const pairs = read_translation_pairs(content["pairs"]);
       const started_at = content["started_at"];
       const ended_at = content["ended_at"];
-      return summary === null ||
+      if (
+        summary === null ||
         sections === null ||
-        pairs === null ||
         typeof started_at !== "string" ||
         typeof ended_at !== "string"
-        ? null
-        : {
-            kind: "translation_result",
-            summary,
-            sections,
-            pairs,
-            started_at,
-            ended_at,
-          };
+      )
+        return null;
+      const common = { summary, sections, started_at, ended_at };
+      if (content["kind"] === "request_result") {
+        const run_id = content["run_id"];
+        const request_id = content["request_id"];
+        return typeof run_id === "string" && typeof request_id === "string"
+          ? { kind: "request_result", ...common, run_id, request_id }
+          : null;
+      }
+      const pairs = read_translation_pairs(content["pairs"]);
+      return pairs === null ? null : { kind: "translation_result", ...common, pairs };
     }
 
     default:
@@ -173,7 +180,7 @@ export function format_log_content_text(content: LogContent): string {
     ...content.summary,
     ...content.sections.map((section) => `${section.title}\n${section.text}`),
   ];
-  {
+  if (content.kind === "translation_result") {
     const pair_lines: string[] = [];
     content.pairs.forEach((pair, index) => {
       pair_lines.push(`[${String(index + 1)}]`);

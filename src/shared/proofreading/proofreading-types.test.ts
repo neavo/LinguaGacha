@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   type ProofreadingFilterOptions,
-  build_proofreading_warning_summary,
   clone_proofreading_filter_options,
   resolve_proofreading_outcomes,
   resolve_proofreading_status_sort_rank,
@@ -44,43 +43,5 @@ describe("proofreading types", () => {
       }),
     ).toEqual(["FOREIGN_CHAR_RESIDUE", "GLOSSARY"]);
     expect(resolve_proofreading_outcomes({ status: "NONE", warnings: [] })).toEqual(["NONE"]);
-  });
-
-  it("按固定类型顺序汇总成功译文的校对警告", () => {
-    expect(
-      build_proofreading_warning_summary([
-        {
-          status: "PROCESSED",
-          warnings: [
-            { code: "GLOSSARY", target_field: "dst" },
-            { code: "FOREIGN_CHAR_RESIDUE", target_field: "dst", fragments: [] },
-          ],
-        },
-        {
-          status: "PROCESSED",
-          warnings: [
-            { code: "GLOSSARY", target_field: "dst" },
-            { code: "GLOSSARY", target_field: "name_dst" },
-          ],
-        },
-        {
-          status: "NONE",
-          warnings: [
-            {
-              code: "TEXT_PRESERVE",
-              target_field: "dst",
-              source_fragments: [],
-              translation_fragments: [],
-            },
-          ],
-        },
-      ]),
-    ).toEqual({
-      total_count: 3,
-      entries: [
-        { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
-        { code: "GLOSSARY", count: 2 },
-      ],
-    });
   });
 });

@@ -6,10 +6,11 @@ export const ko_kr_batch_translation = {
     tooltip: "원문을 대상 언어로 번역합니다",
   },
   summary: {
+    done: "완료",
     empty: "작업 없음",
     stopping: "중지 중",
     detail_tooltip: "클릭하여 상세 정보 보기",
-    running: "번역 중",
+    running: "처리 중",
   },
   detail: {
     provider: "접속 지점",
@@ -38,7 +39,7 @@ export const ko_kr_batch_translation = {
   },
   confirm: {
     reset_all_description: "프로젝트 전체의 번역 진행 상황을 초기화할까요 …?",
-    stop_description: "현재 번역 작업을 중지할까요 …?",
+    stop_description: "현재 작업을 중지하시겠습니까 …?",
   },
   action: { stop: "중지" },
 } satisfies LocaleMessageSchema<typeof zh_cn_batch_translation>;

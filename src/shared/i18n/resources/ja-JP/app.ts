@@ -41,6 +41,7 @@ export const ja_jp_app = {
     },
   },
   action: {
+    next: "次へ",
     move_to_top: "先頭へ移動",
     move_to_bottom: "末尾へ移動",
     add: "追加",
@@ -196,26 +197,27 @@ export const ja_jp_app = {
     update_available_tooltip: "更新の確認画面を開く",
   },
   agent_input: {
-    steps_intro: "以下の手順で実行してください：",
+    steps_intro: "次の手順を順番に実行してください：",
+    steps_intro_after_instruction: "その後、次の手順を順番に実行してください：",
     path_placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
     steps: {
       glossary: "用語を抽出",
       translate: "全文を翻訳",
       review: "訳文を校正",
-      generate: "すべての訳文を生成",
     },
   },
   translation_generation: {
-    agent_request: "すべての訳文を生成して",
+    agent_request: "すべての訳文を生成し、無関係な操作は行わないでください",
     action: "訳文を生成",
     confirmation: {
       generic_description:
-        "このプロジェクトには汎用データパッケージが含まれます。すべての訳文を生成するには AGENT を使用してください。直接生成すると、これらのパッケージはスキップされます。",
+        "このプロジェクトには音声・動画または汎用データパッケージが含まれます。直接生成すると、これらのファイルはスキップされます。AGENT で処理してください …",
       description: "現在利用できる訳文を生成しますか …?",
       checking: "プロジェクトのファイルと校正警告を確認中 …",
-      check_failed: "ファイルまたは校正警告の確認に失敗しました。現在の訳文は生成できます …",
+      check_failed:
+        "ファイルまたは校正警告の確認に失敗しました。再確認するか、AGENT に処理を任せてください …",
       warning_description:
-        "校正の警告が {COUNT} 件検出されました。警告は必ずしも誤りを示すものではありませんが、先に AGENT で少なくとも 1 回は自動校正することをおすすめします。このまま訳文を生成しますか …?",
+        "校正の警告が {COUNT} 件検出されました。警告は必ずしも誤りを示すものではありませんが、先に AGENT で少なくとも 1 回は自動校正することをおすすめします。このまま続けますか …?",
       retry_check: "再確認",
       generate_directly: "直接生成",
     },
@@ -264,32 +266,36 @@ export const ja_jp_app = {
     },
   },
   log: {
+    task_started:
+      "タスク開始：{RUN} · {NAME} / {MODEL} · {FORMAT} · {TOTAL} 件 · 並列数 {CONCURRENCY} · RPM {RPM}",
+    task_finished:
+      "タスク終了：{RUN} · {STATUS} · 成功 {SUCCEEDED} · 失敗 {FAILED} · 未完了 {UNFINISHED} · 停止元 {STOP}\n{PATH}",
+    publish_failed: "結果の公開に失敗：{ERROR}",
+    usage_incomplete: "使用量は不完全、不足分は不明",
     api_test_fail: "API テストに失敗しました …",
     api_test_key: "テスト中のキー：",
-    api_test_messages: "タスクのプロンプト：",
+    request_messages: "タスクのプロンプト：",
     api_test_result: "API を {COUNT} 件テストしました。成功 {SUCCESS} 件、失敗 {FAILURE} 件 …",
     api_test_result_failure: "失敗したキー：",
-    api_test_response_result: "モデルの返信：",
+    model_response: "モデルの返信：",
     api_test_timeout: "リクエストがタイムアウトしました（{SECONDS} 秒）",
-    api_test_token_info: "所要時間 {TIME} 秒、入力 {PT} Tokens、思考 {RT} Tokens、出力 {CT} Tokens",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
-    engine_api_model: "API モデル",
-    engine_api_name: "API 名",
-    engine_api_url: "API アドレス",
-    engine_task_done: "タスクが完了しました …",
-    engine_task_fail:
+    model_id: "API モデル",
+    model_name: "API 名",
+    api_url: "API アドレス",
+    task_done: "タスクが完了しました …",
+    task_failed:
       "タスクの一部が完了していません。未処理のデータがあるため、処理結果を確認してください …",
-    engine_task_rule_analysis: "ルール分析：",
-    engine_task_thinking_process: "思考過程：",
-    engine_task_stop: "タスクを停止しました …",
-    engine_task_success:
-      "所要時間 {TIME} 秒、テキスト {LINES} 行、入力 {PT} Tokens、思考 {RT} Tokens、出力 {CT} Tokens",
+    rule_analysis: "ルール分析：",
+    thinking_process: "思考過程：",
+    task_stopped: "タスクを停止しました …",
+    task_stats:
+      "所要時間 {TIME} 秒、処理件数 {COUNT} 件、入力 {PT} Tokens、思考 {RT} Tokens、出力 {CT} Tokens",
     model_response_invalid: "モデルから返されたデータが無効です …",
     request_failed: "リクエストに失敗しました：{ERROR} …",
     request_timeout: "ネットワークリクエストがタイムアウトしました",
     system_closed_dropped: "ログシステムは終了しています。新しいログを破棄しました：{MESSAGE}",
-    translation_task_result: "翻訳結果：",
     translation_response_partially_invalid: "一部の訳文が検証に失敗しました …",
   },
   sort: { ascending: "昇順", descending: "降順", clear: "並べ替えを解除" },

@@ -1,3 +1,5 @@
+import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
+import { RequestRatePool } from "../batch-task/request-rate";
 import { create_item } from "../../domain/item";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { Model } from "../../domain/model";
@@ -13,7 +15,7 @@ import { TranslationPlanner } from "./planning/translation-planner";
 import { PlanningWorkerPool } from "./planning/planning-worker-pool";
 import { describe, expect, it, vi } from "vitest";
 import { BatchTranslationService } from "./batch-translation-service";
-import { BatchTranslationRuntime } from "./batch-translation-runtime";
+import { BatchTranslationState } from "./batch-translation-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
@@ -25,12 +27,12 @@ function setup(loaded = true, line = 0) {
   const session = new ProjectSessionState();
   if (loaded) session.mark_loaded("E:/Project/test.lg");
   const gate = new RuntimeOperationGate();
-  const runtime = new BatchTranslationRuntime(
+  const runtime = new BatchTranslationState(
     session,
     {
       get_all_meta: () => ({ translation_extras: { processed_line: line } }),
     } as unknown as ProjectDatabase,
-    gate,
+    new BatchTaskRuntime(session, gate),
   );
   const run = vi.fn<BatchTranslationRunner["run"]>(async () => ({
     status: "done",
@@ -241,7 +243,8 @@ it.each([
   const session = new ProjectSessionState();
   session.mark_loaded(project_path);
   const gate = new RuntimeOperationGate();
-  const runtime = new BatchTranslationRuntime(session, database, gate);
+  const tasks = new BatchTaskRuntime(session, gate);
+  const runtime = new BatchTranslationState(session, database, tasks);
   const settings = { read_setting: () => ({}) };
   const cache = new CacheManager({
     database,
@@ -264,6 +267,7 @@ it.each([
     }),
   );
   const runner = new BatchTranslationRunner({
+    ratePool: new RequestRatePool(),
     builtinRoot: path.join(process.cwd(), "builtin"),
     taskStore: new BatchTranslationProjectStore(session, cache, writes),
     taskRuntime: runtime,
@@ -282,7 +286,8 @@ it.each([
   try {
     await cache.warmProject(project_path);
     const frames: import("../../domain/batch-translation").BatchTranslationSnapshot[] = [];
-    runtime.subscribe((snapshot) => {
+    tasks.subscribe(async () => {
+      const snapshot = await runtime.build_snapshot();
       frames.push(snapshot);
     });
     const result = await service.run_under_agent(
@@ -439,7 +444,11 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     workerClient: { run: async () => ({}) } as never,
   });
   const writes = new ProjectWriteStore(database, vi.fn(), () => null);
-  const runtime = new BatchTranslationRuntime(session, database, new RuntimeOperationGate());
+  const runtime = new BatchTranslationState(
+    session,
+    database,
+    new BatchTaskRuntime(session, new RuntimeOperationGate()),
+  );
   const planning = new PlanningWorkerPool({ execution: { kind: "in_process" } });
   try {
     await cache.warmProject(project_path);
@@ -455,6 +464,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     );
     expect(cache.prompts.readBlock()).not.toHaveProperty("analysis");
     const runner = new BatchTranslationRunner({
+      ratePool: new RequestRatePool(),
       llmClient: {
         request: async () => {
           throw new Error("Unexpected LLM request");

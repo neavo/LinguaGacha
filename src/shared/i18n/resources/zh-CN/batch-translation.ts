@@ -4,10 +4,11 @@ export const zh_cn_batch_translation = {
     tooltip: "将原文翻译为目标语言",
   },
   summary: {
+    done: "已结束",
     empty: "无任务",
     stopping: "停止中",
     detail_tooltip: "点击查看详情",
-    running: "翻译中",
+    running: "处理中",
   },
   detail: {
     provider: "接入点",
@@ -36,7 +37,7 @@ export const zh_cn_batch_translation = {
   },
   confirm: {
     reset_all_description: "是否确认重置整个工程的翻译进度 …?",
-    stop_description: "是否确认停止当前翻译任务 …?",
+    stop_description: "是否确认停止当前任务 …?",
   },
   action: { stop: "停止" },
 } as const;

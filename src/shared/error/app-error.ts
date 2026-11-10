@@ -29,6 +29,11 @@ export const APP_ERROR_DEFINITIONS = {
     severity: "expected",
   },
   "project.not_loaded": { message: "No project is loaded.", status: 409, severity: "expected" },
+  "project.no_files": {
+    message: "The project contains no files. Add source files before generating translations.",
+    status: 409,
+    severity: "expected",
+  },
   "project.newer_app_version": {
     message: "The project targets a newer application version. Confirmation is required.",
     status: 409,
@@ -97,6 +102,12 @@ export const APP_ERROR_DEFINITIONS = {
   "model.not_found": {
     message: "The model configuration does not exist.",
     status: 404,
+    severity: "expected",
+  },
+  "model.responses_incompatible": {
+    message:
+      "This request requires an API Key OpenAIResponses model. For media recognition, select a supported model in Submodels.",
+    status: 409,
     severity: "expected",
   },
   "model.provider_failed": {

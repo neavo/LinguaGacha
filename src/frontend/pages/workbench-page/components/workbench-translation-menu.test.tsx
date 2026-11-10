@@ -69,7 +69,12 @@ const shared_props = {
   busy: false,
   model_selection: {
     snapshot: {
-      model_selection: { translation: "", agent: "", agent_batch_translation: null },
+      model_selection: {
+        translation: "",
+        agent: "",
+        agent_batch_translation: null,
+        agent_media: null,
+      },
       models: [],
     },
     loading: false,

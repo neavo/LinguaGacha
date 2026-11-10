@@ -62,6 +62,7 @@ const POST_PATHS = new Set([
   "/api/session/project/close",
   "/api/session/project/preview",
   "/api/session/source-files/summary",
+  "/api/session/project/default-name",
   "/api/session/project/open",
   "/api/session/project/create",
   "/api/workbench/snapshot",
@@ -120,8 +121,8 @@ const POST_PATHS = new Set([
   "/api/models/list-available",
   "/api/models/test",
   "/api/batch-translation/start",
-  "/api/batch-translation/stop",
-  "/api/batch-translation/snapshot",
+  "/api/batch-task/stop",
+  "/api/batch-task/snapshot",
 ]);
 
 describe("register_api_routes", () => {
@@ -238,7 +239,7 @@ describe("register_api_routes", () => {
     });
   });
 
-  it("source-files 摘要路由把显式路径原样转交生命周期服务", () => {
+  it("来源摘要与默认名称路由将路径原样转交生命周期服务", () => {
     const fixture = create_route_fixture();
     const request = { source_paths: ["E:/source"] };
 
@@ -246,6 +247,10 @@ describe("register_api_routes", () => {
       fixture.source_file_summary,
     );
     expect(fixture.summarize_source_files).toHaveBeenCalledWith(request);
+    expect(
+      read_post_handler(fixture.post_json, "/api/session/project/default-name")(request),
+    ).toEqual({ project_name: "source" });
+    expect(fixture.get_default_project_name).toHaveBeenCalledWith(request);
   });
 
   it("设置更新只调用组合根提供的受保护写入口", () => {
@@ -306,6 +311,7 @@ function create_route_fixture() {
   const copy_model = vi.fn();
   const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
   const summarize_source_files = vi.fn(() => source_file_summary);
+  const get_default_project_name = vi.fn(() => ({ project_name: "source" }));
   const agent = {
     get_snapshot: vi.fn(() => ({
       revision: 0,
@@ -332,7 +338,7 @@ function create_route_fixture() {
     modelCatalog: { get_snapshot: () => catalog_snapshot },
     app: { metadata: {}, settings: {}, updateSettings: update_settings },
     project: {
-      lifecycle: { summarize_source_files },
+      lifecycle: { summarize_source_files, get_default_project_name },
       summary: {},
       content: {},
     },
@@ -391,6 +397,7 @@ function create_route_fixture() {
     reorder_queued_messages,
     update_queued_message,
     source_file_summary,
+    get_default_project_name,
     summarize_source_files,
     start_task,
     stop,

@@ -28,6 +28,8 @@ import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
+import { MEDIA_MODELS } from "../../media/models";
+import { FFMPEG_PACKAGE } from "../../media/ffmpeg";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -63,12 +65,44 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
+it("媒体 SDK 使用宿主指定的模型与缓存目录，独立于 npm 工程位置", async () => {
+  const { file, size } = MEDIA_MODELS.vad;
+  await run(`
+    import assert from 'node:assert/strict';
+    import { mkdir, writeFile, access, rm } from 'node:fs/promises';
+    import path from 'node:path';
+    import { npm } from '@lg/npm';
+    import * as media from '@lg/media';
+    const models = ${JSON.stringify(path.join(root, "media storage/models"))};
+    const cache = ${JSON.stringify(path.join(root, "cache/media"))};
+    const model = ${JSON.stringify({ file, size })};
+    assert.ok((await media.missing(['speech'])).models.includes(model.file));
+    const file = path.join(models, model.file);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, Buffer.alloc(model.size));
+    assert.ok(!(await media.missing(['speech'])).models.includes(model.file));
+    // 只替代安装元数据，使真实 setup、目录创建与文件锁无需联网即可执行。
+    const ffmpeg = path.join(npm.directory, 'node_modules', ${JSON.stringify(FFMPEG_PACKAGE)});
+    await mkdir(ffmpeg, { recursive: true });
+    await writeFile(path.join(ffmpeg, 'package.json'), '{}');
+    try {
+      assert.deepEqual(await media.setup(['ffmpeg']), { packages: [], python: [], models: [] });
+      await access(cache);
+      await assert.rejects(access(path.join(cache, 'prepare.lock')), { code: 'ENOENT' });
+    } finally {
+      await rm(ffmpeg, { recursive: true });
+      await rm(file);
+    }
+  `);
+});
+
 it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传回脚本", async () => {
   const generated = {
     accepted: true as const,
     output_path: path.join(workspace, "work/output/translated"),
     bilingual_output_path: path.join(workspace, "work/output/bilingual"),
-    generic_input_path: path.join(workspace, "work/output/generic"),
+    excluded_files: [],
+    writeback: { input_path: path.join(workspace, "work/output/writeback"), files: [] },
     pdf_files: [],
   };
   const generateFiles = vi
@@ -86,8 +120,8 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     `
     import { inspectSources, generateFiles, getOutputPaths } from '@lg/project';
     import assert from 'node:assert/strict';
-    await assert.rejects(generateFiles(), /fixture generation failed/);
-    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
+    await assert.rejects(generateFiles([]), /fixture generation failed/);
+    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
     undefined,
     undefined,
@@ -316,6 +350,41 @@ it("网页流、重定向与代理等待在真实子进程中工作", async () =
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
+  }
+});
+
+it("预置 aria2 通过工作区 PATH 和应用代理下载", async () => {
+  const bytes = Buffer.from("aria2 fixture 中文内容\n");
+  const server = createServer((request, response) => {
+    if (request.url?.endsWith("/redirect")) {
+      response.writeHead(302, { location: "http://download.invalid/data" });
+      response.end();
+    } else response.end(bytes);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing server address");
+  const routes: string[] = [];
+  try {
+    await run(
+      `
+      import { execFileSync } from 'node:child_process';
+      execFileSync('aria2c', [
+        '--no-conf', '--dir=work', '--out=download.bin', 'http://download.invalid/redirect'
+      ], { stdio: 'inherit', windowsHide: true });
+    `,
+      undefined,
+      async (url) => {
+        routes.push(url);
+        return `PROXY 127.0.0.1:${address.port}`;
+      },
+    );
+    expect(await readFile(path.join(workspace, "work/download.bin"))).toEqual(bytes);
+    expect(routes).toContain("http://download.invalid/redirect");
+    expect(routes).toContain("http://download.invalid/data");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 
@@ -872,8 +941,11 @@ function create_execution_runtime(
     electronVersion: "45.0.0",
     paths: {
       get_agent_node_root_dir: () => path.join(root, "shared node"),
+      get_agent_models_dir: () => path.join(root, "media storage/models"),
+      get_agent_media_cache_dir: () => path.join(root, "cache/media"),
       get_agent_python_root_dir: () => python_root,
       get_agent_execution_lock_path: () => path.join(root, "node.lock"),
+      get_user_data_path: (...parts) => path.join(root, "userdata", ...parts),
     },
     proxyResolver: { resolveProxy },
   });

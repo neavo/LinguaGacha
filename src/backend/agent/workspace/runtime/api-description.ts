@@ -15,7 +15,7 @@ export function format_agent_workspace_typescript_api(): string {
     ...[
       contract.member,
       "/** 用户技能根目录的绝对路径，可读写，不同工程共用，工作区重置时保留。 */\nuserSkillDirectory: string;",
-      "/** 应用随附字体目录的绝对路径，只读。`LGBaseFont` 是应用界面字体。 */\nfontsDirectory: string;",
+      "/** 应用随附字体目录的绝对路径，只读。 */\nfontsDirectory: string;",
       describe_emit_image(),
       describe_doing(),
     ].map((member) =>

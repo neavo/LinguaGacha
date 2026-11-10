@@ -66,6 +66,21 @@ describe("log 基础模型", () => {
     ).toBeNull();
   });
 
+  it("请求结果缺少身份或公共段落无效时拒绝", () => {
+    const content = {
+      kind: "request_result",
+      run_id: "run",
+      request_id: "one",
+      summary: [],
+      sections: [],
+      started_at: "start",
+      ended_at: "end",
+    };
+    expect(read_log_content(content)).toEqual(content);
+    expect(read_log_content({ ...content, request_id: undefined })).toBeNull();
+    expect(read_log_content({ ...content, sections: [{ title: "响应", text: 1 }] })).toBeNull();
+  });
+
   it("结构化摘要独立承载错误消息并保留诊断调用栈", () => {
     const text = format_log_readable_text({
       content: {

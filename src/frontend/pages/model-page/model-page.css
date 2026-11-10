@@ -174,29 +174,6 @@
   right: 12px;
 }
 
-.model-page__dialog-scroll {
-  min-height: 0;
-  max-height: calc(100vh - 220px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 16px;
-}
-
-.model-page__setting-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 0 0 6px;
-}
-
-.model-page__setting-list
-  > .setting-card-row:not(.model-page__setting-card-row--block)
-  .setting-card-row__copy {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
 .model-page__field {
   min-width: 128px;
 }

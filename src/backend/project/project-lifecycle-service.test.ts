@@ -11,6 +11,7 @@ import { create_pdf_execution } from "../file/pdf/test-support";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSessionState } from "./project-session-state";
+import { FileCache } from "../cache/file-cache";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -65,7 +66,7 @@ describe("ProjectLifecycleService", () => {
   });
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
-  it("来源摘要按文件、目录和多路径给出默认工程名，根目录与空来源使用空名", async () => {
+  it("两个入口共用文件、目录和多路径命名规则。根目录与空来源使用空名", async () => {
     const root = create_temp_dir();
     const folder = path.join(root, "Game.v1.2");
     fs.mkdirSync(folder);
@@ -88,7 +89,21 @@ describe("ProjectLifecycleService", () => {
       expect(
         (await service.summarize_source_files({ source_paths: [...source_paths] })).project_name,
       ).toBe(expected);
+      expect(service.get_default_project_name({ source_paths: [...source_paths] })).toEqual({
+        project_name: expected,
+      });
     }
+  });
+
+  it("AGENT 命名先去重，接受待处理格式且不扫描来源", () => {
+    const root = create_temp_dir();
+    const file = write_file(path.join(root, "source.custom"), "待处理内容");
+    const summarize = vi.spyOn(FileFormatService.prototype, "summarize_source_files");
+    const service = create_service({ database: create_database() });
+    expect(service.get_default_project_name({ source_paths: [file, file] })).toEqual({
+      project_name: "source",
+    });
+    expect(summarize).not.toHaveBeenCalled();
   });
 
   it.each([false, true])("正式创建只发现一次，游戏通知先于本批全部准备：%s", async (games) => {
@@ -347,7 +362,7 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("snapshot 只暴露 会话权威的加载态字段", async () => {
+  it("snapshot 暴露会话身份和当前资产数量", async () => {
     const service = create_service({
       database: create_database(),
       session_state: create_session_state({
@@ -361,6 +376,7 @@ describe("ProjectLifecycleService", () => {
         path: "E:/Project/demo.lg",
         loaded: true,
         languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+        file_count: 0,
       },
     });
   });
@@ -423,7 +439,12 @@ describe("ProjectLifecycleService", () => {
     });
 
     await expect(service.load_project({ path: project_path })).resolves.toEqual({
-      project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
+      project: {
+        path: project_path,
+        loaded: true,
+        file_count: 0,
+        languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+      },
     });
 
     expect(session_state.snapshot()).toEqual({
@@ -531,11 +552,15 @@ describe("ProjectLifecycleService", () => {
         path: project_path,
         loaded: true,
         languages: { source_language: "EN", target_language: "DE" },
+        file_count: 1,
       },
       settings_alignment: {
         settings: { mtool_optimizer_enable: false, skip_duplicate_source_text_enable: true },
         changed: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: false },
       },
+    });
+    await expect(service.get_project_snapshot()).resolves.toMatchObject({
+      project: { file_count: 1 },
     });
     const meta_writes = vi.mocked(database.upsert_meta_entries).mock.calls.at(-1)?.[1];
     expect(meta_writes).toMatchObject({
@@ -572,6 +597,7 @@ describe("ProjectLifecycleService", () => {
         path: project_path,
         loaded: true,
         languages: { source_language: "EN", target_language: "KO" },
+        file_count: 0,
       },
     });
     expect(database.upsert_meta_entries).not.toHaveBeenCalled();
@@ -1214,6 +1240,8 @@ describe("ProjectLifecycleService", () => {
       project: {
         path: "",
         loaded: false,
+        file_count: 0,
+        languages: null,
       },
     });
 
@@ -1263,6 +1291,7 @@ describe("ProjectLifecycleService", () => {
     const app_root = options.app_root ?? create_temp_dir();
     const project_event_handler = options.project_event_handler ?? vi.fn();
     let languages: ProjectLanguageSettings = DEFAULT_PROJECT_LANGUAGE_SETTINGS;
+    const files = new FileCache();
     return new ProjectLifecycleService(
       new GameDirectoryOperations(),
       options.database,
@@ -1277,10 +1306,15 @@ describe("ProjectLifecycleService", () => {
       {
         installProject: (projectPath, snapshot) => {
           languages = snapshot.languages;
+          files.replace(snapshot.files);
           return project_event_handler({ projectPath, snapshot });
         },
-        clearProject: (projectPath) => project_event_handler({ projectPath: projectPath ?? "" }),
+        clearProject: (projectPath) => {
+          files.clear();
+          return project_event_handler({ projectPath: projectPath ?? "" });
+        },
         languages: { readBlock: () => languages } as never,
+        files,
       },
       new ProjectWriteStore(options.database, () => undefined, null),
       create_pdf_execution(),

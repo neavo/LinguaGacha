@@ -1,3 +1,4 @@
+import { SettingsList } from "@frontend/widgets/settings-list/settings-list";
 import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { Fragment, type JSX, useEffect, useState } from "react";
 
@@ -94,238 +95,236 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
         onClose={props.onClose}
         bodyClassName="overflow-hidden p-0"
       >
-        <div className="model-page__dialog-scroll">
-          <div className="model-page__setting-list">
-            <SettingCardRow
-              variant="group"
-              action_width="content"
-              title={t("model_page.fields.name.title")}
-              description={t("model_page.fields.name.description")}
-              action={
-                <Input
-                  className="model-page__field model-page__field--md"
-                  value={model.name}
-                  readOnly={props.readonly}
-                  placeholder={t("model_page.fields.name.placeholder")}
-                  onChange={(event) => {
-                    void props.onPatch({
-                      name: event.target.value.trim(),
-                    });
+        <SettingsList>
+          <SettingCardRow
+            variant="group"
+            action_width="content"
+            title={t("model_page.fields.name.title")}
+            description={t("model_page.fields.name.description")}
+            action={
+              <Input
+                className="model-page__field model-page__field--md"
+                value={model.name}
+                readOnly={props.readonly}
+                placeholder={t("model_page.fields.name.placeholder")}
+                onChange={(event) => {
+                  void props.onPatch({
+                    name: event.target.value.trim(),
+                  });
+                }}
+              />
+            }
+          />
+
+          {model.auth_type !== "oauth" ? (
+            <>
+              <SettingCardRow
+                variant="group"
+                action_width="content"
+                title={t("model_page.fields.api_url.title")}
+                description={
+                  <>
+                    {t("model_page.fields.api_url.description")}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={<span tabIndex={0} className="model-page__request-url" />}
+                      >
+                        {request_url}
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="break-all">
+                        {request_url}
+                      </TooltipContent>
+                    </Tooltip>
+                  </>
+                }
+                action={
+                  <Input
+                    className="model-page__field model-page__field--lg"
+                    value={model.api_url}
+                    readOnly={props.readonly}
+                    placeholder={t("model_page.fields.api_url.placeholder")}
+                    onChange={(event) => {
+                      void props.onPatch({
+                        api_url: event.target.value.trim(),
+                      });
+                    }}
+                  />
+                }
+              />
+
+              <SettingCardRow
+                variant="group"
+                className="model-page__setting-card-row--block"
+                title={t("model_page.fields.api_key.title")}
+                description={t("model_page.fields.api_key.description")}
+                action={
+                  <Textarea
+                    value={model.api_key}
+                    readOnly={props.readonly}
+                    placeholder={t("model_page.fields.api_key.placeholder")}
+                    onChange={(event) => {
+                      void props.onPatch({
+                        api_key: event.target.value,
+                      });
+                    }}
+                  />
+                }
+              />
+            </>
+          ) : null}
+
+          <SettingCardRow
+            variant="group"
+            action_width="content"
+            title={t("model_page.fields.model_id.title")}
+            description={t("model_page.fields.model_id.description").replace(
+              "{MODEL}",
+              model.model_id,
+            )}
+            action={
+              <div className="model-page__inline-button-group">
+                <AppButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={props.readonly}
+                  onClick={() => {
+                    // 输入器每次打开时取当前值，后台快照不会覆盖本次输入。
+                    set_model_id_input_value(model.model_id);
+                    set_model_id_editor("input");
                   }}
-                />
-              }
-            />
+                >
+                  <PencilLine data-icon="inline-start" />
+                  {t("model_page.action.input")}
+                </AppButton>
+                <AppButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={props.readonly}
+                  onClick={() => {
+                    set_model_id_editor("selector");
+                  }}
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  {t("model_page.action.fetch")}
+                </AppButton>
+                <AppButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={props.test_disabled}
+                  onClick={() => {
+                    void props.onRequestTestModel();
+                  }}
+                >
+                  <Send data-icon="inline-start" />
+                  {t("model_page.action.test")}
+                </AppButton>
+              </div>
+            }
+          />
 
-            {model.auth_type !== "oauth" ? (
-              <>
-                <SettingCardRow
-                  variant="group"
-                  action_width="content"
-                  title={t("model_page.fields.api_url.title")}
-                  description={
-                    <>
-                      {t("model_page.fields.api_url.description")}
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={<span tabIndex={0} className="model-page__request-url" />}
-                        >
-                          {request_url}
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="break-all">
-                          {request_url}
-                        </TooltipContent>
-                      </Tooltip>
-                    </>
+          <SettingCardRow
+            variant="group"
+            action_width="content"
+            title={t("model_page.fields.thinking.title")}
+            description={t("model_page.fields.thinking.description")}
+            action={
+              <Select
+                value={model.thinking.level}
+                disabled={props.readonly}
+                onValueChange={(next_value) => {
+                  if (is_model_thinking_level(next_value)) {
+                    void props.onPatch({
+                      thinking: {
+                        level: next_value,
+                      },
+                    });
                   }
-                  action={
-                    <Input
-                      className="model-page__field model-page__field--lg"
-                      value={model.api_url}
-                      readOnly={props.readonly}
-                      placeholder={t("model_page.fields.api_url.placeholder")}
-                      onChange={(event) => {
-                        void props.onPatch({
-                          api_url: event.target.value.trim(),
-                        });
-                      }}
-                    />
-                  }
-                />
-
-                <SettingCardRow
-                  variant="group"
-                  className="model-page__setting-card-row--block"
-                  title={t("model_page.fields.api_key.title")}
-                  description={t("model_page.fields.api_key.description")}
-                  action={
-                    <Textarea
-                      value={model.api_key}
-                      readOnly={props.readonly}
-                      placeholder={t("model_page.fields.api_key.placeholder")}
-                      onChange={(event) => {
-                        void props.onPatch({
-                          api_key: event.target.value,
-                        });
-                      }}
-                    />
-                  }
-                />
-              </>
-            ) : null}
-
+                }}
+              >
+                <SelectTrigger className="model-page__field">
+                  <SelectValue>{thinking_label}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {order_model_thinking_levels(model.available_thinking_levels).map(
+                      (level, index) => {
+                        const item = (
+                          <SelectItem value={level}>
+                            {t(MODEL_THINKING_LEVEL_LABEL_KEY[level])}
+                          </SelectItem>
+                        );
+                        return (
+                          <Fragment key={level}>
+                            {level === "DEFAULT" && index > 0 ? <SelectSeparator /> : null}
+                            {level === "DEFAULT" ? (
+                              <Tooltip>
+                                <TooltipTrigger render={item} />
+                                <TooltipContent side="right">
+                                  {t("app.model.thinking_level.default_description")}
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              item
+                            )}
+                          </Fragment>
+                        );
+                      },
+                    )}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            }
+          />
+          {model.api_format === "OpenAIResponses" ? (
             <SettingCardRow
               variant="group"
               action_width="content"
-              title={t("model_page.fields.model_id.title")}
-              description={t("model_page.fields.model_id.description").replace(
-                "{MODEL}",
-                model.model_id,
-              )}
-              action={
-                <div className="model-page__inline-button-group">
-                  <AppButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={props.readonly}
-                    onClick={() => {
-                      // 输入器每次打开时取当前值，后台快照不会覆盖本次输入。
-                      set_model_id_input_value(model.model_id);
-                      set_model_id_editor("input");
-                    }}
-                  >
-                    <PencilLine data-icon="inline-start" />
-                    {t("model_page.action.input")}
-                  </AppButton>
-                  <AppButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={props.readonly}
-                    onClick={() => {
-                      set_model_id_editor("selector");
-                    }}
-                  >
-                    <RefreshCw data-icon="inline-start" />
-                    {t("model_page.action.fetch")}
-                  </AppButton>
-                  <AppButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={props.test_disabled}
-                    onClick={() => {
-                      void props.onRequestTestModel();
-                    }}
-                  >
-                    <Send data-icon="inline-start" />
-                    {t("model_page.action.test")}
-                  </AppButton>
-                </div>
-              }
-            />
-
-            <SettingCardRow
-              variant="group"
-              action_width="content"
-              title={t("model_page.fields.thinking.title")}
-              description={t("model_page.fields.thinking.description")}
+              title={t("model_page.fields.speed.title")}
+              description={t("model_page.fields.speed.description")}
               action={
                 <Select
-                  value={model.thinking.level}
+                  value={model.request.speed_level}
                   disabled={props.readonly}
-                  onValueChange={(next_value) => {
-                    if (is_model_thinking_level(next_value)) {
-                      void props.onPatch({
-                        thinking: {
-                          level: next_value,
-                        },
-                      });
-                    }
+                  onValueChange={(value) => {
+                    if (is_model_speed_level(value))
+                      void props.onPatch({ request: { speed_level: value } });
                   }}
                 >
                   <SelectTrigger className="model-page__field">
-                    <SelectValue>{thinking_label}</SelectValue>
+                    <SelectValue>{t(SPEED_LABEL_KEYS[model.request.speed_level])}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      {order_model_thinking_levels(model.available_thinking_levels).map(
-                        (level, index) => {
-                          const item = (
-                            <SelectItem value={level}>
-                              {t(MODEL_THINKING_LEVEL_LABEL_KEY[level])}
-                            </SelectItem>
-                          );
-                          return (
-                            <Fragment key={level}>
-                              {level === "DEFAULT" && index > 0 ? <SelectSeparator /> : null}
-                              {level === "DEFAULT" ? (
-                                <Tooltip>
-                                  <TooltipTrigger render={item} />
-                                  <TooltipContent side="right">
-                                    {t("app.model.thinking_level.default_description")}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                item
-                              )}
-                            </Fragment>
-                          );
-                        },
-                      )}
+                      {MODEL_SPEED_LEVELS.map((level) => {
+                        const item = (
+                          <SelectItem value={level}>{t(SPEED_LABEL_KEYS[level])}</SelectItem>
+                        );
+                        return (
+                          <Fragment key={level}>
+                            {level === "DEFAULT" ? <SelectSeparator /> : null}
+                            {level === "DEFAULT" ? (
+                              <Tooltip>
+                                <TooltipTrigger render={item} />
+                                <TooltipContent side="right">
+                                  {t("model_page.fields.speed.default_description")}
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              item
+                            )}
+                          </Fragment>
+                        );
+                      })}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
               }
             />
-            {model.api_format === "OpenAIResponses" ? (
-              <SettingCardRow
-                variant="group"
-                action_width="content"
-                title={t("model_page.fields.speed.title")}
-                description={t("model_page.fields.speed.description")}
-                action={
-                  <Select
-                    value={model.request.speed_level}
-                    disabled={props.readonly}
-                    onValueChange={(value) => {
-                      if (is_model_speed_level(value))
-                        void props.onPatch({ request: { speed_level: value } });
-                    }}
-                  >
-                    <SelectTrigger className="model-page__field">
-                      <SelectValue>{t(SPEED_LABEL_KEYS[model.request.speed_level])}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {MODEL_SPEED_LEVELS.map((level) => {
-                          const item = (
-                            <SelectItem value={level}>{t(SPEED_LABEL_KEYS[level])}</SelectItem>
-                          );
-                          return (
-                            <Fragment key={level}>
-                              {level === "DEFAULT" ? <SelectSeparator /> : null}
-                              {level === "DEFAULT" ? (
-                                <Tooltip>
-                                  <TooltipTrigger render={item} />
-                                  <TooltipContent side="right">
-                                    {t("model_page.fields.speed.default_description")}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                item
-                              )}
-                            </Fragment>
-                          );
-                        })}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                }
-              />
-            ) : null}
-          </div>
-        </div>
+          ) : null}
+        </SettingsList>
       </AppPageDialog>
 
       {model_id_editor === "selector" ? (

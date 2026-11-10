@@ -1,3 +1,5 @@
+import type { BatchTaskSnapshot } from "@domain/batch-task";
+import { read_batch_task_snapshot } from "@shared/batch-task";
 import { useEffect, useEffectEvent, type MutableRefObject } from "react";
 
 import { api_get, api_fetch, open_event_stream } from "@frontend/app/desktop/desktop-api";
@@ -44,6 +46,7 @@ type DesktopEventStreamOptions = {
   appLanguage: AppLanguage; // 状态 Provider 位于语言 Provider 外层，通知直接消费权威设置。
   schedulerRef: MutableRefObject<DesktopRefreshScheduler | null>;
   applySettingsSnapshot: (payload: SettingsSnapshotPayload) => void;
+  applyBatchTaskSnapshot: (snapshot: BatchTaskSnapshot) => void;
   applyTaskSnapshot: (snapshot: BatchTranslationSnapshot) => void;
   applyRuntimeSnapshot: (snapshot: RuntimeActivitySnapshot) => void;
   refreshSettings: () => Promise<unknown>;
@@ -60,6 +63,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
     schedulerRef,
     applySettingsSnapshot,
     applyTaskSnapshot,
+    applyBatchTaskSnapshot,
     applyRuntimeSnapshot,
     refreshSettings,
     refreshRuntime,
@@ -128,10 +132,12 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       let payload: Record<string, unknown> = {};
       try {
         payload = parse_event_payload(event);
+        applyBatchTaskSnapshot(read_batch_task_snapshot(payload));
+        if (!("batch_translation" in payload)) return; // 通用请求不读写工程翻译事实。
         const task_snapshot = normalize_batch_translation_snapshot(payload);
         // task 面包屑先于调度分支记录，保证崩溃发生在 enqueue/flush 之间时仍有最新进度。
         record_renderer_diagnostics_event({
-          topic: "batch_translation.snapshot_changed",
+          topic: "batch_task.snapshot_changed",
           batch_translation: summarize_task_snapshot_for_diagnostics(task_snapshot),
         });
         if (should_apply_task_snapshot_immediately(task_snapshot)) {
@@ -145,13 +151,13 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
         report_state_error(error, {
           source: "sse",
           triggeringEvent: {
-            topic: "batch_translation.snapshot_changed",
+            topic: "batch_task.snapshot_changed",
             batch_translation: payload,
           },
           context: { stage: "handle_task_snapshot_changed" },
         });
         void refresh_task_after_state_error("task_snapshot_event_failed", {
-          topic: "batch_translation.snapshot_changed",
+          topic: "batch_task.snapshot_changed",
         });
       }
     }
@@ -246,7 +252,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           });
         }),
         refresh_task_after_state_error("event_stream_reconnected", {
-          topic: "batch_translation.snapshot_changed",
+          topic: "batch_task.snapshot_changed",
         }),
         refresh_project_state_after_error("event_stream_reconnected", {
           topic: PROJECT_CHANGE_EVENT_TOPIC,
@@ -281,7 +287,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           opened_once = true;
         };
         event_source.addEventListener(
-          "batch_translation.snapshot_changed",
+          "batch_task.snapshot_changed",
           handle_task_snapshot_changed as EventListener,
         );
         event_source.addEventListener("settings.changed", handle_settings_changed as EventListener);
@@ -338,6 +344,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
   ]);
 }
 
+/** 调度失败沿原事件上下文触发状态恢复。 */
 function handle_scheduler_flush_error(
   error: unknown,
   context: DesktopRefreshSchedulerErrorContext,

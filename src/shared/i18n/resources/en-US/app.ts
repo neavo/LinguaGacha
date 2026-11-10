@@ -40,6 +40,7 @@ export const en_us_app = {
     },
   },
   action: {
+    next: "Next",
     move_to_top: "Move to top",
     move_to_bottom: "Move to bottom",
     add: "Add",
@@ -191,27 +192,27 @@ export const en_us_app = {
     update_available_tooltip: "Open the update confirmation dialog",
   },
   agent_input: {
-    steps_intro: "Follow these steps:",
+    steps_intro: "Execute the steps in order:",
+    steps_intro_after_instruction: "Then execute the steps in order:",
     path_placeholder: "[Enter file paths here or drag files here]",
     steps: {
       glossary: "Extract terminology",
       translate: "Translate the full text",
       review: "Review the translation",
-      generate: "Generate all translations",
     },
   },
   translation_generation: {
-    agent_request: "Help me generate all translations",
+    agent_request: "Generate all translations without performing unrelated operations",
     action: "Generate translation",
     confirmation: {
       generic_description:
-        "This project contains generic data packages. Use AGENT to generate all translations. Direct generation will skip these packages.",
+        "This project contains audio/video files or generic data packages. Direct generation will skip these files. Please use AGENT to handle them …",
       description: "Confirm generating currently available translation files …?",
       checking: "Checking project files and proofreading warnings …",
       check_failed:
-        "Could not check project files or proofreading warnings. You can still generate the current translations …",
+        "Could not check project files or proofreading warnings. Check again or let AGENT handle it …",
       warning_description:
-        "Detected {COUNT} proofreading warnings. Warnings do not necessarily indicate errors, but we recommend running at least one automatic review with AGENT first. Continue generating the translation …?",
+        "Detected {COUNT} proofreading warnings. Warnings do not necessarily indicate errors, but we recommend running at least one automatic review with AGENT first. Continue …?",
       retry_check: "Check again",
       generate_directly: "Generate directly",
     },
@@ -260,33 +261,36 @@ export const en_us_app = {
     },
   },
   log: {
+    task_started:
+      "Task started: {RUN} · {NAME} / {MODEL} · {FORMAT} · {TOTAL} requests · concurrency {CONCURRENCY} · RPM {RPM}",
+    task_finished:
+      "Task ended: {RUN} · {STATUS} · succeeded {SUCCEEDED} · failed {FAILED} · unfinished {UNFINISHED} · stop source {STOP}\n{PATH}",
+    publish_failed: "Result publication failed: {ERROR}",
+    usage_incomplete: "incomplete usage; missing usage unknown",
     api_test_fail: "API test failed …",
     api_test_key: "Testing key:",
-    api_test_messages: "Task prompts:",
+    request_messages: "Task prompts:",
     api_test_result: "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …",
     api_test_result_failure: "Failed keys:",
-    api_test_response_result: "Model response:",
+    model_response: "Model response:",
     api_test_timeout: "Request timed out ({SECONDS}s)",
-    api_test_token_info:
-      "Task time {TIME} seconds, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "Default presets loaded automatically: {NAMES} …",
-    engine_api_model: "API model",
-    engine_api_name: "API name",
-    engine_api_url: "API URL",
-    engine_task_done: "Task completed …",
-    engine_task_fail:
+    model_id: "API model",
+    model_name: "API name",
+    api_url: "API URL",
+    task_done: "Task completed …",
+    task_failed:
       "Task failed to complete, some data remains unprocessed. Please check the results …",
-    engine_task_rule_analysis: "Rule analysis:",
-    engine_task_thinking_process: "Thinking process:",
-    engine_task_stop: "Task stopped …",
-    engine_task_success:
-      "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
+    rule_analysis: "Rule analysis:",
+    thinking_process: "Thinking process:",
+    task_stopped: "Task stopped …",
+    task_stats:
+      "Task time {TIME} seconds, {COUNT} items, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
     model_response_invalid: "The model returned invalid data …",
     request_failed: "Request failed: {ERROR} …",
     request_timeout: "Network request timed out",
     system_closed_dropped: "Log system is shut down; dropping new log: {MESSAGE}",
-    translation_task_result: "Translation result:",
     translation_response_partially_invalid: "Some translations failed validation …",
   },
   sort: { ascending: "Ascending", descending: "Descending", clear: "Clear sort" },

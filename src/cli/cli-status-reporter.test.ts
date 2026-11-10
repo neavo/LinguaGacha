@@ -11,16 +11,14 @@ describe("CLIJsonStatusReporter", () => {
 
     reporter.emit_started();
     reporter.emit_started();
-    reporter.emit_progress({ status: "running", progress: {} });
+    reporter.emit_progress({ status: "running", progress: null });
     reporter.emit_progress({
       status: "running",
-      progress: { total_line: 100, processed_line: 90 },
-      run_progress: { total_line: 4, processed_line: 2, failed_line: 1 },
+      progress: { total: 4, succeeded: 2, failed: 1 },
     });
     reporter.emit_progress({
       status: "stopping",
-      progress: { total_line: 100, processed_line: 90 },
-      run_progress: { total_line: 4, processed_line: 2, failed_line: 1 },
+      progress: { total: 4, succeeded: 2, failed: 1 },
     });
     reporter.emit_finished("done");
     reporter.emit_finished("done");
@@ -45,10 +43,12 @@ describe("CLIJsonStatusReporter", () => {
     ]);
   });
 
-  it("累计进度不从旧字段恢复成功数或失败数", () => {
-    expect(
-      build_cli_progress_stats({ total_line: 4, processed_line: 0, line: 3, error_line: 2 }),
-    ).toMatchObject({ completed: 0, failed: 0, pending: 4 });
+  it("未结算项保留为 pending", () => {
+    expect(build_cli_progress_stats({ total: 4, succeeded: 0, failed: 0 })).toMatchObject({
+      completed: 0,
+      failed: 0,
+      pending: 4,
+    });
   });
 
   it("失败结束时自动补 started 并只暴露错误消息", () => {

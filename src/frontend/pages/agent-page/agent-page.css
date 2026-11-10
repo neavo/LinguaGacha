@@ -1880,3 +1880,18 @@
     animation: none;
   }
 }
+
+.agent-function-models__tooltip {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+  max-width: min(480px, calc(100vw - 48px));
+  overflow-wrap: anywhere;
+}
+.agent-function-models__name {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

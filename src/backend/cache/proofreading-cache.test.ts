@@ -198,6 +198,12 @@ describe("ProofreadingCache", () => {
       offset: 0,
       limit: 20,
     });
+    const count = await cache.warningCount();
+    expect(count).toMatchObject({
+      projectPath: warnings.projectPath,
+      sectionRevisions: warnings.sectionRevisions,
+    });
+    expect(count.data).toBeGreaterThan(0);
 
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(worker.sync_inputs[0]).toMatchObject({

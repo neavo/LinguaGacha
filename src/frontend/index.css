@@ -10,7 +10,7 @@
 
 @font-face {
   font-family: "LGMono";
-  src: url("/fonts/MonaspaceNeon.woff2") format("woff2");
+  src: url("/fonts/MonaspaceNeon.ttf") format("truetype");
   font-weight: 400 700;
   font-style: normal;
   font-stretch: 100%;
@@ -20,7 +20,7 @@
 
 @font-face {
   font-family: "LGMono";
-  src: url("/fonts/MonaspaceNeon.woff2") format("woff2");
+  src: url("/fonts/MonaspaceNeon.ttf") format("truetype");
   font-weight: 400 700;
   font-style: italic;
   font-stretch: 100%;
@@ -31,7 +31,7 @@
 
 @font-face {
   font-family: "LGBaseFont";
-  src: url("/fonts/LGBaseFont-Regular.woff2") format("woff2");
+  src: url("/fonts/LGBaseFont-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -39,7 +39,7 @@
 
 @font-face {
   font-family: "LGBaseFont";
-  src: url("/fonts/LGBaseFont-Bold.woff2") format("woff2");
+  src: url("/fonts/LGBaseFont-Bold.ttf") format("truetype");
   font-weight: 500 700;
   font-style: normal;
   font-display: swap;
@@ -51,7 +51,7 @@
  */
 @font-face {
   font-family: "Twemoji";
-  src: url("/fonts/Twemoji.woff2") format("woff2");
+  src: url("/fonts/Twemoji.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;

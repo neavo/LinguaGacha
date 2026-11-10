@@ -70,11 +70,30 @@ const CHATGPT_PRESET_ID = "preset-chatgpt";
 export function is_pinned_model(model: Readonly<{ id?: unknown; type?: unknown }>): boolean {
   return model.id === CHATGPT_PRESET_ID && model.type === "PRESET";
 }
-/** 执行用途的模型选择与 Agent 批量翻译偏好。 */
+/** 可跟随用途以 null 表示跟随，失效选择也恢复为 null。 */
+export const AGENT_FUNCTION_USAGES = ["agent_batch_translation", "agent_media"] as const;
+export type AgentFunctionUsage = (typeof AGENT_FUNCTION_USAGES)[number];
+/** 批量工具只允许按这些用途解析用户配置。 */
+export const AGENT_MODEL_USAGES = ["agent", "batch_translation", "media"] as const;
+export type AgentModelUsage = (typeof AGENT_MODEL_USAGES)[number];
+/** 工作区只接收请求格式摘要，失效用途单独标为 `null`。 */
+export type AgentModelsSummary = Readonly<
+  Record<
+    AgentModelUsage,
+    Readonly<{
+      name: string;
+      model_id: string;
+      formats: readonly ("messages" | "responses")[];
+    }> | null
+  >
+>;
+
+/** 执行用途与可跟随主控的子模型偏好。 */
 export type ModelSelection = {
   translation: string;
   agent: string;
-  agent_batch_translation: string | null; // null 跟随当前 Agent 生效配置，模型 ID 表示固定选择
+  agent_media: string | null;
+  agent_batch_translation: string | null;
 };
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
@@ -370,6 +389,7 @@ export function normalize_model_selection(value: unknown): ModelSelection {
   return {
     translation: read_model_selection_id(record["translation"]),
     agent: read_model_selection_id(record["agent"]),
+    agent_media: read_model_selection_id(record["agent_media"]) || null,
     agent_batch_translation: read_model_selection_id(record["agent_batch_translation"]) || null,
   };
 }

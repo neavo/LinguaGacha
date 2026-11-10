@@ -264,7 +264,6 @@ describe("CacheManager", () => {
       sort_state: null,
     };
     const old_view = await cache.proofreading.list(query);
-    const warnings = await cache.proofreading.warningSummary();
     const epoch = cache.snapshot().epoch;
     expect(old_view.data.window_rows.map((row) => row.row_id)).toEqual([
       "1",
@@ -307,7 +306,6 @@ describe("CacheManager", () => {
     });
     expect(next_view.data.window_start).toBe(2);
     expect(next_view.data.window_rows[0]?.row_id).toBe("1");
-    expect((await cache.proofreading.warningSummary()).data).toEqual(warnings.data);
     expect(cache.snapshot().epoch).toBe(epoch);
     expect(database.get_all_items).toHaveBeenCalledTimes(1);
     expect(read_items).toHaveBeenCalledTimes(1);

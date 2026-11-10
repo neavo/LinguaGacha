@@ -6,7 +6,7 @@ import type {
   BatchTranslationResult,
   BatchTranslationStopSource,
 } from "../../../domain/batch-translation";
-import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-runtime";
+import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-state";
 import {
   define_agent_tool,
   agent_tool_result,

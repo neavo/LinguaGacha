@@ -43,7 +43,7 @@ export function AgentTaskToolbar(props: {
   approval_disabled: boolean;
   disconnected: boolean;
   on_reset: () => void;
-  on_agent_model_select: (change: ModelSelectionInput) => void;
+  on_agent_model_select: (change: ModelSelectionInput) => boolean;
   on_approval_mode_change: (mode: AgentApprovalMode) => void;
 }): JSX.Element {
   const { t } = useI18n();

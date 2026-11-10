@@ -7,6 +7,7 @@ import { preview_file_changes } from "./file-changes";
 import type { ParsedAgentWorkspaceChanges } from "./changes";
 import { AgentWorkspaceDirectories } from "./directories";
 import type { AgentFileAttachment } from "../../../shared/agent";
+import type { AgentModelsSummary } from "../../../domain/model";
 import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
 import type { AgentWorkspaceWarning } from "./schema";
 import { create_image_output, summarize_images } from "../tools/emit-image";
@@ -121,6 +122,7 @@ export type AgentWorkspaceImage = Readonly<{ path: string; image: AgentImage }>;
 
 /** 一次工作区执行的输入，`output` 只供界面观察运行中的日志末尾。 */
 export type AgentWorkspaceRunInput = Readonly<{
+  functionModels: AgentModelsSummary;
   script: string;
   timeoutMs: number;
   doing?: AgentWorkspaceRunRequest["doing"];
@@ -162,7 +164,7 @@ export class AgentWorkspaceService {
   }
 
   /** 所有相对路径绑定当前会话目录。 */
-  private get root_path(): string {
+  public get root_path(): string {
     if (this.chat_id === null) throw new AppErrors.AppError("project.not_loaded");
     return this.directories.path(this.chat_id);
   }
@@ -714,6 +716,14 @@ export class AgentWorkspaceService {
                   }),
               );
         try {
+          await this.native_fs.write_file(
+            path.join(this.root_path, AGENT_WORKSPACE_PATHS.functionModels),
+            JSON.stringify(request.functionModels, null, 2),
+          );
+          // 旧会话可能残留全量模型目录，刷新时一并移除。
+          await this.native_fs.remove_async(path.join(this.root_path, "model_configs.json"), {
+            force: true,
+          });
           const execution = await this.options.run(
             {
               workspacePath: this.root_path,
@@ -1148,6 +1158,7 @@ export class AgentWorkspaceService {
 /** AgentService 通过工作区公开操作管理生命周期、执行工具与交付文件。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
+  | "root_path"
   | "list_files"
   | "run"
   | "apply_workspace"

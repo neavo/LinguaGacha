@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   commit: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => run()),
   project: {
     loaded: true,
+    file_count: 1,
     path: "sample.lg",
     languages: { source_language: "JA", target_language: "ZH" },
   } as ProjectSnapshot,
@@ -45,6 +46,7 @@ describe("AgentLanguageControl", () => {
     mocks.api.mockReset();
     mocks.project = {
       loaded: true,
+      file_count: 1,
       path: "sample.lg",
       languages: { source_language: "JA", target_language: "ZH" },
     };
@@ -155,11 +157,12 @@ describe("AgentLanguageControl", () => {
   });
 
   it("未加载工程时隐藏入口，运行占用和断线时禁用，工程关闭后释放弹窗", async () => {
-    mocks.project = { loaded: false, path: "", languages: null };
+    mocks.project = { loaded: false, file_count: 0, path: "", languages: null };
     await render();
     expect(container.querySelector("button")).toBeNull();
     mocks.project = {
       loaded: true,
+      file_count: 1,
       path: "sample.lg",
       languages: { source_language: "JA", target_language: "ZH" },
     };
@@ -179,7 +182,7 @@ describe("AgentLanguageControl", () => {
     await render();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => trigger().click());
-    mocks.project = { loaded: false, path: "", languages: null };
+    mocks.project = { loaded: false, file_count: 0, path: "", languages: null };
     await render();
     expect(container.querySelector("button")).toBeNull();
     expect(document.querySelector('[role="dialog"]')).toBeNull();

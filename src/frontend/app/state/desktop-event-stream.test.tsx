@@ -127,6 +127,7 @@ function create_event_stream_options(
   return {
     appLanguage: "ZH",
     applySettingsSnapshot: vi.fn(),
+    applyBatchTaskSnapshot: () => {},
     applyTaskSnapshot: vi.fn(),
     applyRuntimeSnapshot: vi.fn(),
     refreshSettings: vi.fn(async () => undefined),
@@ -328,7 +329,7 @@ describe("useDesktopEventStream", () => {
         },
       }),
     );
-    await wait_for_condition(() => event_stream.has_listener("batch_translation.snapshot_changed"));
+    await wait_for_condition(() => event_stream.has_listener("batch_task.snapshot_changed"));
 
     event_stream.open();
     await act(async () => {

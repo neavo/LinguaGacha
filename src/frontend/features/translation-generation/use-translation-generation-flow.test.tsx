@@ -2,6 +2,7 @@ import { type JSX, act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { find_agent_reference_ranges } from "@shared/agent-reference";
 import { useTranslationGenerationFlow } from "./use-translation-generation-flow";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
@@ -9,15 +10,21 @@ import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-moc
 const mocks = vi.hoisted(() => ({
   api_fetch: vi.fn(),
   workbench: vi.fn(),
+  warnings: vi.fn(),
   push_toast: vi.fn(),
   navigate_to_agent: vi.fn(),
-  project_snapshot: { loaded: true, path: "E:/demo/sample.lg" },
+  project_snapshot: { loaded: true, file_count: 1, path: "E:/demo/sample.lg" },
   settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
 }));
 
-vi.mock("@frontend/app/desktop/desktop-api", () => ({
+vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
+  ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
   api_fetch: (path: string, request: unknown) =>
-    path === "/api/workbench/snapshot" ? mocks.workbench(request) : mocks.api_fetch(path, request),
+    path === "/api/workbench/snapshot"
+      ? mocks.workbench(request)
+      : path === "/api/proofreading/query"
+        ? mocks.warnings(request)
+        : mocks.api_fetch(path, request),
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_error_toast: mocks.push_toast,
@@ -56,12 +63,20 @@ describe("useTranslationGenerationFlow", () => {
   beforeEach(() => {
     vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock());
     mocks.api_fetch.mockReset();
-    mocks.workbench
-      .mockReset()
-      .mockResolvedValue({ projectPath: "E:/demo/sample.lg", snapshot: { entries: [] } });
+    mocks.warnings.mockReset().mockResolvedValue({
+      projectPath: "E:/demo/sample.lg",
+      sectionRevisions: { files: 7 },
+      warningCount: 0,
+    });
+    mocks.workbench.mockReset().mockResolvedValue({
+      projectPath: "E:/demo/sample.lg",
+      sectionRevisions: { files: 7 },
+      snapshot: { entries: [{ file_type: "TXT", rel_path: "native.txt" }] },
+    });
     mocks.push_toast.mockReset();
     mocks.navigate_to_agent.mockReset();
     mocks.project_snapshot.loaded = true;
+    mocks.project_snapshot.file_count = 1;
     mocks.project_snapshot.path = "E:/demo/sample.lg";
     mocks.settings_snapshot.translation_save_mode = "PROJECT";
     mocks.settings_snapshot.translation_fixed_path = "";
@@ -93,294 +108,302 @@ describe("useTranslationGenerationFlow", () => {
     await act(async () => Promise.resolve());
   }
 
-  it.each([
-    { total_count: 3, has_generic: false },
-    { total_count: 2, has_generic: true },
-    { total_count: 0, has_generic: true },
-  ])(
-    "预检 $total_count 条警告、通用资产 $has_generic 后按任务顺序交给 Agent",
-    async ({ total_count, has_generic }) => {
-      mocks.api_fetch.mockResolvedValue({
-        projectPath: mocks.project_snapshot.path,
-        warningSummary: { total_count, entries: [] },
+  it.each([false, true])("警告先确认，格式范围需要独立下一步：%s", async (has_agent_files) => {
+    mocks.settings_snapshot.translation_save_mode = "MANUAL";
+    const pick = vi
+      .spyOn(window.desktopApp, "pickDirectory")
+      .mockResolvedValue({ canceled: false, paths: ["E:/chosen"] });
+    mocks.warnings.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 7 },
+      warningCount: 3,
+    });
+    mocks.workbench.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 7 },
+      snapshot: {
+        entries: [
+          { file_type: "TXT", rel_path: "native.txt" },
+          ...(has_agent_files ? [{ file_type: "MEDIA", rel_path: "movie.media" }] : []),
+        ],
+      },
+    });
+    mocks.api_fetch.mockResolvedValue({ accepted: true });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state).toMatchObject({
+      phase: "ready",
+      step: "warnings",
+      warning_count: 3,
+    });
+    if (has_agent_files) {
+      await act(async () => latest_flow?.confirm_generation());
+      expect(mocks.api_fetch).not.toHaveBeenCalled();
+      act(() => {
+        latest_flow?.next_step();
+        latest_flow?.next_step();
       });
-      mocks.workbench.mockResolvedValue({
-        projectPath: mocks.project_snapshot.path,
-        snapshot: {
-          entries: has_generic ? [{ file_type: "GENERIC", rel_path: "renamed.txt" }] : [],
-        },
+      expect(latest_flow?.state).toMatchObject({
+        phase: "ready",
+        step: "files",
+        has_agent_files: true,
       });
-      await render_probe();
-      act(() => latest_flow?.request_generation());
-      expect(latest_flow?.state.phase).toBe("checking");
-      await flush_microtasks();
-      expect(latest_flow?.state).toMatchObject({ phase: "ready", has_generic });
-      act(() => latest_flow?.jump_to_agent());
-      const text = mocks.navigate_to_agent.mock.calls[0]![0].text as string;
-      // 技能路由决定任务责任，提示语可独立调整。
-      expect(find_agent_reference_ranges(text).map(({ reference }) => reference)).toEqual([
-        ...(total_count > 0 ? [{ kind: "skill", name: "translation" }] : []),
-        { kind: "skill", name: "project-operation" },
-      ]);
-      expect(latest_flow?.state.phase).toBe("closed");
-    },
-  );
+      expect(mocks.api_fetch).not.toHaveBeenCalled();
+      expect(pick).not.toHaveBeenCalled();
+    }
+    await act(async () => latest_flow?.confirm_generation());
+    expect(pick).toHaveBeenCalledOnce();
+    expect(mocks.api_fetch).toHaveBeenCalledOnce();
+    expect(mocks.warnings).toHaveBeenCalledExactlyOnceWith({ action: "warning_count" });
+    pick.mockRestore();
+  });
 
-  it("文件检查失败仍可继续生成，不推断通用包不存在", async () => {
-    mocks.api_fetch
-      .mockResolvedValueOnce({
-        projectPath: mocks.project_snapshot.path,
-        warningSummary: { total_count: 0, entries: [] },
-      })
-      .mockResolvedValueOnce({ accepted: true });
+  it.each(["warnings", "files"])("在 %s 阶段转交 Agent 时预填对应任务", async (step) => {
+    mocks.warnings.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 7 },
+      warningCount: 2,
+    });
+    mocks.workbench.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 7 },
+      snapshot: { entries: [{ file_type: "MEDIA", rel_path: "movie.media" }] },
+    });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    if (step === "files") act(() => latest_flow?.next_step());
+    act(() => latest_flow?.jump_to_agent());
+    const text = mocks.navigate_to_agent.mock.calls[0]![0].text;
+    expect(
+      find_agent_reference_ranges(text).some(({ reference }) => reference.kind === "skill"),
+    ).toBe(true);
+    // 审校只在 warnings 阶段显式出现，两条路径共用同一生成任务文案。
+    expect(text.includes("app.agent_input.steps.review")).toBe(step === "warnings");
+    expect(text).toContain('app.translation_generation.agent_request @skill("project-operation")');
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state).toMatchObject({ phase: "ready", step: "warnings" });
+  });
+
+  it("警告检查失败或文件修订不一致时重新检查，拒绝绕过确认", async () => {
+    mocks.warnings.mockRejectedValueOnce(new Error("warnings unavailable"));
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state.phase).toBe("check-failed");
+    mocks.warnings.mockResolvedValueOnce({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 8 },
+      warningCount: 0,
+    });
+    act(() => latest_flow?.retry_check());
+    await flush_microtasks();
+    expect(latest_flow?.state.phase).toBe("check-failed");
+    await act(async () => latest_flow?.confirm_generation());
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+    act(() => latest_flow?.retry_check());
+    await flush_microtasks();
+    expect(latest_flow?.state).toMatchObject({ phase: "ready", step: "files" });
+  });
+
+  it("空工程禁用入口，删除最后一个文件关闭确认", async () => {
+    mocks.project_snapshot.file_count = 0;
+    await render_probe();
+    expect(latest_flow?.can_request_generation).toBe(false);
+    act(() => latest_flow?.request_generation());
+    expect(mocks.workbench).not.toHaveBeenCalled();
+    mocks.project_snapshot.file_count = 1;
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state.phase).toBe("ready");
+    mocks.project_snapshot.file_count = 0;
+    await render_probe();
+    expect(latest_flow?.state.phase).toBe("closed");
+  });
+
+  it.each(["GENERIC", "MEDIA"])("%s 文件报告范围，交给 Agent 只预填生成任务", async (file_type) => {
+    mocks.warnings.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 9 },
+      warningCount: 0,
+    });
+    mocks.workbench.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 9 },
+      snapshot: {
+        entries: [
+          { file_type, rel_path: "asset" },
+          { file_type: "TXT", rel_path: "native.txt" },
+        ],
+      },
+    });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state).toEqual({
+      phase: "ready",
+      step: "files",
+      warning_count: 0,
+      has_agent_files: true,
+      has_supported_files: true,
+      files_revision: 9,
+    });
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+    act(() => latest_flow?.jump_to_agent());
+    const text = mocks.navigate_to_agent.mock.calls[0]![0].text;
+    expect(text).toContain("app.translation_generation.agent_request");
+    expect(
+      find_agent_reference_ranges(text).some(({ reference }) => reference.kind === "skill"),
+    ).toBe(true);
+    expect(latest_flow?.state.phase).toBe("closed");
+  });
+
+  it("仅 Agent 资产不能直接生成，空集合结束流程", async () => {
+    mocks.workbench.mockResolvedValueOnce({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 7 },
+      snapshot: { entries: [{ file_type: "MEDIA", rel_path: "video" }] },
+    });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    await act(async () => latest_flow?.confirm_generation());
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+    act(() => latest_flow?.close());
+    mocks.workbench.mockResolvedValueOnce({
+      projectPath: mocks.project_snapshot.path,
+      snapshot: { entries: [] },
+    });
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    expect(latest_flow?.state.phase).toBe("closed");
+  });
+
+  it("读取失败提供重试或转交 Agent，拒绝直接生成", async () => {
     mocks.workbench.mockRejectedValueOnce(new Error("files unavailable"));
     await render_probe();
     act(() => latest_flow?.request_generation());
     await flush_microtasks();
-    expect(latest_flow?.state).toEqual({ phase: "check-failed" });
-    await act(async () => latest_flow?.confirm_generation());
-    expect(mocks.api_fetch).toHaveBeenLastCalledWith(
-      "/api/translation/files/generate",
-      expect.any(Object),
-    );
-    expect(latest_flow?.state.phase).toBe("closed");
-  });
-
-  it.each(["close", "switch"])("%s 后忽略迟到的文件检查", async (action) => {
-    const pending = Promise.withResolvers<unknown>();
-    mocks.api_fetch.mockResolvedValue({
-      projectPath: mocks.project_snapshot.path,
-      warningSummary: { total_count: 0, entries: [] },
-    });
-    mocks.workbench.mockReturnValue(pending.promise);
-    await render_probe();
-    act(() => latest_flow?.request_generation());
-    if (action === "close") act(() => latest_flow?.close());
-    else {
-      mocks.project_snapshot.path = "E:/demo/next.lg";
-      await render_probe();
-    }
-    await act(async () =>
-      pending.resolve({
-        projectPath: "E:/demo/sample.lg",
-        snapshot: { entries: [{ file_type: "GENERIC" }] },
-      }),
-    );
-    expect(latest_flow?.state.phase).toBe("closed");
-  });
-
-  it("工程切换后，旧译文生成失败不会恢复旧确认框", async () => {
-    let reject_generation = (_error: Error): void => undefined;
-    mocks.api_fetch
-      .mockResolvedValueOnce({
-        projectPath: mocks.project_snapshot.path,
-        warningSummary: { total_count: 0, entries: [] },
-      })
-      .mockImplementationOnce(
-        () =>
-          new Promise((_resolve, reject) => {
-            reject_generation = reject;
-          }),
-      );
-    await render_probe();
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
-    let generating: Promise<void> | undefined;
-    act(() => {
-      generating = latest_flow?.confirm_generation();
-    });
-    mocks.project_snapshot.path = "E:/demo/next.lg";
-    await render_probe();
-    await act(async () => {
-      reject_generation(new Error("old generation failed"));
-      await generating;
-    });
-    expect(latest_flow?.state.phase).toBe("closed");
-    expect(mocks.push_toast).not.toHaveBeenCalled();
-  });
-
-  it("无警告确认后只调用一次唯一译文生成接口", async () => {
-    let resolve_generation: (() => void) | null = null;
-    mocks.api_fetch
-      .mockResolvedValueOnce({
-        projectPath: "E:/demo/sample.lg",
-        warningSummary: { total_count: 0, entries: [] },
-      })
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolve_generation = () =>
-              resolve({
-                accepted: true,
-                output_path: "output",
-                pdf_files: [],
-              });
-          }),
-      );
-    await render_probe();
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
-
-    await act(async () => {
-      void latest_flow?.confirm_generation();
-      void latest_flow?.confirm_generation();
-      await Promise.resolve();
-    });
-    expect(latest_flow?.state.phase).toBe("generating");
-    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/translation/files/generate", {
-      project_path: "E:/demo/sample.lg",
-    });
-    expect(
-      mocks.api_fetch.mock.calls.filter(([path]) => path === "/api/translation/files/generate"),
-    ).toHaveLength(1);
-
-    await act(async () => resolve_generation?.());
-    expect(latest_flow?.state.phase).toBe("closed");
-    expect(mocks.push_toast).not.toHaveBeenCalled();
-  });
-
-  it.each(["PROJECT", "FIXED", "MANUAL"])("%s 模式使用确定的输出父目录", async (mode) => {
-    mocks.settings_snapshot.translation_save_mode = mode;
-    mocks.settings_snapshot.translation_fixed_path = "E:/fixed";
-    const pick = vi
-      .spyOn(window.desktopApp, "pickDirectory")
-      .mockResolvedValue({ canceled: false, paths: ["E:/chosen"] });
-    mocks.api_fetch
-      .mockResolvedValueOnce({
-        projectPath: mocks.project_snapshot.path,
-        warningSummary: { total_count: 0, entries: [] },
-      })
-      .mockResolvedValueOnce({ accepted: true });
-    await render_probe();
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
-    await act(async () => {
-      await latest_flow?.confirm_generation();
-    });
-    expect(mocks.api_fetch).toHaveBeenLastCalledWith("/api/translation/files/generate", {
-      project_path: "E:/demo/sample.lg",
-      ...(mode === "MANUAL" ? { output_directory: "E:/chosen" } : {}),
-    });
-    expect(pick).toHaveBeenCalledTimes(mode === "MANUAL" ? 1 : 0);
-    pick.mockRestore();
-  });
-
-  it("取消或工程切换后迟到的选择不会生成文件", async () => {
-    mocks.settings_snapshot.translation_save_mode = "MANUAL";
-    let resolve_pick!: (value: { canceled: boolean; paths: string[] }) => void;
-    const pick = vi.spyOn(window.desktopApp, "pickDirectory").mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolve_pick = resolve;
-        }),
-    );
-    mocks.api_fetch.mockResolvedValue({
-      projectPath: mocks.project_snapshot.path,
-      warningSummary: { total_count: 0, entries: [] },
-    });
-    await render_probe();
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
-    let pending!: Promise<void>;
-    act(() => {
-      pending = latest_flow!.confirm_generation();
-    });
-    await act(async () => {
-      resolve_pick({ canceled: true, paths: [] });
-      await pending;
-    });
-    expect(latest_flow?.state.phase).toBe("closed");
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
-    act(() => {
-      pending = latest_flow!.confirm_generation();
-    });
-    mocks.project_snapshot.path = "E:/demo/next.lg";
-    await render_probe();
-    await act(async () => {
-      resolve_pick({ canceled: false, paths: ["E:/chosen"] });
-      await pending;
-    });
-    expect(
-      mocks.api_fetch.mock.calls.filter(([url]) => url === "/api/translation/files/generate"),
-    ).toHaveLength(0);
-    pick.mockRestore();
-  });
-
-  it("译文生成业务错误与传输失败共用失败提示并允许重试", async () => {
-    const error = Object.assign(new Error("translation.generation_failed"), {
-      name: "DesktopApiError",
-      code: "translation.generation_failed",
-      details: {},
-    });
-    mocks.api_fetch
-      .mockResolvedValueOnce({
-        projectPath: mocks.project_snapshot.path,
-        warningSummary: { total_count: 0, entries: [] },
-      })
-      .mockRejectedValueOnce(error)
-      .mockRejectedValueOnce(new Error("transport failed"));
-    await render_probe();
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
-    await act(async () => {
-      await latest_flow?.confirm_generation();
-    });
-    expect(mocks.push_toast).toHaveBeenLastCalledWith(
-      "app.translation_generation.log.failed",
-      expect.any(Error),
-    );
-    expect(latest_flow?.state.phase).toBe("ready");
-    await act(async () => {
-      await latest_flow?.confirm_generation();
-    });
-    expect(mocks.push_toast).toHaveBeenLastCalledWith(
-      "app.translation_generation.log.failed",
-      expect.any(Error),
-    );
-    expect(latest_flow?.state.phase).toBe("ready");
-  });
-
-  it("警告查询失败后允许重新检查", async () => {
-    mocks.api_fetch.mockRejectedValueOnce(new Error("query failed")).mockResolvedValueOnce({
-      projectPath: "E:/demo/sample.lg",
-      warningSummary: { total_count: 0, entries: [] },
-    });
-    await render_probe();
-
-    act(() => latest_flow?.request_generation());
-    await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("check-failed");
-
+    await act(async () => latest_flow?.confirm_generation());
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+    act(() => latest_flow?.jump_to_agent());
+    expect(mocks.navigate_to_agent).toHaveBeenCalledOnce();
+    mocks.workbench.mockRejectedValueOnce(new Error("files unavailable"));
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
     act(() => latest_flow?.retry_check());
     await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("ready");
   });
 
-  it("项目切换后忽略旧项目迟到的警告摘要", async () => {
-    let resolve_summary: ((value: unknown) => void) | null = null;
-    mocks.api_fetch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolve_summary = resolve;
-        }),
-    );
+  it.each(["close", "switch"])("%s 淘汰迟到查询", async (action) => {
+    const pending = Promise.withResolvers<unknown>();
+    mocks.workbench.mockReturnValueOnce(pending.promise);
     await render_probe();
     act(() => latest_flow?.request_generation());
-
-    mocks.project_snapshot.path = "E:/demo/next.lg";
-    await render_probe();
+    if (action === "close") act(() => latest_flow?.close());
+    else {
+      mocks.project_snapshot.path = "other.lg";
+      await render_probe();
+    }
+    await act(async () =>
+      pending.resolve({ projectPath: "E:/demo/sample.lg", snapshot: { entries: [] } }),
+    );
     expect(latest_flow?.state.phase).toBe("closed");
+  });
 
-    await act(async () => {
-      resolve_summary?.({
-        projectPath: "E:/demo/sample.lg",
-        warningSummary: {
-          total_count: 1,
-          entries: [{ code: "FOREIGN_CHAR_RESIDUE", count: 1 }],
-        },
+  it.each(["PROJECT", "FIXED", "MANUAL"])(
+    "%s 模式携带确认修订，提交期间防止重复生成",
+    async (mode) => {
+      mocks.settings_snapshot.translation_save_mode = mode;
+      const pick = vi
+        .spyOn(window.desktopApp, "pickDirectory")
+        .mockResolvedValue({ canceled: false, paths: ["E:/chosen"] });
+      const pending = Promise.withResolvers<unknown>();
+      mocks.api_fetch.mockReturnValueOnce(pending.promise);
+      await render_probe();
+      act(() => latest_flow?.request_generation());
+      await flush_microtasks();
+      let generating!: Promise<void>;
+      await act(async () => {
+        generating = latest_flow!.confirm_generation();
+        void latest_flow?.confirm_generation();
       });
+      expect(mocks.api_fetch).toHaveBeenCalledExactlyOnceWith("/api/translation/files/generate", {
+        project_path: mocks.project_snapshot.path,
+        expected_section_revisions: { files: 7 },
+        ...(mode === "MANUAL" ? { output_directory: "E:/chosen" } : {}),
+      });
+      expect(pick).toHaveBeenCalledTimes(mode === "MANUAL" ? 1 : 0);
+      await act(async () => {
+        pending.resolve({ accepted: true });
+        await generating;
+      });
+      expect(latest_flow?.state.phase).toBe("closed");
+      pick.mockRestore();
+    },
+  );
+
+  it("生成失败恢复确认，修订冲突重新读取范围", async () => {
+    mocks.api_fetch
+      .mockRejectedValueOnce(new Error("disk failed"))
+      .mockRejectedValueOnce(new DesktopApiError({ code: "data.revision_conflict" }));
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    await act(async () => latest_flow?.confirm_generation());
+    expect(latest_flow?.state.phase).toBe("ready");
+    expect(mocks.push_toast).toHaveBeenCalledOnce();
+    mocks.warnings.mockResolvedValueOnce({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 8 },
+      warningCount: 0,
     });
+    mocks.workbench.mockResolvedValueOnce({
+      projectPath: mocks.project_snapshot.path,
+      sectionRevisions: { files: 8 },
+      snapshot: { entries: [{ file_type: "MEDIA", rel_path: "new" }] },
+    });
+    await act(async () => latest_flow?.confirm_generation());
+    expect(latest_flow?.state).toMatchObject({
+      phase: "ready",
+      files_revision: 8,
+      has_agent_files: true,
+      has_supported_files: false,
+    });
+  });
+
+  it("目录取消与工程切换淘汰旧提交", async () => {
+    mocks.settings_snapshot.translation_save_mode = "MANUAL";
+    const pick = vi
+      .spyOn(window.desktopApp, "pickDirectory")
+      .mockResolvedValueOnce({ canceled: true, paths: [] });
+    await render_probe();
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    await act(async () => latest_flow?.confirm_generation());
     expect(latest_flow?.state.phase).toBe("closed");
+    const pending = Promise.withResolvers<{ canceled: boolean; paths: string[] }>();
+    pick.mockReturnValueOnce(pending.promise);
+    act(() => latest_flow?.request_generation());
+    await flush_microtasks();
+    let generating!: Promise<void>;
+    act(() => {
+      generating = latest_flow!.confirm_generation();
+    });
+    mocks.project_snapshot.path = "other.lg";
+    await render_probe();
+    await act(async () => {
+      pending.resolve({ canceled: false, paths: ["E:/chosen"] });
+      await generating;
+    });
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
+    expect(latest_flow?.state.phase).toBe("closed");
+    pick.mockRestore();
   });
 });

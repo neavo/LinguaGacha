@@ -1,4 +1,6 @@
-import { create_empty_batch_translation_snapshot } from "../../shared/batch-translation/batch-translation";
+import { AppError } from "../../shared/error";
+import { empty_batch_task_snapshot } from "../../shared/batch-task";
+import { empty_batch_task_progress } from "../../domain/batch-task";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +8,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
-import type { BatchTranslationSnapshot } from "../../domain/batch-translation";
+import type { BatchTaskSnapshot } from "../../domain/batch-task";
 import type { CLICommandName, CLICommandOptions, CLICommandResources } from "../cli-parser";
 import { run_cli_job } from "./cli-job-runner";
 import { build_cli_task_input } from "./cli-task-input";
@@ -48,40 +50,50 @@ describe("run_cli_job", () => {
       source_operation,
     );
   });
-  it.each(["PDF", "GENERIC"])("零条目 %s 输入报告排除文件并跳过批量运行", async (file_type) => {
-    const harness = create_backend_services_harness();
-    const paths = create_cli_paths();
-    vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
-      projectPath: "test.lg",
-      sectionRevisions: {},
-      snapshot: {
-        entries: [
-          {
-            rel_path: "book.pdf",
-            file_type,
-            sort_index: 0,
-            progress: {
-              unit: "page",
-              total_count: 3,
-              completed_count: 0,
-              skipped_count: 0,
-              pending_count: 3,
-              completion_percent: 0,
+  it.each(["PDF", "GENERIC", "MEDIA"])(
+    "零条目 %s 输入报告排除文件并跳过批量运行",
+    async (file_type) => {
+      const harness = create_backend_services_harness();
+      const paths = create_cli_paths();
+      vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
+        projectPath: "test.lg",
+        sectionRevisions: {},
+        snapshot: {
+          entries: [
+            {
+              rel_path: "book.pdf",
+              file_type,
+              sort_index: 0,
+              progress: {
+                unit: "page",
+                total_count: 3,
+                completed_count: 0,
+                skipped_count: 0,
+                pending_count: 3,
+                completion_percent: 0,
+              },
             },
-          },
-        ],
-      },
-    });
-    await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
-    expect(harness.start_task).not.toHaveBeenCalled();
-    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
-    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
-      "done",
-      undefined,
-      ["book.pdf"],
-      undefined,
-    );
-  });
+          ],
+        },
+      });
+      harness.generate_files_to_directory.mockRejectedValueOnce(
+        new AppError("project.no_files", {
+          public_details: { reason: "no_generatable_files", excluded_files: ["book.pdf"] },
+        }),
+      );
+      await expect(
+        run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter),
+      ).rejects.toMatchObject({ code: "project.no_files" });
+      expect(harness.start_task).not.toHaveBeenCalled();
+      expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
+      expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+        "error",
+        expect.objectContaining({ code: "project.no_files" }),
+        ["book.pdf"],
+        undefined,
+      );
+    },
+  );
 
   it("原生游戏输入只向 stderr 提示备份，stdout 不受影响", async () => {
     const harness = create_backend_services_harness();
@@ -172,7 +184,7 @@ describe("run_cli_job", () => {
     ).toEqual(["started", "progress", "progress", "finished:done"]);
     expect(
       harness.status_reporter.emit_progress.mock.calls.map(
-        ([snapshot]) => (snapshot as BatchTranslationSnapshot).status,
+        ([snapshot]) => (snapshot as BatchTaskSnapshot).status,
       ),
     ).toEqual(["running", "done"]);
     expect(harness.subscriber_count()).toBe(0);
@@ -296,17 +308,15 @@ describe("run_cli_job", () => {
 function create_backend_services_harness(failures: { unloadFailure?: Error } = {}) {
   const events: string[] = [];
   const created_project_paths: string[] = [];
-  const task_listeners = new Set<
-    (snapshot: Readonly<BatchTranslationSnapshot>) => void | Promise<void>
-  >();
+  const task_listeners = new Set<(snapshot: Readonly<BatchTaskSnapshot>) => void | Promise<void>>();
   let started = false;
   let finish!: (result: {
     status: "done" | "idle" | "error";
-    progress: BatchTranslationSnapshot["progress"];
+    progress: BatchTaskSnapshot["progress"];
   }) => void;
   const completion = new Promise<{
     status: "done" | "idle" | "error";
-    progress: BatchTranslationSnapshot["progress"];
+    progress: BatchTaskSnapshot["progress"];
   }>((resolve) => {
     finish = resolve;
   });
@@ -350,6 +360,9 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
   const generate_files_to_directory = vi.fn(async (output_dir: string) => {
     events.push("translation_generation");
     return {
+      accepted: true as const,
+      pdf_files: [],
+      excluded_files: [],
       output_path: path.join(output_dir, "translated"),
       bilingual_output_path: path.join(output_dir, "bilingual"),
     };
@@ -393,11 +406,8 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
         },
       },
       files: { translationGeneration: { generate_files_to_directory } },
-      batchTranslation: {
-        start_current_project: start_task,
-        subscribe: (
-          listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void | Promise<void>,
-        ) => {
+      batchTasks: {
+        subscribe: (listener: (snapshot: Readonly<BatchTaskSnapshot>) => void | Promise<void>) => {
           events.push("subscribe");
           task_listeners.add(listener);
           return () => {
@@ -405,6 +415,9 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
             task_listeners.delete(listener);
           };
         },
+      },
+      batchTranslation: {
+        start_current_project: start_task,
       },
     } as unknown as BackendServices,
     apply_task_input,
@@ -419,7 +432,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     task_started,
     unload_project,
     emit_snapshot: async (
-      status: BatchTranslationSnapshot["status"],
+      status: BatchTaskSnapshot["status"],
       progress: Partial<import("../../domain/batch-translation").BatchTranslationRunProgress> = {},
     ): Promise<void> => {
       if (!started) {
@@ -448,17 +461,20 @@ async function wait_for_task_start(
 
 /** 构造独立任务的公开进度快照。 */
 function create_task_snapshot(
-  status: BatchTranslationSnapshot["status"],
+  status: BatchTaskSnapshot["status"],
   progress: Partial<import("../../domain/batch-translation").BatchTranslationRunProgress> = {},
-): BatchTranslationSnapshot {
-  const snapshot = create_empty_batch_translation_snapshot();
+): BatchTaskSnapshot {
+  const snapshot = empty_batch_task_snapshot();
   return {
     ...snapshot,
     revision: 1,
     status,
     source: status === "idle" ? null : "standalone",
-    progress: { ...snapshot.progress, ...progress },
-    run_progress: { ...snapshot.progress, failed_line: 0, ...progress },
+    progress: {
+      ...empty_batch_task_progress("item", progress.total_line ?? 0),
+      succeeded: progress.processed_line ?? 0,
+      failed: progress.failed_line ?? 0,
+    },
   };
 }
 

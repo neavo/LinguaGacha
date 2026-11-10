@@ -36,12 +36,13 @@ export class EPUBFormat {
   }
 
   /**
-   * 写回依赖原始 asset 的书籍结构，同时生成译文版和双语对照版。
+   * 写回依赖原始资产的书籍结构，双语清单缺省时生成全部对照版。
    */
   public async write_to_path(
     items: Item[],
     paths: GeneratedFilePaths,
     asset_reader: (rel_path: string) => Buffer | null | Promise<Buffer | null>,
+    bilingual_files?: readonly string[],
   ): Promise<void> {
     for (const [rel_path, file_items] of group_file_items(items, "EPUB")) {
       const original_content = await asset_reader(rel_path);
@@ -54,12 +55,13 @@ export class EPUBFormat {
         path.join(paths.translated_path, rel_path),
         false,
       );
-      await this.writer.build_epub(
-        original_content,
-        file_items,
-        path.join(paths.bilingual_path, rel_path),
-        true,
-      );
+      if (bilingual_files === undefined || bilingual_files.includes(rel_path))
+        await this.writer.build_epub(
+          original_content,
+          file_items,
+          path.join(paths.bilingual_path, rel_path),
+          true,
+        );
     }
   }
 }

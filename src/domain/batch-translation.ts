@@ -1,32 +1,5 @@
-import { is_model_thinking_level, type ModelThinkingLevel } from "./model";
+import type { BatchTaskRequestState } from "./batch-task";
 import type { ItemStatus } from "./item";
-
-/** 从本次执行配置投影的非敏感摘要，跨续跑保留各自实际采用的值。 */
-export type BatchTranslationConfig = Readonly<{
-  model_name: string;
-  model_id: string;
-  thinking_level: ModelThinkingLevel | null;
-  source_language: string;
-  target_language: string;
-}>;
-
-/** 运行配置在尚未解析、工程重开或新运行预约时可以缺失。 */
-export function normalize_batch_translation_config(
-  value: unknown,
-): BatchTranslationConfig | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const record = value as Record<string, unknown>;
-  const { model_name, model_id, thinking_level, source_language, target_language } = record;
-  if (
-    typeof model_name !== "string" ||
-    typeof model_id !== "string" ||
-    typeof source_language !== "string" ||
-    typeof target_language !== "string" ||
-    (thinking_level !== null && !is_model_thinking_level(thinking_level))
-  )
-    return undefined;
-  return { model_name, model_id, thinking_level, source_language, target_language };
-}
 
 export const BATCH_TRANSLATION_RUN_STATUSES = [
   "idle",
@@ -156,23 +129,9 @@ function read_non_negative_integer(value: unknown): number {
   return Math.trunc(read_non_negative_number(value));
 }
 
-/** 全部密钥不可用且没有普通请求在途时的恢复阶段；阶段由调度器决定，前端时钟只更新秒数。 */
-export type BatchTranslationRequestRecovery =
-  | Readonly<{
-      phase: "waiting";
-      retry_count: number; // 连续全部不可用期间实际派发的恢复请求数，任一密钥恢复正常后清零。
-      retry_at: number; // 毫秒时间戳，同时考虑密钥冷却和请求速率。
-    }>
-  | Readonly<{ phase: "retrying" }>; // 恢复请求在途。
-
-export type BatchTranslationRequestState = Readonly<{
-  request_in_flight_count: number;
-  request_recovery: BatchTranslationRequestRecovery | null;
-}>;
-
 /** 运行态允许显式清空可选字段；对外完成结果只携带存在的字段。 */
-export type BatchTranslationSnapshot = BatchTranslationRequestState & {
-  config?: BatchTranslationConfig | undefined;
+export type BatchTranslationSnapshot = BatchTaskRequestState & {
+  run_id?: string | undefined;
   operation?: BatchTranslationOperation | undefined; // 首次预约后保留本轮目的，工程切换清空
   run_progress?: BatchTranslationRunProgress | undefined; // 本轮目标和已结束尝试，只属于内存运行态
   revision: number;

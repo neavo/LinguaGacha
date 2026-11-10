@@ -1,6 +1,10 @@
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppError, is_app_error } from "../../shared/error";
+import { requires_agent_generation } from "../../shared/translation-generation";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { ProjectWriteStore } from "../project/project-write-store";
+import { is_json_record } from "../../domain/json";
 import type {
   PDFFileGenerationResult,
   TranslationOutputPaths,
@@ -38,8 +42,9 @@ const FILE_GENERATION_LOG_SOURCE = "translation-generation"; // 各入口共用�
 
 type GenerationTarget = Readonly<{
   paths: GeneratedFilePaths;
-  generic_path?: string; // 提供目录时才生成通用写回输入。
+  writeback_path?: string; // 提供目录时才生成通用与视频写回输入。
   skip_pdf: boolean;
+  bilingual_files?: readonly string[]; // Agent 明确选择双语资产，GUI 和 CLI 沿用格式默认输出。
 }>;
 
 export type OutputFolderOpener = (output_path: string) => Promise<void>;
@@ -52,6 +57,11 @@ export class TranslationFileGenerationService {
    * 译文生成服务依赖当前 .lg 数据库、设置和项目会话，不直接读取渲染进程状态
    */
   public constructor(
+    private readonly runtime_gate: Pick<
+      RuntimeOperationGate,
+      "run_project_write" | "run_agent_project_write"
+    >,
+    private readonly write_store: Pick<ProjectWriteStore, "check_section_revisions">,
     private readonly game_directory_operations: GameDirectoryOperations,
     private readonly database: ProjectDatabase, // 译文生成读取工程事实和原稿资产的入口
     private readonly app_setting_service: AppSettingService, // 译文生成格式和完成后动作
@@ -66,57 +76,76 @@ export class TranslationFileGenerationService {
    * GUI 译文生成固定本次设置快照，读取项目条目并补齐重复译文。
    */
   public async generate_files(request: unknown): Promise<TranslationFileGenerationResult> {
-    return this.run_generation(async (project_path, setting) => {
-      // 请求校验先于工程读取，防止目录选择期间切换工程后生成错误的内容。
-      if (typeof request !== "object" || request === null || Array.isArray(request)) {
-        throw new Error("Invalid generation request");
-      }
-      const input = request as Record<string, unknown>;
-      if (
-        input.project_path !== project_path ||
-        (input.output_directory !== undefined && typeof input.output_directory !== "string")
-      ) {
-        throw new Error("Invalid project or output directory");
-      }
-      return this.write_files(project_path, setting, {
-        paths: this.resolve_output_paths(project_path, setting, input.output_directory),
-        skip_pdf: false,
-      });
-    }, true);
+    return this.runtime_gate.run_project_write(() =>
+      this.run_generation(async (project_path, setting) => {
+        // 请求校验先于工程读取，防止目录选择期间切换工程后生成错误的内容。
+        if (typeof request !== "object" || request === null || Array.isArray(request)) {
+          throw new Error("Invalid generation request");
+        }
+        const input = request as Record<string, unknown>;
+        if (
+          input.project_path !== project_path ||
+          (input.output_directory !== undefined && typeof input.output_directory !== "string")
+        ) {
+          throw new Error("Invalid project or output directory");
+        }
+        const revisions = input.expected_section_revisions;
+        if (
+          !is_json_record(revisions) ||
+          typeof revisions.files !== "number" ||
+          !Number.isSafeInteger(revisions.files) ||
+          revisions.files < 0
+        )
+          throw new AppError("request.validation_failed");
+        await this.write_store.check_section_revisions(project_path, { files: revisions.files }, [
+          "files",
+        ]);
+        return this.write_files(project_path, setting, {
+          paths: this.resolve_output_paths(project_path, setting, input.output_directory),
+          skip_pdf: false,
+        });
+      }, true),
+    );
   }
 
   /** CLI 保留既有目录布局，跳过页面翻译与通用写回。 */
   public async generate_files_to_directory(
     output_dir: string,
   ): Promise<TranslationFileGenerationResult> {
-    return this.run_generation(
-      (project_path, setting) =>
-        this.write_files(project_path, setting, {
-          paths: {
-            translated_path: path.resolve(output_dir),
-            bilingual_path: path.resolve(output_dir, "bilingual"),
-          },
-          skip_pdf: true,
-        }),
-      false,
+    return this.runtime_gate.run_project_write(() =>
+      this.run_generation(
+        (project_path, setting) =>
+          this.write_files(project_path, setting, {
+            paths: {
+              translated_path: path.resolve(output_dir),
+              bilingual_path: path.resolve(output_dir, "bilingual"),
+            },
+            skip_pdf: true,
+          }),
+        false,
+      ),
     );
   }
 
   /** 工作材料与可交付产物分开存放，交付前由 Agent 核对完整集合。 */
   public async generate_staging_files(
     output_dir: string,
+    bilingual_files: readonly string[],
   ): Promise<TranslationFileGenerationResult> {
-    return this.run_generation(
-      (project_path, setting) =>
-        this.write_files(project_path, setting, {
-          paths: {
-            translated_path: path.resolve(output_dir, "translated"),
-            bilingual_path: path.resolve(output_dir, "bilingual"),
-          },
-          generic_path: path.resolve(output_dir, "generic"),
-          skip_pdf: false,
-        }),
-      false,
+    return this.runtime_gate.run_agent_project_write(() =>
+      this.run_generation(
+        (project_path, setting) =>
+          this.write_files(project_path, setting, {
+            paths: {
+              translated_path: path.resolve(output_dir, "translated"),
+              bilingual_path: path.resolve(output_dir, "bilingual"),
+            },
+            writeback_path: path.resolve(output_dir, "writeback"),
+            bilingual_files,
+            skip_pdf: false,
+          }),
+        false,
+      ),
     );
   }
 
@@ -197,11 +226,31 @@ export class TranslationFileGenerationService {
       setting,
       read_project_language_settings(await this.database.get_all_meta(project_path)),
     );
-    const assets = await this.database.get_all_asset_records(project_path);
+    const all_assets = await this.database.get_all_asset_records(project_path);
+    const excluded_files = all_assets
+      .filter(
+        (asset) =>
+          (target.writeback_path === undefined && requires_agent_generation(asset.file_type)) ||
+          (target.skip_pdf && asset.file_type === "PDF"),
+      )
+      .map((asset) => asset.path);
+    const excluded = new Set(excluded_files);
+    const assets = all_assets.filter((asset) => !excluded.has(asset.path));
+    if (all_assets.length > 0 && assets.length === 0)
+      throw new AppError("project.no_files", {
+        public_details: { reason: "no_generatable_files", excluded_files },
+      });
+    if (assets.length === 0) throw new AppError("project.no_files");
+    // 资产被移除或改名后，旧清单必须在写盘前报错，避免悄悄漏掉双语成果。
+    for (const file of target.bilingual_files ?? []) {
+      if (!all_assets.some((asset) => asset.path === file))
+        throw new AppError("file.not_found", { public_details: { file } });
+    }
     // 重复译文填充只修改导出副本。
-    const items = (await this.database.get_all_items(project_path)).map((item) =>
-      create_item(item),
-    );
+    const included = new Set(assets.map((asset) => asset.path));
+    const items = (await this.database.get_all_items(project_path))
+      .map((item) => create_item(item))
+      .filter((item) => included.has(item.file_path));
     const documents = target.skip_pdf
       ? []
       : await this.read_generation_pdf_files(
@@ -209,9 +258,12 @@ export class TranslationFileGenerationService {
           Object.keys(await this.database.read_pdf_summaries(project_path)),
         );
     this.fill_duplicated_translations(items);
-    const { paths, generic_path } = target;
+    const { paths, writeback_path } = target;
+    const writeback_files = assets
+      .filter((asset) => requires_agent_generation(asset.file_type))
+      .map((asset) => asset.path);
     this.native_fs.make_dir(paths.translated_path);
-    this.native_fs.make_dir(paths.bilingual_path);
+    if (target.bilingual_files === undefined) this.native_fs.make_dir(paths.bilingual_path);
     const format_service = new FileFormatService(
       this.game_directory_operations,
       { target_language: config.target_language },
@@ -225,14 +277,23 @@ export class TranslationFileGenerationService {
         asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
         source_files: assets,
       },
-      generic_path,
+      writeback_path,
+      target.bilingual_files,
     );
     const pdf_files = await this.write_pdf_files(project_path, paths, documents);
     return {
       accepted: true,
       output_path: paths.translated_path,
       bilingual_output_path: paths.bilingual_path,
-      ...(generic_path === undefined ? {} : { generic_input_path: generic_path }),
+      excluded_files,
+      ...(writeback_path === undefined || writeback_files.length === 0
+        ? {}
+        : {
+            writeback: {
+              input_path: writeback_path,
+              files: writeback_files,
+            },
+          }),
       pdf_files,
     };
   }
