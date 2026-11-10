@@ -66,7 +66,8 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 
 |脚本|入口|用途|
 |---|---|---|
-|`media.mjs`|`missing`、`setup`|按用途检查、准备依赖与模型|
+|`media.mjs`|`missing`、`setup`|检查、准备全部媒体组件与模型|
+||`probe_gpu`|验证 WebGPU 配置可运行，用于选择设备|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白，视频同时检测画面文字，生成初始 `items.json`|
 ||`scan`、`sheets`、`refine`|仅视频：重新检测画面文字并生成裁图、拼图集、校准 `screen` 行的起止时间|
@@ -86,37 +87,37 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 # 环境准备
 
-`media.missing(用途)` 返回缺失的组件和模型。`media.setup(用途)` 下载资源并选择运行设备。用途是数组，按当前步骤选择：
+`media.missing()` 返回全部媒体组件和模型的缺口 `{ packages, python, models }`。`media.setup()` 准备完整环境并返回剩余缺口。它校验并复用已有资源。
 
-|用途|用于|
-|---|---|
-|`ffmpeg`|`inspect`、`ffmpeg`、`relink`|
-|`speech`|识别对白。识别模型有数百 MB，是最大的一项|
-|`text`|视频的画面文字检测、`scan`、`sheets`、`refine`|
-|`visualize`|纯音频成片，不含模型|
+1. 任务开始时单独调用 `missing` 并返回结果。有缺口时，先告诉用户需要下载并提醒保持网络畅通，再在新的调用中执行 `setup`。第一次需下载约 600 MB，后续可以复用。根据上下文说明这些事实。资源齐全时也调用 `setup` 复查。
+2. 下载失败或中断后，重新调用 `setup` 续传。其他入口报告组件未就绪时，回到第 1 步。准备阶段会实时输出日志。
+3. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
+4. 开始识别前，在独立调用中执行 `probe_gpu()` 并返回结果，据此选择本次任务的设备：
+   - `{ available: true }`：使用 `device: 'gpu'`。
+   - `{ available: false, reason }`：结合 `reason` 说明本次改用 CPU，处理可能更久。随后使用 `device: 'cpu'`。
+   - 探查抛出错误时不代表 GPU 不可用，按错误本身处理。
 
-1. 先准备 `ffmpeg`，用 `inspect` 确定分支。
-2. 识别前按分支准备：视频有音轨时 `['speech', 'text']`，视频无音轨时 `['text']`，纯音频只要 `['speech']`。`render` 不需要准备，成片只需要 `visualize`。
-3. 单独调用 `missing` 并返回结果。有缺口时，先告诉用户需要下载大约 500M 的组件，并提醒保持网络畅通。随后在新的调用中执行 `setup`。资源齐全时也调用 `setup`，它会复用有效配置。
-4. 下载失败或中断后，重新调用 `setup` 续传。GPU 资源准备失败时仍可用 CPU 处理。组件未就绪的错误会列出需要准备的用途。
+## 设备与重跑
 
-准备和检查阶段会实时输出日志。GPU 运行失败时，处理会自动改用 CPU 重跑一次。
+`prepare`、`scan`、`refine` 必须传入本次任务的 `device`。同一任务后续的调用和续跑沿用这一选择，新任务重新探查。SDK 只按传入的设备执行，不会自行换设备重跑。CPU 与 GPU 使用不同的识别和检测模型。
 
-## 设备纠错与重跑
+GPU 处理中失败时：
 
-默认自动选择设备。需要纠错时，在 `missing`、`setup` 和处理调用中传入相同的 `device: 'cpu'` 或 `'gpu'`。设备选择只覆盖本次调用。
+- `media.DeviceFailure` 表示 GPU 执行失败且资源已释放。告诉用户本次改用 CPU，此后都传 `device: 'cpu'`，用相同的工作目录和参数重跑失败的步骤。`prepare` 已完成的一支会复用。
+- `prepare` 两支同时失败时抛出 `AggregateError`。只有 `errors` 全部是 `DeviceFailure` 时才按上一条处理。
+- 其他错误，包括资源无法释放，按错误本身处理，不靠换设备重试。CPU 也失败时报告原因，不再切回 GPU。
+
+重跑已有结果：
 
 - 重跑对白：`prepare(来源, 工作目录, { track, language, device, rerun: ['speech'] })`。重跑画面检测时用 `rerun: ['text']`。省略 `rerun` 会复用已有结果。
 - 重新检测画面：`scan(工作目录, { device })`。
 - 重算指定行的时间：`refine(工作目录, 行号数组, { device })`。
 
-核对返回的 `execution.actual` 和 `execution.fallback_reason`。`prepare` 的 `execution` 按 `speech`、`text` 分组，只包含本次执行的步骤。
-
 `prepare` 重跑保留已有 `items.json`。根据新证据审阅条目，再打包和更新工程。新检测结果的区间编号可能变化。
 
 # 来源调查
 
-按「环境准备」的第 1 步确定分支后：
+按「环境准备」用 `inspect` 确定分支后：
 
 - 有文本字幕流时，先用 `ask_user` 询问是否改为提取字幕。提取比识别准确，用 `media.ffmpeg(args)` 导出后按 `project-operation` 导入。
 - 有多条音轨时请用户选择。`track` 是 `inspect` 返回的 `audio` 中从零开始的位置。
@@ -124,7 +125,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 # 识别
 
-调用 `media.prepare(来源, 工作目录, { track, language })`，`language` 取 `project_meta.json` 的 `source_language`。它运行本地 ASR，视频同时运行画面检测，不请求付费模型。一小时素材通常需要几分钟，没有 GPU 或 4K 素材更久，开始前告诉用户。中断后用相同参数续跑，已完成的部分不再重复。
+调用 `media.prepare(来源, 工作目录, { track, language, device })`，`language` 取 `project_meta.json` 的 `source_language`，`device` 按「环境准备」选择。它运行本地 ASR，视频同时运行画面检测，不请求付费模型。一小时素材通常需要几分钟，使用 CPU 或 4K 素材更久，开始前告诉用户。中断后用相同参数续跑，已完成的部分不再重复。
 
 `prepare` 在缺少 `items.json` 时，把每条 `asr` 转为 `dialogue` 记录。已有 `items.json` 原样保留，包括空数组。`asr` 为 `[]` 表示执行了识别但没有产出文字，如实告诉用户，不编造条目。
 
@@ -163,7 +164,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 仅视频。纯音频跳过本节，也不提示「没有识别画面文字」。
 
 1. 用 `media.sheets(工作目录)` 生成图集，它返回 `[{ file, ids }]`。按返回的 `file` 分批用 `ws.emitImage` 查看，每次 `workspace_run` 最多 10 张。按下文逐个区间判断，识别时同时形成译文。
-2. `screen` 行写好后，用 `media.refine(工作目录, 行号数组)` 校准起止时间。它直接写回 `items.json`。`unresolved` 列出未能校准的行，这些行保留原时间。边界超出原时间前后 1 秒，或条目中点未检测到文字时，校准会失败。
+2. `screen` 行写好后，用 `media.refine(工作目录, 行号数组, { device })` 校准起止时间。它直接写回 `items.json`。`unresolved` 列出未能校准的行，这些行保留原时间。边界超出原时间前后 1 秒，或条目中点未检测到文字时，校准会失败。
 
 需要判断的画面文字包括标题、字幕卡、招牌、名片、文稿、新闻横幅，以及动态漫画的气泡、旁白、内心独白、拟声词和拟态词。竖排、倾斜和装饰性字体同样判断，文字框很高或很窄都不是排除依据。
 
@@ -214,7 +215,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 # 复核与重新处理
 
-已导入的资产从 `sources/<file_path>/` 复制到新的工作目录。纯音频直接定位原文件并检查对白。视频的工作目录没有裁图，先准备 `text` 并调用 `media.scan(工作目录)` 重新生成。不同设备或版本可能选用不同的检测模型，新结果的区间编号和框可能与之前不同，只在本次结果内使用。
+已导入的资产从 `sources/<file_path>/` 复制到新的工作目录。纯音频直接定位原文件并检查对白。视频的工作目录没有裁图，按「环境准备」准备环境并选择设备后，调用 `media.scan(工作目录, { device })` 重新生成。不同设备或版本使用的检测模型可能不同，新结果的区间编号和框可能与之前不同，只在本次结果内使用。
 
 `scan`、`refine`、视频模型补查和音频成片都按 `media.json` 的 `source` 找回原文件。`media.locate(工作目录)` 在原文件不存在或大小、修改时间变化时报错。此时用 `ask_user` 请用户提供新路径，再调用 `media.relink(工作目录, 新路径)`。它核对时长、画面尺寸和所选音轨后更新 `source`。不要自行搜索同名文件替代。资产已导入时，重新打包并按「更新文件」提交，新路径才保存进工程。
 
@@ -269,7 +270,7 @@ const { visualize } = await import(new URL('scripts/visualize.mjs', base_url).hr
 const result = await visualize({ source: 包目录, bilingual: 双语ASS, fonts: ws.fontsDirectory, output: 'work/media/<原文件主名>.mp4' });
 ```
 
-- `source` 是含 `media.json` 的包目录或工作目录。它按 `source` 找回原文件和所选音轨，并准备 `visualize` 用途，不需要识别模型。首次生成前按「环境准备」检查该用途，有缺失时先告诉用户。
+- `source` 是含 `media.json` 的包目录或工作目录。它按 `source` 找回原文件和所选音轨，不使用推理设备。生成前按「环境准备」的前两步检查环境，有缺失时先告诉用户，不需要探查 GPU。
 - 画面是带品牌的亮色固定背景、跟随当前声音起落的频谱竖条和烧录的双语字幕，1920×1080、16 fps。用户要求的定制字幕同样直接烧录。
 - 音轨能直接封入 MP4 时原样复制，否则转为 AAC 128 kbps。返回的 `audio` 为 `copy` 或 `aac`，`duration` 是成片时长。
 - 成片先在输出旁生成并检查，通过后才替换同名旧成片。失败或取消不会留下半成品，也不会删除旧成片。

@@ -11,7 +11,6 @@ export async function visualize({ source, bilingual, fonts, output }) {
   const manifest = await load(path.join(source, "media.json"));
   if (manifest.video !== null) throw new Error("纯音频资产才能生成可视化成片");
   const media = await locate(source);
-  await sdk.setup(["visualize"]);
   return sdk.visualize(media, {
     track: manifest.source.track,
     background: fileURLToPath(new URL("../assets/audio-background.webp", import.meta.url)),

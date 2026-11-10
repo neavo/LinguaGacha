@@ -6,17 +6,19 @@ import path from "node:path";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { media_configuration } from "./runtime";
 import { ensure_ready } from "./preparation";
-import { helper, operate } from "./engine";
+import { helper, operate, validate_device } from "./engine";
 import { ffmpeg_path, inspect } from "./ffmpeg";
-import type { DeviceOptions, MediaResult } from "./worker-protocol";
+import type { DeviceOptions } from "./worker-protocol";
 import { MEDIA_MODELS } from "./models";
 import { ASR_LANGUAGES, speech_result, type AsrSentence, type AsrWindow } from "./speech";
 
-export type { DeviceOptions, MediaExecution, MediaResult } from "./worker-protocol";
+export type { DeviceOptions } from "./worker-protocol";
 export { ffmpeg, inspect, type ExecuteOptions, type MediaInfo } from "./ffmpeg";
 export { ASR_LANGUAGES, union, type AsrSentence } from "./speech";
 
-export { missing, setup, type MediaMissing, type MediaPurpose } from "./preparation";
+export { missing, setup, type MediaMissing } from "./preparation";
+export { probe_gpu, type GpuProbeResult } from "./probe";
+export { DeviceFailure } from "./inference-engine";
 export { visualize, type VisualizeOptions, type VisualizeResult } from "./visualize";
 
 /** 画面文字区间，`box` 为归一化 `[x0, y0, x1, y1]`。 */
@@ -38,8 +40,9 @@ export type Sheet = { file: string; ids: number[] };
 export async function listen(
   source: string,
   { track = 0, language, device }: Readonly<{ track?: number; language: string }> & DeviceOptions,
-): Promise<MediaResult<{ speech: [number, number][]; asr: AsrSentence[] }>> {
-  await ensure_ready(["speech"], { device });
+): Promise<{ speech: [number, number][]; asr: AsrSentence[] }> {
+  validate_device(device);
+  await ensure_ready();
   const code = (ASR_LANGUAGES as Readonly<Record<string, string>>)[language];
   if (code === undefined)
     throw new Error(
@@ -66,7 +69,6 @@ export async function listen(
       )) as { spans: [number, number][]; windows: AsrWindow[] };
       return speech_result(spans, windows);
     },
-    "asr",
     { device },
   );
 }
@@ -78,8 +80,9 @@ export async function listen(
 export async function scan(
   source: string,
   { out, device }: Readonly<{ out: string }> & DeviceOptions,
-): Promise<MediaResult<TextRegion[]>> {
-  await ensure_ready(["text"], { device });
+): Promise<TextRegion[]> {
+  validate_device(device);
+  await ensure_ready();
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
@@ -94,7 +97,6 @@ export async function scan(
       // 区间终点是末次检测加 1 秒，片尾不足一秒的部分截到时长。
       return regions.map((region) => ({ ...region, end: Math.min(region.end, info.duration) }));
     },
-    "det",
     { device },
   );
 }
@@ -103,8 +105,9 @@ export async function scan(
 export async function refine(
   source: string,
   { rows, device }: Readonly<{ rows: readonly RefineRow[] }> & DeviceOptions,
-): Promise<MediaResult<TextBound[]>> {
-  await ensure_ready(["text"], { device });
+): Promise<TextBound[]> {
+  validate_device(device);
+  await ensure_ready();
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
@@ -115,13 +118,12 @@ export async function refine(
         { ffmpeg: ffmpeg_path(), source, ...video, duration: info.duration, rows },
         engine,
       )) as TextBound[],
-    "det",
     { device },
   );
 }
 
 /** 把裁图拼成不超过 1280×1280 的图集写入 `out`，返回 `[{ file, ids }]`。 */
 export async function sheets(entries: readonly SheetEntry[], out: string): Promise<Sheet[]> {
-  await ensure_ready(["text"]);
+  await ensure_ready();
   return (await helper("sheet", { entries, out })) as Sheet[];
 }

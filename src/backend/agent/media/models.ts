@@ -131,7 +131,7 @@ const ARIA2_CHECKSUM_FAILED = 32; // aria2 退出码：下载完成但校验和�
 const OUTPUT_TAIL = 16 * 1024; // 失败时保留的 aria2 输出尾部。
 const LOCK_RETRY = Object.freeze({ retries: 1e6, minTimeout: 500, maxTimeout: 5000 }); // 等待其它进程完成同一资源。
 
-/** 文件大小一致即视为就绪；内容在发布前已完整校验，`verify` 用于显式准备时复查。 */
+/** 快速检查文件大小。`download_model` 在复用和发布前校验内容。 */
 export function model_ready(directory: string, model: MediaModel): boolean {
   const file = path.join(directory, model.file);
   return fs.exists(file) && fs.stat(file).size === model.size;

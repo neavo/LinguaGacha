@@ -8,7 +8,6 @@ const INTEGRATION_TESTS = [
   "src/backend/agent/media/visualize.test.ts",
   "src/backend/agent/media/models.test.ts",
   "src/backend/agent/media/worker.test.ts",
-  "src/backend/agent/media/calibrate.test.ts",
   "src/backend/agent/npm/index.test.ts",
   "src/backend/agent/workspace/runtime/bootstrap.test.ts",
   "src/backend/agent/workspace/runtime/module-resolution.test.ts",

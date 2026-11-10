@@ -8,7 +8,7 @@ import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
 
 it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
-  "deployed visualization preserves audio, output and cancellation boundaries without models",
+  "deployed visualization preserves audio, output and cancellation boundaries with the complete media environment",
   async () => {
     const root = path.resolve(process.env.LINGUAGACHA_VISUALIZE_REPORT!);
     const workspace = path.join(root, "workspace");
@@ -66,8 +66,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       import { uv } from '@lg/uv';
       import fs from 'node:fs/promises';
       import assert from 'node:assert/strict';
-      assert.deepEqual(await media.setup(['visualize']), {packages:[],python:[],models:[]});
-      assert((await media.missing(['speech'])).models.length > 0);
+      assert.deepEqual(await media.setup(), {packages:[],python:[],models:[]});
       await uv.run(['run','python','-I', ${JSON.stringify(path.resolve("src/backend/agent/media/visualize.test.py"))}, ${JSON.stringify(path.join(runtime, "runtime"))}]);
       await media.ffmpeg(['-v','error','-y','-f','lavfi','-i','color=c=white:s=1920x1080','-frames:v','1','work/background.png']);
       await fs.writeFile('work/subtitles.ass', '[Script Info]\\nScriptType: v4.00+\\nPlayResX: 1920\\nPlayResY: 1080\\n[V4+ Styles]\\nFormat: Name, Fontname, Fontsize, PrimaryColour, Alignment\\nStyle: Default,LGBaseFont,48,&H002C2725,2\\n[Events]\\nFormat: Layer, Start, End, Style, Text\\nDialogue: 0,0:00:00.00,0:00:02.00,Default,字幕テスト 한글 Latin\\n');

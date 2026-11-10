@@ -71,3 +71,54 @@ export const InferenceSession={ create:async()=>({
     await engine.close();
   }
 });
+
+it("deployed ASR worker decodes output and rejects nonfinite values", async () => {
+  directory = await mkdtemp(path.join(os.tmpdir(), "media ASR probe "));
+  const ort = path.join(directory, "ort.mjs");
+  const tokens = path.join(directory, "tokens.txt");
+  await writeFile(tokens, "blank 0\nword 1\n");
+  await writeFile(
+    ort,
+    `
+    import assert from 'node:assert/strict';
+    export class Tensor {
+      constructor(type,data,dims) { this.data=data; this.dims=dims; }
+      dispose() {}
+    }
+    export const InferenceSession = { async create(file, options) {
+      assert.deepEqual(options.executionProviders, ['webgpu']);
+      return { async run(feeds) {
+        const logits = new Float32Array(10);
+        if (feeds.speech.data[0] === -1) logits[0] = NaN;
+        return {ctc_logits:new Tensor('float32',logits,[1,5,2]),
+          encoder_out_lens:new Tensor('int32',Int32Array.of(5),[1])};
+      }, async release() {} };
+    }};
+  `,
+  );
+  const model = {
+    file: path.join(directory, "fixture.onnx"),
+    device: "webgpu",
+    threads: 4,
+  } as const;
+  const engine = new Engine(
+    { ort: pathToFileURL(ort).href, tokens, models: { vad: model, asr: model, det: model } },
+    path.join(inject("workspaceRuntimeDirectory"), "runtime/media-worker.mjs"),
+  );
+  const request = (invalid = false) => {
+    const input = new Float32Array(2 * 560);
+    if (invalid) input[0] = -1;
+    return engine.request(
+      0,
+      "asr",
+      { dtype: "float32", shape: [1, 2, 560], language: "auto" },
+      new Uint8Array(input.buffer),
+    );
+  };
+  try {
+    expect((await request()).header.tokens).toEqual([]);
+    await expect(request(true)).rejects.toThrow("not finite");
+  } finally {
+    await engine.close();
+  }
+});

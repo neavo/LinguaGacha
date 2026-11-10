@@ -10,13 +10,15 @@ import type {
 /** 资源收尾的统一等待上限。超时说明原生或子进程收尾卡住，只能交给工作区监管器。 */
 export const CLOSE_TIMEOUT_MS = 30_000;
 
-/** GPU 会话失败触发整次调用的 CPU 重跑。 */
-export class DeviceFailure extends Error {}
+/** GPU 通道执行失败。调用者在安全收尾后决定是否改用 CPU。 */
+export class DeviceFailure extends Error {
+  override name = "DeviceFailure";
+}
 
 /** 派发通道：`audio`（CPU 音频）、`asr_gpu`、`det0`、`det1`，各对应一个 Worker。 */
 type Lane = string;
 
-/** 正式执行与校准共用的路由和生命周期，不读写运行配置缓存。 */
+/** 正式执行与 GPU 探查共用的路由和生命周期。 */
 export class Engine {
   private readonly workers = new Map<Lane, Readonly<{ worker: Worker; exited: Promise<number> }>>();
   private readonly pending = new Map<
@@ -34,6 +36,7 @@ export class Engine {
   private closing: Promise<void> | undefined;
   private shutdown_error: Error | undefined; // 关闭期间 Worker 报出的错误。
 
+  /** 保存独立执行配置，首次请求才创建 Worker。 */
   constructor(
     private readonly config: MediaWorkerConfig,
     private readonly worker_file: string,

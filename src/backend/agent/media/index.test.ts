@@ -47,18 +47,20 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     import assert from 'node:assert/strict';
     const source = ${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))};
     const began = Date.now();
-    console.log('before', JSON.stringify(await media.missing(["speech"])));
-    const missing = await media.setup(["speech"]);
+    console.log('before', JSON.stringify(await media.missing()));
+    const missing = await media.setup();
     assert.deepEqual(missing, { packages: [], python: [], models: [] });
     const info = await media.inspect(source);
-    if (info.video) await media.setup(["text"]);
+    const probe = await media.probe_gpu();
+    console.log('GPU probe', JSON.stringify(probe));
+    const device = probe.available ? 'gpu' : 'cpu';
     // media.test.py 同时检查检测后处理，只在准备了检测用途时执行。
     for (const test of ${JSON.stringify(["fsmn_vad.test.py", "media.test.py"].map((file) => path.resolve("src/backend/agent/media", file)))})
       if (info.video || test.endsWith('fsmn_vad.test.py')) await uv.run(['run', 'python', '-I', test, ${JSON.stringify(path.join(runtime, "runtime"))}]);
-    const { result: listened } = await media.listen(source, {language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} });
-    const scanned = info.video ? (await media.scan(source, {out:'work/scan/text'})).result : [];
-    const refined = info.video ? (await media.refine(source, {rows:scanned.slice(0,2).map((x,row)=>({...x,row}))})).result : [];
-    await fs.writeFile('work/result.json', JSON.stringify({versions:process.versions, elapsed:Date.now()-began, listened, scanned, refined, video:info.video}, null, 2));
+    const listened = await media.listen(source, {device, language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} });
+    const scanned = info.video ? await media.scan(source, {out:'work/scan/text',device}) : [];
+    const refined = info.video ? await media.refine(source, {device,rows:scanned.slice(0,2).map((x,row)=>({...x,row}))}) : [];
+    await fs.writeFile('work/result.json', JSON.stringify({versions:process.versions, elapsed:Date.now()-began, listened, scanned, refined, probe, device, video:info.video}, null, 2));
     console.log('completed', listened.asr.length, scanned.length, refined.length);
   `,
     );
@@ -96,17 +98,11 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
           import * as media from '@lg/media';
           import fs from 'node:fs/promises';
           import assert from 'node:assert/strict';
-          const cacheFile = ${JSON.stringify(path.join(root, "cache/media/inference.json"))};
-          const before = await fs.readFile(cacheFile, 'utf8');
-          await media.setup(['text'], {device:'gpu'});
           await media.ffmpeg(['-y','-i',${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))},'-t','2','-c','copy','work/short.mp4']);
-          const result = await media.scan('work/short.mp4', {out:'work/override/text',device:'gpu'});
-          assert.equal(result.execution.requested, 'gpu');
-          assert.ok(['cpu','gpu'].includes(result.execution.actual));
-          if(result.execution.actual==='cpu') assert.ok(result.execution.fallback_reason);
-          assert.equal(await fs.readFile(cacheFile,'utf8'),before);
-          await fs.writeFile('work/override.json',JSON.stringify(result.execution));
-          console.log('explicit device completed',JSON.stringify(result.execution));
+          const result = await media.scan('work/short.mp4', {out:'work/override/text',device:'cpu'});
+          assert.ok(Array.isArray(result));
+          await fs.writeFile('work/override.json',JSON.stringify({device:'cpu',regions:result.length}));
+          console.log('explicit CPU completed',result.length);
         `,
         );
         const override = await runner.run(
@@ -127,8 +123,8 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
         `
         import * as media from '@lg/media';
         console.log('inference starting');
-        const result = await media.listen(${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))}, {language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")}});
-        console.log('inference completed', result.result.asr.length);
+        const result = await media.listen(${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))}, {device:"cpu",language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")}});
+        console.log('inference completed', result.asr.length);
       `,
       );
       const request = {
