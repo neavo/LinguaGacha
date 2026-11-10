@@ -7,7 +7,7 @@ export const de_de_agent_page = {
     open_folder: "Übergeordneten Ordner öffnen",
   },
   function_models: {
-    title: "Funktionsmodelle",
+    title: "Untermodelle",
     agent: "Hauptmodell",
     translation: "Übersetzungsmodell",
     media: "Medienmodell",

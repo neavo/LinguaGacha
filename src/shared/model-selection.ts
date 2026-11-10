@@ -17,7 +17,7 @@ export type ModelSelectionInput = {
   thinking_level?: ModelThinkingLevel;
 };
 
-/** 页面为菜单选择补充用途，跟随项用于 Agent 功能模型。 */
+/** 页面为菜单选择补充用途，跟随项用于 Agent 子模型。 */
 export type ModelSelectionChange =
   | (ModelSelectionInput & {
       target: "translation" | "agent" | AgentFunctionUsage;

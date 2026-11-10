@@ -106,7 +106,7 @@ export const APP_ERROR_DEFINITIONS = {
   },
   "model.responses_incompatible": {
     message:
-      "This request requires an API Key OpenAIResponses model. For media recognition, select a supported model in Function models.",
+      "This request requires an API Key OpenAIResponses model. For media recognition, select a supported model in Submodels.",
     status: 409,
     severity: "expected",
   },

@@ -88,7 +88,7 @@ export type AgentModelsSummary = Readonly<
   >
 >;
 
-/** 执行用途与可跟随主控的功能模型偏好。 */
+/** 执行用途与可跟随主控的子模型偏好。 */
 export type ModelSelection = {
   translation: string;
   agent: string;

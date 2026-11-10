@@ -7,7 +7,7 @@ export const en_us_agent_page = {
     open_folder: "Open containing folder",
   },
   function_models: {
-    title: "Function models",
+    title: "Submodels",
     agent: "Main model",
     translation: "Translation model",
     media: "Media model",

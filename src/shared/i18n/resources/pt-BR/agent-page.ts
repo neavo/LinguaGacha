@@ -7,7 +7,7 @@ export const pt_br_agent_page = {
     open_folder: "Abrir pasta do arquivo",
   },
   function_models: {
-    title: "Modelos por função",
+    title: "Submodelos",
     agent: "Modelo principal",
     translation: "Modelo de tradução",
     media: "Modelo de mídia",

@@ -7,7 +7,7 @@ export const zh_cn_agent_page = {
     open_folder: "打开所在文件夹",
   },
   function_models: {
-    title: "功能模型",
+    title: "子模型",
     agent: "主控模型",
     translation: "翻译模型",
     media: "音视频模型",

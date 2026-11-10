@@ -9,7 +9,7 @@ export const ja_jp_agent_page = {
     open_folder: "ファイルの場所を開く",
   },
   function_models: {
-    title: "機能別モデル",
+    title: "サブモデル",
     agent: "メインモデル",
     translation: "翻訳モデル",
     media: "音声・動画モデル",

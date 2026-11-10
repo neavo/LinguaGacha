@@ -9,7 +9,7 @@ export const ko_kr_agent_page = {
     open_folder: "파일이 있는 폴더 열기",
   },
   function_models: {
-    title: "기능별 모델",
+    title: "하위 모델",
     agent: "주 모델",
     translation: "번역 모델",
     media: "미디어 모델",

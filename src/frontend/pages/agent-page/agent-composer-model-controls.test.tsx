@@ -137,7 +137,7 @@ describe("AgentComposerModelControls", () => {
     )!;
   }
 
-  /** 按可见文案定位功能模型入口。 */
+  /** 按可见文案定位子模型入口。 */
   function functions_trigger(): HTMLButtonElement {
     return [...container.querySelectorAll<HTMLButtonElement>("button")].find(
       (button) => button.textContent === "agent_page.function_models.title",
