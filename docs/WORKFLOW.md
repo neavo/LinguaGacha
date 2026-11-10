@@ -58,6 +58,7 @@
 |Linux CLI 帮助|`./LinguaGacha.AppImage --cli translate --help`|
 
 - `npm run dev` 按输入变化准备静态依赖与宿主平台工具，每次重新打包工作区代码。首次构建可能下载依赖、uv 归档与 aria2 平台包。
+- 开发准备与发行构建要求系统 `tar` 位于 `PATH` 中。
 - 开发与发行产物使用独立目录，支持调试期间构建发行包。构建期间修改共享源码仍可能影响发行输入。
 - 需要强制重新准备时，删除开发缓存 `build/dev/resources/.development-cache` 或 `build/dev/resources/`。
 - 资源构建按输出目录互斥。`npm run build` 始终重新准备资源，发行构建不复用开发缓存。
