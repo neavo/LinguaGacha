@@ -334,6 +334,7 @@ export class AgentWorkspaceRunner {
             runtimeDirectory: runtime_directory,
             moduleRoots: skill_roots,
             uv: this.execution.uv,
+            media: this.execution.media,
           });
           await owner.settle(signal);
         } catch (error) {

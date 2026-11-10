@@ -326,6 +326,11 @@ function build_runner(
   return new AgentWorkspaceRunner({
     execution: {
       nodeRoot: directory,
+      media: {
+        modelsDirectory: path.join(directory, "models"),
+        cacheDirectory: path.join(directory, "cache/media"),
+        runtimeDirectory: directory,
+      },
       runtimeDirectory: directory,
       nodeExecutable: process.execPath,
       uv: { pythonRoot: directory, uvExecutable: process.execPath },

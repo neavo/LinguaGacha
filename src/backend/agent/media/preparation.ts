@@ -7,12 +7,12 @@ import { CalibrationCleanupFailure } from "./calibration";
 import {
   calibrate_devices,
   inference_cache,
-  media_directories,
   ORT_PACKAGE,
   ORT_VERSION,
   probe_gpu,
   read_json,
 } from "./engine";
+import { media_configuration } from "./runtime";
 import { FFMPEG_PACKAGE } from "./ffmpeg";
 import { download_model, MEDIA_MODELS, model_ready, type MediaModel } from "./models";
 
@@ -88,7 +88,7 @@ export async function missing(purposes: readonly MediaPurpose[]): Promise<MediaM
         ? [GPU_MODELS[resource.task]]
         : []),
     ])
-    .filter((model) => !model_ready(media_directories().models, model))
+    .filter((model) => !model_ready(media_configuration().modelsDirectory, model))
     .map((model) => model.file);
   return { packages, python, models };
 }
@@ -99,10 +99,10 @@ export async function missing(purposes: readonly MediaPurpose[]): Promise<MediaM
  */
 export async function setup(purposes: readonly MediaPurpose[]): Promise<MediaMissing> {
   resources(purposes);
-  const { runtime } = media_directories();
-  await fs.make_dir_async(runtime);
+  const { cacheDirectory } = media_configuration();
+  await fs.make_dir_async(cacheDirectory);
   // 文件锁让同一进程和不同工作区的准备都串行。持锁后才计算缺口，后到的用途不会覆盖先到的校准。
-  const release = await lockfile.lock(path.join(runtime, "prepare"), {
+  const release = await lockfile.lock(path.join(cacheDirectory, "prepare"), {
     realpath: false,
     retries: LOCK_RETRY,
   });
@@ -123,8 +123,8 @@ async function prepare(purposes: readonly MediaPurpose[]): Promise<MediaMissing>
   // ORT 安装脚本只下载未使用的 CUDA，各平台二进制已在包内。
   if (ort.length) await npm.run(["install", "--ignore-scripts", "--save-exact", ...ort]);
   if (python.length) await uv.run(["add", ...python]);
-  const { models, runtime } = media_directories();
-  const stats = path.join(runtime, "aria2-server-stat.txt");
+  const { modelsDirectory: models, cacheDirectory } = media_configuration();
+  const stats = path.join(cacheDirectory, "aria2-server-stat.txt");
   for (const model of wanted.flatMap((resource) => resource.models))
     await download_model(models, stats, model);
   const cache = await inference_cache();

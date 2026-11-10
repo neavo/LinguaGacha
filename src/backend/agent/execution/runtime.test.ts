@@ -33,6 +33,8 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志与�
     electronVersion: "45.0.0",
     paths: {
       get_agent_node_root_dir: () => path.join(root.path, "node"),
+      get_agent_models_dir: () => path.join(root.path, "models"),
+      get_agent_media_cache_dir: () => path.join(root.path, "cache/media"),
       get_agent_python_root_dir: () => path.join(root.path, "python"),
       get_agent_execution_lock_path: () => path.join(root.path, "node.lock"),
       get_user_data_path: (...parts) => path.join(root.path, "userdata", ...parts),

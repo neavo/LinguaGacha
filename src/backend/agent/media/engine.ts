@@ -10,7 +10,7 @@ import { CLOSE_TIMEOUT_MS, Engine, DeviceFailure } from "./inference-engine";
 import { CalibrationCleanupFailure, run_calibration, select_profile } from "./calibration";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { npm } from "../npm";
-import { npm_configuration } from "../npm/runtime";
+import { media_configuration } from "./runtime";
 import { uv } from "../uv";
 import { encode_frame, FrameReader, type ChannelHeader } from "./channel";
 import { MEDIA_MODELS, model_ready } from "./models";
@@ -26,7 +26,7 @@ export class DecodeFailure extends Error {}
 
 export const ORT_PACKAGE = "onnxruntime-node";
 export const ORT_VERSION = "1.31.1"; // 经过 Worker 生命周期与 WebGPU 验证的版本。
-const CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 本机配置缓存的有效期。
+const CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 缓存键未覆盖硬件与驱动变化，定期在准备阶段重新测量。
 const CONFIG_VERSION = 4; // 线程、路由、前处理或选择规则变化时递增，使旧缓存失效。
 const CALIBRATION_LAUNCHES = 2; // 完整候选、独立进程退出和双档计时共同决定配置。
 const CPU_PROFILE: MediaProfile = { asr: "cpu", det: "cpu" };
@@ -42,12 +42,6 @@ type InferenceCache = Readonly<
   }
 >;
 
-/** 共享 npm 工程同级的应用数据目录：模型与可重建的本机运行缓存。 */
-export function media_directories(): { models: string; runtime: string } {
-  const root = path.resolve(npm.directory, "..");
-  return { models: path.join(root, "models"), runtime: path.join(root, "media") };
-}
-
 /** 读取本机可重建的 JSON 缓存。缺失或损坏都按没有处理，由下次写入覆盖。 */
 export function read_json(file: string): unknown {
   try {
@@ -60,9 +54,9 @@ export function read_json(file: string): unknown {
 }
 
 const model_file = (model: { file: string }): string =>
-  path.join(media_directories().models, model.file);
+  path.join(media_configuration().modelsDirectory, model.file);
 export const runtime_file = (name: string): string =>
-  path.join(npm_configuration().runtimeDirectory, "runtime", name);
+  path.join(media_configuration().runtimeDirectory, "runtime", name);
 
 /**
  * 共享 npm 工程中 ORT 的实际入口。只解析路径，根线程不得加载原生库：
@@ -277,7 +271,7 @@ function cache_key(): string {
   ]);
 }
 
-const cache_path = (): string => path.join(media_directories().runtime, "inference.json");
+const cache_path = (): string => path.join(media_configuration().cacheDirectory, "inference.json");
 
 /** 有效的本机配置缓存。缺失、过期或损坏都视为没有缓存，由下次校准覆盖。 */
 export async function inference_cache(): Promise<InferenceCache | undefined> {
@@ -334,7 +328,7 @@ function worker_config(profile: MediaProfile, probe?: "asr" | "det"): MediaWorke
 async function inference_profile(): Promise<MediaProfile> {
   const cache = await inference_cache();
   if (!cache) return CPU_PROFILE;
-  const { models } = media_directories();
+  const { modelsDirectory: models } = media_configuration();
   return {
     asr: cache.asr === "webgpu" && model_ready(models, MEDIA_MODELS.asr_gpu) ? "webgpu" : "cpu",
     det:

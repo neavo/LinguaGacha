@@ -29,6 +29,8 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       electronVersion: "45.2.3",
       paths: {
         get_agent_node_root_dir: () => path.join(root, "node"),
+        get_agent_models_dir: () => path.join(root, "models"),
+        get_agent_media_cache_dir: () => path.join(root, "cache/media"),
         get_agent_python_root_dir: () => path.join(root, "python"),
         get_agent_execution_lock_path: () => path.join(root, "node.lock"),
         get_user_data_path: (...parts) => path.join(root, "userdata", ...parts),

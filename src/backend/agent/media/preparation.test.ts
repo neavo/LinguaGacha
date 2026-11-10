@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import { MEDIA_MODELS } from "./models";
 
 const fake = vi.hoisted(() => ({
   npm: vi.fn(),
@@ -9,6 +10,10 @@ const fake = vi.hoisted(() => ({
   installed: new Set<string>(),
   declared: "",
   models: new Set<string>(),
+  cache: undefined as { asr: "cpu"; complete: string[] } | undefined,
+}));
+vi.mock("./runtime", () => ({
+  media_configuration: () => ({ modelsDirectory: "/models", cacheDirectory: "/cache/media" }),
 }));
 vi.mock("../npm", () => ({ npm: { directory: "/node", run: fake.npm } }));
 vi.mock("../uv", () => ({ uv: { directory: "/python", run: fake.uv } }));
@@ -23,12 +28,11 @@ vi.mock("../../../native/native-fs", () => ({
 vi.mock("./engine", () => ({
   ORT_PACKAGE: "onnxruntime-node",
   ORT_VERSION: "1.31.1",
-  media_directories: () => ({ models: "/models", runtime: "/runtime" }),
   read_json: (file: string) =>
     [...fake.installed].some((name) => file.replaceAll("\\", "/").endsWith(`${name}/package.json`))
       ? { version: "1.31.1" }
       : undefined,
-  inference_cache: async () => undefined,
+  inference_cache: async () => fake.cache,
   calibrate_devices: fake.calibrate,
   probe_gpu: fake.probe,
 }));
@@ -43,6 +47,7 @@ beforeEach(() => {
   fake.installed.clear();
   fake.models.clear();
   fake.declared = "";
+  fake.cache = undefined;
   fake.npm.mockImplementation(async (args: string[]) => {
     for (const spec of args.slice(1).filter((arg) => !arg.startsWith("--")))
       fake.installed.add(spec.split("@")[0]!);
@@ -60,6 +65,15 @@ beforeEach(() => {
   );
 });
 
+it("资源齐全时仍重建缺失的推理配置", async () => {
+  const { missing, setup } = await import("./preparation");
+  await setup(["speech"]);
+  fake.calibrate.mockClear();
+  expect(await missing(["speech"])).toEqual({ packages: [], python: [], models: [] });
+  await setup(["speech"]);
+  expect(fake.calibrate).toHaveBeenCalledOnce();
+});
+
 it("prepares visualization without inference packages, weights or calibration", async () => {
   const { missing, setup } = await import("./preparation");
   const before = await missing(["visualize"]);
@@ -73,11 +87,12 @@ it("prepares visualization without inference packages, weights or calibration", 
   expect(fake.calibrate).not.toHaveBeenCalled();
 });
 
-it("prepares speech without detector weights and calibrates only the added task later", async () => {
+it("对白准备排除文字检测权重，追加用途时复用已完成的校准", async () => {
   const { setup } = await import("./preparation");
   expect(await setup(["speech"])).toEqual({ packages: [], python: [], models: [] });
-  expect(fake.models.has("ppocr/v6/PP-OCRv6_det_small.onnx")).toBe(false);
-  expect(await setup(["text"])).toEqual({ packages: [], python: [], models: [] });
+  expect(fake.models.has(MEDIA_MODELS.det_cpu.file)).toBe(false);
+  fake.cache = { asr: "cpu", complete: ["asr"] };
+  expect(await setup(["speech", "text"])).toEqual({ packages: [], python: [], models: [] });
   expect(fake.probe.mock.calls).toEqual([["asr"], ["det"]]);
   expect(fake.calibrate.mock.calls.map((call) => call[0])).toEqual([["asr"], ["det"]]);
 });

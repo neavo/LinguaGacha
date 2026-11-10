@@ -4,8 +4,9 @@
  */
 import path from "node:path";
 import { default_native_fs as fs } from "../../../native/native-fs";
+import { media_configuration } from "./runtime";
 import { ensure_ready } from "./preparation";
-import { DecodeFailure, helper, media_directories, operate, read_json } from "./engine";
+import { DecodeFailure, helper, operate, read_json } from "./engine";
 import {
   ffmpeg_path,
   hwaccel_candidates,
@@ -64,8 +65,8 @@ export async function listen(
         track,
         center: /\b[57]\.1\b/u.test(stream), // 5.1、7.1 只取中置声道，实测错误明显少于常规下混。
         language: code,
-        vad_mvn: path.join(media_directories().models, MEDIA_MODELS.vad_mvn.file),
-        asr_mvn: path.join(media_directories().models, MEDIA_MODELS.asr_mvn.file),
+        vad_mvn: path.join(media_configuration().modelsDirectory, MEDIA_MODELS.vad_mvn.file),
+        asr_mvn: path.join(media_configuration().modelsDirectory, MEDIA_MODELS.asr_mvn.file),
       },
       engine,
     ),
