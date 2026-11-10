@@ -3,11 +3,11 @@ name: unity
 description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必须加载。
 ---
 
-本技能提供 Unity 资源定位、解析与写回方法。导入和通用数据封装按 `project-operation` 和 `generic-data` 执行，翻译与审校按 `translation` 执行。
+内置解析器不识别 Unity 游戏，资源中的文本都经 `generic-data` 进入工程。本技能提供 Unity 资源在各阶段的定位、解析与写回方法。
 
-内置解析器不识别 Unity 游戏，资源中的文本都经通用数据进入工程。
+阶段导航：「来源调查」「导入准备」「写回与验证」按阶段执行，Naninovel 游戏在各阶段同时参照「Naninovel」。翻译前按「控制符与占位符」设置保护。「交付说明」中的缺字问题按「字体」检查。
 
-# 识别
+# 来源调查
 
 |特征|含义|
 |---|---|
@@ -21,7 +21,7 @@ description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必�
 - `<游戏名>_Data/StreamingAssets/aa/`：Addressables 资源包 `*.bundle` 与 `catalog.json` 或 `catalog.bin`。
 - `.resS`、`.resource`：贴图和音频的流数据，不含文本。
 
-# 文本来源
+## 文本来源
 
 |来源|特征|处理|
 |---|---|---|
@@ -38,7 +38,7 @@ description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必�
 
 字符串堆只保存字面量，不能说明哪些内容用于显示，含源语言文字的字面量也可能是日志或资源键。Mono 从方法体的 `ldstr` 指令找到每处引用，IL2CPP 在 `GameAssembly.dll` 中定位引用代码。记录程序集、类型、方法和指令位置，再按消费代码判断用途。同一字面量兼作键和显示文本时，按 `generic-data` 保留原值，在显示调用点处理。写回需要修改程序集或元数据，与资源中相同的文案是另一个写回位置，分别记录。
 
-# 定位与解析
+# 导入准备
 
 通过 `@lg/uv` 安装 `UnityPy` 读写资源，恢复脚本类型另需 `TypeTreeGeneratorAPI`。
 
@@ -138,7 +138,7 @@ output_file.write_bytes(container.save(packer="original"))
 - 界面文字可能来自 Managed Text：带 `[ManagedText]` 特性的静态字段或 `ManagedTextProvider` 组件。资源已译但界面不变时，检查对应类型是否注册、资源是否加载，以及切换语言后界面是否重新读取。
 - 静态构造函数可能在启动时把静态字段的原文复制进数组或字典，之后更新字段不会刷新这些缓存。这种情况需要改读取方法，或在字段更新后同步刷新缓存。
 
-# 翻译
+# 控制符与占位符
 
 `m_text` 等 TextMeshPro 文本可能含富文本标签，例如 `<color=#FF0000>`、`<size=120%>`、`<sprite=0>`、`<br>`。标签名与参数保持原样，只翻译标签之间的文字。
 

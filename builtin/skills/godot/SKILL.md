@@ -3,7 +3,15 @@ name: godot
 description: 翻译、审校、分析、修改 Godot 或 ACTION GAME MAKER 游戏前必须加载。
 ---
 
-本技能只提供 Godot 引擎知识。ACTION GAME MAKER 基于 Godot 二次开发，按本技能处理。翻译、审校和提交流程按 `translation` 执行。
+内置解析器识别 Godot 游戏，每个游戏导入为一个工程资产。ACTION GAME MAKER 基于 Godot 二次开发，按本技能处理。本技能提供 Godot 在各阶段的方法。
+
+阶段导航：「来源调查」「原稿与条目」「可见文本补漏」「翻译后检查」「交付说明」按阶段执行，「默认状态」「写回粒度」「语言表」「依赖协调」「控制符与占位符」是各阶段共用的知识。用户要求修改字体时按「字体」执行。
+
+# 来源调查
+
+游戏提交后，按 `game_files.reference.txt` 调查原稿以外的材料，见「原稿与条目」。可参考的范围是游戏根目录，排除 `.godot/`。
+
+文本格式的 `.tscn`、`.tres` 和其他自定义数据文件不在原稿中，含待译文本的按 `generic-data` 封装为增补数据。C# 或 Mono 的 DLL、GDExtension 原生库不处理。
 
 # 原稿与条目
 
@@ -19,8 +27,6 @@ description: 翻译、审校、分析、修改 Godot 或 ACTION GAME MAKER 游�
 |`.po`|PO 语言表|无，原文可读|
 
 候选按扩展名发现，不区分大小写。二进制成员按文件头识别：`GDSC` 是编译脚本。`RSRC`、`RSCC` 按资源 `type` 区分语言表和其他资源，例如 `.res` 也可能是语言表。投影文件名在成员路径后追加 `.reference.json` 或 `.reference.gd`。成员解析失败时不生成投影，失败记录在 `source_issues.jsonl`。
-
-调查其他数据时可参考的范围是游戏根目录，排除 `.godot/`。
 
 路径对应关系：
 
@@ -179,7 +185,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 |比较值冲突|收集参与比较或查找的条目译文，找出不同原文得到相同译文的情况|调整译文，使它们互相区分|
 |语言表消息键|按「消息键判断」核对位置及读取代码|恢复确认被误译的消息键引用：`dst: ""`，`status: "EXCLUDED"`|
 
-# 覆盖缺口
+# 交付说明
 
 交付时按下表检查，只向用户说明本游戏满足条件的项：
 
@@ -188,7 +194,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 |`source_issues.jsonl` 有本游戏的记录|涉及的成员，其中的文字可能仍显示原文|
 |有 `selected` 为 `false` 的语言表|系统语言或游戏内语言菜单选中这些 locale 时，游戏仍显示其中的原文|
 |`game_files.reference.txt` 列出 C# 或 Mono 的 DLL、GDExtension 原生库|其中的文字仍显示原文|
-|`game_files.reference.txt` 列出文本格式的 `.tscn`、`.tres`，或其他自定义数据文件|未作为通用数据处理时，其中的文字仍显示原文|
+|「来源调查」发现的文本文件未作为通用数据处理|其中的文字仍显示原文|
 
 每次交付都说明：
 

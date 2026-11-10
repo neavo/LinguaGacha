@@ -3,7 +3,15 @@ name: renpy
 description: 翻译、审校、分析、修改 RenPy 游戏前必须加载。
 ---
 
-本技能只提供 Ren'Py 引擎知识，翻译、审校和提交流程按 `translation` 执行。
+内置解析器识别 Ren'Py 游戏，每个游戏导入为一个工程资产。本技能提供 Ren'Py 在各阶段的方法。
+
+阶段导航：「来源调查」「原稿与条目」「可见文本补漏」「翻译后检查」「交付说明」按阶段执行，「默认状态」「源码条目」「写回粒度」「控制符与占位符」「显示与程序值」是各阶段共用的知识。用户要求修改字体时按「字体」执行。
+
+# 来源调查
+
+游戏提交后，按 `game_files.reference.txt` 调查原稿以外的材料，见「原稿与条目」。可参考的范围是 `game/`，排除 `game/cache/` 与 `game/saves/`。
+
+JSON 等数据文件不在原稿中，含待译文本的按 `generic-data` 封装为增补数据。
 
 # 原稿与条目
 
@@ -18,8 +26,6 @@ description: 翻译、审校、分析、修改 RenPy 游戏前必须加载。
 |`game/x.rpyc.reference.json`|`{ internal_file_path, strings }`。解析失败时不生成投影，失败记录在 `source_issues.jsonl`|
 
 `.rpymc` 按同样规则生成 `x.rpymc.reference.rpy` 和 `x.rpymc.reference.json`。
-
-调查其他数据时可参考的范围是 `game/`，排除 `game/cache/` 与 `game/saves/`。
 
 `strings` 列出成员中全部可写回的字符串，每项为 `{ key, text, usage, write_mode, line, source_line }`，包括因重定向而不产生条目的字符串。`source_issues.jsonl` 中 `stage` 为 `reference` 的记录也包括不产生条目的位置，`message` 给出键或 `文件:行号`。
 
@@ -151,7 +157,7 @@ f-string 产生 `write_mode` 为 `source` 的 `code` 条目，例如 `f"Hello {n
 |源码条目|逐条核对原文是 f-string 源码片段的条目，按「源码条目」比对前缀、引号、转义、插值表达式和格式说明|按原文恢复源码结构|
 |本次放行的条目|逐条复核读取位置|确认为程序值的恢复原文：`dst: ""`，`status: "EXCLUDED"`|
 
-# 覆盖缺口
+# 交付说明
 
 交付时按下表检查，只向用户说明本游戏满足条件的项：
 
@@ -160,6 +166,7 @@ f-string 产生 `write_mode` 为 `source` 的 `code` 条目，例如 `f"Hello {n
 |`source_issues.jsonl` 有本游戏的记录|涉及的成员和位置，其中的文字可能仍显示原文|
 |`__metadata__.json` 的 `common` 为 `null` 或 `scripts_incomplete` 为 `true`|设置、存读档等引擎界面的文字仍显示原文|
 |近似脚本中含源语言文字的自定义语句在 `strings` 中没有对应字符串|这些自定义语句的文字仍显示原文|
+|「来源调查」发现的数据文件未作为通用数据处理|其中的文字仍显示原文|
 
 每次交付都说明：
 

@@ -3,7 +3,15 @@ name: tyrano
 description: 翻译、审校、分析、修改 Tyrano（TyranoScript、TyranoBuilder）游戏前必须加载。
 ---
 
-本技能只提供 TyranoScript 引擎知识，翻译、审校和提交流程按 `translation` 执行。
+内置解析器识别 TyranoScript 游戏，每个游戏导入为一个工程资产。本技能提供 TyranoScript 在各阶段的方法。
+
+阶段导航：「来源调查」「原稿与条目」「可见文本补漏」「翻译后检查」「交付说明」按阶段执行，「默认状态」「依赖协调」「写回限制」是各阶段共用的知识。用户要求修改字体时按「字体」执行。
+
+# 来源调查
+
+游戏提交后，按 `game_files.reference.txt` 调查原稿以外的材料，见「原稿与条目」。可参考的范围是 `<app>/data/`。
+
+脚本加载的 `<app>/data/` 外或扩展名不是 `.ks`、`.js` 的文本文件不在原稿中，含待译文本的按 `generic-data` 封装为增补数据。
 
 # 原稿与条目
 
@@ -15,7 +23,7 @@ description: 翻译、审校、分析、修改 Tyrano（TyranoScript、TyranoBui
 |`<app>/data/**/*.js`|游戏自有脚本与插件|
 |`<app>/data/system/Config.tjs`|引擎配置，只有 `System.title` 产生条目|
 
-原件直接可读，没有投影。`<app>/tyrano/` 下的引擎、第三方库和素材不在原稿中，路径列在 `sources/<file_path>/game_files.reference.txt`。调查其他数据时可参考的范围是 `<app>/data/`。
+原件直接可读，没有投影。`<app>/tyrano/` 下的引擎、第三方库和素材不在原稿中，路径列在 `sources/<file_path>/game_files.reference.txt`。
 
 场景按引擎的解析规则拆分，一个条目对应一个原始文本节点或参数值：
 
@@ -92,14 +100,14 @@ description: 翻译、审校、分析、修改 Tyrano（TyranoScript、TyranoBui
 |查找键冲突|收集 `jname`、`#` 行名字、`voconfig` 的 `name` 和参与比较的条目译文，找出不同原文得到相同译文的情况|调整译文，使它们互相区分|
 |写回限制|核对 `code` 条目、原文含换行的脚本字符串和 `System.title` 的译文|按「写回限制」改写。无法改写的条目恢复为 `dst: ""`、`status: "EXCLUDED"`|
 
-# 覆盖缺口
+# 交付说明
 
 交付时按下表检查，只向用户说明本游戏满足条件的项：
 
 |条件|向用户说明|
 |---|---|
 |`source_issues.jsonl` 有本游戏的记录，或有语法错误、未产生条目的脚本块|涉及的成员和脚本块，其中的文字可能仍显示原文|
-|脚本加载 `<app>/data/` 外或扩展名不是 `.ks`、`.js` 的文本文件|这些文件不在原稿中，未作为通用数据处理时，其中的文字仍显示原文|
+|「来源调查」发现的文本文件未作为通用数据处理|其中的文字仍显示原文|
 |脚本用 Canvas 或插件自行绘制文字|字体替换只覆盖消息框、文字层和选项按钮，这些文字可能缺字|
 |补漏中发现远程加载或运行时拼出的文本|这些文本没有完整条目，游戏中可能仍显示原文|
 
