@@ -4,8 +4,8 @@ import { ffmpeg, install, load, locate, save, valid_row } from "./media.mjs";
 import { union } from "@lg/media";
 
 const MAX_SECONDS = 210; // 单个补查区间的时长上限，更长时模型常常空输出或截断。
-const VIDEO_INPUT_MAX_BYTES = 50_000_000; // 单个视频输入的接口上限。
-const VIDEO_REQUEST_MAX_BYTES = 64_000_000; // 单个请求体的接口上限。
+const MEDIA_INPUT_MAX_BYTES = 50_000_000; // 先限制原始字节，避免超大片段继续分配 Base64 和 JSON。
+const MEDIA_REQUEST_MAX_BYTES = 64_000_000; // 与批量请求入口的 JSON 大小上限一致。
 const UNCOVERED_MIN_SECONDS = 1; // 过滤人声与对白边缘的小缝，与 ASR 并入短句的 1 秒门槛一致。
 const round = (value) => Number(value.toFixed(3)); // 换算后的时间精度。
 /** 模型读取的视频编码：每秒一帧、长边 1024，单声道低码率音频。 */
@@ -13,7 +13,7 @@ const ENCODE = Object.freeze([
   "-c:v",
   "libx264",
   "-crf",
-  "30",
+  "28",
   "-preset",
   "medium",
   "-pix_fmt",
@@ -34,7 +34,7 @@ const same = (a, b) => a.start === b.start && a.end === b.end; // 区间相同�
 const inside = (row, { start, end }) => start <= row.start && row.start < end; // 记录按起点归属区间。
 
 /**
- * 视频模型补查 ASR 解决不了的区间。为整片时间区间从原文件裁出片段，写出 `responses` 请求清单。
+ * 视频模型补查 ASR 解决不了的区间。为整片时间区间从原文件裁出片段，写出统一消息请求清单。
  * 区间与次数由用户确认，不设预算。
  */
 export async function request(directory, { prompt, ranges }) {
@@ -62,7 +62,7 @@ export async function request(directory, { prompt, ranges }) {
     const clip = path.join(attempt, `${requests.length}.mp4`);
     const args = ["-v", "error", "-y", "-ss", String(start), "-t", String(end - start)];
     args.push("-i", file);
-    // 视频输入必须有画面，纯音频补一条低分辨率黑画面。
+    // 纯音频补黑画面，让只接受视频输入的模型也能听取声音。
     if (video === null)
       args.push("-f", "lavfi", "-i", "color=c=black:s=256x144:r=1", "-map", "1:v:0", "-shortest");
     else
@@ -76,31 +76,31 @@ export async function request(directory, { prompt, ranges }) {
     await ffmpeg(args);
     const bytes = await readFile(clip);
     await rm(clip);
-    if (bytes.length === 0 || bytes.length >= VIDEO_INPUT_MAX_BYTES)
-      throw new Error("视频片段必须非空且小于 50 MB");
+    if (bytes.length === 0 || bytes.length >= MEDIA_INPUT_MAX_BYTES)
+      throw new Error("媒体片段必须非空且小于 50 MB");
     const body = JSON.stringify({
-      input: [
+      messages: [
         {
           role: "user",
           content: [
             {
-              type: "input_video",
-              video_url: `data:video/mp4;base64,${bytes.toString("base64")}`,
-              fps: 1,
+              type: "video",
+              mime_type: "video/mp4",
+              data: bytes.toString("base64"),
             },
-            { type: "input_text", text: prompt },
+            { type: "text", text: prompt },
           ],
         },
       ],
     });
-    if (Buffer.byteLength(body) > VIDEO_REQUEST_MAX_BYTES)
-      throw new Error("视频请求超过 64 MB，请缩小区间");
+    if (Buffer.byteLength(body) > MEDIA_REQUEST_MAX_BYTES)
+      throw new Error("媒体请求超过 64 MB，请缩小区间");
     const input_file = `${requests.length}.request.json`;
     await writeFile(path.join(attempt, input_file), body);
     requests.push({ id, input_file });
   }
   const request_file = path.join(attempt, "requests.json");
-  await save(request_file, { format: "responses", requests });
+  await save(request_file, { format: "messages", requests });
   return { requested: requests.length, request_file };
 }
 
@@ -124,18 +124,14 @@ export async function read(directory, result_file) {
         ? await load(path.resolve(path.dirname(result_file), entry.result_file))
         : null;
     const response =
-      saved?.status === "succeeded" && saved.response?.format === "responses"
-        ? saved.response.raw
+      saved?.status === "succeeded" && saved.response?.format === "messages"
+        ? saved.response
         : null;
     if (!response) {
       failed.push({ start, end });
       continue;
     }
-    const text = (response.output ?? [])
-      .flatMap((item) => item.content ?? [])
-      .filter((part) => part.type === "output_text")
-      .map((part) => part.text ?? "")
-      .join("\n");
+    const text = response.text;
     const rows = [],
       invalid_lines = [];
     for (const line of text.split(/\r?\n/u)) {
@@ -160,7 +156,6 @@ export async function read(directory, result_file) {
     ranges.push({
       start,
       end,
-      incomplete: response.status !== "completed" || Boolean(response.incomplete_details),
       invalid_lines,
       rows,
     });
@@ -194,9 +189,9 @@ export async function apply(directory, candidate, ranges) {
     ranges.some((wanted) => same(wanted, range)),
   );
   if (adopted.length !== ranges.length) throw new Error("ranges 中有候选文件不存在的区间");
-  // 空输出和截断输出不能抹掉已有对白，整批检查后再采用。
-  if (adopted.some((range) => range.incomplete || !range.rows.length))
-    throw new Error("候选包含空输出或截断输出，只传入完整且非空的区间");
+  // 截断由请求入口列为失败项。采用前检查整批候选，避免空输出抹掉已有对白。
+  if (adopted.some((range) => !range.rows.length))
+    throw new Error("候选包含空输出，只传入非空的区间");
   for (const range of adopted)
     items = [
       ...items.filter((row) => row.kind !== "dialogue" || !inside(row, range)),

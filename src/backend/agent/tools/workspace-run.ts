@@ -17,6 +17,7 @@ import type { AgentWorkspacePort } from "../workspace/service";
 import app_package from "../../../../package.json";
 import { UV_DESCRIPTION } from "../uv/description";
 import { NPM_DESCRIPTION } from "../npm/description";
+import { SEARCH_DESCRIPTION } from "../search/description";
 
 const { defaultTimeoutSeconds, minTimeoutSeconds, maxTimeoutSeconds } =
   AGENT_WORKSPACE_RUNTIME_POLICY;
@@ -45,6 +46,7 @@ export function create_agent_workspace_run_tool(options: {
       "- `@lg/*` 是随应用发布的 SDK，在本工具的脚本及其加载的模块中可用。它们不通过 npm 安装：",
       "  - `@lg/uv`：应用随附的 uv，管理共享 Python 工程与执行 Python 程序",
       "  - `@lg/npm`：应用随附的 npm，管理共享 npm 工程与调用包提供的命令行工具",
+      "  - `@lg/search`：网页搜索，调用方式与响应契约见下文",
       "  - `@lg/pdf`、`@lg/pdf/mupdf`：PDF 读取、渲染与打印，用法见 `pdf` 技能",
       "  - `@lg/media`：音视频本地识别、画面文字检测与音频可视化成片，用法见 `media` 技能",
       "  - `@lg/utils/literal-matcher`：应用判定字面命中与规范化文本的规则",
@@ -56,6 +58,8 @@ export function create_agent_workspace_run_tool(options: {
       UV_DESCRIPTION,
       "",
       NPM_DESCRIPTION,
+      "",
+      SEARCH_DESCRIPTION,
       "",
       "### 文件与进程",
       "",

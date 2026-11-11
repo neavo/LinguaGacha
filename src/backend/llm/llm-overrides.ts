@@ -18,6 +18,7 @@ type ModelProtocolCompat = {
 
 /** 产品请求策略由载荷层消费，独立于 SDK 的 `compat`。 */
 export type ModelRequestPolicy = Readonly<{
+  responses_audio_data_uri?: true; // Qwen Responses 使用顶层 data URI 与 format。
   supports_reasoning_summary?: false; // 缺省沿用 SDK，仅声明需要关闭的自动参数。
 }>;
 
@@ -36,6 +37,13 @@ export type ModelCapabilityOverride = Readonly<{
 
 /** 补齐 Pi 内置目录缺失或落后的事实，上游补齐并验证后删除对应修正。 */
 export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Object.freeze([
+  {
+    model_id: "qwen3.8-omni",
+    protocols: {
+      // https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses
+      OpenAIResponses: { request: { responses_audio_data_uri: true } },
+    },
+  },
   // Pi 按 xAI 端点禁用 Chat Completions 的 `reasoning_effort`，这两个模型需显式启用。
   {
     model_id: "grok-4.6",

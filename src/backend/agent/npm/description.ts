@@ -1,4 +1,5 @@
 import npm_package from "npm/package.json";
+import { NPM_REGISTRIES } from "./runtime";
 
 /** 模型可见的公共契约集中于此，私有绑定不属于包导出。 */
 export function format_npm_typescript_api(): string {
@@ -19,6 +20,7 @@ export const NPM_DESCRIPTION = [
   "- `npm.directory` 是所有工程和对话共用的 npm 工程，重启后保留，改动影响之后的全部任务。命令行工具的文件参数使用绝对路径",
   "- 同一脚本内的调用按调用顺序执行，前一次失败不阻断后续调用",
   "- 包的文档与类型在 `node_modules/<包名>/`，包提供的命令行工具用 `exec --` 调用",
+  `- 任何配置层都未设置 \`registry\` 时，取包命令按本对话的网络出口地区自动使用官方源或国内镜像 \`${NPM_REGISTRIES.mirror}\`，命令行、环境与 npmrc 中的设置优先`,
   "- 依赖的安装脚本默认不运行，需要时用 `install-scripts approve <包>` 授权，再 `rebuild <包>`",
   "- `package.json` 损坏时 npm 无法运行，通过 `npm.directory` 读取并修复文件后再调用",
   "- npm 结束后仍在运行的子进程持续到本次脚本结束，随后由宿主回收",

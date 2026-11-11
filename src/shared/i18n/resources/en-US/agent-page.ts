@@ -46,7 +46,7 @@ export const en_us_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Drag in files or folders to translate …",
+    no_project_placeholder: "Drag in files or folders and translate with one click …!",
     placeholder: "Describe a task, or type @ to select a skill or instruction …",
     edit_assistant_placeholder: "Edit the model response …",
     newline: "New line",

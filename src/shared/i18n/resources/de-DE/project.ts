@@ -83,7 +83,7 @@ export const de_de_project = {
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce Spieldatei",
     deprecated_title: "Besonders optimierte Formate (Unterstützung endet bald)",
     any_format_notice:
-      "Spiele, Untertitel und E-Books in anderen Formaten werden ebenfalls unterstützt, auch wenn sie oben nicht aufgeführt sind",
+      "Auch andere Videos, Audiodateien, Spiele und E-Books werden unterstützt. Kein Problem, wenn sie oben nicht aufgeführt sind …!",
     rpy: "RenPy-Spieltext",
     xlsx: "XLSX-Spieltext",
     trans_export: "Translator++ Spieltext",

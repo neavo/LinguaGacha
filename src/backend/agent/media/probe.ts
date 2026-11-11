@@ -1,6 +1,6 @@
 import { operate } from "./engine";
 import { DeviceFailure } from "./inference-engine";
-import { ensure_ready } from "./preparation";
+import { require_models } from "./preparation";
 
 export type GpuProbeResult =
   | Readonly<{ available: true }>
@@ -10,7 +10,7 @@ const SHAPE = [1, 17, 560]; // 约一秒等效特征，只检查执行能力，�
 
 /** 验证一次 WebGPU 配置推理及正常退出，不保证算子全在 GPU 或快于 CPU。 */
 export async function probe_gpu(): Promise<GpuProbeResult> {
-  await ensure_ready();
+  require_models(["asr_gpu", "tokens"]);
   try {
     await operate(
       async (engine) => {

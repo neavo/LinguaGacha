@@ -1,7 +1,6 @@
 /**
- * 媒体推理 Worker：唯一导入 onnxruntime-node、创建与释放会话的位置。
- * 主线程直接加载 ORT 时，原生收尾可能在 `exit` 之后卡住进程。放在 Worker 内由宿主线程等待它自然退出。
- * 本入口由根脚本以文件 URL 启动，只用 Node 标准解析，不依赖工作区 SDK 钩子。
+ * 媒体推理 Worker：独占原生会话，避免同步推理阻塞根线程。
+ * 本入口只使用 Node 标准解析，不依赖工作区 SDK 钩子。
  */
 import { parentPort, workerData } from "node:worker_threads";
 import { default_native_fs as fs } from "../../../native/native-fs";
@@ -36,6 +35,8 @@ const VAD_PDFS = 248;
 const VAD_BLOCK = 6000; // 单次请求的特征帧上限，沿用上游离线约 60 秒分块。
 const VAD_STATE = [1, 128, 19, 1]; // 每个循环缓存的形状。
 const VAD_CACHES = 4; // `in_cache0..3` 与 `out_cache0..3` 一一对应。
+const REC_HEIGHT = 48; // 与 Python 文字行前处理的输入高度一致。
+const REC_BLANK = 0; // PP-OCR 的 CTC blank 编号。
 const config = workerData as MediaWorkerConfig;
 const port = parentPort!;
 const loaded = (await import(config.ort)) as Ort & { default?: Ort };
@@ -51,6 +52,7 @@ function create(file: string, device: MediaDevice, threads: number): Promise<Ort
   });
 }
 
+/** 原生输出通过类型校验后才能交给解码与检测。 */
 const float = (data: unknown): Float32Array => {
   if (!(data instanceof Float32Array)) throw new Error("Model output is not float32.");
   return data;
@@ -126,9 +128,49 @@ async function detect(
   }
 }
 
+/** OCR 仅返回去重后的字符编号用于内容比较，不把识别猜测写成字幕原文。 */
+async function read_text(
+  session: OrtSession,
+  input: Float32Array,
+  shape: number[],
+): Promise<{ tokens: number[] }> {
+  const outputs = await infer(session, {
+    [session.inputNames[0]!]: new ort.Tensor("float32", input, shape),
+  });
+  try {
+    const output = outputs[session.outputNames[0]!]!;
+    const data = float(output.data);
+    const [batch, length, classes] = output.dims;
+    if (
+      output.dims.length !== 3 ||
+      batch !== 1 ||
+      !length ||
+      !classes ||
+      classes < 2 ||
+      data.length !== length * classes
+    )
+      throw new Error(`Unexpected OCR output: ${output.dims}`);
+    check_finite(data);
+    const tokens: number[] = [];
+    let previous = -1;
+    // blank 也更新 `previous`，使两侧相同字符分别保留。
+    for (let frame = 0; frame < length; frame++) {
+      let best = 0;
+      const base = frame * classes;
+      for (let k = 1; k < classes; k++) if (data[base + k]! > data[base + best]!) best = k;
+      if (best !== REC_BLANK && best !== previous) tokens.push(best);
+      previous = best;
+    }
+    return { tokens };
+  } finally {
+    for (const tensor of Object.values(outputs)) tensor.dispose();
+  }
+}
+
 /** 每路音频唯一拥有四个 FSMN 循环缓存。 */
 type VadStream = OrtTensor[];
 
+/** 每个 Worker 独占会话与 VAD 流状态，按消息顺序执行。 */
 async function serve(): Promise<void> {
   const models = config.models;
   const sessions = new Map<MediaTask, Promise<OrtSession>>(); // 按任务首次请求时创建。
@@ -242,7 +284,13 @@ async function serve(): Promise<void> {
           header: result,
         };
       }
-      if (shape.length !== 4)
+      if (kind === "rec") {
+        if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== 3 || shape[2] !== REC_HEIGHT)
+          throw new Error(`Unexpected OCR input: ${JSON.stringify(shape)}`);
+        return { id, header: await read_text(await session("rec"), input, shape) };
+      }
+      if (kind !== "det") throw new Error(`Unknown media task: ${kind}`);
+      if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== 3)
         throw new Error(`Unexpected detection input: ${JSON.stringify(shape)}`);
       const result = await detect(await session("det"), input, shape);
       return { id, header: { dtype: "float32", shape: result.shape }, payload: result.data.buffer };

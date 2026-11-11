@@ -18,7 +18,7 @@
     "concurrency_limit": 0
   },
   "thinking": {
-    "level": "OFF"
+    "level": "HIGH"
   },
   "generation": {
     "temperature": 0.95,

@@ -66,7 +66,7 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 
 |脚本|入口|用途|
 |---|---|---|
-|`media.mjs`|`missing`、`setup`|检查、准备全部媒体组件与模型|
+|`media.mjs`|`DEPENDENCIES`、`missing_models`、`prepare_models`|依赖版本，检查、准备识别模型|
 ||`probe_gpu`|验证 WebGPU 配置可运行，用于选择设备|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白，视频同时检测画面文字，生成初始 `items.json`|
@@ -87,10 +87,17 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 # 环境准备
 
-`media.missing()` 返回全部媒体组件和模型的缺口 `{ packages, python, models }`。`media.setup()` 准备完整环境并返回剩余缺口。它校验并复用已有资源。
+媒体入口只做计算，不安装依赖。依赖装在所有任务共用的 npm 与 Python 工程中，按 `media.DEPENDENCIES` 的版本安装，不自行升级：
 
-1. 任务开始时单独调用 `missing` 并返回结果。有缺口时，先告诉用户需要下载并提醒保持网络畅通，再在新的调用中执行 `setup`。第一次需下载约 600 MB，后续可以复用。根据上下文说明这些事实。资源齐全时也调用 `setup` 复查。
-2. 下载失败或中断后，重新调用 `setup` 续传。其他入口报告组件未就绪时，回到第 1 步。准备阶段会实时输出日志。
+```js
+await npm.run(['install', '--save-exact', ...media.DEPENDENCIES.npm]);
+await uv.run(['add', ...media.DEPENDENCIES.python]);
+```
+
+npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。识别模型用 `media.missing_models()` 快速检查，`media.prepare_models()` 校验、续传并返回剩余缺口。成片不需要识别模型。
+
+1. 任务开始时在独立调用中检查依赖与模型缺口，已安装版本与 `media.DEPENDENCIES` 不符也属于缺口。
+2. 有缺口时先说明下载需求，再用独立调用按上述命令补齐，后续复用已下载的资源。
 3. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
 4. 开始识别前，在独立调用中执行 `probe_gpu()` 并返回结果，据此选择本次任务的设备：
    - `{ available: true }`：使用 `device: 'gpu'`。
@@ -99,7 +106,7 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 ## 设备与重跑
 
-`prepare`、`scan`、`refine` 必须传入本次任务的 `device`。同一任务后续的调用和续跑沿用这一选择，新任务重新探查。SDK 只按传入的设备执行，不会自行换设备重跑。CPU 与 GPU 使用不同的识别和检测模型。
+`prepare`、`scan`、`refine` 必须传入本次任务的 `device`。同一任务后续的调用和续跑沿用这一选择，新任务重新探查。SDK 只按传入的设备执行，不会自行换设备重跑。
 
 GPU 处理中失败时：
 
@@ -161,10 +168,10 @@ GPU 处理中失败时：
 
 # 画面文字
 
-仅视频。纯音频跳过本节，也不提示「没有识别画面文字」。
+仅视频，纯音频跳过本节。
 
 1. 用 `media.sheets(工作目录)` 生成图集，它返回 `[{ file, ids }]`。按返回的 `file` 分批用 `ws.emitImage` 查看，每次 `workspace_run` 最多 10 张。按下文逐个区间判断，识别时同时形成译文。
-2. `screen` 行写好后，用 `media.refine(工作目录, 行号数组, { device })` 校准起止时间。它直接写回 `items.json`。`unresolved` 列出未能校准的行，这些行保留原时间。边界超出原时间前后 1 秒，或条目中点未检测到文字时，校准会失败。
+2. `screen` 行写好后，用 `media.refine(工作目录, 行号数组, { device })` 校准起止时间。校准范围是原边界前后各 1 秒。明显偏离时先修正时间再校准。它直接写回 `items.json`。`unresolved` 列出未能校准的行。这些行保留原时间，需要结合原视频核对。
 
 需要判断的画面文字包括标题、字幕卡、招牌、名片、文稿、新闻横幅，以及动态漫画的气泡、旁白、内心独白、拟声词和拟态词。竖排、倾斜和装饰性字体同样判断，文字框很高或很窄都不是排除依据。
 
@@ -178,8 +185,8 @@ GPU 处理中失败时：
 |台标、水印、无意义的背景字、纯装饰图形、无文字的动作线、误检|忽略|
 
 - 按语言、气泡和版面确定阅读顺序。检测编号只用于定位。
-- 检测只给位置。人脸、衣服、动画人物和纹理可能被误检，确认没有字即可跳过。
-- 一个区间不等于一句话。同一位置换字时，结合前后帧拆分内容与时间，不把两句并成一条拉长显示。同一句因漏检或镜头移动拆成多个区间时，结合图像与实际持续时间合并。文字相同的不同出现可能各有含义，例如同一帧两处「ドン」，不只凭字符串去重。
+- OCR 只用于区间划分，根据裁图判断原文。人脸、衣服、动画人物和纹理可能被误检，确认没有字即可跳过。
+- 一个区间不保证对应一句话，结合前后帧核对换字。同一句拆成多个区间时，结合图像与实际持续时间合并。文字相同的不同出现可能各有含义，例如同一帧两处「ドン」，不只凭字符串去重。
 - 高瘦或很大的区域在图集里会缩得很小。单独 `emitImage` 对应的 `text/<id>.jpg`，仍不够时用 `media.ffmpeg()` 从 `media.locate(工作目录)` 返回的原文件按 `at` 截帧，需要上下文时再扩大取帧范围。仍看不清或读法不确定时放弃，记录位置和原因，不拼凑。
 - 检测为 1 fps，短于一秒的文字可能漏掉。出现快闪、转场或叙事缺少文字线索时，截帧补查该片段，不逐帧遍历全片。
 - 你不能看图时停止看图，告诉用户画面文字没有识别。对白与避让不受影响。
@@ -221,14 +228,14 @@ GPU 处理中失败时：
 
 # 视频模型补查
 
-视频模型直接听声音、看画面，用来重新识别 ASR 解决不了的区间，纯音频同样可用。它会花费额度，必须经用户确认。
+音视频子模型接收视频片段，用来重新识别 ASR 解决不了的区间，纯音频补低分辨率黑画面后发送视频。它会花钱，必须经用户确认。
 
 - 「对白」汇总出这类区间时，用一次 `ask_user` 提议：逐段列出时间与原因，说明请求次数，请用户选择补查哪些。用户拒绝的区间作为未决项交付。
 - 区间外延到句子边界，相近的区间合并为一段。
 
 1. `recognize.request(工作目录, { prompt, ranges })` 从原文件裁出 `ranges`（`[{ start, end }]` 整片时间，每段不超过 210 秒）并写出请求清单，返回 `request_file`。
 2. 调用 `batch_llm_request({ model_usage: "media", request_file })`。
-3. `recognize.read(工作目录, result_file)` 把响应换算为整片时间写入候选文件 `candidate`，返回各区间的行数、`incomplete`（输出没有正常结束）、无法解析或不符合契约的行数，以及失败的区间。
+3. `recognize.read(工作目录, result_file)` 把响应换算为整片时间写入候选文件 `candidate`，返回各区间的行数、无法解析或不符合契约的行数，以及失败的区间。
 4. 审阅候选后，`recognize.apply(工作目录, candidate, ranges)` 用完整且非空的候选替换区间内的 `dialogue`。区间内的 `screen` 保持不变。
 
 基线提示词如下。输出格式是 `read` 的解析契约。语言名称取自 `project_meta.json`，模型看到的时间从区间起点算起。需要区分说话人时可以要求输出字符串字段 `name`。
@@ -270,7 +277,7 @@ const { visualize } = await import(new URL('scripts/visualize.mjs', base_url).hr
 const result = await visualize({ source: 包目录, bilingual: 双语ASS, fonts: ws.fontsDirectory, output: 'work/media/<原文件主名>.mp4' });
 ```
 
-- `source` 是含 `media.json` 的包目录或工作目录。它按 `source` 找回原文件和所选音轨，不使用推理设备。生成前按「环境准备」的前两步检查环境，有缺失时先告诉用户，不需要探查 GPU。
+- `source` 是含 `media.json` 的包目录或工作目录。它按 `source` 找回原文件和所选音轨，不使用推理设备。生成前按「环境准备」检查 FFmpeg 与 Python 包，有缺失时先告诉用户。它不需要识别模型，也不需要探查 GPU。
 - 画面是带品牌的亮色固定背景、跟随当前声音起落的频谱竖条和烧录的双语字幕，1920×1080、16 fps。用户要求的定制字幕同样直接烧录。
 - 音轨能直接封入 MP4 时原样复制，否则转为 AAC 128 kbps。返回的 `audio` 为 `copy` 或 `aac`，`duration` 是成片时长。
 - 成片先在输出旁生成并检查，通过后才替换同名旧成片。失败或取消不会留下半成品，也不会删除旧成片。

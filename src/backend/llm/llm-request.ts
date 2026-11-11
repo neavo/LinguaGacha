@@ -20,6 +20,8 @@ import { normalize_setting_snapshot } from "../../domain/setting";
 import { resolve_model_endpoint, type ResolvedModelEndpoint } from "../../domain/model-endpoint";
 import { ENDPOINT_REQUEST_OVERRIDES } from "./llm-overrides";
 
+export const LLM_REQUEST_MAX_BYTES = 64_000_000; // 批量输入与最终媒体载荷共用的字节上限。
+
 /** 身份由任务或对话拥有，请求准备只读取本次冻结值。 */
 export type ModelRequestIdentity = Readonly<{
   user_agent: string;

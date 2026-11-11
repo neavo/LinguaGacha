@@ -764,11 +764,10 @@ it("主控采用生效配置，同 ID 固定用途采用保存值，摘要仅发
   };
   expect(resolve_agent_model(config, active, "agent")!.model_id).toBe("active");
   expect(summarize_agent_models(config, active)).toEqual({
-    agent: { name: "生效", model_id: "active", formats: ["messages"] },
+    agent: { name: "生效", model_id: "active" },
     batch_translation: {
       name: "保存",
       model_id: "saved",
-      formats: ["messages", "responses"],
     },
     media: null,
   });

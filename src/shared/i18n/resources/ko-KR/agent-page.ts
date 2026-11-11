@@ -47,7 +47,7 @@ export const ko_kr_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "번역할 파일이나 폴더를 끌어다 놓으세요 …",
+    no_project_placeholder: "번역할 파일이나 폴더를 끌어다 놓고 클릭 한 번으로 번역하세요 …!",
     placeholder: "작업을 설명하거나 @를 입력해 스킬 또는 명령을 선택하세요 …",
     edit_assistant_placeholder: "모델 응답 수정 …",
     newline: "줄 바꿈",

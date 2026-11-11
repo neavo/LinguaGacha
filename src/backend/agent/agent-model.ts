@@ -62,10 +62,6 @@ export function summarize_agent_models(config: JsonRecord, agent_model: Model): 
           : {
               name: model.name,
               model_id: model.model_id,
-              formats:
-                model.api_format === "OpenAIResponses" && model.auth_type !== "oauth"
-                  ? ["messages", "responses"]
-                  : ["messages"],
             },
       ];
     }),

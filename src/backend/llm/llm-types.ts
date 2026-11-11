@@ -2,12 +2,19 @@ import type { JsonValue } from "../../domain/json";
 import type { LogError } from "../../shared/error";
 
 /**
- * 请求消息保持中性的对话形状；Pi 负责协议转换，项目载荷入口应用产品约定。
+ * 内容块使用协议无关的形状。媒体 `data` 保存原始字节的 Base64。
  */
-export interface LLMMessage {
-  role: "system" | "user"; // OneShot 只接受业务提示词，不承载多轮 assistant 历史
-  content: string; // 已拼好的业务提示词，请求准备只消费冻结输入。
-}
+export type LLMContent =
+  | { type: "text"; text: string }
+  | { type: "image" | "audio" | "video"; mime_type: string; data: string };
+
+/** 翻译与连通性测试只生成文本。 */
+export type LLMTextMessage = { role: "system" | "user"; content: string };
+
+/** 一次性请求只接收指令和用户输入。媒体只属于用户消息。 */
+export type LLMMessage =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | LLMContent[] };
 
 /**
  * 调用方发送 LLM 请求时使用的唯一请求壳。

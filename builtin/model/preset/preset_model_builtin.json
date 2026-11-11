@@ -20,7 +20,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -51,7 +51,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -81,7 +81,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -111,7 +111,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -141,7 +141,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -157,7 +157,7 @@
     "api_format": "Anthropic",
     "api_url": "https://api.anthropic.com",
     "api_key": "no_key_required",
-    "model_id": "claude-sonnet-5",
+    "model_id": "claude-sonnet-5.5",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -171,7 +171,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -187,7 +187,7 @@
     "api_format": "OpenAI",
     "api_url": "https://open.bigmodel.cn/api/paas/v4",
     "api_key": "no_key_required",
-    "model_id": "glm-5.3",
+    "model_id": "glm-5.3-flash",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -201,7 +201,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -231,7 +231,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -261,7 +261,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,
@@ -291,7 +291,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "OFF"
+      "level": "HIGH"
     },
     "generation": {
       "temperature": 0.95,

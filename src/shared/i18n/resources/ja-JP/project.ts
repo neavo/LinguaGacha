@@ -78,7 +78,8 @@ export const ja_jp_project = {
     rpgmaker_mv_mz: "RPGMAKER MV/MZ ゲームファイル",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce ゲームファイル",
     deprecated_title: "特に最適化された形式（対応終了予定）",
-    any_format_notice: "上記にない形式のゲーム、字幕、電子書籍にも対応しています",
+    any_format_notice:
+      "その他の動画、音声、ゲーム、電子書籍にも対応しています。上の一覧になくてもまったく問題ありません …!",
     rpy: "RenPy ゲームテキスト",
     xlsx: "XLSX ゲームテキスト",
     trans_export: "Translator++ から出力したゲームテキスト",

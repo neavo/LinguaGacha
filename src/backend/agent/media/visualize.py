@@ -39,7 +39,7 @@ BAR_MIN, BAR_RANGE = 4, 360
 BAR_COLOUR = (124, 93, 164)  # BGR，即 #a45d7c。
 
 AAC = ["-c:a", "aac", "-b:a", "128k"]  # 原音轨无法封入 MP4 时的转码参数。
-H264 = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "32", "-pix_fmt", "yuv420p"]
+H264 = ["-c:v", "libx264", "-preset", "medium", "-crf", "28", "-pix_fmt", "yuv420p"]
 
 
 class Process:

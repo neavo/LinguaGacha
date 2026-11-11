@@ -46,7 +46,7 @@ export const de_de_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Dateien oder Ordner zum Übersetzen hierher ziehen …",
+    no_project_placeholder: "Dateien oder Ordner hierher ziehen und mit einem Klick übersetzen …!",
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Befehl wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
     newline: "Neue Zeile",

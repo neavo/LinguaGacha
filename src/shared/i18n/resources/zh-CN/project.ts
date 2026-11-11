@@ -94,7 +94,7 @@ export const zh_cn_project = {
     rpgmaker_mv_mz: "RPGMAKER MV/MZ 游戏文件",
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce 游戏文件",
     deprecated_title: "特别优化的格式（即将停止）",
-    any_format_notice: "其它格式的游戏、字幕和电子书也都支持，不在上述列表也没问题",
+    any_format_notice: "其它的视频、音频、游戏和电子书也都支持，不在上述列表也完全没问题 …!",
     rpy: "RenPy 游戏文本",
     xlsx: "XLSX 游戏文本",
     trans_export: "Translator++ 导出游戏文本",

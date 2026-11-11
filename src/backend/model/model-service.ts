@@ -12,7 +12,7 @@ import {
   type PiCatalogModel,
 } from "../llm/model-capability";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
-import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../llm/llm-types";
+import type { LLMClientPort, LLMTextMessage, LLMRequestResult } from "../llm/llm-types";
 import { collect_api_keys, read_model_request_snapshot } from "../llm/llm-request";
 import {
   MODEL_USAGES,
@@ -506,7 +506,7 @@ export class ModelService {
   /**
    * 模型测试提示词保持旧入口语义，Sakura 继续走纯文本翻译请求
    */
-  private build_model_test_messages(api_format: string): LLMMessage[] {
+  private build_model_test_messages(api_format: string): LLMTextMessage[] {
     if (api_format === "SakuraLLM") {
       return [
         {
@@ -565,7 +565,7 @@ export class ModelService {
   private log_model_test_key_start(
     app_language: unknown,
     masked_key: string,
-    messages: LLMMessage[],
+    messages: LLMTextMessage[],
   ): void {
     this.log_manager?.info("", { source: "model" });
     this.log_manager?.info(`${this.t(app_language, "app.log.api_test_key")}\n${masked_key}`, {
@@ -648,7 +648,7 @@ export class ModelService {
   /**
    * 沿用既有 Python repr 日志形状，方便用户复核实际 messages。
    */
-  private format_model_test_messages_for_log(messages: LLMMessage[]): string {
+  private format_model_test_messages_for_log(messages: LLMTextMessage[]): string {
     const rows = messages.map(
       (message) =>
         `{'role': '${this.escape_python_repr(message.role)}', 'content': '${this.escape_python_repr(

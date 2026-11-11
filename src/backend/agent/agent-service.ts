@@ -1,4 +1,5 @@
 import { create_agent_batch_llm_request_tool } from "./tools/batch-llm-request";
+import { create_search_port } from "./search/request";
 import {
   BatchRequestCompletionError,
   type BatchRequestService,
@@ -1097,6 +1098,7 @@ export class AgentService {
               {
                 script,
                 timeoutMs,
+                search: create_search_port(this.settings.read_setting()),
                 functionModels: summarize_agent_models(
                   this.settings.read_setting(),
                   this.model_config!,

@@ -15,7 +15,7 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 /** 使用回显 Worker 观察实际路由和故障归属。 */
-async function create(): Promise<Engine> {
+async function create(device: "cpu" | "webgpu" = "webgpu"): Promise<Engine> {
   const file = path.join(directory, "worker.mjs");
   await writeFile(
     file,
@@ -34,8 +34,9 @@ parentPort.on('message', (m) => {
     tokens: "unused",
     models: {
       vad: model,
-      asr: { ...model, device: "webgpu" },
-      det: { ...model, device: "webgpu" },
+      asr: { ...model, device },
+      det: { ...model, device },
+      rec: { ...model, device },
     },
   };
   const engine = new Engine(config, file);
@@ -45,19 +46,30 @@ parentPort.on('message', (m) => {
 const request = (engine: Engine, kind: MediaTask, fail = false) =>
   engine.request(0, kind, { fail }, new Uint8Array(0));
 
-it("round-robins detection independently of interleaved audio requests", async () => {
-  const engine = await create();
+it("shares two CPU visual workers for detection and OCR independently of audio", async () => {
+  const engine = await create("cpu");
   const replies = await Promise.all(
-    ["det", "vad", "det", "asr", "det", "asr", "det"].map((kind) =>
+    ["det", "vad", "rec", "asr", "rec", "asr", "det"].map((kind) =>
       request(engine, kind as MediaTask),
     ),
   );
   const threads = replies.map((reply) => reply.header.thread);
   expect(threads[0]).toBe(threads[4]);
   expect(threads[2]).toBe(threads[6]);
-  expect(new Set(threads).size).toBe(4);
-  expect(replies.map((reply) => reply.header.id)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  expect(threads[0]).not.toBe(threads[2]);
+  expect(new Set(threads).size).toBe(3);
   await engine.close();
+});
+
+it("shares one GPU worker for ASR, detection and OCR while VAD stays on CPU", async () => {
+  const engine = await create();
+  const replies = await Promise.all(
+    ["asr", "det", "rec", "vad"].map((kind) => request(engine, kind as MediaTask)),
+  );
+  const threads = replies.map((reply) => reply.header.thread);
+  expect(threads[0]).toBe(threads[1]);
+  expect(threads[0]).toBe(threads[2]);
+  expect(threads[0]).not.toBe(threads[3]);
 });
 
 it("marks GPU failures for rerun and keeps VAD errors on CPU", async () => {

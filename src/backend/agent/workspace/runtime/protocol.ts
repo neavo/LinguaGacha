@@ -14,9 +14,12 @@ import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
 import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
 import type { UvConfiguration } from "../../uv/types";
 import type { MediaConfiguration } from "../../media/runtime";
+import type { WorkspaceSearchRequest, SearchResponse } from "../../search/schema";
 
 export type WorkspaceRequest =
+  | WorkspaceSearchRequest
   | { kind: "resolve_proxy"; url: string }
+  | { kind: "resolve_package_source" } // 对话身份由宿主绑定，子进程不携带
   | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
   | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
   | WorkspacePrintPDFRequest
@@ -24,6 +27,7 @@ export type WorkspaceRequest =
   | WorkspaceGenerateFilesRequest
   | WorkspaceGetOutputPathsRequest;
 export type WorkspaceRequestResult =
+  | SearchResponse
   | string
   | null
   | WorkspacePrintPDFResult

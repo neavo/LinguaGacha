@@ -30,7 +30,7 @@ const mirrors = (bases: readonly string[], file: string): string[] =>
 
 /**
  * 模型清单。版本变化通过修改清单发布，启动时不追踪远端最新权重。
- * SenseVoiceSmall 来自阿里巴巴 FunASR，许可要求注明来源与作者并保留模型名，许可文件随模型下载。
+ * SenseVoiceSmall 来自阿里巴巴 FunASR，许可要求注明来源与作者并保留模型名。
  * FSMN-Monophone VAD 来自 Alibaba / FunASR，模型许可为 Apache-2.0。
  */
 export const MEDIA_MODELS = Object.freeze({
@@ -46,19 +46,14 @@ export const MEDIA_MODELS = Object.freeze({
     sha256: "6820fef9687708c4fc3fab2530179c8fcea6262daa25514380056cd8f6eb1754",
     urls: mirrors(FSMN_URLS, "am.mvn"),
   },
-  vad_license: {
-    file: "fsmn_vad/LICENSE",
-    size: 11358,
-    sha256: "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    urls: mirrors(FSMN_URLS, "LICENSE"),
-  },
-  // CPU 使用官方动态 INT8 导出，目前没有内容相同的授权镜像。
+  // CPU 使用官方动态 INT8 导出，镜像与官方源内容一致。
   asr_cpu: {
     file: "sensevoice/model_quant.onnx",
     size: 241216270,
     sha256: "21dc965f689a78d1604717bf561e40d5a236087c85a95584567835750549e822",
     urls: [
-      "https://modelscope.cn/models/iic/SenseVoiceSmall-onnx/resolve/4e95991ddb34c70e9b94f026d62ac82a9d941ae1/model_quant.onnx",
+      "https://huggingface.co/neavo/SenseVoiceSmall-ONNX-CPU-INT8/resolve/0966ccc0e484cdaf4dc84ebecf049f0239a05901/model_quant.onnx",
+      "https://modelscope.cn/models/neavo7/SenseVoiceSmall-ONNX-CPU-INT8/resolve/ef9414333f29e1c753b7dcfdf19a2c226e825dd4/model_quant.onnx",
     ],
   },
   // GPU 使用官方权重导出的 W8A32，与 CPU 权重共用词表与前处理。
@@ -80,12 +75,6 @@ export const MEDIA_MODELS = Object.freeze({
     sha256: "29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5",
     urls: mirrors(W8A32_URLS, "am.mvn"), // 官方 iic/SenseVoiceSmall 同一文件的自有镜像。
   },
-  sensevoice_license: {
-    file: "sensevoice/LICENSE",
-    size: 5306,
-    sha256: "7dba975a2069691db4992b0592d70828b330d2f8a30a71450f4e152a554e84f8",
-    urls: mirrors(W8A32_URLS, "LICENSE"),
-  },
   det_cpu: {
     file: "ppocr/v6/PP-OCRv6_det_small.onnx",
     size: 9929594,
@@ -98,11 +87,17 @@ export const MEDIA_MODELS = Object.freeze({
     sha256: "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
     urls: mirrors(PPOCR_URLS, "det/PP-OCRv6_det_medium.onnx"),
   },
-  ppocr_license: {
-    file: "ppocr/v6/LICENSE",
-    size: 11422,
-    sha256: "3e0af25fdd06aa9586ae97adb00ea927ebe5a3805ac77d2d3a81ce5f55693333",
-    urls: mirrors(PPOCR_URLS, "LICENSE"),
+  rec_cpu: {
+    file: "ppocr/v6/PP-OCRv6_rec_small.onnx",
+    size: 21234383,
+    sha256: "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+    urls: mirrors(PPOCR_URLS, "rec/PP-OCRv6_rec_small.onnx"),
+  },
+  rec_gpu: {
+    file: "ppocr/v6/PP-OCRv6_rec_medium.onnx",
+    size: 76629984,
+    sha256: "eef444829dbbe18d7fea59a3f6eb75647518d2b3a9568d27c92e42940204894b",
+    urls: mirrors(PPOCR_URLS, "rec/PP-OCRv6_rec_medium.onnx"),
   },
 } satisfies Record<string, MediaModel>);
 

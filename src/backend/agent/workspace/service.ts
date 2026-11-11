@@ -85,6 +85,7 @@ import { prepare_agent_workspace_changes } from "./changes";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
 import { write_agent_workspace_sources, type WorkspaceSourceResult } from "./sources";
 import { watch_agent_process_output, type AgentProcessOutputTail } from "../process-output";
+import type { AgentPackageSources } from "../package-source";
 
 const AGENT_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
 
@@ -123,6 +124,7 @@ export type AgentWorkspaceImage = Readonly<{ path: string; image: AgentImage }>;
 /** 一次工作区执行的输入，`output` 只供界面观察运行中的日志末尾。 */
 export type AgentWorkspaceRunInput = Readonly<{
   functionModels: AgentModelsSummary;
+  search?: AgentWorkspaceRunRequest["search"];
   script: string;
   timeoutMs: number;
   doing?: AgentWorkspaceRunRequest["doing"];
@@ -220,6 +222,7 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
+      packageSources: Pick<AgentPackageSources, "resolve" | "forget">; // 应用级缓存，按对话身份隔离
       generation: Pick<
         TranslationFileGenerationService,
         "generate_staging_files" | "read_output_paths"
@@ -482,8 +485,9 @@ export class AgentWorkspaceService {
     this.chat_id = null;
   }
 
-  /** 显式重置在旧执行关闭后删除其材料。 */
+  /** 显式重置在旧执行关闭后删除其材料与默认包源判定。 */
   public delete_chat(id: string): Promise<void> {
+    this.options.packageSources.forget(id);
     return this.directories.remove(id);
   }
 
@@ -651,6 +655,7 @@ export class AgentWorkspaceService {
     request: AgentWorkspaceRunInput,
     signal: AbortSignal,
   ): Promise<{ execution: AgentWorkspaceExecution; images: AgentWorkspaceImage[] }> {
+    const chat_id = this.chat_id; // 受理时固定，脚本中途的查询不随之后的对话切换改变归属
     return await this.exclusive(async () => {
       const image_output = create_image_output(async (image_path, image_signal, options) => {
         // 图片按本机文件路径读取，与脚本读取范围一致。聊天链接由 resolve_path 约束。
@@ -731,7 +736,14 @@ export class AgentWorkspaceService {
               ...logs,
               timeoutMs: request.timeoutMs,
               emitImage: image_output.emitImage,
+              ...(request.search === undefined ? {} : { search: request.search }),
               ...(request.doing === undefined ? {} : { doing: request.doing }),
+              ...(chat_id === null
+                ? {}
+                : {
+                    packageSource: (source_signal: AbortSignal) =>
+                      this.options.packageSources.resolve(chat_id, source_signal),
+                  }),
               inspectSources: async (sources, signal) => {
                 const resolved = sources.map((source) => this.resolve_source_path(source));
                 const result = await this.options.files.inspect_sources(

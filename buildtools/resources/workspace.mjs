@@ -23,6 +23,7 @@ const WORKSPACE_PACKAGES = [
   { name: "@lg/uv", entries: { index: "src/backend/agent/uv/index.ts" } },
   { name: "@lg/npm", entries: { index: "src/backend/agent/npm/index.ts" } },
   { name: "@lg/media", entries: { index: "src/backend/agent/media/index.ts" } },
+  { name: "@lg/search", entries: { index: "src/backend/agent/search/index.ts" } },
   {
     name: "@lg/pdf",
     entries: {

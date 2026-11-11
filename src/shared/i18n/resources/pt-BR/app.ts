@@ -204,7 +204,7 @@ export const pt_br_app = {
     },
   },
   translation_generation: {
-    agent_request: "Gere todas as traduções sem realizar operações não relacionadas",
+    agent_request: "Gere traduções sem realizar outras operações",
     action: "Gerar tradução",
     confirmation: {
       generic_description:
@@ -269,7 +269,6 @@ export const pt_br_app = {
     task_finished:
       "Tarefa encerrada: {RUN} · {STATUS} · sucesso {SUCCEEDED} · falha {FAILED} · pendentes {UNFINISHED} · origem da parada {STOP}\n{PATH}",
     publish_failed: "Falha ao publicar o resultado: {ERROR}",
-    usage_incomplete: "uso incompleto; parte ausente desconhecida",
     api_test_fail: "Falha no teste de API …",
     api_test_key: "Chave em teste:",
     request_messages: "Prompts da tarefa:",

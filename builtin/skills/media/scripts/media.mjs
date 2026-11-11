@@ -3,16 +3,30 @@ import path from "node:path";
 import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
 
-// 完整环境准备与 GPU 探查分开，设备由 AGENT 在每次推理调用中明确传入。
+// 依赖由 AGENT 经 npm、uv 显式准备，模型准备与 GPU 探查分开，设备在每次推理调用中明确传入。
 export {
   ASR_LANGUAGES,
   DeviceFailure,
   ffmpeg,
   inspect,
-  missing,
-  setup,
+  missing_models,
+  prepare_models,
   probe_gpu,
 } from "@lg/media";
+
+// 已验收的依赖版本，由 AGENT 经 npm、uv 显式安装，不随任务升级。
+export const DEPENDENCIES = Object.freeze({
+  npm: [
+    `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
+    "onnxruntime-node@1.30.0", // 1.31.1 存在宿主退出卡住问题，固定已通过退出验收的版本。
+  ],
+  python: [
+    "numpy==2.5.4",
+    "kaldi-native-fbank==1.23.0",
+    "opencv-python-headless==5.0.0.93",
+    "pyclipper==1.4.0",
+  ],
+});
 
 const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
@@ -43,7 +57,7 @@ export async function save(file, value) {
   }
 }
 
-/** 按需安装本技能自己的 npm 依赖。识别与检测的依赖由 `@lg/media` 管理。 */
+/** 按需安装本技能脚本自己的 npm 依赖。媒体计算依赖见技能「环境准备」。 */
 export async function install(name, range) {
   if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
     await npm.run(["install", `${name}@${range}`]);
@@ -84,9 +98,10 @@ async function detect(directory, options, commit) {
 }
 
 /**
- * 以 1 fps 检测整片画面文字，写入 `media.json` 的 `text`，每个区间的代表帧裁图写入 `text/<id>.jpg`。
+ * 以 1 fps 检测并识别画面文字，按位置和内容分段。
+ * 区间写入 `media.json` 的 `text`，代表裁图写入 `text/<id>.jpg`。
  * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成。
- * 检测模型随指定设备而定，区间编号和框只在本次结果内有效。
+ * 检测与识别模型随指定设备而定，区间编号和框只在本次结果内有效。
  */
 export async function scan(directory, { device } = {}) {
   directory = path.resolve(directory);
@@ -216,7 +231,7 @@ export async function sheets(directory, { ids } = {}) {
 }
 
 /**
- * 在原文件上以高帧率校准带 `box` 的 `screen` 行的起止时间，直接写回 `items.json`。
+ * 在原文件上以 4 fps 校准带 `box` 的 `screen` 行的同内容边界，直接写回 `items.json`。
  * 边界不在原时间前后 1 秒内时保持原值，这些行在 `unresolved` 中返回。
  */
 export async function refine(directory, rows, { device } = {}) {

@@ -3,7 +3,7 @@
  * 与 `media.py` 的 `Channel` 是同一契约，上限两端一致。
  */
 export const CHANNEL_HEADER_MAX = 64 * 1024;
-export const CHANNEL_PAYLOAD_MAX = 64 * 1024 * 1024; // 最大输入是 1920 长边画面的检测张量，约 3 MB。
+export const CHANNEL_PAYLOAD_MAX = 64 * 1024 * 1024; // 检测图与按长宽比展开的文字行共用载荷上限。
 
 export type ChannelHeader = Readonly<Record<string, unknown>>;
 /** 载荷独占自己的 ArrayBuffer，可直接转移给 Worker。 */
