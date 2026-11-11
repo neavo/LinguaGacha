@@ -66,7 +66,7 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 
 |脚本|入口|用途|
 |---|---|---|
-|`media.mjs`|`missing`、`setup`|检查、准备全部媒体组件与模型|
+|`media.mjs`|`DEPENDENCIES`、`missing_models`、`prepare_models`|依赖版本，检查、准备识别模型|
 ||`probe_gpu`|验证 WebGPU 配置可运行，用于选择设备|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白，视频同时检测画面文字，生成初始 `items.json`|
@@ -87,12 +87,18 @@ const recognize = await import(new URL('scripts/recognize.mjs', base_url).href);
 
 # 环境准备
 
-`media.missing()` 返回全部媒体组件和模型的缺口 `{ packages, python, models }`。`media.setup()` 准备完整环境并返回剩余缺口。它校验并复用已有资源。
+媒体入口只做计算，不安装依赖。依赖装在所有任务共用的 npm 与 Python 工程中，按 `media.DEPENDENCIES` 的版本安装，不自行升级：
 
-1. 任务开始时单独调用 `missing` 并返回结果。有缺口时，先告诉用户需要下载并提醒保持网络畅通，再在新的调用中执行 `setup`。第一次需下载约 600 MB，后续可以复用。根据上下文说明这些事实。资源齐全时也调用 `setup` 复查。
-2. 下载失败或中断后，重新调用 `setup` 续传。其他入口报告组件未就绪时，回到第 1 步。准备阶段会实时输出日志。
-3. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
-4. 开始识别前，在独立调用中执行 `probe_gpu()` 并返回结果，据此选择本次任务的设备：
+```js
+await npm.run(['install', '--save-exact', ...media.DEPENDENCIES.npm]);
+await uv.run(['add', ...media.DEPENDENCIES.python]);
+```
+
+npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。识别模型用 `media.missing_models()` 快速检查，`media.prepare_models()` 校验、续传并返回剩余缺口。成片不需要识别模型。
+
+1. 任务开始时在独立调用中检查依赖与模型缺口，已安装版本与 `media.DEPENDENCIES` 不符也属于缺口，有缺口时先说明下载需求，再用独立调用按上述命令补齐。首次下载约 600 MB，后续复用已下载的资源。
+2. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
+3. 开始识别前，在独立调用中执行 `probe_gpu()` 并返回结果，据此选择本次任务的设备：
    - `{ available: true }`：使用 `device: 'gpu'`。
    - `{ available: false, reason }`：结合 `reason` 说明本次改用 CPU，处理可能更久。随后使用 `device: 'cpu'`。
    - 探查抛出错误时不代表 GPU 不可用，按错误本身处理。
@@ -270,7 +276,7 @@ const { visualize } = await import(new URL('scripts/visualize.mjs', base_url).hr
 const result = await visualize({ source: 包目录, bilingual: 双语ASS, fonts: ws.fontsDirectory, output: 'work/media/<原文件主名>.mp4' });
 ```
 
-- `source` 是含 `media.json` 的包目录或工作目录。它按 `source` 找回原文件和所选音轨，不使用推理设备。生成前按「环境准备」的前两步检查环境，有缺失时先告诉用户，不需要探查 GPU。
+- `source` 是含 `media.json` 的包目录或工作目录。它按 `source` 找回原文件和所选音轨，不使用推理设备。生成前按「环境准备」检查 FFmpeg 与 Python 包，有缺失时先告诉用户。它不需要识别模型，也不需要探查 GPU。
 - 画面是带品牌的亮色固定背景、跟随当前声音起落的频谱竖条和烧录的双语字幕，1920×1080、16 fps。用户要求的定制字幕同样直接烧录。
 - 音轨能直接封入 MP4 时原样复制，否则转为 AAC 128 kbps。返回的 `audio` 为 `copy` 或 `aac`，`duration` 是成片时长。
 - 成片先在输出旁生成并检查，通过后才替换同名旧成片。失败或取消不会留下半成品，也不会删除旧成片。

@@ -4,7 +4,6 @@ import path from "node:path";
 import lockfile from "proper-lockfile";
 import { execute, ffmpeg_path, inspect } from "./ffmpeg";
 import { python, runtime_file } from "./engine";
-import { ensure_ready } from "./preparation";
 
 const FRAME = { width: 1920, height: 1080 }; // 与 `visualize.py` 的成片尺寸一致。
 const DURATION_TOLERANCE = 0.15; // 成片与解码样本时长的允许差（秒），覆盖封装取整。
@@ -34,7 +33,6 @@ export async function visualize(
   source: string,
   options: VisualizeOptions,
 ): Promise<VisualizeResult> {
-  await ensure_ready();
   const info = await inspect(source);
   if (info.video !== null) throw new Error("Visualization requires audio-only media.");
   if (!Number.isInteger(options.track) || options.track < 0 || !info.audio[options.track])
@@ -71,7 +69,7 @@ export async function visualize(
         ffmpeg: ffmpeg_path(),
       }),
     );
-    await execute(await python(), ["-I", "-X", "utf8", runtime_file("visualize.py"), job]);
+    await execute(python(), ["-I", "-X", "utf8", runtime_file("visualize.py"), job]);
     const temporary = path.join(directory, "result.mp4");
     const result = JSON.parse(fs.read_text_file(path.join(directory, "result.json"))) as Omit<
       VisualizeResult,

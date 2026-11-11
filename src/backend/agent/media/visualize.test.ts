@@ -6,9 +6,10 @@ import { AgentExecutionRuntime } from "../execution/runtime";
 import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
+import { AgentPackageSources } from "../package-source";
 
 it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
-  "deployed visualization preserves audio, output and cancellation boundaries with the complete media environment",
+  "deployed visualization preserves audio, output and cancellation boundaries without recognition models",
   async () => {
     const root = path.resolve(process.env.LINGUAGACHA_VISUALIZE_REPORT!);
     const workspace = path.join(root, "workspace");
@@ -45,6 +46,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
         get_agent_builtin_skill_dir: () => path.join(root, "builtin"),
       },
     });
+    const package_sources = new AgentPackageSources({ log: console.log }); // 验收使用真实地区判定
     let sequence = 0;
     const run = async (script: string, signal = AbortSignal.timeout(900_000)) => {
       const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/visual-${++sequence}.mjs`;
@@ -56,6 +58,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
           stdoutPath: `${scriptPath}.stdout.log`,
           stderrPath: `${scriptPath}.stderr.log`,
           timeoutMs: 900_000,
+          packageSource: (source_signal) => package_sources.resolve("acceptance", source_signal),
         },
         signal,
       );
@@ -64,9 +67,12 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       const prepared = await run(`
       import * as media from '@lg/media';
       import { uv } from '@lg/uv';
+      import { npm } from '@lg/npm';
       import fs from 'node:fs/promises';
       import assert from 'node:assert/strict';
-      assert.deepEqual(await media.setup(), {packages:[],python:[],models:[]});
+      // 成片只需要 FFmpeg 与 Python 包，不准备识别模型。
+      await npm.run(['install', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@^5.2.5\`]);
+      await uv.run(['add', 'numpy==2.5.4', 'kaldi-native-fbank==1.23.0', 'opencv-python-headless==5.0.0.93', 'pyclipper==1.4.0']);
       await uv.run(['run','python','-I', ${JSON.stringify(path.resolve("src/backend/agent/media/visualize.test.py"))}, ${JSON.stringify(path.join(runtime, "runtime"))}]);
       await media.ffmpeg(['-v','error','-y','-f','lavfi','-i','color=c=white:s=1920x1080','-frames:v','1','work/background.png']);
       await fs.writeFile('work/subtitles.ass', '[Script Info]\\nScriptType: v4.00+\\nPlayResX: 1920\\nPlayResY: 1080\\n[V4+ Styles]\\nFormat: Name, Fontname, Fontsize, PrimaryColour, Alignment\\nStyle: Default,LGBaseFont,48,&H002C2725,2\\n[Events]\\nFormat: Layer, Start, End, Style, Text\\nDialogue: 0,0:00:00.00,0:00:02.00,Default,字幕テスト 한글 Latin\\n');
@@ -119,6 +125,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
     `);
       expect(retried.exitCode).toBe(0);
     } finally {
+      package_sources.close();
       await execution.close();
     }
   },

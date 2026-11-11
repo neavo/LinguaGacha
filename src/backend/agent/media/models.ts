@@ -52,13 +52,14 @@ export const MEDIA_MODELS = Object.freeze({
     sha256: "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     urls: mirrors(FSMN_URLS, "LICENSE"),
   },
-  // CPU 使用官方动态 INT8 导出，目前没有内容相同的授权镜像。
+  // CPU 使用官方动态 INT8 导出，镜像与官方源内容一致。
   asr_cpu: {
     file: "sensevoice/model_quant.onnx",
     size: 241216270,
     sha256: "21dc965f689a78d1604717bf561e40d5a236087c85a95584567835750549e822",
     urls: [
-      "https://modelscope.cn/models/iic/SenseVoiceSmall-onnx/resolve/4e95991ddb34c70e9b94f026d62ac82a9d941ae1/model_quant.onnx",
+      "https://huggingface.co/neavo/SenseVoiceSmall-ONNX-CPU-INT8/resolve/0966ccc0e484cdaf4dc84ebecf049f0239a05901/model_quant.onnx",
+      "https://modelscope.cn/models/neavo7/SenseVoiceSmall-ONNX-CPU-INT8/resolve/ef9414333f29e1c753b7dcfdf19a2c226e825dd4/model_quant.onnx",
     ],
   },
   // GPU 使用官方权重导出的 W8A32，与 CPU 权重共用词表与前处理。

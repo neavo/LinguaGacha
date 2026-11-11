@@ -1,5 +1,11 @@
 export type NpmConfiguration = Readonly<{ runtimeDirectory: string; nodeRoot: string }>; // 应用运行目录与共享 npm 工程。
 
+// 自动默认源只替换 npm 内建的 registry 默认值，地区判定见 `package-source`。
+export const NPM_REGISTRIES = Object.freeze({
+  official: "https://registry.npmjs.org/",
+  mirror: "https://registry.npmmirror.com/",
+});
+
 let configuration: NpmConfiguration | undefined; // 每次根脚本启动时绑定，后代进程没有该绑定。
 
 /** 只由根进程 bootstrap 绑定，共享 chunk 保证公共入口消费同一实例。 */

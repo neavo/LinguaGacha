@@ -177,7 +177,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 媒体推理
 
-Python 媒体行为可通过 `media.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。依赖版本见 `src/backend/agent/media/preparation.ts`：
+Python 媒体行为可通过 `media.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。依赖版本见 `builtin/skills/media/scripts/media.mjs` 的 `DEPENDENCIES`：
 
 ```powershell
 $mediaPythonProject = '<已准备媒体环境的 Python 项目目录，含 pyproject.toml>'
@@ -188,9 +188,11 @@ uv run --project $mediaPythonProject python -I -X utf8 $mediaTestFile $mediaSour
 
 验证部署产物时，将最后一个参数替换为其 `runtime` 目录。Windows 路径问题须在 Windows 验证。
 
+npm、uv 默认包源变化运行 `package-source.test.ts`、`uv/index.test.ts`、工作区 `service.test.ts`，以及集成测试 `npm/index.test.ts` 和工作区 `bootstrap.test.ts`。它们使用替身判定和关闭的代理端口，不访问地区接口。
+
 媒体路由和配置变化运行 `media/probe.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `preparation`、`channel`、`speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`；公开探查和资源检查契约同时运行工作区 `bootstrap.test.ts`。这些集成测试使用测试资源，不下载权重。
 
-真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 探查、识别、画面处理、显式设备选择与取消后重跑。准备会下载固定依赖与权重。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
+真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 探查、识别、画面处理、显式设备选择与取消后重跑。脚本先经 `@lg/npm`、`@lg/uv` 显式安装技能固定的依赖，再调用 `prepare_models()` 下载权重，默认包源使用真实地区判定。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
 
 ```powershell
 $env:LINGUAGACHA_MEDIA_SOURCE = '素材的绝对路径'
@@ -199,9 +201,9 @@ $env:LINGUAGACHA_MEDIA_LANGUAGE = 'JA'
 npm test -- --project integration src/backend/agent/media/index.test.ts
 ```
 
-`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。
+`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。验证 ORT 降级时，复用装有高版本的验收环境，并核对 `result.json` 的 `ort` 字段。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。
 
-可视化验收通过统一准备入口下载并复用完整媒体资源。报告目录应位于仓库外，保留独立环境与运行日志：
+可视化验收只显式安装 FFmpeg 与 Python 包，不准备识别模型，同时证明成片不受模型缺失影响。报告目录应位于仓库外，保留独立环境与运行日志：
 
 ```powershell
 $env:LINGUAGACHA_VISUALIZE_REPORT = '<仓库外验收目录绝对路径>'

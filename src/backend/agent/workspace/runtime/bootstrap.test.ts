@@ -65,7 +65,7 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it("媒体 SDK 使用宿主指定的模型目录并拒绝缺失资源的探查", async () => {
+it("媒体 SDK 使用宿主指定的模型目录并拒绝缺失模型的探查", async () => {
   const { file, size } = MEDIA_MODELS.vad;
   await run(`
     import assert from 'node:assert/strict';
@@ -74,13 +74,13 @@ it("媒体 SDK 使用宿主指定的模型目录并拒绝缺失资源的探查",
     import * as media from '@lg/media';
     const models = ${JSON.stringify(path.join(root, "media storage/models"))};
     const model = ${JSON.stringify({ file, size })};
-    assert.ok((await media.missing()).models.includes(model.file));
+    assert.ok((await media.missing_models()).includes(model.file));
     const file = path.join(models, model.file);
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, Buffer.alloc(model.size));
-    assert.ok(!(await media.missing()).models.includes(model.file));
+    assert.ok(!(await media.missing_models()).includes(model.file));
     try {
-      await assert.rejects(media.probe_gpu(), /Media components are not ready/);
+      await assert.rejects(media.probe_gpu(), /Media models are missing/);
     } finally {
       await rm(file);
     }
@@ -140,6 +140,61 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     ],
   });
   expect(inspectSources).toHaveBeenCalledOnce();
+});
+
+it("搜索 SDK 经真实 IPC 保留原生响应并校验参数", async () => {
+  const response = {
+    provider: "tavily" as const,
+    status: 200,
+    contentType: "text/event-stream",
+    body: 'data: {"result":{"isError":false,"content":[{"text":"quota exhausted"}]}}\n\n',
+  };
+  const search = vi.fn(async () => response);
+  const result = await run(
+    `
+    import {search} from '@lg/search';
+    import assert from 'node:assert/strict';
+    await assert.rejects(search({query: ' '}), /Invalid workspace search request/);
+    console.log(JSON.stringify(await search({query: 'fixture', provider: 'tavily'})));
+  `,
+    undefined,
+    undefined,
+    { search },
+  );
+  expect(output_content(result.stdout)).toEqual(response);
+  expect(search).toHaveBeenCalledOnce();
+});
+
+it("停止搜索脚本会取消宿主请求并等它收尾", async () => {
+  const controller = new AbortController();
+  let host_signal: AbortSignal | undefined;
+  const pending = run(
+    "import {search} from '@lg/search'; await search({query:'fixture'});",
+    controller.signal,
+    undefined,
+    {
+      search: async (_input, signal) =>
+        new Promise((_resolve, reject) => {
+          host_signal = signal;
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+    },
+  );
+  const stopped = new Error("stop search");
+  const assertion = expect(pending).rejects.toBe(stopped);
+  try {
+    await vi.waitFor(() => expect(host_signal).toBeDefined(), { timeout: RUN_TIMEOUT_MS });
+  } finally {
+    controller.abort(stopped);
+    await assertion;
+  }
+  expect(host_signal?.aborted).toBe(true);
 });
 
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
@@ -518,6 +573,34 @@ it.each([false, true])(
   },
 );
 
+it("取消包源查询时通过真实 IPC 解除宿主请求", async () => {
+  const closed_proxy = async () => "PROXY 127.0.0.1:9";
+  const started = Promise.withResolvers<AbortSignal>();
+  const controller = new AbortController();
+  const pending = run(
+    "import { npm } from '@lg/npm'; await npm.run(['view', 'lg-missing']);",
+    controller.signal,
+    closed_proxy,
+    {
+      packageSource: async (signal) => {
+        started.resolve(signal);
+        return await new Promise((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+        );
+      },
+    },
+  );
+  const rejected = expect(pending).rejects.toThrow("stop");
+  let source_signal: AbortSignal | undefined;
+  try {
+    source_signal = await Promise.race([started.promise, pending.then(() => undefined)]);
+  } finally {
+    controller.abort(new Error("stop"));
+  }
+  await rejected;
+  expect(source_signal?.aborted).toBe(true);
+});
+
 it("doing 在真实 IPC 回包后已生效，程序仍运行且后续失败保留阶段", async () => {
   let text: string | null = null;
   let release = (): void => undefined;
@@ -822,7 +905,14 @@ async function run(
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
   tools: Pick<
     AgentWorkspaceRunRequest,
-    "printPDF" | "inspectSources" | "generateFiles" | "getOutputPaths" | "emitImage" | "doing"
+    | "printPDF"
+    | "inspectSources"
+    | "generateFiles"
+    | "getOutputPaths"
+    | "emitImage"
+    | "doing"
+    | "packageSource"
+    | "search"
   > = {},
   directory = runtime,
 ) {

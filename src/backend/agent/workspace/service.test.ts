@@ -57,6 +57,7 @@ import {
 } from "./paths";
 import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../tools/contract";
 import { AgentWorkspaceRunError } from "./runtime/runner";
+import type { PackageSource } from "../package-source";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
   AGENT_WORKSPACE_WORK_ROOT,
@@ -1016,11 +1017,31 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
     await fixture.service.close();
+    await fixture.service.activate_chat("other001", [], async () => {});
+    // 默认包源按受理时的对话归属，执行结束后切换对话不改变已绑定的身份。
+    const signal = new AbortController().signal;
+    await fixture.run.mock.calls.at(-1)?.[0].packageSource?.(signal);
+    expect(fixture.package_sources.resolve).toHaveBeenCalledWith("test0001", signal);
+    await fixture.service.close();
     await fixture.service.delete_chat("test0001");
+    expect(fixture.package_sources.forget).toHaveBeenCalledWith("test0001");
     await fixture.service.activate_chat("test0001", [], async () => {});
     expect(fs.readdirSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT))).toEqual(
       [],
     );
+  });
+
+  it("搜索端口随本次脚本传给 runner", async () => {
+    const fixture = await create_fixture(temp_dir);
+    await run_workspace(fixture);
+    const search = vi.fn(async () => ({
+      provider: "exa" as const,
+      status: 200,
+      contentType: "application/json",
+      body: "{}",
+    }));
+    await fixture.service.run({ ...VALID_WORKSPACE_RUN, search }, new AbortController().signal);
+    expect(fixture.run.mock.lastCall![0].search).toBe(search);
   });
 
   it("sources 生成失败不阻断工程加载，并由 workspace_run 触发重试", async () => {
@@ -1183,6 +1204,7 @@ describe("AgentWorkspaceService", () => {
         getOutputPaths: expect.any(Function),
         inspectSources: expect.any(Function),
         emitImage: expect.any(Function),
+        packageSource: expect.any(Function),
       },
       expect.any(AbortSignal),
     );
@@ -1572,6 +1594,10 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
   const run = vi.fn<AgentWorkspaceRunPort>(async () => workspace_execution());
+  const package_sources = {
+    resolve: vi.fn(async (): Promise<PackageSource> => "mirror"),
+    forget: vi.fn(),
+  };
   const knowledge: { stored: string | null } = { stored: null }; // 已保存的知识正文
   const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(async (request) => {
     const outcome = resolve_agent_workspace_writes({
@@ -1718,6 +1744,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     writeStore: { apply_agent_workspace_changes: write_store },
     logManager: { warning: vi.fn() },
     run,
+    packageSources: package_sources,
     openDirectory: open_directory,
     pickSavePath: pick_save_path,
     ...(native_fs === undefined ? {} : { nativeFs: native_fs }),
@@ -1734,6 +1761,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     languages,
     query_warnings,
     run,
+    package_sources,
     write_store,
     knowledge,
     items,
@@ -1905,6 +1933,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       writeStore: services.state.writes,
       logManager: resources.logManager,
       run: async () => workspace_execution(),
+      packageSources: { resolve: async () => "mirror", forget: () => {} },
       openDirectory: async () => {},
       pickSavePath: async () => null,
     });

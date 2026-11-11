@@ -8,6 +8,7 @@ import { AgentImageService } from "../agent/agent-image-service";
 import { AgentService } from "../agent/agent-service";
 import { AgentWorkspaceService } from "../agent/workspace/service";
 import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
+import { AgentPackageSources } from "../agent/package-source";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { ApiStreamHub } from "../api/api-stream-hub";
 import { t_main_log } from "../log/log-text";
@@ -50,6 +51,7 @@ export class GuiBackendBootstrap {
   private event_stream: ApiStreamHub | null = null;
   private agent: AgentService | null = null;
   private execution: AgentExecutionRuntime | null = null; // Agent 停止后统一释放共享执行资源。
+  private package_sources: AgentPackageSources | null = null; // 跨工程切换保留，应用关闭时释放。
   private images: AgentImageService | null = null; // 关闭 Gateway 前取消模型图片准备，排空正在受理的发送请求
   private gateway: ApiGatewayServer | null = null;
   private start_promise: Promise<GuiBackendBootstrapStartResult> | null = null; // stop 等待在途启动后再释放资源
@@ -128,6 +130,10 @@ export class GuiBackendBootstrap {
         paths: resources.paths,
         proxyResolver: this.options.proxyResolver,
       });
+      const package_sources = new AgentPackageSources({
+        log: (message) => resources.logManager.info(message, { source: "agent_package_source" }),
+      });
+      this.package_sources = package_sources;
       const workspace = new AgentWorkspaceService({
         images,
         paths: resources.paths,
@@ -142,6 +148,7 @@ export class GuiBackendBootstrap {
         generation: services.files.translationGeneration,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
+        packageSources: package_sources,
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
@@ -263,6 +270,8 @@ export class GuiBackendBootstrap {
     const execution = this.execution;
     this.execution = null;
     await collect_failure(failures, async () => await execution?.close());
+    this.package_sources?.close();
+    this.package_sources = null;
 
     this.event_stream?.stop();
     this.event_stream = null;

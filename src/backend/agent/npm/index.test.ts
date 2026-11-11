@@ -9,7 +9,7 @@ import { inject, afterAll, beforeAll, expect, it, vi } from "vitest";
 import npm_package from "npm/package.json";
 import type { AgentProcessOutput } from "../process-output";
 import { AgentExecutionRuntime } from "../execution/runtime";
-import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
+import { AgentWorkspaceRunner, type AgentWorkspaceRunRequest } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
 
@@ -111,7 +111,11 @@ async function create_fixture(
     },
   });
   /** 真实 bootstrap 启动根脚本，脚本已导入 `npm` 与 `path`。 */
-  const run = async (script: string, signal = AbortSignal.timeout(20_000)) => {
+  const run = async (
+    script: string,
+    signal = AbortSignal.timeout(20_000),
+    ports: Pick<AgentWorkspaceRunRequest, "packageSource"> = {},
+  ) => {
     const id = ++sequence;
     const base = `${AGENT_WORKSPACE_RUN_ROOT}/npm-${id}`;
     await writeFile(
@@ -125,6 +129,7 @@ async function create_fixture(
         stdoutPath: `${base}.stdout.log`,
         stderrPath: `${base}.stderr.log`,
         timeoutMs: 60_000,
+        ...ports,
       },
       signal,
     );
@@ -185,6 +190,40 @@ it("真实 npm 默认采用应用代理，显式参数和 npmrc 保留原生优�
     }
   }
 }, 30_000);
+
+it("取包命令只在 registry 未配置时使用对话默认源，显式参数、npmrc 与 exec 目标参数保留原生语义", async () => {
+  // 代理指向关闭端口，请求快速失败，日志中的地址证明 npm 实际采用的来源。
+  const fixture = await create_fixture("source", async () => "PROXY 127.0.0.1:9");
+  const packageSource = vi.fn(async () => "mirror" as const);
+  try {
+    const result = await fixture.run(
+      `
+      const view = ["view", "lg-registry-test", "version", "--fetch-retries=0", "--no-update-notifier"];
+      const attempt = (args) => npm.run(args).catch(() => {});
+      await attempt(view);
+      await attempt([...view, "--registry=https://registry.npmjs.org/"]);
+      await attempt(["exec", "--yes", "--fetch-retries=0", "--", "lg-registry-test", "--registry=https://registry.npmjs.org/"]);
+      await npm.run(["config", "get", "registry"]);
+      await npm.run(["view", "--version"]);
+      process.env.npm_config_registry = "https://registry.npmjs.org/";
+      await attempt(view);
+      delete process.env.npm_config_registry;
+      await npm.run(["config", "set", "registry", "https://registry.npmjs.org/"]);
+      await attempt(view);
+    `,
+      undefined,
+      { packageSource },
+    );
+    // 首个 view 与 exec 的 registry 均为内建默认值；`--` 之后的参数属于被执行程序。
+    expect(packageSource).toHaveBeenCalledTimes(2);
+    const log = `${String(content(result.stdout))}${String(content(result.stderr))}`;
+    expect(log).toContain("https://registry.npmmirror.com/lg-registry-test");
+    expect(log).toContain("https://registry.npmjs.org/lg-registry-test");
+    expect(String(content(result.stdout))).toContain("https://registry.npmjs.org/\n"); // config 不经补齐
+  } finally {
+    await fixture.execution.close();
+  }
+}, 60_000);
 
 it("离线安装后下一次调用可导入，argv 原样传递，npm/npx 和无 shell Node 使用应用解释器", async () => {
   const fixture = await create_fixture("offline");

@@ -5,7 +5,7 @@
 import path from "node:path";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { media_configuration } from "./runtime";
-import { ensure_ready } from "./preparation";
+import { require_models } from "./preparation";
 import { helper, operate, validate_device } from "./engine";
 import { ffmpeg_path, inspect } from "./ffmpeg";
 import type { DeviceOptions } from "./worker-protocol";
@@ -16,7 +16,7 @@ export type { DeviceOptions } from "./worker-protocol";
 export { ffmpeg, inspect, type ExecuteOptions, type MediaInfo } from "./ffmpeg";
 export { ASR_LANGUAGES, union, type AsrSentence } from "./speech";
 
-export { missing, setup, type MediaMissing } from "./preparation";
+export { missing_models, prepare_models } from "./preparation";
 export { probe_gpu, type GpuProbeResult } from "./probe";
 export { DeviceFailure } from "./inference-engine";
 export { visualize, type VisualizeOptions, type VisualizeResult } from "./visualize";
@@ -42,7 +42,7 @@ export async function listen(
   { track = 0, language, device }: Readonly<{ track?: number; language: string }> & DeviceOptions,
 ): Promise<{ speech: [number, number][]; asr: AsrSentence[] }> {
   validate_device(device);
-  await ensure_ready();
+  require_models(["vad", "vad_mvn", "asr_mvn", "tokens", device === "gpu" ? "asr_gpu" : "asr_cpu"]);
   const code = (ASR_LANGUAGES as Readonly<Record<string, string>>)[language];
   if (code === undefined)
     throw new Error(
@@ -82,7 +82,7 @@ export async function scan(
   { out, device }: Readonly<{ out: string }> & DeviceOptions,
 ): Promise<TextRegion[]> {
   validate_device(device);
-  await ensure_ready();
+  require_models([device === "gpu" ? "det_gpu" : "det_cpu"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
@@ -107,7 +107,7 @@ export async function refine(
   { rows, device }: Readonly<{ rows: readonly RefineRow[] }> & DeviceOptions,
 ): Promise<TextBound[]> {
   validate_device(device);
-  await ensure_ready();
+  require_models([device === "gpu" ? "det_gpu" : "det_cpu"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
@@ -124,6 +124,5 @@ export async function refine(
 
 /** 把裁图拼成不超过 1280×1280 的图集写入 `out`，返回 `[{ file, ids }]`。 */
 export async function sheets(entries: readonly SheetEntry[], out: string): Promise<Sheet[]> {
-  await ensure_ready();
   return (await helper("sheet", { entries, out })) as Sheet[];
 }

@@ -6,7 +6,7 @@ const fake = vi.hoisted(() => ({
   request: vi.fn(),
   operate: vi.fn(),
 }));
-vi.mock("./preparation", () => ({ ensure_ready: fake.ready }));
+vi.mock("./preparation", () => ({ require_models: fake.ready }));
 vi.mock("./engine", () => ({ operate: fake.operate }));
 beforeEach(() => {
   vi.resetAllMocks();
@@ -43,8 +43,11 @@ it("reports only device failures as unavailable, propagating preparation and clo
   fake.operate.mockRejectedValue(close);
   await expect(probe_gpu()).rejects.toBe(close);
   const prepare = new Error("missing model");
-  fake.ready.mockRejectedValue(prepare);
+  fake.ready.mockImplementation(() => {
+    throw prepare;
+  });
   fake.operate.mockClear();
   await expect(probe_gpu()).rejects.toBe(prepare);
+  expect(fake.ready).toHaveBeenCalledWith(["asr_gpu", "tokens"]);
   expect(fake.operate).not.toHaveBeenCalled();
 });
