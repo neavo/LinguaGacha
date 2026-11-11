@@ -29,6 +29,7 @@ import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
 import type { ProxyResolver } from "../../../network/proxy-route";
 import type { AppPathService } from "../../../app/app-path-service";
+import type { PackageSource } from "../../package-source";
 import {
   AGENT_WORKSPACE_ENTRY_ENV,
   type AgentWorkspaceRuntimeChildMessage,
@@ -44,6 +45,7 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
     inspectSources?: WorkspaceInspectSourcesPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
     emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
     doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
+    packageSource?: (signal: AbortSignal) => Promise<PackageSource>; // 已绑定受理时的对话
   }>;
 
 type WorkspaceProcessResult = {
@@ -238,6 +240,10 @@ export class AgentWorkspaceRunner {
             return await execute_image_request(request, controller.signal, run_request.emitImage);
           if (request.kind === "resolve_proxy" && typeof request.url === "string")
             return await this.proxy_resolver.resolveProxy(request.url, controller.signal);
+          if (request.kind === "resolve_package_source") {
+            if (!run_request.packageSource) throw new Error("Package source unavailable.");
+            return await run_request.packageSource(controller.signal);
+          }
           if (request.kind === "get_output_paths")
             return execute_get_output_paths_request(
               request,

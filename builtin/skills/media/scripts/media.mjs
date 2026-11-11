@@ -3,16 +3,30 @@ import path from "node:path";
 import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
 
-// 完整环境准备与 GPU 探查分开，设备由 AGENT 在每次推理调用中明确传入。
+// 依赖由 AGENT 经 npm、uv 显式准备，模型准备与 GPU 探查分开，设备在每次推理调用中明确传入。
 export {
   ASR_LANGUAGES,
   DeviceFailure,
   ffmpeg,
   inspect,
-  missing,
-  setup,
+  missing_models,
+  prepare_models,
   probe_gpu,
 } from "@lg/media";
+
+// 已验收的依赖版本，由 AGENT 经 npm、uv 显式安装，不随任务升级。
+export const DEPENDENCIES = Object.freeze({
+  npm: [
+    `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
+    "onnxruntime-node@1.31.1", // npm 默认拦截的安装脚本只下载用不到的 CUDA
+  ],
+  python: [
+    "numpy==2.5.4",
+    "kaldi-native-fbank==1.23.0",
+    "opencv-python-headless==5.0.0.93",
+    "pyclipper==1.4.0",
+  ],
+});
 
 const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
@@ -43,7 +57,7 @@ export async function save(file, value) {
   }
 }
 
-/** 按需安装本技能自己的 npm 依赖。识别与检测的依赖由 `@lg/media` 管理。 */
+/** 按需安装本技能脚本自己的 npm 依赖。媒体计算依赖见技能「环境准备」。 */
 export async function install(name, range) {
   if (!(await exists(path.join(npm.directory, "node_modules", name, "package.json"))))
     await npm.run(["install", `${name}@${range}`]);

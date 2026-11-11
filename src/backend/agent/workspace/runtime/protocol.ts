@@ -17,6 +17,7 @@ import type { MediaConfiguration } from "../../media/runtime";
 
 export type WorkspaceRequest =
   | { kind: "resolve_proxy"; url: string }
+  | { kind: "resolve_package_source" } // 对话身份由宿主绑定，子进程不携带
   | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
   | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
   | WorkspacePrintPDFRequest

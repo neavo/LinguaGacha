@@ -1,8 +1,10 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { MEDIA_MODELS } from "./models";
 
-const fake = vi.hoisted(() => ({ close: vi.fn(), created: vi.fn() }));
+const fake = vi.hoisted(() => ({ close: vi.fn(), created: vi.fn(), uv: vi.fn() }));
 vi.mock("./inference-engine", async (original) => ({
   ...(await original<typeof import("./inference-engine")>()),
   Engine: class {
@@ -13,9 +15,13 @@ vi.mock("./inference-engine", async (original) => ({
   },
 }));
 vi.mock("../npm", () => ({ npm: { directory: "/shared/node" } }));
+const python_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-media-python-"));
+vi.mock("../uv", () => ({ uv: { directory: python_root, run: fake.uv } }));
 vi.mock("node:module", () => ({
   createRequire: () => ({ resolve: () => "/shared/node/node_modules/onnxruntime-node/index.js" }),
 }));
+
+afterAll(() => fs.rmSync(python_root, { recursive: true, force: true }));
 
 beforeEach(async () => {
   vi.resetModules();
@@ -69,4 +75,18 @@ it("rejects omitted or invalid devices before creating resources and isolates pa
     ]),
   ).toEqual(["audio", "text"]);
   expect(fake.created.mock.calls.map(([models]) => models.asr.device)).toEqual(["webgpu", "cpu"]);
+});
+
+it("Python 环境缺失时明确失败，补齐解释器后可定位且不隐式同步", async () => {
+  const { python } = await import("./engine");
+  expect(() => python()).toThrow("run uv sync --inexact through @lg/uv first");
+  expect(fake.uv).not.toHaveBeenCalled();
+  const executable = path.join(
+    python_root,
+    ".venv",
+    ...(process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"]),
+  );
+  fs.mkdirSync(path.dirname(executable), { recursive: true });
+  fs.writeFileSync(executable, "");
+  expect(python()).toBe(executable);
 });

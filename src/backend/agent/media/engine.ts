@@ -16,7 +16,6 @@ import { MEDIA_MODELS } from "./models";
 import type { DeviceOptions, MediaDevice, MediaWorkerConfig } from "./worker-protocol";
 
 export const ORT_PACKAGE = "onnxruntime-node";
-export const ORT_VERSION = "1.31.1";
 /** 设备来自 AGENT 脚本，未知值必须在资源准备前拒绝。 */
 export function validate_device(device: unknown): void {
   if (device !== "cpu" && device !== "gpu") throw new Error("Media device must be cpu or gpu.");
@@ -76,21 +75,20 @@ async function close_engine(engine: Engine): Promise<void> {
   }
 }
 
-let synced: Promise<void> | undefined; // 每个根进程同步一次共享 Python 环境。
-
-/** 共享 uv 工程 `.venv` 中的解释器。不使用 PATH 中的 Python，也不在 Worker 中安装依赖。 */
-export async function python(): Promise<string> {
-  synced ??= uv.run(["sync", "--inexact"]).catch((error: unknown) => {
-    synced = undefined;
-    throw error;
-  });
-  await synced;
+/**
+ * 共享 uv 工程 `.venv` 中的解释器。不使用 PATH 中的 Python。
+ * 环境由调用者经 `@lg/uv` 显式准备，计算不安装依赖，也不同步共享环境。
+ */
+export function python(): string {
   const executable = path.join(
     uv.directory,
     ".venv",
     ...(process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"]),
   );
-  if (!fs.exists(executable)) throw new Error(`Python interpreter is missing: ${executable}`);
+  if (!fs.exists(executable))
+    throw new Error(
+      `Python environment is missing: ${executable}; run uv sync --inexact through @lg/uv first.`,
+    );
   return executable;
 }
 
@@ -104,7 +102,7 @@ export async function helper(
   engine?: Engine,
 ): Promise<unknown> {
   // -I 忽略 PYTHON* 变量与用户 site，-X utf8 让日志在任何代码页下都是 UTF-8。
-  const child = spawn(await python(), ["-I", "-X", "utf8", runtime_file("media.py")], {
+  const child = spawn(python(), ["-I", "-X", "utf8", runtime_file("media.py")], {
     shell: false,
     windowsHide: true,
     stdio: ["pipe", "pipe", "inherit"],
