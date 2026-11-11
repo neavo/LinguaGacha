@@ -18,7 +18,7 @@ export {
 export const DEPENDENCIES = Object.freeze({
   npm: [
     `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
-    "onnxruntime-node@1.31.1", // npm 默认拦截的安装脚本只下载用不到的 CUDA
+    "onnxruntime-node@1.30.0", // 1.31.1 存在宿主退出卡住问题，固定已通过退出验收的版本。
   ],
   python: [
     "numpy==2.5.4",

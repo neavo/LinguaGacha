@@ -8,6 +8,8 @@ import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
 import { AgentPackageSources } from "../package-source";
 
+const ORT_VERSION = "1.30.0"; // 锁定实际验收版本，避免安装未生效时用旧运行时得到通过结果。
+
 it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
   "real workspace prepares media and completes listen, scan and refine",
   async () => {
@@ -46,12 +48,20 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     import { uv } from '@lg/uv';
     import { npm } from '@lg/npm';
     import fs from 'node:fs/promises';
+    import path from 'node:path';
     import assert from 'node:assert/strict';
     const source = ${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))};
     const began = Date.now();
     console.log('before', JSON.stringify(await media.missing_models()));
+    const ortPackage = path.join(npm.directory, 'node_modules/onnxruntime-node/package.json');
+    const previousOrt = JSON.parse(await fs.readFile(ortPackage, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return '{}';
+      throw error;
+    })).version ?? null;
     // 依赖按 media 技能「环境准备」的固定版本显式安装，计算入口不再隐式准备。
-    await npm.run(['install', '--save-exact', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@^5.2.5\`, 'onnxruntime-node@1.31.1']);
+    await npm.run(['install', '--save-exact', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@5.2.5\`, ${JSON.stringify(`onnxruntime-node@${ORT_VERSION}`)}]);
+    const installedOrt = JSON.parse(await fs.readFile(ortPackage, 'utf8')).version;
+    assert.equal(installedOrt, ${JSON.stringify(ORT_VERSION)});
     await uv.run(['add', 'numpy==2.5.4', 'kaldi-native-fbank==1.23.0', 'opencv-python-headless==5.0.0.93', 'pyclipper==1.4.0']);
     assert.deepEqual(await media.prepare_models(), []);
     const info = await media.inspect(source);
@@ -61,10 +71,12 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     // media.test.py 同时检查检测后处理，只在准备了检测用途时执行。
     for (const test of ${JSON.stringify(["fsmn_vad.test.py", "media.test.py"].map((file) => path.resolve("src/backend/agent/media", file)))})
       if (info.video || test.endsWith('fsmn_vad.test.py')) await uv.run(['run', 'python', '-I', test, ${JSON.stringify(path.join(runtime, "runtime"))}]);
-    const listened = await media.listen(source, {device, language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} });
-    const scanned = info.video ? await media.scan(source, {out:'work/scan/text',device}) : [];
+    const [listened, scanned] = await Promise.all([
+      media.listen(source, {device, language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} }),
+      info.video ? media.scan(source, {out:'work/scan/text',device}) : Promise.resolve([]),
+    ]);
     const refined = info.video ? await media.refine(source, {device,rows:scanned.slice(0,2).map((x,row)=>({...x,row}))}) : [];
-    await fs.writeFile('work/result.json', JSON.stringify({versions:process.versions, elapsed:Date.now()-began, listened, scanned, refined, probe, device, video:info.video}, null, 2));
+    await fs.writeFile('work/result.json', JSON.stringify({versions:process.versions, ort:{before:previousOrt,after:installedOrt}, elapsed:Date.now()-began, listened, scanned, refined, probe, device, video:info.video}, null, 2));
     console.log('completed', listened.asr.length, scanned.length, refined.length);
   `,
     );

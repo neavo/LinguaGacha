@@ -96,7 +96,7 @@ await uv.run(['add', ...media.DEPENDENCIES.python]);
 
 npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。识别模型用 `media.missing_models()` 快速检查，`media.prepare_models()` 校验、续传并返回剩余缺口。成片不需要识别模型。
 
-1. 任务开始时在独立调用中检查依赖与模型缺口。有缺口时先告诉用户需要下载并提醒保持网络畅通，第一次约 600 MB，之后可以复用，再在新的调用中补齐。
+1. 任务开始时在独立调用中检查依赖与模型缺口，已安装版本与 `media.DEPENDENCIES` 不符也属于缺口，有缺口时先说明下载需求，再用独立调用按上述命令补齐。首次下载约 600 MB，后续复用已下载的资源。
 2. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
 3. 开始识别前，在独立调用中执行 `probe_gpu()` 并返回结果，据此选择本次任务的设备：
    - `{ available: true }`：使用 `device: 'gpu'`。

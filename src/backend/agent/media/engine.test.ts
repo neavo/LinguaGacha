@@ -56,25 +56,47 @@ it("unconfirmed shutdown overrides device failure and prevents further operation
   const closeFailure = new DeviceFailure("shutdown timed out");
   fake.close.mockRejectedValue(closeFailure);
   const action = vi.fn().mockRejectedValue(new DeviceFailure("lost"));
-  const error = await operate(action, { device: "gpu" }).catch((error: unknown) => error);
+  const failed = operate(action, { device: "gpu" });
+  const queued = operate(action, { device: "gpu" });
+  const [error, queuedError] = await Promise.all(
+    [failed, queued].map((result) => result.catch((error: unknown) => error)),
+  );
   expect(error).not.toBeInstanceOf(DeviceFailure);
   expect(error).toMatchObject({ cause: closeFailure });
+  expect(queuedError).toBe(error);
   await expect(operate(action, { device: "cpu" })).rejects.toBe(error);
   expect(action).toHaveBeenCalledOnce();
 });
 
-it("rejects omitted or invalid devices before creating resources and isolates parallel choices", async () => {
+it("rejects omitted or invalid devices before creating resources", async () => {
   const { operate } = await import("./engine");
   for (const device of [undefined, "auto", "cuda"])
     await expect(operate(async () => undefined, { device } as never)).rejects.toThrow("cpu or gpu");
   expect(fake.created).not.toHaveBeenCalled();
-  expect(
-    await Promise.all([
-      operate(async () => "audio", { device: "gpu" }),
-      operate(async () => "text", { device: "cpu" }),
-    ]),
-  ).toEqual(["audio", "text"]);
-  expect(fake.created.mock.calls.map(([models]) => models.asr.device)).toEqual(["webgpu", "cpu"]);
+});
+
+it("resumes GPU operations after failed action cleanup while CPU remains available", async () => {
+  const { operate } = await import("./engine");
+  const closing = Promise.withResolvers<void>(); // 手动完成关闭，观察等待期间的调度。
+  const reachedClose = Promise.withResolvers<void>(); // 确认首个操作已经进入关闭阶段。
+  fake.close.mockImplementationOnce(() => {
+    reachedClose.resolve();
+    return closing.promise;
+  });
+  const failure = new Error("inference failed");
+  const first = operate(
+    async () => {
+      throw failure;
+    },
+    { device: "gpu" },
+  ).catch((error: unknown) => error);
+  const next = vi.fn(async () => "next");
+  const second = operate(next, { device: "gpu" });
+  await reachedClose.promise;
+  expect(next).not.toHaveBeenCalled();
+  await expect(operate(async () => "cpu", { device: "cpu" })).resolves.toBe("cpu");
+  closing.resolve();
+  await expect(Promise.all([first, second])).resolves.toEqual([failure, "next"]);
 });
 
 it("Python 环境缺失时明确失败，补齐解释器后可定位且不隐式同步", async () => {

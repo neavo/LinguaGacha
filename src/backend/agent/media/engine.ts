@@ -29,8 +29,8 @@ export const runtime_file = (name: string): string =>
   path.join(media_configuration().runtimeDirectory, "runtime", name);
 
 /**
- * 共享 npm 工程中 ORT 的实际入口。只解析路径，根线程不得加载原生库：
- * 原生收尾可能在 `exit` 之后卡住进程，所有导入与会话都在 Worker 内。
+ * 共享 npm 工程中 ORT 的实际入口。根线程只解析路径，所有导入与会话都在 Worker 内，
+ * 避免同步原生推理阻塞 helper 的消息桥接。
  */
 function ort_entry(): string {
   const root = path.join(npm.directory, "node_modules", ORT_PACKAGE);
@@ -43,6 +43,8 @@ function ort_entry(): string {
 
 // 无法确认旧资源已退出时，监管器必须结束本次运行，后续调用不能再创建资源。
 let shutdown_failure: unknown;
+// 根线程持有 GPU 队尾，前一操作完成收尾后才能创建下一组会话。
+let gpu_pending: Promise<unknown> = Promise.resolve();
 
 /** 每次调用独占引擎。调用者在安全收尾后决定是否重跑。 */
 export async function operate<T>(
@@ -50,16 +52,23 @@ export async function operate<T>(
   { device }: DeviceOptions,
 ): Promise<T> {
   validate_device(device);
-  if (shutdown_failure) throw shutdown_failure;
-  const engine = new Engine(
-    worker_config(device === "gpu" ? "webgpu" : "cpu"),
-    runtime_file("media-worker.mjs"),
-  );
-  try {
-    return await action(engine);
-  } finally {
-    await close_engine(engine);
-  }
+  // 在真正执行时检查关闭失败，覆盖排队期间发生的故障。
+  const run = async (): Promise<T> => {
+    if (shutdown_failure) throw shutdown_failure;
+    const engine = new Engine(
+      worker_config(device === "gpu" ? "webgpu" : "cpu"),
+      runtime_file("media-worker.mjs"),
+    );
+    try {
+      return await action(engine);
+    } finally {
+      await close_engine(engine);
+    }
+  };
+  if (device === "cpu") return run();
+  const result = gpu_pending.then(run);
+  gpu_pending = result.catch(() => undefined); // 调用者收到原错误，后续操作仍检查收尾是否成功。
+  return result;
 }
 
 /** 退出失败使本次运行不可继续，保留故障供监管器收尾。 */

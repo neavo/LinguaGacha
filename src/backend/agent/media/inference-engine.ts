@@ -15,7 +15,7 @@ export class DeviceFailure extends Error {
   override name = "DeviceFailure";
 }
 
-/** 派发通道：`audio`（CPU 音频）、`asr_gpu`、`det0`、`det1`，各对应一个 Worker。 */
+/** 派发通道：`audio`（CPU 音频）、`gpu`、`det0`、`det1`（CPU 检测），各对应一个 Worker。 */
 type Lane = string;
 
 /** 正式执行与 GPU 探查共用的路由和生命周期。 */
@@ -42,10 +42,11 @@ export class Engine {
     private readonly worker_file: string,
   ) {}
 
-  /** 按配置选择通道。检测双路按检测序号轮转。 */
+  /** WebGPU 共用单通道，CPU 检测双路按检测序号轮转。 */
   private lane(kind: MediaTask): Lane {
+    if (this.config.models[kind].device === "webgpu") return "gpu";
     if (kind === "det") return `det${this.detection++ % 2}`;
-    return kind === "asr" && this.config.models.asr.device === "webgpu" ? "asr_gpu" : "audio";
+    return "audio";
   }
 
   /** 通道的 Worker 按需创建。非关闭期间的退出或错误都使整个引擎失败。 */
@@ -150,8 +151,7 @@ export class Engine {
 
   /** 只把 GPU 通道错误标记为设备失败，CPU 错误保持原样。 */
   private attribute(lane: Lane, error: Error): Error {
-    if (lane !== "asr_gpu" && !(lane.startsWith("det") && this.config.models.det.device !== "cpu"))
-      return error;
+    if (lane !== "gpu") return error;
     return new DeviceFailure(error.message, { cause: error });
   }
 
