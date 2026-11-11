@@ -1,8 +1,6 @@
 import type { ChannelHeader } from "./channel";
 
-/** Worker 只承担这三类模型任务，不扩展为通用远程调用。 */
-export type MediaTask = "vad" | "asr" | "det";
-/** 只支持 CPU 与 WebGPU 两种执行配置。 */
+export type MediaTask = "vad" | "asr" | "det" | "rec";
 export type MediaDevice = "cpu" | "webgpu";
 export type MediaModelConfig = Readonly<{ file: string; device: MediaDevice; threads: number }>;
 /** 推理设备由调用者明确选择，不读取默认配置。 */

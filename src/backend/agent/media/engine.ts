@@ -146,7 +146,7 @@ export async function helper(
           continue;
         }
         const { id, kind } = header;
-        if (!engine || (kind !== "vad" && kind !== "asr" && kind !== "det"))
+        if (!engine || (kind !== "vad" && kind !== "asr" && kind !== "det" && kind !== "rec"))
           throw new Error(`Unexpected media helper request: ${JSON.stringify(header)}`);
         engine.request(stream!, kind, header, payload).then(
           (reply) => write({ ...reply.header, id }, reply.payload),
@@ -198,6 +198,7 @@ function worker_config(device: MediaDevice): MediaWorkerConfig {
       vad: model("vad", "cpu", 1),
       asr: model(device === "cpu" ? "asr_cpu" : "asr_gpu", device),
       det: model(device === "cpu" ? "det_cpu" : "det_gpu", device),
+      rec: model(device === "cpu" ? "rec_cpu" : "rec_gpu", device),
     },
   };
 }

@@ -98,9 +98,10 @@ async function detect(directory, options, commit) {
 }
 
 /**
- * 以 1 fps 检测整片画面文字，写入 `media.json` 的 `text`，每个区间的代表帧裁图写入 `text/<id>.jpg`。
+ * 以 1 fps 检测并识别画面文字，按位置和内容分段。
+ * 区间写入 `media.json` 的 `text`，代表裁图写入 `text/<id>.jpg`。
  * 准备时自动执行。复核已导入的资产时工作目录没有裁图，调用它重新生成。
- * 检测模型随指定设备而定，区间编号和框只在本次结果内有效。
+ * 检测与识别模型随指定设备而定，区间编号和框只在本次结果内有效。
  */
 export async function scan(directory, { device } = {}) {
   directory = path.resolve(directory);
@@ -230,7 +231,7 @@ export async function sheets(directory, { ids } = {}) {
 }
 
 /**
- * 在原文件上以高帧率校准带 `box` 的 `screen` 行的起止时间，直接写回 `items.json`。
+ * 在原文件上以 4 fps 校准带 `box` 的 `screen` 行的同内容边界，直接写回 `items.json`。
  * 边界不在原时间前后 1 秒内时保持原值，这些行在 `unresolved` 中返回。
  */
 export async function refine(directory, rows, { device } = {}) {

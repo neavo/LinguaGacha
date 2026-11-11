@@ -48,6 +48,16 @@ it("returns GPU failure only after closing and lets the caller explicitly retry 
     ["webgpu", path.join("/models", MEDIA_MODELS.asr_gpu.file)],
     ["cpu", path.join("/models", MEDIA_MODELS.asr_cpu.file)],
   ]);
+  expect(fake.created.mock.calls.map(([models]) => [models.det.file, models.rec.file])).toEqual([
+    [
+      path.join("/models", MEDIA_MODELS.det_gpu.file),
+      path.join("/models", MEDIA_MODELS.rec_gpu.file),
+    ],
+    [
+      path.join("/models", MEDIA_MODELS.det_cpu.file),
+      path.join("/models", MEDIA_MODELS.rec_cpu.file),
+    ],
+  ]);
 });
 
 it("unconfirmed shutdown overrides device failure and prevents further operations", async () => {

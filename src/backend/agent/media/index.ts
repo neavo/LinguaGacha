@@ -74,7 +74,7 @@ export async function listen(
 }
 
 /**
- * 以 1 fps 检测整片画面文字，返回区间并把各区间代表帧裁图写入 `out/<id>.jpg`。
+ * 以 1 fps 检测、识别整片画面文字，按位置和内容分段，代表裁图写入 `out/<id>.jpg`。
  * `out` 每次重建，由调用者在成功后发布。
  */
 export async function scan(
@@ -82,7 +82,7 @@ export async function scan(
   { out, device }: Readonly<{ out: string }> & DeviceOptions,
 ): Promise<TextRegion[]> {
   validate_device(device);
-  require_models([device === "gpu" ? "det_gpu" : "det_cpu"]);
+  require_models(device === "gpu" ? ["det_gpu", "rec_gpu"] : ["det_cpu", "rec_cpu"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
@@ -101,13 +101,13 @@ export async function scan(
   );
 }
 
-/** 在原文件上以 8 fps 二分校准各行文字的出现与消失时间，无法确定的边界为 null。 */
+/** 在原文件上以 4 fps 检查小窗口内同一内容的边界，无法确定的边界为 null。 */
 export async function refine(
   source: string,
   { rows, device }: Readonly<{ rows: readonly RefineRow[] }> & DeviceOptions,
 ): Promise<TextBound[]> {
   validate_device(device);
-  require_models([device === "gpu" ? "det_gpu" : "det_cpu"]);
+  require_models(device === "gpu" ? ["det_gpu", "rec_gpu"] : ["det_cpu", "rec_cpu"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");

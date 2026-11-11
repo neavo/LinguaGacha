@@ -15,7 +15,7 @@ export class DeviceFailure extends Error {
   override name = "DeviceFailure";
 }
 
-/** 派发通道：`audio`（CPU 音频）、`gpu`、`det0`、`det1`（CPU 检测），各对应一个 Worker。 */
+/** 派发通道：`audio`（CPU 音频）、`gpu`、`vision0`、`vision1`（CPU 检测和识别）。 */
 type Lane = string;
 
 /** 正式执行与 GPU 探查共用的路由和生命周期。 */
@@ -30,7 +30,7 @@ export class Engine {
     }>
   >();
   private next = 0; // 请求编号，只用于关联应答。
-  private detection = 0; // 检测请求自己的轮转序号，不受音频请求穿插影响。
+  private vision = 0; // `det` 和 `rec` 共用两条视觉通道的轮转序号。
   private streams = 0; // 已分配的 helper 流编号。
   private failure: Error | undefined; // 首个致命错误，之后的请求直接拒绝。
   private closing: Promise<void> | undefined;
@@ -42,10 +42,10 @@ export class Engine {
     private readonly worker_file: string,
   ) {}
 
-  /** WebGPU 共用单通道，CPU 检测双路按检测序号轮转。 */
+  /** WebGPU 共用单通道，CPU 视觉双路轮转，音频不参与轮转。 */
   private lane(kind: MediaTask): Lane {
     if (this.config.models[kind].device === "webgpu") return "gpu";
-    if (kind === "det") return `det${this.detection++ % 2}`;
+    if (kind === "det" || kind === "rec") return `vision${this.vision++ % 2}`;
     return "audio";
   }
 

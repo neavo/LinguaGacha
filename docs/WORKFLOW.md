@@ -201,7 +201,7 @@ $env:LINGUAGACHA_MEDIA_LANGUAGE = 'JA'
 npm test -- --project integration src/backend/agent/media/index.test.ts
 ```
 
-`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。验证 ORT 降级时，复用装有高版本的验收环境，并核对 `result.json` 的 `ort` 字段。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。
+`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。验证 ORT 降级时，复用装有高版本的验收环境，并核对 `result.json` 的 `ort` 字段。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。画面流程变化时分别验收 CPU 双 small 和 GPU 双 medium。
 
 可视化验收只显式安装 FFmpeg 与 Python 包，不准备识别模型，同时证明成片不受模型缺失影响。报告目录应位于仓库外，保留独立环境与运行日志：
 
