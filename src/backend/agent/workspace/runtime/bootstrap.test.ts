@@ -142,6 +142,61 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   expect(inspectSources).toHaveBeenCalledOnce();
 });
 
+it("搜索 SDK 经真实 IPC 保留原生响应并校验参数", async () => {
+  const response = {
+    provider: "tavily" as const,
+    status: 200,
+    contentType: "text/event-stream",
+    body: 'data: {"result":{"isError":false,"content":[{"text":"quota exhausted"}]}}\n\n',
+  };
+  const search = vi.fn(async () => response);
+  const result = await run(
+    `
+    import {search} from '@lg/search';
+    import assert from 'node:assert/strict';
+    await assert.rejects(search({query: ' '}), /Invalid workspace search request/);
+    console.log(JSON.stringify(await search({query: 'fixture', provider: 'tavily'})));
+  `,
+    undefined,
+    undefined,
+    { search },
+  );
+  expect(output_content(result.stdout)).toEqual(response);
+  expect(search).toHaveBeenCalledOnce();
+});
+
+it("停止搜索脚本会取消宿主请求并等它收尾", async () => {
+  const controller = new AbortController();
+  let host_signal: AbortSignal | undefined;
+  const pending = run(
+    "import {search} from '@lg/search'; await search({query:'fixture'});",
+    controller.signal,
+    undefined,
+    {
+      search: async (_input, signal) =>
+        new Promise((_resolve, reject) => {
+          host_signal = signal;
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+    },
+  );
+  const stopped = new Error("stop search");
+  const assertion = expect(pending).rejects.toBe(stopped);
+  try {
+    await vi.waitFor(() => expect(host_signal).toBeDefined(), { timeout: RUN_TIMEOUT_MS });
+  } finally {
+    controller.abort(stopped);
+    await assertion;
+  }
+  expect(host_signal?.aborted).toBe(true);
+});
+
 it("独立部署目录支持原生模块、主程序身份、自然退出和异步输出", async () => {
   await mkdir(path.join(workspace, "work/scripts"));
   await writeFile(
@@ -857,6 +912,7 @@ async function run(
     | "emitImage"
     | "doing"
     | "packageSource"
+    | "search"
   > = {},
   directory = runtime,
 ) {

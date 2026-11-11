@@ -1031,6 +1031,19 @@ describe("AgentWorkspaceService", () => {
     );
   });
 
+  it("搜索端口随本次脚本传给 runner", async () => {
+    const fixture = await create_fixture(temp_dir);
+    await run_workspace(fixture);
+    const search = vi.fn(async () => ({
+      provider: "exa" as const,
+      status: 200,
+      contentType: "application/json",
+      body: "{}",
+    }));
+    await fixture.service.run({ ...VALID_WORKSPACE_RUN, search }, new AbortController().signal);
+    expect(fixture.run.mock.lastCall![0].search).toBe(search);
+  });
+
   it("sources 生成失败不阻断工程加载，并由 workspace_run 触发重试", async () => {
     const fixture = await create_fixture(temp_dir);
     fixture.read_asset_content.mockImplementation(() => {

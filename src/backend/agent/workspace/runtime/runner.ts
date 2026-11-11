@@ -5,6 +5,8 @@ import {
   type WorkspaceGenerateFilesPort,
 } from "../../tools/generate-files";
 import type { WorkspaceRequest } from "./protocol";
+import { execute_search_request } from "../../search/request";
+import type { SearchPort } from "../../search/schema";
 import { execute_image_request } from "../../tools/emit-image";
 import { execute_doing_request } from "../../tools/doing";
 import { execute_print_pdf_request, type WorkspacePrintPDFPort } from "../../tools/print-pdf";
@@ -39,6 +41,7 @@ import {
 export type AgentWorkspaceRunRequest = AgentExecutionRequest &
   Readonly<{
     scriptPath: string; // 同一执行的脚本与两路日志路径由 WorkspaceService 唯一确定
+    search?: SearchPort; // 本次执行的凭据留在宿主闭包中。
     generateFiles?: WorkspaceGenerateFilesPort;
     getOutputPaths?: WorkspaceGetOutputPathsPort;
     printPDF?: WorkspacePrintPDFPort;
@@ -234,6 +237,8 @@ export class AgentWorkspaceRunner {
         requests.set(id, controller);
         // 生命周期归 runner，参数校验与业务执行归具体工具。
         const execute = async () => {
+          if (request.kind === "search")
+            return execute_search_request(request, controller.signal, run_request.search);
           if (request.kind === "doing")
             return execute_doing_request(request, controller.signal, run_request.doing);
           if (request.kind === "emit_image")

@@ -124,6 +124,7 @@ export type AgentWorkspaceImage = Readonly<{ path: string; image: AgentImage }>;
 /** 一次工作区执行的输入，`output` 只供界面观察运行中的日志末尾。 */
 export type AgentWorkspaceRunInput = Readonly<{
   functionModels: AgentModelsSummary;
+  search?: AgentWorkspaceRunRequest["search"];
   script: string;
   timeoutMs: number;
   doing?: AgentWorkspaceRunRequest["doing"];
@@ -735,6 +736,7 @@ export class AgentWorkspaceService {
               ...logs,
               timeoutMs: request.timeoutMs,
               emitImage: image_output.emitImage,
+              ...(request.search === undefined ? {} : { search: request.search }),
               ...(request.doing === undefined ? {} : { doing: request.doing }),
               ...(chat_id === null
                 ? {}
