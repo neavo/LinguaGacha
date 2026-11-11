@@ -6,7 +6,7 @@
 &ensp;
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT.md) ]
+- [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 概要 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)、AIを活用した次世代のテキスト翻訳ツールです
@@ -94,6 +94,10 @@
 | その他の形式の `ゲーム` `字幕` `電子書籍` | 任意 | `AGENT` が自動で識別・処理 |
 
 ## 最近の更新 📅
+- 20261112 v0.141.1
+  - `音声・動画`の翻訳機能を改善 [#1092](../../issues/1092)
+  - 修正と改善 [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
+
 - 20261110 v0.141.0
   - `音声（ASMR）`の翻訳に対応 [#1085](../../pull/1085)
   - `動画`の翻訳に対応 [#1085](../../pull/1085)

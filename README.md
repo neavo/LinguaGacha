@@ -3,7 +3,7 @@
 <p align='center'>使用 AI 能力一键翻译 小说、游戏、字幕 等文本内容的次世代文本翻译器</p>
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT.md) ]
+- [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 概述 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，使用 AI 技术次世代文本翻译器
@@ -91,6 +91,10 @@
 | 其它格式的 `游戏` `字幕` `电子书` | 任意 | 由 `AGENT` 自动识别与处理 |
 
 ## 近期更新 📅
+- 20261112 v0.141.1
+  - 优化 `音视频` 翻译能力 [#1092](../../issues/1092)
+  - 修复与改进 [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
+
 - 20261110 v0.141.0
   - 新增 `音频（ASMR）` 翻译 [#1085](../../pull/1085)
   - 新增 `视频` 翻译 [#1085](../../pull/1085)

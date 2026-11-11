@@ -6,7 +6,7 @@
 &ensp;
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT.md) ]
+- [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Visão Geral 📢
 - O [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) é um tradutor de texto de última geração baseado em inteligência artificial
@@ -95,6 +95,10 @@
 | `Jogos`, `legendas` e `e-books` em outros formatos | Qualquer | Identificados e processados automaticamente pelo `AGENTE` |
 
 ## Atualizações Recentes 📅
+- 20261112 v0.141.1
+  - Melhorada a tradução de `áudio e vídeo` [#1092](../../issues/1092)
+  - Correções e melhorias [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
+
 - 20261110 v0.141.0
   - Adicionada tradução de `áudio (ASMR)` [#1085](../../pull/1085)
   - Adicionada tradução de `vídeo` [#1085](../../pull/1085)

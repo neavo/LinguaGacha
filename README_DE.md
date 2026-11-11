@@ -3,7 +3,7 @@
 <p align='center'>Ein Textübersetzer der nächsten Generation, der Romane, Spiele, Untertitel und mehr mit KI auf Knopfdruck übersetzt</p>
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT.md) ]
+- [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Überblick 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) ist ein KI-gestützter Textübersetzer der nächsten Generation
@@ -91,6 +91,10 @@
 | `Spiele` `Untertitel` `E-Books` in anderen Formaten | Beliebig | Werden von `AGENT` automatisch erkannt und verarbeitet |
 
 ## Neueste Updates 📅
+- 20261112 v0.141.1
+  - Übersetzung von `Audio und Videos` verbessert [#1092](../../issues/1092)
+  - Fehlerbehebungen und Verbesserungen [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
+
 - 20261110 v0.141.0
   - Übersetzung von `Audio (ASMR)` hinzugefügt [#1085](../../pull/1085)
   - Übersetzung von `Videos` hinzugefügt [#1085](../../pull/1085)

@@ -3,7 +3,7 @@
 <p align='center'>AI로 소설, 게임, 자막 등 다양한 텍스트를 클릭 한 번으로 번역하는 차세대 텍스트 번역기</p>
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ] | [ [Português](./README_PT.md) ]
+- [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 개요 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)는 AI 기술을 활용한 차세대 텍스트 번역기입니다
@@ -91,6 +91,10 @@
 | 기타 형식의 `게임` `자막` `전자책` | 모든 형식 | `AGENT`가 자동으로 식별하고 처리 |
 
 ## 최근 업데이트 📅
+- 20261112 v0.141.1
+  - `오디오 및 동영상` 번역 기능 개선 [#1092](../../issues/1092)
+  - 수정 및 개선 [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
+
 - 20261110 v0.141.0
   - `오디오(ASMR)` 번역 추가 [#1085](../../pull/1085)
   - `동영상` 번역 추가 [#1085](../../pull/1085)
