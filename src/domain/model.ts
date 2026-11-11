@@ -76,14 +76,13 @@ export type AgentFunctionUsage = (typeof AGENT_FUNCTION_USAGES)[number];
 /** 批量工具只允许按这些用途解析用户配置。 */
 export const AGENT_MODEL_USAGES = ["agent", "batch_translation", "media"] as const;
 export type AgentModelUsage = (typeof AGENT_MODEL_USAGES)[number];
-/** 工作区只接收请求格式摘要，失效用途单独标为 `null`。 */
+/** 工作区只接收模型身份摘要，失效用途单独标为 `null`。 */
 export type AgentModelsSummary = Readonly<
   Record<
     AgentModelUsage,
     Readonly<{
       name: string;
       model_id: string;
-      formats: readonly ("messages" | "responses")[];
     }> | null
   >
 >;

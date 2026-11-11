@@ -227,14 +227,14 @@ GPU 处理中失败时：
 
 # 视频模型补查
 
-视频模型直接听声音、看画面，用来重新识别 ASR 解决不了的区间，纯音频同样可用。它会花费额度，必须经用户确认。
+音视频子模型接收视频片段，用来重新识别 ASR 解决不了的区间，纯音频补低分辨率黑画面后发送视频。它会花钱，必须经用户确认。
 
 - 「对白」汇总出这类区间时，用一次 `ask_user` 提议：逐段列出时间与原因，说明请求次数，请用户选择补查哪些。用户拒绝的区间作为未决项交付。
 - 区间外延到句子边界，相近的区间合并为一段。
 
 1. `recognize.request(工作目录, { prompt, ranges })` 从原文件裁出 `ranges`（`[{ start, end }]` 整片时间，每段不超过 210 秒）并写出请求清单，返回 `request_file`。
 2. 调用 `batch_llm_request({ model_usage: "media", request_file })`。
-3. `recognize.read(工作目录, result_file)` 把响应换算为整片时间写入候选文件 `candidate`，返回各区间的行数、`incomplete`（输出没有正常结束）、无法解析或不符合契约的行数，以及失败的区间。
+3. `recognize.read(工作目录, result_file)` 把响应换算为整片时间写入候选文件 `candidate`，返回各区间的行数、无法解析或不符合契约的行数，以及失败的区间。
 4. 审阅候选后，`recognize.apply(工作目录, candidate, ranges)` 用完整且非空的候选替换区间内的 `dialogue`。区间内的 `screen` 保持不变。
 
 基线提示词如下。输出格式是 `read` 的解析契约。语言名称取自 `project_meta.json`，模型看到的时间从区间起点算起。需要区分说话人时可以要求输出字符串字段 `name`。

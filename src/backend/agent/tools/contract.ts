@@ -70,7 +70,7 @@ const reference_notes: Readonly<Record<string, readonly string[]>> = {
     `\`fp\` 从 \`project_meta.json\` 的 \`knowledge\` 复制。\`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。`,
   ],
   function_models: [
-    "每次 `workspace_run` 刷新三个用途的非敏感摘要。不可用用途为 `null`。输入能力仍须单独确认。",
+    "每次 `workspace_run` 刷新三个用途的非敏感摘要，不可用用途为 `null`。",
     "用途对应 `batch_llm_request` 的 `model_usage`。子模型未单独配置时跟随当前主控模型。后端在工具启动时解析用户的当前选择。",
   ],
   project_meta: [
@@ -159,9 +159,6 @@ const definition = {
                 {
                   name: Type.String(),
                   model_id: Type.String(),
-                  formats: Type.Array(
-                    Type.Union([Type.Literal("messages"), Type.Literal("responses")]),
-                  ),
                 },
                 { additionalProperties: false },
               ),

@@ -4,7 +4,7 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { build_translation_output_format } from "../../../shared/text/translation-output-format";
 import { type TranslationPromptLanguage } from "../../../domain/app-language";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-processing";
-import type { LLMMessage } from "../../llm/llm-types";
+import type { LLMTextMessage } from "../../llm/llm-types";
 import { default_native_fs } from "../../../native/native-fs";
 import { TRANSLATION_PROMPT } from "../../../domain/prompt";
 import { normalize_setting_snapshot } from "../../../domain/setting";
@@ -56,7 +56,7 @@ export type PromptBuilderConfig = Pick<
  * PromptBuilder 输出给 LLM adapter 的消息和本地日志展示文本
  */
 export interface PromptBuildResult {
-  messages: LLMMessage[];
+  messages: LLMTextMessage[];
   console_log: string[];
 }
 
@@ -125,7 +125,7 @@ export class PromptBuilder {
 
   /** 构建 SakuraLLM 批量正文使用的纯文本提示词。 */
   public generate_prompt_sakura(src: string): PromptBuildResult {
-    const messages: LLMMessage[] = [
+    const messages: LLMTextMessage[] = [
       {
         role: "system",
         content:

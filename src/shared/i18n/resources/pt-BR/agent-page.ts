@@ -46,7 +46,7 @@ export const pt_br_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Arraste arquivos ou pastas para traduzir …",
+    no_project_placeholder: "Arraste arquivos ou pastas e traduza com um clique …!",
     placeholder: "Descreva uma tarefa ou digite @ para selecionar uma habilidade ou instrução …",
     edit_assistant_placeholder: "Editar a resposta do modelo …",
     newline: "Nova linha",

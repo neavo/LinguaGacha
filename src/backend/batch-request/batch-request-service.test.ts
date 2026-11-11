@@ -11,7 +11,6 @@ import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
 import { RequestRatePool } from "../batch-task/request-rate";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { NativeResponsesClient } from "../llm/native-responses";
 import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
 import { default_native_fs } from "../../native/native-fs";
 const directories: string[] = [];
@@ -31,10 +30,7 @@ const response = (): LLMRequestResult => ({
   timeout: false,
 });
 /** 每次启动复制设置，模拟 Agent 入口向批量服务交付快照。 */
-async function setup(
-  request: LLMClientPort["request"] = async () => response(),
-  fetcher?: typeof fetch,
-) {
+async function setup(request: LLMClientPort["request"] = async () => response()) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "batch-request-"));
   directories.push(root);
   const session = new ProjectSessionState();
@@ -61,7 +57,6 @@ async function setup(
     tasks,
     new RequestRatePool(),
     { request },
-    new NativeResponsesClient("test", { read_models: () => [] }, fetcher),
     { bind: () => "session" },
     { append },
   );
@@ -166,83 +161,85 @@ describe("batch request", () => {
     expect(f.gate.get_snapshot().owner).toBe("agent");
     await f.tasks.dispose();
   });
-  it("原生响应经同一批次发布索引，截断保留原文并只失败该项", async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            status: "completed",
-            output: [
-              {
-                type: "message",
-                content: [{ type: "output_text", text: "readable private" }],
-              },
-            ],
-            usage: { input_tokens: 2, output_tokens: 1 },
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            status: "incomplete",
-            output: [],
-            incomplete_details: { reason: "max_output_tokens" },
-          }),
-        ),
-      );
-    const f = await setup(undefined, fetcher);
-    await fs.writeFile(path.join(f.root, "native.json"), JSON.stringify({ input: [] }));
-    await fs.writeFile(
-      path.join(f.root, "manifest.json"),
-      JSON.stringify({
-        format: "responses",
-        requests: [
-          { id: "one", input_file: "native.json" },
-          { id: "two", input_file: "native.json" },
+  it("媒体通过统一客户端发送，确定性拒绝只失败该项", async () => {
+    const request = vi
+      .fn<LLMClientPort["request"]>()
+      .mockResolvedValueOnce({
+        ...response(),
+        http_status: 400,
+        request_error: log_error_from_message("Unsupported audio"),
+      })
+      .mockResolvedValueOnce(response());
+    const f = await setup(request);
+    f.settings.models[0]!.api_format = "Anthropic";
+    const messages = [
+      {
+        role: "user",
+        content: [
+          { type: "audio", mime_type: "audio/mpeg", data: "YWJj" },
+          { type: "text", text: "transcribe" },
         ],
-      }),
-    );
+      },
+    ];
+    await fs.writeFile(path.join(f.root, "good.json"), JSON.stringify({ messages }));
+    await f.write_manifest([
+      { id: "one", input_file: "good.json" },
+      { id: "two", input_file: "good.json" },
+    ]);
     const summary = await f.run();
-    for (const [url, options] of fetcher.mock.calls) {
-      expect(String(url)).toBe("https://example.test/v1/responses");
-      expect(JSON.parse(String(options?.body))).toMatchObject({ model: "model" });
-    }
-    expect(summary).toMatchObject({
-      status: "done",
-      succeeded: 1,
-      failed: 1,
-      usage: { usage_complete: false },
-    });
+    expect(summary).toMatchObject({ succeeded: 1, failed: 1 });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[0]![0].messages).toEqual(messages);
     const index = JSON.parse(await fs.readFile(summary.result_file, "utf8"));
-    const log_text = f.append.mock.calls
-      .map(([entry]) => format_log_content_text(entry.content))
-      .join("\n");
-    expect(log_text).toContain("readable");
-    expect(log_text).not.toContain("private");
     const failed = JSON.parse(
       await fs.readFile(
-        path.resolve(path.dirname(summary.result_file), index.requests[1].result_file),
+        path.resolve(path.dirname(summary.result_file), index.requests[0].result_file),
         "utf8",
       ),
     );
-    expect(failed).toMatchObject({
-      status: "failed",
-      response: {
-        format: "responses",
-        raw: { status: "incomplete", incomplete_details: { reason: "max_output_tokens" } },
-      },
+    expect(failed).toMatchObject({ status: "failed", error: "Unsupported audio" });
+    await f.tasks.dispose();
+  });
+
+  it.each([
+    { type: "audio", mime_type: "video/mp4", data: "YWJj" },
+    { type: "video", mime_type: "video/mp4", data: "%%%=" },
+    { type: "audio", mime_type: "audio/mpeg", data: "YWJjY" },
+  ])("非法媒体输入不发送到服务端：%j", async (part) => {
+    const request = vi.fn<LLMClientPort["request"]>();
+    const f = await setup(request);
+    await fs.writeFile(
+      path.join(f.root, "good.json"),
+      JSON.stringify({ messages: [{ role: "user", content: [part] }] }),
+    );
+    await f.write_manifest([{ id: "one", input_file: "good.json" }]);
+    expect(await f.run()).toMatchObject({ failed: 1 });
+    expect(request).not.toHaveBeenCalled();
+    await f.tasks.dispose();
+  });
+
+  it("统一响应与错误在发布前脱敏，保留截断失败", async () => {
+    const request = vi.fn<LLMClientPort["request"]>().mockResolvedValue({
+      ...response(),
+      response_result: "partial private",
+      response_error: log_error_from_message("truncated private"),
     });
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    f.settings.models[0]!.api_format = "OpenAI";
-    await expect(f.run()).rejects.toMatchObject({ code: "model.responses_incompatible" });
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    f.settings.models[0]!.api_format = "OpenAIResponses";
-    f.settings.models[0]!.auth_type = "oauth";
-    f.settings.models[0]!.api_url = "https://api.openai.com/v1";
-    await expect(f.run()).rejects.toMatchObject({ code: "model.responses_incompatible" });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    const f = await setup(request);
+    await f.write_manifest([{ id: "one", input_file: "good.json" }]);
+    const summary = await f.run();
+    expect(summary).toMatchObject({ failed: 1 });
+    const index = JSON.parse(await fs.readFile(summary.result_file, "utf8"));
+    const saved = await fs.readFile(
+      path.resolve(path.dirname(summary.result_file), index.requests[0].result_file),
+      "utf8",
+    );
+    expect(saved).not.toContain("private");
+    expect(JSON.parse(saved)).toMatchObject({
+      status: "failed",
+      error: "truncated [REDACTED]",
+      response: { text: "partial [REDACTED]" },
+    });
+    expect(JSON.stringify(f.append.mock.calls)).not.toContain("private");
     await f.tasks.dispose();
   });
 

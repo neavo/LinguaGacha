@@ -1002,6 +1002,173 @@ describe.each(["OpenAIResponses", "Anthropic"] as const)("%s 会话内 effort", 
   });
 });
 
+describe("统一多模态请求", () => {
+  it.each(["OpenAI", "OpenAIResponses", "Google", "Anthropic", "SakuraLLM"] as const)(
+    "%s 保留混合内容顺序、媒体字节与系统指令",
+    async (api_format) => {
+      const snapshot = read_model_request_snapshot(
+        create_model({ api_format, model_id: "unknown-model" }),
+        TEST_REQUEST_IDENTITY,
+      );
+      const request = create_pi_request(
+        snapshot,
+        [
+          { role: "system", content: "system instruction" },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "before" },
+              { type: "audio", mime_type: "audio/mpeg", data: "YWJj" },
+              { type: "video", mime_type: "video/mp4", data: "ZGVm" },
+              { type: "image", mime_type: "image/png", data: "Z2hp" },
+              { type: "text", text: "after" },
+            ],
+          },
+          { role: "user", content: "last" },
+        ],
+        new AbortController().signal,
+      );
+      const payload = await capture_payload(request);
+      if (api_format === "Google") {
+        expect(payload["contents"]).toEqual([
+          { role: "user", parts: [{ text: "system instruction" }] },
+          {
+            role: "user",
+            parts: [
+              { text: "before" },
+              { inlineData: { mimeType: "audio/mpeg", data: "YWJj" } },
+              { inlineData: { mimeType: "video/mp4", data: "ZGVm" } },
+              { inlineData: { mimeType: "image/png", data: "Z2hp" } },
+              { text: "after" },
+            ],
+          },
+          { role: "user", parts: [{ text: "last" }] },
+        ]);
+      } else {
+        const field = api_format === "OpenAIResponses" ? "input" : "messages";
+        const messages = payload[field] as { role: string; content: unknown }[];
+        const users = messages.filter((message) => message.role === "user");
+        const parts =
+          api_format === "Anthropic"
+            ? [
+                { type: "text", text: "before" },
+                {
+                  type: "audio",
+                  source: { type: "base64", media_type: "audio/mpeg", data: "YWJj" },
+                },
+                {
+                  type: "video",
+                  source: { type: "base64", media_type: "video/mp4", data: "ZGVm" },
+                },
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: "image/png", data: "Z2hp" },
+                },
+                { type: "text", text: "after" },
+              ]
+            : api_format === "OpenAIResponses"
+              ? [
+                  { type: "input_text", text: "before" },
+                  { type: "input_audio", input_audio: { data: "YWJj", format: "mp3" } },
+                  { type: "input_video", video_url: "data:video/mp4;base64,ZGVm" },
+                  { type: "input_image", image_url: "data:image/png;base64,Z2hp" },
+                  { type: "input_text", text: "after" },
+                ]
+              : [
+                  { type: "text", text: "before" },
+                  { type: "input_audio", input_audio: { data: "YWJj", format: "mp3" } },
+                  { type: "video_url", video_url: { url: "data:video/mp4;base64,ZGVm" } },
+                  { type: "image_url", image_url: { url: "data:image/png;base64,Z2hp" } },
+                  { type: "text", text: "after" },
+                ];
+        expect(users[0]?.content).toEqual(parts);
+        expect(users).toHaveLength(2);
+        if (api_format === "Anthropic")
+          expect(payload["system"]).toEqual([{ type: "text", text: "system instruction" }]);
+        else
+          expect(messages[0]).toEqual({
+            role: api_format === "OpenAIResponses" ? "developer" : "system",
+            content: "system instruction",
+          });
+      }
+    },
+  );
+
+  it("Vertex 沿用 Google 媒体结构", async () => {
+    const request = create_pi_request(
+      read_model_request_snapshot(
+        create_model({
+          api_format: "Google",
+          api_url: "https://aiplatform.googleapis.com/v1/projects/test/locations/global",
+          model_id: "gemini-2.5-flash",
+        }),
+        TEST_REQUEST_IDENTITY,
+      ),
+      [{ role: "user", content: [{ type: "video", mime_type: "video/mp4", data: "YWJj" }] }],
+      new AbortController().signal,
+    );
+    expect(request.model.api).toBe("google-vertex");
+    expect((await capture_payload(request))["contents"]).toEqual([
+      { role: "user", parts: [{ inlineData: { mimeType: "video/mp4", data: "YWJj" } }] },
+    ]);
+  });
+
+  it("Qwen Responses 音频使用服务商声明的 data URI", async () => {
+    const request = create_pi_request(
+      read_model_request_snapshot(
+        create_model({ api_format: "OpenAIResponses", model_id: "qwen3.8-omni-flash" }),
+        TEST_REQUEST_IDENTITY,
+      ),
+      [{ role: "user", content: [{ type: "audio", mime_type: "audio/mpeg", data: "YWJj" }] }],
+      new AbortController().signal,
+    );
+    expect((await capture_payload(request))["input"]).toEqual([
+      {
+        role: "user",
+        content: [{ type: "input_audio", data: "data:audio/mpeg;base64,YWJj", format: "mp3" }],
+      },
+    ]);
+  });
+
+  it("OAuth Responses 保留视频并沿用账户载荷约束", async () => {
+    const request = create_pi_request(
+      read_model_request_snapshot(
+        create_model({
+          api_format: "OpenAIResponses",
+          auth_type: "oauth",
+          api_url: "https://api.openai.com/v1",
+        }),
+        TEST_REQUEST_IDENTITY,
+      ),
+      [{ role: "user", content: [{ type: "video", mime_type: "video/mp4", data: "YWJj" }] }],
+      new AbortController().signal,
+    );
+    const payload = await capture_payload(request);
+    expect(payload).toMatchObject({
+      store: false,
+      stream: true,
+      input: [
+        {
+          role: "user",
+          content: [{ type: "input_video", video_url: "data:video/mp4;base64,YWJj" }],
+        },
+      ],
+    });
+  });
+
+  it.each(["OpenAI", "OpenAIResponses", "Google", "Anthropic", "SakuraLLM"] as const)(
+    "%s 没有文字的音频消息仍会发送",
+    async (api_format) => {
+      const request = create_pi_request(
+        read_model_request_snapshot(create_model({ api_format }), TEST_REQUEST_IDENTITY),
+        [{ role: "user", content: [{ type: "audio", mime_type: "audio/wav", data: "YWJj" }] }],
+        new AbortController().signal,
+      );
+      expect(JSON.stringify(await capture_payload(request))).toContain("YWJj");
+    },
+  );
+});
+
 /** 使用统一模型夹具生成可直接交给 Pi adapter 的 OneShot 请求。 */
 function resolve_request(overrides: JsonRecord): ResolvedRequest {
   const snapshot = read_model_request_snapshot(create_model(overrides), TEST_REQUEST_IDENTITY);
