@@ -198,7 +198,7 @@ export const zh_cn_app = {
     },
   },
   translation_generation: {
-    agent_request: "生成全部译文，不进行无关操作",
+    agent_request: "生成译文，不进行其他操作",
     action: "生成译文",
     confirmation: {
       generic_description:
@@ -261,7 +261,6 @@ export const zh_cn_app = {
     task_finished:
       "任务结束：{RUN} · {STATUS} · 成功 {SUCCEEDED} · 失败 {FAILED} · 未完成 {UNFINISHED} · 停止来源 {STOP}\n{PATH}",
     publish_failed: "成果发布失败：{ERROR}",
-    usage_incomplete: "用量不完整，缺失部分未知",
     api_test_fail: "接口测试失败 …",
     api_test_key: "正在测试密钥：",
     request_messages: "任务提示词：",

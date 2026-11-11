@@ -211,7 +211,7 @@ export const de_de_app = {
     },
   },
   translation_generation: {
-    agent_request: "Erzeuge alle Übersetzungen, ohne sachfremde Aktionen auszuführen",
+    agent_request: "Erzeuge Übersetzungen, ohne andere Aktionen auszuführen",
     action: "Übersetzung erstellen",
     confirmation: {
       generic_description:
@@ -276,7 +276,6 @@ export const de_de_app = {
     task_finished:
       "Aufgabe beendet: {RUN} · {STATUS} · erfolgreich {SUCCEEDED} · fehlgeschlagen {FAILED} · offen {UNFINISHED} · Stoppquelle {STOP}\n{PATH}",
     publish_failed: "Ergebnis konnte nicht veröffentlicht werden: {ERROR}",
-    usage_incomplete: "Verbrauch unvollständig; fehlender Anteil unbekannt",
     api_test_fail: "API-Test fehlgeschlagen …",
     api_test_key: "Teste Schlüssel:",
     request_messages: "Aufgaben-Prompts:",

@@ -207,7 +207,7 @@ export const ja_jp_app = {
     },
   },
   translation_generation: {
-    agent_request: "すべての訳文を生成し、無関係な操作は行わないでください",
+    agent_request: "訳文を生成し、他の操作は行わないでください",
     action: "訳文を生成",
     confirmation: {
       generic_description:
@@ -271,7 +271,6 @@ export const ja_jp_app = {
     task_finished:
       "タスク終了：{RUN} · {STATUS} · 成功 {SUCCEEDED} · 失敗 {FAILED} · 未完了 {UNFINISHED} · 停止元 {STOP}\n{PATH}",
     publish_failed: "結果の公開に失敗：{ERROR}",
-    usage_incomplete: "使用量は不完全、不足分は不明",
     api_test_fail: "API テストに失敗しました …",
     api_test_key: "テスト中のキー：",
     request_messages: "タスクのプロンプト：",

@@ -64,7 +64,6 @@ export function build_batch_request_result_log(input: {
         RT: String(result?.reasoning_tokens ?? 0),
         CT: String(result?.output_tokens ?? 0),
       }),
-      ...(result?.usage_complete === true ? [] : [t("app.log.usage_incomplete")]),
       ...(input.error === null ? [] : [t("app.log.request_failed", { ERROR: input.error })]),
       ...(input.result_file === null ? [] : [input.result_file]),
     ],

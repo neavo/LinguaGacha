@@ -199,7 +199,7 @@ export const ko_kr_app = {
     },
   },
   translation_generation: {
-    agent_request: "관련 없는 작업은 수행하지 말고 모든 번역문을 생성하세요",
+    agent_request: "다른 작업은 수행하지 말고 번역문을 생성하세요",
     action: "번역문 생성",
     confirmation: {
       generic_description:
@@ -263,7 +263,6 @@ export const ko_kr_app = {
     task_finished:
       "작업 종료: {RUN} · {STATUS} · 성공 {SUCCEEDED} · 실패 {FAILED} · 미완료 {UNFINISHED} · 중지 출처 {STOP}\n{PATH}",
     publish_failed: "결과 게시 실패: {ERROR}",
-    usage_incomplete: "사용량 불완전, 누락분 알 수 없음",
     api_test_fail: "API 테스트에 실패했습니다 …",
     api_test_key: "테스트 중인 키:",
     request_messages: "작업 프롬프트:",

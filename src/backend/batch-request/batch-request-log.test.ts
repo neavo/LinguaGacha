@@ -40,9 +40,7 @@ it("消息日志分离输入、思考与回复，保留成果路径和失败原�
     { title: t("app.log.model_response"), text: "answer" },
   ]);
   expect(content.summary).toContain("/result.json");
-  expect(content.summary).not.toContain(t("app.log.usage_incomplete"));
   const failure = format_log_content_text(result_log({ error: "disk failure" }));
-  expect(failure).toContain(t("app.log.usage_incomplete"));
   expect(failure).toContain(t("app.log.request_failed", { ERROR: "disk failure" }));
 });
 

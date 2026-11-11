@@ -238,7 +238,6 @@ export class BatchRequestService {
             RT: String(result.progress?.reasoning_tokens ?? 0),
             CT: String(result.progress?.output_tokens ?? 0),
           }),
-          ...(result.progress?.usage_complete === true ? [] : [t("app.log.usage_incomplete")]),
         ].join("\n"),
         ...(error === undefined ? {} : { error }),
       });

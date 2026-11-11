@@ -202,7 +202,7 @@ export const en_us_app = {
     },
   },
   translation_generation: {
-    agent_request: "Generate all translations without performing unrelated operations",
+    agent_request: "Generate translations without performing other operations",
     action: "Generate translation",
     confirmation: {
       generic_description:
@@ -266,7 +266,6 @@ export const en_us_app = {
     task_finished:
       "Task ended: {RUN} · {STATUS} · succeeded {SUCCEEDED} · failed {FAILED} · unfinished {UNFINISHED} · stop source {STOP}\n{PATH}",
     publish_failed: "Result publication failed: {ERROR}",
-    usage_incomplete: "incomplete usage; missing usage unknown",
     api_test_fail: "API test failed …",
     api_test_key: "Testing key:",
     request_messages: "Task prompts:",
