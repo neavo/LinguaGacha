@@ -26,6 +26,7 @@ const CONSOLE_LEVEL_FORMATTERS: Record<LogLevel, (text: string) => string> = {
 
 interface ConsoleLogFormatOptions {
   columns?: number;
+  group_end?: boolean;
 }
 
 interface ConsoleLogPayload {
@@ -52,9 +53,9 @@ export function format_console_log(
   const time_text = format_console_time_key(created_at);
   const level_text = payload.level.toUpperCase().padEnd(CONSOLE_LEVEL_COLUMN_WIDTH, " ");
   const prefix = build_console_prefix(time_text, payload.level, level_text);
-  const message = format_log_readable_text(payload);
+  const message = format_log_readable_text(payload).trimEnd();
   const message_text = format_console_message_lines(message, resolve_console_columns(options));
-  return `${prefix}${message_text}\n`;
+  return `${prefix}${message_text}${options.group_end === false ? "\n" : "\n\n"}`;
 }
 
 function format_console_time_key(date: Date): string {

@@ -6,6 +6,28 @@ import { LogManager } from "./log-manager";
 import type { LogContent } from "../../shared/log";
 
 describe("LogManager", () => {
+  it("组内记录连续输出，组尾空行仅进入控制台", async () => {
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-group-"));
+    const output: string[] = [];
+    const manager = new LogManager({
+      logDir: directory.path,
+      consoleWriter: (text) => output.push(text),
+    });
+    try {
+      manager.info("start", { console_group_end: false });
+      manager.info("end");
+      expect(output[0]!.endsWith("\n\n")).toBe(false);
+      expect(output[1]!.endsWith("\n\n")).toBe(true);
+      const page = await manager.files.read_page({
+        date: manager.files.list_dates()[0]!,
+        direction: "latest",
+      });
+      expect(page.entries.map((entry) => entry.message_preview)).toEqual(["start", "end"]);
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
   it("统一正文文件、索引摘要和控制台文本，调用方修改不会影响已写记录", async () => {
     using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-manager-"));
     const console_lines: string[] = [];

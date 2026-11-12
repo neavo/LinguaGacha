@@ -391,6 +391,7 @@ export class BackendServices {
       session_state,
       this.app_setting_service,
       this.cache_manager.languages,
+      this.logManager,
     );
     this.state = {
       session: session_state,

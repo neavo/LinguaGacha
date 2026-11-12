@@ -1,9 +1,7 @@
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import type { LogResultContent, LogTextSection } from "../../shared/log";
-import type { create_text_resolver } from "../../shared/i18n";
+import type { TextResolver } from "../../shared/i18n";
 import type { LLMRequestFacts } from "../llm/llm-types";
-
-type TextResolver = ReturnType<typeof create_text_resolver>;
 
 /** 日志只保留文字与媒体元数据，避免 Base64 淹没日志。 */
 function message_text(content: unknown): string {
@@ -56,15 +54,16 @@ export function build_batch_request_result_log(input: {
     started_at: new Date(input.started_at).toISOString(),
     ended_at: new Date(ended_at).toISOString(),
     summary: [
-      `${input.run_id} / ${input.request_id}`,
-      t("app.log.task_stats", {
-        COUNT: "1",
+      t("app.log.task_result", {
+        STATUS:
+          input.error === null
+            ? t("app.log.all_succeeded")
+            : t("app.log.request_failed", { ERROR: input.error }),
         TIME: ((ended_at - input.started_at) / 1000).toFixed(2),
         PT: String(result?.input_tokens ?? 0),
         RT: String(result?.reasoning_tokens ?? 0),
         CT: String(result?.output_tokens ?? 0),
       }),
-      ...(input.error === null ? [] : [t("app.log.request_failed", { ERROR: input.error })]),
       ...(input.result_file === null ? [] : [input.result_file]),
     ],
     sections,

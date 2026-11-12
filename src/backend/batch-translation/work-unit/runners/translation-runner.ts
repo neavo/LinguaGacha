@@ -361,14 +361,7 @@ export class TranslationWorkUnitRunner {
   ): WorkUnitLogEntry[] {
     const app_language = normalize_setting_snapshot(context.request.config_snapshot).app_language;
     const ended_at = Date.now();
-    const stats = this.t(app_language, "app.log.task_stats", {
-      CT: String(response.output_tokens),
-      COUNT: String(context.request_items.length),
-      PT: String(response.input_tokens),
-      RT: String(response.reasoning_tokens),
-      TIME: ((ended_at - context.start_time) / 1000).toFixed(2),
-    });
-    const summary = [stats];
+    let status = this.t(app_language, "app.log.all_succeeded");
     let level: WorkUnitLogEntry["level"] = "info";
     // 供应商异常和本地超时共用请求失败摘要，结构化 error 仍只承载真实供应商诊断。
     const request_failure_text =
@@ -376,18 +369,23 @@ export class TranslationWorkUnitRunner {
       (context.request_timeout ? this.t(app_language, "app.log.request_timeout") : null);
     if (request_failure_text !== null) {
       level = "error";
-      summary.push(
-        this.t(app_language, "app.log.request_failed", {
-          ERROR: request_failure_text,
-        }),
-      );
+      status = this.t(app_language, "app.log.request_failed", { ERROR: request_failure_text });
     } else if (valid_count === 0) {
       level = "error";
-      summary.push(this.t(app_language, "app.log.model_response_invalid"));
+      status = this.t(app_language, "app.log.model_response_invalid");
     } else if (valid_count < context.request_items.length) {
       level = "warning";
-      summary.push(this.t(app_language, "app.log.translation_response_partially_invalid"));
+      status = this.t(app_language, "app.log.translation_response_partially_invalid");
     }
+    const summary = [
+      this.t(app_language, "app.log.task_result", {
+        TIME: ((ended_at - context.start_time) / 1000).toFixed(2),
+        STATUS: status,
+        PT: String(response.input_tokens),
+        RT: String(response.reasoning_tokens),
+        CT: String(response.output_tokens),
+      }),
+    ];
     summary.push(...context.console_log.map((text) => text.trim()).filter(Boolean));
     const sections: Array<{ title: string; text: string }> = [];
     if (response.response_think.trim() !== "") {

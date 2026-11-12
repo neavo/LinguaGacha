@@ -33,7 +33,9 @@ import { resolve_request_limits, type RequestRatePool } from "../../batch-task/r
 import { RequestScheduler } from "../../batch-task/request-scheduler";
 import { TranslationPipeline } from "./translation-pipeline";
 import { TranslationProgressAccumulator } from "./progress-accumulator";
-import { TranslationLogReplay } from "./log-replay";
+import { log_batch_task_start, log_batch_request_failure } from "../../batch-task/batch-task-log";
+import { create_text_resolver, type TextResolver } from "../../../shared/i18n";
+import { resolve_app_locale } from "../../../domain/app-language";
 import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 
 import { read_task_item_status, read_task_item_id } from "../translation-item";
@@ -81,7 +83,7 @@ export interface BatchTranslationRunnerOptions {
   llmClient: LLMClientPort; // 每轮请求调度器使用的单次网络请求入口。
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
   taskPlanner: Pick<TranslationPlanner, "build_translation_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
-  logManager: Pick<LogManager, "append">; // 生命周期与批次日志共用结构化追加入口。
+  logManager: Pick<LogManager, "append">; // 启动、请求诊断与 worker 结果共用写入口。
 }
 
 /**
@@ -94,7 +96,7 @@ export class BatchTranslationRunner {
   private readonly task_runtime: BatchTranslationRunnerOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 初始切块与 token 缓存复用入口。
-  private readonly log_replay: TranslationLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
+  private readonly log_manager: Pick<LogManager, "append">; // 主线程统一写入 worker 结果与请求诊断。
   private readonly rate_pool: RequestRatePool; // 同一模型资源跨任务复用速率时钟。
   private readonly llm_client: BatchTranslationRunnerOptions["llmClient"]; // 父线程真实请求入口，由本轮调度器统一派发。
   /**
@@ -109,7 +111,7 @@ export class BatchTranslationRunner {
     this.llm_client = options.llmClient;
     this.auth = options.auth;
     this.task_planner = options.taskPlanner;
-    this.log_replay = new TranslationLogReplay(options.logManager);
+    this.log_manager = options.logManager;
   }
 
   /**
@@ -120,8 +122,6 @@ export class BatchTranslationRunner {
     command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext,
   ): Promise<BatchTranslationResult> {
-    let final_status: "done" | "stopped" | "error" = "done";
-    let app_language: unknown = "ZH";
     let progress = await this.task_runtime.read_progress(); // 工程累计事实，由项目写入口维护。
     const errors: unknown[] = []; // 按发生顺序收集，首项作为聚合异常的主因。
     const retranslate = command.operation === "retranslate";
@@ -138,9 +138,9 @@ export class BatchTranslationRunner {
         model_id: run_context.model.model_id,
         thinking_level: run_context.model.thinking.level,
       });
-      app_language = run_context.config_snapshot["app_language"];
+      const t = create_text_resolver(resolve_app_locale(run_context.config_snapshot.app_language));
       const quality_snapshot = this.task_store.build_quality_snapshot();
-      this.log_task_run_start(run_context, quality_snapshot, app_language);
+      this.log_task_run_start(run_context, quality_snapshot, t);
       const items = this.task_store.get_translation_items();
       const prepared = prepare_translation_targets(
         items,
@@ -174,7 +174,7 @@ export class BatchTranslationRunner {
         rate,
         on_state: (state) => this.task_runtime.update_request_state(handle, state),
         on_failure: (key_index, error) =>
-          this.log_replay.request_failure(key_index, error, app_language),
+          log_batch_request_failure(this.log_manager, "engine", key_index, error, t),
       });
       const pipeline = new TranslationPipeline({
         read_concurrency_limit: () => request_scheduler.read_concurrency_limit(),
@@ -198,22 +198,10 @@ export class BatchTranslationRunner {
         },
       });
       await pipeline.run(contexts);
-      if (handle.signal.aborted) {
-        final_status = "stopped";
-      }
     } catch (error) {
-      final_status = handle.signal.aborted ? "stopped" : "error";
       if (!handle.signal.aborted) {
-        // 原始失败经完成链交给调用方，日志只做诊断。
+        // 服务在完整收尾后统一记录异常。
         errors.push(error);
-        try {
-          this.log_replay.task_error(
-            retranslate ? "重翻任务执行失败。" : "翻译任务执行失败。",
-            error,
-          );
-        } catch (log_error) {
-          errors.push(log_error);
-        }
       }
     } finally {
       try {
@@ -233,11 +221,6 @@ export class BatchTranslationRunner {
       } catch (error) {
         errors.push(error);
       }
-      try {
-        this.log_replay.task_run_finish(final_status, app_language);
-      } catch (error) {
-        errors.push(error);
-      }
     }
     if (errors.length > 0)
       throw errors.length === 1
@@ -245,7 +228,7 @@ export class BatchTranslationRunner {
         : new AggregateError(errors, "Batch translation failed.", { cause: errors[0] });
     const run_progress = this.task_runtime.read_run_progress();
     return {
-      status: final_status,
+      status: handle.signal.aborted ? "stopped" : "done",
       progress: { ...progress },
       ...(run_progress === undefined ? {} : { run_progress }),
     };
@@ -279,7 +262,7 @@ export class BatchTranslationRunner {
       signal,
       request_scheduler,
     );
-    this.log_replay.work_unit_logs(result.logs);
+    for (const entry of result.logs) this.log_manager.append({ ...entry, source: "engine-worker" });
     return this.build_translation_worker_result(context, result);
   }
 
@@ -414,22 +397,25 @@ export class BatchTranslationRunner {
   }
 
   /**
-   * 用本轮快照打印普通模型的主提示词；实际请求由 worker 同步构造，Sakura 使用专用路径。
+   * 按本轮快照输出主提示词，Sakura 复用实际请求的系统指令。
    */
   private log_task_run_start(
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
-    app_language: unknown,
+    t: TextResolver,
   ): void {
-    let prompt_text: string | null = null;
-    if (String(run_context.model["api_format"] ?? "") !== "SakuraLLM") {
-      prompt_text = new PromptBuilder(
-        this.builtin_root,
-        run_context.config_snapshot,
-        quality_snapshot,
-        [],
-      ).build_main();
-    }
-    this.log_replay.task_run_start(run_context.model, app_language, prompt_text);
+    const builder = new PromptBuilder(
+      this.builtin_root,
+      run_context.config_snapshot,
+      quality_snapshot,
+      [],
+    );
+    const prompt_text =
+      run_context.model.api_format === "SakuraLLM"
+        ? builder.generate_prompt_sakura("").messages[0]!.content
+        : builder.build_main();
+    log_batch_task_start(this.log_manager, "engine", run_context.model, t);
+    if (prompt_text.trim() !== "")
+      this.log_manager.append({ level: "info", source: "engine", content: prompt_text.trim() });
   }
 }

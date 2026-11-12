@@ -87,7 +87,12 @@ export class LogManager {
       ...(targets.window ? {} : { window: false as const }),
     });
     if (targets.console)
-      this.console_writer(format_console_log(normalized, created_at), payload.level);
+      this.console_writer(
+        format_console_log(normalized, created_at, {
+          group_end: payload.console_group_end ?? true,
+        }),
+        payload.level,
+      );
   }
 
   /** 先停止接收日志，再等待文件任务结束。 */
