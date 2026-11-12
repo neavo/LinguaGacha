@@ -16,7 +16,7 @@ export const ko_kr_agent_page = {
     agent_description: "작업 흐름을 제어하는 주 모델",
     translation_description: "일괄 번역에 사용하는 모델입니다. 주 모델이 사용 시점을 판단합니다.",
     media_description:
-      "오디오 및 비디오 인식에 사용하는 모델입니다. 주 모델이 사용 시점을 판단합니다.\n<emphasis>대부분의 모델은 오디오 및 비디오 입력을 지원하지 않습니다</emphasis>. 이 점에 유의하세요. doubao와 gemini를 권장합니다.",
+      "오디오 및 비디오 인식에 사용하는 모델입니다. 주 모델이 사용 시점을 판단합니다.\n<emphasis>대부분의 모델은 오디오 및 비디오 입력을 지원하지 않는다는 점에 유의하세요. gemini와 doubao-seed-lite를 권장합니다.</emphasis>",
     follow: "주 모델 따르기",
   },
   title: "AGENT",
