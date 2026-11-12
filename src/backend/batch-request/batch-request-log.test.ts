@@ -14,13 +14,12 @@ function result_log(input: Partial<Parameters<typeof build_batch_request_result_
     payload: undefined,
     result: undefined,
     error: null,
-    result_file: null,
     t,
     ...input,
   });
 }
 
-it("消息日志分离输入、思考与回复，保留成果路径和失败原因", () => {
+it("消息日志分离输入、思考与回复，摘要只展示结果统计并保留失败原因", () => {
   const content = result_log({
     payload: { messages: [{ role: "user", content: "question" }] },
     result: {
@@ -32,14 +31,16 @@ it("消息日志分离输入、思考与回复，保留成果路径和失败原�
       cancelled: false,
       timeout: false,
     },
-    result_file: "/result.json",
   });
   expect(content.sections).toEqual([
     { title: t("app.log.request_messages"), text: "user: question" },
     { title: t("app.log.thinking_process"), text: "reasoning" },
     { title: t("app.log.model_response"), text: "answer" },
   ]);
-  expect(content.summary).toContain("/result.json");
+  expect(content.summary).toHaveLength(1);
+  expect(content.summary[0]).toContain(t("app.log.all_succeeded"));
+  expect(content).toMatchObject({ run_id: "run", request_id: "one" });
+  expect(format_log_content_text(content)).not.toContain("run / one");
   const failure = format_log_content_text(result_log({ error: "disk failure" }));
   expect(failure).toContain(t("app.log.request_failed", { ERROR: "disk failure" }));
 });

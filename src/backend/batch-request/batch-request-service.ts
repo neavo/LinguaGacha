@@ -306,11 +306,7 @@ export class BatchRequestService {
             let payload: JsonRecord | undefined;
             let input_error: unknown;
             /** 每项只记录一次结果，完整响应保存在成果文件中。 */
-            const log_result = (
-              failure: string | null,
-              result_file: string | null,
-              cause?: unknown,
-            ) =>
+            const log_result = (failure: string | null, cause?: unknown) =>
               this.log.append({
                 source: BATCH_REQUEST_LOG_SOURCE,
                 level: failure === null ? "info" : "error",
@@ -321,7 +317,6 @@ export class BatchRequestService {
                   payload,
                   result,
                   error: failure,
-                  result_file,
                   t,
                 }),
                 ...(cause === undefined ? {} : { error: cause }),
@@ -382,7 +377,7 @@ export class BatchRequestService {
                 )
               ) {
                 const message = cause instanceof Error ? cause.message : String(cause);
-                log_result(message, null, cause);
+                log_result(message, cause);
               }
               throw cause;
             }
@@ -394,11 +389,7 @@ export class BatchRequestService {
               failed: progress.failed + Number(status === "failed"),
               time: Date.now() / 1000 - progress.start_time,
             };
-            log_result(
-              error,
-              path.join(directory, relative),
-              result?.request_error ?? result?.response_error ?? input_error,
-            );
+            log_result(error, result?.request_error ?? result?.response_error ?? input_error);
             await this.tasks.publish_progress(handle, progress);
           };
           const pending = new Set<Promise<void>>(); // 成功请求释放额度，失败请求保留到统一收尾。
