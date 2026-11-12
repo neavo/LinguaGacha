@@ -4,7 +4,7 @@ import path from "node:path";
 import type { Readable } from "node:stream";
 import { npm } from "../npm";
 
-const STDERR_MAX_CHARS = 64 * 1024; // 只保留诊断尾部，避免长转码日志持续占用内存。
+const STDERR_MAX_CHARS = 64 * 1024; // 按字符串字符数保留诊断尾部，限制长转码日志占用。
 export const FFMPEG_PACKAGE = `ffmpeg-static-electron-v5-${process.platform}-${process.arch}`;
 
 export type MediaInfo = {
@@ -65,7 +65,10 @@ export function ffmpeg_path(): string {
   return binary.path;
 }
 
-/** 截帧、提取字幕与转码共用二进制入口，参数直接传给 ffmpeg。 */
+/**
+ * 截帧、提取字幕与转码共用入口。SDK 解析二进制路径并添加 `-hide_banner`、`-nostdin`。
+ * 返回 `stderr` 尾部字符串。默认非零退出抛错。输出文件由 `args` 指定。
+ */
 export function ffmpeg(args: readonly string[], options?: ExecuteOptions): Promise<string> {
   return execute(ffmpeg_path(), ["-hide_banner", "-nostdin", ...args], options);
 }
