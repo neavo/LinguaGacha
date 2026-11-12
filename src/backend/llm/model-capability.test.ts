@@ -119,7 +119,9 @@ describe("统一模型能力", () => {
         "HIGH",
       ]);
       expect(capability.request).toEqual(
-        api_format === "OpenAIResponses" ? { supports_reasoning_summary: false } : undefined,
+        api_format === "OpenAIResponses"
+          ? { responses_audio_format: "audio_url", supports_reasoning_summary: false }
+          : undefined,
       );
     },
   );

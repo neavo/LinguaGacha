@@ -18,7 +18,7 @@ type ModelProtocolCompat = {
 
 /** 产品请求策略由载荷层消费，独立于 SDK 的 `compat`。 */
 export type ModelRequestPolicy = Readonly<{
-  responses_audio_data_uri?: true; // Qwen Responses 使用顶层 data URI 与 format。
+  responses_audio_format?: "data_uri" | "audio_url"; // 缺省为嵌套 input_audio，供应商差异只改变编码。
   supports_reasoning_summary?: false; // 缺省沿用 SDK，仅声明需要关闭的自动参数。
 }>;
 
@@ -41,7 +41,7 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
     model_id: "qwen3.8-omni",
     protocols: {
       // https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses
-      OpenAIResponses: { request: { responses_audio_data_uri: true } },
+      OpenAIResponses: { request: { responses_audio_format: "data_uri" } },
     },
   },
   // Pi 按 xAI 端点禁用 Chat Completions 的 `reasoning_effort`，这两个模型需显式启用。
@@ -126,8 +126,8 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
           xhigh: null,
           max: null,
         },
-        // 豆包 Responses 拒绝 `reasoning.summary`，按模型族处理官方与中转请求。
-        request: { supports_reasoning_summary: false },
+        // https://docs.volcengine.com/docs/ark/create-model-responses-api：音频使用 audio_url，且不接受 reasoning.summary。
+        request: { responses_audio_format: "audio_url", supports_reasoning_summary: false },
       },
     },
   },

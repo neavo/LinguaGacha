@@ -16,16 +16,14 @@ import type { OpenAICompletionsOptions } from "@earendil-works/pi-ai/api/openai-
 import type { AnthropicOptions } from "@earendil-works/pi-ai/api/anthropic-messages";
 
 import { AppError } from "../../shared/error";
-import { is_json_record } from "../../domain/json";
-import type { ModelApiFormat } from "../../domain/model";
-import type { ModelRequestPolicy } from "./llm-overrides";
 import {
   LLM_REQUEST_MAX_BYTES,
   resolve_one_shot_generation_options,
   type ModelRequestSnapshot,
 } from "./llm-request";
 import { apply_request_overrides } from "./llm-payload";
-import type { LLMContent, LLMMessage } from "./llm-types";
+import type { LLMMessage } from "./llm-types";
+import { apply_message_content } from "./llm-content";
 import { resolve_pi_thinking_level, type ResolvedModelCapability } from "./model-capability";
 
 // Pi provider 身份只用于 adapter 与模型集合注册，项目策略直接使用 api_format。
@@ -272,87 +270,4 @@ function assert_non_empty_messages(
     public_details: { field: "messages" },
     diagnostic_context: { api_format, reason: "empty_messages" },
   });
-}
-
-/** SDK 只支持文字和图片。`onPayload` 编码完整消息，避免 SDK 丢弃音视频。 */
-function apply_message_content(
-  payload: unknown,
-  format: ModelApiFormat,
-  messages: LLMMessage[],
-  policy?: ModelRequestPolicy,
-): unknown {
-  if (!messages.some((message) => Array.isArray(message.content))) return payload;
-  if (!is_json_record(payload)) throw new Error("Invalid model payload.");
-  const users = messages
-    .filter((message) => message.role === "user")
-    .map((message) => ({
-      role: "user",
-      content: (typeof message.content === "string"
-        ? [{ type: "text" as const, text: message.content }]
-        : message.content
-      ).map((part) => encode_content(part, format, policy)),
-    }));
-  if (format === "Google") {
-    const system = messages
-      .filter((message) => message.role === "system")
-      .map((message) => message.content.trim())
-      .filter(Boolean)
-      .join("\n\n");
-    return {
-      ...payload,
-      contents: [
-        ...(system ? [{ role: "user", parts: [{ text: system }] }] : []),
-        ...users.map((message) => ({ role: message.role, parts: message.content })),
-      ],
-    };
-  }
-  const field = format === "OpenAIResponses" ? "input" : "messages";
-  const original = payload[field];
-  if (!Array.isArray(original)) throw new Error(`Invalid model payload: ${field}.`);
-  return {
-    ...payload,
-    [field]: [
-      ...original.filter(
-        (message) =>
-          is_json_record(message) &&
-          (message["role"] === "system" || message["role"] === "developer"),
-      ),
-      ...users,
-    ],
-  };
-}
-
-/** 媒体扩展按协议形状发送，是否支持交给服务端，不按模型目录预判。 */
-function encode_content(
-  part: LLMContent,
-  format: ModelApiFormat,
-  policy?: ModelRequestPolicy,
-): Record<string, unknown> {
-  if (part.type === "text")
-    return format === "Google"
-      ? { text: part.text }
-      : {
-          type: format === "OpenAIResponses" ? "input_text" : "text",
-          text: part.text,
-        };
-  if (format === "Google") return { inlineData: { mimeType: part.mime_type, data: part.data } };
-  // Messages 的媒体扩展沿用 `source` 结构。是否支持由服务端决定。
-  if (format === "Anthropic")
-    return {
-      type: part.type,
-      source: { type: "base64", media_type: part.mime_type, data: part.data },
-    };
-  const url = `data:${part.mime_type};base64,${part.data}`;
-  const audio_format =
-    part.mime_type === "audio/mpeg" ? "mp3" : part.mime_type.slice("audio/".length);
-  if (format === "OpenAIResponses") {
-    if (part.type === "image") return { type: "input_image", image_url: url };
-    if (part.type === "video") return { type: "input_video", video_url: url };
-    if (policy?.responses_audio_data_uri)
-      return { type: "input_audio", data: url, format: audio_format };
-  }
-  if (part.type === "audio")
-    return { type: "input_audio", input_audio: { data: part.data, format: audio_format } };
-  const field = part.type === "image" ? "image_url" : "video_url";
-  return { type: field, [field]: { url } };
 }
