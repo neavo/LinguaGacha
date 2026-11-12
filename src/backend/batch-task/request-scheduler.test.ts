@@ -12,7 +12,7 @@ describe("RequestScheduler", () => {
   it("不可重试错误立即拒绝排队批次并停止新派发", async () => {
     const first = deferred();
     const request = vi.fn<LLMClientPort["request"]>().mockReturnValue(first.promise);
-    const { scheduler } = setup(request, "key", { concurrency_limit: 1, rpm_limit: 0 });
+    const { scheduler, failures } = setup(request, "key", { concurrency_limit: 1, rpm_limit: 0 });
     const signal = new AbortController().signal;
     const results = [
       scheduler.request(body("one"), signal),
@@ -30,6 +30,10 @@ describe("RequestScheduler", () => {
       code: "model.provider_failed",
     });
     expect(request).toHaveBeenCalledOnce();
+    expect(failures).toHaveBeenCalledExactlyOnceWith(
+      0,
+      expect.objectContaining({ message: "subscription_sharing_usage_limit_exceeded" }),
+    );
   });
   beforeEach(() => {
     vi.useFakeTimers();
@@ -286,13 +290,17 @@ describe("RequestScheduler", () => {
     await vi.advanceTimersByTimeAsync(105_000);
     expect(scheduler.read_concurrency_limit()).toBe(1);
     expect(request).toHaveBeenCalledTimes(4);
-    expect(state).toHaveBeenLastCalledWith(expect.objectContaining({
-      request_in_flight_count: 0,
-      request_recovery: { phase: "waiting", retry_count: 3, retry_at: 165_000 },
-    }));
+    expect(state).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        request_in_flight_count: 0,
+        request_recovery: { phase: "waiting", retry_count: 3, retry_at: 165_000 },
+      }),
+    );
     controller.abort();
     expect(await result).toMatchObject({ code: "runtime.cancelled" });
-    expect(state).toHaveBeenLastCalledWith(expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }));
+    expect(state).toHaveBeenLastCalledWith(
+      expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }),
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -311,7 +319,9 @@ describe("RequestScheduler", () => {
     expect(calls).toEqual(["A", "B"]);
     expect(run_ids).toEqual(["run", "run"]);
     expect(Date.now()).toBe(0);
-    expect(state).toHaveBeenLastCalledWith(expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }));
+    expect(state).toHaveBeenLastCalledWith(
+      expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }),
+    );
     expect(failures).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -326,14 +336,18 @@ describe("RequestScheduler", () => {
     const result = scheduler.request(body(), new AbortController().signal);
     await vi.advanceTimersByTimeAsync(14_999);
     expect(request).toHaveBeenCalledTimes(1);
-    expect(state).toHaveBeenLastCalledWith(expect.objectContaining({
-      request_in_flight_count: 0,
-      request_recovery: { phase: "waiting", retry_count: 0, retry_at: 15_000 },
-    }));
+    expect(state).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        request_in_flight_count: 0,
+        request_recovery: { phase: "waiting", retry_count: 0, retry_at: 15_000 },
+      }),
+    );
     for (const delay of [1, 30_000, 60_000, 60_000]) await vi.advanceTimersByTimeAsync(delay);
     expect(started_at).toEqual([0, 15_000, 45_000, 105_000, 165_000]);
     expect(await result).toMatchObject({ response_result: "ok", input_tokens: 10 });
-    expect(state).toHaveBeenLastCalledWith(expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }));
+    expect(state).toHaveBeenLastCalledWith(
+      expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }),
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -514,7 +528,9 @@ describe("RequestScheduler", () => {
     });
     await expect(scheduler.request(body(), new AbortController().signal)).rejects.toBe(error);
     expect(failures).not.toHaveBeenCalled();
-    expect(state).toHaveBeenLastCalledWith(expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }));
+    expect(state).toHaveBeenLastCalledWith(
+      expect.objectContaining({ request_in_flight_count: 0, request_recovery: null }),
+    );
   });
 
   it("共享 signal 取消多个排队请求时，监听回流不能再发出请求", async () => {

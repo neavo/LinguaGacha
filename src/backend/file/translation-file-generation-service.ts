@@ -188,7 +188,7 @@ export class TranslationFileGenerationService {
     const config = normalize_setting_snapshot(setting);
     this.log_manager?.info(
       this.generation_log_text(config, "app.translation_generation.log.started"),
-      { source: FILE_GENERATION_LOG_SOURCE },
+      { source: FILE_GENERATION_LOG_SOURCE, console_group_end: false },
     );
     try {
       const project_path = this.session_state.require_loaded_project_path();

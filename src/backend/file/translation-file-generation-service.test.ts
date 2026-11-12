@@ -1195,7 +1195,7 @@ describe("TranslationFileGenerationService", () => {
       );
       expect(log_collector.info).toHaveBeenCalledExactlyOnceWith(
         text("app.translation_generation.log.started"),
-        { source: "translation-generation" },
+        { source: "translation-generation", console_group_end: false },
       );
       if (entry === "directory-prepare") expect(write_file).not.toHaveBeenCalled();
     },

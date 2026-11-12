@@ -80,6 +80,7 @@ export interface LogDetail extends LogRecord {
 }
 
 export interface LogAppendPayload {
+  console_group_end?: boolean; // 仅控制控制台组间空行，缺省每次追加为独立组。
   level: LogLevel; // 写入等级
   content: LogContent; // 单一日志正文事实，输出目标按需投影为纯文本
   source?: string; // 产生日志的模块或任务源

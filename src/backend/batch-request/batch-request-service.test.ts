@@ -156,8 +156,11 @@ describe("batch request", () => {
       { level: "info", content: { run_id: summary.run_id, request_id: "first" } },
       { level: "error", content: { run_id: summary.run_id, request_id: "second" } },
     ]);
-    expect(logs.at(-1)).toMatchObject({ level: "warning", source: "batch-request" });
-    expect(format_log_content_text(logs.at(-1)!.content)).toContain(summary.result_file);
+    expect(logs.at(-1)).toMatchObject({
+      level: "info",
+      source: "batch-request",
+      content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
+    });
     expect(f.gate.get_snapshot().owner).toBe("agent");
     await f.tasks.dispose();
   });
@@ -263,7 +266,11 @@ describe("batch request", () => {
         usage: { input_tokens: 4, reasoning_tokens: 2, output_tokens: 6, usage_complete: true },
       });
       const logs = f.append.mock.calls.map(([entry]) => entry);
-      expect(logs.filter((entry) => entry.level === "warning")).toHaveLength(1);
+      expect(logs.filter((entry) => entry.level === "warning")).toMatchObject([
+        {
+          error: expect.objectContaining({ message: "temporary failure" }),
+        },
+      ]);
       const results = logs.filter(
         (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
       );
@@ -272,8 +279,8 @@ describe("batch request", () => {
       if (typeof content === "string" || content.kind !== "request_result")
         throw new Error("Expected request result log");
       expect(content.summary).toContain(
-        create_text_resolver("zh-CN")("app.log.task_stats", {
-          COUNT: "1",
+        create_text_resolver("zh-CN")("app.log.task_result", {
+          STATUS: create_text_resolver("zh-CN")("app.log.all_succeeded"),
           TIME: ((Date.parse(content.ended_at) - Date.parse(content.started_at)) / 1000).toFixed(2),
           PT: "4",
           RT: "2",
@@ -302,8 +309,11 @@ describe("batch request", () => {
           (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
         ),
       ).toMatchObject([{ level: "info" }]);
-      expect(logs.at(-1)).toMatchObject({ level: "error" });
-      expect(format_log_content_text(logs.at(-1)!.content)).toContain("error");
+      expect(logs.at(-2)).toMatchObject({ level: "error", error: expect.anything() });
+      expect(logs.at(-1)).toMatchObject({
+        level: "info",
+        content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
+      });
     } finally {
       await f.tasks.dispose();
     }
@@ -383,7 +393,11 @@ describe("batch request", () => {
     });
     expect(f.tasks.build_snapshot()).toMatchObject({ status: "error" });
     const logs = f.append.mock.calls.map(([entry]) => entry);
-    expect(logs.at(-1)).toMatchObject({ level: "error" });
+    expect(logs.at(-2)).toMatchObject({ level: "error" });
+    expect(logs.at(-1)).toMatchObject({
+      level: "info",
+      content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
+    });
     expect(
       logs.filter(
         (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",

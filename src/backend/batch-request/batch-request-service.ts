@@ -1,3 +1,4 @@
+import { log_batch_task_start, log_batch_request_failure } from "../batch-task/batch-task-log";
 import { build_batch_request_result_log } from "./batch-request-log";
 import { create_text_resolver } from "../../shared/i18n";
 import { resolve_app_locale } from "../../domain/app-language";
@@ -210,38 +211,6 @@ export class BatchRequestService {
       usage: result.progress,
       result_file,
     });
-    /** 批次日志采用完成链的最终状态，包含发布或事件收尾失败。 */
-    const log_end = (result: BatchTaskResult, error?: unknown) => {
-      const value = summary(result);
-      this.log.append({
-        source: BATCH_REQUEST_LOG_SOURCE,
-        level:
-          result.status === "error"
-            ? "error"
-            : result.status === "stopped" || value.failed > 0
-              ? "warning"
-              : "info",
-        content: [
-          t("app.log.task_finished", {
-            RUN: handle.run_id,
-            STATUS: result.status,
-            SUCCEEDED: String(value.succeeded),
-            FAILED: String(value.failed),
-            UNFINISHED: String(value.unfinished),
-            STOP: result.stop_source ?? "—",
-            PATH: result_file,
-          }),
-          t("app.log.task_stats", {
-            COUNT: String(value.total),
-            TIME: (result.progress?.time ?? 0).toFixed(2),
-            PT: String(result.progress?.input_tokens ?? 0),
-            RT: String(result.progress?.reasoning_tokens ?? 0),
-            CT: String(result.progress?.output_tokens ?? 0),
-          }),
-        ].join("\n"),
-        ...(error === undefined ? {} : { error }),
-      });
-    };
     let directory_ready = false; // 目录建立后才尝试发布最终索引。
     try {
       await this.tasks.execute(
@@ -264,19 +233,7 @@ export class BatchRequestService {
             ...manifest,
             config: config_summary,
           });
-          this.log.append({
-            source: BATCH_REQUEST_LOG_SOURCE,
-            level: "info",
-            content: t("app.log.task_started", {
-              RUN: handle.run_id,
-              NAME: config_summary.model_name,
-              MODEL: config.model_id,
-              FORMAT: manifest.format,
-              TOTAL: String(indexes.length),
-              CONCURRENCY: String(limits.concurrency_limit),
-              RPM: String(limits.rpm_limit),
-            }),
-          });
+          log_batch_task_start(this.log, BATCH_REQUEST_LOG_SOURCE, model, t);
           await this.tasks.publish_config(handle, config_summary);
           await this.tasks.publish_progress(handle, progress);
           await this.tasks.publish_status(handle, "running");
@@ -338,18 +295,12 @@ export class BatchRequestService {
             },
             on_state: (state) => this.tasks.update_request_state(handle, state),
             on_failure: (key_index, error) =>
-              this.log.append({
-                source: BATCH_REQUEST_LOG_SOURCE,
-                level: "warning",
-                error,
-                content: `${handle.run_id} · ${t("app.log.request_failed", { ERROR: error.message })} (Key ${key_index + 1})`,
-              }),
+              log_batch_request_failure(this.log, BATCH_REQUEST_LOG_SOURCE, key_index, error, t),
           });
           /** 单项正文错误单独结算，文件发布错误交给整批收尾。 */
           const run_one = async (index: number) => {
             const entry = manifest.requests[index]!;
             const started_at = Date.now();
-            let publishing = false; // 区分请求失败与成果发布失败。
             let result: RequestResult | undefined;
             let error: string | null = null;
             let payload: JsonRecord | undefined;
@@ -407,7 +358,6 @@ export class BatchRequestService {
                   (result.item_failure ? "Request failed." : null);
               }
               status = error === null ? "succeeded" : "failed";
-              publishing = true;
               await publish_json(path.join(directory, relative), {
                 id: entry.id,
                 status,
@@ -432,11 +382,7 @@ export class BatchRequestService {
                 )
               ) {
                 const message = cause instanceof Error ? cause.message : String(cause);
-                log_result(
-                  publishing ? t("app.log.publish_failed", { ERROR: message }) : message,
-                  null,
-                  cause,
-                );
+                log_result(message, null, cause);
               }
               throw cause;
             }
@@ -508,14 +454,26 @@ export class BatchRequestService {
         },
       );
       const result = await handle.completion;
-      log_end(result);
       return summary(result);
     } catch (error) {
       if (error instanceof BatchTaskCompletionError) {
-        log_end(error.result, error.cause);
+        this.log.append({
+          source: BATCH_REQUEST_LOG_SOURCE,
+          level: "error",
+          content: t("app.log.request_failed", {
+            ERROR: error.cause instanceof Error ? error.cause.message : String(error.cause),
+          }),
+          error: error.cause,
+        });
         throw new BatchRequestCompletionError(summary(error.result), error.cause);
       }
       throw error;
+    } finally {
+      this.log.append({
+        source: BATCH_REQUEST_LOG_SOURCE,
+        level: "info",
+        content: t("app.log.batch_request_ended"),
+      });
     }
   }
 }

@@ -567,7 +567,6 @@ export class ModelService {
     masked_key: string,
     messages: LLMTextMessage[],
   ): void {
-    this.log_manager?.info("", { source: "model" });
     this.log_manager?.info(`${this.t(app_language, "app.log.api_test_key")}\n${masked_key}`, {
       source: "model",
     });
@@ -578,31 +577,26 @@ export class ModelService {
   }
 
   /**
-   * 成功日志按 thinking 和 answer 分段，并统一记录 token 与耗时。
+   * 成功响应先输出思考与正文，统计结束该日志组。
    */
   private log_model_test_success(
     app_language: unknown,
     result: LLMRequestResult,
     response_time_ms: number,
   ): void {
-    if (result.response_think === "") {
-      this.log_manager?.info(
-        `${this.t(app_language, "app.log.model_response")}\n${result.response_result}`,
-        { source: "model" },
-      );
-    } else {
+    if (result.response_think !== "") {
       this.log_manager?.info(
         `${this.t(app_language, "app.log.thinking_process")}\n${result.response_think}`,
-        { source: "model" },
-      );
-      this.log_manager?.info(
-        `${this.t(app_language, "app.log.model_response")}\n${result.response_result}`,
-        { source: "model" },
+        { source: "model", console_group_end: false },
       );
     }
     this.log_manager?.info(
-      this.t(app_language, "app.log.task_stats", {
-        COUNT: "1",
+      `${this.t(app_language, "app.log.model_response")}\n${result.response_result}`,
+      { source: "model", console_group_end: false },
+    );
+    this.log_manager?.info(
+      this.t(app_language, "app.log.task_result", {
+        STATUS: this.t(app_language, "app.log.all_succeeded"),
         CT: result.output_tokens.toString(),
         PT: result.input_tokens.toString(),
         RT: result.reasoning_tokens.toString(),
@@ -631,7 +625,6 @@ export class ModelService {
     result_msg: string,
     key_results: Array<JsonRecord>,
   ): void {
-    this.log_manager?.info("", { source: "model" });
     this.log_manager?.info(result_msg, { source: "model" });
     const failed_keys = key_results
       .filter((item) => item["success"] !== true)

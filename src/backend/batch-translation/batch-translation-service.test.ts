@@ -1,3 +1,4 @@
+import { create_text_resolver } from "../../shared/i18n";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
 import { RequestRatePool } from "../batch-task/request-rate";
 import { create_item } from "../../domain/item";
@@ -27,17 +28,19 @@ function setup(loaded = true, line = 0) {
   const session = new ProjectSessionState();
   if (loaded) session.mark_loaded("E:/Project/test.lg");
   const gate = new RuntimeOperationGate();
+  const tasks = new BatchTaskRuntime(session, gate);
   const runtime = new BatchTranslationState(
     session,
     {
       get_all_meta: () => ({ translation_extras: { processed_line: line } }),
     } as unknown as ProjectDatabase,
-    new BatchTaskRuntime(session, gate),
+    tasks,
   );
   const run = vi.fn<BatchTranslationRunner["run"]>(async () => ({
     status: "done",
     progress: normalize_batch_translation_progress({ processed_line: line }),
   }));
+  const append = vi.fn();
   const service = new BatchTranslationService(
     { run } as unknown as BatchTranslationRunner,
     runtime,
@@ -49,11 +52,49 @@ function setup(loaded = true, line = 0) {
       }),
     },
     { readBlock: () => DEFAULT_PROJECT_LANGUAGE_SETTINGS },
+    { append },
   );
-  return { service, runtime, gate, run };
+  return { service, runtime, gate, run, append, tasks };
 }
 
 describe("批量翻译服务", () => {
+  it.each([false, true])("结束日志等待终态事件收尾，收尾失败：%s", async (fail) => {
+    const { service, runtime, tasks, append } = setup();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    tasks.subscribe(async (snapshot) => {
+      if (snapshot.status !== "done") return;
+      entered.resolve();
+      await release.promise;
+      if (fail) throw new Error("publication failed");
+    });
+    const handle = await service.start_current_project({
+      operation: "translate",
+      mode: "new",
+      scope: { kind: "all" },
+    });
+    try {
+      await entered.promise;
+      expect(append).not.toHaveBeenCalled();
+      release.resolve();
+      if (fail) await expect(handle.completion).rejects.toThrow();
+      else await expect(handle.completion).resolves.toMatchObject({ status: "done" });
+      expect(append.mock.calls.at(-1)?.[0]).toMatchObject({
+        level: "info",
+        content: create_text_resolver("zh-CN")("app.log.batch_translation_ended"),
+      });
+      if (fail)
+        expect(append.mock.calls[0]?.[0]).toMatchObject({
+          level: "error",
+          error: expect.anything(),
+        });
+    } finally {
+      release.resolve();
+      await runtime.dispose();
+      await handle.completion.catch(() => undefined);
+    }
+  });
+
   it("普通入口拒绝已删除的失败参数", async () => {
     const { service, runtime, run } = setup();
     await expect(
@@ -280,7 +321,9 @@ it.each([
       },
     },
   });
-  const service = new BatchTranslationService(runner, runtime, session, settings, cache.languages);
+  const service = new BatchTranslationService(runner, runtime, session, settings, cache.languages, {
+    append: vi.fn(),
+  });
   const lease = gate.begin_runtime("agent");
   const model = Model.from_json({ id: "fake", threshold: { concurrency_limit: 1 } }, "fake");
   try {
@@ -504,6 +547,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         }),
       },
       cache.languages,
+      { append: vi.fn() },
     );
     const handle = await service.start_current_project({
       operation: "translate",

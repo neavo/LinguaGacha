@@ -29,7 +29,12 @@ interface PendingRequest<Input, Result extends LLMRequestFacts> {
   resolve: (result: Result) => void;
   reject: (error: unknown) => void;
   abort: () => void;
-  usage: { input_tokens: number; reasoning_tokens: number; output_tokens: number; usage_complete: boolean }; // 随逻辑请求跨密钥累计。
+  usage: {
+    input_tokens: number;
+    reasoning_tokens: number;
+    output_tokens: number;
+    usage_complete: boolean;
+  }; // 随逻辑请求跨密钥累计。
 }
 
 interface SchedulerOptions<Input, Result extends LLMRequestFacts> {
@@ -227,6 +232,10 @@ export class RequestScheduler<Input, Result extends LLMRequestFacts> {
           key.available_at = Date.now();
         }
       } else if (result.timeout || result.request_error !== undefined) {
+        this.options.on_failure(
+          key_index,
+          result.request_error ?? log_error_from_message("模型请求超时。"),
+        );
         if (
           result.retryable === false ||
           (read_json_record(this.options.model)["auth_type"] === "oauth" &&
@@ -255,10 +264,6 @@ export class RequestScheduler<Input, Result extends LLMRequestFacts> {
           );
         }
         this.fail_key(key);
-        this.options.on_failure(
-          key_index,
-          result.request_error ?? log_error_from_message("模型请求超时。"),
-        );
       } else {
         this.adjust_concurrency(version, true);
         key.failures = 0;
