@@ -14,7 +14,7 @@ export const zh_cn_agent_page = {
     agent_description: "任务流程的主控模型",
     translation_description: "批量翻译时使用的模型，由主控模型判断使用时机",
     media_description:
-      "音视频识别时使用的模型，由主控模型判断使用时机\n请注意，<emphasis>大多数模型不支持音视频输入</emphasis>，推荐使用 doubao gemini",
+      "音视频识别时使用的模型，由主控模型判断使用时机\n<emphasis>请注意，大多数模型不支持音视频输入，推荐使用 gemini 与 doubao-seed-lite</emphasis>",
     follow: "跟随主控模型",
   },
   title: "AGENT",
