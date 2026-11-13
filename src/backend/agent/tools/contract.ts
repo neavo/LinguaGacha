@@ -175,7 +175,7 @@ const definition = {
       },
     },
     files: Object.fromEntries(
-      AGENT_WORKSPACE_CHANGE_OPERATIONS.map((operation) => [
+      [...AGENT_WORKSPACE_CHANGE_OPERATIONS, "replaces" as const].map((operation) => [
         operation,
         {
           path: AGENT_WORKSPACE_CHANGE_PATHS.files[operation],

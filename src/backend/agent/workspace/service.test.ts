@@ -1193,6 +1193,7 @@ describe("AgentWorkspaceService", () => {
         timeoutMs: VALID_WORKSPACE_RUN.timeoutMs,
         doing: write_doing,
         printPDF: expect.any(Function),
+        imageLayout: expect.any(Function),
         generateFiles: expect.any(Function),
         getOutputPaths: expect.any(Function),
         inspectSources: expect.any(Function),
@@ -1687,6 +1688,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       sectionRevisions: { files: 2, items: 2 },
       directory_changes: [],
       files: {
+        replaced: [],
         created: request.creates.map((entry) => ({
           source_path: entry.source_path,
           files: 3,

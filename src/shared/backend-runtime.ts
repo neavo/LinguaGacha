@@ -17,6 +17,7 @@ export type BackendRuntimeResult<T = unknown> =
 
 /** 必须留在 Electron main 执行的宿主能力。 */
 export type BackendRuntimeHostOperation =
+  | import("./image").ImageHostOperation
   | PDFHostOperation
   | AgentImageHostOperation
   | { kind: "resolve_proxy"; url: string }

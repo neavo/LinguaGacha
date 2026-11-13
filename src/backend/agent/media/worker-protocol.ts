@@ -1,4 +1,4 @@
-import type { ChannelHeader } from "./channel";
+import type { ChannelHeader } from "../inference/channel";
 
 export type MediaTask = "vad" | "asr" | "det" | "rec";
 export type MediaDevice = "cpu" | "webgpu";

@@ -326,7 +326,7 @@ function build_runner(
   return new AgentWorkspaceRunner({
     execution: {
       nodeRoot: directory,
-      media: {
+      inference: {
         modelsDirectory: path.join(directory, "models"),
         cacheDirectory: path.join(directory, "cache/media"),
         runtimeDirectory: directory,

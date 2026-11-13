@@ -2,7 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { DeviceFailure, Engine } from "./inference-engine";
+import { DeviceFailure } from "../inference/client";
+import { Engine } from "./inference-engine";
 import type { MediaTask, MediaWorkerConfig } from "./worker-protocol";
 
 let directory: string;

@@ -58,7 +58,11 @@ export async function run_backend_runtime(args: {
       pending_host_requests.set(request_id, pending);
       if (signal !== undefined) {
         const abort_listener = () => {
-          if (operation.kind === "print_pdf" || operation.kind === "prepare_image") {
+          if (
+            operation.kind === "render_image" ||
+            operation.kind === "print_pdf" ||
+            operation.kind === "prepare_image"
+          ) {
             args.port.postMessage({ type: "host_cancel", requestId: request_id });
             return; // 等窗口释放后的回包，工作区互斥仍由原调用持有。
           }
@@ -93,6 +97,11 @@ export async function run_backend_runtime(args: {
       const result = (await call_host(operation, signal)) as AgentImageHostResult;
       signal.throwIfAborted();
       return result;
+    },
+    imageLayoutHost: async (operation, signal) => {
+      const result = await call_host(operation, signal);
+      signal.throwIfAborted();
+      return result as import("../../shared/image").ImageLayoutResult;
     },
     pdfHost: async (operation, signal) => {
       const result = await call_host(operation, signal);

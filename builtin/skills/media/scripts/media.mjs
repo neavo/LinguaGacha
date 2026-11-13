@@ -18,12 +18,12 @@ export {
 export const DEPENDENCIES = Object.freeze({
   npm: [
     `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
-    "onnxruntime-node@1.30.0", // 1.31.1 存在宿主退出卡住问题，固定已通过退出验收的版本。
+    `onnxruntime-node@${sdk.INFERENCE_DEPENDENCIES.ort}`, // 1.31.1 存在宿主退出卡住问题，固定已通过退出验收的版本。
   ],
   python: [
-    "numpy==2.5.4",
+    `numpy==${sdk.INFERENCE_DEPENDENCIES.numpy}`,
     "kaldi-native-fbank==1.23.0",
-    "opencv-python-headless==5.0.0.93",
+    `opencv-python-headless==${sdk.INFERENCE_DEPENDENCIES.opencv}`,
     "pyclipper==1.4.0",
   ],
 });

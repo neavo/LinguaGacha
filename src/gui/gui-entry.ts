@@ -5,6 +5,7 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
+import { create_image_host } from "../native/image-host";
 import { create_pdf_host } from "../native/pdf-host";
 import { prepare_agent_image } from "../native/agent-image-host";
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
@@ -68,6 +69,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     projectRoot: app_root,
   });
   const pdf_host = create_pdf_host(app_resources);
+  const image_layout_host = create_image_host(app_resources);
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
@@ -76,6 +78,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     workspaceRuntimeDirectory: app_resources.workspaceRuntimeDirectory,
     fontsDirectory: app_resources.fontsDirectory,
     pdfHost: pdf_host,
+    imageLayoutHost: image_layout_host,
     imageHost: prepare_agent_image,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openDirectory: open_directory,
@@ -184,11 +187,16 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     // 先保存 Promise 再清理，关闭窗口触发的重入请求共用同一次退出。
     shutdown_promise = Promise.resolve().then(async () => {
       try {
+        const failures: unknown[] = [];
         try {
           await backend_runtime.stop();
-        } finally {
-          await pdf_host.dispose();
+        } catch (error) {
+          failures.push(error);
         }
+        const closed = await Promise.allSettled([pdf_host.dispose(), image_layout_host.dispose()]);
+        for (const result of closed) if (result.status === "rejected") failures.push(result.reason);
+        if (failures.length)
+          throw new AggregateError(failures, "Application resources could not close.");
         await launch_update?.();
       } catch (error) {
         exit_code = 1;

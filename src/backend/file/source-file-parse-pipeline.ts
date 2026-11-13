@@ -26,6 +26,10 @@ export type SourceFileParsedDraft = {
   game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
   content: Uint8Array;
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
+  image?: {
+    book: import("../../shared/image").ImageBook;
+    records: import("../../shared/image").ImageRecord[];
+  };
   parsed_items: Item[]; // 格式解析器已补齐的条目草稿，身份由工程入口分配
 };
 
@@ -161,6 +165,7 @@ export class SourceFileParsePipeline {
       } else {
         draft.file_type = parsed.file_type;
         draft.parsed_items = parsed.items;
+        if (parsed.image) draft.image = parsed.image;
         if (parsed.game_engine !== undefined) draft.game_engine = parsed.game_engine;
       }
       return {
@@ -222,7 +227,11 @@ export class SourceFileParsePipeline {
           },
           signal,
         );
-        file_drafts.push(parsed.draft);
+        // 图片的结构就是运行契约，坏包不能以 NONE 身份进入工程后绕过校验。
+        const invalid_image =
+          parsed.failure &&
+          (entry.file_type === "IMAGE" || entry.rel_path.toLowerCase().endsWith(".image"));
+        if (!invalid_image) file_drafts.push(parsed.draft);
         warnings.push(...parsed.warnings);
         if (parsed.failure) failures.push(parsed.failure);
       }

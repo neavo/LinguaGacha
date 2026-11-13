@@ -3,7 +3,8 @@ import { default_native_fs as fs } from "../../../native/native-fs";
 import path from "node:path";
 import lockfile from "proper-lockfile";
 import { execute, ffmpeg_path, inspect } from "./ffmpeg";
-import { python, runtime_file } from "./engine";
+import { python } from "../inference/environment";
+import { runtime_file } from "./engine";
 
 const FRAME = { width: 1920, height: 1080 }; // 与 `visualize.py` 的成片尺寸一致。
 const DURATION_TOLERANCE = 0.15; // 成片与解码样本时长的允许差（秒），覆盖封装取整。

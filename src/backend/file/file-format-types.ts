@@ -45,6 +45,10 @@ export type FileFormatReadResult =
   | {
       kind: "items";
       items: Item[];
+      image?: {
+        book: import("../../shared/image").ImageBook;
+        records: import("../../shared/image").ImageRecord[];
+      };
       file_type: ItemFileType;
       game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
       warnings?: SourceFileParseWarning[];
@@ -81,5 +85,6 @@ export interface FileFormatWriteContext {
 
 /** 文件调度拥有源文件集合，单格式写回上下文只携带 IO。 */
 export type FileFormatServiceWriteContext = FileFormatWriteContext & {
+  image_snapshot?: import("../../shared/image").ImageGenerationSnapshot;
   source_files: readonly { path: string; file_type: string }[]; // 原始资产的文件集合，零条目字幕和 MESSAGEJSON 也参与导出
 };

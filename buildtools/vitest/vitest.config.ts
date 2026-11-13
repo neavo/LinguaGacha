@@ -6,8 +6,9 @@ import { frontend_resolve_alias } from "../vite/project-paths.js";
 const INTEGRATION_TESTS = [
   "src/backend/agent/media/index.test.ts",
   "src/backend/agent/media/visualize.test.ts",
-  "src/backend/agent/media/models.test.ts",
+  "src/backend/agent/inference/models.test.ts",
   "src/backend/agent/media/worker.test.ts",
+  "src/backend/agent/image/worker.test.ts",
   "src/backend/agent/npm/index.test.ts",
   "src/backend/agent/workspace/runtime/bootstrap.test.ts",
   "src/backend/agent/workspace/runtime/module-resolution.test.ts",
@@ -16,6 +17,7 @@ const INTEGRATION_TESTS = [
   "src/backend/file/rpgmaker-rgss/ruby.test.ts",
   "src/backend/file/shared/game/prepare-worker.test.ts",
   "src/native/pdf-host.test.ts",
+  "src/native/image-host.test.ts",
   "src/native/app-locale.test.ts",
   "src/native/native-fs.test.ts",
 ];

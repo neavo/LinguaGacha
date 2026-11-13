@@ -67,6 +67,7 @@ export const zh_cn_project = {
     progress: "翻译进度",
   },
   formats: {
+    image: "图片",
     media: "音视频",
     title_tooltip: "更快更好更稳定",
     deprecated_tooltip: "已不是最佳选择，请优先使用上述格式",

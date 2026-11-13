@@ -261,6 +261,14 @@ const FILE_TARGET_SCHEMA = Type.String({
 
 /** 文件变更独立提交，更新只改名、移动或排序。 */
 export const AGENT_WORKSPACE_FILE_SCHEMAS = Object.freeze({
+  replaces: Type.Object(
+    {
+      file_path: FILE_TARGET_SCHEMA,
+      source_path: Type.String({ minLength: 1 }),
+      inheritance_mode: Type.Enum(IMPORT_INHERITANCE_MODES),
+    },
+    { additionalProperties: false },
+  ),
   creates: Type.Object(
     {
       source_path: Type.String({

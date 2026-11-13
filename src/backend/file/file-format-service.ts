@@ -1,4 +1,6 @@
-import { GenericFormat, GENERIC_ITEMS_MEMBER } from "./generic/generic-format";
+import { GenericFormat } from "./generic/generic-format";
+import { GENERIC_ITEMS_MEMBER } from "./shared/archive-records";
+import { ImageFormat, IMAGE_WRITEBACK_MEMBER } from "./image/image-format";
 import { group_items } from "./shared/file-format-helpers";
 import { collect_game_file_list } from "./shared/game/source-files";
 import { resolve_game_source_input } from "./shared/game/source-input";
@@ -83,6 +85,7 @@ export class FileFormatService {
 
   private readonly native_fs: NativeFs; // 文件发现与字幕写入复用的磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
+  private readonly image = new ImageFormat();
   private readonly generic = new GenericFormat();
   private readonly media = new GenericFormat("MEDIA");
   private readonly txt: TXTFormat;
@@ -159,6 +162,7 @@ export class FileFormatService {
       ".pdf": "PDF",
       ".generic": "GENERIC",
       ".media": "MEDIA",
+      ".image": "IMAGE",
     };
     let type =
       (file_type === "NONE" ? undefined : file_type) ??
@@ -210,6 +214,8 @@ export class FileFormatService {
           file_type === "XLSX" || file_type === "WOLFXLSX" ? file_type : undefined,
         )),
       };
+    if (type === "IMAGE")
+      return { kind: "items", file_type: "IMAGE", ...(await this.image.read(content, rel_path)) };
     const formats = {
       GENERIC: this.generic,
       MEDIA: this.media,
@@ -557,12 +563,39 @@ export class FileFormatService {
     await this.write_messagejson(items, context);
     if (writeback_path !== undefined) {
       // 视频字幕的样式与渲染归 Agent，与通用数据共用写回输入。
-      const groups = { GENERIC: group_items(items, "GENERIC"), MEDIA: group_items(items, "MEDIA") };
+      const groups = {
+        GENERIC: group_items(items, "GENERIC"),
+        MEDIA: group_items(items, "MEDIA"),
+        IMAGE: group_items(items, "IMAGE"),
+      };
       for (const file of context.source_files) {
-        if (file.file_type !== "GENERIC" && file.file_type !== "MEDIA") continue;
+        if (
+          file.file_type !== "GENERIC" &&
+          file.file_type !== "MEDIA" &&
+          file.file_type !== "IMAGE"
+        )
+          continue;
         const asset = await asset_reader(file.path);
         if (asset === null)
           throw new AppError("file.not_found", { public_details: { file: file.path } });
+        if (file.file_type === "IMAGE") {
+          if (!context.image_snapshot) throw new Error("Missing generation snapshot");
+          const output = await this.image.render(
+            asset,
+            groups.IMAGE.get(file.path) ?? [],
+            file.path,
+            context.image_snapshot,
+          );
+          await this.native_fs.write_file(
+            path.join(writeback_path, file.path, GENERIC_ITEMS_MEMBER),
+            output.text,
+          );
+          await this.native_fs.write_file(
+            path.join(writeback_path, file.path, IMAGE_WRITEBACK_MEMBER),
+            JSON.stringify(output.manifest),
+          );
+          continue;
+        }
         const output = await this.generic.render_text(
           asset,
           groups[file.file_type].get(file.path) ?? [],

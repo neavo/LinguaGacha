@@ -1,4 +1,4 @@
-import { GENERIC_ITEMS_MEMBER, GENERIC_ITEMS_SCHEMA } from "../../file/generic/generic-format";
+import { GENERIC_ITEMS_MEMBER, GENERIC_ITEMS_SCHEMA } from "../../file/shared/archive-records";
 import { create_schema_renderer } from "../workspace/schema-description";
 import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";

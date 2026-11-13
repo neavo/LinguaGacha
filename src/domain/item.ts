@@ -39,6 +39,7 @@ export const ITEM_FILE_TYPES = [
   "MESSAGEJSON",
   "GENERIC",
   "MEDIA",
+  "IMAGE",
 ] as const;
 
 const ITEM_NAME_SCHEMA = Type.Union([Type.String(), Type.Null()]);

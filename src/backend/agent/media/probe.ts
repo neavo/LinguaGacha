@@ -1,5 +1,5 @@
 import { operate } from "./engine";
-import { DeviceFailure } from "./inference-engine";
+import { DeviceFailure } from "../inference/client";
 import { require_models } from "./preparation";
 
 export type GpuProbeResult =

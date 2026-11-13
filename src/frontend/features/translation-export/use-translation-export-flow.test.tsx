@@ -225,42 +225,45 @@ describe("useTranslationExportFlow", () => {
     expect(latest_flow?.state.phase).toBe("closed");
   });
 
-  it.each(["GENERIC", "MEDIA"])("%s 文件报告范围，交给 Agent 只预填导出任务", async (file_type) => {
-    mocks.warnings.mockResolvedValue({
-      projectPath: mocks.project_snapshot.path,
-      sectionRevisions: { files: 9 },
-      warningCount: 0,
-    });
-    mocks.workbench.mockResolvedValue({
-      projectPath: mocks.project_snapshot.path,
-      sectionRevisions: { files: 9 },
-      snapshot: {
-        entries: [
-          { file_type, rel_path: "asset" },
-          { file_type: "TXT", rel_path: "native.txt" },
-        ],
-      },
-    });
-    await render_probe();
-    act(() => latest_flow?.request_export());
-    await flush_microtasks();
-    expect(latest_flow?.state).toEqual({
-      phase: "ready",
-      step: "files",
-      warning_count: 0,
-      has_agent_files: true,
-      has_supported_files: true,
-      files_revision: 9,
-    });
-    expect(mocks.api_fetch).not.toHaveBeenCalled();
-    act(() => latest_flow?.jump_to_agent());
-    const text = mocks.navigate_to_agent.mock.calls[0]![0].text;
-    expect(text).toContain("app.translation_export.agent_request");
-    expect(
-      find_agent_reference_ranges(text).some(({ reference }) => reference.kind === "skill"),
-    ).toBe(true);
-    expect(latest_flow?.state.phase).toBe("closed");
-  });
+  it.each(["GENERIC", "MEDIA", "IMAGE"])(
+    "%s 文件报告范围，交给 Agent 只预填导出任务",
+    async (file_type) => {
+      mocks.warnings.mockResolvedValue({
+        projectPath: mocks.project_snapshot.path,
+        sectionRevisions: { files: 9 },
+        warningCount: 0,
+      });
+      mocks.workbench.mockResolvedValue({
+        projectPath: mocks.project_snapshot.path,
+        sectionRevisions: { files: 9 },
+        snapshot: {
+          entries: [
+            { file_type, rel_path: "asset" },
+            { file_type: "TXT", rel_path: "native.txt" },
+          ],
+        },
+      });
+      await render_probe();
+      act(() => latest_flow?.request_export());
+      await flush_microtasks();
+      expect(latest_flow?.state).toEqual({
+        phase: "ready",
+        step: "files",
+        warning_count: 0,
+        has_agent_files: true,
+        has_supported_files: true,
+        files_revision: 9,
+      });
+      expect(mocks.api_fetch).not.toHaveBeenCalled();
+      act(() => latest_flow?.jump_to_agent());
+      const text = mocks.navigate_to_agent.mock.calls[0]![0].text;
+      expect(text).toContain("app.translation_export.agent_request");
+      expect(
+        find_agent_reference_ranges(text).some(({ reference }) => reference.kind === "skill"),
+      ).toBe(true);
+      expect(latest_flow?.state.phase).toBe("closed");
+    },
+  );
 
   it("仅 Agent 资产不能直接导出，空集合结束流程", async () => {
     mocks.workbench.mockResolvedValueOnce({

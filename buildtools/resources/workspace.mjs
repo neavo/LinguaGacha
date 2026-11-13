@@ -22,6 +22,7 @@ const WORKSPACE_PACKAGES = [
   },
   { name: "@lg/uv", entries: { index: "src/backend/agent/uv/index.ts" } },
   { name: "@lg/npm", entries: { index: "src/backend/agent/npm/index.ts" } },
+  { name: "@lg/image", entries: { index: "src/backend/agent/image/index.ts" } },
   { name: "@lg/media", entries: { index: "src/backend/agent/media/index.ts" } },
   { name: "@lg/search", entries: { index: "src/backend/agent/search/index.ts" } },
   {
@@ -42,6 +43,7 @@ export async function build_workspace_resources({ root, output, manifest }) {
     "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
     "runtime/prepare": "src/backend/agent/node/prepare.ts",
     "runtime/pdf-worker": "src/backend/file/pdf/pdf-worker-entry.ts",
+    "runtime/image-worker": "src/backend/agent/image/worker.ts",
     "runtime/media-worker": "src/backend/agent/media/worker.ts",
   };
   for (const definition of WORKSPACE_PACKAGES) {
@@ -86,6 +88,18 @@ export async function build_workspace_resources({ root, output, manifest }) {
       },
     },
   });
+  await cp(
+    path.join(root, "src/backend/agent/inference/channel.py"),
+    path.join(output, "runtime/channel.py"),
+  );
+  await cp(
+    path.join(root, "src/backend/agent/image/image.py"),
+    path.join(output, "runtime/image.py"),
+  );
+  await cp(
+    path.join(root, "src/backend/agent/image/layout.js"),
+    path.join(output, "runtime/image-layout.js"),
+  );
   // 媒体前后处理 helper 由 `@lg/media` 以受控解释器直接运行。
   for (const file of ["media.py", "fsmn_vad.py", "visualize.py"])
     await cp(path.join(root, "src/backend/agent/media", file), path.join(output, "runtime", file));

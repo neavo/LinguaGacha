@@ -7,6 +7,7 @@ describe("database_error", () => {
     for (const [errcode, code] of [
       [5, "database.busy"],
       [517, "database.busy"],
+      [18, "file.asset_too_large"],
       [6, "runtime.internal_invariant"],
     ] as const) {
       const cause = Object.assign(new Error("sqlite failure"), { errcode });
