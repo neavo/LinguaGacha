@@ -34,7 +34,7 @@ description: 导入、分析、翻译、审校、修改或导出独立图片、�
 
 1. **JS 依赖（`@lg/npm`）**：安装 `onnxruntime-node@${INFERENCE_DEPENDENCIES.ort}`（使用 `--save-exact`）。忽略 npm 拦截安装脚本的警告，不执行 `install-scripts approve`。
 2. **Python 依赖（`@lg/uv`）**：添加 `numpy==${INFERENCE_DEPENDENCIES.numpy}` 与 `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`。声明已存在而 `.venv` 缺失时执行 `uv.run(['sync', '--inexact'])`。
-3. **模型准备**：调用 `prepare` 或 `execute` 前先执行 `await prepare_models()` 下载或校验 `shadow.onnx` 与 `lama.onnx`。
+3. **模型准备**：调用 `prepare` 或 `execute` 前先执行 `await prepare_models()` 下载或校验候选检测与背景修复模型。
 4. **设备基线**：当前仅完成 `device: "cpu"` 验收，所有 `prepare` 与 `execute` 均传 `"cpu"`。
 
 ### 候选检测、补漏与原文核对

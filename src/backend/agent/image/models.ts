@@ -4,7 +4,7 @@ import { inference_configuration } from "../inference/runtime";
 // 来源提交与摘要共同固定模型身份，准备阶段不追踪远端最新版本。
 export const IMAGE_MODELS = Object.freeze({
   shadow: {
-    file: "image/shadow.onnx",
+    file: "manga109_yolo26/model.onnx",
     size: 41587926,
     sha256: "2a30ea55e1da929857a35d4951a74e42b433f986f3c60723c7c1c76db7677c1a",
     urls: [
@@ -12,7 +12,7 @@ export const IMAGE_MODELS = Object.freeze({
     ],
   },
   inpaint: {
-    file: "image/lama.onnx",
+    file: "lama/lama-large-fp32-unified-webgpu.onnx",
     size: 204452450,
     sha256: "77f755491ce57992a873bc5d007ef9f58b0ff84b38206784f72d3db219bed4ea",
     urls: [
