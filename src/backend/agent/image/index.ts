@@ -7,6 +7,7 @@ import { IMAGE_MODELS } from "./models";
 import { image_metadata } from "../../file/image/image-metadata";
 import {
   image_sha256,
+  image_records_sha256,
   validate_image_book,
   read_image_package,
 } from "../../file/image/image-format";
@@ -22,55 +23,42 @@ import type {
 } from "../../../shared/image";
 export { prepare_models } from "./models";
 export { INFERENCE_DEPENDENCIES } from "../inference/environment";
-export type {
-  ImageBook,
-  ImagePage,
-  ImageRegion,
-  ImageGroup,
-  ImageRecord,
-} from "../../../shared/image";
+export type { ImageBook, ImagePage, ImageRegion, ImageRecord } from "../../../shared/image";
 
-const STATE = "draft.json";
-const ALGORITHM_VERSION = 2;
-const LOCK_RETRY = { retries: 100, minTimeout: 100, maxTimeout: 1000 };
+const STATE = "draft.json"; // 工作区内的唯一草稿状态文件名。
+const ALGORITHM_VERSION = 3; // 像素修复与排版版本，变更后拒绝直接发布旧执行。
+const LOCK_RETRY = { retries: 100, minTimeout: 100, maxTimeout: 1000 }; // 工作区文件锁退避策略。
 type Draft = {
   revision: number;
   confirmed: boolean;
   book: ImageBook;
   records: ImageRecord[];
   sourceSha256?: string;
-};
-type Measurement = ImageLayoutRequest["regions"][number]["measurement"];
+}; // 工作区持久化草稿状态。
 type Repair = {
   base: string;
-  groups: { groupId: string; ready: boolean; reason: string | null; mask: string }[];
-};
+  regions: { regionId: string; ready: boolean; reason: string | null; mask: string }[];
+}; // 像素修复阶段输出的底图与各区域笔画掩码。
 type LayoutRegion = {
   regionId: string;
-  groupId: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  mask: string;
-  measurement: Measurement;
-};
-type RunGroup = {
+  style: NonNullable<ImagePage["regions"][number]["style"]>;
+}; // 像素排版计算出的安全矩形与默认样式。
+type RunRegion = {
   pageId: string;
-  groupId: string;
+  regionId: string;
   targeted: boolean;
   ready: boolean;
   reason: string | null;
-  mask: string;
-  tiles: ImageTile[];
-};
+}; // 单次执行记录的区域可交付状态。
 type RunPage = {
   pageId: string;
-  source: string;
-  base: string;
   preview: string;
-  groups: RunGroup[];
-};
+  regions: RunRegion[];
+}; // 单次执行记录的页面预览与区域结果。
 type Execution = {
   version: number;
   executionId: string;
@@ -79,8 +67,7 @@ type Execution = {
   writebackDirectory: string;
   pages: RunPage[];
   artifacts: Record<string, string>;
-};
-export type ImageReview = { pageId: string; groupId: string; decision: "accept" | "preserve" };
+}; // 单次执行快照，供复核与原子发布校验。
 
 /** 流式计算原件与产物摘要，避免额外持有整本图片字节。 */
 async function digest(file: string): Promise<string> {
@@ -106,6 +93,7 @@ async function locked<T>(directory: string, action: () => Promise<T>): Promise<T
     await release();
   }
 }
+/** 计算草稿核心内容摘要，供发布前确认版面与原文未被修改。 */
 const state_digest = (draft: Draft) =>
   image_sha256(JSON.stringify({ book: draft.book, records: draft.records }));
 /** 读取草稿时核对包契约，避免手工编辑绕过保存入口。 */
@@ -132,7 +120,16 @@ export async function prepare(options: {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     const book: ImageBook = { version: 1, bookId: randomUUID(), pages: [] };
-    const candidates: unknown[] = [];
+    const candidates: {
+      pageId: string;
+      result: {
+        regions: ImagePage["regions"];
+        preview: string;
+        previewScale: number;
+        candidates: { regionId: string; score: number; uncertain: boolean }[];
+      };
+    }[] = [];
+    const records: ImageRecord[] = [];
     await fs.make_dir_async(path.join(directory, "originals"));
     for (const source of options.sources) {
       const metadata = image_metadata(fs.read_file(source));
@@ -141,11 +138,11 @@ export async function prepare(options: {
       const file = path.join(directory, original);
       fs.copy_file(source, file);
       const sha256 = await digest(file);
-      const result = await pixels(
+      const result = (await pixels(
         "prepare",
         { source: file, output: path.join(directory, "candidates", pageId) },
         options.device,
-      );
+      )) as (typeof candidates)[number]["result"];
       book.pages.push({
         pageId,
         original,
@@ -153,13 +150,13 @@ export async function prepare(options: {
         width: metadata.width,
         height: metadata.height,
         orientation: metadata.orientation,
-        regions: [],
-        groups: [],
+        regions: result.regions,
       });
+      records.push(...result.regions.map(({ regionId }) => ({ pageId, regionId, message: "" })));
       candidates.push({ pageId, result });
     }
-    const draft: Draft = { revision: 0, confirmed: false, book, records: [] };
-    validate_image_book(book, []);
+    const draft: Draft = { revision: 0, confirmed: false, book, records };
+    validate_image_book(book, records);
     write_json(path.join(directory, STATE), draft);
     write_json(path.join(directory, "candidates.json"), candidates);
     return { ...draft, candidates };
@@ -182,6 +179,7 @@ export async function apply(
     const current = await load(directory);
     if (current.revision !== expectedRevision) throw new Error("Stale image draft revision");
     const next: Draft = {
+      ...(current.sourceSha256 ? { sourceSha256: current.sourceSha256 } : {}),
       revision: current.revision + 1,
       confirmed: change.confirmed,
       book: { ...current.book, pages: structuredClone(change.pages) },
@@ -244,14 +242,6 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
       if ((await digest(file)) !== page.sha256) throw new Error("Original digest mismatch");
       fs.copy_file(file, path.join(directory, page.original));
     }
-    for (const page of book.pages)
-      for (const group of page.groups)
-        if (group.mask) {
-          const file = path.join(source, group.mask.path);
-          if ((await digest(file)) !== group.mask.sha256) throw new Error("Mask digest mismatch");
-          await fs.make_dir_async(path.dirname(path.join(directory, group.mask.path)));
-          fs.copy_file(file, path.join(directory, group.mask.path));
-        }
     const { sourceSha256 } = read_json<{ sourceSha256: string }>(
       path.join(source, "image-source.json"),
     );
@@ -261,7 +251,8 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
   });
 }
 
-async function writeback(directory: string, draft: Draft) {
+/** 校验并读取写回目录内的译文条目和快照清单，确保与当前草稿严格绑定。 */
+function writeback(directory: string, draft: Draft) {
   const text = fs.read_file(path.join(directory, "items.json"));
   const manifest = read_json<ImageWriteback>(path.join(directory, "image-writeback.json"));
   const records = JSON.parse(text.toString("utf8")) as ImageRecord[];
@@ -269,7 +260,7 @@ async function writeback(directory: string, draft: Draft) {
     manifest.version !== 1 ||
     !manifest.generationId ||
     manifest.sourceSha256 !== draft.sourceSha256 ||
-    manifest.stateSha256 !== state_digest(draft) ||
+    manifest.recordsSha256 !== image_records_sha256(draft.book, draft.records) ||
     manifest.itemsSha256 !== image_sha256(text)
   )
     throw new Error("Image generation snapshot does not match source or text");
@@ -302,7 +293,7 @@ export async function execute(options: {
   return locked(directory, async () => {
     const draft = await load(directory);
     if (!draft.confirmed) throw new Error("Unconfirmed image draft");
-    const snapshot = await writeback(path.resolve(options.writebackDirectory), draft);
+    const snapshot = writeback(path.resolve(options.writebackDirectory), draft);
     const executionId = randomUUID(),
       runDirectory = path.join(directory, "runs", executionId);
     await fs.make_dir_async(runDirectory);
@@ -318,17 +309,15 @@ export async function execute(options: {
     for (const page of draft.book.pages) {
       const source = path.join(directory, page.original);
       if ((await digest(source)) !== page.sha256) throw new Error("Original changed");
-      for (const group of page.groups)
-        if (
-          group.mask &&
-          (await digest(path.join(directory, group.mask.path))) !== group.mask.sha256
-        )
-          throw new Error("Image mask changed");
       const repairKey = image_sha256(
         JSON.stringify({
           version: ALGORITHM_VERSION,
           source: [page.sha256, page.width, page.height, page.orientation],
-          groups: page.groups,
+          regions: page.regions.map(({ regionId, bbox, disposition }) => ({
+            regionId,
+            bbox,
+            disposition,
+          })),
           model: IMAGE_MODELS.inpaint.sha256,
           device: options.device,
         }),
@@ -350,22 +339,14 @@ export async function execute(options: {
       }
       if (!repair) {
         const output = path.join(repairDirectory, randomUUID());
-        repair = (await pixels(
-          "repair",
-          { root: directory, source, page, output },
-          options.device,
-        )) as Repair;
+        repair = (await pixels("repair", { source, page, output }, options.device)) as Repair;
         const artifacts: Record<string, string> = {};
-        for (const file of [repair.base, ...repair.groups.map((group) => group.mask)])
+        for (const file of [repair.base, ...repair.regions.map((region) => region.mask)])
           artifacts[file] = await digest(file);
         await fs.make_dir_async(repairDirectory);
         write_json(report, { result: repair, artifacts });
       }
-      const layoutRegions = (await pixels("layout", {
-        source,
-        page,
-        output: path.join(runDirectory, page.pageId + "-layout"),
-      })) as LayoutRegion[];
+      const layoutRegions = (await pixels("layout", { source, page })) as LayoutRegion[];
       const pageRecords = new Map(
         snapshot.records.map((record, row) => [
           record.pageId + "/" + record.regionId,
@@ -382,10 +363,8 @@ export async function execute(options: {
               regionId: region.regionId,
               width: region.width,
               height: region.height,
-              mask: region.mask,
-              measurement: region.measurement,
               direction: intent.direction,
-              style: intent.style,
+              style: region.style,
               text: pageRecords.get(page.pageId + "/" + region.regionId)!.record.message,
             };
           }),
@@ -393,42 +372,32 @@ export async function execute(options: {
       const layout = request.regions.length
         ? ((await workspace_requests().call(request)) as ImageLayoutResult)
         : { regions: [] };
-      const groups: RunGroup[] = page.groups.map((group) => {
-        const prepared = repair.groups.find((item) => item.groupId === group.groupId)!;
-        const targets = group.regionIds.filter(
-          (id) =>
-            page.regions.find((region) => region.regionId === id)!.disposition === "translate",
-        );
-        const complete = targets.every((id) => pageRecords.get(page.pageId + "/" + id)?.completed);
-        const ready =
-          prepared.ready &&
-          complete &&
-          targets.every((id) => layout.regions.find((region) => region.regionId === id)?.ready);
+      const compositeRegions = page.regions.map((region) => {
+        const prepared = repair.regions.find((item) => item.regionId === region.regionId)!;
+        const record = pageRecords.get(page.pageId + "/" + region.regionId);
+        const rendered = layout.regions.find((item) => item.regionId === region.regionId);
+        const position = layoutRegions.find((item) => item.regionId === region.regionId);
+        const ready = prepared.ready && !!record?.completed && !!rendered?.ready;
         return {
           pageId: page.pageId,
-          groupId: group.groupId,
-          targeted: targets.length > 0,
+          regionId: region.regionId,
+          targeted: !!record,
           ready,
           reason: !prepared.ready
             ? prepared.reason
-            : !complete
+            : !record?.completed
               ? "incomplete_text"
-              : !ready
-                ? "needs_layout"
+              : !rendered?.ready
+                ? (rendered?.reason ?? "needs_layout")
                 : null,
           mask: prepared.mask,
           tiles: ready
-            ? targets.flatMap((id) => {
-                const position = layoutRegions.find((region) => region.regionId === id)!;
-                return layout.regions
-                  .find((region) => region.regionId === id)!
-                  .tiles.map((tile) => ({
-                    ...tile,
-                    x: tile.x + position.x,
-                    y: tile.y + position.y,
-                  }));
-              })
-            : [],
+            ? rendered!.tiles.map((tile) => ({
+                ...tile,
+                x: tile.x + position!.x,
+                y: tile.y + position!.y,
+              }))
+            : ([] as ImageTile[]),
         };
       });
       const preview = path.join(runDirectory, "page-" + page.pageId + ".png");
@@ -436,22 +405,18 @@ export async function execute(options: {
         source,
         base: repair.base,
         output: preview,
-        groups: groups.map((group) => ({ ...group, accepted: group.ready })),
-      })) as { rejectedGroups: string[] };
-      for (const group of groups)
-        if (composite.rejectedGroups.includes(group.groupId)) {
-          group.ready = false;
-          group.reason = "text_collision";
-          group.tiles = [];
-        }
-      execution.pages.push({ pageId: page.pageId, source, base: repair.base, preview, groups });
-      for (const file of [
-        source,
-        repair.base,
-        preview,
-        ...groups.flatMap((group) => [group.mask, ...group.tiles.map((tile) => tile.path)]),
-      ])
-        execution.artifacts[file] = await digest(file);
+        regions: compositeRegions.map((region) => ({ ...region, accepted: region.ready })),
+      })) as { rejectedRegions: string[] };
+      const rejected = new Set(composite.rejectedRegions);
+      const regions: RunRegion[] = compositeRegions.map((region) => ({
+        pageId: region.pageId,
+        regionId: region.regionId,
+        targeted: region.targeted,
+        ready: region.ready && !rejected.has(region.regionId),
+        reason: rejected.has(region.regionId) ? "text_collision" : region.reason,
+      }));
+      execution.pages.push({ pageId: page.pageId, preview, regions });
+      for (const file of [source, preview]) execution.artifacts[file] = await digest(file);
     }
     write_json(path.join(runDirectory, "execution.json"), execution);
     return {
@@ -461,7 +426,7 @@ export async function execute(options: {
       pages: execution.pages.map((page) => ({
         pageId: page.pageId,
         preview: page.preview,
-        groups: page.groups.map(({ groupId, ready, reason }) => ({ groupId, ready, reason })),
+        regions: page.regions.map(({ regionId, ready, reason }) => ({ regionId, ready, reason })),
       })),
     };
   });
@@ -472,7 +437,6 @@ export async function publish(options: {
   workDirectory: string;
   executionId: string;
   outputDirectory: string;
-  reviews: ImageReview[];
 }) {
   const directory = path.resolve(options.workDirectory),
     parent = path.resolve(options.outputDirectory);
@@ -501,59 +465,37 @@ export async function publish(options: {
       const draft = await load(directory);
       if (state_digest(draft) !== execution.stateSha256)
         throw new Error("Image structure changed after review");
-      const current = await writeback(execution.writebackDirectory, draft);
+      const current = writeback(execution.writebackDirectory, draft);
       if (JSON.stringify(current.manifest) !== JSON.stringify(execution.manifest))
         throw new Error("Generation changed after review");
       for (const [file, sha256] of Object.entries(execution.artifacts))
         if ((await digest(file)) !== sha256) throw new Error("Reviewed image artifact changed");
-      const groups = execution.pages.flatMap((page) => page.groups);
-      if (
-        options.reviews.length !== groups.length ||
-        new Set(options.reviews.map((review) => review.pageId + "/" + review.groupId)).size !==
-          groups.length
-      )
-        throw new Error("Review every editing group exactly once");
-      const decisions = groups.map((group) => {
-        const review = options.reviews.find(
-          (review) => review.pageId === group.pageId && review.groupId === group.groupId,
-        );
-        if (
-          !review ||
-          (review.decision !== "accept" && review.decision !== "preserve") ||
-          (review.decision === "accept" && !group.ready)
-        )
-          throw new Error("Editing group is not ready for acceptance");
-        return { ...group, accepted: review.decision === "accept" };
-      });
       const temporary = path.join(parent, ".image-" + randomUUID());
       await fs.make_dir_exclusive(temporary);
       const pages = [];
       for (const [index, page] of execution.pages.entries()) {
         const name = `${String(index + 1).padStart(4, "0")}-${page.pageId}.png`;
-        await pixels("composite", {
-          source: page.source,
-          base: page.base,
-          output: path.join(temporary, name),
-          groups: decisions.filter((group) => group.pageId === page.pageId),
-        });
+        const output = path.join(temporary, name);
+        fs.copy_file(page.preview, output);
         pages.push({
           pageId: page.pageId,
           file: name,
-          sha256: await digest(path.join(temporary, name)),
+          sha256: await digest(output),
         });
       }
+      const regions = execution.pages.flatMap((page) => page.regions);
       const manifest = {
         executionId: execution.executionId,
         inputSha256: image_sha256(JSON.stringify(execution)),
         generation: execution.manifest,
-        status: decisions.every((group) => group.accepted || !group.targeted)
+        status: regions.every((region) => region.ready || !region.targeted)
           ? "complete"
           : "partial",
         pages,
-        groups: decisions.map(({ pageId, groupId, accepted, reason }) => ({
+        regions: regions.map(({ pageId, regionId, ready, reason }) => ({
           pageId,
-          groupId,
-          accepted,
+          regionId,
+          accepted: ready,
           reason,
         })),
       };

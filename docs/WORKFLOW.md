@@ -187,7 +187,7 @@ uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/ag
 
 部署验证可把最后一个参数改为部署后的 `runtime` 目录。排版宿主变化运行 `npm test -- --project integration src/native/image-host.test.ts`，覆盖真实字体、横竖排、空译文、分块和取消收尾。共享推理变化还需运行下方媒体回归与 `inference/models.test.ts`，工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
 
-真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、组恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
+真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、区域恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
 
 #### 媒体推理
 

@@ -246,9 +246,9 @@ PDF API 以字节交换文档，支持跨版本、线程和进程调用。`@lg/p
 
 ### 图片计算
 
-图片和媒体必须共用 GPU 占用与关闭失败状态，防止一个 SDK 续跑时另一个 SDK 仍持有原生资源。图片逐作业退出 Worker，媒体保留音频流与双视觉路由。
+图片和媒体共用 GPU 占用与关闭失败状态，防止一个 SDK 续跑时另一个 SDK 仍持有原生资源。单次像素作业内复用模型 Worker 与会话，作业结束后立即退出。
 
-图片排版只执行固定应用模板，语义复核属于产品 Agent。工程事实和编辑组恢复见 [BACKEND](BACKEND.md#图片)，运行占用沿用 [ARCHITECTURE](ARCHITECTURE.md#占用持续到收尾)。
+图片排版只执行固定应用模板，语义复核归属产品 Agent。工程事实与区域恢复见 [BACKEND](BACKEND.md#图片)，运行占用沿用 [ARCHITECTURE](ARCHITECTURE.md#占用持续到收尾)。
 
 ### 时限与执行观察
 

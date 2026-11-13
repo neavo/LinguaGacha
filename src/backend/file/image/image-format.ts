@@ -14,18 +14,35 @@ import { read_zip_members, validate_zip_member_path } from "../shared/zip-member
 import { read_archive_records } from "../shared/archive-records";
 import { write_message_records } from "../shared/message-records";
 
-export const IMAGE_STATE_MEMBER = "image.json";
-export const IMAGE_WRITEBACK_MEMBER = "image-writeback.json";
-export const IMAGE_LIMITS = Object.freeze({
+const IMAGE_STATE_MEMBER = "image.json"; // 归档内保存页与区域元数据的 JSON 成员名。
+export const IMAGE_WRITEBACK_MEMBER = "image-writeback.json"; // 导出写回目录内的快照清单文件名。
+const IMAGE_LIMITS = Object.freeze({
   members: 30000,
   expandedBytes: 950_000_000,
   memberBytes: 256_000_000,
   pagePixels: 100_000_000,
   jsonBytes: 16_000_000,
-});
-const VALIDATOR = Compile(IMAGE_BOOK_SCHEMA);
+}); // 压缩包成员数量、体积与单页像素安全上限。
+const VALIDATOR = Compile(IMAGE_BOOK_SCHEMA); // 预编译的图片书结构校验器。
+/** 计算字节或文本的十六进制 SHA-256 摘要。 */
 export const image_sha256 = (bytes: Uint8Array | string): string =>
   createHash("sha256").update(bytes).digest("hex");
+
+/** 词条身份与原文绑定生成快照，视觉调整不重建工程条目。 */
+export const image_records_sha256 = (book: ImageBook, records: readonly ImageRecord[]): string =>
+  image_sha256(
+    JSON.stringify({
+      bookId: book.bookId,
+      pages: book.pages.map(({ pageId, sha256, width, height, orientation }) => ({
+        pageId,
+        sha256,
+        width,
+        height,
+        orientation,
+      })),
+      records,
+    }),
+  );
 
 /** 原中央目录先查重复与预算，避免 JSZip 覆盖同名成员后丢失证据。 */
 function validate_directory(content: Uint8Array): void {
@@ -84,6 +101,7 @@ export function validate_image_book(
   if (!VALIDATOR.Check(value)) throw new Error("Invalid image state");
   const ids = new Set<string>();
   const translated = new Set<string>();
+  const regions = new Set<string>();
   for (const page of value.pages) {
     if (ids.has(page.pageId) || page.width * page.height > IMAGE_LIMITS.pagePixels)
       throw new Error("Invalid image page");
@@ -94,58 +112,16 @@ export function validate_image_book(
     )
       throw new Error("Invalid original path");
     const regionIds = new Set<string>();
-    const checkPolygon = (polygon: { x: number; y: number }[]) => {
-      if (
-        polygon.some(
-          (p) =>
-            !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x > page.width || p.y > page.height,
-        )
-      )
-        throw new Error("Geometry outside image");
-      const area = polygon.reduce((sum, p, i) => {
-        const q = polygon[(i + 1) % polygon.length]!;
-        return sum + p.x * q.y - q.x * p.y;
-      }, 0);
-      if (Math.abs(area) < 1) throw new Error("Empty polygon");
-    };
     for (const region of page.regions) {
       if (regionIds.has(region.regionId)) throw new Error("Duplicate region");
       regionIds.add(region.regionId);
-      if (region.disposition === "translate") {
-        translated.add(page.pageId + "/" + region.regionId);
-        if (!region.layout.length) throw new Error("Missing layout");
-      }
-      for (const rect of region.source)
-        if (
-          rect.width <= 0 ||
-          rect.height <= 0 ||
-          rect.x + rect.width > page.width ||
-          rect.y + rect.height > page.height
-        )
-          throw new Error("Invalid source geometry");
-      region.layout.forEach(checkPolygon);
+      const key = page.pageId + "/" + region.regionId;
+      regions.add(key);
+      if (region.disposition === "translate") translated.add(key);
+      const rect = region.bbox;
+      if (rect.x + rect.width > page.width || rect.y + rect.height > page.height)
+        throw new Error("Invalid source geometry");
     }
-    const grouped = new Set<string>(),
-      groupIds = new Set<string>();
-    for (const group of page.groups) {
-      if (groupIds.has(group.groupId)) throw new Error("Duplicate group");
-      groupIds.add(group.groupId);
-      for (const id of group.regionIds) {
-        if (!regionIds.has(id) || grouped.has(id)) throw new Error("Invalid group membership");
-        grouped.add(id);
-      }
-      if (
-        group.mask &&
-        (validate_zip_member_path(group.mask.path) !== group.mask.path ||
-          !/^masks\/[^/]+\.png$/u.test(group.mask.path))
-      )
-        throw new Error("Invalid mask path");
-      if (group.mode !== "preserve" && !group.areas.length && !group.mask)
-        throw new Error("Missing edit area");
-      [...group.areas, ...group.protection].forEach(checkPolygon);
-    }
-    if (page.regions.some((r) => r.disposition === "translate" && !grouped.has(r.regionId)))
-      throw new Error("Ungrouped translation region");
   }
   const seen = new Set<string>();
   const pageOrder = new Map(value.pages.map((page, index) => [page.pageId, index]));
@@ -155,7 +131,7 @@ export function validate_image_book(
     if (
       typeof record.message !== "string" ||
       (record.name !== undefined && typeof record.name !== "string") ||
-      !translated.has(key) ||
+      !regions.has(key) ||
       seen.has(key)
     )
       throw new Error("Invalid image record reference");
@@ -164,9 +140,10 @@ export function validate_image_book(
     previousPage = order;
     seen.add(key);
   }
-  if (seen.size !== translated.size) throw new Error("Missing image records");
+  if ([...translated].some((key) => !seen.has(key))) throw new Error("Missing image records");
 }
 
+/** 读取并全面校验 `.image` 归档，确保目录、成员集合、原图摘要和头部尺寸一致。 */
 export async function read_image_package(content: Uint8Array, file: string) {
   try {
     validate_directory(content);
@@ -180,9 +157,6 @@ export async function read_image_package(content: Uint8Array, file: string) {
       "items.json",
       IMAGE_STATE_MEMBER,
       ...book.pages.map((p) => p.original),
-      ...book.pages.flatMap((page) =>
-        page.groups.flatMap((group) => (group.mask ? [group.mask.path] : [])),
-      ),
     ]);
     if (members.size !== expected.size || [...members.keys()].some((name) => !expected.has(name)))
       throw new Error("Unexpected image member");
@@ -198,22 +172,8 @@ export async function read_image_package(content: Uint8Array, file: string) {
         metadata.orientation !== page.orientation
       )
         throw new Error("Image metadata mismatch");
-      for (const group of page.groups)
-        if (group.mask) {
-          const mask = members.get(group.mask.path);
-          if (!mask) throw new Error("Missing image mask");
-          const bytes = await mask.async("uint8array"),
-            metadata = image_metadata(bytes);
-          if (
-            image_sha256(bytes) !== group.mask.sha256 ||
-            metadata.width !== page.width ||
-            metadata.height !== page.height ||
-            metadata.orientation !== 1
-          )
-            throw new Error("Image mask mismatch");
-        }
     }
-    return { book, records, members };
+    return { book, records };
   } catch (cause) {
     if (cause instanceof AppError && cause.code === "file.asset_too_large") throw cause;
     throw new AppError("file.invalid_structure", { cause, public_details: { file } });
@@ -265,7 +225,7 @@ export class ImageFormat {
     snapshot: ImageGenerationSnapshot,
   ): Promise<{ text: string; manifest: ImageWriteback }> {
     const { book, records } = await read_image_package(content, file);
-    const stateSha256 = image_sha256(JSON.stringify({ book, records }));
+    const recordsSha256 = image_records_sha256(book, records);
     const completed = new Map(items.map((item) => [item.row, item.status === "PROCESSED"]));
     write_message_records(records, items, file);
     const text = JSON.stringify(records, null, 4);
@@ -276,7 +236,7 @@ export class ImageFormat {
         version: 1,
         assetPath: file,
         sourceSha256: image_sha256(content),
-        stateSha256,
+        recordsSha256,
         itemsSha256: image_sha256(text),
         rows: records.map((record, row) => ({
           row,

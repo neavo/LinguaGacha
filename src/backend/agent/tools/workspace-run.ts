@@ -111,7 +111,7 @@ export function create_agent_workspace_run_tool(options: {
       "`getOutputPaths(directory?)` 按应用设置计算交付目录，传入绝对路径时改用该父目录。`manual` 为 `true` 表示用户设置为每次手动选择。返回的目录名已避开现有同名目录，但不会预先创建。",
       `每个通用包是 ZIP，根目录 \`${GENERIC_ITEMS_MEMBER}\` 使用下列结构，其余成员保存解析与写回所需底稿。数组下标是条目行号。写回输入为 \`<writeback.input_path>/<file_path>/${GENERIC_ITEMS_MEMBER}\`，记录数与源数组相同，正文与姓名已确定，私有字段保留。Agent 根据私有定位写回底稿。`,
       "`.media` 包使用同一记录结构，写回输入同样位于 `writeback.input_path`，其余成员与渲染见 `media` 技能。",
-      "`.image` 包保存原图与确认后的区域、编辑组结构，写回输入同样位于 `writeback.input_path/<file_path>/`，由 `@lg/image` 消费，详见 `image` 技能。",
+      "`.image` 包保存原图与确认后的文字区域，写回输入同样位于 `writeback.input_path/<file_path>/`，由 `@lg/image` 消费，详见 `image` 技能。",
       "```ts",
       create_schema_renderer(new Map([[GENERIC_ITEMS_SCHEMA, "GenericItems"]])).declarations(),
       "declare module '@lg/project' {",

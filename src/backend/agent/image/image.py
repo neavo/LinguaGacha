@@ -20,9 +20,10 @@ _spec = importlib.util.spec_from_file_location("inference_channel", _channel_pat
 _channel = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_channel)
 Channel = _channel.Channel
-CONF, IOU, MAX_DET = 0.1, 0.7, 300
-COLOR_DISTANCE, INSET = 32, 1
-INPAINT_EDGE, CONTEXT_RATIO, CONTEXT_MIN, MODEL_STRIDE = 2048, 0.35, 64, 64
+CONF, IOU, MAX_DET = 0.1, 0.7, 300  # 检测模型置信度、非极大值抑制与单页上限。
+BACKGROUND_SPREAD = 20  # 判定背景均匀可纯色直填的通道四分位差阈值。
+READING_ROW_RATIO, LAYOUT_EXPANSION_RATIO = 0.04, 0.25  # 阅读行分组高度比例与窄竖框留白扩展上限。
+INPAINT_EDGE, CONTEXT_RATIO, CONTEXT_MIN, MODEL_STRIDE = 2048, 0.35, 64, 64  # 修复模型边长、上下文外扩与步长对齐约束。
 
 
 def postprocess(raw, proto, shape, input_shape):
@@ -95,177 +96,215 @@ def postprocess(raw, proto, shape, input_shape):
     return np.array(records), masks
 
 
-def extract_fill(image, polygon, color, mode):
-    """两种填色共享闭合轮廓校验，solid 另处理灰度变化和缝隙。"""
-    h, w = image.shape[:2]
-    hint = np.zeros((h, w), np.uint8)
-    cv2.fillPoly(hint, [polygon], 255)
-    x, y, bw, bh = cv2.boundingRect(polygon)
-    pad = max(10, round(max(bw, bh) * (2 if mode == "solid" else 1)))
-    x0, y0, x1, y1 = (
-        max(0, x - pad),
-        max(0, y - pad),
-        min(w, x + bw + pad),
-        min(h, y + bh + pad),
-    )
-    crop = image[y0:y1, x0:x1]
-    lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(float)
-    target = cv2.cvtColor(np.uint8([[color]]), cv2.COLOR_BGR2LAB)[0, 0].astype(float)
-    if mode == "solid" and int(max(color)) - int(min(color)) <= 25:
-        channels = crop.astype(np.int16)
-        near = (
-            (channels.max(axis=2) - channels.min(axis=2) <= 22)
-            & (channels.min(axis=2) >= 150)
-        ).astype(np.uint8)
-    else:
-        near = (np.linalg.norm(lab - target, axis=2) <= COLOR_DISTANCE).astype(np.uint8)
-    if mode == "solid":
-        kernel_size = max(3, round(max(h, w) / 640) * 2 + 1)
-        near = 1 - cv2.morphologyEx(
-            1 - near, cv2.MORPH_CLOSE, np.ones((kernel_size, kernel_size), np.uint8)
-        )
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(near, 8)
-    overlap = hint[y0:y1, x0:x1] > 0
-    scores = np.bincount(labels[overlap], minlength=count)
-    scores[0] = 0
-    if scores.max() < 4:
-        return (None, "no background component")
-    component = (labels == scores.argmax()).astype(np.uint8)
-    if (
-        component[:, 0].any()
-        or component[:, -1].any()
-        or component[0].any()
-        or component[-1].any()
-    ):
-        return (None, "open contour reaches search boundary")
-    contours, _ = cv2.findContours(
-        component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
-    filled = np.zeros_like(component)
-    cv2.drawContours(filled, contours, -1, 255, cv2.FILLED)
-    filled = cv2.erode(filled, np.ones((3, 3), np.uint8), iterations=INSET)
-    if np.count_nonzero(filled & hint[y0:y1, x0:x1]) < 0.65 * np.count_nonzero(overlap):
-        return (None, "insufficient text-area coverage")
-    if mode == "solid" and np.count_nonzero(filled) > 6 * np.count_nonzero(hint):
-        return (None, "region too large for hint")
-    result = np.zeros((h, w), np.uint8)
-    result[y0:y1, x0:x1] = filled
-    return (result, "accepted")
+def extract_stroke_and_style(image, bbox):
+    """隔离气泡内腔并提取笔画与风格；含描边光晕与半透明底纹的气泡整块纯色直填。"""
+    img_h, img_w = image.shape[:2]
+    x, y, w, h = (bbox[k] for k in ("x", "y", "width", "height"))
+    roi = image[y : y + h, x : x + w]
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+    center = binary[h // 4 : h - h // 4 or h, w // 4 : w - w // 4 or w]
+    fg_is_dark = np.mean(center == 255) >= 0.5
+    fg_mask = 255 - binary if fg_is_dark else binary
 
-def runs(values):
-    """把连续前景投影转为行列区间，供字形测量复核。"""
-    changes = np.diff(np.r_[False, values, False].astype(int))
-    return list(zip(np.flatnonzero(changes == 1), np.flatnonzero(changes == -1)))
-
-
-def estimate(image):
-    """只在已确认文字区域估计主体字形，质量不足时返回不确定。"""
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    threshold, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    border = np.concatenate([gray[0], gray[-1], gray[:, 0], gray[:, -1]])
-    dark = np.median(border) >= threshold
-    estimates = []
-    details = []
-    for delta in [-20, 0, 20]:
-        cutoff = np.clip(threshold + delta, 1, 254)
-        mask = (gray < cutoff) if dark else (gray > cutoff)
-        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
-        eligible = []
-        for x, y, w, h, area in stats[1:]:
-            if area < 3 or min(w, h) < 2 or max(w, h) > min(gray.shape) * 0.85:
-                continue
-            if x == 0 or y == 0 or x + w >= gray.shape[1] or y + h >= gray.shape[0]:
-                continue
-            if max(w / h, h / w) > 3.5:
-                continue
-            eligible.append((x, y, w, h, area))
-        if not eligible:
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(fg_mask, connectivity=8)
+    inner = np.zeros_like(fg_mask)
+    fallback = np.zeros_like(fg_mask)
+    border_dark = np.zeros_like(fg_mask)
+    for idx in range(1, num_labels):
+        cx, cy, cw, ch, area = stats[idx]
+        if area < 2:
             continue
-        cc = np.array(eligible)
-        extents = np.maximum(cc[:, 2], cc[:, 3])
-        weights = np.sqrt(cc[:, 4])
-        candidates = np.unique(extents)
-        scores = [
-            weights[(extents >= v * 0.8) & (extents <= v * 1.2)].sum()
-            for v in candidates
-        ]
-        seed = float(candidates[np.argmax(scores)])
-        cluster = (extents >= seed * 0.8) & (extents <= seed * 1.2)
-        seed = float(np.median(extents[cluster]))
-        strength = float(weights[cluster].sum() / weights.sum())
-        axes = []
-        for axis in [0, 1]:
-            profile = mask.sum(axis=axis)
-            active = (profile >= max(2, profile.max() * 0.12)).astype(np.uint8)
-            kernel = max(1, round(seed * 0.1))
-            active = (
-                cv2.morphologyEx(
-                    active.reshape(1, -1),
-                    cv2.MORPH_CLOSE,
-                    np.ones((1, kernel), np.uint8),
-                )[0]
-                > 0
-            )
-            bands = [
-                (a, b) for a, b in runs(active) if seed * 0.6 <= b - a <= seed * 1.4
-            ]
-            score = (
-                float(np.median([profile[a:b].sum() / (b - a) ** 2 for a, b in bands]))
-                if bands
-                else 0
-            )
-            axes.append((score, bands))
-        axis = int(axes[1][0] > axes[0][0])
-        bands = axes[axis][1]
-        projected = float(np.median([b - a for a, b in bands])) if bands else seed
-        # Projection can restore radicals disconnected inside one character, but not merge whole lines.
-        value = projected if seed * 0.85 <= projected <= seed * 1.25 else seed
-        estimates.append(value)
-        details.append(
-            dict(
-                axis=axis,
-                components=cc.tolist(),
-                cluster=int(cluster.sum()),
-                strength=strength,
-                density=float(mask.mean()),
-                eligibleCoverage=float(cc[:, 4].sum() / max(1, mask.sum())),
-            )
+        touches_border = cx == 0 or cy == 0 or cx + cw >= w or cy + ch >= h
+        if not touches_border:
+            inner[labels == idx] = 255
+        else:
+            border_dark[labels == idx] = 255
+            if cw < w * 0.95 or ch < h * 0.95:
+                fallback[labels == idx] = 255
+
+    stroke = inner if np.any(inner) else fallback
+    if not np.any(stroke):
+        stroke = fg_mask.copy()
+
+    # 用触边画线作墙阻断框外五官与碎网点，只保留主体文字簇。
+    if np.any(inner) and np.any(border_dark):
+        bridge = max(6, round(min(w, h) * 0.18))
+        wall = cv2.dilate(border_dark, np.ones((3, 3), np.uint8), iterations=1)
+        bridged = cv2.dilate(
+            stroke,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (bridge * 2 + 1, bridge * 2 + 1)),
+            iterations=1,
         )
-    if not estimates:
-        return dict(status="uncertain", reason="no_body_components", value=None)
-    best = details[len(details) // 2]
-    value = float(np.median(estimates))
-    spread = (max(estimates) - min(estimates)) / max(value, 1)
-    reliable = (
-        len(estimates) == 3
-        and spread <= 0.18
-        and best["cluster"] >= 4
-        and best["strength"] >= 0.5
-        and 0.01 < best["density"] < 0.45
+        bridged = cv2.bitwise_and(bridged, 255 - wall)
+        n_c, c_labels, _, _ = cv2.connectedComponentsWithStats(bridged, connectivity=8)
+        if n_c > 2:
+            counts = [int(np.sum((c_labels == i) & (stroke > 0))) for i in range(1, n_c)]
+            max_cnt = max(counts, default=0)
+            if max_cnt > 0:
+                keep = np.zeros_like(stroke)
+                for i, cnt in enumerate(counts, start=1):
+                    if cnt >= max_cnt * 0.2:
+                        keep[c_labels == i] = 255
+                stroke = cv2.bitwise_and(stroke, keep)
+
+    yy, xx = np.ogrid[:h, :w]
+    in_oval = (
+        ((xx - (w - 1) / 2.0) / max(1.0, w * 0.45)) ** 2
+        + ((yy - (h - 1) / 2.0) / max(1.0, h * 0.45)) ** 2
+    ) <= 1.0
+
+    dist = cv2.distanceTransform((stroke == 0).astype(np.uint8) * 255, cv2.DIST_L2, 3)
+    fg_dist = cv2.distanceTransform((stroke > 0).astype(np.uint8), cv2.DIST_L2, 3)
+    stroke_r = (
+        max(1.0, float(np.percentile(fg_dist[stroke > 0], 80)))
+        if np.any(stroke > 0)
+        else 1.5
     )
-    large = [c for c in best["components"] if max(c[2], c[3]) > value * 1.4]
-    mixed = (
-        len(large) >= 2
-        and sum(c[4] for c in large) > sum(c[4] for c in best["components"]) * 0.25
+
+    # 在内接椭圆远距净空区采样环境底色，避开白边光晕与外角背景。
+    valid_oval = (fg_mask == 0) & in_oval
+    if not np.any(valid_oval):
+        valid_oval = stroke == 0
+    if np.any(valid_oval):
+        d60, d95 = np.percentile(dist[valid_oval], [60, 95])
+        amb_mask = valid_oval & (dist >= d60) & (dist <= max(d60 + 1.0, d95))
+    else:
+        d60 = stroke_r * 2.0
+        amb_mask = np.ones((h, w), dtype=bool)
+    bg = np.median(roi[amb_mask], axis=0).round().astype(np.uint8)
+
+    # 提取与环境底色连通的气泡内腔，并将内腔包围的全部内部空洞一并归入内腔。
+    diff_bg = np.max(np.abs(roi.astype(np.int32) - bg.astype(np.int32)), axis=2)
+    bg_like = ((diff_bg <= 48) & (fg_mask == 0)).astype(np.uint8) * 255
+    _, b_labels, _, _ = cv2.connectedComponentsWithStats(bg_like, connectivity=8)
+    center_slice = b_labels[
+        h // 5 : max(h // 5 + 1, 4 * h // 5), w // 5 : max(w // 5 + 1, 4 * w // 5)
+    ]
+    center_ids = set(np.unique(center_slice)) - {0}
+    if center_ids:
+        cavity_bg = np.isin(b_labels, list(center_ids)).astype(np.uint8) * 255
+    else:
+        cavity_bg = bg_like
+
+    ff = (255 - cavity_bg).copy()
+    ff_mask = np.zeros((h + 2, w + 2), np.uint8)
+    for bx in range(w):
+        if ff[0, bx] == 255:
+            cv2.floodFill(ff, ff_mask, (bx, 0), 128)
+        if ff[h - 1, bx] == 255:
+            cv2.floodFill(ff, ff_mask, (bx, h - 1), 128)
+    for by in range(h):
+        if ff[by, 0] == 255:
+            cv2.floodFill(ff, ff_mask, (0, by), 128)
+        if ff[by, w - 1] == 255:
+            cv2.floodFill(ff, ff_mask, (w - 1, by), 128)
+
+    cavity = ((cavity_bg > 0) | (ff == 255)) & (border_dark == 0)
+    if np.sum(cavity) < h * w * 0.15:
+        cavity = (in_oval | (stroke > 0)) & (border_dark == 0)
+
+    stroke_in_cav = cv2.bitwise_and(stroke, cavity.astype(np.uint8) * 255)
+    if np.any(stroke_in_cav):
+        stroke = stroke_in_cav
+        dist = cv2.distanceTransform((stroke == 0).astype(np.uint8) * 255, cv2.DIST_L2, 3)
+
+    # 使用有向光晕差值检测描边光晕，避免线性渐变背景被误判为白边光晕。
+    near_mask = (
+        (fg_mask == 0) & cavity & (dist >= 1.0) & (dist <= max(2.5, stroke_r * 1.2))
     )
-    unexplained = best["eligibleCoverage"] < 0.6
-    reliable = reliable and not mixed and not unexplained
-    reason = (
-        "mixed_or_touching_glyphs"
-        if mixed
-        else (
-            "unexplained_foreground"
-            if unexplained
-            else "insufficient_or_unstable_components"
+    if np.any(near_mask):
+        near_col = np.percentile(roi[near_mask], 80 if fg_is_dark else 20, axis=0)
+    else:
+        near_col = bg.astype(np.float64)
+    signed_halo = (
+        float(np.max(near_col.astype(np.float64) - bg.astype(np.float64)))
+        if fg_is_dark
+        else float(np.max(bg.astype(np.float64) - near_col.astype(np.float64)))
+    )
+    halo_diff = signed_halo if signed_halo > 8.0 else 0.0
+
+    base_rad = max(1.5, min(6.0, stroke_r * 1.2))
+    base_dil = ((dist <= base_rad) & cavity).astype(np.uint8) * 255
+
+    if halo_diff > 8.0:
+        diff_near = np.max(np.abs(roi.astype(np.float64) - near_col), axis=2)
+        halo_cand = (
+            cavity
+            & (dist <= max(float(d60), stroke_r * 4.5))
+            & (diff_bg > max(8.0, halo_diff * 0.28))
+            & (diff_near <= diff_bg * 1.25)
+        ).astype(np.uint8) * 255
+        combined = cv2.bitwise_or(base_dil, halo_cand)
+        _, m_labels = cv2.connectedComponents(combined, connectivity=8)
+        seeded_ids = set(np.unique(m_labels[base_dil > 0])) - {0}
+        full_mask = np.isin(m_labels, list(seeded_ids)).astype(np.uint8) * 255
+        pad_r = max(1, min(4, round(stroke_r * 0.6)))
+        full_mask = cv2.dilate(
+            full_mask,
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (pad_r * 2 + 1, pad_r * 2 + 1)),
+            iterations=1,
         )
+        close_r = max(4, round(min(w, h) * 0.08))
+        closed_block = cv2.morphologyEx(
+            full_mask,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (close_r * 2 + 1, close_r * 2 + 1)
+            ),
+        )
+        full_mask = cv2.bitwise_and(closed_block, cavity.astype(np.uint8) * 255)
+    else:
+        full_mask = base_dil
+
+    clean_amb = amb_mask & (full_mask == 0) & (fg_mask == 0)
+    if np.sum(clean_amb) < max(10, round(np.sum(amb_mask) * 0.2)):
+        clean_amb = amb_mask
+    clean_cav = cavity & (full_mask == 0) & (fg_mask == 0)
+
+    def calc_iqr(m):
+        """计算掩码区域内各颜色通道的最大四分位差，衡量背景纹理复杂度。"""
+        pts = roi[m]
+        if not len(pts):
+            return 0.0
+        q75, q25 = np.percentile(pts, [75, 25], axis=0)
+        return float(np.max(q75 - q25))
+
+    iqr = (
+        min(calc_iqr(clean_amb), calc_iqr(clean_cav))
+        if np.sum(clean_cav) >= 10
+        else calc_iqr(clean_amb)
     )
-    return dict(
-        status="measured" if reliable else "uncertain",
-        reason=None if reliable else reason,
-        value=value,
-        axis=best["axis"],
-    )
+
+    # 带框半透明或含白边气泡：整块填平气泡内腔并走纯色直填，不送入 LaMa 涂抹。
+    is_bordered_bubble = bool(np.any(border_dark)) and (iqr <= 36.0 or halo_diff > 8.0)
+    if is_bordered_bubble and (iqr > 6.0 or halo_diff > 8.0):
+        inner_cavity = cv2.erode(
+            cavity.astype(np.uint8) * 255, np.ones((3, 3), np.uint8), iterations=1
+        )
+        full_mask = cv2.bitwise_or(full_mask, inner_cavity)
+
+    spread = min(18.0, iqr) if is_bordered_bubble else iqr
+
+    if np.any(stroke > 0):
+        stroke_pts = roi[stroke > 0]
+        stroke_g = gray[stroke > 0]
+        if fg_is_dark:
+            q = np.percentile(stroke_g, 35)
+            core_pts = stroke_pts[stroke_g <= q]
+        else:
+            q = np.percentile(stroke_g, 65)
+            core_pts = stroke_pts[stroke_g >= q]
+        fg = np.median(core_pts if len(core_pts) else stroke_pts, axis=0).round().astype(np.uint8)
+        if fg_is_dark and np.mean(fg) > 60 and np.ptp(fg) <= 35:
+            fg = (fg * 0.25).round().astype(np.uint8)
+    else:
+        fg = 255 - bg
+
+    mask = np.zeros((img_h, img_w), np.uint8)
+    mask[y : y + h, x : x + w] = full_mask
+    return mask, bg, fg, spread, stroke
 
 
 def read_image(file):
@@ -294,15 +333,6 @@ def save(file, image):
     return str(Path(file).resolve())
 
 
-def polygons(shapes, width, height):
-    """所有人工多边形在原图像素网格上合并。"""
-    mask = np.zeros((height, width), np.uint8)
-    for shape in shapes:
-        points = np.rint([[p["x"], p["y"]] for p in shape]).astype(np.int32)
-        cv2.fillPoly(mask, [points], 255)
-    return mask
-
-
 def forward(channel, kind, data):
     """经共享通道请求固定模型，按返回形状恢复张量。"""
     header, payload = channel.request(kind, data).result()
@@ -315,6 +345,59 @@ def forward(channel, kind, data):
     if offset != len(values) or not np.isfinite(values).all():
         raise ValueError("Invalid image model response")
     return results
+
+
+def select_candidate_boxes(boxes, masks):
+    """沿狭窄瓶颈自动切分双连体气泡，并补充未被气泡覆盖的独立文字候选框。"""
+    selected = []
+    for i, box in enumerate(boxes):
+        if int(box[5]) != 2 or float(box[4]) < 0.25:
+            continue
+        x0, y0, x1, y1 = (int(round(v)) for v in box[:4])
+        bw, bh = x1 - x0, y1 - y0
+        if bh > bw * 1.8 and bh >= 60 and i < len(masks):
+            m_crop = masks[i][y0:y1, x0:x1] > 0.5
+            row_w = np.sum(m_crop, axis=1)
+            mh = len(row_w)
+            if mh >= 40:
+                top_peak = int(np.max(row_w[: mh // 2]))
+                bot_peak = int(np.max(row_w[mh // 2 :]))
+                neck_rel = mh // 4 + int(np.argmin(row_w[mh // 4 : 3 * mh // 4]))
+                neck_w = int(row_w[neck_rel])
+                if (
+                    min(top_peak, bot_peak) > bw * 0.35
+                    and neck_w / max(1, min(top_peak, bot_peak)) < 0.68
+                ):
+                    y_split = y0 + neck_rel
+                    selected.append(
+                        np.array([x0, y0, x1, y_split, box[4], 2], dtype=np.float32)
+                    )
+                    selected.append(
+                        np.array([x0, y_split, x1, y1, box[4], 2], dtype=np.float32)
+                    )
+                    continue
+        selected.append(box)
+
+    for box in boxes:
+        if int(box[5]) != 1 or float(box[4]) < 0.35:
+            continue
+        tx0, ty0, tx1, ty1 = box[:4]
+        t_area = max(1.0, float((tx1 - tx0) * (ty1 - ty0)))
+        covered = False
+        for sb in selected:
+            bx0, by0, bx1, by1 = sb[:4]
+            b_area = max(1.0, float((bx1 - bx0) * (by1 - by0)))
+            ix0, iy0 = max(tx0, bx0), max(ty0, by0)
+            ix1, iy1 = min(tx1, bx1), min(ty1, by1)
+            if ix1 > ix0 and iy1 > iy0:
+                inter = float((ix1 - ix0) * (iy1 - iy0))
+                if inter / min(t_area, b_area) > 0.3:
+                    covered = True
+                    break
+        if not covered:
+            selected.append(box)
+
+    return selected
 
 
 def prepare(args, channel):
@@ -345,44 +428,42 @@ def prepare(args, channel):
     )
     boxes, masks = postprocess(raw, proto, (h, w), (ih, iw))
     preview = image.copy()
-    candidates = []
-    for index, (box, mask) in enumerate(zip(boxes, masks)):
-        x0, y0, x1, y1, score, label = box
-        mask_file = save(root / f"candidate-{index}.png", mask.astype(np.uint8) * 255)
-        contours, _ = cv2.findContours(
-            mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    candidates, regions = [], []
+    # 按行排序并在竖排页内从右向左，阅读顺序仍由看图确认。
+    texts = select_candidate_boxes(boxes, masks)
+    vertical = sum(box[3] - box[1] > box[2] - box[0] for box in texts) > len(texts) / 2
+    texts.sort(
+        key=lambda box: (
+            round(box[1] / max(1, h * READING_ROW_RATIO)),
+            -box[0] if vertical else box[0],
         )
-        candidates.append(
+    )
+    for index, box in enumerate(texts, 1):
+        x0, y0, x1, y1, score, _ = box
+        x0, y0 = max(0, math.floor(x0)), max(0, math.floor(y0))
+        x1, y1 = min(w, math.ceil(x1)), min(h, math.ceil(y1))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        region_id = f"r{index}"
+        bbox = dict(x=x0, y=y0, width=x1 - x0, height=y1 - y0)
+        regions.append(
             dict(
-                index=index,
-                kind=["frame", "balloon", "text"][int(label)],
-                score=float(score),
-                uncertain=bool(score < 0.25),
-                box=dict(
-                    x=float(x0),
-                    y=float(y0),
-                    width=float(x1 - x0),
-                    height=float(y1 - y0),
-                ),
-                mask=mask_file,
-                polygons=[
-                    [dict(x=int(x), y=int(y)) for x, y in contour[:, 0]]
-                    for contour in contours
-                    if len(contour) >= 3
-                ],
+                regionId=region_id,
+                disposition="translate",
+                bbox=bbox,
+                direction="vertical-rl" if y1 - y0 > x1 - x0 else "horizontal-tb",
             )
         )
+        candidates.append(
+            dict(regionId=region_id, score=float(score), uncertain=bool(score < 0.25))
+        )
         cv2.rectangle(
-            preview,
-            (round(x0), round(y0)),
-            (round(x1), round(y1)),
-            (0, 0, 255),
-            max(1, round(max(h, w) / 1000)),
+            preview, (x0, y0), (x1, y1), (0, 0, 255), max(1, round(max(h, w) / 1000))
         )
         cv2.putText(
             preview,
-            str(index),
-            (round(x0), max(20, round(y0))),
+            region_id,
+            (x0, max(20, y0)),
             0,
             max(0.5, max(h, w) / 1800),
             (0, 0, 255),
@@ -396,13 +477,14 @@ def prepare(args, channel):
         width=w,
         height=h,
         candidates=candidates,
+        regions=regions,
         preview=str((root / "preview.png").resolve()),
         previewScale=scale,
     )
 
 
 def repair(args, channel):
-    """同页修复作业共用填色快照，每组保留独立的合成掩码。"""
+    """同页修复共用填色快照，每个区域保留独立的笔画掩码。"""
     page = args["page"]
     root = Path(args["output"])
     root.mkdir(parents=True, exist_ok=True)
@@ -412,104 +494,52 @@ def repair(args, channel):
         raise ValueError("Page dimensions differ from original")
     base = image.copy()
     occupied = np.zeros((h, w), np.uint8)
-    masks, groups, jobs = {}, [], []
-    for group in page["groups"]:
-        gid = group["groupId"]
-        mask = polygons(group["areas"], w, h)
-        if group.get("mask"):
-            file = Path(args["root"]) / group["mask"]["path"]
-            with file.open("rb") as stream:
-                if (
-                    hashlib.file_digest(stream, "sha256").hexdigest()
-                    != group["mask"]["sha256"]
-                ):
-                    raise ValueError("Mask digest changed")
-            custom = cv2.imdecode(np.fromfile(file, np.uint8), cv2.IMREAD_GRAYSCALE)
-            if (
-                custom is None
-                or custom.shape != (h, w)
-                or not np.isin(custom, [0, 255]).all()
-            ):
-                raise ValueError("Expected an original-size binary mask")
-            mask |= custom
-        protection = polygons(group["protection"], w, h)
-        mask[protection > 0] = 0
+    masks, regions, jobs = {}, [], []
+    for region in page["regions"]:
+        rid = region["regionId"]
+        mask, bg, fg, spread, _ = extract_stroke_and_style(image, region["bbox"])
         reason = None
-        if group["mode"] in ("basic", "solid"):
-            filled = np.zeros_like(mask)
-            for shape in group["areas"]:
-                polygon = np.rint([[p["x"], p["y"]] for p in shape]).astype(np.int32)
-                hint = polygons([shape], w, h)
-                values = image[hint > 0]
-                bins = values // 32
-                keys = (
-                    bins[:, 0].astype(int) * 64
-                    + bins[:, 1].astype(int) * 8
-                    + bins[:, 2]
-                )
-                key = np.bincount(keys, minlength=512).argmax()
-                color = np.median(values[keys == key], axis=0).astype(np.uint8)
-                found, status = extract_fill(image, polygon, color, group["mode"])
-                if found is None:
-                    reason = status
-                    break
-                # 人工确认范围是编辑授权的硬边界，轮廓算法不能扩大它。
-                found &= mask
-                filled |= found
-            if reason is None:
-                mask = filled
-                values = image[mask > 0]
-                if not len(values):
-                    reason = "empty_fill"
-                else:
-                    bins = values // 32
-                    keys = (
-                        bins[:, 0].astype(int) * 64
-                        + bins[:, 1].astype(int) * 8
-                        + bins[:, 2]
-                    )
-                    color = (
-                        np.median(
-                            values[keys == np.bincount(keys, minlength=512).argmax()],
-                            axis=0,
-                        )
-                        .round()
-                        .astype(np.uint8)
-                    )
-                    base[mask > 0] = color
+        if region["disposition"] == "preserve":
+            mask[:] = 0
+            reason = "preserve"
+        elif not mask.any():
+            reason = "no_text_strokes"
         if np.any((occupied > 0) & (mask > 0)):
-            raise ValueError("Edit groups overlap; merge the groups")
+            raise ValueError("Text regions overlap; correct their bounding boxes")
         occupied |= mask
-        masks[gid] = mask
-        if group["mode"] == "inpaint" and mask.any():
-            jobs.append(gid)
-        groups.append(
+        masks[rid] = mask
+        if reason is None:
+            if spread <= BACKGROUND_SPREAD:
+                base[mask > 0] = bg
+            else:
+                jobs.append(rid)
+        regions.append(
             dict(
-                groupId=gid,
-                ready=reason is None and group["mode"] != "preserve",
-                reason=reason or ("preserve" if group["mode"] == "preserve" else None),
-                mask=save(root / f"{gid}-mask.png", mask),
+                regionId=rid,
+                ready=reason is None,
+                reason=reason,
+                mask=save(root / f"{rid}-mask.png", mask),
             )
         )
-    # 所有裁图读取同一个填色底图与全页掩码，只有归属组的确认像素回贴。
-    scale = INPAINT_EDGE / max(h, w)
+    # 所有裁图读取同一个填色底图与全页掩码，只有所属区域的笔画像素回贴。
+    scale = min(1, INPAINT_EDGE / max(h, w))
     sh, sw = round(h * scale), round(w * scale)
     union = np.zeros((h, w), np.uint8)
-    for gid in jobs:
-        union |= masks[gid]
+    for rid in jobs:
+        union |= masks[rid]
     snapshot = cv2.resize(base, (sw, sh), interpolation=cv2.INTER_CUBIC)
     scaled_mask = cv2.resize(union, (sw, sh), interpolation=cv2.INTER_AREA) > 0
     scaled_mask = cv2.dilate(scaled_mask.astype(np.uint8), np.ones((3, 3), np.uint8))
     crops = []
-    for gid in jobs:
-        x, y, bw, bh = cv2.boundingRect(masks[gid])
+    for rid in jobs:
+        x, y, bw, bh = cv2.boundingRect(masks[rid])
         margin = max(CONTEXT_MIN, round(max(bw, bh) * CONTEXT_RATIO))
         x0 = max(0, math.floor((x - margin) * sw / w))
         y0 = max(0, math.floor((y - margin) * sh / h))
         x1 = min(sw, math.ceil((x + bw + margin) * sw / w))
         y1 = min(sh, math.ceil((y + bh + margin) * sh / h))
-        crops.append((x0, y0, x1, y1, [gid]))
-    padded = lambda v: math.ceil(v / MODEL_STRIDE) * MODEL_STRIDE
+        crops.append((x0, y0, x1, y1, [rid]))
+    padded = lambda v: math.ceil(v / MODEL_STRIDE) * MODEL_STRIDE  # 向上对齐模型步长。
     if (
         sum(padded(x1 - x0) * padded(y1 - y0) for x0, y0, x1, y1, _ in crops)
         >= padded(sw) * padded(sh)
@@ -537,8 +567,8 @@ def repair(args, channel):
         )[0]
         restored = output[0].transpose(1, 2, 0)[:ch, :cw, ::-1] * 255
         # LaMa 输出为 0..1，回贴保持全页缩放网格的像素中心。
-        for gid in owners:
-            yy, xx = np.nonzero(masks[gid])
+        for rid in owners:
+            yy, xx = np.nonzero(masks[rid])
             mapx = ((xx + 0.5) * sw / w - 0.5 - x0).astype(np.float32)
             mapy = ((yy + 0.5) * sh / h - 0.5 - y0).astype(np.float32)
             for start in range(0, len(xx), 16000):
@@ -555,66 +585,119 @@ def repair(args, channel):
                 )
     if not np.array_equal(base[occupied == 0], image[occupied == 0]):
         raise ValueError("Pixels changed outside edit masks")
-    return dict(base=save(root / "base.png", base), groups=groups)
+    return dict(base=save(root / "base.png", base), regions=regions)
 
 
 def layout(args, _channel):
-    """从原图测量字形，用保护区和描边收缩排版空间。"""
+    """内接安全排版框与自适应字号上限计算，窄竖框仅向同色留白扩展。"""
     page = args["page"]
-    root = Path(args["output"])
-    root.mkdir(parents=True, exist_ok=True)
     image = read_image(args["source"])
-    h, w = image.shape[:2]
     regions = []
     for region in page["regions"]:
         if region["disposition"] != "translate":
             continue
-        group = next(g for g in page["groups"] if region["regionId"] in g["regionIds"])
-        allowed = polygons(region["layout"], w, h)
-        allowed[polygons(group["protection"], w, h) > 0] = 0
-        x, y, bw, bh = cv2.boundingRect(allowed)
-        if not bw or not bh:
-            raise ValueError("Empty layout region")
-        inset = max(3, round(min(bw, bh) * 0.035)) + math.ceil(
-            region["style"]["strokeWidth"]
+        bbox = region["bbox"]
+        x, y, w, h = (bbox[k] for k in ("x", "y", "width", "height"))
+        _, bg, fg, spread, stroke_crop = extract_stroke_and_style(image, bbox)
+        vertical = region["direction"] == "vertical-rl"
+        _, _, stats, _ = cv2.connectedComponentsWithStats(stroke_crop, 8)
+        limit = (w if vertical else h) * 0.9
+        spans = [
+            (cw if vertical else ch)
+            for _, _, cw, ch, area in stats[1:]
+            if area >= 4 and (cw if vertical else ch) <= limit
+        ]
+
+        # 基于原始文字核心包围盒收敛内接安全排版框；小尺寸低清区域不内缩以免文字放不下。
+        lx, ly, lw, lh = x, y, w, h
+        if min(w, h) >= 80 and np.any(stroke_crop > 0):
+            sx, sy, sw, sh = cv2.boundingRect(stroke_crop)
+            cx = sx + sw / 2.0
+            cy = sy + sh / 2.0
+            pad_x = round(w * 0.07)
+            pad_y = round(h * 0.08)
+            cap_w = max(1, w - pad_x * 2)
+            cap_h = max(1, h - pad_y * 2)
+            if vertical:
+                lh = min(cap_h, max(round(sh * 1.08), round(h * 0.62)))
+                lw = min(cap_w, max(round(sw * 1.25), round(w * 0.72)))
+            else:
+                lw = min(cap_w, max(round(sw * 1.08), round(w * 0.72)))
+                lh = min(cap_h, max(round(sh * 1.25), round(h * 0.72)))
+            lx = x + int(round(np.clip(cx - lw / 2.0, pad_x, max(pad_x, w - pad_x - lw))))
+            ly = y + int(round(np.clip(cy - lh / 2.0, pad_y, max(pad_y, h - pad_y - lh))))
+
+        if spread <= BACKGROUND_SPREAD and vertical and h > w * 2:
+            # 只松弛横向纯色留白，不跨页边、画线或另一个区域。
+            for _ in range(round(w * LAYOUT_EXPANSION_RATIO)):
+                for side in (-1, 1):
+                    col = lx - 1 if side < 0 else lx + lw
+                    if col < 0 or col >= image.shape[1]:
+                        continue
+                    overlaps = any(
+                        other["regionId"] != region["regionId"]
+                        and other["bbox"]["x"]
+                        <= col
+                        < other["bbox"]["x"] + other["bbox"]["width"]
+                        and other["bbox"]["y"] < ly + lh
+                        and other["bbox"]["y"] + other["bbox"]["height"] > ly
+                        for other in page["regions"]
+                    )
+                    if (
+                        not overlaps
+                        and np.max(
+                            np.abs(image[ly : ly + lh, col].astype(int) - bg.astype(int))
+                        )
+                        <= BACKGROUND_SPREAD
+                    ):
+                        lx -= side < 0
+                        lw += 1
+
+        scale = 1.25 if vertical else 1.6
+        default_fs = (
+            max(8, round(float(np.percentile(spans, 80)) * scale))
+            if spans
+            else max(12, round(min(lw, lh) * 0.22))
         )
-        safe = cv2.erode(allowed, np.ones((2 * inset + 1, 2 * inset + 1), np.uint8))
-        roi = region["source"][0]
-        rx, ry = math.floor(roi["x"]), math.floor(roi["y"])
-        rw, rh = math.ceil(roi["width"]), math.ceil(roi["height"])
-        measured = estimate(image[ry : ry + rh, rx : rx + rw])
+        min_fs = 5 if min(lw, lh) < 45 else 8
+
+        color = lambda value: "#" + "".join(f"{int(c):02x}" for c in value[::-1])  # BGR 转十六进制 RGB。
+        style = dict(
+            color=color(fg),
+            stroke=color(bg),
+            strokeWidth=0 if spread <= BACKGROUND_SPREAD else 1,
+            weight=400,
+            rotation=0,
+            minFontSize=min_fs,
+            align="center",
+            fontSize=default_fs,
+        )
+        style.update(region.get("style") or {})
         regions.append(
             dict(
                 regionId=region["regionId"],
-                groupId=group["groupId"],
-                x=x,
-                y=y,
-                width=bw,
-                height=bh,
-                mask=save(
-                    root / f"{region['regionId']}-safe.png",
-                    safe[y : y + bh, x : x + bw],
-                ),
-                measurement={
-                    k: measured.get(k) for k in ("status", "reason", "value", "axis")
-                },
+                x=int(lx),
+                y=int(ly),
+                width=int(lw),
+                height=int(lh),
+                style=style,
             )
         )
     return regions
 
 
 def composite(args, _channel):
-    """先核对全部文字层，再按编辑组恢复失败结果。"""
+    """先核对全部文字层，再按区域恢复失败结果。"""
     original = read_image(args["source"])
     base = read_image(args["base"])
     result = original.copy()
     occupied = np.zeros(original.shape[:2], np.int32)
     rejected = set()
-    # 先核对全部文字层，再按组决定底图与文字能否一起交付。
-    for index, group in enumerate(args["groups"], 1):
-        if not group["accepted"]:
+    # 先核对全部文字层，再按区域决定底图与文字能否一起交付。
+    for index, region in enumerate(args["regions"], 1):
+        if not region["accepted"]:
             continue
-        for tile in group["tiles"]:
+        for tile in region["tiles"]:
             layer = cv2.imdecode(
                 np.fromfile(tile["path"], np.uint8), cv2.IMREAD_UNCHANGED
             )
@@ -629,14 +712,15 @@ def composite(args, _channel):
                 rejected.add(index)
                 rejected.update(int(owner) for owner in owners)
             local[active] = index
-    for index, group in enumerate(args["groups"], 1):
-        if not group["accepted"] or index in rejected:
+    for index, region in enumerate(args["regions"], 1):
+        if not region["accepted"] or index in rejected:
             continue
         mask = (
-            cv2.imdecode(np.fromfile(group["mask"], np.uint8), cv2.IMREAD_GRAYSCALE) > 0
+            cv2.imdecode(np.fromfile(region["mask"], np.uint8), cv2.IMREAD_GRAYSCALE)
+            > 0
         )
         result[mask] = base[mask]
-        for tile in group["tiles"]:
+        for tile in region["tiles"]:
             layer = cv2.imdecode(
                 np.fromfile(tile["path"], np.uint8), cv2.IMREAD_UNCHANGED
             )
@@ -651,8 +735,8 @@ def composite(args, _channel):
             )
     return dict(
         path=save(args["output"], result),
-        rejectedGroups=[
-            args["groups"][index - 1]["groupId"] for index in sorted(rejected)
+        rejectedRegions=[
+            args["regions"][index - 1]["regionId"] for index in sorted(rejected)
         ],
     )
 
@@ -674,14 +758,6 @@ def pack(args, _channel):
             compress_type=zipfile.ZIP_DEFLATED,
         )
         members = {page["original"]: page["sha256"] for page in book["pages"]}
-        members.update(
-            {
-                g["mask"]["path"]: g["mask"]["sha256"]
-                for p in book["pages"]
-                for g in p["groups"]
-                if g.get("mask")
-            }
-        )
         for name, sha256 in members.items():
             file = root / name
             with file.open("rb") as stream:

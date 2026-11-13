@@ -13,12 +13,12 @@ it("部署后的图片 Worker 保留张量协议，并在推理失败后释放�
     await fs.writeFile(
       module,
       `
-      const live=new Set();
+      const live=new Set();let created=false;
       export class Tensor {
         constructor(type,data,dims){this.data=data;this.dims=dims;live.add(this)}
         dispose(){if(!live.delete(this))throw Error('double disposal')}
       }
-      export const InferenceSession={create:async kind=>({
+      export const InferenceSession={create:async kind=>{if(created)throw Error('session recreated');created=true;return ({
         inputNames:kind==='shadow'?['images']:['image','mask'],outputNames:kind==='shadow'?['output0','output1']:['output'],
         async run(feeds){
           if(Object.values(feeds)[0].data[0]<0)throw Error('fixture inference failure');
@@ -27,7 +27,7 @@ it("部署后的图片 Worker 保留张量协议，并在推理失败后释放�
             : {output:new Tensor('float32',new Float32Array(feeds.image.data),feeds.image.dims)};
         },
         async release(){if(live.size)throw Error('unreleased tensors')}
-      })};
+      })}};
     `,
     );
     for (const kind of ["shadow", "inpaint"] as const) {
