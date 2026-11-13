@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>Agent Harness especializado em tradução de romances, jogos, documentos, áudio e vídeo</p>
+<p align='center'>AGENT Harness Tudo-em-Um para Tradução · Áudio Vídeo Jogos E-books · PDF EPUB RPG ASMR GALGAME etc. · Um Clique · Alta Qualidade · Todos os Formatos</p>
 
 &ensp;
 &ensp;
@@ -9,12 +9,19 @@
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Visão Geral 📢
-- O [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) é um `Agent Harness` de última geração projetado especificamente para localização de alta qualidade em múltiplos formatos
-- Pronto para uso, (quase) sem necessidade de configuração; ser poderoso não significa ter opções complicadas
-- Suporta tradução com um clique entre 16 idiomas
-  - incluindo `Chinês`, `Inglês`, `Japonês`, `Coreano`, `Russo`, `Alemão`, `Francês`, `Italiano`, `Português`, etc.
-- Suporte nativo para `Legendas`, `E-Books`, `Engines de Jogos`, `Áudio (ASMR)` e `Vídeo (Motion Comics / Anime)`, além de formatos incomuns ou personalizados que podem ser analisados e gravados de volta diretamente no espaço do `AGENT`
-- Compatível com interfaces locais e online compatíveis com `OpenAI`, `Google`, `Anthropic`, `SakuraLLM`
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), `AGENT Harness` Tudo-em-Um para Tradução · Um Clique · Alta Qualidade · Todos os Formatos
+- `Um Clique`
+  - Tradução totalmente automática entre vários idiomas com apenas um clique
+  - Arraste, clique em iniciar e aguarde o resultado pronto
+  - Não exige conhecimento técnico nem domínio de outros idiomas
+- `Alta Qualidade`
+  - Saída livre, sem restrições de censura do modelo
+  - Preserva integralmente estilos e formatações de `Legendas` e `E-Books`
+  - Gera glossários automaticamente para manter os nomes próprios consistentes em toda a obra
+  - Revisão semântica inteligente: basta apontar o problema e o `AGENTE` corrige automaticamente
+- `Todos os Formatos`
+  - Suporte completo a `Legendas`, `E-Books`, `Vídeo`, `Áudio (ASMR)`, `Quadrinhos` e muito mais
+  - Suporte completo a `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `Kirikiri`, `Unity`, `Bakin`, `RealLive`, `Escude`, `ACTION GAME MAKER` e outras engines
 
 > <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -24,29 +31,19 @@
 - Se você usar o [LinguaGacha](https://github.com/neavo/LinguaGacha) durante a tradução, inclua a atribuição clara em locais de destaque nas informações ou páginas de lançamento do seu trabalho!
 - Para projetos comerciais ou com fins lucrativos, entre em contato com o autor para autorização antes de utilizar o [LinguaGacha](https://github.com/neavo/LinguaGacha)!
 
-## Vantagens e Recursos 📌
-- Qualidade de tradução ideal e velocidade de tradução ultrarrápida
-  - Preserva totalmente os estilos de formatação de `Legendas` e `E-books`
-  - Gera glossários automaticamente para manter os nomes próprios e termos consistentes em toda a obra
-  - Legendas em dez segundos, um romance em um minuto, um jogo em cinco minutos
-- Modo `AGENTE` integrado que conclui tarefas automaticamente via conversa `👈👈 Recurso Exclusivo`
-  - Não requer conhecimento técnico: basta traduzir e jogar
-  - Suporta os principais motores: `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
-  - **`Tradução completa de Áudio e Vídeo (ASMR / Motion Comics)`**: ASR local + detecção de texto na tela com legendas `.ass` bilíngues que desviam de balões e rostos, além de vídeos `.mp4` bilíngues em `1920×1080` com espectro visual para arquivos apenas de áudio
-
 ## Demonstração ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 Vídeo (Motion Comics) - Linha do tempo precisa com alinhamento por diálogo</b></summary><br><img width="1280" alt="Exemplo de legendas bilíngues para vídeo e motion comics" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 Áudio (ASMR) - Legendas bilíngues + vídeo com espectro visual</b></summary><br><img width="1280" alt="Exemplo de vídeo bilíngue com espectro de áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎬 Vídeo (Motion Comics) - Alinhamento preciso de linha do tempo por diálogo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Áudio (ASMR) - Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
-> 💡 **Formatos comuns funcionam prontos para uso, enquanto formatos personalizados ou scripts podem ser entregues diretamente ao espaço de trabalho do `AGENTE`** — veja [[Formatos de Arquivo Suportados](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)]
+> 💡 **Tudo pode ser traduzido, incluindo, mas não se limitando a:**
 >
-> - **E-books e Legendas**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc`
-> - **Áudio e Vídeo**: Áudios comuns (ASMR / voz) e vídeos (anime / motion comics)
-> - **Engines de Jogos e Texto**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON` / `Message-JSON`
+> - **Áudio e Vídeo**: `ASMR`, `Anime`, `Filmes e Séries`, `Motion Comics`, etc.
+> - **Legendas e E-books**: `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` e outros formatos
+> - **Engines de Jogos e Arquivos de Dados**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, etc.
 
 ## Fluxo Básico de Uso 🛸
 - Baixe o aplicativo na [página de Releases](https://github.com/neavo/LinguaGacha/releases)

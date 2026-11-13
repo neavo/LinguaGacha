@@ -1,16 +1,24 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>面向小说、游戏、文档与音视频翻译特化的 Agent Harness</p>
+<p align='center'>全能翻译 AGENT Harness · 音频 视频 游戏 电子书 · PDF EPUB RPG ASMR GALGAME 等 · 一键 · 高质量 · 全格式</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 概述 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，专为高质量本地化与多形态翻译打造的新一代 `Agent Harness`
-- 开箱即用，（几乎）无需设置，功能的强大，不需要通过繁琐的设置来体现
-- 支持 `中` `英` `日` `韩` `俄` `德` `法` `意` 等 16 种语言的一键互译
-- 原生直出 `字幕`、`电子书`、`游戏引擎`、`音频（ASMR）`、`视频（动态漫画 / 动画）` 等内容，冷门或自定义格式也能直接交给 `AGENT` 工作区解析回写
-- 支持 `OpenAI` `Google` `Anthropic` `SakuraLLM` 等各种本地或在线接口
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，全能翻译 AGENT Harness · 一键 · 高质量 · 全格式
+- `一键`
+  - 全自动各种语言一键互译
+  - 拖进去，点开始，等熟肉
+  - 无需任何技术背景，无需任何语言知识
+- `高质量`
+  - 不受模型审查限制，自由输出
+  - 完美保留各种 `字幕` `电子书` 的样式效果
+  - 自动生成术语表，保证专有名词在整部作品中的统一
+  - 语义化智能审校，你只管指出问题，AGENT 帮你自动修正问题
+- `全格式`
+  - `字幕` `电子书` `视频` `音频（ASMR）` `漫画` 各种内容全支持
+  - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER` 各种引擎全支持
 
 > <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -20,29 +28,19 @@
 - 如您在翻译过程中使用了 [LinguaGacha](https://github.com/neavo/LinguaGacha) ，请在作品信息或发布页面的显要位置进行说明！
 - 如您的项目涉及任何商业行为或者商业收益，在使用 [LinguaGacha](https://github.com/neavo/LinguaGacha) 前，请先与作者联系以获得授权！
 
-## 功能优势 📌
-- 最优的翻译质量，最快的翻译速度
-  - 完美保留各种 `字幕` `电子书` 的样式效果
-  - 自动生成术语表，保证专有名词在整部作品中的统一
-  - 十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
-- 内置 `AGENT` 模式，通过对话自动完成各种任务　`👈👈 独家绝技`
-  - 无需任何技术知识，游戏即翻即玩
-  - 主流游戏引擎全覆盖 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
-  - **`音视频（ASMR / 动态漫画）一站式翻译`**：本地语音识别 + 画面文字检测，视频自动避让气泡/人脸排版双语 `.ass`，纯音频直接生成 `1920×1080` 频谱可视化双语 `.mp4`
-
 ## 效果展示 ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 视频（动态漫画） - 精准时间轴，逐对话对齐</b></summary><br><img width="1280" alt="视频与动态漫画双语字幕效果" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 音频（ASMR） - 字幕 + 频谱可视化视频双输出</b></summary><br><img width="1280" alt="纯音频双语可视化成片效果" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎬 视频（动态漫画） - 逐对话对齐时间轴</b></summary><br><img width="1280" alt="视频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 音频（ASMR） - 字幕/频谱可视化双输出</b></summary><br><img width="1280" alt="音频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
-> 💡 **常见格式开箱即译，其余自定义格式或脚本可直接交给 `AGENT` 工作区解析处理** — 完整清单见 [[文件格式支持](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]
+> 💡 **万物皆可译，包括但不限于：**
 >
-> - **电子书与字幕**：`.txt` `.md` `.epub` `.pdf`、`.srt` `.ass` `.ssa` `.vtt` `.lrc`
-> - **音频与视频**：常见音频（ASMR / 语音）与视频（动画 / 动态漫画）
-> - **游戏引擎与文本**：`Godot` / `ACTION GAME MAKER`、`RenPy`、`Tyrano`、`WOLFRPG`、`RPGMAKER`、`KV-JSON` / `Message-JSON`
+> - **音频与视频**：`ASMR` `动画` `影视剧` `动态漫画` 等形式
+> - **字幕与电子书**：`.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 等格式
+> - **游戏引擎与数据文件**：`Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` 等引擎与数据
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用

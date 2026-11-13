@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>Translation-specialized Agent Harness for novels, games, documents, audio, and video</p>
+<p align='center'>All-in-One Translation AGENT Harness · Audio Video Games E-books · PDF EPUB RPG ASMR GALGAME · One-Click · High Quality · All Formats</p>
 
 &ensp;
 &ensp;
@@ -9,12 +9,19 @@
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Overview 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) is a next-generation `Agent Harness` built specifically for high-quality localization across diverse formats
-- Out of the box, (almost) no setup needed—powerful capabilities without complicated configuration
-- Supports one-click translation across 16 languages
-  - including `Chinese`, `English`, `Japanese`, `Korean`, `Russian`, `German`, `French`, `Italian`, etc.
-- Handles `Subtitles`, `E-books`, `Native Game Engines`, `Audio (ASMR)`, and `Video (Dynamic Comics / Anime)` natively, while any custom or unlisted format can be inspected and written back directly inside the `AGENT` workspace
-- Supports local and online providers compatible with `OpenAI`, `Google`, `Anthropic`, and `SakuraLLM`
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), an All-in-One Translation `AGENT Harness` · One-Click · High Quality · All Formats
+- `One-Click`
+  - Fully automatic one-click translation across languages
+  - Drop it in, hit start, get ready-to-enjoy results
+  - No technical background or foreign language knowledge required
+- `High Quality`
+  - Unbound by model censorship, free output
+  - Fully preserves formatting and styles across `Subtitles` and `E-books`
+  - Automatically builds a glossary to keep proper nouns consistent throughout the work
+  - Semantic smart proofreading: just point out the issue and `AGENT` fixes it automatically
+- `All Formats`
+  - Full support for `Subtitles`, `E-books`, `Video`, `Audio (ASMR)`, `Comics`, and more
+  - Full support for `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `Kirikiri`, `Unity`, `Bakin`, `RealLive`, `Escude`, `ACTION GAME MAKER`, and more
 
 > <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -24,29 +31,19 @@
 - If you use [LinguaGacha](https://github.com/neavo/LinguaGacha) during translation, please include clear attribution in prominent locations of your work's information or release pages!
 - For projects involving commercial activities or profits, please contact the author for authorization before using [LinguaGacha](https://github.com/neavo/LinguaGacha)!
 
-## Feature Advantages 📌
-- Optimal translation quality and the fastest translation speed
-  - Fully preserves the styles of various `Subtitles` and `E-books`
-  - Automatically generates a glossary to keep proper nouns consistent throughout the work
-  - Subtitles in ten seconds, a novel in one minute, a game in five minutes
-- Built-in `AGENT` mode that completes complex workflows through conversation `👈👈 Exclusive Feature`
-  - No technical knowledge required: translate and play
-  - Covers all major engines: `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
-  - **`End-to-End Audio & Video Translation`**: Local ASR + on-screen text detection with smart bubble/face-avoiding bilingual `.ass` subtitles, plus `1920×1080` spectrum-visualized bilingual `.mp4` output for audio-only works
-
 ## Showcase ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 Video (Dynamic Comics) - Accurate timestamps, line-by-line dialogue sync</b></summary><br><img width="1280" alt="Dynamic comic and video bilingual subtitle sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 Audio (ASMR) - Bilingual subtitles + spectrum-visualized video output</b></summary><br><img width="1280" alt="Audio-only bilingual spectrum video sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎬 Video (Dynamic Comics) - Line-by-line timeline synchronization</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Audio (ASMR) - Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
-> 💡 **Common formats work out of the box, while any unlisted or custom format can be handled directly inside the `AGENT` workspace** — see [[Supported File Formats](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)]
+> 💡 **Translate virtually anything, including but not limited to:**
 >
-> - **E-books & Subtitles**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc`
-> - **Audio & Video**: Common audio (ASMR / voice) and video (anime / dynamic comics)
-> - **Game Engines & Text**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON` / `Message-JSON`
+> - **Audio & Video**: `ASMR`, `Anime`, `TV & Film`, `Dynamic Comics`, and more
+> - **Subtitles & E-books**: `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`, and more
+> - **Game Engines & Data Files**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)

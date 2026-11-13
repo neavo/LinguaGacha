@@ -1,16 +1,24 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>소설, 게임, 자막, 오디오·동영상 번역에 특화된 Agent Harness</p>
+<p align='center'>올인원 번역 AGENT Harness · 오디오 동영상 게임 전자책 · PDF EPUB RPG ASMR GALGAME 등 · 원클릭 · 고품질 · 전 형식</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 개요 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)는 고품질 현지화와 다형식 번역을 위해 설계된 차세대 `Agent Harness`입니다
-- 설치 후 바로 사용할 수 있으며, 설정은 (거의) 필요 없습니다. 강력한 기능을 쓰기 위해 복잡한 설정을 거칠 필요가 없습니다
-- `중국어`, `영어`, `일본어`, `한국어`, `러시아어`, `독일어`, `프랑스어`, `이탈리아어` 등 16개 언어 간 원클릭 번역을 지원합니다
-- `자막`, `전자책`, `게임 엔진`, `오디오(ASMR)`, `동영상(모션 코믹 / 애니메이션)`을 기본 지원하며, 비표준·사용자 지정 형식도 `AGENT` 작업 영역에 그대로 맡겨 분석하고 다시 쓸 수 있습니다
-- `OpenAI`, `Google`, `Anthropic`, `SakuraLLM` 등 다양한 로컬 및 온라인 인터페이스를 지원합니다
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), 올인원 번역 `AGENT Harness` · 원클릭 · 고품질 · 전 형식
+- `원클릭`
+  - 다양한 언어 간 전자동 원클릭 상호 번역
+  - 끌어다 놓고 시작만 누르면 바로 완성본 수령
+  - 기술적 배경이나 외국어 지식이 전혀 필요 없음
+- `고품질`
+  - 모델 검열 제한 없는 자유로운 출력
+  - 다양한 `자막` `전자책`의 서식과 스타일을 완벽하게 보존
+  - 용어집을 자동 생성하여 작품 전체에서 고유 명사를 일관되게 유지
+  - 시맨틱 스마트 검수: 문제점만 짚어 주면 `AGENT`가 알아서 수정
+- `전 형식`
+  - `자막` `전자책` `동영상` `오디오(ASMR)` `만화` 등 모든 콘텐츠 지원
+  - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER` 등 각종 엔진 지원
 
 > <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -20,29 +28,19 @@
 - 번역 과정에서 [LinguaGacha](https://github.com/neavo/LinguaGacha)를 사용했다면 작품 정보나 배포 페이지의 눈에 잘 띄는 곳에 사용 사실을 밝혀 주세요!
 - 프로젝트에 상업적 활동이나 수익이 관련되어 있다면 [LinguaGacha](https://github.com/neavo/LinguaGacha)를 사용하기 전에 제작자에게 연락하여 허가를 받아 주세요!
 
-## 주요 장점 📌
-- 최상의 번역 품질과 가장 빠른 번역 속도
-  - 다양한 `자막` `전자책`의 서식을 완벽하게 보존
-  - 용어집을 자동으로 생성하여 작품 전체에서 고유 명사의 번역을 일관되게 유지
-  - 자막 한 편은 10초, 소설 한 권은 1분, 게임 한 편은 5분
-- 대화를 통해 다양한 작업을 자동으로 수행하는 `AGENT` 모드 내장　`👈👈 독보적인 기능`
-  - 기술 지식 없이도 게임을 번역 후 바로 플레이 가능
-  - 주요 엔진 전체 지원 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
-  - **`오디오·동영상(ASMR / 모션 코믹) 원스톱 번역`**: 로컬 음성 인식 + 화면 문자 감지를 지원하며, 동영상은 말풍선과 얼굴을 피해 이중 언어 `.ass`를 배치하고 순수 오디오는 `1920×1080` 스펙트럼 시각화 이중 언어 `.mp4`를 자동 생성
-
 ## 번역 결과 미리보기 ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 동영상(모션 코믹) - 정밀 타임라인과 대사 단위 정렬</b></summary><br><img width="1280" alt="동영상 및 모션 코믹 이중 언어 자막 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 오디오(ASMR) - 자막 + 스펙트럼 시각화 영상 동시 출력</b></summary><br><img width="1280" alt="오디오 스펙트럼 시각화 이중 언어 영상 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎬 동영상(모션 코믹) - 대사 단위 정밀 타임라인 동기화</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 오디오(ASMR) - 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
-> 💡 **일반 형식은 별도 설정 없이 바로 번역되며, 기타 사용자 지정 형식이나 스크립트도 `AGENT` 작업 영역에서 처리할 수 있습니다** — 전체 목록은 [[지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]을 참고하세요
+> 💡 **무엇이든 번역 가능 (예시, 이에 국한되지 않음):**
 >
-> - **전자책 및 자막**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc`
-> - **오디오 및 동영상**: 일반 오디오(ASMR / 음성) 및 동영상(애니 / 모션 코믹)
-> - **게임 엔진 및 텍스트**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON` / `Message-JSON`
+> - **오디오 및 동영상**: `ASMR` `애니메이션` `영화·드라마` `모션 코믹` 등
+> - **자막 및 전자책**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc` 등
+> - **게임 엔진 및 데이터 파일**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` 등
 
 ## 기본 사용 흐름 🛸
 - [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 앱을 다운로드합니다
