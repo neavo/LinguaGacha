@@ -4,6 +4,14 @@ import type { LocaleKey } from "./i18n";
 export const PROJECT_SOURCE_FORMATS = [
   {
     source_kind: "file",
+    id: "image",
+    support_status: "internal",
+    extension: ".image",
+    title_key: "project.formats.image",
+    description_keys: [],
+  },
+  {
+    source_kind: "file",
     id: "media",
     support_status: "internal",
     extension: ".media",

@@ -49,7 +49,7 @@ export type AgentWorkspaceRejectionReason =
 
 export type AgentWorkspaceRejectedChange = JsonRecord & {
   scope: "knowledge" | "items" | "quality" | "prompts" | "pages" | "files";
-  op: "create" | "update" | "delete";
+  op: "create" | "update" | "delete" | "replace";
   reason: AgentWorkspaceRejectionReason;
 };
 

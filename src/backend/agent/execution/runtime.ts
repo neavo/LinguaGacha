@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { AppPathService } from "../../app/app-path-service";
-import type { MediaConfiguration } from "../media/runtime";
+import type { InferenceConfiguration } from "../inference/runtime";
 import { default_native_fs } from "../../../native/native-fs";
 import { Supervisor, type SupervisedProcessResult } from "../../../native/supervisor";
 import { resolve_workspace_runtime_entry } from "../../../native/workspace-runtime";
@@ -40,7 +40,7 @@ export class AgentExecutionRuntime {
   public readonly runtimeDirectory: string; // 随应用版本固定的运行资源。
   public readonly fontsDirectory: string; // 应用随附字体，Agent 工作区只读引用。
   public readonly nodeRoot: string; // 跨应用更新保留的用户 npm 工程。
-  public readonly media: MediaConfiguration; // 宿主固定媒体路径，根脚本通过 IPC 接收。
+  public readonly inference: InferenceConfiguration; // 宿主固定媒体路径，根脚本通过 IPC 接收。
   public readonly uv: UvConfiguration; // 经 IPC 固定根脚本使用的 uv 与共享数据根。
   private readonly lock: string; // 跨应用版本共用的执行租约路径。
   private readonly aria2Directory: string; // 应用管理的共享命令目录。
@@ -71,7 +71,7 @@ export class AgentExecutionRuntime {
     this.runtimeDirectory = path.resolve(options.runtimeDirectory);
     this.fontsDirectory = path.resolve(options.fontsDirectory);
     this.nodeRoot = path.resolve(options.paths.get_agent_node_root_dir());
-    this.media = Object.freeze({
+    this.inference = Object.freeze({
       modelsDirectory: path.resolve(options.paths.get_agent_models_dir()),
       cacheDirectory: path.resolve(options.paths.get_agent_media_cache_dir()),
       runtimeDirectory: this.runtimeDirectory,

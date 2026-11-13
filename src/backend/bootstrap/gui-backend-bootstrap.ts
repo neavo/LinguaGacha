@@ -1,3 +1,4 @@
+import type { ImageHost } from "../../shared/image";
 import type { AppLanguage } from "../../domain/app-language";
 import { AgentExecutionRuntime } from "../agent/execution/runtime";
 import { AgentPersonalityService } from "../agent/agent-personality-service";
@@ -24,6 +25,7 @@ type GuiBackendBootstrapState = "idle" | "starting" | "ready" | "stopping" | "st
 
 export interface GuiBackendBootstrapOptions {
   defaultAppLanguage: AppLanguage; // 宿主解析的首次设置默认语言。
+  imageLayoutHost?: ImageHost | undefined;
   pdfHost?: PDFHost;
   imageHost: AgentImageHost;
   appRoot: string; // 安装根与便携数据位置
@@ -150,6 +152,7 @@ export class GuiBackendBootstrap {
         run: runner.run.bind(runner),
         packageSources: package_sources,
         pdfHost: this.options.pdfHost,
+        imageLayoutHost: this.options.imageLayoutHost,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
       });

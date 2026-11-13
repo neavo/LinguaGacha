@@ -11,13 +11,11 @@ import importlib.util
 import json
 import math
 import os
-import struct
 import subprocess
 import sys
 import threading
 import traceback
 from collections import Counter, deque
-from concurrent.futures import Future
 from contextlib import closing
 from functools import cache
 from pathlib import Path
@@ -25,8 +23,6 @@ from typing import NamedTuple
 
 import numpy as np
 
-HEADER_MAX = 64 * 1024  # 与 channel.ts 一致。
-PAYLOAD_MAX = 64 * 1024 * 1024  # 检测图与按长宽比展开的文字行共用载荷上限。
 IN_FLIGHT = 2  # 每条处理分支的在途请求上限，前后处理与推理重叠一帧即可。
 
 SAMPLE_RATE = 16000
@@ -79,73 +75,10 @@ def log(message):
     print(message, file=sys.stderr, flush=True)
 
 
-class Channel:
-    """与 Node 之间的请求通道。读线程按编号结算应答，对端退出或帧损坏时所有等待者失败。"""
-
-    def __init__(self):
-        self.input, self.output = sys.stdin.buffer, sys.stdout.buffer
-        self.lock = threading.Lock()
-        self.pending, self.next = {}, 0
-
-    def read_exact(self, size):
-        data = self.input.read(size)
-        if len(data) != size:
-            raise EOFError("通道已关闭或帧被截断")
-        return data
-
-    def read(self):
-        (size,) = struct.unpack("<I", self.read_exact(4))
-        if size > HEADER_MAX:
-            raise ValueError(f"帧头过长：{size}")
-        header = json.loads(self.read_exact(size))
-        length = header.get("bytes", 0)
-        if not isinstance(length, int) or not 0 <= length <= PAYLOAD_MAX:
-            raise ValueError(f"载荷长度非法：{length}")
-        return header, self.read_exact(length)
-
-    def write(self, header, payload=b""):
-        head = json.dumps({**header, "bytes": len(payload)}, ensure_ascii=False).encode()
-        with self.lock:
-            self.output.write(struct.pack("<I", len(head)) + head)
-            self.output.write(payload)
-            self.output.flush()
-
-    def listen(self):
-        """读线程。应答编号必须对应在途请求，否则视为协议错误。"""
-        try:
-            while True:
-                header, payload = self.read()
-                with self.lock:
-                    future = self.pending.pop(header.get("id"), None)
-                if future is None:
-                    raise ValueError(f"未知应答：{header}")
-                if "error" in header:
-                    future.set_exception(RuntimeError(header["error"]))
-                else:
-                    future.set_result((header, payload))
-        except BaseException as error:  # noqa: BLE001 读线程退出原因转交所有等待者。
-            with self.lock:
-                pending, self.pending = list(self.pending.values()), {}
-            for future in pending:
-                future.set_exception(error)
-
-    def request(self, kind, array, **fields):
-        """提交 float32 张量，返回 Future[(应答头, 载荷)]。"""
-        array = np.ascontiguousarray(array, np.float32)
-        future = Future()
-        with self.lock:
-            id, self.next = self.next, self.next + 1
-            self.pending[id] = future
-        self.write({"id": id, "kind": kind, "dtype": "float32", "shape": list(array.shape), **fields}, memoryview(array).cast("B"))
-        return future
-
-
-def tensor(header, payload):
-    """按应答头还原 float32 张量，形状与字节数必须一致。"""
-    shape = header["shape"]
-    if header.get("dtype") != "float32" or 4 * math.prod(shape) != len(payload):
-        raise ValueError(f"应答形状不符：{header}")
-    return np.frombuffer(payload, np.float32).reshape(shape)
+_channel_spec = importlib.util.spec_from_file_location("inference_channel", (Path(__file__).with_name("channel.py") if Path(__file__).with_name("channel.py").exists() else Path(__file__).parent.parent / "inference" / "channel.py"))
+_channel = importlib.util.module_from_spec(_channel_spec)
+_channel_spec.loader.exec_module(_channel)
+Channel, tensor = _channel.Channel, _channel.tensor
 
 
 def ffmpeg_process(args):

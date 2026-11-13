@@ -209,6 +209,7 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
     import { fileURLToPath } from 'node:url';
     import value from '../scripts/helper.cjs';
     import { value as itemPath } from '../scripts/helper.js';
+    import '@lg/image'; // 仓库外部署必须能解析新 SDK 及其依赖。
     await fs.writeFile('work/state.json', JSON.stringify(value));
     console.log(JSON.stringify({ main: fileURLToPath(import.meta.url) === process.argv[1], value, itemPath }));
     console.error('ordinary stderr');

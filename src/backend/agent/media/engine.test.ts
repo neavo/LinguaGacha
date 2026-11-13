@@ -1,10 +1,8 @@
-import { afterAll, beforeEach, expect, it, vi } from "vitest";
-import fs from "node:fs";
-import os from "node:os";
+import { beforeEach, expect, it, vi } from "vitest";
 import path from "node:path";
 import { MEDIA_MODELS } from "./models";
 
-const fake = vi.hoisted(() => ({ close: vi.fn(), created: vi.fn(), uv: vi.fn() }));
+const fake = vi.hoisted(() => ({ close: vi.fn(), created: vi.fn() }));
 vi.mock("./inference-engine", async (original) => ({
   ...(await original<typeof import("./inference-engine")>()),
   Engine: class {
@@ -15,18 +13,14 @@ vi.mock("./inference-engine", async (original) => ({
   },
 }));
 vi.mock("../npm", () => ({ npm: { directory: "/shared/node" } }));
-const python_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-media-python-"));
-vi.mock("../uv", () => ({ uv: { directory: python_root, run: fake.uv } }));
 vi.mock("node:module", () => ({
   createRequire: () => ({ resolve: () => "/shared/node/node_modules/onnxruntime-node/index.js" }),
 }));
 
-afterAll(() => fs.rmSync(python_root, { recursive: true, force: true }));
-
 beforeEach(async () => {
   vi.resetModules();
-  const { bind_media } = await import("./runtime");
-  bind_media({
+  const { bind_inference } = await import("../inference/runtime");
+  bind_inference({
     modelsDirectory: "/models",
     cacheDirectory: "/cache/media",
     runtimeDirectory: "/runtime",
@@ -37,7 +31,7 @@ beforeEach(async () => {
 
 it("returns GPU failure only after closing and lets the caller explicitly retry on CPU", async () => {
   const { operate } = await import("./engine");
-  const { DeviceFailure } = await import("./inference-engine");
+  const { DeviceFailure } = await import("../inference/client");
   const failure = new DeviceFailure("lost");
   const action = vi.fn().mockRejectedValue(failure);
   await expect(operate(action, { device: "gpu" })).rejects.toBe(failure);
@@ -62,7 +56,7 @@ it("returns GPU failure only after closing and lets the caller explicitly retry 
 
 it("unconfirmed shutdown overrides device failure and prevents further operations", async () => {
   const { operate } = await import("./engine");
-  const { DeviceFailure } = await import("./inference-engine");
+  const { DeviceFailure } = await import("../inference/client");
   const closeFailure = new DeviceFailure("shutdown timed out");
   fake.close.mockRejectedValue(closeFailure);
   const action = vi.fn().mockRejectedValue(new DeviceFailure("lost"));
@@ -107,18 +101,4 @@ it("resumes GPU operations after failed action cleanup while CPU remains availab
   await expect(operate(async () => "cpu", { device: "cpu" })).resolves.toBe("cpu");
   closing.resolve();
   await expect(Promise.all([first, second])).resolves.toEqual([failure, "next"]);
-});
-
-it("Python 环境缺失时明确失败，补齐解释器后可定位且不隐式同步", async () => {
-  const { python } = await import("./engine");
-  expect(() => python()).toThrow("run uv sync --inexact through @lg/uv first");
-  expect(fake.uv).not.toHaveBeenCalled();
-  const executable = path.join(
-    python_root,
-    ".venv",
-    ...(process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"]),
-  );
-  fs.mkdirSync(path.dirname(executable), { recursive: true });
-  fs.writeFileSync(executable, "");
-  expect(python()).toBe(executable);
 });

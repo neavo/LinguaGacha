@@ -1,8 +1,10 @@
+import { image_record_identities, read_image_package } from "../file/image/image-format";
 import { resolve_app_locale } from "../../domain/app-language";
 import type { AppSettingService } from "../app/app-setting-service";
 import type {
   SourceInspection,
   ProjectFileCreate,
+  ProjectFileReplace,
   AppliedFiles,
 } from "../../shared/project-file-changes";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "../../shared/project-event";
@@ -188,6 +190,7 @@ export class ProjectContentService {
     revisionSections: ProjectDataSection[];
     sourcePaths?: readonly string[];
     creates: readonly ProjectFileCreate[];
+    replaces?: readonly ProjectFileReplace[];
     updates: readonly ProjectFileUpdate[];
     deletes: readonly string[];
     signal: AbortSignal;
@@ -212,6 +215,17 @@ export class ProjectContentService {
       args.revisionSections,
     );
     const current_assets = await this.database.get_all_asset_records(args.projectPath);
+    const replaces = args.replaces ?? [];
+    const targets = [
+      ...args.deletes,
+      ...args.updates.map((row) => row.file_path),
+      ...replaces.map((row) => row.file_path),
+    ];
+    if (
+      new Set(targets).size !== targets.length ||
+      replaces.some((row) => !current_assets.some((asset) => asset.path === row.file_path))
+    )
+      throw new AppErrors.AppError("request.validation_failed");
     const occupied = resolve_project_file_layout(current_assets, args.deletes, args.updates);
     let parsed: SourceFileParseResult = {
       file_drafts: [],
@@ -258,6 +272,35 @@ export class ProjectContentService {
         });
       }
     }
+    for (const replace of replaces) {
+      const service = await this.create_format_service(args.projectPath);
+      const replacement = await service.with_source_directories(
+        [replace.source_path],
+        async (signal) => {
+          const sources = await service.collect_source_file_entries([replace.source_path], signal);
+          if (sources.length !== 1) throw new AppErrors.AppError("request.validation_failed");
+          return new SourceFileParsePipeline(service).parse_import_commands(sources, signal);
+        },
+        args.signal,
+      );
+      parsed.directory_changes.push(...replacement.directory_changes);
+      const draft = replacement.file_drafts[0];
+      if (
+        replacement.failures.length ||
+        !draft ||
+        draft.file_type !==
+          current_assets.find((asset) => asset.path === replace.file_path)!.file_type
+      )
+        failures.push({
+          source_path: replace.source_path,
+          message: "Replacement source is invalid or has a different format",
+        });
+      else {
+        draft.rel_path = replace.file_path;
+        for (const item of draft.parsed_items) item.file_path = replace.file_path;
+        parsed.file_drafts.push(draft);
+      }
+    }
     if (failures.length)
       return { kind: "source_failed", failures, directory_changes: parsed.directory_changes };
     try {
@@ -267,13 +310,16 @@ export class ProjectContentService {
         current_assets.filter((asset) =>
           occupied.some((file) => file.path === asset.path && file.previous_path === asset.path),
         ),
-        new Set(
-          entries
+        new Set([
+          ...entries
             .filter((entry) => args.creates[entry.record]!.inheritance_mode === "inherit")
             .map((entry) => entry.rel_path),
-        ),
+          ...replaces
+            .filter((row) => row.inheritance_mode === "inherit")
+            .map((row) => row.file_path),
+        ]),
       );
-      // 新增名称已避开现有资产，准备结果不会产生替换。
+      // 新增和替换共享解析、预过滤和单次资产事务。
       const { itemIdsByFile, ...result } = await this.write_store.apply_file_changes({
         ...args,
         sourceRecord: {
@@ -281,12 +327,22 @@ export class ProjectContentService {
           locale: resolve_app_locale(this.app_settings.read_app_language()),
         },
         creates: prepared.creates,
+        replacements: prepared.replacements,
       });
       return {
         kind: "applied",
         ...result,
         directory_changes: parsed.directory_changes,
         files: {
+          replaced: replaces.map((row) => ({
+            file_path: row.file_path,
+            source_path: row.source_path,
+            preserved: prepared.preserved.get(row.file_path) ?? 0,
+            inherited: prepared.inherited.get(row.file_path) ?? 0,
+            contested: (prepared.contested.get(row.file_path) ?? []).map((group) =>
+              group.map((index) => itemIdsByFile.get(row.file_path)![index]!),
+            ),
+          })),
           updated: args.updates.length,
           deleted: args.deletes.length,
           created: args.creates.map((create, record) => {
@@ -358,6 +414,7 @@ export class ProjectContentService {
         items[String(id)] = this.normalize_public_item({ ...item, id, file_path: file.rel_path });
       }
     }
+    const preserved = new Map<string, number>();
     const inherited = new Map<string, number>();
     const contested = new Map<string, number[][]>(); // 文件内条目索引，提交后才映射为数据库 ID。
     let prepared_items = items;
@@ -373,6 +430,54 @@ export class ProjectContentService {
         const candidates = Object.values(prepared_items).filter((item) =>
           inherit_paths.has(item.file_path),
         );
+        for (const draft of drafts) {
+          if (
+            draft.file_type !== "IMAGE" ||
+            !inherit_paths.has(draft.rel_path) ||
+            !assets.some((asset) => asset.path === draft.rel_path && asset.file_type === "IMAGE")
+          )
+            continue;
+          const oldContent = await this.database.read_asset_content(project_path, draft.rel_path);
+          if (!oldContent)
+            throw new AppErrors.AppError("file.not_found", {
+              public_details: { file: draft.rel_path },
+            });
+          const before = await read_image_package(oldContent, draft.rel_path);
+          const after = draft.image!; // 新包在解析入口已校验，复用结果避免再次展开大包。
+          const previous = image_record_identities(before.book, before.records);
+          const current = image_record_identities(after.book, after.records);
+          const oldByRow = new Map(
+            old_items
+              .filter((item) => item.file_path === draft.rel_path)
+              .map((item) => [item.row_number, item]),
+          );
+          const newByRow = new Map(
+            candidates
+              .filter((item) => item.file_path === draft.rel_path)
+              .map((item) => [item.row_number, item]),
+          );
+          for (const [identity, next] of current) {
+            const old = previous.get(identity);
+            const source = old && oldByRow.get(old.row);
+            const target = newByRow.get(next.row);
+            if (
+              !old ||
+              !source ||
+              !target ||
+              source.status !== "PROCESSED" ||
+              old.image !== next.image ||
+              old.source !== next.source ||
+              old.name !== next.name ||
+              source.src !== next.source ||
+              (source.name_src ?? "") !== next.name
+            )
+              continue;
+            target.dst = source.dst;
+            target.name_dst = source.name_dst;
+            target.status = "PROCESSED";
+            preserved.set(draft.rel_path, (preserved.get(draft.rel_path) ?? 0) + 1);
+          }
+        }
         const pending = candidates.filter((item) => item.status !== "PROCESSED"); // 记录继承前的未完成条目。
         const inheritance = inherit_completed_translations(old_items, candidates, "fill");
         // 文件内索引沿用临时 ID 顺序，与下方持久化记录的写入顺序一致。
@@ -423,7 +528,7 @@ export class ProjectContentService {
           sortOrder: next_sort + creates.length,
         });
     }
-    return { creates, replacements, inherited, contested };
+    return { creates, replacements, preserved, inherited, contested };
   }
 
   /** 预览只发现来源并分配目标名称，内容准备由正式导入持有。 */

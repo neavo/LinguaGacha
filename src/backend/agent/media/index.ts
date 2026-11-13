@@ -4,7 +4,7 @@
  */
 import path from "node:path";
 import { default_native_fs as fs } from "../../../native/native-fs";
-import { media_configuration } from "./runtime";
+import { inference_configuration } from "../inference/runtime";
 import { require_models } from "./preparation";
 import { helper, operate, validate_device } from "./engine";
 import { ffmpeg_path, inspect } from "./ffmpeg";
@@ -18,7 +18,7 @@ export { ASR_LANGUAGES, union, type AsrSentence } from "./speech";
 
 export { missing_models, prepare_models } from "./preparation";
 export { probe_gpu, type GpuProbeResult } from "./probe";
-export { DeviceFailure } from "./inference-engine";
+export { DeviceFailure } from "../inference/client";
 export { visualize, type VisualizeOptions, type VisualizeResult } from "./visualize";
 
 /** 画面文字区间，`box` 为归一化 `[x0, y0, x1, y1]`。 */
@@ -62,8 +62,8 @@ export async function listen(
           track,
           center: /\b[57]\.1\b/u.test(stream), // 5.1、7.1 只取中置声道，实测错误明显少于常规下混。
           language: code,
-          vad_mvn: path.join(media_configuration().modelsDirectory, MEDIA_MODELS.vad_mvn.file),
-          asr_mvn: path.join(media_configuration().modelsDirectory, MEDIA_MODELS.asr_mvn.file),
+          vad_mvn: path.join(inference_configuration().modelsDirectory, MEDIA_MODELS.vad_mvn.file),
+          asr_mvn: path.join(inference_configuration().modelsDirectory, MEDIA_MODELS.asr_mvn.file),
         },
         engine,
       )) as { spans: [number, number][]; windows: AsrWindow[] };
@@ -126,3 +126,5 @@ export async function refine(
 export async function sheets(entries: readonly SheetEntry[], out: string): Promise<Sheet[]> {
   return (await helper("sheet", { entries, out })) as Sheet[];
 }
+
+export { INFERENCE_DEPENDENCIES } from "../inference/environment";

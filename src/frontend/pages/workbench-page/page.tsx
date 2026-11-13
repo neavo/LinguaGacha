@@ -24,9 +24,10 @@ export function WorkbenchPage(): JSX.Element {
   const workbench_state = useWorkbenchPageState();
   const translation_stats = useProjectTranslationStats();
   const [start_dialog_open, set_start_dialog_open] = useState(false); // 启动选择随页面卸载结束。
-  // PDF 按页处理，通用数据需要还原原格式。这两类文件由 AGENT 完成流程。
+  // PDF 按页处理，图片和通用数据需要专属写回，由 AGENT 完成流程。
   const requires_agent = workbench_state.entries.some(
-    (entry) => entry.file_type === "PDF" || entry.file_type === "GENERIC",
+    (entry) =>
+      entry.file_type === "PDF" || entry.file_type === "GENERIC" || entry.file_type === "IMAGE",
   );
   // 文件快照就绪后才决定入口。PDF 即使没有文本条目也能转交。
   const can_start_translation =

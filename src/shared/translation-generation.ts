@@ -1,6 +1,6 @@
 /** 这些资产需要 Agent 完成目标格式处理。 */
 export function requires_agent_generation(file_type: string): boolean {
-  return file_type === "GENERIC" || file_type === "MEDIA";
+  return file_type === "GENERIC" || file_type === "MEDIA" || file_type === "IMAGE";
 }
 
 /** 每个 PDF 的覆盖按原页计数，与重排后的输出页数独立。 */

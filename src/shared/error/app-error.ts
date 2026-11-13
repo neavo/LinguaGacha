@@ -6,7 +6,7 @@ export type AppErrorPublicDetails = JsonRecord;
 export type AppErrorDiagnosticContext = Record<string, unknown>;
 
 export interface AppErrorDefinition {
-  status: 400 | 404 | 409 | 415 | 423 | 500 | 502;
+  status: 400 | 404 | 409 | 413 | 415 | 423 | 500 | 502;
   severity: AppErrorSeverity;
   message: string; // 无底层异常时使用的源头原因。
 }
@@ -50,6 +50,12 @@ export const APP_ERROR_DEFINITIONS = {
     severity: "fault",
   },
   "file.not_found": { message: "The file does not exist.", status: 404, severity: "expected" },
+  "file.asset_too_large": {
+    message:
+      "The source exceeds the project storage limit. Split it into smaller files or chapters.",
+    status: 413,
+    severity: "expected",
+  },
   "file.busy": { message: "The game directory is busy.", status: 423, severity: "expected" },
   "file.preview_too_large": {
     message: "The file exceeds the preview size limit.",

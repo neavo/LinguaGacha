@@ -54,6 +54,7 @@ export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
 export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
   knowledge: Object.freeze({ updates: "changes/knowledge/updates.jsonl" }),
   files: Object.freeze({
+    replaces: "changes/files/replaces.jsonl",
     creates: "changes/files/creates.jsonl",
     updates: "changes/files/updates.jsonl",
     deletes: "changes/files/deletes.jsonl",

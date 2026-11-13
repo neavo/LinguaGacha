@@ -1,10 +1,18 @@
+import {
+  float,
+  check_finite,
+  infer,
+  type Ort,
+  type OrtSession,
+  type OrtTensor,
+} from "../inference/ort";
 /**
  * 媒体推理 Worker：独占原生会话，避免同步推理阻塞根线程。
  * 本入口只使用 Node 标准解析，不依赖工作区 SDK 钩子。
  */
 import { parentPort, workerData } from "node:worker_threads";
 import { default_native_fs as fs } from "../../../native/native-fs";
-import { tensor_shape } from "./channel";
+import { tensor_shape } from "../inference/channel";
 import { ASR_LANGUAGE_IDS, ASR_TEXT_NORM, ctc_decode } from "./speech";
 import type {
   MediaDevice,
@@ -13,21 +21,6 @@ import type {
   MediaWorkerReply,
   MediaWorkerRequest,
 } from "./worker-protocol";
-
-/** 本模块使用的 onnxruntime-node 子集。 */
-type OrtTensor = { readonly data: unknown; readonly dims: readonly number[]; dispose(): void };
-type OrtSession = {
-  readonly inputNames: readonly string[];
-  readonly outputNames: readonly string[];
-  run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
-  release(): Promise<void>;
-};
-type Ort = {
-  InferenceSession: {
-    create(file: string, options: Record<string, unknown>): Promise<OrtSession>;
-  };
-  Tensor: new (type: string, data: Float32Array | Int32Array, dims: readonly number[]) => OrtTensor;
-};
 
 // FSMN 契约与 `fsmn_vad.py` 一致：LFR 400 维特征，每帧 248 个 pdf 得分。
 const VAD_FEATURES = 400;
@@ -50,30 +43,6 @@ function create(file: string, device: MediaDevice, threads: number): Promise<Ort
     interOpNumThreads: 1,
     logSeverityLevel: 3, // 只记录错误。算子分配到 CPU 的提示属于预期。
   });
-}
-
-/** 原生输出通过类型校验后才能交给解码与检测。 */
-const float = (data: unknown): Float32Array => {
-  if (!(data instanceof Float32Array)) throw new Error("Model output is not float32.");
-  return data;
-};
-
-/** GPU 输出可能因设备故障出现 NaN，必须当作失败而不是空结果。 */
-function check_finite(data: Float32Array): void {
-  for (const value of data)
-    if (!Number.isFinite(value)) throw new Error("Model output is not finite.");
-}
-
-/** 运行一次，输入张量用后即释放。 */
-async function infer(
-  session: OrtSession,
-  feeds: Record<string, OrtTensor>,
-): Promise<Record<string, OrtTensor>> {
-  try {
-    return await session.run(feeds);
-  } finally {
-    for (const tensor of Object.values(feeds)) tensor.dispose();
-  }
 }
 
 /** 识别：输出含四个控制位置，按有效长度解码，只回传 token 与时间。 */

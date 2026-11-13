@@ -1,3 +1,4 @@
+import type { ImageHost } from "../../shared/image";
 import type { AgentImageHost } from "../../shared/agent-image";
 import type { PDFHost } from "../../shared/pdf";
 import { randomUUID } from "node:crypto";
@@ -46,6 +47,7 @@ export class BackendRuntimeClient {
       builtinRoot: string; // 真实内置资源根必须显式跨线程传递
       workspaceRuntimeDirectory: string; // 当前版本的工作区包与只读资源根
       fontsDirectory: string; // 应用随附字体，Agent 工作区只读引用
+      imageLayoutHost?: ImageHost | undefined;
       pdfHost?: PDFHost;
       imageHost: AgentImageHost;
       resolveProxy: (url: string) => Promise<string>;
@@ -186,6 +188,10 @@ export class BackendRuntimeClient {
       switch (operation.kind) {
         case "prepare_image":
           data = await this.options.imageHost(operation, controller.signal);
+          break;
+        case "render_image":
+          if (!this.options.imageLayoutHost) throw new Error("Image layout host missing");
+          data = await this.options.imageLayoutHost(operation, controller.signal);
           break;
         case "print_pdf":
           if (!this.options.pdfHost) throw new Error("PDF host missing.");

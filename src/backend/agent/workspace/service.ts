@@ -1,3 +1,5 @@
+import { create_image_layout_port } from "../image/host";
+import type { ImageHost } from "../../../shared/image";
 import { create_file_generator } from "../tools/generate-files";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
@@ -225,6 +227,7 @@ export class AgentWorkspaceService {
         TranslationFileGenerationService,
         "generate_staging_files" | "read_output_paths"
       >;
+      imageLayoutHost?: ImageHost | undefined;
       pdfHost?: PDFHost | undefined;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -751,6 +754,7 @@ export class AgentWorkspaceService {
               getOutputPaths: this.options.generation.read_output_paths.bind(
                 this.options.generation,
               ),
+              imageLayout: create_image_layout_port(this.root_path, this.options.imageLayoutHost),
               printPDF: create_pdf_printer({
                 root: this.root_path,
                 nativeFs: this.native_fs,
@@ -963,7 +967,11 @@ export class AgentWorkspaceService {
     if (preview.rejected.length) return reject(preview.rejected);
     await approve?.({
       ...summarize_applied_changes({}),
-      files: preview.created + preview.files.updates.length + preview.files.deletes.length,
+      files:
+        preview.created +
+        preview.files.replaces.length +
+        preview.files.updates.length +
+        preview.files.deletes.length,
     });
     try {
       const result = await this.options.runtimeGate.run_agent_project_write((signal) =>
@@ -972,10 +980,11 @@ export class AgentWorkspaceService {
           source: "agent_workspace_apply",
           expectedSectionRevisions: { files: active.revisions.files ?? 0 },
           revisionSections: ["files"],
-          sourcePaths: parsed.files.creates
+          sourcePaths: [...parsed.files.creates, ...parsed.files.replaces]
             .filter((row) => path.isAbsolute(row.source_path))
             .map((row) => row.source_path),
           creates: preview.files.creates,
+          replaces: preview.files.replaces,
           updates: preview.files.updates,
           deletes: preview.files.deletes.map((row) => row.file_path),
           signal,
@@ -985,10 +994,13 @@ export class AgentWorkspaceService {
         return reject(
           result.failures.map((failure) => ({
             scope: "files",
-            op: "create",
+            op: preview.files.replaces.some((row) => row.source_path === failure.source_path)
+              ? "replace"
+              : "create",
             reason: "source_failed",
-            line: preview.files.creates.find((row) => row.source_path === failure.source_path)!
-              .line,
+            line: [...preview.files.creates, ...preview.files.replaces].find(
+              (row) => row.source_path === failure.source_path,
+            )!.line,
             ...failure,
           })),
           result.directory_changes,
@@ -996,6 +1008,10 @@ export class AgentWorkspaceService {
       // 对外回执保留调用方的路径表示，实际读取使用解析后的本机路径。
       const files = {
         ...result.files,
+        replaced: result.files.replaced.map((entry, index) => ({
+          ...entry,
+          source_path: parsed.files.replaces[index]!.source_path,
+        })),
         created: result.files.created.map((entry, index) => ({
           ...entry,
           source_path: parsed.files.creates[index]!.source_path,

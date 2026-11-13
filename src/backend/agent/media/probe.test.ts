@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { DeviceFailure } from "./inference-engine";
+import { DeviceFailure } from "../inference/client";
 import { probe_gpu } from "./probe";
 const fake = vi.hoisted(() => ({
   ready: vi.fn(),

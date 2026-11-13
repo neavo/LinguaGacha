@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, inject, it, vi } from "vitest";
-import { download_model, type MediaModel } from "./models";
+import { prepare_model_files, download_model, type InferenceModel } from "./models";
 
 const CONTENT = Buffer.from(
   Array.from({ length: 3 * 1024 * 1024 }, (_, index) => (index * 31) % 251),
@@ -64,7 +64,7 @@ beforeEach(async () => {
 
 afterEach(() => rm(root, { recursive: true, force: true }));
 
-const model = (...mirrors: string[]): MediaModel => ({
+const model = (...mirrors: string[]): InferenceModel => ({
   file: "nested/model.onnx",
   size: CONTENT.length,
   sha256: createHash("sha256").update(CONTENT).digest("hex"),
@@ -73,7 +73,7 @@ const model = (...mirrors: string[]): MediaModel => ({
 const target = () => path.join(root, "models", "nested", "model.onnx");
 const leftovers = async () =>
   (await readdir(path.dirname(target()))).filter((name) => name !== "model.onnx");
-const download = (value: MediaModel) =>
+const download = (value: InferenceModel) =>
   download_model(path.join(root, "models"), path.join(root, "stats.txt"), value);
 
 it("downloads from the reachable mirror and publishes only verified content", async () => {
@@ -105,12 +105,14 @@ it("skips verified files without contacting mirrors", async () => {
 
 it("resumes an interrupted download from the retained partial file", async () => {
   behaviors.set("a", "cut");
-  await expect(download(model("a"))).rejects.toThrow("failed");
+  const prepare = () =>
+    prepare_model_files(path.join(root, "models"), path.join(root, "cache"), [model("a")]);
+  await expect(prepare()).rejects.toThrow("failed");
   await expect(readFile(target())).rejects.toMatchObject({ code: "ENOENT" });
   expect(await leftovers()).toHaveLength(2); // 临时文件与 aria2 控制文件保留供续传。
   ranges.length = 0;
   behaviors.set("a", "ok");
-  await download(model("a"));
+  await prepare();
   expect((await readFile(target())).equals(CONTENT)).toBe(true);
   expect(ranges).toContain(`a:${2 * CUT}`); // 两次各断在 1 MiB 处，续传从已下载的位置开始。
 }, 60_000);

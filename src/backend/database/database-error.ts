@@ -2,6 +2,7 @@ import { AppError, is_app_error, summarize_log_error_path } from "../../shared/e
 
 const SQLITE_PRIMARY_CODE_MASK = 0xff; // SQLite 扩展码的低八位保存主错误码。
 const SQLITE_BUSY = 5; // SQLite 协议定义的外部连接竞争。
+const SQLITE_TOOBIG = 18; // 单行或绑定 BLOB 超出 SQLite 上限，事务按原有路径回滚。
 
 /** 在存储边界解释 SQLite 数值码，保留原始原因并返回公开错误码。 */
 export function database_error(error: unknown, project_path: string, operation: string): AppError {
@@ -13,7 +14,9 @@ export function database_error(error: unknown, project_path: string, operation: 
   return new AppError(
     sqlite_code !== undefined && (sqlite_code & SQLITE_PRIMARY_CODE_MASK) === SQLITE_BUSY
       ? "database.busy"
-      : "runtime.internal_invariant",
+      : sqlite_code !== undefined && (sqlite_code & SQLITE_PRIMARY_CODE_MASK) === SQLITE_TOOBIG
+        ? "file.asset_too_large"
+        : "runtime.internal_invariant",
     {
       cause: error,
       diagnostic_context: {

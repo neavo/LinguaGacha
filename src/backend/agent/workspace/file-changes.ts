@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { ParsedAgentWorkspaceChanges } from "./changes";
 import type { ProjectContentService } from "../../project/project-content-service";
 import type { AgentWorkspaceRejectedChange } from "../../project/agent-workspace-write";
@@ -20,6 +21,7 @@ export async function preview_file_changes(args: {
   const rejected = [...parsed.rejected];
   const files = {
     ...parsed.files,
+    replaces: parsed.files.replaces.map((entry) => ({ ...entry })),
     creates: parsed.files.creates.map((entry) => ({ ...entry })),
     updates: parsed.files.updates.map((entry) => ({ ...entry })),
   };
@@ -48,6 +50,12 @@ export async function preview_file_changes(args: {
   );
   // 拒绝定位保留原始输入路径，提交参数再解析成本机路径。
   const records = [
+    ...files.replaces.map((row) => ({
+      op: "replace" as const,
+      line: row.line,
+      file_path: row.file_path,
+      source_path: row.source_path,
+    })),
     ...files.creates.map((row) => ({
       op: "create" as const,
       line: row.line,
@@ -64,13 +72,13 @@ export async function preview_file_changes(args: {
       file_path: row.file_path,
     })),
   ];
-  for (const row of files.creates) {
+  for (const row of [...files.creates, ...files.replaces]) {
     try {
       row.source_path = args.resolve(row.source_path);
     } catch (error) {
       rejected.push({
         scope: "files",
-        op: "create",
+        op: "file_path" in row ? "replace" : "create",
         line: row.line,
         source_path: row.source_path,
         reason: "invalid_change",
@@ -149,6 +157,29 @@ export async function preview_file_changes(args: {
           is_app_error(error) && error.code === "request.validation_failed"
             ? "invalid_change"
             : "source_failed",
+        message: String(error),
+      });
+    }
+  }
+  for (const row of files.replaces) {
+    try {
+      const [inspection] = await args.inspect([row.source_path]);
+      if (
+        !inspection ||
+        inspection.files.length !== 1 ||
+        inspection.failures.length ||
+        path.extname(inspection.files[0]!.path).toLowerCase() !==
+          path.extname(row.file_path).toLowerCase()
+      )
+        throw new Error("Replacement requires one source of the same format");
+    } catch (error) {
+      rejected.push({
+        scope: "files",
+        op: "replace",
+        line: row.line,
+        file_path: row.file_path,
+        source_path: row.source_path,
+        reason: "source_failed",
         message: String(error),
       });
     }

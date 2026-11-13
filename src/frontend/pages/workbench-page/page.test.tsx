@@ -97,7 +97,7 @@ describe("WorkbenchPage translation entry", () => {
     expect(state.task.request_start_or_continue_translation).toHaveBeenCalledOnce();
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });
-  it.each(["PDF", "GENERIC"])(
+  it.each(["PDF", "GENERIC", "IMAGE"])(
     "%s 无文本条目也能转交，混合工程同样禁止直接翻译",
     async (file_type) => {
       state.workbench.entries = [{ file_type, progress: { total_count: 0 } }];
