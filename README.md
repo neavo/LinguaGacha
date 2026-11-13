@@ -6,23 +6,25 @@
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 概述 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，全能翻译 AGENT Harness · 一键 · 高质量 · 全格式
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，翻译特化的次世代 `AGENT Harness`
 - `一键`
-  - 全自动各种语言一键互译
+  - 各语言全自动一键互译
   - 拖进去，点开始，等熟肉
   - 无需任何技术背景，无需任何语言知识
 - `高质量`
   - 不受模型审查限制，自由输出
-  - 完美保留各种 `字幕` `电子书` 的样式效果
   - 自动生成术语表，保证专有名词在整部作品中的统一
-  - 语义化智能审校，你只管指出问题，AGENT 帮你自动修正问题
+  - 完美保留各种 `字幕` `电子书` `游戏引擎` 的样式效果
+  - 语义化智能审校，只管指出问题，AGENT 自动帮你修正与润色
 - `全格式`
-  - `字幕` `电子书` `视频` `音频（ASMR）` `漫画` 各种内容全支持
-  - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER` 各种引擎全支持
+  - 万物皆可译，包括但不限于：
+  - 音频与视频 - `ASMR` `动画` `影视剧` `动态漫画` 等形式
+  - 字幕与电子书 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 等格式
+  - 游戏引擎与数据文件 - `Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` 等引擎与数据
 
-> <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
+> <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
-> <img width="2570" height="1605" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
+> <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
 ## 特别说明 ⚠️
 - 如您在翻译过程中使用了 [LinguaGacha](https://github.com/neavo/LinguaGacha) ，请在作品信息或发布页面的显要位置进行说明！

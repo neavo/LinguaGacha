@@ -6,23 +6,25 @@
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 개요 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), 올인원 번역 `AGENT Harness` · 원클릭 · 고품질 · 전 형식
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), 번역에 특화된 차세대 `AGENT Harness`
 - `원클릭`
   - 다양한 언어 간 전자동 원클릭 상호 번역
   - 끌어다 놓고 시작만 누르면 바로 완성본 수령
   - 기술적 배경이나 외국어 지식이 전혀 필요 없음
 - `고품질`
   - 모델 검열 제한 없는 자유로운 출력
-  - 다양한 `자막` `전자책`의 서식과 스타일을 완벽하게 보존
   - 용어집을 자동 생성하여 작품 전체에서 고유 명사를 일관되게 유지
-  - 시맨틱 스마트 검수: 문제점만 짚어 주면 `AGENT`가 알아서 수정
+  - 다양한 `자막` `전자책` `게임 엔진`의 서식과 스타일을 완벽하게 보존
+  - 시맨틱 스마트 검수: 문제점만 짚어 주면 `AGENT`가 알아서 수정하고 다듬기
 - `전 형식`
-  - `자막` `전자책` `동영상` `오디오(ASMR)` `만화` 등 모든 콘텐츠 지원
-  - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER` 등 각종 엔진 지원
+  - 다음을 비롯한 모든 콘텐츠 번역 가능:
+  - 오디오 및 동영상 - `ASMR` `애니메이션` `영화 및 드라마` `모션 코믹스` 등
+  - 자막 및 전자책 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 등
+  - 게임 엔진 및 데이터 파일 - `Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` 등
 
-> <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
+> <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
-> <img width="2570" height="1605" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
+> <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
 ## 특별 안내 ⚠️
 - 번역 과정에서 [LinguaGacha](https://github.com/neavo/LinguaGacha)를 사용했다면 작품 정보나 배포 페이지의 눈에 잘 띄는 곳에 사용 사실을 밝혀 주세요!
@@ -40,7 +42,7 @@
 >
 > - **오디오 및 동영상**: `ASMR` `애니메이션` `영화·드라마` `모션 코믹` 등
 > - **자막 및 전자책**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc` 등
-> - **게임 엔진 및 데이터 파일**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` 등
+> - **게임 엔진 및 데이터 파일**: `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` 등
 
 ## 기본 사용 흐름 🛸
 - [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 앱을 다운로드합니다

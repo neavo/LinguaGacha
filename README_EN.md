@@ -9,23 +9,25 @@
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Overview 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), an All-in-One Translation `AGENT Harness` · One-Click · High Quality · All Formats
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), a next-generation `AGENT Harness` specialized in translation
 - `One-Click`
   - Fully automatic one-click translation across languages
   - Drop it in, hit start, get ready-to-enjoy results
   - No technical background or foreign language knowledge required
 - `High Quality`
   - Unbound by model censorship, free output
-  - Fully preserves formatting and styles across `Subtitles` and `E-books`
   - Automatically builds a glossary to keep proper nouns consistent throughout the work
-  - Semantic smart proofreading: just point out the issue and `AGENT` fixes it automatically
+  - Fully preserves formatting and styles across `Subtitles`, `E-books`, and `Game Engines`
+  - Semantic smart proofreading: just point out the issue and `AGENT` automatically corrects and polishes the translation
 - `All Formats`
-  - Full support for `Subtitles`, `E-books`, `Video`, `Audio (ASMR)`, `Comics`, and more
-  - Full support for `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `Kirikiri`, `Unity`, `Bakin`, `RealLive`, `Escude`, `ACTION GAME MAKER`, and more
+  - Translate virtually anything, including but not limited to:
+  - Audio & Video - `ASMR`, `Anime`, `TV & Film`, `Dynamic Comics`, and more
+  - Subtitles & E-books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`, and more
+  - Game Engines & Data Files - `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
 
-> <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
+> <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
-> <img width="2570" height="1605" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
+> <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
 ## Special Notice ⚠️
 - If you use [LinguaGacha](https://github.com/neavo/LinguaGacha) during translation, please include clear attribution in prominent locations of your work's information or release pages!
@@ -43,7 +45,7 @@
 >
 > - **Audio & Video**: `ASMR`, `Anime`, `TV & Film`, `Dynamic Comics`, and more
 > - **Subtitles & E-books**: `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`, and more
-> - **Game Engines & Data Files**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
+> - **Game Engines & Data Files**: `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
