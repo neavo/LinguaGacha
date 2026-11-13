@@ -16,9 +16,12 @@ describe("workspace_run", () => {
     )![1]!;
     check_typescript([
       `import type { SourceInspection } from ${JSON.stringify(path.resolve("src/shared/project-file-changes.ts").replaceAll("\\", "/"))};
+      import type { queryItemContexts } from ${JSON.stringify(path.resolve("src/backend/agent/project/item-contexts.ts").replaceAll("\\", "/"))};
       ${declaration.replace("declare module '@lg/project'", "declare namespace Project")}
       const inspections: SourceInspection[] = await Project.inspectSources(['input']);
       const described: Project.SourceInspection[] = inspections;
+      const realQuery: typeof queryItemContexts = Project.queryItemContexts;
+      const describedQuery: typeof Project.queryItemContexts = realQuery;
       const records: GenericItems = [{ message: 'text', locator: { record: 1, private: [true, null] } }];
       // @ts-expect-error 正文必须是字符串。
       const invalid: GenericItems = [{ message: 3 }];

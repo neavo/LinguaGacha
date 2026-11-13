@@ -13,7 +13,6 @@ const WORKSPACE_PACKAGES = [
     name: "@lg/project",
     entries: {
       index: "src/backend/agent/project/index.ts",
-      "item-contexts": "src/backend/agent/project/item-contexts.ts",
     },
   },
   {

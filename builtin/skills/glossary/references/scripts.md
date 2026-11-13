@@ -9,7 +9,7 @@
 ```js
 import { createReadStream } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
-import { queryItemContexts } from '@lg/project/item-contexts';
+import { queryItemContexts } from '@lg/project';
 const { matchLiterals } = await import(new URL('scripts/match-literals.mjs', base_url).href);
 async function* items() {
   const input = createReadStream(ws.contract.datasets.items.path, { encoding: 'utf8' });

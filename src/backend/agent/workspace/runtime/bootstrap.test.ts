@@ -303,7 +303,7 @@ it.each(["user", "builtin"])(
     import { buildPdfDocument } from '@lg/pdf';
     import { readFile, writeFile } from 'node:fs/promises';
     import { title } from './helper.mjs';
-    import { queryItemContexts } from '@lg/project/item-contexts';
+    import { queryItemContexts } from '@lg/project';
     import { compileLiteralPatterns } from '@lg/utils/literal-matcher';
     export async function inspect() {
       await writeFile('work/items.jsonl', JSON.stringify({item_id:1,file_path:'a',src:'Straße'}));
@@ -682,7 +682,7 @@ it("页面更新模块在部署工作区解析记录并判定目标", async () =
       if (specifier === 'mupdf') throw new Error('工作区数据模块不应初始化 PDF 引擎');
       return nextResolve(specifier, context);
     }});
-    await import('@lg/project/item-contexts');
+    await import('@lg/project');
     const { parsePageUpdate, resolvePageUpdates } = await import('@lg/pdf/page-updates');
     const value = {file_path:'sample.pdf',page:1,fp:'abcd',translation:null,reviewed:false,notes:''};
     const valid = parsePageUpdate({line:2,value});

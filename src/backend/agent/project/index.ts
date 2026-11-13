@@ -5,6 +5,7 @@ import type {
 import { workspace_requests } from "../workspace/runtime/request-channel";
 import type { SourceInspection } from "../../../shared/project-file-changes";
 export type { SourceInspection } from "../../../shared/project-file-changes";
+export { queryItemContexts } from "./item-contexts";
 
 /** 通过宿主识别来源，返回与输入顺序一致的识别结果。 */
 export async function inspectSources(source_paths: string[]): Promise<SourceInspection[]> {

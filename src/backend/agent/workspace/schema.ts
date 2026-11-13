@@ -264,10 +264,17 @@ export const AGENT_WORKSPACE_FILE_SCHEMAS = Object.freeze({
   replaces: Type.Object(
     {
       file_path: FILE_TARGET_SCHEMA,
-      source_path: Type.String({ minLength: 1 }),
-      inheritance_mode: Type.Enum(IMPORT_INHERITANCE_MODES),
+      source_path: Type.String({
+        minLength: 1,
+        description:
+          "新来源文件。使用本机绝对路径，或以 `uploads/`、`work/` 开头、相对工作区根目录的路径，扩展名须与 `file_path` 一致。",
+      }),
+      inheritance_mode: Type.Enum(IMPORT_INHERITANCE_MODES, {
+        description:
+          "`inherit`（格式支持时先按稳定身份精确保留已完成译文，再对其余未命中项按原文继承）或 `none`（清空旧译文重译）。",
+      }),
     },
-    { additionalProperties: false },
+    { additionalProperties: false, description: "用单个同格式新来源整包替换已有资产。" },
   ),
   creates: Type.Object(
     {
