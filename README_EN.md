@@ -41,12 +41,6 @@
   </tbody>
 </table>
 
-> 💡 **Translate virtually anything, including but not limited to:**
->
-> - **Audio & Video**: `ASMR`, `Anime`, `TV & Film`, `Dynamic Comics`, and more
-> - **Subtitles & E-books**: `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`, and more
-> - **Game Engines & Data Files**: `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
-
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
   - Windows:

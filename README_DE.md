@@ -38,12 +38,6 @@
   </tbody>
 </table>
 
-> 💡 **Alles lässt sich übersetzen, unter anderem:**
->
-> - **Audio & Video**: `ASMR`, `Anime`, `Filme & Serien`, `Motion Comics` und mehr
-> - **Untertitel & E-Books**: `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` und weitere Formate
-> - **Game-Engines & Datendateien**: `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` und mehr
-
 ## Erste Schritte 🛸
 - Laden Sie die Anwendung von der [Release-Seite](https://github.com/neavo/LinguaGacha/releases) herunter
   - Windows:

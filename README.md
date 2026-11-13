@@ -38,12 +38,6 @@
   </tbody>
 </table>
 
-> 💡 **万物皆可译，包括但不限于：**
->
-> - **音频与视频**：`ASMR` `动画` `影视剧` `动态漫画` 等形式
-> - **字幕与电子书**：`.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 等格式
-> - **游戏引擎与数据文件**：`Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` 等引擎与数据
-
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
   - Windows:

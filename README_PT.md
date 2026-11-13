@@ -41,12 +41,6 @@
   </tbody>
 </table>
 
-> 💡 **Tudo pode ser traduzido, incluindo, mas não se limitando a:**
->
-> - **Áudio e Vídeo**: `ASMR`, `Anime`, `Filmes e Séries`, `Motion Comics`, etc.
-> - **Legendas e E-books**: `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` e outros formatos
-> - **Engines de Jogos e Arquivos de Dados**: `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, etc.
-
 ## Fluxo Básico de Uso 🛸
 - Baixe o aplicativo na [página de Releases](https://github.com/neavo/LinguaGacha/releases)
   - Windows:

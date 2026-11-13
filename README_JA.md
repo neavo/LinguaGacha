@@ -41,12 +41,6 @@
   </tbody>
 </table>
 
-> 💡 **あらゆる形式を翻訳可能（一例）：**
->
-> - **音声・動画**：`ASMR` `アニメ` `映画・ドラマ` `モーションコミック` など
-> - **字幕・電子書籍**：`.txt` `.md` `.epub` `.pdf`、`.srt` `.ass` `.ssa` `.vtt` `.lrc` など
-> - **ゲームエンジン・データ**：`Godot`、`ACTION GAME MAKER`、`RenPy`、`Tyrano`、`WOLFRPG`、`RPGMAKER`、`KV-JSON`、`Message-JSON` など
-
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
   - Windows:
