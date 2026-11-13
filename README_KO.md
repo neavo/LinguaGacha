@@ -1,15 +1,15 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>AI로 소설, 게임, 자막 등 다양한 텍스트를 클릭 한 번으로 번역하는 차세대 텍스트 번역기</p>
+<p align='center'>소설, 게임, 자막, 오디오·동영상 번역에 특화된 Agent Harness</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 개요 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)는 AI 기술을 활용한 차세대 텍스트 번역기입니다
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)는 고품질 현지화와 다형식 번역을 위해 설계된 차세대 `Agent Harness`입니다
 - 설치 후 바로 사용할 수 있으며, 설정은 (거의) 필요 없습니다. 강력한 기능을 쓰기 위해 복잡한 설정을 거칠 필요가 없습니다
 - `중국어`, `영어`, `일본어`, `한국어`, `러시아어`, `독일어`, `프랑스어`, `이탈리아어` 등 16개 언어 간 원클릭 번역을 지원합니다
-- `자막`, `전자책`, `게임 텍스트` 등 다양한 텍스트 유형과 파일 형식을 지원합니다
+- `자막`, `전자책`, `게임 엔진`, `오디오(ASMR)`, `동영상(모션 코믹 / 애니메이션)`을 기본 지원하며, 비표준·사용자 지정 형식도 `AGENT` 작업 영역에 그대로 맡겨 분석하고 다시 쓸 수 있습니다
 - `OpenAI`, `Google`, `Anthropic`, `SakuraLLM` 등 다양한 로컬 및 온라인 인터페이스를 지원합니다
 
 > <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
@@ -28,6 +28,15 @@
 - 대화를 통해 다양한 작업을 자동으로 수행하는 `AGENT` 모드 내장　`👈👈 독보적인 기능`
   - 기술 지식 없이도 게임을 번역 후 바로 플레이 가능
   - 주요 엔진 전체 지원 `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
+  - **`오디오·동영상(ASMR / 모션 코믹) 원스톱 번역`**: 로컬 음성 인식 + 화면 문자 감지를 지원하며, 동영상은 말풍선과 얼굴을 피해 이중 언어 `.ass`를 배치하고 순수 오디오는 `1920×1080` 스펙트럼 시각화 이중 언어 `.mp4`를 자동 생성
+
+## 번역 결과 미리보기 ✨
+> 일반 전자책, 자막, 게임 엔진(`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`), 오디오·동영상은 별도 설정 없이 바로 번역되며, 기타 사용자 지정 형식이나 스크립트는 `AGENT` 작업 영역에 맡겨 처리할 수 있습니다. 자세한 내용은 [[지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]을 참고하세요
+
+| 클릭하여 형식별 실제 번역 결과 펼치기 |
+| :--- |
+| <details><summary><b>🎬 동영상 및 모션 코믹</b> — 음성 대사와 화면 말풍선 문자를 자동 인식하고, 원문과 인물을 피해 이중 언어 자막을 배치해 바로 감상 가능</summary><br><img width="1280" alt="동영상 및 모션 코믹 이중 언어 자막 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
+| <details><summary><b>🎧 오디오 및 ASMR</b> — 로컬 음성 인식과 고유명사·감정 문맥 번역을 거쳐 1920×1080 스펙트럼 시각화 이중 언어 영상을 한 번에 출력</summary><br><img width="1280" alt="오디오 스펙트럼 시각화 이중 언어 영상 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
 
 ## 기본 사용 흐름 🛸
 - [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 앱을 다운로드합니다
@@ -49,46 +58,23 @@
     </details>
 - 신뢰할 수 있는 AI 모델 인터페이스를 준비합니다. 추천:
   - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ], 그래픽 카드 불필요
-- 앱을 실행하고 `번역할 파일`을 페이지로 드래그한 다음 Enter를 누르세요!
+- 앱을 실행하고 프로젝트를 만든 뒤 `번역할 파일`, `게임 폴더` 또는 `오디오/동영상`을 `AGENT` 입력창으로 드래그하고 Enter를 누르세요!
 
 ## 사용 안내 📝
-- 입문
+- **입문**
   - [기초 튜토리얼](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈 누구나 따라 할 수 있는 단계별 안내, 초보자 필독`
-  - [지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)
-- 모델 설정
-  - [모델 관리](https://github.com/neavo/LinguaGacha/wiki/ModelManagement)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek)
-- 기능 설명
-  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/Agent)　　[교정](https://github.com/neavo/LinguaGacha/wiki/Proofreading)
-  - [용어집](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[텍스트 보호](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[텍스트 치환](https://github.com/neavo/LinguaGacha/wiki/Replacement)
-  - [MTool 최적화 도구](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[명령줄 모드](https://github.com/neavo/LinguaGacha/wiki/CLIMode)　　[고급 기능](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeatures)
-- 엔진별 가이드
+  - [모델 관리](https://github.com/neavo/LinguaGacha/wiki/ModelManagement)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek)　　[지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)　　[자주 묻는 질문](https://github.com/neavo/LinguaGacha/wiki/FAQ)
+- **기능**
+  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/Agent)　　[교정](https://github.com/neavo/LinguaGacha/wiki/Proofreading)　　[용어집](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[텍스트 보호](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[텍스트 치환](https://github.com/neavo/LinguaGacha/wiki/Replacement)
+  - [사용자 정의 프롬프트](https://github.com/neavo/LinguaGacha/wiki/CustomPrompt)　　[실험실](https://github.com/neavo/LinguaGacha/wiki/Laboratory)　　[기능 설정](https://github.com/neavo/LinguaGacha/wiki/Settings)　　[MTool 최적화 도구](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[명령줄 모드](https://github.com/neavo/LinguaGacha/wiki/CLIMode)　　[고급 기능](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeatures)
+- **모범 사례**
+  - [오디오·동영상 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/Media)
   - [Godot 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
   - [RenPy 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [Tyrano 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyrano)
   - [WOLFRPG 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)
   - [RPGMAKER 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
-- 커뮤니티 경험
-  - [복잡한 암호화가 없는 kirikiri 엔진 기계 번역 노트](https://github.com/neavo/LinguaGacha/discussions/181)
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
-
-## 지원 파일 형식 🏷️
-| 유형 | 형식 | 설명 |
-|:---|:---|:---|
-| 자막 | `.srt` `.ass` `.ssa` `.vtt` `.lrc` | - |
-| 전자책 | `.txt` `.pdf` `.epub` | - |
-| Markdown | `.md` | - |
-| `KV-JSON` 게임 텍스트 | `.json` | 출처 [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
-| `Message-JSON` 게임 텍스트 | `.json` | 출처 [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| `Godot` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[Godot 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)] |
-| `RenPy` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[RenPy 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)] |
-| `Tyrano` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[Tyrano 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyrano)] |
-| `WOLFRPG` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[WOLFRPG 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPG)] |
-| `RPGMAKER MV/MZ` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[RPGMAKER 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
-| `RPGMAKER XP/VX/VXAce` 게임 파일 | `.exe` 또는 게임 폴더 | 가이드 [[RPGMAKER 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)] |
-| `.rpy` 게임 텍스트 | `.rpy` | `👈 지원 종료 예정` |
-| `.xlsx` 게임 텍스트 | `.xlsx` | 출처 [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF 공식 번역 도구](https://silversecond.booth.pm/items/5151747)　`👈 지원 종료 예정` |
-| `.trans` 프로젝트 파일 | `.trans` | 출처 [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 지원 종료 예정` |
-| 기타 형식의 `게임` `자막` `전자책` | 모든 형식 | `AGENT`가 자동으로 식별하고 처리 |
 
 ## 최근 업데이트 📅
 - 20261113 v0.141.2

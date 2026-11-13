@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>Next-generation text translator utilizing AI capabilities for one-click translation of novels, games, subtitles, and more</p>
+<p align='center'>Translation-specialized Agent Harness for novels, games, documents, audio, and video</p>
 
 &ensp;
 &ensp;
@@ -9,12 +9,12 @@
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Overview 📢
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), is an AI-powered next-generation text translator
-- Out of the box, (almost) no setup needed, powerful does not need to be shown through complicated options
-- Supports one-click translation between 16 languages
-  - including `Chinese`, `English`, `Japanese`, `Korean`, `Russian`, `German`, `French`, `Italian`, etc
-- Supports various text types and formats such as `Subtitle`, `E-Book`, and `Game Text`
-- Supports both local and online interfaces compatible with `OpenAI`, `Google`, `Anthropic`, `SakuraLLM`
+- [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) is a next-generation `Agent Harness` built specifically for high-quality localization across diverse formats
+- Out of the box, (almost) no setup needed—powerful capabilities without complicated configuration
+- Supports one-click translation across 16 languages
+  - including `Chinese`, `English`, `Japanese`, `Korean`, `Russian`, `German`, `French`, `Italian`, etc.
+- Handles `Subtitles`, `E-books`, `Native Game Engines`, `Audio (ASMR)`, and `Video (Dynamic Comics / Anime)` natively, while any custom or unlisted format can be inspected and written back directly inside the `AGENT` workspace
+- Supports local and online providers compatible with `OpenAI`, `Google`, `Anthropic`, and `SakuraLLM`
 
 > <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -29,9 +29,18 @@
   - Fully preserves the styles of various `Subtitles` and `E-books`
   - Automatically generates a glossary to keep proper nouns consistent throughout the work
   - Subtitles in ten seconds, a novel in one minute, a game in five minutes
-- Built-in `AGENT` mode that automatically completes various tasks through conversation `👈👈 Exclusive Feature`
+- Built-in `AGENT` mode that completes complex workflows through conversation `👈👈 Exclusive Feature`
   - No technical knowledge required: translate and play
   - Covers all major engines: `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
+  - **`End-to-End Audio & Video Translation`**: Local ASR + on-screen text detection with smart bubble/face-avoiding bilingual `.ass` subtitles, plus `1920×1080` spectrum-visualized bilingual `.mp4` output for audio-only works
+
+## Showcase ✨
+> E-books, subtitles, native game engines (`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`), and audio/video work out of the box, while any unlisted or custom format can be handed straight to the `AGENT` workspace — see [[Supported File Formats](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)] for details
+
+| Expand each row to preview real localized output |
+| :--- |
+| <details><summary><b>🎬 Video & Dynamic Comics</b> — Automatic dialogue ASR + on-screen speech-bubble detection with non-overlapping bilingual subtitle layout ready to play</summary><br><img width="1280" alt="Dynamic comic and video bilingual subtitle sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
+| <details><summary><b>🎧 Audio & ASMR</b> — Local speech recognition paired with context-aware translation, burning a 1920×1080 bilingual spectrum video in one pass</summary><br><img width="1280" alt="Audio-only bilingual spectrum video sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
@@ -53,46 +62,23 @@
     </details>
 - Obtain a reliable AI model interface. Recommended:
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (No GPU required)
-- Launch the application, drag the `files to translate` onto the page, and press Enter!
+- Launch the app, create a project, drag your `files`, `game folder`, or `audio/video` into the `AGENT` input box, and press Enter!
 
 ## User Guide 📝
-- Getting Started
-  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
-  - [File Format Support](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)
-- Model Setup
-  - [Model Management](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)
-- Feature Description
-  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/AgentEN)　　[Proofreading](https://github.com/neavo/LinguaGacha/wiki/ProofreadingEN)
-  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
-  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Advanced Features](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
-- Engine Best Practices
+- **Getting Started**
+  - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈 Step-by-step tutorial, a must-read for beginners`
+  - [Models](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)　　[File Format Support](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)　　[FAQ](https://github.com/neavo/LinguaGacha/wiki/FAQEN)
+- **Features**
+  - [AGENT](https://github.com/neavo/LinguaGacha/wiki/AgentEN)　　[Proofreading](https://github.com/neavo/LinguaGacha/wiki/ProofreadingEN)　　[Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
+  - [Custom Prompts](https://github.com/neavo/LinguaGacha/wiki/CustomPromptEN)　　[Laboratory](https://github.com/neavo/LinguaGacha/wiki/LaboratoryEN)　　[Function Settings](https://github.com/neavo/LinguaGacha/wiki/SettingsEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Advanced Features](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
+- **Best Practices**
+  - [Best Practices for High-Quality Translation of Audio and Video](https://github.com/neavo/LinguaGacha/wiki/MediaEN)
   - [Best Practices for High-Quality Translation of Godot Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Best Practices for High-Quality Translation of Tyrano Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
   - [Best Practices for High-Quality Translation of WOLFRPG Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
   - [Best Practices for High-Quality Translation of RPGMAKER Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
-- Community Notes
-  - [Machine Translation Notes for Kirikiri Engine Games Without Complex Encryption](https://github.com/neavo/LinguaGacha/discussions/181)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
-
-## Supported Formats 🏷️
-| Type | Format | Notes |
-|:---|:---|:---|
-| Subtitles | `.srt` `.ass` `.ssa` `.vtt` `.lrc` | - |
-| E-books | `.txt` `.pdf` `.epub` | - |
-| Markdown | `.md` | - |
-| `KV-JSON` game text | `.json` | Source: [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
-| `Message-JSON` game text | `.json` | Source: [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| `Godot` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of Godot Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
-| `RenPy` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RenPy Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
-| `Tyrano` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of Tyrano Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)] |
-| `WOLFRPG` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of WOLFRPG Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
-| `RPGMAKER MV/MZ` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RPGMAKER Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
-| `RPGMAKER XP/VX/VXAce` game files | `.exe` or game directory | Guide: [[Best Practices for High-Quality Translation of RPGMAKER Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
-| `.rpy` game text | `.rpy` | `👈 Support ending soon` |
-| `.xlsx` game text | `.xlsx` | Source: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747)　`👈 Support ending soon` |
-| `.trans` project files | `.trans` | Source: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Support ending soon` |
-| `Games` `subtitles` `e-books` in other formats | Any | Identified and processed by `AGENT` automatically |
 
 ## Recent Updates 📅
 - 20261113 v0.141.2

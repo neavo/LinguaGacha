@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>Tradutor de textos de última geração com recursos de IA para tradução com um clique de romances, jogos, legendas e muito mais</p>
+<p align='center'>Agent Harness especializado em tradução de romances, jogos, documentos, áudio e vídeo</p>
 
 &ensp;
 &ensp;
@@ -9,11 +9,11 @@
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Visão Geral 📢
-- O [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) é um tradutor de texto de última geração baseado em inteligência artificial
+- O [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/) é um `Agent Harness` de última geração projetado especificamente para localização de alta qualidade em múltiplos formatos
 - Pronto para uso, (quase) sem necessidade de configuração; ser poderoso não significa ter opções complicadas
 - Suporta tradução com um clique entre 16 idiomas
   - incluindo `Chinês`, `Inglês`, `Japonês`, `Coreano`, `Russo`, `Alemão`, `Francês`, `Italiano`, `Português`, etc.
-- Suporta vários tipos e formatos de texto, como `Legendas`, `E-Books` e `Textos de Jogos`
+- Suporte nativo para `Legendas`, `E-Books`, `Engines de Jogos`, `Áudio (ASMR)` e `Vídeo (Motion Comics / Anime)`, além de formatos incomuns ou personalizados que podem ser analisados e gravados de volta diretamente no espaço do `AGENT`
 - Compatível com interfaces locais e online compatíveis com `OpenAI`, `Google`, `Anthropic`, `SakuraLLM`
 
 > <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
@@ -32,6 +32,15 @@
 - Modo `AGENTE` integrado que conclui tarefas automaticamente via conversa `👈👈 Recurso Exclusivo`
   - Não requer conhecimento técnico: basta traduzir e jogar
   - Suporta os principais motores: `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `Kirikiri` `Unity` `Bakin` `RealLive` `Escude` `ACTION GAME MAKER`
+  - **`Tradução completa de Áudio e Vídeo (ASMR / Motion Comics)`**: ASR local + detecção de texto na tela com legendas `.ass` bilíngues que desviam de balões e rostos, além de vídeos `.mp4` bilíngues em `1920×1080` com espectro visual para arquivos apenas de áudio
+
+## Demonstração ✨
+> E-books, legendas, engines de jogos (`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`) e áudio/vídeo funcionam prontos para uso, enquanto qualquer formato personalizado ou script pode ser entregue diretamente ao espaço de trabalho do `AGENTE` — veja [[Formatos de Arquivo Suportados](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)]
+
+| Clique para expandir os resultados reais de tradução |
+| :--- |
+| <details><summary><b>🎬 Vídeo & Motion Comics</b> — Reconhecimento automático de diálogos e balões na tela com posicionamento inteligente de legendas bilíngues sem sobreposição</summary><br><img width="1280" alt="Exemplo de legendas bilíngues para vídeo e motion comics" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
+| <details><summary><b>🎧 Áudio & ASMR</b> — Reconhecimento local de voz com tradução contextual e renderização direta em vídeo bilíngue 1920×1080 com espectro de áudio</summary><br><img width="1280" alt="Exemplo de vídeo bilíngue com espectro de áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
 
 ## Fluxo Básico de Uso 🛸
 - Baixe o aplicativo na [página de Releases](https://github.com/neavo/LinguaGacha/releases)
@@ -53,46 +62,23 @@
     </details>
 - Obtenha uma interface de modelo de IA confiável. Recomendado:
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (Não requer GPU dedicada)
-- Inicie o aplicativo, arraste os `arquivos a serem traduzidos` para a tela e pressione Enter!
+- Inicie o aplicativo, crie um projeto, arraste `arquivos`, `pasta do jogo` ou `áudio/vídeo` para a caixa de entrada do `AGENTE` e pressione Enter!
 
 ## Guia do Usuário 📝
-- Primeiros Passos
-  - [Tutorial Básico](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈 Tutorial passo a passo, fácil de acompanhar, leitura obrigatória para iniciantes`
-  - [Formatos de Arquivo Suportados](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)
-- Configuração de Modelos
-  - [Gerenciamento de Modelos](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)
-- Descrição de Recursos
-  - [AGENTE](https://github.com/neavo/LinguaGacha/wiki/AgentEN)　　[Revisão](https://github.com/neavo/LinguaGacha/wiki/ProofreadingEN)
-  - [Glossário](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Preservação de Texto](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Substituição de Texto](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
-  - [Otimizador MTool](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[Modo CLI](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Recursos Avançados](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
-- Melhores Práticas por Engine
+- **Primeiros Passos**
+  - [Tutorial Básico](https://github.com/neavo/LinguaGacha/wiki/BasicTutorialEN)　`👈 Tutorial passo a passo, leitura obrigatória para iniciantes`
+  - [Gerenciamento de Modelos](https://github.com/neavo/LinguaGacha/wiki/ModelManagementEN)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN)　　[Formatos de Arquivo Suportados](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)　　[FAQ](https://github.com/neavo/LinguaGacha/wiki/FAQEN)
+- **Recursos**
+  - [AGENTE](https://github.com/neavo/LinguaGacha/wiki/AgentEN)　　[Revisão](https://github.com/neavo/LinguaGacha/wiki/ProofreadingEN)　　[Glossário](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Preservação de Texto](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Substituição de Texto](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
+  - [Prompts Personalizados](https://github.com/neavo/LinguaGacha/wiki/CustomPromptEN)　　[Laboratório](https://github.com/neavo/LinguaGacha/wiki/LaboratoryEN)　　[Configurações](https://github.com/neavo/LinguaGacha/wiki/SettingsEN)　　[Otimizador MTool](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[Modo CLI](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Recursos Avançados](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
+- **Melhores Práticas**
+  - [Melhores Práticas para Áudio e Vídeo](https://github.com/neavo/LinguaGacha/wiki/MediaEN)
   - [Melhores Práticas para Jogos em Godot Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
   - [Melhores Práticas para Jogos em RenPy Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Melhores Práticas para Jogos em Tyrano Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
   - [Melhores Práticas para Jogos em WOLFRPG Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)
   - [Melhores Práticas para Jogos em RPGMAKER Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
-- Experiências da Comunidade
-  - [Notas sobre tradução automática de jogos Kirikiri sem criptografia complexa](https://github.com/neavo/LinguaGacha/discussions/181)
 - Mais detalhes sobre cada recurso podem ser encontrados na [Wiki](https://github.com/neavo/LinguaGacha/wiki)
-
-## Formatos Suportados 🏷️
-| Tipo | Formato | Observações |
-|:---|:---|:---|
-| Legendas | `.srt` `.ass` `.ssa` `.vtt` `.lrc` | - |
-| Livros Digitais | `.txt` `.pdf` `.epub` | - |
-| Markdown | `.md` | - |
-| Texto de jogo `KV-JSON` | `.json` | Origem: [[MTool](https://mtool.app)] [[SExtractor](https://github.com/satan53x/SExtractor)] |
-| Texto de jogo `Message-JSON` | `.json` | Origem: [[SExtractor](https://github.com/satan53x/SExtractor)] [[VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools)] |
-| Arquivos de jogo `Godot` | `.exe` ou pasta do jogo | Guia: [[Melhores Práticas para Godot](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)] |
-| Arquivos de jogo `RenPy` | `.exe` ou pasta do jogo | Guia: [[Melhores Práticas para RenPy](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)] |
-| Arquivos de jogo `Tyrano` | `.exe` ou pasta do jogo | Guia: [[Melhores Práticas para Tyrano](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)] |
-| Arquivos de jogo `WOLFRPG` | `.exe` ou pasta do jogo | Guia: [[Melhores Práticas para WOLFRPG](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFRPGEN)] |
-| Arquivos de jogo `RPGMAKER MV/MZ` | `.exe` ou pasta do jogo | Guia: [[Melhores Práticas para RPGMAKER](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
-| Arquivos de jogo `RPGMAKER XP/VX/VXAce` | `.exe` ou pasta do jogo | Guia: [[Melhores Práticas para RPGMAKER](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)] |
-| Texto de jogo `.rpy` | `.rpy` | `👈 Suporte em encerramento em breve` |
-| Texto de jogo `.xlsx` | `.xlsx` | Origem: [SExtractor](https://github.com/satan53x/SExtractor) [Translator++](https://dreamsavior.net/translator-plusplus) [Ferramenta Oficial WOLF](https://silversecond.booth.pm/items/5151747)　`👈 Suporte em encerramento em breve` |
-| Arquivos de projeto `.trans` | `.trans` | Origem: [Translator++](https://dreamsavior.net/translator-plusplus)　`👈 Suporte em encerramento em breve` |
-| `Jogos`, `legendas` e `e-books` em outros formatos | Qualquer | Identificados e processados automaticamente pelo `AGENTE` |
 
 ## Atualizações Recentes 📅
 - 20261113 v0.141.2
