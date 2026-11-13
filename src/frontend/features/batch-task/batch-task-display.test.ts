@@ -3,11 +3,34 @@ import { batch_task_metrics, empty_batch_task_snapshot } from "@shared/batch-tas
 import { empty_batch_task_progress } from "@domain/batch-task";
 import {
   build_translation_task_detail_display,
-  build_translation_task_summary_display,
+  build_batch_task_summary_display,
 } from "./batch-task-display";
 import type { useI18n } from "@frontend/app/locale/locale-context";
 const t: ReturnType<typeof useI18n>["t"] = (key) => key;
-describe("批量翻译展示", () => {
+describe("批量任务展示", () => {
+  it.each(["translation", "request", null] as const)("%s 按任务类型展示运行和停止状态", (kind) => {
+    for (const [status, suffix] of [
+      ["requested", kind === null ? "running" : kind + ".running"],
+      ["running", kind === null ? "running" : kind + ".running"],
+      ["stopping", kind === null ? "stopping" : kind + ".stopping"],
+      ["done", "done"],
+      ["stopped", "done"],
+      ["error", "done"],
+      ["idle", "empty"],
+    ] as const) {
+      const metrics = batch_task_metrics(
+        {
+          ...empty_batch_task_snapshot(),
+          kind,
+          status,
+          progress: empty_batch_task_progress(kind === "translation" ? "item" : "request", 1),
+        },
+        0,
+      );
+      const display = build_batch_task_summary_display({ metrics, kind, t });
+      expect(display.status_text).toBe("batch_translation.summary." + suffix);
+    }
+  });
   it("详情按本轮成功与失败计算进度，时间与速度使用同轮数据", () => {
     const metrics = batch_task_metrics(
       {
@@ -39,7 +62,11 @@ describe("批量翻译展示", () => {
       }),
     );
     const speed = detail.metric_entries.find((entry) => entry.key === "speed")!;
-    const summary = build_translation_task_summary_display({ ...metrics, active: true }, t);
+    const summary = build_batch_task_summary_display({
+      metrics: { ...metrics, active: true },
+      kind: null,
+      t,
+    });
     expect(summary.speed_text).toBe(`${speed.value_text} ${speed.unit_text}`);
     expect(detail.stop_disabled).toBe(true);
   });
@@ -54,7 +81,7 @@ describe("批量翻译展示", () => {
       active: true,
       average_generation_speed: speed_value,
     };
-    const summary = build_translation_task_summary_display(metrics, t);
+    const summary = build_batch_task_summary_display({ metrics, kind: null, t });
     const detail = build_translation_task_detail_display({
       metrics,
       completion_percent: metrics.completion_percent,
@@ -72,11 +99,14 @@ describe("批量翻译展示", () => {
       active: true,
       stopping: true,
     };
-    const summary = build_translation_task_summary_display(metrics, t);
+    const summary = build_batch_task_summary_display({ metrics, kind: null, t });
     expect(summary.speed_text).not.toBeNull();
     expect(
-      build_translation_task_summary_display({ ...metrics, active: false, stopping: false }, t)
-        .speed_text,
+      build_batch_task_summary_display({
+        metrics: { ...metrics, active: false, stopping: false },
+        kind: null,
+        t,
+      }).speed_text,
     ).toBeNull();
   });
 });

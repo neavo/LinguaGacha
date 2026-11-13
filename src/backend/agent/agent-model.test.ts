@@ -9,8 +9,7 @@ import { resolve_model_capability, type PiCatalogModel } from "../llm/model-capa
 import { read_builtin_pi_models } from "../llm/pi-model-catalog";
 import {
   register_agent_model,
-  summarize_agent_models,
-  resolve_agent_batch_translation_model,
+  resolve_agent_batch_model,
   resolve_agent_model,
 } from "./agent-model";
 
@@ -31,7 +30,7 @@ vi.mock("@earendil-works/pi-ai/api/openai-responses.lazy", () => ({
 const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT };
 
-describe("Agent 批量翻译模型", () => {
+describe("Agent 批量模型", () => {
   it("Vertex 资源可注册并由 Agent 的真实适配器发送", async () => {
     const runtime = createModels();
     const resolved = register_agent_model(
@@ -113,56 +112,65 @@ describe("Agent 批量翻译模型", () => {
       };
       const original = structuredClone(config);
 
-      const result = resolve_agent_batch_translation_model(
-        config,
-        agent_model,
-        [catalog_model(off)],
-        downgrade,
-      );
+      for (const usage of ["agent", "batch_translation", "media"] as const) {
+        const result = resolve_agent_batch_model(
+          config,
+          agent_model,
+          usage,
+          [catalog_model(off)],
+          downgrade,
+        );
 
-      expect(result.to_json()).toEqual({
-        ...agent_model.to_json(),
-        thinking: { level: expected },
-      });
-      expect(agent_model.thinking.level).toBe(current);
-      expect(config).toEqual(original);
+        expect(result.to_json()).toEqual({
+          ...agent_model.to_json(),
+          thinking: { level: expected },
+        });
+        expect(agent_model.thinking.level).toBe(current);
+        expect(config).toEqual(original);
+      }
     },
   );
 
-  it("缺少能力时沿用配置，固定选择使用保存配置并同样从最低等级开始", () => {
-    const agent_model = Model.from_json(
-      { model_id: "fixture-model", thinking: { level: "LOW" } },
-      "a",
-    );
-    const config = {
-      model_selection: { agent: "b", agent_batch_translation: null as string | null },
-      models: [{ ...agent_model.to_json(), thinking: { level: "HIGH" } }],
-    };
-    const models: PiCatalogModel[] = [
-      {
-        id: "fixture-model",
-        api: "openai-completions",
-        provider: "openai",
-        baseUrl: "https://example.test/v1",
-        reasoning: true,
-        contextWindow: 128_000,
-        maxTokens: 16_000,
-      },
-    ];
-    expect(resolve_agent_batch_translation_model(config, agent_model, [], true)).toEqual(
-      agent_model,
-    );
-    config.model_selection.agent_batch_translation = "a";
-    const fixed = resolve_agent_batch_translation_model(config, agent_model, models, true);
-    expect(fixed.thinking.level).toBe("OFF");
-    expect(
-      resolve_agent_batch_translation_model(config, agent_model, models, false).thinking.level,
-    ).toBe("HIGH");
-    config.model_selection.agent_batch_translation = "missing";
-    expect(() => resolve_agent_batch_translation_model(config, agent_model, [], true)).toThrow(
-      expect.objectContaining({ code: "model.not_found" }),
-    );
-  });
+  it.each(["batch_translation", "media"] as const)(
+    "%s 缺少能力时沿用配置，固定选择使用保存配置",
+    (usage) => {
+      const agent_model = Model.from_json(
+        { model_id: "fixture-model", thinking: { level: "LOW" } },
+        "a",
+      );
+      const config = {
+        model_selection: {
+          agent: "b",
+          agent_batch_translation: null as string | null,
+          agent_media: null as string | null,
+        },
+        models: [{ ...agent_model.to_json(), thinking: { level: "HIGH" } }],
+      };
+      const models: PiCatalogModel[] = [
+        {
+          id: "fixture-model",
+          api: "openai-completions",
+          provider: "openai",
+          baseUrl: "https://example.test/v1",
+          reasoning: true,
+          contextWindow: 128_000,
+          maxTokens: 16_000,
+        },
+      ];
+      expect(resolve_agent_batch_model(config, agent_model, usage, [], true)).toEqual(agent_model);
+      config.model_selection[usage === "media" ? "agent_media" : "agent_batch_translation"] = "a";
+      const fixed = resolve_agent_batch_model(config, agent_model, usage, models, true);
+      expect(fixed.thinking.level).toBe("OFF");
+      expect(
+        resolve_agent_batch_model(config, agent_model, usage, models, false).thinking.level,
+      ).toBe("HIGH");
+      config.model_selection[usage === "media" ? "agent_media" : "agent_batch_translation"] =
+        "missing";
+      expect(() => resolve_agent_batch_model(config, agent_model, usage, [], true)).toThrow(
+        expect.objectContaining({ code: "model.not_found" }),
+      );
+    },
+  );
 });
 
 beforeEach(() => {
@@ -748,7 +756,7 @@ it("音视频跟随生效模型，固定选择独立解析且副本不污染设�
   expect(resolve_agent_model(config, active, "media")).toBeNull();
 });
 
-it("主控采用生效配置，同 ID 固定用途采用保存值，摘要仅发布可用用途的非敏感字段", () => {
+it("主控采用生效配置，同 ID 固定用途采用保存值", () => {
   const active = Model.from_json({ name: "生效", model_id: "active", api_key: "secret" }, "a");
   const config = {
     model_selection: { agent: "b", agent_batch_translation: "a", agent_media: "missing" },
@@ -763,12 +771,5 @@ it("主控采用生效配置，同 ID 固定用途采用保存值，摘要仅发
     ],
   };
   expect(resolve_agent_model(config, active, "agent")!.model_id).toBe("active");
-  expect(summarize_agent_models(config, active)).toEqual({
-    agent: { name: "生效", model_id: "active" },
-    batch_translation: {
-      name: "保存",
-      model_id: "saved",
-    },
-    media: null,
-  });
+  expect(resolve_agent_model(config, active, "batch_translation")!.model_id).toBe("saved");
 });

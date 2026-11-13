@@ -4,6 +4,8 @@ export const zh_cn_batch_translation = {
     tooltip: "将原文翻译为目标语言",
   },
   summary: {
+    translation: { running: "正在批量翻译", stopping: "正在停止批量翻译" },
+    request: { running: "正在批量请求", stopping: "正在停止批量请求" },
     done: "已结束",
     empty: "无任务",
     stopping: "停止中",

@@ -7,13 +7,7 @@ import { createProvider, type MutableModels } from "@earendil-works/pi-ai/models
 import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
 
 import type { JsonRecord } from "../../domain/json";
-import {
-  Model,
-  normalize_model_selection,
-  AGENT_MODEL_USAGES,
-  type AgentModelUsage,
-  type AgentModelsSummary,
-} from "../../domain/model";
+import { Model, normalize_model_selection, type AgentModelUsage } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import {
   build_request_headers,
@@ -50,35 +44,18 @@ export function resolve_agent_model(
   return Model.from_json(structuredClone(raw), model_id);
 }
 
-/** 摘要用于准备请求。执行入口按当前设置解析用途。 */
-export function summarize_agent_models(config: JsonRecord, agent_model: Model): AgentModelsSummary {
-  return Object.fromEntries(
-    AGENT_MODEL_USAGES.map((usage) => {
-      const model = resolve_agent_model(config, agent_model, usage);
-      return [
-        usage,
-        model === null
-          ? null
-          : {
-              name: model.name,
-              model_id: model.model_id,
-            },
-      ];
-    }),
-  ) as AgentModelsSummary;
-}
-
-/** 翻译降级只调整本次副本，不影响其它功能用途。 */
-export function resolve_agent_batch_translation_model(
+/** 批量工具降级只调整本次副本，不影响其它功能用途。 */
+export function resolve_agent_batch_model(
   config: JsonRecord,
   agent_model: Model,
+  usage: AgentModelUsage,
   catalog: readonly PiCatalogModel[],
   thinking_downgrade: boolean,
 ): Model {
-  const model = resolve_agent_model(config, agent_model, "batch_translation");
+  const model = resolve_agent_model(config, agent_model, usage);
   if (model === null) throw new AppErrors.AppError("model.not_found");
   if (!thinking_downgrade) return model;
-  // 能力集合按等级升序排列；`DEFAULT` 表示平台默认，不参与最低等级选择。
+  // 按升序查找第一个显式等级，跳过表示平台默认策略的 `DEFAULT`。
   const level = resolve_model_capability(model, catalog).available_thinking_levels.find(
     (candidate) => candidate !== "DEFAULT",
   );

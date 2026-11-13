@@ -7,6 +7,11 @@ export const pt_br_batch_translation = {
     tooltip: "Traduzir o texto original para o idioma de destino",
   },
   summary: {
+    translation: { running: "Tradução em lote em andamento", stopping: "Parando tradução em lote" },
+    request: {
+      running: "Solicitações em lote em andamento",
+      stopping: "Parando solicitações em lote",
+    },
     done: "Concluído",
     empty: "Ocioso",
     stopping: "Parando",

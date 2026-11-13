@@ -5,7 +5,6 @@ import { PROJECT_KNOWLEDGE_DOCUMENT } from "../../../shared/project-knowledge";
 export const AGENT_WORKSPACE_PATHS = Object.freeze({
   knowledge: PROJECT_KNOWLEDGE_DOCUMENT,
   projectMeta: "project_meta.json",
-  functionModels: "function_models.json",
   contract: "contract.json",
   reference: "reference",
   items: "items/entries.jsonl",

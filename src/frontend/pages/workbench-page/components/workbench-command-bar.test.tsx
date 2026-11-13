@@ -5,6 +5,8 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { batch_task_metrics, empty_batch_task_snapshot } from "@shared/batch-task";
+import { empty_batch_task_progress } from "@domain/batch-task";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
 
@@ -145,13 +147,21 @@ describe("WorkbenchCommandBar", () => {
     expect(props.on_request_start_translation).toHaveBeenCalledOnce();
   });
 
-  it("运行中的摘要使用命令栏收到的工程完成率", async () => {
+  it("运行摘要使用同一批量任务的类型与完成率", async () => {
     const props = create_workbench_command_bar_props();
-    props.batch_task.task_metrics.active = true;
+    const snapshot = {
+      ...empty_batch_task_snapshot(),
+      kind: "request" as const,
+      status: "running" as const,
+      progress: { ...empty_batch_task_progress("request", 10), succeeded: 3 },
+    };
+    props.batch_task.task_display_snapshot = snapshot;
+    props.batch_task.task_metrics = batch_task_metrics(snapshot, 0);
     await render_command_bar(props);
 
+    expect(find_button("batch_translation.summary.request.running")).toBeDefined();
     expect(container?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe(
-      String(props.translation_stats!.completion_percent),
+      "30",
     );
   });
 });

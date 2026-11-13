@@ -67,7 +67,6 @@ import {
 import { workspace_execution } from "../../../test/agent-workspace-fixture";
 
 const VALID_WORKSPACE_RUN = {
-  functionModels: { agent: null, batch_translation: null, media: null },
   script: "console.log(null);",
   timeoutMs: 180_000,
 };
@@ -1002,15 +1001,9 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
     fs.writeFileSync(path.join(fixture.workspace_root, "model_configs.json"), "legacy");
+    fs.writeFileSync(path.join(fixture.workspace_root, "function_models.json"), "legacy");
     await run_workspace(fixture);
-    expect(
-      JSON.parse(
-        fs.readFileSync(
-          path.join(fixture.workspace_root, AGENT_WORKSPACE_PATHS.functionModels),
-          "utf8",
-        ),
-      ),
-    ).toEqual(VALID_WORKSPACE_RUN.functionModels);
+    expect(fs.existsSync(path.join(fixture.workspace_root, "function_models.json"))).toBe(false);
     expect(fs.existsSync(path.join(fixture.workspace_root, "model_configs.json"))).toBe(false);
     fixture.snapshot.sectionRevisions.items = 2;
     await fixture.service.run(VALID_WORKSPACE_RUN, new AbortController().signal);

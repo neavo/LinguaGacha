@@ -153,6 +153,7 @@ const fake_agent_state = vi.hoisted(() => ({
   length_responses_remaining: 0,
   batch_mode: false,
   media_mode: false,
+  thinking_downgrade: undefined as boolean | undefined,
   batch_request_on_retry: false,
   batch_retries: 0,
   abort_count: 0,
@@ -352,7 +353,13 @@ function create_fake_response(context: TranscriptContext): FauxResponseStep {
       : fauxAssistantMessage(
           fauxToolCall(
             "batch_llm_request",
-            { model_usage: "media", request_file: "work/requests.json" },
+            {
+              model_usage: "media",
+              request_file: "work/requests.json",
+              ...(fake_agent_state.thinking_downgrade === undefined
+                ? {}
+                : { thinking_downgrade: fake_agent_state.thinking_downgrade }),
+            },
             { id: "media" },
           ),
           { stopReason: "toolUse" },
@@ -556,6 +563,7 @@ describe("AgentService", () => {
   beforeEach(() => {
     fake_agent_state.batch_mode = false;
     fake_agent_state.media_mode = false;
+    fake_agent_state.thinking_downgrade = undefined;
     fake_agent_state.batch_request_on_retry = false;
     fake_agent_state.batch_retries = 0;
     fake_agent_state.mode = "success";
@@ -4011,6 +4019,48 @@ describe("AgentService", () => {
         expect.objectContaining({ text: "插队消息", delivery: "steer" }),
       ],
     );
+  });
+
+  it("批量请求默认保留思考配置，显式降级取得最低等级", async () => {
+    fake_agent_state.media_mode = true;
+    const run = vi
+      .fn<import("../batch-request/batch-request-service").BatchRequestService["run"]>()
+      .mockResolvedValue({
+        run_id: "r",
+        status: "done",
+        total: 1,
+        succeeded: 1,
+        failed: 0,
+        unfinished: 0,
+        usage: null,
+        result_file: "result.json",
+      });
+    const f = await create_service({
+      batch_requests: { run },
+      catalog: {
+        read_models: () => [
+          {
+            id: "next-model",
+            api: "openai-completions",
+            provider: "openai",
+            baseUrl: "https://example.test/v1",
+            reasoning: true,
+            contextWindow: 128000,
+            maxTokens: 16000,
+          },
+        ],
+      },
+    });
+    f.select_agent_model("next");
+    await f.service.send_message({ text: "识别", attachments: [] });
+    await wait_for_idle(f.service);
+    expect(run.mock.calls[0]![3].model).toMatchObject({
+      thinking: { level: "HIGH" },
+    });
+    fake_agent_state.thinking_downgrade = true;
+    await f.service.send_message({ text: "再次识别", attachments: [] });
+    await wait_for_idle(f.service);
+    expect(run.mock.calls[1]![3].model).toMatchObject({ thinking: { level: "OFF" } });
   });
 
   it.each([null, "media"])("音视频用途 %s 与翻译模型独立，后续批次读取新选择", async (id) => {

@@ -17,6 +17,7 @@ it("按用途派发请求，无效参数在派发前拒绝", async () => {
   };
   const run = vi.fn(async () => summary);
   const tool = create_agent_batch_llm_request_tool(run);
+  // 通过 SDK 校验入口观察参数契约。
   const validate = (args: unknown) =>
     validateToolArguments(tool, {
       type: "toolCall",
@@ -25,19 +26,23 @@ it("按用途派发请求，无效参数在派发前拒绝", async () => {
       arguments: args,
     } as ToolCall);
   const signal = new AbortController().signal;
-  for (const model_usage of ["agent", "batch_translation", "media"]) {
-    const request = { model_usage, request_file: "work/requests.json" };
+  for (const request of [
+    { model_usage: "agent", request_file: "work/requests.json" },
+    { model_usage: "media", request_file: "work/requests.json", thinking_downgrade: true },
+  ]) {
     expect(validate(request)).toEqual(request);
     const result = await tool.execute(request, ...agent_tool_call("batch", signal));
     expect(run).toHaveBeenLastCalledWith(request, signal);
     expect(result.details).toEqual(summary);
   }
   for (const invalid of [
+    { model_usage: "media", request_file: "x", thinking_downgrade: "invalid" },
     { request_file: "x" },
     { model: { usage: "media" }, request_file: "x" },
     { model: { config_id: "saved-config" }, request_file: "x" },
     { model_usage: "media", request_file: "" },
     { model_usage: "media", request_file: "  " },
+    { model_usage: "batch_translation", request_file: "x" },
     { model_usage: "other", request_file: "x" },
   ])
     expect(() => validate(invalid)).toThrow();

@@ -20,7 +20,7 @@ type BatchTaskSummaryProps = {
 export function BatchTaskSummary(props: BatchTaskSummaryProps): JSX.Element {
   const [tooltip_open, set_tooltip_open] = useState(false);
   const { speed_text } = props.display;
-  const active = speed_text !== null; // 共享摘要在翻译与停止收尾期间提供速度，终态置空。
+  const active = speed_text !== null; // 共享摘要用非空速度标记运行或停止收尾状态。
   const completion_percent = active ? props.completion_percent : null;
   const { open_tooltip_on_start } = props;
 

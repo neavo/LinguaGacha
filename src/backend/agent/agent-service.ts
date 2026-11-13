@@ -53,12 +53,7 @@ import type { LogManager } from "../log/log-manager";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
-import {
-  register_agent_model,
-  resolve_agent_batch_translation_model,
-  resolve_agent_model,
-  summarize_agent_models,
-} from "./agent-model";
+import { register_agent_model, resolve_agent_batch_model } from "./agent-model";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import { load_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
@@ -1028,8 +1023,13 @@ export class AgentService {
         this.runtime_gate.assert_current_runtime(execution.lease, "agent");
         signal.throwIfAborted();
         const config_snapshot = structuredClone(this.settings.read_setting());
-        const model = resolve_agent_model(config_snapshot, this.model_config!, input.model_usage);
-        if (model === null) throw new AppErrors.AppError("model.not_found");
+        const model = resolve_agent_batch_model(
+          config_snapshot,
+          this.model_config!,
+          input.model_usage,
+          this.catalog.read_models(),
+          input.thinking_downgrade === true,
+        );
         try {
           const result = await this.batch_requests.run(
             execution.lease,
@@ -1059,9 +1059,10 @@ export class AgentService {
         this.session_state.require_loaded_project_path();
         signal.throwIfAborted();
         this.runtime_gate.assert_current_runtime(execution.lease, "agent");
-        const model = resolve_agent_batch_translation_model(
+        const model = resolve_agent_batch_model(
           this.settings.read_setting(),
           this.model_config!,
+          "batch_translation",
           this.catalog.read_models(),
           thinking_downgrade,
         );
@@ -1099,10 +1100,6 @@ export class AgentService {
                 script,
                 timeoutMs,
                 search: create_search_port(this.settings.read_setting()),
-                functionModels: summarize_agent_models(
-                  this.settings.read_setting(),
-                  this.model_config!,
-                ),
                 doing: async (text) => {
                   signal.throwIfAborted();
                   this.assert_execution(execution);

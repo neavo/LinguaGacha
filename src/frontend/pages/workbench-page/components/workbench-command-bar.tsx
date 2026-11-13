@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { build_translation_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
+import { build_batch_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
 import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "lucide-react";
 
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
@@ -53,7 +53,11 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const model_selection = useModelSelection();
   const active_translation_task_action_kind: TranslationTaskActionKind | null =
     props.batch_task.task_confirm_state?.kind ?? null;
-  const summary = build_translation_task_summary_display(props.batch_task.task_metrics, t);
+  const summary = build_batch_task_summary_display({
+    metrics: props.batch_task.task_metrics,
+    kind: props.batch_task.task_display_snapshot?.kind ?? null,
+    t,
+  });
   const add_file_disabled = !props.can_edit_files;
   const delete_file_disabled = !props.can_delete_selected_files;
   const actions: CommandAction[] = [

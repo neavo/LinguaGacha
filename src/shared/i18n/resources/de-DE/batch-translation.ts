@@ -6,6 +6,11 @@ export const de_de_batch_translation = {
     tooltip: "Ausgangstext in die Zielsprache übersetzen",
   },
   summary: {
+    translation: {
+      running: "Stapelübersetzung läuft",
+      stopping: "Stapelübersetzung wird gestoppt",
+    },
+    request: { running: "Stapelanfragen laufen", stopping: "Stapelanfragen werden gestoppt" },
     done: "Beendet",
     empty: "Inaktiv",
     stopping: "Wird gestoppt",
