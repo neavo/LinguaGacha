@@ -25,7 +25,6 @@ export function build_batch_request_result_log(input: {
   payload: JsonRecord | undefined;
   result: (LLMRequestFacts & { response: JsonRecord | null }) | undefined;
   error: string | null;
-  result_file: string | null;
   t: TextResolver;
 }): LogResultContent {
   const { t, result } = input;
@@ -64,7 +63,6 @@ export function build_batch_request_result_log(input: {
         RT: String(result?.reasoning_tokens ?? 0),
         CT: String(result?.output_tokens ?? 0),
       }),
-      ...(input.result_file === null ? [] : [input.result_file]),
     ],
     sections,
   };
