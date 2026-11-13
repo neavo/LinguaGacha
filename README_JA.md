@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>万能翻訳 AGENT Harness · 音声 動画 ゲーム 電子書籍 · PDF EPUB RPG ASMR GALGAME など · ワンクリック · 高品質 · 全形式</p>
+<p align='center'>万能翻訳 AGENT Harness · 音声 動画 ゲーム 電子書籍 · ワンクリック · 高品質 · 全形式</p>
 
 &ensp;
 &ensp;
@@ -34,8 +34,8 @@
 ## 翻訳サンプル ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 動画（モーションコミック） - セリフごとの精密タイムライン同期</b></summary><br><img width="1280" alt="動画" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 音声（ASMR） - 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 動画 · セリフごとの精密タイムライン同期</b></summary><br><img width="1280" alt="動画" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 音声 · 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
@@ -63,9 +63,8 @@
     - `chmod +x LinguaGacha*.AppImage` で実行権限を付与
     - `./LinguaGacha*.AppImage` を実行
     </details>
-- 信頼できるAIモデルインターフェースを取得。おすすめ：
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (GPU不要)
-- アプリケーションを起動してプロジェクトを作成し、`翻訳したいファイル`・`ゲームフォルダー`・`音声 / 動画` を `AGENT` 入力欄にドラッグして Enter を押すだけ！
+- [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] など、信頼できる AI モデル API を用意してください
+- アプリを起動してプロジェクトを作成し、`翻訳するファイル` を `AGENT` の入力欄にドラッグして Enter を押してください！
 
 ## 使い方チュートリアル 📝
 - **はじめに**

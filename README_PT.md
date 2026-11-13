@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>AGENT Harness Tudo-em-Um para Tradução · Áudio Vídeo Jogos E-books · PDF EPUB RPG ASMR GALGAME etc. · Um Clique · Alta Qualidade · Todos os Formatos</p>
+<p align='center'>AGENT Harness Tudo-em-Um para Tradução · Áudio Vídeo Jogos E-books · Um Clique · Alta Qualidade · Todos os Formatos</p>
 
 &ensp;
 &ensp;
@@ -34,8 +34,8 @@
 ## Demonstração ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 Vídeo (Motion Comics) - Alinhamento preciso de linha do tempo por diálogo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 Áudio (ASMR) - Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 Vídeo · Alinhamento preciso de linha do tempo por diálogo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Áudio · Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
@@ -63,9 +63,8 @@
     - Conceda permissão de execução com `chmod +x LinguaGacha*.AppImage`
     - Execute `./LinguaGacha*.AppImage`
     </details>
-- Obtenha uma interface de modelo de IA confiável. Recomendado:
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (Não requer GPU dedicada)
-- Inicie o aplicativo, crie um projeto, arraste `arquivos`, `pasta do jogo` ou `áudio/vídeo` para a caixa de entrada do `AGENTE` e pressione Enter!
+- Obtenha acesso a uma API de modelo de IA confiável, como [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ]
+- Inicie o aplicativo, crie um projeto, arraste os `arquivos a traduzir` para a caixa de entrada do `AGENTE` e pressione Enter!
 
 ## Guia do Usuário 📝
 - **Primeiros Passos**

@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>All-in-One-Übersetzungs-AGENT Harness · Audio Video Spiele E-Books · PDF EPUB RPG ASMR GALGAME u. v. m. · Ein Klick · Hohe Qualität · Alle Formate</p>
+<p align='center'>All-in-One-Übersetzungs-AGENT Harness · Audio Video Spiele E-Books · Ein Klick · Hohe Qualität · Alle Formate</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
@@ -31,8 +31,8 @@
 ## Ergebnis-Vorschau ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 Video (Motion Comics) - Zeilengenaue Zeitachsen-Synchronisation</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 Audio (ASMR) - Untertitel- &amp; Spektrum-Video-Doppelausgabe</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 Video · Zeilengenaue Zeitachsen-Synchronisation</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Audio · Untertitel- &amp; Spektrum-Video-Doppelausgabe</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
@@ -60,9 +60,8 @@
     - Erteilen Sie mit `chmod +x LinguaGacha*.AppImage` die Ausführungsberechtigung
     - Führen Sie `./LinguaGacha*.AppImage` aus
     </details>
-- Besorgen Sie sich Zugang zu einer zuverlässigen KI-Modellschnittstelle. Empfehlung:
-  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ], keine Grafikkarte erforderlich
-- Starten Sie die Anwendung, erstellen Sie ein Projekt, ziehen Sie `Dateien`, `Spielverzeichnis` oder `Audio/Video` in das `AGENT`-Eingabefeld und drücken Sie die Eingabetaste!
+- Besorgen Sie sich Zugang zu einer zuverlässigen KI-Modellschnittstelle, zum Beispiel [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]
+- Starten Sie die Anwendung, erstellen Sie ein Projekt, ziehen Sie die `zu übersetzenden Dateien` in das `AGENT`-Eingabefeld und drücken Sie die Eingabetaste!
 
 ## Anleitungen 📝
 - **Einstieg**

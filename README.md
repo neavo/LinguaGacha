@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>全能翻译 AGENT Harness · 音频 视频 游戏 电子书 · PDF EPUB RPG ASMR GALGAME 等 · 一键 · 高质量 · 全格式</p>
+<p align='center'>全能翻译 AGENT Harness · 音频 视频 游戏 电子书 · 一键 · 高质量 · 全格式</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
@@ -31,8 +31,8 @@
 ## 效果展示 ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 视频（动态漫画） - 逐对话对齐时间轴</b></summary><br><img width="1280" alt="视频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 音频（ASMR） - 字幕/频谱可视化双输出</b></summary><br><img width="1280" alt="音频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 视频 · 逐对话对齐时间轴</b></summary><br><img width="1280" alt="视频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 音频 · 字幕/频谱可视化双输出</b></summary><br><img width="1280" alt="音频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
@@ -60,9 +60,8 @@
     - 添加执行权限 `chmod +x LinguaGacha*.AppImage`
     - 运行 `./LinguaGacha*.AppImage`
     </details>
-- 获取一个可靠的 AI 大模型接口，推荐：
-  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，无显卡要求
-- 启动应用并创建工程，将 `待翻译文件`、`游戏目录` 或 `音视频` 拖入 `AGENT` 输入框，按下回车！
+- 获取一个可靠的 AI 大模型接口，比如 [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]
+- 启动应用并创建工程，将 `待翻译文件` 拖入 `AGENT` 输入框，按下回车！
 
 ## 使用教程 📝
 - **入门**

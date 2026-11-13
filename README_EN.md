@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>All-in-One Translation AGENT Harness · Audio Video Games E-books · PDF EPUB RPG ASMR GALGAME · One-Click · High Quality · All Formats</p>
+<p align='center'>All-in-One Translation AGENT Harness · Audio Video Games E-books · One-Click · High Quality · All Formats</p>
 
 &ensp;
 &ensp;
@@ -34,8 +34,8 @@
 ## Showcase ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 Video (Dynamic Comics) - Line-by-line timeline synchronization</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 Audio (ASMR) - Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 Video · Line-by-line timeline synchronization</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Audio · Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
@@ -63,9 +63,8 @@
     - Add executable permission with `chmod +x LinguaGacha*.AppImage`
     - Run `./LinguaGacha*.AppImage`
     </details>
-- Obtain a reliable AI model interface. Recommended:
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ] (No GPU required)
-- Launch the app, create a project, drag your `files`, `game folder`, or `audio/video` into the `AGENT` input box, and press Enter!
+- Obtain access to a reliable AI model API, such as [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeekEN) ]
+- Launch the app, create a project, drag your `files to translate` into the `AGENT` input box, and press Enter!
 
 ## User Guide 📝
 - **Getting Started**

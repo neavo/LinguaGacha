@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>올인원 번역 AGENT Harness · 오디오 동영상 게임 전자책 · PDF EPUB RPG ASMR GALGAME 등 · 원클릭 · 고품질 · 전 형식</p>
+<p align='center'>올인원 번역 AGENT Harness · 오디오 동영상 게임 전자책 · 원클릭 · 고품질 · 전 형식</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
@@ -31,8 +31,8 @@
 ## 번역 결과 미리보기 ✨
 <table>
   <tbody>
-    <tr><td><details><summary><b>🎬 동영상(모션 코믹) - 대사 단위 정밀 타임라인 동기화</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 오디오(ASMR) - 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 동영상 · 대사 단위 정밀 타임라인 동기화</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 오디오 · 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
   </tbody>
 </table>
 
@@ -60,9 +60,8 @@
     - `chmod +x LinguaGacha*.AppImage`로 실행 권한을 부여합니다
     - `./LinguaGacha*.AppImage`를 실행합니다
     </details>
-- 신뢰할 수 있는 AI 모델 인터페이스를 준비합니다. 추천:
-  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ], 그래픽 카드 불필요
-- 앱을 실행하고 프로젝트를 만든 뒤 `번역할 파일`, `게임 폴더` 또는 `오디오/동영상`을 `AGENT` 입력창으로 드래그하고 Enter를 누르세요!
+- [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]과 같은 신뢰할 수 있는 AI 모델 API를 준비합니다
+- 앱을 실행하고 프로젝트를 만든 뒤 `번역할 파일`을 `AGENT` 입력창으로 드래그하고 Enter를 누르세요!
 
 ## 사용 안내 📝
 - **입문**
