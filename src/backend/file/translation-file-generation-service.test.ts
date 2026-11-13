@@ -421,7 +421,7 @@ describe("TranslationFileGenerationService", () => {
     );
     const text = create_text_resolver("zh-CN");
     fs.mkdirSync(
-      path.join(output_directory, `demo_${text("app.translation_generation.directory.bilingual")}`),
+      path.join(output_directory, `demo_${text("app.translation_export.directory.bilingual")}`),
     );
     for (const request of [
       {},
@@ -459,7 +459,7 @@ describe("TranslationFileGenerationService", () => {
       });
       expect(new Set([first.output_path, second.output_path, third.output_path]).size).toBe(3);
       expect(path.basename(first.output_path)).not.toBe(
-        `demo_${text("app.translation_generation.directory.translated")}`,
+        `demo_${text("app.translation_export.directory.translated")}`,
       );
       for (const result of [first, second, third]) {
         expect(path.dirname(result.output_path)).toBe(output_directory);
@@ -968,11 +968,11 @@ describe("TranslationFileGenerationService", () => {
     const text = create_text_resolver("de-DE"); // 验证语言选择与参数传递，文案由当前词典决定。
     const translated_path = path.join(
       temp_dir,
-      `demo_${text("app.translation_generation.directory.translated")}`,
+      `demo_${text("app.translation_export.directory.translated")}`,
     );
     const bilingual_path = path.join(
       temp_dir,
-      `demo_${text("app.translation_generation.directory.bilingual")}`,
+      `demo_${text("app.translation_export.directory.bilingual")}`,
     );
 
     await expect(
@@ -993,7 +993,7 @@ describe("TranslationFileGenerationService", () => {
     expect(fs.existsSync(path.join(bilingual_path, "script.txt"))).toBe(true);
     expect(log_collector.info).toHaveBeenNthCalledWith(
       2,
-      `${text("app.translation_generation.log.succeeded")}\n${translated_path}`,
+      `${text("app.translation_export.log.succeeded")}\n${translated_path}`,
       { source: "translation-generation" },
     );
   });
@@ -1113,7 +1113,7 @@ describe("TranslationFileGenerationService", () => {
     ).resolves.toMatchObject({ accepted: true });
 
     expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
-      create_text_resolver("zh-CN")("app.translation_generation.log.open_output_folder_failed"),
+      create_text_resolver("zh-CN")("app.translation_export.log.open_output_folder_failed"),
       { source: "translation-generation", error },
     );
   });
@@ -1189,12 +1189,12 @@ describe("TranslationFileGenerationService", () => {
       expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
         {
           kind: "text",
-          text: `${text("app.translation_generation.log.failed")}\n${error.message}`,
+          text: `${text("app.translation_export.log.failed")}\n${error.message}`,
         },
         { source: "translation-generation", error },
       );
       expect(log_collector.info).toHaveBeenCalledExactlyOnceWith(
-        text("app.translation_generation.log.started"),
+        text("app.translation_export.log.started"),
         { source: "translation-generation", console_group_end: false },
       );
       if (entry === "directory-prepare") expect(write_file).not.toHaveBeenCalled();

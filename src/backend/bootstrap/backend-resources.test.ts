@@ -24,6 +24,36 @@ afterEach(() => {
 });
 
 describe("BackendResources", () => {
+  it.each([undefined, true, false])(
+    "启动空行只用于控制台排版，控制台开关：%s",
+    async (console_enabled) => {
+      const stdout_write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const options = create_options();
+      const resources = await BackendResources.start({
+        ...options,
+        logTargets: console_enabled === undefined ? {} : { console: console_enabled },
+      });
+      try {
+        if (console_enabled === false) expect(stdout_write).not.toHaveBeenCalled();
+        else {
+          expect(stdout_write.mock.calls[0]?.[0]).toBe("\n");
+          expect(stdout_write.mock.calls[1]?.[0]).toContain("LinguaGacha");
+        }
+        const date = resources.logManager.files.list_dates()[0]!;
+        const records = fs
+          .readFileSync(path.join(resources.paths.get_log_dir(), `app.${date}.jsonl`), "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as unknown);
+        expect(records).toEqual([
+          expect.objectContaining({ content: expect.stringContaining("LinguaGacha") }),
+        ]);
+      } finally {
+        await resources.dispose();
+      }
+    },
+  );
+
   it("启动后交付共享资源，关闭时恢复全局网络入口", async () => {
     const original_fetch = globalThis.fetch;
     const database_close = vi.spyOn(ProjectDatabase.prototype, "close");

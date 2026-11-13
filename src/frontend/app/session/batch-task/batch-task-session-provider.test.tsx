@@ -10,7 +10,7 @@ const task_runtime_mock = vi.hoisted(() => {
   return {
     batch_task: null as BatchTask | null,
 
-    request_generation: vi.fn(),
+    request_export: vi.fn(),
   };
 });
 
@@ -28,7 +28,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
 
 vi.mock("@frontend/app/session/batch-task/use-batch-task", () => {
   return {
-    useBatchTask: (_options: { onRequestGeneration: () => void }) => {
+    useBatchTask: (_options: { onRequestExport: () => void }) => {
       if (task_runtime_mock.batch_task === null) {
         throw new Error("缺少翻译任务运行态夹具。");
       }
@@ -38,8 +38,8 @@ vi.mock("@frontend/app/session/batch-task/use-batch-task", () => {
   };
 });
 
-vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
-  useTranslationGeneration: () => ({ request_generation: task_runtime_mock.request_generation }),
+vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
+  useTranslationExport: () => ({ request_export: task_runtime_mock.request_export }),
 }));
 
 /** 隔离后台任务，测试常驻侧栏的组合与回调。 */
@@ -86,7 +86,7 @@ describe("BatchTaskSessionProvider", () => {
   beforeEach(() => {
     task_runtime_mock.batch_task = create_batch_task_fixture();
 
-    task_runtime_mock.request_generation.mockClear();
+    task_runtime_mock.request_export.mockClear();
   });
 
   afterEach(async () => {

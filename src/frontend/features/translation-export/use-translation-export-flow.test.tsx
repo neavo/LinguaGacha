@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { find_agent_reference_ranges } from "@shared/agent-reference";
-import { useTranslationGenerationFlow } from "./use-translation-generation-flow";
+import { useTranslationExportFlow } from "./use-translation-export-flow";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 const mocks = vi.hoisted(() => ({
@@ -44,21 +44,21 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   }),
 }));
 
-/** 通过渲染提交后的公开返回值观察译文生成流程。 */
+/** 通过渲染提交后的公开返回值观察翻译成果导出流程。 */
 function Probe(props: {
-  on_ready: (flow: ReturnType<typeof useTranslationGenerationFlow>) => void;
+  on_ready: (flow: ReturnType<typeof useTranslationExportFlow>) => void;
 }): JSX.Element | null {
-  const flow = useTranslationGenerationFlow();
+  const flow = useTranslationExportFlow();
   useEffect(() => {
     props.on_ready(flow);
   }, [flow, props]);
   return null;
 }
 
-describe("useTranslationGenerationFlow", () => {
+describe("useTranslationExportFlow", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let latest_flow: ReturnType<typeof useTranslationGenerationFlow> | null = null;
+  let latest_flow: ReturnType<typeof useTranslationExportFlow> | null = null;
 
   beforeEach(() => {
     vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock());
@@ -130,7 +130,7 @@ describe("useTranslationGenerationFlow", () => {
     });
     mocks.api_fetch.mockResolvedValue({ accepted: true });
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     expect(latest_flow?.state).toMatchObject({
       phase: "ready",
@@ -138,7 +138,7 @@ describe("useTranslationGenerationFlow", () => {
       warning_count: 3,
     });
     if (has_agent_files) {
-      await act(async () => latest_flow?.confirm_generation());
+      await act(async () => latest_flow?.confirm_export());
       expect(mocks.api_fetch).not.toHaveBeenCalled();
       act(() => {
         latest_flow?.next_step();
@@ -152,7 +152,7 @@ describe("useTranslationGenerationFlow", () => {
       expect(mocks.api_fetch).not.toHaveBeenCalled();
       expect(pick).not.toHaveBeenCalled();
     }
-    await act(async () => latest_flow?.confirm_generation());
+    await act(async () => latest_flow?.confirm_export());
     expect(pick).toHaveBeenCalledOnce();
     expect(mocks.api_fetch).toHaveBeenCalledOnce();
     expect(mocks.warnings).toHaveBeenCalledExactlyOnceWith({ action: "warning_count" });
@@ -171,7 +171,7 @@ describe("useTranslationGenerationFlow", () => {
       snapshot: { entries: [{ file_type: "MEDIA", rel_path: "movie.media" }] },
     });
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     if (step === "files") act(() => latest_flow?.next_step());
     act(() => latest_flow?.jump_to_agent());
@@ -179,11 +179,11 @@ describe("useTranslationGenerationFlow", () => {
     expect(
       find_agent_reference_ranges(text).some(({ reference }) => reference.kind === "skill"),
     ).toBe(true);
-    // 审校只在 warnings 阶段显式出现，两条路径共用同一生成任务文案。
+    // 审校只在 warnings 阶段显式出现，两条路径共用同一导出任务文案。
     expect(text.includes("app.agent_input.steps.review")).toBe(step === "warnings");
-    expect(text).toContain('app.translation_generation.agent_request @skill("project-operation")');
+    expect(text).toContain('app.translation_export.agent_request @skill("project-operation")');
     expect(mocks.api_fetch).not.toHaveBeenCalled();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     expect(latest_flow?.state).toMatchObject({ phase: "ready", step: "warnings" });
   });
@@ -191,7 +191,7 @@ describe("useTranslationGenerationFlow", () => {
   it("警告检查失败或文件修订不一致时重新检查，拒绝绕过确认", async () => {
     mocks.warnings.mockRejectedValueOnce(new Error("warnings unavailable"));
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("check-failed");
     mocks.warnings.mockResolvedValueOnce({
@@ -202,7 +202,7 @@ describe("useTranslationGenerationFlow", () => {
     act(() => latest_flow?.retry_check());
     await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("check-failed");
-    await act(async () => latest_flow?.confirm_generation());
+    await act(async () => latest_flow?.confirm_export());
     expect(mocks.api_fetch).not.toHaveBeenCalled();
     act(() => latest_flow?.retry_check());
     await flush_microtasks();
@@ -212,12 +212,12 @@ describe("useTranslationGenerationFlow", () => {
   it("空工程禁用入口，删除最后一个文件关闭确认", async () => {
     mocks.project_snapshot.file_count = 0;
     await render_probe();
-    expect(latest_flow?.can_request_generation).toBe(false);
-    act(() => latest_flow?.request_generation());
+    expect(latest_flow?.can_request_export).toBe(false);
+    act(() => latest_flow?.request_export());
     expect(mocks.workbench).not.toHaveBeenCalled();
     mocks.project_snapshot.file_count = 1;
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("ready");
     mocks.project_snapshot.file_count = 0;
@@ -225,7 +225,7 @@ describe("useTranslationGenerationFlow", () => {
     expect(latest_flow?.state.phase).toBe("closed");
   });
 
-  it.each(["GENERIC", "MEDIA"])("%s 文件报告范围，交给 Agent 只预填生成任务", async (file_type) => {
+  it.each(["GENERIC", "MEDIA"])("%s 文件报告范围，交给 Agent 只预填导出任务", async (file_type) => {
     mocks.warnings.mockResolvedValue({
       projectPath: mocks.project_snapshot.path,
       sectionRevisions: { files: 9 },
@@ -242,7 +242,7 @@ describe("useTranslationGenerationFlow", () => {
       },
     });
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     expect(latest_flow?.state).toEqual({
       phase: "ready",
@@ -255,46 +255,46 @@ describe("useTranslationGenerationFlow", () => {
     expect(mocks.api_fetch).not.toHaveBeenCalled();
     act(() => latest_flow?.jump_to_agent());
     const text = mocks.navigate_to_agent.mock.calls[0]![0].text;
-    expect(text).toContain("app.translation_generation.agent_request");
+    expect(text).toContain("app.translation_export.agent_request");
     expect(
       find_agent_reference_ranges(text).some(({ reference }) => reference.kind === "skill"),
     ).toBe(true);
     expect(latest_flow?.state.phase).toBe("closed");
   });
 
-  it("仅 Agent 资产不能直接生成，空集合结束流程", async () => {
+  it("仅 Agent 资产不能直接导出，空集合结束流程", async () => {
     mocks.workbench.mockResolvedValueOnce({
       projectPath: mocks.project_snapshot.path,
       sectionRevisions: { files: 7 },
       snapshot: { entries: [{ file_type: "MEDIA", rel_path: "video" }] },
     });
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
-    await act(async () => latest_flow?.confirm_generation());
+    await act(async () => latest_flow?.confirm_export());
     expect(mocks.api_fetch).not.toHaveBeenCalled();
     act(() => latest_flow?.close());
     mocks.workbench.mockResolvedValueOnce({
       projectPath: mocks.project_snapshot.path,
       snapshot: { entries: [] },
     });
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("closed");
   });
 
-  it("读取失败提供重试或转交 Agent，拒绝直接生成", async () => {
+  it("读取失败提供重试或转交 Agent，拒绝直接导出", async () => {
     mocks.workbench.mockRejectedValueOnce(new Error("files unavailable"));
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     expect(latest_flow?.state.phase).toBe("check-failed");
-    await act(async () => latest_flow?.confirm_generation());
+    await act(async () => latest_flow?.confirm_export());
     expect(mocks.api_fetch).not.toHaveBeenCalled();
     act(() => latest_flow?.jump_to_agent());
     expect(mocks.navigate_to_agent).toHaveBeenCalledOnce();
     mocks.workbench.mockRejectedValueOnce(new Error("files unavailable"));
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
     act(() => latest_flow?.retry_check());
     await flush_microtasks();
@@ -305,20 +305,24 @@ describe("useTranslationGenerationFlow", () => {
     const pending = Promise.withResolvers<unknown>();
     mocks.workbench.mockReturnValueOnce(pending.promise);
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     if (action === "close") act(() => latest_flow?.close());
     else {
       mocks.project_snapshot.path = "other.lg";
       await render_probe();
     }
     await act(async () =>
-      pending.resolve({ projectPath: "E:/demo/sample.lg", snapshot: { entries: [] } }),
+      pending.resolve({
+        projectPath: "E:/demo/sample.lg",
+        sectionRevisions: { files: 7 },
+        snapshot: { entries: [{ file_type: "TXT", rel_path: "native.txt" }] },
+      }),
     );
     expect(latest_flow?.state.phase).toBe("closed");
   });
 
   it.each(["PROJECT", "FIXED", "MANUAL"])(
-    "%s 模式携带确认修订，提交期间防止重复生成",
+    "%s 模式携带确认修订，提交期间防止重复导出",
     async (mode) => {
       mocks.settings_snapshot.translation_save_mode = mode;
       const pick = vi
@@ -327,12 +331,12 @@ describe("useTranslationGenerationFlow", () => {
       const pending = Promise.withResolvers<unknown>();
       mocks.api_fetch.mockReturnValueOnce(pending.promise);
       await render_probe();
-      act(() => latest_flow?.request_generation());
+      act(() => latest_flow?.request_export());
       await flush_microtasks();
-      let generating!: Promise<void>;
+      let exporting!: Promise<void>;
       await act(async () => {
-        generating = latest_flow!.confirm_generation();
-        void latest_flow?.confirm_generation();
+        exporting = latest_flow!.confirm_export();
+        void latest_flow?.confirm_export();
       });
       expect(mocks.api_fetch).toHaveBeenCalledExactlyOnceWith("/api/translation/files/generate", {
         project_path: mocks.project_snapshot.path,
@@ -342,21 +346,21 @@ describe("useTranslationGenerationFlow", () => {
       expect(pick).toHaveBeenCalledTimes(mode === "MANUAL" ? 1 : 0);
       await act(async () => {
         pending.resolve({ accepted: true });
-        await generating;
+        await exporting;
       });
       expect(latest_flow?.state.phase).toBe("closed");
       pick.mockRestore();
     },
   );
 
-  it("生成失败恢复确认，修订冲突重新读取范围", async () => {
+  it("导出失败恢复确认，修订冲突重新读取范围", async () => {
     mocks.api_fetch
       .mockRejectedValueOnce(new Error("disk failed"))
       .mockRejectedValueOnce(new DesktopApiError({ code: "data.revision_conflict" }));
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
-    await act(async () => latest_flow?.confirm_generation());
+    await act(async () => latest_flow?.confirm_export());
     expect(latest_flow?.state.phase).toBe("ready");
     expect(mocks.push_toast).toHaveBeenCalledOnce();
     mocks.warnings.mockResolvedValueOnce({
@@ -369,7 +373,7 @@ describe("useTranslationGenerationFlow", () => {
       sectionRevisions: { files: 8 },
       snapshot: { entries: [{ file_type: "MEDIA", rel_path: "new" }] },
     });
-    await act(async () => latest_flow?.confirm_generation());
+    await act(async () => latest_flow?.confirm_export());
     expect(latest_flow?.state).toMatchObject({
       phase: "ready",
       files_revision: 8,
@@ -384,23 +388,23 @@ describe("useTranslationGenerationFlow", () => {
       .spyOn(window.desktopApp, "pickDirectory")
       .mockResolvedValueOnce({ canceled: true, paths: [] });
     await render_probe();
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
-    await act(async () => latest_flow?.confirm_generation());
+    await act(async () => latest_flow?.confirm_export());
     expect(latest_flow?.state.phase).toBe("closed");
     const pending = Promise.withResolvers<{ canceled: boolean; paths: string[] }>();
     pick.mockReturnValueOnce(pending.promise);
-    act(() => latest_flow?.request_generation());
+    act(() => latest_flow?.request_export());
     await flush_microtasks();
-    let generating!: Promise<void>;
+    let exporting!: Promise<void>;
     act(() => {
-      generating = latest_flow!.confirm_generation();
+      exporting = latest_flow!.confirm_export();
     });
     mocks.project_snapshot.path = "other.lg";
     await render_probe();
     await act(async () => {
       pending.resolve({ canceled: false, paths: ["E:/chosen"] });
-      await generating;
+      await exporting;
     });
     expect(mocks.api_fetch).not.toHaveBeenCalled();
     expect(latest_flow?.state.phase).toBe("closed");

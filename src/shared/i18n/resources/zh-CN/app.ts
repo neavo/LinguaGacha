@@ -197,28 +197,29 @@ export const zh_cn_app = {
       review: "审校译文",
     },
   },
-  translation_generation: {
-    agent_request: "生成译文，不进行其他操作",
-    action: "生成译文",
+  translation_export: {
+    agent_request: "导出翻译成果，无需进行其他操作",
+    action: "导出翻译成果",
     confirmation: {
       generic_description:
-        "工程包含音视频或通用数据包，直接生成将跳过这些文件，请使用 AGENT 处理 …",
-      description: "是否确认生成当前可用译文 …?",
+        "工程包含音视频或通用数据包，这些文件需要 AGENT 处理，直接导出将跳过它们 …",
+      description: "是否导出当前可用的翻译成果？",
       checking: "正在检查工程文件和校对警告 …",
       check_failed: "检查工程文件或校对警告失败，请重新检查或由 AGENT 处理 …",
       warning_description:
         "检测到 {COUNT} 个校对警告，警告并非一定是错误，但建议先使用 AGENT 执行至少一次自动审校，是否确认继续 …?",
       retry_check: "重新检查",
-      generate_directly: "直接生成",
+      export_supported: "仅导出支持的文件",
+      export_directly: "直接导出",
     },
     directory: {
       translated: "译文",
       bilingual: "译文_双语对照",
     },
     log: {
-      started: "生成译文中 …",
-      succeeded: "译文生成成功 …",
-      failed: "译文生成失败 …",
+      started: "正在导出翻译成果 …",
+      succeeded: "翻译成果导出成功 …",
+      failed: "翻译成果导出失败 …",
       open_output_folder_failed: "打开输出文件夹失败 …",
     },
   },

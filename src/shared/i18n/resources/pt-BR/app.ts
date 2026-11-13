@@ -203,29 +203,30 @@ export const pt_br_app = {
       review: "Revisar a tradução",
     },
   },
-  translation_generation: {
-    agent_request: "Gere traduções sem realizar outras operações",
-    action: "Gerar tradução",
+  translation_export: {
+    agent_request: "Exporte as traduções sem realizar outras operações",
+    action: "Exportar traduções",
     confirmation: {
       generic_description:
-        "Este projeto contém arquivos de áudio/vídeo ou pacotes de dados genéricos. A geração direta ignorará esses arquivos. Use o AGENT para processá-los …",
-      description: "Confirma a geração dos arquivos de tradução disponíveis no momento …?",
+        "Este projeto contém arquivos de áudio/vídeo ou pacotes de dados genéricos que precisam ser processados pelo AGENT e serão ignorados na exportação direta …",
+      description: "Exportar as traduções disponíveis no momento?",
       checking: "Verificando arquivos do projeto e avisos de revisão …",
       check_failed:
         "Não foi possível verificar os arquivos do projeto ou avisos de revisão. Verifique novamente ou deixe o AGENT cuidar disso …",
       warning_description:
         "Detectados {COUNT} avisos de revisão. Avisos não indicam necessariamente erros, mas recomendamos executar ao menos uma revisão automática com o AGENT antes. Confirma que deseja continuar …?",
       retry_check: "Verificar novamente",
-      generate_directly: "Gerar diretamente",
+      export_supported: "Exportar apenas arquivos compatíveis",
+      export_directly: "Exportar diretamente",
     },
     directory: {
       translated: "Traduzido",
       bilingual: "Traduzido_Bilíngue",
     },
     log: {
-      started: "Gerando arquivos de tradução …",
-      succeeded: "Arquivos de tradução gerados com sucesso …",
-      failed: "Falha na geração dos arquivos de tradução …",
+      started: "Exportando traduções …",
+      succeeded: "Traduções exportadas …",
+      failed: "Falha ao exportar traduções …",
       open_output_folder_failed: "Falha ao abrir a pasta de saída …",
     },
   },

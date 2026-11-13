@@ -48,9 +48,9 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
     app_language: Type.Enum(APP_LANGUAGE_DEFINITIONS.map(({ code }) => code)), // 界面与日志文案的应用语言。
     project_save_mode: Type.Enum(PROJECT_SAVE_MODES), // 新建工程的保存位置策略。
     project_fixed_path: Type.String(), // 固定保存模式使用的工程目录。
-    translation_save_mode: Type.Enum(TRANSLATION_SAVE_MODES), // GUI 译文生成的保存位置策略。
+    translation_save_mode: Type.Enum(TRANSLATION_SAVE_MODES), // GUI 翻译成果导出的保存位置策略。
     translation_fixed_path: Type.String(), // 译文固定模式使用的输出父目录。
-    output_folder_open_on_finish: Type.Boolean(), // 译文生成成功后是否打开输出目录。
+    output_folder_open_on_finish: Type.Boolean(), // 翻译成果导出成功后是否打开输出目录。
     request_timeout: Type.Number(), // 等待模型回复的超时时间，单位为秒。
     preceding_lines_threshold: Type.Integer({
       minimum: CONTEXT_LINES_THRESHOLD_MIN,

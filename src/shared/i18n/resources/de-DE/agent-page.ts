@@ -63,9 +63,9 @@ export const de_de_agent_page = {
     },
     groups: { files: "Dateien", skills: "Skills", instructions: "Befehle" },
     instructions: {
-      generate_translation: {
+      export_translation: {
         description:
-          "Übersetzungsdateien oder einen Lokalisierungspatch aus den Übersetzungsdaten des Projekts erstellen",
+          "Dokumente, Untertitel, Spieldateien und weitere Ergebnisse mit den vorhandenen Projektübersetzungen exportieren",
       },
       update_file: {
         title: "Dateien aktualisieren",

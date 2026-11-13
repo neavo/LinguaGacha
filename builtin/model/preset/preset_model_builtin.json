@@ -20,7 +20,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -51,7 +51,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -81,7 +81,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -111,7 +111,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -141,7 +141,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -171,7 +171,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -201,7 +201,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -231,7 +231,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -261,7 +261,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,
@@ -291,7 +291,7 @@
       "concurrency_limit": 0
     },
     "thinking": {
-      "level": "HIGH"
+      "level": "MEDIUM"
     },
     "generation": {
       "temperature": 0.95,

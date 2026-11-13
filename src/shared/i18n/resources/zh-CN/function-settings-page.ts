@@ -23,13 +23,13 @@ export const zh_cn_function_settings_page = {
       },
     },
     translation_save_mode: {
-      title: "译文文件保存位置",
-      description: "设置生成译文时译文文件的保存位置",
+      title: "翻译成果保存位置",
+      description: "设置导出翻译成果时的保存位置",
       options: { manual: "每次手动选择", fixed: "固定目录", project: "工程文件同目录" },
     },
     output_folder_open_on_finish: {
-      title: "生成译文文件时打开输出文件夹",
-      description: "启用此功能后，将在译文文件生成成功时自动打开输出文件夹",
+      title: "导出完成后打开输出文件夹",
+      description: "启用此功能后，将在翻译成果导出成功时自动打开输出文件夹",
     },
   },
   feedback: {

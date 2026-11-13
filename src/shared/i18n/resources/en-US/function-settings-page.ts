@@ -29,8 +29,8 @@ export const en_us_function_settings_page = {
       },
     },
     translation_save_mode: {
-      title: "Translation save location",
-      description: "Set where translation files are saved when generating translations",
+      title: "Translation export location",
+      description: "Choose where exported translations are saved",
       options: {
         manual: "Choose every time",
         fixed: "Fixed directory",
@@ -38,9 +38,9 @@ export const en_us_function_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "Open output folder when translation file is generated",
+      title: "Open the output folder after export",
       description:
-        "When enabled, the output folder will be opened after the translated file is generated successfully",
+        "Automatically open the output folder after translations are successfully exported",
     },
   },
   feedback: {

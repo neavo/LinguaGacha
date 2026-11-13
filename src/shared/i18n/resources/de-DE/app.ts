@@ -210,29 +210,30 @@ export const de_de_app = {
       review: "Übersetzung prüfen",
     },
   },
-  translation_generation: {
-    agent_request: "Erzeuge Übersetzungen, ohne andere Aktionen auszuführen",
-    action: "Übersetzung erstellen",
+  translation_export: {
+    agent_request: "Exportiere die Übersetzungen, ohne weitere Aktionen auszuführen",
+    action: "Übersetzungen exportieren",
     confirmation: {
       generic_description:
-        "Dieses Projekt enthält Audio-/Videodateien oder generische Datenpakete. Die direkte Erstellung überspringt diese Dateien. Bitte mit AGENT bearbeiten …",
-      description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
+        "Dieses Projekt enthält Audio-/Videodateien oder generische Datenpakete, die AGENT verarbeiten muss und die beim direkten Export übersprungen werden …",
+      description: "Die derzeit verfügbaren Übersetzungen exportieren?",
       checking: "Projektdateien und Korrekturwarnungen werden geprüft …",
       check_failed:
         "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Erneut prüfen oder von AGENT bearbeiten lassen …",
       warning_description:
         "Es wurden {COUNT} Korrekturwarnungen erkannt. Warnungen weisen nicht unbedingt auf Fehler hin. Wir empfehlen jedoch, zuerst mindestens eine automatische Prüfung mit AGENT durchzuführen. Fortfahren …?",
       retry_check: "Erneut prüfen",
-      generate_directly: "Direkt erstellen",
+      export_supported: "Nur unterstützte Dateien exportieren",
+      export_directly: "Direkt exportieren",
     },
     directory: {
       translated: "Übersetzung",
       bilingual: "Übersetzung_Zweisprachig",
     },
     log: {
-      started: "Übersetzungsdateien werden erstellt …",
-      succeeded: "Übersetzungsdateien erstellt …",
-      failed: "Erstellung der Übersetzungsdateien fehlgeschlagen …",
+      started: "Übersetzungen werden exportiert …",
+      succeeded: "Übersetzungen exportiert …",
+      failed: "Export der Übersetzungen fehlgeschlagen …",
       open_output_folder_failed: "Fehler beim Öffnen des Ausgabeordners …",
     },
   },

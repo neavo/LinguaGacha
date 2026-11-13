@@ -36,7 +36,7 @@ description: 调查正式解析器范围外的文本或二进制数据，提取�
 
 ## 写回与验证
 
-在 `project-operation` 的「生成与交付」中，使用本次 `generateFiles(bilingual_files)` 返回的 `writeback.input_path` 完成以下处理：
+在 `project-operation` 的「导出与交付」中，使用本次 `generateFiles(bilingual_files)` 返回的 `writeback.input_path` 完成以下处理：
 
 1. 读取目标资产的写回输入。它与源解析结果按数组下标对应，正文与姓名已确定。脚本只按私有定位写回底稿。
 2. 在 `work/` 中完成写回。按实际格式处理长度、偏移、索引、编码、转义、校验和及字段间依赖。

@@ -1,9 +1,9 @@
 import { type JSX, act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { TranslationGenerationProvider } from "@frontend/app/session/translation-generation/translation-generation-provider";
-import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
-import type { TranslationGenerationFlow } from "@frontend/features/translation-generation/use-translation-generation-flow";
+import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-provider";
+import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
+import type { TranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 
 const api_fetch = vi.hoisted(() =>
   vi.fn(async () => ({
@@ -30,28 +30,28 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
     settings_snapshot: { translation_save_mode: "PROJECT", translation_fixed_path: "" },
   }),
 }));
-vi.mock("@frontend/features/translation-generation/translation-generation-dialog", () => ({
-  TranslationGenerationDialog: ({ state }: TranslationGenerationFlow) =>
+vi.mock("@frontend/features/translation-export/translation-export-dialog", () => ({
+  TranslationExportDialog: ({ state }: TranslationExportFlow) =>
     state.phase === "closed" ? null : <div role="dialog" />,
 }));
 
-/** 两个入口模拟工作台与任务完成通知，共享当前工程的一次译文生成流程。 */
-function GenerationEntry(): JSX.Element {
-  const flow = useTranslationGeneration();
-  return <button onClick={flow.request_generation}>生成译文</button>;
+/** 两个入口模拟工作台与任务完成通知，共享当前工程的一次翻译成果导出流程。 */
+function ExportEntry(): JSX.Element {
+  const flow = useTranslationExport();
+  return <button onClick={flow.request_export}>导出翻译成果</button>;
 }
 
-it("多个入口共享预检和确认，页面替换保留同一译文生成弹窗", async () => {
+it("多个入口共享预检和确认，页面替换保留同一翻译成果导出弹窗", async () => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   try {
     await act(async () =>
       root.render(
-        <TranslationGenerationProvider>
-          <GenerationEntry />
-          <GenerationEntry />
-        </TranslationGenerationProvider>,
+        <TranslationExportProvider>
+          <ExportEntry />
+          <ExportEntry />
+        </TranslationExportProvider>,
       ),
     );
     await act(async () => {
@@ -61,9 +61,9 @@ it("多个入口共享预检和确认，页面替换保留同一译文生成弹�
     expect(container.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     await act(async () =>
       root.render(
-        <TranslationGenerationProvider>
-          <GenerationEntry />
-        </TranslationGenerationProvider>,
+        <TranslationExportProvider>
+          <ExportEntry />
+        </TranslationExportProvider>,
       ),
     );
     expect(container.querySelectorAll('[role="dialog"]')).toHaveLength(1);

@@ -48,7 +48,7 @@ export class BackendResources {
     let proxy_http_client: ProxyHttpClient | null = null;
 
     try {
-      write_bootstrap_log("", log_manager);
+      if (options.logTargets?.console !== false) process.stdout.write("\n");
       write_bootstrap_log(
         t_main_log("app.log.app_version", { VERSION: metadata.read_version() }),
         log_manager,

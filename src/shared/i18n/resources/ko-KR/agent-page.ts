@@ -64,8 +64,9 @@ export const ko_kr_agent_page = {
     },
     groups: { files: "파일", skills: "스킬", instructions: "명령" },
     instructions: {
-      generate_translation: {
-        description: "프로젝트의 번역문 데이터로 번역문 파일 또는 현지화 패치를 생성합니다",
+      export_translation: {
+        description:
+          "프로젝트에 저장된 기존 번역문으로 문서, 자막, 게임 파일 등의 번역 결과물 내보내기",
       },
       update_file: {
         title: "파일 업데이트",

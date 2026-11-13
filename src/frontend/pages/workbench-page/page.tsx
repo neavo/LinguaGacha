@@ -1,7 +1,7 @@
 import { GodotPackOrderDialog } from "@frontend/features/godot-pack-order/godot-pack-order-dialog";
 import { useEffect, useState, type JSX } from "react";
 import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
-import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
+import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTaskSession } from "@frontend/app/session/batch-task/batch-task-session-context";
@@ -20,7 +20,7 @@ export function WorkbenchPage(): JSX.Element {
   const { t } = useI18n();
   const { navigate_to_agent } = useAppNavigation();
   const { batch_task } = useBatchTaskSession();
-  const translation_generation = useTranslationGeneration();
+  const translation_export = useTranslationExport();
   const workbench_state = useWorkbenchPageState();
   const translation_stats = useProjectTranslationStats();
   const [start_dialog_open, set_start_dialog_open] = useState(false); // 启动选择随页面卸载结束。
@@ -81,13 +81,13 @@ export function WorkbenchPage(): JSX.Element {
         translation_stats={translation_stats}
         can_edit_files={workbench_state.can_edit_files}
         can_delete_selected_files={workbench_state.can_delete_selected_files}
-        can_generate_translation={translation_generation.can_request_generation}
+        can_export_translation={translation_export.can_request_export}
         can_close_project={workbench_state.can_close_project}
         on_add_file={() => {
           void workbench_state.request_add_file();
         }}
         on_delete_selected={workbench_state.request_delete_selected_files}
-        on_generate_translation={translation_generation.request_generation}
+        on_export_translation={translation_export.request_export}
         on_close_project={workbench_state.request_close_project}
       />
       {start_dialog_open && can_start_translation ? (

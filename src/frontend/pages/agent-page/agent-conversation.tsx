@@ -325,15 +325,15 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       execute: project_lifecycle.request_close,
     },
     {
-      // 译文生成属于工程级动作，可用性由生成流程自身判定，不受 Agent 会话空闲约束。
-      id: "generate_translation",
+      // 翻译成果导出属于工程级动作，可用性由工程加载状态和文件数量判定，不受 Agent 会话空闲约束。
+      id: "export_translation",
       icon: FileOutput,
-      title: t("app.translation_generation.action"),
-      description: t("agent_page.mention.instructions.generate_translation.description"),
+      title: t("app.translation_export.action"),
+      description: t("agent_page.mention.instructions.export_translation.description"),
       disabled: !project_snapshot.loaded || project_snapshot.file_count === 0,
       execute: () =>
         composer_ref.current?.append_draft(
-          `${t("app.translation_generation.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
+          `${t("app.translation_export.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
         ),
     },
     {

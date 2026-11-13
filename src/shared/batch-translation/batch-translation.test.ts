@@ -3,7 +3,7 @@ import { normalize_batch_translation_progress } from "../../domain/batch-transla
 import type { BatchTaskRequestRecovery } from "../../domain/batch-task";
 import {
   create_empty_batch_translation_snapshot,
-  should_open_translation_generation_followup,
+  should_open_translation_export_followup,
   normalize_batch_translation_snapshot,
 } from "./batch-translation";
 
@@ -80,13 +80,13 @@ describe("批量翻译展示", () => {
   });
 });
 
-describe("全量翻译完成译文生成", () => {
+describe("全量翻译完成翻译成果导出", () => {
   it.each([
-    ["独立完整翻译完成时打开生成译文确认", "running", "done", "translate", "standalone", true],
-    ["AGENT 全量翻译完成不请求译文生成确认", "running", "done", "translate", "agent", false],
-    ["来源为空的完成快照不触发译文生成", "running", "done", "translate", null, false],
+    ["独立完整翻译完成时打开导出翻译成果确认", "running", "done", "translate", "standalone", true],
+    ["AGENT 全量翻译完成不请求翻译成果导出确认", "running", "done", "translate", "agent", false],
+    ["来源为空的完成快照不触发翻译成果导出", "running", "done", "translate", null, false],
     [
-      "校对页局部重翻完成时不打开生成译文确认",
+      "校对页局部重翻完成时不打开导出翻译成果确认",
       "running",
       "done",
       "retranslate",
@@ -94,19 +94,26 @@ describe("全量翻译完成译文生成", () => {
       false,
     ],
     [
-      "用户主动停止翻译后不打开生成译文确认",
+      "用户主动停止翻译后不打开导出翻译成果确认",
       "stopping",
       "stopped",
       "translate",
       "standalone",
       false,
     ],
-    ["首屏已有完成态翻译快照不打开生成译文确认", "idle", "done", "translate", "standalone", false],
-    ["重复完成快照不再触发译文生成", "done", "done", "translate", "standalone", false],
-    ["执行失败不请求译文生成确认", "running", "error", "translate", "standalone", false],
+    [
+      "首屏已有完成态翻译快照不打开导出翻译成果确认",
+      "idle",
+      "done",
+      "translate",
+      "standalone",
+      false,
+    ],
+    ["重复完成快照不再触发翻译成果导出", "done", "done", "translate", "standalone", false],
+    ["执行失败不请求翻译成果导出确认", "running", "error", "translate", "standalone", false],
   ] as const)("%s", (_name, previous_status, status, operation, source, expected) => {
     expect(
-      should_open_translation_generation_followup(previous_status, {
+      should_open_translation_export_followup(previous_status, {
         ...create_empty_batch_translation_snapshot(),
         status,
         source,

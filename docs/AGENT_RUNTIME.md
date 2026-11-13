@@ -3,7 +3,7 @@
 产品 Agent 分别维护模型历史、公开时间线和工作材料，工程事实通过共享后端提交。
 
 - 工程事务见 [BACKEND](BACKEND.md)。
-- 译文生成与交付边界见 [BACKEND](BACKEND.md#-译文生成)。
+- 翻译成果导出与交付边界见 [BACKEND](BACKEND.md#-翻译成果导出)。
 - 进程、宿主生命周期与跨层不变量见 [ARCHITECTURE](ARCHITECTURE.md)。
 - 通用前端状态设计见 [FRONTEND](FRONTEND.md)。
 

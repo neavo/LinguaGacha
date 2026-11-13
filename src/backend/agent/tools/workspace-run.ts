@@ -108,7 +108,7 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### `@lg/project` 接口",
       "",
-      `调用前先提交必要译文。\`generateFiles(bilingual_files)\` 生成到 \`${AGENT_WORKSPACE_WORK_ROOT}/\` 下的暂存目录，返回本机绝对路径：\`output_path\` 只含已支持格式的可安装产物，\`bilingual_output_path\` 为双语对照，\`excluded_files\` 列出本次跳过的资产。\`writeback.input_path\` 为写回输入目录，\`writeback.files\` 列出仍需格式处理的资产。\`pdf_files\` 报告 PDF 页面结果。生成与交付流程见 \`project-operation\` 技能。`,
+      `调用前先提交必要译文。\`generateFiles(bilingual_files)\` 生成到 \`${AGENT_WORKSPACE_WORK_ROOT}/\` 下的暂存目录，返回本机绝对路径：\`output_path\` 只含已支持格式的可安装产物，\`bilingual_output_path\` 为双语对照，\`excluded_files\` 列出本次跳过的资产。\`writeback.input_path\` 为写回输入目录，\`writeback.files\` 列出仍需格式处理的资产。\`pdf_files\` 报告 PDF 页面结果。导出与交付流程见 \`project-operation\` 技能。`,
       "`getOutputPaths(directory?)` 按应用设置计算交付目录，传入绝对路径时改用该父目录。`manual` 为 `true` 表示用户设置为每次手动选择。返回的目录名已避开现有同名目录，但不会预先创建。",
       `每个通用包是 ZIP，根目录 \`${GENERIC_ITEMS_MEMBER}\` 使用下列结构，其余成员保存解析与写回所需底稿。数组下标是条目行号。写回输入为 \`<writeback.input_path>/<file_path>/${GENERIC_ITEMS_MEMBER}\`，记录数与源数组相同，正文与姓名已确定，私有字段保留。Agent 根据私有定位写回底稿。`,
       "`.media` 包使用同一记录结构，写回输入同样位于 `writeback.input_path`，其余成员与渲染见 `media` 技能。",

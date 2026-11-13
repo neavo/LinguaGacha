@@ -27,8 +27,8 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
 vi.mock("@frontend/app/session/batch-task/batch-task-session-context", () => ({
   useBatchTaskSession: () => ({ batch_task: state.task }),
 }));
-vi.mock("@frontend/app/session/translation-generation/translation-generation-context", () => ({
-  useTranslationGeneration: () => ({}),
+vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
+  useTranslationExport: () => ({}),
 }));
 vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
   useProjectTranslationStats: () => ({ total_items: 0 }),

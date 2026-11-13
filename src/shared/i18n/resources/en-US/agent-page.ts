@@ -63,9 +63,9 @@ export const en_us_agent_page = {
     },
     groups: { files: "Files", skills: "Skills", instructions: "Instructions" },
     instructions: {
-      generate_translation: {
+      export_translation: {
         description:
-          "Generate translated files or a localization patch from the project's translation data",
+          "Export documents, subtitles, game files and other outputs using the existing translations in the project",
       },
       update_file: {
         title: "Update files",
