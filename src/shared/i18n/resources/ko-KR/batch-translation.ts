@@ -6,6 +6,8 @@ export const ko_kr_batch_translation = {
     tooltip: "원문을 대상 언어로 번역합니다",
   },
   summary: {
+    translation: { running: "일괄 번역 중", stopping: "일괄 번역 중지 중" },
+    request: { running: "일괄 요청 중", stopping: "일괄 요청 중지 중" },
     done: "완료",
     empty: "작업 없음",
     stopping: "중지 중",

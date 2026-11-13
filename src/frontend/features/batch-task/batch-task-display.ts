@@ -1,6 +1,6 @@
 import type { useI18n } from "@frontend/app/locale/locale-context";
 import type { BatchTaskMetrics } from "@shared/batch-task";
-import type { BatchTaskConfig } from "@domain/batch-task";
+import type { BatchTaskConfig, BatchTaskKind } from "@domain/batch-task";
 import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 const METRIC_SCALE = 1000;
 
@@ -157,17 +157,30 @@ function build_translation_task_metric_entries(
 }
 
 /**
- * 将翻译任务运行态投影为命令栏摘要，空闲时不显示历史速度。
+ * 将批量任务运行态投影为命令栏摘要，空闲时不显示历史速度。
  */
-export function build_translation_task_summary_display(
-  metrics: BatchTaskMetrics,
-  t: ReturnType<typeof useI18n>["t"],
-): BatchTaskSummaryDisplay {
+export function build_batch_task_summary_display({
+  metrics,
+  kind,
+  t,
+}: {
+  metrics: BatchTaskMetrics;
+  kind: BatchTaskKind | null;
+  t: ReturnType<typeof useI18n>["t"];
+}): BatchTaskSummaryDisplay {
   let status_text = t("batch_translation.summary.empty");
   if (metrics.stopping) {
-    status_text = t("batch_translation.summary.stopping");
+    status_text = t(
+      kind === null
+        ? "batch_translation.summary.stopping"
+        : `batch_translation.summary.${kind}.stopping`,
+    );
   } else if (metrics.active) {
-    status_text = t("batch_translation.summary.running");
+    status_text = t(
+      kind === null
+        ? "batch_translation.summary.running"
+        : `batch_translation.summary.${kind}.running`,
+    );
   } else if (metrics.total !== 0 && ["done", "stopped", "error"].includes(metrics.status ?? "")) {
     status_text = t("batch_translation.summary.done");
   }

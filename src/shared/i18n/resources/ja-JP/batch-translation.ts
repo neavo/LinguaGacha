@@ -6,6 +6,8 @@ export const ja_jp_batch_translation = {
     tooltip: "原文を指定した言語に翻訳します",
   },
   summary: {
+    translation: { running: "一括翻訳中", stopping: "一括翻訳を停止中" },
+    request: { running: "一括リクエスト中", stopping: "一括リクエストを停止中" },
     done: "終了",
     empty: "タスクなし",
     stopping: "停止処理中",

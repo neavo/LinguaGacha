@@ -1,4 +1,4 @@
-import { AGENT_MODEL_USAGES } from "../../../domain/model";
+import type { AgentModelUsage } from "../../../domain/model";
 import { Type, type Static } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import {
@@ -13,15 +13,21 @@ import {
   normalize_agent_tool_error,
 } from "../tool-definition";
 
-// 工具只消费用户配置的用途，模型身份由后端解析。
+// 翻译子模型只属于批量翻译工具，通用请求不能借用该用途。
+const BATCH_LLM_REQUEST_MODEL_USAGES = [
+  "agent",
+  "media",
+] as const satisfies readonly AgentModelUsage[];
 const BATCH_LLM_REQUEST_SCHEMA = Type.Object(
   {
     model_usage: Type.Union(
-      AGENT_MODEL_USAGES.map((usage) => Type.Literal(usage)),
-      {
-        description:
-          "模型用途：`agent` 当前主控模型、`batch_translation` 批量翻译子模型、`media` 音视频子模型",
-      },
+      BATCH_LLM_REQUEST_MODEL_USAGES.map((usage) => Type.Literal(usage)),
+      { description: "模型用途：`agent` 当前主控模型、`media` 音视频子模型" },
+    ),
+    thinking_downgrade: Type.Optional(
+      Type.Boolean({
+        description: "默认 `true`，即降低模型思考等级",
+      }),
     ),
     request_file: Type.String({
       minLength: 1,
@@ -43,20 +49,35 @@ export function create_agent_batch_llm_request_tool(
     description: [
       "批量执行独立 LLM 请求，结果保存到工作区供脚本读取。",
       "",
+      "### 何时使用",
+      "",
+      "- 上下文内能可靠完成的工作直接完成。",
+      "- 确定性数据处理使用脚本。",
+      "- 只有确需独立模型处理，或适用技能明确要求时调用。",
+      "- 独立请求的全部上下文来自输入文件中的 `messages`。",
+      "",
       "### 执行",
       "",
       "- 用 `workspace_run` 准备清单和输入文件。",
-      "- 从 `function_models.json` 查看各用途的模型。",
-      "- 子模型未单独配置时跟随当前主控模型。",
-      "- 音视频识别使用 `media`。模型是否接受媒体由服务端决定。",
-      "- 同批模型、生成参数与限流固定。",
-      '- 清单格式：`{"format":"messages","requests":[{"id":"001","input_file":"inputs/001.json"}]}`。`requests` 非空，`id` 为唯一非空字符串。',
-      `- \`request_file\` 相对工作区。\`input_file\` 相对清单目录。两者均支持绝对路径。每个 JSON 文件不超过 ${LLM_REQUEST_MAX_BYTES / 1_000_000} MB。运行期间不要改写。`,
-      '- `messages` 支持所有协议及 OAuth。输入示例：`{"messages":[{"role":"user","content":"归纳这段材料。"}]}`。消息数组非空。角色仅限 `system`、`user`。`system` 正文为字符串。`user` 正文可为字符串或非空内容块数组。',
-      '- 内容块：`{"type":"text","text":"提示词"}` 或 `{"type":"video","mime_type":"video/mp4","data":"原始字节的 Base64"}`。媒体 `type` 可为 `image`、`audio`、`video`。`mime_type` 与媒体类型一致。模型参数使用模型设置。',
-      "- 工具等待整批收尾，不受脚本时限限制。网络恢复可能持续到成功或停止。用户停止后，本轮不要重启批量工具。",
+      '- 清单格式：`{"format":"messages","requests":[{"id":"001","input_file":"inputs/001.json"}]}`。',
+      "- `requests` 必须非空。每项 `id` 必须是唯一非空字符串。",
+      "- 相对路径基准：`request_file` 使用工作区，`input_file` 使用清单目录。两者也支持绝对路径。",
+      `- 每个 JSON 文件不超过 ${LLM_REQUEST_MAX_BYTES / 1_000_000} MB。`,
+      "",
+      "### 输入文件",
+      "",
+      '- 示例：`{"messages":[{"role":"user","content":"<任务、背景、材料与输出要求>"}]}`。',
+      "- 将必要背景、约束和输出协议写入消息。",
+      "- `messages` 必须非空。消息角色仅限 `system`、`user`。",
+      "- `system` 正文必须是字符串。",
+      "- `user` 正文可以是字符串或非空内容块数组。",
+      '- 文本块：`{"type":"text","text":"提示词"}`。',
+      '- 媒体块：`{"type":"video","mime_type":"video/mp4","data":"原始字节的 Base64"}`。',
+      "- 媒体 `type` 可为 `image`、`audio`、`video`。`mime_type` 必须与媒体类型一致。",
       "",
       "### 结果",
+      "",
+      "工具等待整批收尾后返回。",
       "",
       "|返回字段|含义|",
       "|---|---|",
@@ -65,10 +86,18 @@ export function create_agent_batch_llm_request_tool(
       "|`stop_source`|`user` 用户停止、`parent` 上层取消、`shutdown` 环境关闭|",
       "|`total`、`succeeded`、`failed`、`unfinished`|总数、成功数、失败数、未完成数|",
       "|`usage`|本次进度、耗时与已知 token 用量，`usage_complete` 标记完整性|",
-      "|`result_file`|结果索引的绝对路径，按 `id` 关联各项，未完成项无结果文件|",
+      "|`result_file`|结果索引的绝对路径|",
       "",
-      "- 逐项路径相对索引目录。正文读取 `response.text`、`response.thinking`，失败原因读取 `error`。",
-      "- 出错仍保留已发布成果。续跑只处理失败或未完成项，无回执的请求再次发送可能重复计费。",
+      "- 索引按 `id` 关联请求。逐项路径相对索引目录。",
+      "- 未完成项没有结果文件。",
+      "- 正文位于 `response.text`、`response.thinking`。失败原因位于 `error`。",
+      "",
+      "### 停止与续跑",
+      "",
+      "- 用户停止任一批量工具后，本轮不要重启批量工具。",
+      "- 出错仍保留已发布成果。",
+      "- 续跑只处理失败或未完成项。",
+      "- 无回执的请求再次发送可能重复计费。",
     ].join("\n"),
     parameters: BATCH_LLM_REQUEST_SCHEMA,
     execute: async (input, _api, context) => {

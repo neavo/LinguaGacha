@@ -1,11 +1,14 @@
 import type { JSX } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTaskSession } from "@frontend/app/session/batch-task/batch-task-session-context";
-import { build_translation_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
+import { build_batch_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
 import { BatchTaskSummary } from "@frontend/features/batch-task/batch-task-summary";
 import "./agent-task-status.css";
 
-/** 翻译活跃时占用「正在处理」状态位，终态恢复会话保留的 `doing`。 */
+/**
+ * 批量任务活跃时占用「正在处理」状态位。
+ * 任务结束后恢复会话保留的 `doing`。
+ */
 export function AgentTaskStatus(props: {
   doing: string | null;
   running: boolean;
@@ -13,7 +16,11 @@ export function AgentTaskStatus(props: {
   const { t } = useI18n();
   const { batch_task: task } = useBatchTaskSession();
   const metrics = task.task_metrics;
-  const display = build_translation_task_summary_display(metrics, t);
+  const display = build_batch_task_summary_display({
+    metrics,
+    kind: task.task_display_snapshot?.kind ?? null,
+    t,
+  });
   if (display.speed_text === null) {
     if (props.doing === null) return null;
     return (

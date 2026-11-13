@@ -6,6 +6,8 @@ export const en_us_batch_translation = {
     tooltip: "Translate source text into the target language",
   },
   summary: {
+    translation: { running: "Batch translating", stopping: "Stopping batch translation" },
+    request: { running: "Running batch requests", stopping: "Stopping batch requests" },
     done: "Finished",
     empty: "Idle",
     stopping: "Stopping",
