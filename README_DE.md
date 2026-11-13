@@ -91,6 +91,10 @@
 | `Spiele` `Untertitel` `E-Books` in anderen Formaten | Beliebig | Werden von `AGENT` automatisch erkannt und verarbeitet |
 
 ## Neueste Updates 📅
+- 20261113 v0.141.2
+  - Übersetzung von `Audio und Videos` verbessert [1095](../../issues/1092)
+  - Fehlerbehebungen und Verbesserungen [#1097](../../issues/1097) [#1098](../../issues/1098)
+
 - 20261112 v0.141.1
   - Übersetzung von `Audio und Videos` verbessert [#1092](../../issues/1092)
   - Fehlerbehebungen und Verbesserungen [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)

@@ -95,6 +95,10 @@
 | `Jogos`, `legendas` e `e-books` em outros formatos | Qualquer | Identificados e processados automaticamente pelo `AGENTE` |
 
 ## Atualizações Recentes 📅
+- 20261113 v0.141.2
+  - Melhorada a tradução de `áudio e vídeo` [1095](../../issues/1092)
+  - Correções e melhorias [#1097](../../issues/1097) [#1098](../../issues/1098)
+
 - 20261112 v0.141.1
   - Melhorada a tradução de `áudio e vídeo` [#1092](../../issues/1092)
   - Correções e melhorias [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
