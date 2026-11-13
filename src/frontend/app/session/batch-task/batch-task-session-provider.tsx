@@ -5,7 +5,7 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTask } from "@frontend/app/session/batch-task/use-batch-task";
 import type { TranslationTaskConfirmState } from "@shared/batch-translation/batch-translation";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
-import { useTranslationGeneration } from "@frontend/app/session/translation-generation/translation-generation-context";
+import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import {
   type BatchTaskSessionContextValue,
   BatchTaskSessionContext,
@@ -71,10 +71,10 @@ function BatchTranslationDialogsLayer(): JSX.Element {
 
 /** 在应用会话内持有翻译任务，页面共同消费展示与动作能力。 */
 export function BatchTaskSessionProvider(props: { children: ReactNode }): JSX.Element {
-  const translation_generation = useTranslationGeneration();
+  const translation_export = useTranslationExport();
   // 翻译任务常驻于 session 内，确保离开工作台后任务完成确认不丢失。
   const batch_task = useBatchTask({
-    onRequestGeneration: translation_generation.request_generation,
+    onRequestExport: translation_export.request_export,
   });
   const context_value = useMemo<BatchTaskSessionContextValue>(() => {
     return {

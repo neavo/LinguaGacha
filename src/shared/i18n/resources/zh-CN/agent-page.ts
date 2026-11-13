@@ -62,8 +62,8 @@ export const zh_cn_agent_page = {
     },
     groups: { files: "文件", skills: "技能", instructions: "指令" },
     instructions: {
-      generate_translation: {
-        description: "使用工程内的译文数据生成译文文件或汉化补丁",
+      export_translation: {
+        description: "使用工程中已有译文，导出文档、字幕、游戏文件等翻译成果",
       },
       update_file: {
         title: "更新文件",

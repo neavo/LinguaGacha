@@ -72,8 +72,8 @@ function normalize_request_recovery(raw: unknown): BatchTaskRequestRecovery | nu
     return null;
   return Object.freeze({ phase, retry_count, retry_at });
 }
-/** 独立翻译任务从活跃态自然完成后承接译文生成流程。 */
-export function should_open_translation_generation_followup(
+/** 独立翻译任务从活跃态自然完成后承接翻译成果导出流程。 */
+export function should_open_translation_export_followup(
   previous_status: BatchTranslationRunStatus,
   snapshot: BatchTranslationSnapshot,
 ): boolean {

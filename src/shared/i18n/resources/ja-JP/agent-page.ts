@@ -65,9 +65,9 @@ export const ja_jp_agent_page = {
     },
     groups: { files: "ファイル", skills: "スキル", instructions: "指示" },
     instructions: {
-      generate_translation: {
+      export_translation: {
         description:
-          "プロジェクト内の訳文データから訳文ファイルまたはローカライズパッチを生成します",
+          "プロジェクト内の既存の訳文を使って、文書、字幕、ゲームファイルなどの翻訳成果物をエクスポート",
       },
       update_file: {
         title: "ファイルを更新",

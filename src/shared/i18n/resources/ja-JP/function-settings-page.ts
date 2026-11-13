@@ -28,8 +28,8 @@ export const ja_jp_function_settings_page = {
       },
     },
     translation_save_mode: {
-      title: "訳文ファイルの保存先",
-      description: "訳文を生成するときの訳文ファイルの保存先を設定します",
+      title: "翻訳成果物の保存先",
+      description: "翻訳成果物のエクスポート先を設定します",
       options: {
         manual: "毎回選択",
         fixed: "固定フォルダー",
@@ -37,8 +37,8 @@ export const ja_jp_function_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "訳文ファイルの生成後に出力フォルダーを開く",
-      description: "訳文ファイルを生成できたときに、出力フォルダーを自動で開きます",
+      title: "エクスポート完了後に出力フォルダーを開く",
+      description: "翻訳成果物のエクスポート成功後に出力フォルダーを自動で開きます",
     },
   },
   feedback: {

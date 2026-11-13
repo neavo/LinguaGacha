@@ -11,11 +11,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useBatchTask } from "@frontend/app/session/batch-task/use-batch-task";
 
-const { api_fetch_mock, push_toast_mock, on_request_generation_mock } = vi.hoisted(() => {
+const { api_fetch_mock, push_toast_mock, on_request_export_mock } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
-    on_request_generation_mock: vi.fn(),
+    on_request_export_mock: vi.fn(),
   };
 });
 
@@ -149,7 +149,7 @@ function flush_microtasks(): Promise<void> {
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useBatchTask>) => void;
 }): JSX.Element | null {
-  const state = useBatchTask({ onRequestGeneration: on_request_generation_mock });
+  const state = useBatchTask({ onRequestExport: on_request_export_mock });
 
   useEffect(() => {
     props.on_ready(state);
@@ -177,7 +177,7 @@ describe("useBatchTask", () => {
     runtime_fixture.current = create_runtime_fixture();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
-    on_request_generation_mock.mockReset();
+    on_request_export_mock.mockReset();
   });
 
   /** 复用挂载点，模拟共享快照更新引起的重渲染。 */
@@ -206,13 +206,13 @@ describe("useBatchTask", () => {
     ["stopped", 2, "info", "stopped", false, 0],
   ] as const)(
     "%s / %i 的独立与 Agent 终态反馈",
-    async (status, failed_line, kind, message, persistent, generation_count) => {
+    async (status, failed_line, kind, message, persistent, export_count) => {
       api_fetch_mock.mockImplementation(async () => ({
         batch_translation: runtime_fixture.current.task_snapshot,
       }));
       for (const source of ["standalone", "agent"] as const) {
         push_toast_mock.mockClear();
-        on_request_generation_mock.mockClear();
+        on_request_export_mock.mockClear();
         runtime_fixture.current = create_runtime_fixture(
           create_task_snapshot({ source, status: status === "stopped" ? "stopping" : "running" }),
         );
@@ -239,10 +239,10 @@ describe("useBatchTask", () => {
                 : {}),
             },
           );
-          expect(on_request_generation_mock).toHaveBeenCalledTimes(generation_count);
+          expect(on_request_export_mock).toHaveBeenCalledTimes(export_count);
         } else {
           expect(push_toast_mock).not.toHaveBeenCalled();
-          expect(on_request_generation_mock).not.toHaveBeenCalled();
+          expect(on_request_export_mock).not.toHaveBeenCalled();
         }
       }
     },
@@ -272,13 +272,13 @@ describe("useBatchTask", () => {
       }),
     );
     await render_probe();
-    expect(on_request_generation_mock).not.toHaveBeenCalled();
+    expect(on_request_export_mock).not.toHaveBeenCalled();
     expect(push_toast_mock).toHaveBeenCalledWith("success", "batch_translation.feedback.done", {
       persistent: false,
     });
   });
 
-  it("首屏加载已完成翻译快照时不自动弹生成译文确认框", async () => {
+  it("首屏加载已完成翻译快照时不自动弹导出翻译成果确认框", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "done",
@@ -298,7 +298,7 @@ describe("useBatchTask", () => {
     await render_probe();
     await flush_microtasks();
 
-    expect(on_request_generation_mock).not.toHaveBeenCalled();
+    expect(on_request_export_mock).not.toHaveBeenCalled();
     expect(push_toast_mock).not.toHaveBeenCalledWith("success", "batch_translation.feedback.done", {
       persistent: false,
     });
@@ -419,7 +419,7 @@ describe("useBatchTask", () => {
     });
   });
 
-  it("手动停止回包直接进入停止终态 且已有译文时不自动弹生成确认框", async () => {
+  it("手动停止回包直接进入停止终态 且已有译文时不自动弹导出确认框", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "running",
@@ -461,10 +461,10 @@ describe("useBatchTask", () => {
     await flush_microtasks();
 
     expect(latest_state?.task_confirm_state).toBeNull();
-    expect(on_request_generation_mock).not.toHaveBeenCalled();
+    expect(on_request_export_mock).not.toHaveBeenCalled();
   });
 
-  it("手动停止请求失败后任务自然完成时仍自动弹生成确认框", async () => {
+  it("手动停止请求失败后任务自然完成时仍自动弹导出确认框", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "running",
@@ -522,7 +522,7 @@ describe("useBatchTask", () => {
     await flush_microtasks();
 
     expect(latest_state?.task_confirm_state).toBeNull();
-    expect(on_request_generation_mock).toHaveBeenCalledOnce();
+    expect(on_request_export_mock).toHaveBeenCalledOnce();
   });
 
   it("重翻任务按翻译任务刷新且结束后不再重复刷新", async () => {

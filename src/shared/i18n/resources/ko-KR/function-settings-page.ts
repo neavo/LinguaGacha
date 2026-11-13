@@ -28,8 +28,8 @@ export const ko_kr_function_settings_page = {
       },
     },
     translation_save_mode: {
-      title: "번역 파일 저장 위치",
-      description: "번역문을 생성할 때 번역 파일을 저장할 위치를 설정합니다",
+      title: "번역 결과물 저장 위치",
+      description: "내보낸 번역 결과물을 저장할 위치를 설정합니다",
       options: {
         manual: "매번 직접 선택",
         fixed: "지정 폴더",
@@ -37,8 +37,8 @@ export const ko_kr_function_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "번역문 파일 생성 후 출력 폴더 열기",
-      description: "번역문 파일이 생성되면 출력 폴더를 자동으로 엽니다",
+      title: "내보내기 완료 후 출력 폴더 열기",
+      description: "번역 결과물을 성공적으로 내보낸 후 출력 폴더를 자동으로 엽니다",
     },
   },
   feedback: {

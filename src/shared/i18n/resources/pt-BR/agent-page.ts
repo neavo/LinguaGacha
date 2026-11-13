@@ -63,9 +63,9 @@ export const pt_br_agent_page = {
     },
     groups: { files: "Arquivos", skills: "Habilidades", instructions: "Instruções" },
     instructions: {
-      generate_translation: {
+      export_translation: {
         description:
-          "Gera arquivos traduzidos ou um patch de tradução a partir dos dados de tradução do projeto",
+          "Exporte documentos, legendas, arquivos de jogos e outros resultados usando as traduções existentes no projeto",
       },
       update_file: {
         title: "Atualizar arquivos",

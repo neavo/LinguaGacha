@@ -201,29 +201,30 @@ export const en_us_app = {
       review: "Review the translation",
     },
   },
-  translation_generation: {
-    agent_request: "Generate translations without performing other operations",
-    action: "Generate translation",
+  translation_export: {
+    agent_request: "Export translations without performing other operations",
+    action: "Export translations",
     confirmation: {
       generic_description:
-        "This project contains audio/video files or generic data packages. Direct generation will skip these files. Please use AGENT to handle them …",
-      description: "Confirm generating currently available translation files …?",
+        "This project contains audio/video files or generic data packages that require AGENT processing and will be skipped during direct export …",
+      description: "Export the currently available translations?",
       checking: "Checking project files and proofreading warnings …",
       check_failed:
         "Could not check project files or proofreading warnings. Check again or let AGENT handle it …",
       warning_description:
         "Detected {COUNT} proofreading warnings. Warnings do not necessarily indicate errors, but we recommend running at least one automatic review with AGENT first. Continue …?",
       retry_check: "Check again",
-      generate_directly: "Generate directly",
+      export_supported: "Export supported files only",
+      export_directly: "Export directly",
     },
     directory: {
       translated: "Translated",
       bilingual: "Translated_Bilingual",
     },
     log: {
-      started: "Generating translation files …",
-      succeeded: "Translation files generated …",
-      failed: "Translation file generation failed …",
+      started: "Exporting translations …",
+      succeeded: "Translations exported …",
+      failed: "Translation export failed …",
       open_output_folder_failed: "Failed to open the output folder …",
     },
   },

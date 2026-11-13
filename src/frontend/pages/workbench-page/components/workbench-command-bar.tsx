@@ -30,16 +30,16 @@ type WorkbenchCommandBarProps = {
   translation_stats: ProjectTranslationStats | null;
   can_edit_files: boolean;
   can_delete_selected_files: boolean;
-  can_generate_translation: boolean;
+  can_export_translation: boolean;
   can_close_project: boolean;
   on_add_file: () => void;
   on_delete_selected: () => void;
-  on_generate_translation: () => void;
+  on_export_translation: () => void;
   on_close_project: () => void;
 };
 
 type CommandAction = {
-  id: "add-file" | "delete-file" | "generate-translation" | "close-project";
+  id: "add-file" | "delete-file" | "export-translation" | "close-project";
   icon: LucideIcon;
   label_key: LocaleKey;
   shortcut?: ShortcutAction;
@@ -78,11 +78,11 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       on_click: props.on_delete_selected,
     },
     {
-      id: "generate-translation",
+      id: "export-translation",
       icon: FileInput,
-      label_key: "app.translation_generation.action",
-      disabled: !props.can_generate_translation,
-      on_click: props.on_generate_translation,
+      label_key: "app.translation_export.action",
+      disabled: !props.can_export_translation,
+      on_click: props.on_export_translation,
     },
     {
       id: "close-project",

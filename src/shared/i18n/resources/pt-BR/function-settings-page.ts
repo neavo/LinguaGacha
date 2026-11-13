@@ -29,8 +29,8 @@ export const pt_br_function_settings_page = {
       },
     },
     translation_save_mode: {
-      title: "Local de salvamento da tradução",
-      description: "Define onde os arquivos traduzidos são salvos ao gerar as traduções",
+      title: "Local de exportação das traduções",
+      description: "Defina onde as traduções exportadas serão salvas",
       options: {
         manual: "Escolher a cada vez",
         fixed: "Pasta fixa",
@@ -38,9 +38,8 @@ export const pt_br_function_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "Abrir pasta de saída ao gerar o arquivo traduzido",
-      description:
-        "Quando ativado, a pasta de saída será aberta após o arquivo traduzido ser gerado com sucesso",
+      title: "Abrir a pasta de saída após a exportação",
+      description: "Abrir automaticamente a pasta de saída após exportar as traduções com sucesso",
     },
   },
   feedback: {

@@ -30,9 +30,8 @@ export const de_de_function_settings_page = {
       },
     },
     translation_save_mode: {
-      title: "Speicherort der Übersetzung",
-      description:
-        "Legt den Speicherort für Übersetzungsdateien beim Erstellen der Übersetzung fest",
+      title: "Speicherort exportierter Übersetzungen",
+      description: "Legt fest, wo exportierte Übersetzungen gespeichert werden",
       options: {
         manual: "Jedes Mal auswählen",
         fixed: "Fester Ordner",
@@ -40,9 +39,9 @@ export const de_de_function_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "Ausgabeordner öffnen, wenn die Übersetzungsdatei erstellt wurde",
+      title: "Ausgabeordner nach dem Export öffnen",
       description:
-        "Wenn aktiviert, wird der Ausgabeordner geöffnet, nachdem die übersetzte Datei erfolgreich erstellt wurde",
+        "Öffnet den Ausgabeordner automatisch nach erfolgreichem Export der Übersetzungen",
     },
   },
   feedback: {

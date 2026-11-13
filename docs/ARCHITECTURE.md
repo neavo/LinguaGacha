@@ -40,7 +40,7 @@ flowchart LR
     Services --> Workers("计算与翻译线程")
 ```
 
-GUI 与 CLI 在各自环境中实例化共享后端，让翻译、工程写入和译文生成沿用同一套业务语义。GUI 的 `GuiBackendBootstrap` 额外装配 Agent 与 Gateway。
+GUI 与 CLI 在各自环境中实例化共享后端，让翻译、工程写入和翻译成果导出沿用同一套业务语义。GUI 的 `GuiBackendBootstrap` 额外装配 Agent 与 Gateway。
 
 资源路径由入口显式注入：安装根、只读内置资源根和工作区运行目录随应用版本确定。这样，工作目录变化不会改变线程或子进程使用的资源。
 

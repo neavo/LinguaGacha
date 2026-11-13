@@ -206,29 +206,30 @@ export const ja_jp_app = {
       review: "訳文を校正",
     },
   },
-  translation_generation: {
-    agent_request: "訳文を生成し、他の操作は行わないでください",
-    action: "訳文を生成",
+  translation_export: {
+    agent_request: "翻訳成果物をエクスポートし、他の操作は行わないでください",
+    action: "翻訳成果物をエクスポート",
     confirmation: {
       generic_description:
-        "このプロジェクトには音声・動画または汎用データパッケージが含まれます。直接生成すると、これらのファイルはスキップされます。AGENT で処理してください …",
-      description: "現在利用できる訳文を生成しますか …?",
+        "プロジェクトには音声・動画または汎用データパッケージが含まれており、これらは AGENT による処理が必要なため、直接エクスポートするとスキップされます …",
+      description: "現在利用可能な翻訳成果物をエクスポートしますか？",
       checking: "プロジェクトのファイルと校正警告を確認中 …",
       check_failed:
         "ファイルまたは校正警告の確認に失敗しました。再確認するか、AGENT に処理を任せてください …",
       warning_description:
         "校正の警告が {COUNT} 件検出されました。警告は必ずしも誤りを示すものではありませんが、先に AGENT で少なくとも 1 回は自動校正することをおすすめします。このまま続けますか …?",
       retry_check: "再確認",
-      generate_directly: "直接生成",
+      export_supported: "対応ファイルのみエクスポート",
+      export_directly: "直接エクスポート",
     },
     directory: {
       translated: "訳文",
       bilingual: "訳文_対訳",
     },
     log: {
-      started: "訳文を生成中 …",
-      succeeded: "訳文の生成に成功しました …",
-      failed: "訳文の生成に失敗しました …",
+      started: "翻訳成果物をエクスポート中 …",
+      succeeded: "翻訳成果物をエクスポートしました …",
+      failed: "翻訳成果物のエクスポートに失敗しました …",
       open_output_folder_failed: "出力フォルダーを開けませんでした …",
     },
   },

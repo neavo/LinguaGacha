@@ -28,7 +28,7 @@ import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { LocaleKey } from "@shared/i18n";
 import {
-  should_open_translation_generation_followup,
+  should_open_translation_export_followup,
   create_empty_batch_translation_snapshot,
   type TranslationTaskActionKind,
   type TranslationTaskConfirmState,
@@ -47,7 +47,7 @@ import {
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
 
 type BatchTaskOptions = {
-  onRequestGeneration: () => void; // 独立全量翻译自然完成后交给跨路由译文生成流程
+  onRequestExport: () => void; // 独立全量翻译自然完成后交给跨路由翻译成果导出流程
 };
 
 export type BatchTask = {
@@ -70,7 +70,7 @@ export type BatchTask = {
  * 拥有翻译任务菜单、确认框和终态反馈的 renderer 会话状态。
  */
 export function useBatchTask(options: BatchTaskOptions): BatchTask {
-  const { onRequestGeneration } = options;
+  const { onRequestExport } = options;
   const { t } = useI18n();
 
   const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
@@ -358,11 +358,11 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
 
     if (
       !translation_dialog_open &&
-      should_open_translation_generation_followup(previous_status, task_snapshot)
+      should_open_translation_export_followup(previous_status, task_snapshot)
     ) {
-      onRequestGeneration();
+      onRequestExport();
     }
-  }, [project_snapshot.loaded, t, translation_dialog_open, task_snapshot, onRequestGeneration]);
+  }, [project_snapshot.loaded, t, translation_dialog_open, task_snapshot, onRequestExport]);
 
   useEffect(() => {
     if (!should_animate_translation_waveform) {

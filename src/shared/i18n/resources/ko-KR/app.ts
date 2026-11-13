@@ -198,29 +198,30 @@ export const ko_kr_app = {
       review: "번역문 검토",
     },
   },
-  translation_generation: {
-    agent_request: "다른 작업은 수행하지 말고 번역문을 생성하세요",
-    action: "번역문 생성",
+  translation_export: {
+    agent_request: "번역 결과물을 내보내고 다른 작업은 수행하지 마세요",
+    action: "번역 결과물 내보내기",
     confirmation: {
       generic_description:
-        "이 프로젝트에는 오디오·동영상 또는 범용 데이터 패키지가 있습니다. 직접 생성하면 이 파일을 건너뜁니다. AGENT로 처리해 주세요 …",
-      description: "현재 사용 가능한 번역문을 생성할까요 …?",
+        "프로젝트에 오디오·비디오 또는 범용 데이터 패키지가 포함되어 있으며, 이 파일은 AGENT의 처리가 필요하므로 직접 내보내면 건너뜁니다 …",
+      description: "현재 사용 가능한 번역 결과물을 내보낼까요?",
       checking: "프로젝트 파일 및 교정 경고 확인 중 …",
       check_failed:
         "프로젝트 파일 또는 교정 경고를 확인하지 못했습니다. 다시 확인하거나 AGENT에 처리를 맡기세요 …",
       warning_description:
         "교정 경고가 {COUNT}개 감지되었습니다. 경고가 반드시 오류를 의미하지는 않지만, 먼저 AGENT로 자동 교정을 최소 한 번 실행하는 것을 권장합니다. 계속 진행할까요 …?",
       retry_check: "다시 확인",
-      generate_directly: "직접 생성",
+      export_supported: "지원되는 파일만 내보내기",
+      export_directly: "직접 내보내기",
     },
     directory: {
       translated: "번역문",
       bilingual: "번역문_대역",
     },
     log: {
-      started: "번역문 생성 중 …",
-      succeeded: "번역문 생성 성공 …",
-      failed: "번역문 생성 실패 …",
+      started: "번역 결과물 내보내는 중 …",
+      succeeded: "번역 결과물을 내보냈습니다 …",
+      failed: "번역 결과물 내보내기 실패 …",
       open_output_folder_failed: "출력 폴더를 열지 못했습니다 …",
     },
   },

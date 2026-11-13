@@ -733,25 +733,25 @@ describe("AgentConversation", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("从 mention 菜单选择生成译文指令后保留输入并追加生成草稿", async () => {
+  it("从 mention 菜单选择导出翻译成果指令后保留输入并追加导出草稿", async () => {
     const view = await render_page({});
     const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
     if (editor === null) throw new Error("缺少 Composer");
     await act(async () =>
       editor.dispatch({
-        changes: { from: 0, insert: "已有输入\n@generate" },
-        selection: EditorSelection.cursor("已有输入\n@generate".length),
+        changes: { from: 0, insert: "已有输入\n@export" },
+        selection: EditorSelection.cursor("已有输入\n@export".length),
       }),
     );
     const instruction = view.querySelector<HTMLButtonElement>(
       '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
     );
-    if (instruction === null) throw new Error("缺少生成译文指令");
+    if (instruction === null) throw new Error("缺少导出翻译成果指令");
 
     await act(async () => instruction.click());
     expect(editor.state.doc.toString()).toContain("已有输入");
     expect(editor.state.doc.toString()).toContain(
-      'app.translation_generation.agent_request @skill("project-operation")',
+      'app.translation_export.agent_request @skill("project-operation")',
     );
   });
 

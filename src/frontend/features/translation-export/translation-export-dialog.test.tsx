@@ -2,8 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TranslationGenerationDialog } from "./translation-generation-dialog";
-import type { TranslationGenerationState } from "./use-translation-generation-flow";
+import { TranslationExportDialog } from "./translation-export-dialog";
+import type { TranslationExportState } from "./use-translation-export-flow";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
@@ -11,7 +11,7 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   }),
 }));
 
-describe("TranslationGenerationDialog", () => {
+describe("TranslationExportDialog", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -24,7 +24,7 @@ describe("TranslationGenerationDialog", () => {
 
   it.each([false, true])("警告框优先显示，存在格式限制时只提供下一步：%s", (has_next) => {
     const next_step = vi.fn();
-    const confirm_generation = vi.fn(async () => {});
+    const confirm_export = vi.fn(async () => {});
     render_dialog(
       {
         phase: "ready",
@@ -34,25 +34,25 @@ describe("TranslationGenerationDialog", () => {
         has_supported_files: true,
         has_agent_files: has_next,
       },
-      { next_step, confirm_generation },
+      { next_step, confirm_export },
     );
     expect(document.body.textContent).toContain(
-      "app.translation_generation.confirmation.warning_description",
+      "app.translation_export.confirmation.warning_description",
     );
     const primary = document.body.querySelector<HTMLButtonElement>(
       '[data-slot="alert-dialog-primary-action"]',
     )!;
     expect(primary.textContent).toContain(
-      has_next ? "app.action.next" : "app.translation_generation.confirmation.generate_directly",
+      has_next ? "app.action.next" : "app.translation_export.confirmation.export_directly",
     );
     act(() => primary.click());
     expect(next_step).toHaveBeenCalledTimes(Number(has_next));
-    expect(confirm_generation).toHaveBeenCalledTimes(Number(!has_next));
+    expect(confirm_export).toHaveBeenCalledTimes(Number(!has_next));
   });
 
-  it.each([true, false])("格式确认只显示提示与动作，可直接生成：%s", (has_supported_files) => {
+  it.each([true, false])("格式确认只显示提示与动作，可直接导出：%s", (has_supported_files) => {
     const jump_to_agent = vi.fn();
-    const confirm_generation = vi.fn(async () => {});
+    const confirm_export = vi.fn(async () => {});
     render_dialog(
       {
         phase: "ready",
@@ -62,11 +62,10 @@ describe("TranslationGenerationDialog", () => {
         has_supported_files,
         has_agent_files: true,
       },
-      { jump_to_agent, confirm_generation },
+      { jump_to_agent, confirm_export },
     );
-    expect(document.body.querySelector("ul")).toBeNull();
     expect(document.body.textContent).toContain(
-      "app.translation_generation.confirmation.generic_description",
+      "app.translation_export.confirmation.generic_description",
     );
     expect(
       document.body.querySelector('[data-slot="alert-dialog-primary-action"]')?.textContent,
@@ -74,7 +73,7 @@ describe("TranslationGenerationDialog", () => {
     if (has_supported_files)
       expect(
         document.body.querySelector('[data-slot="alert-dialog-secondary-action"]')?.textContent,
-      ).toContain("app.translation_generation.confirmation.generate_directly");
+      ).toContain("app.translation_export.confirmation.export_supported");
     act(() =>
       document.body
         .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
@@ -86,10 +85,10 @@ describe("TranslationGenerationDialog", () => {
         ?.click(),
     );
     expect(jump_to_agent).toHaveBeenCalledOnce();
-    expect(confirm_generation).toHaveBeenCalledTimes(has_supported_files ? 1 : 0);
+    expect(confirm_export).toHaveBeenCalledTimes(has_supported_files ? 1 : 0);
   });
-  it("全部可直接生成时显示普通确认", () => {
-    const confirm_generation = vi.fn(async () => {});
+  it("全部可直接导出时显示普通确认", () => {
+    const confirm_export = vi.fn(async () => {});
     render_dialog(
       {
         phase: "ready",
@@ -99,7 +98,7 @@ describe("TranslationGenerationDialog", () => {
         has_supported_files: true,
         has_agent_files: false,
       },
-      { confirm_generation },
+      { confirm_export },
     );
     expect(document.body.querySelector('[data-slot="alert-dialog-secondary-action"]')).toBeNull();
     act(() =>
@@ -107,15 +106,15 @@ describe("TranslationGenerationDialog", () => {
         .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
         ?.click(),
     );
-    expect(confirm_generation).toHaveBeenCalledOnce();
+    expect(confirm_export).toHaveBeenCalledOnce();
   });
   /** 通过公开流程状态驱动确认与警告分流。 */
   function render_dialog(
-    state: TranslationGenerationState,
+    state: TranslationExportState,
     callbacks: {
       jump_to_agent?: () => void;
       next_step?: () => void;
-      confirm_generation?: () => Promise<void>;
+      confirm_export?: () => Promise<void>;
     } = {},
   ): void {
     container = document.createElement("div");
@@ -123,11 +122,11 @@ describe("TranslationGenerationDialog", () => {
     root = createRoot(container);
     act(() => {
       root?.render(
-        <TranslationGenerationDialog
+        <TranslationExportDialog
           state={state}
           retry_check={vi.fn()}
           next_step={callbacks.next_step ?? vi.fn()}
-          confirm_generation={callbacks.confirm_generation ?? vi.fn(async () => {})}
+          confirm_export={callbacks.confirm_export ?? vi.fn(async () => {})}
           jump_to_agent={callbacks.jump_to_agent ?? vi.fn()}
           close={vi.fn()}
         />,

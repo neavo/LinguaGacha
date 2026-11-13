@@ -22,7 +22,7 @@
 |数据库、迁移与 IO|[数据库](../src/backend/database/)、[迁移](../src/backend/migration/)、[平台 IO](../src/native/)|
 |翻译与计算|[批量翻译](../src/backend/batch-translation/)、[计算线程](../src/backend/worker/)|
 |模型与请求|[LLM](../src/backend/llm/)、[网络](../src/backend/network/)|
-|PDF 来源、页面与译文生成|[PDF](../src/backend/file/pdf/)、[页面写入](../src/backend/project/agent-workspace-page-write.ts)、[打印宿主](../src/native/pdf-host.ts)|
+|PDF 来源、页面与文件生成|[PDF](../src/backend/file/pdf/)、[页面写入](../src/backend/project/agent-workspace-page-write.ts)、[打印宿主](../src/native/pdf-host.ts)|
 
 ### Agent 与前端
 

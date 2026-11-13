@@ -74,11 +74,11 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
 
     can_edit_files: true,
     can_delete_selected_files: true,
-    can_generate_translation: true,
+    can_export_translation: true,
     can_close_project: true,
     on_add_file: () => {},
     on_delete_selected: () => {},
-    on_generate_translation: () => {},
+    on_export_translation: () => {},
     on_close_project: () => {},
   };
 }

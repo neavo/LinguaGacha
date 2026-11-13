@@ -186,15 +186,15 @@ export class TranslationFileGenerationService {
   ): Promise<TranslationFileGenerationResult> {
     const setting = this.app_setting_service.read_setting();
     const config = normalize_setting_snapshot(setting);
-    this.log_manager?.info(
-      this.generation_log_text(config, "app.translation_generation.log.started"),
-      { source: FILE_GENERATION_LOG_SOURCE, console_group_end: false },
-    );
+    this.log_manager?.info(this.generation_log_text(config, "app.translation_export.log.started"), {
+      source: FILE_GENERATION_LOG_SOURCE,
+      console_group_end: false,
+    });
     try {
       const project_path = this.session_state.require_loaded_project_path();
       const result = await write(project_path, setting);
       this.log_manager?.info(
-        `${this.generation_log_text(config, "app.translation_generation.log.succeeded")}\n${result.output_path}`,
+        `${this.generation_log_text(config, "app.translation_export.log.succeeded")}\n${result.output_path}`,
         { source: FILE_GENERATION_LOG_SOURCE },
       );
       if (open_output_folder) await this.open_output_folder(config, result.output_path);
@@ -203,7 +203,7 @@ export class TranslationFileGenerationService {
       this.log_manager?.error(
         {
           kind: "text",
-          text: `${this.generation_log_text(config, "app.translation_generation.log.failed")}\n${error instanceof Error ? error.message : String(error)}`,
+          text: `${this.generation_log_text(config, "app.translation_export.log.failed")}\n${error instanceof Error ? error.message : String(error)}`,
         },
         {
           source: FILE_GENERATION_LOG_SOURCE,
@@ -362,10 +362,7 @@ export class TranslationFileGenerationService {
       await this.output_folder_opener(output_path);
     } catch (error) {
       this.log_manager?.error(
-        this.generation_log_text(
-          config,
-          "app.translation_generation.log.open_output_folder_failed",
-        ),
+        this.generation_log_text(config, "app.translation_export.log.open_output_folder_failed"),
         { source: FILE_GENERATION_LOG_SOURCE, error },
       );
     }
@@ -380,8 +377,8 @@ export class TranslationFileGenerationService {
     app_language: AppLanguage,
   ): GeneratedFilePaths {
     const text = create_text_resolver(resolve_app_locale(app_language));
-    const translated_suffix = text("app.translation_generation.directory.translated");
-    const bilingual_suffix = text("app.translation_generation.directory.bilingual");
+    const translated_suffix = text("app.translation_export.directory.translated");
+    const bilingual_suffix = text("app.translation_export.directory.bilingual");
     const stem = path.parse(project_path).name;
     const translated_base = `${stem}_${translated_suffix}`;
     const bilingual_base = `${stem}_${bilingual_suffix}`;
