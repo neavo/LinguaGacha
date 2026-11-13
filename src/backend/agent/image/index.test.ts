@@ -5,47 +5,53 @@ import { afterEach, expect, it, vi } from "vitest";
 import { image_fixture } from "../../../test/image-fixture";
 import { ImageFormat, image_sha256 } from "../../file/image/image-format";
 import { bind_workspace_requests } from "../workspace/runtime/request-channel";
-import { restore, read, apply, execute, publish } from "./index";
+import { prepare, restore, read, apply, execute, publish } from "./index";
 
-const repairCalls = vi.hoisted(() => ({ count: 0 }));
+const repairCalls = vi.hoisted(() => ({ count: 0 })); // 记录实际进入修复阶段的次数，验证缓存命中。
 vi.mock("./engine", () => ({
   pixels: async (command: string, args: Record<string, unknown>) => {
-    if (command === "repair" || command === "layout") {
-      if (command === "repair") repairCalls.count++;
+    if (command === "prepare")
+      return {
+        regions: image_fixture(["page"]).book.pages[0]!.regions,
+        preview: "preview.png",
+        previewScale: 1,
+      };
+    if (command === "layout") {
+      const page = args.page as import("../../../shared/image").ImagePage;
+      return page.regions.map((region) => ({
+        regionId: region.regionId,
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        style: region.style ?? {},
+      }));
+    }
+    if (command === "repair") {
+      repairCalls.count++;
       const page = args.page as import("../../../shared/image").ImagePage;
       const output = args.output as string;
       await fs.mkdir(output, { recursive: true });
       const base = path.join(output, "base.png");
       await fs.copyFile(args.source as string, base);
-      if (command === "layout")
-        return page.regions.map((region) => ({
-          regionId: region.regionId,
-          groupId: page.groups[0]!.groupId,
-          x: 0,
-          y: 0,
-          width: 1,
-          height: 1,
-          mask: base,
-          measurement: { status: "uncertain", value: null },
-        }));
       return {
         base,
-        groups: page.groups.map((group) => ({
-          groupId: group.groupId,
-          ready: true,
-          reason: null,
+        regions: page.regions.map((region) => ({
+          regionId: region.regionId,
+          ready: region.disposition === "translate",
+          reason: region.disposition === "preserve" ? "preserve" : null,
           mask: base,
         })),
       };
     }
     if (command === "composite") {
       await fs.copyFile(args.source as string, args.output as string);
-      return { path: args.output, rejectedGroups: [] };
+      return { path: args.output, rejectedRegions: [] };
     }
     throw new Error("Unexpected pixel operation");
   },
 }));
-let root: string | undefined;
+let root: string | undefined; // 每轮测试独占临时目录，结束时清理。
 afterEach(async () => {
   if (root) await fs.rm(root, { recursive: true, force: true });
   repairCalls.count = 0;
@@ -117,40 +123,24 @@ it("同修订并发草稿提交只接纳一个写入", async () => {
   expect((await read(work)).revision).toBe(1);
 });
 
-it("完成清单控制整组恢复，改译文复用修复，发布拒绝陈旧输入并支持同执行重试", async () => {
+it("完成清单控制区域恢复，改译文复用修复，发布拒绝陈旧输入并支持同执行重试", async () => {
   const { work, writeback, items, generate } = await fixture();
   const options = { workDirectory: work, writebackDirectory: writeback, device: "cpu" as const };
   const first = await execute(options);
-  expect(first.pages.map((page) => page.groups[0]!.ready)).toEqual([true, false]);
+  expect(first.pages.map((page) => page.regions[0]!.ready)).toEqual([true, false]);
   const repaired = repairCalls.count;
   items[0]!.dst = "new translation";
   await generate();
   const second = await execute(options);
   expect(repairCalls.count).toBe(repaired); // 译文更新不触发修复，同图同编辑范围也可复用。
-  const reviews = second.pages.flatMap((page) =>
-    page.groups.map((group) => ({
-      pageId: page.pageId,
-      groupId: group.groupId,
-      decision: group.ready ? ("accept" as const) : ("preserve" as const),
-    })),
-  );
   const outputDirectory = path.join(root!, "delivery");
   await expect(
-    publish({ workDirectory: work, executionId: first.executionId, outputDirectory, reviews }),
+    publish({ workDirectory: work, executionId: first.executionId, outputDirectory }),
   ).rejects.toThrow("Generation changed");
-  await expect(
-    publish({
-      workDirectory: work,
-      executionId: second.executionId,
-      outputDirectory,
-      reviews: reviews.map((review) => ({ ...review, decision: "accept" })),
-    }),
-  ).rejects.toThrow("not ready");
   const result = await publish({
     workDirectory: work,
     executionId: second.executionId,
     outputDirectory,
-    reviews,
   });
   expect(result).toMatchObject({
     status: "partial",
@@ -162,11 +152,65 @@ it("完成清单控制整组恢复，改译文复用修复，发布拒绝陈旧�
         workDirectory: work,
         executionId: second.executionId,
         outputDirectory,
-        reviews,
       })
     ).path,
   ).toBe(result.path);
   expect(
     (await fs.readdir(outputDirectory)).filter((name) => name.startsWith("image-")),
   ).toHaveLength(1);
+});
+
+it("版面微调和保留原图复用生成快照，原文变更拒绝旧译文", async () => {
+  const { work, writeback } = await fixture();
+  const options = { workDirectory: work, writebackDirectory: writeback, device: "cpu" as const };
+  const first = await execute(options);
+  const state = await read(work);
+  state.book.pages[0]!.regions[0]!.style = { fontSize: 20, align: "start" };
+  const changed = await apply(work, state.revision, {
+    pages: state.book.pages,
+    records: state.records,
+    confirmed: true,
+  });
+  expect(changed.sourceSha256).toBe(state.sourceSha256);
+  await expect(
+    publish({
+      workDirectory: work,
+      executionId: first.executionId,
+      outputDirectory: path.join(root!, "delivery"),
+    }),
+  ).rejects.toThrow("structure changed");
+  const count = repairCalls.count;
+  expect((await execute(options)).pages[0]!.regions[0]!.ready).toBe(true);
+  expect(repairCalls.count).toBe(count);
+  changed.book.pages[0]!.regions[0]!.disposition = "preserve";
+  const preserved = await apply(work, changed.revision, {
+    pages: changed.book.pages,
+    records: changed.records,
+    confirmed: true,
+  });
+  expect((await execute(options)).pages[0]!.regions[0]).toMatchObject({
+    ready: false,
+    reason: "preserve",
+  });
+  preserved.records[0]!.message = "changed source";
+  await apply(work, preserved.revision, {
+    pages: preserved.book.pages,
+    records: preserved.records,
+    confirmed: true,
+  });
+  await expect(execute(options)).rejects.toThrow("snapshot does not match");
+});
+
+it("检测候选写入未确认草稿，编号与原文占位一一对应", async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "lg-image-prepare-"));
+  const source = path.join(root, "source.png"),
+    work = path.join(root, "work");
+  await fs.writeFile(source, image_fixture().original);
+  const prepared = await prepare({ sources: [source], workDirectory: work, device: "cpu" });
+  const state = await read(work);
+  expect(state.confirmed).toBe(false);
+  expect(state.book.pages[0]!.regions).toEqual(prepared.candidates[0]!.result.regions);
+  expect(state.records).toEqual([
+    { pageId: state.book.pages[0]!.pageId, regionId: "text", message: "" },
+  ]);
 });

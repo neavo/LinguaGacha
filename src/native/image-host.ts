@@ -1,22 +1,24 @@
-import { BrowserWindow, session, nativeImage, type Session } from "electron";
+import { BrowserWindow, session, type Session } from "electron";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { default_native_fs as fs } from "./native-fs";
 import type { ImageHost, ImageLayoutResult, ImageTile } from "../shared/image";
 import { run_window_task } from "./window-task";
 
-const TILE = 1024;
-const TIMEOUT = 180_000;
-type Candidate = { size: number; html: string };
+const TILE = 1024; // 单次离屏窗口截取的图块最大边长。
+const TIMEOUT = 180_000; // 单页渲染任务总超时毫秒数。
+const CAPTURE_RETRY_MS = 50; // 空白截图退避重试等待毫秒数。
+const INK_ALPHA = 16; // 判定截图存在有效文字笔画的最小透明通道阈值。
+type Candidate = { size: number; html: string }; // 排版脚本返回的拟合字号与渲染片段。
 
 /** 固定模板独占隔离窗口，实际销毁后才释放调用方的运行占用。 */
 export function create_image_host(resources: {
   fontsDirectory: string;
   workspaceRuntimeDirectory: string;
 }): ImageHost & { dispose(): Promise<void> } {
-  const lifetime = new AbortController();
+  const lifetime = new AbortController(); // 宿主销毁时中止排队与执行中的任务。
   let isolated: Session | undefined; // 固定权限属于宿主，每页仅创建独立窗口。
-  let tail: Promise<unknown> = Promise.resolve();
+  let tail: Promise<unknown> = Promise.resolve(); // 串行执行各次排版请求，防止窗口抢占。
   const host: ImageHost = (operation, signal) => {
     const combined = AbortSignal.any([signal, lifetime.signal]);
     const result = tail.then(async (): Promise<ImageLayoutResult> => {
@@ -65,27 +67,26 @@ export function create_image_host(resources: {
         const regions: ImageLayoutResult["regions"] = [];
         for (const region of operation.regions) {
           combined.throwIfAborted();
-          const maskBytes = fs.read_file(region.mask);
-          const maskImage = nativeImage.createFromBuffer(maskBytes);
-          if (
-            maskImage.getSize().width !== region.width ||
-            maskImage.getSize().height !== region.height
-          )
-            throw new Error("Image layout mask dimensions differ");
-          const mask = maskImage.toBitmap();
-          const candidates = await step(
+          const candidate = await step(
             "layout",
             () =>
               window.webContents.executeJavaScript(
-                `window.imageCandidates(${JSON.stringify({ ...region, mask: "data:image/png;base64," + maskBytes.toString("base64") })})`,
-              ) as Promise<Candidate[]>,
+                `window.imageLayout(${JSON.stringify(region)})`,
+              ) as Promise<Candidate | null>,
           );
           let accepted: { size: number; tiles: ImageTile[] } | undefined;
-          for (const candidate of candidates) {
+          let reason = "needs_layout";
+          if (candidate && !region.text.trim()) accepted = { size: 0, tiles: [] };
+          for (let attempt = 0; candidate && !accepted && attempt < 2; attempt++) {
+            if (attempt)
+              await step(
+                "capture-retry",
+                () => new Promise<void>((resolve) => setTimeout(resolve, CAPTURE_RETRY_MS)),
+              );
             const tiles: ImageTile[] = [];
-            let valid = true;
-            for (let y = 0; valid && y < region.height; y += TILE)
-              for (let x = 0; valid && x < region.width; x += TILE) {
+            let inkPixels = 0;
+            for (let y = 0; y < region.height; y += TILE)
+              for (let x = 0; x < region.width; x += TILE) {
                 const width = Math.min(TILE, region.width - x),
                   height = Math.min(TILE, region.height - y);
                 await step("render", () =>
@@ -99,40 +100,31 @@ export function create_image_host(resources: {
                     { stayHidden: true, stayAwake: true },
                   ),
                 );
-                if (screenshot.isEmpty()) throw new Error("Image capture returned no pixels");
-                // capturePage 使用显示器物理像素，文字层统一还原为原图像素再验证。
+                if (screenshot.isEmpty()) continue;
+                // 显示器物理像素统一还原为原图坐标。
                 const captured = screenshot.resize({ width, height, quality: "best" });
                 const bitmap = captured.toBitmap();
-                for (let ty = 0; valid && ty < height; ty++)
-                  for (let tx = 0; tx < width; tx++) {
-                    if (
-                      bitmap[(ty * width + tx) * 4 + 3]! > 8 &&
-                      mask[((y + ty) * region.width + x + tx) * 4]! < 250
-                    ) {
-                      valid = false;
-                      break;
-                    }
-                  }
-                if (valid) {
-                  const file = path.join(
-                    operation.outputDirectory,
-                    `${region.regionId}-${x}-${y}.png`,
-                  );
-                  await fs.write_file(file, captured.toPNG());
-                  tiles.push({ path: file, x, y, width, height });
-                }
+                for (let i = 3; i < bitmap.length; i += 4) if (bitmap[i]! > INK_ALPHA) inkPixels++;
+                const file = path.join(
+                  operation.outputDirectory,
+                  `${region.regionId}-${x}-${y}.png`,
+                );
+                await fs.write_file(file, captured.toPNG());
+                tiles.push({ path: file, x, y, width, height });
               }
-            if (valid) {
+            if (
+              inkPixels > 0 &&
+              tiles.length === Math.ceil(region.width / TILE) * Math.ceil(region.height / TILE)
+            )
               accepted = { size: candidate.size, tiles };
-              break;
-            }
+            else reason = "empty_capture";
           }
           regions.push({
             regionId: region.regionId,
             ready: accepted !== undefined,
             size: accepted?.size ?? 0,
             tiles: accepted?.tiles ?? [],
-            ...(accepted ? {} : { reason: "needs_layout" }),
+            ...(accepted ? {} : { reason }),
           });
         }
         return { regions };
@@ -142,6 +134,7 @@ export function create_image_host(resources: {
     return result;
   };
   return Object.assign(host, {
+    /** 中止在途任务并等待队列排空后清理隔离会话。 */
     dispose: async () => {
       lifetime.abort();
       await tail;

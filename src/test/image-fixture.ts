@@ -3,14 +3,9 @@ import { write_zip } from "./zip-fixture";
 import { image_sha256 } from "../backend/file/image/image-format";
 import type { ImageBook, ImageRecord } from "../shared/image";
 
+/** 构建最小完整 `.image` 归档与原图字节测试夹具。 */
 export function image_fixture(ids: string[] = ["first", "second"]) {
   const original = png_fixture();
-  const box = [
-    { x: 0, y: 0 },
-    { x: 1, y: 0 },
-    { x: 1, y: 1 },
-    { x: 0, y: 1 },
-  ];
   const book: ImageBook = {
     version: 1,
     bookId: "book",
@@ -25,8 +20,7 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
         {
           regionId: "text",
           disposition: "translate",
-          source: [{ x: 0, y: 0, width: 1, height: 1 }],
-          layout: [box],
+          bbox: { x: 0, y: 0, width: 1, height: 1 },
           direction: "vertical-rl",
           style: {
             color: "#000000",
@@ -37,9 +31,6 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
             minFontSize: 1,
           },
         },
-      ],
-      groups: [
-        { groupId: "bubble", regionIds: ["text"], mode: "solid", areas: [box], protection: [] },
       ],
     })),
   };
