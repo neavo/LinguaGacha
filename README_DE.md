@@ -31,12 +31,18 @@
   - **`Audio & Video (ASMR / Motion Comics) aus einer Hand`**: Lokale Spracherkennung + Erkennung von Bildschirmtexten; bei Videos werden zweisprachige `.ass`-Untertitel automatisch um Sprechblasen und Gesichter herum platziert, reine Audiodateien erhalten direkt ein zweisprachiges `1920×1080`-Spektrum-Video (`.mp4`)
 
 ## Ergebnis-Vorschau ✨
-> Gängige E-Books, Untertitel, Game-Engines (`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`) sowie Audio und Video funktionieren sofort; beliebige eigene Formate oder Skripte übernimmt direkt der `AGENT`-Arbeitsbereich — Details unter [[Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]
+<table>
+  <tbody>
+    <tr><td><details><summary><b>🎬 Video (Motion Comics) - Präzise Zeitachse, zeilengenaue Dialogausrichtung</b></summary><br><img width="1280" alt="Beispiel für zweisprachige Untertitel bei Videos und Motion Comics" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Audio (ASMR) - Zweisprachige Untertitel + Spektrum-Video aus einer Hand</b></summary><br><img width="1280" alt="Beispiel für zweisprachiges Audio-Spektrum-Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+  </tbody>
+</table>
 
-| Klicken zum Aufklappen echter Übersetzungsergebnisse |
-| :--- |
-| <details><summary><b>🎬 Video & Motion Comics</b> — Automatische Dialog-ASR und Erkennung von Textblasen im Bild mit ausweichender zweisprachiger Untertitel-Platzierung</summary><br><img width="1280" alt="Beispiel für zweisprachige Untertitel bei Videos und Motion Comics" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
-| <details><summary><b>🎧 Audio & ASMR</b> — Lokale Spracherkennung mit kontextbezogener Übersetzung, direkt als zweisprachiges 1920×1080-Spektrum-Video gerendert</summary><br><img width="1280" alt="Beispiel für zweisprachiges Audio-Spektrum-Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
+> 💡 **Gängige Formate funktionieren sofort; eigene Formate oder Skripte übernimmt direkt der `AGENT`-Arbeitsbereich** — Details unter [[Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]
+>
+> - **E-Books & Untertitel**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc`
+> - **Audio & Video**: Gängige Audioformate (ASMR / Sprache) und Videos (Anime / Motion Comics)
+> - **Game-Engines & Text**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON` / `Message-JSON`
 
 ## Erste Schritte 🛸
 - Laden Sie die Anwendung von der [Release-Seite](https://github.com/neavo/LinguaGacha/releases) herunter

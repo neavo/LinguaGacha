@@ -35,12 +35,18 @@
   - **`End-to-End Audio & Video Translation`**: Local ASR + on-screen text detection with smart bubble/face-avoiding bilingual `.ass` subtitles, plus `1920×1080` spectrum-visualized bilingual `.mp4` output for audio-only works
 
 ## Showcase ✨
-> E-books, subtitles, native game engines (`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`), and audio/video work out of the box, while any unlisted or custom format can be handed straight to the `AGENT` workspace — see [[Supported File Formats](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)] for details
+<table>
+  <tbody>
+    <tr><td><details><summary><b>🎬 Video (Dynamic Comics) - Accurate timestamps, line-by-line dialogue sync</b></summary><br><img width="1280" alt="Dynamic comic and video bilingual subtitle sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Audio (ASMR) - Bilingual subtitles + spectrum-visualized video output</b></summary><br><img width="1280" alt="Audio-only bilingual spectrum video sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+  </tbody>
+</table>
 
-| Expand each row to preview real localized output |
-| :--- |
-| <details><summary><b>🎬 Video & Dynamic Comics</b> — Automatic dialogue ASR + on-screen speech-bubble detection with non-overlapping bilingual subtitle layout ready to play</summary><br><img width="1280" alt="Dynamic comic and video bilingual subtitle sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
-| <details><summary><b>🎧 Audio & ASMR</b> — Local speech recognition paired with context-aware translation, burning a 1920×1080 bilingual spectrum video in one pass</summary><br><img width="1280" alt="Audio-only bilingual spectrum video sample" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
+> 💡 **Common formats work out of the box, while any unlisted or custom format can be handled directly inside the `AGENT` workspace** — see [[Supported File Formats](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)]
+>
+> - **E-books & Subtitles**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc`
+> - **Audio & Video**: Common audio (ASMR / voice) and video (anime / dynamic comics)
+> - **Game Engines & Text**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON` / `Message-JSON`
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)

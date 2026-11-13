@@ -34,12 +34,18 @@
   - **`音声・動画（ASMR / モーションコミック）ワンストップ翻訳`**：ローカル音声認識＋画面文字検出に対応し、動画では吹き出しや顔を避けてバイリンガル `.ass` を配置、音声ファイルは `1920×1080` スペクトラム可視化付きバイリンガル `.mp4` を自動生成
 
 ## 翻訳サンプル ✨
-> 一般的な電子書籍、字幕、ゲームエンジン（`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`）、音声・動画はそのまま翻訳でき、その他のカスタム形式やスクリプトも `AGENT` ワークスペースで処理できます。詳細は [[対応ファイル形式](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)] をご覧ください
+<table>
+  <tbody>
+    <tr><td><details><summary><b>🎬 動画（モーションコミック） - 高精度タイムライン・会話ごとの位置合わせ</b></summary><br><img width="1280" alt="動画・モーションコミックのバイリンガル字幕サンプル" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 音声（ASMR） - 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声スペクトラム可視化バイリンガル動画サンプル" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+  </tbody>
+</table>
 
-| クリックして各形式の実際の翻訳成果を展開 |
-| :--- |
-| <details><summary><b>🎬 動画・モーションコミック</b> — 音声セリフと画面上のフキダシ文字を自動認識し、元文字や顔を避けてバイリンガル字幕を最適配置してそのまま視聴可能</summary><br><img width="1280" alt="動画・モーションコミックのバイリンガル字幕サンプル" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
-| <details><summary><b>🎧 音声・ASMR</b> — ローカル音声認識と文脈・人名・感情を踏まえた翻訳により、1920×1080 スペクトラム可視化バイリンガル動画をワンパス出力</summary><br><img width="1280" alt="音声スペクトラム可視化バイリンガル動画サンプル" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
+> 💡 **一般的な形式はそのまま翻訳でき、その他のカスタム形式やスクリプトも `AGENT` ワークスペースで処理できます** — 詳細は [[対応ファイル形式](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)]
+>
+> - **電子書籍・字幕**：`.txt` `.md` `.epub` `.pdf`、`.srt` `.ass` `.ssa` `.vtt` `.lrc`
+> - **音声・動画**：一般的な音声（ASMR / ボイス）および動画（アニメ / モーションコミック）
+> - **ゲームエンジン・テキスト**：`Godot` / `ACTION GAME MAKER`、`RenPy`、`Tyrano`、`WOLFRPG`、`RPGMAKER`、`KV-JSON` / `Message-JSON`
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード

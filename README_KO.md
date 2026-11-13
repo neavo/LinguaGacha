@@ -31,12 +31,18 @@
   - **`오디오·동영상(ASMR / 모션 코믹) 원스톱 번역`**: 로컬 음성 인식 + 화면 문자 감지를 지원하며, 동영상은 말풍선과 얼굴을 피해 이중 언어 `.ass`를 배치하고 순수 오디오는 `1920×1080` 스펙트럼 시각화 이중 언어 `.mp4`를 자동 생성
 
 ## 번역 결과 미리보기 ✨
-> 일반 전자책, 자막, 게임 엔진(`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`), 오디오·동영상은 별도 설정 없이 바로 번역되며, 기타 사용자 지정 형식이나 스크립트는 `AGENT` 작업 영역에 맡겨 처리할 수 있습니다. 자세한 내용은 [[지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]을 참고하세요
+<table>
+  <tbody>
+    <tr><td><details><summary><b>🎬 동영상(모션 코믹) - 정밀 타임라인과 대사 단위 정렬</b></summary><br><img width="1280" alt="동영상 및 모션 코믹 이중 언어 자막 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 오디오(ASMR) - 자막 + 스펙트럼 시각화 영상 동시 출력</b></summary><br><img width="1280" alt="오디오 스펙트럼 시각화 이중 언어 영상 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+  </tbody>
+</table>
 
-| 클릭하여 형식별 실제 번역 결과 펼치기 |
-| :--- |
-| <details><summary><b>🎬 동영상 및 모션 코믹</b> — 음성 대사와 화면 말풍선 문자를 자동 인식하고, 원문과 인물을 피해 이중 언어 자막을 배치해 바로 감상 가능</summary><br><img width="1280" alt="동영상 및 모션 코믹 이중 언어 자막 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
-| <details><summary><b>🎧 오디오 및 ASMR</b> — 로컬 음성 인식과 고유명사·감정 문맥 번역을 거쳐 1920×1080 스펙트럼 시각화 이중 언어 영상을 한 번에 출력</summary><br><img width="1280" alt="오디오 스펙트럼 시각화 이중 언어 영상 예시" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
+> 💡 **일반 형식은 별도 설정 없이 바로 번역되며, 기타 사용자 지정 형식이나 스크립트도 `AGENT` 작업 영역에서 처리할 수 있습니다** — 전체 목록은 [[지원 파일 형식](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]을 참고하세요
+>
+> - **전자책 및 자막**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc`
+> - **오디오 및 동영상**: 일반 오디오(ASMR / 음성) 및 동영상(애니 / 모션 코믹)
+> - **게임 엔진 및 텍스트**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON` / `Message-JSON`
 
 ## 기본 사용 흐름 🛸
 - [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 앱을 다운로드합니다

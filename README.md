@@ -31,12 +31,18 @@
   - **`音视频（ASMR / 动态漫画）一站式翻译`**：本地语音识别 + 画面文字检测，视频自动避让气泡/人脸排版双语 `.ass`，纯音频直接生成 `1920×1080` 频谱可视化双语 `.mp4`
 
 ## 效果展示 ✨
-> 常见电子书、字幕、游戏引擎（`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`）与音视频开箱即译，其余自定义格式或脚本可直接交给 `AGENT` 工作区处理，完整说明见 [[文件格式支持](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]
+<table>
+  <tbody>
+    <tr><td><details><summary><b>🎬 视频（动态漫画） - 精准时间轴，逐对话对齐</b></summary><br><img width="1280" alt="视频与动态漫画双语字幕效果" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 音频（ASMR） - 字幕 + 频谱可视化视频双输出</b></summary><br><img width="1280" alt="纯音频双语可视化成片效果" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+  </tbody>
+</table>
 
-| 点击展开各形态真实翻译成片效果 |
-| :--- |
-| <details><summary><b>🎬 视频与动态漫画</b> — 自动识别语音对白与画面气泡文字，智能避让原字与人脸排版双语字幕，导出即看</summary><br><img width="1280" alt="视频与动态漫画双语字幕效果" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
-| <details><summary><b>🎧 音频与 ASMR</b> — 本地完成语音识别、人名情绪上下文校译，直接烧录 1920×1080 频谱可视化双语成片</summary><br><img width="1280" alt="纯音频双语可视化成片效果" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
+> 💡 **常见格式开箱即译，其余自定义格式或脚本可直接交给 `AGENT` 工作区解析处理** — 完整清单见 [[文件格式支持](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)]
+>
+> - **电子书与字幕**：`.txt` `.md` `.epub` `.pdf`、`.srt` `.ass` `.ssa` `.vtt` `.lrc`
+> - **音频与视频**：常见音频（ASMR / 语音）与视频（动画 / 动态漫画）
+> - **游戏引擎与文本**：`Godot` / `ACTION GAME MAKER`、`RenPy`、`Tyrano`、`WOLFRPG`、`RPGMAKER`、`KV-JSON` / `Message-JSON`
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用

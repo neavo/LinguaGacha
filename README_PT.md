@@ -35,12 +35,18 @@
   - **`Tradução completa de Áudio e Vídeo (ASMR / Motion Comics)`**: ASR local + detecção de texto na tela com legendas `.ass` bilíngues que desviam de balões e rostos, além de vídeos `.mp4` bilíngues em `1920×1080` com espectro visual para arquivos apenas de áudio
 
 ## Demonstração ✨
-> E-books, legendas, engines de jogos (`Godot` / `RenPy` / `Tyrano` / `WOLFRPG` / `RPGMAKER`) e áudio/vídeo funcionam prontos para uso, enquanto qualquer formato personalizado ou script pode ser entregue diretamente ao espaço de trabalho do `AGENTE` — veja [[Formatos de Arquivo Suportados](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)]
+<table>
+  <tbody>
+    <tr><td><details><summary><b>🎬 Vídeo (Motion Comics) - Linha do tempo precisa com alinhamento por diálogo</b></summary><br><img width="1280" alt="Exemplo de legendas bilíngues para vídeo e motion comics" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>🎧 Áudio (ASMR) - Legendas bilíngues + vídeo com espectro visual</b></summary><br><img width="1280" alt="Exemplo de vídeo bilíngue com espectro de áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+  </tbody>
+</table>
 
-| Clique para expandir os resultados reais de tradução |
-| :--- |
-| <details><summary><b>🎬 Vídeo & Motion Comics</b> — Reconhecimento automático de diálogos e balões na tela com posicionamento inteligente de legendas bilíngues sem sobreposição</summary><br><img width="1280" alt="Exemplo de legendas bilíngues para vídeo e motion comics" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details> |
-| <details><summary><b>🎧 Áudio & ASMR</b> — Reconhecimento local de voz com tradução contextual e renderização direta em vídeo bilíngue 1920×1080 com espectro de áudio</summary><br><img width="1280" alt="Exemplo de vídeo bilíngue com espectro de áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details> |
+> 💡 **Formatos comuns funcionam prontos para uso, enquanto formatos personalizados ou scripts podem ser entregues diretamente ao espaço de trabalho do `AGENTE`** — veja [[Formatos de Arquivo Suportados](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormatEN)]
+>
+> - **E-books e Legendas**: `.txt` `.md` `.epub` `.pdf`, `.srt` `.ass` `.ssa` `.vtt` `.lrc`
+> - **Áudio e Vídeo**: Áudios comuns (ASMR / voz) e vídeos (anime / motion comics)
+> - **Engines de Jogos e Texto**: `Godot` / `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON` / `Message-JSON`
 
 ## Fluxo Básico de Uso 🛸
 - Baixe o aplicativo na [página de Releases](https://github.com/neavo/LinguaGacha/releases)
