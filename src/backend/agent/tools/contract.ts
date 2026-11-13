@@ -58,41 +58,55 @@ export type AgentWorkspaceRuntimeContract = Readonly<
 
 /** 参考资料按业务主题聚合，读取与修改共享同一份语义。 */
 const reference_path = (topic: string): string => `${AGENT_WORKSPACE_PATHS.reference}/${topic}.md`;
-/** 文件与质量规则共用 `insert_by_sort`，批次顺序只维护这一份，取值含义见 `sort` 字段。 */
-const sort_notes = [
-  "排序时，先移除删除对象和指定了 `sort` 的对象，其余对象保留相对顺序，再按 `sort` 从小到大插入，`-1` 最后追加。",
-  "插入位置相同时，先放更新，再放新增，各自按变更文件中的行序排列。",
+/** 质量规则的 `creates` 与 `updates` 共用 `insert_by_sort`，排序规则只维护这一份。 */
+const quality_sort_notes = [
+  "- 排序时，先移除删除对象和指定了 `sort` 的更新对象，其余对象保留相对顺序。",
+  "- 再按 `sort` 从小到大插回（`-1` 放末尾），位置相同时先放更新、再放新增，各自按变更行序排列。",
 ];
-/** 参考资料随工作区提供给模型，说明提交副作用和跨记录关系。 */
+/** 参考资料随工作区提供给模型，说明提交副作用和跨记录关系，元素为 Markdown 行。 */
 const reference_notes: Readonly<Record<string, readonly string[]>> = {
   knowledge: [
-    `\`fp\` 从 \`project_meta.json\` 的 \`knowledge\` 复制。\`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。`,
+    "- `fp` 从 `project_meta.json` 的 `knowledge` 复制。",
+    `- \`text\` 是整篇最终正文，UTF-8 编码不超过 ${AGENT_DOCUMENT_MAX_BYTES / 1024 / 1024} MiB。`,
   ],
   project_meta: [
-    `\`files\` 列出全部资产，原稿位于 \`sources/<file_path>\`。\`knowledge\` 是工程知识的指纹，正文位于 \`${AGENT_WORKSPACE_PATHS.knowledge}\`。`,
+    "- `files` 列出全部资产，原稿位于 `sources/<file_path>`。",
+    `- \`knowledge\` 是工程知识的指纹，正文位于 \`${AGENT_WORKSPACE_PATHS.knowledge}\`。`,
   ],
   // 文件变更没有同名数据集，规则自成主题，读取元数据时不必加载写入约束。
   files: [
-    "同一 `file_path` 在本批只能出现在一条更新或删除记录中，同一 `source_path` 只能新增一次。",
-    "新增资产与已有名称冲突时，宿主自动加 `_2`、`_3` 等数字后缀，实际名称以回执为准。",
-    "`new_file_path` 不能与本批开始时仍保留的其他资产相同，比较不区分大小写，本批删除的资产会释放名称，因此同批不能交换名称或链式改名。",
-    "最终资产集合中，资产路径不能与其他资产互为文件和目录。游戏资产去掉扩展名后的路径也由它独占。",
-    "改名保留原扩展名，新路径每段须为跨平台合法文件名。",
-    "删除资产会从工程中移除它的原稿、条目、页面和译文。",
-    "新资产在其余变化之后按新增记录的顺序追加到末尾。",
-    ...sort_notes,
+    "## 批次约束",
+    "",
+    "- 同一 `file_path` 本批只能出现在替换、更新或删除之一，同一 `source_path` 只能新增一次。",
+    "",
+    "## 新增与替换",
+    "",
+    "- 新增资产与已有名称冲突时，宿主自动加 `_2`、`_3` 等数字后缀，实际名称以回执为准。",
+    "- 新增资产按新增记录的顺序追加到本批最终列表末尾。",
+    "- 整包替换保持目标资产的 `file_path` 与排序位置不变。",
+    "",
+    "## 改名、移动与排序",
+    "",
+    "- 改名保留原扩展名，新路径每段须为跨平台合法文件名。",
+    "- `new_file_path` 不能与本批未删除的保留资产重名（不区分大小写），同批不支持交换名称或链式改名。",
+    "- 任一资产路径不能成为另一资产的父目录，游戏资产去掉扩展名后的输出目录同样独占。",
+    "- 排序时，先从保留资产中抽出指定了 `sort` 的更新项，其余保留相对顺序，再按 `sort` 从小到大插回（`-1` 放末尾，同位置按更新行序排列）。",
+    "",
+    "## 删除副作用",
+    "",
+    "- 删除资产会一并移除它的原稿、条目、页面和译文。",
   ],
   items: [
-    "`dst` 或 `name_dst` 实际变化时状态默认改为 `PROCESSED`，同值提交不改变状态。",
-    '显式 `status` 优先于默认状态，接受现有译文时可只提交 `status: "PROCESSED"`。',
-    "同一文件中 `src` 与 `name_src` 相同的条目为同文组，宿主按重复过滤设置自动维护组内的 `NONE` 与 `DUPLICATED`。",
+    "- `dst` 或 `name_dst` 实际变化时状态默认改为 `PROCESSED`，同值提交不改变状态。",
+    '- 显式 `status` 优先于默认状态，接受现有译文时可只提交 `status: "PROCESSED"`。',
+    "- 同一文件中 `src` 与 `name_src` 相同的条目为同文组，宿主按重复过滤设置自动维护组内的 `NONE` 与 `DUPLICATED`。",
   ],
   pages: [
-    "以 `file_path` 和 `page` 定位页面，同批每页只提交一次，各页独立接受或拒绝。",
-    "更新完整替换 `translation`、`reviewed` 和 `notes`。",
+    "- 以 `file_path` 和 `page` 定位页面，同批每页只提交一次，各页独立接受或拒绝。",
+    "- 更新完整替换 `translation`、`reviewed` 和 `notes`。",
   ],
   prompts: [],
-  ...Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, sort_notes])),
+  ...Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, quality_sort_notes])),
 };
 
 type DatasetDefinition = AgentWorkspaceRuntimeContract["datasets"][string] & { schema: TSchema };
@@ -276,8 +290,7 @@ export const AGENT_WORKSPACE_REFERENCES: Readonly<Record<string, string>> = Obje
           "```ts",
           renderer.declarations(),
           "```",
-          "",
-          ...notes.map((note) => `- ${note}`),
+          ...(notes.length > 0 ? ["", ...notes] : []),
           "",
         ].join("\n"),
       ];
