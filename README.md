@@ -35,6 +35,7 @@
   <tbody>
     <tr><td><details open><summary><b>🎬 视频 · 逐对话对齐时间轴</b></summary><br><img width="1280" alt="视频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details><summary><b>🎧 音频 · 字幕/频谱可视化双输出</b></summary><br><img width="1280" alt="音频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>📚 电子书 · PDF/EPUB/Markdown 多格式兼容</b></summary><br><img width="1280" alt="电子书" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 

@@ -38,6 +38,7 @@
   <tbody>
     <tr><td><details open><summary><b>🎬 Vídeo · Alinhamento preciso de linha do tempo por diálogo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details><summary><b>🎧 Áudio · Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details><summary><b>📚 E-books · Suporte aos formatos PDF/EPUB/Markdown</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
