@@ -63,10 +63,10 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
     ipcRenderer.send(IPC_CHANNEL_TITLE_BAR_THEME, theme_mode);
   },
   /**
-   * 请求 main 在窗口未聚焦时播放一次系统提示并吸引任务栏注意力
+   * 请求 main 在窗口未聚焦时闪烁任务栏，并返回宿主是否接受本次提醒
    */
-  requestUserAttention(): void {
-    ipcRenderer.send(IPC_CHANNEL_REQUEST_USER_ATTENTION);
+  async requestUserAttention(): Promise<boolean> {
+    return ipcRenderer.invoke(IPC_CHANNEL_REQUEST_USER_ATTENTION);
   },
   /**
    * 请求主进程退出应用，避免 renderer 直接触碰 Electron
