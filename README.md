@@ -34,8 +34,9 @@
 <table>
   <tbody>
     <tr><td><details open><summary><b>🎬 视频 · 逐对话对齐时间轴</b></summary><br><img width="1280" alt="视频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 音频 · 字幕/频谱可视化双输出</b></summary><br><img width="1280" alt="音频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>📚 电子书 · PDF/EPUB/Markdown 多格式兼容</b></summary><br><img width="1280" alt="电子书" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 音频 · 字幕/频谱可视化双输出</b></summary><br><img width="1280" alt="音频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 游戏 · 全自动汉化，无需技术知识</b></summary><br><img width="1280" alt="游戏" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 电子书 · PDF/EPUB/Markdown 多格式兼容</b></summary><br><img width="1280" alt="电子书" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -77,6 +78,10 @@
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍
 
 ## 近期更新 📅
+- 20261113 v0.141.2
+  - 修复一个影响 `AGENT` 任务执行速度的问题 [#1101](../../issues/1101)
+  - 修复与改进 [#1102](../../issues/1102)
+
 - 20261113 v0.141.2
   - 优化 `音视频` 翻译能力 [1095](../../issues/1092)
   - 修复与改进 [#1097](../../issues/1097) [#1098](../../issues/1098)

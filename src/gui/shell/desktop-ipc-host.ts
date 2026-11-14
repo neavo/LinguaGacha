@@ -66,9 +66,9 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
     },
   );
 
-  // 长任务结束时只由 main 按窗口焦点决定是否播放提示并闪烁任务栏
-  ipcMain.on(IPC_CHANNEL_REQUEST_USER_ATTENTION, (event) => {
-    request_user_attention(BrowserWindow.fromWebContents(event.sender));
+  // 业务提醒由 main 按发送窗口焦点决定是否闪烁任务栏，renderer 据结果决定是否播放提示音
+  ipcMain.handle(IPC_CHANNEL_REQUEST_USER_ATTENTION, (event) => {
+    return request_user_attention(BrowserWindow.fromWebContents(event.sender));
   });
 
   // renderer 已完成自己的关闭确认后，主窗口 close 事件不再二次拦截
@@ -113,13 +113,13 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
 /**
  * 未聚焦窗口才需要打扰用户；闪烁停止由窗口统一 focus 事件负责。
  */
-function request_user_attention(target_window: BrowserWindow | null): void {
+function request_user_attention(target_window: BrowserWindow | null): boolean {
   if (target_window === null || target_window.isDestroyed() || target_window.isFocused()) {
-    return;
+    return false;
   }
 
-  shell.beep();
   target_window.flashFrame(true);
+  return true;
 }
 
 /**

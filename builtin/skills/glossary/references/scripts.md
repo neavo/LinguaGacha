@@ -35,6 +35,8 @@ console.log({ scanned: evidence.scanned_item_count, matched: evidence.matched_it
 
 将示例模式替换为当前已确定的候选，并为待判断条目查询必要语境。标准文件流按 LF 分行，保留字段内的 Unicode 分隔符，提前退出时也释放流。`patterns` 中的 `key` 唯一，`text` 是保留原始空白的非空连续字面量，`case_sensitive` 必填。
 
+处理 `pages` 数据集时，先将各页提取并修复跨行断词后的文本保存为数组，再映射为 `{ item_id: page, src: text }` 传入 `matchLiterals` 取得各页命中计数与范围。
+
 `matchLiterals` 单次完整扫描 `src` 和 `name_src`，始终返回完整计数。用 `max_matches_per_pattern` 控制保存的证据量：
 
 |取值|保存的证据|
