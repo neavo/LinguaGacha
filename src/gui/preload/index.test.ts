@@ -85,7 +85,8 @@ describe("preload desktop bridge", () => {
     expect(bridge.backendApi.baseUrl).toBe("http://127.0.0.1:7788");
     expect(bridge.getPathForFile({} as File)).toBe("E:/demo/source.txt");
     bridge.setTitleBarTheme("dark");
-    bridge.requestUserAttention();
+    electron_mock.invoke.mockResolvedValueOnce(true);
+    await expect(bridge.requestUserAttention()).resolves.toBe(true);
     await bridge.quitApp();
     await bridge.openLogWindow();
     bridge.reportRendererDiagnostics({ route: "workbench" });
@@ -105,7 +106,7 @@ describe("preload desktop bridge", () => {
 
     expect(electron_mock.get_path_for_file).toHaveBeenCalledTimes(1);
     expect(electron_mock.send).toHaveBeenCalledWith(IPC_CHANNEL_TITLE_BAR_THEME, "dark");
-    expect(electron_mock.send).toHaveBeenCalledWith(IPC_CHANNEL_REQUEST_USER_ATTENTION);
+    expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_REQUEST_USER_ATTENTION);
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_QUIT_APP);
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_OPEN_LOG_WINDOW);
     expect(electron_mock.invoke).toHaveBeenCalledWith(
@@ -272,5 +273,20 @@ describe("preload desktop bridge", () => {
       IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
       listener,
     );
+  });
+
+  it("窗口注意力请求透传宿主布尔结果与异常拒绝", async () => {
+    await import_preload_with_startup_args();
+    const bridge = electron_mock.exposed_api;
+    if (bridge === null) {
+      throw new Error("preload 未暴露 desktop bridge。");
+    }
+
+    electron_mock.invoke.mockResolvedValueOnce(false);
+    await expect(bridge.requestUserAttention()).resolves.toBe(false);
+
+    const failure = new Error("ipc failed");
+    electron_mock.invoke.mockRejectedValueOnce(failure);
+    await expect(bridge.requestUserAttention()).rejects.toBe(failure);
   });
 });

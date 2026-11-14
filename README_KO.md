@@ -34,8 +34,9 @@
 <table>
   <tbody>
     <tr><td><details open><summary><b>🎬 동영상 · 대사 단위 정밀 타임라인 동기화</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 오디오 · 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>📚 전자책 · PDF/EPUB/Markdown 형식 지원</b></summary><br><img width="1280" alt="전자책" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 오디오 · 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 게임 · 기술 지식 없이 전자동 게임 번역</b></summary><br><img width="1280" alt="게임" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 전자책 · PDF/EPUB/Markdown 형식 지원</b></summary><br><img width="1280" alt="전자책" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -77,6 +78,10 @@
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
 
 ## 최근 업데이트 📅
+- 20261113 v0.141.2
+  - `AGENT` 작업 실행 속도에 영향을 주는 문제 수정 [#1101](../../issues/1101)
+  - 수정 및 개선 [#1102](../../issues/1102)
+
 - 20261113 v0.141.2
   - `오디오 및 동영상` 번역 기능 개선 [1095](../../issues/1092)
   - 수정 및 개선 [#1097](../../issues/1097) [#1098](../../issues/1098)

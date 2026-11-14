@@ -26,7 +26,7 @@ const BATCH_LLM_REQUEST_SCHEMA = Type.Object(
     ),
     thinking_downgrade: Type.Optional(
       Type.Boolean({
-        description: "默认 `true`，即降低模型思考等级",
+        description: "默认 `false`，设为 `true` 时降低模型思考等级",
       }),
     ),
     request_file: Type.String({
@@ -51,10 +51,9 @@ export function create_agent_batch_llm_request_tool(
       "",
       "### 何时使用",
       "",
-      "- 上下文内能可靠完成的工作直接完成。",
-      "- 确定性数据处理使用脚本。",
-      "- 只有确需独立模型处理，或适用技能明确要求时调用。",
-      "- 独立请求的全部上下文来自输入文件中的 `messages`。",
+      "- 只在适用技能或用户明确要求使用 `batch_llm_request` 时调用。",
+      "- 其余工作按 `CodeAct 范式` 和适用技能，通过 `workspace_run` 脚本配合当前对话完成。",
+      "- 独立请求不含当前对话历史、已加载技能、工程知识与工作区工具，全部上下文来自输入文件中的 `messages`。",
       "",
       "### 执行",
       "",

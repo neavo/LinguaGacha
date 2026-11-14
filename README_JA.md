@@ -37,8 +37,9 @@
 <table>
   <tbody>
     <tr><td><details open><summary><b>🎬 動画 · セリフごとの精密タイムライン同期</b></summary><br><img width="1280" alt="動画" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 音声 · 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>📚 電子書籍 · PDF/EPUB/Markdown の各形式に対応</b></summary><br><img width="1280" alt="電子書籍" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 音声 · 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 ゲーム · 技術知識不要の全自動ゲーム翻訳</b></summary><br><img width="1280" alt="ゲーム" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 電子書籍 · PDF/EPUB/Markdown の各形式に対応</b></summary><br><img width="1280" alt="電子書籍" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -80,6 +81,10 @@
 - 各機能の詳しい説明は [Wiki](https://github.com/neavo/LinguaGacha/wiki) をご覧ください
 
 ## 最近の更新 📅
+- 20261113 v0.141.2
+  - `AGENT` のタスク実行速度に影響する問題を修正 [#1101](../../issues/1101)
+  - 修正と改善 [#1102](../../issues/1102)
+
 - 20261113 v0.141.2
   - `音声・動画`の翻訳機能を改善 [1095](../../issues/1092)
   - 修正と改善 [#1097](../../issues/1097) [#1098](../../issues/1098)
