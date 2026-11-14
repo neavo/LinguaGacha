@@ -33,7 +33,6 @@ const electron_mock = vi.hoisted(() => {
     show_open_dialog: vi.fn(),
     show_save_dialog: vi.fn(),
     open_external: vi.fn(),
-    shell_beep: vi.fn(),
     reset: () => {
       send_handlers.clear();
       invoke_handlers.clear();
@@ -73,7 +72,6 @@ vi.mock("electron", () => {
     },
     shell: {
       openExternal: electron_mock.open_external,
-      beep: electron_mock.shell_beep,
     },
   };
 });
@@ -110,29 +108,30 @@ describe("桌面 IPC 宿主", () => {
     expect(log_window_host.toggle).toHaveBeenCalledTimes(1);
   });
 
-  it("窗口未聚焦时请求一次系统提示并闪烁窗口，聚焦时保持安静", async () => {
+  it("窗口未聚焦时闪烁窗口并返回 true，聚焦时返回 false", async () => {
     const target_window = {
       isDestroyed: vi.fn(() => false),
       isFocused: vi.fn(() => false),
       flashFrame: vi.fn(),
     };
-    const renderer_contents = { id: "renderer-contents" };
+    const renderer_contents = { id: "renderer-contents", send: vi.fn() };
     electron_mock.browser_window_from_web_contents.mockReturnValue(target_window);
     await register_handlers();
 
-    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: renderer_contents });
+    await expect(invoke(IPC_CHANNEL_REQUEST_USER_ATTENTION, renderer_contents)).resolves.toBe(true);
 
-    expect(electron_mock.shell_beep).toHaveBeenCalledTimes(1);
+    expect(electron_mock.browser_window_from_web_contents).toHaveBeenCalledWith(renderer_contents);
     expect(target_window.flashFrame).toHaveBeenCalledWith(true);
 
     target_window.isFocused.mockReturnValue(true);
-    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: renderer_contents });
+    await expect(invoke(IPC_CHANNEL_REQUEST_USER_ATTENTION, renderer_contents)).resolves.toBe(
+      false,
+    );
 
-    expect(electron_mock.shell_beep).toHaveBeenCalledTimes(1);
     expect(target_window.flashFrame).toHaveBeenCalledTimes(1);
   });
 
-  it("窗口已销毁或 IPC sender 已失联时忽略提醒", async () => {
+  it("窗口已销毁或 IPC sender 无归属窗口时返回 false 且不闪烁", async () => {
     const destroyed_window = {
       isDestroyed: vi.fn(() => true),
       isFocused: vi.fn(() => false),
@@ -141,11 +140,14 @@ describe("桌面 IPC 宿主", () => {
     await register_handlers();
 
     electron_mock.browser_window_from_web_contents.mockReturnValueOnce(null);
-    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: { id: "orphan" } });
+    await expect(
+      invoke(IPC_CHANNEL_REQUEST_USER_ATTENTION, { id: "orphan", send: vi.fn() }),
+    ).resolves.toBe(false);
     electron_mock.browser_window_from_web_contents.mockReturnValueOnce(destroyed_window);
-    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: { id: "destroyed" } });
+    await expect(
+      invoke(IPC_CHANNEL_REQUEST_USER_ATTENTION, { id: "destroyed", send: vi.fn() }),
+    ).resolves.toBe(false);
 
-    expect(electron_mock.shell_beep).not.toHaveBeenCalled();
     expect(destroyed_window.flashFrame).not.toHaveBeenCalled();
   });
 

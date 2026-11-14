@@ -41,7 +41,7 @@ import {
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { DesktopProgressToast } from "@frontend/app/feedback/desktop-progress-toast";
-import { AgentCompletionAttention } from "@frontend/app/feedback/agent-completion-attention";
+import { AgentAttention } from "@frontend/app/feedback/agent-attention";
 import "@frontend/app/shell/app-shell.css";
 import type { AgentInputRequest, RouteId } from "@frontend/app/navigation/types";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
@@ -459,7 +459,7 @@ function AppContent(): JSX.Element {
                   clear_agent_input_request={() => set_agent_input_request(null)}
                 >
                   <AgentChatProvider>
-                    <AgentCompletionAttention />
+                    <AgentAttention />
                     <ProjectSessionUiStateProvider>
                       <ProjectLifecycleProvider>
                         <TranslationExportProvider>
