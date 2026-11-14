@@ -1,6 +1,6 @@
 import { GenericFormat } from "./generic/generic-format";
 import { GENERIC_ITEMS_MEMBER } from "./shared/archive-records";
-import { ImageFormat, IMAGE_WRITEBACK_MEMBER } from "./image/image-format";
+import { ImageFormat } from "./image/image-format";
 import { group_items } from "./shared/file-format-helpers";
 import { collect_game_file_list } from "./shared/game/source-files";
 import { resolve_game_source_input } from "./shared/game/source-input";
@@ -578,29 +578,14 @@ export class FileFormatService {
         const asset = await asset_reader(file.path);
         if (asset === null)
           throw new AppError("file.not_found", { public_details: { file: file.path } });
-        if (file.file_type === "IMAGE") {
-          if (!context.image_snapshot) throw new Error("Missing generation snapshot");
-          const output = await this.image.render(
-            asset,
-            groups.IMAGE.get(file.path) ?? [],
-            file.path,
-            context.image_snapshot,
-          );
-          await this.native_fs.write_file(
-            path.join(writeback_path, file.path, GENERIC_ITEMS_MEMBER),
-            output.text,
-          );
-          await this.native_fs.write_file(
-            path.join(writeback_path, file.path, IMAGE_WRITEBACK_MEMBER),
-            JSON.stringify(output.manifest),
-          );
-          continue;
-        }
-        const output = await this.generic.render_text(
-          asset,
-          groups[file.file_type].get(file.path) ?? [],
-          file.path,
-        );
+        const output =
+          file.file_type === "IMAGE"
+            ? await this.image.render_text(asset, groups.IMAGE.get(file.path) ?? [], file.path)
+            : await this.generic.render_text(
+                asset,
+                groups[file.file_type].get(file.path) ?? [],
+                file.path,
+              );
         await this.native_fs.write_file(
           path.join(writeback_path, file.path, GENERIC_ITEMS_MEMBER),
           output,

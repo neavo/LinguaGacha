@@ -1,5 +1,3 @@
-import { create_image_layout_port } from "../image/host";
-import type { ImageHost } from "../../../shared/image";
 import { create_file_generator } from "../tools/generate-files";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
@@ -227,7 +225,6 @@ export class AgentWorkspaceService {
         TranslationFileGenerationService,
         "generate_staging_files" | "read_output_paths"
       >;
-      imageLayoutHost?: ImageHost | undefined;
       pdfHost?: PDFHost | undefined;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -754,7 +751,6 @@ export class AgentWorkspaceService {
               getOutputPaths: this.options.generation.read_output_paths.bind(
                 this.options.generation,
               ),
-              imageLayout: create_image_layout_port(this.root_path, this.options.imageLayoutHost),
               printPDF: create_pdf_printer({
                 root: this.root_path,
                 nativeFs: this.native_fs,

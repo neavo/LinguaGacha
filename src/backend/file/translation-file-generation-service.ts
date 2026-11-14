@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { get_section_revision } from "../project/project-data-reader";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppError, is_app_error } from "../../shared/error";
@@ -276,14 +274,6 @@ export class TranslationFileGenerationService {
         paths,
         asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
         source_files: assets,
-        image_snapshot: {
-          generationId: randomUUID(),
-          projectPath: project_path,
-          revisions: {
-            files: get_section_revision(meta, "files"),
-            items: get_section_revision(meta, "items"),
-          },
-        },
       },
       writeback_path,
       target.bilingual_files,

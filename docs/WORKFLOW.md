@@ -177,7 +177,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 漫画图片
 
-图片工程契约变化运行 `file/image/image-format.test.ts`、`project-content-service.test.ts`、工作区文件变更与生成服务测试。SDK 状态、缓存和发布变化运行 `agent/image/index.test.ts`。
+图片工程契约变化运行 `file/image/image-format.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。SDK 事务流、缓存和独立验收变化运行 `agent/image/index.test.ts`、`agent/image/engine.test.ts`。
 
 像素边界使用已经准备的共享 Python 环境，无需模型：
 
@@ -185,7 +185,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/image.test.py src/backend/agent/image
 ```
 
-部署验证可把最后一个参数改为部署后的 `runtime` 目录。排版宿主变化运行 `npm test -- --project integration src/native/image-host.test.ts`，覆盖真实字体、横竖排、空译文、分块和取消收尾。共享推理变化还需运行下方媒体回归与 `inference/models.test.ts`，工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
+部署验证可把最后一个参数改为部署后的 `runtime` 目录。共享推理或单图片多会话 Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`，并同步回归下方媒体检测与 `inference/models.test.ts`；工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
 
 真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、区域恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
 

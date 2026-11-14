@@ -17,7 +17,6 @@ const INTEGRATION_TESTS = [
   "src/backend/file/rpgmaker-rgss/ruby.test.ts",
   "src/backend/file/shared/game/prepare-worker.test.ts",
   "src/native/pdf-host.test.ts",
-  "src/native/image-host.test.ts",
   "src/native/app-locale.test.ts",
   "src/native/native-fs.test.ts",
 ];

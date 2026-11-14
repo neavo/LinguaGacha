@@ -1,6 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const fake = vi.hoisted(() => ({ created: vi.fn(), close: vi.fn(), request: vi.fn() })); // 推理客户端调用计数替身。
+const fake = vi.hoisted(() => ({
+  created: vi.fn(),
+  close: vi.fn(),
+  request: vi.fn(),
+  ready: true,
+}));
 vi.mock("../inference/client", () => ({
   InferenceClient: class {
     constructor() {
@@ -11,7 +16,7 @@ vi.mock("../inference/client", () => ({
   },
 }));
 vi.mock("../inference/environment", () => ({ ort_entry: () => "ort", python: () => "python" }));
-vi.mock("../inference/models", () => ({ model_ready: () => true }));
+vi.mock("../inference/models", () => ({ model_ready: () => fake.ready }));
 vi.mock("../inference/helper", () => ({
   run_helper: async (
     _executable: string,
@@ -20,14 +25,21 @@ vi.mock("../inference/helper", () => ({
     _args: unknown,
     infer: NonNullable<Parameters<typeof import("../inference/helper").run_helper>[4]>,
   ) => {
-    if (command === "layout") return;
+    if (command === "normalize" || command === "pack") return { ok: true };
+    if (command === "prepare") {
+      await infer({ kind: "manga" }, new Uint8Array());
+      await infer({ kind: "det" }, new Uint8Array());
+      return;
+    }
     await infer({ kind: "inpaint" }, new Uint8Array());
     await infer({ kind: "inpaint" }, new Uint8Array());
   },
 }));
+
 /** 每次测试重置模块与推理路径绑定，避免静态队列状态串扰。 */
 beforeEach(async () => {
   vi.resetModules();
+  fake.ready = true;
   fake.created.mockClear();
   fake.request.mockReset().mockResolvedValue({ header: {} });
   fake.close.mockReset().mockResolvedValue(undefined);
@@ -38,16 +50,21 @@ beforeEach(async () => {
     runtimeDirectory: "/runtime",
   });
 });
-it("单次像素作业复用 Worker，失败后关闭，纯排版无需创建推理资源", async () => {
+
+it("单次作业跨 manga/det 复用单 Worker，失败后关闭，normalize/pack 零模型零 Worker", async () => {
   const { pixels } = await import("./engine");
-  await pixels("repair", {});
+  await pixels("prepare", {});
   expect(fake.request).toHaveBeenCalledTimes(2);
   expect(fake.created).toHaveBeenCalledOnce();
   expect(fake.close).toHaveBeenCalledOnce();
+
   fake.request.mockRejectedValueOnce(new Error("inference failed"));
-  await expect(pixels("repair", {})).rejects.toThrow("inference failed");
+  await expect(pixels("erase", {})).rejects.toThrow("inference failed");
   expect(fake.created).toHaveBeenCalledTimes(2);
   expect(fake.close).toHaveBeenCalledTimes(2);
-  await pixels("layout", {});
+
+  fake.ready = false;
+  await pixels("normalize", {});
+  await pixels("pack", {});
   expect(fake.created).toHaveBeenCalledTimes(2);
 });

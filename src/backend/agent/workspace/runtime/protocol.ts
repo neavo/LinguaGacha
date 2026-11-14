@@ -16,9 +16,7 @@ import type { UvConfiguration } from "../../uv/types";
 import type { InferenceConfiguration } from "../../inference/runtime";
 import type { WorkspaceSearchRequest, SearchResponse } from "../../search/schema";
 
-import type { ImageLayoutRequest, ImageLayoutResult } from "../../../../shared/image";
 export type WorkspaceRequest =
-  | ImageLayoutRequest
   | WorkspaceSearchRequest
   | { kind: "resolve_proxy"; url: string }
   | { kind: "resolve_package_source" } // 对话身份由宿主绑定，子进程不携带
@@ -29,7 +27,6 @@ export type WorkspaceRequest =
   | WorkspaceGenerateFilesRequest
   | WorkspaceGetOutputPathsRequest;
 export type WorkspaceRequestResult =
-  | ImageLayoutResult
   | SearchResponse
   | string
   | null

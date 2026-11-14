@@ -45,7 +45,6 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
     generateFiles?: WorkspaceGenerateFilesPort;
     getOutputPaths?: WorkspaceGetOutputPathsPort;
     printPDF?: WorkspacePrintPDFPort;
-    imageLayout?: import("../../image/host").ImageLayoutPort;
     inspectSources?: WorkspaceInspectSourcesPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
     emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
     doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
@@ -262,10 +261,6 @@ export class AgentWorkspaceRunner {
               controller.signal,
               run_request.generateFiles,
             );
-          if (request.kind === "render_image") {
-            if (!run_request.imageLayout) throw new Error("Image layout unavailable");
-            return run_request.imageLayout(request, controller.signal);
-          }
           if (request.kind === "print_pdf")
             return execute_print_pdf_request(request, controller.signal, run_request.printPDF);
           if (request.kind === "inspect_sources")

@@ -2871,6 +2871,7 @@ it("图片替换按稳定身份保留同文不同译法、空译文并在坏包�
       ),
     );
     f.book.pages.reverse();
+    f.clean.pages.reverse();
     f.records.reverse();
     fs.writeFileSync(source, await f.pack());
     const result = await service.apply_file_changes({

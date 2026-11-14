@@ -6,6 +6,7 @@ import {
   type OrtSession,
   type OrtTensor,
 } from "../inference/ort";
+import { detect_text } from "../inference/text-detection";
 /**
  * 媒体推理 Worker：独占原生会话，避免同步推理阻塞根线程。
  * 本入口只使用 Node 标准解析，不依赖工作区 SDK 钩子。
@@ -69,29 +70,6 @@ async function recognize(
     if (logits.dims.length !== 3 || !(length > 0 && length <= logits.dims[1]!))
       throw new Error(`Unexpected ASR output: ${JSON.stringify(logits.dims)} / ${length}`);
     return ctc_decode(data, logits.dims[2]!, length, vocabulary);
-  } finally {
-    for (const tensor of Object.values(outputs)) tensor.dispose();
-  }
-}
-
-/** 检测：回传概率图 [H, W]，后处理在 Python。 */
-async function detect(
-  session: OrtSession,
-  input: Float32Array,
-  shape: number[],
-): Promise<{ shape: number[]; data: Float32Array<ArrayBuffer> }> {
-  const outputs = await infer(session, {
-    [session.inputNames[0]!]: new ort.Tensor("float32", input, shape),
-  });
-  try {
-    const output = outputs[session.outputNames[0]!]!;
-    const data = new Float32Array(float(output.data)); // 复制到独立缓冲区再转移。
-    if (output.dims.join() !== [1, 1, ...shape.slice(-2)].join())
-      throw new Error(`Unexpected detection output: ${output.dims}`);
-    check_finite(data);
-    if (data.some((value) => value < 0 || value > 1))
-      throw new Error("Detection output is not a probability map.");
-    return { shape: output.dims.slice(-2), data };
   } finally {
     for (const tensor of Object.values(outputs)) tensor.dispose();
   }
@@ -259,9 +237,7 @@ async function serve(): Promise<void> {
         return { id, header: await read_text(await session("rec"), input, shape) };
       }
       if (kind !== "det") throw new Error(`Unknown media task: ${kind}`);
-      if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== 3)
-        throw new Error(`Unexpected detection input: ${JSON.stringify(shape)}`);
-      const result = await detect(await session("det"), input, shape);
+      const result = await detect_text(ort, await session("det"), input, shape);
       return { id, header: { dtype: "float32", shape: result.shape }, payload: result.data.buffer };
     } catch (error) {
       return { id, error: error instanceof Error ? error.message : String(error) };

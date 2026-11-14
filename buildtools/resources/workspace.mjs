@@ -92,12 +92,12 @@ export async function build_workspace_resources({ root, output, manifest }) {
     path.join(output, "runtime/channel.py"),
   );
   await cp(
-    path.join(root, "src/backend/agent/image/image.py"),
-    path.join(output, "runtime/image.py"),
+    path.join(root, "src/backend/agent/inference/text-detection.py"),
+    path.join(output, "runtime/text-detection.py"),
   );
   await cp(
-    path.join(root, "src/backend/agent/image/layout.js"),
-    path.join(output, "runtime/image-layout.js"),
+    path.join(root, "src/backend/agent/image/image.py"),
+    path.join(output, "runtime/image.py"),
   );
   // 媒体前后处理 helper 由 `@lg/media` 以受控解释器直接运行。
   for (const file of ["media.py", "fsmn_vad.py", "visualize.py"])

@@ -10,6 +10,7 @@ import { ruby_array } from "../../../test/rgss-fixture";
 import { wolf_files } from "../../../test/wolf-fixture";
 import { create_godot_fixture } from "../../../test/godot-fixture";
 import { compiled_fixture } from "../../../test/renpy-fixture";
+import { image_fixture } from "../../../test/image-fixture";
 
 it("普通原稿按资产相对路径保留原始字节", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
@@ -216,4 +217,27 @@ it.each([
     }),
   ).rejects.toMatchObject({ code: "request.validation_failed" });
   expect(fs.existsSync(sourceRoot)).toBe(false);
+});
+
+it("IMAGE 原稿展开 clean/originals/masks 全部归档成员并生成 image-source.json", async () => {
+  using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-image-"));
+  const fixture = image_fixture(["p1"]);
+  const bytes = await fixture.pack();
+  const results = await write_agent_workspace_sources({
+    nativeFs: new NativeFs(),
+    sourceRoot: root.path,
+    files: [{ file_path: "manga.image", file_type: "IMAGE" }],
+    readAsset: () => bytes,
+  });
+  expect(results).toEqual([{ file_path: "manga.image", retry: false, issues: [] }]);
+  const base = path.join(root.path, "manga.image");
+  expect(fs.existsSync(path.join(base, "image.json"))).toBe(true);
+  expect(fs.existsSync(path.join(base, "items.json"))).toBe(true);
+  expect(fs.existsSync(path.join(base, "clean.json"))).toBe(true);
+  expect(fs.existsSync(path.join(base, "originals/p1.png"))).toBe(true);
+  expect(fs.existsSync(path.join(base, "clean/p1.png"))).toBe(true);
+  expect(fs.existsSync(path.join(base, "masks/p1/text.png"))).toBe(true);
+  expect(JSON.parse(fs.readFileSync(path.join(base, "image-source.json"), "utf8"))).toEqual({
+    sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
 });

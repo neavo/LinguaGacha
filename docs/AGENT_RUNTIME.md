@@ -246,9 +246,9 @@ PDF API 以字节交换文档，支持跨版本、线程和进程调用。`@lg/p
 
 ### 图片计算
 
-图片和媒体共用 GPU 占用与关闭失败状态，防止一个 SDK 续跑时另一个 SDK 仍持有原生资源。单次像素作业内复用模型 Worker 与会话，作业结束后立即退出。
+图片和媒体共用 GPU 占用与关闭失败状态，防止一个 SDK 续跑时另一个 SDK 仍持有原生资源。`@lg/image` 单次像素作业内仅按需创建并复用单个多会话推理 Worker（按顺序按需懒加载 `manga`、`det` 或 `inpaint`），避免 WebGPU 多 Worker 并发冲突；`normalize`、`restore`、`pack` 与 `publish` 不创建推理资源。
 
-图片排版只执行固定应用模板，语义复核归属产品 Agent。工程事实与区域恢复见 [BACKEND](BACKEND.md#图片)，运行占用沿用 [ARCHITECTURE](ARCHITECTURE.md#占用持续到收尾)。
+图片第一阶段交付“确认原文/区域 + 独立验收干净底图”：`prepare` 负责 `manga` + 共享 `det` 局部放大补检与分组证据，语义确认与顺序裁定归属产品 Agent (`apply`)，`erase` 与 `review` 显式分离并绑定无序于译文与方向的 `eraseInputDigest`。工程事实与状态恢复见 [BACKEND](BACKEND.md#图片)，运行占用沿用 [ARCHITECTURE](ARCHITECTURE.md#占用持续到收尾)。
 
 ### 时限与执行观察
 

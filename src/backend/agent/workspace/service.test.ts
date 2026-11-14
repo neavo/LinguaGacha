@@ -1193,7 +1193,6 @@ describe("AgentWorkspaceService", () => {
         timeoutMs: VALID_WORKSPACE_RUN.timeoutMs,
         doing: write_doing,
         printPDF: expect.any(Function),
-        imageLayout: expect.any(Function),
         generateFiles: expect.any(Function),
         getOutputPaths: expect.any(Function),
         inspectSources: expect.any(Function),

@@ -2,24 +2,28 @@ import path from "node:path";
 import { InferenceClient } from "../inference/client";
 import { ort_entry, python } from "../inference/environment";
 import { run_helper } from "../inference/helper";
+import { model_ready } from "../inference/models";
 import {
+  close_inference,
   inference_configuration,
   run_inference_operation,
-  close_inference,
 } from "../inference/runtime";
-import { IMAGE_MODELS } from "./models";
-import { model_ready } from "../inference/models";
+import { IMAGE_MODELS, type ImageModelKind } from "./models";
 
 export type ImageDevice = "cpu" | "gpu"; // 调用方可选的推理设备。
 export type ImageWorkerConfig = {
   ort: string;
-  file: string;
-  kind: "shadow" | "inpaint";
   device: "cpu" | "webgpu";
-}; // 传给推理 Worker 线程的启动配置。
+  models: Record<ImageModelKind, string>;
+}; // 传给图片单推理 Worker 线程的启动配置。
+
 let tail: Promise<unknown> = Promise.resolve(); // 串行化所有像素作业的队列尾节点。
 
-/** 页操作串行，单次像素作业内复用模型 Worker；实际退出后才接纳下一作业。 */
+function is_model_kind(value: unknown): value is ImageModelKind {
+  return value === "manga" || value === "det" || value === "inpaint";
+}
+
+/** 页操作串行，单次像素作业内按需创建并复用单个多模型 Worker；无推理需求时零模型零 Worker。 */
 export function pixels(
   command: string,
   args: Readonly<Record<string, unknown>>,
@@ -30,7 +34,8 @@ export function pixels(
     run_inference_operation(device, async () => {
       const config = inference_configuration();
       const runtime = path.join(config.runtimeDirectory, "runtime");
-      const workers = new Map<string, InferenceClient>();
+      const lane = device === "gpu" ? "gpu" : "image";
+      let client: InferenceClient | undefined;
       try {
         return await run_helper(
           python(),
@@ -39,34 +44,26 @@ export function pixels(
           args,
           async (header, payload) => {
             const kind = header.kind;
-            if (kind !== "shadow" && kind !== "inpaint")
-              throw new Error("Unknown image inference request");
-            let worker = workers.get(kind);
-            if (!worker) {
-              const model = IMAGE_MODELS[kind];
-              if (!model_ready(config.modelsDirectory, model))
-                throw new Error("Image model missing; call prepare_models first");
-              worker = new InferenceClient(
-                {
-                  ort: ort_entry(),
-                  file: path.join(config.modelsDirectory, model.file),
-                  kind,
-                  device: device === "gpu" ? "webgpu" : "cpu",
-                } satisfies ImageWorkerConfig,
-                path.join(runtime, "image-worker.mjs"),
-              );
-              workers.set(kind, worker);
-            }
-            return await worker.request(
-              device === "gpu" ? "gpu" : "image",
-              { kind },
-              header,
-              payload,
+            if (!is_model_kind(kind)) throw new Error("Unknown image inference request");
+            if (!model_ready(config.modelsDirectory, IMAGE_MODELS[kind]))
+              throw new Error(`Image model missing (${kind}); call prepare_models first`);
+            client ??= new InferenceClient(
+              {
+                ort: ort_entry(),
+                device: device === "gpu" ? "webgpu" : "cpu",
+                models: {
+                  manga: path.join(config.modelsDirectory, IMAGE_MODELS.manga.file),
+                  det: path.join(config.modelsDirectory, IMAGE_MODELS.det.file),
+                  inpaint: path.join(config.modelsDirectory, IMAGE_MODELS.inpaint.file),
+                },
+              } satisfies ImageWorkerConfig,
+              path.join(runtime, "image-worker.mjs"),
             );
+            return await client.request(lane, { kind }, header, payload);
           },
         );
       } finally {
-        await Promise.all([...workers.values()].map(close_inference));
+        if (client) await close_inference(client);
       }
     }),
   );

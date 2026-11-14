@@ -33,9 +33,6 @@ ASR_WINDOW = 20 * SAMPLE_RATE  # 实测 60 秒整窗明显掉字，20 秒内基�
 LFR_M, LFR_N = 7, 6
 
 MAX_EDGE = 1920  # 解码长边上限，不放大。也是裁图的分辨率。
-# PP-OCR 检测的前后处理取自 RapidOCR 3.10.0 `ch_ppocr_det/utils.py`（Apache-2.0），参数为其默认值。
-DET_SIDE = 640  # 检测内部长边，按文字召回与耗时实测选定。
-DET_THRESH, DET_BOX_THRESH, DET_UNCLIP, DET_MIN_SIZE, DET_CANDIDATES = 0.3, 0.5, 1.6, 3, 1000
 LINE_GAP = 0.6  # 行间距小于较矮一行高度的该倍数时视为同一块（经验值），两行硬字幕合成一块。
 TRACK_IOU = 0.5  # 位置只用于唯一匹配候选，内容由 OCR 另行判断。
 REC_HEIGHT, REC_MIN_WIDTH = 48, 320  # RapidOCR 的文字行输入尺寸，宽度随长宽比扩展。
@@ -79,6 +76,24 @@ _channel_spec = importlib.util.spec_from_file_location("inference_channel", (Pat
 _channel = importlib.util.module_from_spec(_channel_spec)
 _channel_spec.loader.exec_module(_channel)
 Channel, tensor = _channel.Channel, _channel.tensor
+
+_text_detection_spec = importlib.util.spec_from_file_location(
+    "inference_text_detection",
+    (
+        Path(__file__).with_name("text-detection.py")
+        if Path(__file__).with_name("text-detection.py").exists()
+        else Path(__file__).parent.parent / "inference" / "text-detection.py"
+    ),
+)
+_text_detection = importlib.util.module_from_spec(_text_detection_spec)
+_text_detection_spec.loader.exec_module(_text_detection)
+DET_SIDE = _text_detection.DET_SIDE
+det_input, det_boxes, clockwise, sort_boxes = (
+    _text_detection.det_input,
+    _text_detection.det_boxes,
+    _text_detection.clockwise,
+    _text_detection.sort_boxes,
+)
 
 
 def ffmpeg_process(args):
@@ -224,72 +239,6 @@ def decode(ffmpeg, source, size, fps, start=None, duration=None):
         consumed = True
     finally:
         finish(process, consumed)
-
-
-def det_input(frame):
-    """缩放到长边 640、边长取 32 的倍数，归一化为 [1, 3, H, W]。"""
-    height, width = frame.shape[:2]
-    ratio = min(1.0, DET_SIDE / max(height, width))
-    size = (int(round(int(width * ratio) / 32) * 32), int(round(int(height * ratio) / 32) * 32))
-    image = cv2.resize(frame, size).astype(np.float32) / 127.5 - 1
-    return image.transpose(2, 0, 1)[None]
-
-
-def mini_box(contour):
-    """最小外接矩形的四点（左上起顺时针）与短边长。"""
-    rect = cv2.minAreaRect(contour)
-    points = sorted(cv2.boxPoints(rect).tolist(), key=lambda point: point[0])
-    left = sorted(points[:2], key=lambda point: point[1])
-    right = sorted(points[2:], key=lambda point: point[1])
-    return np.array([left[0], right[0], right[1], left[1]], np.float32), min(rect[1])
-
-
-def det_boxes(pred, height, width):
-    """DB 后处理：二值化、膨胀、轮廓评分与外扩，返回原画面坐标的四点框。"""
-    bitmap = cv2.dilate((pred > DET_THRESH).astype(np.uint8), np.ones((2, 2), np.uint8))
-    contours, _ = cv2.findContours(bitmap * 255, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    map_h, map_w = pred.shape
-    boxes = []
-    for contour in contours[:DET_CANDIDATES]:
-        points, side = mini_box(contour)
-        if side < DET_MIN_SIZE:
-            continue
-        x0, x1 = np.clip([math.floor(points[:, 0].min()), math.ceil(points[:, 0].max())], 0, map_w - 1)
-        y0, y1 = np.clip([math.floor(points[:, 1].min()), math.ceil(points[:, 1].max())], 0, map_h - 1)
-        mask = np.zeros((y1 - y0 + 1, x1 - x0 + 1), np.uint8)
-        cv2.fillPoly(mask, (points - [x0, y0]).reshape(1, -1, 2).astype(np.int32), 1)
-        if cv2.mean(pred[y0 : y1 + 1, x0 : x1 + 1], mask)[0] < DET_BOX_THRESH:
-            continue
-        distance = cv2.contourArea(points) * DET_UNCLIP / cv2.arcLength(points, True)
-        offset = pyclipper.PyclipperOffset()
-        offset.AddPath(points.tolist(), pyclipper.JT_ROUND, pyclipper.ET_CLOSEDPOLYGON)
-        expanded, side = mini_box(np.array(offset.Execute(distance), np.float32).reshape(-1, 1, 2))
-        if side < DET_MIN_SIZE + 2:
-            continue
-        box = np.empty_like(expanded)
-        box[:, 0] = np.clip(np.round(expanded[:, 0] / map_w * width), 0, width - 1)
-        box[:, 1] = np.clip(np.round(expanded[:, 1] / map_h * height), 0, height - 1)
-        box = clockwise(box)
-        if int(np.linalg.norm(box[0] - box[1])) > DET_MIN_SIZE and int(np.linalg.norm(box[0] - box[3])) > DET_MIN_SIZE:
-            boxes.append(box)
-    return sort_boxes(boxes)
-
-
-def clockwise(points):
-    """按 x 分左右两对，各自按 y 排出左上、右上、右下、左下。"""
-    ordered = points[np.argsort(points[:, 0], kind="stable")]
-    left = ordered[:2][np.argsort(ordered[:2, 1], kind="stable")]
-    right = ordered[2:][np.argsort(ordered[2:, 1], kind="stable")]
-    return np.array([left[0], right[0], right[1], left[1]], np.float32)
-
-
-def sort_boxes(boxes):
-    """从上到下、同一行从左到右。左上角 y 相差不足 10 像素视为同一行，顺序决定区间编号。"""
-    if not boxes:
-        return boxes
-    by_y = sorted(boxes, key=lambda box: box[0, 1])
-    lines = np.concatenate([[0], np.cumsum(np.diff([box[0, 1] for box in by_y]) >= 10)])
-    return [by_y[i] for i in np.lexsort(([box[0, 0] for box in by_y], lines))]
 
 
 class DetectedBlock(NamedTuple):

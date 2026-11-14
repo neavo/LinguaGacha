@@ -1,4 +1,5 @@
 import type { InferenceModel } from "../inference/models";
+import { TEXT_DETECTION_MODELS } from "../inference/text-detection";
 const W8A32 = "SenseVoiceSmall-ONNX-WebGPU-W8A32";
 const W8A32_URLS = [
   `https://huggingface.co/neavo/${W8A32}/resolve/1006fa8a2b61075b3797ad211783caf418554b22`,
@@ -62,18 +63,8 @@ export const MEDIA_MODELS = Object.freeze({
     sha256: "29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5",
     urls: mirrors(W8A32_URLS, "am.mvn"), // 官方 iic/SenseVoiceSmall 同一文件的自有镜像。
   },
-  det_cpu: {
-    file: "ppocr/v6/PP-OCRv6_det_small.onnx",
-    size: 9929594,
-    sha256: "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
-    urls: mirrors(PPOCR_URLS, "det/PP-OCRv6_det_small.onnx"),
-  },
-  det_gpu: {
-    file: "ppocr/v6/PP-OCRv6_det_medium.onnx",
-    size: 62119454,
-    sha256: "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
-    urls: mirrors(PPOCR_URLS, "det/PP-OCRv6_det_medium.onnx"),
-  },
+  det_cpu: TEXT_DETECTION_MODELS.small,
+  det_gpu: TEXT_DETECTION_MODELS.medium,
   rec_cpu: {
     file: "ppocr/v6/PP-OCRv6_rec_small.onnx",
     size: 21234383,
