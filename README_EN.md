@@ -37,8 +37,9 @@
 <table>
   <tbody>
     <tr><td><details open><summary><b>🎬 Video · Line-by-line timeline synchronization</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 Audio · Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>📚 E-books · PDF/EPUB/Markdown format support</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 Audio · Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 Games · Fully automated game translation, no technical knowledge required</b></summary><br><img width="1280" alt="Games" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 E-books · PDF/EPUB/Markdown format support</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -80,6 +81,10 @@
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Recent Updates 📅
+- 20261113 v0.141.2
+  - Fixed an issue affecting `AGENT` task execution speed [#1101](../../issues/1101)
+  - Fixes and improvements [#1102](../../issues/1102)
+
 - 20261113 v0.141.2
   - Improved `audio and video` translation [1095](../../issues/1092)
   - Fixes and improvements [#1097](../../issues/1097) [#1098](../../issues/1098)

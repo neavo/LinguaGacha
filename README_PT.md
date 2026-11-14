@@ -37,8 +37,9 @@
 <table>
   <tbody>
     <tr><td><details open><summary><b>🎬 Vídeo · Alinhamento preciso de linha do tempo por diálogo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>🎧 Áudio · Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details><summary><b>📚 E-books · Suporte aos formatos PDF/EPUB/Markdown</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 Áudio · Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 Jogos · Tradução totalmente automática, sem necessidade de conhecimentos técnicos</b></summary><br><img width="1280" alt="Jogos" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 E-books · Suporte aos formatos PDF/EPUB/Markdown</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -80,6 +81,10 @@
 - Mais detalhes sobre cada recurso podem ser encontrados na [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Atualizações Recentes 📅
+- 20261113 v0.141.2
+  - Corrigido um problema que afetava a velocidade de execução das tarefas do `AGENT` [#1101](../../issues/1101)
+  - Correções e melhorias [#1102](../../issues/1102)
+
 - 20261113 v0.141.2
   - Melhorada a tradução de `áudio e vídeo` [1095](../../issues/1092)
   - Correções e melhorias [#1097](../../issues/1097) [#1098](../../issues/1098)
