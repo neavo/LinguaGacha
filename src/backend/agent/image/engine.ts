@@ -19,7 +19,7 @@ export type ImageWorkerConfig = {
 
 let tail: Promise<unknown> = Promise.resolve(); // 串行化所有像素作业的队列尾节点。
 
-/** 页操作串行，单次像素作业内按需创建并复用单个气泡模型 Worker；无推理需求时零模型零 Worker。 */
+/** 页操作串行，单次像素作业内按需创建并复用单个图片 Worker。纯像素命令不创建 Worker。 */
 export function pixels(
   command: string,
   args: Readonly<Record<string, unknown>>,
@@ -40,7 +40,8 @@ export function pixels(
           args,
           async (header, payload) => {
             const kind = header.kind;
-            if (kind !== "bubble") throw new Error("Unknown image inference request");
+            if (kind !== "bubble" && kind !== "text")
+              throw new Error("Unknown image inference request");
             if (!model_ready(config.modelsDirectory, IMAGE_MODELS[kind]))
               throw new Error(`Image model missing (${kind}); call prepare_models first`);
             client ??= new InferenceClient(
@@ -49,6 +50,7 @@ export function pixels(
                 device: device === "gpu" ? "webgpu" : "cpu",
                 models: {
                   bubble: path.join(config.modelsDirectory, IMAGE_MODELS.bubble.file),
+                  text: path.join(config.modelsDirectory, IMAGE_MODELS.text.file),
                 },
               } satisfies ImageWorkerConfig,
               path.join(runtime, "image-worker.mjs"),

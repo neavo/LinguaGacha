@@ -20,7 +20,7 @@ import { normalize_image_to_png } from "../../file/image/image-pixels";
 
 export const STATE_FILE = "draft.json";
 export const EVIDENCE_INDEX_FILE = "evidence/index.json";
-export const ALGORITHM_VERSION = 5; // 确认选区的纯色覆盖版本。
+export const ALGORITHM_VERSION = 6; // 确认选区的并集向内过渡填色版本。
 const LOCK_RETRY = { retries: 100, minTimeout: 100, maxTimeout: 1000 };
 const COMMIT_RETRY = Object.freeze({ attempts: 5, delayMs: 100 });
 
@@ -67,6 +67,7 @@ export type PrepareCandidate = {
   status: "ready" | "empty_selection" | "covered";
   selection?: ImageSelection;
   color?: [number, number, number];
+  background?: { route: "fill" | "model"; coverage: number | null; samplePixels: number };
 };
 
 export type PreparePageEvidence = {
@@ -77,6 +78,9 @@ export type PreparePageEvidence = {
   previewScale: number;
   fillPreview: string;
   modelSha256: string;
+  textModelSha256: string;
+  prepareVersion: number;
+  textBoxes: [[number, number], [number, number], [number, number], [number, number]][];
   crops: Record<string, string>;
   candidates: PrepareCandidate[];
 };

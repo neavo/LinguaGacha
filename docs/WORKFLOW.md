@@ -181,13 +181,14 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 图片文本快照、缓存或发布变化运行 `agent/image/{plan,render,publish}.test.ts` 与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。材料边界运行 `agent/tools/render-image-text.test.ts`。协议与取消变化运行 Backend Runtime、runner 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
 
-分区覆盖、块互斥、候选确定性、材料预算、掩码篡改、选区填孔、互斥归属、RGB 填色、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
+分区覆盖、块互斥、候选确定性、材料预算、掩码篡改、选区填孔、互斥归属、背景分流、并集边缘过渡、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
 
 ```powershell
+uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/fill.test.py src/backend/agent/image
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/image.test.py src/backend/agent/image
 ```
 
-部署验证可把最后一个参数改为部署后的 `runtime` 目录。图片气泡分割 Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
+部署验证可把最后一个参数改为部署后的 `runtime` 目录。图片气泡分割与文字检测 Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
 
 真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、区域恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
 

@@ -28,8 +28,19 @@ def fails(call, message):
 
 class Channel:
     """替代模型传输，保留真实的张量解码与像素计算。"""
+    def __init__(self, empty=False):
+        """记录实际请求，区分空选区与文字检测返回零框。"""
+        self.empty = empty
+        self.requests = []
+
     def request(self, kind, tensor):
         """返回两个重叠实例，验证稳定归属而非模型质量。"""
+        self.requests.append(kind)
+        if kind == "text":
+            probability = np.zeros(tensor.shape[2:], np.float32)
+            future = concurrent.futures.Future()
+            future.set_result(({"shapes": [list(probability.shape)]}, probability.tobytes()))
+            return future
         assert kind == "bubble"
         h, w = tensor.shape[2:]
         n = 21 * (h // 32) * (w // 32)
@@ -37,6 +48,8 @@ class Channel:
         # 两个重叠但不触发 NMS 的容器，分数决定唯一像素归属。
         raw[0, :5, 0] = [w * .4, h * .5, w * .6, h * .8, .9]
         raw[0, :5, 1] = [w * .65, h * .5, w * .5, h * .8, .8]
+        if self.empty:
+            raw[0, 4] = 0
         raw[0, 5, :2] = 1
         proto = np.ones((1, 32, h // 4, w // 4), np.float32)
         future = concurrent.futures.Future()
@@ -52,7 +65,23 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     prep = image.prepare(dict(source=src, output=str(root / "evidence"), selectionRoot=str(root), pageId="p1"), Channel())
     assert len(prep["draftRegions"]) == 2
     assert prep["candidates"][1]["overlaps"] == ["r0001"]
+    empty_channel = Channel(empty=True)
+    empty_prep = image.prepare(dict(source=src, output=str(root / "empty-prep"), selectionRoot=str(root / "empty-prep"), pageId="p1"), empty_channel)
+    assert empty_channel.requests == ["bubble"] and empty_prep["draftRegions"] == []
+    assert np.array_equal(image.read_image(empty_prep["fillPreview"]), source)
+    # 重叠文字框仍全部排除；无背景样本保持原图并明确未完成。
+    original_boxes = image.text_detection.det_boxes
+    image.text_detection.det_boxes = lambda *args, **kwargs: [np.array([[0,0],[119,0],[119,79],[0,79]])] * 2
+    try:
+        covered = image.prepare(dict(source=src, output=str(root / "text-covered"), selectionRoot=str(root / "text-covered"), pageId="p1"), Channel())
+    finally:
+        image.text_detection.det_boxes = original_boxes
+    assert all(c["background"]["samplePixels"] == 0 and "color" not in c for c in covered["candidates"])
+    assert all(r["disposition"] == "preserve" and r["preserveReason"] == "repair_failed" and r["fill"] is None for r in covered["draftRegions"])
+    assert np.array_equal(image.read_image(covered["fillPreview"]), source)
     page = dict(pageId="p1", width=120, height=80, regions=prep["draftRegions"])
+    initial = image.erase(dict(source=src, root=str(root), page=page, output=str(root / "initial")), None)
+    assert np.array_equal(image.read_image(prep["fillPreview"]), image.read_image(initial["clean"]))
     page["regions"][0]["fill"]["color"] = [240, 190, 30]
     page["regions"][1]["fill"]["color"] = [255, 255, 255]
     args = dict(source=src, root=str(root), page=page, output=str(root / "run"))
@@ -62,8 +91,9 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     union = masks[0] | masks[1]
     assert not np.any(masks[0] & masks[1])
     assert np.array_equal(clean[union == 0], source[union == 0])
-    assert np.all(clean[masks[0] > 0] == (30, 190, 240))
-    assert np.all(clean[masks[1] > 0] == 255)
+    interior = cv2.distanceTransform(union, cv2.DIST_L2, cv2.DIST_MASK_PRECISE) >= 1.5
+    assert np.all(clean[(masks[0] > 0) & interior] == (30, 190, 240))
+    assert np.all(clean[(masks[1] > 0) & interior] == 255)
     page["regions"].reverse()
     reordered = image.erase({**args, "output": str(root / "reordered")}, None)
     assert np.array_equal(clean, image.read_image(reordered["clean"]))
@@ -78,23 +108,11 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     fails(lambda: image.erase(args, None), "RGB")
     translated["fill"]["color"] = [255, 0, 0]
     mask_path = root / translated["selection"]["path"]
-    image.save(mask_path, np.full((80, 120), 128, np.uint8))
+    image.save(mask_path, cv2.erode(masks[0], np.ones((3, 3), np.uint8)))  # 合法二值图也不能替换已确认选区。
     fails(lambda: image.erase(args, None), "digest")
+    image.save(mask_path, np.full((80, 120), 128, np.uint8))
     translated["selection"]["sha256"] = image.file_sha256(mask_path)
     fails(lambda: image.erase(args, None), "binary")
-
-    ring = np.zeros((30, 30), np.uint8)
-    ring[3:27, 3:27] = 255
-    ring[10:20, 10:20] = 0
-    inset = image.inset_selection(ring)
-    assert inset[15, 15] == 255 and inset[3, 3] == 0
-    dot = np.zeros_like(ring)
-    dot[10, 10] = 255
-    assert not np.any(image.inset_selection(dot))
-    fails(lambda: image.estimate_color(source, np.zeros((80, 120), np.uint8)), "empty_selection")
-    white = np.full((30, 30, 3), (225, 230, 235), np.uint8)
-    assert image.estimate_color(white, ring) == [255, 255, 255]
-    assert image.estimate_color(source, masks[0]) == [240, 190, 30]
 
     # 非方形小图放大且仅补至 stride；空检测仍产出无改动底图。
     tensor = image.model_input(source)
@@ -104,7 +122,6 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     empty = dict(pageId="empty", width=120, height=80, regions=[])
     result = image.erase({**args, "page": empty, "output": str(root / "empty")}, None)
     assert np.array_equal(source, image.read_image(result["clean"]))
-    fails(lambda: list(image.postprocess(np.zeros((1, 39, 21), np.float32), np.zeros((1, 32, 8, 8), np.float32), (32, 32), (32, 32))), "shape")
 
 with tempfile.TemporaryDirectory(prefix="lg-image-text-pixels-") as folder:
     root = Path(folder)

@@ -7,6 +7,7 @@ import { default_native_fs as fs } from "../../../native/native-fs";
 export const ORT_PACKAGE = "onnxruntime-node";
 export const INFERENCE_DEPENDENCIES = Object.freeze({
   ort: "1.30.0",
+  pyclipper: "1.4.0",
   numpy: "2.5.4",
   opencv: "5.0.0.93",
 });

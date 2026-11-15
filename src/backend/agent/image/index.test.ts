@@ -46,6 +46,7 @@ vi.mock("./engine", () => ({
         preview,
         previewScale: 1,
         fillPreview: preview,
+        textBoxes: [],
         crops: { r1: crop },
         candidates: [
           {
@@ -123,9 +124,10 @@ vi.mock("./engine", () => ({
 }));
 
 import { apply, erase, pack, prepare, publish, read, restore, review } from "./index";
+import { ALGORITHM_VERSION } from "./state";
 
 describe("@lg/image phase-1 transaction loop", () => {
-  it("完成全链路交付并检验反复交付产物", async () => {
+  it("完成混合填色与保留区域的交付、恢复和重复发布", async () => {
     using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-sdk-"));
     const src1 = path.join(tmp.path, "001.png");
     const src2 = path.join(tmp.path, "002.png");
@@ -142,13 +144,23 @@ describe("@lg/image phase-1 transaction loop", () => {
     await expect(erase({ workDirectory: work, expectedRevision: 0 })).rejects.toThrow("Confirm");
     await expect(pack(work, path.join(tmp.path, "out.image"))).rejects.toThrow("Confirm");
 
-    // 提交并发冲突校验（陈旧 revision 拒绝），随后正式确认一页正常文本、第二页置为零文本封面。
+    // 提交并发冲突校验（陈旧 revision 拒绝），随后正式确认一页正常文本、第二页保留未完成区域。
     const confirmedPages: ImagePage[] = [
       {
         ...prep.book.pages[0]!,
         regions: [{ ...prep.book.pages[0]!.regions[0]!, direction: "vertical-rl" }],
       },
-      { ...prep.book.pages[1]!, regions: [] },
+      {
+        ...prep.book.pages[1]!,
+        regions: [
+          {
+            ...prep.book.pages[1]!.regions[0]!,
+            disposition: "preserve",
+            preserveReason: "repair_failed",
+            fill: null,
+          },
+        ],
+      },
     ];
     const records: ImageRecord[] = [
       { pageId: confirmedPages[0]!.pageId, regionId: "r1", message: "原文A" },
@@ -170,6 +182,22 @@ describe("@lg/image phase-1 transaction loop", () => {
     await expect(pack(work, path.join(tmp.path, "unreviewed.image"))).rejects.toThrow(
       "not reviewed",
     );
+
+    const runFile = path.join(work, "runs", run1.runId, "run.json");
+    const runText = fs.readFileSync(runFile, "utf8");
+    fs.writeFileSync(
+      runFile,
+      JSON.stringify({ ...JSON.parse(runText), version: ALGORITHM_VERSION - 1 }),
+    );
+    await expect(
+      review({
+        workDirectory: work,
+        runId: run1.runId,
+        expectedRevision: run1.revision,
+        pages: [{ pageId: confirmedPages[0]!.pageId, decision: "accept" }],
+      }),
+    ).rejects.toThrow("algorithm version mismatch");
+    fs.writeFileSync(runFile, runText);
 
     // 验收第1页、驳回第2页后再单独验收第2页，每步均校验并推进 revision。
     await expect(
@@ -227,10 +255,10 @@ describe("@lg/image phase-1 transaction loop", () => {
     // 打包并经由 sources 离线恢复与幂等发布（全程不需重新 erase/模型）。
     const pkgPath = path.join(tmp.path, "book.image");
     const packed = await pack(work, pkgPath);
-    expect(packed.status).toBe("complete");
+    expect(packed.status).toBe("partial");
     const pkgBytes = fs.readFileSync(pkgPath);
     const inspected = await read_image_package(pkgBytes, "book.image");
-    expect(inspected.clean.status).toBe("complete");
+    expect(inspected.clean.status).toBe("partial");
 
     const sourceProj = path.join(tmp.path, "sources");
     await write_agent_workspace_sources({
@@ -241,8 +269,8 @@ describe("@lg/image phase-1 transaction loop", () => {
     });
     const restoredWork = path.join(tmp.path, "restored");
     await restore(path.join(sourceProj, "book.image"), restoredWork);
-    expect((await read(restoredWork)).reviewStatus.every((s) => s.reviewed)).toBe(true);
-
+    const restored = await read(restoredWork);
+    expect(restored.reviewStatus.every((s) => s.reviewed)).toBe(true);
     const outDir = path.join(tmp.path, "published");
     const pub1 = await publish({
       workDirectory: restoredWork,
@@ -285,7 +313,11 @@ describe("@lg/image phase-1 transaction loop", () => {
     // 删除已发布底图后，重复 publish 不得静默成功。
     fs.rmSync(path.join(pub1.path, `0001-${confirmedPages[0]!.pageId}.png`));
     await expect(
-      publish({ workDirectory: restoredWork, outputDirectory: outDir, source: { kind: "clean" } }),
+      publish({
+        workDirectory: restoredWork,
+        outputDirectory: outDir,
+        source: { kind: "clean" },
+      }),
     ).rejects.toThrow("missing or corrupted");
 
     // 若后续对单页改填色导致 eraseInputDigest 变化，仅该页验收失效且拒绝拿旧 runId 验收。

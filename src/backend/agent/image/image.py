@@ -17,9 +17,7 @@ import numpy as np
 cv2.setNumThreads(1)
 IMAGE_SIZE, MODEL_STRIDE = 1600, 32
 CONF, IOU, MAX_DET, MAX_NMS = 0.25, 0.7, 300, 30000
-INSET_RATIO, INSET_MIN, INSET_MAX = 0.008, 1, 6
-COLOR_BIN, COLOR_DISTANCE = 8, 12
-WHITE_MIN, WHITE_SPREAD = 215, 25
+TEXT_SIDE = 1280
 
 def _load_sibling(name, dev_dir):
     """部署目录使用相邻 helper，源码运行使用同一推理模块。"""
@@ -34,6 +32,8 @@ def _load_sibling(name, dev_dir):
 
 _channel_mod = _load_sibling("channel.py", "inference")
 Channel = _channel_mod.Channel
+fill = _load_sibling("fill.py", "image")
+text_detection = _load_sibling("text-detection.py", "inference")
 
 def read_image(path):
     """读取宿主已规范化的 RGB PNG，返回 OpenCV 使用的 BGR 像素。"""
@@ -93,10 +93,7 @@ def model_input(image):
 def postprocess(raw, proto, shape, input_shape):
     """复现 Ultralytics retina_masks：先恢复 logits，再裁框及二值化，逐实例释放整页数组。"""
     ih, iw = input_shape
-    if raw.shape != (1, 37, 21 * (ih // 32) * (iw // 32)) or proto.shape != (1, 32, ih // 4, iw // 4):
-        raise ValueError("Invalid bubble model output shape")
-    if raw.dtype != np.float32 or proto.dtype != np.float32 or not np.isfinite(raw).all() or not np.isfinite(proto).all():
-        raise ValueError("Invalid bubble model output values")
+    # Worker 已校验原生输出的布局与有限值，通道只传连续 float32。
     pred = raw[0].T
     scores = pred[:, 4]
     candidates = np.flatnonzero(scores > CONF)
@@ -137,31 +134,6 @@ def postprocess(raw, proto, shape, input_shape):
         yield dict(box=box.tolist(), score=float(scores[i])), mask.astype(np.uint8) * 255
 
 
-def inset_selection(mask):
-    """外轮廓填孔后内缩，内部文字和装饰不再形成保留孔洞。"""
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    filled = np.zeros_like(mask)
-    cv2.drawContours(filled, contours, -1, 255, cv2.FILLED)
-    _, _, w, h = cv2.boundingRect(filled)
-    inset = max(INSET_MIN, min(INSET_MAX, round(min(w, h) * INSET_RATIO)))
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * inset + 1, 2 * inset + 1))
-    return cv2.erode(filled, kernel, iterations=1)
-
-
-def estimate_color(image, mask):
-    """在重叠分配前估计内腔主色，输出供确认的 RGB 候选。"""
-    pixels = image[mask > 0].astype(np.int16)
-    if not len(pixels):
-        raise ValueError("empty_selection")
-    _, inverse, counts = np.unique(pixels // COLOR_BIN, axis=0, return_inverse=True, return_counts=True)
-    color = np.median(pixels[inverse == np.argmax(counts)], axis=0)
-    nearby = pixels[np.max(np.abs(pixels - color), axis=1) <= COLOR_DISTANCE]
-    color = np.median(nearby, axis=0).round().astype(np.uint8)
-    if int(color.min()) >= WHITE_MIN and int(color.max()) - int(color.min()) <= WHITE_SPREAD:
-        color[:] = 255
-    return color[::-1].tolist()
-
-
 def prepare(args, channel):
     """按分数优先分配选区，冻结像素归属后再交给宿主确认。"""
     image = read_image(args["source"])
@@ -172,18 +144,17 @@ def prepare(args, channel):
     selection_root = Path(args["selectionRoot"])
     page_id = args["pageId"]
     occupied = np.zeros((h, w), np.uint16)  # 保存候选序号，支持重叠证据追溯。
-    preview, fill_preview = image.copy(), image.copy()
+    preview = image.copy()
     candidates, regions, crops = [], [], {}
     for index, (record, raw_mask) in enumerate(postprocess(raw, proto, (h, w), tensor.shape[2:]), 1):
         rid = f"r{index:04d}"
         raw_path = save(root / "raw" / f"{rid}.png", raw_mask)
-        inner = inset_selection(raw_mask)
+        inner = fill.inset_selection(raw_mask)
         candidate = dict(regionId=rid, **record, rawMask=raw_path, overlaps=[], status="ready")
         candidates.append(candidate)
         if not np.any(inner):
             candidate["status"] = "empty_selection"
             continue
-        color = estimate_color(image, inner)
         candidate["overlaps"] = [f"r{int(owner):04d}" for owner in np.unique(occupied[inner > 0]) if owner]
         inner[occupied > 0] = 0
         if not np.any(inner):
@@ -193,22 +164,46 @@ def prepare(args, channel):
         member = f"masks/{page_id}/{rid}.png"
         target = save(selection_root / member, inner)
         selection = dict(path=member, sha256=file_sha256(target))
-        regions.append(dict(regionId=rid, disposition="translate", selection=selection,
-                            direction=None, fill=dict(color=color)))
         candidate["selection"] = selection
-        candidate["color"] = color
-        fill_preview[inner > 0] = color[::-1]
         for mask, tint in ((raw_mask, (0, 150, 255)), (inner, (0, 220, 0))):
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(preview, contours, -1, tint, 1)
         x, y, bw, bh = cv2.boundingRect(raw_mask)
         cv2.putText(preview, rid, (x, max(16, y)), 0, 0.5, (0, 0, 230), 1)
         crops[rid] = save(root / "crops" / f"{rid}.png", image[y:y + bh, x:x + bw])
+    text_boxes = []
+    text_mask = np.zeros((h, w), np.uint8)
+    if np.any(occupied):
+        tensor = text_detection.det_input(image, side=TEXT_SIDE, upscale=False)
+        probability, = forward(channel, "text", tensor)
+        text_boxes = text_detection.det_boxes(probability, h, w, round_coords=True)
+        for box in text_boxes:  # 逐框取并集，避免多轮廓填充的奇偶规则挖掉重叠文字区。
+            cv2.fillConvexPoly(text_mask, np.asarray(box, np.int32), 255)
+    def analyzed_selections():
+        """从本次像素归属生成草稿并逐项填色，避免回读刚写出的掩膜。"""
+        for index, candidate in enumerate(candidates, 1):
+            if "selection" not in candidate:
+                continue
+            mask = (occupied == index).astype(np.uint8) * 255
+            background, color = fill.analyze_background(image, mask, text_mask)
+            candidate["background"] = background
+            if color is not None:
+                candidate["color"] = color
+            region = dict(regionId=candidate["regionId"], selection=candidate["selection"], direction=None, fill=None)
+            regions.append(region)
+            if background["route"] == "fill":
+                region.update(disposition="translate", fill=dict(color=color))
+                yield mask, color
+            else:
+                region.update(disposition="preserve", preserveReason="repair_failed")
+
+    fill_preview = fill.render_fill(image, analyzed_selections())
     scale = min(1.0, IMAGE_SIZE / max(h, w))
     preview_path = save(root / "preview.png", cv2.resize(preview, (round(w * scale), round(h * scale))))
     fill_path = save(root / "fill-preview.png", fill_preview)
     return dict(width=w, height=h, preview=preview_path, previewScale=scale, fillPreview=fill_path,
-                crops=crops, candidates=candidates, draftRegions=regions)
+                crops=crops, candidates=candidates, draftRegions=regions,
+                textBoxes=[np.asarray(box).tolist() for box in text_boxes])
 
 
 def read_selection(file, selection, shape):
@@ -225,41 +220,44 @@ def read_selection(file, selection, shape):
 
 
 def erase(args, _channel):
-    """从规范化原图硬填色，非法选区直接失败，返回产物仍需独立验收。"""
+    """从规范化原图按并集填色，非法选区直接失败，返回产物仍需独立验收。"""
     page = args["page"]
     root = Path(args["output"])
     image = read_image(args["source"])
     h, w = image.shape[:2]
     if (w, h) != (page["width"], page["height"]):
         raise ValueError("Page dimensions differ from original")
-    base, overlay = image.copy(), image.copy()
-    occupied = np.zeros((h, w), np.uint8)
+    overlay = image.copy()
     results = []
-    for region in page["regions"]:
-        rid = region["regionId"]
-        selection = region["selection"]
-        mask = None
-        source = None
-        if selection:
-            if selection["path"] != f"masks/{page['pageId']}/{rid}.png":
-                raise ValueError("Invalid selection path")
-            source = Path(args["root"]) / selection["path"]
-            mask = read_selection(source, selection, (h, w))
-            if np.any((occupied > 0) & (mask > 0)):
-                raise ValueError("Region selections overlap")
-            occupied |= mask
-        if region["disposition"] == "preserve":
-            results.append(dict(regionId=rid, disposition="preserve", preserveReason=region["preserveReason"]))
-            continue
-        color = (region.get("fill") or {}).get("color")
-        if mask is None or not isinstance(color, list) or len(color) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in color):
-            raise ValueError("Translate region requires selection and RGB fill")
-        base[mask > 0] = color[::-1]
-        overlay[mask > 0] = (60, 60, 230)
-        target = root / "masks" / f"{rid}.png"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
-        results.append(dict(regionId=rid, disposition="translate", mask=str(target.resolve()), maskSha256=selection["sha256"]))
+    def confirmed_selections():
+        """校验、复制和填色共用一次选区读取，逐项释放整页掩膜。"""
+        occupied = np.zeros((h, w), np.uint8)
+        for region in page["regions"]:
+            rid = region["regionId"]
+            selection = region["selection"]
+            mask = None
+            source = None
+            if selection:
+                if selection["path"] != f"masks/{page['pageId']}/{rid}.png":
+                    raise ValueError("Invalid selection path")
+                source = Path(args["root"]) / selection["path"]
+                mask = read_selection(source, selection, (h, w))
+                if np.any((occupied > 0) & (mask > 0)):
+                    raise ValueError("Region selections overlap")
+                occupied |= mask
+            if region["disposition"] == "preserve":
+                results.append(dict(regionId=rid, disposition="preserve", preserveReason=region["preserveReason"]))
+                continue
+            color = (region.get("fill") or {}).get("color")
+            if mask is None or not isinstance(color, list) or len(color) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in color):
+                raise ValueError("Translate region requires selection and RGB fill")
+            overlay[mask > 0] = (60, 60, 230)
+            target = root / "masks" / f"{rid}.png"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            results.append(dict(regionId=rid, disposition="translate", mask=str(target.resolve()), maskSha256=selection["sha256"]))
+            yield mask, color
+    base = fill.render_fill(image, confirmed_selections())
     clean = save(root / "clean.png", base)
     return dict(clean=clean, cleanSha256=file_sha256(clean),
                 overlay=save(root / "mask-overlay.png", overlay), regions=results)

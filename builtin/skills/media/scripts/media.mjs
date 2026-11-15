@@ -24,7 +24,7 @@ export const DEPENDENCIES = Object.freeze({
     `numpy==${sdk.INFERENCE_DEPENDENCIES.numpy}`,
     "kaldi-native-fbank==1.23.0",
     `opencv-python-headless==${sdk.INFERENCE_DEPENDENCIES.opencv}`,
-    "pyclipper==1.4.0",
+    `pyclipper==${sdk.INFERENCE_DEPENDENCIES.pyclipper}`,
   ],
 });
 

@@ -28,7 +28,7 @@ vi.mock("../inference/helper", () => ({
     if (command === "erase" || command === "pack") return;
     if (command === "prepare") {
       await infer({ kind: "bubble" }, new Uint8Array());
-      await infer({ kind: "bubble" }, new Uint8Array());
+      await infer({ kind: "text" }, new Uint8Array());
       return;
     }
   },

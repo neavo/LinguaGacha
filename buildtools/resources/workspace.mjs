@@ -96,6 +96,10 @@ export async function build_workspace_resources({ root, output, manifest }) {
     path.join(output, "runtime/text-detection.py"),
   );
   await cp(
+    path.join(root, "src/backend/agent/image/fill.py"),
+    path.join(output, "runtime/fill.py"),
+  );
+  await cp(
     path.join(root, "src/backend/agent/image/image.py"),
     path.join(output, "runtime/image.py"),
   );

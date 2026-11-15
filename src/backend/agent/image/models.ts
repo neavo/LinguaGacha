@@ -1,8 +1,10 @@
+import { TEXT_DETECTION_MODELS } from "../inference/text-detection";
 import { model_ready, prepare_model_files, type InferenceModel } from "../inference/models";
 import { inference_configuration } from "../inference/runtime";
 
 // 来源提交与摘要共同固定模型身份，准备阶段不追踪远端最新版本。
 export const IMAGE_MODELS = Object.freeze({
+  text: TEXT_DETECTION_MODELS.small,
   bubble: {
     file: "segmentationbubble_onnx_cpu_webgpu_fp32/model.onnx",
     size: 11441936,
@@ -14,7 +16,7 @@ export const IMAGE_MODELS = Object.freeze({
   },
 } satisfies Record<string, InferenceModel>);
 
-export type ImageModelKind = keyof typeof IMAGE_MODELS; // 图片领域气泡分割模型标识。
+export type ImageModelKind = keyof typeof IMAGE_MODELS; // 图片领域气泡分割与文字检测任务。
 
 /** 检查当前缺失的图片推理权重标识。 */
 export function missing_models(): ImageModelKind[] {

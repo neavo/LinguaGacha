@@ -68,6 +68,7 @@ export { IMAGE_MODELS, missing_models, prepare_models, type ImageModelKind } fro
 export const IMAGE_DEPENDENCIES = Object.freeze({
   npm: [`onnxruntime-node@${INFERENCE_DEPENDENCIES.ort}`],
   python: [
+    `pyclipper==${INFERENCE_DEPENDENCIES.pyclipper}`,
     `numpy==${INFERENCE_DEPENDENCIES.numpy}`,
     `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`,
   ],
@@ -108,7 +109,7 @@ async function collect_review_status(directory: string, draft: Draft) {
   return status;
 }
 
-/** 第一阶段取证：保留原始字节与身份，通过气泡实例分割冻结选区并产出颜色建议。 */
+/** 第一阶段取证：保留原始字节与身份，气泡分割冻结选区，排除文字框后产出底色与分流建议。 */
 export async function prepare(options: {
   sources: readonly string[];
   workDirectory: string;
@@ -178,6 +179,7 @@ export async function prepare(options: {
           crops: Record<string, string>;
           candidates: PrepareCandidate[];
           draftRegions: ImageRegion[];
+          textBoxes: PreparePageEvidence["textBoxes"];
         };
         book.pages.push({ ...meta, regions: result.draftRegions });
         records.push(
@@ -193,6 +195,9 @@ export async function prepare(options: {
           previewScale: result.previewScale,
           fillPreview: result.fillPreview.replace(stage, directory),
           modelSha256: IMAGE_MODELS.bubble.sha256,
+          textModelSha256: IMAGE_MODELS.text.sha256,
+          prepareVersion: ALGORITHM_VERSION,
+          textBoxes: result.textBoxes,
           crops: Object.fromEntries(
             Object.entries(result.crops).map(([id, file]) => [id, file.replace(stage, directory)]),
           ),

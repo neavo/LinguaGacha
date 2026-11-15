@@ -1,18 +1,20 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { tensor_shape, type ChannelHeader } from "../inference/channel";
 import { check_finite, float, infer, type Ort, type OrtSession } from "../inference/ort";
+import { detect_text } from "../inference/text-detection";
+import type { ImageModelKind } from "./models";
 import type { ImageWorkerConfig } from "./engine";
 
-// 单一图片 Worker 懒加载气泡模型会话，避免 WebGPU 多 Worker 并发冲突。
+// 单一图片 Worker 按任务懒加载模型会话，避免 WebGPU 多 Worker 并发冲突。
 const config = workerData as ImageWorkerConfig;
 const port = parentPort!;
 const loaded = (await import(config.ort)) as Ort & { default?: Ort };
 const ort = loaded.default ?? loaded;
-let pending: Promise<OrtSession> | undefined; // 创建中的会话也共享，失败后交给宿主结束本次作业。
+const pending: Partial<Record<ImageModelKind, Promise<OrtSession>>> = {}; // 创建中的会话也共享，失败后交给宿主结束本次作业。
 
 /** 固定显式后端，初始化失败不切换设备重试。 */
-function session(): Promise<OrtSession> {
-  return (pending ??= ort.InferenceSession.create(config.models.bubble, {
+function session(kind: ImageModelKind): Promise<OrtSession> {
+  return (pending[kind] ??= ort.InferenceSession.create(config.models[kind], {
     executionProviders: [config.device],
     intraOpNumThreads: 4,
     interOpNumThreads: 1,
@@ -33,7 +35,7 @@ async function run_bubble(
     shape[3]! % 32 !== 0
   )
     throw new Error("Invalid image tensor");
-  const model = await session();
+  const model = await session("bubble");
   const outputs = await infer(model, {
     [model.inputNames[0]!]: new ort.Tensor("float32", input, shape),
   });
@@ -76,13 +78,19 @@ async function run_bubble(
   }
 }
 
+/** 将共享文字检测结果装入图片通道的张量列表。 */
+async function run_text(input: Float32Array, shape: number[]) {
+  const result = await detect_text(ort, await session("text"), input, shape);
+  return { header: { shapes: [result.shape] }, payload: result.data.buffer };
+}
+
 /** 创建失败时没有会话可释放，成功创建的会话必须释放后才能关闭通道。 */
 async function shutdown(): Promise<void> {
-  if (pending) {
-    const [result] = await Promise.allSettled([pending]);
-    pending = undefined;
-    if (result!.status === "fulfilled") await result!.value.release();
-  }
+  const sessions = await Promise.allSettled(Object.values(pending));
+  const releases = await Promise.allSettled(
+    sessions.flatMap((result) => (result.status === "fulfilled" ? [result.value.release()] : [])),
+  );
+  for (const result of releases) if (result.status === "rejected") throw result.reason;
   port.close();
 }
 
@@ -101,8 +109,10 @@ port.on("message", (message: Request) => {
       const shape = tensor_shape(message.header, message.payload.byteLength);
       const input = new Float32Array(message.payload);
       check_finite(input);
-      if (message.kind !== "bubble") throw new Error(`Unknown image task: ${message.kind}`);
-      const result = await run_bubble(input, shape);
+      if (message.kind !== "bubble" && message.kind !== "text")
+        throw new Error(`Unknown image task: ${message.kind}`);
+      const result =
+        message.kind === "bubble" ? await run_bubble(input, shape) : await run_text(input, shape);
       port.postMessage({ id: message.id, ...result }, [result.payload]);
     } catch (error) {
       port.postMessage({

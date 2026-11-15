@@ -74,6 +74,16 @@ it("输入按当前原稿顺序归一，拒绝缺失、重复、额外区域与�
     expect(() => read_image_text_input({ ...input, records: rows }, draft)).toThrow();
   records[0]!.message = "changed";
   expect(() => read_image_text_input(input, draft)).toThrow("source mismatch");
+  // 保留项可有可读原文，但写字输入只包含待译项。
+  Object.assign(book.pages[1]!.regions[0]!, {
+    disposition: "preserve",
+    preserveReason: "repair_failed",
+    fill: null,
+    direction: null,
+  });
+  input.sourceSha256 = image_text_source_digest(book, records);
+  input.records = input.records.slice(0, 1);
+  expect(read_image_text_input(input, draft).records).toEqual(input.records);
 });
 it("固定全文允许跨句、空块和重排，严格保留空格与字素边界", () => {
   for (const parts of [
