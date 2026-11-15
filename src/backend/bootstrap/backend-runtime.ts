@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentImageHostResult } from "../../shared/agent-image";
+import type { ImageTextHostResult } from "../../shared/image-text";
 
 import { normalize_app_language, type AppLanguage } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
@@ -58,7 +59,11 @@ export async function run_backend_runtime(args: {
       pending_host_requests.set(request_id, pending);
       if (signal !== undefined) {
         const abort_listener = () => {
-          if (operation.kind === "print_pdf" || operation.kind === "prepare_image") {
+          if (
+            operation.kind === "print_pdf" ||
+            operation.kind === "prepare_image" ||
+            operation.kind === "render_image_text_page"
+          ) {
             args.port.postMessage({ type: "host_cancel", requestId: request_id });
             return; // 等窗口释放后的回包，工作区互斥仍由原调用持有。
           }
@@ -92,6 +97,11 @@ export async function run_backend_runtime(args: {
     imageHost: async (operation, signal) => {
       const result = (await call_host(operation, signal)) as AgentImageHostResult;
       signal.throwIfAborted();
+      return result;
+    },
+    imageTextHost: async (operation, signal) => {
+      const result = (await call_host(operation, signal)) as ImageTextHostResult;
+      signal?.throwIfAborted();
       return result;
     },
     pdfHost: async (operation, signal) => {

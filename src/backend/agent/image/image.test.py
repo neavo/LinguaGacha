@@ -2,6 +2,8 @@
 import concurrent.futures
 import importlib.util
 import json
+import base64
+import math
 import sys
 import tempfile
 from pathlib import Path
@@ -104,4 +106,69 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     assert np.array_equal(source, image.read_image(result["clean"]))
     fails(lambda: list(image.postprocess(np.zeros((1, 39, 21), np.float32), np.zeros((1, 32, 8, 8), np.float32), (32, 32), (32, 32))), "shape")
 
-print(json.dumps({"ok": True, "checks": "selection ownership, holes, RGB, fill, preserve, tampering, empty page, model boundary"}))
+with tempfile.TemporaryDirectory(prefix="lg-image-text-pixels-") as folder:
+    root = Path(folder)
+    source = np.full((40, 50, 3), (130, 170, 230), np.uint8)
+    src = image.save(root / "clean.png", source)
+    mask = np.zeros((40, 50), np.uint8)
+    mask[3:37, 4:46] = 255
+    mask_file = root / "masks/p1/r1.png"
+    image.save(mask_file, mask)
+    region = dict(regionId="r1", disposition="translate", selection=dict(path="masks/p1/r1.png", sha256=image.file_sha256(mask_file)), direction="horizontal-tb", fill=dict(color=[230, 170, 130]))
+    page = dict(pageId="p1", width=50, height=40, regions=[region])
+    selected = [dict(regionId="r1",candidateId="C0",blocks=[dict(blockId="B1",box=[4,3,42,34],selection=region["selection"])])]
+    args = dict(root=str(root), page=page, selected=selected, materials=str(root))
+    geometry = image.text_geometry(args, None)[0]
+    x, y, w, h = geometry["box"]
+    assert geometry["centroid"] == [w/2, h/2]
+    distance = np.frombuffer(base64.b64decode(geometry["distance"]), "<f4").reshape(h, w)
+    overlay = np.zeros((h, w, 4), np.uint8)
+    overlay[h//2-1:h//2+1, w//2-1:w//2+1] = (255, 255, 255, 128)
+    covered = overlay[:, :, 3] > 0
+    result = dict(regionId="r1", blockId="B1", text="字", box=geometry["box"], status="rendered", fontSize=2,
+                  margin=float(distance[covered].min()-math.sqrt(2)), bounds=[x+w//2-1,y+h//2-1,x+w//2+1,y+h//2+1], centerError=0)
+    paint_file = root / "paint.json"
+    def write_paint():
+        """每个反例只改变其所验证的边界。"""
+        encoded = cv2.imencode(".png", overlay)[1]
+        paint_file.write_text(json.dumps(dict(regions=[dict(result=result, png=base64.b64encode(encoded).decode("ascii"))])), encoding="utf-8")
+    write_paint()
+    compose = dict(**args, source=src, paint=str(paint_file), output=str(root/"preview.png"), rules=dict(minimumMargin=2, marginRatio=.35, minimumCenterTolerance=1, centerToleranceRatio=.4))
+    composite = image.read_image(image.text_compose(compose, None)["preview"])
+    assert np.array_equal(composite[mask == 0], source[mask == 0])
+    assert np.any(composite != source)
+    result["bounds"][0] += 1
+    write_paint()
+    fails(lambda: image.text_compose(compose, None), "metrics mismatch")
+    result["bounds"][0] -= 1
+    overlay[0, 0] = (0, 0, 0, 1)
+    write_paint()
+    fails(lambda: image.text_compose(compose, None), "margin")
+
+with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
+    root = Path(folder)
+    mask = np.zeros((100,160),np.uint8)
+    cv2.circle(mask,(40,50),30,255,-1)
+    cv2.circle(mask,(120,50),30,255,-1)
+    cv2.rectangle(mask,(40,45),(120,55),255,-1)
+    image.save(root/"mask.png",mask)
+    image.save(root/"original.png",np.full((100,160,3),255,np.uint8))
+    page = dict(pageId="p", original="original.png",width=160,height=100,regions=[dict(regionId="r",disposition="translate",direction="horizontal-tb",selection=dict(path="mask.png",sha256=image.file_sha256(root/"mask.png")))])
+    args = dict(root=str(root),page=page,output=str(root/"plan"),maximumPixels=1000000)
+    plan = image.text_plan(args,None)
+    assert plan == image.text_plan(args,None)
+    assert plan[0]["recommendedCandidateId"] == "C1"
+    assert 2 <= len(plan[0]["candidates"]) <= image.PARTITION_RULES["max_candidates"] + 1
+    for candidate in plan[0]["candidates"]:
+        selected = [dict(regionId="r",**candidate)]
+        geometry = image.text_geometry(dict(root=str(root),page=page,materials=str(root/"plan"),selected=selected),None)
+        assert len(geometry) == len(candidate["blocks"])
+    fails(lambda: image.text_plan(dict(args,maximumPixels=1),None),"budget")
+    ellipse = np.zeros((100,100),np.uint8)
+    cv2.ellipse(ellipse,(50,50),(30,40),0,0,360,1,-1)
+    assert image.partition_candidates(ellipse) == []
+    candidate = plan[0]["candidates"][1]
+    file = root/"plan"/candidate["blocks"][0]["selection"]["path"]
+    file.write_bytes(b"corrupted")
+    fails(lambda: image.text_geometry(dict(root=str(root),page=page,materials=str(root/"plan"),selected=[dict(regionId="r",**candidate)]),None),"digest")
+print(json.dumps({"ok": True, "checks": "selection, fill, preserve, model boundary, text geometry, compositing, partition coverage, determinism, budget and tampering"}))

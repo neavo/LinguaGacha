@@ -6,6 +6,7 @@ import path from "node:path";
 
 import * as AppErrors from "../shared/error";
 import { create_pdf_host } from "../native/pdf-host";
+import { create_image_text_host } from "../native/image-text-host";
 import { prepare_agent_image } from "../native/agent-image-host";
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
@@ -68,6 +69,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     projectRoot: app_root,
   });
   const pdf_host = create_pdf_host(app_resources);
+  const image_text_host = create_image_text_host(app_resources);
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
@@ -76,6 +78,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     workspaceRuntimeDirectory: app_resources.workspaceRuntimeDirectory,
     fontsDirectory: app_resources.fontsDirectory,
     pdfHost: pdf_host,
+    imageTextHost: image_text_host,
     imageHost: prepare_agent_image,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openDirectory: open_directory,
@@ -192,6 +195,11 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         }
         try {
           await pdf_host.dispose();
+        } catch (error) {
+          failures.push(error);
+        }
+        try {
+          await image_text_host.dispose();
         } catch (error) {
           failures.push(error);
         }

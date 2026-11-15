@@ -30,6 +30,9 @@ import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
+import { image_fixture } from "../../../../test/image-fixture";
+import { image_text_source_digest } from "../../../file/image/image-format";
+import type { WorkspaceImageTextPort } from "../../tools/render-image-text";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -140,6 +143,56 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     ],
   });
   expect(inspectSources).toHaveBeenCalledOnce();
+});
+
+it("图片 SDK 经真实工作区 IPC 请求排版宿主并保留原始错误", async () => {
+  const fixture = image_fixture(["page"]);
+  const archive = await JSZip.loadAsync(await fixture.pack());
+  const source = path.join(workspace, "work/image-source");
+  for (const entry of Object.values(archive.files)) {
+    if (entry.dir) continue;
+    const file = path.join(source, entry.name);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, await entry.async("nodebuffer"));
+  }
+  await writeFile(
+    path.join(workspace, "work/image-input.json"),
+    JSON.stringify({
+      version: 1,
+      bookId: fixture.book.bookId,
+      sourceSha256: image_text_source_digest(fixture.book, fixture.records),
+      records: fixture.records.map((record) => ({
+        pageId: record.pageId,
+        regionId: record.regionId,
+        text: null,
+      })),
+    }),
+  );
+  const renderImageText = vi.fn<WorkspaceImageTextPort>(async () => {
+    throw new Error("fixture text environment unavailable");
+  });
+  const result = await run(
+    `
+    import { render, restore, prepare_text, IMAGE_DEPENDENCIES } from '@lg/image';
+    import { uv } from '@lg/uv';
+    import assert from 'node:assert/strict';
+    await restore('work/image-source', 'work/image-work');
+    await uv.run(['add', ...IMAGE_DEPENDENCIES.python, '--default-index', 'https://pypi.org/simple']);
+    const plan = await prepare_text({workDirectory:'work/image-work',inputPath:'work/image-input.json',expectedRevision:0});
+    assert.equal(plan.pages[0].regions[0].candidates[0].blocks[0].blockId,'B1');
+    await assert.rejects(render({workDirectory:'work/image-work',planId:plan.planId,expectedRevision:0}),/fixture text environment unavailable/);
+  `,
+    AbortSignal.timeout(60_000),
+    undefined,
+    { renderImageText },
+  );
+  expect(result.exitCode).toBe(0);
+  expect(renderImageText).toHaveBeenCalledOnce();
+  expect(renderImageText.mock.calls[0]![0]).toEqual({
+    kind: "render_image_text_page",
+    inputPath: null,
+    inputSha256: null,
+  });
 });
 
 it("搜索 SDK 经真实 IPC 保留原生响应并校验参数", async () => {
@@ -907,6 +960,7 @@ async function run(
   tools: Pick<
     AgentWorkspaceRunRequest,
     | "printPDF"
+    | "renderImageText"
     | "inspectSources"
     | "generateFiles"
     | "getOutputPaths"

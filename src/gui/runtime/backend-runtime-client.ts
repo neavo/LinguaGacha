@@ -1,5 +1,6 @@
 import type { AgentImageHost } from "../../shared/agent-image";
 import type { PDFHost } from "../../shared/pdf";
+import type { ImageTextHost } from "../../shared/image-text";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 
@@ -47,6 +48,7 @@ export class BackendRuntimeClient {
       workspaceRuntimeDirectory: string; // 当前版本的工作区包与只读资源根
       fontsDirectory: string; // 应用随附字体，Agent 工作区只读引用
       pdfHost?: PDFHost;
+      imageTextHost?: ImageTextHost;
       imageHost: AgentImageHost;
       resolveProxy: (url: string) => Promise<string>;
       openDirectory: (path: string) => Promise<void>;
@@ -184,6 +186,10 @@ export class BackendRuntimeClient {
     try {
       let data: unknown;
       switch (operation.kind) {
+        case "render_image_text_page":
+          if (!this.options.imageTextHost) throw new Error("Image text host missing");
+          data = await this.options.imageTextHost(operation, controller.signal);
+          break;
         case "prepare_image":
           data = await this.options.imageHost(operation, controller.signal);
           break;

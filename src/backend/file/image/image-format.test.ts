@@ -70,7 +70,7 @@ it("原始 ZIP 目录的重复名称与超额声明在解压前拒绝", async ()
   });
 });
 
-it("按工作台口径渲染 items.json，区分空译文与回原文", async () => {
+it("图片写回区分完成空正文与未翻译，并固定原稿身份", async () => {
   const fixture = image_fixture();
   const bytes = await fixture.pack();
   const format = new ImageFormat();
@@ -78,7 +78,19 @@ it("按工作台口径渲染 items.json，区分空译文与回原文", async ()
   items[0]!.status = "PROCESSED";
   items[0]!.dst = "";
   const text = await format.render_text(bytes, items, "book.image");
-  expect(JSON.parse(text).map((row: { message: string }) => row.message)).toEqual(["", "うん"]);
+  const input = JSON.parse(text);
+  expect(input).toMatchObject({ version: 1, bookId: fixture.book.bookId });
+  expect(input.records.map((row: { text: string | null }) => row.text)).toEqual(["", null]);
+  items[0]!.dst = items[0]!.src;
+  const same = JSON.parse(await format.render_text(bytes, items, "book.image"));
+  expect(same.records[0].text).toBe(items[0]!.src);
+  expect(same.sourceSha256).toBe(input.sourceSha256);
+  await expect(
+    format.render_text(bytes, [items[0]!, items[0]!], "book.image"),
+  ).rejects.toMatchObject({ code: "file.invalid_structure" });
+  await expect(
+    format.render_text(bytes, [{ ...items[0]!, src: "wrong" }], "book.image"),
+  ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
 
 it("零文本封面完整保留，并允许导出空词条列表", async () => {
@@ -90,7 +102,25 @@ it("零文本封面完整保留，并允许导出空词条列表", async () => {
   fixture.records.length = 0;
   const bytes = await fixture.pack();
   expect((await read_image_package(bytes, "cover.image")).book.pages).toHaveLength(1);
-  expect(JSON.parse(await new ImageFormat().render_text(bytes, [], "cover.image"))).toEqual([]);
+  expect(JSON.parse(await new ImageFormat().render_text(bytes, [], "cover.image"))).toMatchObject({
+    records: [],
+  });
+});
+
+it("归档中的保留记录不进入图片文本输入", async () => {
+  const fixture = image_fixture();
+  const page = fixture.book.pages[1]!;
+  page.regions[0]!.disposition = "preserve";
+  page.regions[0]!.preserveReason = "intentional";
+  fixture.clean.pages[1]!.regions = [
+    { regionId: "text", disposition: "preserve", preserveReason: "intentional" },
+  ];
+  fixture.clean.pages[1]!.inputSha256 = erase_input_digest(page);
+  const bytes = await fixture.pack();
+  const format = new ImageFormat();
+  const items = (await format.read(bytes, "book.image")).items;
+  const input = JSON.parse(await format.render_text(bytes, items, "book.image"));
+  expect(input.records).toEqual([{ pageId: "first", regionId: "text", text: null }]);
 });
 
 it.each([

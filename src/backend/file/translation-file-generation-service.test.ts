@@ -8,6 +8,7 @@ import { GenericFormat } from "./generic/generic-format";
 import { create_epub_fixture } from "../../test/epub-fixture";
 import { EPUBFormat } from "./epub/epub-format";
 import { create_item } from "../../domain/item";
+import { image_fixture } from "../../test/image-fixture";
 import type { PDFDocument } from "../../shared/pdf";
 import fs from "node:fs";
 import os from "node:os";
@@ -132,6 +133,45 @@ function create_database(
 }
 
 describe("TranslationFileGenerationService", () => {
+  it("图片写回消费重复项复用后的完成结果，并保留空正文与未翻译", async () => {
+    const fixture = image_fixture(["completed", "duplicated", "blank", "unfinished"]);
+    const items = fixture.records.map((record, row) =>
+      create_item({
+        id: row + 1,
+        src: record.message,
+        row,
+        file_path: "book.image",
+        file_type: "IMAGE",
+        status: (["PROCESSED", "DUPLICATED", "PROCESSED", "NONE"] as const)[row],
+        dst: row === 0 ? "同组译文" : "",
+      }),
+    );
+    const session = new ProjectSessionState();
+    session.mark_loaded(path.join(temp_dir, "book.lg"));
+    const service = new TranslationFileGenerationService(
+      create_generation_gate(),
+      { check_section_revisions: async () => {} },
+      new GameDirectoryOperations(),
+      create_database(items, {
+        "book.image": { content: Buffer.from(await fixture.pack()), file_type: "IMAGE" },
+      }),
+      create_setting_service(),
+      session,
+      async () => {},
+      create_pdf_execution(),
+    );
+    const generated = await service.generate_staging_files(path.join(temp_dir, "staging"), []);
+    const input = JSON.parse(
+      fs.readFileSync(path.join(generated.writeback!.input_path, "book.image/items.json"), "utf8"),
+    );
+    expect(input.records.map((record: { text: string | null }) => record.text)).toEqual([
+      "同组译文",
+      "同组译文",
+      "",
+      null,
+    ]);
+    expect(items[1]!.status).toBe("DUPLICATED");
+  });
   it.each(["GENERIC", "MEDIA"])(
     "仅含 %s 时直接生成报告原因与排除清单，且不创建目录",
     async (file_type) => {

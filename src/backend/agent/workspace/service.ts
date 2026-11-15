@@ -13,6 +13,8 @@ import { create_image_output, summarize_images } from "../tools/emit-image";
 import type { AgentFile } from "../../../shared/agent-workspace-file";
 import type { AgentFileCandidate } from "../../../shared/agent-reference";
 import { create_pdf_printer } from "../tools/print-pdf";
+import { create_image_text_renderer } from "../tools/render-image-text";
+import type { ImageTextHost } from "../../../shared/image-text";
 import { is_agent_cancellation } from "../tool-definition";
 import { AgentUploadStore } from "./uploads";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
@@ -226,6 +228,7 @@ export class AgentWorkspaceService {
         "generate_staging_files" | "read_output_paths"
       >;
       pdfHost?: PDFHost | undefined;
+      imageTextHost?: ImageTextHost | undefined;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -751,6 +754,11 @@ export class AgentWorkspaceService {
               getOutputPaths: this.options.generation.read_output_paths.bind(
                 this.options.generation,
               ),
+              renderImageText: create_image_text_renderer({
+                root: this.root_path,
+                nativeFs: this.native_fs,
+                imageTextHost: this.options.imageTextHost,
+              }),
               printPDF: create_pdf_printer({
                 root: this.root_path,
                 nativeFs: this.native_fs,

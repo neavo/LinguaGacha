@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import lockfile from "proper-lockfile";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import type {
@@ -21,6 +22,27 @@ export const STATE_FILE = "draft.json";
 export const EVIDENCE_INDEX_FILE = "evidence/index.json";
 export const ALGORITHM_VERSION = 5; // 确认选区的纯色覆盖版本。
 const LOCK_RETRY = { retries: 100, minTimeout: 100, maxTimeout: 1000 };
+const COMMIT_RETRY = Object.freeze({ attempts: 5, delayMs: 100 });
+
+/** Windows 可能在刚写入 PNG 后短暂拒绝目录改名；持锁重试同一次原子提交，不删除目标。 */
+export async function commit_directory(temporary: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.rename(temporary, destination);
+      return;
+    } catch (error) {
+      if (
+        process.platform !== "win32" ||
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error.code !== "EPERM" && error.code !== "EBUSY") ||
+        attempt >= COMMIT_RETRY.attempts - 1
+      )
+        throw error;
+      await delay(COMMIT_RETRY.delayMs);
+    }
+  }
+}
 
 export type ReviewedPageRef = {
   inputSha256: string;
@@ -244,7 +266,7 @@ export async function stage_reviewed_page(
       regions: reviewedRegions,
     } satisfies ReviewRecord);
 
-    fs.rename(temporary, revDir);
+    await commit_directory(temporary, revDir);
     return { artifactDigest, revDir };
   } catch (error) {
     await fs.remove_async(temporary, { recursive: true, force: true });

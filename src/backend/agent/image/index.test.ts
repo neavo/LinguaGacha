@@ -244,8 +244,16 @@ describe("@lg/image phase-1 transaction loop", () => {
     expect((await read(restoredWork)).reviewStatus.every((s) => s.reviewed)).toBe(true);
 
     const outDir = path.join(tmp.path, "published");
-    const pub1 = await publish({ workDirectory: restoredWork, outputDirectory: outDir });
-    const pub2 = await publish({ workDirectory: restoredWork, outputDirectory: outDir });
+    const pub1 = await publish({
+      workDirectory: restoredWork,
+      outputDirectory: outDir,
+      source: { kind: "clean" },
+    });
+    const pub2 = await publish({
+      workDirectory: restoredWork,
+      outputDirectory: outDir,
+      source: { kind: "clean" },
+    });
     expect(pub1.path).toBe(pub2.path);
     expect(fs.existsSync(path.join(pub1.path, "delivery.json"))).toBe(true);
     expect(fs.existsSync(path.join(pub1.path, `0001-${confirmedPages[0]!.pageId}.png`))).toBe(true);
@@ -265,16 +273,20 @@ describe("@lg/image phase-1 transaction loop", () => {
       const { path: _path, ...manifest } = changed;
       fs.writeFileSync(deliveryFile, JSON.stringify(manifest));
       await expect(
-        publish({ workDirectory: restoredWork, outputDirectory: outDir }),
+        publish({
+          workDirectory: restoredWork,
+          outputDirectory: outDir,
+          source: { kind: "clean" },
+        }),
       ).rejects.toThrow("manifest corrupted");
     }
     fs.writeFileSync(deliveryFile, deliveryText);
 
     // 删除已发布底图后，重复 publish 不得静默成功。
     fs.rmSync(path.join(pub1.path, `0001-${confirmedPages[0]!.pageId}.png`));
-    await expect(publish({ workDirectory: restoredWork, outputDirectory: outDir })).rejects.toThrow(
-      "missing or corrupted",
-    );
+    await expect(
+      publish({ workDirectory: restoredWork, outputDirectory: outDir, source: { kind: "clean" } }),
+    ).rejects.toThrow("missing or corrupted");
 
     // 若后续对单页改填色导致 eraseInputDigest 变化，仅该页验收失效且拒绝拿旧 runId 验收。
     const postConfigApply = await apply(work, runCached.revision, {

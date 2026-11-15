@@ -3,6 +3,7 @@ import { AgentExecutionRuntime } from "../agent/execution/runtime";
 import { AgentPersonalityService } from "../agent/agent-personality-service";
 import { AgentSkillsService } from "../agent/agent-skills-service";
 import type { PDFHost } from "../../shared/pdf";
+import type { ImageTextHost } from "../../shared/image-text";
 import type { AgentImageHost } from "../../shared/agent-image";
 import { AgentImageService } from "../agent/agent-image-service";
 import { AgentService } from "../agent/agent-service";
@@ -25,6 +26,7 @@ type GuiBackendBootstrapState = "idle" | "starting" | "ready" | "stopping" | "st
 export interface GuiBackendBootstrapOptions {
   defaultAppLanguage: AppLanguage; // 宿主解析的首次设置默认语言。
   pdfHost?: PDFHost;
+  imageTextHost?: ImageTextHost;
   imageHost: AgentImageHost;
   appRoot: string; // 安装根与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
@@ -148,6 +150,7 @@ export class GuiBackendBootstrap {
         generation: services.files.translationGeneration,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
+        imageTextHost: this.options.imageTextHost,
         packageSources: package_sources,
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,

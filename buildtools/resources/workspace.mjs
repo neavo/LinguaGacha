@@ -99,6 +99,23 @@ export async function build_workspace_resources({ root, output, manifest }) {
     path.join(root, "src/backend/agent/image/image.py"),
     path.join(output, "runtime/image.py"),
   );
+  await build({
+    configFile: false,
+    publicDir: false,
+    build: {
+      target: "chrome156",
+      outDir: path.join(output, "runtime"),
+      emptyOutDir: false,
+      lib: {
+        entry: path.join(root, "src/native/image-text-renderer.ts"),
+        formats: ["iife"],
+        name: "ImageTextRenderer",
+        fileName: () => "image-text-renderer.js",
+      },
+      rolldownOptions: { platform: "browser" },
+      minify: false,
+    },
+  });
   // 媒体前后处理 helper 由 `@lg/media` 以受控解释器直接运行。
   for (const file of ["media.py", "fsmn_vad.py", "visualize.py"])
     await cp(path.join(root, "src/backend/agent/media", file), path.join(output, "runtime", file));

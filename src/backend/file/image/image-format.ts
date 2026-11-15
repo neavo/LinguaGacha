@@ -16,6 +16,8 @@ import { AppError } from "../../../shared/error";
 import { read_zip_members, validate_zip_member_path } from "../shared/zip-members";
 import { read_archive_records } from "../shared/archive-records";
 import { write_message_records } from "../shared/message-records";
+import { read_translation_for_generation } from "../shared/translation-generation-text";
+import type { ImageTextInput } from "../../../shared/image-text";
 
 const IMAGE_STATE_MEMBER = "image.json"; // 归档内保存原稿与确认区域意图的 JSON 成员名。
 const IMAGE_CLEAN_MEMBER = "clean.json"; // 归档内保存已验收底图、掩码与摘要的 JSON 成员名。
@@ -32,6 +34,52 @@ const CLEAN_VALIDATOR = Compile(IMAGE_CLEAN_SCHEMA); // 预编译的已验收底
 /** 计算字节或文本的十六进制 SHA-256 摘要。 */
 export const image_sha256 = (bytes: Uint8Array | string): string =>
   createHash("sha256").update(bytes).digest("hex");
+
+/** 来源按归档的待译区域顺序取值，恢复草稿中的保留记录不参与摘要。 */
+export function image_text_source_digest(book: ImageBook, records: readonly ImageRecord[]): string {
+  const byId = new Map(
+    records.map((record) => [JSON.stringify([record.pageId, record.regionId]), record]),
+  );
+  return image_sha256(
+    JSON.stringify({
+      version: book.version,
+      bookId: book.bookId,
+      pages: book.pages.map((page) => ({
+        pageId: page.pageId,
+        original: page.original,
+        sha256: page.sha256,
+        width: page.width,
+        height: page.height,
+        orientation: page.orientation,
+        regions: page.regions.map((region) => ({
+          regionId: region.regionId,
+          disposition: region.disposition,
+          preserveReason: region.preserveReason ?? null,
+          selection: region.selection
+            ? { path: region.selection.path, sha256: region.selection.sha256 }
+            : null,
+          direction: region.direction,
+          fill: region.fill ? { color: region.fill.color } : null,
+        })),
+      })),
+      records: book.pages.flatMap((page) =>
+        page.regions
+          .filter((region) => region.disposition === "translate")
+          .map((region) => {
+            const record = byId.get(JSON.stringify([page.pageId, region.regionId]));
+            if (!record)
+              throw new Error(`Missing image source record: ${page.pageId}/${region.regionId}`);
+            return {
+              pageId: record.pageId,
+              regionId: record.regionId,
+              message: record.message,
+              name: record.name ?? null,
+            };
+          }),
+      ),
+    }),
+  );
+}
 
 /** 计算单页消字输入指纹：按稳定 regionId 排序，与原文、名称、阅读顺序和书写方向解耦。 */
 export function erase_input_digest(page: ImagePage): string {
@@ -388,7 +436,7 @@ export function image_record_identities(book: ImageBook, records: readonly Image
   );
 }
 
-/** 图片格式只建立工程条目和通用文本写回视图，像素生成和验收由图片 SDK 拥有。 */
+/** 图片格式建立工程条目与文本快照，像素生成和验收由图片 SDK 拥有。 */
 export class ImageFormat {
   /** 一次读取同时交付条目和已验证身份，替换流程复用这份解析结果。 */
   public async read(content: Uint8Array, file: string) {
@@ -406,14 +454,39 @@ export class ImageFormat {
       image: { book, records },
     };
   }
-  /** 通用工程词条写回只输出更新后的 `items.json`，保留第一/二阶段解耦边界。 */
+  /** 生成服务已复用重复项；这里只校验行身份并保留有效译文状态。 */
   public async render_text(
     content: Uint8Array,
     items: readonly Item[],
     file: string,
   ): Promise<string> {
-    const { records } = await read_image_package(content, file);
-    write_message_records(records, items, file);
-    return JSON.stringify(records, null, 4);
+    const { book, records } = await read_image_package(content, file);
+    const sourceSha256 = image_text_source_digest(book, records);
+    write_message_records(records, items, file); // 来源摘要已固定，后续只取区域身份。
+    const byRow = new Map(items.map((item) => [item.row, item]));
+    const translated = new Set(
+      book.pages.flatMap((page) =>
+        page.regions
+          .filter((region) => region.disposition === "translate")
+          .map((region) => JSON.stringify([page.pageId, region.regionId])),
+      ),
+    );
+    const input: ImageTextInput = {
+      version: 1,
+      bookId: book.bookId,
+      sourceSha256,
+      records: records.flatMap((record, row) => {
+        if (!translated.has(JSON.stringify([record.pageId, record.regionId]))) return [];
+        const item = byRow.get(row);
+        return [
+          {
+            pageId: record.pageId,
+            regionId: record.regionId,
+            text: item ? (read_translation_for_generation(item) ?? null) : null,
+          },
+        ];
+      }),
+    };
+    return JSON.stringify(input, null, 4);
   }
 }

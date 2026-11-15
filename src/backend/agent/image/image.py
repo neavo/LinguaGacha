@@ -1,5 +1,6 @@
 """气泡实例分割、确认选区纯色填充及离线归档。推理由宿主 Worker 执行。"""
 import hashlib
+import base64
 import importlib.util
 import json
 import math
@@ -274,7 +275,357 @@ def pack(args, _channel):
     return dict(path=args["output"])
 
 
-COMMANDS = {"prepare": prepare, "erase": erase, "pack": pack}
+PARTITION_RULES = dict(
+    max_candidates=6,
+    min_area_ratio=0.12,
+    contour_epsilon=0.004,
+    minimum_depth=1.5,
+    depth_ratio=0.035,
+    max_valleys=8,
+    minimum_cut=2,
+    core_minimum=3,
+    duplicate_ratio=0.06,
+    core_ratios=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
+)
+
+
+def partition_candidates(mask):
+    """只读掩码生成二分候选；不读取样本身份、人工种子或文字切分。"""
+    mask = mask.astype("uint8")
+    area = int(mask.sum())
+    h, w = mask.shape
+    yy, xx = np.indices(mask.shape)
+    distance = cv2.distanceTransform(
+        np.pad(mask, 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+    )[1:-1, 1:-1]
+    proposals = []
+
+    def add(part):
+        """只保留两个连通主体，并按连接宽度排序。"""
+        a = part & (mask > 0)
+        b = ~part & (mask > 0)
+        if min(a.sum(), b.sum()) < area * PARTITION_RULES["min_area_ratio"]:
+            return
+        if any(cv2.connectedComponents(x.astype("uint8"))[0] != 2 for x in (a, b)):
+            return
+        # 候选切口按较小主体的尺度归一化；窄连接优先，但不自动接受。
+        edge = cv2.dilate(a.astype("uint8"), np.ones((3, 3), np.uint8)).astype(bool) & b
+        score = float(edge.sum() / np.sqrt(min(a.sum(), b.sum())))
+        proposals.append(dict(mask=a, score=score))
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return []
+    contour = max(contours, key=cv2.contourArea)
+    contour = cv2.approxPolyDP(
+        contour, PARTITION_RULES["contour_epsilon"] * cv2.arcLength(contour, True), True
+    )
+    hull = cv2.convexHull(contour, returnPoints=False)
+    defects = (
+        cv2.convexityDefects(contour, hull)
+        if len(contour) > 3 and len(hull) > 2
+        else None
+    )
+    valleys = []
+    if defects is not None:
+        for _, _, far, depth in defects.reshape(-1, 4):
+            if depth / 256 >= max(
+                PARTITION_RULES["minimum_depth"],
+                min(w, h) * PARTITION_RULES["depth_ratio"],
+            ):
+                valleys.append((depth, contour.reshape(-1, 2)[far]))
+    valleys = sorted(valleys, key=lambda x: (-x[0], int(x[1][0]), int(x[1][1])))[
+        : PARTITION_RULES["max_valleys"]
+    ]
+    for i, (_, p) in enumerate(valleys):
+        for _, q in valleys[i + 1 :]:
+            v = q - p
+            if np.linalg.norm(v) < PARTITION_RULES["minimum_cut"]:
+                continue
+            add(
+                (xx - p[0]) * v[1] - (yy - p[1]) * v[0] >= 0,
+            )
+
+    for ratio in PARTITION_RULES["core_ratios"]:
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(
+            (distance > distance.max() * ratio).astype("uint8")
+        )
+        ids = sorted(range(1, n), key=lambda i: -stats[i, 4])
+        ids = (
+            [
+                i
+                for i in ids
+                if stats[i, 4]
+                >= max(
+                    PARTITION_RULES["core_minimum"],
+                    stats[ids[0], 4] * PARTITION_RULES["min_area_ratio"],
+                )
+            ]
+            if ids
+            else []
+        )
+        if len(ids) != 2:
+            continue
+        fields = [
+            cv2.distanceTransform(
+                (labels != i).astype("uint8"), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+            )
+            for i in ids
+        ]
+        add(fields[0] <= fields[1])
+    chosen = []
+    for p in sorted(proposals, key=lambda p: (p["score"], p["mask"].tobytes())):
+        if any(
+            min(
+                np.count_nonzero(p["mask"] ^ q["mask"]),
+                np.count_nonzero(p["mask"] ^ (mask.astype(bool) ^ q["mask"])),
+            )
+            / area
+            < PARTITION_RULES["duplicate_ratio"]
+            for q in chosen
+        ):
+            continue
+        chosen.append(p)
+        if len(chosen) == PARTITION_RULES["max_candidates"]:
+            break
+    return chosen
+
+
+def text_plan(args, _channel):
+    """生成原区域的整体与二分预览，块掩码使用裁片坐标。"""
+    page = args["page"]
+    original = read_image(Path(args["root"]) / page["original"])
+    output = Path(args["output"])
+    regions = []
+    budget = 0
+    for region in page["regions"]:
+        if region["disposition"] != "translate":
+            continue
+        mask = (
+            read_selection(
+                Path(args["root"]) / region["selection"]["path"],
+                region["selection"],
+                original.shape[:2],
+            )
+            > 0
+        )
+        x, y, w, h = cv2.boundingRect(mask.astype(np.uint8))
+        crop = mask[y : y + h, x : x + w]
+        choices = [[crop]] + [
+            [p["mask"], crop & ~p["mask"]] for p in partition_candidates(crop)
+        ]
+        candidates = []
+        for ci, parts in enumerate(choices):
+            parts.sort(
+                key=lambda part: (
+                    (
+                        -float(np.nonzero(part)[1].mean()),
+                        float(np.nonzero(part)[0].mean()),
+                    )
+                    if region["direction"] == "vertical-rl"
+                    else (
+                        float(np.nonzero(part)[0].mean()),
+                        float(np.nonzero(part)[1].mean()),
+                    )
+                )
+            )
+            preview = original[y : y + h, x : x + w].copy()
+            blocks = []
+            for bi, part in enumerate(parts):
+                budget += part.size
+                if budget > args["maximumPixels"]:
+                    raise ValueError(
+                        f"Partition material budget exceeded: {region['regionId']}"
+                    )
+                bx, by, bw, bh = cv2.boundingRect(part.astype(np.uint8))
+                block_id = f"B{bi + 1}"
+                if ci == 0:
+                    selection = region["selection"]
+                else:
+                    member = (
+                        f"{page['pageId']}/{region['regionId']}/C{ci}-{block_id}.png"
+                    )
+                    file = save(
+                        output / member,
+                        part[by : by + bh, bx : bx + bw].astype(np.uint8) * 255,
+                    )
+                    selection = dict(path=member, sha256=file_sha256(file))
+                blocks.append(
+                    dict(
+                        blockId=block_id,
+                        box=[x + bx, y + by, bw, bh],
+                        areaShare=float(part.sum() / crop.sum()),
+                        selection=selection,
+                    )
+                )
+                color = np.array(
+                    [(80, 180, 255), (255, 150, 80)][bi % 2], dtype=np.uint8
+                )
+                preview[part] = (preview[part] * 0.6 + color * 0.4).astype(np.uint8)
+                yy, xx = np.nonzero(part)
+                cv2.putText(
+                    preview,
+                    block_id,
+                    (int(xx.mean()), int(yy.mean())),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 0, 0),
+                    1,
+                    cv2.LINE_AA,
+                )
+            member = f"{page['pageId']}/{region['regionId']}/C{ci}.png"
+            cv2.putText(
+                preview,
+                f"C{ci}",
+                (2, 14),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 0),
+                1,
+                cv2.LINE_AA,
+            )
+            preview_file = save(output / member, preview)
+            candidates.append(
+                dict(
+                    candidateId=f"C{ci}",
+                    preview=member,
+                    previewSha256=file_sha256(preview_file),
+                    blocks=blocks,
+                )
+            )
+        regions.append(
+            dict(
+                regionId=region["regionId"],
+                recommendedCandidateId="C1" if len(candidates) > 1 else "C0",
+                candidates=candidates,
+            )
+        )
+    return regions
+
+
+def text_geometry(args, _channel):
+    """所选块重新读取掩码，独立验证覆盖后生成距离场。"""
+    page = args["page"]
+    regions = []
+    for selected in args["selected"]:
+        parent = next(
+            r for r in page["regions"] if r["regionId"] == selected["regionId"]
+        )
+        mask = (
+            read_selection(
+                Path(args["root"]) / parent["selection"]["path"],
+                parent["selection"],
+                (page["height"], page["width"]),
+            )
+            > 0
+        )
+        occupied = np.zeros(mask.shape, bool)
+        for block in selected["blocks"]:
+            x, y, w, h = block["box"]
+            selection = block["selection"]
+            if selected["candidateId"] == "C0":
+                part = mask[y : y + h, x : x + w]
+            else:
+                part = (
+                    read_selection(
+                        Path(args["materials"]) / selection["path"], selection, (h, w)
+                    )
+                    > 0
+                )
+            if (
+                x < 0
+                or y < 0
+                or x + w > page["width"]
+                or y + h > page["height"]
+                or not np.any(part)
+            ):
+                raise ValueError("Invalid partition box")
+            if np.any(
+                part & (~mask[y : y + h, x : x + w] | occupied[y : y + h, x : x + w])
+            ):
+                raise ValueError("Partition masks overlap or escape parent")
+            occupied[y : y + h, x : x + w] |= part
+            distance = cv2.distanceTransform(
+                np.pad(part.astype(np.uint8), 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+            )[1:-1, 1:-1]
+            yy, xx = np.nonzero(part)
+            regions.append(
+                dict(
+                    regionId=parent["regionId"],
+                    blockId=block["blockId"],
+                    box=block["box"],
+                    centroid=[float(xx.mean() + 0.5), float(yy.mean() + 0.5)],
+                    distance=base64.b64encode(distance.astype("<f4").tobytes()).decode(
+                        "ascii"
+                    ),
+                )
+            )
+        if not np.array_equal(mask, occupied):
+            raise ValueError("Partition does not cover parent")
+    return regions
+
+
+
+
+
+def text_compose(args, _channel):
+    """独立核对未经裁剪的原生覆盖层，仅合成通过边距和居中门禁的区域。"""
+    page, rules = args["page"], args["rules"]
+    clean = read_image(args["source"])
+    if clean.shape[:2] != (page["height"], page["width"]):
+        raise ValueError("Text base dimensions mismatch")
+    geometry = {(r["regionId"], r["blockId"]): r for r in text_geometry(args, None)}
+    occupied = np.zeros(clean.shape[:2], bool)
+    with open(args["paint"], encoding="utf-8") as file:
+        paints = json.load(file)["regions"]
+    seen = set()
+    for paint in paints:
+        result = paint["result"]
+        rid = (result["regionId"], result["blockId"])
+        if rid in seen or rid not in geometry:
+            raise ValueError("Text paint region identity mismatch")
+        seen.add(rid)
+        if result["status"] != "rendered":
+            if "png" in paint:
+                raise ValueError("Failed region carries text pixels")
+            continue
+        entry = geometry[rid]
+        x, y, w, h = entry["box"]
+        if result["box"] != entry["box"]:
+            raise ValueError("Text crop mismatch")
+        raw = np.frombuffer(base64.b64decode(paint["png"], validate=True), np.uint8)
+        overlay = cv2.imdecode(raw, cv2.IMREAD_UNCHANGED)
+        if overlay is None or overlay.dtype != np.uint8 or overlay.shape != (h, w, 4):
+            raise ValueError("Invalid text overlay")
+        covered = overlay[:, :, 3] > 0
+        if not np.any(covered):
+            raise ValueError("Rendered text has no visible pixels")
+        distance = np.frombuffer(base64.b64decode(entry["distance"]), "<f4").reshape(h, w)
+        lower = distance[covered].min() - math.sqrt(2)
+        margin = max(rules["minimumMargin"], result["fontSize"] * rules["marginRatio"])
+        if lower < margin:
+            raise ValueError("Text coverage violates mask margin")
+        yy, xx = np.nonzero(covered)
+        bounds = [int(xx.min()+x), int(yy.min()+y), int(xx.max()+1+x), int(yy.max()+1+y)]
+        axis = 1 if next(r for r in page["regions"] if r["regionId"] == rid[0])["direction"] == "horizontal-tb" else 0
+        center = ((yy.min()+yy.max()+1) if axis else (xx.min()+xx.max()+1))/2
+        error = abs(center-entry["centroid"][axis])
+        tolerance = max(rules["minimumCenterTolerance"], result["fontSize"] * rules["centerToleranceRatio"])
+        if error > tolerance or bounds != result["bounds"] or abs(result["margin"]-float(lower)) > 1e-5 or abs(result["centerError"]-float(error)) > 1e-5:
+            raise ValueError("Text metrics mismatch")
+        if np.any(occupied[y:y+h,x:x+w] & covered):
+            raise ValueError("Text block pixels overlap")
+        occupied[y:y+h,x:x+w] |= covered
+        alpha = overlay[:, :, 3:4].astype(np.float64)/255
+        destination = clean[y:y+h, x:x+w]
+        composite = np.floor(overlay[:, :, :3]*alpha+destination*(1-alpha)+.5).astype(np.uint8)
+        destination[covered] = composite[covered]
+    output = save(args["output"], clean)
+    return dict(preview=output, previewSha256=file_sha256(output))
+
+
+COMMANDS = {"prepare": prepare, "erase": erase, "pack": pack,
+            "text_plan": text_plan, "text_geometry": text_geometry, "text_compose": text_compose}
 
 if __name__ == "__main__":
     channel = Channel()

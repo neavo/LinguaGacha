@@ -1,18 +1,29 @@
+import { build_clean_manifest } from "./artifacts";
+export {
+  publish,
+  type DeliveryManifest,
+  type DeliveryPage,
+  type ImageDeliverySource,
+  type ImageTextDecision,
+} from "./publish";
+export { render } from "./render";
+export type {
+  ImageTextInput,
+  ImageTextRender,
+  ImageTextPageResult,
+  ImageTextRegionResult,
+} from "../../../shared/image-text";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import type {
   ImageBook,
   ImageClean,
-  ImageCleanPage,
   ImagePage,
-  ImagePreserveReason,
   ImageRecord,
   ImageRegion,
 } from "../../../shared/image";
 import {
-  compute_clean_status,
   erase_input_digest,
   image_sha256,
   read_image_package,
@@ -81,22 +92,6 @@ export type {
 } from "./state";
 
 const UUID_RE = /^[a-f0-9-]{36}$/u; // runId 直接参与目录定位，拒绝路径片段。
-
-export type DeliveryPage = {
-  pageId: string;
-  originalSha256: string;
-  inputSha256: string;
-  file: string;
-  sha256: string;
-  preserved: { regionId: string; reason: ImagePreserveReason }[];
-};
-
-export type DeliveryManifest = {
-  bookId: string;
-  status: ImageClean["status"];
-  deliverySha256: string;
-  pages: DeliveryPage[];
-};
 
 /** 状态读取把失效产物报告为未验收；提交与交付入口负责返回具体错误。 */
 async function collect_review_status(directory: string, draft: Draft) {
@@ -562,51 +557,6 @@ export async function review(options: {
   });
 }
 
-/** 只引用已验收的像素产物，文字编辑和模型更新不触发重算。 */
-async function build_clean_manifest(
-  directory: string,
-  draft: Draft,
-): Promise<{
-  clean: ImageClean;
-  sources: Record<string, string>;
-}> {
-  const cleanPages: ImageCleanPage[] = [];
-  const sources: Record<string, string> = {};
-  for (const page of draft.book.pages) {
-    const {
-      review: rev,
-      cleanPath,
-      maskPaths,
-      cleanRegions,
-    } = await verify_reviewed_page(directory, draft, page);
-    const cleanMember = `clean/${page.pageId}.png`;
-    sources[page.original] = path.join(directory, page.original);
-    sources[cleanMember] = cleanPath;
-    for (const region of page.regions) {
-      if (region.selection)
-        sources[region.selection.path] = path.join(directory, region.selection.path);
-    }
-    for (const [regionId, maskPath] of maskPaths) {
-      sources[`masks/${page.pageId}/${regionId}.png`] = maskPath;
-    }
-    cleanPages.push({
-      pageId: page.pageId,
-      clean: cleanMember,
-      cleanSha256: rev.cleanSha256,
-      inputSha256: rev.inputSha256,
-      regions: cleanRegions,
-    });
-  }
-  const clean: ImageClean = {
-    version: 1,
-    bookId: draft.book.bookId,
-    status: compute_clean_status(draft.book),
-    pages: cleanPages,
-  };
-  validate_image_clean(clean, draft.book);
-  return { clean, sources };
-}
-
 /** 打包 `.image` 资产：要求整书确认且逐页通过验收，离线无模型即可完成。 */
 export async function pack(
   workDirectory: string,
@@ -817,75 +767,5 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
   });
 }
 
-/** 原子导出第一阶段自然页序干净底图 PNG 与 `delivery.json`；幂等重交付校验已落盘 PNG 完整性。 */
-export async function publish(options: {
-  workDirectory: string;
-  outputDirectory: string;
-  expectedRevision?: number;
-}): Promise<DeliveryManifest & { path: string }> {
-  const directory = path.resolve(options.workDirectory);
-  const parent = path.resolve(options.outputDirectory);
-  return locked(directory, () =>
-    locked(parent, async () => {
-      const draft = load_draft(directory);
-      if (!draft.confirmed)
-        throw new Error("Confirm image book before publishing clean base images");
-      if (options.expectedRevision !== undefined && draft.revision !== options.expectedRevision)
-        throw new Error("Stale image draft revision");
-
-      const { clean, sources } = await build_clean_manifest(directory, draft);
-      const pages: DeliveryPage[] = draft.book.pages.map((page, index) => {
-        const cleanPage = clean.pages[index]!;
-        return {
-          pageId: page.pageId,
-          originalSha256: page.sha256,
-          inputSha256: cleanPage.inputSha256,
-          file: `${String(index + 1).padStart(4, "0")}-${page.pageId}.png`,
-          sha256: cleanPage.cleanSha256,
-          preserved: cleanPage.regions
-            .filter((r) => r.disposition === "preserve")
-            .map((r) => ({ regionId: r.regionId, reason: r.preserveReason! })),
-        };
-      });
-      const deliverySha256 = image_sha256(
-        JSON.stringify({ bookId: draft.book.bookId, status: clean.status, pages }),
-      );
-      const manifest: DeliveryManifest = {
-        bookId: draft.book.bookId,
-        status: clean.status,
-        deliverySha256,
-        pages,
-      };
-      const target = path.join(parent, `image-${deliverySha256.slice(0, 12)}`);
-      const deliveryFile = path.join(target, "delivery.json");
-      if (file_exists(deliveryFile)) {
-        if (!isDeepStrictEqual(read_json<unknown>(deliveryFile), manifest))
-          throw new Error("Published delivery manifest corrupted");
-        for (const page of pages) {
-          const deliveredFile = path.join(target, page.file);
-          if (!file_exists(deliveredFile) || (await digest(deliveredFile)) !== page.sha256)
-            throw new Error(`Published delivery artifact missing or corrupted: ${page.file}`);
-        }
-        return { path: target, ...manifest };
-      }
-
-      const temporary = path.join(parent, `.image-${randomUUID()}`);
-      await fs.make_dir_exclusive(temporary);
-      try {
-        for (const [index, page] of pages.entries()) {
-          const cleanPage = clean.pages[index]!;
-          const outPath = path.join(temporary, page.file);
-          fs.copy_file(sources[cleanPage.clean]!, outPath);
-          if ((await digest(outPath)) !== page.sha256)
-            throw new Error(`Published clean image digest mismatch: ${page.file}`);
-        }
-        write_json(path.join(temporary, "delivery.json"), manifest);
-        fs.rename(temporary, target);
-        return { path: target, ...manifest };
-      } catch (error) {
-        await fs.remove_async(temporary, { recursive: true, force: true });
-        throw error;
-      }
-    }),
-  );
-}
+export { prepare_text } from "./plan";
+export type { ImageTextPlan, ImageTextAssignment } from "../../../shared/image-text";
