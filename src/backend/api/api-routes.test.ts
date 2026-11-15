@@ -11,6 +11,7 @@ import { register_api_routes } from "./api-routes";
 const GET_PATHS = new Set([
   "/api/agent/files",
   "/api/agent/workspace/image",
+  "/api/agent/tool-image",
   "/api/agent/uploads/:id",
   "/api/health",
   "/api/events/stream",
@@ -167,6 +168,28 @@ describe("register_api_routes", () => {
     });
   });
 
+  it("GET /api/agent/tool-image 转交查询参数并下发禁缓存禁嗅探二进制响应", async () => {
+    const fixture = create_route_fixture();
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    fixture.read_tool_image.mockReturnValue({ bytes, mime: "image/png" });
+    const handler = read_get_handler(fixture.get, "/api/agent/tool-image") as unknown as (
+      request: Request,
+    ) => Promise<Response>;
+
+    const response = await handler(
+      new Request(
+        "http://127.0.0.1/api/agent/tool-image?chatId=chat-1&entryId=tool%3A1%3Ac1&index=2",
+      ),
+    );
+
+    expect(fixture.read_tool_image).toHaveBeenCalledExactlyOnceWith("chat-1", "tool:1:c1", "2");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
   it("POST 路由把任务与 Agent 命令原样转交组合根", async () => {
     const fixture = create_route_fixture();
     const task = { task_type: "translation" };
@@ -305,6 +328,7 @@ function create_route_fixture() {
   const compact_context = vi.fn(async () => acknowledgement);
   const stop = vi.fn(() => acknowledgement);
   const reset = vi.fn(async () => acknowledgement);
+  const read_tool_image = vi.fn();
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
   const generate_files = vi.fn();
   const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
@@ -323,6 +347,7 @@ function create_route_fixture() {
       doing: null,
       context: { tokens: null, compactable: false, limits: null },
     })),
+    read_tool_image,
     input_command,
     input_command_status,
     resolve_question,
@@ -390,6 +415,7 @@ function create_route_fixture() {
     compact_context,
     delete_queued_message,
     reset,
+    read_tool_image,
     input_command,
     input_command_status,
     resolve_question,

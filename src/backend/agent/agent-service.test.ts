@@ -4369,6 +4369,115 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toMatchObject({ chatId: reset, entries: [] });
   });
 
+  it("工具图片读取历史字节，并拒绝无效参数、旧会话和不可见分支", async () => {
+    fake_agent_state.mode = "tools";
+    const image_one = Uint8Array.from([1, 2, 3, 4]);
+    const image_two = Uint8Array.from([5, 6, 7, 8, 9]);
+    // 工作区端口已完成图片转换，服务只消费保存后的结果。
+    const make_run_image = (path: string, bytes: Uint8Array) => ({
+      path,
+      image: {
+        data: Buffer.from(bytes).toString("base64"),
+        mimeType: "image/webp" as const,
+        width: 1,
+        height: 1,
+        originalWidth: 1,
+        originalHeight: 1,
+      },
+    });
+    const { service, workspace } = await create_service();
+    vi.mocked(workspace.run).mockImplementationOnce(async () => ({
+      images: [
+        make_run_image("work/first.png", image_one),
+        make_run_image("work/second.webp", image_two),
+      ],
+      execution: workspace_execution({ ok: true }),
+    }));
+
+    await service.send_message({ text: "生成图表", attachments: [] });
+    await wait_for_idle(service);
+
+    const snapshot = service.get_snapshot();
+    const tool_entry = snapshot.entries.find((entry) => entry.kind === "tool_call");
+    expect(tool_entry).toMatchObject({ kind: "tool_call", imageCount: 2 });
+    const entry_id = tool_entry!.id;
+
+    // 文件读取端口已返回不同内容，历史预览仍须返回原始字节。
+    vi.mocked(workspace.read_document_image).mockResolvedValue({
+      bytes: Uint8Array.from([99, 98, 97]),
+      mime: "image/webp",
+    });
+    expect(service.read_tool_image(snapshot.chatId, entry_id, "0")).toEqual({
+      bytes: Buffer.from(image_one),
+      mime: "image/webp",
+    });
+    expect(service.read_tool_image(snapshot.chatId, entry_id, "1")).toEqual({
+      bytes: Buffer.from(image_two),
+      mime: "image/webp",
+    });
+
+    expect(workspace.read_document_image).not.toHaveBeenCalled();
+
+    for (const [chat_id, target_entry, index] of [
+      [null, entry_id, "0"],
+      ["", entry_id, "0"],
+      [snapshot.chatId, null, "0"],
+      [snapshot.chatId, "", "0"],
+      [snapshot.chatId, entry_id, null],
+      [snapshot.chatId, entry_id, ""],
+      [snapshot.chatId, entry_id, "-1"],
+      [snapshot.chatId, entry_id, "1.5"],
+      [snapshot.chatId, entry_id, "1x"],
+      [snapshot.chatId, entry_id, "9007199254740992"],
+    ] as const) {
+      expect(() => service.read_tool_image(chat_id, target_entry, index)).toThrowError(
+        expect.objectContaining({ code: "request.validation_failed" }),
+      );
+    }
+
+    for (const [chat_id, target_entry, index] of [
+      ["old-chat-id", entry_id, "0"],
+      [snapshot.chatId, "tool:missing", "0"],
+      [snapshot.chatId, entry_id, "2"],
+    ] as const) {
+      expect(() => service.read_tool_image(chat_id, target_entry, index)).toThrowError(
+        expect.objectContaining({ code: "file.not_found" }),
+      );
+    }
+
+    // 通过用户消息原地修订分叉，被切掉的工具结果图立即不可读。
+    const user_entry = snapshot.entries.find((entry) => entry.kind === "user_message");
+    fake_agent_state.mode = "success";
+    await service.input_command("revise", {
+      chatId: snapshot.chatId,
+      commandId: "revise-tool-image-branch",
+      entryId: user_entry!.id,
+      message: { text: "改问别的问题", attachments: [] },
+    });
+    await wait_for_idle(service);
+    expect(() => service.read_tool_image(snapshot.chatId, entry_id, "0")).toThrowError(
+      expect.objectContaining({ code: "file.not_found" }),
+    );
+
+    // 重置中的读取先返回 busy，完成后旧会话失效。
+    const hold_reset = Promise.withResolvers<void>();
+    vi.mocked(workspace.activate_chat).mockImplementationOnce(async () => {
+      await hold_reset.promise;
+    });
+    const resetting = service.reset();
+    await vi.waitFor(() =>
+      expect(() => service.read_tool_image(snapshot.chatId, entry_id, "0")).toThrowError(
+        expect.objectContaining({ code: "runtime.busy" }),
+      ),
+    );
+    hold_reset.resolve();
+    await resetting;
+
+    expect(() => service.read_tool_image(snapshot.chatId, entry_id, "0")).toThrowError(
+      expect.objectContaining({ code: "file.not_found" }),
+    );
+  });
+
   /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentChat 仍走生产实现。 */
   async function create_service({
     load_resources = true,

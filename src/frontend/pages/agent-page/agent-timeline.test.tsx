@@ -728,7 +728,7 @@ function tool_entry(
   createdAt: number,
   input = "{}",
 ): AgentToolEntry {
-  const base = { kind: "tool_call" as const, id, toolName, input, createdAt };
+  const base = { kind: "tool_call" as const, id, toolName, input, imageCount: 0, createdAt };
   if (status === "running" || status === "stopped") {
     if (output !== null) throw new Error("开放或停止工具不得携带输出");
     return { ...base, status, output: null };

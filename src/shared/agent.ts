@@ -167,6 +167,7 @@ type AgentToolEntryBase = JsonRecord & {
   id: string;
   toolName: string;
   input: string;
+  imageCount: number; // 未提交回执或无图时为 0。
   createdAt: number;
 };
 

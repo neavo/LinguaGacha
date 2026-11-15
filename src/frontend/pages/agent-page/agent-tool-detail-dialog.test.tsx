@@ -14,8 +14,17 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 }));
 
 const run_output = vi.hoisted(() => ({ current: null as AgentRunOutputSnapshot }));
+const chat_id_state = vi.hoisted(() => ({ current: "chat:1" as string | null }));
+const api_blob_mock = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
+  useAgentChatId: () => chat_id_state.current,
   useAgentRunOutput: () => run_output.current,
+}));
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_blob: api_blob_mock,
+}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_error_toast: vi.fn(),
 }));
 
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
@@ -34,6 +43,8 @@ describe("AgentToolDetailDialog", () => {
     root = null;
     container = null;
     run_output.current = null;
+    chat_id_state.current = "chat:1";
+    api_blob_mock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -209,6 +220,46 @@ describe("AgentToolDetailDialog", () => {
       document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]')?.textContent,
     ).toContain('"new": 2');
   });
+
+  it("图片标签按需读取对应图片，切换会话后释放旧内容", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:detail-img");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    api_blob_mock.mockResolvedValue(new Blob(["image"], { type: "image/png" }));
+    await render_dialog(tool_running("workspace_run", "{}"));
+    expect(document.body.querySelectorAll('[role="tab"]')).toHaveLength(2);
+
+    const entry = tool_success("workspace_run", "{}", "完成", 2);
+    await render_dialog(entry);
+    const tabs = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs).toHaveLength(4);
+    expect(tabs[0]!.hasAttribute("data-active")).toBe(true);
+    expect(
+      tabs.slice(2).every((tab) => tab.textContent === "" && tab.hasAttribute("aria-label")),
+    ).toBe(true);
+    expect(api_blob_mock).not.toHaveBeenCalled();
+
+    await act(async () => tabs[2]!.click());
+    await act(async () => tabs[3]!.click());
+    expect(
+      api_blob_mock.mock.calls.map(([url]) =>
+        new URL(url, "http://localhost").searchParams.get("index"),
+      ),
+    ).toEqual(["0", "1"]);
+    expect(document.body.querySelectorAll(".agent-tool-image")).toHaveLength(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:detail-img");
+
+    await act(async () => tabs[1]!.click());
+    expect(document.body.querySelector(".agent-tool-image")).toBeNull();
+    await act(async () => tabs[3]!.click());
+    expect(api_blob_mock.mock.calls.at(-1)?.[0]).toContain("index=1");
+
+    chat_id_state.current = "chat:2";
+    await render_dialog(entry);
+    expect(document.body.querySelector(".agent-tool-image")).toBeNull();
+    expect(document.body.querySelector('[role="tab"][data-active]')?.textContent).toBe(
+      "agent_page.tool.output",
+    );
+  });
 });
 
 /** 构造尚未返回输出的工具条目。 */
@@ -218,6 +269,7 @@ function tool_running(tool_name: string, input: string): AgentToolEntry {
     id: "tool-1",
     toolName: tool_name,
     input,
+    imageCount: 0,
     status: "running",
     output: null,
     createdAt: 1,
@@ -225,12 +277,18 @@ function tool_running(tool_name: string, input: string): AgentToolEntry {
 }
 
 /** 构造含完整模型输出的已完成条目。 */
-function tool_success(tool_name: string, input: string, output: string): AgentToolEntry {
+function tool_success(
+  tool_name: string,
+  input: string,
+  output: string,
+  imageCount = 0,
+): AgentToolEntry {
   return {
     kind: "tool_call",
     id: "tool-1",
     toolName: tool_name,
     input,
+    imageCount,
     status: "success",
     output: [output],
     createdAt: 1,

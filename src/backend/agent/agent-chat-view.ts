@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ImageContent } from "@earendil-works/pi-ai";
 import type {
   CommitPublication,
   ConversationRecord,
@@ -25,6 +25,16 @@ export const assistant_entry_id = (task: number | undefined, entry: number): str
   `assistant:${task ?? `entry:${entry}`}`;
 const UNCOMMITTED_ENTRY_ORDER = Number.MAX_SAFE_INTEGER; // 尚无 SDK 条目身份的正文暂居轮次末尾
 
+// 历史可来自导入工程；公开图片响应只接受光栅 MIME，避免把活动文档作为图片下发。
+const TOOL_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+  "image/bmp",
+]);
+
 type TaskRecordValue = TaskRecord<JsonValue, JsonValue, JsonValue>;
 type Row = { order: number; entry: AgentEntry };
 export type AgentTimelineChange = { replace: boolean; entries: AgentEntry[] };
@@ -44,6 +54,7 @@ export class AgentChatView {
   private readonly rows = new Map<string, Row>();
   private readonly inputSubmissions = new Map<number, SubmissionRecord>(); // 旧历史通过条目身份定位原提交回执
   private readonly calls = new Map<string, string>(); // 工具调用身份到公开条目的查询索引
+  private readonly toolImages = new Map<string, readonly Readonly<ImageContent>[]>(); // 已提交工具回执的可见图片索引
   private readonly userRecords = new Map<string, EntryRecord>(); // 轮次状态变化时定位原用户消息
   private readonly changed = new Map<string, AgentEntry>(); // 尚未发布的条目，同一身份只保留最新值
   private readonly pendingRecords = new Set<number>();
@@ -209,6 +220,7 @@ export class AgentChatView {
     this.rows.clear();
     this.inputSubmissions.clear();
     this.calls.clear();
+    this.toolImages.clear();
     this.userRecords.clear();
     this.changed.clear();
     this.order = [];
@@ -241,6 +253,11 @@ export class AgentChatView {
   /** 按工具调用身份查找公开条目，投影尚未处理该调用时返回 `undefined`。 */
   public tool_entry_id(callId: string): string | undefined {
     return this.calls.get(callId);
+  }
+
+  /** 读取当前公开分支上工具条目的可见图片，分支切换或无图时返回 `undefined`。 */
+  public read_tool_image(entry_id: string, index: number): Readonly<ImageContent> | undefined {
+    return this.toolImages.get(entry_id)?.[index];
   }
 
   /** 发布者消费更新，不需要比较上一份完整快照。 */
@@ -353,6 +370,7 @@ export class AgentChatView {
         for (const call of read_agent_tool_calls(message)) {
           const id = `tool:${record.id}:${call.id}`;
           this.calls.set(call.id, id);
+          this.toolImages.delete(id);
           this.put(
             {
               kind: "tool_call",
@@ -361,6 +379,7 @@ export class AgentChatView {
               input: JsonTool.stringifyStrict(call.arguments),
               status: "running",
               output: null,
+              imageCount: 0,
               createdAt: message.timestamp,
             },
             record.id,
@@ -370,11 +389,20 @@ export class AgentChatView {
         const id = this.calls.get(message.toolCallId);
         const row = id === undefined ? undefined : this.rows.get(id);
         if (row?.entry.kind !== "tool_call") continue;
+        const images = message.content.filter(
+          (part): part is ImageContent =>
+            part.type === "image" &&
+            part.data.length > 0 &&
+            TOOL_IMAGE_MIME_TYPES.has(part.mimeType),
+        );
+        if (images.length > 0) this.toolImages.set(row.entry.id, images);
+        else this.toolImages.delete(row.entry.id);
         this.put(
           {
             ...row.entry,
             status: read_agent_tool_result_status(record, message),
             output: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+            imageCount: images.length,
           },
           row.order,
         );

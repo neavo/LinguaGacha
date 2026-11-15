@@ -715,6 +715,16 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.agent-tool-detail__tab-list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  width: max-content;
+  flex: 0 0 auto;
 }
 
 .agent-tool-detail__panel {
@@ -722,9 +732,22 @@
   margin-inline: -24px;
 }
 
+.agent-tool-detail__panel--media:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+
 .agent-tool-detail__viewer {
   height: 100%;
   border-radius: 0;
+}
+
+.agent-tool-image {
+  display: flex;
+  justify-content: center;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .agent-round-footer {

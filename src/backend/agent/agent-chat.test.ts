@@ -340,7 +340,7 @@ async function project() {
   return { database, file };
 }
 /** 以无模型配置打开历史，模型只在新指令前注册。 */
-async function open(store: AgentChatStorage) {
+async function open(store: AgentChatStorage, tools: ToolRegistration[] = []) {
   const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
   const models = createModels();
   const append = vi.fn();
@@ -351,7 +351,7 @@ async function open(store: AgentChatStorage) {
     cwd: process.cwd(),
     models,
     seed: [],
-    tools: [],
+    tools,
     systemPrompt: () => "",
     skillsPrompt: () => "",
     continueText: () => "继续",
@@ -830,4 +830,45 @@ it("无切点的压缩返回 skipped，公开时间线不产生压缩块", async
   expect(chat.entries.some((entry) => entry.kind === "context_compaction")).toBe(false);
   expect(visible.length).toBeGreaterThan(0);
   expect(visible).not.toContain(true);
+});
+
+it("工具图片经真实存储关闭重开后仍可读取", async () => {
+  const { database, file } = await project();
+  let store = database.open_agent_store(file);
+  await store.create("tool-images");
+  const image = {
+    type: "image" as const,
+    mimeType: "image/png",
+    data: Buffer.from("png-bytes").toString("base64"),
+  };
+  const tool = define_agent_tool({
+    name: "render_preview",
+    description: "返回测试图片",
+    parameters: Type.Object({}),
+    execute: async () => ({ output: [image], details: {} }),
+  });
+  let current = await open(store, [tool]);
+  try {
+    current.models.setProvider(current.provider.provider);
+    await current.chat.configure(current.provider.getModel(), "off");
+    current.provider.setResponses([
+      fauxAssistantMessage([fauxToolCall(tool.name, {})], { stopReason: "toolUse" }),
+      fauxAssistantMessage("完成"),
+    ]);
+    await talk(current.chat, "渲染图片");
+    const entry = current.chat.entries.find((candidate) => candidate.kind === "tool_call")!;
+    await current.chat.close();
+    await store.close();
+
+    store = database.open_agent_store(file);
+    current = await open(store);
+    expect(current.chat.entries).toContainEqual(
+      expect.objectContaining({ id: entry.id, kind: "tool_call", imageCount: 1 }),
+    );
+    expect(current.chat.view.read_tool_image(entry.id, 0)).toEqual(image);
+  } finally {
+    await current.chat.close();
+    await store.close();
+    await database.close();
+  }
 });

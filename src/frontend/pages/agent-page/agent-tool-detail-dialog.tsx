@@ -1,16 +1,19 @@
 import { type JSX, memo, useMemo, useState } from "react";
+import { Image } from "lucide-react";
 
 import type { AgentToolEntry } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { useAgentRunOutput } from "@frontend/app/session/agent/agent-chat-context";
+import { useAgentChatId, useAgentRunOutput } from "@frontend/app/session/agent/agent-chat-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@frontend/shadcn/tabs";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import {
   AGENT_STATUS_LABEL_KEYS,
   useAgentElapsed,
 } from "@frontend/pages/agent-page/agent-entry-status";
 import { AgentStatusMark } from "@frontend/pages/agent-page/agent-status-mark";
+import { AgentToolImage } from "./agent-tool-image";
 import { format_agent_tool_payload } from "./agent-tool-payload";
 import { format_agent_tool_label } from "./agent-tool-label";
 
@@ -18,6 +21,7 @@ import { format_agent_tool_label } from "./agent-tool-label";
 const AGENT_TOOL_CODE_INPUT_KEYS: Readonly<Record<string, string>> = { workspace_run: "script" };
 
 type AgentToolPayloadChannel = "input" | "output";
+type AgentToolDetailTab = AgentToolPayloadChannel | number;
 type AgentToolPayloadOptions = {
   tool_name: string;
   fallback?: string;
@@ -32,15 +36,36 @@ type AgentToolDetailDialogProps = {
   on_close: () => void;
 };
 
-/** 工具详情只挂载当前输入或输出面板，避免长载荷进入会话信息流 DOM。 */
+/** 工具详情按会话与条目身份持有标签选择，避免跨条目串扰或提前拉取资源。 */
 export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.Element {
-  const { t } = useI18n();
-  const entry = props.entry;
-  const label = format_agent_tool_label(entry.toolName, entry.input);
-  const [initial_channel] = useState<AgentToolPayloadChannel>(
-    entry.output === null ? "input" : "output",
+  const chat_id = useAgentChatId();
+  return (
+    <AgentToolDetailDialogContent
+      key={`${chat_id ?? ""}:${props.entry.id}`}
+      {...props}
+      chat_id={chat_id}
+    />
   );
-  // 缓存只属于本次弹窗，两个标签各保留一份结果，关闭即释放；隐藏标签不提前解析。
+}
+
+/** 当前条目的详查主体：同条目完成或重放时保留焦点标签，切换条目后自动复位。 */
+function AgentToolDetailDialogContent(
+  props: AgentToolDetailDialogProps & { chat_id: string | null },
+): JSX.Element {
+  const { t } = useI18n();
+  const { entry, chat_id } = props;
+  const label = format_agent_tool_label(entry.toolName, entry.input);
+  const default_tab: AgentToolPayloadChannel = entry.output === null ? "input" : "output";
+  const [selected_tab, set_selected_tab] = useState<AgentToolDetailTab>(default_tab);
+  const active_tab: AgentToolDetailTab =
+    typeof selected_tab === "number" && selected_tab >= entry.imageCount
+      ? default_tab
+      : selected_tab;
+  const image_tabs = Array.from({ length: entry.imageCount }, (_, index) => ({
+    index,
+    label: `${t("agent_page.image.title")} ${index + 1}`,
+  }));
+  // 缓存只属于本次弹窗，两个文本标签各保留一份结果，关闭即释放；隐藏标签不提前解析。
   const [read_payload] = useState(() => {
     const cache = new Map<
       AgentToolPayloadChannel,
@@ -92,11 +117,24 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
         <AgentStatusMark status={entry.status} label={status_label} />
       </div>
 
-      <Tabs defaultValue={initial_channel} className="agent-tool-detail__tabs">
+      <Tabs
+        value={active_tab}
+        onValueChange={(value) => {
+          if (value === "input" || value === "output" || typeof value === "number") {
+            set_selected_tab(value);
+          }
+        }}
+        className="agent-tool-detail__tabs"
+      >
         <div className="agent-tool-detail__toolbar">
-          <TabsList aria-label={title}>
+          <TabsList aria-label={title} className="agent-tool-detail__tab-list">
             <TabsTrigger value="input">{t("agent_page.tool.input")}</TabsTrigger>
             <TabsTrigger value="output">{t("agent_page.tool.output")}</TabsTrigger>
+            {image_tabs.map(({ index, label }) => (
+              <TabsTrigger key={index} value={index} aria-label={label}>
+                <Image className="size-3.5" aria-hidden="true" />
+              </TabsTrigger>
+            ))}
           </TabsList>
         </div>
         <TabsContent value="input" className="agent-tool-detail__panel">
@@ -118,6 +156,20 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
             aria_label={t("agent_page.tool.output")}
           />
         </TabsContent>
+        {/* 会话、条目和图片标签共同拥有挂载身份，单图组件无需重复维护身份状态。 */}
+        {image_tabs.map(({ index, label }) => (
+          <TabsContent
+            key={index}
+            value={index}
+            className="agent-tool-detail__panel agent-tool-detail__panel--media"
+          >
+            {chat_id === null ? (
+              <AppContentState status="error" />
+            ) : (
+              <AgentToolImage chat_id={chat_id} entry_id={entry.id} index={index} label={label} />
+            )}
+          </TabsContent>
+        ))}
       </Tabs>
     </AppPageDialog>
   );

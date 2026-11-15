@@ -204,15 +204,15 @@ export class AgentService {
 
   /** 文件描述绑定当前会话，菜单无法复用旧会话的同名工作文件。 */
   public describe_workspace_file(request: JsonRecord): AgentFile {
-    this.assert_workspace_preview_chat(request["chatId"]);
+    this.assert_preview_chat(request["chatId"]);
     return this.workspace.describe_file(request["path"]);
   }
 
   /** 请求和响应都绑定对话身份，防止旧页面读取重建后的同名文件。 */
   public async read_workspace_document(request: JsonRecord): Promise<AgentDocument> {
-    this.assert_workspace_preview_chat(request["chatId"]);
+    this.assert_preview_chat(request["chatId"]);
     const document = await this.workspace.read_document(request["path"]);
-    this.assert_workspace_preview_chat(request["chatId"]);
+    this.assert_preview_chat(request["chatId"]);
     return { chatId: this.chat_id, ...document };
   }
 
@@ -221,14 +221,36 @@ export class AgentService {
     href: string | null,
     chat_id: string | null,
   ): Promise<{ bytes: Uint8Array; mime: string }> {
-    this.assert_workspace_preview_chat(chat_id);
+    this.assert_preview_chat(chat_id);
     const image = await this.workspace.read_document_image(href);
-    this.assert_workspace_preview_chat(chat_id);
+    this.assert_preview_chat(chat_id);
     return image;
   }
 
+  /** 在公开读取入口校验序号，并从当前会话分支解码历史图片。 */
+  public read_tool_image(
+    chat_id: string | null,
+    entry_id: string | null,
+    raw_index: string | null,
+  ): { bytes: Uint8Array; mime: string } {
+    const index = Number(raw_index);
+    if (
+      !chat_id ||
+      !entry_id ||
+      !raw_index ||
+      !/^\d+$/.test(raw_index) ||
+      !Number.isSafeInteger(index)
+    ) {
+      throw new AppErrors.AppError("request.validation_failed");
+    }
+    this.assert_preview_chat(chat_id);
+    const image = this.chat?.view.read_tool_image(entry_id, index);
+    if (image === undefined) throw new AppErrors.AppError("file.not_found");
+    return { bytes: Buffer.from(image.data, "base64"), mime: image.mimeType };
+  }
+
   /** 清理期间拒绝读取，清理后按对话身份拒绝迟到请求。 */
-  private assert_workspace_preview_chat(chat_id: unknown): void {
+  private assert_preview_chat(chat_id: unknown): void {
     this.assert_not_disposed();
     if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
     if (chat_id !== this.chat_id) throw new AppErrors.AppError("file.not_found");

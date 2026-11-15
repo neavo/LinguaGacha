@@ -133,6 +133,7 @@ it("运行中的工具行只显示归属自己的最新输出行", async () => {
     id,
     toolName: "workspace_run",
     input: '{"script":"1;"}',
+    imageCount: 0,
     status: "running",
     output: null,
     createdAt: 1,
