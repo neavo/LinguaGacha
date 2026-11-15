@@ -3,26 +3,23 @@ import path from "node:path";
 import lockfile from "proper-lockfile";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import type {
-  ImageActualEraseMethod,
   ImageBook,
   ImageCleanRegion,
   ImagePage,
-  ImagePreserveReason,
   ImageRecord,
-  Quad,
+  ImageSelection,
 } from "../../../shared/image";
 import {
   erase_input_digest,
   image_sha256,
   validate_image_book,
+  validate_image_selections,
 } from "../../file/image/image-format";
 import { normalize_image_to_png } from "../../file/image/image-pixels";
-import type { ImageDevice } from "./engine";
-import { IMAGE_MODELS } from "./models";
 
 export const STATE_FILE = "draft.json";
 export const EVIDENCE_INDEX_FILE = "evidence/index.json";
-export const ALGORITHM_VERSION = 4; // 第一阶段：shared manga/det + 解耦掩码/背景检测/消字版本。
+export const ALGORITHM_VERSION = 5; // 确认选区的纯色覆盖版本。
 const LOCK_RETRY = { retries: 100, minTimeout: 100, maxTimeout: 1000 };
 
 export type ReviewedPageRef = {
@@ -37,17 +34,17 @@ export type Draft = {
   book: ImageBook;
   records: ImageRecord[];
   reviewed?: Record<string, ReviewedPageRef>;
-  sourceSha256?: string;
 };
 
 export type PrepareCandidate = {
   regionId: string;
-  kind: "bubble" | "text";
   score: number;
-  source: string;
-  uncertain: boolean;
-  textAreas: Quad[];
-  merged?: { score: number; iou: number }[];
+  box: [number, number, number, number]; // 规范化原图中的 x0/y0/x1/y1，仅用于取证。
+  rawMask: string;
+  overlaps: string[];
+  status: "ready" | "empty_selection" | "covered";
+  selection?: ImageSelection;
+  color?: [number, number, number];
 };
 
 export type PreparePageEvidence = {
@@ -56,31 +53,19 @@ export type PreparePageEvidence = {
   height: number;
   preview: string;
   previewScale: number;
+  fillPreview: string;
+  modelSha256: string;
   crops: Record<string, string>;
   candidates: PrepareCandidate[];
-};
-
-export type EraseGap = { regionId: string; code: string };
-
-export type EraseRegionResult = {
-  regionId: string;
-  disposition: "translate" | "preserve";
-  preserveReason?: ImagePreserveReason;
-  method?: ImageActualEraseMethod;
-  mask?: string;
-  maskSha256?: string;
-  gap?: string | null;
 };
 
 export type ErasePageResult = {
   pageId: string;
   inputSha256: string;
-  ok: boolean;
-  clean: string | null;
-  cleanSha256: string | null;
+  clean: string;
+  cleanSha256: string;
   overlay: string;
-  gaps: EraseGap[];
-  regions: EraseRegionResult[];
+  regions: ImageCleanRegion[]; // 运行掩码使用磁盘路径，归档时转换为包内路径。
   cached?: boolean;
 };
 
@@ -88,18 +73,11 @@ export type RunRecord = {
   version: number;
   runId: string;
   revision: number;
-  device: ImageDevice;
   pages: ErasePageResult[];
   decisions: Record<string, { decision: "accept" | "reject"; reason?: string }>;
 };
 
-export type ReviewedRegion = {
-  regionId: string;
-  disposition: "translate" | "preserve";
-  preserveReason?: ImagePreserveReason;
-  method?: ImageActualEraseMethod;
-  maskSha256?: string;
-};
+export type ReviewedRegion = Omit<ImageCleanRegion, "mask">; // 验收目录由区域身份定位掩码，记录只保存摘要。
 
 export type ReviewRecord = {
   pageId: string;
@@ -128,20 +106,24 @@ export async function locked<T>(directory: string, action: () => Promise<T>): Pr
   }
 }
 
+/** 流式计算文件摘要，避免额外持有整页 PNG 字节。 */
 export async function digest(file: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const bytes of fs.create_read_stream(file)) hash.update(bytes as Buffer);
   return hash.digest("hex");
 }
 
+/** JSON 解析只恢复数据，各阶段的契约校验负责结构与资产引用。 */
 export function read_json<T>(file: string): T {
   return JSON.parse(fs.read_text_file(file)) as T;
 }
 
+/** 调用方持有工作区锁，单文件原子替换避免留下截断的状态。 */
 export function write_json(file: string, value: unknown): void {
   fs.write_file_atomic(file, JSON.stringify(value, null, 2));
 }
 
+/** 仅把文件不存在视为缺失，权限与其它 IO 错误继续传播。 */
 export function file_exists(file: string): boolean {
   try {
     fs.stat(file);
@@ -159,18 +141,6 @@ export function load_draft(directory: string): Draft {
     throw new Error("Invalid image draft");
   validate_image_book(state.book, state.records, { confirmed: state.confirmed });
   return state;
-}
-
-/** 运行缓存键包含消除输入指纹、算法版本、修复模型摘要与设备，与文字/方向改动隔离。 */
-export function repair_cache_key(inputSha256: string, device: ImageDevice): string {
-  return image_sha256(
-    JSON.stringify({
-      version: ALGORITHM_VERSION,
-      inputSha256,
-      inpaint: IMAGE_MODELS.inpaint.sha256,
-      device,
-    }),
-  );
 }
 
 export const normalized_path = (directory: string, pageId: string): string =>
@@ -195,7 +165,6 @@ export function review_artifact_digest(
       regionId: r.regionId,
       disposition: r.disposition,
       preserveReason: r.preserveReason ?? null,
-      method: r.method ?? null,
       maskSha256: r.maskSha256 ?? null,
     }));
   return image_sha256(
@@ -211,14 +180,7 @@ export async function stage_reviewed_page(
     inputSha256: string;
     cleanSource: string;
     cleanSha256: string;
-    regions: readonly {
-      regionId: string;
-      disposition: "translate" | "preserve";
-      preserveReason?: ImagePreserveReason;
-      method?: ImageActualEraseMethod;
-      maskSource?: string;
-      maskSha256?: string;
-    }[];
+    regions: readonly (ReviewedRegion & { maskSource?: string })[];
   },
 ): Promise<{ artifactDigest: string; revDir: string }> {
   const reviewedRegions: ReviewedRegion[] = params.regions.map((region) =>
@@ -231,7 +193,6 @@ export async function stage_reviewed_page(
       : {
           regionId: region.regionId,
           disposition: "translate",
-          method: region.method!,
           maskSha256: region.maskSha256!,
         },
   );
@@ -248,7 +209,7 @@ export async function stage_reviewed_page(
       await verify_immutable_review_dir(revDir, params.pageId, params.inputSha256, artifactDigest);
       return { artifactDigest, revDir };
     } catch {
-      await fs.remove_async(revDir, { recursive: true, force: true });
+      await fs.remove_async(revDir, { recursive: true, force: true }); // 损坏副本可由本次已验证产物重建。
     }
   }
 
@@ -291,6 +252,7 @@ export async function stage_reviewed_page(
   }
 }
 
+/** 按内容地址核对文件，目录存在本身不能证明验收产物完整。 */
 async function verify_immutable_review_dir(
   revDir: string,
   pageId: string,
@@ -317,7 +279,7 @@ async function verify_immutable_review_dir(
   const maskPaths = new Map<string, string>();
   for (const item of review.regions) {
     if (item.disposition === "preserve") continue;
-    if (!item.method || !item.maskSha256)
+    if (!item.maskSha256)
       throw new Error(`Translated region missing reviewed mask: ${pageId}/${item.regionId}`);
     const maskPath = path.join(revDir, "masks", `${item.regionId}.png`);
     if (!file_exists(maskPath) || (await digest(maskPath)) !== item.maskSha256)
@@ -352,7 +314,7 @@ export async function ensure_normalized(
           meta.orientation === page.orientation &&
           (await digest(target)) === meta.pngSha256;
       } catch {
-        cacheValid = false;
+        cacheValid = false; // 规范化缓存可从已核对的原图重建。
       }
     }
     if (!cacheValid) {
@@ -365,7 +327,7 @@ export async function ensure_normalized(
         width: page.width,
         height: page.height,
         orientation: page.orientation,
-        pngSha256: await digest(target),
+        pngSha256: image_sha256(normalized.png),
       } satisfies NormalizedMeta);
     }
   }
@@ -387,6 +349,9 @@ export async function verify_reviewed_page(
   const ref = draft.reviewed?.[page.pageId];
   if (!ref || ref.inputSha256 !== inputSha256)
     throw new Error(`Page clean image not reviewed for current specification: ${page.pageId}`);
+  await validate_image_selections(page, async (member) =>
+    fs.read_file(path.join(directory, member)),
+  );
   const revDir = reviewed_dir(directory, page.pageId, ref.artifactDigest);
   const { review, cleanPath, maskPaths } = await verify_immutable_review_dir(
     revDir,
@@ -413,14 +378,17 @@ export async function verify_reviewed_page(
         ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
       });
     } else {
-      if (!item.method || !item.maskSha256 || !maskPaths.has(region.regionId))
+      if (
+        !item.maskSha256 ||
+        item.maskSha256 !== region.selection?.sha256 ||
+        !maskPaths.has(region.regionId)
+      )
         throw new Error(
           `Translated region missing reviewed mask: ${page.pageId}/${region.regionId}`,
         );
       cleanRegions.push({
         regionId: region.regionId,
         disposition: "translate",
-        method: item.method,
         mask: `masks/${page.pageId}/${region.regionId}.png`,
         maskSha256: item.maskSha256,
       });
@@ -429,11 +397,12 @@ export async function verify_reviewed_page(
   return { review, cleanPath, maskPaths, cleanRegions };
 }
 
-/** 将最新区域清单映射到当前草稿区域对象结构。 */
+/** 页集合与原图身份由 prepare/restore 拥有，区域编辑不能替换它们。 */
 export function assert_immutable_pages(
   previous: readonly ImagePage[],
   next: readonly ImagePage[],
 ): void {
+  if (previous.length !== next.length) throw new Error("Original page count cannot be changed");
   const originals = new Map(previous.map((page) => [page.pageId, page]));
   for (const page of next) {
     const orig = originals.get(page.pageId);

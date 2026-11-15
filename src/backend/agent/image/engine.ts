@@ -19,11 +19,7 @@ export type ImageWorkerConfig = {
 
 let tail: Promise<unknown> = Promise.resolve(); // 串行化所有像素作业的队列尾节点。
 
-function is_model_kind(value: unknown): value is ImageModelKind {
-  return value === "manga" || value === "det" || value === "inpaint";
-}
-
-/** 页操作串行，单次像素作业内按需创建并复用单个多模型 Worker；无推理需求时零模型零 Worker。 */
+/** 页操作串行，单次像素作业内按需创建并复用单个气泡模型 Worker；无推理需求时零模型零 Worker。 */
 export function pixels(
   command: string,
   args: Readonly<Record<string, unknown>>,
@@ -44,7 +40,7 @@ export function pixels(
           args,
           async (header, payload) => {
             const kind = header.kind;
-            if (!is_model_kind(kind)) throw new Error("Unknown image inference request");
+            if (kind !== "bubble") throw new Error("Unknown image inference request");
             if (!model_ready(config.modelsDirectory, IMAGE_MODELS[kind]))
               throw new Error(`Image model missing (${kind}); call prepare_models first`);
             client ??= new InferenceClient(
@@ -52,9 +48,7 @@ export function pixels(
                 ort: ort_entry(),
                 device: device === "gpu" ? "webgpu" : "cpu",
                 models: {
-                  manga: path.join(config.modelsDirectory, IMAGE_MODELS.manga.file),
-                  det: path.join(config.modelsDirectory, IMAGE_MODELS.det.file),
-                  inpaint: path.join(config.modelsDirectory, IMAGE_MODELS.inpaint.file),
+                  bubble: path.join(config.modelsDirectory, IMAGE_MODELS.bubble.file),
                 },
               } satisfies ImageWorkerConfig,
               path.join(runtime, "image-worker.mjs"),

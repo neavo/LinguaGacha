@@ -25,14 +25,12 @@ vi.mock("../inference/helper", () => ({
     _args: unknown,
     infer: NonNullable<Parameters<typeof import("../inference/helper").run_helper>[4]>,
   ) => {
-    if (command === "normalize" || command === "pack") return { ok: true };
+    if (command === "erase" || command === "pack") return;
     if (command === "prepare") {
-      await infer({ kind: "manga" }, new Uint8Array());
-      await infer({ kind: "det" }, new Uint8Array());
+      await infer({ kind: "bubble" }, new Uint8Array());
+      await infer({ kind: "bubble" }, new Uint8Array());
       return;
     }
-    await infer({ kind: "inpaint" }, new Uint8Array());
-    await infer({ kind: "inpaint" }, new Uint8Array());
   },
 }));
 
@@ -51,7 +49,7 @@ beforeEach(async () => {
   });
 });
 
-it("单次作业跨 manga/det 复用单 Worker，失败后关闭，normalize/pack 零模型零 Worker", async () => {
+it("单次作业多次推理 复用单 Worker，失败后关闭，erase/pack 零模型零 Worker", async () => {
   const { pixels } = await import("./engine");
   await pixels("prepare", {});
   expect(fake.request).toHaveBeenCalledTimes(2);
@@ -59,12 +57,12 @@ it("单次作业跨 manga/det 复用单 Worker，失败后关闭，normalize/pac
   expect(fake.close).toHaveBeenCalledOnce();
 
   fake.request.mockRejectedValueOnce(new Error("inference failed"));
-  await expect(pixels("erase", {})).rejects.toThrow("inference failed");
+  await expect(pixels("prepare", {})).rejects.toThrow("inference failed");
   expect(fake.created).toHaveBeenCalledTimes(2);
   expect(fake.close).toHaveBeenCalledTimes(2);
 
   fake.ready = false;
-  await pixels("normalize", {});
+  await pixels("erase", {});
   await pixels("pack", {});
   expect(fake.created).toHaveBeenCalledTimes(2);
 });

@@ -1,3 +1,4 @@
+import { crc32, deflateSync } from "node:zlib";
 import { png_fixture } from "./media-fixture";
 import { write_zip } from "./zip-fixture";
 import { erase_input_digest, image_sha256 } from "../backend/file/image/image-format";
@@ -7,6 +8,8 @@ import type { ImageBook, ImageClean, ImagePage, ImageRecord } from "../shared/im
 export function image_fixture(ids: string[] = ["first", "second"]) {
   const original = png_fixture();
   const sha = image_sha256(original);
+  const mask = selection_fixture();
+  const maskSha = image_sha256(mask);
   const pages: ImagePage[] = ids.map((pageId) => ({
     pageId,
     original: `originals/${pageId}.png`,
@@ -17,18 +20,10 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
     regions: [
       {
         regionId: "text",
-        kind: "bubble",
         disposition: "translate",
-        textAreas: [
-          [
-            { x: 0, y: 0 },
-            { x: 1, y: 0 },
-            { x: 1, y: 1 },
-            { x: 0, y: 1 },
-          ],
-        ],
+        selection: { path: `masks/${pageId}/text.png`, sha256: maskSha },
         direction: "vertical-rl",
-        erase: { method: "auto", mask: "strokes", exclusions: [] },
+        fill: { color: [255, 255, 255] },
       },
     ],
   }));
@@ -48,9 +43,8 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
         ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
         ...(region.disposition === "translate"
           ? {
-              method: "fill" as const,
               mask: `masks/${page.pageId}/${region.regionId}.png`,
-              maskSha256: sha,
+              maskSha256: maskSha,
             }
           : {}),
       })),
@@ -67,14 +61,44 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
       ["items.json", JSON.stringify(records)],
       ["clean.json", JSON.stringify(clean)],
     ]);
-    for (const page of book.pages) entries.set(page.original, original);
+    for (const page of book.pages) {
+      entries.set(page.original, original);
+      for (const region of page.regions)
+        if (region.selection) entries.set(region.selection.path, mask);
+    }
     for (const page of clean.pages) {
       entries.set(page.clean, original);
-      for (const region of page.regions) {
-        if (region.mask) entries.set(region.mask, original);
-      }
     }
     return write_zip(entries);
   };
-  return { book, clean, records, original, pack };
+  return { book, clean, records, original, mask, pack };
+}
+
+/** 测试自有单通道选区 PNG，支持二值及损坏像素场景。 */
+export function selection_fixture(
+  values: readonly number[] = [255],
+  width = values.length,
+): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const length = Buffer.alloc(4),
+      checksum = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    checksum.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, checksum]);
+  };
+  const height = values.length / width;
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  const raw = Buffer.alloc(height * (width + 1));
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) raw[y * (width + 1) + x + 1] = values[y * width + x]!;
+  return Buffer.concat([
+    Buffer.from("89504e470d0a1a0a", "hex"),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import type {
   ImageBook,
@@ -17,8 +18,11 @@ import {
   read_image_package,
   validate_image_book,
   validate_image_clean,
+  validate_image_selections,
+  validate_image_page_pixels,
 } from "../../file/image/image-format";
 import { image_metadata } from "../../file/image/image-metadata";
+import { IMAGE_MODELS } from "./models";
 import { pixels, type ImageDevice } from "./engine";
 import {
   ALGORITHM_VERSION,
@@ -33,7 +37,6 @@ import {
   normalized_meta_path,
   normalized_path,
   read_json,
-  repair_cache_key,
   stage_reviewed_page,
   verify_reviewed_page,
   write_json,
@@ -56,7 +59,6 @@ export const IMAGE_DEPENDENCIES = Object.freeze({
   python: [
     `numpy==${INFERENCE_DEPENDENCIES.numpy}`,
     `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`,
-    "pyclipper==1.4.0",
   ],
 });
 export type {
@@ -70,9 +72,7 @@ export type {
 } from "../../../shared/image";
 export type {
   Draft,
-  EraseGap,
   ErasePageResult,
-  EraseRegionResult,
   PrepareCandidate,
   PreparePageEvidence,
   ReviewRecord,
@@ -80,7 +80,7 @@ export type {
   RunRecord,
 } from "./state";
 
-const UUID_RE = /^[a-f0-9-]{36}$/u;
+const UUID_RE = /^[a-f0-9-]{36}$/u; // runId 直接参与目录定位，拒绝路径片段。
 
 export type DeliveryPage = {
   pageId: string;
@@ -98,21 +98,22 @@ export type DeliveryManifest = {
   pages: DeliveryPage[];
 };
 
+/** 状态读取把失效产物报告为未验收；提交与交付入口负责返回具体错误。 */
 async function collect_review_status(directory: string, draft: Draft) {
-  return await Promise.all(
-    draft.book.pages.map(async (page) => {
-      const inputSha256 = erase_input_digest(page);
-      try {
-        await verify_reviewed_page(directory, draft, page);
-        return { pageId: page.pageId, inputSha256, reviewed: true };
-      } catch {
-        return { pageId: page.pageId, inputSha256, reviewed: false };
-      }
-    }),
-  );
+  const status = [];
+  for (const page of draft.book.pages) {
+    const inputSha256 = erase_input_digest(page);
+    try {
+      await verify_reviewed_page(directory, draft, page);
+      status.push({ pageId: page.pageId, inputSha256, reviewed: true });
+    } catch {
+      status.push({ pageId: page.pageId, inputSha256, reviewed: false });
+    }
+  }
+  return status;
 }
 
-/** 第一阶段取证：保留原始字节与身份，通过 shared `manga` + `det` 局部重检产出证据与草稿建议。 */
+/** 第一阶段取证：保留原始字节与身份，通过气泡实例分割冻结选区并产出颜色建议。 */
 export async function prepare(options: {
   sources: readonly string[];
   workDirectory: string;
@@ -126,78 +127,103 @@ export async function prepare(options: {
     if (file_exists(path.join(directory, STATE_FILE)))
       throw new Error("Image draft already exists");
 
-    const book: ImageBook = { version: 1, bookId: randomUUID(), pages: [] };
-    const records: ImageRecord[] = [];
-    const pageMeta: {
-      pageId: string;
-      original: string;
-      sha256: string;
-      width: number;
-      height: number;
-      orientation: number;
-    }[] = [];
-
-    await fs.make_dir_async(path.join(directory, "originals"));
-    for (const source of options.sources) {
-      const metadata = image_metadata(fs.read_file(source));
-      const pageId = randomUUID();
-      const original = `originals/${pageId}${metadata.extension}`;
-      const target = path.join(directory, original);
-      fs.copy_file(source, target);
-      pageMeta.push({
-        pageId,
-        original,
-        sha256: await digest(target),
-        width: metadata.width,
-        height: metadata.height,
-        orientation: metadata.orientation,
-      });
-    }
-
-    // 规范化原图先统一落地（复用 MuPDF 规范化编码），确保 EXIF 方向在像素阶段始终一致。
-    const stubPages: ImagePage[] = pageMeta.map((p) => ({ ...p, regions: [] }));
-    const normalized = await ensure_normalized(directory, stubPages);
-
-    const evidence: PreparePageEvidence[] = [];
-    for (const meta of pageMeta) {
-      const result = (await pixels(
-        "prepare",
-        {
-          source: normalized.get(meta.pageId)!,
-          output: path.join(directory, "evidence", meta.pageId),
-        },
-        device,
-      )) as {
+    const stage = path.join(directory, `.prepare-${randomUUID()}`);
+    await fs.make_dir_async(stage);
+    try {
+      const book: ImageBook = { version: 1, bookId: randomUUID(), pages: [] };
+      const records: ImageRecord[] = [];
+      const pageMeta: {
+        pageId: string;
+        original: string;
+        sha256: string;
         width: number;
         height: number;
-        preview: string;
-        previewScale: number;
-        crops: Record<string, string>;
-        candidates: PrepareCandidate[];
-        draftRegions: ImageRegion[];
-      };
-      book.pages.push({ ...meta, regions: result.draftRegions });
-      records.push(
-        ...result.draftRegions
-          .filter((r) => r.disposition === "translate")
-          .map(({ regionId }) => ({ pageId: meta.pageId, regionId, message: "" })),
-      );
-      evidence.push({
-        pageId: meta.pageId,
-        width: result.width,
-        height: result.height,
-        preview: result.preview,
-        previewScale: result.previewScale,
-        crops: result.crops,
-        candidates: result.candidates,
-      });
-    }
+        orientation: number;
+      }[] = [];
 
-    const draft: Draft = { revision: 0, confirmed: false, book, records, reviewed: {} };
-    validate_image_book(book, records, { confirmed: false });
-    write_json(path.join(directory, STATE_FILE), draft);
-    write_json(path.join(directory, EVIDENCE_INDEX_FILE), evidence);
-    return { ...draft, evidence };
+      await fs.make_dir_async(path.join(stage, "originals"));
+      for (const source of options.sources) {
+        const originalBytes = fs.read_file(source);
+        const metadata = image_metadata(originalBytes);
+        const pageId = randomUUID();
+        const original = `originals/${pageId}${metadata.extension}`;
+        const target = path.join(stage, original);
+        fs.write_file_atomic(target, originalBytes);
+        pageMeta.push({
+          pageId,
+          original,
+          sha256: image_sha256(originalBytes),
+          width: metadata.width,
+          height: metadata.height,
+          orientation: metadata.orientation,
+        });
+      }
+
+      // 规范化原图先统一落地（复用 MuPDF 规范化编码），确保 EXIF 方向在像素阶段始终一致。
+      const stubPages: ImagePage[] = pageMeta.map((p) => ({ ...p, regions: [] }));
+      const normalized = await ensure_normalized(stage, stubPages);
+
+      const evidence: PreparePageEvidence[] = [];
+      for (const meta of pageMeta) {
+        const result = (await pixels(
+          "prepare",
+          {
+            source: normalized.get(meta.pageId)!,
+            output: path.join(stage, "evidence", meta.pageId),
+            selectionRoot: stage,
+            pageId: meta.pageId,
+          },
+          device,
+        )) as {
+          width: number;
+          height: number;
+          preview: string;
+          previewScale: number;
+          fillPreview: string;
+          crops: Record<string, string>;
+          candidates: PrepareCandidate[];
+          draftRegions: ImageRegion[];
+        };
+        book.pages.push({ ...meta, regions: result.draftRegions });
+        records.push(
+          ...result.draftRegions
+            .filter((r) => r.disposition === "translate")
+            .map(({ regionId }) => ({ pageId: meta.pageId, regionId, message: "" })),
+        );
+        evidence.push({
+          pageId: meta.pageId,
+          width: result.width,
+          height: result.height,
+          preview: result.preview.replace(stage, directory),
+          previewScale: result.previewScale,
+          fillPreview: result.fillPreview.replace(stage, directory),
+          modelSha256: IMAGE_MODELS.bubble.sha256,
+          crops: Object.fromEntries(
+            Object.entries(result.crops).map(([id, file]) => [id, file.replace(stage, directory)]),
+          ),
+          candidates: result.candidates.map((candidate) => ({
+            ...candidate,
+            rawMask: candidate.rawMask.replace(stage, directory),
+          })),
+        });
+      }
+
+      const draft: Draft = { revision: 0, confirmed: false, book, records, reviewed: {} };
+      validate_image_book(book, records, { confirmed: false });
+      for (const page of book.pages)
+        await validate_image_selections(page, async (member) =>
+          fs.read_file(path.join(stage, member)),
+        );
+      write_json(path.join(stage, EVIDENCE_INDEX_FILE), evidence);
+      for (const name of ["originals", "normalized", "masks", "evidence"]) {
+        const source = path.join(stage, name);
+        if (file_exists(source)) fs.copy_entry(source, path.join(directory, name));
+      }
+      write_json(path.join(directory, STATE_FILE), draft);
+      return { ...draft, evidence };
+    } finally {
+      await fs.remove_async(stage, { recursive: true, force: true });
+    }
   });
 }
 
@@ -211,7 +237,7 @@ export async function read(workDirectory: string) {
   return { ...draft, reviewStatus, evidence };
 }
 
-/** 在工作区锁下原子提交确认的区域、消字配置与按阅读顺序排列的原文字段。 */
+/** 在工作区锁下原子提交确认的区域、填色配置与按阅读顺序排列的原文字段。 */
 export async function apply(
   workDirectory: string,
   expectedRevision: number,
@@ -229,6 +255,21 @@ export async function apply(
       confirmed: change.confirmed,
     });
 
+    for (const page of nextPages) {
+      const previous = current.book.pages.find((p) => p.pageId === page.pageId)!;
+      for (const region of page.regions) {
+        const registered =
+          previous.regions.find((r) => r.regionId === region.regionId)?.selection ?? null;
+        if (
+          region.selection?.path !== registered?.path ||
+          region.selection?.sha256 !== registered?.sha256
+        )
+          throw new Error("Selection is not registered for this region");
+      }
+      await validate_image_selections(page, async (member) =>
+        fs.read_file(path.join(directory, member)),
+      );
+    }
     const reviewed: Record<string, ReviewedPageRef> = {};
     for (const page of nextPages) {
       const existing = current.reviewed?.[page.pageId];
@@ -238,7 +279,6 @@ export async function apply(
     }
 
     const next: Draft = {
-      ...(current.sourceSha256 ? { sourceSha256: current.sourceSha256 } : {}),
       revision: current.revision + 1,
       confirmed: change.confirmed,
       book: { ...current.book, pages: nextPages },
@@ -255,10 +295,8 @@ export async function erase(options: {
   workDirectory: string;
   expectedRevision: number;
   pageIds?: readonly string[];
-  device?: ImageDevice;
 }) {
   const directory = path.resolve(options.workDirectory);
-  const device = options.device ?? "cpu";
 
   return locked(directory, async () => {
     const draft = load_draft(directory);
@@ -287,17 +325,16 @@ export async function erase(options: {
 
     for (const page of targetPages) {
       const inputSha256 = erase_input_digest(page);
-      const cacheKey = repair_cache_key(inputSha256, device);
+      const cacheKey = `v${ALGORITHM_VERSION}-${inputSha256}`;
       const cacheDir = path.join(directory, "cache", page.pageId, cacheKey);
       const pageRunDir = path.join(runDir, page.pageId);
-      const cacheMeta = path.join(cacheDir, "repair.json");
+      const cacheMeta = path.join(cacheDir, "erase.json");
 
       let cachedResult: ErasePageResult | null = null;
       if (file_exists(cacheMeta)) {
         try {
           const cached = read_json<ErasePageResult>(cacheMeta);
           if (
-            cached.ok &&
             cached.clean &&
             cached.cleanSha256 &&
             (await digest(cached.clean)) === cached.cleanSha256
@@ -331,41 +368,44 @@ export async function erase(options: {
             }
           }
         } catch {
-          cachedResult = null;
+          cachedResult = null; // 缓存可重建，读取失败后按确认输入重新填色。
         }
       }
 
       if (cachedResult) {
+        // 命中缓存由宿主验证输入；未命中时由实际读选区的 Python helper 验证。
+        await validate_image_selections(page, async (member) =>
+          fs.read_file(path.join(directory, member)),
+        );
         results.push(cachedResult);
         continue;
       }
 
-      const raw = (await pixels(
-        "erase",
-        { source: normalized.get(page.pageId)!, page, output: pageRunDir },
-        device,
-      )) as Omit<ErasePageResult, "pageId" | "inputSha256">;
+      const raw = (await pixels("erase", {
+        source: normalized.get(page.pageId)!,
+        page,
+        root: directory,
+        output: pageRunDir,
+      })) as Omit<ErasePageResult, "pageId" | "inputSha256">;
 
       const entry: ErasePageResult = { pageId: page.pageId, inputSha256, ...raw, cached: false };
-      if (entry.ok && entry.clean && entry.cleanSha256) {
-        await fs.make_dir_async(path.join(cacheDir, "masks"));
-        const cachedClean = path.join(cacheDir, "clean.png");
-        const cachedOverlay = path.join(cacheDir, "mask-overlay.png");
-        fs.copy_file(entry.clean, cachedClean);
-        fs.copy_file(entry.overlay, cachedOverlay);
-        const cachedRegions = entry.regions.map((r) => {
-          if (!r.mask) return r;
-          const dest = path.join(cacheDir, "masks", `${r.regionId}.png`);
-          fs.copy_file(r.mask, dest);
-          return { ...r, mask: dest };
-        });
-        write_json(cacheMeta, {
-          ...entry,
-          clean: cachedClean,
-          overlay: cachedOverlay,
-          regions: cachedRegions,
-        });
-      }
+      await fs.make_dir_async(path.join(cacheDir, "masks"));
+      const cachedClean = path.join(cacheDir, "clean.png");
+      const cachedOverlay = path.join(cacheDir, "mask-overlay.png");
+      fs.copy_file(entry.clean, cachedClean);
+      fs.copy_file(entry.overlay, cachedOverlay);
+      const cachedRegions = entry.regions.map((r) => {
+        if (!r.mask) return r;
+        const dest = path.join(cacheDir, "masks", `${r.regionId}.png`);
+        fs.copy_file(r.mask, dest);
+        return { ...r, mask: dest };
+      });
+      write_json(cacheMeta, {
+        ...entry,
+        clean: cachedClean,
+        overlay: cachedOverlay,
+        regions: cachedRegions,
+      });
       results.push(entry);
     }
 
@@ -374,7 +414,6 @@ export async function erase(options: {
       version: ALGORITHM_VERSION,
       runId,
       revision: nextRevision,
-      device,
       pages: results,
       decisions: {},
     };
@@ -434,10 +473,8 @@ export async function review(options: {
         continue;
       }
 
-      if (!runPage.ok || !runPage.clean || !runPage.cleanSha256)
-        throw new Error(`Cannot accept failed or incomplete erase result on page ${item.pageId}`);
-      if ((await digest(runPage.clean)) !== runPage.cleanSha256)
-        throw new Error(`Erase artifact clean.png tampered on page ${item.pageId}`);
+      if (!runPage.clean || !runPage.cleanSha256)
+        throw new Error(`Cannot accept incomplete erase result on page ${item.pageId}`);
 
       const runRegions = new Map(runPage.regions.map((r) => [r.regionId, r]));
       if (runRegions.size !== draftPage.regions.length)
@@ -456,19 +493,27 @@ export async function review(options: {
           });
           continue;
         }
-        if (!region.method || !region.mask || !region.maskSha256)
+        if (!region.mask || region.maskSha256 !== draftRegion.selection?.sha256)
           throw new Error(`Missing mask artifact for ${item.pageId}/${region.regionId}`);
         if ((await digest(region.mask)) !== region.maskSha256)
           throw new Error(`Erase mask tampered for ${item.pageId}/${region.regionId}`);
         stagedRegions.push({
           regionId: region.regionId,
           disposition: "translate",
-          method: region.method,
           maskSource: region.mask,
           maskSha256: region.maskSha256,
         });
       }
 
+      await validate_image_page_pixels(
+        draftPage,
+        {
+          clean: runPage.clean,
+          cleanSha256: runPage.cleanSha256,
+        },
+        async (member) =>
+          fs.read_file(member === runPage.clean ? member : path.join(directory, member)),
+      );
       verifiedAccepts.push({
         pageId: item.pageId,
         inputSha256: currentInputSha,
@@ -517,6 +562,7 @@ export async function review(options: {
   });
 }
 
+/** 只引用已验收的像素产物，文字编辑和模型更新不触发重算。 */
 async function build_clean_manifest(
   directory: string,
   draft: Draft,
@@ -536,6 +582,10 @@ async function build_clean_manifest(
     const cleanMember = `clean/${page.pageId}.png`;
     sources[page.original] = path.join(directory, page.original);
     sources[cleanMember] = cleanPath;
+    for (const region of page.regions) {
+      if (region.selection)
+        sources[region.selection.path] = path.join(directory, region.selection.path);
+    }
     for (const [regionId, maskPath] of maskPaths) {
       sources[`masks/${page.pageId}/${regionId}.png`] = maskPath;
     }
@@ -561,31 +611,31 @@ async function build_clean_manifest(
 export async function pack(
   workDirectory: string,
   output: string,
-): Promise<{ path: string; sourceSha256: string; status: ImageClean["status"] }> {
+): Promise<{ path: string; status: ImageClean["status"] }> {
   const directory = path.resolve(workDirectory);
   const target = path.resolve(output);
   return locked(directory, async () => {
     const draft = load_draft(directory);
     if (!draft.confirmed) throw new Error("Confirm image regions and source text before packaging");
     const { clean, sources } = await build_clean_manifest(directory, draft);
-    const normalized = await ensure_normalized(directory, draft.book.pages);
 
     await fs.make_dir_async(path.dirname(target));
     const temporary = `${target}.${randomUUID()}.tmp`;
-    await pixels("pack", {
-      root: directory,
-      sources,
-      normalized: Object.fromEntries(normalized),
-      book: draft.book,
-      records: draft.records,
-      clean,
-      output: temporary,
-    });
-    await read_image_package(fs.read_file(temporary), target);
-    fs.rename(temporary, target);
-    const sourceSha256 = await digest(target);
-    write_json(path.join(directory, STATE_FILE), { ...draft, sourceSha256 });
-    return { path: target, sourceSha256, status: clean.status };
+    try {
+      await pixels("pack", {
+        root: directory,
+        sources,
+        book: draft.book,
+        records: draft.records,
+        clean,
+        output: temporary,
+      });
+      await read_image_package(fs.read_file(temporary), target);
+      fs.rename(temporary, target);
+    } finally {
+      await fs.remove_async(temporary, { force: true });
+    }
+    return { path: target, status: clean.status };
   });
 }
 
@@ -597,9 +647,6 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
     const book = read_json<ImageBook>(path.join(source, "image.json"));
     const records = read_json<ImageRecord[]>(path.join(source, "items.json"));
     const clean = read_json<ImageClean>(path.join(source, "clean.json"));
-    const { sourceSha256 } = read_json<{ sourceSha256: string }>(
-      path.join(source, "image-source.json"),
-    );
     validate_image_book(book, records, { confirmed: true });
     validate_image_clean(clean, book);
 
@@ -618,20 +665,23 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
 
       for (const page of book.pages) {
         const srcOrig = path.join(source, page.original);
-        if ((await digest(srcOrig)) !== page.sha256)
-          throw new Error(`Original digest mismatch: ${page.pageId}`);
+        for (const region of page.regions) {
+          if (region.selection)
+            fs.copy_file(
+              path.join(source, region.selection.path),
+              path.join(stageRoot, region.selection.path),
+            );
+        }
         const stagedOrig = path.join(stageRoot, page.original);
         fs.copy_file(srcOrig, stagedOrig);
-        if ((await digest(stagedOrig)) !== page.sha256)
-          throw new Error(`Staged original digest mismatch: ${page.pageId}`);
 
         const cleanPage = cleanById.get(page.pageId)!;
-        const inputSha256 = erase_input_digest(page);
-        if (cleanPage.inputSha256 !== inputSha256)
-          throw new Error(`Clean inputSha256 mismatch: ${page.pageId}`);
+        const inputSha256 = cleanPage.inputSha256;
         const srcClean = path.join(source, cleanPage.clean);
-        if ((await digest(srcClean)) !== cleanPage.cleanSha256)
-          throw new Error(`Clean digest mismatch: ${page.pageId}`);
+        fs.copy_file(srcClean, path.join(stageRoot, cleanPage.clean));
+        await validate_image_page_pixels(page, cleanPage, async (member) =>
+          fs.read_file(path.join(stageRoot, member)),
+        );
 
         const stagedRegions: Parameters<typeof stage_reviewed_page>[1]["regions"][number][] = [];
         for (const cr of cleanPage.regions) {
@@ -643,16 +693,12 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
             });
             continue;
           }
-          if (!cr.method || !cr.mask || !cr.maskSha256)
-            throw new Error(`Clean region missing method or mask: ${page.pageId}/${cr.regionId}`);
-          const srcMask = path.join(source, cr.mask);
-          if ((await digest(srcMask)) !== cr.maskSha256)
-            throw new Error(`Mask digest mismatch: ${page.pageId}/${cr.regionId}`);
+          if (!cr.mask || !cr.maskSha256)
+            throw new Error(`Clean region missing mask: ${page.pageId}/${cr.regionId}`);
           stagedRegions.push({
             regionId: cr.regionId,
             disposition: "translate",
-            method: cr.method,
-            maskSource: srcMask,
+            maskSource: path.join(stageRoot, cr.mask),
             maskSha256: cr.maskSha256,
           });
         }
@@ -661,7 +707,7 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
           page,
           stagedOrig,
           inputSha256,
-          cleanSource: srcClean,
+          cleanSource: path.join(stageRoot, cleanPage.clean),
           cleanSha256: cleanPage.cleanSha256,
           regions: stagedRegions,
         });
@@ -706,6 +752,8 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
       await fs.make_dir_async(path.join(directory, "originals"));
       for (const item of stageItems) {
         backupTarget(path.join(directory, item.page.original));
+        for (const region of item.page.regions)
+          if (region.selection) backupTarget(path.join(directory, region.selection.path));
         const normPng = normalized_path(directory, item.page.pageId);
         const normMeta = normalized_meta_path(directory, item.page.pageId);
         let keepNormalized = false;
@@ -728,10 +776,16 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
       }
       backupTarget(stateFile);
 
-      const draft: Draft = { revision: 0, confirmed: true, book, records, reviewed, sourceSha256 };
+      const draft: Draft = { revision: 0, confirmed: true, book, records, reviewed };
       try {
         for (const item of stageItems) {
           fs.copy_file_atomic(item.stagedOrig, path.join(directory, item.page.original));
+          for (const region of item.page.regions)
+            if (region.selection)
+              fs.copy_file_atomic(
+                path.join(stageRoot, region.selection.path),
+                path.join(directory, region.selection.path),
+              );
         }
         for (const p of normCleanups) {
           await fs.remove_async(p, { force: true });
@@ -796,35 +850,23 @@ export async function publish(options: {
       const deliverySha256 = image_sha256(
         JSON.stringify({ bookId: draft.book.bookId, status: clean.status, pages }),
       );
+      const manifest: DeliveryManifest = {
+        bookId: draft.book.bookId,
+        status: clean.status,
+        deliverySha256,
+        pages,
+      };
       const target = path.join(parent, `image-${deliverySha256.slice(0, 12)}`);
       const deliveryFile = path.join(target, "delivery.json");
       if (file_exists(deliveryFile)) {
-        const existing = read_json<DeliveryManifest>(deliveryFile);
-        if (existing.deliverySha256 !== deliverySha256)
-          throw new Error("Published delivery mismatch");
-        if (
-          existing.bookId !== draft.book.bookId ||
-          existing.status !== clean.status ||
-          !Array.isArray(existing.pages) ||
-          existing.pages.length !== pages.length
-        )
+        if (!isDeepStrictEqual(read_json<unknown>(deliveryFile), manifest))
           throw new Error("Published delivery manifest corrupted");
-        for (const [index, expectedPage] of pages.entries()) {
-          const actualPage = existing.pages[index];
-          if (
-            !actualPage ||
-            actualPage.pageId !== expectedPage.pageId ||
-            actualPage.file !== expectedPage.file ||
-            actualPage.sha256 !== expectedPage.sha256
-          )
-            throw new Error(`Published delivery entry corrupted: ${expectedPage.pageId}`);
-          const deliveredFile = path.join(target, expectedPage.file);
-          if (!file_exists(deliveredFile) || (await digest(deliveredFile)) !== expectedPage.sha256)
-            throw new Error(
-              `Published delivery artifact missing or corrupted: ${expectedPage.file}`,
-            );
+        for (const page of pages) {
+          const deliveredFile = path.join(target, page.file);
+          if (!file_exists(deliveredFile) || (await digest(deliveredFile)) !== page.sha256)
+            throw new Error(`Published delivery artifact missing or corrupted: ${page.file}`);
         }
-        return { path: target, ...existing };
+        return { path: target, ...manifest };
       }
 
       const temporary = path.join(parent, `.image-${randomUUID()}`);
@@ -837,12 +879,6 @@ export async function publish(options: {
           if ((await digest(outPath)) !== page.sha256)
             throw new Error(`Published clean image digest mismatch: ${page.file}`);
         }
-        const manifest: DeliveryManifest = {
-          bookId: draft.book.bookId,
-          status: clean.status,
-          deliverySha256,
-          pages,
-        };
         write_json(path.join(temporary, "delivery.json"), manifest);
         fs.rename(temporary, target);
         return { path: target, ...manifest };

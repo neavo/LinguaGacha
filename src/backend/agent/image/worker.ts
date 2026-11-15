@@ -1,62 +1,64 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { tensor_shape, type ChannelHeader } from "../inference/channel";
 import { check_finite, float, infer, type Ort, type OrtSession } from "../inference/ort";
-import { detect_text } from "../inference/text-detection";
 import type { ImageWorkerConfig } from "./engine";
-import type { ImageModelKind } from "./models";
 
-// 单一图片 Worker 懒加载最多三个模型会话，避免 WebGPU 多 Worker 并发冲突。
+// 单一图片 Worker 懒加载气泡模型会话，避免 WebGPU 多 Worker 并发冲突。
 const config = workerData as ImageWorkerConfig;
 const port = parentPort!;
 const loaded = (await import(config.ort)) as Ort & { default?: Ort };
 const ort = loaded.default ?? loaded;
-const sessions = new Map<ImageModelKind, Promise<OrtSession>>();
+let pending: Promise<OrtSession> | undefined; // 创建中的会话也共享，失败后交给宿主结束本次作业。
 
-function session(kind: ImageModelKind): Promise<OrtSession> {
-  let pending = sessions.get(kind);
-  if (!pending) {
-    pending = ort.InferenceSession.create(config.models[kind], {
-      executionProviders: [config.device],
-      intraOpNumThreads: 4,
-      interOpNumThreads: 1,
-      logSeverityLevel: 3,
-    });
-    sessions.set(kind, pending);
-  }
-  return pending;
+/** 固定显式后端，初始化失败不切换设备重试。 */
+function session(): Promise<OrtSession> {
+  return (pending ??= ort.InferenceSession.create(config.models.bubble, {
+    executionProviders: [config.device],
+    intraOpNumThreads: 4,
+    interOpNumThreads: 1,
+    logSeverityLevel: 3,
+  }));
 }
 
-async function run_manga_or_inpaint(
-  kind: "manga" | "inpaint",
+/** 只把已核对布局与有限值的张量传给 Python，成功或失败都释放原生输出。 */
+async function run_bubble(
   input: Float32Array,
   shape: number[],
 ): Promise<{ header: Record<string, unknown>; payload: ArrayBuffer }> {
-  const expectedChannels = kind === "manga" ? 3 : 4;
-  if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== expectedChannels)
+  if (
+    shape.length !== 4 ||
+    shape[0] !== 1 ||
+    shape[1] !== 3 ||
+    shape[2]! % 32 !== 0 ||
+    shape[3]! % 32 !== 0
+  )
     throw new Error("Invalid image tensor");
-  const model = await session(kind);
-  const plane = shape[2]! * shape[3]!;
-  const feeds =
-    kind === "manga"
-      ? { [model.inputNames[0]!]: new ort.Tensor("float32", input, shape) }
-      : {
-          image: new ort.Tensor("float32", input.subarray(0, 3 * plane), [
-            1,
-            3,
-            shape[2]!,
-            shape[3]!,
-          ]),
-          mask: new ort.Tensor("float32", input.subarray(3 * plane), [1, 1, shape[2]!, shape[3]!]),
-        };
-  const outputs = await infer(model, feeds);
+  const model = await session();
+  const outputs = await infer(model, {
+    [model.inputNames[0]!]: new ort.Tensor("float32", input, shape),
+  });
   try {
-    const names = kind === "manga" ? ["output0", "output1"] : [model.outputNames[0]!];
+    const names = ["output0", "output1"];
     const tensors = names.map((name) => {
       const value = outputs[name];
       if (!value) throw new Error("Missing model output");
       check_finite(float(value.data));
       return value;
     });
+    const [boxes, proto] = tensors;
+    const expectedBoxes = [1, 37, 21 * (shape[2]! / 32) * (shape[3]! / 32)];
+    const expectedProto = [1, 32, shape[2]! / 4, shape[3]! / 4];
+    for (const [tensor, expected] of [
+      [boxes!, expectedBoxes],
+      [proto!, expectedProto],
+    ] as const) {
+      if (
+        tensor.dims.length !== expected.length ||
+        tensor.dims.some((n, i) => n !== expected[i]) ||
+        float(tensor.data).length !== expected.reduce((a, b) => a * b, 1)
+      )
+        throw new Error("Invalid bubble model output shape");
+    }
     const data = new Float32Array(
       tensors.reduce((sum, tensor) => sum + float(tensor.data).length, 0),
     );
@@ -74,10 +76,13 @@ async function run_manga_or_inpaint(
   }
 }
 
+/** 创建失败时没有会话可释放，成功创建的会话必须释放后才能关闭通道。 */
 async function shutdown(): Promise<void> {
-  const created = await Promise.allSettled(sessions.values());
-  sessions.clear();
-  for (const result of created) if (result.status === "fulfilled") await result.value.release();
+  if (pending) {
+    const [result] = await Promise.allSettled([pending]);
+    pending = undefined;
+    if (result!.status === "fulfilled") await result!.value.release();
+  }
   port.close();
 }
 
@@ -96,24 +101,9 @@ port.on("message", (message: Request) => {
       const shape = tensor_shape(message.header, message.payload.byteLength);
       const input = new Float32Array(message.payload);
       check_finite(input);
-      if (message.kind === "det") {
-        const result = await detect_text(ort, await session("det"), input, shape);
-        port.postMessage(
-          {
-            id: message.id,
-            header: { dtype: "float32", shape: result.shape },
-            payload: result.data.buffer,
-          },
-          [result.data.buffer],
-        );
-        return;
-      }
-      if (message.kind === "manga" || message.kind === "inpaint") {
-        const result = await run_manga_or_inpaint(message.kind, input, shape);
-        port.postMessage({ id: message.id, ...result }, [result.payload]);
-        return;
-      }
-      throw new Error(`Unknown image task: ${message.kind}`);
+      if (message.kind !== "bubble") throw new Error(`Unknown image task: ${message.kind}`);
+      const result = await run_bubble(input, shape);
+      port.postMessage({ id: message.id, ...result }, [result.payload]);
     } catch (error) {
       port.postMessage({
         id: message.id,

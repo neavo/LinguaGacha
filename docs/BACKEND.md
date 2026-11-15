@@ -335,6 +335,8 @@ Agent 暂存生成只完成宿主处理范围。完整交付须核对工程文�
 
 ## 图片
 
-`.image` 保存 `image.json`（确认区域与四点文本行 `textAreas`、擦除策略 `erase`、`kind` 与 `preserveReason`）、`items.json`（阅读顺序原文条目）、`clean.json`（干净底图状态 `complete` / `partial`、实际消字方式与逐页 `inputSha256`）及 `originals/`、`clean/`、`masks/` 资产。工作缓存（`normalized/`、`evidence/`、`runs/`、`cache/`）可删除，通过 `sources` 展开的原图与已验收底图/掩码在 `restore` 中离线恢复；仅修改译文条目、顺序、方向或 `preserveReason` 不使 `eraseInputDigest` 失效，零文本页完整保留在交付集合中。
+`.image` 将确认选区和底色作为可独立恢复的原稿事实。检测证据和运行缓存可以清理，模型更新不能重写已验收底图。
+
+文字编辑与像素验收独立。修改原文、译文、阅读顺序、方向或保留原因不应要求重新消字。已知漏检必须作为未解决区域进入 `partial`，零检测页仍需视觉验收。
 
 同文同上下文的区域可能有不同人工译文，替换时先按稳定身份保留完成事实。保留项继续参与普通继承序列，维持上下文邻接关系。运行资源责任见 [AGENT_RUNTIME](AGENT_RUNTIME.md#图片计算)。

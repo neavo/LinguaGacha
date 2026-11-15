@@ -1,4 +1,3 @@
-import { image_sha256 } from "../../file/image/image-format";
 import { GAME_ENGINES } from "../../file/shared/game/engines";
 import { is_game_file_type } from "../../../shared/project-source-formats";
 import {
@@ -115,11 +114,6 @@ export async function write_agent_workspace_sources(args: {
           }
           await write(path.join(target, name), bytes);
         }
-        if (file.file_type === "IMAGE")
-          await write(
-            path.join(target, "image-source.json"),
-            Buffer.from(JSON.stringify({ sourceSha256: image_sha256(content) })),
-          );
         if (container?.game_files) {
           if (names.find_conflict(GAME_FILES_MEMBER) !== null)
             report("reference", new Error("File list conflicts with original"), GAME_FILES_MEMBER);

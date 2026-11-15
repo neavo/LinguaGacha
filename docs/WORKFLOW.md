@@ -177,15 +177,15 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 漫画图片
 
-图片工程契约变化运行 `file/image/image-format.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。SDK 事务流、缓存和独立验收变化运行 `agent/image/index.test.ts`、`agent/image/engine.test.ts`。
+图片工程契约变化运行 `file/image/image-format.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。SDK 事务流、缓存和独立验收变化运行 `agent/image/index.test.ts`、`agent/image/state.test.ts`、`agent/image/engine.test.ts`。
 
-像素边界使用已经准备的共享 Python 环境，无需模型：
+选区填孔、互斥归属、RGB 填色、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
 
 ```powershell
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/image.test.py src/backend/agent/image
 ```
 
-部署验证可把最后一个参数改为部署后的 `runtime` 目录。共享推理或单图片多会话 Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`，并同步回归下方媒体检测与 `inference/models.test.ts`；工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
+部署验证可把最后一个参数改为部署后的 `runtime` 目录。图片气泡分割 Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
 
 真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、区域恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
 
