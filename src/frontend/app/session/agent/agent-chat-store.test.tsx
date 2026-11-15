@@ -1160,6 +1160,7 @@ describe("AgentChatStore", () => {
       entries: [
         {
           kind: "tool_call",
+          endedAt: null,
           id: "running",
           toolName: "read_skill",
           input: '{"path":"SKILL.md"}',
@@ -1170,6 +1171,7 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "tool_call",
+          endedAt: 12,
           id: "success",
           toolName: "workspace_run",
           input: '{"script":"console.log([])"}',
@@ -1180,6 +1182,7 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "tool_call",
+          endedAt: null,
           id: "unknown",
           toolName: "missing_tool",
           input: "{}",
@@ -1190,6 +1193,7 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "tool_call",
+          endedAt: null,
           id: "legacy",
           toolName: "test_tool",
           status: "success",
@@ -1198,6 +1202,7 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "tool_call",
+          endedAt: null,
           id: "invalid",
           toolName: "test_tool",
           input: "{}",
@@ -1208,6 +1213,7 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "tool_call",
+          endedAt: null,
           id: "invalid-running-output",
           toolName: "workspace_run",
           input: "{}",
@@ -1218,6 +1224,7 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "tool_call",
+          endedAt: null,
           id: "invalid-success-output",
           toolName: "workspace_run",
           input: "{}",
@@ -1228,6 +1235,7 @@ describe("AgentChatStore", () => {
         },
         ...["旧字符串", ["正文", 1]].map((output, index) => ({
           kind: "tool_call",
+          endedAt: null,
           id: `invalid-output-blocks-${index}`,
           toolName: "workspace_run",
           input: "{}",
@@ -1238,6 +1246,7 @@ describe("AgentChatStore", () => {
         })),
         {
           kind: "tool_call",
+          endedAt: null,
           id: "invalid-missing-image-count",
           toolName: "workspace_run",
           input: "{}",
@@ -1247,6 +1256,7 @@ describe("AgentChatStore", () => {
         },
         ...[-1, 1.5, Number.MAX_SAFE_INTEGER + 1].map((imageCount, index) => ({
           kind: "tool_call",
+          endedAt: null,
           id: `invalid-image-count-${index}`,
           toolName: "workspace_run",
           input: "{}",
@@ -1257,6 +1267,7 @@ describe("AgentChatStore", () => {
         })),
         {
           kind: "tool_call",
+          endedAt: null,
           id: "invalid-running-image-count",
           toolName: "workspace_run",
           input: "{}",
@@ -1267,6 +1278,7 @@ describe("AgentChatStore", () => {
         },
         {
           kind: "tool_call",
+          endedAt: null,
           id: "empty-output",
           toolName: "workspace_run",
           input: "{}",
@@ -1424,6 +1436,7 @@ describe("AgentChatStore", () => {
     expect(latest.entries).toEqual([
       {
         kind: "tool_call",
+        endedAt: null,
         id: "running",
         toolName: "read_skill",
         input: '{"path":"SKILL.md"}',
@@ -1434,6 +1447,7 @@ describe("AgentChatStore", () => {
       },
       {
         kind: "tool_call",
+        endedAt: 12,
         id: "success",
         toolName: "workspace_run",
         input: '{"script":"console.log([])"}',
@@ -1444,6 +1458,7 @@ describe("AgentChatStore", () => {
       },
       {
         kind: "tool_call",
+        endedAt: null,
         id: "unknown",
         toolName: "missing_tool",
         input: "{}",
@@ -1454,6 +1469,7 @@ describe("AgentChatStore", () => {
       },
       {
         kind: "tool_call",
+        endedAt: null,
         id: "empty-output",
         toolName: "workspace_run",
         input: "{}",

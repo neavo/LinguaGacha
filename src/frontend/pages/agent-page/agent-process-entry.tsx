@@ -35,6 +35,7 @@ export function AgentToolEntryButton(props: {
       status={props.entry.status}
       status_label={t(AGENT_STATUS_LABEL_KEYS[props.entry.status])}
       created_at={props.entry.createdAt}
+      ended_at={props.entry.endedAt}
       detail={run_output?.line}
       action={{ on_click: props.on_open, has_popup: "dialog" }}
     />
@@ -72,6 +73,7 @@ function AgentProcessEntry(props: {
   status: AgentEntryStatus;
   status_label: string;
   created_at: number | null;
+  ended_at?: number | null;
   detail?: string | undefined; // 运行中的最新输出行，不播报，避免读屏每 500 毫秒朗读
   announce_status?: boolean;
   action: {
@@ -91,8 +93,12 @@ function AgentProcessEntry(props: {
         >
           {props.label}
         </span>
-        {props.status === "running" && props.created_at !== null ? (
-          <AgentProcessElapsed created_at={props.created_at} />
+        {props.created_at !== null && (props.status === "running" || props.ended_at != null) ? (
+          <AgentProcessElapsed
+            created_at={props.created_at}
+            running={props.status === "running"}
+            ended_at={props.ended_at ?? undefined}
+          />
         ) : null}
         {props.status === "running" && props.detail ? (
           <span className="agent-process-entry__detail"> · {props.detail}</span>
@@ -117,8 +123,12 @@ function AgentProcessEntry(props: {
   );
 }
 
-/** 仅运行且有真实起始时间时挂载时钟，终态自动释放计时器。 */
-function AgentProcessElapsed(props: { created_at: number }): JSX.Element {
-  const duration = useAgentElapsed(props.created_at, true);
+/** 独立订阅时钟，将每秒重绘限制在耗时文本内。 */
+function AgentProcessElapsed(props: {
+  created_at: number;
+  running: boolean;
+  ended_at: number | undefined;
+}): JSX.Element {
+  const duration = useAgentElapsed(props.created_at, props.running, props.ended_at);
   return <span className="agent-process-entry__elapsed"> · {duration}</span>;
 }

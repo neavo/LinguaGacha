@@ -381,6 +381,7 @@ export class AgentChatView {
               output: null,
               imageCount: 0,
               createdAt: message.timestamp,
+              endedAt: null,
             },
             record.id,
           );
@@ -401,6 +402,7 @@ export class AgentChatView {
           {
             ...row.entry,
             status: read_agent_tool_result_status(record, message),
+            endedAt: message.timestamp,
             output: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
             imageCount: images.length,
           },

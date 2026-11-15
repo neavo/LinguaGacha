@@ -59,6 +59,7 @@ it("快照替换清除旧轮次、操作状态和条目，并通知被移除条�
     },
     {
       kind: "tool_call",
+      endedAt: null,
       id: "tool",
       toolName: "workspace_apply",
       input: "{}",

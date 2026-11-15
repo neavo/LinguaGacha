@@ -266,6 +266,7 @@ describe("AgentToolDetailDialog", () => {
 function tool_running(tool_name: string, input: string): AgentToolEntry {
   return {
     kind: "tool_call",
+    endedAt: null,
     id: "tool-1",
     toolName: tool_name,
     input,
@@ -285,6 +286,7 @@ function tool_success(
 ): AgentToolEntry {
   return {
     kind: "tool_call",
+    endedAt: null,
     id: "tool-1",
     toolName: tool_name,
     input,

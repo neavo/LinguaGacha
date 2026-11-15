@@ -70,7 +70,7 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
     { role: "user", content: "查询", timestamp: 1 },
     fauxAssistantMessage(
       [fauxText("准备查询"), fauxToolCall("query", { value: 1 }, { id: "call" })],
-      { stopReason: "toolUse" },
+      { stopReason: "toolUse", timestamp: 2 },
     ),
     {
       role: "toolResult",
@@ -126,6 +126,8 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
       input: '{"value":1}',
       output: ["结果"],
       status: "success",
+      createdAt: 2,
+      endedAt: 3,
     },
     { kind: "assistant_message", parts: [{ kind: "text", text: "完成" }], status: "success" },
   ]);
@@ -442,6 +444,7 @@ it("按分支与条目索引工具结果图片，不泄露字节且随重置和�
     status: "success",
     output: ["第一段", "第二段"],
     createdAt: 10,
+    endedAt: 20,
   });
   expect(view.read_tool_image("tool:2:call-1", 0)).toEqual({
     type: "image",
