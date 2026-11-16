@@ -1,11 +1,11 @@
 ---
 name: image
-description: 识别、消字、翻译、审校、修改漫画或图片，或为漫画或图片生成译图与无字底图前必须加载。
+description: 翻译、审校、分析、修改 图片（漫画）文件前必须加载。
 ---
 
 本技能处理漫画与静态图片的有框、无框文字。目标是保留阅读理解所需内容，生成可恢复的无字底图与译图。
 
-第一阶段按页生成少量消字候选。独立模型同时看到完整原页与该页全部候选拼图，每个区域只返回一个候选编号、`preserve` 或 `failed`。不要让模型生成像素文件、掩码路径、自然语言理由或第二轮复核请求。
+产品 Agent 在第一阶段按页生成少量消字候选。它结合区域准备阶段已查看的完整原页与该页候选拼图，为每个区域选择一个候选编号、`preserve` 或 `failed`。程序负责像素组合与原子提交。
 
 # 归档契约
 
@@ -43,8 +43,8 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 |`read`|读取草稿、证据和已提交底图状态|
 |`register_regions`|按未归属文字框编号注册或替换无框区域|
 |`apply`|确认区域元数据、原文和阅读顺序|
-|`erase`|生成区域候选、拼图和按页批量请求清单，不提交底图|
-|`review`|解析按页选择，组合已选像素，提交最终区域状态与底图|
+|`erase`|生成区域候选和拼图，不提交底图|
+|`review`|校验按页选择，组合已选像素，提交最终区域状态与底图|
 |`pack`、`restore`|封装或恢复 `.image`|
 |`prepare_text`、`render`、`publish`|生成写字计划、排版并发布成品|
 
@@ -111,7 +111,7 @@ const registered = await image.register_regions({
 
 # 候选选择与提交
 
-调用 `erase`。它为每页生成填色、笔画掩码 LaMa、文字框范围 LaMa 中适用且不重复的候选，并返回 `requestFile`：
+调用 `erase`。它为每页生成填色、笔画掩码 LaMa、文字框范围 LaMa 中适用且不重复的候选：
 
 ```js
 const erased = await image.erase({
@@ -120,24 +120,17 @@ const erased = await image.erase({
 });
 ```
 
-每个请求已经包含：
-
-1. 极简选择规则与合法编号。
-2. 一张完整原页图片。
-3. 该页全部候选拼图。`O` 只表示原图对照，不可选择。
-
-`requestFile === null` 表示没有可发送请求。查看 `erased.pages[].error`：容量失败页会在提交时按 `repair_failed` 收尾。全保留页不调用模型，但仍由 `review` 提交原图底图。
-
-本阶段明确允许调用 `batch_llm_request`。不要修改生成的请求，不要拆页，不要追加放大、裁图或理由追问：
+`erased.pages[].materials` 是该页全部候选拼图。逐页用 `ws.emitImage` 查看。`O` 表示原图裁片，不可选择。固定流程复用区域准备阶段的完整原页，不调用独立模型；上下文已压缩或局部证据不足时，只补看对应原页一次：
 
 ```js
-const batch = await batch_llm_request({
-  model_usage: 'agent',
-  request_file: erased.requestFile,
-});
+for (const page of erased.pages) {
+  for (const material of page.materials) {
+    await ws.emitImage(material, { maxEdge: 1600 });
+  }
+}
 ```
 
-从 `batch.result_file` 读取索引，再读取各成功项的 `response.text`。按请求 `id` 关联 `pageId`，原样交给 `review`：
+为每个含候选区域的页面提交完整决定。页面与区域不得遗漏或重复，值只能是该区域的候选编号、`preserve` 或 `failed`：
 
 ```js
 const committed = await image.review({
@@ -145,21 +138,23 @@ const committed = await image.review({
   runId: erased.runId,
   expectedRevision: erased.revision,
   pages: [
-    { pageId: erased.pages[0].pageId, response: '{"r0001":"A","u0001":"failed"}' },
+    {
+      pageId: erased.pages[0].pageId,
+      regions: [
+        { regionId: 'r0001', value: 'A' },
+        { regionId: 'u0001', value: 'failed' },
+      ],
+    },
   ],
 });
 ```
 
-模型正文只能是 JSON 对象。每个值只能是当前区域的候选编号、`preserve` 或 `failed`：
-
 - 合法候选：采用该候选像素，区域继续进入翻译和写字。
 - `preserve`：原图不变，提交为 `intentional`。
 - `failed`：原图不变，提交为 `repair_failed`，归档状态为 `partial`。
-- JSON 损坏、缺项、值类型错误或未知编号：仅对应区域按 `failed` 收尾。
-- 未知区域键只记录协议错误，不能创建区域。
+- 全保留页没有候选区域，不放入 `pages`，仍由 `review` 提交原图底图。
+- 缺失、重复、未知区域或非法候选会拒绝整次提交，不改草稿。
 - 运行过期时整份拒绝。相同运行和相同选择重放时返回已有提交，不重复计算。
-
-网络失败、取消或批量服务未完成属于运行错误。不要把它们伪装成模型的 `failed`，也不要自动重发可能重复计费的请求。
 
 提交后直接调用 `pack`。不存在额外的整页消字接受/拒绝循环：
 

@@ -150,7 +150,7 @@ it("运行中的工具行只显示归属自己的最新输出行", async () => {
   ).toEqual([" · 处理 3/10"]);
 });
 
-it("工具终态保留耗时并释放时钟，重挂载沿用回执时间", async () => {
+it("工具终态保留耗时与图片标记，重挂载沿用回执时间", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(105_000);
   const store = {
@@ -178,14 +178,27 @@ it("工具终态保留耗时并释放时钟，重挂载沿用回执时间", asyn
   const view = await render_tool(running);
   const duration = () => view.querySelector(".agent-process-entry__elapsed")?.textContent;
   expect(duration()).toBe(" · 5s");
-  const ended: AgentToolEntry = { ...running, status: "success", output: [], endedAt: 107_000 };
+  const ended: AgentToolEntry = {
+    ...running,
+    imageCount: 1,
+    status: "success",
+    output: [],
+    endedAt: 107_000,
+  };
   for (const status of ["success", "error", "stopped"] as const) {
     await render_tool({ ...ended, status });
     expect(duration()).toBe(" · 7s");
   }
+  const marker = view.querySelector(".agent-process-entry__image-marker");
+  expect(marker?.nextElementSibling).toBe(view.querySelector(".agent-process-entry__elapsed"));
+  expect(view.querySelector("button")?.getAttribute("aria-label")).toBe(
+    "workspace_run · agent_page.image.title",
+  );
   expect(vi.getTimerCount()).toBe(0);
   vi.setSystemTime(165_000);
   await render_tool({ ...ended, id: "restored" });
   expect(duration()).toBe(" · 7s");
   expect(vi.getTimerCount()).toBe(0);
+  await render_tool({ ...ended, imageCount: 0 });
+  expect(view.querySelector(".agent-process-entry__image-marker")).toBeNull();
 });

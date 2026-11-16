@@ -34,10 +34,11 @@ import {
 } from "../../file/image/image-format";
 import { image_metadata } from "../../file/image/image-metadata";
 import {
-  build_candidate_request,
-  parse_candidate_decisions,
+  read_candidate_decisions,
   validate_candidate_run,
+  type CandidateDecision,
 } from "./candidate";
+export type { CandidateDecision } from "./candidate";
 import { pixels, type ImageDevice } from "./engine";
 import {
   commit_directory,
@@ -447,7 +448,7 @@ export async function apply(
   });
 }
 
-/** 生成逐区域候选和按页独立请求；候选运行不修改已提交底图。 */
+/** 生成逐区域候选和按页拼图；候选运行不修改已提交底图。 */
 export async function erase(options: {
   workDirectory: string;
   expectedRevision: number;
@@ -482,7 +483,6 @@ export async function erase(options: {
     const runDir = path.join(directory, "runs", runId);
     const stage = path.join(directory, "runs", `.erase-${runId}`);
     const results: ErasePageResult[] = [];
-    const requests: { id: string; input_file: string }[] = [];
     await fs.make_dir_async(path.dirname(stage));
     await fs.make_dir_exclusive(stage);
     try {
@@ -517,34 +517,14 @@ export async function erase(options: {
           })),
         }));
         const materials = raw.materials.map(relative);
-        const request = regions.length
-          ? build_candidate_request(normalized.get(page.pageId)!, regions, raw.materials)
-          : {};
-        const inputMember = `requests/${page.pageId}.json`;
-        if (request.request) {
-          fs.write_file_atomic(path.join(stage, inputMember), request.request);
-          requests.push({ id: page.pageId, input_file: inputMember });
-        }
         results.push({
           pageId: page.pageId,
           inputSha256: erase_input_digest(page),
-          status: regions.length ? (request.error ? "failed" : "ready") : "settled",
-          ...(request.error
-            ? { error: request.error }
-            : request.request
-              ? { inputFile: inputMember }
-              : {}),
           materials,
           regions,
         });
       }
-      if (requests.length)
-        write_json(path.join(stage, "requests.json"), { format: "messages", requests });
-      const record: RunRecord = {
-        runId,
-        pages: results,
-        ...(requests.length ? { requestFile: "requests.json" } : {}),
-      };
+      const record: RunRecord = { runId, pages: results };
       write_json(path.join(stage, "run.json"), record);
       await commit_directory(stage, runDir);
       const nextRevision = draft.revision + 1;
@@ -557,10 +537,6 @@ export async function erase(options: {
       return {
         runId,
         revision: nextRevision,
-        status: results.every((page) => page.status === "failed")
-          ? ("failed" as const)
-          : ("pending" as const),
-        requestFile: requests.length ? path.join(runDir, "requests.json") : null,
         pages: results.map((page) => ({
           ...page,
           materials: page.materials.map((member) => path.join(runDir, member)),
@@ -577,7 +553,7 @@ export async function review(options: {
   workDirectory: string;
   runId: string;
   expectedRevision: number;
-  pages: readonly { pageId: string; response: string }[];
+  pages: readonly CandidateDecision[];
 }) {
   if (!UUID_RE.test(options.runId)) throw new Error("Invalid runId");
   const directory = path.resolve(options.workDirectory);
@@ -587,21 +563,14 @@ export async function review(options: {
     const runFile = path.join(directory, "runs", options.runId, "run.json");
     const run = read_json<RunRecord>(runFile);
     validate_candidate_run(path.dirname(runFile), options.runId, run);
-    const responses = new Map<string, string>();
-    for (const item of options.pages) {
-      if (responses.has(item.pageId) || !run.pages.some((page) => page.pageId === item.pageId))
-        throw new Error(`Invalid or duplicate page response: ${item.pageId}`);
-      responses.set(item.pageId, item.response);
-    }
-    const { decisions, protocolErrors } = parse_candidate_decisions(run.pages, responses);
+    const decisions = read_candidate_decisions(run.pages, options.pages);
     const reviewDecisionSha256 = image_sha256(JSON.stringify(decisions));
     const replayed = run.pages.every(
       (page) =>
         draft.reviewed?.[page.pageId]?.runId === options.runId &&
         draft.reviewed?.[page.pageId]?.reviewDecisionSha256 === reviewDecisionSha256,
     );
-    if (replayed)
-      return { runId: options.runId, revision: draft.revision, replayed: true, protocolErrors };
+    if (replayed) return { runId: options.runId, revision: draft.revision, replayed: true };
     if (!draft.confirmed) throw new Error("Image draft must remain confirmed for review");
     if (draft.revision !== options.expectedRevision)
       throw new Error("Stale image draft revision; call read() and reconsider the operation");
@@ -640,7 +609,7 @@ export async function review(options: {
           throw new Error(`Run region mismatch on page ${page.pageId}`);
         page.regions = page.regions.map((region) => {
           if (region.disposition === "preserve") return region;
-          const choice = choices.get(region.regionId) ?? "failed";
+          const choice = choices.get(region.regionId)!;
           if (choice !== "preserve" && choice !== "failed") return region;
           return {
             ...region,
@@ -731,7 +700,6 @@ export async function review(options: {
         revision: next.revision,
         replayed: false,
         status: compute_clean_status(next.book),
-        protocolErrors,
       };
     } finally {
       await fs.remove_async(composeStage, { recursive: true, force: true });

@@ -123,7 +123,7 @@ vi.mock("./engine", () => ({
       const material = path.join(output, "materials", "candidates-001.png");
       fs.mkdirSync(path.dirname(material), { recursive: true });
       fs.writeFileSync(material, png);
-      return { regions, materials: [material] };
+      return { regions, materials: regions.length ? [material] : [] };
     }
     if (command === "compose_candidates") {
       const selected = args.selected as {
@@ -176,7 +176,7 @@ const confirm = (page: ImagePage, message = "原文") => ({
 });
 
 describe("@lg/image candidate transaction", () => {
-  it("同页候选选择生成完整多图请求，提交后可重放并统一归档实际掩码", async () => {
+  it("产品 Agent 提交候选决定后可重放并统一归档实际掩码", async () => {
     using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-candidate-"));
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
@@ -192,33 +192,31 @@ describe("@lg/image candidate transaction", () => {
     const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
     const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
 
-    expect(run.requestFile).not.toBeNull();
-    const manifest = JSON.parse(fs.readFileSync(run.requestFile!, "utf8"));
-    const request = JSON.parse(
-      fs.readFileSync(
-        path.join(path.dirname(run.requestFile!), manifest.requests[0].input_file),
-        "utf8",
-      ),
-    );
-    expect(request.messages[0].content.map((item: { type: string }) => item.type)).toEqual([
-      "text",
-      "image",
-      "image",
-    ]);
+    expect(run.pages[0]!.materials).toHaveLength(1);
+    expect(fs.existsSync(run.pages[0]!.materials[0]!)).toBe(true);
 
     const committed = await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
-      pages: [{ pageId: prepared.book.pages[0]!.pageId, response: '{"r1":"A"}' }],
+      pages: [
+        {
+          pageId: prepared.book.pages[0]!.pageId,
+          regions: [{ regionId: "r1", value: "A" }],
+        },
+      ],
     });
     expect(committed.status).toBe("complete");
-    expect(committed.protocolErrors).toEqual([]);
     const replayed = await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
-      pages: [{ pageId: prepared.book.pages[0]!.pageId, response: '{"r1":"A"}' }],
+      pages: [
+        {
+          pageId: prepared.book.pages[0]!.pageId,
+          regions: [{ regionId: "r1", value: "A" }],
+        },
+      ],
     });
     expect(replayed.replayed).toBe(true);
     expect(replayed.revision).toBe(committed.revision);
@@ -231,7 +229,7 @@ describe("@lg/image candidate transaction", () => {
     );
   });
 
-  it("非法选择只让目标区域失败并形成 partial", async () => {
+  it("非法选择不改草稿，显式失败形成 partial", async () => {
     using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-invalid-choice-"));
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
@@ -239,17 +237,32 @@ describe("@lg/image candidate transaction", () => {
     const prepared = await prepare({ sources: [source], workDirectory: work });
     const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
     const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
+    await expect(
+      review({
+        workDirectory: work,
+        runId: run.runId,
+        expectedRevision: run.revision,
+        pages: [
+          {
+            pageId: prepared.book.pages[0]!.pageId,
+            regions: [{ regionId: "r1", value: "Z" }],
+          },
+        ],
+      }),
+    ).rejects.toThrow("Invalid candidate decision");
+    expect((await read(work)).book.pages[0]!.regions[0]!.disposition).toBe("translate");
     const committed = await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
-      pages: [{ pageId: prepared.book.pages[0]!.pageId, response: '{"r1":"Z","unknown":"A"}' }],
+      pages: [
+        {
+          pageId: prepared.book.pages[0]!.pageId,
+          regions: [{ regionId: "r1", value: "failed" }],
+        },
+      ],
     });
     expect(committed.status).toBe("partial");
-    expect(committed.protocolErrors.map((error) => error.error).sort()).toEqual([
-      "invalid_selection",
-      "unknown_region",
-    ]);
     const current = await read(work);
     expect(current.book.pages[0]!.regions[0]!).toMatchObject({
       disposition: "preserve",
@@ -360,8 +373,8 @@ describe("@lg/image candidate transaction", () => {
       confirmed: true,
     });
     const run = await erase({ workDirectory: work, expectedRevision: applied.revision });
-    expect(run.requestFile).toBeNull();
-    expect(run.pages[0]!.status).toBe("settled");
+    expect(run.pages[0]!.regions).toEqual([]);
+    expect(run.pages[0]!.materials).toEqual([]);
     const committed = await review({
       workDirectory: work,
       runId: run.runId,

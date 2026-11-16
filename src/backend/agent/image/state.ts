@@ -108,9 +108,6 @@ export type EraseRegionResult = {
 export type ErasePageResult = {
   pageId: string;
   inputSha256: string;
-  status: "ready" | "settled" | "failed";
-  error?: string;
-  inputFile?: string;
   materials: string[];
   regions: EraseRegionResult[];
 };
@@ -118,7 +115,6 @@ export type ErasePageResult = {
 export type RunRecord = {
   runId: string;
   pages: ErasePageResult[];
-  requestFile?: string;
 };
 
 export type ReviewedRegion = Omit<ImageCleanRegion, "mask">; // 验收目录由区域身份定位掩码，记录只保存摘要。

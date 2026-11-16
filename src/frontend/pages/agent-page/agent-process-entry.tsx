@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { ChevronsDownUp, Wrench, type LucideIcon } from "lucide-react";
+import { ChevronsDownUp, Image, Wrench, type LucideIcon } from "lucide-react";
 import type {
   AgentEntryStatus,
   AgentToolEntry,
@@ -36,6 +36,7 @@ export function AgentToolEntryButton(props: {
       status_label={t(AGENT_STATUS_LABEL_KEYS[props.entry.status])}
       created_at={props.entry.createdAt}
       ended_at={props.entry.endedAt}
+      image_label={props.entry.imageCount > 0 ? t("agent_page.image.title") : undefined}
       detail={run_output?.line}
       action={{ on_click: props.on_open, has_popup: "dialog" }}
     />
@@ -74,6 +75,7 @@ function AgentProcessEntry(props: {
   status_label: string;
   created_at: number | null;
   ended_at?: number | null;
+  image_label?: string | undefined;
   detail?: string | undefined; // 运行中的最新输出行，不播报，避免读屏每 500 毫秒朗读
   announce_status?: boolean;
   action: {
@@ -83,6 +85,8 @@ function AgentProcessEntry(props: {
   } | null;
 }): JSX.Element {
   const Icon = props.icon;
+  const action_label =
+    props.image_label === undefined ? props.label : `${props.label} · ${props.image_label}`;
   const content = (
     <>
       <Icon className="agent-process-entry__icon" aria-hidden="true" />
@@ -93,6 +97,12 @@ function AgentProcessEntry(props: {
         >
           {props.label}
         </span>
+        {props.image_label === undefined ? null : (
+          <span className="agent-process-entry__image-marker" aria-hidden="true">
+            {" · "}
+            <Image />
+          </span>
+        )}
         {props.created_at !== null && (props.status === "running" || props.ended_at != null) ? (
           <AgentProcessElapsed
             created_at={props.created_at}
@@ -113,7 +123,7 @@ function AgentProcessEntry(props: {
     <button
       type="button"
       className="agent-process-entry agent-process-entry--interactive"
-      aria-label={props.label}
+      aria-label={action_label}
       aria-haspopup={props.action.has_popup}
       disabled={props.action.disabled}
       onClick={props.action.on_click}
