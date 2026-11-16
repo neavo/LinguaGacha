@@ -40,7 +40,6 @@ import {
   EVIDENCE_INDEX_FILE,
   STATE_FILE,
   assert_immutable_pages,
-  digest,
   ensure_normalized,
   file_exists,
   load_draft,
@@ -436,14 +435,20 @@ export async function review(options: {
           });
           continue;
         }
-        if (!region.mask || region.maskSha256 !== draftRegion.selection?.sha256)
+        if (
+          !region.mask ||
+          !region.maskSha256 ||
+          (draftRegion.eraseMethod === "fill" &&
+            region.maskSha256 !== draftRegion.selection?.sha256)
+        )
           throw new Error(`Missing mask artifact for ${item.pageId}/${region.regionId}`);
-        if ((await digest(region.mask)) !== region.maskSha256)
-          throw new Error(`Erase mask tampered for ${item.pageId}/${region.regionId}`);
         stagedRegions.push({
           regionId: region.regionId,
           disposition: "translate",
-          maskSource: region.mask,
+          maskSource:
+            draftRegion.eraseMethod === "fill"
+              ? path.join(directory, draftRegion.selection!.path)
+              : region.mask,
           maskSha256: region.maskSha256,
         });
       }
@@ -453,9 +458,10 @@ export async function review(options: {
         {
           clean: runPage.clean,
           cleanSha256: runPage.cleanSha256,
+          regions: runPage.regions,
         },
         async (member) =>
-          fs.read_file(member === runPage.clean ? member : path.join(directory, member)),
+          fs.read_file(path.isAbsolute(member) ? member : path.join(directory, member)),
       );
       verifiedAccepts.push({
         pageId: item.pageId,
@@ -571,6 +577,9 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
         const inputSha256 = cleanPage.inputSha256;
         const srcClean = path.join(source, cleanPage.clean);
         fs.copy_file(srcClean, path.join(stageRoot, cleanPage.clean));
+        for (const region of cleanPage.regions)
+          if (region.mask?.startsWith("erase-masks/"))
+            fs.copy_file(path.join(source, region.mask), path.join(stageRoot, region.mask));
         await validate_image_page_pixels(page, cleanPage, async (member) =>
           fs.read_file(path.join(stageRoot, member)),
         );

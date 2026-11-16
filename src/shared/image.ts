@@ -19,9 +19,10 @@ export const IMAGE_SELECTION_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 const COLOR_CHANNEL = Type.Integer({ minimum: 0, maximum: 255 });
+const IMAGE_COLOR_SCHEMA = Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]);
 export const IMAGE_FILL_SCHEMA = Type.Object(
   {
-    color: Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]),
+    color: IMAGE_COLOR_SCHEMA,
   },
   { additionalProperties: false },
 );
@@ -33,7 +34,8 @@ const REGION_SCHEMA = Type.Object(
     preserveReason: Type.Optional(IMAGE_PRESERVE_REASON_SCHEMA),
     selection: Type.Union([IMAGE_SELECTION_SCHEMA, Type.Null()]),
     direction: Type.Union([IMAGE_DIRECTION_SCHEMA, Type.Null()]),
-    fill: Type.Union([IMAGE_FILL_SCHEMA, Type.Null()]),
+    eraseMethod: Type.Union([Type.Literal("fill"), Type.Literal("inpaint"), Type.Null()]),
+    backgroundColor: Type.Union([IMAGE_COLOR_SCHEMA, Type.Null()]),
   },
   { additionalProperties: false },
 ); // 单页内确认的语义文本区域。

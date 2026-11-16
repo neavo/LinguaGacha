@@ -40,7 +40,7 @@ export function pixels(
           args,
           async (header, payload) => {
             const kind = header.kind;
-            if (kind !== "bubble" && kind !== "text")
+            if (kind !== "bubble" && kind !== "text" && kind !== "inpaint")
               throw new Error("Unknown image inference request");
             if (!model_ready(config.modelsDirectory, IMAGE_MODELS[kind]))
               throw new Error(`Image model missing (${kind}); call prepare_models first`);
@@ -51,6 +51,7 @@ export function pixels(
                 models: {
                   bubble: path.join(config.modelsDirectory, IMAGE_MODELS.bubble.file),
                   text: path.join(config.modelsDirectory, IMAGE_MODELS.text.file),
+                  inpaint: path.join(config.modelsDirectory, IMAGE_MODELS.inpaint.file),
                 },
               } satisfies ImageWorkerConfig,
               path.join(runtime, "image-worker.mjs"),

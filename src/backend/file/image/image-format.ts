@@ -11,6 +11,8 @@ import {
   type ImageCleanPage,
   type ImagePage,
   type ImageRecord,
+  type ImageRegion,
+  type ImageSelection,
 } from "../../../shared/image";
 import { AppError } from "../../../shared/error";
 import { read_zip_members, validate_zip_member_path } from "../shared/zip-members";
@@ -59,7 +61,8 @@ export function image_text_source_digest(book: ImageBook, records: readonly Imag
             ? { path: region.selection.path, sha256: region.selection.sha256 }
             : null,
           direction: region.direction,
-          fill: region.fill ? { color: region.fill.color } : null,
+          eraseMethod: region.eraseMethod,
+          backgroundColor: region.backgroundColor,
         })),
       })),
       records: book.pages.flatMap((page) =>
@@ -88,11 +91,12 @@ export function erase_input_digest(page: ImagePage): string {
     .map((region) => ({
       regionId: region.regionId,
       disposition: region.disposition,
+      eraseMethod: region.eraseMethod,
       selection: region.selection
         ? { path: region.selection.path, sha256: region.selection.sha256 }
         : null,
-      ...(region.disposition === "translate"
-        ? { fill: region.fill ? { color: region.fill.color } : null }
+      ...(region.disposition === "translate" && region.eraseMethod === "fill"
+        ? { backgroundColor: region.backgroundColor }
         : {}),
     }));
   return image_sha256(
@@ -199,12 +203,26 @@ export function validate_image_book(
       if (region.disposition === "translate") {
         if (region.preserveReason !== undefined)
           throw new Error("Translate region cannot carry preserveReason");
-        if (confirmed && (region.direction === null || !region.selection || !region.fill))
-          throw new Error("Confirmed translate region requires direction, selection and fill");
+        if (
+          confirmed &&
+          (region.direction === null ||
+            !region.selection ||
+            !region.eraseMethod ||
+            !region.backgroundColor)
+        )
+          throw new Error(
+            "Confirmed translate region requires direction, selection, eraseMethod and backgroundColor",
+          );
         translated.add(key);
       } else {
         if (region.preserveReason === undefined)
           throw new Error("Preserve region requires preserveReason");
+        if (
+          region.eraseMethod !== null ||
+          region.backgroundColor !== null ||
+          region.direction !== null
+        )
+          throw new Error("Preserve region cannot carry erase or text settings");
       }
     }
   }
@@ -271,13 +289,18 @@ export function validate_image_clean(value: unknown, book: ImageBook): asserts v
         )
           throw new Error("Invalid clean preserve region");
       } else {
-        const expectedMask = `masks/${bookPage.pageId}/${bookRegion.regionId}.png`;
+        const expectedMask =
+          bookRegion.eraseMethod === "fill"
+            ? bookRegion.selection?.path
+            : `erase-masks/${bookPage.pageId}/${bookRegion.regionId}.png`;
         if (
           cleanRegion.preserveReason !== undefined ||
+          !cleanRegion.mask ||
           cleanRegion.mask !== expectedMask ||
           validate_zip_member_path(cleanRegion.mask) !== cleanRegion.mask ||
-          cleanRegion.maskSha256 !== bookRegion.selection?.sha256 ||
-          cleanRegion.mask !== bookRegion.selection?.path
+          !cleanRegion.maskSha256 ||
+          (bookRegion.eraseMethod === "fill" &&
+            cleanRegion.maskSha256 !== bookRegion.selection?.sha256)
         )
           throw new Error("Invalid clean translate region");
       }
@@ -285,56 +308,75 @@ export function validate_image_clean(value: unknown, book: ImageBook): asserts v
   }
 }
 
-/** 逐个解码输入选区，校验身份、二值性和互斥，返回仅含待填区域的并集。 */
+/** 选区与消字产物共用同一二值图解码边界，路径归属由调用方校验。 */
+async function read_image_mask(
+  page: ImagePage,
+  selection: ImageSelection,
+  read: (member: string) => Promise<Uint8Array>,
+): Promise<Uint8Array> {
+  const bytes = await read(selection.path);
+  if (image_sha256(bytes) !== selection.sha256) throw new Error("Region mask digest mismatch");
+  if (bytes[24] !== 8 || bytes[25] !== 0)
+    throw new Error("Region mask must be an 8-bit grayscale PNG");
+  const meta = image_metadata(bytes);
+  if (
+    meta.extension !== ".png" ||
+    meta.orientation !== 1 ||
+    meta.width !== page.width ||
+    meta.height !== page.height
+  )
+    throw new Error("Region mask dimensions mismatch");
+  const pixels = await decode_normalized_image_rgb(bytes);
+  const mask = new Uint8Array(page.width * page.height);
+  let nonempty = false;
+  for (let px = 0; px < mask.length; px++) {
+    const off = px * 3,
+      value = pixels.rgb[off]!;
+    if (
+      (value !== 0 && value !== 255) ||
+      pixels.rgb[off + 1] !== value ||
+      pixels.rgb[off + 2] !== value
+    )
+      throw new Error("Region mask must be binary");
+    mask[px] = value;
+    nonempty ||= value !== 0;
+  }
+  if (!nonempty) throw new Error("Region selection is empty");
+  return mask;
+}
+
+/** 读取单个注册选区并更新页内像素归属。 */
+async function read_image_selection(
+  page: ImagePage,
+  region: ImageRegion,
+  occupied: Uint8Array,
+  read: (member: string) => Promise<Uint8Array>,
+): Promise<Uint8Array | undefined> {
+  if (!region.selection) return;
+  if (region.selection.path !== `masks/${page.pageId}/${region.regionId}.png`)
+    throw new Error("Invalid selection path");
+  const mask = await read_image_mask(page, region.selection, read);
+  for (let px = 0; px < mask.length; px++) {
+    if (!mask[px]) continue;
+    if (occupied[px]) throw new Error("Region selections overlap");
+    occupied[px] = 1;
+  }
+  return mask;
+}
+
+/** 逐项验证互斥选区，不在内存中保留整本页面的所有全尺寸掩码。 */
 export async function validate_image_selections(
   page: ImagePage,
   read: (member: string) => Promise<Uint8Array>,
-): Promise<Uint8Array> {
+): Promise<void> {
   const occupied = new Uint8Array(page.width * page.height);
-  const union = new Uint8Array(occupied.length);
-  for (const region of page.regions) {
-    if (!region.selection) continue;
-    if (region.selection.path !== `masks/${page.pageId}/${region.regionId}.png`)
-      throw new Error("Invalid selection path");
-    const bytes = await read(region.selection.path);
-    if (image_sha256(bytes) !== region.selection.sha256)
-      throw new Error("Region mask digest mismatch");
-    if (bytes[24] !== 8 || bytes[25] !== 0)
-      throw new Error("Region mask must be an 8-bit grayscale PNG");
-    const meta = image_metadata(bytes);
-    if (
-      meta.extension !== ".png" ||
-      meta.orientation !== 1 ||
-      meta.width !== page.width ||
-      meta.height !== page.height
-    )
-      throw new Error("Region mask dimensions mismatch");
-    const mask = await decode_normalized_image_rgb(bytes);
-    let nonempty = false;
-    for (let px = 0; px < occupied.length; px++) {
-      const off = px * 3;
-      const value = mask.rgb[off]!;
-      if (
-        (value !== 0 && value !== 255) ||
-        mask.rgb[off + 1] !== value ||
-        mask.rgb[off + 2] !== value
-      )
-        throw new Error("Region mask must be binary");
-      if (!value) continue;
-      if (occupied[px]) throw new Error("Region selections overlap");
-      occupied[px] = 1;
-      nonempty = true;
-      if (region.disposition === "translate") union[px] = 1;
-    }
-    if (!nonempty) throw new Error("Region selection is empty");
-  }
-  return union;
+  for (const region of page.regions) await read_image_selection(page, region, occupied, read);
 }
 
 /** 归档读取和离线恢复共用像素完整性边界。 */
 export async function validate_image_page_pixels(
   page: ImagePage,
-  cleanPage: Pick<ImageCleanPage, "clean" | "cleanSha256">,
+  cleanPage: Pick<ImageCleanPage, "clean" | "cleanSha256" | "regions">,
   read: (member: string) => Promise<Uint8Array>,
 ): Promise<void> {
   const originalBytes = await read(page.original);
@@ -360,7 +402,33 @@ export async function validate_image_page_pixels(
     throw new Error("Clean image dimensions mismatch");
   const basePixels = await decode_normalized_image_rgb(baseBytes);
 
-  const unionMask = await validate_image_selections(page, read);
+  const unionMask = new Uint8Array(page.width * page.height);
+  const occupied = new Uint8Array(unionMask.length);
+  const regions = new Map(cleanPage.regions.map((region) => [region.regionId, region]));
+  if (regions.size !== page.regions.length || cleanPage.regions.length !== page.regions.length)
+    throw new Error("Erase region count mismatch");
+  for (const region of page.regions) {
+    const selection = await read_image_selection(page, region, occupied, read);
+    const result = regions.get(region.regionId);
+    if (!result || result.disposition !== region.disposition)
+      throw new Error("Erase region identity mismatch");
+    if (region.disposition === "preserve") {
+      if (result.mask || result.maskSha256) throw new Error("Preserve region cannot carry mask");
+      continue;
+    }
+    if (!result.mask || !result.maskSha256) throw new Error("Missing erase mask");
+    if (!region.selection || !selection) throw new Error("Translate region requires selection");
+    const mask =
+      region.eraseMethod === "fill" && result.maskSha256 === region.selection.sha256
+        ? selection
+        : await read_image_mask(page, { path: result.mask, sha256: result.maskSha256 }, read);
+    for (let px = 0; px < mask.length; px++) {
+      if (mask[px] && !selection[px]) throw new Error("Erase mask exceeds region selection");
+      if (region.eraseMethod === "fill" && mask[px] !== selection[px])
+        throw new Error("Fill mask differs from selection");
+      if (mask[px]) unionMask[px] = 1;
+    }
+  }
 
   // 统一复用同一 MuPDF 规范化规则，对 PNG 与 JPEG（含 EXIF 方向）执行零容差掩码外一致性检查。
   const origPixels = await decode_normalized_image_rgb(originalBytes);
@@ -395,6 +463,7 @@ export async function read_image_package(content: Uint8Array, file: string) {
       IMAGE_CLEAN_MEMBER,
       ...book.pages.map((p) => p.original),
       ...clean.pages.map((p) => p.clean),
+      ...clean.pages.flatMap((p) => p.regions.flatMap((r) => (r.mask ? [r.mask] : []))),
       ...book.pages.flatMap((p) =>
         p.regions.flatMap((r) => (r.selection ? [r.selection.path] : [])),
       ),

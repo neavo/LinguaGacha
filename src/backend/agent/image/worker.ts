@@ -84,6 +84,36 @@ async function run_text(input: Float32Array, shape: number[]) {
   return { header: { shapes: [result.shape] }, payload: result.data.buffer };
 }
 
+/** 四通道载荷拆为 RGB 与掩码；修复与检测共用作业内的会话生命周期。 */
+async function run_inpaint(input: Float32Array, shape: number[]) {
+  if (
+    shape.length !== 4 ||
+    shape[0] !== 1 ||
+    shape[1] !== 4 ||
+    shape[2]! % 64 !== 0 ||
+    shape[3]! % 64 !== 0
+  )
+    throw new Error("Invalid inpaint tensor");
+  const plane = shape[2]! * shape[3]!;
+  const model = await session("inpaint");
+  const dims = [1, 3, shape[2]!, shape[3]!];
+  const outputs = await infer(model, {
+    image: new ort.Tensor("float32", input.subarray(0, 3 * plane), dims),
+    mask: new ort.Tensor("float32", input.subarray(3 * plane), [1, 1, shape[2]!, shape[3]!]),
+  });
+  try {
+    const output = outputs[model.outputNames[0]!];
+    if (!output || output.dims.length !== 4 || output.dims.some((n, i) => n !== dims[i]))
+      throw new Error("Invalid inpaint output shape");
+    const data = float(output.data);
+    if (data.length !== 3 * plane) throw new Error("Invalid inpaint output length");
+    check_finite(data);
+    return { header: { shapes: [dims] }, payload: data.slice().buffer };
+  } finally {
+    for (const tensor of Object.values(outputs)) tensor.dispose();
+  }
+}
+
 /** 创建失败时没有会话可释放，成功创建的会话必须释放后才能关闭通道。 */
 async function shutdown(): Promise<void> {
   const sessions = await Promise.allSettled(Object.values(pending));
@@ -108,11 +138,15 @@ port.on("message", (message: Request) => {
     try {
       const shape = tensor_shape(message.header, message.payload.byteLength);
       const input = new Float32Array(message.payload);
-      check_finite(input);
-      if (message.kind !== "bubble" && message.kind !== "text")
+      if (message.kind !== "bubble" && message.kind !== "text" && message.kind !== "inpaint")
         throw new Error(`Unknown image task: ${message.kind}`);
+      if (message.kind !== "inpaint") check_finite(input);
       const result =
-        message.kind === "bubble" ? await run_bubble(input, shape) : await run_text(input, shape);
+        message.kind === "bubble"
+          ? await run_bubble(input, shape)
+          : message.kind === "text"
+            ? await run_text(input, shape)
+            : await run_inpaint(input, shape);
       port.postMessage({ id: message.id, ...result }, [result.payload]);
     } catch (error) {
       port.postMessage({

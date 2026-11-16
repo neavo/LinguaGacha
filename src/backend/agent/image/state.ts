@@ -396,7 +396,7 @@ export async function verify_reviewed_page(
     } else {
       if (
         !item.maskSha256 ||
-        item.maskSha256 !== region.selection?.sha256 ||
+        (region.eraseMethod === "fill" && item.maskSha256 !== region.selection?.sha256) ||
         !maskPaths.has(region.regionId)
       )
         throw new Error(
@@ -405,7 +405,10 @@ export async function verify_reviewed_page(
       cleanRegions.push({
         regionId: region.regionId,
         disposition: "translate",
-        mask: `masks/${page.pageId}/${region.regionId}.png`,
+        mask:
+          region.eraseMethod === "fill"
+            ? region.selection!.path
+            : `erase-masks/${page.pageId}/${region.regionId}.png`,
         maskSha256: item.maskSha256,
       });
     }

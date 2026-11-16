@@ -22,9 +22,15 @@ vi.mock("../inference/helper", () => ({
     _executable: string,
     _script: string,
     command: string,
-    _args: unknown,
+    args: Record<string, unknown>,
     infer: NonNullable<Parameters<typeof import("../inference/helper").run_helper>[4]>,
   ) => {
+    if (command === "erase" && args.repair) {
+      await infer({ kind: "text" }, new Uint8Array());
+      await infer({ kind: "inpaint" }, new Uint8Array());
+      await infer({ kind: "inpaint" }, new Uint8Array());
+      return;
+    }
     if (command === "erase" || command === "pack") return;
     if (command === "prepare") {
       await infer({ kind: "bubble" }, new Uint8Array());
@@ -49,7 +55,7 @@ beforeEach(async () => {
   });
 });
 
-it("单次作业多次推理 复用单 Worker，失败后关闭，erase/pack 零模型零 Worker", async () => {
+it("单次作业多次推理复用单 Worker，失败后关闭，纯填色和打包不启动模型", async () => {
   const { pixels } = await import("./engine");
   await pixels("prepare", {});
   expect(fake.request).toHaveBeenCalledTimes(2);
@@ -65,4 +71,8 @@ it("单次作业多次推理 复用单 Worker，失败后关闭，erase/pack 零
   await pixels("erase", {});
   await pixels("pack", {});
   expect(fake.created).toHaveBeenCalledTimes(2);
+  fake.ready = true;
+  await pixels("erase", { repair: true });
+  expect(fake.created).toHaveBeenCalledTimes(3);
+  expect(fake.close).toHaveBeenCalledTimes(3);
 });

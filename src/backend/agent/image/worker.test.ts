@@ -24,6 +24,7 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
         async run(feeds){
           const value=Object.values(feeds)[0].data[0];
           if(value<0)throw Error('fixture inference failure');
+          if(kind==='inpaint')return {output0:new Tensor('float32',new Float32Array(3*64*64).fill(value===.5?NaN:.25),value===.75?[1,3,32,32]:[1,3,64,64])};
           if(kind==='text')return {output0:new Tensor('float32',new Float32Array(32*32).fill(value===3?NaN:value===2?2:.5),value===4?[1,32,32]:[1,1,32,32])};
           const channels=value===2?39:37;
           return {output0:new Tensor('float32',new Float32Array(channels*21).fill(value===3?NaN:1),[1,channels,21]),output1:new Tensor('float32',new Float32Array(32*8*8).fill(2),[1,32,8,8])};
@@ -36,7 +37,7 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
       {
         ort: pathToFileURL(module).href,
         device: "cpu",
-        models: { bubble: "bubble", text: "text" },
+        models: { bubble: "bubble", text: "text", inpaint: "inpaint" },
       } satisfies ImageWorkerConfig,
       path.join(inject("workspaceRuntimeDirectory"), "runtime/image-worker.mjs"),
     );
@@ -68,6 +69,23 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
       await expect(request(2, "text")).rejects.toThrow("probability map");
       await expect(request(3, "text")).rejects.toThrow("not finite");
       await expect(request(4, "text")).rejects.toThrow("detection output");
+      const repair = (value: number) => {
+        const input = new Float32Array(4 * 64 * 64).fill(value);
+        input.fill(1, 3 * 64 * 64);
+        return client.request(
+          "image",
+          { kind: "inpaint" },
+          { dtype: "float32", shape: [1, 4, 64, 64] },
+          new Uint8Array(input.buffer),
+        );
+      };
+      for (let i = 0; i < 2; i++) {
+        const result = await repair(0.25);
+        expect(result.header.shapes).toEqual([[1, 3, 64, 64]]);
+        expect(new Float32Array(result.payload!)).toEqual(new Float32Array(3 * 64 * 64).fill(0.25));
+      }
+      await expect(repair(0.5)).rejects.toThrow("not finite");
+      await expect(repair(0.75)).rejects.toThrow("output shape");
     } finally {
       await client.close();
     }
@@ -75,7 +93,7 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
       {
         ort: pathToFileURL(module).href,
         device: "webgpu",
-        models: { bubble: "bubble", text: "text" },
+        models: { bubble: "bubble", text: "text", inpaint: "inpaint" },
       } satisfies ImageWorkerConfig,
       path.join(inject("workspaceRuntimeDirectory"), "runtime/image-worker.mjs"),
     );

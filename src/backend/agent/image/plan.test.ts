@@ -74,7 +74,8 @@ it("输入按当前原稿顺序归一，拒绝缺失、重复、额外区域与�
   Object.assign(book.pages[1]!.regions[0]!, {
     disposition: "preserve",
     preserveReason: "repair_failed",
-    fill: null,
+    eraseMethod: null,
+    backgroundColor: null,
     direction: null,
   });
   input.sourceSha256 = image_text_source_digest(book, records);

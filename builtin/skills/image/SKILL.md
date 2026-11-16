@@ -3,11 +3,11 @@ name: image
 description: 识别、消字、翻译、审校、修改漫画或图片，或为漫画或图片生成译图与无字底图前必须加载。
 ---
 
-本技能处理漫画页与带气泡图片的闭合文字容器定位、背景分流、原文与填色确认、填色消字、`.image` 归档、分区译文分配、自动排版、视觉验收与成品交付。
+本技能处理漫画页与带气泡图片的闭合文字容器定位、背景分流、原文与消字方法确认、填色或模型修复、`.image` 归档、分区译文分配、自动排版、视觉验收与成品交付。
 
 - 海报、招牌、音效字、衣服字与无框自由字不纳入自动消字。
 - 填色消字会填平选区内部孔洞，用确认色值覆盖选区主体，仅在全部填色选区并集的最外一层像素与原图混合过渡。
-- 当前只能消除纯色背景上的文字。容器含复杂底纹、渐变或装饰时整块保留原图，登记为 `disposition: "preserve"`、`preserveReason: "repair_failed"`，交付状态保持 `partial`。
+- 有框复杂背景使用 `eraseMethod: "inpaint"`：提取暗笔画与邻近白描边，填满内部封闭孔洞，少量外扩后用 LaMa 修复。仅回贴实际掩码内像素。浅色字、漏检或描边残留须通过视觉验收判断，失败区域保留原图并登记 `repair_failed`。
 
 阶段导航：
 
@@ -15,7 +15,7 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 |---|---|
 |原稿与条目|「原稿与条目」「应用接口」|
 |来源调查|「来源调查」|
-|导入准备|「环境准备」「检测与取证」「确认与填色消字」「消字验收」「打包与更新」|
+|导入准备|「环境准备」「检测与取证」「确认与消字」「消字验收」「打包与更新」|
 |写回与验证|「写回与验证」|
 |交付说明|「交付说明」|
 
@@ -33,6 +33,7 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 |`sources/<file_path>/originals/<pageId>.<ext>`|原始图片字节（PNG 或 JPEG）|
 |`sources/<file_path>/clean/<pageId>.png`|EXIF 方向归一化后的已验收无字底图|
 |`sources/<file_path>/masks/<pageId>/<regionId>.png`|与归一化页同尺寸的 8-bit 二值 PNG（仅含 `0` 与 `255`），同页非空选区像素两两互斥|
+|`sources/<file_path>/erase-masks/<pageId>/<regionId>.png`|仅模型修复区域保存的实际消字掩码，只覆盖气泡选区内部文字；填色直接复用 `masks/` 中的完整选区|
 |`<writeback.input_path>/<file_path>/items.json`|`generateFiles` 生成的写字快照 `ImageTextInput`（`{ bookId, sourceSha256, records: [{ pageId, regionId, text }] }`），仅覆盖 `translate` 区域|
 
 `ImageRegion` 字段约束：
@@ -40,14 +41,15 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 |字段|约束|
 |---|---|
 |`regionId`|页内唯一标识，如 `r0001`|
-|`disposition`|`"translate"`（填色抹除并写字）或 `"preserve"`（保留原图像素）|
+|`disposition`|`"translate"`（消字并写字）或 `"preserve"`（保留原图像素）|
 |`preserveReason`|仅 `"preserve"` 必填：`"intentional"`（确认无需处理，如海报、招牌、音效字）、`"unreadable"`（字迹无法辨认）或 `"repair_failed"`（本应处理但当前无法安全消字：复杂背景、漏检、选区为空或消字破边/残字后降级）|
 |`selection`|`{ path, sha256 } \| null`，只接受该区域在当前页已注册的 `masks/<pageId>/<regionId>.png`|
 |`direction`|`"vertical-rl" \| "horizontal-tb" \| null`|
-|`fill`|`{ color: [R, G, B] } \| null`，通道值为 `0..255` 整数|
+|`eraseMethod`|`"fill" \| "inpaint" \| null`，确认后的消字方法|
+|`backgroundColor`|`[R, G, B] \| null`，通道值为 `0..255` 整数；用于填色和排版文字颜色判断，模型修复不使用此值重绘背景|
 
-- `confirmed: true` 时，每个 `"translate"` 区域必须具备非空且已注册的 `selection`、`direction`、`fill`，不得含 `preserveReason`，且在原稿 `items.json` 中有对应非空原文 `message`（`name` 可选，仅作翻译语境元数据，写字时不拼入气泡正文）。
-- `"preserve"` 区域不改原图像素，`direction` 与 `fill` 均为 `null`：已检出候选转保留时保留原 `selection`；模型漏检、`empty_selection` 或无法提供合法掩码的文字容器登记为 `"preserve"` + `"repair_failed"`（或 `"unreadable"`）且 `selection: null`，可读原文一并记入草稿 `records`，使已知缺口进入 `partial` 状态而不伪造掩码。
+- `confirmed: true` 时，每个 `"translate"` 区域必须具备非空且已注册的 `selection`、`direction`、`eraseMethod`、`backgroundColor`，不得含 `preserveReason`，且在原稿 `items.json` 中有对应非空原文 `message`（`name` 可选，仅作翻译语境元数据，写字时不拼入气泡正文）。
+- `"preserve"` 区域不改原图像素，`direction`、`eraseMethod` 与 `backgroundColor` 均为 `null`：已检出候选转保留时保留原 `selection`；模型漏检、`empty_selection` 或无法提供合法掩码的文字容器登记为 `"preserve"` + `"repair_failed"`（或 `"unreadable"`）且 `selection: null`，可读原文一并记入草稿 `records`，使已知缺口进入 `partial` 状态而不伪造掩码。
 
 工作目录 `work/image/<资产名>/` 中，第一阶段维护 `draft.json`、`originals/`、`masks/`、`normalized/`、`evidence/`、`runs/`、`reviewed/`；第二阶段在 `text/plans/`、`text/runs/` 下维护分区候选与自包含运行产物，不改写第一阶段事实。
 
@@ -57,11 +59,11 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 
 |入口|用途|
 |---|---|
-|`IMAGE_DEPENDENCIES`、`missing_models()`、`prepare_models()`|工作区依赖常量，检查并准备 `bubble` 气泡分割与 `text` 文字检测模型|
+|`IMAGE_DEPENDENCIES`、`missing_models()`、`prepare_models()`|工作区依赖常量，检查并准备 `bubble` 气泡分割、`text` 文字检测与 `inpaint` LaMa 模型|
 |`prepare({ sources, workDirectory, device? })`|归档原图、归一化方向、运行气泡分割与背景分流，生成初始草稿（`revision`、`confirmed`、`book`、`records`）与 `evidence`|
 |`read(workDirectory)`|读取当前草稿、各页消字验收状态 `reviewStatus`（`[{ pageId, inputSha256, reviewed }]`）与 `evidence`|
 |`apply(workDirectory, expectedRevision, { pages, records, confirmed })`|校验修订号与选区约束，原子更新草稿区域、原文记录与确认状态，返回更新后的草稿|
-|`erase({ workDirectory, expectedRevision, pageIds? })`|对已确认草稿执行填色消字，返回 `{ runId, revision, pages: [{ pageId, clean, overlay }] }`|
+|`erase({ workDirectory, expectedRevision, pageIds? })`|按已确认方法执行整页消字，返回 `{ runId, revision, pages: [{ pageId, clean, overlay }] }`|
 |`review({ workDirectory, runId, expectedRevision, pages })`|提交各页消字验收决定（`[{ pageId, decision: 'accept' \| 'reject', reason? }]`），固化通过页并返回 `{ revision, accepted, rejected, unreviewedPages }`|
 |`pack(workDirectory, output)`|将全部通过消字验收的工作目录封装为 `.image` 归档，返回 `{ path, status: 'complete' \| 'partial' }`|
 |`restore(sourceDirectory, workDirectory)`|从展开的 `sources/<file_path>` 离线恢复工作目录与已验收底图，无需重跑模型|
@@ -79,7 +81,7 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 
 # 环境准备
 
-仅 `image.prepare` 启动气泡分割与文字检测模型；`erase`、`pack`、`prepare_text` 与 `render` 使用 Python 像素处理，`render` 同时使用桌面 Chromium 宿主。
+`image.prepare` 启动气泡分割与文字检测。`erase` 在页面含 `inpaint` 区域时重新检测文字并以 CPU 执行 LaMa；纯填色、打包与写字材料生成无需推理模型。`render` 同时使用桌面 Chromium 宿主。
 
 首次运行图片计算前，在 `workspace_run` 中安装依赖（调用 `image.prepare` 前一并准备模型）：
 
@@ -110,24 +112,24 @@ const prepared = await image.prepare({
 `prepare` 对每个候选闭合容器填平内部孔洞并内缩轮廓，按置信度从高到低分配互斥像素归属。随后从每个选区排除整页文字检测框 `evidence[].textBoxes`，用剩余背景像素估计底色并给出分流建议，在 `evidence` 中返回每页的 `preview`、`fillPreview`、`crops`、`textBoxes` 与 `candidates`：
 
 - `candidate.status === 'ready'`：拥有非空互斥选区，进入初始 `book.pages[].regions`（`confirmed: false`）。`candidate.color` 是背景样本估计的 RGB 底色，背景样本为空时缺省。`candidate.background` 记录分流建议：
-  - `route: 'fill'`：接近底色的像素占比 `coverage` 不低于 80%，初始为 `disposition: 'translate'` 并以 `candidate.color` 作为 `fill.color`。
-  - `route: 'model'`：底色占比不足或背景样本为空（`coverage: null`），初始为 `disposition: 'preserve'`、`preserveReason: 'repair_failed'`，保留原图且不写原文占位。
+  - `route: 'fill'`：接近底色的像素占比 `coverage` 不低于 80%，初始为 `disposition: 'translate'`、`eraseMethod: 'fill'`，以 `candidate.color` 作为 `backgroundColor`。
+  - `route: 'model'`：底色占比不足或背景样本为空（`coverage: null`），初始为 `disposition: 'translate'`、`eraseMethod: 'inpaint'`，原文待填写。`backgroundColor` 使用估计底色，缺省时需结合原图补齐；它只用于该区域后续排版的颜色判断。
   - `samplePixels` 是排除文字框后的背景样本像素数，样本过少时底色与分流都不可靠。
 - `candidate.status === 'empty_selection' | 'covered'`：内缩后为空或被更高分候选完全覆盖，仅保留在 `evidence[].candidates` 与 `evidence/<pageId>/raw/<regionId>.png`。`candidate.overlaps` 列出争夺像素的更高分先行候选 `regionId`。
-- 每页取证图：`evidence/<pageId>/preview.png` 绘制橙色原始轮廓、绿色内缩选区轮廓与 `regionId`；`crops/<regionId>.png` 是候选裁片；`fill-preview.png` 按初始草稿生成，与 `erase` 使用同一填色算法。
+- 每页取证图：`evidence/<pageId>/preview.png` 绘制橙色原始轮廓、绿色内缩选区轮廓与 `regionId`；`crops/<regionId>.png` 是候选裁片；`fill-preview.png` 只预览填色区域，与 `erase` 使用同一填色算法；模型修复效果在执行 `erase` 后查看。
 
-用 `ws.emitImage` 检视每页 `preview.png`、`fill-preview.png` 与重点 `crops/<regionId>.png`（零候选页检视 `normalized/<pageId>.png`），逐页完成四项判定：
+用 `ws.emitImage` 检视每页 `preview.png`、`fill-preview.png` 与重点 `crops/<regionId>.png`（零候选页结合 `textBoxes` 检视 `normalized/<pageId>.png`），逐页完成四项判定：
 
-1. **去留与分流复核**：`route` 只是建议，以确认后的 `disposition` 为准。
-   - 普通对白框、旁白框、心声框与信件框在纯色背景上时保持或改为 `'translate'`。从 `route: 'model'` 改为 `'translate'` 时须补 `fill.color`、`direction` 与 `records` 原文。
-   - 误入填色的透明气泡、网点、渐变或图案背景会被抹平纹理，改为 `'preserve'` + `'repair_failed'`，`direction` 与 `fill` 设为 `null`。
+1. **去留与分流复核**：`route` 只是建议，以确认后的 `disposition` 与 `eraseMethod` 为准。
+   - 纯色背景的对白、旁白、心声与信件容器使用 `'translate'` + `eraseMethod: 'fill'`，确认 `backgroundColor`、`direction` 与 `records` 原文。
+   - 透明气泡、网点、渐变或图案背景使用 `'translate'` + `eraseMethod: 'inpaint'`。确认选区只属于该容器；混入无框文字或只剩重叠边缘的候选不能直接作为独立修复区域。
    - 海报、招牌、音效字、衣服字等确认无需处理的内容改为 `'preserve'` + `'intentional'`。`'intentional'` 会让该区域不计入未完成缺口，未处理的待译文字不得使用。
    - `preserve` 只保护该候选自身的互斥选区，若 `candidate.overlaps` 非空，须一并核对相邻重叠候选的去留。
-2. **漏检与已知缺口**：原图应处理但模型漏检的文字框、`empty_selection` 候选或单候选无法完整覆盖的破损区域，新增或改写为 `disposition: 'preserve'`、`preserveReason: 'repair_failed'`（字迹无法辨认时用 `'unreadable'`）、`selection: null`、`direction: null`、`fill: null`。
-3. **填色色值**：对照原图与 `fill-preview.png` 检查每个 `'translate'` 区域的 `fill.color`。程序保留暖白、浅灰等真实底色，不统一归白。渐变底色或 `samplePixels` 很少时，改为容器底色对应的准确 `[R, G, B]`。
+2. **漏检与已知缺口**：原图应处理但模型漏检的文字框、`empty_selection` 候选或单候选无法完整覆盖的破损区域，新增或改写为 `disposition: 'preserve'`、`preserveReason: 'repair_failed'`（字迹无法辨认时用 `'unreadable'`）、`selection: null`、`direction: null`、`eraseMethod: null`、`backgroundColor: null`。
+3. **背景色**：填色区域对照原图与 `fill-preview.png` 确认 `backgroundColor`，保留暖白、浅灰等真实底色；模型修复区域填写正文所在背景的代表色，供排版判断文字颜色。
 4. **原文、说话人、方向与阅读顺序**：按漫画自然阅读顺序（日漫通常从右到左、从上到下）排列 `page.regions` 与 `records`，填写每个待译区域的原文 `message`、可选 `name` 与文字方向 `direction`（`'vertical-rl'` 或 `'horizontal-tb'`），保留区域的可读原文也记入 `records`。严禁猜测看不清的文字。
 
-# 确认与填色消字
+# 确认与消字
 
 完成取证判定后，调用 `image.apply` 锁定确认状态，再调用 `image.erase` 生成消字候选页：
 
@@ -148,7 +150,8 @@ const applied = await image.apply('work/image/ch01', draft.revision, {
           disposition: 'translate',
           selection: page.regions[0].selection,
           direction: 'vertical-rl',
-          fill: { color: [255, 255, 255] },
+          eraseMethod: 'fill',
+          backgroundColor: [255, 255, 255],
         },
         {
           regionId: 'r0002',
@@ -156,7 +159,8 @@ const applied = await image.apply('work/image/ch01', draft.revision, {
           preserveReason: 'intentional',
           selection: page.regions[1].selection,
           direction: null,
-          fill: null,
+          eraseMethod: null,
+          backgroundColor: null,
         },
         {
           regionId: 'r0003',
@@ -164,7 +168,8 @@ const applied = await image.apply('work/image/ch01', draft.revision, {
           preserveReason: 'repair_failed',
           selection: null,
           direction: null,
-          fill: null,
+          eraseMethod: null,
+          backgroundColor: null,
         },
       ],
     },
@@ -181,15 +186,17 @@ const erased = await image.erase({
 });
 ```
 
-- **消字门禁与文本解耦**：单页消字摘要仅由页面原图及各区域的 `disposition`、`selection` 与 `fill.color` 决定。修改 `records`、区域顺序、`direction` 或 `preserveReason` **不会**使已 `reviewed` 页面失效；只有改动某页的 `disposition`、`selection` 或 `fill.color` 时，才需对该页重跑 `erase`（可传 `pageIds: [pageId]`）与 `review`。
+- **消字与文本解耦**：单页消字摘要由原图、`disposition`、`selection`、`eraseMethod` 和填色区域的 `backgroundColor` 决定。修改原文、阅读顺序、方向、保留原因或模型修复区域的背景代表色，不撤销已有消字验收；像素输入变化后才需重跑该页 `erase` 与 `review`。
+
+模型修复在 `erase` 中按需生成笔画掩码，填满封闭内部孔洞，保留外轮廓凹陷与开放字间空隙，再少量外扩并限制在气泡选区内。各区域均从同一原图取上下文；程序只回贴最终掩码内像素。实际掩码随运行与验收产物保存，不能替代排版的 `selection`。无文字检测结果或掩码为空时会携带区域身份报错，确认是漏检则按未完成区域处理。
 
 # 消字验收
 
-机器门禁仅保证非掩码区像素零改动，无法发现选区吞噬气泡黑边或漏掉边缘笔画。必须用 `ws.emitImage` 逐页检视 `erased.pages` 返回的 `overlay` 与 `clean`。`overlay` 标出允许修改的填色范围，选区最外一层像素与原图混合属于预期的边缘过渡：
+机器门禁仅保证非掩码区像素零改动，无法发现选区吞噬气泡黑边或漏掉边缘笔画。必须用 `ws.emitImage` 逐页检视 `erased.pages` 返回的 `overlay` 与 `clean`。`overlay` 标出实际消字掩码范围；填色区域的最外一层像素混合属于预期过渡，模型修复区域须另行检查描边与细笔画是否完整消除：
 
 - 确认原字笔画已抹除、气泡边框与邻近画稿完好、填色与气泡底色自然融合后，调用 `image.review` 提交 `decision: 'accept'`。紧贴边框的零星微小残点可以接受，边框完整优先。
 - 存在明显色差、成段残字、破边或纹理被抹平的页面提交 `decision: 'reject'` 并附 `reason`。
-- 被 `reject` 的页面：填色偏差则 `apply` 修正 `fill.color` 后对该页重跑 `erase` 与 `review`；选区吞边、明显残字或背景不适合填色时，`apply` 将该区域降级为 `'preserve'` + `'repair_failed'`（保留可读 `records`），再重跑该页 `erase` 与 `review`。
+- 被 `reject` 的页面：填色偏差可修正 `backgroundColor`；有框纹理不适合填色可改为 `eraseMethod: 'inpaint'`，再重跑该页。若存在漏字、破边、错误归属或修复效果仍不可接受，改为 `'preserve'` + `'repair_failed'`，将方向、方法、背景色置空，保留可读原文，再重跑与验收。技术失败或取消按错误恢复执行条件，不将未完成运行当作成功。
 
 # 打包与更新
 
@@ -303,6 +310,6 @@ const published = await image.publish({
 |---|---|
 |交付物与状态|`.image` 归档、图片交付目录（`published.path`）及整包状态（`complete` 或 `partial`）|
 |写字阶段缺口（如有）|列出进入 `incomplete/` 的页码、`regionId`/`blockId`、具体原因（`untranslated`、`no_fit`、`missing_glyph`、宿主错误、视觉 `reject` 原因或 `not_reviewed`）及已保留的底图与诊断材料|
-|消字阶段缺口（如有）|列出 `preserveReason` 为 `'repair_failed'` 或 `'unreadable'` 的页码、`regionId`、原因（复杂背景暂未消字、漏检、破边或残字降级、字迹无法辨认），以及工程中已附带的可读原文与译文|
+|消字阶段缺口（如有）|列出 `preserveReason` 为 `'repair_failed'` 或 `'unreadable'` 的页码、`regionId`、原因（背景修复未通过、漏检、破边或残字降级、字迹无法辨认），以及工程中已附带的可读原文与译文|
 |小字号提示（如有）|说明含 `'small_font'`（字号 `<8px`）但经视觉确认可读的页码与区域|
 |有意保留与特殊处理|说明按 `'intentional'` 保留的海报、招牌、音效字、衣服字等区域，以及带浅底纹但经确认按填色覆盖的气泡页码与区域；存在零待译区域页面时说明已人工核对原图确认无遗漏|

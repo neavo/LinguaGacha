@@ -5,6 +5,15 @@ import { inference_configuration } from "../inference/runtime";
 // 来源提交与摘要共同固定模型身份，准备阶段不追踪远端最新版本。
 export const IMAGE_MODELS = Object.freeze({
   text: TEXT_DETECTION_MODELS.small,
+  inpaint: {
+    file: "lama/lama-large-fp32-unified-webgpu.onnx",
+    size: 204452450,
+    sha256: "77f755491ce57992a873bc5d007ef9f58b0ff84b38206784f72d3db219bed4ea",
+    urls: [
+      "https://huggingface.co/neavo/LaMa-Large-ONNX-WebGPU-FP32/resolve/ecd803ac50c5080263d70edece0e722e752eefb9/lama-large-fp32-unified-webgpu.onnx",
+      "https://modelscope.cn/models/neavo7/LaMa-Large-ONNX-WebGPU-FP32/resolve/master/lama-large-fp32-unified-webgpu.onnx",
+    ],
+  },
   bubble: {
     file: "segmentationbubble_onnx_cpu_webgpu_fp32/model.onnx",
     size: 11441936,
@@ -16,7 +25,7 @@ export const IMAGE_MODELS = Object.freeze({
   },
 } satisfies Record<string, InferenceModel>);
 
-export type ImageModelKind = keyof typeof IMAGE_MODELS; // 图片领域气泡分割与文字检测任务。
+export type ImageModelKind = keyof typeof IMAGE_MODELS; // 气泡分割、文字检测与背景修复任务。
 
 /** 检查当前缺失的图片推理权重标识。 */
 export function missing_models(): ImageModelKind[] {
@@ -26,7 +35,7 @@ export function missing_models(): ImageModelKind[] {
     .map(([kind]) => kind);
 }
 
-/** 两个领域共用下载统计文件，准备锁覆盖整批模型校验。 */
+/** 共用下载统计文件，准备锁覆盖整批模型校验。 */
 export async function prepare_models(): Promise<void> {
   const { modelsDirectory, cacheDirectory } = inference_configuration();
   await prepare_model_files(modelsDirectory, cacheDirectory, Object.values(IMAGE_MODELS));

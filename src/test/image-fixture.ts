@@ -23,7 +23,8 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
         disposition: "translate",
         selection: { path: `masks/${pageId}/text.png`, sha256: maskSha },
         direction: "vertical-rl",
-        fill: { color: [255, 255, 255] },
+        eraseMethod: "fill",
+        backgroundColor: [255, 255, 255],
       },
     ],
   }));
@@ -42,7 +43,7 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
         ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
         ...(region.disposition === "translate"
           ? {
-              mask: `masks/${page.pageId}/${region.regionId}.png`,
+              mask: region.selection!.path,
               maskSha256: maskSha,
             }
           : {}),
@@ -67,6 +68,7 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
     }
     for (const page of clean.pages) {
       entries.set(page.clean, original);
+      for (const region of page.regions) if (region.mask) entries.set(region.mask, mask);
     }
     return write_zip(entries);
   };

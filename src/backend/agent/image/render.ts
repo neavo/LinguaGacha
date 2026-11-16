@@ -69,7 +69,7 @@ export function image_text_page_digest(
         regionId: region.regionId,
         maskSha256: region.selection!.sha256,
         direction: region.direction,
-        color: region.fill!.color,
+        color: region.backgroundColor!,
       })),
       records: sorted_regions(
         records
@@ -209,7 +209,7 @@ export async function render(options: {
                   ...shape,
                   text: record.text,
                   direction: region.direction!,
-                  fill: region.fill!,
+                  fill: { color: region.backgroundColor! },
                 });
             }
           }

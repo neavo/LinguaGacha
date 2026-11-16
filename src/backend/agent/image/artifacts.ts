@@ -29,9 +29,8 @@ export async function build_clean_manifest(
       if (region.selection)
         sources[region.selection.path] = path.join(directory, region.selection.path);
     }
-    for (const [regionId, maskPath] of maskPaths) {
-      sources[`masks/${page.pageId}/${regionId}.png`] = maskPath;
-    }
+    for (const region of cleanRegions)
+      if (region.mask) sources[region.mask] = maskPaths.get(region.regionId)!;
     cleanPages.push({
       pageId: page.pageId,
       clean: cleanMember,

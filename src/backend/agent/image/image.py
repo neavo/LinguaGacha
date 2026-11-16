@@ -4,7 +4,6 @@ import base64
 import importlib.util
 import json
 import math
-import shutil
 import sys
 import threading
 import traceback
@@ -33,6 +32,7 @@ def _load_sibling(name, dev_dir):
 _channel_mod = _load_sibling("channel.py", "inference")
 Channel = _channel_mod.Channel
 fill = _load_sibling("fill.py", "image")
+repair = _load_sibling("repair.py", "image")
 text_detection = _load_sibling("text-detection.py", "inference")
 
 def read_image(path):
@@ -171,14 +171,10 @@ def prepare(args, channel):
         x, y, bw, bh = cv2.boundingRect(raw_mask)
         cv2.putText(preview, rid, (x, max(16, y)), 0, 0.5, (0, 0, 230), 1)
         crops[rid] = save(root / "crops" / f"{rid}.png", image[y:y + bh, x:x + bw])
-    text_boxes = []
+    text_boxes = detect_text(image, channel)
     text_mask = np.zeros((h, w), np.uint8)
-    if np.any(occupied):
-        tensor = text_detection.det_input(image, side=TEXT_SIDE, upscale=False)
-        probability, = forward(channel, "text", tensor)
-        text_boxes = text_detection.det_boxes(probability, h, w, round_coords=True)
-        for box in text_boxes:  # 逐框取并集，避免多轮廓填充的奇偶规则挖掉重叠文字区。
-            cv2.fillConvexPoly(text_mask, np.asarray(box, np.int32), 255)
+    for box in text_boxes:
+        cv2.fillConvexPoly(text_mask, np.asarray(box, np.int32), 255)
     def analyzed_selections():
         """从本次像素归属生成草稿并逐项填色，避免回读刚写出的掩膜。"""
         for index, candidate in enumerate(candidates, 1):
@@ -189,13 +185,12 @@ def prepare(args, channel):
             candidate["background"] = background
             if color is not None:
                 candidate["color"] = color
-            region = dict(regionId=candidate["regionId"], selection=candidate["selection"], direction=None, fill=None)
+            region = dict(regionId=candidate["regionId"], selection=candidate["selection"], direction=None,
+                          disposition="translate", backgroundColor=color,
+                          eraseMethod="fill" if background["route"] == "fill" else "inpaint")
             regions.append(region)
             if background["route"] == "fill":
-                region.update(disposition="translate", fill=dict(color=color))
                 yield mask, color
-            else:
-                region.update(disposition="preserve", preserveReason="repair_failed")
 
     fill_preview = fill.render_fill(image, analyzed_selections())
     scale = min(1.0, IMAGE_SIZE / max(h, w))
@@ -219,45 +214,72 @@ def read_selection(file, selection, shape):
     return mask
 
 
-def erase(args, _channel):
-    """从规范化原图按并集填色，非法选区直接失败，返回产物仍需独立验收。"""
+def detect_text(image, channel):
+    """整页检测文字，零气泡页仍向人工复核提供无框文字证据。"""
+    tensor = text_detection.det_input(image, side=TEXT_SIDE, upscale=False)
+    probability, = forward(channel, "text", tensor)
+    return text_detection.det_boxes(probability, *image.shape[:2], round_coords=True)
+
+
+def erase(args, channel):
+    """填色与模型修复共用整页产物，实际掩码与排版选区分开保存。"""
     page = args["page"]
     root = Path(args["output"])
     image = read_image(args["source"])
     h, w = image.shape[:2]
     if (w, h) != (page["width"], page["height"]):
         raise ValueError("Page dimensions differ from original")
-    overlay = image.copy()
-    results = []
-    def confirmed_selections():
-        """校验、复制和填色共用一次选区读取，逐项释放整页掩膜。"""
-        occupied = np.zeros((h, w), np.uint8)
+    occupied = np.zeros((h, w), np.uint8)
+    repairs, results = [], []
+    union = np.zeros((h, w), np.uint8)
+    needs_model = any(r["disposition"] == "translate" and r["eraseMethod"] == "inpaint" for r in page["regions"])
+    boxes = detect_text(image, channel) if needs_model else []
+    def erase_masks():
+        """逐项消费全尺寸掩码，模型任务只保留磁盘引用。"""
         for region in page["regions"]:
-            rid = region["regionId"]
-            selection = region["selection"]
-            mask = None
+            rid, selection = region["regionId"], region["selection"]
+            selected = None
             source = None
             if selection:
                 if selection["path"] != f"masks/{page['pageId']}/{rid}.png":
                     raise ValueError("Invalid selection path")
                 source = Path(args["root"]) / selection["path"]
-                mask = read_selection(source, selection, (h, w))
-                if np.any((occupied > 0) & (mask > 0)):
+                selected = read_selection(source, selection, (h, w))
+                if np.any(occupied & selected):
                     raise ValueError("Region selections overlap")
-                occupied |= mask
+                occupied[:] |= selected
             if region["disposition"] == "preserve":
                 results.append(dict(regionId=rid, disposition="preserve", preserveReason=region["preserveReason"]))
                 continue
-            color = (region.get("fill") or {}).get("color")
-            if mask is None or not isinstance(color, list) or len(color) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in color):
-                raise ValueError("Translate region requires selection and RGB fill")
-            overlay[mask > 0] = (60, 60, 230)
-            target = root / "masks" / f"{rid}.png"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
-            results.append(dict(regionId=rid, disposition="translate", mask=str(target.resolve()), maskSha256=selection["sha256"]))
-            yield mask, color
-    base = fill.render_fill(image, confirmed_selections())
+            method, color = region["eraseMethod"], region["backgroundColor"]
+            if selected is None or method not in ("fill", "inpaint") or not isinstance(color, list) or len(color) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in color):
+                raise ValueError("Translate region requires selection, erase method and RGB background")
+            if method == "fill":
+                mask = selected
+                target = source
+                mask_sha256 = selection["sha256"]
+            else:
+                target = root / "masks" / f"{rid}.png"
+                try:
+                    mask = repair.text_mask(image, selected, boxes)
+                except ValueError as error:
+                    raise ValueError(f"{page['pageId']}/{rid}: {error}") from error
+                save(target, mask)
+                mask_sha256 = file_sha256(target)
+            results.append(dict(regionId=rid, disposition="translate", mask=str(target.resolve()), maskSha256=mask_sha256))
+            union[:] |= mask
+            if method == "fill":
+                yield mask, color
+            else:
+                repairs.append(target)
+    base = fill.render_fill(image, erase_masks())
+    for target in repairs:
+        mask = cv2.imdecode(np.fromfile(str(target), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        base[mask > 0] = repair.inpaint(image, mask, lambda tensor: forward(channel, "inpaint", tensor)[0])
+    if not np.array_equal(base[union == 0], image[union == 0]):
+        raise ValueError("Pixels changed outside erase masks")
+    overlay = image.copy()
+    overlay[union > 0] = (60, 60, 230)
     clean = save(root / "clean.png", base)
     return dict(clean=clean, cleanSha256=file_sha256(clean),
                 overlay=save(root / "mask-overlay.png", overlay), regions=results)

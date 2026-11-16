@@ -64,7 +64,8 @@ vi.mock("./engine", () => ({
             disposition: "translate",
             selection,
             direction: null,
-            fill: { color: [255, 255, 255] },
+            eraseMethod: "fill",
+            backgroundColor: [255, 255, 255],
           },
         ],
       };
@@ -147,7 +148,9 @@ describe("@lg/image phase-1 transaction loop", () => {
     const confirmedPages: ImagePage[] = [
       {
         ...prep.book.pages[0]!,
-        regions: [{ ...prep.book.pages[0]!.regions[0]!, direction: "vertical-rl" }],
+        regions: [
+          { ...prep.book.pages[0]!.regions[0]!, direction: "vertical-rl", eraseMethod: "inpaint" },
+        ],
       },
       {
         ...prep.book.pages[1]!,
@@ -156,7 +159,8 @@ describe("@lg/image phase-1 transaction loop", () => {
             ...prep.book.pages[1]!.regions[0]!,
             disposition: "preserve",
             preserveReason: "repair_failed",
-            fill: null,
+            eraseMethod: null,
+            backgroundColor: null,
           },
         ],
       },
@@ -242,6 +246,10 @@ describe("@lg/image phase-1 transaction loop", () => {
     const pkgBytes = fs.readFileSync(pkgPath);
     const inspected = await read_image_package(pkgBytes, "book.image");
     expect(inspected.clean.status).toBe("partial");
+    expect(inspected.book.pages[0]!.regions[0]!.eraseMethod).toBe("inpaint");
+    expect(inspected.clean.pages[0]!.regions[0]!.mask).not.toBe(
+      inspected.book.pages[0]!.regions[0]!.selection!.path,
+    );
 
     const sourceProj = path.join(tmp.path, "sources");
     await write_agent_workspace_sources({
@@ -311,7 +319,8 @@ describe("@lg/image phase-1 transaction loop", () => {
           regions: [
             {
               ...confirmedPages[0]!.regions[0]!,
-              fill: { color: [220, 180, 50] },
+              eraseMethod: "fill",
+              backgroundColor: [220, 180, 50],
             },
           ],
         },
@@ -388,7 +397,8 @@ describe("@lg/image phase-1 transaction loop", () => {
               disposition: "preserve",
               preserveReason: "repair_failed",
               selection: page.regions[0]!.selection,
-              fill: null,
+              eraseMethod: null,
+              backgroundColor: null,
               direction: null,
             },
           ],

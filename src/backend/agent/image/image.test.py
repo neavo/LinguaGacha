@@ -65,25 +65,26 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     prep = image.prepare(dict(source=src, output=str(root / "evidence"), selectionRoot=str(root), pageId="p1"), Channel())
     assert len(prep["draftRegions"]) == 2
     assert prep["candidates"][1]["overlaps"] == ["r0001"]
-    empty_channel = Channel(empty=True)
-    empty_prep = image.prepare(dict(source=src, output=str(root / "empty-prep"), selectionRoot=str(root / "empty-prep"), pageId="p1"), empty_channel)
-    assert empty_channel.requests == ["bubble"] and empty_prep["draftRegions"] == []
-    assert np.array_equal(image.read_image(empty_prep["fillPreview"]), source)
-    # 重叠文字框仍全部排除；无背景样本保持原图并明确未完成。
     original_boxes = image.text_detection.det_boxes
     image.text_detection.det_boxes = lambda *args, **kwargs: [np.array([[0,0],[119,0],[119,79],[0,79]])] * 2
     try:
+        empty_channel = Channel(empty=True)
+        empty_prep = image.prepare(dict(source=src, output=str(root / "empty-prep"), selectionRoot=str(root / "empty-prep"), pageId="p1"), empty_channel)
         covered = image.prepare(dict(source=src, output=str(root / "text-covered"), selectionRoot=str(root / "text-covered"), pageId="p1"), Channel())
     finally:
         image.text_detection.det_boxes = original_boxes
+    assert empty_channel.requests == ["bubble", "text"] and empty_prep["draftRegions"] == []
+    assert len(empty_prep["textBoxes"]) == 2
+    assert np.array_equal(image.read_image(empty_prep["fillPreview"]), source)
+    # 重叠文字框仍全部排除；无背景样本保留为待确认修复候选。
     assert all(c["background"]["samplePixels"] == 0 and "color" not in c for c in covered["candidates"])
-    assert all(r["disposition"] == "preserve" and r["preserveReason"] == "repair_failed" and r["fill"] is None for r in covered["draftRegions"])
+    assert all(r["disposition"] == "translate" and r["eraseMethod"] == "inpaint" and r["backgroundColor"] is None for r in covered["draftRegions"])
     assert np.array_equal(image.read_image(covered["fillPreview"]), source)
     page = dict(pageId="p1", width=120, height=80, regions=prep["draftRegions"])
     initial = image.erase(dict(source=src, root=str(root), page=page, output=str(root / "initial")), None)
     assert np.array_equal(image.read_image(prep["fillPreview"]), image.read_image(initial["clean"]))
-    page["regions"][0]["fill"]["color"] = [240, 190, 30]
-    page["regions"][1]["fill"]["color"] = [255, 255, 255]
+    page["regions"][0]["backgroundColor"] = [240, 190, 30]
+    page["regions"][1]["backgroundColor"] = [255, 255, 255]
     args = dict(source=src, root=str(root), page=page, output=str(root / "run"))
     result = image.erase(args, None)
     clean = image.read_image(result["clean"])
@@ -99,14 +100,15 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     assert np.array_equal(clean, image.read_image(reordered["clean"]))
     kept = page["regions"][0]
     kept["disposition"], kept["preserveReason"] = "preserve", "intentional"
+    kept["eraseMethod"], kept["backgroundColor"], kept["direction"] = None, None, None
     preserved = image.read_image(image.erase({**args, "output": str(root / "preserved")}, None)["clean"])
     assert np.array_equal(preserved[masks[1] > 0], source[masks[1] > 0])
-    page["regions"].append(dict(regionId="missed", disposition="preserve", preserveReason="repair_failed", selection=None, fill=None, direction=None))
+    page["regions"].append(dict(regionId="missed", disposition="preserve", preserveReason="repair_failed", selection=None, eraseMethod=None, backgroundColor=None, direction=None))
     image.erase({**args, "output": str(root / "missing")}, None)
     translated = page["regions"][1]
-    translated["fill"]["color"] = [256, 0, 0]
+    translated["backgroundColor"] = [256, 0, 0]
     fails(lambda: image.erase(args, None), "RGB")
-    translated["fill"]["color"] = [255, 0, 0]
+    translated["backgroundColor"] = [255, 0, 0]
     mask_path = root / translated["selection"]["path"]
     image.save(mask_path, cv2.erode(masks[0], np.ones((3, 3), np.uint8)))  # 合法二值图也不能替换已确认选区。
     fails(lambda: image.erase(args, None), "digest")
@@ -131,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix="lg-image-text-pixels-") as folder:
     mask[3:37, 4:46] = 255
     mask_file = root / "masks/p1/r1.png"
     image.save(mask_file, mask)
-    region = dict(regionId="r1", disposition="translate", selection=dict(path="masks/p1/r1.png", sha256=image.file_sha256(mask_file)), direction="horizontal-tb", fill=dict(color=[230, 170, 130]))
+    region = dict(regionId="r1", disposition="translate", selection=dict(path="masks/p1/r1.png", sha256=image.file_sha256(mask_file)), direction="horizontal-tb", eraseMethod="fill", backgroundColor=[230, 170, 130])
     page = dict(pageId="p1", width=50, height=40, regions=[region])
     selected = [dict(regionId="r1",candidateId="C0",blocks=[dict(blockId="B1",box=[4,3,42,34],selection=region["selection"])])]
     args = dict(root=str(root), page=page, selected=selected, materials=str(root))

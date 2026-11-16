@@ -143,7 +143,7 @@ npm test -- --project integration <测试文件路径...>
 npm test -- --project renderer <测试文件路径...>
 ```
 
-省略文件路径会运行整个对应项目。
+省略文件路径会运行整个对应项目。同一测试文件覆盖多个独立边界时，使用 `-t <用例名>` 选择受影响用例。只有共享启动、传输或收尾机制变化时才运行整文件。
 
 ## 🧪 平台与运行环境验证
 
@@ -164,7 +164,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 工作区或共享执行运行时变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
 
-加载、子进程、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
+加载、子进程、代理或流读取涉及真实环境时，从 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts) 选择受影响用例。它在仓库外通过生产构建和真实 Electron 验证执行环境。
 
 上传、图片与宿主协议按影响选择：
 
@@ -181,14 +181,15 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 图片文本快照、运行产物或发布变化运行 `agent/image/{plan,render,publish}.test.ts` 与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。材料边界运行 `agent/tools/render-image-text.test.ts`。协议与取消变化运行 Backend Runtime、runner 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
 
-分区覆盖、块互斥、候选确定性、材料预算、掩码篡改、选区填孔、互斥归属、背景分流、并集边缘过渡、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
+分区覆盖、块互斥、候选确定性、材料预算、掩码篡改、选区与笔画填孔、开放字间空隙、互斥归属、背景分流、并集边缘过渡、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
 
 ```powershell
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/fill.test.py src/backend/agent/image
+uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/repair.test.py src/backend/agent/image
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/image.test.py src/backend/agent/image
 ```
 
-部署验证可把最后一个参数改为部署后的 `runtime` 目录。图片气泡分割与文字检测 Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。工作区请求变化追加 `workspace/runtime/bootstrap.test.ts`。
+部署验证可把最后一个参数改为部署后的 `runtime` 目录。图片气泡分割、文字检测或 LaMa Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。图片运行时资源部署与工作区请求变化追加 `workspace/runtime/bootstrap.test.ts` 中受影响的用例。
 
 真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、区域恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
 
