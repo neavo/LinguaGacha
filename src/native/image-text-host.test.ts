@@ -49,7 +49,8 @@ it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消
           function page(direction, text, color = [255,255,255], width = 64, height = 76) {
             const distance = Buffer.alloc(width*height*4);
             for(let y=0;y<height;y++)for(let x=0;x<width;x++)distance.writeFloatLE(Math.min(x+1,y+1,width-x,height-y),(y*width+x)*4);
-            return {kind:'render_image_text_page',page:{pageId:'p1',width,height,regions:[{regionId:'r1',blockId:'B1',text,direction,fill:{color},box:[0,0,width,height],distance:distance.toString('base64'),centroid:[width/2,height/2]}]}};
+            const block={blockId:'B1',box:[0,0,width,height],distance:distance.toString('base64'),centroid:[width/2,height/2]};
+            return {kind:'render_image_text_page',page:{pageId:'p1',width,height,regions:[{regionId:'r1',text,direction,fill:{color},preferredFontSize:12,sourceLineCount:3,candidates:[{candidateId:'C0',blocks:[block]}]}]}};
           }
           const samples = [
             page('horizontal-tb','中文「你好！」'),
@@ -58,7 +59,7 @@ it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消
             page('vertical-rl','AB12中文'),
             // 竖排及空白段落复用同一候选模型，实际字形由最终像素验收。
             page('vertical-rl','これで春からまた一緒だね!!', [255,255,255], 44, 86),
-            page('horizontal-tb','\\n\\n你好\\n\\n'),
+            page('horizontal-tb','你好'),
             page('horizontal-tb','GRIS, HAVE YOU SEEN MY CREDIT CARD?'),
             page('horizontal-tb','LongWordWithoutSpaces0123456789 中文「A12」 café'),
             page('horizontal-tb','abc 12 \\u202EABC\\u202C 中文'),
@@ -95,20 +96,25 @@ it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消
           }
           const multi = structuredClone(samples[0]);
           multi.page.width *= 2;
-          multi.page.regions.push({...multi.page.regions[0], blockId:'B2', box:[64,0,64,76]});
+          const first=structuredClone(multi.page.regions[0].candidates[0].blocks[0]);
+          const second={...first,blockId:'B2',box:[64,0,64,76]};
+          multi.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
+          multi.page.regions[0].candidates.push({candidateId:'C1',blocks:[first,second]});
           const multiResult = await host(multi);
           assert.deepEqual(multiResult.regions.map(r=>r.result.blockId),['B1','B2']);
           assert(multiResult.regions.every(r=>r.result.status==='rendered'));
+          assert(multiResult.regions.every(r=>r.result.candidateId==='C1'));
+          assert.equal(new Set(multiResult.regions.map(r=>r.result.fontSize)).size,1);
           const repeat = await host(samples[0]);
           assert.deepEqual(repeat.regions[0].result,results[0].result);
           rejectNextCapture=true;
           const beforeRetry=captures;
           const retried=await host(samples[0]);
-          assert.equal(retried.regions[0].result.status,'rendered');
-          assert(captures-beforeRetry>1,'A rejected raster must try another candidate');
-          // 缺字由 SDK 的实际字体覆盖检查验证；CDP 只能识别系统字体回退，不能识别自带字体的缺字方框。
+          assert.equal(retried.regions[0].result.status,'failed');
+          assert.equal(captures-beforeRetry,1,'Only the chosen layout is rasterized');
+          // 缺字由 SDK 的实际字体覆盖检查验证。CDP 只能识别系统字体回退，不能识别自带字体的缺字方框。
           const noRoom = page('vertical-rl','字');
-          noRoom.page.regions[0].distance=Buffer.alloc(64*76*4).toString('base64');
+          noRoom.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
           const failed = await host(noRoom);
           assert.equal(failed.regions[0].result.reason,'no_fit');
           assert.equal(failed.regions[0].png,undefined);

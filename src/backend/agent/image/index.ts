@@ -29,7 +29,7 @@ import {
   image_sha256,
   validate_image_book,
   validate_image_clean,
-  validate_image_selections,
+  validate_image_layout_areas,
   validate_image_page_pixels,
 } from "../../file/image/image-format";
 import { image_metadata } from "../../file/image/image-metadata";
@@ -96,9 +96,8 @@ export type {
 } from "./state";
 
 const UUID_RE = /^[a-f0-9-]{36}$/u; // runId 直接参与目录定位，拒绝路径片段。
-const REGION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/u;
 
-/** 状态读取只比较当前消字输入；产物完整性由消费入口验证。 */
+/** 状态读取只比较当前消字输入。产物完整性由消费入口验证。 */
 function collect_review_status(draft: Draft) {
   return draft.book.pages.map((page) => {
     const inputSha256 = erase_input_digest(page);
@@ -157,7 +156,12 @@ export async function prepare(options: {
       }
 
       // 规范化原图先统一落地（复用 MuPDF 规范化编码），确保 EXIF 方向在像素阶段始终一致。
-      const stubPages: ImagePage[] = pageMeta.map((p) => ({ ...p, regions: [] }));
+      const stubPages: ImagePage[] = pageMeta.map((p) => ({
+        ...p,
+        textBoxes: [],
+        falsePositiveTextBoxIds: [],
+        regions: [],
+      }));
       const normalized = await ensure_normalized(stage, stubPages);
 
       const evidence: PreparePageEvidence[] = [];
@@ -167,7 +171,7 @@ export async function prepare(options: {
           {
             source: normalized.get(meta.pageId)!,
             output: path.join(stage, "evidence", meta.pageId),
-            selectionRoot: stage,
+            layoutAreaRoot: stage,
             pageId: meta.pageId,
           },
           device,
@@ -183,7 +187,12 @@ export async function prepare(options: {
           textBoxes: PreparePageEvidence["textBoxes"];
           backgrounds: PreparePageEvidence["backgrounds"];
         };
-        book.pages.push({ ...meta, regions: result.draftRegions });
+        book.pages.push({
+          ...meta,
+          textBoxes: result.textBoxes.map(({ ownerRegionId: _owner, ...textBox }) => textBox),
+          falsePositiveTextBoxIds: [],
+          regions: result.draftRegions,
+        });
         records.push(
           ...result.draftRegions
             .filter((r) => r.disposition === "translate")
@@ -211,11 +220,11 @@ export async function prepare(options: {
       const draft: Draft = { revision: 0, confirmed: false, book, records, reviewed: {} };
       validate_image_book(book, records, { confirmed: false });
       for (const page of book.pages)
-        await validate_image_selections(page, async (member) =>
+        await validate_image_layout_areas(page, async (member) =>
           fs.read_file(path.join(stage, member)),
         );
       write_json(path.join(stage, EVIDENCE_INDEX_FILE), evidence);
-      for (const name of ["originals", "normalized", "masks", "evidence"]) {
+      for (const name of ["originals", "normalized", "layout-areas", "evidence"]) {
         const source = path.join(stage, name);
         if (file_exists(source)) fs.copy_entry(source, path.join(directory, name));
       }
@@ -241,152 +250,97 @@ export async function read(workDirectory: string) {
   });
 }
 
-/** 文字框分组是新增无框选区的唯一写入口；同页已有无框区域整体替换。 */
-export async function register_regions(options: {
-  workDirectory: string;
-  expectedRevision: number;
-  pages: readonly {
-    pageId: string;
-    groups: readonly { regionId: string; textBoxIds: readonly number[] }[];
-  }[];
-}): Promise<Draft> {
-  if (options.pages.length === 0) throw new Error("At least one page registration is required");
-  const directory = path.resolve(options.workDirectory);
-  return locked(directory, async () => {
-    const draft = load_draft(directory);
-    if (draft.revision !== options.expectedRevision)
-      throw new Error("Stale image draft revision; call read() and reconsider the operation");
-    const evidenceFile = path.join(directory, EVIDENCE_INDEX_FILE);
-    const evidence = read_json<PreparePageEvidence[]>(evidenceFile);
-    const nextPages = structuredClone(draft.book.pages);
-    const nextEvidence = structuredClone(evidence);
-    const stage = path.join(directory, `.register-${randomUUID()}`);
-    const replacements: { source: string; target: string }[] = [];
-    await fs.make_dir_exclusive(stage);
-    try {
-      const seenPages = new Set<string>();
-      for (const registration of options.pages) {
-        if (seenPages.has(registration.pageId))
-          throw new Error(`Duplicate page registration: ${registration.pageId}`);
-        seenPages.add(registration.pageId);
-        const page = nextPages.find((item) => item.pageId === registration.pageId);
-        const pageEvidence = nextEvidence.find((item) => item.pageId === registration.pageId);
-        if (!page || !pageEvidence) throw new Error(`Unknown page: ${registration.pageId}`);
-        const existingIds = new Set(
-          page.regions
-            .filter((region) => region.kind === "bubble")
-            .map((region) => region.regionId),
-        );
-        const boxIds = new Set<number>();
-        for (const group of registration.groups) {
-          if (!REGION_ID_RE.test(group.regionId) || existingIds.has(group.regionId))
-            throw new Error(`Invalid or duplicate regionId: ${group.regionId}`);
-          existingIds.add(group.regionId);
-          if (group.textBoxIds.length === 0)
-            throw new Error(`Empty text box group: ${group.regionId}`);
-          for (const id of group.textBoxIds) {
-            const box = pageEvidence.textBoxes[id];
-            if (!Number.isSafeInteger(id) || !box || box.ownerRegionId || boxIds.has(id))
-              throw new Error(`Invalid or duplicate text box: ${id}`);
-            boxIds.add(id);
-          }
-        }
-        const normalized = (await ensure_normalized(directory, [page])).get(page.pageId)!;
-        const result = (await pixels("register_regions", {
-          source: normalized,
-          root: directory,
-          output: stage,
-          page,
-          textBoxes: pageEvidence.textBoxes.map((item) => item.box),
-          groups: registration.groups,
-        })) as { regions: ImageRegion[]; backgrounds: PreparePageEvidence["backgrounds"] };
-        page.regions = [
-          ...page.regions.filter((region) => region.kind === "bubble"),
-          ...result.regions,
-        ];
-        pageEvidence.backgrounds = {
-          ...Object.fromEntries(
-            Object.entries(pageEvidence.backgrounds).filter(([regionId]) =>
-              page.regions.some(
-                (region) => region.regionId === regionId && region.kind === "bubble",
-              ),
-            ),
-          ),
-          ...result.backgrounds,
-        };
-        for (const region of result.regions) {
-          const source = path.join(stage, region.selection!.path);
-          replacements.push({ source, target: path.join(directory, region.selection!.path) });
-        }
-      }
-      validate_image_book({ ...draft.book, pages: nextPages }, [], { confirmed: false });
-      for (const { pageId } of options.pages) {
-        const page = nextPages.find((item) => item.pageId === pageId)!;
-        await validate_image_selections(page, async (member) => {
-          const replacement = replacements.find(
-            (item) => item.target === path.join(directory, member),
-          );
-          return fs.read_file(replacement?.source ?? path.join(directory, member));
-        });
-      }
-      const regionIds = new Set(
-        nextPages.flatMap((page) =>
-          page.regions.map((region) => `${page.pageId}/${region.regionId}`),
-        ),
-      );
-      const next: Draft = {
-        revision: draft.revision + 1,
-        confirmed: false,
-        book: { ...draft.book, pages: nextPages },
-        records: draft.records.filter((record) =>
-          regionIds.has(`${record.pageId}/${record.regionId}`),
-        ),
-        reviewed: Object.fromEntries(
-          Object.entries(draft.reviewed ?? {}).filter(([pageId]) => !seenPages.has(pageId)),
-        ), // 注册只撤销本次修改页的验收。
-      };
-      const backups = replacements.map((replacement, index) => {
-        if (!file_exists(replacement.target)) return { target: replacement.target };
-        const backup = path.join(stage, "backups", String(index));
-        fs.copy_file(replacement.target, backup);
-        return { target: replacement.target, backup };
-      });
-      const previousEvidence = fs.read_file(evidenceFile);
-      try {
-        for (const replacement of replacements)
-          fs.copy_file_atomic(replacement.source, replacement.target);
-        write_json(evidenceFile, nextEvidence);
-        write_json(path.join(directory, STATE_FILE), next);
-      } catch (cause) {
-        const rollbackErrors: unknown[] = [];
-        for (const backup of backups) {
-          try {
-            if (backup.backup) fs.copy_file_atomic(backup.backup, backup.target);
-            else await fs.remove_async(backup.target, { force: true });
-          } catch (error) {
-            rollbackErrors.push(error);
-          }
-        }
-        try {
-          fs.write_file_atomic(evidenceFile, previousEvidence);
-        } catch (error) {
-          rollbackErrors.push(error);
-        }
-        if (rollbackErrors.length)
-          throw new AggregateError(
-            [cause, ...rollbackErrors],
-            "Region registration rollback failed",
-            {
-              cause,
-            },
-          );
-        throw cause;
-      }
-      return next;
-    } finally {
-      await fs.remove_async(stage, { recursive: true, force: true });
+/** `apply` 根据文字框分组生成无框排版区域，调用者不写掩码路径。 */
+async function prepare_layout_areas(
+  directory: string,
+  current: Draft,
+  pages: ImagePage[],
+  stage: string,
+): Promise<{
+  evidence: PreparePageEvidence[];
+  replacements: { source: string; target: string }[];
+}> {
+  const evidence = structuredClone(
+    read_json<PreparePageEvidence[]>(path.join(directory, EVIDENCE_INDEX_FILE)),
+  );
+  const replacements: { source: string; target: string }[] = [];
+  for (const page of pages) {
+    const previous = current.book.pages.find((item) => item.pageId === page.pageId)!;
+    const pageEvidence = evidence.find((item) => item.pageId === page.pageId)!;
+    for (const region of page.regions.filter((item) => item.kind === "bubble")) {
+      const existing = previous.regions.find((item) => item.regionId === region.regionId);
+      if (
+        !existing ||
+        existing.kind !== "bubble" ||
+        region.layoutArea?.path !== existing.layoutArea?.path ||
+        region.layoutArea?.sha256 !== existing.layoutArea?.sha256
+      )
+        throw new Error(`Bubble layout area is not registered: ${page.pageId}/${region.regionId}`);
     }
-  });
+    const unframed = page.regions.filter(
+      (region) => region.kind === "unframed" && region.textBoxIds.length > 0,
+    );
+    page.regions = page.regions.map((region) =>
+      region.kind === "unframed" && region.textBoxIds.length === 0
+        ? { ...region, layoutArea: null }
+        : region,
+    );
+    if (unframed.length) {
+      const normalized = (await ensure_normalized(directory, [page])).get(page.pageId)!;
+      const result = (await pixels("layout_areas", {
+        source: normalized,
+        root: directory,
+        output: stage,
+        page: { ...page, regions: page.regions.filter((region) => region.kind === "bubble") },
+        textBoxes: pageEvidence.textBoxes,
+        groups: unframed.map((region) => ({
+          regionId: region.regionId,
+          textBoxIds: region.textBoxIds,
+        })),
+      })) as { regions: ImageRegion[]; backgrounds: PreparePageEvidence["backgrounds"] };
+      const generated = new Map(result.regions.map((region) => [region.regionId, region]));
+      page.regions = page.regions.map((region) => {
+        if (region.kind === "bubble") return region;
+        if (region.textBoxIds.length === 0) return { ...region, layoutArea: null };
+        const area = generated.get(region.regionId);
+        if (!area)
+          throw new Error(`Missing unframed layout area: ${page.pageId}/${region.regionId}`);
+        return {
+          ...region,
+          layoutArea: area.layoutArea,
+          ...(region.disposition === "translate" && region.backgroundColor === null
+            ? { backgroundColor: area.backgroundColor }
+            : {}),
+        };
+      });
+      for (const region of result.regions) {
+        const source = path.join(stage, region.layoutArea!.path);
+        replacements.push({ source, target: path.join(directory, region.layoutArea!.path) });
+      }
+      pageEvidence.backgrounds = {
+        ...Object.fromEntries(
+          Object.entries(pageEvidence.backgrounds).filter(([regionId]) =>
+            page.regions.some((region) => region.regionId === regionId && region.kind === "bubble"),
+          ),
+        ),
+        ...result.backgrounds,
+      };
+    }
+    const owners = new Map(
+      page.regions.flatMap((region) =>
+        region.textBoxIds.map((textBoxId) => [textBoxId, region.regionId] as const),
+      ),
+    );
+    pageEvidence.textBoxes = pageEvidence.textBoxes.map((textBox) => ({
+      ...textBox,
+      ownerRegionId: owners.get(textBox.textBoxId) ?? null,
+    }));
+    const regionIds = new Set(page.regions.map((region) => region.regionId));
+    pageEvidence.backgrounds = Object.fromEntries(
+      Object.entries(pageEvidence.backgrounds).filter(([regionId]) => regionIds.has(regionId)),
+    );
+  }
+  return { evidence, replacements };
 }
 
 /** 在工作区锁下原子提交确认的区域、填色配置与按阅读顺序排列的原文字段。 */
@@ -404,51 +358,80 @@ export async function apply(
 
     const nextPages = structuredClone(change.pages);
     const nextRecords = structuredClone(change.records);
-    validate_image_book({ ...current.book, pages: nextPages }, nextRecords, {
-      confirmed: change.confirmed,
-    });
-
-    for (const page of nextPages) {
-      const previous = current.book.pages.find((p) => p.pageId === page.pageId)!;
-      for (const registered of previous.regions)
-        if (
-          registered.selection &&
-          !page.regions.some((region) => region.regionId === registered.regionId)
-        )
-          throw new Error("Registered region cannot be removed by apply");
-      for (const region of page.regions) {
-        const existing = previous.regions.find((item) => item.regionId === region.regionId);
-        const registered = existing?.selection ?? null;
-        if (existing && existing.kind !== region.kind)
-          throw new Error("Region kind cannot be changed by apply");
-        if (
-          region.selection?.path !== registered?.path ||
-          region.selection?.sha256 !== registered?.sha256
-        )
-          throw new Error("Selection is not registered for this region");
+    validate_image_book({ ...current.book, pages: nextPages }, nextRecords, { confirmed: false });
+    const stage = path.join(directory, `.apply-${randomUUID()}`);
+    await fs.make_dir_exclusive(stage);
+    try {
+      const { evidence, replacements } = await prepare_layout_areas(
+        directory,
+        current,
+        nextPages,
+        stage,
+      );
+      validate_image_book({ ...current.book, pages: nextPages }, nextRecords, {
+        confirmed: change.confirmed,
+      });
+      for (const page of nextPages)
+        await validate_image_layout_areas(page, async (member) => {
+          const replacement = replacements.find(
+            (item) => item.target === path.join(directory, member),
+          );
+          return fs.read_file(replacement?.source ?? path.join(directory, member));
+        });
+      const reviewed: Record<string, ReviewedPageRef> = {};
+      for (const page of nextPages) {
+        const existing = current.reviewed?.[page.pageId];
+        if (existing && existing.inputSha256 === erase_input_digest(page))
+          reviewed[page.pageId] = existing;
       }
-    }
-    const reviewed: Record<string, ReviewedPageRef> = {};
-    for (const page of nextPages) {
-      const existing = current.reviewed?.[page.pageId];
-      if (existing && existing.inputSha256 === erase_input_digest(page)) {
-        reviewed[page.pageId] = existing;
+      const next: Draft = {
+        revision: current.revision + 1,
+        confirmed: change.confirmed,
+        book: { ...current.book, pages: nextPages },
+        records: nextRecords,
+        reviewed,
+      };
+      const evidenceFile = path.join(directory, EVIDENCE_INDEX_FILE);
+      const previousEvidence = fs.read_file(evidenceFile);
+      const backups = replacements.map((replacement, index) => {
+        if (!file_exists(replacement.target)) return { target: replacement.target };
+        const backup = path.join(stage, "backups", String(index));
+        fs.copy_file(replacement.target, backup);
+        return { target: replacement.target, backup };
+      });
+      try {
+        for (const replacement of replacements)
+          fs.copy_file_atomic(replacement.source, replacement.target);
+        write_json(evidenceFile, evidence);
+        write_json(path.join(directory, STATE_FILE), next);
+      } catch (cause) {
+        const rollbackErrors: unknown[] = [];
+        for (const backup of backups)
+          try {
+            if (backup.backup) fs.copy_file_atomic(backup.backup, backup.target);
+            else await fs.remove_async(backup.target, { force: true });
+          } catch (error) {
+            rollbackErrors.push(error);
+          }
+        try {
+          fs.write_file_atomic(evidenceFile, previousEvidence);
+        } catch (error) {
+          rollbackErrors.push(error);
+        }
+        if (rollbackErrors.length)
+          throw new AggregateError([cause, ...rollbackErrors], "Image apply rollback failed", {
+            cause,
+          });
+        throw cause;
       }
+      return next;
+    } finally {
+      await fs.remove_async(stage, { recursive: true, force: true });
     }
-
-    const next: Draft = {
-      revision: current.revision + 1,
-      confirmed: change.confirmed,
-      book: { ...current.book, pages: nextPages },
-      records: nextRecords,
-      reviewed,
-    };
-    write_json(path.join(directory, STATE_FILE), next);
-    return next;
   });
 }
 
-/** 生成逐区域候选和按页拼图；候选运行不修改已提交底图。 */
+/** 生成逐区域候选和按页拼图。候选运行不修改已提交底图。 */
 export async function erase(options: {
   workDirectory: string;
   expectedRevision: number;
@@ -513,7 +496,7 @@ export async function erase(options: {
           candidates: region.candidates.map((candidate) => ({
             ...candidate,
             crop: relative(candidate.crop),
-            mask: relative(candidate.mask),
+            eraseMask: relative(candidate.eraseMask),
           })),
         }));
         const materials = raw.materials.map(relative);
@@ -548,7 +531,7 @@ export async function erase(options: {
   });
 }
 
-/** 校验按页选择，组合已选像素并一次提交最终区域状态与不可变底图。 */
+/** 校验按页选择，组合已选像素并一次提交最终区域状态与验收底图。 */
 export async function review(options: {
   workDirectory: string;
   runId: string;
@@ -564,11 +547,11 @@ export async function review(options: {
     const run = read_json<RunRecord>(runFile);
     validate_candidate_run(path.dirname(runFile), options.runId, run);
     const decisions = read_candidate_decisions(run.pages, options.pages);
-    const reviewDecisionSha256 = image_sha256(JSON.stringify(decisions));
+    const reviewDecision = JSON.stringify(decisions);
     const replayed = run.pages.every(
       (page) =>
         draft.reviewed?.[page.pageId]?.runId === options.runId &&
-        draft.reviewed?.[page.pageId]?.reviewDecisionSha256 === reviewDecisionSha256,
+        draft.reviewed?.[page.pageId]?.reviewDecision === reviewDecision,
     );
     if (replayed) return { runId: options.runId, revision: draft.revision, replayed: true };
     if (!draft.confirmed) throw new Error("Image draft must remain confirmed for review");
@@ -581,7 +564,7 @@ export async function review(options: {
       inputSha256: string;
       cleanSource: string;
       cleanSha256: string;
-      regions: Parameters<typeof stage_reviewed_page>[1]["regions"];
+      regions: Parameters<typeof stage_reviewed_page>[2]["regions"];
     }[] = [];
     const composeStage = path.join(directory, "runs", options.runId, `.compose-${randomUUID()}`);
     await fs.make_dir_exclusive(composeStage);
@@ -647,8 +630,8 @@ export async function review(options: {
             regionId: string;
             disposition: "translate" | "preserve";
             preserveReason?: "intentional" | "repair_failed" | "unreadable";
-            mask?: string;
-            maskSha256?: string;
+            eraseMask?: string;
+            eraseMaskSha256?: string;
           }[];
         };
         await validate_image_page_pixels(page, composed, async (member) =>
@@ -666,26 +649,27 @@ export async function review(options: {
                 disposition: "preserve" as const,
                 ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
               };
-            if (!region.mask || !region.maskSha256)
-              throw new Error(`Missing composed mask: ${page.pageId}/${region.regionId}`);
+            if (!region.eraseMask || !region.eraseMaskSha256)
+              throw new Error(`Missing composed erase mask: ${page.pageId}/${region.regionId}`);
             return {
               regionId: region.regionId,
               disposition: "translate" as const,
-              maskSource: region.mask,
-              maskSha256: region.maskSha256,
+              eraseMaskSource: region.eraseMask,
+              eraseMaskSha256: region.eraseMaskSha256,
             };
           }),
         });
       }
       validate_image_book({ ...draft.book, pages: nextPages }, draft.records, { confirmed: true });
       const nextReviewed: Record<string, ReviewedPageRef> = { ...draft.reviewed };
+      const reviewId = randomUUID();
       for (const page of staged) {
-        const artifactDigest = await stage_reviewed_page(directory, page);
+        await stage_reviewed_page(directory, reviewId, page);
         nextReviewed[page.pageId] = {
           inputSha256: page.inputSha256,
-          artifactDigest,
+          reviewId,
           runId: options.runId,
-          reviewDecisionSha256,
+          reviewDecision,
         };
       }
       const next: Draft = {
@@ -738,7 +722,7 @@ export async function pack(
   });
 }
 
-/** 从工程展开的 `sources/<asset>/` 离线恢复工作区，失效旧规范化缓存并恢复不可变验收产物。 */
+/** 从工程展开的 `sources/<asset>/` 离线恢复工作区，失效旧规范化缓存并恢复验收产物。 */
 export async function restore(sourceDirectory: string, workDirectory: string): Promise<Draft> {
   const source = path.resolve(sourceDirectory);
   const directory = path.resolve(workDirectory);
@@ -759,16 +743,16 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
         inputSha256: string;
         cleanSource: string;
         cleanSha256: string;
-        regions: Parameters<typeof stage_reviewed_page>[1]["regions"];
+        regions: Parameters<typeof stage_reviewed_page>[2]["regions"];
       }[] = [];
 
       for (const page of book.pages) {
         const srcOrig = path.join(source, page.original);
         for (const region of page.regions) {
-          if (region.selection)
+          if (region.layoutArea)
             fs.copy_file(
-              path.join(source, region.selection.path),
-              path.join(stageRoot, region.selection.path),
+              path.join(source, region.layoutArea.path),
+              path.join(stageRoot, region.layoutArea.path),
             );
         }
         const stagedOrig = path.join(stageRoot, page.original);
@@ -779,13 +763,16 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
         const srcClean = path.join(source, cleanPage.clean);
         fs.copy_file(srcClean, path.join(stageRoot, cleanPage.clean));
         for (const region of cleanPage.regions)
-          if (region.mask?.startsWith("erase-masks/"))
-            fs.copy_file(path.join(source, region.mask), path.join(stageRoot, region.mask));
+          if (region.eraseMask?.startsWith("erase-masks/"))
+            fs.copy_file(
+              path.join(source, region.eraseMask),
+              path.join(stageRoot, region.eraseMask),
+            );
         await validate_image_page_pixels(page, cleanPage, async (member) =>
           fs.read_file(path.join(stageRoot, member)),
         );
 
-        const stagedRegions: Parameters<typeof stage_reviewed_page>[1]["regions"][number][] = [];
+        const stagedRegions: Parameters<typeof stage_reviewed_page>[2]["regions"][number][] = [];
         for (const cr of cleanPage.regions) {
           if (cr.disposition === "preserve") {
             stagedRegions.push({
@@ -795,13 +782,13 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
             });
             continue;
           }
-          if (!cr.mask || !cr.maskSha256)
-            throw new Error(`Clean region missing mask: ${page.pageId}/${cr.regionId}`);
+          if (!cr.eraseMask || !cr.eraseMaskSha256)
+            throw new Error(`Clean region missing erase mask: ${page.pageId}/${cr.regionId}`);
           stagedRegions.push({
             regionId: cr.regionId,
             disposition: "translate",
-            maskSource: path.join(stageRoot, cr.mask),
-            maskSha256: cr.maskSha256,
+            eraseMaskSource: path.join(stageRoot, cr.eraseMask),
+            eraseMaskSha256: cr.eraseMaskSha256,
           });
         }
 
@@ -815,10 +802,11 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
         });
       }
 
-      // 第二阶段：全部校验通过后再固化不可变 reviewed 产物，并提交工作区原稿、规范化缓存失效与草稿状态。
+      // 第二阶段：全部校验通过后再固化 reviewed 产物，并提交工作区原稿、规范化缓存失效与草稿状态。
       const reviewed: Record<string, ReviewedPageRef> = {};
+      const reviewId = randomUUID();
       for (const item of stageItems) {
-        const artifactDigest = await stage_reviewed_page(directory, {
+        await stage_reviewed_page(directory, reviewId, {
           pageId: item.page.pageId,
           inputSha256: item.inputSha256,
           cleanSource: item.cleanSource,
@@ -827,7 +815,7 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
         });
         reviewed[item.page.pageId] = {
           inputSha256: item.inputSha256,
-          artifactDigest,
+          reviewId,
           runId: "restored",
         };
       }
@@ -855,7 +843,7 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
       for (const item of stageItems) {
         backupTarget(path.join(directory, item.page.original));
         for (const region of item.page.regions)
-          if (region.selection) backupTarget(path.join(directory, region.selection.path));
+          if (region.layoutArea) backupTarget(path.join(directory, region.layoutArea.path));
         const normPng = normalized_path(directory, item.page.pageId);
         const normMeta = normalized_meta_path(directory, item.page.pageId);
         let keepNormalized = false;
@@ -883,10 +871,10 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
         for (const item of stageItems) {
           fs.copy_file_atomic(item.stagedOrig, path.join(directory, item.page.original));
           for (const region of item.page.regions)
-            if (region.selection)
+            if (region.layoutArea)
               fs.copy_file_atomic(
-                path.join(stageRoot, region.selection.path),
-                path.join(directory, region.selection.path),
+                path.join(stageRoot, region.layoutArea.path),
+                path.join(directory, region.layoutArea.path),
               );
         }
         for (const p of normCleanups) {
@@ -918,6 +906,3 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
     }
   });
 }
-
-export { prepare_text } from "./plan";
-export type { ImageTextPlan, ImageTextAssignment } from "../../../shared/image-text";

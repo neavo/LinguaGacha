@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import lockfile from "proper-lockfile";
 import { default_native_fs as fs } from "../../../native/native-fs";
@@ -8,14 +9,9 @@ import type {
   ImageCleanRegion,
   ImagePage,
   ImageRecord,
-  ImageSelection,
+  ImageLayoutArea,
 } from "../../../shared/image";
-import {
-  erase_input_digest,
-  image_sha256,
-  validate_image_book,
-  validate_image_selections,
-} from "../../file/image/image-format";
+import { erase_input_digest, validate_image_book } from "../../file/image/image-format";
 import { normalize_image_to_png } from "../../file/image/image-pixels";
 
 export const STATE_FILE = "draft.json";
@@ -23,7 +19,7 @@ export const EVIDENCE_INDEX_FILE = "evidence/index.json";
 const LOCK_RETRY = { retries: 100, minTimeout: 100, maxTimeout: 1000 };
 const COMMIT_RETRY = Object.freeze({ attempts: 5, delayMs: 100 });
 
-/** Windows 可能在刚写入 PNG 后短暂拒绝目录改名；持锁重试同一次原子提交，不删除目标。 */
+/** Windows 可能在刚写入 PNG 后短暂拒绝目录改名。持锁重试同一次原子提交，不删除目标。 */
 export async function commit_directory(temporary: string, destination: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -43,11 +39,12 @@ export async function commit_directory(temporary: string, destination: string): 
   }
 }
 
+/** 草稿只引用当前验收目录和产生它的运行，字节摘要留在归档清单。 */
 export type ReviewedPageRef = {
   inputSha256: string;
-  artifactDigest: string;
+  reviewId: string;
   runId: string;
-  reviewDecisionSha256?: string;
+  reviewDecision?: string;
 };
 
 export type Draft = {
@@ -64,8 +61,8 @@ export type PrepareCandidate = {
   box: [number, number, number, number]; // 规范化原图中的 x0/y0/x1/y1，仅用于取证。
   rawMask: string;
   overlaps: string[];
-  status: "ready" | "empty_selection" | "covered";
-  selection?: ImageSelection;
+  status: "ready" | "empty_area" | "covered";
+  layoutArea?: ImageLayoutArea;
   color?: [number, number, number];
   background?: { route: "fill" | "model"; coverage: number | null; samplePixels: number };
 };
@@ -78,7 +75,9 @@ export type PreparePageEvidence = {
   previewScale: number;
   fillPreview: string;
   textBoxes: {
+    textBoxId: string;
     box: [[number, number], [number, number], [number, number], [number, number]];
+    coreBox: [[number, number], [number, number], [number, number], [number, number]];
     ownerRegionId: string | null;
   }[];
   backgrounds: Record<
@@ -95,8 +94,8 @@ export type EraseCandidate = {
   box: [number, number, number, number];
   crop: string;
   cropSha256: string;
-  mask: string;
-  maskSha256: string;
+  eraseMask: string;
+  eraseMaskSha256: string;
 };
 
 export type EraseRegionResult = {
@@ -117,12 +116,11 @@ export type RunRecord = {
   pages: ErasePageResult[];
 };
 
-export type ReviewedRegion = Omit<ImageCleanRegion, "mask">; // 验收目录由区域身份定位掩码，记录只保存摘要。
+export type ReviewedRegion = Omit<ImageCleanRegion, "eraseMask">; // 验收目录由区域身份定位掩码，记录只保存摘要。
 
 export type ReviewRecord = {
   pageId: string;
   inputSha256: string;
-  artifactDigest: string;
   cleanSha256: string;
   regions: ReviewedRegion[];
 };
@@ -132,7 +130,6 @@ type NormalizedMeta = {
   width: number;
   height: number;
   orientation: number;
-  pngSha256: string;
 };
 
 /** 同一工作目录串行修改，修订检查与落盘共用锁。 */
@@ -189,40 +186,21 @@ export const normalized_path = (directory: string, pageId: string): string =>
 export const normalized_meta_path = (directory: string, pageId: string): string =>
   path.join(directory, "normalized", `${pageId}.json`);
 
-export const reviewed_dir = (directory: string, pageId: string, artifactDigest: string): string =>
-  path.join(directory, "reviewed", pageId, artifactDigest);
-
-/** 计算不可变验收产物内容摘要，避免同输入不同运行之间相互覆盖。 */
-export function review_artifact_digest(
-  pageId: string,
-  inputSha256: string,
-  cleanSha256: string,
-  regions: readonly ReviewedRegion[],
-): string {
-  const normalizedRegions = [...regions]
-    .sort((a, b) => (a.regionId < b.regionId ? -1 : a.regionId > b.regionId ? 1 : 0))
-    .map((r) => ({
-      regionId: r.regionId,
-      disposition: r.disposition,
-      preserveReason: r.preserveReason ?? null,
-      maskSha256: r.maskSha256 ?? null,
-    }));
-  return image_sha256(
-    JSON.stringify({ pageId, inputSha256, cleanSha256, regions: normalizedRegions }),
-  );
-}
+export const reviewed_dir = (directory: string, pageId: string, reviewId: string): string =>
+  path.join(directory, "reviewed", pageId, reviewId);
 
 /** 调用方已验证源文件，持锁复制后原子提交验收目录。 */
 export async function stage_reviewed_page(
   directory: string,
+  reviewId: string,
   params: {
     pageId: string;
     inputSha256: string;
     cleanSource: string;
     cleanSha256: string;
-    regions: readonly (ReviewedRegion & { maskSource?: string })[];
+    regions: readonly (ReviewedRegion & { eraseMaskSource?: string })[];
   },
-): Promise<string> {
+): Promise<void> {
   const reviewedRegions: ReviewedRegion[] = params.regions.map((region) =>
     region.disposition === "preserve"
       ? {
@@ -233,32 +211,12 @@ export async function stage_reviewed_page(
       : {
           regionId: region.regionId,
           disposition: "translate",
-          maskSha256: region.maskSha256!,
+          eraseMaskSha256: region.eraseMaskSha256!,
         },
   );
-  const artifactDigest = review_artifact_digest(
-    params.pageId,
-    params.inputSha256,
-    params.cleanSha256,
-    reviewedRegions,
-  );
-  const revDir = reviewed_dir(directory, params.pageId, artifactDigest);
+  const revDir = reviewed_dir(directory, params.pageId, reviewId);
 
-  if (file_exists(path.join(revDir, "review.json"))) {
-    try {
-      await verify_immutable_review_dir(revDir, params.pageId, params.inputSha256, artifactDigest);
-      return artifactDigest;
-    } catch {
-      await fs.remove_async(revDir, { recursive: true, force: true }); // 损坏副本可由本次已验证产物重建。
-    }
-  }
-
-  const temporary = path.join(
-    directory,
-    "reviewed",
-    params.pageId,
-    `.${artifactDigest.slice(0, 12)}-${randomUUID()}`,
-  );
+  const temporary = path.join(directory, "reviewed", params.pageId, `.${reviewId}-${randomUUID()}`);
   await fs.make_dir_async(path.join(temporary, "masks"));
   try {
     const destClean = path.join(temporary, "clean.png");
@@ -266,66 +224,56 @@ export async function stage_reviewed_page(
 
     for (const region of params.regions) {
       if (region.disposition === "preserve") continue;
-      if (!region.maskSource || !region.maskSha256)
-        throw new Error(`Missing mask artifact for ${params.pageId}/${region.regionId}`);
+      if (!region.eraseMaskSource || !region.eraseMaskSha256)
+        throw new Error(`Missing erase mask artifact for ${params.pageId}/${region.regionId}`);
       const destMask = path.join(temporary, "masks", `${region.regionId}.png`);
-      fs.copy_file(region.maskSource, destMask);
+      fs.copy_file(region.eraseMaskSource, destMask);
     }
 
     write_json(path.join(temporary, "review.json"), {
       pageId: params.pageId,
       inputSha256: params.inputSha256,
-      artifactDigest,
       cleanSha256: params.cleanSha256,
       regions: reviewedRegions,
     } satisfies ReviewRecord);
 
     await commit_directory(temporary, revDir);
-    return artifactDigest;
   } catch (error) {
     await fs.remove_async(temporary, { recursive: true, force: true });
     throw error;
   }
 }
 
-/** 按内容地址核对文件，目录存在本身不能证明验收产物完整。 */
-async function verify_immutable_review_dir(
+/** 工作目录只核对当前引用和文件存在，归档读取边界负责字节完整性。 */
+function verify_review_dir(
   revDir: string,
   pageId: string,
   inputSha256: string,
-  artifactDigest: string,
-): Promise<{ review: ReviewRecord; cleanPath: string; maskPaths: Map<string, string> }> {
+): { review: ReviewRecord; cleanPath: string; maskPaths: Map<string, string> } {
   const reviewFile = path.join(revDir, "review.json");
   if (!file_exists(reviewFile))
     throw new Error(`Page clean image not reviewed for current specification: ${pageId}`);
   const review = read_json<ReviewRecord>(reviewFile);
-  if (
-    review.pageId !== pageId ||
-    review.inputSha256 !== inputSha256 ||
-    review.artifactDigest !== artifactDigest ||
-    review_artifact_digest(pageId, inputSha256, review.cleanSha256, review.regions) !==
-      artifactDigest
-  )
+  if (review.pageId !== pageId || review.inputSha256 !== inputSha256)
     throw new Error(`Reviewed record identity mismatch: ${pageId}`);
 
   const cleanPath = path.join(revDir, "clean.png");
-  if (!file_exists(cleanPath) || (await file_sha256(cleanPath)) !== review.cleanSha256)
-    throw new Error(`Reviewed clean image tampered: ${pageId}`);
+  if (!file_exists(cleanPath)) throw new Error(`Reviewed clean image missing: ${pageId}`);
 
   const maskPaths = new Map<string, string>();
   for (const item of review.regions) {
     if (item.disposition === "preserve") continue;
-    if (!item.maskSha256)
+    if (!item.eraseMaskSha256)
       throw new Error(`Translated region missing reviewed mask: ${pageId}/${item.regionId}`);
     const maskPath = path.join(revDir, "masks", `${item.regionId}.png`);
-    if (!file_exists(maskPath) || (await file_sha256(maskPath)) !== item.maskSha256)
-      throw new Error(`Reviewed mask tampered: ${pageId}/${item.regionId}`);
+    if (!file_exists(maskPath))
+      throw new Error(`Reviewed mask missing: ${pageId}/${item.regionId}`);
     maskPaths.set(item.regionId, maskPath);
   }
   return { review, cleanPath, maskPaths };
 }
 
-/** 确保规范化 PNG 与当前原稿摘要、尺寸、方向一致；与归档读取校验共用同一 MuPDF 规范化解码。 */
+/** 确保规范化 PNG 与当前原稿身份、尺寸和方向一致。与归档读取共用同一 MuPDF 规范化解码。 */
 export async function ensure_normalized(
   directory: string,
   pages: readonly ImagePage[],
@@ -333,8 +281,7 @@ export async function ensure_normalized(
   const paths = new Map<string, string>();
   for (const page of pages) {
     const source = path.join(directory, page.original);
-    if (!file_exists(source) || (await file_sha256(source)) !== page.sha256)
-      throw new Error(`Original image missing or tampered: ${page.pageId}`);
+    if (!file_exists(source)) throw new Error(`Original image missing: ${page.pageId}`);
     const target = normalized_path(directory, page.pageId);
     const metaFile = normalized_meta_path(directory, page.pageId);
     paths.set(page.pageId, target);
@@ -347,8 +294,7 @@ export async function ensure_normalized(
           meta.sourceSha256 === page.sha256 &&
           meta.width === page.width &&
           meta.height === page.height &&
-          meta.orientation === page.orientation &&
-          (await file_sha256(target)) === meta.pngSha256;
+          meta.orientation === page.orientation;
       } catch {
         cacheValid = false; // 规范化缓存可从已核对的原图重建。
       }
@@ -363,14 +309,13 @@ export async function ensure_normalized(
         width: page.width,
         height: page.height,
         orientation: page.orientation,
-        pngSha256: image_sha256(normalized.png),
       } satisfies NormalizedMeta);
     }
   }
   return paths;
 }
 
-/** 校验草稿当前引用的单页已验收产物是否完整、未过期、未被篡改，并构造 `clean.json` 区域列表。 */
+/** 校验草稿当前引用的单页验收产物是否存在且未过期，并构造 `clean.json` 区域列表。 */
 export async function verify_reviewed_page(
   directory: string,
   draft: Draft,
@@ -385,16 +330,8 @@ export async function verify_reviewed_page(
   const ref = draft.reviewed?.[page.pageId];
   if (!ref || ref.inputSha256 !== inputSha256)
     throw new Error(`Page clean image not reviewed for current specification: ${page.pageId}`);
-  await validate_image_selections(page, async (member) =>
-    fs.read_file(path.join(directory, member)),
-  );
-  const revDir = reviewed_dir(directory, page.pageId, ref.artifactDigest);
-  const { review, cleanPath, maskPaths } = await verify_immutable_review_dir(
-    revDir,
-    page.pageId,
-    inputSha256,
-    ref.artifactDigest,
-  );
+  const revDir = reviewed_dir(directory, page.pageId, ref.reviewId);
+  const { review, cleanPath, maskPaths } = verify_review_dir(revDir, page.pageId, inputSha256);
 
   const byRegion = new Map(review.regions.map((r) => [r.regionId, r]));
   if (byRegion.size !== page.regions.length)
@@ -406,23 +343,25 @@ export async function verify_reviewed_page(
     if (!item || item.disposition !== region.disposition)
       throw new Error(`Reviewed region mismatch: ${page.pageId}/${region.regionId}`);
     if (region.disposition === "preserve") {
-      if (item.maskSha256)
-        throw new Error(`Preserve region cannot carry mask: ${page.pageId}/${region.regionId}`);
+      if (item.eraseMaskSha256)
+        throw new Error(
+          `Preserve region cannot carry erase mask: ${page.pageId}/${region.regionId}`,
+        );
       cleanRegions.push({
         regionId: region.regionId,
         disposition: "preserve",
         ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
       });
     } else {
-      if (!item.maskSha256 || !maskPaths.has(region.regionId))
+      if (!item.eraseMaskSha256 || !maskPaths.has(region.regionId))
         throw new Error(
           `Translated region missing reviewed mask: ${page.pageId}/${region.regionId}`,
         );
       cleanRegions.push({
         regionId: region.regionId,
         disposition: "translate",
-        mask: `erase-masks/${page.pageId}/${region.regionId}.png`,
-        maskSha256: item.maskSha256,
+        eraseMask: `erase-masks/${page.pageId}/${region.regionId}.png`,
+        eraseMaskSha256: item.eraseMaskSha256,
       });
     }
   }
@@ -444,7 +383,8 @@ export function assert_immutable_pages(
       orig.sha256 !== page.sha256 ||
       orig.width !== page.width ||
       orig.height !== page.height ||
-      orig.orientation !== page.orientation
+      orig.orientation !== page.orientation ||
+      !isDeepStrictEqual(orig.textBoxes, page.textBoxes)
     )
       throw new Error("Original identity cannot be changed by layout edits");
   }

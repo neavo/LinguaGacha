@@ -11,10 +11,24 @@ export const IMAGE_PRESERVE_REASON_SCHEMA = Type.Union([
   Type.Literal("unreadable"),
   Type.Literal("repair_failed"),
 ]); // 保留原因：有意不译、无法识读或修复失败。
-export const IMAGE_SELECTION_SCHEMA = Type.Object(
+export const IMAGE_LAYOUT_AREA_SCHEMA = Type.Object(
   {
     path: Type.String({ minLength: 1 }),
     sha256: SHA256,
+  },
+  { additionalProperties: false },
+);
+const IMAGE_QUAD_SCHEMA = Type.Tuple([
+  Type.Tuple([Type.Integer(), Type.Integer()]),
+  Type.Tuple([Type.Integer(), Type.Integer()]),
+  Type.Tuple([Type.Integer(), Type.Integer()]),
+  Type.Tuple([Type.Integer(), Type.Integer()]),
+]);
+const IMAGE_TEXT_BOX_SCHEMA = Type.Object(
+  {
+    textBoxId: ID,
+    box: IMAGE_QUAD_SCHEMA,
+    coreBox: IMAGE_QUAD_SCHEMA,
   },
   { additionalProperties: false },
 );
@@ -33,7 +47,8 @@ const REGION_SCHEMA = Type.Object(
     kind: Type.Union([Type.Literal("bubble"), Type.Literal("unframed")]),
     disposition: Type.Union([Type.Literal("translate"), Type.Literal("preserve")]),
     preserveReason: Type.Optional(IMAGE_PRESERVE_REASON_SCHEMA),
-    selection: Type.Union([IMAGE_SELECTION_SCHEMA, Type.Null()]),
+    textBoxIds: Type.Array(ID, { maxItems: 10000 }),
+    layoutArea: Type.Union([IMAGE_LAYOUT_AREA_SCHEMA, Type.Null()]),
     direction: Type.Union([IMAGE_DIRECTION_SCHEMA, Type.Null()]),
     backgroundColor: Type.Union([IMAGE_COLOR_SCHEMA, Type.Null()]),
   },
@@ -53,6 +68,8 @@ export const IMAGE_BOOK_SCHEMA = Type.Object(
           width: Type.Integer({ minimum: 1, maximum: 100000 }),
           height: Type.Integer({ minimum: 1, maximum: 100000 }),
           orientation: Type.Integer({ minimum: 1, maximum: 8 }),
+          textBoxes: Type.Array(IMAGE_TEXT_BOX_SCHEMA, { maxItems: 10000 }),
+          falsePositiveTextBoxIds: Type.Array(ID, { maxItems: 10000 }),
           regions: Type.Array(REGION_SCHEMA, { maxItems: 10000 }),
         },
         { additionalProperties: false },
@@ -68,8 +85,8 @@ const CLEAN_REGION_SCHEMA = Type.Object(
     regionId: ID,
     disposition: Type.Union([Type.Literal("translate"), Type.Literal("preserve")]),
     preserveReason: Type.Optional(IMAGE_PRESERVE_REASON_SCHEMA),
-    mask: Type.Optional(Type.String({ minLength: 1 })),
-    maskSha256: Type.Optional(SHA256),
+    eraseMask: Type.Optional(Type.String({ minLength: 1 })),
+    eraseMaskSha256: Type.Optional(SHA256),
   },
   { additionalProperties: false },
 ); // 已验收归档中的单区域消字或保留记录。
@@ -106,4 +123,4 @@ export type ImageCleanPage = ImageClean["pages"][number];
 export type ImageCleanRegion = ImageCleanPage["regions"][number];
 export type ImageRecord = { message: string; name?: string; pageId: string; regionId: string }; // 与区域对应的原文条目。
 
-export type ImageSelection = Static<typeof IMAGE_SELECTION_SCHEMA>;
+export type ImageLayoutArea = Static<typeof IMAGE_LAYOUT_AREA_SCHEMA>;

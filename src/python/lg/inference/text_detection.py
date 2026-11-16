@@ -53,15 +53,15 @@ def sort_boxes(boxes):
     return [by_y[i] for i in np.lexsort(([box[0, 0] for box in by_y], lines))]
 
 
-def det_boxes(pred, height, width, round_coords=True):
-    """DB 后处理：二值化、膨胀、轮廓评分与外扩，返回目标尺寸坐标系下的四点框。"""
+def det_box_records(pred, height, width, round_coords=True):
+    """DB 后处理同时保留文字主体框与外扩框。"""
     import cv2
     import pyclipper
 
     bitmap = cv2.dilate((pred > DET_THRESH).astype(np.uint8), np.ones((2, 2), np.uint8))
     contours, _ = cv2.findContours(bitmap * 255, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     map_h, map_w = pred.shape
-    boxes = []
+    records = []
     for contour in contours[:DET_CANDIDATES]:
         points, side = mini_box(contour)
         if side < DET_MIN_SIZE:
@@ -70,7 +70,8 @@ def det_boxes(pred, height, width, round_coords=True):
         y0, y1 = np.clip([math.floor(points[:, 1].min()), math.ceil(points[:, 1].max())], 0, map_h - 1)
         mask = np.zeros((y1 - y0 + 1, x1 - x0 + 1), np.uint8)
         cv2.fillPoly(mask, (points - [x0, y0]).reshape(1, -1, 2).astype(np.int32), 1)
-        if cv2.mean(pred[y0 : y1 + 1, x0 : x1 + 1], mask)[0] < DET_BOX_THRESH:
+        score = cv2.mean(pred[y0 : y1 + 1, x0 : x1 + 1], mask)[0]
+        if score < DET_BOX_THRESH:
             continue
         perimeter = cv2.arcLength(points, True)
         if perimeter <= 0:
@@ -85,17 +86,29 @@ def det_boxes(pred, height, width, round_coords=True):
         expanded, side = mini_box(np.array(largest, np.float32).reshape(-1, 1, 2))
         if side < DET_MIN_SIZE + 2:
             continue
-        box = np.empty_like(expanded)
-        if round_coords:
-            box[:, 0] = np.clip(np.round(expanded[:, 0] / map_w * width), 0, width - 1)
-            box[:, 1] = np.clip(np.round(expanded[:, 1] / map_h * height), 0, height - 1)
-        else:
-            box[:, 0] = np.clip(expanded[:, 0] / map_w * width, 0.0, float(width))
-            box[:, 1] = np.clip(expanded[:, 1] / map_h * height, 0.0, float(height))
-        box = clockwise(box)
+        def project(source):
+            """把检测图坐标投影回来源图，并保持顺时针点序。"""
+            box = np.empty_like(source)
+            if round_coords:
+                box[:, 0] = np.clip(np.round(source[:, 0] / map_w * width), 0, width - 1)
+                box[:, 1] = np.clip(np.round(source[:, 1] / map_h * height), 0, height - 1)
+            else:
+                box[:, 0] = np.clip(source[:, 0] / map_w * width, 0.0, float(width))
+                box[:, 1] = np.clip(source[:, 1] / map_h * height, 0.0, float(height))
+            return clockwise(box)
+
+        box = project(expanded)
+        core_box = project(points)
         edge_w = np.linalg.norm(box[0] - box[1])
         edge_h = np.linalg.norm(box[0] - box[3])
         valid = (int(edge_w) > DET_MIN_SIZE and int(edge_h) > DET_MIN_SIZE) if round_coords else (edge_w > DET_MIN_SIZE and edge_h > DET_MIN_SIZE)
         if valid:
-            boxes.append(box)
-    return sort_boxes(boxes)
+            records.append(dict(box=box, coreBox=core_box, score=float(score)))
+    ordered = sort_boxes([record["box"] for record in records])
+    by_box = {record["box"].tobytes(): record for record in records}
+    return [by_box[box.tobytes()] for box in ordered]
+
+
+def det_boxes(pred, height, width, round_coords=True):
+    """媒体识别只消费外扩框。"""
+    return [record["box"] for record in det_box_records(pred, height, width, round_coords)]

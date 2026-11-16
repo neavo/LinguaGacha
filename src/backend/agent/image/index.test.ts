@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { default_native_fs } from "../../../native/native-fs";
-import type { ImagePage, ImageRecord } from "../../../shared/image";
+import type { ImagePage } from "../../../shared/image";
 import { selection_fixture } from "../../../test/image-fixture";
 import { png_fixture } from "../../../test/media-fixture";
 import { write_zip } from "../../../test/zip-fixture";
@@ -27,9 +27,9 @@ vi.mock("./engine", () => ({
       const preview = path.join(output, "preview.png");
       fs.mkdirSync(path.dirname(preview), { recursive: true });
       fs.writeFileSync(preview, png);
-      const selection = { path: `masks/${pageId}/r1.png`, sha256: maskSha };
+      const layoutArea = { path: `layout-areas/${pageId}/r1.png`, sha256: maskSha };
       if (mockState.bubble) {
-        const file = path.join(String(args.selectionRoot), selection.path);
+        const file = path.join(String(args.layoutAreaRoot), layoutArea.path);
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, mask);
       }
@@ -41,7 +41,14 @@ vi.mock("./engine", () => ({
         fillPreview: preview,
         textBoxes: [
           {
+            textBoxId: "t1",
             box: [
+              [0, 0],
+              [1, 0],
+              [1, 1],
+              [0, 1],
+            ],
+            coreBox: [
               [0, 0],
               [1, 0],
               [1, 1],
@@ -61,7 +68,8 @@ vi.mock("./engine", () => ({
                 regionId: "r1",
                 kind: "bubble",
                 disposition: "translate",
-                selection,
+                textBoxIds: ["t1"],
+                layoutArea,
                 direction: null,
                 backgroundColor: [255, 255, 255],
               },
@@ -69,11 +77,11 @@ vi.mock("./engine", () => ({
           : [],
       };
     }
-    if (command === "register_regions") {
+    if (command === "layout_areas") {
       const page = args.page as ImagePage;
-      const groups = args.groups as { regionId: string }[];
+      const groups = args.groups as { regionId: string; textBoxIds: string[] }[];
       const regions = groups.map((group) => {
-        const member = `masks/${page.pageId}/${group.regionId}.png`;
+        const member = `layout-areas/${page.pageId}/${group.regionId}.png`;
         const file = path.join(output, member);
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, mask);
@@ -81,7 +89,8 @@ vi.mock("./engine", () => ({
           regionId: group.regionId,
           kind: "unframed" as const,
           disposition: "translate" as const,
-          selection: { path: member, sha256: maskSha },
+          textBoxIds: group.textBoxIds,
+          layoutArea: { path: member, sha256: maskSha },
           direction: null,
           backgroundColor: [255, 255, 255] as [number, number, number],
         };
@@ -113,8 +122,8 @@ vi.mock("./engine", () => ({
                 box: [0, 0, 1, 1],
                 crop,
                 cropSha256: pngSha,
-                mask: candidateMask,
-                maskSha256: maskSha,
+                eraseMask: candidateMask,
+                eraseMaskSha256: maskSha,
               },
             ],
             diagnostics: [],
@@ -142,7 +151,7 @@ vi.mock("./engine", () => ({
           const maskFile = path.join(output, "masks", `${region.regionId}.png`);
           fs.mkdirSync(path.dirname(maskFile), { recursive: true });
           fs.writeFileSync(maskFile, mask);
-          return { ...region, mask: maskFile, maskSha256: maskSha };
+          return { ...region, eraseMask: maskFile, eraseMaskSha256: maskSha };
         }),
       };
     }
@@ -161,7 +170,7 @@ vi.mock("./engine", () => ({
   }),
 }));
 
-import { apply, erase, pack, prepare, read, register_regions, review } from "./index";
+import { apply, erase, pack, prepare, read, review } from "./index";
 
 /** 为准备得到的区域补齐方向与原文。 */
 const confirm = (page: ImagePage, message = "原文") => ({
@@ -182,13 +191,6 @@ describe("@lg/image candidate transaction", () => {
     fs.writeFileSync(source, png_fixture());
     const work = path.join(tmp.path, "work");
     const prepared = await prepare({ sources: [source], workDirectory: work });
-    await expect(
-      apply(work, 0, {
-        pages: [{ ...prepared.book.pages[0]!, regions: [] }],
-        records: [],
-        confirmed: false,
-      }),
-    ).rejects.toThrow("cannot be removed");
     const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
     const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
 
@@ -224,7 +226,7 @@ describe("@lg/image candidate transaction", () => {
     const output = path.join(tmp.path, "book.image");
     expect((await pack(work, output)).status).toBe("complete");
     const archive = await read_image_package(fs.readFileSync(output), output);
-    expect(archive.clean.pages[0]!.regions[0]!.mask).toBe(
+    expect(archive.clean.pages[0]!.regions[0]!.eraseMask).toBe(
       `erase-masks/${prepared.book.pages[0]!.pageId}/r1.png`,
     );
   });
@@ -270,28 +272,33 @@ describe("@lg/image candidate transaction", () => {
     });
   });
 
-  it("无框区域只能用未归属且不重复的文字框注册", async () => {
+  it("apply 为无框区域生成排版区域并原子提交", async () => {
     using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-register-"));
     mockState.bubble = false;
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
     const work = path.join(tmp.path, "work");
     const prepared = await prepare({ sources: [source], workDirectory: work });
+    const page = prepared.book.pages[0]!;
+    const region = {
+      regionId: "u1",
+      kind: "unframed" as const,
+      disposition: "translate" as const,
+      textBoxIds: ["t1"],
+      layoutArea: null,
+      direction: "horizontal-tb" as const,
+      backgroundColor: [255, 255, 255] as [number, number, number],
+    };
     await expect(
-      register_regions({
-        workDirectory: work,
-        expectedRevision: 0,
-        pages: [
-          {
-            pageId: prepared.book.pages[0]!.pageId,
-            groups: [
-              { regionId: "u1", textBoxIds: [0] },
-              { regionId: "u2", textBoxIds: [0] },
-            ],
-          },
+      apply(work, 0, {
+        pages: [{ ...page, regions: [region, { ...region, regionId: "u2" }] }],
+        records: [
+          { pageId: page.pageId, regionId: "u1", message: "一" },
+          { pageId: page.pageId, regionId: "u2", message: "二" },
         ],
+        confirmed: true,
       }),
-    ).rejects.toThrow("duplicate text box");
+    ).rejects.toThrow("duplicate region text box");
     const stateFile = path.join(work, "draft.json");
     const write = default_native_fs.write_file_atomic.bind(default_native_fs);
     const failure = vi
@@ -302,52 +309,29 @@ describe("@lg/image candidate transaction", () => {
       });
     try {
       await expect(
-        register_regions({
-          workDirectory: work,
-          expectedRevision: 0,
-          pages: [
-            {
-              pageId: prepared.book.pages[0]!.pageId,
-              groups: [{ regionId: "u1", textBoxIds: [0] }],
-            },
-          ],
+        apply(work, 0, {
+          pages: [{ ...page, regions: [region] }],
+          records: [{ pageId: page.pageId, regionId: "u1", message: "无框原文" }],
+          confirmed: true,
         }),
       ).rejects.toThrow("state write failed");
     } finally {
       failure.mockRestore();
     }
     expect((await read(work)).book.pages[0]!.regions).toEqual([]);
-    const registered = await register_regions({
-      workDirectory: work,
-      expectedRevision: 0,
-      pages: [
-        {
-          pageId: prepared.book.pages[0]!.pageId,
-          groups: [{ regionId: "u1", textBoxIds: [0] }],
-        },
-      ],
+    const applied = await apply(work, 0, {
+      pages: [{ ...page, regions: [region] }],
+      records: [{ pageId: page.pageId, regionId: "u1", message: "无框原文" }],
+      confirmed: true,
     });
-    expect(registered.confirmed).toBe(false);
-    expect(registered.book.pages[0]!.regions[0]!).toMatchObject({
+    expect(applied.confirmed).toBe(true);
+    expect(applied.book.pages[0]!.regions[0]!).toMatchObject({
       kind: "unframed",
       regionId: "u1",
     });
-    const records: ImageRecord[] = [
-      { pageId: prepared.book.pages[0]!.pageId, regionId: "u1", message: "无框原文" },
-    ];
-    await apply(work, registered.revision, {
-      pages: [
-        {
-          ...registered.book.pages[0]!,
-          regions: [{ ...registered.book.pages[0]!.regions[0]!, direction: "horizontal-tb" }],
-        },
-      ],
-      records,
-      confirmed: true,
-    });
   });
 
-  it("全保留页提交原图底图，单页重新注册只撤销该页验收", async () => {
+  it("全保留页提交原图底图，单页区域变化只撤销该页验收", async () => {
     using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-preserved-"));
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
@@ -382,10 +366,15 @@ describe("@lg/image candidate transaction", () => {
       pages: [],
     });
     expect(committed.status).toBe("complete");
-    await register_regions({
-      workDirectory: work,
-      expectedRevision: committed.revision,
-      pages: [{ pageId: page.pageId, groups: [] }],
+    const current = await read(work);
+    await apply(work, committed.revision, {
+      pages: current.book.pages.map((item) =>
+        item.pageId === page.pageId
+          ? { ...item, regions: [], falsePositiveTextBoxIds: ["t1"] }
+          : item,
+      ),
+      records: [],
+      confirmed: true,
     });
     expect((await read(work)).reviewStatus.map((page) => page.reviewed)).toEqual([false, true]);
   });

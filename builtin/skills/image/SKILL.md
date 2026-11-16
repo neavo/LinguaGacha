@@ -1,56 +1,34 @@
 ---
 name: image
-description: 翻译、审校、分析、修改 图片（漫画）文件前必须加载。
+description: 翻译、审校、分析、修改图片或漫画文件，或制作、更新、写回 `.image` 资产时使用。
 ---
 
-本技能处理漫画与静态图片的有框、无框文字。目标是保留阅读理解所需内容，生成可恢复的无字底图与译图。
+本技能处理有框与无框文字。目标是完整登记原文，生成可恢复的无字底图，并只交付经过视觉验收的译图。
 
-产品 Agent 在第一阶段按页生成少量消字候选。它结合区域准备阶段已查看的完整原页与该页候选拼图，为每个区域选择一个候选编号、`preserve` 或 `failed`。程序负责像素组合与原子提交。
+阶段导航：
 
-# 归档契约
-
-|路径|内容|
+|阶段入口|本技能内容|
 |---|---|
-|`image.json`|`ImageBook`：页身份、原图、区域和排版输入|
-|`items.json`|`ImageRecord[]`：按阅读顺序排列的原文与可选说话人|
-|`clean.json`|已提交无字底图、实际消字掩码和 `complete \| partial` 状态|
-|`originals/<pageId>.<ext>`|原始 PNG 或 JPEG 字节|
-|`masks/<pageId>/<regionId>.png`|区域归属及译文排版上限|
-|`erase-masks/<pageId>/<regionId>.png`|已选候选真正改动的像素；填色与 LaMa 统一使用|
-|`clean/<pageId>.png`|EXIF 方向归一化后的已提交无字底图|
+|来源调查|确认图片归属、页面集合和阅读顺序|
+|导入准备|准备环境，确认区域，消字并封装 `.image`|
+|原稿与条目|理解归档事实、区域状态和原文顺序|
+|可见文本补漏|核对检测覆盖，有遗漏时重做 `.image`|
+|翻译后检查|核对译文快照的完成状态|
+|写回与验证|自动排版、整页视觉验收和发布|
+|交付说明|报告完整、部分和保留内容|
 
-`ImageRegion` 的业务字段：
+# 来源调查
 
-|字段|约束|
-|---|---|
-|`regionId`|页内唯一稳定标识|
-|`kind`|`bubble` 有框文字，`unframed` 无框文字|
-|`disposition`|`translate` 或 `preserve`|
-|`preserveReason`|仅 `preserve` 使用：`intentional`、`unreadable`、`repair_failed`|
-|`selection`|已注册的二值选区或 `null`|
-|`direction`|`vertical-rl`、`horizontal-tb` 或 `null`|
-|`backgroundColor`|排版背景代表色 `[R,G,B]` 或 `null`|
+- 独立图片、扫描页和漫画按自然阅读顺序组成处理批次。同一话或同一连续阅读单元通常封装为一个 `.image`。无关图片分开。
+- 游戏目录中的图片先由对应引擎技能判断是否属于游戏资源。需要作为独立图片资产处理时，再交给本技能。
+- 核对页数、方向、分辨率与重复页。顺序或归属不明确时先解决，不凭文件名强行排序。
+- 只需查看或分析时读取原图即可，不制作 `.image`。需要进入工程或交付译图时进入「导入准备」。
 
-`confirmed: true` 时，每个 `translate` 区域必须有非空已注册选区、方向、背景色和非空原文。`preserve` 区域的方向与背景色必须为 `null`。消字方法只属于候选运行，不写入区域。
+# 导入准备
 
-# 应用接口
+## 环境准备
 
-从 `@lg/image` 导入：
-
-|入口|用途|
-|---|---|
-|`prepare`|归档原稿，运行气泡分割与整页文字检测，生成初始证据|
-|`read`|读取草稿、证据和已提交底图状态|
-|`register_regions`|按未归属文字框编号注册或替换无框区域|
-|`apply`|确认区域元数据、原文和阅读顺序|
-|`erase`|生成区域候选和拼图，不提交底图|
-|`review`|校验按页选择，组合已选像素，提交最终区域状态与底图|
-|`pack`、`restore`|封装或恢复 `.image`|
-|`prepare_text`、`render`、`publish`|生成写字计划、排版并发布成品|
-
-# 环境准备
-
-首次运行前安装依赖并准备模型：
+图片 SDK 只声明依赖，不自动安装。首次使用或依赖缺失时准备共享环境和模型：
 
 ```js
 import { npm } from '@lg/npm';
@@ -62,139 +40,179 @@ await uv.run(['add', ...image.IMAGE_DEPENDENCIES.python]);
 if (image.missing_models().length > 0) await image.prepare_models();
 ```
 
-# 区域准备
+依赖版本以 `IMAGE_DEPENDENCIES` 为准，不自行升级。模型准备失败时保留工作材料并报告实际缺口。不伪造检测结果继续封包。
 
-调用 `prepare`，已有工作目录改用 `read`：
+## 区域与原文确认
+
+调用 `prepare`。已有工作目录改用 `read`：
 
 ```js
 const prepared = await image.prepare({
-  sources: ['uploads/page-001.jpg', 'uploads/page-002.jpg'],
+  sources,
   workDirectory: 'work/image/ch01',
   device: 'cpu',
 });
 ```
 
-逐页查看 `evidence[].preview`、`fillPreview`、重点裁图和规范化原页。`textBoxes` 中每项含 `box` 与 `ownerRegionId`：
+逐页查看完整原页、`evidence[].preview`、`fillPreview` 和必要裁图。Agent 判断：
 
-- `ownerRegionId` 非空时，文字框已归属气泡区域，不能重复注册。
-- `ownerRegionId` 为 `null` 时，结合方向、间距、对齐和语义把属于同一段文字的框分组。
-- 同一框只能进入一个分组。跨区域或语义含糊时先保留为未决，不复制。
-- 对明确漏检可作一次局部识读；仍无法形成合法区域时登记已知缺口，不伪造掩码。
+- 哪些 `textBoxIds` 属于同一段文字。
+- 区域是 `bubble` 还是 `unframed`。
+- 文字应翻译、保留、标为无法识读，还是记录为修复失败。
+- 原文、可选说话人、阅读顺序和书写方向。
+- 检测框是否确实不是文字。
 
-用 `register_regions` 注册无框分组。该入口生成选区、验证框归属与区域互斥，并使旧候选失效：
+气泡区域复用 `prepare` 生成的 `layoutArea`。新建无框区域时填写 `textBoxIds` 并令 `layoutArea: null`，`apply` 会在事务中生成排版区域和背景分析。不要写掩码文件或伪造路径。
+
+每个检测文字框必须恰好属于一个区域，或明确列入该页 `falsePositiveTextBoxIds`。应翻译的文字不能标成误检。已知漏检且无法形成合法区域时，用无文字框的 `preserve + repair_failed` 区域记录缺口。
+
+提交完整页面与原文记录：
 
 ```js
-const current = await image.read('work/image/ch01');
-const registered = await image.register_regions({
-  workDirectory: 'work/image/ch01',
-  expectedRevision: current.revision,
+const applied = await image.apply(workDirectory, current.revision, {
+  pages,
+  records,
+  confirmed: true,
+});
+```
+
+确认失败时按错误修正归属、字段或原文。不要降低覆盖要求。
+
+## 消字与封装
+
+调用 `erase`。它生成候选，不修改已验收底图：
+
+```js
+const erased = await image.erase({
+  workDirectory,
+  expectedRevision: applied.revision,
+});
+for (const page of erased.pages)
+  for (const material of page.materials)
+    await ws.emitImage(material, { maxEdge: 1600 });
+```
+
+结合完整原页和候选拼图，为每个待译区域选择候选编号、`preserve` 或 `failed`。页面决定必须覆盖该页返回的全部区域：
+
+```js
+const reviewed = await image.review({
+  workDirectory,
+  runId: erased.runId,
+  expectedRevision: erased.revision,
   pages: [{
-    pageId: current.book.pages[0].pageId,
-    groups: [
-      { regionId: 'u0001', textBoxIds: [3, 4] },
-      { regionId: 'u0002', textBoxIds: [6] },
+    pageId,
+    regions: [
+      { regionId: 'r0001', value: 'A' },
+      { regionId: 'u0001', value: 'failed' },
     ],
   }],
 });
 ```
 
-无框选区是排版范围。候选实际消字掩码会更小。不要让 `apply` 或工作区脚本写掩码文件。
+- 合格候选继续进入翻译与写字。
+- `preserve` 提交为 `intentional`。
+- `failed` 提交为 `repair_failed`，归档状态成为 `partial`。
+- 未知候选、遗漏区域或过期运行会拒绝整次提交。
 
-整理区域时：
-
-- 对白、旁白和理解画面所需文字使用 `translate`。
-- 氛围性装饰文字保留后不影响理解时才使用 `preserve` + `intentional`。
-- 无法识读使用 `unreadable`。应翻译但当前无法形成合法区域使用 `repair_failed`。
-- 按自然阅读顺序排列区域和 `records`。填写原文、可选说话人、方向与背景代表色。看不清时不要猜。
-
-将整理后的完整 `pages` 与 `records` 传给 `apply`，使用当前 `revision` 并设置 `confirmed: true`。保存返回的草稿为 `applied`。
-
-# 候选选择与提交
-
-调用 `erase`。它为每页生成填色、笔画掩码 LaMa、文字框范围 LaMa 中适用且不重复的候选：
+提交后封装并核对状态：
 
 ```js
-const erased = await image.erase({
-  workDirectory: 'work/image/ch01',
-  expectedRevision: applied.revision,
-});
+const packed = await image.pack(workDirectory, 'work/image/ch01.image');
 ```
 
-`erased.pages[].materials` 是该页全部候选拼图。逐页用 `ws.emitImage` 查看。`O` 表示原图裁片，不可选择。固定流程复用区域准备阶段的完整原页，不调用独立模型；上下文已压缩或局部证据不足时，只补看对应原页一次：
+把 `.image` 交回 `project-operation` 识别、提交并完成导入收尾。
 
-```js
-for (const page of erased.pages) {
-  for (const material of page.materials) {
-    await ws.emitImage(material, { maxEdge: 1600 });
-  }
-}
-```
+# 原稿与条目
 
-为每个含候选区域的页面提交完整决定。页面与区域不得遗漏或重复，值只能是该区域的候选编号、`preserve` 或 `failed`：
+`.image` 的持久事实：
 
-```js
-const committed = await image.review({
-  workDirectory: 'work/image/ch01',
-  runId: erased.runId,
-  expectedRevision: erased.revision,
-  pages: [
-    {
-      pageId: erased.pages[0].pageId,
-      regions: [
-        { regionId: 'r0001', value: 'A' },
-        { regionId: 'u0001', value: 'failed' },
-      ],
-    },
-  ],
-});
-```
+|路径或字段|含义|
+|---|---|
+|`image.json`|页身份、检测文字框、语义区域与 `layoutArea`|
+|`items.json`|按阅读顺序排列的原文与可选说话人|
+|`clean.json`|已验收底图、实际 `eraseMask` 与 `complete | partial` 状态|
+|`layout-areas/<pageId>/<regionId>.png`|译文允许出现的区域|
+|`erase-masks/<pageId>/<regionId>.png`|候选实际改变的像素|
 
-- 合法候选：采用该候选像素，区域继续进入翻译和写字。
-- `preserve`：原图不变，提交为 `intentional`。
-- `failed`：原图不变，提交为 `repair_failed`，归档状态为 `partial`。
-- 全保留页没有候选区域，不放入 `pages`，仍由 `review` 提交原图底图。
-- 缺失、重复、未知区域或非法候选会拒绝整次提交，不改草稿。
-- 运行过期时整份拒绝。相同运行和相同选择重放时返回已有提交，不重复计算。
+`textBoxes` 中的 `box` 用于归属和消字，`coreBox` 用于原文字号锚定。`translate` 区域进入工程条目。`preserve` 区域只保留原因。`text: null` 表示尚未翻译，空字符串表示明确不写文字。
 
-提交后直接调用 `pack`。不存在额外的整页消字接受/拒绝循环：
+原文、姓名、阅读顺序或方向变化不要求重新消字。区域、`layoutArea`、处置或实际原图变化会使对应底图验收失效。
 
-```js
-const packed = await image.pack('work/image/ch01', 'work/image/ch01.image');
-```
+# 可见文本补漏
 
-# 写字与发布
+持久化文字框提供机械覆盖门禁，不能证明检测器绝无漏检。处理图片补漏时查看完整原页，并把可见文字与 `textBoxes`、区域和原文记录对应：
 
-工程导入或更新 `.image` 后，提交译文并调用 `generateFiles` 取得写字快照。`text: null` 表示未译，`text: ''` 表示明确留空，非空文本进入排版。
+- 漏掉的气泡、无框文字、界面文字或旁白必须补入区域。
+- 装饰文字只有在不影响理解且确实有意保留时使用 `intentional`。
+- 无法识读使用 `unreadable`。应处理但当前无法形成合法区域使用 `repair_failed`。
+- 发现遗漏、误分组、误检或消字范围错误时，恢复或重做完整 `.image`，按 `project-operation` 的「更新文件」替换资产并继承可复用译文。不在工程译文中用空字符串掩盖区域问题。
 
-1. 用 `restore` 恢复工作目录。
-2. 用 `prepare_text` 生成整体 `C0` 与可用分区候选。
-3. 查看原页和分区预览。多块分配必须逐字符守恒，不得在分配中改写译文或拆开字素。
-4. 用 `render` 排版。`ready` 只代表程序门禁通过，仍须查看译图，核对文字完整、阅读顺序、字号和遮挡。
-5. 逐页形成视觉决定，再调用 `publish({ workDirectory, outputDirectory, expectedRevision, source: { kind: 'rendered', renderId, decisions } })`。`decisions` 中每项为 `{ pageId, decision: 'accept' }` 或 `{ pageId, decision: 'reject', reason }`。排版失败不能自动回到消字阶段搜索更多候选。
+# 翻译后检查
+
+核对当前 `.image` 写回快照：
+
+- 每个 `translate` 区域的译文状态符合本次任务范围。
+- 空字符串确实表示有意不写文字，不是漏译。
+- `repair_failed`、`unreadable` 和 `intentional` 仍符合原页事实。
+- 原文、方向或区域在翻译期间发生变化时，先更新 `.image`，再继续写回。
+
+整页排版和视觉验收属于「写回与验证」，只有导出或交付图片成果时执行。
+
+# 写回与验证
+
+`project-operation` 调用 `generateFiles` 后，使用已展开的 `.image` 原稿和对应写回输入：
 
 ```js
 const draft = await image.restore('sources/ch01.image', 'work/image/ch01');
-const plan = await image.prepare_text({
+const rendered = await image.render({
   workDirectory: 'work/image/ch01',
   inputPath: `${writeback.input_path}/ch01.image/items.json`,
   expectedRevision: draft.revision,
 });
-const rendered = await image.render({
+for (const page of rendered.pages)
+  if (page.preview) await ws.emitImage(page.preview, { maxEdge: 1600 });
+```
+
+程序根据原文几何、译文和 `layoutArea` 自动生成排版，并验证文字完整、字形、边距、重叠和像素范围。Agent 查看最终整页，核对：
+
+- 是否仍有原文或漏译。
+- 译文与区域是否对应。
+- 阅读顺序、方向、断行和字号是否自然。
+- 文字是否遮挡人物或重要画面。
+
+`rendered` 表示机械门禁通过，仍需形成页面决定。只有 `rendered` 页面可以接受。拒绝时填写具体视觉原因：
+
+```js
+const delivery = await image.publish({
   workDirectory: 'work/image/ch01',
-  planId: plan.planId,
-  assignments: [],
+  outputDirectory: 'work/image/ch01-delivery',
   expectedRevision: draft.revision,
+  source: {
+    kind: 'rendered',
+    renderId: rendered.renderId,
+    decisions: [
+      { pageId: 'p1', decision: 'accept' },
+      { pageId: 'p2', decision: 'reject', reason: 'r0003 断行影响阅读' },
+    ],
+  },
 });
 ```
 
-遇到 `no_fit`、块顺序错误或字号失衡时，调整写字候选与文字分配。译文过长时先修订工程译文，再重新生成快照。缺字、未译、排版失败或视觉拒绝的页面保留在 `incomplete/`，不能混入正式成品。
+未译、缺字、`no_fit`、修复失败和视觉拒绝进入 `incomplete/`：
+
+- 译文过长或表达不自然：修订工程译文后重新生成写回输入。
+- 区域、方向、原文或消字错误：回到 `.image` 的导入准备与更新流程。
+- 自动排版本身不合格：拒绝页面并报告区域和现象，不在工作材料中伪造逐页排版参数。
+
+把发布目录中核对过的页面作为该资产的写回成果，写回输入、拒绝页和诊断材料不作为完整成品交付。
 
 # 交付说明
 
 对照 `delivery.json`、`clean.json` 与 `image.json` 汇报：
 
-- `.image`、成品目录与 `complete \| partial` 状态。
+- `.image`、成品目录与 `complete | partial` 状态。
 - `repair_failed`、`unreadable`、未译、`no_fit`、缺字和视觉拒绝的页与区域。
-- `intentional` 保留的装饰文字。
+- `intentional` 保留文字和确认为误检的检测框。
 - 小字号但已视觉确认可读的区域。
-- 全页无待译区域时，说明已核对原图和文字检测证据。
+
+`complete` 只表示文字覆盖完整、底图完整且所有待译页均已视觉接受。

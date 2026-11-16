@@ -26,7 +26,7 @@ export const IMAGE_TEXT_INPUT_SCHEMA = Type.Object(
 
 export type ImageTextInput = Static<typeof IMAGE_TEXT_INPUT_SCHEMA>;
 
-/** 字号、间距和栅格判定共用规则；调用者只提供正文与已确认区域事实。 */
+/** 字号、间距和栅格判定共用规则。调用者只提供正文与已确认区域事实。 */
 export const IMAGE_TEXT_RULES = Object.freeze({
   fontFile: "LGBaseFont-Regular.ttf",
   lineHeight: 1.1,
@@ -41,11 +41,6 @@ export const IMAGE_TEXT_RULES = Object.freeze({
   squareDistanceCorrection: Math.SQRT2,
   pageTimeoutMs: 600_000,
   maximumMaterialBytes: 256_000_000,
-  atlasMaximumEdge: 8192,
-  atlasMaximumPixels: 16_000_000,
-  measurementFontSize: 100,
-  measurementPrecision: 1 / 64,
-  progressInterval: 16,
 });
 
 const BOX = Type.Tuple([
@@ -63,13 +58,32 @@ export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
       Type.Object(
         {
           regionId: ID,
-          blockId: ID,
           text: Type.String(),
           direction: IMAGE_DIRECTION_SCHEMA,
           fill: IMAGE_FILL_SCHEMA,
-          box: BOX,
-          distance: Type.String(),
-          centroid: Type.Tuple([Type.Number(), Type.Number()]),
+          preferredFontSize: Type.Integer({ minimum: 2 }),
+          sourceLineCount: Type.Integer({ minimum: 1 }),
+          candidates: Type.Array(
+            Type.Object(
+              {
+                candidateId: ID,
+                blocks: Type.Array(
+                  Type.Object(
+                    {
+                      blockId: ID,
+                      box: BOX,
+                      distance: Type.String(),
+                      centroid: Type.Tuple([Type.Number(), Type.Number()]),
+                    },
+                    { additionalProperties: false },
+                  ),
+                  { minItems: 1, maxItems: 2 },
+                ),
+              },
+              { additionalProperties: false },
+            ),
+            { minItems: 1, maxItems: 7 },
+          ),
         },
         { additionalProperties: false },
       ),
@@ -116,6 +130,7 @@ export type ImageTextHost = (
 
 const REGION_RESULT_BASE = {
   regionId: ID,
+  candidateId: ID,
   blockId: ID,
   text: Type.Union([Type.String(), Type.Null()]),
   box: BOX,
@@ -166,7 +181,11 @@ export const IMAGE_TEXT_PAGE_RESULT_SCHEMA = Type.Object(
   {
     pageId: ID,
     inputSha256: SHA256,
-    status: Type.Union([Type.Literal("ready"), Type.Literal("incomplete"), Type.Literal("error")]),
+    status: Type.Union([
+      Type.Literal("rendered"),
+      Type.Literal("incomplete"),
+      Type.Literal("error"),
+    ]),
     regions: Type.Array(IMAGE_TEXT_REGION_RESULT_SCHEMA),
     preview: Type.Optional(Type.String()),
     previewSha256: Type.Optional(SHA256),
@@ -175,7 +194,7 @@ export const IMAGE_TEXT_PAGE_RESULT_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
-/** 单换行只在相邻词段需要分隔时补空格；段落保留一个空行。 */
+/** 单换行只在相邻词段需要分隔时补空格。段落保留一个空行。 */
 export function normalize_image_text(text: string): string {
   return text
     .replace(/\r\n?/gu, "\n")
@@ -205,82 +224,3 @@ export function image_text_color(color: readonly number[]): "black" | "white" {
   const luminance = linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
   return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? "black" : "white";
 }
-
-const PLAN_BLOCK_SCHEMA = Type.Object(
-  {
-    blockId: ID,
-    areaShare: Type.Number({ minimum: 0, maximum: 1 }),
-    box: BOX,
-    selection: Type.Object(
-      { path: Type.String(), sha256: SHA256 },
-      { additionalProperties: false },
-    ),
-  },
-  { additionalProperties: false },
-);
-export const IMAGE_TEXT_PLAN_SCHEMA = Type.Object(
-  {
-    planId: SHA256,
-    input: IMAGE_TEXT_INPUT_SCHEMA,
-    pages: Type.Array(
-      Type.Object(
-        {
-          pageId: ID,
-          originalPreview: Type.String(),
-          regions: Type.Array(
-            Type.Object(
-              {
-                regionId: ID,
-                sourceText: Type.String(),
-                text: Type.Union([Type.String(), Type.Null()]),
-                recommendedCandidateId: ID,
-                candidates: Type.Array(
-                  Type.Object(
-                    {
-                      candidateId: ID,
-                      preview: Type.String(),
-                      previewSha256: SHA256,
-                      blocks: Type.Array(PLAN_BLOCK_SCHEMA, { minItems: 1, maxItems: 2 }),
-                    },
-                    { additionalProperties: false },
-                  ),
-                  { minItems: 1, maxItems: 7 },
-                ),
-              },
-              { additionalProperties: false },
-            ),
-          ),
-        },
-        { additionalProperties: false },
-      ),
-    ),
-  },
-  { additionalProperties: false },
-);
-export type ImageTextPlan = Static<typeof IMAGE_TEXT_PLAN_SCHEMA>;
-const ASSIGNED_BLOCKS_SCHEMA = Type.Array(
-  Type.Object({ blockId: ID, text: Type.String() }, { additionalProperties: false }),
-  { minItems: 1, maxItems: 2 },
-);
-export const IMAGE_TEXT_ASSIGNMENT_SCHEMA = Type.Union([
-  Type.Object(
-    {
-      pageId: ID,
-      regionId: ID,
-      candidateId: Type.Literal("C0"),
-      blocks: Type.Optional(ASSIGNED_BLOCKS_SCHEMA),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    { pageId: ID, regionId: ID, candidateId: ID, blocks: ASSIGNED_BLOCKS_SCHEMA },
-    { additionalProperties: false },
-  ),
-]);
-export type ImageTextAssignment = Static<typeof IMAGE_TEXT_ASSIGNMENT_SCHEMA>;
-export type ImageTextSelection = {
-  regionId: string;
-  candidateId: string;
-  text: string | null;
-  blocks: (Static<typeof PLAN_BLOCK_SCHEMA> & { text: string | null })[];
-};

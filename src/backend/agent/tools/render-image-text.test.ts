@@ -4,7 +4,6 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { default_native_fs } from "../../../native/native-fs";
 import { type ImageTextHostResult, type ImageTextPage } from "../../../shared/image-text";
-import { image_sha256 } from "../../file/image/image-format";
 import { create_image_text_renderer, validate_image_text_page } from "./render-image-text";
 
 const result: ImageTextHostResult = {
@@ -19,7 +18,7 @@ const result: ImageTextHostResult = {
   regions: [],
 };
 
-it("进入宿主前拒绝被改写的材料和非有限距离值", async () => {
+it("进入宿主前拒绝长度错误的距离场和重复区域", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-text-material-"));
   const host = vi.fn(async () => result);
   const render = create_image_text_renderer({
@@ -28,8 +27,7 @@ it("进入宿主前拒绝被改写的材料和非有限距离值", async () => {
     imageTextHost: host,
   });
   const file = path.join(temporary.path, "input.json");
-  const binary = Buffer.alloc(4);
-  binary.writeFloatLE(NaN);
+  const binary = Buffer.alloc(0);
   const page: ImageTextPage = {
     pageId: "p",
     width: 1,
@@ -37,37 +35,39 @@ it("进入宿主前拒绝被改写的材料和非有限距离值", async () => {
     regions: [
       {
         regionId: "r",
-        blockId: "B1",
         text: "A",
-        box: [0, 0, 1, 1],
-        centroid: [0.5, 0.5],
         direction: "horizontal-tb",
         fill: { color: [255, 255, 255] },
-        distance: binary.toString("base64"),
+        preferredFontSize: 10,
+        sourceLineCount: 1,
+        candidates: [
+          {
+            candidateId: "C0",
+            blocks: [
+              {
+                blockId: "B1",
+                box: [0, 0, 1, 1],
+                centroid: [0.5, 0.5],
+                distance: binary.toString("base64"),
+              },
+            ],
+          },
+        ],
       },
     ],
   };
-  const bytes = JSON.stringify(page);
-  fs.writeFileSync(file, bytes);
+  fs.writeFileSync(file, JSON.stringify(page));
   await expect(
-    render(
-      { kind: "render_image_text_page", inputPath: file, inputSha256: "0".repeat(64) },
-      new AbortController().signal,
-    ),
-  ).rejects.toThrow("digest mismatch");
-  await expect(
-    render(
-      { kind: "render_image_text_page", inputPath: file, inputSha256: image_sha256(bytes) },
-      new AbortController().signal,
-    ),
-  ).rejects.toThrow("distance field");
+    render({ kind: "render_image_text_page", inputPath: file }, new AbortController().signal),
+  ).rejects.toThrow("distance bytes");
   expect(host).not.toHaveBeenCalled();
-  binary.writeFloatLE(1);
-  page.regions[0]!.distance = binary.toString("base64");
+  const valid = Buffer.alloc(4);
+  valid.writeFloatLE(1);
+  page.regions[0]!.candidates[0]!.blocks[0]!.distance = valid.toString("base64");
   expect(() => validate_image_text_page(page)).not.toThrow();
   expect(() =>
     validate_image_text_page({ ...page, regions: [...page.regions, ...page.regions] }),
-  ).toThrow("coordinates");
+  ).toThrow("Duplicate image text region");
 });
 
 it.each(["cancel", "write failure"])("结果材料在 %s 后回收，原始原因继续传播", async (mode) => {
@@ -88,10 +88,7 @@ it.each(["cancel", "write failure"])("结果材料在 %s 后回收，原始原�
     imageTextHost: async () => result,
   });
   await expect(
-    render(
-      { kind: "render_image_text_page", inputPath: null, inputSha256: null },
-      controller.signal,
-    ),
+    render({ kind: "render_image_text_page", inputPath: null }, controller.signal),
   ).rejects.toBe(reason);
   expect(spy).toHaveBeenCalledOnce();
   expect(fs.readdirSync(path.join(temporary.path, "work"))).toEqual([]);

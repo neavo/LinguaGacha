@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ImageClean, ImageCleanPage } from "../../../shared/image";
 import { compute_clean_status } from "../../file/image/image-format";
-import { file_sha256, verify_reviewed_page, type Draft } from "./state";
+import { verify_reviewed_page, type Draft } from "./state";
 
 /** 只引用已验收的像素产物，文字编辑和模型更新不触发重算。 */
 export async function build_clean_manifest(
@@ -14,8 +14,6 @@ export async function build_clean_manifest(
   const cleanPages: ImageCleanPage[] = [];
   const sources: Record<string, string> = {};
   for (const page of draft.book.pages) {
-    if ((await file_sha256(path.join(directory, page.original))) !== page.sha256)
-      throw new Error(`Original image missing or tampered: ${page.pageId}`);
     const {
       review: rev,
       cleanPath,
@@ -26,11 +24,11 @@ export async function build_clean_manifest(
     sources[page.original] = path.join(directory, page.original);
     sources[cleanMember] = cleanPath;
     for (const region of page.regions) {
-      if (region.selection)
-        sources[region.selection.path] = path.join(directory, region.selection.path);
+      if (region.layoutArea)
+        sources[region.layoutArea.path] = path.join(directory, region.layoutArea.path);
     }
     for (const region of cleanRegions)
-      if (region.mask) sources[region.mask] = maskPaths.get(region.regionId)!;
+      if (region.eraseMask) sources[region.eraseMask] = maskPaths.get(region.regionId)!;
     cleanPages.push({
       pageId: page.pageId,
       clean: cleanMember,

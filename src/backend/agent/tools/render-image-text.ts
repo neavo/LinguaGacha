@@ -1,5 +1,5 @@
 import path from "node:path";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Type, type Static } from "@earendil-works/pi-ai";
 import { Check } from "typebox/value";
 import type { NativeFs } from "../../../native/native-fs";
@@ -15,7 +15,6 @@ export const WORKSPACE_IMAGE_TEXT_REQUEST_SCHEMA = Type.Object(
   {
     kind: Type.Literal("render_image_text_page"),
     inputPath: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
-    inputSha256: Type.Union([Type.String({ pattern: "^[a-f0-9]{64}$" }), Type.Null()]),
   },
   { additionalProperties: false },
 );
@@ -25,37 +24,46 @@ export type WorkspaceImageTextPort = (
   signal: AbortSignal,
 ) => Promise<{ path: string }>;
 
-/** 路径传输的大材料在进入 main 前完成尺寸、摘要、坐标与有限数值校验。 */
+/** 路径传输的大材料在进入 main 前完成尺寸、坐标与二进制长度校验。 */
 export function validate_image_text_page(value: unknown): asserts value is ImageTextPage {
   if (!Check(IMAGE_TEXT_PAGE_SCHEMA, value) || value.width * value.height > 100_000_000)
     throw new Error("Invalid image text page");
   const ids = new Set<string>();
   let materialBytes = 0;
   for (const region of value.regions) {
-    const [x, y, width, height] = region.box;
-    const id = JSON.stringify([region.regionId, region.blockId]);
-    if (ids.has(id) || x < 0 || y < 0 || x + width > value.width || y + height > value.height)
-      throw new Error("Invalid image text region coordinates");
-    ids.add(id);
-    materialBytes += width * height * 4;
-    if (materialBytes > IMAGE_TEXT_RULES.maximumMaterialBytes)
-      throw new Error("Image text material exceeds byte budget");
-    const binary = Buffer.from(region.distance, "base64");
-    if (binary.length !== width * height * 4 || binary.toString("base64") !== region.distance)
-      throw new Error("Invalid image text distance bytes");
-    const maximumDistance = Math.hypot(width, height); // 同一区域的距离上界只算一次。
-    for (let i = 0; i < binary.length; i += 4) {
-      const distance = binary.readFloatLE(i);
-      if (!Number.isFinite(distance) || distance < 0 || distance > maximumDistance)
-        throw new Error("Invalid image text distance field");
+    if (ids.has(region.regionId)) throw new Error("Duplicate image text region");
+    ids.add(region.regionId);
+    const candidateIds = new Set<string>();
+    for (const candidate of region.candidates) {
+      if (candidateIds.has(candidate.candidateId)) throw new Error("Duplicate text candidate");
+      candidateIds.add(candidate.candidateId);
+      const blockIds = new Set<string>();
+      for (const block of candidate.blocks) {
+        const [x, y, width, height] = block.box;
+        if (
+          blockIds.has(block.blockId) ||
+          x < 0 ||
+          y < 0 ||
+          x + width > value.width ||
+          y + height > value.height
+        )
+          throw new Error("Invalid image text block coordinates");
+        blockIds.add(block.blockId);
+        materialBytes += width * height * 4;
+        if (materialBytes > IMAGE_TEXT_RULES.maximumMaterialBytes)
+          throw new Error("Image text material exceeds byte budget");
+        const binary = Buffer.from(block.distance, "base64");
+        if (binary.length !== width * height * 4 || binary.toString("base64") !== block.distance)
+          throw new Error("Invalid image text distance bytes");
+        if (
+          block.centroid.some(
+            (coordinate, axis) =>
+              !Number.isFinite(coordinate) || coordinate < 0 || coordinate > block.box[axis + 2]!,
+          )
+        )
+          throw new Error("Invalid image text centroid");
+      }
     }
-    if (
-      region.centroid.some(
-        (coordinate, axis) =>
-          !Number.isFinite(coordinate) || coordinate < 0 || coordinate > region.box[axis + 2]!,
-      )
-    )
-      throw new Error("Invalid image text centroid");
   }
 }
 
@@ -73,13 +81,10 @@ export function create_image_text_renderer(options: {
       if (options.nativeFs.stat(request.inputPath).size > IMAGE_TEXT_RULES.maximumMaterialBytes)
         throw new Error("Image text material exceeds byte budget");
       const bytes = options.nativeFs.read_file(request.inputPath);
-      if (createHash("sha256").update(bytes).digest("hex") !== request.inputSha256)
-        throw new Error("Image text material digest mismatch");
       const value: unknown = JSON.parse(bytes.toString("utf8"));
       validate_image_text_page(value);
       page = value;
-    } else if (request.inputSha256 !== null)
-      throw new Error("Invalid image text environment request");
+    }
     const result = await options.imageTextHost({ kind: "render_image_text_page", page }, signal);
     signal.throwIfAborted();
     const output = path.join(

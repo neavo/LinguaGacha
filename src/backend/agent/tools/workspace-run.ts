@@ -1,4 +1,4 @@
-import { GENERIC_ITEMS_MEMBER, GENERIC_ITEMS_SCHEMA } from "../../file/shared/archive-records";
+import { GENERIC_ITEMS_SCHEMA } from "../../file/shared/archive-records";
 import { create_schema_renderer } from "../workspace/schema-description";
 import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
@@ -107,11 +107,9 @@ export function create_agent_workspace_run_tool(options: {
       "",
       "### `@lg/project` 接口",
       "",
-      `调用前先提交必要译文。\`generateFiles(bilingual_files)\` 生成到 \`${AGENT_WORKSPACE_WORK_ROOT}/\` 下的暂存目录，返回本机绝对路径：\`output_path\` 只含已支持格式的可安装产物，\`bilingual_output_path\` 为双语对照，\`excluded_files\` 列出本次跳过的资产。\`writeback.input_path\` 为写回输入目录，\`writeback.files\` 列出仍需格式处理的资产。\`pdf_files\` 报告 PDF 页面结果。导出与交付流程见 \`project-operation\` 技能。`,
+      "本模块只提供来源识别、条目语境、原生产物生成和交付目录计算。导出流程见 `project-operation`。`writeback.files` 的输入结构、写回和验证由对应格式技能说明。",
+      `调用 \`generateFiles\` 前先提交必要译文。产物生成到 \`${AGENT_WORKSPACE_WORK_ROOT}/\` 下的暂存目录，返回值中的路径都是本机绝对路径：\`output_path\` 只含宿主已完成的可安装产物，\`bilingual_output_path\` 为双语对照，\`excluded_files\` 是跳过的资产，\`writeback\` 是仍需格式处理的输入，\`pdf_files\` 报告 PDF 页面结果。`,
       "`getOutputPaths(directory?)` 按应用设置计算交付目录，传入绝对路径时改用该父目录。`manual` 为 `true` 表示用户设置为每次手动选择。返回的目录名已避开现有同名目录，但不会预先创建。",
-      `每个通用包是 ZIP，根目录 \`${GENERIC_ITEMS_MEMBER}\` 使用下列结构，其余成员保存解析与写回所需底稿。数组下标是条目行号。写回输入为 \`<writeback.input_path>/<file_path>/${GENERIC_ITEMS_MEMBER}\`，记录数与源数组相同，正文与姓名已确定，私有字段保留。Agent 根据私有定位写回底稿。`,
-      "`.media` 包使用同一记录结构，写回输入同样位于 `writeback.input_path`，其余成员与渲染见 `media` 技能。",
-      "`.image` 包保存原图、确认选区、原稿记录与已验收底图，写回输入 `<writeback.input_path>/<file_path>/items.json` 为图片文本快照，结构、排版与交付见 `image` 技能。",
       "```ts",
       create_schema_renderer(new Map([[GENERIC_ITEMS_SCHEMA, "GenericItems"]])).declarations(),
       "declare module '@lg/project' {",

@@ -15,8 +15,7 @@ import {
   commit_directory,
 } from "./state";
 import { build_clean_manifest } from "./artifacts";
-import { read_image_text_render } from "./render";
-import { plan_member } from "./plan";
+import { read_image_text_render, run_member } from "./render";
 
 export type ImageTextDecision = { pageId: string } & (
   | { decision: "accept" }
@@ -78,8 +77,8 @@ export async function publish(options: {
             throw new Error("Invalid or duplicate text page decision");
           if (decision.decision !== "accept" && decision.decision !== "reject")
             throw new Error("Invalid text page decision");
-          if (decision.decision === "accept" && page.status !== "ready")
-            throw new Error("Only ready text pages can be accepted");
+          if (decision.decision === "accept" && page.status !== "rendered")
+            throw new Error("Only rendered text pages can be accepted");
           if (decision.decision === "reject" && !decision.reason?.trim())
             throw new Error("Rejected text page requires a reason");
           decisions.set(
@@ -91,7 +90,7 @@ export async function publish(options: {
         }
       }
       const artifacts: { file: string; sha256: string; source?: string; bytes?: string }[] = [];
-      // 底图和运行读取入口已核验源文件；发布复用这份摘要。
+      // 底图和运行读取入口已核验源文件，发布复用这份摘要。
       const addFile = (file: string, source: string, sha256: string) => {
         artifacts.push({ file, source, sha256 });
       };
@@ -102,14 +101,6 @@ export async function publish(options: {
       if (rendered) {
         addJson("input.json", rendered.input);
         addJson("render.json", rendered.run);
-        addJson("selected.json", rendered.selected);
-        const masks = new Map<string, string>();
-        for (const page of rendered.selected)
-          for (const region of page)
-            for (const block of region.blocks)
-              masks.set(block.selection.path, block.selection.sha256);
-        for (const [member, sha256] of masks)
-          addFile("masks/" + member, path.join(rendered.runDirectory, "masks", member), sha256);
       }
       const pages: DeliveryPage[] = [];
       for (const [index, page] of draft.book.pages.entries()) {
@@ -138,7 +129,7 @@ export async function publish(options: {
         // 零待译页仍经过 build_clean_manifest 的第一阶段验收校验。
         const inherited = !page.regions.some((region) => region.disposition === "translate");
         const accepted =
-          result.status === "ready" &&
+          result.status === "rendered" &&
           (decision?.decision === "accept" || (!decision && inherited));
         const review = accepted
           ? ("accept" as const)
@@ -155,7 +146,7 @@ export async function publish(options: {
           const file = "pages/" + name + ".png";
           addFile(
             file,
-            inherited ? cleanSource : plan_member(rendered!.runDirectory, result.preview!),
+            inherited ? cleanSource : run_member(rendered!.runDirectory, result.preview!),
             inherited ? cleanPage.cleanSha256 : result.previewSha256!,
           );
           pages.push({ ...common, status: "accepted", file, sha256: artifacts.at(-1)!.sha256 });
@@ -170,7 +161,7 @@ export async function publish(options: {
           if (result.preview)
             addFile(
               prefix + "preview.png",
-              plan_member(rendered!.runDirectory, result.preview),
+              run_member(rendered!.runDirectory, result.preview),
               result.previewSha256!,
             );
           pages.push({ ...common, status: "incomplete" });

@@ -17,12 +17,31 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
     width: 1,
     height: 1,
     orientation: 1,
+    textBoxes: [
+      {
+        textBoxId: "t1",
+        box: [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ],
+        coreBox: [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ],
+      },
+    ],
+    falsePositiveTextBoxIds: [],
     regions: [
       {
         regionId: "text",
         kind: "bubble",
         disposition: "translate",
-        selection: { path: `masks/${pageId}/text.png`, sha256: maskSha },
+        textBoxIds: ["t1"],
+        layoutArea: { path: `layout-areas/${pageId}/text.png`, sha256: maskSha },
         direction: "vertical-rl",
         backgroundColor: [255, 255, 255],
       },
@@ -43,8 +62,8 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
         ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
         ...(region.disposition === "translate"
           ? {
-              mask: `erase-masks/${page.pageId}/${region.regionId}.png`,
-              maskSha256: maskSha,
+              eraseMask: `erase-masks/${page.pageId}/${region.regionId}.png`,
+              eraseMaskSha256: maskSha,
             }
           : {}),
       })),
@@ -64,11 +83,11 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
     for (const page of book.pages) {
       entries.set(page.original, original);
       for (const region of page.regions)
-        if (region.selection) entries.set(region.selection.path, mask);
+        if (region.layoutArea) entries.set(region.layoutArea.path, mask);
     }
     for (const page of clean.pages) {
       entries.set(page.clean, original);
-      for (const region of page.regions) if (region.mask) entries.set(region.mask, mask);
+      for (const region of page.regions) if (region.eraseMask) entries.set(region.eraseMask, mask);
     }
     return write_zip(entries);
   };

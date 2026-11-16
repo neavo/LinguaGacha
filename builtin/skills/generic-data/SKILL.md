@@ -5,9 +5,15 @@ description: 调查正式解析器范围外的文本或二进制数据，提取�
 
 # 通用数据处理
 
-后端保存底稿与确定的解析结果。格式调查、语义判断、定位解释和写回由 Agent 完成。容器入口和记录结构见 `workspace_run` 的 `@lg/project` 接口说明，以该机器契约为准。
+后端保存底稿与确定的解析结果。格式调查、语义判断、定位解释和写回由 Agent 完成。记录字段以 `workspace_run` 中 `@lg/project` 的 `GenericItems` 机器声明为准。
 
 本技能提供通用包的流程，具体格式的方法由对应的引擎技能提供，两者一起加载。
+
+## 包契约
+
+`.generic` 是 ZIP。根目录 `items.json` 使用 `GenericItems`。每项的 `message` 是正文，`name` 是可选姓名。其余 JSON 字段属于写回所需的私有定位。数组下标是稳定的条目行号。私有字段不进入工程公开条目，导入和写回必须原样保留。其余成员保存底稿、写回程序、依赖声明和定位说明。
+
+`generateFiles` 的写回输入位于 `<writeback.input_path>/<file_path>/items.json`。它与源包记录数和顺序一致，`message` 与 `name` 已替换为当前最终文本，私有字段来自源包。Agent 根据私有定位写回底稿，不把数据库 `item_id`、工程状态或本次任务材料写入包内记录。
 
 ## 来源调查
 

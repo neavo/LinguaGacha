@@ -219,7 +219,7 @@ it.each([
   expect(fs.existsSync(sourceRoot)).toBe(false);
 });
 
-it("IMAGE 原稿展开 clean/originals/masks 全部归档成员", async () => {
+it("IMAGE 原稿展开 clean/originals/layout-areas 全部归档成员", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-image-"));
   const fixture = image_fixture(["p1"]);
   const bytes = await fixture.pack();
@@ -236,5 +236,7 @@ it("IMAGE 原稿展开 clean/originals/masks 全部归档成员", async () => {
   expect(fs.existsSync(path.join(base, "clean.json"))).toBe(true);
   expect(fs.readFileSync(path.join(base, "originals/p1.png")).equals(fixture.original)).toBe(true);
   expect(fs.readFileSync(path.join(base, "clean/p1.png")).equals(fixture.original)).toBe(true);
-  expect(fs.readFileSync(path.join(base, "masks/p1/text.png")).equals(fixture.mask)).toBe(true);
+  expect(fs.readFileSync(path.join(base, "layout-areas/p1/text.png")).equals(fixture.mask)).toBe(
+    true,
+  );
 });

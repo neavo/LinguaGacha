@@ -19,6 +19,7 @@ cv2.setNumThreads(1)
 IMAGE_SIZE, MODEL_STRIDE = 1600, 32
 CONF, IOU, MAX_DET, MAX_NMS = 0.25, 0.7, 300, 30000
 TEXT_SIDE = 1280
+UNFRAMED_PADDING_RATIO = 0.5
 
 def read_image(path):
     """读取宿主已规范化的 RGB PNG，返回 OpenCV 使用的 BGR 像素。"""
@@ -106,7 +107,7 @@ def postprocess(raw, proto, shape, input_shape):
     for i, box in zip(kept, scaled):
         logits = (pred[i, 5:] @ proto[0].reshape(32, -1)).reshape(mh, mw)
         mask = cv2.resize(logits[top:bottom, left:right], (w, h), interpolation=cv2.INTER_LINEAR) > 0
-        # 固定参考为 CPU retina_masks；该实现少于 50 个实例时用四舍五入后的框裁剪。
+        # 固定参考为 CPU retina_masks。该实现少于 50 个实例时用四舍五入后的框裁剪。
         if len(kept) < 50:
             x0, y0, x1, y1 = np.round(box).astype(int)
             mask[:y0] = False
@@ -120,13 +121,13 @@ def postprocess(raw, proto, shape, input_shape):
 
 
 def prepare(args, channel):
-    """按分数优先分配选区，冻结像素归属后再交给宿主确认。"""
+    """按分数优先分配气泡区域，冻结像素归属后再交给宿主确认。"""
     image = read_image(args["source"])
     h, w = image.shape[:2]
     tensor = model_input(image)
     raw, proto = forward(channel, "bubble", tensor)
     root = Path(args["output"])
-    selection_root = Path(args["selectionRoot"])
+    layout_area_root = Path(args["layoutAreaRoot"])
     page_id = args["pageId"]
     occupied = np.zeros((h, w), np.uint16)  # 保存候选序号，支持重叠证据追溯。
     preview = image.copy()
@@ -138,7 +139,7 @@ def prepare(args, channel):
         candidate = dict(regionId=rid, **record, rawMask=raw_path, overlaps=[], status="ready")
         candidates.append(candidate)
         if not np.any(inner):
-            candidate["status"] = "empty_selection"
+            candidate["status"] = "empty_area"
             continue
         candidate["overlaps"] = [f"r{int(owner):04d}" for owner in np.unique(occupied[inner > 0]) if owner]
         inner[occupied > 0] = 0
@@ -146,10 +147,10 @@ def prepare(args, channel):
             candidate["status"] = "covered"
             continue
         occupied[inner > 0] = index
-        member = f"masks/{page_id}/{rid}.png"
-        target = save(selection_root / member, inner)
-        selection = dict(path=member, sha256=file_sha256(target))
-        candidate["selection"] = selection
+        member = f"layout-areas/{page_id}/{rid}.png"
+        target = save(layout_area_root / member, inner)
+        layout_area = dict(path=member, sha256=file_sha256(target))
+        candidate["layoutArea"] = layout_area
         for mask, tint in ((raw_mask, (0, 150, 255)), (inner, (0, 220, 0))):
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(preview, contours, -1, tint, 1)
@@ -158,12 +159,12 @@ def prepare(args, channel):
         crops[rid] = save(root / "crops" / f"{rid}.png", image[y:y + bh, x:x + bw])
     text_boxes = detect_text(image, channel)
     text_mask = np.zeros((h, w), np.uint8)
-    for box in text_boxes:
-        cv2.fillConvexPoly(text_mask, np.asarray(box, np.int32), 255)
+    for record in text_boxes:
+        cv2.fillConvexPoly(text_mask, np.asarray(record["box"], np.int32), 255)
     def analyzed_selections():
         """从本次像素归属生成草稿并逐项填色，避免回读刚写出的掩膜。"""
         for index, candidate in enumerate(candidates, 1):
-            if "selection" not in candidate:
+            if "layoutArea" not in candidate:
                 continue
             mask = (occupied == index).astype(np.uint8) * 255
             background, color = fill.analyze_background(image, mask, text_mask)
@@ -172,7 +173,7 @@ def prepare(args, channel):
             if color is not None:
                 candidate["color"] = color
             region = dict(regionId=candidate["regionId"], kind="bubble",
-                          selection=candidate["selection"], direction=None,
+                          textBoxIds=[], layoutArea=candidate["layoutArea"], direction=None,
                           disposition="translate", backgroundColor=color)
             regions.append(region)
             if background["route"] == "fill":
@@ -183,66 +184,126 @@ def prepare(args, channel):
     preview_path = save(root / "preview.png", cv2.resize(preview, (round(w * scale), round(h * scale))))
     fill_path = save(root / "fill-preview.png", fill_preview)
     text_box_records = []
-    for box in text_boxes:
+    for index, record in enumerate(text_boxes, 1):
+        box = record["box"]
         support = np.zeros((h, w), np.uint8)
         cv2.fillConvexPoly(support, np.asarray(box, np.int32), 255)
         ids, counts = np.unique(occupied[support > 0], return_counts=True)
         ranked = [(count, int(owner)) for owner, count in zip(ids, counts) if owner]
         owner = max(ranked)[1] if ranked and max(ranked)[0] >= np.count_nonzero(support) * 0.5 else None
-        text_box_records.append(dict(box=np.asarray(box).tolist(),
-                                     ownerRegionId=f"r{owner:04d}" if owner else None))
+        text_box_id = f"t{index:04d}"
+        owner_region_id = f"r{owner:04d}" if owner else None
+        if owner_region_id:
+            next(region for region in regions if region["regionId"] == owner_region_id)[
+                "textBoxIds"
+            ].append(text_box_id)
+        text_box_records.append(
+            dict(textBoxId=text_box_id, box=np.asarray(box).tolist(),
+                 coreBox=np.asarray(record["coreBox"]).tolist(),
+                 ownerRegionId=owner_region_id)
+        )
     return dict(width=w, height=h, preview=preview_path, previewScale=scale, fillPreview=fill_path,
                 crops=crops, candidates=candidates, draftRegions=regions,
                 textBoxes=text_box_records, backgrounds=backgrounds)
 
 
-def read_selection(file, selection, shape):
-    """对同一份字节校验摘要并解码，确保填色消费确认后的二值选区。"""
+def read_layout_area(file, layout_area, shape):
+    """对同一份字节校验摘要并解码，确保填色消费确认后的二值排版区域。"""
     encoded = np.fromfile(str(file), dtype=np.uint8)
-    if hashlib.sha256(encoded).hexdigest() != selection["sha256"]:
+    if hashlib.sha256(encoded).hexdigest() != layout_area["sha256"]:
         raise ValueError("Region mask digest mismatch")
     mask = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
     if mask is None or mask.dtype != np.uint8 or mask.shape != shape:
         raise ValueError("Invalid binary selection dimensions")
     if not np.all((mask == 0) | (mask == 255)) or not np.any(mask):
-        raise ValueError("Selection must be nonempty and binary")
+        raise ValueError("Layout area must be nonempty and binary")
     return mask
 
 
 def detect_text(image, channel):
-    """整页检测文字，零气泡页仍向人工复核提供无框文字证据。"""
-    tensor = text_detection.det_input(image, side=TEXT_SIDE, upscale=False)
-    probability, = forward(channel, "text", tensor)
-    return text_detection.det_boxes(probability, *image.shape[:2], round_coords=True)
+    """整页检测保留结构，原尺寸分块补回缩放后丢失的小字。"""
+    height, width = image.shape[:2]
+
+    def run(frame, x=0, y=0):
+        """检测一个原尺寸分块，并把两种框移回整页坐标。"""
+        tensor = text_detection.det_input(frame, side=TEXT_SIDE, upscale=False)
+        probability, = forward(channel, "text", tensor)
+        records = text_detection.det_box_records(
+            probability, *frame.shape[:2], round_coords=True
+        )
+        for record in records:
+            for name in ("box", "coreBox"):
+                record[name] = record[name] + [x, y]
+        return records
+
+    records = run(image)
+    if max(height, width) > TEXT_SIDE:
+        stride = TEXT_SIDE - TEXT_SIDE // 8
+        xs = sorted(set(range(0, max(1, width - TEXT_SIDE + 1), stride)) | {max(0, width - TEXT_SIDE)})
+        ys = sorted(set(range(0, max(1, height - TEXT_SIDE + 1), stride)) | {max(0, height - TEXT_SIDE)})
+        for y in ys:
+            for x in xs:
+                records.extend(run(image[y : y + TEXT_SIDE, x : x + TEXT_SIDE], x, y))
+
+    def overlap(a, b):
+        """用较小主体的交叠比例合并整页与分块的重复检测。"""
+        area_a = abs(cv2.contourArea(a.astype(np.float32)))
+        area_b = abs(cv2.contourArea(b.astype(np.float32)))
+        if min(area_a, area_b) <= 0:
+            return 0
+        intersection, _ = cv2.intersectConvexConvex(
+            a.astype(np.float32), b.astype(np.float32)
+        )
+        return intersection / min(area_a, area_b)
+
+    chosen = []
+    for record in sorted(records, key=lambda item: -item["score"]):
+        if any(overlap(record["coreBox"], item["coreBox"]) >= 0.6 for item in chosen):
+            continue
+        chosen.append(record)
+    ordered = text_detection.sort_boxes([item["box"] for item in chosen])
+    by_box = {item["box"].tobytes(): item for item in chosen}
+    return [by_box[box.tobytes()] for box in ordered]
 
 
-def register_regions(args, _channel):
-    """从已检测文字框注册互斥的无框排版选区。"""
+def layout_areas(args, _channel):
+    """从已检测文字框生成互斥的无框排版区域。"""
     page = args["page"]
     root, output = Path(args["root"]), Path(args["output"])
     image = read_image(args["source"])
     h, w = image.shape[:2]
     occupied = np.zeros((h, w), np.uint8)
     for region in page["regions"]:
-        if region["kind"] != "bubble" or not region["selection"]:
+        if region["kind"] != "bubble" or not region["layoutArea"]:
             continue
-        occupied |= read_selection(root / region["selection"]["path"], region["selection"], (h, w))
-    boxes = [np.asarray(box, np.int32) for box in args["textBoxes"]]
+        occupied |= read_layout_area(root / region["layoutArea"]["path"], region["layoutArea"], (h, w))
+    boxes = [np.asarray(box["box"], np.int32) for box in args["textBoxes"]]
+    box_ids = {box["textBoxId"]: index for index, box in enumerate(args["textBoxes"])}
     raw = []
     for group in args["groups"]:
         mask = np.zeros((h, w), np.uint8)
-        for index in group["textBoxIds"]:
+        sizes = []
+        for text_box_id in group["textBoxIds"]:
+            index = box_ids[text_box_id]
             cv2.fillConvexPoly(mask, boxes[index], 255)
+            core = np.asarray(args["textBoxes"][index]["coreBox"], np.float32)
+            sizes.append(
+                min(np.linalg.norm(core[0] - core[1]), np.linalg.norm(core[0] - core[3]))
+            )
         if not np.any(mask):
             raise ValueError(f"Empty region group: {group['regionId']}")
-        raw.append((group, mask))
+        padding = max(4, round(float(np.median(sizes)) * UNFRAMED_PADDING_RATIO))
+        raw.append((group, mask, padding))
     chosen = None
-    for padding in range(4, -1, -1):
+    for scale in range(10, -1, -1):
         claimed = occupied.copy()
         candidates = []
         valid = True
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (padding * 2 + 1, padding * 2 + 1))
-        for group, mask in raw:
+        for group, mask, requested in raw:
+            padding = round(requested * scale / 10)
+            kernel = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (padding * 2 + 1, padding * 2 + 1)
+            )
             expanded = cv2.dilate(mask, kernel) if padding else mask.copy()
             if np.any((expanded > 0) & (claimed > 0)):
                 valid = False
@@ -259,35 +320,24 @@ def register_regions(args, _channel):
         cv2.fillConvexPoly(text_mask, box, 255)
     regions, backgrounds = [], {}
     for group, mask in chosen:
-        member = f"masks/{page['pageId']}/{group['regionId']}.png"
+        member = f"layout-areas/{page['pageId']}/{group['regionId']}.png"
         file = save(output / member, mask)
         background, color = fill.analyze_background(image, mask, text_mask)
         backgrounds[group["regionId"]] = background
         regions.append(dict(regionId=group["regionId"], kind="unframed",
-                            disposition="translate", selection=dict(path=member, sha256=file_sha256(file)),
+                            disposition="translate", textBoxIds=group["textBoxIds"],
+                            layoutArea=dict(path=member, sha256=file_sha256(file)),
                             direction=None, backgroundColor=color))
     return dict(regions=regions, backgrounds=backgrounds)
 
 
-def _region_boxes(selection, boxes):
-    """文字框与区域有实际交叠才参与该区域候选。"""
-    result = []
-    for box in boxes:
-        support = np.zeros(selection.shape, np.uint8)
-        cv2.fillConvexPoly(support, np.asarray(box, np.int32), 255)
-        area = np.count_nonzero(support)
-        if area and np.count_nonzero((support > 0) & (selection > 0)) >= area * 0.1:
-            result.append(box)
-    return result
-
-
-def _box_mask(shape, selection, boxes):
+def _box_mask(shape, layout_area, boxes):
     """扩展文字框并裁到区域内，供无框填色和 LaMa 共用。"""
     mask = np.zeros(shape, np.uint8)
     for box in boxes:
         cv2.fillConvexPoly(mask, np.asarray(box, np.int32), 255)
     if np.any(mask):
-        mask = cv2.dilate(mask, repair.ellipse(2)) & selection
+        mask = cv2.dilate(mask, repair.ellipse(2)) & layout_area
     return mask
 
 
@@ -297,27 +347,27 @@ def erase_candidates(args, channel):
     output = Path(args["output"])
     image = read_image(args["source"])
     h, w = image.shape[:2]
-    boxes = detect_text(image, channel) if any(r["disposition"] == "translate" for r in page["regions"]) else []
+    boxes = {box["textBoxId"]: box["box"] for box in page["textBoxes"]}
     fill_regions = set(args["fillRegionIds"])
     region_results = []
     for region in page["regions"]:
         if region["disposition"] != "translate":
             continue
         rid = region["regionId"]
-        selection = read_selection(root / region["selection"]["path"], region["selection"], (h, w))
-        relevant = _region_boxes(selection, boxes)
-        sx, sy, sw, sh = cv2.boundingRect(selection)
+        layout_area = read_layout_area(root / region["layoutArea"]["path"], region["layoutArea"], (h, w))
+        relevant = [boxes[text_box_id] for text_box_id in region["textBoxIds"]]
+        sx, sy, sw, sh = cv2.boundingRect(layout_area)
         margin = max(12, round(max(sw, sh) * 0.2))
         x0, y0 = max(0, sx - margin), max(0, sy - margin)
         x1, y1 = min(w, sx + sw + margin), min(h, sy + sh + margin)
         original_crop = save(output / rid / "original.png", image[y0:y1, x0:x1])
         proposals, diagnostics = [], []
         if rid in fill_regions and isinstance(region["backgroundColor"], list):
-            mask = selection if region["kind"] == "bubble" else _box_mask((h, w), selection, relevant)
+            mask = layout_area if region["kind"] == "bubble" else _box_mask((h, w), layout_area, relevant)
             if np.any(mask):
                 proposals.append(("fill", mask))
-        for method, build in (("strokes", lambda: repair.text_mask(image, selection, relevant)),
-                              ("boxes", lambda: _box_mask((h, w), selection, relevant))):
+        for method, build in (("strokes", lambda: repair.text_mask(image, layout_area, relevant)),
+                              ("boxes", lambda: _box_mask((h, w), layout_area, relevant))):
             try:
                 mask = build()
                 if not np.any(mask):
@@ -346,8 +396,8 @@ def erase_candidates(args, channel):
                 crop_file = save(output / rid / f"{candidate_id}.png", crop)
                 candidates.append(dict(candidateId=candidate_id, method=method,
                                        box=[x0, y0, x1 - x0, y1 - y0], crop=crop_file,
-                                       cropSha256=file_sha256(crop_file), mask=mask_file,
-                                       maskSha256=file_sha256(mask_file)))
+                                       cropSha256=file_sha256(crop_file), eraseMask=mask_file,
+                                       eraseMaskSha256=file_sha256(mask_file)))
             except ValueError as error:
                 diagnostics.append(dict(method=method, error=str(error)))
         region_results.append(dict(regionId=rid, originalCrop=original_crop,
@@ -373,27 +423,27 @@ def compose_candidates(args, _channel):
                                 preserveReason=item["preserveReason"]))
             continue
         candidate = item["candidate"]
-        for key in ("crop", "mask"):
+        for key in ("crop", "eraseMask"):
             if file_sha256(root / candidate[key]) != candidate[f"{key}Sha256"]:
                 raise ValueError("Candidate artifact digest mismatch")
         x, y, w, h = candidate["box"]
         if x < 0 or y < 0 or x + w > page["width"] or y + h > page["height"]:
             raise ValueError("Candidate crop exceeds page")
         crop = read_image(root / candidate["crop"])
-        mask = cv2.imdecode(np.fromfile(str(root / candidate["mask"]), np.uint8), cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imdecode(np.fromfile(str(root / candidate["eraseMask"]), np.uint8), cv2.IMREAD_GRAYSCALE)
         if crop.shape[:2] != (h, w) or mask is None or mask.shape != (h, w):
             raise ValueError("Candidate crop dimensions mismatch")
         full = np.zeros(image.shape[:2], np.uint8)
         full[y:y + h, x:x + w] = mask
-        selection = read_selection(workspace_root / region["selection"]["path"], region["selection"], image.shape[:2])
-        if np.any((full > 0) & (selection == 0)) or np.any((full > 0) & (union > 0)):
+        layout_area = read_layout_area(workspace_root / region["layoutArea"]["path"], region["layoutArea"], image.shape[:2])
+        if np.any((full > 0) & (layout_area == 0)) or np.any((full > 0) & (union > 0)):
             raise ValueError("Selected candidate masks overlap or escape region")
         changed = mask > 0
         result[y:y + h, x:x + w][changed] = crop[changed]
         union |= full
         mask_file = save(output / "masks" / f"{region['regionId']}.png", full)
         regions.append(dict(regionId=region["regionId"], disposition="translate",
-                            mask=mask_file, maskSha256=file_sha256(mask_file)))
+                            eraseMask=mask_file, eraseMaskSha256=file_sha256(mask_file)))
     clean = save(output / "clean.png", result)
     return dict(clean=clean, cleanSha256=file_sha256(clean), regions=regions)
 
@@ -423,7 +473,7 @@ PARTITION_RULES = dict(
 
 
 def partition_candidates(mask):
-    """只读掩码生成二分候选；不读取样本身份、人工种子或文字切分。"""
+    """只读掩码生成二分候选。不读取样本身份、人工种子或文字切分。"""
     mask = mask.astype("uint8")
     area = int(mask.sum())
     h, w = mask.shape
@@ -441,7 +491,7 @@ def partition_candidates(mask):
             return
         if any(cv2.connectedComponents(x.astype("uint8"))[0] != 2 for x in (a, b)):
             return
-        # 候选切口按较小主体的尺度归一化；窄连接优先，但不自动接受。
+        # 候选切口按较小主体的尺度归一化。窄连接优先，但不自动接受。
         edge = cv2.dilate(a.astype("uint8"), np.ones((3, 3), np.uint8)).astype(bool) & b
         score = float(edge.sum() / np.sqrt(min(a.sum(), b.sum())))
         proposals.append(dict(mask=a, score=score))
@@ -524,21 +574,19 @@ def partition_candidates(mask):
     return chosen
 
 
-def text_plan(args, _channel):
-    """生成原区域的整体与二分预览，块掩码使用裁片坐标。"""
+def text_layout(args, _channel):
+    """生成整体与二分候选的距离场，排版宿主自动选择。"""
     page = args["page"]
-    original = read_image(Path(args["root"]) / page["original"])
-    output = Path(args["output"])
     regions = []
     budget = 0
     for region in page["regions"]:
         if region["disposition"] != "translate":
             continue
         mask = (
-            read_selection(
-                Path(args["root"]) / region["selection"]["path"],
-                region["selection"],
-                original.shape[:2],
+            read_layout_area(
+                Path(args["root"]) / region["layoutArea"]["path"],
+                region["layoutArea"],
+                (page["height"], page["width"]),
             )
             > 0
         )
@@ -562,82 +610,41 @@ def text_plan(args, _channel):
                     )
                 )
             )
-            preview = original[y : y + h, x : x + w].copy()
             blocks = []
             for bi, part in enumerate(parts):
-                budget += part.size
-                if budget > args["maximumPixels"]:
+                budget += part.size * 4
+                if budget > args["maximumBytes"]:
                     raise ValueError(
                         f"Partition material budget exceeded: {region['regionId']}"
                     )
                 bx, by, bw, bh = cv2.boundingRect(part.astype(np.uint8))
-                block_id = f"B{bi + 1}"
-                if ci == 0:
-                    selection = region["selection"]
-                else:
-                    member = (
-                        f"{page['pageId']}/{region['regionId']}/C{ci}-{block_id}.png"
-                    )
-                    file = save(
-                        output / member,
-                        part[by : by + bh, bx : bx + bw].astype(np.uint8) * 255,
-                    )
-                    selection = dict(path=member, sha256=file_sha256(file))
+                local = part[by : by + bh, bx : bx + bw]
+                distance = cv2.distanceTransform(
+                    np.pad(local.astype(np.uint8), 1),
+                    cv2.DIST_L2,
+                    cv2.DIST_MASK_PRECISE,
+                )[1:-1, 1:-1]
+                distance = np.round(distance * 64) / 64
+                yy, xx = np.nonzero(local)
                 blocks.append(
                     dict(
-                        blockId=block_id,
+                        blockId=f"B{bi + 1}",
                         box=[x + bx, y + by, bw, bh],
-                        areaShare=float(part.sum() / crop.sum()),
-                        selection=selection,
+                        distance=base64.b64encode(
+                            distance.astype("<f4").tobytes()
+                        ).decode("ascii"),
+                        centroid=[float(xx.mean() + 0.5), float(yy.mean() + 0.5)],
                     )
                 )
-                color = np.array(
-                    [(80, 180, 255), (255, 150, 80)][bi % 2], dtype=np.uint8
-                )
-                preview[part] = (preview[part] * 0.6 + color * 0.4).astype(np.uint8)
-                yy, xx = np.nonzero(part)
-                cv2.putText(
-                    preview,
-                    block_id,
-                    (int(xx.mean()), int(yy.mean())),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 0, 0),
-                    1,
-                    cv2.LINE_AA,
-                )
-            member = f"{page['pageId']}/{region['regionId']}/C{ci}.png"
-            cv2.putText(
-                preview,
-                f"C{ci}",
-                (2, 14),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 0),
-                1,
-                cv2.LINE_AA,
-            )
-            preview_file = save(output / member, preview)
-            candidates.append(
-                dict(
-                    candidateId=f"C{ci}",
-                    preview=member,
-                    previewSha256=file_sha256(preview_file),
-                    blocks=blocks,
-                )
-            )
+            candidates.append(dict(candidateId=f"C{ci}", blocks=blocks))
         regions.append(
-            dict(
-                regionId=region["regionId"],
-                recommendedCandidateId="C1" if len(candidates) > 1 else "C0",
-                candidates=candidates,
-            )
+            dict(regionId=region["regionId"], candidates=candidates)
         )
     return regions
 
 
-def text_geometry(args, _channel):
-    """所选块重新读取掩码，独立验证覆盖后生成距离场。"""
+def selected_geometry(args):
+    """从已选距离场重建块掩码并验证完整覆盖父区域。"""
     page = args["page"]
     regions = []
     for selected in args["selected"]:
@@ -645,9 +652,9 @@ def text_geometry(args, _channel):
             r for r in page["regions"] if r["regionId"] == selected["regionId"]
         )
         mask = (
-            read_selection(
-                Path(args["root"]) / parent["selection"]["path"],
-                parent["selection"],
+            read_layout_area(
+                Path(args["root"]) / parent["layoutArea"]["path"],
+                parent["layoutArea"],
                 (page["height"], page["width"]),
             )
             > 0
@@ -655,16 +662,10 @@ def text_geometry(args, _channel):
         occupied = np.zeros(mask.shape, bool)
         for block in selected["blocks"]:
             x, y, w, h = block["box"]
-            selection = block["selection"]
-            if selected["candidateId"] == "C0":
-                part = mask[y : y + h, x : x + w]
-            else:
-                part = (
-                    read_selection(
-                        Path(args["materials"]) / selection["path"], selection, (h, w)
-                    )
-                    > 0
-                )
+            distance = np.frombuffer(
+                base64.b64decode(block["distance"], validate=True), "<f4"
+            ).reshape(h, w)
+            part = distance > 0
             if (
                 x < 0
                 or y < 0
@@ -678,19 +679,14 @@ def text_geometry(args, _channel):
             ):
                 raise ValueError("Partition masks overlap or escape parent")
             occupied[y : y + h, x : x + w] |= part
-            distance = cv2.distanceTransform(
-                np.pad(part.astype(np.uint8), 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
-            )[1:-1, 1:-1]
-            yy, xx = np.nonzero(part)
             regions.append(
                 dict(
                     regionId=parent["regionId"],
+                    candidateId=selected["candidateId"],
                     blockId=block["blockId"],
                     box=block["box"],
-                    centroid=[float(xx.mean() + 0.5), float(yy.mean() + 0.5)],
-                    distance=base64.b64encode(distance.astype("<f4").tobytes()).decode(
-                        "ascii"
-                    ),
+                    centroid=block["centroid"],
+                    distance=block["distance"],
                 )
             )
         if not np.array_equal(mask, occupied):
@@ -707,14 +703,17 @@ def text_compose(args, _channel):
     clean = read_image(args["source"])
     if clean.shape[:2] != (page["height"], page["width"]):
         raise ValueError("Text base dimensions mismatch")
-    geometry = {(r["regionId"], r["blockId"]): r for r in text_geometry(args, None)}
+    geometry = {
+        (r["regionId"], r["candidateId"], r["blockId"]): r
+        for r in selected_geometry(args)
+    }
     occupied = np.zeros(clean.shape[:2], bool)
     with open(args["paint"], encoding="utf-8") as file:
         paints = json.load(file)["regions"]
     seen = set()
     for paint in paints:
         result = paint["result"]
-        rid = (result["regionId"], result["blockId"])
+        rid = (result["regionId"], result["candidateId"], result["blockId"])
         if rid in seen or rid not in geometry:
             raise ValueError("Text paint region identity mismatch")
         seen.add(rid)
@@ -757,9 +756,9 @@ def text_compose(args, _channel):
     return dict(preview=output, previewSha256=file_sha256(output))
 
 
-COMMANDS = {"prepare": prepare, "register_regions": register_regions,
+COMMANDS = {"prepare": prepare, "layout_areas": layout_areas,
             "erase": erase_candidates, "compose_candidates": compose_candidates, "pack": pack,
-            "text_plan": text_plan, "text_geometry": text_geometry, "text_compose": text_compose}
+            "text_layout": text_layout, "text_compose": text_compose}
 
 if __name__ == "__main__":
     channel = Channel()

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { image_fixture } from "../../../test/image-fixture";
-import { type ImageTextSelection } from "../../../shared/image-text";
+import { type ImageTextRegionResult } from "../../../shared/image-text";
 import { image_text_page_digest } from "./render";
 
 it("阅读顺序与等价换行不改变页像素身份，底图、正文、方向和环境变化使其失效", () => {
@@ -20,7 +20,7 @@ it("阅读顺序与等价换行不改变页像素身份，底图、正文、方�
     raster: "chromium-native-dpr1" as const,
   };
   const digest = image_text_page_digest(page, "c".repeat(64), records, environment);
-  const selected: ImageTextSelection[] = records.map((record) => ({
+  const results: ImageTextRegionResult[] = records.map((record) => ({
     regionId: record.regionId,
     candidateId: "C0",
     text: record.text,
@@ -29,14 +29,16 @@ it("阅读顺序与等价换行不改变页像素身份，底图、正文、方�
         blockId: "B1",
         text: record.text,
         box: [0, 0, 1, 1],
-        areaShare: 1,
-        selection: page.regions[0]!.selection!,
+        regionId: record.regionId,
+        candidateId: "C0",
+        status: "failed",
+        reason: "no_fit",
       },
     ],
   }));
   expect(
-    image_text_page_digest(page, "c".repeat(64), records, environment, [...selected].reverse()),
-  ).toBe(image_text_page_digest(page, "c".repeat(64), records, environment, selected));
+    image_text_page_digest(page, "c".repeat(64), records, environment, [...results].reverse()),
+  ).toBe(image_text_page_digest(page, "c".repeat(64), records, environment, results));
   expect(
     image_text_page_digest(
       { ...page, regions: [...page.regions].reverse() },

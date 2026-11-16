@@ -70,7 +70,7 @@ export function validate_candidate_run(directory: string, runId: string, run: Ru
         if (candidateIds.has(candidate.candidateId)) throw new Error("Duplicate erase candidate");
         candidateIds.add(candidate.candidateId);
         member(candidate.crop);
-        member(candidate.mask);
+        member(candidate.eraseMask);
       }
     }
   }
