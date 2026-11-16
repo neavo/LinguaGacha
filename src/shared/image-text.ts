@@ -221,7 +221,6 @@ const PLAN_BLOCK_SCHEMA = Type.Object(
 export const IMAGE_TEXT_PLAN_SCHEMA = Type.Object(
   {
     planId: SHA256,
-    sourceDigest: SHA256,
     input: IMAGE_TEXT_INPUT_SCHEMA,
     pages: Type.Array(
       Type.Object(

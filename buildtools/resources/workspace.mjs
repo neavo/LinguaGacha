@@ -104,6 +104,10 @@ export async function build_workspace_resources({ root, output, manifest }) {
     path.join(output, "runtime/repair.py"),
   );
   await cp(
+    path.join(root, "src/backend/agent/image/materials.py"),
+    path.join(output, "runtime/materials.py"),
+  );
+  await cp(
     path.join(root, "src/backend/agent/image/image.py"),
     path.join(output, "runtime/image.py"),
   );

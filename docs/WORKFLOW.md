@@ -186,6 +186,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 ```powershell
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/fill.test.py src/backend/agent/image
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/repair.test.py src/backend/agent/image
+uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/materials.test.py src/backend/agent/image
 uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/image.test.py src/backend/agent/image
 ```
 

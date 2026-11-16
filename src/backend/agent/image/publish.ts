@@ -8,7 +8,7 @@ import { image_sha256 } from "../../file/image/image-format";
 import {
   locked,
   load_draft,
-  digest,
+  file_sha256,
   file_exists,
   read_json,
   write_json,
@@ -206,7 +206,7 @@ export async function publish(options: {
           throw new Error("Published delivery manifest corrupted");
         for (const file of artifacts) {
           const output = path.join(target, file.file);
-          if (!file_exists(output) || (await digest(output)) !== file.sha256)
+          if (!file_exists(output) || (await file_sha256(output)) !== file.sha256)
             throw new Error("Published delivery artifact missing or corrupted: " + file.file);
         }
         return { path: target, ...manifest };

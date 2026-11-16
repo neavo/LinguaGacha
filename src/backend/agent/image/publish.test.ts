@@ -89,6 +89,10 @@ it("运行产物、当前来源和视觉决定共同约束完整或部分发布"
       [page.original, fixture.original],
       [`clean/${page.pageId}.png`, fixture.original],
       [page.regions[0]!.selection!.path, fixture.mask],
+      [
+        fixture.clean.pages.find((item) => item.pageId === page.pageId)!.regions[0]!.mask!,
+        fixture.mask,
+      ],
     ] as const) {
       fs.mkdirSync(path.dirname(path.join(source, file)), { recursive: true });
       fs.writeFileSync(path.join(source, file), bytes);
@@ -340,13 +344,9 @@ it("运行产物、当前来源和视觉决定共同约束完整或部分发布"
       source: { kind: "rendered", renderId: recovered.renderId, decisions: [] },
     }),
   ).rejects.toThrow("reviewed base");
-  await expect(
-    render({ workDirectory: work, planId: oldPlan.planId, expectedRevision: revision }),
-  ).rejects.toThrow("Stale text plan");
   const newBase = await render({
     workDirectory: work,
-    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }))
-      .planId,
+    planId: oldPlan.planId,
     expectedRevision: revision,
   });
   expect(newBase.pages[0]!.inputSha256).not.toBe(first.pages[0]!.inputSha256);
@@ -357,7 +357,7 @@ it("运行产物、当前来源和视觉决定共同约束完整或部分发布"
   revision = (
     await apply(work, revision, { pages: modified, records: draft.records, confirmed: true })
   ).revision;
-  await expect(
-    prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }),
-  ).rejects.toThrow("source mismatch");
+  expect(
+    (await prepare_text({ workDirectory: work, inputPath, expectedRevision: revision })).planId,
+  ).toBe(oldPlan.planId);
 });

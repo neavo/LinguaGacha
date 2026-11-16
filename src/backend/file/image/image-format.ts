@@ -46,25 +46,6 @@ export function image_text_source_digest(book: ImageBook, records: readonly Imag
   return image_sha256(
     JSON.stringify({
       bookId: book.bookId,
-      pages: book.pages.map((page) => ({
-        pageId: page.pageId,
-        original: page.original,
-        sha256: page.sha256,
-        width: page.width,
-        height: page.height,
-        orientation: page.orientation,
-        regions: page.regions.map((region) => ({
-          regionId: region.regionId,
-          disposition: region.disposition,
-          preserveReason: region.preserveReason ?? null,
-          selection: region.selection
-            ? { path: region.selection.path, sha256: region.selection.sha256 }
-            : null,
-          direction: region.direction,
-          eraseMethod: region.eraseMethod,
-          backgroundColor: region.backgroundColor,
-        })),
-      })),
       records: book.pages.flatMap((page) =>
         page.regions
           .filter((region) => region.disposition === "translate")
@@ -90,14 +71,12 @@ export function erase_input_digest(page: ImagePage): string {
     .sort((a, b) => (a.regionId < b.regionId ? -1 : a.regionId > b.regionId ? 1 : 0))
     .map((region) => ({
       regionId: region.regionId,
+      kind: region.kind,
       disposition: region.disposition,
-      eraseMethod: region.eraseMethod,
       selection: region.selection
         ? { path: region.selection.path, sha256: region.selection.sha256 }
         : null,
-      ...(region.disposition === "translate" && region.eraseMethod === "fill"
-        ? { backgroundColor: region.backgroundColor }
-        : {}),
+      ...(region.disposition === "translate" ? { backgroundColor: region.backgroundColor } : {}),
     }));
   return image_sha256(
     JSON.stringify({
@@ -205,24 +184,17 @@ export function validate_image_book(
           throw new Error("Translate region cannot carry preserveReason");
         if (
           confirmed &&
-          (region.direction === null ||
-            !region.selection ||
-            !region.eraseMethod ||
-            !region.backgroundColor)
+          (region.direction === null || !region.selection || !region.backgroundColor)
         )
           throw new Error(
-            "Confirmed translate region requires direction, selection, eraseMethod and backgroundColor",
+            "Confirmed translate region requires direction, selection and backgroundColor",
           );
         translated.add(key);
       } else {
         if (region.preserveReason === undefined)
           throw new Error("Preserve region requires preserveReason");
-        if (
-          region.eraseMethod !== null ||
-          region.backgroundColor !== null ||
-          region.direction !== null
-        )
-          throw new Error("Preserve region cannot carry erase or text settings");
+        if (region.backgroundColor !== null || region.direction !== null)
+          throw new Error("Preserve region cannot carry text settings");
       }
     }
   }
@@ -289,18 +261,13 @@ export function validate_image_clean(value: unknown, book: ImageBook): asserts v
         )
           throw new Error("Invalid clean preserve region");
       } else {
-        const expectedMask =
-          bookRegion.eraseMethod === "fill"
-            ? bookRegion.selection?.path
-            : `erase-masks/${bookPage.pageId}/${bookRegion.regionId}.png`;
+        const expectedMask = `erase-masks/${bookPage.pageId}/${bookRegion.regionId}.png`;
         if (
           cleanRegion.preserveReason !== undefined ||
           !cleanRegion.mask ||
           cleanRegion.mask !== expectedMask ||
           validate_zip_member_path(cleanRegion.mask) !== cleanRegion.mask ||
-          !cleanRegion.maskSha256 ||
-          (bookRegion.eraseMethod === "fill" &&
-            cleanRegion.maskSha256 !== bookRegion.selection?.sha256)
+          !cleanRegion.maskSha256
         )
           throw new Error("Invalid clean translate region");
       }
@@ -418,14 +385,13 @@ export async function validate_image_page_pixels(
     }
     if (!result.mask || !result.maskSha256) throw new Error("Missing erase mask");
     if (!region.selection || !selection) throw new Error("Translate region requires selection");
-    const mask =
-      region.eraseMethod === "fill" && result.maskSha256 === region.selection.sha256
-        ? selection
-        : await read_image_mask(page, { path: result.mask, sha256: result.maskSha256 }, read);
+    const mask = await read_image_mask(
+      page,
+      { path: result.mask, sha256: result.maskSha256 },
+      read,
+    );
     for (let px = 0; px < mask.length; px++) {
       if (mask[px] && !selection[px]) throw new Error("Erase mask exceeds region selection");
-      if (region.eraseMethod === "fill" && mask[px] !== selection[px])
-        throw new Error("Fill mask differs from selection");
       if (mask[px]) unionMask[px] = 1;
     }
   }

@@ -156,7 +156,6 @@ it(
     fixture.records[0]!.message = "中文原稿".repeat(8000); // UTF-8 正文超过旧帧头预算。
     const kept = fixture.book.pages[1]!;
     kept.regions[0]!.disposition = "preserve";
-    kept.regions[0]!.eraseMethod = null;
     kept.regions[0]!.backgroundColor = null;
     kept.regions[0]!.direction = null;
     kept.regions[0]!.preserveReason = "intentional";

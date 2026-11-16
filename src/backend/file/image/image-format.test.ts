@@ -6,6 +6,7 @@ import {
   erase_input_digest,
   image_record_identities,
   image_sha256,
+  image_text_source_digest,
   read_image_package,
   validate_image_book,
 } from "./image-format";
@@ -108,6 +109,23 @@ it("图片写回区分完成空正文与未翻译，并固定原稿身份", asyn
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
 });
 
+it("图片文字来源摘要只绑定书籍与待译原文身份", () => {
+  const { book, records } = image_fixture();
+  const sourceSha256 = image_text_source_digest(book, records);
+  const page = book.pages[0]!;
+  const region = page.regions[0]!;
+  page.sha256 = "0".repeat(64);
+  page.orientation = 8;
+  region.kind = "unframed";
+  region.direction = "horizontal-tb";
+  region.backgroundColor = [10, 20, 30];
+  region.selection = { ...region.selection!, sha256: "1".repeat(64) };
+  records.reverse();
+  expect(image_text_source_digest(book, records)).toBe(sourceSha256);
+  records.find((record) => record.pageId === page.pageId)!.message = "改变";
+  expect(image_text_source_digest(book, records)).not.toBe(sourceSha256);
+});
+
 it("零文本封面完整保留，并允许导出空词条列表", async () => {
   const fixture = image_fixture(["cover"]);
   const page = fixture.book.pages[0]!;
@@ -126,7 +144,6 @@ it("归档中的保留记录不进入图片文本输入", async () => {
   const fixture = image_fixture();
   const page = fixture.book.pages[1]!;
   page.regions[0]!.disposition = "preserve";
-  page.regions[0]!.eraseMethod = null;
   page.regions[0]!.backgroundColor = null;
   page.regions[0]!.direction = null;
   page.regions[0]!.preserveReason = "intentional";
@@ -164,7 +181,6 @@ it.each([
   if (kind === "region") page.regions.push(structuredClone(page.regions[0]!));
   if (kind === "preserveReason") {
     page.regions[0]!.disposition = "preserve";
-    page.regions[0]!.eraseMethod = null;
     page.regions[0]!.backgroundColor = null;
     page.regions[0]!.direction = null;
   }
@@ -185,13 +201,12 @@ it("eraseInputDigest 与译文/排序/方向/保留原因解耦，与消字规�
   expect(erase_input_digest(page)).toBe(digest);
   page.regions[0]!.direction = "horizontal-tb";
   expect(erase_input_digest(page)).toBe(digest);
-  page.regions[0]!.eraseMethod = "inpaint";
-  const repairDigest = erase_input_digest(page);
-  expect(repairDigest).not.toBe(digest);
+  page.regions[0]!.kind = "unframed";
+  const unframedDigest = erase_input_digest(page);
+  expect(unframedDigest).not.toBe(digest);
   page.regions[0]!.backgroundColor = [20, 30, 40];
-  expect(erase_input_digest(page)).toBe(repairDigest);
+  expect(erase_input_digest(page)).not.toBe(unframedDigest);
   page.regions[0]!.disposition = "preserve";
-  page.regions[0]!.eraseMethod = null;
   page.regions[0]!.backgroundColor = null;
   page.regions[0]!.direction = null;
   page.regions[0]!.preserveReason = "unreadable";
@@ -223,7 +238,6 @@ it("模型修复归档保留完整气泡选区，并以独立消字掩码约束�
   const mask = selection_fixture([255, 0]);
   page.width = 2;
   page.sha256 = image_sha256(original);
-  region.eraseMethod = "inpaint";
   region.selection!.sha256 = image_sha256(selection);
   clean.cleanSha256 = image_sha256(output);
   clean.inputSha256 = erase_input_digest(page);
@@ -274,7 +288,6 @@ it("compute_clean_status 与 validate_image_book 区分待定方向与修复失�
   expect(() => validate_image_book(book, records, { confirmed: false })).not.toThrow();
   expect(() => validate_image_book(book, records, { confirmed: true })).toThrow();
   book.pages[0]!.regions[0]!.disposition = "preserve";
-  book.pages[0]!.regions[0]!.eraseMethod = null;
   book.pages[0]!.regions[0]!.backgroundColor = null;
   book.pages[0]!.regions[0]!.direction = null;
   book.pages[0]!.regions[0]!.preserveReason = "repair_failed";
@@ -342,6 +355,7 @@ it("read_image_package 在读取边界严格校验掩码外像素一致性", asy
       ["clean.json", JSON.stringify(f2.clean)],
       [f2.book.pages[0]!.original, orig2],
       [f2.clean.pages[0]!.clean, cleanOk2],
+      [f2.book.pages[0]!.regions[0]!.selection!.path, mask2],
       [f2.clean.pages[0]!.regions[0]!.mask!, mask2],
     ]),
   );
@@ -411,6 +425,7 @@ it("read_image_package 在读取边界严格校验掩码外像素一致性", asy
       ["clean.json", JSON.stringify(fExif.clean)],
       [fExif.book.pages[0]!.original, exif6Jpg],
       [fExif.clean.pages[0]!.clean, cleanOk2],
+      [fExif.book.pages[0]!.regions[0]!.selection!.path, mask2],
       [fExif.clean.pages[0]!.regions[0]!.mask!, mask2],
     ]),
   );
@@ -433,7 +448,6 @@ it.each(["nonbinary", "empty", "overlap", "result-reference", "preserve-outside"
         ...region,
         regionId: "kept",
         disposition: "preserve",
-        eraseMethod: null,
         backgroundColor: null,
         direction: null,
         preserveReason: "intentional",
@@ -448,7 +462,6 @@ it.each(["nonbinary", "empty", "overlap", "result-reference", "preserve-outside"
     if (kind === "result-reference") f.clean.pages[0]!.regions[0]!.maskSha256 = "a".repeat(64);
     if (kind === "preserve-outside") {
       region.disposition = "preserve";
-      region.eraseMethod = null;
       region.backgroundColor = null;
       region.direction = null;
       region.preserveReason = "intentional";
@@ -481,10 +494,10 @@ it("无选区漏检保留项保持 partial，保留原因不改变像素指纹",
   page.regions = [
     {
       regionId: "missed",
+      kind: "unframed",
       disposition: "preserve",
       preserveReason: "repair_failed",
       selection: null,
-      eraseMethod: null,
       backgroundColor: null,
       direction: null,
     },

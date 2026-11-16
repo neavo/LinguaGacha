@@ -30,11 +30,11 @@ export const IMAGE_FILL_SCHEMA = Type.Object(
 const REGION_SCHEMA = Type.Object(
   {
     regionId: ID,
+    kind: Type.Union([Type.Literal("bubble"), Type.Literal("unframed")]),
     disposition: Type.Union([Type.Literal("translate"), Type.Literal("preserve")]),
     preserveReason: Type.Optional(IMAGE_PRESERVE_REASON_SCHEMA),
     selection: Type.Union([IMAGE_SELECTION_SCHEMA, Type.Null()]),
     direction: Type.Union([IMAGE_DIRECTION_SCHEMA, Type.Null()]),
-    eraseMethod: Type.Union([Type.Literal("fill"), Type.Literal("inpaint"), Type.Null()]),
     backgroundColor: Type.Union([IMAGE_COLOR_SCHEMA, Type.Null()]),
   },
   { additionalProperties: false },

@@ -14,8 +14,6 @@ import {
   type ImageTextSelection,
 } from "../../../shared/image-text";
 import { image_sha256, image_text_source_digest } from "../../file/image/image-format";
-import { build_clean_manifest } from "./artifacts";
-import type { ImageClean } from "../../../shared/image";
 import { pixels } from "./engine";
 import {
   locked,
@@ -24,14 +22,9 @@ import {
   write_json,
   file_exists,
   commit_directory,
-  digest,
+  file_sha256,
   type Draft,
 } from "./state";
-
-/** 来源内容与验收底图约束准备材料，无关草稿修订不使计划失效。 */
-function source_digest(draft: Draft, clean: ImageClean): string {
-  return image_sha256(JSON.stringify({ book: draft.book, records: draft.records, clean }));
-}
 
 /** 按块顺序还原固定全文，并让分界落在完整字素之间。 */
 export function select_text(
@@ -108,7 +101,6 @@ export async function read_text_plan(
   directory: string,
   planId: string,
   draft: Draft,
-  clean: ImageClean,
 ): Promise<ImageTextPlan> {
   if (!/^[a-f0-9]{64}$/u.test(planId)) throw new Error("Invalid planId");
   const root = path.join(directory, "text/plans", planId);
@@ -117,8 +109,6 @@ export async function read_text_plan(
   const { planId: id, ...content } = plan;
   if (id !== planId || image_sha256(JSON.stringify(content)) !== id)
     throw new Error("Text plan identity mismatch");
-  if (plan.sourceDigest !== source_digest(draft, clean))
-    throw new Error("Stale text plan; call prepare_text() with the current input again");
   read_image_text_input(plan.input, draft);
   if (plan.pages.length !== draft.book.pages.length)
     throw new Error("Text plan page identity mismatch");
@@ -148,7 +138,7 @@ export async function read_text_plan(
   for (const page of plan.pages)
     for (const region of page.regions)
       for (const candidate of region.candidates) {
-        if ((await digest(plan_member(root, candidate.preview))) !== candidate.previewSha256)
+        if ((await file_sha256(plan_member(root, candidate.preview))) !== candidate.previewSha256)
           throw new Error("Text candidate preview corrupted");
         for (const block of candidate.blocks) {
           const file = plan_member(
@@ -158,7 +148,7 @@ export async function read_text_plan(
           bytes += fs.stat(file).size;
           if (
             bytes > IMAGE_TEXT_RULES.maximumMaterialBytes ||
-            (await digest(file)) !== block.selection.sha256
+            (await file_sha256(file)) !== block.selection.sha256
           )
             throw new Error("Text plan mask corrupted or exceeds budget");
         }
@@ -183,7 +173,6 @@ export async function prepare_text(options: {
       ...record,
       text: record.text === null ? null : normalize_image_text(record.text),
     }));
-    const { clean } = await build_clean_manifest(directory, draft);
     const stage = path.join(directory, "text", `.plan-${randomUUID()}`);
     await fs.make_dir_async(path.dirname(stage));
     await fs.make_dir_exclusive(stage);
@@ -220,17 +209,13 @@ export async function prepare_text(options: {
           })),
         });
       }
-      const content = {
-        sourceDigest: source_digest(draft, clean),
-        input,
-        pages,
-      };
+      const content = { input, pages };
       const plan = { planId: image_sha256(JSON.stringify(content)), ...content };
       if (!Check(IMAGE_TEXT_PLAN_SCHEMA, plan)) throw new Error("Invalid generated text plan");
       const destination = path.join(directory, "text/plans", plan.planId);
       let verified = plan;
       if (file_exists(destination)) {
-        verified = await read_text_plan(directory, plan.planId, draft, clean);
+        verified = await read_text_plan(directory, plan.planId, draft);
       } else {
         write_json(path.join(stage, "plan.json"), plan);
         await fs.make_dir_async(path.dirname(destination));
@@ -256,7 +241,7 @@ export async function prepare_text(options: {
     }
   });
 }
-/** 图片输入必须完整对应当前原稿，数组顺序由稳定区域身份恢复。 */
+/** 图片输入必须对应当前待译原文，数组顺序由稳定区域身份恢复。 */
 export function read_image_text_input(value: unknown, draft: Draft): ImageTextInput {
   if (!Check(IMAGE_TEXT_INPUT_SCHEMA, value)) throw new Error("Invalid image text input");
   if (

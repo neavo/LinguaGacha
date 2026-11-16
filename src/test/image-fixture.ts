@@ -20,10 +20,10 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
     regions: [
       {
         regionId: "text",
+        kind: "bubble",
         disposition: "translate",
         selection: { path: `masks/${pageId}/text.png`, sha256: maskSha },
         direction: "vertical-rl",
-        eraseMethod: "fill",
         backgroundColor: [255, 255, 255],
       },
     ],
@@ -43,7 +43,7 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
         ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
         ...(region.disposition === "translate"
           ? {
-              mask: region.selection!.path,
+              mask: `erase-masks/${page.pageId}/${region.regionId}.png`,
               maskSha256: maskSha,
             }
           : {}),

@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ImageClean, ImageCleanPage } from "../../../shared/image";
-import { compute_clean_status, validate_image_clean } from "../../file/image/image-format";
-import { digest, verify_reviewed_page, type Draft } from "./state";
+import { compute_clean_status } from "../../file/image/image-format";
+import { file_sha256, verify_reviewed_page, type Draft } from "./state";
 
 /** 只引用已验收的像素产物，文字编辑和模型更新不触发重算。 */
 export async function build_clean_manifest(
@@ -14,7 +14,7 @@ export async function build_clean_manifest(
   const cleanPages: ImageCleanPage[] = [];
   const sources: Record<string, string> = {};
   for (const page of draft.book.pages) {
-    if ((await digest(path.join(directory, page.original))) !== page.sha256)
+    if ((await file_sha256(path.join(directory, page.original))) !== page.sha256)
       throw new Error(`Original image missing or tampered: ${page.pageId}`);
     const {
       review: rev,
@@ -44,6 +44,5 @@ export async function build_clean_manifest(
     status: compute_clean_status(draft.book),
     pages: cleanPages,
   };
-  validate_image_clean(clean, draft.book);
   return { clean, sources };
 }

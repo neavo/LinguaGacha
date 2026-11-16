@@ -47,6 +47,7 @@ export type ReviewedPageRef = {
   inputSha256: string;
   artifactDigest: string;
   runId: string;
+  reviewDecisionSha256?: string;
 };
 
 export type Draft = {
@@ -76,25 +77,48 @@ export type PreparePageEvidence = {
   preview: string;
   previewScale: number;
   fillPreview: string;
-  modelSha256: string;
-  textModelSha256: string;
-  textBoxes: [[number, number], [number, number], [number, number], [number, number]][];
+  textBoxes: {
+    box: [[number, number], [number, number], [number, number], [number, number]];
+    ownerRegionId: string | null;
+  }[];
+  backgrounds: Record<
+    string,
+    { route: "fill" | "model"; coverage: number | null; samplePixels: number }
+  >;
   crops: Record<string, string>;
   candidates: PrepareCandidate[];
+};
+
+export type EraseCandidate = {
+  candidateId: string;
+  method: "fill" | "strokes" | "boxes";
+  box: [number, number, number, number];
+  crop: string;
+  cropSha256: string;
+  mask: string;
+  maskSha256: string;
+};
+
+export type EraseRegionResult = {
+  regionId: string;
+  candidates: EraseCandidate[];
+  diagnostics: { method: string; error: string }[];
 };
 
 export type ErasePageResult = {
   pageId: string;
   inputSha256: string;
-  clean: string;
-  cleanSha256: string;
-  overlay: string;
-  regions: ImageCleanRegion[]; // 运行掩码使用磁盘路径，归档时转换为包内路径。
+  status: "ready" | "settled" | "failed";
+  error?: string;
+  inputFile?: string;
+  materials: string[];
+  regions: EraseRegionResult[];
 };
 
 export type RunRecord = {
   runId: string;
   pages: ErasePageResult[];
+  requestFile?: string;
 };
 
 export type ReviewedRegion = Omit<ImageCleanRegion, "mask">; // 验收目录由区域身份定位掩码，记录只保存摘要。
@@ -127,7 +151,7 @@ export async function locked<T>(directory: string, action: () => Promise<T>): Pr
 }
 
 /** 流式计算文件摘要，避免额外持有整页 PNG 字节。 */
-export async function digest(file: string): Promise<string> {
+export async function file_sha256(file: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const bytes of fs.create_read_stream(file)) hash.update(bytes as Buffer);
   return hash.digest("hex");
@@ -289,7 +313,7 @@ async function verify_immutable_review_dir(
     throw new Error(`Reviewed record identity mismatch: ${pageId}`);
 
   const cleanPath = path.join(revDir, "clean.png");
-  if (!file_exists(cleanPath) || (await digest(cleanPath)) !== review.cleanSha256)
+  if (!file_exists(cleanPath) || (await file_sha256(cleanPath)) !== review.cleanSha256)
     throw new Error(`Reviewed clean image tampered: ${pageId}`);
 
   const maskPaths = new Map<string, string>();
@@ -298,7 +322,7 @@ async function verify_immutable_review_dir(
     if (!item.maskSha256)
       throw new Error(`Translated region missing reviewed mask: ${pageId}/${item.regionId}`);
     const maskPath = path.join(revDir, "masks", `${item.regionId}.png`);
-    if (!file_exists(maskPath) || (await digest(maskPath)) !== item.maskSha256)
+    if (!file_exists(maskPath) || (await file_sha256(maskPath)) !== item.maskSha256)
       throw new Error(`Reviewed mask tampered: ${pageId}/${item.regionId}`);
     maskPaths.set(item.regionId, maskPath);
   }
@@ -313,7 +337,7 @@ export async function ensure_normalized(
   const paths = new Map<string, string>();
   for (const page of pages) {
     const source = path.join(directory, page.original);
-    if (!file_exists(source) || (await digest(source)) !== page.sha256)
+    if (!file_exists(source) || (await file_sha256(source)) !== page.sha256)
       throw new Error(`Original image missing or tampered: ${page.pageId}`);
     const target = normalized_path(directory, page.pageId);
     const metaFile = normalized_meta_path(directory, page.pageId);
@@ -328,7 +352,7 @@ export async function ensure_normalized(
           meta.width === page.width &&
           meta.height === page.height &&
           meta.orientation === page.orientation &&
-          (await digest(target)) === meta.pngSha256;
+          (await file_sha256(target)) === meta.pngSha256;
       } catch {
         cacheValid = false; // 规范化缓存可从已核对的原图重建。
       }
@@ -394,21 +418,14 @@ export async function verify_reviewed_page(
         ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
       });
     } else {
-      if (
-        !item.maskSha256 ||
-        (region.eraseMethod === "fill" && item.maskSha256 !== region.selection?.sha256) ||
-        !maskPaths.has(region.regionId)
-      )
+      if (!item.maskSha256 || !maskPaths.has(region.regionId))
         throw new Error(
           `Translated region missing reviewed mask: ${page.pageId}/${region.regionId}`,
         );
       cleanRegions.push({
         regionId: region.regionId,
         disposition: "translate",
-        mask:
-          region.eraseMethod === "fill"
-            ? region.selection!.path
-            : `erase-masks/${page.pageId}/${region.regionId}.png`,
+        mask: `erase-masks/${page.pageId}/${region.regionId}.png`,
         maskSha256: item.maskSha256,
       });
     }

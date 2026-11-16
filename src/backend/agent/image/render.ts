@@ -27,7 +27,7 @@ import { build_clean_manifest } from "./artifacts";
 import { read_image_text_input, read_text_plan, select_text, plan_member } from "./plan";
 import { pixels } from "./engine";
 import {
-  digest,
+  file_sha256,
   commit_directory,
   file_exists,
   load_draft,
@@ -93,7 +93,7 @@ async function call_host(
   const response = await workspace_requests().call({
     kind: "render_image_text_page",
     inputPath,
-    inputSha256: inputPath ? await digest(inputPath) : null,
+    inputSha256: inputPath ? await file_sha256(inputPath) : null,
   });
   if (!response || typeof response !== "object" || !("path" in response))
     throw new Error("Invalid image text host response");
@@ -119,7 +119,7 @@ export async function render(options: {
     if (draft.revision !== options.expectedRevision)
       throw new Error("Stale image draft revision; call read() and reconsider the operation");
     const { clean, sources } = await build_clean_manifest(directory, draft);
-    const plan = await read_text_plan(directory, options.planId, draft, clean);
+    const plan = await read_text_plan(directory, options.planId, draft);
     const input = plan.input;
     const selected = select_text(plan, options.assignments ?? []);
     for (const regions of selected) {
@@ -328,7 +328,7 @@ export async function render(options: {
         environment,
         pages,
       };
-      const renderId = image_sha256(JSON.stringify({ input, selected, ...manifest }));
+      const renderId = image_sha256(JSON.stringify(manifest));
       const run: ImageTextRender = { ...manifest, renderId };
       const runDirectory = path.join(directory, "text/runs", renderId);
       write_json(path.join(commit, "input.json"), input);
@@ -381,7 +381,7 @@ export async function read_image_text_render(
   if (
     !Check(IMAGE_TEXT_ENVIRONMENT_SCHEMA, run.environment) ||
     run.renderId !== renderId ||
-    image_sha256(JSON.stringify({ input, selected, ...manifest })) !== renderId ||
+    image_sha256(JSON.stringify(manifest)) !== renderId ||
     run.bookId !== input.bookId ||
     run.sourceSha256 !== input.sourceSha256 ||
     run.pages.length !== draft.book.pages.length
@@ -423,7 +423,7 @@ export async function read_image_text_render(
         page.preview !== `pages/${page.pageId}.png` ||
         !page.previewSha256 ||
         !file_exists(plan_member(runDirectory, page.preview)) ||
-        (await digest(plan_member(runDirectory, page.preview))) !== page.previewSha256
+        (await file_sha256(plan_member(runDirectory, page.preview))) !== page.previewSha256
       )
         throw new Error(
           `Image text run page missing or corrupted: ${page.pageId}; remove the damaged run and render again`,
@@ -434,8 +434,9 @@ export async function read_image_text_render(
     for (const region of page)
       for (const block of region.blocks) {
         if (
-          (await digest(plan_member(path.join(runDirectory, "masks"), block.selection.path))) !==
-          block.selection.sha256
+          (await file_sha256(
+            plan_member(path.join(runDirectory, "masks"), block.selection.path),
+          )) !== block.selection.sha256
         )
           throw new Error("Text run mask corrupted");
       }
