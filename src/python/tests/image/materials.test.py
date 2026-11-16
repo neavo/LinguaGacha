@@ -1,15 +1,10 @@
 """用长横条验证分段、分页和原图与候选配对，不锁定布局预设。"""
-import importlib.util
-import sys
 import tempfile
 from pathlib import Path
 
 import cv2
 import numpy as np
-
-spec = importlib.util.spec_from_file_location("materials", Path(sys.argv[1]) / "materials.py")
-materials = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(materials)
+from lg.image import materials
 
 with tempfile.TemporaryDirectory(prefix="lg-image-materials-") as folder:
     root = Path(folder)

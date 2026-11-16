@@ -1,23 +1,10 @@
-"""连续前端与分段器对照固定上游预期。用部署的 -I 解释器执行，参数是部署的 runtime 目录。"""
+"""连续前端与分段器对照固定上游预期。"""
 
-import importlib.util
-import sys
 import tempfile
 from pathlib import Path
 
 import numpy as np
-
-
-def load(file):
-    """按部署路径加载模块，与产品的 -I 加载方式一致。"""
-    spec = importlib.util.spec_from_file_location(file.stem, file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-runtime = Path(sys.argv[1])
-vad = load(runtime / "fsmn_vad.py")
+from lg.media import fsmn_vad as vad
 with tempfile.TemporaryDirectory(prefix="media frontend ") as directory:
     mvn = Path(directory) / "fixture.mvn"
     mvn.write_text("<AddShift>\n<LearnRateCoef> 1 [ " + "0 " * 400 + "]\n<Rescale>\n<LearnRateCoef> 1 [ " + "1 " * 400 + "]\n")

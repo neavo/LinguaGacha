@@ -1,14 +1,8 @@
-"""无模型验证背景分流、边框保护与填色并集；参数可指向部署 runtime。"""
-import importlib.util
-import sys
-from pathlib import Path
+"""无模型验证背景分流、边框保护与填色并集。"""
 
 import cv2
 import numpy as np
-
-spec = importlib.util.spec_from_file_location("fill", Path(sys.argv[1]) / "fill.py")
-fill = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(fill)
+from lg.image import fill
 
 # 排除文字框后保留暖底色；零框按完整选区统计，空样本明确停止。
 source = np.full((10, 10, 3), (225, 230, 235), np.uint8)

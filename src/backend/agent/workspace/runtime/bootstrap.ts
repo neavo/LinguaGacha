@@ -34,7 +34,7 @@ async function start_workspace_runtime(): Promise<void> {
     },
   );
   install_workspace_module_resolution(start.runtimeDirectory, start.nodeRoot, start.moduleRoots);
-  bind_uv(start.uv);
+  bind_uv({ ...start.uv, runtimeDirectory: start.runtimeDirectory });
   bind_npm({ runtimeDirectory: start.runtimeDirectory, nodeRoot: start.nodeRoot });
   bind_inference(start.inference);
   const request_channel = new AgentWorkspaceRequestChannel(send_message, (pending) => {

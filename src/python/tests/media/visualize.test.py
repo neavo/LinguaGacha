@@ -1,13 +1,7 @@
 """用合成信号检查频谱与统计误差，不绑定技能资源。"""
 
-import importlib.util
-import sys
-from pathlib import Path
 import numpy as np
-
-spec = importlib.util.spec_from_file_location("visualize", Path(sys.argv[1]) / "visualize.py")
-visual = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(visual)
+from lg.media import visualize as visual
 wave = np.sin(np.arange(visual.FFT_SIZE) * 2 * np.pi * 440 / visual.RATE)
 mono = visual.energy(wave[:, None])
 stereo = visual.energy(np.column_stack((wave, -wave)))

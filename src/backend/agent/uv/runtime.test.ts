@@ -4,7 +4,11 @@ it("绑定只接受一次并固定配置，未绑定进程无法取得配置", a
   vi.resetModules();
   const { bind_uv, uv_configuration } = await import("./runtime");
   expect(() => uv_configuration()).toThrow("not bound");
-  const input = { pythonRoot: "shared-python", uvExecutable: "application-uv" };
+  const input = {
+    pythonRoot: "shared-python",
+    runtimeDirectory: "application-runtime",
+    uvExecutable: "application-uv",
+  };
   bind_uv(input);
   input.pythonRoot = "changed"; // 调用方后续修改不能改变根脚本的执行位置。
   expect(uv_configuration().pythonRoot).toBe("shared-python");

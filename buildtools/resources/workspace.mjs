@@ -87,30 +87,14 @@ export async function build_workspace_resources({ root, output, manifest }) {
       },
     },
   });
-  await cp(
-    path.join(root, "src/backend/agent/inference/channel.py"),
-    path.join(output, "runtime/channel.py"),
-  );
-  await cp(
-    path.join(root, "src/backend/agent/inference/text-detection.py"),
-    path.join(output, "runtime/text-detection.py"),
-  );
-  await cp(
-    path.join(root, "src/backend/agent/image/fill.py"),
-    path.join(output, "runtime/fill.py"),
-  );
-  await cp(
-    path.join(root, "src/backend/agent/image/repair.py"),
-    path.join(output, "runtime/repair.py"),
-  );
-  await cp(
-    path.join(root, "src/backend/agent/image/materials.py"),
-    path.join(output, "runtime/materials.py"),
-  );
-  await cp(
-    path.join(root, "src/backend/agent/image/image.py"),
-    path.join(output, "runtime/image.py"),
-  );
+  const pythonOutput = path.join(output, "runtime/python");
+  await rm(pythonOutput, { recursive: true, force: true }); // 同步源码删除，避免开发缓存留下旧模块。
+  await cp(path.join(root, "src/python"), pythonOutput, {
+    recursive: true,
+    filter: (source) =>
+      ![".venv", "__pycache__", "tests"].includes(path.basename(source)) &&
+      !source.endsWith(".pyc"),
+  });
   await build({
     configFile: false,
     publicDir: false,
@@ -128,9 +112,6 @@ export async function build_workspace_resources({ root, output, manifest }) {
       minify: false,
     },
   });
-  // 媒体前后处理 helper 由 `@lg/media` 以受控解释器直接运行。
-  for (const file of ["media.py", "fsmn_vad.py", "visualize.py"])
-    await cp(path.join(root, "src/backend/agent/media", file), path.join(output, "runtime", file));
 }
 
 /** npm 拥有依赖解析，这里只复制后端依赖闭包，不清理其它步骤的产物。 */

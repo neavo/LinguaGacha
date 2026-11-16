@@ -47,7 +47,7 @@ export async function operate<T>(
 }
 
 /**
- * 运行 `media.py` 的一个命令。helper 的推理请求转发给 Worker，应答按编号写回。
+ * 运行媒体 helper 的一个命令。helper 的推理请求转发给 Worker，应答按编号写回。
  * 正常返回要求收到结果帧、helper 正常退出。任一请求失败时结束 helper 并抛出该失败。
  */
 export async function helper(
@@ -59,7 +59,7 @@ export async function helper(
   try {
     return await run_helper(
       python(),
-      runtime_file("media.py"),
+      "lg.media.helper",
       command,
       job,
       engine

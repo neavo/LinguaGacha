@@ -184,28 +184,27 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 分区覆盖、块互斥、候选确定性、材料预算、掩码篡改、选区与笔画填孔、开放字间空隙、互斥归属、背景分流、并集边缘过渡、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
 
 ```powershell
-uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/fill.test.py src/backend/agent/image
-uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/repair.test.py src/backend/agent/image
-uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/materials.test.py src/backend/agent/image
-uv run --project '<共享 Python 工程目录>' python -I -X utf8 src/backend/agent/image/image.test.py src/backend/agent/image
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/fill.test.py
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/repair.test.py
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/materials.test.py
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/helper.test.py
 ```
 
-部署验证可把最后一个参数改为部署后的 `runtime` 目录。图片气泡分割、文字检测或 LaMa Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。图片运行时资源部署与工作区请求变化追加 `workspace/runtime/bootstrap.test.ts` 中受影响的用例。
+部署验证先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。图片气泡分割、文字检测或 LaMa Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。图片运行时资源部署与工作区请求变化追加 `workspace/runtime/bootstrap.test.ts` 中受影响的用例。
 
 真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、区域恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
 
 #### 媒体推理
 
-Python 媒体行为可通过 `media.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。共享推理版本见 `src/backend/agent/inference/environment.ts`，媒体专属依赖见 `builtin/skills/media/scripts/media.mjs` 的 `DEPENDENCIES`：
+Python 媒体行为可通过 `helper.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。共享推理版本见 `src/backend/agent/inference/environment.ts`，媒体专属依赖见 `builtin/skills/media/scripts/media.mjs` 的 `DEPENDENCIES`：
 
 ```powershell
 $mediaPythonProject = '<已准备媒体环境的 Python 项目目录，含 pyproject.toml>'
-$mediaTestFile = (Resolve-Path 'src/backend/agent/media/media.test.py').Path
-$mediaSourceDirectory = (Resolve-Path 'src/backend/agent/media').Path
-uv run --project $mediaPythonProject python -I -X utf8 $mediaTestFile $mediaSourceDirectory
+$mediaTestFile = (Resolve-Path 'src/python/tests/media/helper.test.py').Path
+uv run --project $mediaPythonProject python -I -B -X utf8 $mediaTestFile
 ```
 
-验证部署产物时，将最后一个参数替换为其 `runtime` 目录。Windows 路径问题须在 Windows 验证。
+验证部署产物时，先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。Windows 路径问题须在 Windows 验证。
 
 npm、uv 默认包源变化运行 `package-source.test.ts`、`uv/index.test.ts`、工作区 `service.test.ts`，以及集成测试 `npm/index.test.ts` 和工作区 `bootstrap.test.ts`。它们使用替身判定和关闭的代理端口，不访问地区接口。
 
@@ -306,7 +305,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
 - Electron 语言资源与 `LOCALES` 一致。
 - `builtin/`、`fonts/`、`workspace/` 和 `pdf-print.css` 位于发行 `resources/`。`app.asar` 不含 `builtin/` 和字体。
-- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。应用包不导出 bootstrap、准备程序或 PDF worker。
+- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。`runtime/python/` 包含 `lg-runtime` 的项目声明和包源码，不发布测试。应用包不导出 bootstrap、准备程序或 PDF worker。
 - `seed/` 只包含用户第三方依赖，清单、锁文件和安装树中均不包含 `@lg/*`、`mupdf` 或应用包归档。工作区只部署一份应用使用的 MuPDF 包与 WASM。
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
@@ -350,7 +349,7 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 - 环境准备、执行时限与错误回执：`npm test -- src/backend/agent/execution src/backend/agent/node`。
 - npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
 - uv SDK 与模型声明：`npm test -- src/backend/agent/uv src/backend/agent/workspace/runtime/command.test.ts`。
-- SDK 加载、原生 IPC 与 uv 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。Python 验收自动准备并缓存解释器，首次运行需要联网。用例使用本地 wheel 验证环境搬移和后代进程取消。
+- SDK 加载、原生 IPC 与 uv 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。Python 验收自动准备并缓存解释器，首次运行需要联网。用例验证随附 `lg-runtime` 的 editable 来源、本地 wheel、环境搬移和后代进程取消。
 - MuPDF 实例与字节边界：`npm test -- src/backend/file/pdf/pdf-document.test.ts`。
 - 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。

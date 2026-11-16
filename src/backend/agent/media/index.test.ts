@@ -68,9 +68,9 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     const probe = await media.probe_gpu();
     console.log('GPU probe', JSON.stringify(probe));
     const device = probe.available ? 'gpu' : 'cpu';
-    // media.test.py 同时检查检测后处理，只在准备了检测用途时执行。
-    for (const test of ${JSON.stringify(["fsmn_vad.test.py", "media.test.py"].map((file) => path.resolve("src/backend/agent/media", file)))})
-      if (info.video || test.endsWith('fsmn_vad.test.py')) await uv.run(['run', 'python', '-I', test, ${JSON.stringify(path.join(runtime, "runtime"))}]);
+    // helper.test.py 同时检查检测后处理，只在准备了检测用途时执行。
+    for (const test of ${JSON.stringify(["fsmn_vad.test.py", "helper.test.py"].map((file) => path.resolve("src/python/tests/media", file)))})
+      if (info.video || test.endsWith('fsmn_vad.test.py')) await uv.run(['run', 'python', '-I', test]);
     const [listened, scanned] = await Promise.all([
       media.listen(source, {device, language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} }),
       info.video ? media.scan(source, {out:'work/scan/text',device}) : Promise.resolve([]),

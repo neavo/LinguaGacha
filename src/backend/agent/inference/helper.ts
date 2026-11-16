@@ -5,7 +5,7 @@ let shutdown_failure: unknown; // helper 未确认退出时，阻止后续计算
 /** 桥接固定 helper 的推理请求，返回前等待进程及全部在途作业收尾。 */
 export async function run_helper(
   executable: string,
-  script: string,
+  module: string,
   command: string,
   job: Readonly<Record<string, unknown>>,
   infer?: (
@@ -16,8 +16,8 @@ export async function run_helper(
   if (shutdown_failure) throw shutdown_failure;
   // 作业正文走载荷；启动前完成编码，非法输入不能留下等待首帧的子进程。
   const request = encode_frame({ command }, Buffer.from(JSON.stringify(job)));
-  // -I 忽略 PYTHON* 变量与用户 site，-X utf8 让日志在任何代码页下都是 UTF-8。
-  const child = spawn(executable, ["-I", "-X", "utf8", script], {
+  // -I 隔离宿主配置，-B 保护应用源码，-X utf8 让日志在任何代码页下都是 UTF-8。
+  const child = spawn(executable, ["-I", "-B", "-X", "utf8", "-m", module], {
     shell: false,
     windowsHide: true,
     stdio: ["pipe", "pipe", "inherit"],
@@ -99,6 +99,6 @@ export async function run_helper(
       failure = error;
     }
   if (failure !== undefined) throw failure;
-  if (code !== 0 || !result) throw new Error(`${script} ${command} failed (${code}); see the log.`);
+  if (code !== 0 || !result) throw new Error(`${module} ${command} failed (${code}); see the log.`);
   return result.value;
 }

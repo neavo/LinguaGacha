@@ -951,8 +951,8 @@ it("真实 uv 安装本地 wheel，搬移后恢复并取消后代", async () => 
   const initial = await run(
     `
     import { uv } from '@lg/uv';
-    await uv.run(['add', ${JSON.stringify(wheel_path)}, '--offline']);
-    await uv.run(['run', '--offline', 'python', '-c', "from pathlib import Path; import lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8')"]);
+    await uv.run(['add', ${JSON.stringify(wheel_path)}, '--default-index', 'https://pypi.org/simple']);
+    await uv.run(['run', '--offline', 'python', '-c', "from pathlib import Path; import lg, lg_python_fixture; Path('work/python-result.txt').write_text(lg_python_fixture.value, encoding='utf-8'); Path('work/python-source.txt').write_text(str(Path(lg.__file__).resolve()), encoding='utf-8')"]);
     console.log('python ready');
   `,
     AbortSignal.timeout(30_000),
@@ -961,6 +961,9 @@ it("真实 uv 安装本地 wheel，搬移后恢复并取消后代", async () => 
   expect(await readFile(path.join(workspace, "work/python-result.txt"), "utf8")).toBe(
     "搭档的 Python",
   );
+  expect(
+    await realpath(await readFile(path.join(workspace, "work/python-source.txt"), "utf8")),
+  ).toBe(await realpath(path.join(runtime, "runtime/python/lg/__init__.py")));
 
   // 次版本链接与 venv 都记录绝对路径，搬移后由 uv 自行重建，应用不另做恢复。
   const moved = path.join(root, "移动后的 Python");

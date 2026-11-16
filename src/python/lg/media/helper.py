@@ -7,7 +7,6 @@
 首帧头为 `{"command": ...}`、载荷是 JSON 参数，末帧头为 `{"result": true}`、载荷是 JSON 结果，其余为推理请求与应答。
 """
 
-import importlib.util
 import json
 import math
 import os
@@ -22,6 +21,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
+from lg.inference import text_detection
+from lg.inference.channel import Channel, tensor
 
 IN_FLIGHT = 2  # 每条处理分支的在途请求上限，前后处理与推理重叠一帧即可。
 
@@ -56,10 +57,7 @@ def initialize(command):
     global cv2, pyclipper, knf, fsmn_vad
     if command == "speech":
         import kaldi_native_fbank as knf
-        # -I 不搜索相邻目录，固定部署路径加载 VAD。
-        spec = importlib.util.spec_from_file_location("fsmn_vad", Path(__file__).with_name("fsmn_vad.py"))
-        fsmn_vad = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(fsmn_vad)
+        from lg.media import fsmn_vad
     else:
         import cv2
         cv2.setNumThreads(1)  # 推理在 Worker 中，图像处理不再争抢 CPU。
@@ -72,27 +70,12 @@ def log(message):
     print(message, file=sys.stderr, flush=True)
 
 
-_channel_spec = importlib.util.spec_from_file_location("inference_channel", (Path(__file__).with_name("channel.py") if Path(__file__).with_name("channel.py").exists() else Path(__file__).parent.parent / "inference" / "channel.py"))
-_channel = importlib.util.module_from_spec(_channel_spec)
-_channel_spec.loader.exec_module(_channel)
-Channel, tensor = _channel.Channel, _channel.tensor
-
-_text_detection_spec = importlib.util.spec_from_file_location(
-    "inference_text_detection",
-    (
-        Path(__file__).with_name("text-detection.py")
-        if Path(__file__).with_name("text-detection.py").exists()
-        else Path(__file__).parent.parent / "inference" / "text-detection.py"
-    ),
-)
-_text_detection = importlib.util.module_from_spec(_text_detection_spec)
-_text_detection_spec.loader.exec_module(_text_detection)
-DET_SIDE = _text_detection.DET_SIDE
+DET_SIDE = text_detection.DET_SIDE
 det_input, det_boxes, clockwise, sort_boxes = (
-    _text_detection.det_input,
-    _text_detection.det_boxes,
-    _text_detection.clockwise,
-    _text_detection.sort_boxes,
+    text_detection.det_input,
+    text_detection.det_boxes,
+    text_detection.clockwise,
+    text_detection.sort_boxes,
 )
 
 

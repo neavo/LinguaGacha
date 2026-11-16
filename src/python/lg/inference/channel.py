@@ -1,3 +1,5 @@
+"""宿主与 Python helper 共用的二进制推理通道。"""
+
 import json
 import math
 import struct

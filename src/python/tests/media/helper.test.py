@@ -1,8 +1,6 @@
-"""验证媒体图片读写、文字区间与语音分窗。参数是源码或部署的 runtime 目录。"""
+"""验证媒体图片读写、文字区间与语音分窗。"""
 
-import importlib.util
 import io
-import sys
 import tempfile
 from concurrent.futures import Future
 from contextlib import chdir
@@ -11,11 +9,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 import numpy as np
-
-runtime = Path(sys.argv[1])
-spec = importlib.util.spec_from_file_location("media", runtime / "media.py")
-media = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(media)
+from lg.media import helper as media
 
 media.initialize("scan")  # 本文件同时检查检测与语音，两组依赖都加载。
 media.initialize("speech")

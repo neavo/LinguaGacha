@@ -1,19 +1,14 @@
-"""无需模型的气泡选区、填色和通道边界测试；第二个参数可指向部署 runtime。"""
+"""无需模型的气泡选区、填色和通道边界测试。"""
 import concurrent.futures
-import importlib.util
 import json
 import base64
 import math
-import sys
 import tempfile
 from pathlib import Path
 
 import cv2
 import numpy as np
-
-spec = importlib.util.spec_from_file_location("image_runtime", Path(sys.argv[1]) / "image.py")
-image = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(image)
+from lg.image import helper as image
 
 
 def fails(call, message):

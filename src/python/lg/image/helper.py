@@ -1,7 +1,6 @@
 """区域检测、消字候选、文字分区与离线归档。推理由宿主 Worker 执行。"""
 import hashlib
 import base64
-import importlib.util
 import json
 import math
 import sys
@@ -12,29 +11,14 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from lg.image import fill, materials, repair
+from lg.inference import text_detection
+from lg.inference.channel import Channel
 
 cv2.setNumThreads(1)
 IMAGE_SIZE, MODEL_STRIDE = 1600, 32
 CONF, IOU, MAX_DET, MAX_NMS = 0.25, 0.7, 300, 30000
 TEXT_SIDE = 1280
-
-def _load_sibling(name, dev_dir):
-    """部署目录使用相邻 helper，源码运行使用同一推理模块。"""
-    candidate = Path(__file__).with_name(name)
-    if not candidate.exists():
-        candidate = Path(__file__).parent.parent / dev_dir / name
-    spec = importlib.util.spec_from_file_location(f"image_{candidate.stem.replace('-', '_')}", candidate)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_channel_mod = _load_sibling("channel.py", "inference")
-Channel = _channel_mod.Channel
-fill = _load_sibling("fill.py", "image")
-repair = _load_sibling("repair.py", "image")
-materials = _load_sibling("materials.py", "image")
-text_detection = _load_sibling("text-detection.py", "inference")
 
 def read_image(path):
     """读取宿主已规范化的 RGB PNG，返回 OpenCV 使用的 BGR 像素。"""

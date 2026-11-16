@@ -35,7 +35,7 @@ export function pixels(
       try {
         return await run_helper(
           python(),
-          path.join(runtime, "image.py"),
+          "lg.image.helper",
           command,
           args,
           async (header, payload) => {

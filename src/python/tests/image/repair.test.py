@@ -1,14 +1,8 @@
 """使用自有像素验证笔画填孔、选区边界和 LaMa 张量，无需权重。"""
-import importlib.util
-import sys
-from pathlib import Path
 
 import cv2
 import numpy as np
-
-spec = importlib.util.spec_from_file_location("repair", Path(sys.argv[1]) / "repair.py")
-repair = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(repair)
+from lg.image import repair
 
 # 同一轮廓中的封闭孔洞填满，开口凹陷与分离字符之间仍保留背景。
 outline = np.zeros((60, 100), np.uint8)
