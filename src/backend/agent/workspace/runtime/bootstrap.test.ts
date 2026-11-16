@@ -31,7 +31,11 @@ import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { image_fixture } from "../../../../test/image-fixture";
-import { image_text_source_digest } from "../../../file/image/image-format";
+import {
+  erase_input_digest,
+  image_text_source_digest,
+  read_image_package,
+} from "../../../file/image/image-format";
 import type { WorkspaceImageTextPort } from "../../tools/render-image-text";
 
 const electron_path =
@@ -145,34 +149,79 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   expect(inspectSources).toHaveBeenCalledOnce();
 });
 
-it("图片 SDK 经真实工作区 IPC 请求排版宿主并保留原始错误", async () => {
-  const fixture = image_fixture(["page"]);
-  const archive = await JSZip.loadAsync(await fixture.pack());
-  const source = path.join(workspace, "work/image-source");
-  for (const entry of Object.values(archive.files)) {
-    if (entry.dir) continue;
-    const file = path.join(source, entry.name);
-    await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, await entry.async("nodebuffer"));
-  }
-  await writeFile(
-    path.join(workspace, "work/image-input.json"),
-    JSON.stringify({
-      version: 1,
-      bookId: fixture.book.bookId,
-      sourceSha256: image_text_source_digest(fixture.book, fixture.records),
-      records: fixture.records.map((record) => ({
-        pageId: record.pageId,
-        regionId: record.regionId,
-        text: null,
-      })),
-    }),
-  );
-  const renderImageText = vi.fn<WorkspaceImageTextPort>(async () => {
-    throw new Error("fixture text environment unavailable");
-  });
-  const result = await run(
-    `
+it(
+  "部署后的图片封包传递大正文并保留掩码，媒体共用请求协议",
+  async () => {
+    const fixture = image_fixture(["text", "kept"]);
+    fixture.records[0]!.message = "中文原稿".repeat(8000); // UTF-8 正文超过旧帧头预算。
+    const kept = fixture.book.pages[1]!;
+    kept.regions[0]!.disposition = "preserve";
+    kept.regions[0]!.preserveReason = "intentional";
+    fixture.clean.pages[1]!.regions = [
+      { regionId: "text", disposition: "preserve", preserveReason: "intentional" },
+    ];
+    fixture.clean.pages[1]!.inputSha256 = erase_input_digest(kept);
+    const archive = await JSZip.loadAsync(await fixture.pack());
+    for (const entry of Object.values(archive.files)) {
+      if (entry.dir) continue;
+      const file = path.join(workspace, "work/pack-source", entry.name);
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, await entry.async("nodebuffer"));
+    }
+    const result = await run(
+      `
+    import { restore, pack, IMAGE_DEPENDENCIES } from '@lg/image';
+    import { sheets } from '@lg/media';
+    import { uv } from '@lg/uv';
+    import assert from 'node:assert/strict';
+    await uv.run(['add', ...IMAGE_DEPENDENCIES.python, '--default-index', 'https://pypi.org/simple']);
+    await restore('work/pack-source', 'work/pack-work');
+    await pack('work/pack-work', 'work/packed.image');
+    const result = await sheets([{id:7,start:0,file:'work/pack-source/originals/text.png'}], 'work/sheets');
+    assert.deepEqual(result.map(sheet => sheet.ids), [[7]]);
+  `,
+      AbortSignal.timeout(60_000),
+    );
+    expect(result.exitCode).toBe(0);
+    const packed = await read_image_package(
+      await readFile(path.join(workspace, "work/packed.image")),
+      "packed.image",
+    );
+    expect(packed.book).toEqual(fixture.book);
+    expect(packed.records).toEqual(fixture.records);
+  },
+  EXECUTION_TIMEOUT_MS + RUN_TIMEOUT_MS,
+); // 安装依赖后仍留出脚本取消与进程收尾时间。
+
+it(
+  "图片 SDK 经真实工作区 IPC 请求排版宿主并保留原始错误",
+  async () => {
+    const fixture = image_fixture(["page"]);
+    const archive = await JSZip.loadAsync(await fixture.pack());
+    const source = path.join(workspace, "work/image-source");
+    for (const entry of Object.values(archive.files)) {
+      if (entry.dir) continue;
+      const file = path.join(source, entry.name);
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, await entry.async("nodebuffer"));
+    }
+    await writeFile(
+      path.join(workspace, "work/image-input.json"),
+      JSON.stringify({
+        bookId: fixture.book.bookId,
+        sourceSha256: image_text_source_digest(fixture.book, fixture.records),
+        records: fixture.records.map((record) => ({
+          pageId: record.pageId,
+          regionId: record.regionId,
+          text: null,
+        })),
+      }),
+    );
+    const renderImageText = vi.fn<WorkspaceImageTextPort>(async () => {
+      throw new Error("fixture text environment unavailable");
+    });
+    const result = await run(
+      `
     import { render, restore, prepare_text, IMAGE_DEPENDENCIES } from '@lg/image';
     import { uv } from '@lg/uv';
     import assert from 'node:assert/strict';
@@ -182,18 +231,20 @@ it("图片 SDK 经真实工作区 IPC 请求排版宿主并保留原始错误", 
     assert.equal(plan.pages[0].regions[0].candidates[0].blocks[0].blockId,'B1');
     await assert.rejects(render({workDirectory:'work/image-work',planId:plan.planId,expectedRevision:0}),/fixture text environment unavailable/);
   `,
-    AbortSignal.timeout(60_000),
-    undefined,
-    { renderImageText },
-  );
-  expect(result.exitCode).toBe(0);
-  expect(renderImageText).toHaveBeenCalledOnce();
-  expect(renderImageText.mock.calls[0]![0]).toEqual({
-    kind: "render_image_text_page",
-    inputPath: null,
-    inputSha256: null,
-  });
-});
+      AbortSignal.timeout(60_000),
+      undefined,
+      { renderImageText },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(renderImageText).toHaveBeenCalledOnce();
+    expect(renderImageText.mock.calls[0]![0]).toEqual({
+      kind: "render_image_text_page",
+      inputPath: null,
+      inputSha256: null,
+    });
+  },
+  EXECUTION_TIMEOUT_MS + RUN_TIMEOUT_MS,
+);
 
 it("搜索 SDK 经真实 IPC 保留原生响应并校验参数", async () => {
   const response = {

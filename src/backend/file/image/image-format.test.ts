@@ -11,6 +11,21 @@ import {
 } from "./image-format";
 import { image_fixture, selection_fixture } from "../../../test/image-fixture";
 import { write_zip } from "../../../test/zip-fixture";
+import JSZip from "jszip";
+
+it("成员不匹配同时报告缺失与多余路径", async () => {
+  const fixture = image_fixture(["page"]);
+  const archive = await JSZip.loadAsync(await fixture.pack());
+  archive.remove("masks/page/text.png");
+  archive.file("extra.png", fixture.mask);
+  await expect(
+    read_image_package(await archive.generateAsync({ type: "uint8array" }), "bad.image"),
+  ).rejects.toMatchObject({
+    cause: {
+      message: expect.stringMatching(/missing 1.*masks\/page\/text\.png.*extra 1.*extra\.png/u),
+    },
+  });
+});
 
 function rgb_png(
   pixels: readonly [number, number, number][],
@@ -79,7 +94,7 @@ it("图片写回区分完成空正文与未翻译，并固定原稿身份", asyn
   items[0]!.dst = "";
   const text = await format.render_text(bytes, items, "book.image");
   const input = JSON.parse(text);
-  expect(input).toMatchObject({ version: 1, bookId: fixture.book.bookId });
+  expect(input).toMatchObject({ bookId: fixture.book.bookId });
   expect(input.records.map((row: { text: string | null }) => row.text)).toEqual(["", null]);
   items[0]!.dst = items[0]!.src;
   const same = JSON.parse(await format.render_text(bytes, items, "book.image"));
@@ -124,7 +139,6 @@ it("归档中的保留记录不进入图片文本输入", async () => {
 });
 
 it.each([
-  "version",
   "selection",
   "identity",
   "record",
@@ -139,7 +153,6 @@ it.each([
   const f = image_fixture();
   const page = f.book.pages[0]!;
   const cleanPage = f.clean.pages[0]!;
-  if (kind === "version") Object.assign(f.book, { version: 2 });
   if (kind === "selection") page.regions[0]!.selection!.path = "../mask.png";
   if (kind === "identity") f.book.pages[1]!.pageId = page.pageId;
   if (kind === "record") f.records.reverse().pop();

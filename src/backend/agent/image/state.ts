@@ -20,7 +20,6 @@ import { normalize_image_to_png } from "../../file/image/image-pixels";
 
 export const STATE_FILE = "draft.json";
 export const EVIDENCE_INDEX_FILE = "evidence/index.json";
-export const ALGORITHM_VERSION = 6; // 确认选区的并集向内过渡填色版本。
 const LOCK_RETRY = { retries: 100, minTimeout: 100, maxTimeout: 1000 };
 const COMMIT_RETRY = Object.freeze({ attempts: 5, delayMs: 100 });
 
@@ -79,7 +78,6 @@ export type PreparePageEvidence = {
   fillPreview: string;
   modelSha256: string;
   textModelSha256: string;
-  prepareVersion: number;
   textBoxes: [[number, number], [number, number], [number, number], [number, number]][];
   crops: Record<string, string>;
   candidates: PrepareCandidate[];
@@ -92,15 +90,11 @@ export type ErasePageResult = {
   cleanSha256: string;
   overlay: string;
   regions: ImageCleanRegion[]; // 运行掩码使用磁盘路径，归档时转换为包内路径。
-  cached?: boolean;
 };
 
 export type RunRecord = {
-  version: number;
   runId: string;
-  revision: number;
   pages: ErasePageResult[];
-  decisions: Record<string, { decision: "accept" | "reject"; reason?: string }>;
 };
 
 export type ReviewedRegion = Omit<ImageCleanRegion, "mask">; // 验收目录由区域身份定位掩码，记录只保存摘要。
@@ -198,7 +192,7 @@ export function review_artifact_digest(
   );
 }
 
-/** 将已验收产物复制到临时目录并核对摘要，再原子落入不可变 `reviewed/<pageId>/<artifactDigest>/`。 */
+/** 调用方已验证源文件，持锁复制后原子提交验收目录。 */
 export async function stage_reviewed_page(
   directory: string,
   params: {
@@ -208,7 +202,7 @@ export async function stage_reviewed_page(
     cleanSha256: string;
     regions: readonly (ReviewedRegion & { maskSource?: string })[];
   },
-): Promise<{ artifactDigest: string; revDir: string }> {
+): Promise<string> {
   const reviewedRegions: ReviewedRegion[] = params.regions.map((region) =>
     region.disposition === "preserve"
       ? {
@@ -233,7 +227,7 @@ export async function stage_reviewed_page(
   if (file_exists(path.join(revDir, "review.json"))) {
     try {
       await verify_immutable_review_dir(revDir, params.pageId, params.inputSha256, artifactDigest);
-      return { artifactDigest, revDir };
+      return artifactDigest;
     } catch {
       await fs.remove_async(revDir, { recursive: true, force: true }); // 损坏副本可由本次已验证产物重建。
     }
@@ -249,8 +243,6 @@ export async function stage_reviewed_page(
   try {
     const destClean = path.join(temporary, "clean.png");
     fs.copy_file(params.cleanSource, destClean);
-    if ((await digest(destClean)) !== params.cleanSha256)
-      throw new Error(`Staged clean image digest mismatch: ${params.pageId}`);
 
     for (const region of params.regions) {
       if (region.disposition === "preserve") continue;
@@ -258,8 +250,6 @@ export async function stage_reviewed_page(
         throw new Error(`Missing mask artifact for ${params.pageId}/${region.regionId}`);
       const destMask = path.join(temporary, "masks", `${region.regionId}.png`);
       fs.copy_file(region.maskSource, destMask);
-      if ((await digest(destMask)) !== region.maskSha256)
-        throw new Error(`Staged mask digest mismatch: ${params.pageId}/${region.regionId}`);
     }
 
     write_json(path.join(temporary, "review.json"), {
@@ -271,7 +261,7 @@ export async function stage_reviewed_page(
     } satisfies ReviewRecord);
 
     await commit_directory(temporary, revDir);
-    return { artifactDigest, revDir };
+    return artifactDigest;
   } catch (error) {
     await fs.remove_async(temporary, { recursive: true, force: true });
     throw error;

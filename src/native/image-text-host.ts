@@ -34,7 +34,6 @@ export function create_image_text_host(resources: {
         fontCss: `@font-face{font-family:ImageText;src:url(data:font/ttf;base64,${font.toString("base64")}) format('truetype');font-weight:400;font-style:normal}`,
         script,
         environment: {
-          rulesVersion: IMAGE_TEXT_RULES.version,
           fontSha256: createHash("sha256").update(font).digest("hex"),
           rendererSha256: createHash("sha256").update(script).digest("hex"),
           chromium: process.versions.chrome!,

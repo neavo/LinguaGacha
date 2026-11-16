@@ -21,6 +21,7 @@ import type { ImageTextInput } from "../../../shared/image-text";
 
 const IMAGE_STATE_MEMBER = "image.json"; // 归档内保存原稿与确认区域意图的 JSON 成员名。
 const IMAGE_CLEAN_MEMBER = "clean.json"; // 归档内保存已验收底图、掩码与摘要的 JSON 成员名。
+const MEMBER_ERROR_SAMPLE_SIZE = 5; // 诊断保留总数与少量路径，避免损坏归档淹没工具回执。
 const IMAGE_LIMITS = Object.freeze({
   members: 30000,
   expandedBytes: 950_000_000,
@@ -42,7 +43,6 @@ export function image_text_source_digest(book: ImageBook, records: readonly Imag
   );
   return image_sha256(
     JSON.stringify({
-      version: book.version,
       bookId: book.bookId,
       pages: book.pages.map((page) => ({
         pageId: page.pageId,
@@ -399,8 +399,12 @@ export async function read_image_package(content: Uint8Array, file: string) {
         p.regions.flatMap((r) => (r.selection ? [r.selection.path] : [])),
       ),
     ]);
-    if (members.size !== expected.size || [...members.keys()].some((name) => !expected.has(name)))
-      throw new Error("Unexpected image member");
+    const missing = [...expected].filter((name) => !members.has(name));
+    const extra = [...members.keys()].filter((name) => !expected.has(name));
+    if (missing.length || extra.length)
+      throw new Error(
+        `Image members mismatch: missing ${missing.length} ${JSON.stringify(missing.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}; extra ${extra.length} ${JSON.stringify(extra.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}`,
+      );
     for (let i = 0; i < book.pages.length; i++) {
       const page = book.pages[i]!;
       const cleanPage = clean.pages[i]!;
@@ -472,7 +476,6 @@ export class ImageFormat {
       ),
     );
     const input: ImageTextInput = {
-      version: 1,
       bookId: book.bookId,
       sourceSha256,
       records: records.flatMap((record, row) => {

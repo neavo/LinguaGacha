@@ -33,7 +33,7 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 |`sources/<file_path>/originals/<pageId>.<ext>`|原始图片字节（PNG 或 JPEG）|
 |`sources/<file_path>/clean/<pageId>.png`|EXIF 方向归一化后的已验收无字底图|
 |`sources/<file_path>/masks/<pageId>/<regionId>.png`|与归一化页同尺寸的 8-bit 二值 PNG（仅含 `0` 与 `255`），同页非空选区像素两两互斥|
-|`<writeback.input_path>/<file_path>/items.json`|`generateFiles` 生成的写字快照 `ImageTextInput`（`{ version: 1, bookId, sourceSha256, records: [{ pageId, regionId, text }] }`），仅覆盖 `translate` 区域|
+|`<writeback.input_path>/<file_path>/items.json`|`generateFiles` 生成的写字快照 `ImageTextInput`（`{ bookId, sourceSha256, records: [{ pageId, regionId, text }] }`），仅覆盖 `translate` 区域|
 
 `ImageRegion` 字段约束：
 
@@ -49,7 +49,7 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 - `confirmed: true` 时，每个 `"translate"` 区域必须具备非空且已注册的 `selection`、`direction`、`fill`，不得含 `preserveReason`，且在原稿 `items.json` 中有对应非空原文 `message`（`name` 可选，仅作翻译语境元数据，写字时不拼入气泡正文）。
 - `"preserve"` 区域不改原图像素，`direction` 与 `fill` 均为 `null`：已检出候选转保留时保留原 `selection`；模型漏检、`empty_selection` 或无法提供合法掩码的文字容器登记为 `"preserve"` + `"repair_failed"`（或 `"unreadable"`）且 `selection: null`，可读原文一并记入草稿 `records`，使已知缺口进入 `partial` 状态而不伪造掩码。
 
-工作目录 `work/image/<资产名>/` 中，第一阶段维护 `draft.json`、`originals/`、`masks/`、`normalized/`、`evidence/`、`runs/`、`reviewed/`、`cache/`；第二阶段在 `text/plans/`、`text/pages/`、`text/runs/` 下维护分区候选、单页排版缓存与自包含运行记录，不改写第一阶段事实。
+工作目录 `work/image/<资产名>/` 中，第一阶段维护 `draft.json`、`originals/`、`masks/`、`normalized/`、`evidence/`、`runs/`、`reviewed/`；第二阶段在 `text/plans/`、`text/runs/` 下维护分区候选与自包含运行产物，不改写第一阶段事实。
 
 ## 应用接口
 
@@ -61,13 +61,15 @@ description: 识别、消字、翻译、审校、修改漫画或图片，或为�
 |`prepare({ sources, workDirectory, device? })`|归档原图、归一化方向、运行气泡分割与背景分流，生成初始草稿（`revision`、`confirmed`、`book`、`records`）与 `evidence`|
 |`read(workDirectory)`|读取当前草稿、各页消字验收状态 `reviewStatus`（`[{ pageId, inputSha256, reviewed }]`）与 `evidence`|
 |`apply(workDirectory, expectedRevision, { pages, records, confirmed })`|校验修订号与选区约束，原子更新草稿区域、原文记录与确认状态，返回更新后的草稿|
-|`erase({ workDirectory, expectedRevision, pageIds? })`|对已确认草稿执行填色消字，返回 `{ runId, revision, pages: [{ pageId, clean, overlay, cached }] }`|
+|`erase({ workDirectory, expectedRevision, pageIds? })`|对已确认草稿执行填色消字，返回 `{ runId, revision, pages: [{ pageId, clean, overlay }] }`|
 |`review({ workDirectory, runId, expectedRevision, pages })`|提交各页消字验收决定（`[{ pageId, decision: 'accept' \| 'reject', reason? }]`），固化通过页并返回 `{ revision, accepted, rejected, unreviewedPages }`|
 |`pack(workDirectory, output)`|将全部通过消字验收的工作目录封装为 `.image` 归档，返回 `{ path, status: 'complete' \| 'partial' }`|
 |`restore(sourceDirectory, workDirectory)`|从展开的 `sources/<file_path>` 离线恢复工作目录与已验收底图，无需重跑模型|
-|`prepare_text({ workDirectory, inputPath, expectedRevision })`|读取写回快照并生成写字计划（`{ planId, revision, pages }`），提供各区域 `C0`..`C6` 分区候选与预览图|
+|`prepare_text({ workDirectory, inputPath, expectedRevision })`|读取写回快照并生成写字计划（`{ planId, pages }`），提供各区域 `C0`..`C6` 分区候选与预览图|
 |`render({ workDirectory, planId, assignments?, expectedRevision })`|按所选分区候选与分块译文执行原生排版和门禁检查，返回 `{ renderId, pages }`|
 |`publish({ workDirectory, outputDirectory, expectedRevision?, source })`|导出无字底图（`kind: 'clean'`）或经视觉决定的译图成品包（`kind: 'rendered'`），返回 `{ path, status, pages, files }`|
+
+修订冲突时调用 `read()`，根据当前草稿重新判断操作。计划来源变化时重新调用 `prepare_text()`。运行文件缺失或损坏时，清理报错指向的损坏运行目录，再执行对应计算。使用有效运行的 `runId` 或 `renderId` 继续验收与发布。
 
 # 来源调查
 
@@ -193,6 +195,8 @@ const erased = await image.erase({
 
 全部页面通过 `review` 后调用 `image.pack('work/image/ch01', 'work/image/ch01.image')` 生成归档包，按 `project-operation` 首次导入或通过 `replaces.jsonl`（设 `inheritance_mode: 'inherit'`）原地更新。
 
+封包失败后按错误修正输入或恢复执行条件，再调用 `image.pack`。相同条件下的确定性失败保留工作目录并报告阻塞，不根据私有实现自行拼包。
+
 修改工程中已有的 `.image` 时，无需重跑模型或重建 `evidence/`，直接从展开的 `sources/<file_path>` 离线恢复工作目录：
 
 ```js
@@ -227,7 +231,7 @@ const draft = await image.restore('sources/ch01.image', 'work/image/ch01');
 
 |观察到的问题|恢复方式|
 |---|---|
-|多块分配失衡、阅读顺序颠倒、分块后某块 `no_fit` 或字号过小|保持同一 `planId`，调整该区域的 `candidateId`（如切换 `C1`/`C2`/`C0`）、`blocks` 顺序或断句切点，重新调用 `image.render`（自动复用已验收底图与未变页缓存）|
+|多块分配失衡、阅读顺序颠倒、分块后某块 `no_fit` 或字号过小|保持同一 `planId`，调整该区域的 `candidateId`（如切换 `C1`/`C2`/`C0`）、`blocks` 顺序或断句切点，重新调用 `image.render`（沿用已验收底图，每次调用重新计算写字结果）|
 |单块 `no_fit`，或译文过长需精简表达|通过 `workspace_apply` 修订工程条目译文（保持原意，不得静默删减关键内容），再重新执行 `generateFiles → prepare_text → render`|
 |区域状态为 `'untranslated'`（`text: null`）|完成对应工程条目的翻译并提交后，重新执行 `generateFiles → prepare_text → render`|
 |块状态为 `'failed'` 且 `reason: 'missing_glyph'`|检查 `missing` 字符；属异常符号时修正条目译文后重跑，属字体无法覆盖的生僻字时保留失败记录并在交付时说明|

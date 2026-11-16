@@ -27,9 +27,8 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
       },
     ],
   }));
-  const book: ImageBook = { version: 1, bookId: "book", pages };
+  const book: ImageBook = { bookId: "book", pages };
   const clean: ImageClean = {
-    version: 1,
     bookId: "book",
     status: "complete",
     pages: pages.map((page) => ({

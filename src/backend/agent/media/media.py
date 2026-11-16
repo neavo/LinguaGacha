@@ -4,7 +4,7 @@
 本进程不创建任何模型会话，推理一律经通道请求。日志只写 stderr。
 
 每帧为 4 字节小端无符号 JSON 头长度、UTF-8 JSON 头、头中 `bytes` 声明长度的载荷。
-首帧是任务 `{"command": ..., "args": {...}}`，末帧头为 `{"result": true}`、载荷是 JSON 结果，其余为推理请求与应答。
+首帧头为 `{"command": ...}`、载荷是 JSON 参数，末帧头为 `{"result": true}`、载荷是 JSON 结果，其余为推理请求与应答。
 """
 
 import importlib.util
@@ -611,12 +611,13 @@ COMMANDS = {"speech": speech, "scan": scan, "refine": refine, "sheet": sheet}
 
 if __name__ == "__main__":
     channel = Channel()
-    job, _ = channel.read()
+    job, payload = channel.read()
+    args = json.loads(payload)
     reader = threading.Thread(target=channel.listen)
     reader.start()
     try:
         initialize(job["command"])
-        result = COMMANDS[job["command"]](channel, **job["args"])
+        result = COMMANDS[job["command"]](channel, **args)
     except BaseException as error:
         channel.write({"error": str(error)})
         traceback.print_exc()

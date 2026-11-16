@@ -14,11 +14,8 @@ function plan(text: string | null): ImageTextPlan {
   };
   return {
     planId: "a".repeat(64),
-    revision: 0,
     sourceDigest: "a".repeat(64),
-    partitionVersion: 1,
     input: {
-      version: 1,
       bookId: "book",
       sourceSha256: "a".repeat(64),
       records: [{ pageId: "p", regionId: "r", text }],
@@ -58,7 +55,6 @@ it("输入按当前原稿顺序归一，拒绝缺失、重复、额外区域与�
   const { book, records } = image_fixture();
   const draft = { book, records, revision: 0, confirmed: true };
   const input = {
-    version: 1,
     bookId: book.bookId,
     sourceSha256: image_text_source_digest(book, records),
     records: records.map(({ pageId, regionId }) => ({ pageId, regionId, text: null })),

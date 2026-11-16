@@ -629,10 +629,11 @@ if __name__ == "__main__":
     channel = Channel()
     reader = None
     try:
-        header, _ = channel.read()
+        header, payload = channel.read()
+        args = json.loads(payload)
         reader = threading.Thread(target=channel.listen)
         reader.start()
-        result = COMMANDS[header["command"]](header["args"], channel)
+        result = COMMANDS[header["command"]](args, channel)
         channel.write({"result": True}, json.dumps(result, ensure_ascii=False).encode())
         reader.join()
     except BaseException as error:

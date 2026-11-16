@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, onTestFinished, vi } from "vitest";
+import { default_native_fs } from "../../../native/native-fs";
 import { image_fixture } from "../../../test/image-fixture";
 import { image_sha256, image_text_source_digest } from "../../file/image/image-format";
 import type {
@@ -70,7 +71,7 @@ vi.mock("./engine", () => ({
   }),
 }));
 
-it("固定输入、缓存、当前来源和视觉决定共同约束完整或部分发布", async () => {
+it("运行产物、当前来源和视觉决定共同约束完整或部分发布", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-render-"));
   const source = path.join(temporary.path, "source"),
     work = path.join(temporary.path, "work");
@@ -95,7 +96,6 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
   }
   const draft = await restore(source, work);
   const input: ImageTextInput = {
-    version: 1,
     bookId: fixture.book.bookId,
     sourceSha256: image_text_source_digest(draft.book, draft.records),
     records: fixture.records.map((record, index) => ({
@@ -130,7 +130,6 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
       }
       const result: ImageTextHostResult = {
         environment: {
-          rulesVersion: IMAGE_TEXT_RULES.version,
           fontSha256,
           rendererSha256: "a".repeat(64),
           chromium: "fixture",
@@ -155,7 +154,12 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
       return { path: file };
     },
   });
-  const prepared = await prepare_text({ workDirectory: work, inputPath, expectedRevision: 0 });
+  let revision = 0;
+  const prepared = await prepare_text({
+    workDirectory: work,
+    inputPath,
+    expectedRevision: revision,
+  });
   await expect(
     render({ workDirectory: work, planId: prepared.planId, expectedRevision: 1 }),
   ).rejects.toThrow("Stale");
@@ -163,7 +167,7 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
     render({
       workDirectory: work,
       planId: prepared.planId,
-      expectedRevision: 0,
+      expectedRevision: revision,
       assignments: [{ pageId: "text", regionId: "unknown", candidateId: "C0" }],
     }),
   ).rejects.toThrow("Unknown");
@@ -172,13 +176,14 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
   const previewBytes = fs.readFileSync(preview);
   fs.writeFileSync(preview, "tampered");
   await expect(
-    render({ workDirectory: work, planId: prepared.planId, expectedRevision: 0 }),
+    render({ workDirectory: work, planId: prepared.planId, expectedRevision: revision }),
   ).rejects.toThrow("preview corrupted");
   fs.writeFileSync(preview, previewBytes);
   const first = await render({
     workDirectory: work,
-    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: 0 })).planId,
-    expectedRevision: 0,
+    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }))
+      .planId,
+    expectedRevision: revision,
   });
   expect(first.pages.map((page) => page.status)).toEqual([
     "ready",
@@ -192,15 +197,48 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
     { status: "failed", reason: "missing_glyph" },
     { status: "untranslated" },
   ]);
+  // 相同内容的草稿修订不使已有计划失效，写操作仍使用当前修订号。
+  revision = (
+    await apply(work, revision, {
+      pages: draft.book.pages,
+      records: draft.records,
+      confirmed: true,
+    })
+  ).revision;
   const repeat = await render({
     workDirectory: work,
-    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: 0 })).planId,
-    expectedRevision: 0,
+    planId: prepared.planId,
+    expectedRevision: revision,
   });
   expect(repeat).toEqual(first);
-  expect(renders).toBe(1);
+  expect(renders).toBe(2);
+  const failedCopy = vi.spyOn(default_native_fs, "copy_file").mockImplementationOnce(() => {
+    throw new Error("fixture result copy failed");
+  });
+  await expect(
+    render({ workDirectory: work, planId: prepared.planId, expectedRevision: revision }),
+  ).rejects.toThrow("result copy failed");
+  failedCopy.mockRestore();
+  expect(
+    fs.readdirSync(path.join(work, "text")).some((entry) => entry.startsWith(".render-")),
+  ).toBe(false);
+  expect(fs.readdirSync(path.join(work, "text/runs"))).toEqual([first.renderId]);
   fs.rmSync(path.join(work, "text/plans"), { recursive: true });
   const outputDirectory = path.join(temporary.path, "delivery");
+  const previewFile = first.pages[0]!.preview!;
+  expect(path.relative(path.join(work, "text/runs", first.renderId), previewFile)).toBe(
+    path.join("pages", "blank.png"),
+  );
+  const originalPreview = fs.readFileSync(previewFile);
+  fs.writeFileSync(previewFile, "corrupted");
+  await expect(
+    publish({
+      workDirectory: work,
+      outputDirectory,
+      source: { kind: "rendered", renderId: first.renderId, decisions: [] },
+    }),
+  ).rejects.toThrow("page missing or corrupted");
+  fs.writeFileSync(previewFile, originalPreview);
   await expect(
     publish({
       workDirectory: work,
@@ -241,19 +279,21 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
   fs.writeFileSync(inputPath, JSON.stringify(input));
   const changed = await render({
     workDirectory: work,
-    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: 0 })).planId,
-    expectedRevision: 0,
+    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }))
+      .planId,
+    expectedRevision: revision,
   });
   expect(changed.renderId).not.toBe(first.renderId);
-  expect(renders).toBe(2);
-  expect(changed.pages[0]).toEqual(first.pages[0]);
+  expect(renders).toBe(3);
+  expect(changed.pages[0]!.inputSha256).toBe(first.pages[0]!.inputSha256);
   input.records[1]!.text = "C";
   fs.writeFileSync(inputPath, JSON.stringify(input));
   failPage = true;
   const interrupted = await render({
     workDirectory: work,
-    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: 0 })).planId,
-    expectedRevision: 0,
+    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }))
+      .planId,
+    expectedRevision: revision,
   });
   expect(interrupted.pages[1]).toMatchObject({
     status: "error",
@@ -261,12 +301,18 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
   });
   const recovered = await render({
     workDirectory: work,
-    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: 0 })).planId,
-    expectedRevision: 0,
+    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }))
+      .planId,
+    expectedRevision: revision,
   });
   expect(recovered.pages[1]!.status).toBe("incomplete");
-  expect(renders).toBe(4);
-  expect(recovered.pages[0]).toEqual(first.pages[0]);
+  expect(renders).toBe(5);
+  expect(recovered.pages[0]!.inputSha256).toBe(first.pages[0]!.inputSha256);
+  const oldPlan = await prepare_text({
+    workDirectory: work,
+    inputPath,
+    expectedRevision: revision,
+  });
   // 同一消字规格重新验收了另一份有效底图，旧译图不能继续代表当前底图发布。
   const current = JSON.parse(fs.readFileSync(path.join(work, "draft.json"), "utf8")) as Draft;
   const ref = current.reviewed!.blank!;
@@ -294,18 +340,24 @@ it("固定输入、缓存、当前来源和视觉决定共同约束完整或部�
       source: { kind: "rendered", renderId: recovered.renderId, decisions: [] },
     }),
   ).rejects.toThrow("reviewed base");
+  await expect(
+    render({ workDirectory: work, planId: oldPlan.planId, expectedRevision: revision }),
+  ).rejects.toThrow("Stale text plan");
   const newBase = await render({
     workDirectory: work,
-    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: 0 })).planId,
-    expectedRevision: 0,
+    planId: (await prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }))
+      .planId,
+    expectedRevision: revision,
   });
   expect(newBase.pages[0]!.inputSha256).not.toBe(first.pages[0]!.inputSha256);
   expect(fs.readFileSync(newBase.pages[0]!.preview!)).toEqual(fixture.mask);
-  expect(renders).toBe(4);
+  expect(renders).toBe(6);
   const modified = structuredClone(draft.book.pages);
   modified[1]!.regions[0]!.direction = "horizontal-tb";
-  await apply(work, 0, { pages: modified, records: draft.records, confirmed: true });
+  revision = (
+    await apply(work, revision, { pages: modified, records: draft.records, confirmed: true })
+  ).revision;
   await expect(
-    prepare_text({ workDirectory: work, inputPath, expectedRevision: 1 }),
+    prepare_text({ workDirectory: work, inputPath, expectedRevision: revision }),
   ).rejects.toThrow("source mismatch");
 });

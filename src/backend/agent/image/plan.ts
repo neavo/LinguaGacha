@@ -6,7 +6,6 @@ import {
   IMAGE_TEXT_INPUT_SCHEMA,
   IMAGE_TEXT_PLAN_SCHEMA,
   IMAGE_TEXT_ASSIGNMENT_SCHEMA,
-  IMAGE_TEXT_PARTITION_VERSION,
   IMAGE_TEXT_RULES,
   normalize_image_text,
   type ImageTextInput,
@@ -29,7 +28,7 @@ import {
   type Draft,
 } from "./state";
 
-/** 修订与验收底图共同约束准备材料，正文分配不能跨草稿复用。 */
+/** 来源内容与验收底图约束准备材料，无关草稿修订不使计划失效。 */
 function source_digest(draft: Draft, clean: ImageClean): string {
   return image_sha256(JSON.stringify({ book: draft.book, records: draft.records, clean }));
 }
@@ -118,12 +117,8 @@ export async function read_text_plan(
   const { planId: id, ...content } = plan;
   if (id !== planId || image_sha256(JSON.stringify(content)) !== id)
     throw new Error("Text plan identity mismatch");
-  if (
-    plan.revision !== draft.revision ||
-    plan.sourceDigest !== source_digest(draft, clean) ||
-    plan.partitionVersion !== IMAGE_TEXT_PARTITION_VERSION
-  )
-    throw new Error("Stale text plan; prepare current input again");
+  if (plan.sourceDigest !== source_digest(draft, clean))
+    throw new Error("Stale text plan; call prepare_text() with the current input again");
   read_image_text_input(plan.input, draft);
   if (plan.pages.length !== draft.book.pages.length)
     throw new Error("Text plan page identity mismatch");
@@ -181,7 +176,8 @@ export async function prepare_text(options: {
   return locked(directory, async () => {
     const draft = load_draft(directory);
     if (!draft.confirmed) throw new Error("Confirm image book before preparing text");
-    if (draft.revision !== options.expectedRevision) throw new Error("Stale image draft revision");
+    if (draft.revision !== options.expectedRevision)
+      throw new Error("Stale image draft revision; call read() and reconsider the operation");
     const input = read_image_text_input(read_json(options.inputPath), draft);
     input.records = input.records.map((record) => ({
       ...record,
@@ -225,9 +221,7 @@ export async function prepare_text(options: {
         });
       }
       const content = {
-        revision: draft.revision,
         sourceDigest: source_digest(draft, clean),
-        partitionVersion: IMAGE_TEXT_PARTITION_VERSION,
         input,
         pages,
       };
@@ -288,5 +282,5 @@ export function read_image_text_input(value: unknown, draft: Draft): ImageTextIn
       }),
   );
   if (byId.size) throw new Error("Unexpected image text region");
-  return { version: 1, bookId: value.bookId, sourceSha256: value.sourceSha256, records };
+  return { bookId: value.bookId, sourceSha256: value.sourceSha256, records };
 }

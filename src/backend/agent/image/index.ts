@@ -36,7 +36,7 @@ import { image_metadata } from "../../file/image/image-metadata";
 import { IMAGE_MODELS } from "./models";
 import { pixels, type ImageDevice } from "./engine";
 import {
-  ALGORITHM_VERSION,
+  commit_directory,
   EVIDENCE_INDEX_FILE,
   STATE_FILE,
   assert_immutable_pages,
@@ -126,7 +126,7 @@ export async function prepare(options: {
     const stage = path.join(directory, `.prepare-${randomUUID()}`);
     await fs.make_dir_async(stage);
     try {
-      const book: ImageBook = { version: 1, bookId: randomUUID(), pages: [] };
+      const book: ImageBook = { bookId: randomUUID(), pages: [] };
       const records: ImageRecord[] = [];
       const pageMeta: {
         pageId: string;
@@ -196,7 +196,6 @@ export async function prepare(options: {
           fillPreview: result.fillPreview.replace(stage, directory),
           modelSha256: IMAGE_MODELS.bubble.sha256,
           textModelSha256: IMAGE_MODELS.text.sha256,
-          prepareVersion: ALGORITHM_VERSION,
           textBoxes: result.textBoxes,
           crops: Object.fromEntries(
             Object.entries(result.crops).map(([id, file]) => [id, file.replace(stage, directory)]),
@@ -246,7 +245,8 @@ export async function apply(
   const directory = path.resolve(workDirectory);
   return locked(directory, async () => {
     const current = load_draft(directory);
-    if (current.revision !== expectedRevision) throw new Error("Stale image draft revision");
+    if (current.revision !== expectedRevision)
+      throw new Error("Stale image draft revision; call read() and reconsider the operation");
     assert_immutable_pages(current.book.pages, change.pages);
 
     const nextPages = structuredClone(change.pages);
@@ -300,7 +300,8 @@ export async function erase(options: {
 
   return locked(directory, async () => {
     const draft = load_draft(directory);
-    if (draft.revision !== options.expectedRevision) throw new Error("Stale image draft revision");
+    if (draft.revision !== options.expectedRevision)
+      throw new Error("Stale image draft revision; call read() and reconsider the operation");
     if (!draft.confirmed) throw new Error("Confirm image regions and source text before erasing");
 
     const byId = new Map(draft.book.pages.map((p) => [p.pageId, p]));
@@ -321,105 +322,47 @@ export async function erase(options: {
     const normalized = await ensure_normalized(directory, targetPages);
     const runId = randomUUID();
     const runDir = path.join(directory, "runs", runId);
+    const stage = path.join(directory, "runs", `.erase-${runId}`);
     const results: ErasePageResult[] = [];
-
-    for (const page of targetPages) {
-      const inputSha256 = erase_input_digest(page);
-      const cacheKey = `v${ALGORITHM_VERSION}-${inputSha256}`;
-      const cacheDir = path.join(directory, "cache", page.pageId, cacheKey);
-      const pageRunDir = path.join(runDir, page.pageId);
-      const cacheMeta = path.join(cacheDir, "erase.json");
-
-      let cachedResult: ErasePageResult | null = null;
-      if (file_exists(cacheMeta)) {
-        try {
-          const cached = read_json<ErasePageResult>(cacheMeta);
-          if (
-            cached.clean &&
-            cached.cleanSha256 &&
-            (await digest(cached.clean)) === cached.cleanSha256
-          ) {
-            let masksOk = true;
-            for (const r of cached.regions) {
-              if (r.mask && (!r.maskSha256 || (await digest(r.mask)) !== r.maskSha256)) {
-                masksOk = false;
-                break;
-              }
-            }
-            if (masksOk) {
-              await fs.make_dir_async(path.join(pageRunDir, "masks"));
-              const runClean = path.join(pageRunDir, "clean.png");
-              const runOverlay = path.join(pageRunDir, "mask-overlay.png");
-              fs.copy_file(cached.clean, runClean);
-              fs.copy_file(cached.overlay, runOverlay);
-              const copiedRegions = cached.regions.map((r) => {
-                if (!r.mask) return r;
-                const runMask = path.join(pageRunDir, "masks", `${r.regionId}.png`);
-                fs.copy_file(r.mask, runMask);
-                return { ...r, mask: runMask };
-              });
-              cachedResult = {
-                ...cached,
-                clean: runClean,
-                overlay: runOverlay,
-                regions: copiedRegions,
-                cached: true,
-              };
-            }
-          }
-        } catch {
-          cachedResult = null; // 缓存可重建，读取失败后按确认输入重新填色。
-        }
+    await fs.make_dir_async(path.dirname(stage));
+    await fs.make_dir_exclusive(stage);
+    try {
+      for (const page of targetPages) {
+        const pageRunDir = path.join(runDir, page.pageId);
+        const raw = (await pixels("erase", {
+          source: normalized.get(page.pageId)!,
+          page,
+          root: directory,
+          output: path.join(stage, page.pageId),
+        })) as Omit<ErasePageResult, "pageId" | "inputSha256">;
+        results.push({
+          ...raw,
+          pageId: page.pageId,
+          inputSha256: erase_input_digest(page),
+          clean: path.join(pageRunDir, "clean.png"),
+          overlay: path.join(pageRunDir, "mask-overlay.png"),
+          regions: raw.regions.map((region) => ({
+            ...region,
+            ...(region.mask
+              ? { mask: path.join(pageRunDir, "masks", `${region.regionId}.png`) }
+              : {}),
+          })),
+        });
       }
-
-      if (cachedResult) {
-        // 命中缓存由宿主验证输入；未命中时由实际读选区的 Python helper 验证。
-        await validate_image_selections(page, async (member) =>
-          fs.read_file(path.join(directory, member)),
-        );
-        results.push(cachedResult);
-        continue;
+      const record: RunRecord = { runId, pages: results };
+      write_json(path.join(stage, "run.json"), record);
+      await commit_directory(stage, runDir);
+      const nextRevision = draft.revision + 1;
+      try {
+        write_json(path.join(directory, STATE_FILE), { ...draft, revision: nextRevision });
+      } catch (error) {
+        await fs.remove_async(runDir, { recursive: true, force: true }); // 草稿提交失败，本次运行尚未交付。
+        throw error;
       }
-
-      const raw = (await pixels("erase", {
-        source: normalized.get(page.pageId)!,
-        page,
-        root: directory,
-        output: pageRunDir,
-      })) as Omit<ErasePageResult, "pageId" | "inputSha256">;
-
-      const entry: ErasePageResult = { pageId: page.pageId, inputSha256, ...raw, cached: false };
-      await fs.make_dir_async(path.join(cacheDir, "masks"));
-      const cachedClean = path.join(cacheDir, "clean.png");
-      const cachedOverlay = path.join(cacheDir, "mask-overlay.png");
-      fs.copy_file(entry.clean, cachedClean);
-      fs.copy_file(entry.overlay, cachedOverlay);
-      const cachedRegions = entry.regions.map((r) => {
-        if (!r.mask) return r;
-        const dest = path.join(cacheDir, "masks", `${r.regionId}.png`);
-        fs.copy_file(r.mask, dest);
-        return { ...r, mask: dest };
-      });
-      write_json(cacheMeta, {
-        ...entry,
-        clean: cachedClean,
-        overlay: cachedOverlay,
-        regions: cachedRegions,
-      });
-      results.push(entry);
+      return { runId, revision: nextRevision, status: "pending" as const, pages: results };
+    } finally {
+      await fs.remove_async(stage, { recursive: true, force: true });
     }
-
-    const nextRevision = draft.revision + 1;
-    const record: RunRecord = {
-      version: ALGORITHM_VERSION,
-      runId,
-      revision: nextRevision,
-      pages: results,
-      decisions: {},
-    };
-    write_json(path.join(runDir, "run.json"), record);
-    write_json(path.join(directory, STATE_FILE), { ...draft, revision: nextRevision });
-    return { runId, revision: nextRevision, status: "pending" as const, pages: results };
   });
 }
 
@@ -437,10 +380,10 @@ export async function review(options: {
   return locked(directory, async () => {
     const draft = load_draft(directory);
     if (!draft.confirmed) throw new Error("Image draft must remain confirmed for review");
-    if (draft.revision !== options.expectedRevision) throw new Error("Stale image draft revision");
+    if (draft.revision !== options.expectedRevision)
+      throw new Error("Stale image draft revision; call read() and reconsider the operation");
     const runFile = path.join(directory, "runs", options.runId, "run.json");
     const run = read_json<RunRecord>(runFile);
-    if (run.version !== ALGORITHM_VERSION) throw new Error("Image run algorithm version mismatch");
 
     const draftPages = new Map(draft.book.pages.map((p) => [p.pageId, p]));
     const runPages = new Map(run.pages.map((p) => [p.pageId, p]));
@@ -526,29 +469,23 @@ export async function review(options: {
     // 第二阶段：逐页落地到不可变内容寻址目录，不覆盖既有成果。
     const nextReviewed: Record<string, ReviewedPageRef> = { ...draft.reviewed };
     for (const page of verifiedAccepts) {
-      const { artifactDigest } = await stage_reviewed_page(directory, page);
+      const artifactDigest = await stage_reviewed_page(directory, page);
       nextReviewed[page.pageId] = {
         inputSha256: page.inputSha256,
         artifactDigest,
         runId: options.runId,
       };
-      run.decisions[page.pageId] = { decision: "accept" };
       accepted.push(page.pageId);
     }
     for (const item of rejected) {
-      run.decisions[item.pageId] = {
-        decision: "reject",
-        ...(item.reason ? { reason: item.reason } : {}),
-      };
       if (nextReviewed[item.pageId]?.runId === options.runId) {
         delete nextReviewed[item.pageId];
       }
     }
 
-    // 第三阶段：原子提交运行决定、草稿验收引用与推进后的工作区修订。
+    // 验收状态由草稿引用拥有，修订与引用在同一次写入中提交。
     const nextRevision = draft.revision + 1;
     const nextDraft: Draft = { ...draft, revision: nextRevision, reviewed: nextReviewed };
-    write_json(runFile, run);
     write_json(path.join(directory, STATE_FILE), nextDraft);
 
     const status = await collect_review_status(directory, nextDraft);
@@ -671,7 +608,7 @@ export async function restore(sourceDirectory: string, workDirectory: string): P
       // 第二阶段：全部校验通过后再固化不可变 reviewed 产物，并提交工作区原稿、规范化缓存失效与草稿状态。
       const reviewed: Record<string, ReviewedPageRef> = {};
       for (const item of stageItems) {
-        const { artifactDigest } = await stage_reviewed_page(directory, {
+        const artifactDigest = await stage_reviewed_page(directory, {
           pageId: item.page.pageId,
           inputSha256: item.inputSha256,
           cleanSource: item.cleanSource,

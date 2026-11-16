@@ -41,7 +41,6 @@ const REGION_SCHEMA = Type.Object(
 /** 图片书完整结构契约，用于草稿保存与 `.image` 归档校验。 */
 export const IMAGE_BOOK_SCHEMA = Type.Object(
   {
-    version: Type.Literal(1),
     bookId: ID,
     pages: Type.Array(
       Type.Object(
@@ -76,7 +75,6 @@ const CLEAN_REGION_SCHEMA = Type.Object(
 /** 第一阶段已验收底图与实际掩码清单契约（`clean.json`）。 */
 export const IMAGE_CLEAN_SCHEMA = Type.Object(
   {
-    version: Type.Literal(1),
     bookId: ID,
     status: Type.Union([Type.Literal("complete"), Type.Literal("partial")]),
     pages: Type.Array(

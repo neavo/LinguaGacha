@@ -42,6 +42,8 @@ it("reports truncated output instead of treating it as empty", () => {
 });
 
 it("rejects oversized headers and payload sizes", () => {
+  expect(() => encode_frame({}, new Uint8Array(CHANNEL_PAYLOAD_MAX + 1))).toThrow("payload size");
+  expect(() => encode_frame({ text: "x".repeat(CHANNEL_HEADER_MAX) })).toThrow("too long");
   const prefix = Buffer.alloc(4);
   prefix.writeUInt32LE(CHANNEL_HEADER_MAX + 1);
   expect(() => new FrameReader().push(prefix)).toThrow("too long");

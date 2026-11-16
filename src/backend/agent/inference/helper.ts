@@ -14,6 +14,8 @@ export async function run_helper(
   ) => Promise<{ header: ChannelHeader; payload?: ArrayBuffer }>,
 ): Promise<unknown> {
   if (shutdown_failure) throw shutdown_failure;
+  // 作业正文走载荷；启动前完成编码，非法输入不能留下等待首帧的子进程。
+  const request = encode_frame({ command }, Buffer.from(JSON.stringify(job)));
   // -I 忽略 PYTHON* 变量与用户 site，-X utf8 让日志在任何代码页下都是 UTF-8。
   const child = spawn(executable, ["-I", "-X", "utf8", script], {
     shell: false,
@@ -35,8 +37,7 @@ export async function run_helper(
   };
   const closed = new Promise<number | null>((resolve) => child.once("close", resolve));
   child.once("error", fail);
-  // helper 提前退出时写入会报 EPIPE，真实原因由退出码或已记录的失败说明。
-  child.stdin.on("error", () => undefined);
+  child.stdin.on("error", fail);
   child.stdout.on("data", (chunk: Buffer) => {
     try {
       for (const { header, payload } of reader.push(chunk)) {
@@ -82,7 +83,11 @@ export async function run_helper(
       fail(error);
     }
   });
-  write({ command, args: job });
+  try {
+    for (const part of request) child.stdin.write(part);
+  } catch (error) {
+    fail(error);
+  }
   const code = await closed;
   await Promise.allSettled(operations);
   clearTimeout(stopping);

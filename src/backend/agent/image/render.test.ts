@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { image_fixture } from "../../../test/image-fixture";
-import { IMAGE_TEXT_RULES, type ImageTextSelection } from "../../../shared/image-text";
+import { type ImageTextSelection } from "../../../shared/image-text";
 import { image_text_page_digest } from "./render";
 
 it("阅读顺序与等价换行不改变页像素身份，底图、正文、方向和环境变化使其失效", () => {
@@ -12,7 +12,6 @@ it("阅读顺序与等价换行不改变页像素身份，底图、正文、方�
     { pageId: "p", regionId: "other", text: "A" },
   ];
   const environment = {
-    rulesVersion: IMAGE_TEXT_RULES.version,
     fontSha256: "a".repeat(64),
     rendererSha256: "b".repeat(64),
     chromium: "fixture",

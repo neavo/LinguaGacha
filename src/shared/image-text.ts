@@ -7,7 +7,6 @@ const SHA256 = Type.String({ pattern: "^[a-f0-9]{64}$" });
 /** 图片写回快照保留完成事实，空正文与未翻译分别表示。 */
 export const IMAGE_TEXT_INPUT_SCHEMA = Type.Object(
   {
-    version: Type.Literal(1),
     bookId: ID,
     sourceSha256: SHA256,
     records: Type.Array(
@@ -27,9 +26,8 @@ export const IMAGE_TEXT_INPUT_SCHEMA = Type.Object(
 
 export type ImageTextInput = Static<typeof IMAGE_TEXT_INPUT_SCHEMA>;
 
-/** 字号、间距和栅格判定共同版本化；调用者只提供正文与已确认区域事实。 */
+/** 字号、间距和栅格判定共用规则；调用者只提供正文与已确认区域事实。 */
 export const IMAGE_TEXT_RULES = Object.freeze({
-  version: 3,
   fontFile: "LGBaseFont-Regular.ttf",
   lineHeight: 1.1,
   minimumFontSize: 2,
@@ -83,7 +81,6 @@ export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
 export type ImageTextPage = Static<typeof IMAGE_TEXT_PAGE_SCHEMA>;
 export const IMAGE_TEXT_ENVIRONMENT_SCHEMA = Type.Object(
   {
-    rulesVersion: Type.Integer({ minimum: 1 }),
     fontSha256: SHA256,
     rendererSha256: SHA256,
     chromium: Type.String({ minLength: 1 }),
@@ -97,9 +94,7 @@ export type ImageTextEnvironment = Static<typeof IMAGE_TEXT_ENVIRONMENT_SCHEMA>;
 export type ImageTextBlockResult = Static<typeof IMAGE_TEXT_BLOCK_RESULT_SCHEMA>;
 export type ImageTextPageResult = Static<typeof IMAGE_TEXT_PAGE_RESULT_SCHEMA>;
 export type ImageTextRender = {
-  version: 1;
   renderId: string;
-  partitionVersion: number;
   bookId: string;
   sourceSha256: string;
   environment: ImageTextEnvironment;
@@ -211,7 +206,6 @@ export function image_text_color(color: readonly number[]): "black" | "white" {
   return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? "black" : "white";
 }
 
-export const IMAGE_TEXT_PARTITION_VERSION = 1;
 const PLAN_BLOCK_SCHEMA = Type.Object(
   {
     blockId: ID,
@@ -227,9 +221,7 @@ const PLAN_BLOCK_SCHEMA = Type.Object(
 export const IMAGE_TEXT_PLAN_SCHEMA = Type.Object(
   {
     planId: SHA256,
-    revision: Type.Integer({ minimum: 0 }),
     sourceDigest: SHA256,
-    partitionVersion: Type.Integer({ minimum: 1 }),
     input: IMAGE_TEXT_INPUT_SCHEMA,
     pages: Type.Array(
       Type.Object(

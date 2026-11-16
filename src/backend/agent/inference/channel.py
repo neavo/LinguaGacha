@@ -42,6 +42,10 @@ class Channel:
         head = json.dumps(
             {**header, "bytes": len(payload)}, ensure_ascii=False
         ).encode()
+        if len(head) > HEADER_MAX:
+            raise ValueError(f"帧头过长：{len(head)}")
+        if len(payload) > PAYLOAD_MAX:
+            raise ValueError(f"载荷长度非法：{len(payload)}")
         with self.lock:
             self.output.write(struct.pack("<I", len(head)) + head)
             self.output.write(payload)

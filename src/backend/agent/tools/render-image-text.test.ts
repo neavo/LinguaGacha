@@ -3,17 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { default_native_fs } from "../../../native/native-fs";
-import {
-  IMAGE_TEXT_RULES,
-  type ImageTextHostResult,
-  type ImageTextPage,
-} from "../../../shared/image-text";
+import { type ImageTextHostResult, type ImageTextPage } from "../../../shared/image-text";
 import { image_sha256 } from "../../file/image/image-format";
 import { create_image_text_renderer, validate_image_text_page } from "./render-image-text";
 
 const result: ImageTextHostResult = {
   environment: {
-    rulesVersion: IMAGE_TEXT_RULES.version,
     fontSha256: "a".repeat(64),
     rendererSha256: "b".repeat(64),
     chromium: "fixture",

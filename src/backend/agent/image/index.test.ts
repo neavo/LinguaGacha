@@ -72,7 +72,6 @@ vi.mock("./engine", () => ({
 
     if (command === "erase") {
       mockState.eraseCalls++;
-      if (mockState.failOnErase) throw new Error("Invalid selection");
       const out = String(args.output);
       const page = args.page as ImagePage;
       fs.mkdirSync(path.join(out, "masks"), { recursive: true });
@@ -80,6 +79,7 @@ vi.mock("./engine", () => ({
       const overlayPath = path.join(out, "mask-overlay.png");
       fs.writeFileSync(cleanPath, png);
       fs.writeFileSync(overlayPath, png);
+      if (mockState.failOnErase) throw new Error("Invalid selection");
 
       const regions = page.regions.map((r) => {
         if (r.disposition === "preserve") {
@@ -124,7 +124,6 @@ vi.mock("./engine", () => ({
 }));
 
 import { apply, erase, pack, prepare, publish, read, restore, review } from "./index";
-import { ALGORITHM_VERSION } from "./state";
 
 describe("@lg/image phase-1 transaction loop", () => {
   it("完成混合填色与保留区域的交付、恢复和重复发布", async () => {
@@ -183,22 +182,6 @@ describe("@lg/image phase-1 transaction loop", () => {
       "not reviewed",
     );
 
-    const runFile = path.join(work, "runs", run1.runId, "run.json");
-    const runText = fs.readFileSync(runFile, "utf8");
-    fs.writeFileSync(
-      runFile,
-      JSON.stringify({ ...JSON.parse(runText), version: ALGORITHM_VERSION - 1 }),
-    );
-    await expect(
-      review({
-        workDirectory: work,
-        runId: run1.runId,
-        expectedRevision: run1.revision,
-        pages: [{ pageId: confirmedPages[0]!.pageId, decision: "accept" }],
-      }),
-    ).rejects.toThrow("algorithm version mismatch");
-    fs.writeFileSync(runFile, runText);
-
     // 验收第1页、驳回第2页后再单独验收第2页，每步均校验并推进 revision。
     await expect(
       review({
@@ -243,14 +226,14 @@ describe("@lg/image phase-1 transaction loop", () => {
     });
     expect((await read(work)).reviewStatus.every((s) => s.reviewed)).toBe(true);
 
-    // 仅第2页再触发一次 cache 命中 erase 验证 cached=true。
-    const runCached = await erase({
+    // 重做指定页生成独立运行，已有验收仍可用于归档。
+    const rerun = await erase({
       workDirectory: work,
       expectedRevision: postTextApply.revision,
       pageIds: [confirmedPages[1]!.pageId],
     });
-    expect(runCached.pages[0]!.cached).toBe(true);
-    expect(mockState.eraseCalls).toBe(2);
+    expect(rerun.pages.map((page) => page.pageId)).toEqual([confirmedPages[1]!.pageId]);
+    expect(mockState.eraseCalls).toBe(3);
 
     // 打包并经由 sources 离线恢复与幂等发布（全程不需重新 erase/模型）。
     const pkgPath = path.join(tmp.path, "book.image");
@@ -321,7 +304,7 @@ describe("@lg/image phase-1 transaction loop", () => {
     ).rejects.toThrow("missing or corrupted");
 
     // 若后续对单页改填色导致 eraseInputDigest 变化，仅该页验收失效且拒绝拿旧 runId 验收。
-    const postConfigApply = await apply(work, runCached.revision, {
+    const postConfigApply = await apply(work, rerun.revision, {
       pages: [
         {
           ...confirmedPages[0]!,
@@ -366,8 +349,22 @@ describe("@lg/image phase-1 transaction loop", () => {
       "Invalid selection",
     );
     expect((await read(work)).revision).toBe(1);
+    expect(fs.readdirSync(path.join(work, "runs"))).toEqual([]);
 
     mockState.failOnErase = false;
+    const write = default_native_fs.write_file_atomic.bind(default_native_fs);
+    const commitFailure = vi
+      .spyOn(default_native_fs, "write_file_atomic")
+      .mockImplementation((file, bytes) => {
+        if (file === path.join(work, "draft.json")) throw new Error("fixture draft commit failed");
+        write(file, bytes);
+      });
+    await expect(erase({ workDirectory: work, expectedRevision: 1 })).rejects.toThrow(
+      "draft commit failed",
+    );
+    commitFailure.mockRestore();
+    expect((await read(work)).revision).toBe(1);
+    expect(fs.readdirSync(path.join(work, "runs"))).toEqual([]);
     mockState.tamperCleanOnErase = true;
     const tamperedRun = await erase({ workDirectory: work, expectedRevision: 1 });
     await expect(
@@ -492,7 +489,6 @@ describe("@lg/image phase-1 transaction loop", () => {
     const altRecordList: ImageRecord[] = [{ pageId: p2!.pageId, regionId: "r1", message: "B" }];
     const p1CleanSha = image_sha256(png_fixture());
     const altClean = {
-      version: 1 as const,
       bookId: updatedBook.bookId,
       status: "complete" as const,
       pages: [
@@ -572,7 +568,7 @@ describe("@lg/image phase-1 transaction loop", () => {
   });
 });
 
-it("确认只接受登记选区，缓存命中前拒绝被篡改的输入选区", async () => {
+it("确认只接受登记选区", async () => {
   using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-selection-"));
   const source = path.join(tmp.path, "source.png");
   fs.writeFileSync(source, png_fixture());
@@ -589,10 +585,5 @@ it("确认只接受登记选区，缓存命中前拒绝被篡改的输入选区"
   );
   selection.sha256 = originalSha;
   await apply(work, 0, { pages: [page], records, confirmed: true });
-  const run = await erase({ workDirectory: work, expectedRevision: 1 });
-  fs.writeFileSync(path.join(work, selection.path), selection_fixture([0]));
-  await expect(erase({ workDirectory: work, expectedRevision: run.revision })).rejects.toThrow(
-    "digest mismatch",
-  );
-  expect((await read(work)).revision).toBe(run.revision);
+  expect((await read(work)).confirmed).toBe(true);
 });

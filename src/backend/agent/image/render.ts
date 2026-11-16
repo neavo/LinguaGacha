@@ -105,37 +105,7 @@ async function call_host(
   }
 }
 
-/** 内容地址的页产物只有结构、清单摘要与实际 PNG 全部一致时才能复用。 */
-async function cached_page(
-  directory: string,
-  inputSha256: string,
-): Promise<ImageTextPageResult | null> {
-  const file = path.join(directory, "text/pages", inputSha256, "result.json");
-  if (!file_exists(file)) return null;
-  try {
-    const cached = read_json<{ result: ImageTextPageResult; sha256: string }>(file);
-    if (
-      !Check(IMAGE_TEXT_PAGE_RESULT_SCHEMA, cached.result) ||
-      cached.result.status === "error" ||
-      cached.result.inputSha256 !== inputSha256 ||
-      cached.sha256 !== image_sha256(JSON.stringify(cached.result))
-    )
-      return null;
-    if (
-      !cached.result.preview ||
-      !cached.result.previewSha256 ||
-      path.resolve(cached.result.preview) !==
-        path.join(directory, "text/pages", inputSha256, "preview.png") ||
-      (await digest(cached.result.preview)) !== cached.result.previewSha256
-    )
-      return null;
-    return cached.result;
-  } catch {
-    return null;
-  } // 页缓存可由已核对输入重建，损坏缓存不作为确定失败。
-}
-
-/** 固定当前快照后逐页计算；消字事实与文本缓存分别拥有摘要。 */
+/** 固定当前快照后逐页计算；本次运行独立保存图片与材料，整体提交。 */
 export async function render(options: {
   workDirectory: string;
   planId: string;
@@ -146,7 +116,8 @@ export async function render(options: {
   return locked(directory, async () => {
     const draft = load_draft(directory);
     if (!draft.confirmed) throw new Error("Confirm image book before rendering text");
-    if (draft.revision !== options.expectedRevision) throw new Error("Stale image draft revision");
+    if (draft.revision !== options.expectedRevision)
+      throw new Error("Stale image draft revision; call read() and reconsider the operation");
     const { clean, sources } = await build_clean_manifest(directory, draft);
     const plan = await read_text_plan(directory, options.planId, draft, clean);
     const input = plan.input;
@@ -164,10 +135,7 @@ export async function render(options: {
     const environmentResponse = await call_host(null);
     const environment = environmentResponse.result.environment;
     fs.unlink(environmentResponse.path, { force: true });
-    if (
-      !Check(IMAGE_TEXT_ENVIRONMENT_SCHEMA, environment) ||
-      environment.rulesVersion !== IMAGE_TEXT_RULES.version
-    )
+    if (!Check(IMAGE_TEXT_ENVIRONMENT_SCHEMA, environment))
       throw new Error("Invalid image text environment");
     const runtime = globalThis as typeof globalThis & { ws?: { fontsDirectory: string } };
     if (!runtime.ws) throw new Error("Current process has no workspace fonts");
@@ -179,6 +147,8 @@ export async function render(options: {
     try {
       await fs.make_dir_async(path.dirname(stage));
       await fs.make_dir_exclusive(stage);
+      const commit = path.join(stage, "run");
+      await fs.make_dir_exclusive(commit);
       // 全部材料先验明，输入损坏不降为某页排版失败。
       const materials: {
         page: ImageTextPage;
@@ -259,17 +229,6 @@ export async function render(options: {
       }
       const pages: ImageTextPageResult[] = [];
       for (const [index, material] of materials.entries()) {
-        const cached = await cached_page(directory, material.inputSha256);
-        if (cached) {
-          pages.push({
-            ...cached,
-            regions: group_results(
-              selected[index]!,
-              cached.regions.flatMap((region) => region.blocks),
-            ),
-          });
-          continue;
-        }
         const pageStage = path.join(stage, material.page.pageId);
         await fs.make_dir_exclusive(pageStage);
         const requestPath = path.join(pageStage, "request.json");
@@ -342,7 +301,7 @@ export async function render(options: {
             ...material.results,
             ...paint.regions.map((entry) => entry.result),
           ]);
-          const destination = path.join(directory, "text/pages", material.inputSha256);
+          const preview = `pages/${material.page.pageId}.png`;
           const result: ImageTextPageResult = {
             pageId: material.page.pageId,
             inputSha256: material.inputSha256,
@@ -354,28 +313,16 @@ export async function render(options: {
               ? "ready"
               : "incomplete",
             regions,
-            preview: path.join(destination, "preview.png"),
+            preview,
             previewSha256: composed.previewSha256,
           };
-          const commit = path.join(pageStage, "commit");
-          await fs.make_dir_exclusive(commit);
-          fs.copy_file(composed.preview, path.join(commit, "preview.png"));
-          write_json(path.join(commit, "result.json"), {
-            result,
-            sha256: image_sha256(JSON.stringify(result)),
-          });
-          if (file_exists(destination))
-            await fs.remove_async(destination, { recursive: true, force: true }); // 只替换已证明损坏的可重建页缓存。
-          await fs.make_dir_async(path.dirname(destination));
-          await commit_directory(commit, destination);
+          fs.copy_file(composed.preview, plan_member(commit, preview));
           pages.push(result);
         } finally {
           if (painted) fs.unlink(painted.path, { force: true });
         }
       }
       const manifest = {
-        version: 1 as const,
-        partitionVersion: plan.partitionVersion,
         bookId: input.bookId,
         sourceSha256: input.sourceSha256,
         environment,
@@ -384,32 +331,33 @@ export async function render(options: {
       const renderId = image_sha256(JSON.stringify({ input, selected, ...manifest }));
       const run: ImageTextRender = { ...manifest, renderId };
       const runDirectory = path.join(directory, "text/runs", renderId);
+      write_json(path.join(commit, "input.json"), input);
+      write_json(path.join(commit, "selected.json"), selected);
+      for (const page of selected)
+        for (const region of page)
+          for (const block of region.blocks) {
+            const source = plan_member(
+              region.candidateId === "C0" ? directory : planDirectory,
+              block.selection.path,
+            );
+            fs.copy_file(source, plan_member(path.join(commit, "masks"), block.selection.path));
+          }
+      write_json(path.join(commit, "render.json"), run);
       if (file_exists(runDirectory)) {
-        if (
-          !isDeepStrictEqual(read_json(path.join(runDirectory, "render.json")), run) ||
-          !isDeepStrictEqual(read_json(path.join(runDirectory, "input.json")), input) ||
-          !isDeepStrictEqual(read_json(path.join(runDirectory, "selected.json")), selected)
-        )
-          throw new Error("Image text run corrupted");
+        // 内容相同的运行可以共用身份，但已有产物仍须完整；损坏时由 Agent 清理后重做。
+        await read_image_text_render(directory, draft, renderId, clean);
       } else {
-        const commit = path.join(stage, "run");
-        await fs.make_dir_exclusive(commit);
-        write_json(path.join(commit, "input.json"), input);
-        write_json(path.join(commit, "selected.json"), selected);
-        for (const page of selected)
-          for (const region of page)
-            for (const block of region.blocks) {
-              const source = plan_member(
-                region.candidateId === "C0" ? directory : planDirectory,
-                block.selection.path,
-              );
-              fs.copy_file(source, plan_member(path.join(commit, "masks"), block.selection.path));
-            }
-        write_json(path.join(commit, "render.json"), run);
         await fs.make_dir_async(path.dirname(runDirectory));
         await commit_directory(commit, runDirectory);
       }
-      return run;
+      // 磁盘清单使用运行内相对路径，工具回执提供可直接查看的文件路径。
+      return {
+        ...run,
+        pages: run.pages.map((page) => ({
+          ...page,
+          ...(page.preview ? { preview: plan_member(runDirectory, page.preview) } : {}),
+        })),
+      };
     } finally {
       font.destroy();
       await fs.remove_async(stage, { recursive: true, force: true });
@@ -431,7 +379,6 @@ export async function read_image_text_render(
   const run = read_json<ImageTextRender>(path.join(runDirectory, "render.json"));
   const { renderId: _id, ...manifest } = run;
   if (
-    run.version !== 1 ||
     !Check(IMAGE_TEXT_ENVIRONMENT_SCHEMA, run.environment) ||
     run.renderId !== renderId ||
     image_sha256(JSON.stringify({ input, selected, ...manifest })) !== renderId ||
@@ -472,15 +419,15 @@ export async function read_image_text_render(
             : "incomplete")
       )
         throw new Error("Image text block completeness mismatch");
-      const cached = await cached_page(directory, page.inputSha256);
       if (
-        !cached ||
-        !isDeepStrictEqual(
-          { ...cached, regions: sorted_regions(cached.regions) },
-          { ...page, regions: sorted_regions(page.regions) },
-        )
+        page.preview !== `pages/${page.pageId}.png` ||
+        !page.previewSha256 ||
+        !file_exists(plan_member(runDirectory, page.preview)) ||
+        (await digest(plan_member(runDirectory, page.preview))) !== page.previewSha256
       )
-        throw new Error("Image text page cache corrupted");
+        throw new Error(
+          `Image text run page missing or corrupted: ${page.pageId}; remove the damaged run and render again`,
+        );
     }
   }
   for (const page of selected)

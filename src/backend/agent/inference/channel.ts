@@ -1,9 +1,9 @@
 /**
  * 根脚本与 Python helper 之间的二进制帧：4 字节小端 JSON 头长度、UTF-8 JSON 头、`bytes` 声明长度的载荷。
- * 与 `media.py` 的 `Channel` 是同一契约，上限两端一致。
+ * 与 `channel.py` 的 `Channel` 是同一契约；作业参数和结果使用 JSON 载荷，推理使用张量载荷。
  */
 export const CHANNEL_HEADER_MAX = 64 * 1024;
-export const CHANNEL_PAYLOAD_MAX = 64 * 1024 * 1024; // 检测图与按长宽比展开的文字行共用载荷上限。
+export const CHANNEL_PAYLOAD_MAX = 64 * 1024 * 1024; // 作业正文、结果与推理张量共用传输预算。
 
 export type ChannelHeader = Readonly<Record<string, unknown>>;
 /** 载荷独占自己的 ArrayBuffer，可直接转移给 Worker。 */
@@ -12,6 +12,7 @@ export type ChannelFrame = Readonly<{ header: ChannelHeader; payload: Uint8Array
 /** 编码一帧，`bytes` 由载荷长度决定。 */
 export function encode_frame(header: ChannelHeader, payload?: Uint8Array): Buffer[] {
   const bytes = payload?.byteLength ?? 0;
+  if (bytes > CHANNEL_PAYLOAD_MAX) throw new Error(`Channel payload size is invalid: ${bytes}`);
   const head = Buffer.from(JSON.stringify({ ...header, bytes }));
   if (head.length > CHANNEL_HEADER_MAX)
     throw new Error(`Channel header is too long: ${head.length}`);

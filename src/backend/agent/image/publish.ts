@@ -16,6 +16,7 @@ import {
 } from "./state";
 import { build_clean_manifest } from "./artifacts";
 import { read_image_text_render } from "./render";
+import { plan_member } from "./plan";
 
 export type ImageTextDecision = { pageId: string } & (
   | { decision: "accept" }
@@ -63,7 +64,7 @@ export async function publish(options: {
       const draft = load_draft(directory);
       if (!draft.confirmed) throw new Error("Confirm image book before publishing");
       if (options.expectedRevision !== undefined && draft.revision !== options.expectedRevision)
-        throw new Error("Stale image draft revision");
+        throw new Error("Stale image draft revision; call read() and reconsider the operation");
       const { clean, sources } = await build_clean_manifest(directory, draft);
       const rendered =
         options.source.kind === "rendered"
@@ -154,7 +155,7 @@ export async function publish(options: {
           const file = "pages/" + name + ".png";
           addFile(
             file,
-            inherited ? cleanSource : result.preview!,
+            inherited ? cleanSource : plan_member(rendered!.runDirectory, result.preview!),
             inherited ? cleanPage.cleanSha256 : result.previewSha256!,
           );
           pages.push({ ...common, status: "accepted", file, sha256: artifacts.at(-1)!.sha256 });
@@ -167,7 +168,11 @@ export async function publish(options: {
             ...(decision?.decision === "reject" ? { reason: decision.reason } : {}),
           });
           if (result.preview)
-            addFile(prefix + "preview.png", result.preview, result.previewSha256!);
+            addFile(
+              prefix + "preview.png",
+              plan_member(rendered!.runDirectory, result.preview),
+              result.previewSha256!,
+            );
           pages.push({ ...common, status: "incomplete" });
         }
       }

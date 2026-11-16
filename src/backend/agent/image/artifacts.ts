@@ -41,7 +41,6 @@ export async function build_clean_manifest(
     });
   }
   const clean: ImageClean = {
-    version: 1,
     bookId: draft.book.bookId,
     status: compute_clean_status(draft.book),
     pages: cleanPages,
