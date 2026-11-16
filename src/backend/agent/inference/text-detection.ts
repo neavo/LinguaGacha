@@ -2,8 +2,8 @@ import type { InferenceModel } from "./models";
 import { check_finite, float, infer, type Ort, type OrtSession } from "./ort";
 
 const PPOCR_URLS = [
-  "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/f8d7df21b3cde6d331224b5728d7dffb8058b8d1",
   "https://modelscope.cn/models/neavo7/PP-OCRv6-ONNX/resolve/45e0cc57a4ea02feed488b5a0508257142a6009c",
+  "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/f8d7df21b3cde6d331224b5728d7dffb8058b8d1",
 ];
 const mirrors = (file: string): string[] => PPOCR_URLS.map((base) => `${base}/${file}`);
 

@@ -2,16 +2,16 @@ import type { InferenceModel } from "../inference/models";
 import { TEXT_DETECTION_MODELS } from "../inference/text-detection";
 const W8A32 = "SenseVoiceSmall-ONNX-WebGPU-W8A32";
 const W8A32_URLS = [
-  `https://huggingface.co/neavo/${W8A32}/resolve/1006fa8a2b61075b3797ad211783caf418554b22`,
   `https://modelscope.cn/models/neavo7/${W8A32}/resolve/b41eb665cb5c93cfa72c6fbdda74a6c6bff13d36`,
+  `https://huggingface.co/neavo/${W8A32}/resolve/1006fa8a2b61075b3797ad211783caf418554b22`,
 ];
 const PPOCR_URLS = [
-  "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/f8d7df21b3cde6d331224b5728d7dffb8058b8d1",
   "https://modelscope.cn/models/neavo7/PP-OCRv6-ONNX/resolve/45e0cc57a4ea02feed488b5a0508257142a6009c",
+  "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/f8d7df21b3cde6d331224b5728d7dffb8058b8d1",
 ];
 const FSMN_URLS = [
-  "https://huggingface.co/neavo/FSMN-VAD-ONNX/resolve/2baa9f06b5d56e871d3d30a4d9b9836bc5f141dd",
   "https://modelscope.cn/models/neavo7/FSMN-VAD-ONNX/resolve/3de348810c794315a5f36939717887df1b858af5",
+  "https://huggingface.co/neavo/FSMN-VAD-ONNX/resolve/2baa9f06b5d56e871d3d30a4d9b9836bc5f141dd",
 ];
 const mirrors = (bases: readonly string[], file: string): string[] =>
   bases.map((base) => `${base}/${file}`);
@@ -40,8 +40,8 @@ export const MEDIA_MODELS = Object.freeze({
     size: 241216270,
     sha256: "21dc965f689a78d1604717bf561e40d5a236087c85a95584567835750549e822",
     urls: [
-      "https://huggingface.co/neavo/SenseVoiceSmall-ONNX-CPU-INT8/resolve/0966ccc0e484cdaf4dc84ebecf049f0239a05901/model_quant.onnx",
       "https://modelscope.cn/models/neavo7/SenseVoiceSmall-ONNX-CPU-INT8/resolve/ef9414333f29e1c753b7dcfdf19a2c226e825dd4/model_quant.onnx",
+      "https://huggingface.co/neavo/SenseVoiceSmall-ONNX-CPU-INT8/resolve/0966ccc0e484cdaf4dc84ebecf049f0239a05901/model_quant.onnx",
     ],
   },
   // GPU 使用官方权重导出的 W8A32，与 CPU 权重共用词表与前处理。

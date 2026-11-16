@@ -10,8 +10,8 @@ export const IMAGE_MODELS = Object.freeze({
     size: 204452450,
     sha256: "77f755491ce57992a873bc5d007ef9f58b0ff84b38206784f72d3db219bed4ea",
     urls: [
-      "https://huggingface.co/neavo/LaMa-Large-ONNX-WebGPU-FP32/resolve/ecd803ac50c5080263d70edece0e722e752eefb9/lama-large-fp32-unified-webgpu.onnx",
       "https://modelscope.cn/models/neavo7/LaMa-Large-ONNX-WebGPU-FP32/resolve/master/lama-large-fp32-unified-webgpu.onnx",
+      "https://huggingface.co/neavo/LaMa-Large-ONNX-WebGPU-FP32/resolve/ecd803ac50c5080263d70edece0e722e752eefb9/lama-large-fp32-unified-webgpu.onnx",
     ],
   },
   bubble: {
@@ -19,8 +19,8 @@ export const IMAGE_MODELS = Object.freeze({
     size: 11441936,
     sha256: "197d63145a857afa258b085aabc9476a320772a2a70ca8aedb549710e506e452",
     urls: [
-      "https://huggingface.co/neavo/SegmentationBubble-ONNX-CPU-WebGPU-FP32/resolve/67a18e1f60f700b2574f3806351d9bbe2f762c82/model.onnx",
       "https://modelscope.cn/models/neavo7/SegmentationBubble-ONNX-CPU-WebGPU-FP32/resolve/master/model.onnx",
+      "https://huggingface.co/neavo/SegmentationBubble-ONNX-CPU-WebGPU-FP32/resolve/67a18e1f60f700b2574f3806351d9bbe2f762c82/model.onnx",
     ],
   },
 } satisfies Record<string, InferenceModel>);
