@@ -3,7 +3,17 @@ name: image
 description: 调查、翻译、审校或交付漫画与独立图片，或制作、更新、写回 `.image` 资产时使用。
 ---
 
-本技能处理漫画与独立图片。程序自动完成文字识别、分区、消字和封包；Agent 负责材料归属、运行环境、工程条目取舍、整页确认和结果说明。
+本技能处理漫画与独立图片。
+
+- 应用 SDK 完成文字识别、分区和消字。
+- 本技能脚本构造、校验并封装当前 `.image`。
+- Agent 负责材料归属、旧包语义、原文修正、工程条目取舍和结果说明。
+
+脚本从本技能 `read_skill` 返回的 `base_url` 导入：
+
+```js
+const image = await import(new URL('scripts/image.mjs', base_url).href);
+```
 
 # 来源调查
 
@@ -14,12 +24,14 @@ description: 调查、翻译、审校或交付漫画与独立图片，或制作�
 
 # 导入准备
 
-图片 SDK 只声明依赖，不自动安装。只在需要制作或重做 `.image` 时准备环境。
+图片脚本只声明依赖，不自动安装。
+
+只在需要制作或重做 `.image` 时准备环境。
 
 先在独立调用中检查模型缺口：
 
 ```js
-import * as image from '@lg/image';
+const image = await import(new URL('scripts/image.mjs', base_url).href);
 console.log(JSON.stringify({ missing: image.missing_models() }));
 ```
 
@@ -28,8 +40,7 @@ console.log(JSON.stringify({ missing: image.missing_models() }));
 ```js
 import { npm } from '@lg/npm';
 import { uv } from '@lg/uv';
-import * as image from '@lg/image';
-
+const image = await import(new URL('scripts/image.mjs', base_url).href);
 await npm.run(['install', '--save-exact', ...image.IMAGE_DEPENDENCIES.npm]);
 await uv.run(['add', ...image.IMAGE_DEPENDENCIES.python]);
 await image.prepare_models();
@@ -38,26 +49,47 @@ console.log(JSON.stringify({ missing: image.missing_models() }));
 
 准备失败时重新读取缺口，报告实际剩余资源。不要伪造模型结果继续封包。
 
-整册只调用一次 `createImage`。它默认使用 GPU：
+新图片整册只调用一次 `prepare`。
+
+它默认使用 GPU。
+
+准备完成后再封包：
 
 ```js
-import * as image from '@lg/image';
-
-const created = await image.createImage(
+const image = await import(new URL('scripts/image.mjs', base_url).href);
+const prepared = await image.prepare(
   sources.map((source) => ({
     path: source.path,
     relativePath: source.relativePath,
   })),
-  'work/image/ch01.image',
+  'work/image/ch01',
 );
+const packed = await image.pack('work/image/ch01', 'work/image/ch01.image');
 ```
 
 `relativePath` 相对本批图片共同来源根目录，使用 `/`，保持原目录与文件名。不同页面不能使用大小写不敏感的同一路径。
 
-- `created.pages` 提供整页诊断预览、OCR 区域数量和消字失败清单。消字失败可以随资产导入，输出时恢复原图区域；创建抛错时停止并报告。
-- GPU 创建首次抛出 `image.DeviceFailure` 时，告诉用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」，再用相同来源和输出路径在新调用中把第三个参数设为 `'cpu'` 完整重跑。本次任务的后续图片都使用 CPU，不重复提醒。
+- `prepared.pages` 提供整页诊断预览、OCR 区域数量和消字失败清单。
+- 消字失败可以随资产导入，输出时恢复原图区域。
+- 准备抛错时停止并报告。
+- GPU 准备首次抛出 `image.DeviceFailure` 时，告诉用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」。
+- 用相同来源和工作目录在新调用中传入 `{ device: 'cpu' }` 完整重跑。
+- 本次任务的后续图片都使用 CPU，不重复提醒。
 - 模型、输入、环境或资源关闭错误按原错误处理，不靠切换设备重试。CPU 失败后不再切回 GPU。
 - 把 `.image` 交给 `project-operation` 识别和提交。更新已导入资产时使用「更新文件」，继承可复用译文。
+
+已有 `.image` 需要归一化或修正原文时：
+
+1. 调用 `image.unpack(来源, 新工作目录)`，只做安全解包。
+2. 调用 `image.describe_package()` 获取当前三个 JSON 的机器声明。
+3. 结合旧包实际内容理解页面、区域和原文语义。
+4. 在工作目录的 `package/` 中构造当前材料。
+5. 只修正原文时编辑 `items.json[].message`。
+6. 调用 `image.read()` 检查当前 JSON，再调用 `image.pack()` 检查成员和像素并封包。
+
+不能可靠映射页面、区域或像素成员时，重新准备原图或保留未决。
+
+不要猜测标识、路径和掩码，也不要修改原始包。
 
 # 原稿与条目
 

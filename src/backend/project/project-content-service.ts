@@ -1,4 +1,5 @@
-import { image_record_identities, read_image_package } from "../file/image/image-format";
+import { image_record_identities } from "../file/image/image-format";
+import { read_image_package } from "../file/image/image-package";
 import { resolve_app_locale } from "../../domain/app-language";
 import type { AppSettingService } from "../app/app-setting-service";
 import type {

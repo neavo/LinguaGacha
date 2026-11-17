@@ -9,6 +9,7 @@ export const WORKSPACE_CODE_DIRECTORIES = ["runtime", "chunks", "node_modules/@l
 
 // 应用 SDK 随应用发布，公开入口与私有启动入口共用一个构建图。
 const WORKSPACE_PACKAGES = [
+  { name: "@lg/generic", entries: { index: "src/backend/agent/generic/index.ts" } },
   {
     name: "@lg/project",
     entries: {

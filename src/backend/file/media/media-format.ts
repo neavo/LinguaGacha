@@ -1,7 +1,7 @@
 import { create_item, type Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
-import { read_media_items, read_media_package_manifest } from "../../../shared/media";
-import { read_archive_records } from "../shared/archive-records";
+import { read_media_items, read_media_package_manifest } from "../../../shared/media-package";
+import { read_package_items } from "../shared/package-items";
 import { write_message_records } from "../shared/message-records";
 import { read_zip_members } from "../shared/zip-members";
 
@@ -22,7 +22,7 @@ export class MediaFormat {
         ),
       );
       const records = read_media_items(
-        await read_archive_records(members),
+        await read_package_items(members),
         manifest.duration,
         manifest.video,
       );

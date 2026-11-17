@@ -1,4 +1,3 @@
-import { GENERIC_ITEMS_SCHEMA } from "../../file/shared/archive-records";
 import { SOURCE_INSPECTION_SCHEMA } from "../../../shared/project-file-changes";
 import {
   TRANSLATION_FILE_GENERATION_RESULT_SCHEMA,
@@ -11,7 +10,6 @@ import type { TSchema } from "typebox";
 export function format_project_typescript_api(): string {
   const types = create_schema_renderer(
     new Map<TSchema, string>([
-      [GENERIC_ITEMS_SCHEMA, "GenericItems"],
       [SOURCE_INSPECTION_SCHEMA, "ProjectSourceInspection"],
       [TRANSLATION_FILE_GENERATION_RESULT_SCHEMA, "ProjectTranslationFileGenerationResult"],
       [TRANSLATION_OUTPUT_PATHS_SCHEMA, "ProjectTranslationOutputPaths"],

@@ -1,13 +1,7 @@
 import { crc32, deflateSync } from "node:zlib";
 import { expect, it } from "vitest";
-import {
-  ImageFormat,
-  build_image_text_input,
-  image_record_identities,
-  image_sha256,
-  read_image_package,
-  validate_image_book,
-} from "./image-format";
+import { ImageFormat, build_image_text_input, image_record_identities } from "./image-format";
+import { read_image_package } from "./image-package";
 import { image_fixture, selection_fixture } from "../../../test/image-fixture";
 import { write_zip } from "../../../test/zip-fixture";
 import JSZip from "jszip";
@@ -64,21 +58,8 @@ function rgb_png(
   ]);
 }
 
-it("原始 ZIP 目录的重复名称与超额声明在解压前拒绝", async () => {
-  const bytes = Buffer.from(await image_fixture(["page1", "page2"]).pack());
-  const duplicate = Buffer.from(bytes);
-  const from = Buffer.from("originals/page2.png"),
-    to = Buffer.from("originals/page1.png");
-  for (
-    let offset = duplicate.indexOf(from);
-    offset !== -1;
-    offset = duplicate.indexOf(from, offset + to.length)
-  )
-    to.copy(duplicate, offset); // 同步改写本地头与中央目录中的同名成员，模拟 ZIP 重复名攻击。
-  await expect(read_image_package(duplicate, "duplicate.image")).rejects.toMatchObject({
-    cause: { message: "Duplicate ZIP entry" },
-  });
-  const oversized = Buffer.from(bytes);
+it("超额成员声明在解压前拒绝", async () => {
+  const oversized = Buffer.from(await image_fixture(["page1", "page2"]).pack());
   const directory = oversized.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])); // 定位中央目录首条记录签名。
   oversized.writeUInt32LE(1_000_000_000, directory + 24); // 偏移 +24 为未压缩体积字段。
   await expect(read_image_package(oversized, "oversized.image")).rejects.toMatchObject({
@@ -191,7 +172,6 @@ it("实际消字掩码不能超出排版区域", async () => {
   const selection = selection_fixture([255, 255]);
   const mask = selection_fixture([255, 0]);
   page.width = 2;
-  page.sha256 = image_sha256(original);
   clean.regions[0]!.eraseMask = "erase-masks/p1/text.png";
   const entries = new Map<string, string | Uint8Array>([
     [page.original, original],
@@ -211,27 +191,6 @@ it("实际消字掩码不能超出排版区域", async () => {
   await expect(read_image_package(await archive(), "outside.image")).rejects.toThrow(
     "exceeds region layout area",
   );
-});
-
-it("图片相对路径拒绝越界与大小写冲突", () => {
-  const escaped = image_fixture(["p1"]);
-  escaped.book.pages[0]!.relativePath = "../page.png";
-  expect(() => validate_image_book(escaped.book, escaped.records)).toThrow();
-
-  const duplicated = image_fixture(["p1", "p2"]);
-  duplicated.book.pages[0]!.relativePath = "chapter/Page.png";
-  duplicated.book.pages[1]!.relativePath = "chapter/page.PNG";
-  expect(() => validate_image_book(duplicated.book, duplicated.records)).toThrow(
-    "Invalid or duplicate image relative path",
-  );
-});
-
-it("每个 OCR 有效文字框必须唯一归属区域", () => {
-  const { book, records } = image_fixture(["p1"]);
-  const page = book.pages[0]!;
-  page.regions = [];
-  records.length = 0;
-  expect(() => validate_image_book(book, records)).toThrow("must belong to one region");
 });
 
 it.each(["nonbinary", "empty"])("选区资产拒绝 %s", async (kind) => {

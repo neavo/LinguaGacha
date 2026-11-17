@@ -22,10 +22,9 @@ vi.mock("../inference/helper", () => ({
     _executable: string,
     _script: string,
     command: string,
-    args: Record<string, unknown>,
+    _args: Record<string, unknown>,
     infer: NonNullable<Parameters<typeof import("../inference/helper").run_helper>[4]>,
   ) => {
-    if (command === "pack") return { path: String(args.output) };
     if (command === "text_layout") return [];
     if (command === "create") {
       await infer({ kind: "bubble" }, new Uint8Array());
@@ -58,13 +57,6 @@ const page = {
   regions: [],
 };
 const create_request = { pages: [page_spec], output: "output" };
-const pack_request = {
-  output: "book.image",
-  book: { bookId: "book", pages: [page] },
-  records: [],
-  clean: { bookId: "book", pages: [{ pageId: "page", clean: "clean/page.png", regions: [] }] },
-  sources: {},
-};
 const layout_request = { root: "root", page, maximumBytes: 1 };
 
 /** 每次测试重置模块与推理路径绑定，避免静态队列状态串扰。 */
@@ -95,7 +87,6 @@ it("单次图片创建复用一个 Worker，失败后关闭，纯像素命令不
   expect(fake.close).toHaveBeenCalledTimes(2);
 
   fake.ready = false;
-  await pixels("pack", pack_request);
   await pixels("text_layout", layout_request);
   expect(fake.created).toHaveBeenCalledTimes(2);
   fake.ready = true;

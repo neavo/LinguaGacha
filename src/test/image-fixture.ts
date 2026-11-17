@@ -1,13 +1,13 @@
+import { createHash } from "node:crypto";
 import { crc32, deflateSync } from "node:zlib";
 import { png_fixture } from "./media-fixture";
 import { write_zip } from "./zip-fixture";
-import { image_sha256 } from "../backend/file/image/image-format";
-import type { ImageBook, ImageClean, ImagePage, ImageRecord } from "../shared/image";
+import type { ImageBook, ImageClean, ImagePage, ImageRecord } from "../shared/image-package";
 
 /** 构建最小完整 `.image` 归档与原图/底图/掩码字节测试夹具。 */
 export function image_fixture(ids: string[] = ["first", "second"]) {
   const original = png_fixture();
-  const sha = image_sha256(original);
+  const sha = createHash("sha256").update(original).digest("hex");
   const mask = selection_fixture();
   const pages: ImagePage[] = ids.map((pageId) => ({
     pageId,

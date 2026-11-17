@@ -60,7 +60,9 @@ console.log(JSON.stringify(result, null, 2));
 
 ## 导入准备
 
-需要提取、封装或识别的材料，按格式技能的「导入准备」处理，例如 `image` 制作 `.image`，`media` 制作 `.media`，`generic-data` 制作 `.generic`。产出的包再用 `inspectSources` 识别。
+需要提取、封装、识别或归一化的材料，按格式技能的「导入准备」处理。
+
+产出的当前包再用 `inspectSources` 识别。
 
 ## 提交前确认
 

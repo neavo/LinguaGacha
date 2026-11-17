@@ -27,8 +27,8 @@ export type SourceFileParsedDraft = {
   content: Uint8Array;
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   image?: {
-    book: import("../../shared/image").ImageBook;
-    records: import("../../shared/image").ImageRecord[];
+    book: import("../../shared/image-package").ImageBook;
+    records: import("../../shared/image-package").ImageRecord[];
   };
   parsed_items: Item[]; // 格式解析器已补齐的条目草稿，身份由工程入口分配
 };

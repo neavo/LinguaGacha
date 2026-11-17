@@ -48,6 +48,7 @@ export function create_agent_workspace_run_tool(options: {
       "  - `@lg/pdf`、`@lg/pdf/mupdf`：PDF 读取、渲染与打印，用法见 `pdf` 技能",
       "  - `@lg/media`：音视频本地识别、画面文字检测与音频可视化成片，用法见 `media` 技能",
       "  - `@lg/image`：图片气泡定位、填色消字、译文排版与交付，用法见 `image` 技能",
+      "  - `@lg/generic`：安全解包、封装数据包并校验通用记录，用法见 `generic-data` 技能",
       "  - `@lg/project`：识别来源、查询条目邻近语境、生成原生产物和通用写回输入，用法见下文及 `project-operation` 技能",
       "- 第三方包从共享 npm 工程加载，缺少的包先用 `@lg/npm` 安装，再在新的调用中导入",
       `- 共享工程初始提供 ${app_package.workspaceRuntimePackages.agent.join("、")}`,

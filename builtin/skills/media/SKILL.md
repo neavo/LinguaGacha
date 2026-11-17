@@ -33,7 +33,15 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 
 # 原稿与条目
 
-`.media` 是视频和纯音频共用的 ZIP 包。后端先校验正式 `media.json` 与 `items.json`，再建立工程条目。时间均为整片秒数，零点与音频一致。包内不含原文件，生成字幕只需要包，生成成片还需要原文件。
+`.media` 使用 ZIP，保存识别证据与字幕原文。
+
+后端只校验正式 `media.json` 与 `items.json`，再建立工程条目。
+
+时间均为整片秒数，零点与音频一致。
+
+包内不含原文件。
+
+生成字幕只需要包，生成成片还需要原文件。
 
 |成员|内容|
 |---|---|
@@ -52,6 +60,7 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 |脚本|入口|用途|
 |---|---|---|
 |`media.mjs`|`DEPENDENCIES`、`missing_models`、`prepare_models`|依赖版本，检查、准备识别模型|
+||`describe_package`、`unpack`|按需获取当前字段声明，安全展开旧包|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白，视频同时检测画面文字，生成初始 `items.json`|
 ||`scan`、`sheets`、`refine`|仅视频：重新检测画面文字并生成裁图、拼图集、校准 `screen` 行的起止时间|
@@ -79,6 +88,13 @@ console.log(diagnostic.split(/\r?\n/u).filter(line => line.includes('silence_'))
 ```
 
 需要完整的大输出时，使用对应 FFmpeg 滤镜支持的文件输出。
+
+## 旧包归一化
+
+- 调用 `media.unpack(来源, 新工作目录)`。该入口只检查容器。
+- 调用 `media.describe_package()` 获取当前字段。
+- 根据旧包证据生成当前 `media.json` 与 `items.json`，再调用 `media.pack()`。
+- 无法可靠恢复时间、媒体分支或原文件身份时保留未决。不要猜测或补默认值。
 
 # 环境准备
 

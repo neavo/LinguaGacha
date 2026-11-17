@@ -164,6 +164,9 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 工作区或共享执行运行时变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
 
+- 数据包契约或容器变化运行对应的共享契约、容器和格式测试。
+- 部署或公开导出变化追加工作区 `bootstrap.test.ts`。
+
 加载、子进程、代理或流读取涉及真实环境时，从 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts) 选择受影响用例。它在仓库外通过生产构建和真实 Electron 验证执行环境。
 
 上传、图片与宿主协议按影响选择：
@@ -177,7 +180,9 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 漫画图片
 
-图片工程契约变化运行 `file/image/image-format.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。整册创建、设备选择、运行产物和独立验收变化运行 `agent/image/{index,engine,worker}.test.ts`。
+图片工程契约变化运行 `file/image/{image-package,image-format}.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。
+
+整册计算、设备选择、运行产物和独立验收变化运行 `agent/image/{index,engine,worker}.test.ts`。
 
 图片文本快照与输出变化运行 `file/image/{image-format,image-output}.test.ts`、生成服务测试与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。协议与取消变化运行 Backend Runtime 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
 

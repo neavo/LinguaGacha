@@ -1,6 +1,6 @@
 import { GenericFormat } from "./generic/generic-format";
 import { MediaFormat } from "./media/media-format";
-import { GENERIC_ITEMS_MEMBER } from "./shared/archive-records";
+import { PACKAGE_ITEMS_MEMBER } from "./shared/package-items";
 import { ImageFormat } from "./image/image-format";
 import type { ImageOutputService } from "./image/image-output";
 import type { ImageOutputAsset } from "../../shared/image";
@@ -600,7 +600,7 @@ export class FileFormatService {
           file.path,
         );
         await this.native_fs.write_file(
-          path.join(writeback_path, file.path, GENERIC_ITEMS_MEMBER),
+          path.join(writeback_path, file.path, PACKAGE_ITEMS_MEMBER),
           output,
         );
       }

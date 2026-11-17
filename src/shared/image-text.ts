@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { IMAGE_DIRECTION_SCHEMA, IMAGE_FILL_SCHEMA } from "./image";
+import { IMAGE_DIRECTION_SCHEMA, IMAGE_FILL_SCHEMA } from "./image-package";
 
 const ID = Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" });
 /** 文件生成内部快照保留完成事实，空正文与未翻译分别表示。 */

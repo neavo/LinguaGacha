@@ -31,6 +31,7 @@ import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { png_fixture } from "../../../../test/media-fixture";
+import { image_fixture } from "../../../../test/image-fixture";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -120,8 +121,10 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   const result = await run(
     `
     import { inspectSources, generateFiles, getOutputPaths } from '@lg/project';
+    import { describe_package } from '@lg/generic';
     import { generateQA } from '@lg/image';
     import assert from 'node:assert/strict';
+    assert.match(describe_package(), /GenericItems/);
     await assert.rejects(generateFiles([]), /fixture generation failed/);
     console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), imageQA: await generateQA(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
@@ -156,20 +159,36 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
 });
 
 it(
-  "部署后的图片 SDK 暴露整册创建入口，媒体共用请求协议",
+  "部署后的图片 SDK 暴露整册计算入口，媒体共用请求协议",
   async () => {
     const source = path.join(workspace, "work/pack-source/originals/text.png");
     await mkdir(path.dirname(source), { recursive: true });
     await writeFile(source, png_fixture());
+    await writeFile(
+      path.join(workspace, "work/source.image"),
+      await image_fixture(["page"]).pack(),
+    );
     const result = await run(
       `
-    import { createImage, DeviceFailure, IMAGE_DEPENDENCIES } from '@lg/image';
-    import { sheets } from '@lg/media';
+    import { describe_package as describeImage, processPages, DeviceFailure, IMAGE_DEPENDENCIES } from '@lg/image';
+    import { describe_package as describeMedia, sheets } from '@lg/media';
     import { uv } from '@lg/uv';
+    import { mkdir, writeFile } from 'node:fs/promises';
     import assert from 'node:assert/strict';
     await uv.run(['add', ...IMAGE_DEPENDENCIES.python, '--default-index', 'https://pypi.org/simple']);
-    assert.equal(typeof createImage, 'function');
+    assert.equal(typeof processPages, 'function');
     assert.equal(typeof DeviceFailure, 'function');
+    assert.match(describeImage(), /ImageBook/);
+    assert.match(describeMedia(), /MediaPackageManifest/);
+    const imageSkill = await import(${JSON.stringify(pathToFileURL(path.resolve("builtin/skills/image/scripts/image.mjs")).href)});
+    await imageSkill.unpack('work/source.image', 'work/image-current');
+    assert.equal((await imageSkill.read('work/image-current')).records.length, 1);
+    assert.equal((await imageSkill.pack('work/image-current', 'work/repacked.image')).items, 1);
+    const mediaSkill = await import(${JSON.stringify(pathToFileURL(path.resolve("builtin/skills/media/scripts/media.mjs")).href)});
+    await mkdir('work/media-current', { recursive: true });
+    await writeFile('work/media-current/media.json', JSON.stringify({ source: { path: 'audio.wav', size: 1, mtime_ns: '1', track: 0, language: 'JA' }, duration: 1, video: null, speech: [], asr: [], text: null }));
+    await writeFile('work/media-current/items.json', JSON.stringify([{ message: 'text', start: 0, end: 1, kind: 'dialogue' }]));
+    assert.equal((await mediaSkill.pack('work/media-current', 'work/current.media')).items, 1);
     const result = await sheets([{id:7,start:0,file:'work/pack-source/originals/text.png'}], 'work/sheets');
     assert.deepEqual(result.map(sheet => sheet.ids), [[7]]);
   `,

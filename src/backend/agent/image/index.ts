@@ -1,20 +1,20 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import type { TSchema } from "typebox";
+
 import { default_native_fs as fs } from "../../../native/native-fs";
-import type {
-  ImageBook,
-  ImageClean,
-  ImageQualityResult,
-  ImageCreateResult,
-} from "../../../shared/image";
+import type { ImageQualityResult } from "../../../shared/image";
+import type { ImageHelperResponse } from "../../../shared/image-helper";
 import {
-  image_sha256,
-  validate_image_book,
-  validate_image_clean,
-} from "../../file/image/image-format";
+  IMAGE_BOOK_SCHEMA,
+  IMAGE_CLEAN_SCHEMA,
+  IMAGE_RECORDS_SCHEMA,
+} from "../../../shared/image-package";
+import { validate_image_package_directory } from "../../file/image/image-package";
 import { image_metadata } from "../../file/image/image-metadata";
 import { normalize_image_to_png } from "../../file/image/image-pixels";
 import { INFERENCE_DEPENDENCIES } from "../inference/environment";
+import { create_schema_renderer } from "../workspace/schema-description";
 import { workspace_requests } from "../workspace/runtime/request-channel";
 import { pixels, type ImageDevice } from "./engine";
 
@@ -33,45 +33,70 @@ export const IMAGE_DEPENDENCIES = Object.freeze({
   ],
 });
 export type {
+  ImageOutputReport,
+  ImageOutputSummary,
+  ImageQualityResult,
+} from "../../../shared/image";
+export {
+  IMAGE_BOOK_SCHEMA,
+  IMAGE_CLEAN_SCHEMA,
+  IMAGE_RECORDS_SCHEMA,
+  read_image_book,
+  read_image_clean,
+  read_image_records,
+} from "../../../shared/image-package";
+export type {
   ImageBook,
   ImageClean,
   ImageCleanPage,
   ImageCleanRegion,
   ImagePage,
-  ImageOutputReport,
-  ImageOutputSummary,
-  ImageQualityResult,
   ImageRecord,
-  ImageCreateResult,
   ImageRegion,
-} from "../../../shared/image";
+} from "../../../shared/image-package";
 
 export type ImageSource = { path: string; relativePath: string };
+export type ImageProcessResult = Readonly<{
+  directory: string;
+  package_directory: string;
+  pages: ImageHelperResponse<"create">["pages"];
+}>;
+
+/** 按需呈现当前 `.image` 三个 JSON 的目标形状。 */
+export function describe_package(): string {
+  return create_schema_renderer(
+    new Map<TSchema, string>([
+      [IMAGE_BOOK_SCHEMA, "ImageBook"],
+      [IMAGE_RECORDS_SCHEMA, "ImageRecords"],
+      [IMAGE_CLEAN_SCHEMA, "ImageClean"],
+    ]),
+  ).declarations();
+}
+
+/** Skill 封包前执行与后端相同的当前图片物理契约。 */
+export const validate_package = validate_image_package_directory;
+
 /** 使用当前工程状态生成整页图片 QA 预览。 */
 export async function generateQA(): Promise<ImageQualityResult> {
   return workspace_requests().call({ kind: "generate_image_qa" });
 }
 
-/**
- * 整册在一个 helper 与一个推理 Worker 内完成检测、OCR、分区、消字和封包。
- * 成功后只保留 `.image` 与同名诊断目录，不暴露中间事务状态。
- */
-export async function createImage(
+/** 整册共用一个 helper 与推理 Worker，只生成当前图片材料和诊断。 */
+export async function processPages(
   sources: readonly ImageSource[],
-  output: string,
+  directory: string,
   device: ImageDevice = "gpu",
-): Promise<ImageCreateResult> {
+): Promise<ImageProcessResult> {
   if (sources.length === 0) throw new Error("At least one source image is required");
   if (device !== "cpu" && device !== "gpu") throw new Error("Invalid image device");
-  const target = path.resolve(output);
-  const diagnostics = `${target}.diagnostics`;
-  if (fs.exists(target) || fs.exists(diagnostics))
-    throw new Error("Image output or diagnostics already exists");
+  const target = path.resolve(directory);
+  if (fs.exists(target)) throw new Error("Image work directory already exists");
   await fs.make_dir_async(path.dirname(target));
   const stage = path.join(path.dirname(target), `.${path.basename(target)}-${randomUUID()}`);
-  const temporary = `${target}.${randomUUID()}.tmp`;
-  await fs.make_dir_async(stage);
-  let diagnosticsCommitted = false;
+  const packageDirectory = path.join(stage, "package");
+  const normalizedDirectory = path.join(stage, "normalized");
+  await fs.make_dir_async(packageDirectory);
+  await fs.make_dir_async(normalizedDirectory);
   try {
     const pageSpecs = [];
     for (const source of sources) {
@@ -79,67 +104,36 @@ export async function createImage(
       const metadata = image_metadata(bytes);
       const pageId = randomUUID();
       const original = `originals/${pageId}${metadata.extension}`;
-      fs.write_file_atomic(path.join(stage, original), bytes);
+      fs.write_file_atomic(path.join(packageDirectory, original), bytes);
       const normalized = await normalize_image_to_png(bytes);
-      const normalizedPath = path.join(stage, "normalized", `${pageId}.png`);
+      const normalizedPath = path.join(normalizedDirectory, `${pageId}.png`);
       await fs.write_file(normalizedPath, normalized.png);
       pageSpecs.push({
         pageId,
         relativePath: source.relativePath.replaceAll("\\", "/"),
         original,
-        sha256: image_sha256(bytes),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
         width: metadata.width,
         height: metadata.height,
         orientation: metadata.orientation,
         source: normalizedPath,
       });
     }
-    const created = await pixels("create", { pages: pageSpecs, output: stage }, device);
+    const created = await pixels("create", { pages: pageSpecs, output: packageDirectory }, device);
     if (created.pages.length !== pageSpecs.length) throw new Error("Invalid image creation result");
-    const book: ImageBook = { bookId: randomUUID(), pages: created.pages.map((item) => item.page) };
-    const records = created.pages.flatMap((item) => item.records);
-    const clean: ImageClean = {
-      bookId: book.bookId,
-      pages: created.pages.map((item) => item.clean),
-    };
-    validate_image_book(book, records);
-    validate_image_clean(clean, book);
-    const members = [
-      ...book.pages.map((page) => page.original),
-      ...book.pages.flatMap((page) => page.regions.map((region) => region.layoutArea.path)),
-      ...clean.pages.map((page) => page.clean),
-      ...clean.pages.flatMap((page) =>
-        page.regions.flatMap((region) => (region.eraseMask ? [region.eraseMask] : [])),
-      ),
-    ];
-    await pixels("pack", {
-      output: temporary,
-      book,
-      records,
-      clean,
-      sources: Object.fromEntries(members.map((member) => [member, path.join(stage, member)])),
-    });
-    fs.rename(path.join(stage, "diagnostics"), diagnostics);
-    diagnosticsCommitted = true;
-    fs.rename(temporary, target);
+    fs.rename(path.join(packageDirectory, "diagnostics"), path.join(stage, "diagnostics"));
+    fs.rename(stage, target);
     return {
-      output_path: target,
-      diagnostics_path: diagnostics,
-      pages: created.pages.map(({ page, diagnostics: item }) => ({
-        page_id: page.pageId,
-        preview_path: path.join(diagnostics, path.basename(item.preview)),
-        detected: item.detected,
-        regions: item.regions,
-        failures: item.failures.map((failure) => ({
-          region_id: failure.regionId,
-          message: failure.error,
-        })),
+      directory: target,
+      package_directory: path.join(target, "package"),
+      pages: created.pages.map((item) => ({
+        ...item,
+        diagnostics: {
+          ...item.diagnostics,
+          preview: path.join(target, "diagnostics", path.basename(item.diagnostics.preview)),
+        },
       })),
     };
-  } catch (error) {
-    fs.unlink(temporary, { force: true });
-    if (diagnosticsCommitted) await fs.remove_async(diagnostics, { recursive: true, force: true });
-    throw error;
   } finally {
     await fs.remove_async(stage, { recursive: true, force: true });
   }

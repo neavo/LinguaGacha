@@ -1,11 +1,7 @@
 import { Type, type Static, type TSchema } from "typebox";
 import { Check } from "typebox/value";
-import {
-  IMAGE_BOOK_SCHEMA,
-  IMAGE_CLEAN_SCHEMA,
-  IMAGE_OUTPUT_ASSET_SCHEMA,
-  IMAGE_RECORD_SCHEMA,
-} from "./image";
+import { IMAGE_BOOK_SCHEMA, IMAGE_CLEAN_SCHEMA, IMAGE_RECORD_SCHEMA } from "./image-package";
+import { IMAGE_OUTPUT_ASSET_SCHEMA } from "./image";
 import { IMAGE_TEXT_GEOMETRY_REGION_SCHEMA } from "./image-text";
 
 const PAGE_SCHEMA = IMAGE_BOOK_SCHEMA.properties.pages.items;
@@ -73,19 +69,6 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
       { additionalProperties: false },
     ),
     response: CREATE_RESULT_SCHEMA,
-  },
-  pack: {
-    request: Type.Object(
-      {
-        output: Type.String(),
-        book: IMAGE_BOOK_SCHEMA,
-        records: Type.Array(IMAGE_RECORD_SCHEMA),
-        clean: IMAGE_CLEAN_SCHEMA,
-        sources: Type.Record(Type.String(), Type.String()),
-      },
-      { additionalProperties: false },
-    ),
-    response: PATH_RESULT_SCHEMA,
   },
   text_layout: {
     request: Type.Object(

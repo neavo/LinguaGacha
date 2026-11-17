@@ -1,5 +1,6 @@
-import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import * as generic from "@lg/generic";
 import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
 
@@ -7,6 +8,7 @@ import { npm } from "@lg/npm";
 export {
   ASR_LANGUAGES,
   DeviceFailure,
+  describe_package,
   ffmpeg,
   inspect,
   missing_models,
@@ -35,6 +37,9 @@ export const read_package_manifest = async (file) =>
   sdk.read_media_package_manifest(await load(file));
 export const read_items = async (file, duration, video) =>
   sdk.read_media_items(await load(file), duration, video);
+
+/** 旧媒体包只安全展开，字段语义由 Agent 按本技能归一化。 */
+export const unpack = generic.unpack;
 
 /** 只有缺失表示尚未生成，权限与其他 IO 错误保留。 */
 export async function exists(file) {
@@ -319,29 +324,27 @@ export function valid_row(row, duration, video = { width: 1, height: 1 }) {
  * 数组顺序即提交后的 `row_number`。
  */
 export async function pack(directory, output) {
-  await install("jszip", "^3.10.2");
-  const { default: JSZip } = await import("jszip");
+  directory = path.resolve(directory);
+  output = path.resolve(output);
   const manifest = await read_package_manifest(path.join(directory, "media.json"));
   const items = await read_items(
     path.join(directory, "items.json"),
     manifest.duration,
     manifest.video,
   );
-  const zip = new JSZip();
-  zip.file("media.json", JSON.stringify(manifest, null, 2));
-  zip.file("items.json", JSON.stringify(items, null, 2));
-  if (await exists(path.join(directory, CUSTOM_RENDERER)))
-    zip.file(CUSTOM_RENDERER, await readFile(path.join(directory, CUSTOM_RENDERER)));
-  await mkdir(path.dirname(output), { recursive: true });
-  const temporary = output + ".tmp.media";
+  const packageDirectory = path.join(directory, ".package");
+  await rm(packageDirectory, { recursive: true, force: true });
   try {
-    await writeFile(
-      temporary,
-      await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
-    );
-    await rename(temporary, output);
+    await save(path.join(packageDirectory, "media.json"), manifest);
+    await save(path.join(packageDirectory, "items.json"), items);
+    if (await exists(path.join(directory, CUSTOM_RENDERER)))
+      await copyFile(
+        path.join(directory, CUSTOM_RENDERER),
+        path.join(packageDirectory, CUSTOM_RENDERER),
+      );
+    const result = await generic.pack(packageDirectory, output);
+    return { package: result.output_path, items: items.length, members: result.members };
   } finally {
-    await rm(temporary, { force: true });
+    await rm(packageDirectory, { recursive: true, force: true });
   }
-  return { package: output, items: items.length };
 }

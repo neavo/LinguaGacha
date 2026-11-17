@@ -5,7 +5,7 @@ import {
   read_media_package_manifest,
   read_media_writeback_items,
   read_media_work_manifest,
-} from "./media";
+} from "./media-package";
 
 const base = {
   source: { path: "C:/media/movie.mp4", size: 1, mtime_ns: "1", track: 0, language: "JA" },

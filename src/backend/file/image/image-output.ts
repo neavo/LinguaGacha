@@ -3,7 +3,8 @@ import path from "node:path";
 import type { Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { default_native_fs as fs, type NativeFs } from "../../../native/native-fs";
-import type { ImageClean, ImageOutputAsset, ImagePage, ImageRegion } from "../../../shared/image";
+import type { ImageOutputAsset } from "../../../shared/image";
+import type { ImageClean, ImagePage, ImageRegion } from "../../../shared/image-package";
 import type { ImagePixelHost } from "../../../shared/image-helper";
 import {
   IMAGE_TEXT_RULES,

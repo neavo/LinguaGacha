@@ -46,8 +46,8 @@ export type FileFormatReadResult =
       kind: "items";
       items: Item[];
       image?: {
-        book: import("../../shared/image").ImageBook;
-        records: import("../../shared/image").ImageRecord[];
+        book: import("../../shared/image-package").ImageBook;
+        records: import("../../shared/image-package").ImageRecord[];
       };
       file_type: ItemFileType;
       game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。

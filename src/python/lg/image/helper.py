@@ -6,7 +6,6 @@ import math
 import sys
 import threading
 import traceback
-import zipfile
 from pathlib import Path
 
 import cv2
@@ -550,24 +549,6 @@ def _box_mask(shape, layout_area, boxes):
     return mask
 
 
-def pack(args, _channel):
-    """按 SDK 已验证的成员清单流式归档。"""
-    with zipfile.ZipFile(args["output"], "x", allowZip64=False) as archive:
-        for member, value in (
-            ("image.json", args["book"]),
-            ("items.json", args["records"]),
-            ("clean.json", args["clean"]),
-        ):
-            archive.writestr(
-                member,
-                json.dumps(value, ensure_ascii=False),
-                compress_type=zipfile.ZIP_DEFLATED,
-            )
-        for member, source in args["sources"].items():
-            archive.write(source, member, compress_type=zipfile.ZIP_STORED)
-    return dict(path=args["output"])
-
-
 PARTITION_RULES = dict(
     max_candidates=6,
     min_area_ratio=0.12,
@@ -855,7 +836,6 @@ def encode_output(args, _channel):
 
 COMMANDS = {
     "create": create,
-    "pack": pack,
     "text_layout": text_layout,
     "text_compose": text_compose,
     "qa_preview": qa_preview,

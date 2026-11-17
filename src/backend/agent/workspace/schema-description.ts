@@ -68,8 +68,16 @@ export function create_schema_renderer(
     if (value.type === "string" || value.type === "boolean" || value.type === "null")
       return `${comment}${value.type}`;
     if (value.type === "number" || value.type === "integer") return `${comment}number`;
-    if (value.type === "array")
+    if (value.type === "array") {
+      // TypeBox 用固定 `items` 数组和 `additionalItems: false` 表示元组。
+      if (Array.isArray(value.items)) {
+        if (value.additionalItems !== false)
+          throw new Error("Workspace tuple must reject additional items.");
+        const items = value.items.map((item) => render_schema(item as TSchema, definition));
+        return `${comment}[${items.join(", ")}]`;
+      }
       return `${comment}Array<${render_schema(value.items as TSchema, definition)}>`;
+    }
     if (value.type === "object") {
       const properties = (value.properties ?? {}) as Record<string, TSchema>;
       const required = new Set(Array.isArray(value.required) ? (value.required as string[]) : []);
@@ -119,6 +127,7 @@ const SUPPORTED_SCHEMA_KEYS = new Set([
   "enum",
   "anyOf",
   "items",
+  "additionalItems",
   "properties",
   "required",
   "additionalProperties",

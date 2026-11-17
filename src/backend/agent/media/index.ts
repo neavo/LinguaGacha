@@ -3,6 +3,7 @@
  * 只返回结果或写入调用者指定的工作文件，不读写工程，也不决定最终字幕原文。
  */
 import path from "node:path";
+import type { TSchema } from "typebox";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { inference_configuration } from "../inference/runtime";
 import { require_models } from "./preparation";
@@ -17,6 +18,8 @@ import type {
   MediaTextBound,
   MediaTextRegion,
 } from "../../../shared/media";
+import { MEDIA_ITEMS_SCHEMA, MEDIA_PACKAGE_MANIFEST_SCHEMA } from "../../../shared/media-package";
+import { create_schema_renderer } from "../workspace/schema-description";
 
 export type { DeviceOptions } from "./worker-protocol";
 export { ffmpeg, inspect, type ExecuteOptions, type MediaInfo } from "./ffmpeg";
@@ -26,11 +29,23 @@ export { missing_models, prepare_models } from "./preparation";
 export { DeviceFailure } from "../inference/client";
 export { visualize, type VisualizeOptions, type VisualizeResult } from "./visualize";
 export {
+  MEDIA_ITEMS_SCHEMA,
+  MEDIA_PACKAGE_MANIFEST_SCHEMA,
   read_media_items,
   read_media_package_manifest,
   read_media_writeback_items,
   read_media_work_manifest,
-} from "../../../shared/media";
+} from "../../../shared/media-package";
+
+/** 按需呈现当前 `.media` JSON 形状，领域语义仍由 media skill 说明。 */
+export function describe_package(): string {
+  return create_schema_renderer(
+    new Map<TSchema, string>([
+      [MEDIA_PACKAGE_MANIFEST_SCHEMA, "MediaPackageManifest"],
+      [MEDIA_ITEMS_SCHEMA, "MediaItems"],
+    ]),
+  ).declarations();
+}
 
 /** 画面文字区间，`box` 为归一化 `[x0, y0, x1, y1]`。 */
 export type TextRegion = MediaTextRegion;
