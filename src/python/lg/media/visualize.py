@@ -23,7 +23,9 @@ LOG_TAIL = 65536  # FFmpeg 诊断只保留尾部字节。
 TIMEOUT = 30  # 关闭 FFmpeg 的等待秒数。
 FREQUENCIES = np.fft.rfftfreq(FFT_SIZE, 1 / RATE)
 EDGES = np.geomspace(90, 10000, BARS + 1)  # 90–10000 Hz 按对数分段，每段一根竖条。
-BANDS = [(FREQUENCIES >= lo) & (FREQUENCIES < hi) for lo, hi in zip(EDGES[:-1], EDGES[1:])]
+BANDS = [
+    (FREQUENCIES >= lo) & (FREQUENCIES < hi) for lo, hi in zip(EDGES[:-1], EDGES[1:])
+]
 WINDOW = np.hanning(FFT_SIZE)[:, None]
 
 # 视觉映射：相对整段能量的第 99 百分位取 dB，压缩到 42 dB 动态范围，越过门限后增强峰谷。
@@ -121,7 +123,9 @@ class Histogram:
 
     def add(self, values):
         db = 20 * np.log10(np.maximum(values, np.finfo(np.float64).tiny))
-        indices = np.clip(np.rint((db + DB_RANGE) / DB_STEP), 0, len(self.counts) - 1).astype(int)
+        indices = np.clip(
+            np.rint((db + DB_RANGE) / DB_STEP), 0, len(self.counts) - 1
+        ).astype(int)
         np.add.at(self.counts, indices, 1)
 
     def reference(self):
@@ -321,7 +325,9 @@ def render(job, directory):
                 # 圆头线帽在两端各伸出半个线宽，端点内收后总高才是 BAR_MIN + BAR_RANGE × 强度。
                 half = (BAR_MIN + BAR_RANGE * float(value) - BAR_WIDTH) / 2
                 top, bottom = round(BAR_CENTER - half), round(BAR_CENTER + half)
-                cv2.line(canvas, (x, top), (x, bottom), BAR_COLOUR, BAR_WIDTH, cv2.LINE_AA)
+                cv2.line(
+                    canvas, (x, top), (x, bottom), BAR_COLOUR, BAR_WIDTH, cv2.LINE_AA
+                )
             encoder.child.stdin.write(canvas.tobytes())
         encoder.child.stdin.close()
         encoder.close()
@@ -337,7 +343,9 @@ def render(job, directory):
                 "audio": mode,
                 "timings": timings,
                 "temporary_bytes": sum(
-                    file.stat().st_size for file in directory.rglob("*") if file.is_file()
+                    file.stat().st_size
+                    for file in directory.rglob("*")
+                    if file.is_file()
                 ),
             }
         ),

@@ -36,7 +36,7 @@ def forward(tensor):
     assert tensor.shape[1] == 4
     assert tensor.shape[2] % repair.STRIDE == tensor.shape[3] % repair.STRIDE == 0
     assert set(np.unique(tensor[:, 3])) <= {0, 1}
-    return np.full((1, 3, *tensor.shape[2:]), .25, np.float32)
+    return np.full((1, 3, *tensor.shape[2:]), 0.25, np.float32)
 
 
 result = repair.inpaint(source, mask, forward)

@@ -2,11 +2,10 @@ import { crc32, deflateSync } from "node:zlib";
 import { expect, it } from "vitest";
 import {
   ImageFormat,
-  compute_clean_status,
+  build_image_text_input,
   erase_input_digest,
   image_record_identities,
   image_sha256,
-  image_text_source_digest,
   read_image_package,
   validate_image_book,
 } from "./image-format";
@@ -95,37 +94,17 @@ it("图片写回区分完成空正文与未翻译，并固定原稿身份", asyn
   const items = (await format.read(bytes, "book.image")).items;
   items[0]!.status = "PROCESSED";
   items[0]!.dst = "";
-  const text = await format.render_text(bytes, items, "book.image");
-  const input = JSON.parse(text);
-  expect(input).toMatchObject({ bookId: fixture.book.bookId });
+  const { input } = await build_image_text_input(bytes, items, "book.image");
   expect(input.records.map((row: { text: string | null }) => row.text)).toEqual(["", null]);
   items[0]!.dst = items[0]!.src;
-  const same = JSON.parse(await format.render_text(bytes, items, "book.image"));
-  expect(same.records[0].text).toBe(items[0]!.src);
-  expect(same.sourceSha256).toBe(input.sourceSha256);
+  const same = (await build_image_text_input(bytes, items, "book.image")).input;
+  expect(same.records[0]!.text).toBe(items[0]!.src);
   await expect(
-    format.render_text(bytes, [items[0]!, items[0]!], "book.image"),
+    build_image_text_input(bytes, [items[0]!, items[0]!], "book.image"),
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
   await expect(
-    format.render_text(bytes, [{ ...items[0]!, src: "wrong" }], "book.image"),
+    build_image_text_input(bytes, [{ ...items[0]!, src: "wrong" }], "book.image"),
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
-});
-
-it("图片文字来源摘要只绑定书籍与待译原文身份", () => {
-  const { book, records } = image_fixture();
-  const sourceSha256 = image_text_source_digest(book, records);
-  const page = book.pages[0]!;
-  const region = page.regions[0]!;
-  page.sha256 = "0".repeat(64);
-  page.orientation = 8;
-  region.kind = "unframed";
-  region.direction = "horizontal-tb";
-  region.backgroundColor = [10, 20, 30];
-  region.layoutArea = { ...region.layoutArea!, sha256: "1".repeat(64) };
-  records.reverse();
-  expect(image_text_source_digest(book, records)).toBe(sourceSha256);
-  records.find((record) => record.pageId === page.pageId)!.message = "改变";
-  expect(image_text_source_digest(book, records)).not.toBe(sourceSha256);
 });
 
 it("零文本封面完整保留，并允许导出空词条列表", async () => {
@@ -138,7 +117,7 @@ it("零文本封面完整保留，并允许导出空词条列表", async () => {
   fixture.records.length = 0;
   const bytes = await fixture.pack();
   expect((await read_image_package(bytes, "cover.image")).book.pages).toHaveLength(1);
-  expect(JSON.parse(await new ImageFormat().render_text(bytes, [], "cover.image"))).toMatchObject({
+  expect((await build_image_text_input(bytes, [], "cover.image")).input).toMatchObject({
     records: [],
   });
 });
@@ -157,7 +136,7 @@ it("归档中的保留记录不进入图片文本输入", async () => {
   const bytes = await fixture.pack();
   const format = new ImageFormat();
   const items = (await format.read(bytes, "book.image")).items;
-  const input = JSON.parse(await format.render_text(bytes, items, "book.image"));
+  const input = (await build_image_text_input(bytes, items, "book.image")).input;
   expect(input.records).toEqual([{ pageId: "first", regionId: "text", text: null }]);
 });
 
@@ -284,9 +263,8 @@ it("模型修复归档保留完整气泡选区，并以独立消字掩码约束�
   );
 });
 
-it("compute_clean_status 与 validate_image_book 区分待定方向与修复失败原因", () => {
+it("validate_image_book 区分待定方向与修复失败原因", () => {
   const { book, records } = image_fixture(["p1"]);
-  expect(compute_clean_status(book)).toBe("complete");
   book.pages[0]!.regions[0]!.direction = null;
   expect(() => validate_image_book(book, records, { confirmed: false })).not.toThrow();
   expect(() => validate_image_book(book, records, { confirmed: true })).toThrow();
@@ -295,9 +273,21 @@ it("compute_clean_status 与 validate_image_book 区分待定方向与修复失�
   book.pages[0]!.regions[0]!.direction = null;
   book.pages[0]!.regions[0]!.preserveReason = "repair_failed";
   records.length = 0;
-  expect(compute_clean_status(book)).toBe("partial");
   expect(() => validate_image_book(book, records)).not.toThrow();
   expect(image_record_identities(book, records)).toEqual(new Map());
+});
+
+it("图片相对路径拒绝越界与大小写冲突", () => {
+  const escaped = image_fixture(["p1"]);
+  escaped.book.pages[0]!.relativePath = "../page.png";
+  expect(() => validate_image_book(escaped.book, escaped.records)).toThrow();
+
+  const duplicated = image_fixture(["p1", "p2"]);
+  duplicated.book.pages[0]!.relativePath = "chapter/Page.png";
+  duplicated.book.pages[1]!.relativePath = "chapter/page.PNG";
+  expect(() => validate_image_book(duplicated.book, duplicated.records)).toThrow(
+    "Invalid or duplicate image relative path",
+  );
 });
 
 it("confirmed 要求每个检测文字框唯一归属区域或明确标为误检", () => {
@@ -521,7 +511,7 @@ it("语义区域保持独立时允许排版区域重叠", async () => {
   );
 });
 
-it("无选区漏检保留项保持 partial，保留原因不改变像素指纹", async () => {
+it("无选区漏检保留项保留原因且不改变像素指纹", async () => {
   const f = image_fixture(["p1"]);
   const page = f.book.pages[0]!;
   page.textBoxes = [];
@@ -540,12 +530,10 @@ it("无选区漏检保留项保持 partial，保留原因不改变像素指纹",
   f.clean.pages[0]!.regions = [
     { regionId: "missed", disposition: "preserve", preserveReason: "repair_failed" },
   ];
-  f.clean.status = "partial";
   f.clean.pages[0]!.inputSha256 = erase_input_digest(page);
   f.records.length = 0;
-  expect((await read_image_package(await f.pack(), "partial.image")).clean.status).toBe("partial");
+  await expect(read_image_package(await f.pack(), "preserved.image")).resolves.toBeDefined();
   const digest = erase_input_digest(page);
   page.regions[0]!.preserveReason = "intentional";
   expect(erase_input_digest(page)).toBe(digest);
-  expect(compute_clean_status(f.book)).toBe("complete");
 });

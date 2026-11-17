@@ -69,7 +69,10 @@ describe("run_backend_runtime", () => {
     const reason = new Error("cancel text page");
     let settled = false;
     const pending = imageTextHost(
-      { kind: "render_image_text_page", page: null },
+      {
+        kind: "render_image_text_page",
+        page: { pageId: "page", width: 1, height: 1, regions: [] },
+      },
       controller.signal,
     ).finally(() => {
       settled = true;
@@ -83,7 +86,7 @@ describe("run_backend_runtime", () => {
     port.emit({
       type: "host_response",
       requestId: request.requestId,
-      result: { ok: true, data: { environment: {}, regions: [] } },
+      result: { ok: true, data: [] },
     });
     await rejected;
   });

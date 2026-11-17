@@ -34,21 +34,31 @@ ASR_WINDOW = 20 * SAMPLE_RATE  # 实测 60 秒整窗明显掉字，20 秒内基�
 LFR_M, LFR_N = 7, 6
 
 MAX_EDGE = 1920  # 解码长边上限，不放大。也是裁图的分辨率。
-LINE_GAP = 0.6  # 行间距小于较矮一行高度的该倍数时视为同一块（经验值），两行硬字幕合成一块。
+LINE_GAP = (
+    0.6  # 行间距小于较矮一行高度的该倍数时视为同一块（经验值），两行硬字幕合成一块。
+)
 TRACK_IOU = 0.5  # 位置只用于唯一匹配候选，内容由 OCR 另行判断。
 REC_HEIGHT, REC_MIN_WIDTH = 48, 320  # RapidOCR 的文字行输入尺寸，宽度随长宽比扩展。
 REC_VERTICAL_RATIO = 1.5  # 沿用 RapidOCR 的高竖框旋转规则。
 TEXT_DIFFERENCE = 0.25  # 字符编号的编辑距离比例，空识别不能作为内容相同的证据。
 CROP_MARGIN = 0.3  # 裁图四周留出块高的该倍数。
 JPEG_QUALITY = 90
-SHEET_EDGE = 1280  # 图集边长。画布越大，送进模型前被服务商缩小得越多，同一张裁图反而更模糊。
+SHEET_EDGE = (
+    1280  # 图集边长。画布越大，送进模型前被服务商缩小得越多，同一张裁图反而更模糊。
+)
 SHEET_CROP_HEIGHT = 160  # 裁图在图集中的最大高度。
 SHEET_LABEL_HEIGHT = 24  # 裁图上方标签行的高度。
 SHEET_GAP = 8  # 图集中裁图的间距。
-LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS = 0, 0.6, 2  # 0 是 cv2.FONT_HERSHEY_SIMPLEX，模块加载时尚未导入 cv2。
+LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS = (
+    0,
+    0.6,
+    2,
+)  # 0 是 cv2.FONT_HERSHEY_SIMPLEX，模块加载时尚未导入 cv2。
 REFINE_FPS = 4  # 相邻样本间隔 250 ms，边界取两个样本时间的中点。
 REFINE_WINDOW = 1  # 边界前后各取的秒数，覆盖 1 fps 区间的起止误差。
-REFINE_IOU = 0.3  # 校准时块与条目 `box` 的交并比下限。高帧率下淡入淡出的块更小，阈值放宽。
+REFINE_IOU = (
+    0.3  # 校准时块与条目 `box` 的交并比下限。高帧率下淡入淡出的块更小，阈值放宽。
+)
 REFINE_DECODE_GAP = 2  # 顺序读过短空档，摊薄 FFmpeg 启动与寻帧成本。空档帧不参与推理。
 
 
@@ -60,6 +70,7 @@ def initialize(command):
         from lg.media import fsmn_vad
     else:
         import cv2
+
         cv2.setNumThreads(1)  # 推理在 Worker 中，图像处理不再争抢 CPU。
         if command in ("scan", "refine"):
             import pyclipper
@@ -102,10 +113,17 @@ def finish(process, consumed):
 @cache
 def asr_cmvn(file):
     """am.mvn 中 `<AddShift>` 与 `<Rescale>` 后的向量，分别是负均值与标准差倒数。"""
-    lines = [line.split() for line in Path(file).read_text("utf-8").splitlines() if line.split()]
+    lines = [
+        line.split()
+        for line in Path(file).read_text("utf-8").splitlines()
+        if line.split()
+    ]
     vectors = {}
     for current, following in zip(lines, lines[1:]):
-        if current[0] in ("<AddShift>", "<Rescale>") and following[0] == "<LearnRateCoef>":
+        if (
+            current[0] in ("<AddShift>", "<Rescale>")
+            and following[0] == "<LearnRateCoef>"
+        ):
             vectors[current[0]] = np.array(following[3:-1], np.float32)
     return vectors["<AddShift>"], vectors["<Rescale>"]
 
@@ -113,8 +131,16 @@ def asr_cmvn(file):
 def asr_features(samples, mvn):
     """单窗口采样转为 [1, LFR 帧数, 560]。首帧左侧补 3 帧，尾部重复末帧，与 FunASR WavFrontend 一致。"""
     options = knf.FbankOptions()
-    options.frame_opts.dither, options.frame_opts.window_type, options.frame_opts.snip_edges = 0, "hamming", True
-    options.mel_opts.num_bins, options.mel_opts.high_freq, options.mel_opts.low_freq = 80, 0, 20
+    (
+        options.frame_opts.dither,
+        options.frame_opts.window_type,
+        options.frame_opts.snip_edges,
+    ) = 0, "hamming", True
+    options.mel_opts.num_bins, options.mel_opts.high_freq, options.mel_opts.low_freq = (
+        80,
+        0,
+        20,
+    )
     fbank = knf.OnlineFbank(options)
     fbank.accept_waveform(SAMPLE_RATE, (samples * 32768).tolist())
     fbank.input_finished()
@@ -122,9 +148,15 @@ def asr_features(samples, mvn):
     if frames == 0:
         return None
     feats = np.stack([fbank.get_frame(i) for i in range(frames)])
-    indices = np.clip(np.arange(0, frames, LFR_N)[:, None] + np.arange(-(LFR_M // 2), LFR_M // 2 + 1), 0, frames - 1)
+    indices = np.clip(
+        np.arange(0, frames, LFR_N)[:, None] + np.arange(-(LFR_M // 2), LFR_M // 2 + 1),
+        0,
+        frames - 1,
+    )
     neg_mean, inv_std = asr_cmvn(mvn)
-    return ((feats[indices].reshape(-1, LFR_M * 80) + neg_mean) * inv_std)[None].astype(np.float32)
+    return ((feats[indices].reshape(-1, LFR_M * 80) + neg_mean) * inv_std)[None].astype(
+        np.float32
+    )
 
 
 def speech(channel, ffmpeg, source, track, center, language, asr_mvn, vad_mvn):
@@ -146,7 +178,9 @@ def speech(channel, ffmpeg, source, track, center, language, asr_mvn, vad_mvn):
         while len(inflight) > limit:
             index, future = inflight.popleft()
             header, _ = future.result()
-            windows[index].update(tokens=header["tokens"], timestamps=header["timestamps"])
+            windows[index].update(
+                tokens=header["tokens"], timestamps=header["timestamps"]
+            )
 
     def emit(start, end):
         """长段均分为不超过 20 秒的窗口，逐个提交识别。"""
@@ -159,7 +193,12 @@ def speech(channel, ffmpeg, source, track, center, language, asr_mvn, vad_mvn):
             windows.append({"from": begin, "end": stop, "tokens": [], "timestamps": []})
             if features is not None:
                 settle(IN_FLIGHT - 1)
-                inflight.append((len(windows) - 1, channel.request("asr", features, language=language)))
+                inflight.append(
+                    (
+                        len(windows) - 1,
+                        channel.request("asr", features, language=language),
+                    )
+                )
 
     def consume(final):
         """把前端已就绪的特征块送去推理和分段，再释放分段与前端都不再需要的 PCM。"""
@@ -167,13 +206,19 @@ def speech(channel, ffmpeg, source, track, center, language, asr_mvn, vad_mvn):
         while (batch := frontend.take(final)) is not None:
             frame, features, last = batch
             begin = frame * fsmn_vad.FRAME_SHIFT
-            end = (frame + features.shape[1] - 1) * fsmn_vad.FRAME_SHIFT + fsmn_vad.FRAME_LENGTH
+            end = (
+                frame + features.shape[1] - 1
+            ) * fsmn_vad.FRAME_SHIFT + fsmn_vad.FRAME_LENGTH
             scores = tensor(*channel.request("vad", features).result())
-            for start, stop in segmenter.accept(scores, retained[begin - offset:end - offset], last):
+            for start, stop in segmenter.accept(
+                scores, retained[begin - offset : end - offset], last
+            ):
                 emit(start, stop)
             # 未完成语音和下一批能量计算仍需 PCM。已复制的 ASR 特征不再持有它。
-            keep = min(segmenter.retained_sample, frontend.offset * fsmn_vad.FRAME_SHIFT)
-            retained, offset = retained[keep - offset:].copy(), keep
+            keep = min(
+                segmenter.retained_sample, frontend.offset * fsmn_vad.FRAME_SHIFT
+            )
+            retained, offset = retained[keep - offset :].copy(), keep
 
     consumed = False
     try:
@@ -240,19 +285,34 @@ class TextBlock(NamedTuple):
 
 def rec_input(frame, points):
     """透视裁剪后按 RapidOCR 规则归一化，长文字行扩宽而不截断。"""
-    width = int(max(np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])))
-    height = int(max(np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])))
+    width = int(
+        max(
+            np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])
+        )
+    )
+    height = int(
+        max(
+            np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])
+        )
+    )
     target = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
     transform = cv2.getPerspectiveTransform(points.astype(np.float32), target)
     image = cv2.warpPerspective(
-        frame, transform, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+        frame,
+        transform,
+        (width, height),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
     )
     if height / width >= REC_VERTICAL_RATIO:
         image = np.rot90(image)
     ratio = image.shape[1] / image.shape[0]
     width = int(REC_HEIGHT * max(REC_MIN_WIDTH / REC_HEIGHT, ratio))
     resized = min(width, math.ceil(REC_HEIGHT * ratio))
-    data = cv2.resize(image, (resized, REC_HEIGHT)).astype(np.float32).transpose(2, 0, 1) / 255
+    data = (
+        cv2.resize(image, (resized, REC_HEIGHT)).astype(np.float32).transpose(2, 0, 1)
+        / 255
+    )
     result = np.zeros((1, 3, REC_HEIGHT, width), np.float32)
     result[0, :, :, :resized] = (data - 0.5) / 0.5
     return result
@@ -272,7 +332,9 @@ def read_block(channel, frame, block):
     for points in block.members:
         reply, _ = channel.request("rec", rec_input(frame, points)).result()
         tokens = reply["tokens"]
-        if not isinstance(tokens, list) or any(type(token) is not int or token <= 0 for token in tokens):
+        if not isinstance(tokens, list) or any(
+            type(token) is not int or token <= 0 for token in tokens
+        ):
             raise ValueError("OCR 字符编号无效")
         lines.append(tuple(tokens))
     return TextBlock(block.rect, tuple(lines))
@@ -281,7 +343,12 @@ def read_block(channel, frame, block):
 def group_lines(boxes):
     """相邻检测行组成文字块，同时保留检测排序给出的成员行归属。"""
     rects = [
-        (float(box[:, 0].min()), float(box[:, 1].min()), float(box[:, 0].max()), float(box[:, 1].max()))
+        (
+            float(box[:, 0].min()),
+            float(box[:, 1].min()),
+            float(box[:, 0].max()),
+            float(box[:, 1].max()),
+        )
         for box in map(np.asarray, boxes)
     ]
     members = [[i] for i in range(len(rects))]
@@ -292,15 +359,25 @@ def group_lines(boxes):
             for j in range(i + 1, len(rects)):
                 a, b = rects[i], rects[j]
                 gap = max(a[1], b[1]) - min(a[3], b[3])  # 负数表示上下重叠。
-                if min(a[2], b[2]) > max(a[0], b[0]) and gap < LINE_GAP * min(a[3] - a[1], b[3] - b[1]):
-                    rects[i] = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+                if min(a[2], b[2]) > max(a[0], b[0]) and gap < LINE_GAP * min(
+                    a[3] - a[1], b[3] - b[1]
+                ):
+                    rects[i] = (
+                        min(a[0], b[0]),
+                        min(a[1], b[1]),
+                        max(a[2], b[2]),
+                        max(a[3], b[3]),
+                    )
                     members[i].extend(members.pop(j))
                     del rects[j]
                     merged = True
                     break
             if merged:
                 break
-    return [DetectedBlock(rect, tuple(boxes[i] for i in sorted(indices))) for rect, indices in zip(rects, members)]
+    return [
+        DetectedBlock(rect, tuple(boxes[i] for i in sorted(indices)))
+        for rect, indices in zip(rects, members)
+    ]
 
 
 def similar_line(a, b):
@@ -314,14 +391,20 @@ def similar_line(a, b):
     for i, token in enumerate(a, 1):
         current = [i]
         for j, other in enumerate(b, 1):
-            current.append(min(current[-1] + 1, previous[j] + 1, previous[j - 1] + (token != other)))
+            current.append(
+                min(
+                    current[-1] + 1, previous[j] + 1, previous[j - 1] + (token != other)
+                )
+            )
         previous = current
     return previous[-1] <= limit
 
 
 def same_content(a, b):
     """布局变化或任何成员行未知时拆开，避免整块合并吞掉局部变化。"""
-    return bool(a) and len(a) == len(b) and all(similar_line(x, y) for x, y in zip(a, b))
+    return (
+        bool(a) and len(a) == len(b) and all(similar_line(x, y) for x, y in zip(a, b))
+    )
 
 
 class TextTracker:
@@ -335,22 +418,44 @@ class TextTracker:
     def update(self, second, found):
         """双向唯一且内容稳定时延续区间，返回需要更新的代表裁图。"""
         candidates = [
-            [i for i, old in enumerate(self.previous) if iou(block.rect, old["rect"]) >= TRACK_IOU] for block in found
+            [
+                i
+                for i, old in enumerate(self.previous)
+                if iou(block.rect, old["rect"]) >= TRACK_IOU
+            ]
+            for block in found
         ]
-        uses = Counter(i for choices in candidates for i in choices)  # 一次计数，检查旧块是否被争用。
+        uses = Counter(
+            i for choices in candidates for i in choices
+        )  # 一次计数，检查旧块是否被争用。
         current, crops = [], []
         for block, choices in zip(found, candidates):
-            old = self.previous[choices[0]] if len(choices) == 1 and uses[choices[0]] == 1 else None
+            old = (
+                self.previous[choices[0]]
+                if len(choices) == 1 and uses[choices[0]] == 1
+                else None
+            )
             if old is None or not (
-                same_content(block.lines, old["lines"]) and same_content(block.lines, old["anchor"])
+                same_content(block.lines, old["lines"])
+                and same_content(block.lines, old["anchor"])
             ):
-                old = {"id": len(self.regions), "anchor": block.lines}  # 首帧参照不随代表裁图更新。
-                self.regions.append({"id": old["id"], "start": second, "box": block.rect, "size": -1})
+                old = {
+                    "id": len(self.regions),
+                    "anchor": block.lines,
+                }  # 首帧参照不随代表裁图更新。
+                self.regions.append(
+                    {"id": old["id"], "start": second, "box": block.rect, "size": -1}
+                )
             region = self.regions[old["id"]]
             box, rect = region["box"], block.rect
             region.update(
                 end=second + 1,
-                box=(min(box[0], rect[0]), min(box[1], rect[1]), max(box[2], rect[2]), max(box[3], rect[3])),
+                box=(
+                    min(box[0], rect[0]),
+                    min(box[1], rect[1]),
+                    max(box[2], rect[2]),
+                    max(box[3], rect[3]),
+                ),
             )
             if area(rect) > region["size"]:
                 region.update(size=area(rect), at=second)
@@ -373,7 +478,9 @@ def iou(a, b):
 
 def write_jpeg(file, image):
     """通过 Python 写入 JPEG，避免依赖 OpenCV 的 Windows Unicode 路径支持。"""
-    success, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+    success, encoded = cv2.imencode(
+        ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
+    )
     if not success:
         raise OSError(f"无法编码 JPEG {file}")
     file.write_bytes(encoded.tobytes())
@@ -384,7 +491,10 @@ def crop(frame, rect, file):
     height, width = frame.shape[:2]
     margin = CROP_MARGIN * (rect[3] - rect[1])
     x0, y0 = max(0, int(rect[0] - margin)), max(0, int(rect[1] - margin))
-    x1, y1 = min(width, int(rect[2] + margin + 1)), min(height, int(rect[3] + margin + 1))
+    x1, y1 = (
+        min(width, int(rect[2] + margin + 1)),
+        min(height, int(rect[3] + margin + 1)),
+    )
     write_jpeg(file, frame[y0:y1, x0:x1])
 
 
@@ -402,7 +512,10 @@ def scan(channel, ffmpeg, source, width, height, out):
         """按采样顺序结算异步检测，让上一帧状态始终对应真实相邻帧。"""
         while len(inflight) > limit:
             second, frame, future = inflight.popleft()
-            found = [read_block(channel, frame, block) for block in detect_blocks(*future.result(), frame)]
+            found = [
+                read_block(channel, frame, block)
+                for block in detect_blocks(*future.result(), frame)
+            ]
             for id, rect in tracker.update(second, found):
                 crop(frame, rect, out / f"{id}.jpg")
             if second % 60 == 59:
@@ -434,13 +547,23 @@ def refine_plan(rows, duration):
         first = math.ceil(row["start"] * REFINE_FPS)
         last = math.ceil(row["end"] * REFINE_FPS) - 1
         middle = (row["start"] + row["end"]) / 2
-        reference = min(last, max(first, round(middle * REFINE_FPS))) / REFINE_FPS if first <= last else middle
+        reference = (
+            min(last, max(first, round(middle * REFINE_FPS))) / REFINE_FPS
+            if first <= last
+            else middle
+        )
         references.append(reference)
         edges = {}
         for key in ("start", "end"):
-            begin, end = max(0.0, row[key] - REFINE_WINDOW), min(duration, row[key] + REFINE_WINDOW)
+            begin, end = (
+                max(0.0, row[key] - REFINE_WINDOW),
+                min(duration, row[key] + REFINE_WINDOW),
+            )
             # 外侧样本用于夹住边界，最终估计仍须落在原始允许窗口内。
-            ticks = range(math.floor(begin * REFINE_FPS), min(last_tick, math.ceil(end * REFINE_FPS)) + 1)
+            ticks = range(
+                math.floor(begin * REFINE_FPS),
+                min(last_tick, math.ceil(end * REFINE_FPS)) + 1,
+            )
             edges[key] = [tick / REFINE_FPS for tick in ticks]
         windows.append(edges)
         for at in {reference, *edges["start"], *edges["end"]}:
@@ -454,14 +577,20 @@ def refine_frames(ffmpeg, source, size, duration, times):
     step = 1 / REFINE_FPS
     for at in sorted(times):
         # 精确中点可能偏离全片网格，只合并采样相位相同的窗口。
-        if runs and at - runs[-1][-1] <= REFINE_DECODE_GAP + step and ((at - runs[-1][0]) * REFINE_FPS).is_integer():
+        if (
+            runs
+            and at - runs[-1][-1] <= REFINE_DECODE_GAP + step
+            and ((at - runs[-1][0]) * REFINE_FPS).is_integer()
+        ):
             runs[-1].append(at)
         else:
             runs.append([at])
     for run in runs:
         end = min(duration, run[-1] + step)
         wanted = set(run)
-        with closing(decode(ffmpeg, source, size, REFINE_FPS, run[0], end - run[0])) as frames:
+        with closing(
+            decode(ffmpeg, source, size, REFINE_FPS, run[0], end - run[0])
+        ) as frames:
             for i, frame in enumerate(frames):
                 at = run[0] + i / REFINE_FPS
                 if at in wanted:
@@ -472,9 +601,22 @@ def refine(channel, ffmpeg, source, width, height, duration, rows):
     """整批共享解码和检测，同一帧的唯一候选只识别一次。条目仍独立判定边界。"""
     size = frame_size(width, height)
     references, windows, requests = refine_plan(rows, duration)
-    boxes = [(r["box"][0] * size[0], r["box"][1] * size[1], r["box"][2] * size[0], r["box"][3] * size[1]) for r in rows]
-    observations = [{} for _ in rows]  # False 表示无候选，None 表示未知，tuple 保存有效 OCR。
-    remaining = [len({ref, *edges["start"], *edges["end"]}) for ref, edges in zip(references, windows)]
+    boxes = [
+        (
+            r["box"][0] * size[0],
+            r["box"][1] * size[1],
+            r["box"][2] * size[0],
+            r["box"][3] * size[1],
+        )
+        for r in rows
+    ]
+    observations = [
+        {} for _ in rows
+    ]  # False 表示无候选，None 表示未知，tuple 保存有效 OCR。
+    remaining = [
+        len({ref, *edges["start"], *edges["end"]})
+        for ref, edges in zip(references, windows)
+    ]
     result = [{"row": r["row"], "start": None, "end": None} for r in rows]
     inflight = deque()
 
@@ -489,11 +631,17 @@ def refine(channel, ffmpeg, source, width, height, duration, rows):
                 states = []
                 for at in times:
                     value = values.get(at)
-                    states.append(same_content(value, reference) if isinstance(value, tuple) else value)
+                    states.append(
+                        same_content(value, reference)
+                        if isinstance(value, tuple)
+                        else value
+                    )
                 end = min(duration, times[-1] + 1 / REFINE_FPS)
                 bound = text_boundary(states, times[0], end, duration, key == "start")
                 edge = rows[index][key]
-                if bound is not None and max(0, edge - REFINE_WINDOW) <= bound <= min(duration, edge + REFINE_WINDOW):
+                if bound is not None and max(0, edge - REFINE_WINDOW) <= bound <= min(
+                    duration, edge + REFINE_WINDOW
+                ):
                     result[index][key] = bound
         values.clear()
 
@@ -504,14 +652,20 @@ def refine(channel, ffmpeg, source, width, height, duration, rows):
             found = detect_blocks(*future.result(), frame)
             recognized = {}  # 同一检测块可供多个区域重叠的条目使用。
             for index in requests.pop(at):
-                choices = [i for i, block in enumerate(found) if iou(block.rect, boxes[index]) >= REFINE_IOU]
+                choices = [
+                    i
+                    for i, block in enumerate(found)
+                    if iou(block.rect, boxes[index]) >= REFINE_IOU
+                ]
                 value = None
                 if not choices:
                     value = False
                 elif len(choices) == 1:
                     choice = choices[0]
                     if choice not in recognized:
-                        recognized[choice] = read_block(channel, frame, found[choice]).lines
+                        recognized[choice] = read_block(
+                            channel, frame, found[choice]
+                        ).lines
                     if all(recognized[choice]):
                         value = recognized[choice]
                 observations[index][at] = value
@@ -541,7 +695,11 @@ def text_boundary(states, begin, end, duration, rising):
         return round(begin + (present[0] - 0.5) / REFINE_FPS, 3)
     if present[-1] == len(states) - 1:
         # 提前结束解码不能伪装成片尾；末样本必须覆盖窗口尾部。
-        return round(duration, 3) if end >= duration and begin + len(states) / REFINE_FPS >= end else None
+        return (
+            round(duration, 3)
+            if end >= duration and begin + len(states) / REFINE_FPS >= end
+            else None
+        )
     return round(begin + (present[-1] + 0.5) / REFINE_FPS, 3)
 
 
@@ -558,8 +716,19 @@ def sheet(channel, entries, out):
         """保存当前图集，记录文件路径和条目编号。"""
         canvas = np.zeros((height, max(cell[-1] for cell in cells), 3), np.uint8)
         for _, label, image, x, y, _ in cells:
-            cv2.putText(canvas, label, (x, y + SHEET_LABEL_HEIGHT - 6), LABEL_FONT, LABEL_SCALE, (255, 255, 255), LABEL_THICKNESS)
-            canvas[y + SHEET_LABEL_HEIGHT : y + SHEET_LABEL_HEIGHT + image.shape[0], x : x + image.shape[1]] = image
+            cv2.putText(
+                canvas,
+                label,
+                (x, y + SHEET_LABEL_HEIGHT - 6),
+                LABEL_FONT,
+                LABEL_SCALE,
+                (255, 255, 255),
+                LABEL_THICKNESS,
+            )
+            canvas[
+                y + SHEET_LABEL_HEIGHT : y + SHEET_LABEL_HEIGHT + image.shape[0],
+                x : x + image.shape[1],
+            ] = image
         file = out / f"{len(sheets):03d}.jpg"
         write_jpeg(file, canvas)
         sheets.append({"file": str(file), "ids": [entry["id"] for entry, *_ in cells]})
@@ -576,9 +745,14 @@ def sheet(channel, entries, out):
                            interpolation=cv2.INTER_AREA)  # fmt: skip
         minutes, seconds = divmod(int(entry["start"]), 60)
         label = f"#{entry['id']} {minutes:02d}:{seconds:02d}"
-        width = max(image.shape[1], cv2.getTextSize(label, LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS)[0][0])
+        width = max(
+            image.shape[1],
+            cv2.getTextSize(label, LABEL_FONT, LABEL_SCALE, LABEL_THICKNESS)[0][0],
+        )
         height = SHEET_LABEL_HEIGHT + image.shape[0]
-        if x and (x + width > SHEET_EDGE or y + height > SHEET_EDGE):  # 本行放不下就换行。
+        if x and (
+            x + width > SHEET_EDGE or y + height > SHEET_EDGE
+        ):  # 本行放不下就换行。
             x, y, row = 0, y + row + SHEET_GAP, 0
         if y and y + height > SHEET_EDGE:
             flush(y - SHEET_GAP)

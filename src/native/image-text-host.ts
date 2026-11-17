@@ -1,14 +1,9 @@
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { BrowserWindow, session, type Session } from "electron";
 import { default_native_fs as fs } from "./native-fs";
 import { run_window_task } from "./window-task";
-import {
-  IMAGE_TEXT_RULES,
-  type ImageTextHost,
-  type ImageTextEnvironment,
-  type ImageTextPaint,
-} from "../shared/image-text";
+import { IMAGE_TEXT_RULES, type ImageTextHost, type ImageTextPaint } from "../shared/image-text";
 
 const CSP =
   "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
@@ -20,7 +15,7 @@ export function create_image_text_host(resources: {
 }): ImageTextHost & { dispose: () => Promise<void> } {
   let tail: Promise<unknown> = Promise.resolve();
   let browserSession: Session | undefined;
-  let assets: { fontCss: string; script: string; environment: ImageTextEnvironment } | undefined;
+  let assets: { fontCss: string; script: string } | undefined;
   const lifetime = new AbortController();
   const host: ImageTextHost = async (operation, signal) => {
     const combined = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
@@ -33,18 +28,9 @@ export function create_image_text_host(resources: {
       assets = {
         fontCss: `@font-face{font-family:ImageText;src:url(data:font/ttf;base64,${font.toString("base64")}) format('truetype');font-weight:400;font-style:normal}`,
         script,
-        environment: {
-          fontSha256: createHash("sha256").update(font).digest("hex"),
-          rendererSha256: createHash("sha256").update(script).digest("hex"),
-          chromium: process.versions.chrome!,
-          platform: process.platform,
-          arch: process.arch,
-          raster: "chromium-native-dpr1",
-        },
       };
     }
     const fixed = assets;
-    if (!operation.page) return { environment: fixed.environment, regions: [] };
     const cancelled = Promise.withResolvers<never>();
     const cancelQueued = () => cancelled.reject(combined.reason);
     combined.addEventListener("abort", cancelQueued, { once: true });
@@ -81,8 +67,6 @@ export function create_image_text_host(resources: {
         );
         const debuggerPort = window.webContents.debugger;
         debuggerPort.attach("1.3");
-        await step("font inspection", () => debuggerPort.sendCommand("DOM.enable"));
-        await step("font inspection", () => debuggerPort.sendCommand("CSS.enable"));
         await step("transparent", () =>
           debuggerPort.sendCommand("Emulation.setDefaultBackgroundColorOverride", {
             color: { r: 0, g: 0, b: 0, a: 0 },
@@ -101,7 +85,7 @@ export function create_image_text_host(resources: {
             ),
           )) as IteratorResult<
             {
-              kind: "resize" | "capture" | "progress" | "font_check";
+              kind: "resize" | "capture" | "progress";
               width?: number;
               height?: number;
               rect?: { x: number; y: number; width: number; height: number };
@@ -109,24 +93,8 @@ export function create_image_text_host(resources: {
             ImageTextPaint[]
           >;
           screenshot = undefined;
-          if (next.done) return { environment: fixed.environment, regions: next.value };
-          if (next.value.kind === "font_check") {
-            const document = (await step("font document", () =>
-              debuggerPort.sendCommand("DOM.getDocument"),
-            )) as { root: { nodeId: number } };
-            const node = (await step("font node", () =>
-              debuggerPort.sendCommand("DOM.querySelector", {
-                nodeId: document.root.nodeId,
-                selector: "#image-text-content",
-              }),
-            )) as { nodeId: number };
-            const fonts = (await step("font coverage", () =>
-              debuggerPort.sendCommand("CSS.getPlatformFontsForNode", { nodeId: node.nodeId }),
-            )) as { fonts: { isCustomFont: boolean; glyphCount: number }[] };
-            screenshot = fonts.fonts.some((font) => !font.isCustomFont && font.glyphCount > 0)
-              ? "missing_glyph"
-              : "font_ok";
-          } else if (next.value.kind === "resize") {
+          if (next.done) return next.value;
+          if (next.value.kind === "resize") {
             const { width, height } = next.value;
             await step("viewport", () =>
               debuggerPort.sendCommand("Emulation.setDeviceMetricsOverride", {

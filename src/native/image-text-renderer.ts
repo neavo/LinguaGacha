@@ -11,7 +11,7 @@ import { image_text_slot_sets, type TextSlot } from "./image-text-layout";
 type Step =
   | { kind: "capture"; rect: { x: number; y: number; width: number; height: number } }
   | { kind: "resize"; width: number; height: number }
-  | { kind: "progress" | "font_check" };
+  | { kind: "progress" };
 type Region = ImageTextPage["regions"][number];
 type Candidate = Region["candidates"][number];
 type Block = Candidate["blocks"][number];
@@ -143,41 +143,16 @@ export async function* render_page(
   document.head.replaceChildren(style);
   const output: ImageTextPaint[] = [];
   for (const region of page.regions) {
-    const check = document.createElement("span");
-    check.id = "image-text-content";
-    check.style.cssText = `font: ${region.preferredFontSize}px ImageText`;
-    check.textContent = region.text;
-    document.body.replaceChildren(check);
     await document.fonts.load(`${region.preferredFontSize}px ImageText`, region.text);
     if (!document.fonts.check(`${region.preferredFontSize}px ImageText`, region.text))
       throw new Error("Image text font unavailable");
-    if ((yield { kind: "font_check" }) === "missing_glyph") {
-      const first = region.candidates[0]!.blocks[0]!;
-      output.push({
-        result: {
-          regionId: region.regionId,
-          candidateId: region.candidates[0]!.candidateId,
-          blockId: first.blockId,
-          text: region.text,
-          box: first.box,
-          status: "failed",
-          reason: "missing_glyph",
-        },
-      });
-      continue;
-    }
     const planned = plan_region(region);
     if (!planned) {
-      const first = region.candidates[0]!.blocks[0]!;
       output.push({
         result: {
           regionId: region.regionId,
-          candidateId: region.candidates[0]!.candidateId,
-          blockId: first.blockId,
-          text: region.text,
-          box: first.box,
-          status: "failed",
-          reason: "no_fit",
+          renderStatus: "failure",
+          reason: "layout_no_fit",
         },
       });
       continue;
@@ -231,39 +206,36 @@ export async function* render_page(
           ? plannedBlock.block.centroid[0] - (x0 + x1) / 2
           : plannedBlock.block.centroid[1] - (y0 + y1) / 2,
       );
-      const valid =
-        Number.isFinite(margin) &&
-        margin >= image_text_margin(planned.fontSize) &&
-        centerError <=
-          Math.max(RULES.minimumCenterTolerance, planned.fontSize * RULES.centerToleranceRatio);
+      const requiredMargin = image_text_margin(planned.fontSize);
+      const allowedCenterError = Math.max(
+        RULES.minimumCenterTolerance,
+        planned.fontSize * RULES.centerToleranceRatio,
+      );
+      const valid = Number.isFinite(margin) && margin >= 0;
+      const reasons = [
+        ...(planned.fontSize < RULES.smallFontSize ? (["small_font"] as const) : []),
+        ...(margin < requiredMargin ? (["tight_margin"] as const) : []),
+        ...(centerError > allowedCenterError ? (["off_center"] as const) : []),
+      ];
+      const rendered = {
+        regionId: region.regionId,
+        box: plannedBlock.block.box,
+      };
       const result: ImageTextPaint["result"] = valid
-        ? {
-            regionId: region.regionId,
-            candidateId: planned.candidate.candidateId,
-            blockId: plannedBlock.block.blockId,
-            text: plannedBlock.lines.map((line) => line.text).join(""),
-            box: plannedBlock.block.box,
-            status: "rendered",
-            fontSize: planned.fontSize,
-            strokeWidth,
-            margin,
-            bounds: [
-              x0 + plannedBlock.block.box[0],
-              y0 + plannedBlock.block.box[1],
-              x1 + plannedBlock.block.box[0],
-              y1 + plannedBlock.block.box[1],
-            ],
-            centerError,
-            warnings: planned.fontSize < RULES.smallFontSize ? ["small_font"] : [],
-          }
+        ? reasons.length
+          ? {
+              ...rendered,
+              renderStatus: "warning",
+              reasons,
+            }
+          : {
+              ...rendered,
+              renderStatus: "success",
+            }
         : {
             regionId: region.regionId,
-            candidateId: planned.candidate.candidateId,
-            blockId: plannedBlock.block.blockId,
-            text: plannedBlock.lines.map((line) => line.text).join(""),
-            box: plannedBlock.block.box,
-            status: "failed",
-            reason: "no_fit",
+            renderStatus: "failure",
+            reason: "outside_layout_area",
           };
       output.push(valid ? { result, png: png! } : { result });
     }

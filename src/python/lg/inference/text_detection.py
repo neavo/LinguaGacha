@@ -9,7 +9,13 @@ import math
 import numpy as np
 
 DET_SIDE = 640
-DET_THRESH, DET_BOX_THRESH, DET_UNCLIP, DET_MIN_SIZE, DET_CANDIDATES = 0.3, 0.5, 1.6, 3, 1000
+DET_THRESH, DET_BOX_THRESH, DET_UNCLIP, DET_MIN_SIZE, DET_CANDIDATES = (
+    0.3,
+    0.5,
+    1.6,
+    3,
+    1000,
+)
 
 
 def det_input(frame, side=DET_SIDE, upscale=False, interpolation=None):
@@ -17,11 +23,23 @@ def det_input(frame, side=DET_SIDE, upscale=False, interpolation=None):
     import cv2
 
     height, width = frame.shape[:2]
-    ratio = max(1.0, side / max(height, width)) if upscale else min(1.0, side / max(height, width))
+    ratio = (
+        max(1.0, side / max(height, width))
+        if upscale
+        else min(1.0, side / max(height, width))
+    )
     target_w = max(32, int(round(int(width * ratio) / 32) * 32))
     target_h = max(32, int(round(int(height * ratio) / 32) * 32))
-    method = interpolation if interpolation is not None else (cv2.INTER_CUBIC if ratio > 1.0 else cv2.INTER_LINEAR)
-    image = cv2.resize(frame, (target_w, target_h), interpolation=method).astype(np.float32) / 127.5 - 1
+    method = (
+        interpolation
+        if interpolation is not None
+        else (cv2.INTER_CUBIC if ratio > 1.0 else cv2.INTER_LINEAR)
+    )
+    image = (
+        cv2.resize(frame, (target_w, target_h), interpolation=method).astype(np.float32)
+        / 127.5
+        - 1
+    )
     return image.transpose(2, 0, 1)[None]
 
 
@@ -75,8 +93,16 @@ def det_box_records(
         points, side = mini_box(contour)
         if side < DET_MIN_SIZE:
             continue
-        x0, x1 = np.clip([math.floor(points[:, 0].min()), math.ceil(points[:, 0].max())], 0, map_w - 1)
-        y0, y1 = np.clip([math.floor(points[:, 1].min()), math.ceil(points[:, 1].max())], 0, map_h - 1)
+        x0, x1 = np.clip(
+            [math.floor(points[:, 0].min()), math.ceil(points[:, 0].max())],
+            0,
+            map_w - 1,
+        )
+        y0, y1 = np.clip(
+            [math.floor(points[:, 1].min()), math.ceil(points[:, 1].max())],
+            0,
+            map_h - 1,
+        )
         mask = np.zeros((y1 - y0 + 1, x1 - x0 + 1), np.uint8)
         cv2.fillPoly(mask, (points - [x0, y0]).reshape(1, -1, 2).astype(np.int32), 1)
         score = cv2.mean(pred[y0 : y1 + 1, x0 : x1 + 1], mask)[0]
@@ -91,16 +117,23 @@ def det_box_records(
         executed = offset.Execute(distance)
         if not executed:
             continue
-        largest = max(executed, key=lambda path: cv2.contourArea(np.array(path, np.float32)))
+        largest = max(
+            executed, key=lambda path: cv2.contourArea(np.array(path, np.float32))
+        )
         expanded, side = mini_box(np.array(largest, np.float32).reshape(-1, 1, 2))
         if side < DET_MIN_SIZE + 2:
             continue
+
         def project(source):
             """把检测图坐标投影回来源图，并保持顺时针点序。"""
             box = np.empty_like(source)
             if round_coords:
-                box[:, 0] = np.clip(np.round(source[:, 0] / map_w * width), 0, width - 1)
-                box[:, 1] = np.clip(np.round(source[:, 1] / map_h * height), 0, height - 1)
+                box[:, 0] = np.clip(
+                    np.round(source[:, 0] / map_w * width), 0, width - 1
+                )
+                box[:, 1] = np.clip(
+                    np.round(source[:, 1] / map_h * height), 0, height - 1
+                )
             else:
                 box[:, 0] = np.clip(source[:, 0] / map_w * width, 0.0, float(width))
                 box[:, 1] = np.clip(source[:, 1] / map_h * height, 0.0, float(height))
@@ -110,7 +143,11 @@ def det_box_records(
         core_box = project(points)
         edge_w = np.linalg.norm(box[0] - box[1])
         edge_h = np.linalg.norm(box[0] - box[3])
-        valid = (int(edge_w) > DET_MIN_SIZE and int(edge_h) > DET_MIN_SIZE) if round_coords else (edge_w > DET_MIN_SIZE and edge_h > DET_MIN_SIZE)
+        valid = (
+            (int(edge_w) > DET_MIN_SIZE and int(edge_h) > DET_MIN_SIZE)
+            if round_coords
+            else (edge_w > DET_MIN_SIZE and edge_h > DET_MIN_SIZE)
+        )
         if valid:
             records.append(dict(box=box, coreBox=core_box, score=float(score)))
     ordered = sort_boxes([record["box"] for record in records])
@@ -120,4 +157,6 @@ def det_box_records(
 
 def det_boxes(pred, height, width, round_coords=True):
     """媒体识别只消费外扩框。"""
-    return [record["box"] for record in det_box_records(pred, height, width, round_coords)]
+    return [
+        record["box"] for record in det_box_records(pred, height, width, round_coords)
+    ]

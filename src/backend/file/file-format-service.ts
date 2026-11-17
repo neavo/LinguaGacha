@@ -1,6 +1,7 @@
 import { GenericFormat } from "./generic/generic-format";
 import { GENERIC_ITEMS_MEMBER } from "./shared/archive-records";
 import { ImageFormat } from "./image/image-format";
+import type { ImageOutputAsset, ImageOutputService } from "./image/image-output";
 import { group_items } from "./shared/file-format-helpers";
 import { collect_game_file_list } from "./shared/game/source-files";
 import { resolve_game_source_input } from "./shared/game/source-input";
@@ -111,6 +112,7 @@ export class FileFormatService {
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
     private readonly game_prepare_execution?: GamePrepareExecution,
+    private readonly image_output?: Pick<ImageOutputService, "write_asset">,
   ) {
     this.native_fs = native_fs;
     this.games = Object.fromEntries(
@@ -545,7 +547,7 @@ export class FileFormatService {
     context: FileFormatServiceWriteContext,
     writeback_path?: string, // 通用与视频写回输入仅在调用方指定独立目录时生成。
     bilingual_files?: readonly string[],
-  ): Promise<void> {
+  ): Promise<ImageOutputAsset[]> {
     const { paths, asset_reader } = context;
     const failures: unknown[] = [];
     for (const game of Object.values(this.games)) {
@@ -561,31 +563,45 @@ export class FileFormatService {
     await this.write_subtitles(items, context, bilingual_files);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
+    const image_outputs: ImageOutputAsset[] = [];
+    const image_items = group_items(items, "IMAGE");
+    const claimed_paths = new Set(
+      context.source_files
+        .filter((file) => file.file_type !== "IMAGE")
+        .map((file) => file.path.replaceAll("\\", "/").toLocaleLowerCase("en-US")),
+    );
+    for (const file of context.source_files) {
+      if (file.file_type !== "IMAGE") continue;
+      if (!this.image_output) throw new Error("Image output host unavailable");
+      const asset = await asset_reader(file.path);
+      if (asset === null)
+        throw new AppError("file.not_found", { public_details: { file: file.path } });
+      image_outputs.push(
+        await this.image_output.write_asset({
+          assetPath: file.path,
+          content: asset,
+          items: image_items.get(file.path) ?? [],
+          outputRoot: paths.translated_path,
+          claimedPaths: claimed_paths,
+        }),
+      );
+    }
     if (writeback_path !== undefined) {
       // 视频字幕的样式与渲染归 Agent，与通用数据共用写回输入。
       const groups = {
         GENERIC: group_items(items, "GENERIC"),
         MEDIA: group_items(items, "MEDIA"),
-        IMAGE: group_items(items, "IMAGE"),
       };
       for (const file of context.source_files) {
-        if (
-          file.file_type !== "GENERIC" &&
-          file.file_type !== "MEDIA" &&
-          file.file_type !== "IMAGE"
-        )
-          continue;
+        if (file.file_type !== "GENERIC" && file.file_type !== "MEDIA") continue;
         const asset = await asset_reader(file.path);
         if (asset === null)
           throw new AppError("file.not_found", { public_details: { file: file.path } });
-        const output =
-          file.file_type === "IMAGE"
-            ? await this.image.render_text(asset, groups.IMAGE.get(file.path) ?? [], file.path)
-            : await this.generic.render_text(
-                asset,
-                groups[file.file_type].get(file.path) ?? [],
-                file.path,
-              );
+        const output = await this.generic.render_text(
+          asset,
+          groups[file.file_type].get(file.path) ?? [],
+          file.path,
+        );
         await this.native_fs.write_file(
           path.join(writeback_path, file.path, GENERIC_ITEMS_MEMBER),
           output,
@@ -598,6 +614,7 @@ export class FileFormatService {
     await this.epub.write_to_path(items, paths, asset_reader, bilingual_files);
     if (failures.length === 1) throw failures[0];
     if (failures.length) throw new AggregateError(failures, "Game assets could not be exported");
+    return image_outputs;
   }
 
   /** 资产集合驱动 MESSAGEJSON 导出，零条目文件也完整保留源结构。 */

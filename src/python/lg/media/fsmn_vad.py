@@ -37,10 +37,17 @@ class Frontend:
         options.mel_opts.num_bins = 80
         options.energy_floor = 0
         self.fbank = knf.OnlineFbank(options)
-        lines = [line.split() for line in Path(mvn).read_text("utf-8").splitlines() if line.split()]
+        lines = [
+            line.split()
+            for line in Path(mvn).read_text("utf-8").splitlines()
+            if line.split()
+        ]
         vectors = {}
         for current, following in zip(lines, lines[1:]):
-            if current[0] in ("<AddShift>", "<Rescale>") and following[0] == "<LearnRateCoef>":
+            if (
+                current[0] in ("<AddShift>", "<Rescale>")
+                and following[0] == "<LearnRateCoef>"
+            ):
                 vectors[current[0]] = np.array(following[3:-1], np.float64)
         self.mean, self.scale = vectors["<AddShift>"], vectors["<Rescale>"]
         if self.mean.shape != (FEATURES,) or self.scale.shape != (FEATURES,):
@@ -69,9 +76,18 @@ class Frontend:
         start = max(0, self.offset - 2)
         end = min(ready, self.offset + count + 2)
         frames = np.stack([self.fbank.get_frame(i) for i in range(start, end)])
-        indices = np.clip(np.arange(self.offset, self.offset + count)[:, None] + np.arange(-2, 3), 0, ready - 1) - start
+        indices = (
+            np.clip(
+                np.arange(self.offset, self.offset + count)[:, None] + np.arange(-2, 3),
+                0,
+                ready - 1,
+            )
+            - start
+        )
         # 上游 CMVN 在 float64 中运算，再转模型 float32，不能沿用 ASR 的 float32 缓存。
-        features = ((frames[indices].reshape(count, FEATURES) + self.mean) * self.scale).astype(np.float32)[None]
+        features = (
+            (frames[indices].reshape(count, FEATURES) + self.mean) * self.scale
+        ).astype(np.float32)[None]
         offset = self.offset
         self.offset += count
         drop = max(0, self.offset - 2) - self.popped
@@ -84,7 +100,9 @@ class Segmenter:
     """FunASR 0.4.9 的固定多段离线路径，只保留采样区间和持续状态。"""
 
     def __init__(self):
-        self.offset = self.head = self.ends = 0  # 已消费帧数、可回看的最早帧、已结束段数。
+        self.offset = self.head = self.ends = (
+            0  # 已消费帧数、可回看的最早帧、已结束段数。
+        )
         self.noise = -100.0
         self.segment = None
         self.reset()
@@ -128,7 +146,10 @@ class Segmenter:
             self.silence = 0
             if self.voice and not previous and self.start == -1:
                 self.start = max(self.head, frame - LOOKBACK)
-                self.segment = [self.start * FRAME_SHIFT, (self.start + 1) * FRAME_SHIFT]
+                self.segment = [
+                    self.start * FRAME_SHIFT,
+                    (self.start + 1) * FRAME_SHIFT,
+                ]
                 self.head = self.start + 1
                 for current in range(self.start + 1, frame + 1):
                     self.extend(current)
@@ -158,7 +179,12 @@ class Segmenter:
 
     def accept(self, scores, waveform, final):
         """处理一块模型得分及其配套波形，返回本块结束的 `[起点, 终点]` 采样区间。"""
-        if scores.ndim != 3 or scores.shape[0] != 1 or scores.shape[2] != PDFS or not np.isfinite(scores).all():
+        if (
+            scores.ndim != 3
+            or scores.shape[0] != 1
+            or scores.shape[2] != PDFS
+            or not np.isfinite(scores).all()
+        ):
             raise ValueError("Invalid FSMN scores")
         count = scores.shape[1]
         if len(waveform) != (count - 1) * FRAME_SHIFT + FRAME_LENGTH:
@@ -166,20 +192,31 @@ class Segmenter:
         output = []
         for index in range(count):
             frame = self.offset + index
-            decibel = 10 * math.log10(np.square(waveform[index * FRAME_SHIFT:index * FRAME_SHIFT + FRAME_LENGTH]).sum() + 0.000001)
+            decibel = 10 * math.log10(
+                np.square(
+                    waveform[index * FRAME_SHIFT : index * FRAME_SHIFT + FRAME_LENGTH]
+                ).sum()
+                + 0.000001
+            )
             if decibel < DECIBEL_THRESHOLD:
                 # 固定上游在低能量分支先更新窗口一次，再走常规帧处理。
                 self.detect(False, frame, False, output)
                 speech = False
             else:
-                noise = sum([scores[0, index, 0]])  # 保留上游 NumPy 标量运算，float 转换会改变阈值附近的结果。
+                noise = sum(
+                    [scores[0, index, 0]]
+                )  # 保留上游 NumPy 标量运算，float 转换会改变阈值附近的结果。
                 noise_prob = math.log(noise)
                 speech_prob = math.log(1.0 - noise)
                 speech = math.exp(speech_prob) >= math.exp(noise_prob) + NOISE_THRESHOLD
                 if speech:
                     speech = decibel - self.noise >= SNR_THRESHOLD
                 else:
-                    self.noise = decibel if self.noise < -99.9 else (decibel + self.noise * (NOISE_FRAMES - 1)) / NOISE_FRAMES
+                    self.noise = (
+                        decibel
+                        if self.noise < -99.9
+                        else (decibel + self.noise * (NOISE_FRAMES - 1)) / NOISE_FRAMES
+                    )
             self.detect(speech, frame, final and index == count - 1, output)
         self.offset += count
         if final and self.segment is not None:

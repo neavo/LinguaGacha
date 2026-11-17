@@ -8,6 +8,7 @@ import type {
   ImageBook,
   ImageCleanRegion,
   ImagePage,
+  ImagePreserveReason,
   ImageRecord,
   ImageLayoutArea,
 } from "../../../shared/image";
@@ -90,7 +91,7 @@ export type PreparePageEvidence = {
 export type EraseRegionResult = {
   regionId: string;
   disposition: "translate" | "preserve";
-  preserveReason?: "intentional" | "repair_failed" | "unreadable";
+  preserveReason?: ImagePreserveReason;
   method?: "fill" | "strokes" | "boxes";
   eraseMask?: string;
   eraseMaskSha256?: string;

@@ -10,17 +10,23 @@ source[:3] = 0
 selection = np.full((10, 10), 255, np.uint8)
 text = np.zeros_like(selection)
 background, color = fill.analyze_background(source, selection, text)
-assert background == dict(route="model", coverage=.7, samplePixels=100)
+assert background == dict(route="model", coverage=0.7, samplePixels=100)
 assert color == [235, 230, 225]
 text[:3] = 255
 background, color = fill.analyze_background(source, selection, text)
 assert background == dict(route="fill", coverage=1, samplePixels=70)
 assert color == [235, 230, 225]
-assert fill.analyze_background(source, selection, selection) == (dict(route="model", coverage=None, samplePixels=0), None)
+assert fill.analyze_background(source, selection, selection) == (
+    dict(route="model", coverage=None, samplePixels=0),
+    None,
+)
 for dark_pixels, route in ((20, "fill"), (21, "model")):
     source[:] = 255
     source.reshape(-1, 3)[:dark_pixels] = 0
-    assert fill.analyze_background(source, selection, np.zeros_like(text))[0]["route"] == route
+    assert (
+        fill.analyze_background(source, selection, np.zeros_like(text))[0]["route"]
+        == route
+    )
 
 ring = np.zeros((30, 30), np.uint8)
 ring[3:27, 3:27] = 255
@@ -51,5 +57,9 @@ edge = np.zeros_like(left)
 edge[:8, :8] = 255
 result = fill.render_fill(source, [(edge, [255, 255, 255])])
 assert np.all(result[0, 0] == 255) and np.all(result[7, 3] == 128)
-assert np.all(fill.render_fill(source, [(np.full_like(left, 255), [255, 255, 255])]) == 255)
-print('fill: background routing, inset, union transition, preserve and page edges passed')
+assert np.all(
+    fill.render_fill(source, [(np.full_like(left, 255), [255, 255, 255])]) == 255
+)
+print(
+    "fill: background routing, inset, union transition, preserve and page edges passed"
+)

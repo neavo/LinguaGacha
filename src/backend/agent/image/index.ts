@@ -1,18 +1,4 @@
 import { build_clean_manifest } from "./artifacts";
-export {
-  publish,
-  type DeliveryManifest,
-  type DeliveryPage,
-  type ImageDeliverySource,
-  type ImageTextDecision,
-} from "./publish";
-export { render } from "./render";
-export type {
-  ImageTextInput,
-  ImageTextRender,
-  ImageTextPageResult,
-  ImageTextRegionResult,
-} from "../../../shared/image-text";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { default_native_fs as fs } from "../../../native/native-fs";
@@ -20,11 +6,11 @@ import type {
   ImageBook,
   ImageClean,
   ImagePage,
+  ImagePreserveReason,
   ImageRecord,
   ImageRegion,
 } from "../../../shared/image";
 import {
-  compute_clean_status,
   erase_input_digest,
   image_sha256,
   validate_image_book,
@@ -93,6 +79,7 @@ const UUID_RE = /^[a-f0-9-]{36}$/u; // runId 直接参与目录定位，拒绝�
 
 /** 产品 Agent 对自动消字页面的接受决定。 */
 export type ImagePageDecision = { pageId: string; accepted: boolean };
+export type ImageSource = { path: string; relativePath: string };
 
 /** 运行成员只能引用所属运行目录。 */
 function resolve_run_member(directory: string, member: unknown): string {
@@ -140,7 +127,7 @@ function collect_review_status(draft: Draft) {
 
 /** 第一阶段取证：保留原始字节与身份，气泡分割冻结选区，排除文字框后产出底色与分流建议。 */
 export async function prepare(options: {
-  sources: readonly string[];
+  sources: readonly ImageSource[];
   workDirectory: string;
   device?: ImageDevice;
 }): Promise<Draft & { evidence: PreparePageEvidence[] }> {
@@ -159,6 +146,7 @@ export async function prepare(options: {
       const records: ImageRecord[] = [];
       const pageMeta: {
         pageId: string;
+        relativePath: string;
         original: string;
         sha256: string;
         width: number;
@@ -168,7 +156,7 @@ export async function prepare(options: {
 
       await fs.make_dir_async(path.join(stage, "originals"));
       for (const source of options.sources) {
-        const originalBytes = fs.read_file(source);
+        const originalBytes = fs.read_file(source.path);
         const metadata = image_metadata(originalBytes);
         const pageId = randomUUID();
         const original = `originals/${pageId}${metadata.extension}`;
@@ -176,6 +164,7 @@ export async function prepare(options: {
         fs.write_file_atomic(target, originalBytes);
         pageMeta.push({
           pageId,
+          relativePath: source.relativePath.replaceAll("\\", "/"),
           original,
           sha256: image_sha256(originalBytes),
           width: metadata.width,
@@ -588,7 +577,6 @@ export async function review(options: {
         runId: options.runId,
         revision: draft.revision,
         replayed: false,
-        status: compute_clean_status(draft.book),
       };
 
     const nextPages = structuredClone(draft.book.pages);
@@ -627,7 +615,7 @@ export async function review(options: {
         regions: {
           regionId: string;
           disposition: "translate" | "preserve";
-          preserveReason?: "intentional" | "repair_failed" | "unreadable";
+          preserveReason?: ImagePreserveReason;
           eraseMask?: string;
           eraseMaskSha256?: string;
         }[];
@@ -698,16 +686,12 @@ export async function review(options: {
       runId: options.runId,
       revision: next.revision,
       replayed: false,
-      status: compute_clean_status(next.book),
     };
   });
 }
 
 /** 打包 `.image` 资产：要求整书确认且逐页通过验收，离线无模型即可完成。 */
-export async function pack(
-  workDirectory: string,
-  output: string,
-): Promise<{ path: string; status: ImageClean["status"] }> {
+export async function pack(workDirectory: string, output: string): Promise<{ path: string }> {
   const directory = path.resolve(workDirectory);
   const target = path.resolve(output);
   return locked(directory, async () => {
@@ -730,7 +714,7 @@ export async function pack(
     } finally {
       await fs.remove_async(temporary, { force: true });
     }
-    return { path: target, status: clean.status };
+    return { path: target };
   });
 }
 

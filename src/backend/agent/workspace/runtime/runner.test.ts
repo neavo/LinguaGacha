@@ -128,46 +128,37 @@ describe("AgentWorkspaceRunner", () => {
     await result;
   });
 
-  it.each(["pdf", "image_text"] as const)(
-    "程序退出后等待 %s 宿主回收，取消后不发送迟到结果",
-    async (kind) => {
-      let host_signal: AbortSignal | undefined;
-      let finish: () => void = () => undefined;
-      request = {
-        ...request,
-        [kind === "pdf" ? "printPDF" : "renderImageText"]: async (
-          _request: unknown,
-          signal: AbortSignal,
-        ) => {
-          host_signal = signal;
-          await new Promise<void>((resolve) => {
-            finish = resolve;
-          });
-          return { path: "work/result.pdf" };
-        },
-      };
-      const { child, result } = await start_run();
-      child.emit("message", {
-        type: "request",
-        id: 1,
-        request:
-          kind === "pdf"
-            ? { kind: "print_pdf", html: "<p>test</p>" }
-            : { kind: "render_image_text_page", inputPath: null, inputSha256: null },
-      });
-      let settled = false;
-      void result.then(() => {
-        settled = true;
-      });
-      child.emit("close", 0);
-      expect(host_signal?.aborted).toBe(true);
-      await Promise.resolve();
-      expect(settled).toBe(false);
-      finish();
-      await result;
-      expect(child.send).toHaveBeenCalledTimes(1);
-    },
-  );
+  it("程序退出后等待 PDF 宿主回收，取消后不发送迟到结果", async () => {
+    let host_signal: AbortSignal | undefined;
+    let finish: () => void = () => undefined;
+    request = {
+      ...request,
+      printPDF: async (_request: unknown, signal: AbortSignal) => {
+        host_signal = signal;
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return { path: "work/result.pdf" };
+      },
+    };
+    const { child, result } = await start_run();
+    child.emit("message", {
+      type: "request",
+      id: 1,
+      request: { kind: "print_pdf", html: "<p>test</p>" },
+    });
+    let settled = false;
+    void result.then(() => {
+      settled = true;
+    });
+    child.emit("close", 0);
+    expect(host_signal?.aborted).toBe(true);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await result;
+    expect(child.send).toHaveBeenCalledTimes(1);
+  });
 
   it("监管失败也等待在途宿主请求实际结算", async () => {
     const supervision = Promise.withResolvers<{ exitCode: number | null; signal: string | null }>();

@@ -11,10 +11,6 @@ import { execute_image_request } from "../../tools/emit-image";
 import { execute_doing_request } from "../../tools/doing";
 import { execute_print_pdf_request, type WorkspacePrintPDFPort } from "../../tools/print-pdf";
 import {
-  execute_image_text_request,
-  type WorkspaceImageTextPort,
-} from "../../tools/render-image-text";
-import {
   execute_inspect_sources_request,
   type WorkspaceInspectSourcesPort,
 } from "../../tools/inspect-sources";
@@ -49,7 +45,6 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
     generateFiles?: WorkspaceGenerateFilesPort;
     getOutputPaths?: WorkspaceGetOutputPathsPort;
     printPDF?: WorkspacePrintPDFPort;
-    renderImageText?: WorkspaceImageTextPort;
     inspectSources?: WorkspaceInspectSourcesPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
     emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
     doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
@@ -265,12 +260,6 @@ export class AgentWorkspaceRunner {
               request,
               controller.signal,
               run_request.generateFiles,
-            );
-          if (request.kind === "render_image_text_page")
-            return execute_image_text_request(
-              request,
-              controller.signal,
-              run_request.renderImageText,
             );
           if (request.kind === "print_pdf")
             return execute_print_pdf_request(request, controller.signal, run_request.printPDF);

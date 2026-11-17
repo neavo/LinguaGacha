@@ -20,6 +20,9 @@ import type { LogTargets } from "../../shared/log";
 import { write_bootstrap_error } from "./bootstrap-log";
 import { BackendResources } from "./backend-resources";
 import { BackendServices } from "./backend-services";
+import { ImageOutputService } from "../file/image/image-output";
+import { run_helper } from "../agent/inference/helper";
+import path from "node:path";
 
 type GuiBackendBootstrapState = "idle" | "starting" | "ready" | "stopping" | "stopped" | "failed";
 
@@ -104,6 +107,21 @@ export class GuiBackendBootstrap {
       this.resources = resources;
       const event_stream = new ApiStreamHub();
       this.event_stream = event_stream;
+      const image_output = this.options.imageTextHost
+        ? new ImageOutputService(this.options.imageTextHost, async (command, input) =>
+            run_helper(
+              path.join(
+                resources.paths.get_agent_python_root_dir(),
+                "project",
+                ".venv",
+                ...(process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"]),
+              ),
+              "lg.image.helper",
+              command,
+              input,
+            ),
+          )
+        : undefined;
       const services = new BackendServices({
         paths: resources.paths,
         metadata: resources.metadata,
@@ -113,6 +131,7 @@ export class GuiBackendBootstrap {
         publishEvent: (topic, payload) => event_stream.publish(topic, payload),
         openOutputFolder: this.options.openDirectory,
         pdfHost: this.options.pdfHost,
+        ...(image_output ? { imageOutput: image_output } : {}),
         workspaceRuntimeDirectory: this.options.workspaceRuntimeDirectory,
         workerExecution: this.options.workerExecution,
       });
@@ -150,7 +169,6 @@ export class GuiBackendBootstrap {
         generation: services.files.translationGeneration,
         logManager: resources.logManager,
         run: runner.run.bind(runner),
-        imageTextHost: this.options.imageTextHost,
         packageSources: package_sources,
         pdfHost: this.options.pdfHost,
         openDirectory: this.options.openDirectory,

@@ -2,6 +2,7 @@
 
 import numpy as np
 from lg.media import visualize as visual
+
 wave = np.sin(np.arange(visual.FFT_SIZE) * 2 * np.pi * 440 / visual.RATE)
 mono = visual.energy(wave[:, None])
 stereo = visual.energy(np.column_stack((wave, -wave)))
@@ -21,7 +22,12 @@ for values in (
         histogram.add(block)
     exact = max(visual.FLOOR, np.percentile(values, 99))
     assert (
-        np.max(np.abs(visual.level(values, exact) - visual.level(values, histogram.reference())))
+        np.max(
+            np.abs(
+                visual.level(values, exact)
+                - visual.level(values, histogram.reference())
+            )
+        )
         <= 0.01
     )
 assert visual.incompatible(

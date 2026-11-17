@@ -83,8 +83,8 @@ it.each(["script", "unselected"])("Ren’Py %s 读取失败按真实依赖保留
     )!;
     await expect(
       service.write_items([{ ...code, status: "PROCESSED", dst: "代码译文" }], context),
-    ).resolves.toBeUndefined();
-  } else await expect(write).resolves.toBeUndefined();
+    ).resolves.toEqual([]);
+  } else await expect(write).resolves.toEqual([]);
 });
 
 /**

@@ -205,6 +205,21 @@ export const pt_br_app = {
   },
   translation_export: {
     agent_request: "Exporte as traduções sem realizar outras operações",
+    image_reason: {
+      small_font: "[Aviso] A fonte está pequena …",
+      tight_margin: "[Aviso] O texto está próximo da borda da região …",
+      off_center: "[Aviso] O texto está fora do centro …",
+      layout_no_fit: "[Falha] A tradução completa não cabe; o conteúdo original será mantido …",
+      outside_layout_area:
+        "[Falha] O texto sairia da área permitida; o conteúdo original será mantido …",
+      translation_incomplete:
+        "[Falha] A tradução está incompleta; o conteúdo original será mantido …",
+      erase_failed:
+        "[Falha] O texto original não pôde ser removido com segurança; o conteúdo original será mantido …",
+      unreadable:
+        "[Falha] O texto original não pôde ser lido com segurança; o conteúdo original será mantido …",
+      page_output_failed: "[Falha] A saída da página falhou; o conteúdo original será mantido …",
+    },
     action: "Exportar traduções",
     confirmation: {
       generic_description:

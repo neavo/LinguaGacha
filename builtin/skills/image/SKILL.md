@@ -3,7 +3,7 @@ name: image
 description: 翻译、审校、分析、修改图片或漫画文件，或制作、更新、写回 `.image` 资产时使用。
 ---
 
-本技能处理有框与无框文字。目标是完整登记原文，生成可恢复的无字底图，并只交付经过视觉验收的译图。
+本技能处理有框与无框文字。目标是完整登记原文、保留原始相对路径，并生成可恢复的无字底图。译图由文件生成服务自动排版、回退和写出。
 
 阶段导航：
 
@@ -14,8 +14,8 @@ description: 翻译、审校、分析、修改图片或漫画文件，或制作�
 |原稿与条目|理解归档事实、区域状态和原文顺序|
 |可见文本补漏|核对检测覆盖，有遗漏时重做 `.image`|
 |翻译后检查|核对译文快照的完成状态|
-|写回与验证|自动排版、整页视觉验收和发布|
-|交付说明|报告完整、部分和保留内容|
+|写回与验证|读取自动生成的图片报告|
+|交付说明|报告成功、警告、失败和原文回退|
 
 # 来源调查
 
@@ -48,11 +48,16 @@ if (image.missing_models().length > 0) await image.prepare_models();
 
 ```js
 const prepared = await image.prepare({
-  sources,
+  sources: sources.map((source) => ({
+    path: source.path,
+    relativePath: source.relativePath,
+  })),
   workDirectory: 'work/image/ch01',
   device: 'cpu',
 });
 ```
+
+`relativePath` 相对本批图片共同来源根目录，使用 `/`，保持原始目录与文件名。不同页面不能使用大小写不敏感的同一路径。
 
 逐页查看完整原页、`evidence[].preview`、`fillPreview` 和必要裁图。
 
@@ -110,10 +115,10 @@ const reviewed = await image.review({
 
 - `accepted: true` 提交该页自动底图。
 - `accepted: false` 保留当前事实和已有验收结果。修正区域后重新运行。
-- 自动修复失败的区域提交为 `repair_failed`，归档状态成为 `partial`。
+- 自动修复失败的区域提交为 `repair_failed`，导出时该区域保留原文并记录失败。
 - 未知页面、遗漏页面或过期运行会拒绝整次提交。
 
-提交后封装并核对状态：
+提交后封装：
 
 ```js
 const packed = await image.pack(workDirectory, 'work/image/ch01.image');
@@ -129,7 +134,7 @@ const packed = await image.pack(workDirectory, 'work/image/ch01.image');
 |---|---|
 |`image.json`|页身份、检测文字框、语义区域与 `layoutArea`|
 |`items.json`|按阅读顺序排列的原文与可选说话人|
-|`clean.json`|已验收底图、实际 `eraseMask` 与 `complete | partial` 状态|
+|`clean.json`|已验收底图、实际 `eraseMask` 与区域处置|
 |`layout-areas/<pageId>/<regionId>.png`|译文允许出现的区域|
 |`erase-masks/<pageId>/<regionId>.png`|自动消字实际改变的像素|
 
@@ -137,7 +142,7 @@ const packed = await image.pack(workDirectory, 'work/image/ch01.image');
 
 `translate` 区域进入工程条目。`preserve` 区域只保留原因。
 
-`text: null` 表示尚未翻译。空字符串表示明确不写文字。
+`text: null` 表示工程条目尚未完成。空字符串表示已确认不写文字。
 
 原文、姓名、阅读顺序或方向变化不要求重新消字。区域、`layoutArea`、处置或实际原图变化会使对应底图验收失效。
 
@@ -161,64 +166,28 @@ const packed = await image.pack(workDirectory, 'work/image/ch01.image');
 - `repair_failed`、`unreadable` 和 `intentional` 仍符合原页事实。
 - 原文、方向或区域在翻译期间发生变化时，先更新 `.image`，再继续写回。
 
-整页排版和视觉验收属于「写回与验证」，只有导出或交付图片成果时执行。
+整页排版属于「写回与验证」，只有导出或交付图片成果时执行。
 
 # 写回与验证
 
-`project-operation` 调用 `generateFiles` 后，使用已展开的 `.image` 原稿和对应写回输入：
+`project-operation` 调用 `generateFiles` 时，文件生成服务直接完成图片排版与写出。图片不会进入 `writeback.files`，Agent 不修改排版输入，也不逐页接受或拒绝。
 
-```js
-const draft = await image.restore('sources/ch01.image', 'work/image/ch01');
-const rendered = await image.render({
-  workDirectory: 'work/image/ch01',
-  inputPath: `${writeback.input_path}/ch01.image/items.json`,
-  expectedRevision: draft.revision,
-});
-for (const page of rendered.pages)
-  if (page.preview) await ws.emitImage(page.preview, { maxEdge: 1600 });
-```
+每张页面都按 `.image` 中的原始相对路径输出：
 
-程序根据原文几何、译文和 `layoutArea` 自动生成排版，并验证文字完整、字形、边距、重叠和像素范围。Agent 查看最终整页，核对：
+- 成功区域写入译文。
+- 边距偏小、中心偏移和小字号属于警告，继续写入译文。
+- 无法排版和越界属于文字渲染失败；消字失败和无法识读属于图片准备失败。以上区域均保留原文。应用字体无法绘制某个字形时由 Chromium 自动使用系统字体回退。
+- 译文尚未完成属于失败，对应区域保留原文。
+- 整页计算失败时输出原图，不影响其他页面。
 
-- 是否仍有原文或漏译。
-- 译文与区域是否对应。
-- 阅读顺序、方向、断行和字号是否自然。
-- 文字是否遮挡人物或重要画面。
-
-`rendered` 表示机械门禁通过，仍需形成页面决定。只有 `rendered` 页面可以接受。拒绝时填写具体视觉原因：
-
-```js
-const delivery = await image.publish({
-  workDirectory: 'work/image/ch01',
-  outputDirectory: 'work/image/ch01-delivery',
-  expectedRevision: draft.revision,
-  source: {
-    kind: 'rendered',
-    renderId: rendered.renderId,
-    decisions: [
-      { pageId: 'p1', decision: 'accept' },
-      { pageId: 'p2', decision: 'reject', reason: 'r0003 断行影响阅读' },
-    ],
-  },
-});
-```
-
-未译、缺字、`no_fit`、修复失败和视觉拒绝进入 `incomplete/`：
-
-- 译文过长或表达不自然：修订工程译文后重新生成写回输入。
-- 区域、方向、原文或消字错误：回到 `.image` 的导入准备与更新流程。
-- 自动排版本身不合格：拒绝页面并报告区域和现象，不在工作材料中伪造逐页排版参数。
-
-把发布目录中核对过的页面作为该资产的写回成果，写回输入、拒绝页和诊断材料不作为完整成品交付。
+文件生成服务在译文目录写入 `.lg-export-report.json`。Agent 只读取其中的 `summary`、文件 `path` 和区域条目，不根据文件目录推断状态。
+区域条目使用 `success | warning | failure`，警告可以包含多个原因，失败包含一个原因。每个原因同时提供稳定 `code` 和按应用语言生成的自然语言 `reason`。普通警告只说明问题；原文回退与页面失败同时说明处理方式。
 
 # 交付说明
 
-对照 `delivery.json`、`clean.json` 与 `image.json` 汇报：
+对照 `.lg-export-report.json`、`clean.json` 与 `image.json` 汇报：
 
-- `.image`、成品目录与 `complete | partial` 状态。
-- `repair_failed`、`unreadable`、未译、`no_fit`、缺字和视觉拒绝的页与区域。
+- `.image`、成品目录与成功、警告、失败、原文回退数量。
+- `repair_failed`、`unreadable`、未译、无法排版和越界的页与区域。
 - `intentional` 保留文字和确认为误检的检测框。
-- 小字号但已视觉确认可读的区域。
-
-`complete` 只表示文字覆盖完整、底图完整且所有待译页均已视觉接受。
-`partial` 允许交付，但必须同时提醒用户上述未完成页与区域，不能表述为完整成果。
+- 边距偏小、中心偏移和小字号警告。

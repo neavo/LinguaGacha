@@ -16,13 +16,16 @@ assert np.all(record["coreBox"][:, 1] >= record["box"][:, 1].min())
 assert np.all(record["coreBox"][:, 1] <= record["box"][:, 1].max())
 assert np.array_equal(text_detection.det_boxes(prediction, 64, 64)[0], record["box"])
 
-assert len(
-    text_detection.det_box_records(
-        prediction * 0.4,
-        64,
-        64,
-        threshold=0.15,
-        box_threshold=0.25,
-        unclip_ratio=1.4,
+assert (
+    len(
+        text_detection.det_box_records(
+            prediction * 0.4,
+            64,
+            64,
+            threshold=0.15,
+            box_threshold=0.25,
+            unclip_ratio=1.4,
+        )
     )
-) == 1
+    == 1
+)

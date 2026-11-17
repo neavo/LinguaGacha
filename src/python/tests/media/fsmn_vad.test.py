@@ -5,9 +5,16 @@ from pathlib import Path
 
 import numpy as np
 from lg.media import fsmn_vad as vad
+
 with tempfile.TemporaryDirectory(prefix="media frontend ") as directory:
     mvn = Path(directory) / "fixture.mvn"
-    mvn.write_text("<AddShift>\n<LearnRateCoef> 1 [ " + "0 " * 400 + "]\n<Rescale>\n<LearnRateCoef> 1 [ " + "1 " * 400 + "]\n")
+    mvn.write_text(
+        "<AddShift>\n<LearnRateCoef> 1 [ "
+        + "0 " * 400
+        + "]\n<Rescale>\n<LearnRateCoef> 1 [ "
+        + "1 " * 400
+        + "]\n"
+    )
     for length in [0, 399, 400, 561, 6000 * 160 + 240, 12001 * 160 + 253]:
         wave = np.random.default_rng(length).normal(0, 0.1, length).astype(np.float32)
         results = []
@@ -15,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix="media frontend ") as directory:
             frontend = vad.Frontend(mvn)
             parts = []
             for begin in range(0, length, chunk):
-                frontend.accept(wave[begin:begin + chunk])
+                frontend.accept(wave[begin : begin + chunk])
                 while (batch := frontend.take()) is not None:
                     assert not batch[2]
                     parts.append(batch[1])
@@ -23,7 +30,9 @@ with tempfile.TemporaryDirectory(prefix="media frontend ") as directory:
             while (batch := frontend.take(True)) is not None:
                 parts.append(batch[1])
             assert all(0 < part.shape[1] <= 6000 for part in parts)
-            results.append(np.concatenate(parts, axis=1) if parts else np.empty((1, 0, 400)))
+            results.append(
+                np.concatenate(parts, axis=1) if parts else np.empty((1, 0, 400))
+            )
         np.testing.assert_array_equal(*results)
         assert results[0].shape[1] == max(0, (length - 400) // 160 + 1)
 
@@ -41,6 +50,11 @@ for frames, start, end, expected in [
     for offset in range(0, frames, 6000):
         count = min(6000, frames - offset)
         wave = np.full((count - 1) * 160 + 400, 0.1, np.float32)
-        actual += segmenter.accept(scores[:, offset:offset + count], wave, offset + count == frames)
-    assert actual == [[start * 16, end * 16] for start, end in expected], (actual, expected)
+        actual += segmenter.accept(
+            scores[:, offset : offset + count], wave, offset + count == frames
+        )
+    assert actual == [[start * 16, end * 16] for start, end in expected], (
+        actual,
+        expected,
+    )
 print("fsmn_vad boundaries passed")

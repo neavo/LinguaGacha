@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentImageHostResult } from "../../shared/agent-image";
-import type { ImageTextHostResult } from "../../shared/image-text";
+import type { ImageTextPaint } from "../../shared/image-text";
 
 import { normalize_app_language, type AppLanguage } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
@@ -100,7 +100,7 @@ export async function run_backend_runtime(args: {
       return result;
     },
     imageTextHost: async (operation, signal) => {
-      const result = (await call_host(operation, signal)) as ImageTextHostResult;
+      const result = (await call_host(operation, signal)) as ImageTextPaint[];
       signal?.throwIfAborted();
       return result;
     },

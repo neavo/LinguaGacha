@@ -24,6 +24,7 @@ import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
+import type { ImageOutputService } from "./image/image-output";
 import {
   TranslationFileGenerationService,
   type OutputFolderOpener,
@@ -133,7 +134,7 @@ function create_database(
 }
 
 describe("TranslationFileGenerationService", () => {
-  it("图片写回消费重复项复用后的完成结果，并保留空正文与未翻译", async () => {
+  it("图片直接保留原始相对路径并报告空正文与未翻译", async () => {
     const fixture = image_fixture(["completed", "duplicated", "blank", "unfinished"]);
     const items = fixture.records.map((record, row) =>
       create_item({
@@ -148,6 +149,29 @@ describe("TranslationFileGenerationService", () => {
     );
     const session = new ProjectSessionState();
     session.mark_loaded(path.join(temp_dir, "book.lg"));
+    const imageOutput = {
+      write_asset: async (options) => ({
+        assetPath: options.assetPath,
+        files: fixture.book.pages.map((page, index) => {
+          const file = path.join(options.outputRoot, "book", page.relativePath);
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          fs.writeFileSync(file, fixture.original);
+          return {
+            path: path.posix.join("book", page.relativePath),
+            entries: [
+              index === 3
+                ? {
+                    regionId: "text",
+                    status: "failure" as const,
+                    reasons: [{ code: "translation_incomplete" as const }],
+                    fallback: "original" as const,
+                  }
+                : { regionId: "text", status: "success" as const, reasons: [] },
+            ],
+          };
+        }),
+      }),
+    } satisfies Pick<ImageOutputService, "write_asset">;
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
@@ -159,17 +183,38 @@ describe("TranslationFileGenerationService", () => {
       session,
       async () => {},
       create_pdf_execution(),
+      undefined,
+      undefined,
+      imageOutput,
     );
     const generated = await service.generate_staging_files(path.join(temp_dir, "staging"), []);
-    const input = JSON.parse(
-      fs.readFileSync(path.join(generated.writeback!.input_path, "book.image/items.json"), "utf8"),
-    );
-    expect(input.records.map((record: { text: string | null }) => record.text)).toEqual([
-      "同组译文",
-      "同组译文",
-      "",
-      null,
+    expect(generated.writeback).toBeUndefined();
+    expect(fs.readdirSync(path.join(generated.output_path, "book"))).toEqual([
+      "blank.png",
+      "completed.png",
+      "duplicated.png",
+      "unfinished.png",
     ]);
+    expect(generated.image_report?.summary).toEqual({
+      success: 3,
+      warnings: 0,
+      failures: 1,
+      fallbacks: 1,
+    });
+    expect(path.basename(generated.image_report!.path)).toBe(".lg-export-report.json");
+    const report = JSON.parse(fs.readFileSync(generated.image_report!.path, "utf8"));
+    expect(
+      report.assets[0].files.find((file: { path: string }) => file.path.endsWith("unfinished.png"))
+        .entries[0],
+    ).toMatchObject({
+      status: "failure",
+      reasons: [
+        {
+          code: "translation_incomplete",
+          reason: expect.any(String),
+        },
+      ],
+    });
     expect(items[1]!.status).toBe("DUPLICATED");
   });
   it.each(["GENERIC", "MEDIA"])(

@@ -12,6 +12,7 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
   const maskSha = image_sha256(mask);
   const pages: ImagePage[] = ids.map((pageId) => ({
     pageId,
+    relativePath: `${pageId}.png`,
     original: `originals/${pageId}.png`,
     sha256: sha,
     width: 1,
@@ -50,7 +51,6 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
   const book: ImageBook = { bookId: "book", pages };
   const clean: ImageClean = {
     bookId: "book",
-    status: "complete",
     pages: pages.map((page) => ({
       pageId: page.pageId,
       clean: `clean/${page.pageId}.png`,

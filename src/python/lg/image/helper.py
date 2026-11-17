@@ -1,4 +1,5 @@
 """区域检测、自动消字、文字分区与离线归档。推理由宿主 Worker 执行。"""
+
 import hashlib
 import base64
 import json
@@ -26,16 +27,21 @@ MANGA_TEXT_THRESHOLD = 0.15
 MANGA_TEXT_BOX_THRESHOLD = 0.25
 MANGA_TEXT_UNCLIP = 1.4
 
+
 def read_image(path):
     """读取宿主已规范化的 RGB PNG，返回 OpenCV 使用的 BGR 像素。"""
     encoded = np.fromfile(str(path), dtype=np.uint8)
     image = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
-    if image is None or image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
+    if (
+        image is None
+        or image.dtype != np.uint8
+        or image.ndim != 3
+        or image.shape[2] != 3
+    ):
         raise ValueError(f"Expected normalized RGB image: {path}")
     if image.shape[0] * image.shape[1] > 100_000_000:
         raise ValueError("Image pixel budget exceeded")
     return image
-
 
 
 def save(file, image):
@@ -68,7 +74,6 @@ def forward(channel, kind, data):
     return results
 
 
-
 def model_input(image):
     """按 Ultralytics letterbox 放大与补边，空间尺寸对齐模型步长。"""
     h, w = image.shape[:2]
@@ -76,9 +81,21 @@ def model_input(image):
     rh, rw = round(h * gain), round(w * gain)
     ph, pw = (IMAGE_SIZE - rh) % MODEL_STRIDE, (IMAGE_SIZE - rw) % MODEL_STRIDE
     resized = cv2.resize(image, (rw, rh), interpolation=cv2.INTER_LINEAR)
-    padded = cv2.copyMakeBorder(resized, round(ph / 2 - 0.1), round(ph / 2 + 0.1),
-                               round(pw / 2 - 0.1), round(pw / 2 + 0.1), cv2.BORDER_CONSTANT, value=(114, 114, 114))
-    return np.ascontiguousarray(padded[:, :, ::-1].transpose(2, 0, 1)[None], dtype=np.float32) / 255
+    padded = cv2.copyMakeBorder(
+        resized,
+        round(ph / 2 - 0.1),
+        round(ph / 2 + 0.1),
+        round(pw / 2 - 0.1),
+        round(pw / 2 + 0.1),
+        cv2.BORDER_CONSTANT,
+        value=(114, 114, 114),
+    )
+    return (
+        np.ascontiguousarray(
+            padded[:, :, ::-1].transpose(2, 0, 1)[None], dtype=np.float32
+        )
+        / 255
+    )
 
 
 def postprocess(raw, proto, shape, input_shape):
@@ -89,18 +106,26 @@ def postprocess(raw, proto, shape, input_shape):
     scores = pred[:, 4]
     candidates = np.flatnonzero(scores > CONF)
     candidates = candidates[np.argsort(-scores[candidates], kind="stable")][:MAX_NMS]
-    boxes = np.concatenate((pred[:, :2] - pred[:, 2:4] / 2, pred[:, :2] + pred[:, 2:4] / 2), 1)
+    boxes = np.concatenate(
+        (pred[:, :2] - pred[:, 2:4] / 2, pred[:, :2] + pred[:, 2:4] / 2), 1
+    )
     area = (boxes[:, 2:] - boxes[:, :2]).prod(1)
     kept = []
     while len(candidates) and len(kept) < MAX_DET:
         i, candidates = candidates[0], candidates[1:]
         kept.append(i)
-        inter = np.maximum(0, np.minimum(boxes[i, 2:], boxes[candidates, 2:]) - np.maximum(boxes[i, :2], boxes[candidates, :2])).prod(1)
+        inter = np.maximum(
+            0,
+            np.minimum(boxes[i, 2:], boxes[candidates, 2:])
+            - np.maximum(boxes[i, :2], boxes[candidates, :2]),
+        ).prod(1)
         overlap = inter / (area[i] + area[candidates] - inter + 1e-7)
         candidates = candidates[overlap <= IOU]
     h, w = shape
     gain = min(ih / h, iw / w)
-    pad = np.array([round((iw - w * gain) / 2 - 0.1), round((ih - h * gain) / 2 - 0.1)] * 2)
+    pad = np.array(
+        [round((iw - w * gain) / 2 - 0.1), round((ih - h * gain) / 2 - 0.1)] * 2
+    )
     scaled = (boxes[kept] - pad) / gain
     scaled[:, [0, 2]] = scaled[:, [0, 2]].clip(0, w)
     scaled[:, [1, 3]] = scaled[:, [1, 3]].clip(0, h)
@@ -111,7 +136,12 @@ def postprocess(raw, proto, shape, input_shape):
     bottom, right = mh - round(pad_h + 0.1), mw - round(pad_w + 0.1)
     for i, box in zip(kept, scaled):
         logits = (pred[i, 5:] @ proto[0].reshape(32, -1)).reshape(mh, mw)
-        mask = cv2.resize(logits[top:bottom, left:right], (w, h), interpolation=cv2.INTER_LINEAR) > 0
+        mask = (
+            cv2.resize(
+                logits[top:bottom, left:right], (w, h), interpolation=cv2.INTER_LINEAR
+            )
+            > 0
+        )
         # 固定参考为 CPU retina_masks。该实现少于 50 个实例时用四舍五入后的框裁剪。
         if len(kept) < 50:
             x0, y0, x1, y1 = np.round(box).astype(int)
@@ -122,7 +152,10 @@ def postprocess(raw, proto, shape, input_shape):
         else:
             yy, xx = np.ogrid[:h, :w]
             mask &= (xx >= box[0]) & (xx < box[2]) & (yy >= box[1]) & (yy < box[3])
-        yield dict(box=box.tolist(), score=float(scores[i])), mask.astype(np.uint8) * 255
+        yield (
+            dict(box=box.tolist(), score=float(scores[i])),
+            mask.astype(np.uint8) * 255,
+        )
 
 
 def prepare(args, channel):
@@ -137,16 +170,22 @@ def prepare(args, channel):
     occupied = np.zeros((h, w), np.uint16)  # 保存候选序号，支持重叠证据追溯。
     preview = image.copy()
     candidates, regions, crops, backgrounds = [], [], {}, {}
-    for index, (record, raw_mask) in enumerate(postprocess(raw, proto, (h, w), tensor.shape[2:]), 1):
+    for index, (record, raw_mask) in enumerate(
+        postprocess(raw, proto, (h, w), tensor.shape[2:]), 1
+    ):
         rid = f"r{index:04d}"
         raw_path = save(root / "raw" / f"{rid}.png", raw_mask)
         inner = fill.inset_selection(raw_mask)
-        candidate = dict(regionId=rid, **record, rawMask=raw_path, overlaps=[], status="ready")
+        candidate = dict(
+            regionId=rid, **record, rawMask=raw_path, overlaps=[], status="ready"
+        )
         candidates.append(candidate)
         if not np.any(inner):
             candidate["status"] = "empty_area"
             continue
-        candidate["overlaps"] = [f"r{int(owner):04d}" for owner in np.unique(occupied[inner > 0]) if owner]
+        candidate["overlaps"] = [
+            f"r{int(owner):04d}" for owner in np.unique(occupied[inner > 0]) if owner
+        ]
         inner[occupied > 0] = 0
         if not np.any(inner):
             candidate["status"] = "covered"
@@ -157,15 +196,23 @@ def prepare(args, channel):
         layout_area = dict(path=member, sha256=file_sha256(target))
         candidate["layoutArea"] = layout_area
         for mask, tint in ((raw_mask, (0, 150, 255)), (inner, (0, 220, 0))):
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours, _ = cv2.findContours(
+                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
             cv2.drawContours(preview, contours, -1, tint, 1)
         x, y, bw, bh = cv2.boundingRect(raw_mask)
         cv2.putText(preview, rid, (x, max(16, y)), 0, 0.5, (0, 0, 230), 1)
-        crops[rid] = save(root / "crops" / f"{rid}.png", image[y:y + bh, x:x + bw])
+        crops[rid] = save(root / "crops" / f"{rid}.png", image[y : y + bh, x : x + bw])
     regions.extend(
-        dict(regionId=candidate["regionId"], kind="bubble", textBoxIds=[],
-             layoutArea=candidate["layoutArea"], direction=None,
-             disposition="translate", backgroundColor=None)
+        dict(
+            regionId=candidate["regionId"],
+            kind="bubble",
+            textBoxIds=[],
+            layoutArea=candidate["layoutArea"],
+            direction=None,
+            disposition="translate",
+            backgroundColor=None,
+        )
         for candidate in candidates
         if "layoutArea" in candidate
     )
@@ -180,15 +227,22 @@ def prepare(args, channel):
         cv2.fillConvexPoly(support, np.asarray(box, np.int32), 255)
         ids, counts = np.unique(occupied[support > 0], return_counts=True)
         ranked = [(count, int(owner)) for owner, count in zip(ids, counts) if owner]
-        owner = max(ranked)[1] if ranked and max(ranked)[0] >= np.count_nonzero(support) * 0.5 else None
+        owner = (
+            max(ranked)[1]
+            if ranked and max(ranked)[0] >= np.count_nonzero(support) * 0.5
+            else None
+        )
         text_box_id = f"t{len(text_box_records) + 1:04d}"
         owner_region_id = f"r{owner:04d}" if owner else None
         if owner_region_id:
             regions_by_id[owner_region_id]["textBoxIds"].append(text_box_id)
         text_box_records.append(
-            dict(textBoxId=text_box_id, box=np.asarray(box).tolist(),
-                 coreBox=np.asarray(record["coreBox"]).tolist(),
-                 ownerRegionId=owner_region_id)
+            dict(
+                textBoxId=text_box_id,
+                box=np.asarray(box).tolist(),
+                coreBox=np.asarray(record["coreBox"]).tolist(),
+                ownerRegionId=owner_region_id,
+            )
         )
 
     def analyze_bubbles():
@@ -248,22 +302,41 @@ def prepare(args, channel):
         append_text_box(record)
 
     _, fill_selections = analyze_bubbles()
-    fill_path = save(root / "fill-preview.png", fill.render_fill(image, fill_selections))
+    fill_path = save(
+        root / "fill-preview.png", fill.render_fill(image, fill_selections)
+    )
 
     for record in text_box_records:
         points = np.asarray(record["box"], np.int32)
         cv2.polylines(preview, [points], True, (255, 180, 0), 1, cv2.LINE_AA)
         x, y = points.min(axis=0)
-        cv2.putText(preview, record["textBoxId"], (int(x), max(14, int(y))), 0, 0.4,
-                    (255, 180, 0), 1, cv2.LINE_AA)
+        cv2.putText(
+            preview,
+            record["textBoxId"],
+            (int(x), max(14, int(y))),
+            0,
+            0.4,
+            (255, 180, 0),
+            1,
+            cv2.LINE_AA,
+        )
     preview_path = save(
         root / "preview.png",
         cv2.resize(preview, (round(w * scale), round(h * scale))),
     )
 
-    return dict(width=w, height=h, preview=preview_path, previewScale=scale,
-                fillPreview=fill_path, crops=crops, bubbles=candidates, draftRegions=regions,
-                textBoxes=text_box_records, backgrounds=backgrounds)
+    return dict(
+        width=w,
+        height=h,
+        preview=preview_path,
+        previewScale=scale,
+        fillPreview=fill_path,
+        crops=crops,
+        bubbles=candidates,
+        draftRegions=regions,
+        textBoxes=text_box_records,
+        backgrounds=backgrounds,
+    )
 
 
 def read_layout_area(file, layout_area, shape):
@@ -300,7 +373,7 @@ def detect_text(image, channel):
     def run(frame, x=0, y=0):
         """检测一个原尺寸分块，并把两种框移回整页坐标。"""
         tensor = manga_text_input(frame)
-        probability, = forward(channel, "text", tensor)
+        (probability,) = forward(channel, "text", tensor)
         records = text_detection.det_box_records(
             probability,
             *frame.shape[:2],
@@ -317,8 +390,14 @@ def detect_text(image, channel):
     records = run(image)
     if max(height, width) > TEXT_SIDE:
         stride = TEXT_SIDE - TEXT_SIDE // 8
-        xs = sorted(set(range(0, max(1, width - TEXT_SIDE + 1), stride)) | {max(0, width - TEXT_SIDE)})
-        ys = sorted(set(range(0, max(1, height - TEXT_SIDE + 1), stride)) | {max(0, height - TEXT_SIDE)})
+        xs = sorted(
+            set(range(0, max(1, width - TEXT_SIDE + 1), stride))
+            | {max(0, width - TEXT_SIDE)}
+        )
+        ys = sorted(
+            set(range(0, max(1, height - TEXT_SIDE + 1), stride))
+            | {max(0, height - TEXT_SIDE)}
+        )
         for y in ys:
             for x in xs:
                 records.extend(run(image[y : y + TEXT_SIDE, x : x + TEXT_SIDE], x, y))
@@ -361,7 +440,9 @@ def layout_areas(args, _channel):
             cv2.fillConvexPoly(mask, boxes[index], 255)
             core = np.asarray(args["textBoxes"][index]["coreBox"], np.float32)
             sizes.append(
-                min(np.linalg.norm(core[0] - core[1]), np.linalg.norm(core[0] - core[3]))
+                min(
+                    np.linalg.norm(core[0] - core[1]), np.linalg.norm(core[0] - core[3])
+                )
             )
         if not np.any(mask):
             raise ValueError(f"Empty region group: {group['regionId']}")
@@ -382,10 +463,17 @@ def layout_areas(args, _channel):
         file = save(output / member, mask)
         background, color = fill.analyze_background(image, mask, text_mask)
         backgrounds[group["regionId"]] = background
-        regions.append(dict(regionId=group["regionId"], kind="unframed",
-                            disposition="translate", textBoxIds=group["textBoxIds"],
-                            layoutArea=dict(path=member, sha256=file_sha256(file)),
-                            direction=None, backgroundColor=color))
+        regions.append(
+            dict(
+                regionId=group["regionId"],
+                kind="unframed",
+                disposition="translate",
+                textBoxIds=group["textBoxIds"],
+                layoutArea=dict(path=member, sha256=file_sha256(file)),
+                direction=None,
+                backgroundColor=color,
+            )
+        )
     return dict(regions=regions, backgrounds=backgrounds)
 
 
@@ -424,13 +512,19 @@ def _erase_regions(image, page, root, fill_region_ids, channel):
     ]
     for region in ordered:
         rid = region["regionId"]
-        layout_area = read_layout_area(root / region["layoutArea"]["path"], region["layoutArea"], (h, w))
+        layout_area = read_layout_area(
+            root / region["layoutArea"]["path"], region["layoutArea"], (h, w)
+        )
         relevant = [boxes[text_box_id] for text_box_id in region["textBoxIds"]]
         diagnostics = []
         method = None
         mask = None
         if rid in fill_regions and isinstance(region["backgroundColor"], list):
-            mask = layout_area if region["kind"] == "bubble" else _box_mask((h, w), layout_area, relevant)
+            mask = (
+                layout_area
+                if region["kind"] == "bubble"
+                else _box_mask((h, w), layout_area, relevant)
+            )
             if np.any(mask):
                 result = fill.render_fill(result, [(mask, region["backgroundColor"])])
                 method = "fill"
@@ -445,7 +539,9 @@ def _erase_regions(image, page, root, fill_region_ids, channel):
                     candidate_mask = build()
                     if not np.any(candidate_mask):
                         raise ValueError("Empty repair mask")
-                    if previous is not None and np.array_equal(candidate_mask, previous):
+                    if previous is not None and np.array_equal(
+                        candidate_mask, previous
+                    ):
                         continue
                     previous = candidate_mask
                     repaired = repair.inpaint(
@@ -496,12 +592,16 @@ def erase_page(args, channel):
         if region["disposition"] == "preserve":
             serialized.append(region)
             continue
-        mask_file = save(output / "masks" / f"{region['regionId']}.png", masks[region["regionId"]])
-        serialized.append({
-            **region,
-            "eraseMask": mask_file,
-            "eraseMaskSha256": file_sha256(mask_file),
-        })
+        mask_file = save(
+            output / "masks" / f"{region['regionId']}.png", masks[region["regionId"]]
+        )
+        serialized.append(
+            {
+                **region,
+                "eraseMask": mask_file,
+                "eraseMaskSha256": file_sha256(mask_file),
+            }
+        )
     clean = save(output / "clean.png", result)
     return dict(
         clean=clean,
@@ -513,8 +613,16 @@ def erase_page(args, channel):
 def pack(args, _channel):
     """按 SDK 已验证的成员清单流式归档。"""
     with zipfile.ZipFile(args["output"], "x", allowZip64=False) as archive:
-        for member, value in (("image.json", args["book"]), ("items.json", args["records"]), ("clean.json", args["clean"])):
-            archive.writestr(member, json.dumps(value, ensure_ascii=False), compress_type=zipfile.ZIP_DEFLATED)
+        for member, value in (
+            ("image.json", args["book"]),
+            ("items.json", args["records"]),
+            ("clean.json", args["clean"]),
+        ):
+            archive.writestr(
+                member,
+                json.dumps(value, ensure_ascii=False),
+                compress_type=zipfile.ZIP_DEFLATED,
+            )
         for member, source in args["sources"].items():
             archive.write(source, member, compress_type=zipfile.ZIP_STORED)
     return dict(path=args["output"])
@@ -656,7 +764,9 @@ def text_layout(args, _channel):
         crop = mask[y : y + h, x : x + w]
         choices = [[crop]]
         if region.get("kind") != "unframed":
-            choices += [[p["mask"], crop & ~p["mask"]] for p in partition_candidates(crop)]
+            choices += [
+                [p["mask"], crop & ~p["mask"]] for p in partition_candidates(crop)
+            ]
         candidates = []
         for ci, parts in enumerate(choices):
             parts.sort(
@@ -699,9 +809,7 @@ def text_layout(args, _channel):
                     )
                 )
             candidates.append(dict(candidateId=f"C{ci}", blocks=blocks))
-        regions.append(
-            dict(regionId=region["regionId"], candidates=candidates)
-        )
+        regions.append(dict(regionId=region["regionId"], candidates=candidates))
     return regions
 
 
@@ -756,71 +864,92 @@ def selected_geometry(args):
     return regions
 
 
-
-
-
 def text_compose(args, _channel):
-    """独立核对未经裁剪的原生覆盖层，仅合成通过边距和居中门禁的区域。"""
-    page, rules = args["page"], args["rules"]
+    """按原区域顺序写入成功译文，失败区域保留规范化原图。"""
+    page = args["page"]
     clean = read_image(args["source"])
-    if clean.shape[:2] != (page["height"], page["width"]):
+    original = read_image(args["original"])
+    if clean.shape != original.shape or clean.shape[:2] != (
+        page["height"],
+        page["width"],
+    ):
         raise ValueError("Text base dimensions mismatch")
-    geometry = {
-        (r["regionId"], r["candidateId"], r["blockId"]): r
-        for r in selected_geometry(args)
-    }
-    occupied = np.zeros(clean.shape[:2], bool)
+    result = original.copy()
+    fallback = set(args["fallbackRegionIds"])
+    clean_regions = {region["regionId"]: region for region in args["cleanRegions"]}
     with open(args["paint"], encoding="utf-8") as file:
         paints = json.load(file)["regions"]
-    seen = set()
+    paints_by_region = {}
     for paint in paints:
-        result = paint["result"]
-        rid = (result["regionId"], result["candidateId"], result["blockId"])
-        if rid in seen or rid not in geometry:
-            raise ValueError("Text paint region identity mismatch")
-        seen.add(rid)
-        if result["status"] != "rendered":
-            if "png" in paint:
-                raise ValueError("Failed region carries text pixels")
+        painted = paint["result"]
+        if painted["renderStatus"] == "failure":
             continue
-        entry = geometry[rid]
-        x, y, w, h = entry["box"]
-        if result["box"] != entry["box"]:
-            raise ValueError("Text crop mismatch")
-        raw = np.frombuffer(base64.b64decode(paint["png"], validate=True), np.uint8)
-        overlay = cv2.imdecode(raw, cv2.IMREAD_UNCHANGED)
-        if overlay is None or overlay.dtype != np.uint8 or overlay.shape != (h, w, 4):
-            raise ValueError("Invalid text overlay")
-        covered = overlay[:, :, 3] > 0
-        if not np.any(covered):
-            raise ValueError("Rendered text has no visible pixels")
-        distance = np.frombuffer(base64.b64decode(entry["distance"]), "<f4").reshape(h, w)
-        lower = distance[covered].min() - math.sqrt(2)
-        margin = max(rules["minimumMargin"], result["fontSize"] * rules["marginRatio"])
-        if lower < margin:
-            raise ValueError("Text coverage violates mask margin")
-        yy, xx = np.nonzero(covered)
-        bounds = [int(xx.min()+x), int(yy.min()+y), int(xx.max()+1+x), int(yy.max()+1+y)]
-        axis = 1 if next(r for r in page["regions"] if r["regionId"] == rid[0])["direction"] == "horizontal-tb" else 0
-        center = ((yy.min()+yy.max()+1) if axis else (xx.min()+xx.max()+1))/2
-        error = abs(center-entry["centroid"][axis])
-        tolerance = max(rules["minimumCenterTolerance"], result["fontSize"] * rules["centerToleranceRatio"])
-        if error > tolerance or bounds != result["bounds"] or abs(result["margin"]-float(lower)) > 1e-5 or abs(result["centerError"]-float(error)) > 1e-5:
-            raise ValueError("Text metrics mismatch")
-        if np.any(occupied[y:y+h,x:x+w] & covered):
-            raise ValueError("Text block pixels overlap")
-        occupied[y:y+h,x:x+w] |= covered
-        alpha = overlay[:, :, 3:4].astype(np.float64)/255
-        destination = clean[y:y+h, x:x+w]
-        composite = np.floor(overlay[:, :, :3]*alpha+destination*(1-alpha)+.5).astype(np.uint8)
-        destination[covered] = composite[covered]
-    output = save(args["output"], clean)
-    return dict(preview=output, previewSha256=file_sha256(output))
+        paints_by_region.setdefault(painted["regionId"], []).append(paint)
+
+    for region in page["regions"]:
+        region_id = region["regionId"]
+        clean_region = clean_regions[region_id]
+        if region["disposition"] != "translate" or region_id in fallback:
+            continue
+        mask_path = clean_region.get("eraseMask")
+        if not mask_path:
+            raise ValueError("Translated region has no erase mask")
+        mask = cv2.imdecode(
+            np.fromfile(str(Path(args["root"]) / mask_path), dtype=np.uint8),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        if mask is None or mask.shape != clean.shape[:2]:
+            raise ValueError("Invalid erase mask")
+        changed = mask > 0
+        result[changed] = clean[changed]
+        for paint in paints_by_region.get(region_id, []):
+            painted = paint["result"]
+            x, y, w, h = painted["box"]
+            raw = np.frombuffer(base64.b64decode(paint["png"], validate=True), np.uint8)
+            overlay = cv2.imdecode(raw, cv2.IMREAD_UNCHANGED)
+            if (
+                overlay is None
+                or overlay.dtype != np.uint8
+                or overlay.shape != (h, w, 4)
+            ):
+                raise ValueError("Invalid text overlay")
+            covered = overlay[:, :, 3] > 0
+            alpha = overlay[:, :, 3:4].astype(np.float64) / 255
+            destination = result[y : y + h, x : x + w]
+            composite = np.floor(
+                overlay[:, :, :3] * alpha + destination * (1 - alpha) + 0.5
+            ).astype(np.uint8)
+            destination[covered] = composite[covered]
+    return dict(preview=save(args["output"], result))
 
 
-COMMANDS = {"prepare": prepare, "layout_areas": layout_areas,
-            "erase": erase_page, "pack": pack,
-            "text_layout": text_layout, "text_compose": text_compose}
+def encode_output(args, _channel):
+    """按原扩展名编码最终页面，JPEG 输出不携带原稿方向元数据。"""
+    image = read_image(args["source"])
+    extension = args["extension"].lower()
+    if extension not in (".png", ".jpg", ".jpeg"):
+        raise ValueError("Unsupported image output format")
+    parameters = [cv2.IMWRITE_JPEG_QUALITY, 95] if extension != ".png" else []
+    ok, data = cv2.imencode(
+        ".jpg" if extension == ".jpeg" else extension, image, parameters
+    )
+    if not ok:
+        raise ValueError("Image output encoding failed")
+    output = Path(args["output"])
+    output.parent.mkdir(parents=True, exist_ok=True)
+    data.tofile(str(output))
+    return dict(path=str(output.resolve()))
+
+
+COMMANDS = {
+    "prepare": prepare,
+    "layout_areas": layout_areas,
+    "erase": erase_page,
+    "pack": pack,
+    "text_layout": text_layout,
+    "text_compose": text_compose,
+    "encode_output": encode_output,
+}
 
 if __name__ == "__main__":
     channel = Channel()

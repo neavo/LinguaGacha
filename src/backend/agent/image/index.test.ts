@@ -166,7 +166,10 @@ describe("@lg/image automatic erase transaction", () => {
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
     const work = path.join(tmp.path, "work");
-    const prepared = await prepare({ sources: [source], workDirectory: work });
+    const prepared = await prepare({
+      sources: [{ path: source, relativePath: "page.png" }],
+      workDirectory: work,
+    });
     const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
     const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
 
@@ -186,7 +189,6 @@ describe("@lg/image automatic erase transaction", () => {
       expectedRevision: run.revision,
       pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
     });
-    expect(committed.status).toBe("complete");
     const replayed = await review({
       workDirectory: work,
       runId: run.runId,
@@ -197,19 +199,22 @@ describe("@lg/image automatic erase transaction", () => {
     expect(replayed.revision).toBe(committed.revision);
 
     const output = path.join(tmp.path, "book.image");
-    expect((await pack(work, output)).status).toBe("complete");
+    await pack(work, output);
     const archive = await read_image_package(fs.readFileSync(output), output);
     expect(archive.clean.pages[0]!.regions[0]!.eraseMask).toBe(
       `erase-masks/${prepared.book.pages[0]!.pageId}/r1.png`,
     );
   });
 
-  it("非法页面决定不改草稿，自动失败形成 partial", async () => {
+  it("非法页面决定不改草稿，自动失败转为区域保留", async () => {
     using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-invalid-choice-"));
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
     const work = path.join(tmp.path, "work");
-    const prepared = await prepare({ sources: [source], workDirectory: work });
+    const prepared = await prepare({
+      sources: [{ path: source, relativePath: "page.png" }],
+      workDirectory: work,
+    });
     const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
     mockState.eraseFailed = true;
     const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
@@ -222,13 +227,12 @@ describe("@lg/image automatic erase transaction", () => {
       }),
     ).rejects.toThrow("Invalid or duplicate page decision");
     expect((await read(work)).book.pages[0]!.regions[0]!.disposition).toBe("translate");
-    const committed = await review({
+    await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
       pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
     });
-    expect(committed.status).toBe("partial");
     const current = await read(work);
     expect(current.book.pages[0]!.regions[0]!).toMatchObject({
       disposition: "preserve",
@@ -242,7 +246,10 @@ describe("@lg/image automatic erase transaction", () => {
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
     const work = path.join(tmp.path, "work");
-    const prepared = await prepare({ sources: [source], workDirectory: work });
+    const prepared = await prepare({
+      sources: [{ path: source, relativePath: "page.png" }],
+      workDirectory: work,
+    });
     const page = prepared.book.pages[0]!;
     const region = {
       regionId: "u1",
@@ -302,7 +309,13 @@ describe("@lg/image automatic erase transaction", () => {
     const secondSource = path.join(tmp.path, "second.png");
     fs.copyFileSync(source, secondSource);
     const work = path.join(tmp.path, "work");
-    const prepared = await prepare({ sources: [source, secondSource], workDirectory: work });
+    const prepared = await prepare({
+      sources: [
+        { path: source, relativePath: "page.png" },
+        { path: secondSource, relativePath: "second.png" },
+      ],
+      workDirectory: work,
+    });
     const page = prepared.book.pages[0]!;
     const applied = await apply(work, 0, {
       pages: prepared.book.pages.map((page) => ({
@@ -328,7 +341,6 @@ describe("@lg/image automatic erase transaction", () => {
       expectedRevision: run.revision,
       pages: run.pages.map((runPage) => ({ pageId: runPage.pageId, accepted: true })),
     });
-    expect(committed.status).toBe("complete");
     const current = await read(work);
     await apply(work, committed.revision, {
       pages: current.book.pages.map((item) =>

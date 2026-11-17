@@ -10,7 +10,6 @@ import type { SourceInspection } from "../../../../shared/project-file-changes";
 import type { WorkspaceInspectSourcesRequest } from "../../tools/inspect-sources";
 import type { Static } from "@earendil-works/pi-ai";
 import type { WorkspacePrintPDFRequest, WorkspacePrintPDFResult } from "../../tools/print-pdf";
-import type { WorkspaceImageTextRequest } from "../../tools/render-image-text";
 import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
 import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
 import type { UvConfiguration } from "../../uv/types";
@@ -24,7 +23,6 @@ export type WorkspaceRequest =
   | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
   | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
   | WorkspacePrintPDFRequest
-  | WorkspaceImageTextRequest
   | WorkspaceInspectSourcesRequest
   | WorkspaceGenerateFilesRequest
   | WorkspaceGetOutputPathsRequest;

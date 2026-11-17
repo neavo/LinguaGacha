@@ -2,29 +2,10 @@ import { Type, type Static } from "typebox";
 import { IMAGE_DIRECTION_SCHEMA, IMAGE_FILL_SCHEMA } from "./image";
 
 const ID = Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" });
-const SHA256 = Type.String({ pattern: "^[a-f0-9]{64}$" });
-
-/** 图片写回快照保留完成事实，空正文与未翻译分别表示。 */
-export const IMAGE_TEXT_INPUT_SCHEMA = Type.Object(
-  {
-    bookId: ID,
-    sourceSha256: SHA256,
-    records: Type.Array(
-      Type.Object(
-        {
-          pageId: ID,
-          regionId: ID,
-          text: Type.Union([Type.String(), Type.Null()]),
-        },
-        { additionalProperties: false },
-      ),
-      { maxItems: 100000 },
-    ),
-  },
-  { additionalProperties: false },
-);
-
-export type ImageTextInput = Static<typeof IMAGE_TEXT_INPUT_SCHEMA>;
+/** 文件生成内部快照保留完成事实，空正文与未翻译分别表示。 */
+export type ImageTextInput = {
+  records: { pageId: string; regionId: string; text: string | null }[];
+};
 
 /** 字号、间距和栅格判定共用规则。调用者只提供正文与已确认区域事实。 */
 export const IMAGE_TEXT_RULES = Object.freeze({
@@ -93,106 +74,30 @@ export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 export type ImageTextPage = Static<typeof IMAGE_TEXT_PAGE_SCHEMA>;
-export const IMAGE_TEXT_ENVIRONMENT_SCHEMA = Type.Object(
-  {
-    fontSha256: SHA256,
-    rendererSha256: SHA256,
-    chromium: Type.String({ minLength: 1 }),
-    platform: Type.String({ minLength: 1 }),
-    arch: Type.String({ minLength: 1 }),
-    raster: Type.Literal("chromium-native-dpr1"),
-  },
-  { additionalProperties: false },
-);
-export type ImageTextEnvironment = Static<typeof IMAGE_TEXT_ENVIRONMENT_SCHEMA>;
-export type ImageTextBlockResult = Static<typeof IMAGE_TEXT_BLOCK_RESULT_SCHEMA>;
-export type ImageTextPageResult = Static<typeof IMAGE_TEXT_PAGE_RESULT_SCHEMA>;
-export type ImageTextRender = {
-  renderId: string;
-  bookId: string;
-  sourceSha256: string;
-  environment: ImageTextEnvironment;
-  pages: ImageTextPageResult[];
+type ImageTextRenderedResult = {
+  regionId: string;
+  box: [number, number, number, number];
 };
+export type ImageTextBlockResult =
+  | (ImageTextRenderedResult & { renderStatus: "success" })
+  | (ImageTextRenderedResult & {
+      renderStatus: "warning";
+      reasons: ("small_font" | "tight_margin" | "off_center")[];
+    })
+  | {
+      regionId: string;
+      renderStatus: "failure";
+      reason: "layout_no_fit" | "outside_layout_area";
+    };
 export type ImageTextPaint = {
   result: ImageTextBlockResult;
   png?: string; // 同一原生覆盖层的 PNG，坐标为区域 box。
 };
-export type ImageTextHostResult = {
-  environment: ImageTextEnvironment;
-  regions: ImageTextPaint[];
-};
-export type ImageTextHostOperation = { kind: "render_image_text_page"; page: ImageTextPage | null };
+export type ImageTextHostOperation = { kind: "render_image_text_page"; page: ImageTextPage };
 export type ImageTextHost = (
   operation: ImageTextHostOperation,
   signal?: AbortSignal,
-) => Promise<ImageTextHostResult>;
-
-const REGION_RESULT_BASE = {
-  regionId: ID,
-  candidateId: ID,
-  blockId: ID,
-  text: Type.Union([Type.String(), Type.Null()]),
-  box: BOX,
-};
-export const IMAGE_TEXT_BLOCK_RESULT_SCHEMA = Type.Union([
-  Type.Object(
-    {
-      ...REGION_RESULT_BASE,
-      status: Type.Literal("rendered"),
-      fontSize: Type.Integer({ minimum: 2 }),
-      strokeWidth: Type.Number({ minimum: 0 }),
-      margin: Type.Number({ minimum: 0 }),
-      bounds: Type.Tuple([Type.Integer(), Type.Integer(), Type.Integer(), Type.Integer()]),
-      centerError: Type.Number({ minimum: 0 }),
-      warnings: Type.Array(Type.Literal("small_font")),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      ...REGION_RESULT_BASE,
-      status: Type.Union([Type.Literal("blank"), Type.Literal("untranslated")]),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      ...REGION_RESULT_BASE,
-      status: Type.Literal("failed"),
-      reason: Type.Union([Type.Literal("no_fit"), Type.Literal("missing_glyph")]),
-      missing: Type.Optional(Type.Array(Type.String())),
-    },
-    { additionalProperties: false },
-  ),
-]);
-export const IMAGE_TEXT_REGION_RESULT_SCHEMA = Type.Object(
-  {
-    regionId: ID,
-    text: Type.Union([Type.String(), Type.Null()]),
-    candidateId: ID,
-    blocks: Type.Array(IMAGE_TEXT_BLOCK_RESULT_SCHEMA),
-  },
-  { additionalProperties: false },
-);
-export type ImageTextRegionResult = Static<typeof IMAGE_TEXT_REGION_RESULT_SCHEMA>;
-
-export const IMAGE_TEXT_PAGE_RESULT_SCHEMA = Type.Object(
-  {
-    pageId: ID,
-    inputSha256: SHA256,
-    status: Type.Union([
-      Type.Literal("rendered"),
-      Type.Literal("incomplete"),
-      Type.Literal("error"),
-    ]),
-    regions: Type.Array(IMAGE_TEXT_REGION_RESULT_SCHEMA),
-    preview: Type.Optional(Type.String()),
-    previewSha256: Type.Optional(SHA256),
-    error: Type.Optional(Type.String()),
-  },
-  { additionalProperties: false },
-);
+) => Promise<ImageTextPaint[]>;
 
 /** 单换行只在相邻词段需要分隔时补空格。段落保留一个空行。 */
 export function normalize_image_text(text: string): string {

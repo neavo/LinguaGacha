@@ -63,6 +63,7 @@ export const IMAGE_BOOK_SCHEMA = Type.Object(
       Type.Object(
         {
           pageId: ID,
+          relativePath: Type.String({ minLength: 1 }),
           original: Type.String({ minLength: 1 }),
           sha256: SHA256,
           width: Type.Integer({ minimum: 1, maximum: 100000 }),
@@ -95,7 +96,6 @@ const CLEAN_REGION_SCHEMA = Type.Object(
 export const IMAGE_CLEAN_SCHEMA = Type.Object(
   {
     bookId: ID,
-    status: Type.Union([Type.Literal("complete"), Type.Literal("partial")]),
     pages: Type.Array(
       Type.Object(
         {

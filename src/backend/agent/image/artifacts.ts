@@ -1,6 +1,5 @@
 import path from "node:path";
 import type { ImageClean, ImageCleanPage } from "../../../shared/image";
-import { compute_clean_status } from "../../file/image/image-format";
 import { verify_reviewed_page, type Draft } from "./state";
 
 /** 只引用已验收的像素产物，文字编辑和模型更新不触发重算。 */
@@ -39,7 +38,6 @@ export async function build_clean_manifest(
   }
   const clean: ImageClean = {
     bookId: draft.book.bookId,
-    status: compute_clean_status(draft.book),
     pages: cleanPages,
   };
   return { clean, sources };
