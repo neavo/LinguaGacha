@@ -70,7 +70,7 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
     { role: "user", content: "查询", timestamp: 1 },
     fauxAssistantMessage(
       [fauxText("准备查询"), fauxToolCall("query", { value: 1 }, { id: "call" })],
-      { stopReason: "toolUse" },
+      { stopReason: "toolUse", timestamp: 2 },
     ),
     {
       role: "toolResult",
@@ -126,6 +126,8 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
       input: '{"value":1}',
       output: ["结果"],
       status: "success",
+      createdAt: 2,
+      endedAt: 3,
     },
     { kind: "assistant_message", parts: [{ kind: "text", text: "完成" }], status: "success" },
   ]);
@@ -329,4 +331,180 @@ it("摘要阶段取消保留起点，选择阶段取消隐藏，失败保留诊�
   } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
   view.reset([], new Map(), [failed], {}, state);
   expect(view.entries[0]).toMatchObject({ status: "error", createdAt: null });
+});
+
+it("按分支与条目索引工具结果图片，不泄露字节且随重置和切点清理", () => {
+  const mainConversation = 1 as ConversationId;
+  const branchConversation = 2 as ConversationId;
+  const state = AgentChatDoc.definition.initial(null);
+  state.inputs = {
+    input: {
+      roundId: "round",
+      message: { text: "绘图", attachments: [] },
+      delivery: "round",
+      queuedId: null,
+    },
+  };
+  state.rounds.round = {
+    status: "success",
+    checkpoint: 0 as EntryId,
+    endedAt: 30,
+    averageTokensPerSecond: null,
+  };
+  const view = new AgentChatView();
+  view.observe({
+    seq: 1 as Seq,
+    changes: [
+      { type: "conversation", value: { id: mainConversation } },
+      {
+        type: "conversation",
+        value: {
+          id: branchConversation,
+          parent: { conversationId: mainConversation, at: 1 as EntryId },
+        },
+      },
+      {
+        type: "submission",
+        value: {
+          id: 1 as SubmissionId,
+          conversationId: mainConversation,
+          requestId: "input",
+          type: "input",
+          status: "done",
+          entry: 1 as EntryId,
+          answer: 3 as EntryId,
+        },
+      },
+    ],
+  });
+  const userRecord: EntryRecord = {
+    id: 1 as EntryId,
+    conversationId: mainConversation,
+    kind: "pi.user",
+    model: [{ role: "user", content: "绘图", timestamp: 5 }],
+  };
+  const callRecord: EntryRecord = {
+    id: 2 as EntryId,
+    conversationId: mainConversation,
+    kind: "pi.assistant",
+    model: [
+      fauxAssistantMessage(
+        [fauxToolCall("workspace_run", { script: "draw()" }, { id: "call-1" })],
+        {
+          stopReason: "toolUse",
+          timestamp: 10,
+        },
+      ),
+    ],
+  };
+  const pngA = Buffer.from("png-a").toString("base64");
+  const webpB = Buffer.from("webp-b").toString("base64");
+  const resultWithImages: EntryRecord = {
+    id: 3 as EntryId,
+    conversationId: mainConversation,
+    kind: "pi.toolResult",
+    model: [
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "workspace_run",
+        content: [
+          { type: "text", text: "第一段" },
+          { type: "image", data: pngA, mimeType: "image/png" },
+          {
+            type: "image",
+            data: Buffer.from("<svg/>").toString("base64"),
+            mimeType: "image/svg+xml",
+          },
+          { type: "image", data: "", mimeType: "image/webp" },
+          { type: "image", data: webpB, mimeType: "image/webp" },
+          { type: "text", text: "第二段" },
+        ],
+        isError: false,
+        timestamp: 20,
+      },
+    ],
+  };
+  view.observe({
+    seq: 2 as Seq,
+    changes: [
+      { type: "entry", value: userRecord },
+      { type: "entry", value: callRecord },
+      { type: "entry", value: resultWithImages },
+    ],
+  });
+  view.refresh(mainConversation, state);
+
+  expect(view.entries[1]).toEqual({
+    kind: "tool_call",
+    id: "tool:2:call-1",
+    toolName: "workspace_run",
+    input: '{"script":"draw()"}',
+    imageCount: 2,
+    status: "success",
+    output: ["第一段", "第二段"],
+    createdAt: 10,
+    endedAt: 20,
+  });
+  expect(view.read_tool_image("tool:2:call-1", 0)).toEqual({
+    type: "image",
+    data: pngA,
+    mimeType: "image/png",
+  });
+  expect(view.read_tool_image("tool:2:call-1", 1)).toEqual({
+    type: "image",
+    data: webpB,
+    mimeType: "image/webp",
+  });
+  expect(view.read_tool_image("tool:2:call-1", 2)).toBeUndefined();
+  expect(view.read_tool_image("tool:2:call-1", -1)).toBeUndefined();
+
+  // 无图片终帧清空原有图片索引并归零数量。
+  view.observe({
+    seq: 3 as Seq,
+    changes: [
+      {
+        type: "entry",
+        value: {
+          ...resultWithImages,
+          model: [
+            {
+              role: "toolResult",
+              toolCallId: "call-1",
+              toolName: "workspace_run",
+              content: [{ type: "text", text: "无图回执" }],
+              isError: false,
+              timestamp: 30,
+            },
+          ],
+        },
+      },
+    ],
+  });
+  view.refresh(mainConversation, state);
+  expect(view.entries[1]).toMatchObject({ imageCount: 0, output: ["无图回执"] });
+  expect(view.read_tool_image("tool:2:call-1", 0)).toBeUndefined();
+
+  // 切点位于工具调用之前，清理不能依赖同一调用重新投影。
+  view.observe({ seq: 4 as Seq, changes: [{ type: "entry", value: resultWithImages }] });
+  view.refresh(mainConversation, state);
+  expect(view.read_tool_image("tool:2:call-1", 0)).toEqual({
+    type: "image",
+    data: pngA,
+    mimeType: "image/png",
+  });
+  view.refresh(branchConversation, state);
+  expect(view.entries).toHaveLength(1);
+  expect(view.read_tool_image("tool:2:call-1", 0)).toBeUndefined();
+
+  // 重回有图分支并将同一调用重新投影回 running 时，旧图片同样清理。
+  view.refresh(mainConversation, state);
+  expect(view.read_tool_image("tool:2:call-1", 0)).toEqual({
+    type: "image",
+    data: pngA,
+    mimeType: "image/png",
+  });
+  view.observe({ seq: 5 as Seq, changes: [{ type: "entry", value: callRecord }] });
+  view.refresh(mainConversation, state);
+  expect(view.read_tool_image("tool:2:call-1", 0)).toBeUndefined();
 });

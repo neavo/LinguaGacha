@@ -34,17 +34,21 @@ def repair_generated_tree(
             skip_level = node.m_Level
             continue
         if node.m_Type in MANAGED_REFERENCE_TYPES:
-            raise NotImplementedError(f"多态引用需要单独解析：{node.m_Name} ({node.m_Type})")
+            raise NotImplementedError(
+                f"多态引用需要单独解析：{node.m_Name} ({node.m_Type})"
+            )
 
         # 重建独立节点，避免修复影响调用者缓存的原始类型树。
         fields = {
-            key: getattr(node, key)
-            for key in TYPETREENODE_KEYS
-            if key != "m_Children"
+            key: getattr(node, key) for key in TYPETREENODE_KEYS if key != "m_Children"
         }
         if node.m_Children and node.m_Children[0].m_Type == "Array":
             data = next(
-                (child for child in node.m_Children[0].m_Children if child.m_Name == "data"),
+                (
+                    child
+                    for child in node.m_Children[0].m_Children
+                    if child.m_Name == "data"
+                ),
                 None,
             )
             # 普通字符串的元素是 `char`，`List<string>` 的元素才与外层同为 `string`。

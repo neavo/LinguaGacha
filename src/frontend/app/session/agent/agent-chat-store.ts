@@ -1225,13 +1225,19 @@ function normalize_entry(value: unknown): AgentEntry[] {
   return [];
 }
 
-/** 运行工具无终帧，取消、成功和失败保留 SDK 实际回执。 */
+/** 运行工具无终帧，取消、成功和失败保留 SDK 实际回执与图片计数。 */
 function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
   const status = normalize_entry_status(value["status"]);
+  const imageCount = value["imageCount"];
+  const endedAt = value["endedAt"];
   if (
     status === null ||
     typeof value["toolName"] !== "string" ||
-    typeof value["input"] !== "string"
+    typeof value["input"] !== "string" ||
+    typeof imageCount !== "number" ||
+    !Number.isSafeInteger(imageCount) ||
+    imageCount < 0 ||
+    (endedAt !== null && (typeof endedAt !== "number" || !Number.isInteger(endedAt)))
   ) {
     return [];
   }
@@ -1240,10 +1246,12 @@ function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
     id: value["id"] as string,
     toolName: value["toolName"],
     input: value["input"],
+    imageCount,
     createdAt: value["createdAt"] as number,
+    endedAt,
   };
   if (status === "running" || (status === "stopped" && value["output"] === null)) {
-    return value["output"] === null ? [{ ...base, status, output: null }] : [];
+    return value["output"] === null && imageCount === 0 ? [{ ...base, status, output: null }] : [];
   }
   const output = value["output"];
   return Array.isArray(output) && output.every((part): part is string => typeof part === "string")

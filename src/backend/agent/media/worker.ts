@@ -1,10 +1,19 @@
+import {
+  float,
+  check_finite,
+  infer,
+  type Ort,
+  type OrtSession,
+  type OrtTensor,
+} from "../inference/ort";
+import { detect_text, recognize_tokens } from "../inference/ocr";
 /**
  * 媒体推理 Worker：独占原生会话，避免同步推理阻塞根线程。
  * 本入口只使用 Node 标准解析，不依赖工作区 SDK 钩子。
  */
 import { parentPort, workerData } from "node:worker_threads";
 import { default_native_fs as fs } from "../../../native/native-fs";
-import { tensor_shape } from "./channel";
+import { tensor_shape } from "../inference/channel";
 import { ASR_LANGUAGE_IDS, ASR_TEXT_NORM, ctc_decode } from "./speech";
 import type {
   MediaDevice,
@@ -14,29 +23,12 @@ import type {
   MediaWorkerRequest,
 } from "./worker-protocol";
 
-/** 本模块使用的 onnxruntime-node 子集。 */
-type OrtTensor = { readonly data: unknown; readonly dims: readonly number[]; dispose(): void };
-type OrtSession = {
-  readonly inputNames: readonly string[];
-  readonly outputNames: readonly string[];
-  run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
-  release(): Promise<void>;
-};
-type Ort = {
-  InferenceSession: {
-    create(file: string, options: Record<string, unknown>): Promise<OrtSession>;
-  };
-  Tensor: new (type: string, data: Float32Array | Int32Array, dims: readonly number[]) => OrtTensor;
-};
-
 // FSMN 契约与 `fsmn_vad.py` 一致：LFR 400 维特征，每帧 248 个 pdf 得分。
 const VAD_FEATURES = 400;
 const VAD_PDFS = 248;
 const VAD_BLOCK = 6000; // 单次请求的特征帧上限，沿用上游离线约 60 秒分块。
 const VAD_STATE = [1, 128, 19, 1]; // 每个循环缓存的形状。
 const VAD_CACHES = 4; // `in_cache0..3` 与 `out_cache0..3` 一一对应。
-const REC_HEIGHT = 48; // 与 Python 文字行前处理的输入高度一致。
-const REC_BLANK = 0; // PP-OCR 的 CTC blank 编号。
 const config = workerData as MediaWorkerConfig;
 const port = parentPort!;
 const loaded = (await import(config.ort)) as Ort & { default?: Ort };
@@ -52,32 +44,8 @@ function create(file: string, device: MediaDevice, threads: number): Promise<Ort
   });
 }
 
-/** 原生输出通过类型校验后才能交给解码与检测。 */
-const float = (data: unknown): Float32Array => {
-  if (!(data instanceof Float32Array)) throw new Error("Model output is not float32.");
-  return data;
-};
-
-/** GPU 输出可能因设备故障出现 NaN，必须当作失败而不是空结果。 */
-function check_finite(data: Float32Array): void {
-  for (const value of data)
-    if (!Number.isFinite(value)) throw new Error("Model output is not finite.");
-}
-
-/** 运行一次，输入张量用后即释放。 */
-async function infer(
-  session: OrtSession,
-  feeds: Record<string, OrtTensor>,
-): Promise<Record<string, OrtTensor>> {
-  try {
-    return await session.run(feeds);
-  } finally {
-    for (const tensor of Object.values(feeds)) tensor.dispose();
-  }
-}
-
 /** 识别：输出含四个控制位置，按有效长度解码，只回传 token 与时间。 */
-async function recognize(
+async function recognize_speech(
   session: OrtSession,
   vocabulary: readonly string[],
   input: Float32Array,
@@ -95,73 +63,10 @@ async function recognize(
   try {
     const logits = outputs.ctc_logits!;
     const data = float(logits.data);
-    check_finite(data);
     const length = Number((outputs.encoder_out_lens!.data as ArrayLike<number | bigint>)[0]);
     if (logits.dims.length !== 3 || !(length > 0 && length <= logits.dims[1]!))
       throw new Error(`Unexpected ASR output: ${JSON.stringify(logits.dims)} / ${length}`);
     return ctc_decode(data, logits.dims[2]!, length, vocabulary);
-  } finally {
-    for (const tensor of Object.values(outputs)) tensor.dispose();
-  }
-}
-
-/** 检测：回传概率图 [H, W]，后处理在 Python。 */
-async function detect(
-  session: OrtSession,
-  input: Float32Array,
-  shape: number[],
-): Promise<{ shape: number[]; data: Float32Array<ArrayBuffer> }> {
-  const outputs = await infer(session, {
-    [session.inputNames[0]!]: new ort.Tensor("float32", input, shape),
-  });
-  try {
-    const output = outputs[session.outputNames[0]!]!;
-    const data = new Float32Array(float(output.data)); // 复制到独立缓冲区再转移。
-    if (output.dims.join() !== [1, 1, ...shape.slice(-2)].join())
-      throw new Error(`Unexpected detection output: ${output.dims}`);
-    check_finite(data);
-    if (data.some((value) => value < 0 || value > 1))
-      throw new Error("Detection output is not a probability map.");
-    return { shape: output.dims.slice(-2), data };
-  } finally {
-    for (const tensor of Object.values(outputs)) tensor.dispose();
-  }
-}
-
-/** OCR 仅返回去重后的字符编号用于内容比较，不把识别猜测写成字幕原文。 */
-async function read_text(
-  session: OrtSession,
-  input: Float32Array,
-  shape: number[],
-): Promise<{ tokens: number[] }> {
-  const outputs = await infer(session, {
-    [session.inputNames[0]!]: new ort.Tensor("float32", input, shape),
-  });
-  try {
-    const output = outputs[session.outputNames[0]!]!;
-    const data = float(output.data);
-    const [batch, length, classes] = output.dims;
-    if (
-      output.dims.length !== 3 ||
-      batch !== 1 ||
-      !length ||
-      !classes ||
-      classes < 2 ||
-      data.length !== length * classes
-    )
-      throw new Error(`Unexpected OCR output: ${output.dims}`);
-    check_finite(data);
-    const tokens: number[] = [];
-    let previous = -1;
-    // blank 也更新 `previous`，使两侧相同字符分别保留。
-    for (let frame = 0; frame < length; frame++) {
-      let best = 0;
-      const base = frame * classes;
-      for (let k = 1; k < classes; k++) if (data[base + k]! > data[base + best]!) best = k;
-      if (best !== REC_BLANK && best !== previous) tokens.push(best);
-      previous = best;
-    }
-    return { tokens };
   } finally {
     for (const tensor of Object.values(outputs)) tensor.dispose();
   }
@@ -278,21 +183,24 @@ async function serve(): Promise<void> {
         if (shape.length !== 3) throw new Error(`Unexpected ASR input: ${JSON.stringify(shape)}`);
         vocabulary ??= read_vocabulary(config.tokens);
         const model = await session("asr");
-        const result = await recognize(model, vocabulary, input, shape, String(header.language));
+        const result = await recognize_speech(
+          model,
+          vocabulary,
+          input,
+          shape,
+          String(header.language),
+        );
         return {
           id,
           header: result,
         };
       }
-      if (kind === "rec") {
-        if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== 3 || shape[2] !== REC_HEIGHT)
-          throw new Error(`Unexpected OCR input: ${JSON.stringify(shape)}`);
-        return { id, header: await read_text(await session("rec"), input, shape) };
+      if (kind === "recognition") {
+        const { tokens } = await recognize_tokens(ort, await session("recognition"), input, shape);
+        return { id, header: { tokens } };
       }
-      if (kind !== "det") throw new Error(`Unknown media task: ${kind}`);
-      if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== 3)
-        throw new Error(`Unexpected detection input: ${JSON.stringify(shape)}`);
-      const result = await detect(await session("det"), input, shape);
+      if (kind !== "detection") throw new Error(`Unknown media task: ${kind}`);
+      const result = await detect_text(ort, await session("detection"), input, shape);
       return { id, header: { dtype: "float32", shape: result.shape }, payload: result.data.buffer };
     } catch (error) {
       return { id, error: error instanceof Error ? error.message : String(error) };

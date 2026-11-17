@@ -15,6 +15,7 @@ const SUPPORTED_EXTENSIONS = new Set([
   ".jsx",
   ".mjs",
   ".mts",
+  ".py",
   ".ts",
   ".tsx",
 ]);
@@ -136,12 +137,21 @@ async function run() {
     ...(check_only ? ["--check"] : []),
     "--no-error-on-unmatched-pattern",
   ];
-  const target_chunks = chunk_target_files(target_files);
+  const python_files = target_files.filter((file_path) => path.extname(file_path) === ".py");
+  const oxfmt_files = target_files.filter((file_path) => path.extname(file_path) !== ".py");
 
-  for (const target_chunk of target_chunks) {
+  for (const target_chunk of chunk_target_files(oxfmt_files)) {
     await execa("oxfmt", [...base_formatter_args, ...target_chunk], {
       cwd: process.cwd(),
       preferLocal: true,
+      stdio: "inherit",
+    });
+  }
+
+  const ruff_args = ["ruff@latest", "format", ...(check_only ? ["--check"] : [])];
+  for (const target_chunk of chunk_target_files(python_files)) {
+    await execa("uvx", [...ruff_args, ...target_chunk], {
+      cwd: process.cwd(),
       stdio: "inherit",
     });
   }

@@ -208,6 +208,11 @@ export const ja_jp_app = {
   },
   translation_export: {
     agent_request: "翻訳成果物をエクスポートし、他の操作は行わないでください",
+    image_reason: {
+      layout_no_fit: "[失敗] 訳文全体を領域に収められないため、元の内容を残します …",
+      translation_incomplete: "[失敗] 訳文が未完成のため、元の内容を残します …",
+      erase_failed: "[失敗] 原文を安全に消去できないため、元の内容を残します …",
+    },
     action: "翻訳成果物をエクスポート",
     confirmation: {
       generic_description:

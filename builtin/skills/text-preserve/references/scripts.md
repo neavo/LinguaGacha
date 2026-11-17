@@ -27,7 +27,7 @@ console.log(evidence.patterns.map(({ key, error, match_count, zero_length_match_
 })));
 ```
 
-将示例表达式替换为当前方案。标准文件流按 LF 分行，保留字段内的 Unicode 分隔符，提前退出时也释放流。需要限制调查范围时，向脚本传入按任务范围筛选的条目流，并保存实际扫描范围。数据记录和工程修改协议以对应 `reference` 为准。
+将示例表达式替换为当前方案。标准文件流按 LF 分行，保留字段内的 Unicode 分隔符，提前退出时也释放流。需要限制调查范围时，向脚本传入按任务范围筛选的条目流，并保存实际扫描范围。数据记录和工程修改协议以 `<workspace_contract>` 为准。
 
 - `patterns` 为 `{ key, source }` 数组，`key` 唯一，`source` 是 JavaScript 正则表达式源码。每条表达式独立以 `giu` 编译，扫描范围为原始 `item.src` 按 `\n` 拆出的各行。
 - `max_matches_per_pattern` 省略时保存全部命中证据，`0` 只统计，正整数限制每条表达式保存的命中数。计数和分布始终覆盖完整输入。

@@ -21,6 +21,7 @@ it.each([
       items: kind === "mixed" ? [{ item_id: 1, fp: "test", line: 1, update: { dst: "译文" } }] : [],
     },
     files: {
+      replaces: [],
       creates: kind === "duplicate" ? [create, { ...create, line: 2 }] : [create],
       updates:
         kind === "rename"

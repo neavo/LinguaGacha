@@ -118,6 +118,7 @@ type ChatOptions = {
   seed: AgentChatSeed;
   tools: ToolRegistration[];
   systemPrompt: () => string;
+  workspacePrompt: string;
   skillsPrompt: () => string;
   continueText: () => string;
   log: AgentRuntimeLog;
@@ -259,6 +260,7 @@ export class AgentChat {
             { tag: false },
           ),
           section("cwd", () => options.cwd),
+          section("workspace_contract", () => options.workspacePrompt),
           section("available_skills", () => options.skillsPrompt() || undefined),
         ],
         hooks: [

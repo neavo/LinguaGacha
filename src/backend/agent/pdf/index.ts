@@ -16,8 +16,6 @@ export function buildPdfDocument(args: BuildPdfDocumentArgs): Promise<Uint8Array
 /** 打印结果经临时文件传递，读取结束即释放该文件。 */
 export async function printPdf(html: string): Promise<Uint8Array> {
   const result = await workspace_requests().call({ kind: "print_pdf", html });
-  if (!result || typeof result !== "object" || !("path" in result))
-    throw new Error("Invalid print_pdf response.");
   try {
     return new Uint8Array(default_native_fs.read_file(result.path));
   } finally {

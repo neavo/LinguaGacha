@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentImageHost } from "../../shared/agent-image";
+import type { ImageTextHost } from "../../shared/image-text";
 
 import type {
   BackendRuntimeHostOperation,
@@ -50,6 +51,45 @@ vi.mock("../worker/worker-execution", () => ({
 vi.mock("../log/log-text", () => ({ t_main_log: (key: string) => `translated:${key}` }));
 
 describe("run_backend_runtime", () => {
+  it("文本页宿主取消后继续等待窗口关闭回包", async () => {
+    const port = create_port();
+    await run_backend_runtime({
+      defaultAppLanguage: "JA",
+      appRoot: "E:/app",
+      builtinRoot: "E:/app/builtin",
+      moduleUrl: import.meta.url,
+      workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
+      fontsDirectory: "E:/app/fonts",
+      port,
+    });
+    const { imageTextHost } = runtime_mocks.constructor_options[0] as {
+      imageTextHost: ImageTextHost;
+    };
+    const controller = new AbortController();
+    const reason = new Error("cancel text page");
+    let settled = false;
+    const pending = imageTextHost(
+      {
+        kind: "render_image_text_page",
+        page: { pageId: "page", width: 1, height: 1, regions: [] },
+      },
+      controller.signal,
+    ).finally(() => {
+      settled = true;
+    });
+    const rejected = expect(pending).rejects.toBe(reason);
+    const request = get_host_request(port, "render_image_text_page");
+    controller.abort(reason);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(port.messages).toContainEqual({ type: "host_cancel", requestId: request.requestId });
+    port.emit({
+      type: "host_response",
+      requestId: request.requestId,
+      result: { ok: true, data: [] },
+    });
+    await rejected;
+  });
   it.each([true, false])("图片宿主取消等待清理回包，回包成功=%s 时保留取消原因", async (ok) => {
     const port = create_port();
     await run_backend_runtime({

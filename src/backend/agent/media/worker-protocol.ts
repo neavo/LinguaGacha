@@ -1,6 +1,6 @@
-import type { ChannelHeader } from "./channel";
+import type { ChannelHeader } from "../inference/channel";
 
-export type MediaTask = "vad" | "asr" | "det" | "rec";
+export type MediaTask = "vad" | "asr" | "detection" | "recognition";
 export type MediaDevice = "cpu" | "webgpu";
 export type MediaModelConfig = Readonly<{ file: string; device: MediaDevice; threads: number }>;
 /** 推理设备由调用者明确选择，不读取默认配置。 */

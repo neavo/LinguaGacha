@@ -32,6 +32,7 @@ type MediaViewportProps = {
   image: MediaImage;
   mode: MediaMode;
   extra_controls?: ReactNode;
+  on_error?: () => void; // 图片加载失败由内容拥有者反馈。
 };
 
 /** 图标按钮的可见提示与辅助名称使用同一文案。 */
@@ -261,6 +262,7 @@ export function MediaViewport(props: MediaViewportProps): JSX.Element {
             src={props.image.url}
             alt={props.label}
             onLoad={measure_image}
+            onError={props.on_error}
             draggable={false}
           />
         </div>

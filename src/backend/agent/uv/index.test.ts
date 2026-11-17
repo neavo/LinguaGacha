@@ -16,7 +16,11 @@ async function load_uv() {
   const { uv } = await import("./index");
   const { bind_uv } = await import("./runtime");
   const { bind_workspace_requests } = await import("../workspace/runtime/request-channel");
-  bind_uv({ pythonRoot: root, uvExecutable: "application-uv" });
+  bind_uv({
+    pythonRoot: root,
+    runtimeDirectory: path.join(root, "app"),
+    uvExecutable: "application-uv",
+  });
   bind_workspace_requests({ call });
   return uv;
 }
@@ -64,9 +68,28 @@ it("固定工程并隔离宿主 Python 配置，保留应用代理", async () =>
       }),
     }),
   );
-  const env = spawn.mock.calls[0]![2].env;
+  const env = spawn.mock.calls.at(-1)![2].env;
   for (const key of ["UV_PYTHON", "PYTHONPATH", "PIP_INDEX_URL", "VIRTUAL_ENV"])
     expect(env[key]).toBeUndefined();
+});
+
+it("预置包声明每个根脚本只准备一次，失败后允许重试", async () => {
+  let prepare_attempts = 0;
+  spawn.mockImplementation((_file, args: string[]) => {
+    const child = new EventEmitter();
+    queueMicrotask(() => {
+      const prepare = args.includes("--editable");
+      if (prepare) prepare_attempts += 1;
+      child.emit("close", prepare && prepare_attempts === 1 ? 1 : 0, null);
+    });
+    return child;
+  });
+  const uv = await load_uv();
+  await expect(uv.run(["--version"])).rejects.toThrow();
+  await uv.run(["--version"]);
+  await uv.run(["--version"]);
+  expect(prepare_attempts).toBe(2);
+  expect(spawn.mock.calls.filter(([, args]) => args.includes("--version"))).toHaveLength(2);
 });
 
 it("初始化清理中断残留，已有工程保留用户声明及缺失状态", async () => {
@@ -90,7 +113,7 @@ it("只给取包命令补默认索引，显式来源、本地操作与程序参�
   const index = async (args: string[]) => {
     spawn.mockClear();
     await uv.run(args);
-    return spawn.mock.calls[0]![2].env.UV_DEFAULT_INDEX as string | undefined;
+    return spawn.mock.calls.at(-1)![2].env.UV_DEFAULT_INDEX as string | undefined;
   };
   for (const args of [
     ["add", "numpy"],

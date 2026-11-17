@@ -130,9 +130,11 @@ it("运行中的工具行只显示归属自己的最新输出行", async () => {
   } as unknown as AgentChatStore;
   const tool = (id: string): AgentToolEntry => ({
     kind: "tool_call",
+    endedAt: null,
     id,
     toolName: "workspace_run",
     input: '{"script":"1;"}',
+    imageCount: 0,
     status: "running",
     output: null,
     createdAt: 1,
@@ -146,4 +148,57 @@ it("运行中的工具行只显示归属自己的最新输出行", async () => {
   expect(
     [...view.querySelectorAll(".agent-process-entry__detail")].map((node) => node.textContent),
   ).toEqual([" · 处理 3/10"]);
+});
+
+it("工具终态保留耗时与图片标记，重挂载沿用回执时间", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(105_000);
+  const store = {
+    get_run_output: () => null,
+    subscribe_run_output: () => () => {},
+  } as unknown as AgentChatStore;
+  const running: AgentToolEntry = {
+    kind: "tool_call",
+    id: "run",
+    toolName: "workspace_run",
+    input: "{}",
+    imageCount: 0,
+    createdAt: 100_000,
+    endedAt: null,
+    status: "running",
+    output: null,
+  };
+  // 条目身份控制重挂载，覆盖恢复历史时重新创建组件的路径。
+  const render_tool = (entry: AgentToolEntry) =>
+    render_entry(
+      <AgentChatStoreContext.Provider value={store}>
+        <AgentToolEntryButton key={entry.id} entry={entry} on_open={vi.fn()} />
+      </AgentChatStoreContext.Provider>,
+    );
+  const view = await render_tool(running);
+  const duration = () => view.querySelector(".agent-process-entry__elapsed")?.textContent;
+  expect(duration()).toBe(" · 5s");
+  const ended: AgentToolEntry = {
+    ...running,
+    imageCount: 1,
+    status: "success",
+    output: [],
+    endedAt: 107_000,
+  };
+  for (const status of ["success", "error", "stopped"] as const) {
+    await render_tool({ ...ended, status });
+    expect(duration()).toBe(" · 7s");
+  }
+  const marker = view.querySelector(".agent-process-entry__image-marker");
+  expect(marker?.nextElementSibling).toBe(view.querySelector(".agent-process-entry__elapsed"));
+  expect(view.querySelector("button")?.getAttribute("aria-label")).toBe(
+    "workspace_run · agent_page.image.title",
+  );
+  expect(vi.getTimerCount()).toBe(0);
+  vi.setSystemTime(165_000);
+  await render_tool({ ...ended, id: "restored" });
+  expect(duration()).toBe(" · 7s");
+  expect(vi.getTimerCount()).toBe(0);
+  await render_tool({ ...ended, imageCount: 0 });
+  expect(view.querySelector(".agent-process-entry__image-marker")).toBeNull();
 });

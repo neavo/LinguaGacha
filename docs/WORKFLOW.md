@@ -30,7 +30,7 @@
 |---|---|
 |Agent 会话与指令|[Agent](../src/backend/agent/)、[公开会话类型](../src/shared/agent.ts)、[运行时资源](../builtin/)|
 |工具与工作区|[工具](../src/backend/agent/tools/)、[工作区](../src/backend/agent/workspace/)|
-|模型可读契约|[Schema](../src/backend/agent/workspace/schema.ts)、[契约生成](../src/backend/agent/tools/contract.ts)|
+|模型可读契约|[Schema](../src/backend/agent/workspace/schema.ts)、[契约生成](../src/backend/agent/workspace/contract.ts)|
 |宿主桥与传输|[GUI](../src/gui/)、[桌面传输](../src/frontend/app/desktop/)|
 |前端运行态|[共享状态](../src/frontend/app/state/)、[会话](../src/frontend/app/session/)|
 |业务交互与页面|[共享能力](../src/frontend/features/)、[页面](../src/frontend/pages/)|
@@ -143,7 +143,7 @@ npm test -- --project integration <测试文件路径...>
 npm test -- --project renderer <测试文件路径...>
 ```
 
-省略文件路径会运行整个对应项目。
+省略文件路径会运行整个对应项目。同一测试文件覆盖多个独立边界时，使用 `-t <用例名>` 选择受影响用例。只有共享启动、传输或收尾机制变化时才运行整文件。
 
 ## 🧪 平台与运行环境验证
 
@@ -164,7 +164,10 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 工作区或共享执行运行时变化时，运行 `workspace/`、`tools/` 及受影响的 Backend Runtime / main 测试。
 
-加载、子进程、代理或流读取涉及真实环境时，使用 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts)。它在仓库外通过生产构建和真实 Electron 验证执行环境。
+- 数据包契约或容器变化运行对应的共享契约、容器和格式测试。
+- 部署或公开导出变化追加工作区 `bootstrap.test.ts`。
+
+加载、子进程、代理或流读取涉及真实环境时，从 [bootstrap.test.ts](../src/backend/agent/workspace/runtime/bootstrap.test.ts) 选择受影响用例。它在仓库外通过生产构建和真实 Electron 验证执行环境。
 
 上传、图片与宿主协议按影响选择：
 
@@ -175,24 +178,44 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 发行包入口或资源定位见 [发行包运行验证](#发行包运行验证)。
 
+#### 漫画图片
+
+图片工程契约变化运行 `file/image/{image-package,image-format}.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。
+
+整册计算、设备选择、运行产物和独立验收变化运行 `agent/image/{index,engine,worker}.test.ts`。
+
+图片文本快照与输出变化运行 `file/image/{image-format,image-output}.test.ts`、生成服务测试与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。协议与取消变化运行 Backend Runtime 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
+
+自动消字、文字分组、图片合成、QA 标记和排版分区使用已经准备的共享 Python 环境验证，无需模型：
+
+```powershell
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/fill.test.py
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/repair.test.py
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/helper.test.py
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/inference/ocr.test.py
+```
+
+部署验证先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。图片气泡分割、文字检测或 LaMa Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。图片运行时资源部署与工作区请求变化追加 `workspace/runtime/bootstrap.test.ts` 中受影响的用例。
+
+真实漫画和容量验收使用独立工作目录。记录吞吐、区域结果与峰值资源。视觉与语义接受分别记录。
+
 #### 媒体推理
 
-Python 媒体行为可通过 `media.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。依赖版本见 `builtin/skills/media/scripts/media.mjs` 的 `DEPENDENCIES`：
+Python 媒体行为可通过 `helper.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。共享推理版本见 `src/backend/agent/inference/environment.ts`，媒体专属依赖见 `builtin/skills/media/scripts/media.mjs` 的 `DEPENDENCIES`：
 
 ```powershell
 $mediaPythonProject = '<已准备媒体环境的 Python 项目目录，含 pyproject.toml>'
-$mediaTestFile = (Resolve-Path 'src/backend/agent/media/media.test.py').Path
-$mediaSourceDirectory = (Resolve-Path 'src/backend/agent/media').Path
-uv run --project $mediaPythonProject python -I -X utf8 $mediaTestFile $mediaSourceDirectory
+$mediaTestFile = (Resolve-Path 'src/python/tests/media/helper.test.py').Path
+uv run --project $mediaPythonProject python -I -B -X utf8 $mediaTestFile
 ```
 
-验证部署产物时，将最后一个参数替换为其 `runtime` 目录。Windows 路径问题须在 Windows 验证。
+验证部署产物时，先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。Windows 路径问题须在 Windows 验证。
 
 npm、uv 默认包源变化运行 `package-source.test.ts`、`uv/index.test.ts`、工作区 `service.test.ts`，以及集成测试 `npm/index.test.ts` 和工作区 `bootstrap.test.ts`。它们使用替身判定和关闭的代理端口，不访问地区接口。
 
-媒体路由和配置变化运行 `media/probe.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `preparation`、`channel`、`speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`；公开探查和资源检查契约同时运行工作区 `bootstrap.test.ts`。这些集成测试使用测试资源，不下载权重。
+媒体路由和配置变化运行 `media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `media/preparation`、`inference/channel`、`inference/helper`、`inference/runtime`、`media/speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`；公开资源检查契约同时运行工作区 `bootstrap.test.ts`。这些集成测试使用测试资源，不下载权重。
 
-真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 探查、识别、画面处理、显式设备选择与取消后重跑。脚本先经 `@lg/npm`、`@lg/uv` 显式安装技能固定的依赖，再调用 `prepare_models()` 下载权重，默认包源使用真实地区判定。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
+真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 优先与 CPU 回退、识别、画面处理、显式设备选择和取消后重跑。脚本先经 `@lg/npm`、`@lg/uv` 显式安装技能固定的依赖，再调用 `prepare_models()` 下载权重，默认包源使用真实地区判定。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
 
 ```powershell
 $env:LINGUAGACHA_MEDIA_SOURCE = '素材的绝对路径'
@@ -201,7 +224,7 @@ $env:LINGUAGACHA_MEDIA_LANGUAGE = 'JA'
 npm test -- --project integration src/backend/agent/media/index.test.ts
 ```
 
-`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。验证 ORT 降级时，复用装有高版本的验收环境，并核对 `result.json` 的 `ort` 字段。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。画面流程变化时分别验收 CPU 双 small 和 GPU 双 medium。
+`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。验证 ORT 降级时，复用装有高版本的验收环境，并核对 `result.json` 的 `ort` 字段。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。画面流程变化时用相同 Manga OCR 权重分别验收 CPU 与 GPU。
 
 可视化验收只显式安装 FFmpeg 与 Python 包，不准备识别模型，同时证明成片不受模型缺失影响。报告目录应位于仓库外，保留独立环境与运行日志：
 
@@ -287,7 +310,7 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
 - Electron 语言资源与 `LOCALES` 一致。
 - `builtin/`、`fonts/`、`workspace/` 和 `pdf-print.css` 位于发行 `resources/`。`app.asar` 不含 `builtin/` 和字体。
-- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。应用包不导出 bootstrap、准备程序或 PDF worker。
+- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。`runtime/python/` 包含 `lg-runtime` 的项目声明和包源码，不发布测试。应用包不导出 bootstrap、准备程序或 PDF worker。
 - `seed/` 只包含用户第三方依赖，清单、锁文件和安装树中均不包含 `@lg/*`、`mupdf` 或应用包归档。工作区只部署一份应用使用的 MuPDF 包与 WASM。
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
@@ -331,7 +354,7 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 - 环境准备、执行时限与错误回执：`npm test -- src/backend/agent/execution src/backend/agent/node`。
 - npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
 - uv SDK 与模型声明：`npm test -- src/backend/agent/uv src/backend/agent/workspace/runtime/command.test.ts`。
-- SDK 加载、原生 IPC 与 uv 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。Python 验收自动准备并缓存解释器，首次运行需要联网。用例使用本地 wheel 验证环境搬移和后代进程取消。
+- SDK 加载、原生 IPC 与 uv 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。Python 验收自动准备并缓存解释器，首次运行需要联网。用例验证随附 `lg-runtime` 的 editable 来源、本地 wheel、环境搬移和后代进程取消。
 - MuPDF 实例与字节边界：`npm test -- src/backend/file/pdf/pdf-document.test.ts`。
 - 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。

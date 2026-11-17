@@ -212,6 +212,14 @@ export const de_de_app = {
   },
   translation_export: {
     agent_request: "Exportiere die Übersetzungen, ohne weitere Aktionen auszuführen",
+    image_reason: {
+      layout_no_fit:
+        "[Fehler] Die vollständige Übersetzung passt nicht; der Originalinhalt bleibt erhalten …",
+      translation_incomplete:
+        "[Fehler] Die Übersetzung ist unvollständig; der Originalinhalt bleibt erhalten …",
+      erase_failed:
+        "[Fehler] Der Originaltext konnte nicht zuverlässig entfernt werden; der Originalinhalt bleibt erhalten …",
+    },
     action: "Übersetzungen exportieren",
     confirmation: {
       generic_description:

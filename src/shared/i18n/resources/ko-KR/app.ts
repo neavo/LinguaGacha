@@ -200,6 +200,11 @@ export const ko_kr_app = {
   },
   translation_export: {
     agent_request: "번역 결과물을 내보내고 다른 작업은 수행하지 마세요",
+    image_reason: {
+      layout_no_fit: "[실패] 전체 번역문이 영역에 맞지 않아 원본 내용을 유지합니다 …",
+      translation_incomplete: "[실패] 번역이 완료되지 않아 원본 내용을 유지합니다 …",
+      erase_failed: "[실패] 원문을 안전하게 지울 수 없어 원본 내용을 유지합니다 …",
+    },
     action: "번역 결과물 내보내기",
     confirmation: {
       generic_description:

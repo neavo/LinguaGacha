@@ -1,41 +1,16 @@
-import { Type, type Static } from "typebox";
-import { Compile } from "typebox/compile";
+import { read_package_items } from "../shared/package-items";
 import { create_item, type Item } from "../../../domain/item";
-import { JSON_VALUE_SCHEMA } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
+import { read_generic_items, type GenericItems } from "../../../shared/generic-package";
 import { read_zip_members } from "../shared/zip-members";
 import { write_message_records } from "../shared/message-records";
 
-export const GENERIC_ITEMS_MEMBER = "items.json";
-/** 包内其余成员与记录私有字段由 AGENT 解释，后端只维护正文、姓名和数组坐标。 */
-export const GENERIC_ITEMS_SCHEMA = Type.Array(
-  Type.Object(
-    {
-      message: Type.String(),
-      name: Type.Optional(Type.String()),
-    },
-    { additionalProperties: JSON_VALUE_SCHEMA },
-  ),
-);
-const VALIDATOR = Compile(GENERIC_ITEMS_SCHEMA); // 解析与模型声明使用同一份记录契约。
-
-/** 通用资产只解释记录结构，底稿和私有定位由产品 Agent 维护。`.media` 共用同一记录契约。 */
+/** 通用资产只解释记录结构，底稿和私有定位由产品 Agent 维护。 */
 export class GenericFormat {
-  public constructor(private readonly file_type: "GENERIC" | "MEDIA" = "GENERIC") {}
-
   /** 完整验证后才建立条目，坏记录不能被过滤后改变后续坐标。 */
-  private async read_records(
-    content: Uint8Array,
-    file: string,
-  ): Promise<Static<typeof GENERIC_ITEMS_SCHEMA>> {
+  private async read_records(content: Uint8Array, file: string): Promise<GenericItems> {
     try {
-      const member = (await read_zip_members(content, file)).get(GENERIC_ITEMS_MEMBER);
-      if (!member) throw new Error("Missing " + GENERIC_ITEMS_MEMBER);
-      const data: unknown = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(await member.async("uint8array")),
-      );
-      if (!VALIDATOR.Check(data)) throw new Error("Invalid generic records");
-      return data;
+      return read_generic_items(await read_package_items(await read_zip_members(content, file)));
     } catch (cause) {
       throw new AppError("file.invalid_structure", { cause, public_details: { file } });
     }
@@ -48,7 +23,7 @@ export class GenericFormat {
         src: record.message,
         name_src: record.name ?? null,
         row,
-        file_type: this.file_type,
+        file_type: "GENERIC",
         file_path: file,
       }),
     );

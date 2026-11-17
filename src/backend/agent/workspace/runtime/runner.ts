@@ -4,6 +4,10 @@ import {
   type WorkspaceGetOutputPathsPort,
   type WorkspaceGenerateFilesPort,
 } from "../../tools/generate-files";
+import {
+  execute_generate_image_qa_request,
+  type WorkspaceGenerateImageQAPort,
+} from "../../tools/generate-image-qa";
 import type { WorkspaceRequest } from "./protocol";
 import { execute_search_request } from "../../search/request";
 import type { SearchPort } from "../../search/schema";
@@ -37,11 +41,13 @@ import {
   type AgentWorkspaceRuntimeChildMessage,
   type AgentWorkspaceRuntimeParentMessage,
 } from "./protocol";
+import { is_app_error } from "../../../../shared/error";
 
 export type AgentWorkspaceRunRequest = AgentExecutionRequest &
   Readonly<{
     scriptPath: string; // 同一执行的脚本与两路日志路径由 WorkspaceService 唯一确定
     search?: SearchPort; // 本次执行的凭据留在宿主闭包中。
+    generateImageQA?: WorkspaceGenerateImageQAPort;
     generateFiles?: WorkspaceGenerateFilesPort;
     getOutputPaths?: WorkspaceGetOutputPathsPort;
     printPDF?: WorkspacePrintPDFPort;
@@ -243,11 +249,12 @@ export class AgentWorkspaceRunner {
             return execute_doing_request(request, controller.signal, run_request.doing);
           if (request.kind === "emit_image")
             return await execute_image_request(request, controller.signal, run_request.emitImage);
-          if (request.kind === "resolve_proxy" && typeof request.url === "string")
-            return await this.proxy_resolver.resolveProxy(request.url, controller.signal);
+          if (request.kind === "resolve_proxy" && typeof request.url === "string") {
+            return this.proxy_resolver.resolveProxy(request.url, controller.signal);
+          }
           if (request.kind === "resolve_package_source") {
             if (!run_request.packageSource) throw new Error("Package source unavailable.");
-            return await run_request.packageSource(controller.signal);
+            return run_request.packageSource(controller.signal);
           }
           if (request.kind === "get_output_paths")
             return execute_get_output_paths_request(
@@ -260,6 +267,12 @@ export class AgentWorkspaceRunner {
               request,
               controller.signal,
               run_request.generateFiles,
+            );
+          if (request.kind === "generate_image_qa")
+            return execute_generate_image_qa_request(
+              request,
+              controller.signal,
+              run_request.generateImageQA,
             );
           if (request.kind === "print_pdf")
             return execute_print_pdf_request(request, controller.signal, run_request.printPDF);
@@ -284,7 +297,18 @@ export class AgentWorkspaceRunner {
                 id,
                 result: {
                   ok: false,
-                  message: error instanceof Error ? error.message : String(error),
+                  error: is_app_error(error)
+                    ? {
+                        code: error.code,
+                        message: error.message,
+                        ...(Object.keys(error.public_details).length === 0
+                          ? {}
+                          : { public_details: error.public_details }),
+                      }
+                    : {
+                        code: "runtime.internal_invariant",
+                        message: error instanceof Error ? error.message : String(error),
+                      },
                 },
               });
             },
@@ -345,7 +369,7 @@ export class AgentWorkspaceRunner {
             runtimeDirectory: runtime_directory,
             moduleRoots: skill_roots,
             uv: this.execution.uv,
-            media: this.execution.media,
+            inference: this.execution.inference,
           });
           await owner.settle(signal);
         } catch (error) {

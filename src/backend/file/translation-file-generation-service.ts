@@ -15,6 +15,7 @@ import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { JsonRecord } from "../../domain/json";
+import type { ImageOutputReport, ImageQualityResult } from "../../shared/image";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -32,6 +33,8 @@ import { create_text_resolver, format_i18n_message, type LocaleKey } from "../..
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { GeneratedFilePaths } from "./file-format-types";
 import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
+import type { ImageOutputService } from "./image/image-output";
+import { type ImageOutputAsset } from "../../shared/image";
 
 /**
  * 译文生成层只依赖日志的公开 info/error 能力，避免把完整 LogManager 生命周期传进文件域
@@ -70,6 +73,7 @@ export class TranslationFileGenerationService {
     private readonly pdf_execution: PDFExecution, // 独立线程的 PDF 计算端口
     private readonly log_manager?: FileGenerationLogManager, // 译文生成诊断
     private readonly native_fs: NativeFs = default_native_fs, // 目录检查与文件写盘
+    private readonly image_output?: Pick<ImageOutputService, "write_assets">,
   ) {}
 
   /**
@@ -149,6 +153,40 @@ export class TranslationFileGenerationService {
     );
   }
 
+  /** 图片 QA 只读取图片资产并生成整页标记预览，不改变通用交付语义。 */
+  public async generate_image_qa(output_dir: string): Promise<ImageQualityResult> {
+    return this.runtime_gate.run_agent_project_write(async () => {
+      if (!this.image_output) throw new Error("Image output host unavailable");
+      const project_path = this.session_state.require_loaded_project_path();
+      const assets = (await this.database.get_all_asset_records(project_path)).filter(
+        (asset) => asset.file_type === "IMAGE",
+      );
+      if (!assets.length) throw new AppError("project.no_files");
+      const paths = new Set(assets.map((asset) => asset.path));
+      const items = (await this.database.get_all_items(project_path))
+        .map((item) => create_item(item))
+        .filter((item) => paths.has(item.file_path));
+      this.fill_duplicated_translations(items);
+      const output_path = path.resolve(output_dir);
+      this.native_fs.make_dir(output_path);
+      const generated = await this.image_output.write_assets({
+        assetPaths: assets.map((asset) => asset.path),
+        items,
+        readAsset: (asset_path) => this.database.read_asset_content(project_path, asset_path),
+        outputRoot: output_path,
+        claimedPaths: new Set(),
+        qa: true,
+      });
+      const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
+      const report = await this.write_image_report(
+        output_path,
+        generated,
+        create_text_resolver(resolve_app_locale(config.app_language)),
+      );
+      return { output_path, report };
+    });
+  }
+
   /** 只查询交付位置，目录创建留给实际写入者。 */
   public read_output_paths(directory?: string): TranslationOutputPaths {
     return this.resolve_output_paths(
@@ -222,20 +260,24 @@ export class TranslationFileGenerationService {
     setting: JsonRecord,
     target: GenerationTarget,
   ): Promise<TranslationFileGenerationResult> {
-    const config = build_project_execution_settings(
-      setting,
-      read_project_language_settings(await this.database.get_all_meta(project_path)),
-    );
+    const meta = await this.database.get_all_meta(project_path);
+    const config = build_project_execution_settings(setting, read_project_language_settings(meta));
     const all_assets = await this.database.get_all_asset_records(project_path);
     const excluded_files = all_assets
       .filter(
         (asset) =>
           (target.writeback_path === undefined && requires_agent_generation(asset.file_type)) ||
+          (asset.file_type === "IMAGE" && !this.image_output) ||
           (target.skip_pdf && asset.file_type === "PDF"),
       )
       .map((asset) => asset.path);
     const excluded = new Set(excluded_files);
     const assets = all_assets.filter((asset) => !excluded.has(asset.path));
+    if (
+      assets.some((asset) => asset.file_type === "IMAGE") &&
+      assets.some((asset) => asset.path.toLocaleLowerCase("en-US") === ".lg-export-report.json")
+    )
+      throw new Error("Image report path conflicts with a project asset");
     if (all_assets.length > 0 && assets.length === 0)
       throw new AppError("project.no_files", {
         public_details: { reason: "no_generatable_files", excluded_files },
@@ -269,8 +311,10 @@ export class TranslationFileGenerationService {
       { target_language: config.target_language },
       this.pdf_execution,
       this.native_fs,
+      undefined,
+      this.image_output,
     );
-    await format_service.write_items(
+    const image_assets = await format_service.write_items(
       items,
       {
         paths,
@@ -281,6 +325,13 @@ export class TranslationFileGenerationService {
       target.bilingual_files,
     );
     const pdf_files = await this.write_pdf_files(project_path, paths, documents);
+    const image_report = image_assets.length
+      ? await this.write_image_report(
+          paths.translated_path,
+          image_assets,
+          create_text_resolver(resolve_app_locale(config.app_language)),
+        )
+      : undefined;
     return {
       accepted: true,
       output_path: paths.translated_path,
@@ -295,7 +346,41 @@ export class TranslationFileGenerationService {
             },
           }),
       pdf_files,
+      ...(image_report ? { image_report } : {}),
     };
+  }
+
+  private async write_image_report(
+    outputPath: string,
+    assets: ImageOutputAsset[],
+    text: ReturnType<typeof create_text_resolver>,
+  ): Promise<ImageOutputReport> {
+    const entries = assets.flatMap((asset) => asset.files.flatMap((file) => file.entries));
+    const summary = {
+      success: entries.filter((entry) => entry.status === "success").length,
+      failures: entries.filter((entry) => entry.status === "failure").length,
+      originals: entries.filter((entry) => entry.output === "original").length,
+      translated: entries.filter((entry) => entry.output === "translated").length,
+    };
+    const report = {
+      summary,
+      assets: assets.map((asset) => ({
+        ...asset,
+        files: asset.files.map((file) => ({
+          ...file,
+          entries: file.entries.map((entry) => ({
+            ...entry,
+            reasons: entry.reasons.map((issue) => ({
+              ...issue,
+              reason: text(`app.translation_export.image_reason.${issue.code}` as LocaleKey),
+            })),
+          })),
+        })),
+      })),
+    };
+    const reportPath = path.join(outputPath, ".lg-export-report.json");
+    await this.native_fs.write_file(reportPath, JSON.stringify(report, null, 2));
+    return { path: reportPath, summary };
   }
 
   /** 在任何输出落盘前固定译稿并验证可确定条件，避免不同入口各自解释 PDF 规则。 */

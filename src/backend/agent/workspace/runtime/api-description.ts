@@ -1,6 +1,6 @@
 import { describe_emit_image } from "../../tools/emit-image";
 import { describe_doing } from "../../tools/doing";
-import { describe_workspace_contract } from "../../tools/contract";
+import { describe_workspace_contract } from "../contract";
 
 /**
  * 使用 TypeScript 声明紧凑描述参数、联合类型与返回结构，减少模型能力说明的 token 开销。

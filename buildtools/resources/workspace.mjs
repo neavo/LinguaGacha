@@ -9,11 +9,11 @@ export const WORKSPACE_CODE_DIRECTORIES = ["runtime", "chunks", "node_modules/@l
 
 // 应用 SDK 随应用发布，公开入口与私有启动入口共用一个构建图。
 const WORKSPACE_PACKAGES = [
+  { name: "@lg/generic", entries: { index: "src/backend/agent/generic/index.ts" } },
   {
     name: "@lg/project",
     entries: {
       index: "src/backend/agent/project/index.ts",
-      "item-contexts": "src/backend/agent/project/item-contexts.ts",
     },
   },
   {
@@ -22,6 +22,7 @@ const WORKSPACE_PACKAGES = [
   },
   { name: "@lg/uv", entries: { index: "src/backend/agent/uv/index.ts" } },
   { name: "@lg/npm", entries: { index: "src/backend/agent/npm/index.ts" } },
+  { name: "@lg/image", entries: { index: "src/backend/agent/image/index.ts" } },
   { name: "@lg/media", entries: { index: "src/backend/agent/media/index.ts" } },
   { name: "@lg/search", entries: { index: "src/backend/agent/search/index.ts" } },
   {
@@ -42,6 +43,7 @@ export async function build_workspace_resources({ root, output, manifest }) {
     "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
     "runtime/prepare": "src/backend/agent/node/prepare.ts",
     "runtime/pdf-worker": "src/backend/file/pdf/pdf-worker-entry.ts",
+    "runtime/image-worker": "src/backend/agent/image/worker.ts",
     "runtime/media-worker": "src/backend/agent/media/worker.ts",
   };
   for (const definition of WORKSPACE_PACKAGES) {
@@ -86,9 +88,31 @@ export async function build_workspace_resources({ root, output, manifest }) {
       },
     },
   });
-  // 媒体前后处理 helper 由 `@lg/media` 以受控解释器直接运行。
-  for (const file of ["media.py", "fsmn_vad.py", "visualize.py"])
-    await cp(path.join(root, "src/backend/agent/media", file), path.join(output, "runtime", file));
+  const pythonOutput = path.join(output, "runtime/python");
+  await rm(pythonOutput, { recursive: true, force: true }); // 同步源码删除，避免开发缓存留下旧模块。
+  await cp(path.join(root, "src/python"), pythonOutput, {
+    recursive: true,
+    filter: (source) =>
+      ![".venv", "__pycache__", "tests"].includes(path.basename(source)) &&
+      !source.endsWith(".pyc"),
+  });
+  await build({
+    configFile: false,
+    publicDir: false,
+    build: {
+      target: "chrome156",
+      outDir: path.join(output, "runtime"),
+      emptyOutDir: false,
+      lib: {
+        entry: path.join(root, "src/native/image-text-renderer.ts"),
+        formats: ["iife"],
+        name: "ImageTextRenderer",
+        fileName: () => "image-text-renderer.js",
+      },
+      rolldownOptions: { platform: "browser" },
+      minify: false,
+    },
+  });
 }
 
 /** npm 拥有依赖解析，这里只复制后端依赖闭包，不清理其它步骤的产物。 */

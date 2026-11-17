@@ -205,6 +205,13 @@ export const pt_br_app = {
   },
   translation_export: {
     agent_request: "Exporte as traduções sem realizar outras operações",
+    image_reason: {
+      layout_no_fit: "[Falha] A tradução completa não cabe; o conteúdo original será mantido …",
+      translation_incomplete:
+        "[Falha] A tradução está incompleta; o conteúdo original será mantido …",
+      erase_failed:
+        "[Falha] O texto original não pôde ser removido com segurança; o conteúdo original será mantido …",
+    },
     action: "Exportar traduções",
     confirmation: {
       generic_description:

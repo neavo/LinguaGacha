@@ -2,12 +2,14 @@ import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
 
 const positive = Type.Number({ exclusiveMinimum: 0 });
+const non_negative = Type.Number({ minimum: 0 });
+const page_number = Type.Integer({ minimum: 1 });
 const digest = Type.String({ pattern: "^[a-f0-9]{64}$" });
 export const PDF_REGION_SCHEMA = Type.Object(
   {
-    page: Type.Integer({ minimum: 1 }),
-    x: Type.Number({ minimum: 0 }),
-    y: Type.Number({ minimum: 0 }),
+    page: page_number,
+    x: non_negative,
+    y: non_negative,
     width: positive,
     height: positive,
   },
@@ -41,7 +43,7 @@ export const PDF_PAGE_UPDATE_SCHEMA = Type.Object(
 );
 export const PDF_PAGE_SCHEMA = Type.Object(
   {
-    page: Type.Integer({ minimum: 1 }),
+    page: page_number,
     width: positive,
     height: positive,
     rotation: Type.Number(),
