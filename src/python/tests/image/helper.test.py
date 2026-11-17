@@ -65,46 +65,39 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     prep = image.prepare(dict(source=src, output=str(root / "evidence"), layoutAreaRoot=str(root), pageId="p1"), Channel())
     assert len(prep["draftRegions"]) == 2
     assert all(region["kind"] == "bubble" for region in prep["draftRegions"])
-    assert prep["candidates"][1]["overlaps"] == ["r0001"]
+    assert prep["bubbles"][1]["overlaps"] == ["r0001"]
     original_boxes = image.text_detection.det_box_records
     full_box = np.array([[0,0],[119,0],[119,79],[0,79]])
-    image.text_detection.det_box_records = lambda *args, **kwargs: [
-        dict(box=full_box.copy(), coreBox=full_box.copy(), score=1),
-        dict(box=full_box.copy(), coreBox=full_box.copy(), score=.9),
-    ]
+    left_box = np.array([[5,5],[45,5],[45,30],[5,30]])
+    right_box = np.array([[70,40],[115,40],[115,75],[70,75]])
     try:
+        passes = iter(([dict(box=left_box, coreBox=left_box, score=1)],
+                       [dict(box=right_box, coreBox=right_box, score=1)]))
+        image.text_detection.det_box_records = lambda *args, **kwargs: next(passes)
         empty_channel = Channel(empty=True)
         empty_prep = image.prepare(dict(source=src, output=str(root / "empty-prep"), layoutAreaRoot=str(root / "empty-prep"), pageId="p1"), empty_channel)
+        image.text_detection.det_box_records = lambda *args, **kwargs: [
+            dict(box=full_box.copy(), coreBox=full_box.copy(), score=1),
+            dict(box=full_box.copy(), coreBox=full_box.copy(), score=.9),
+        ]
         covered = image.prepare(dict(source=src, output=str(root / "text-covered"), layoutAreaRoot=str(root / "text-covered"), pageId="p1"), Channel())
     finally:
         image.text_detection.det_box_records = original_boxes
-    assert empty_channel.requests == ["bubble", "text"] and empty_prep["draftRegions"] == []
-    assert len(empty_prep["textBoxes"]) == 1
+    assert empty_channel.requests == ["bubble", "text", "text"] and empty_prep["draftRegions"] == []
+    assert len(empty_prep["textBoxes"]) == 2
     assert all("box" in box and "coreBox" in box and "ownerRegionId" in box for box in empty_prep["textBoxes"])
     assert np.array_equal(image.read_image(empty_prep["fillPreview"]), source)
-    # 重叠文字框仍全部排除。无背景样本保留为待确认修复候选。
-    assert all(c["background"]["samplePixels"] == 0 and "color" not in c for c in covered["candidates"])
+    # 重叠文字框仍全部排除。无背景样本进入模型修复。
+    assert all(c["background"]["samplePixels"] == 0 and "color" not in c for c in covered["bubbles"])
     assert all(r["disposition"] == "translate" and r["backgroundColor"] is None for r in covered["draftRegions"])
     assert np.array_equal(image.read_image(covered["fillPreview"]), source)
     page = dict(pageId="p1", width=120, height=80, textBoxes=prep["textBoxes"], regions=[prep["draftRegions"][0]])
-    run = image.erase_candidates(dict(source=src, root=str(root), page=page,
-                                       output=str(root / "run"), fillRegionIds=["r0001"]), Channel())
-    assert len(run["regions"]) == 1 and len(run["regions"][0]["candidates"]) == 1
-    assert run["regions"][0]["candidates"][0]["method"] == "fill"
-    assert run["materials"]
-    candidate = run["regions"][0]["candidates"][0]
-    composed = image.compose_candidates(
-        dict(source=src, workspaceRoot=str(root), root=str(root), page=page,
-             output=str(root / "composed"),
-             selected=[dict(regionId="r0001", disposition="translate", candidate=candidate)]), None)
-    clean = image.read_image(composed["clean"])
-    actual = cv2.imdecode(np.fromfile(composed["regions"][0]["eraseMask"], np.uint8), cv2.IMREAD_GRAYSCALE)
+    run = image.erase_page(dict(source=src, root=str(root), page=page,
+                                output=str(root / "run"), fillRegionIds=["r0001"]), Channel())
+    assert len(run["regions"]) == 1 and run["regions"][0]["method"] == "fill"
+    clean = image.read_image(run["clean"])
+    actual = cv2.imdecode(np.fromfile(run["regions"][0]["eraseMask"], np.uint8), cv2.IMREAD_GRAYSCALE)
     assert np.array_equal(clean[actual == 0], source[actual == 0])
-    candidate["cropSha256"] = "0" * 64
-    fails(lambda: image.compose_candidates(
-        dict(source=src, workspaceRoot=str(root), root=str(root), page=page,
-             output=str(root / "tampered"),
-             selected=[dict(regionId="r0001", disposition="translate", candidate=candidate)]), None), "digest")
 
     boxes = [dict(textBoxId="t1", box=[[70, 10], [90, 10], [90, 25], [70, 25]],
                   coreBox=[[70, 10], [90, 10], [90, 25], [70, 25]])]
@@ -113,10 +106,13 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
         dict(source=src, root=str(root), output=str(root / "registered"), page=empty_page,
              textBoxes=boxes, groups=[dict(regionId="u1", textBoxIds=["t1"])]), None)
     assert registered["regions"][0]["kind"] == "unframed"
-    fails(lambda: image.layout_areas(
+    overlapping = image.layout_areas(
         dict(source=src, root=str(root), output=str(root / "overlap"), page=empty_page,
              textBoxes=boxes, groups=[dict(regionId="u1", textBoxIds=["t1"]),
-                                      dict(regionId="u2", textBoxIds=["t1"])]), None), "overlap")
+                                      dict(regionId="u2", textBoxIds=["t1"])]), None)
+    overlap_masks = [cv2.imread(str(root / "overlap" / region["layoutArea"]["path"]), cv2.IMREAD_GRAYSCALE)
+                     for region in overlapping["regions"]]
+    assert np.any((overlap_masks[0] > 0) & (overlap_masks[1] > 0))
 
     # 非方形小图放大且仅补至 stride。空检测仍产出无改动底图。
     tensor = image.model_input(source)
@@ -127,7 +123,7 @@ with tempfile.TemporaryDirectory(prefix="lg-image-pixels-") as folder:
     assert image.detect_text(np.zeros((1300, 1300, 3), np.uint8), tiled_channel) == []
     assert tiled_channel.requests.count("text") > 1
 
-# 两个区域分别验证填色、LaMa 与区域顺序独立。
+# 两个区域分别验证填色、LaMa、固定顺序与掩码外像素守恒。
 source = np.full((60, 100, 3), 240, np.uint8)
 cv2.rectangle(source, (5, 5), (25, 35), (15, 15, 15), 3)
 source[5:35, 45:49] = 15
@@ -158,34 +154,25 @@ with tempfile.TemporaryDirectory(prefix="lg-image-repair-") as folder:
     try:
         args = dict(root=str(root), source=src, page=page, output=str(root / "first"))
         channel = Channel()
-        result = image.erase_candidates({**args, "fillRegionIds": ["r0"]}, channel)
-        methods = [[candidate["method"] for candidate in region["candidates"]] for region in result["regions"]]
-        assert methods[0][0] == "fill" and "strokes" in methods[0]
-        assert "boxes" in methods[0], "Equal masks must retain different fill and LaMa results"
-        assert methods[1][0] == "strokes" and "text" not in channel.requests
-        selected = [dict(regionId=region["regionId"], disposition="translate", candidate=region["candidates"][0])
-                    for region in result["regions"]]
-        composed = image.compose_candidates(dict(root=str(root), workspaceRoot=str(root), source=src,
-                                                  page=page, output=str(root / "composed"),
-                                                  selected=selected), None)
-        clean = image.read_image(composed["clean"])
-        actual = [cv2.imread(r["eraseMask"], cv2.IMREAD_GRAYSCALE) for r in composed["regions"]]
+        result = image.erase_page({**args, "fillRegionIds": ["r0"]}, channel)
+        assert [region["method"] for region in result["regions"]] == ["fill", "strokes"]
+        assert channel.requests.count("inpaint") == 1 and "text" not in channel.requests
+        clean = image.read_image(result["clean"])
+        actual = [cv2.imread(r["eraseMask"], cv2.IMREAD_GRAYSCALE) for r in result["regions"]]
         assert np.array_equal(actual[0], masks[0])
         assert np.count_nonzero(actual[1]) < np.count_nonzero(masks[1])
         assert np.all(clean[actual[1] > 0] == 64)
         assert np.array_equal(clean[(actual[0] | actual[1]) == 0], source[(actual[0] | actual[1]) == 0])
         page["regions"].reverse()
-        reordered = image.erase_candidates({**args, "output": str(root / "reordered"),
-                                             "fillRegionIds": ["r0"]}, Channel())
-        assert {r["regionId"]: [c["method"] for c in r["candidates"]] for r in result["regions"]} == \
-               {r["regionId"]: [c["method"] for c in r["candidates"]] for r in reordered["regions"]}
-        # 相同 LaMa 掩码只推理一次，填色仍保留独立候选。
-        image.repair.text_mask = lambda source, selected, boxes: image._box_mask(selected.shape, selected, boxes)
+        reordered = image.erase_page({**args, "output": str(root / "reordered"),
+                                      "fillRegionIds": ["r0"]}, Channel())
+        assert [r["regionId"] for r in reordered["regions"]] == ["r1", "r0"]
+        # 笔画提取失败时只回退一次文字框掩码。
+        image.repair.text_mask = lambda *_args: (_ for _ in ()).throw(ValueError("no strokes"))
         channel = Channel()
-        deduplicated = image.erase_candidates({**args, "output": str(root / "deduplicated"),
-                                               "fillRegionIds": ["r0"]}, channel)
-        assert channel.requests.count("inpaint") == len(regions), "Duplicate LaMa masks must share inference"
-        assert len(next(r for r in deduplicated["regions"] if r["regionId"] == "r0")["candidates"]) == 2
+        fallback = image.erase_page({**args, "output": str(root / "fallback"),
+                                     "fillRegionIds": ["r0"]}, channel)
+        assert next(r for r in fallback["regions"] if r["regionId"] == "r1")["method"] == "boxes"
     finally:
         image.repair.text_mask = old_text_mask
 
@@ -257,4 +244,4 @@ with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
     ellipse = np.zeros((100,100),np.uint8)
     cv2.ellipse(ellipse,(50,50),(30,40),0,0,360,1,-1)
     assert image.partition_candidates(ellipse) == []
-print(json.dumps({"ok": True, "checks": "region ownership, candidate bounds, compose, text geometry, partition coverage and budget"}))
+print(json.dumps({"ok": True, "checks": "region ownership, automatic erase, overlap, text geometry, partition coverage and budget"}))

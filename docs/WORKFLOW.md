@@ -181,12 +181,11 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 图片文本快照、运行产物或发布变化运行 `agent/image/{render,publish}.test.ts` 与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。材料边界运行 `agent/tools/render-image-text.test.ts`。协议与取消变化运行 Backend Runtime、runner 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
 
-分区覆盖、块互斥、候选确定性、材料预算、排版区域与笔画填孔、开放字间空隙、互斥归属、背景分流、并集边缘过渡、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
+分区覆盖、块互斥、自动消字顺序、排版区域与笔画填孔、开放字间空隙、语义归属、背景分流、并集边缘过渡、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
 
 ```powershell
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/fill.test.py
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/repair.test.py
-uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/materials.test.py
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/helper.test.py
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/inference/text_detection.test.py
 ```

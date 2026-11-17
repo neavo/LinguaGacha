@@ -21,6 +21,15 @@ export const TEXT_DETECTION_MODELS = Object.freeze({
     sha256: "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
     urls: mirrors("det/PP-OCRv6_det_medium.onnx"),
   },
+  manga: {
+    file: "pp_ocrv6_manga/det/manga_det.onnx",
+    size: 1816958,
+    sha256: "97c434ae8deaad83513fb132b605d5085a3af8ffac2cb15e2aa096815c206172",
+    urls: [
+      "https://modelscope.cn/models/neavo7/PP-OCRv6-Manga/resolve/master/det/manga_det.onnx",
+      "https://huggingface.co/neavo/PP-OCRv6-Manga/resolve/851eb0e498007ca66420b410e102f5107416b8f6/det/manga_det.onnx",
+    ],
+  },
 } satisfies Record<string, InferenceModel>);
 
 /** 执行文字检测推理并拷贝输出概率图 [H, W]，统一释放张量。 */

@@ -44,7 +44,6 @@ export type ReviewedPageRef = {
   inputSha256: string;
   reviewId: string;
   runId: string;
-  reviewDecision?: string;
 };
 
 export type Draft = {
@@ -55,7 +54,7 @@ export type Draft = {
   reviewed?: Record<string, ReviewedPageRef>;
 };
 
-export type PrepareCandidate = {
+export type PrepareBubbleEvidence = {
   regionId: string;
   score: number;
   box: [number, number, number, number]; // 规范化原图中的 x0/y0/x1/y1，仅用于取证。
@@ -85,34 +84,28 @@ export type PreparePageEvidence = {
     { route: "fill" | "model"; coverage: number | null; samplePixels: number }
   >;
   crops: Record<string, string>;
-  candidates: PrepareCandidate[];
-};
-
-export type EraseCandidate = {
-  candidateId: string;
-  method: "fill" | "strokes" | "boxes";
-  box: [number, number, number, number];
-  crop: string;
-  cropSha256: string;
-  eraseMask: string;
-  eraseMaskSha256: string;
+  bubbles: PrepareBubbleEvidence[];
 };
 
 export type EraseRegionResult = {
   regionId: string;
-  candidates: EraseCandidate[];
+  disposition: "translate" | "preserve";
+  preserveReason?: "intentional" | "repair_failed" | "unreadable";
+  method?: "fill" | "strokes" | "boxes";
+  eraseMask?: string;
+  eraseMaskSha256?: string;
   diagnostics: { method: string; error: string }[];
 };
 
 export type ErasePageResult = {
   pageId: string;
   inputSha256: string;
-  materials: string[];
+  clean: string;
+  cleanSha256: string;
   regions: EraseRegionResult[];
 };
 
-export type RunRecord = {
-  runId: string;
+export type EraseRun = {
   pages: ErasePageResult[];
 };
 

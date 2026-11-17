@@ -33,12 +33,6 @@ import {
   validate_image_page_pixels,
 } from "../../file/image/image-format";
 import { image_metadata } from "../../file/image/image-metadata";
-import {
-  read_candidate_decisions,
-  validate_candidate_run,
-  type CandidateDecision,
-} from "./candidate";
-export type { CandidateDecision } from "./candidate";
 import { pixels, type ImageDevice } from "./engine";
 import {
   commit_directory,
@@ -56,10 +50,10 @@ import {
   write_json,
   type Draft,
   type ErasePageResult,
-  type PrepareCandidate,
+  type PrepareBubbleEvidence,
   type PreparePageEvidence,
   type ReviewedPageRef,
-  type RunRecord,
+  type EraseRun,
 } from "./state";
 
 import { INFERENCE_DEPENDENCIES } from "../inference/environment";
@@ -88,14 +82,49 @@ export type {
 export type {
   Draft,
   ErasePageResult,
-  PrepareCandidate,
+  PrepareBubbleEvidence,
   PreparePageEvidence,
   ReviewRecord,
   ReviewedPageRef,
-  RunRecord,
+  EraseRun,
 } from "./state";
 
 const UUID_RE = /^[a-f0-9-]{36}$/u; // runId 直接参与目录定位，拒绝路径片段。
+
+/** 产品 Agent 对自动消字页面的接受决定。 */
+export type ImagePageDecision = { pageId: string; accepted: boolean };
+
+/** 运行成员只能引用所属运行目录。 */
+function resolve_run_member(directory: string, member: unknown): string {
+  if (typeof member !== "string") throw new Error("Invalid erase run member");
+  const file = path.resolve(directory, member);
+  const relative = path.relative(directory, file);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
+    throw new Error("Invalid erase run member");
+  return file;
+}
+
+/** 页面决定必须完整覆盖本次运行，且每页只能出现一次。 */
+function read_page_decisions(
+  pages: readonly ErasePageResult[],
+  input: readonly ImagePageDecision[],
+): ImagePageDecision[] {
+  const decisions = new Map<string, boolean>();
+  for (const decision of input) {
+    if (
+      !pages.some((page) => page.pageId === decision.pageId) ||
+      typeof decision.accepted !== "boolean" ||
+      decisions.has(decision.pageId)
+    )
+      throw new Error(`Invalid or duplicate page decision: ${decision.pageId}`);
+    decisions.set(decision.pageId, decision.accepted);
+  }
+  return pages.map((page) => {
+    const accepted = decisions.get(page.pageId);
+    if (accepted === undefined) throw new Error(`Missing page decision: ${page.pageId}`);
+    return { pageId: page.pageId, accepted };
+  });
+}
 
 /** 状态读取只比较当前消字输入。产物完整性由消费入口验证。 */
 function collect_review_status(draft: Draft) {
@@ -182,7 +211,7 @@ export async function prepare(options: {
           previewScale: number;
           fillPreview: string;
           crops: Record<string, string>;
-          candidates: PrepareCandidate[];
+          bubbles: PrepareBubbleEvidence[];
           draftRegions: ImageRegion[];
           textBoxes: PreparePageEvidence["textBoxes"];
           backgrounds: PreparePageEvidence["backgrounds"];
@@ -210,9 +239,9 @@ export async function prepare(options: {
           crops: Object.fromEntries(
             Object.entries(result.crops).map(([id, file]) => [id, file.replace(stage, directory)]),
           ),
-          candidates: result.candidates.map((candidate) => ({
-            ...candidate,
-            rawMask: candidate.rawMask.replace(stage, directory),
+          bubbles: result.bubbles.map((bubble) => ({
+            ...bubble,
+            rawMask: bubble.rawMask.replace(stage, directory),
           })),
         });
       }
@@ -431,7 +460,7 @@ export async function apply(
   });
 }
 
-/** 生成逐区域候选和按页拼图。候选运行不修改已提交底图。 */
+/** 从原图生成唯一自动消字结果；运行产物等待 Agent 按页接受。 */
 export async function erase(options: {
   workDirectory: string;
   expectedRevision: number;
@@ -482,8 +511,9 @@ export async function erase(options: {
             .filter(([, background]) => background.route === "fill")
             .map(([regionId]) => regionId),
         })) as {
+          clean: string;
+          cleanSha256: string;
           regions: ErasePageResult["regions"];
-          materials: string[];
         };
         const relative = (file: string) => {
           const member = path.relative(stage, file);
@@ -493,21 +523,17 @@ export async function erase(options: {
         };
         const regions = raw.regions.map((region) => ({
           ...region,
-          candidates: region.candidates.map((candidate) => ({
-            ...candidate,
-            crop: relative(candidate.crop),
-            eraseMask: relative(candidate.eraseMask),
-          })),
+          ...(region.eraseMask ? { eraseMask: relative(region.eraseMask) } : {}),
         }));
-        const materials = raw.materials.map(relative);
         results.push({
           pageId: page.pageId,
           inputSha256: erase_input_digest(page),
-          materials,
+          clean: relative(raw.clean),
+          cleanSha256: raw.cleanSha256,
           regions,
         });
       }
-      const record: RunRecord = { runId, pages: results };
+      const record: EraseRun = { pages: results };
       write_json(path.join(stage, "run.json"), record);
       await commit_directory(stage, runDir);
       const nextRevision = draft.revision + 1;
@@ -522,7 +548,7 @@ export async function erase(options: {
         revision: nextRevision,
         pages: results.map((page) => ({
           ...page,
-          materials: page.materials.map((member) => path.join(runDir, member)),
+          clean: path.join(runDir, page.clean),
         })),
       };
     } finally {
@@ -531,12 +557,12 @@ export async function erase(options: {
   });
 }
 
-/** 校验按页选择，组合已选像素并一次提交最终区域状态与验收底图。 */
+/** 按页接受自动消字结果，并一次提交区域失败状态与验收底图。 */
 export async function review(options: {
   workDirectory: string;
   runId: string;
   expectedRevision: number;
-  pages: readonly CandidateDecision[];
+  pages: readonly ImagePageDecision[];
 }) {
   if (!UUID_RE.test(options.runId)) throw new Error("Invalid runId");
   const directory = path.resolve(options.workDirectory);
@@ -544,19 +570,26 @@ export async function review(options: {
   return locked(directory, async () => {
     const draft = load_draft(directory);
     const runFile = path.join(directory, "runs", options.runId, "run.json");
-    const run = read_json<RunRecord>(runFile);
-    validate_candidate_run(path.dirname(runFile), options.runId, run);
-    const decisions = read_candidate_decisions(run.pages, options.pages);
-    const reviewDecision = JSON.stringify(decisions);
-    const replayed = run.pages.every(
-      (page) =>
-        draft.reviewed?.[page.pageId]?.runId === options.runId &&
-        draft.reviewed?.[page.pageId]?.reviewDecision === reviewDecision,
+    const run = read_json<EraseRun>(runFile);
+    const runDirectory = path.dirname(runFile);
+    const decisions = read_page_decisions(run.pages, options.pages);
+    const acceptedIds = new Set(
+      decisions.filter((decision) => decision.accepted).map((decision) => decision.pageId),
     );
+    const replayed =
+      acceptedIds.size > 0 &&
+      [...acceptedIds].every((pageId) => draft.reviewed?.[pageId]?.runId === options.runId);
     if (replayed) return { runId: options.runId, revision: draft.revision, replayed: true };
     if (!draft.confirmed) throw new Error("Image draft must remain confirmed for review");
     if (draft.revision !== options.expectedRevision)
       throw new Error("Stale image draft revision; call read() and reconsider the operation");
+    if (acceptedIds.size === 0)
+      return {
+        runId: options.runId,
+        revision: draft.revision,
+        replayed: false,
+        status: compute_clean_status(draft.book),
+      };
 
     const nextPages = structuredClone(draft.book.pages);
     const staged: {
@@ -566,128 +599,107 @@ export async function review(options: {
       cleanSha256: string;
       regions: Parameters<typeof stage_reviewed_page>[2]["regions"];
     }[] = [];
-    const composeStage = path.join(directory, "runs", options.runId, `.compose-${randomUUID()}`);
-    await fs.make_dir_exclusive(composeStage);
-    try {
-      const normalized = await ensure_normalized(
-        directory,
-        nextPages.filter((page) => run.pages.some((runPage) => runPage.pageId === page.pageId)),
-      );
-      for (const runPage of run.pages) {
-        const page = nextPages.find((item) => item.pageId === runPage.pageId)!;
-        if (erase_input_digest(page) !== runPage.inputSha256)
-          throw new Error(`Stale erase run for page ${page.pageId}; run erase again`);
-        const pageDecision = decisions.find((item) => item.pageId === page.pageId)!;
-        const choices = new Map(pageDecision.regions.map((item) => [item.regionId, item.value]));
-        const runRegions = new Map(runPage.regions.map((item) => [item.regionId, item]));
-        const translatedIds = new Set(
-          page.regions
-            .filter((region) => region.disposition === "translate")
-            .map((region) => region.regionId),
-        );
-        if (
-          translatedIds.size !== runRegions.size ||
-          runPage.regions.some((region) => !translatedIds.has(region.regionId))
-        )
-          throw new Error(`Run region mismatch on page ${page.pageId}`);
-        page.regions = page.regions.map((region) => {
-          if (region.disposition === "preserve") return region;
-          const choice = choices.get(region.regionId)!;
-          if (choice !== "preserve" && choice !== "failed") return region;
-          return {
-            ...region,
-            disposition: "preserve" as const,
-            preserveReason:
-              choice === "preserve" ? ("intentional" as const) : ("repair_failed" as const),
-            direction: null,
-            backgroundColor: null,
-          };
-        });
-        const selected = page.regions.map((region) => {
-          if (region.disposition === "preserve")
+    for (const runPage of run.pages) {
+      if (!acceptedIds.has(runPage.pageId)) continue;
+      const page = nextPages.find((item) => item.pageId === runPage.pageId);
+      if (!page) throw new Error(`Run page mismatch: ${runPage.pageId}`);
+      if (erase_input_digest(page) !== runPage.inputSha256)
+        throw new Error(`Stale erase run for page ${page.pageId}; run erase again`);
+      const runRegions = new Map(runPage.regions.map((item) => [item.regionId, item]));
+      if (runRegions.size !== page.regions.length)
+        throw new Error(`Run region mismatch on page ${page.pageId}`);
+      page.regions = page.regions.map((region) => {
+        const result = runRegions.get(region.regionId);
+        if (!result) throw new Error(`Run region mismatch on page ${page.pageId}`);
+        if (result.disposition === "translate") return region;
+        if (region.disposition === "preserve") return region;
+        return {
+          ...region,
+          disposition: "preserve" as const,
+          preserveReason: "repair_failed" as const,
+          direction: null,
+          backgroundColor: null,
+        };
+      });
+      const composed: {
+        clean: string;
+        cleanSha256: string;
+        regions: {
+          regionId: string;
+          disposition: "translate" | "preserve";
+          preserveReason?: "intentional" | "repair_failed" | "unreadable";
+          eraseMask?: string;
+          eraseMaskSha256?: string;
+        }[];
+      } = {
+        clean: resolve_run_member(runDirectory, runPage.clean),
+        cleanSha256: runPage.cleanSha256,
+        regions: page.regions.map((region) => {
+          const result = runRegions.get(region.regionId)!;
+          if (result.disposition === "preserve")
             return {
               regionId: region.regionId,
               disposition: "preserve" as const,
               preserveReason: region.preserveReason!,
             };
-          const choice = choices.get(region.regionId)!;
-          const candidate = runRegions
-            .get(region.regionId)!
-            .candidates.find((item) => item.candidateId === choice)!;
-          return { regionId: region.regionId, disposition: "translate" as const, candidate };
-        });
-        const composed = (await pixels("compose_candidates", {
-          source: normalized.get(page.pageId)!,
-          workspaceRoot: directory,
-          root: path.join(directory, "runs", options.runId),
-          output: path.join(composeStage, page.pageId),
-          page,
-          selected,
-        })) as {
-          clean: string;
-          cleanSha256: string;
-          regions: {
-            regionId: string;
-            disposition: "translate" | "preserve";
-            preserveReason?: "intentional" | "repair_failed" | "unreadable";
-            eraseMask?: string;
-            eraseMaskSha256?: string;
-          }[];
-        };
-        await validate_image_page_pixels(page, composed, async (member) =>
-          fs.read_file(path.isAbsolute(member) ? member : path.join(directory, member)),
-        );
-        staged.push({
-          pageId: page.pageId,
-          inputSha256: erase_input_digest(page),
-          cleanSource: composed.clean,
-          cleanSha256: composed.cleanSha256,
-          regions: composed.regions.map((region) => {
-            if (region.disposition === "preserve")
-              return {
-                regionId: region.regionId,
-                disposition: "preserve" as const,
-                ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
-              };
-            if (!region.eraseMask || !region.eraseMaskSha256)
-              throw new Error(`Missing composed erase mask: ${page.pageId}/${region.regionId}`);
+          return {
+            regionId: region.regionId,
+            disposition: "translate" as const,
+            eraseMask: resolve_run_member(runDirectory, result.eraseMask),
+            eraseMaskSha256: result.eraseMaskSha256!,
+          };
+        }),
+      };
+      await validate_image_page_pixels(page, composed, async (member) =>
+        fs.read_file(path.isAbsolute(member) ? member : path.join(directory, member)),
+      );
+      staged.push({
+        pageId: page.pageId,
+        inputSha256: erase_input_digest(page),
+        cleanSource: composed.clean,
+        cleanSha256: composed.cleanSha256,
+        regions: composed.regions.map((region) => {
+          if (region.disposition === "preserve")
             return {
               regionId: region.regionId,
-              disposition: "translate" as const,
-              eraseMaskSource: region.eraseMask,
-              eraseMaskSha256: region.eraseMaskSha256,
+              disposition: "preserve" as const,
+              ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
             };
-          }),
-        });
-      }
-      validate_image_book({ ...draft.book, pages: nextPages }, draft.records, { confirmed: true });
-      const nextReviewed: Record<string, ReviewedPageRef> = { ...draft.reviewed };
-      const reviewId = randomUUID();
-      for (const page of staged) {
-        await stage_reviewed_page(directory, reviewId, page);
-        nextReviewed[page.pageId] = {
-          inputSha256: page.inputSha256,
-          reviewId,
-          runId: options.runId,
-          reviewDecision,
-        };
-      }
-      const next: Draft = {
-        ...draft,
-        revision: draft.revision + 1,
-        book: { ...draft.book, pages: nextPages },
-        reviewed: nextReviewed,
-      };
-      write_json(path.join(directory, STATE_FILE), next);
-      return {
-        runId: options.runId,
-        revision: next.revision,
-        replayed: false,
-        status: compute_clean_status(next.book),
-      };
-    } finally {
-      await fs.remove_async(composeStage, { recursive: true, force: true });
+          if (!region.eraseMask || !region.eraseMaskSha256)
+            throw new Error(`Missing composed erase mask: ${page.pageId}/${region.regionId}`);
+          return {
+            regionId: region.regionId,
+            disposition: "translate" as const,
+            eraseMaskSource: region.eraseMask,
+            eraseMaskSha256: region.eraseMaskSha256,
+          };
+        }),
+      });
     }
+    validate_image_book({ ...draft.book, pages: nextPages }, draft.records, { confirmed: true });
+    const nextReviewed: Record<string, ReviewedPageRef> = { ...draft.reviewed };
+    const reviewId = randomUUID();
+    for (const page of staged) {
+      await stage_reviewed_page(directory, reviewId, page);
+      nextReviewed[page.pageId] = {
+        inputSha256: page.inputSha256,
+        reviewId,
+        runId: options.runId,
+      };
+    }
+    const next: Draft = {
+      ...draft,
+      revision: draft.revision + 1,
+      book: { ...draft.book, pages: nextPages },
+      reviewed: nextReviewed,
+    };
+    write_json(path.join(directory, STATE_FILE), next);
+    return {
+      runId: options.runId,
+      revision: next.revision,
+      replayed: false,
+      status: compute_clean_status(next.book),
+    };
   });
 }
 

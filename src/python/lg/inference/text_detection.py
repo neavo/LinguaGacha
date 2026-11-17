@@ -53,12 +53,21 @@ def sort_boxes(boxes):
     return [by_y[i] for i in np.lexsort(([box[0, 0] for box in by_y], lines))]
 
 
-def det_box_records(pred, height, width, round_coords=True):
+def det_box_records(
+    pred,
+    height,
+    width,
+    round_coords=True,
+    *,
+    threshold=DET_THRESH,
+    box_threshold=DET_BOX_THRESH,
+    unclip_ratio=DET_UNCLIP,
+):
     """DB 后处理同时保留文字主体框与外扩框。"""
     import cv2
     import pyclipper
 
-    bitmap = cv2.dilate((pred > DET_THRESH).astype(np.uint8), np.ones((2, 2), np.uint8))
+    bitmap = cv2.dilate((pred > threshold).astype(np.uint8), np.ones((2, 2), np.uint8))
     contours, _ = cv2.findContours(bitmap * 255, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     map_h, map_w = pred.shape
     records = []
@@ -71,12 +80,12 @@ def det_box_records(pred, height, width, round_coords=True):
         mask = np.zeros((y1 - y0 + 1, x1 - x0 + 1), np.uint8)
         cv2.fillPoly(mask, (points - [x0, y0]).reshape(1, -1, 2).astype(np.int32), 1)
         score = cv2.mean(pred[y0 : y1 + 1, x0 : x1 + 1], mask)[0]
-        if score < DET_BOX_THRESH:
+        if score < box_threshold:
             continue
         perimeter = cv2.arcLength(points, True)
         if perimeter <= 0:
             continue
-        distance = cv2.contourArea(points) * DET_UNCLIP / perimeter
+        distance = cv2.contourArea(points) * unclip_ratio / perimeter
         offset = pyclipper.PyclipperOffset()
         offset.AddPath(points.tolist(), pyclipper.JT_ROUND, pyclipper.ET_CLOSEDPOLYGON)
         executed = offset.Execute(distance)

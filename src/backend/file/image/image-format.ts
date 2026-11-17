@@ -341,32 +341,24 @@ async function read_image_mask(
   return mask;
 }
 
-/** 读取单个排版区域并更新页内像素归属。 */
+/** 读取单个排版区域；语义区域独立，像素范围允许重叠。 */
 async function read_image_layout_area(
   page: ImagePage,
   region: ImageRegion,
-  occupied: Uint8Array,
   read: (member: string) => Promise<Uint8Array>,
 ): Promise<Uint8Array | undefined> {
   if (!region.layoutArea) return;
   if (region.layoutArea.path !== `layout-areas/${page.pageId}/${region.regionId}.png`)
     throw new Error("Invalid layout area path");
-  const mask = await read_image_mask(page, region.layoutArea, read);
-  for (let px = 0; px < mask.length; px++) {
-    if (!mask[px]) continue;
-    if (occupied[px]) throw new Error("Region layout areas overlap");
-    occupied[px] = 1;
-  }
-  return mask;
+  return read_image_mask(page, region.layoutArea, read);
 }
 
-/** 逐项验证互斥排版区域，不在内存中保留整本页面的所有全尺寸掩码。 */
+/** 逐项验证排版区域，不在内存中保留整本页面的所有全尺寸掩码。 */
 export async function validate_image_layout_areas(
   page: ImagePage,
   read: (member: string) => Promise<Uint8Array>,
 ): Promise<void> {
-  const occupied = new Uint8Array(page.width * page.height);
-  for (const region of page.regions) await read_image_layout_area(page, region, occupied, read);
+  for (const region of page.regions) await read_image_layout_area(page, region, read);
 }
 
 /** 归档读取和离线恢复共用像素完整性边界。 */
@@ -399,12 +391,11 @@ export async function validate_image_page_pixels(
   const basePixels = await decode_normalized_image_rgb(baseBytes);
 
   const unionMask = new Uint8Array(page.width * page.height);
-  const occupied = new Uint8Array(unionMask.length);
   const regions = new Map(cleanPage.regions.map((region) => [region.regionId, region]));
   if (regions.size !== page.regions.length || cleanPage.regions.length !== page.regions.length)
     throw new Error("Erase region count mismatch");
   for (const region of page.regions) {
-    const layoutArea = await read_image_layout_area(page, region, occupied, read);
+    const layoutArea = await read_image_layout_area(page, region, read);
     const result = regions.get(region.regionId);
     if (!result || result.disposition !== region.disposition)
       throw new Error("Erase region identity mismatch");

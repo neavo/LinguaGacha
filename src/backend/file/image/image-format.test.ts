@@ -455,7 +455,7 @@ it("read_image_package 在读取边界严格校验掩码外像素一致性", asy
   );
   expect((await read_image_package(okExifZip, "exif6-ok.image")).book.pages).toHaveLength(1);
 });
-it.each(["nonbinary", "empty", "overlap", "result-reference", "preserve-outside"])(
+it.each(["nonbinary", "empty", "result-reference", "preserve-outside"])(
   "选区资产拒绝 %s",
   async (kind) => {
     const f = image_fixture(["p1"]);
@@ -466,22 +466,6 @@ it.each(["nonbinary", "empty", "overlap", "result-reference", "preserve-outside"
       mask = selection_fixture([kind === "empty" ? 0 : 128]);
       region.layoutArea!.sha256 = image_sha256(mask);
       f.clean.pages[0]!.regions[0]!.eraseMaskSha256 = image_sha256(mask);
-    }
-    if (kind === "overlap") {
-      page.regions.push({
-        ...region,
-        regionId: "kept",
-        disposition: "preserve",
-        backgroundColor: null,
-        direction: null,
-        preserveReason: "intentional",
-        layoutArea: { ...region.layoutArea!, path: "layout-areas/p1/kept.png" },
-      });
-      f.clean.pages[0]!.regions.push({
-        regionId: "kept",
-        disposition: "preserve",
-        preserveReason: "intentional",
-      });
     }
     if (kind === "result-reference") f.clean.pages[0]!.regions[0]!.eraseMaskSha256 = "a".repeat(64);
     if (kind === "preserve-outside") {
@@ -506,12 +490,36 @@ it.each(["nonbinary", "empty", "overlap", "result-reference", "preserve-outside"
     ]);
     if (region.disposition === "translate")
       entries.set(f.clean.pages[0]!.regions[0]!.eraseMask!, mask);
-    if (kind === "overlap") entries.set("layout-areas/p1/kept.png", mask);
     await expect(read_image_package(await write_zip(entries), "bad.image")).rejects.toMatchObject({
       code: "file.invalid_structure",
     });
   },
 );
+
+it("语义区域保持独立时允许排版区域重叠", async () => {
+  const fixture = image_fixture(["p1"]);
+  const page = fixture.book.pages[0]!;
+  page.textBoxes.push({ ...structuredClone(page.textBoxes[0]!), textBoxId: "t2" });
+  page.regions.push({
+    ...structuredClone(page.regions[0]!),
+    regionId: "kept",
+    disposition: "preserve",
+    preserveReason: "intentional",
+    textBoxIds: ["t2"],
+    layoutArea: { ...page.regions[0]!.layoutArea!, path: "layout-areas/p1/kept.png" },
+    direction: null,
+    backgroundColor: null,
+  });
+  fixture.clean.pages[0]!.regions.push({
+    regionId: "kept",
+    disposition: "preserve",
+    preserveReason: "intentional",
+  });
+  fixture.clean.pages[0]!.inputSha256 = erase_input_digest(page);
+  expect((await read_image_package(await fixture.pack(), "overlap.image")).book.pages).toHaveLength(
+    1,
+  );
+});
 
 it("无选区漏检保留项保持 partial，保留原因不改变像素指纹", async () => {
   const f = image_fixture(["p1"]);

@@ -54,7 +54,11 @@ const prepared = await image.prepare({
 });
 ```
 
-逐页查看完整原页、`evidence[].preview`、`fillPreview` 和必要裁图。Agent 判断：
+逐页查看完整原页、`evidence[].preview`、`fillPreview` 和必要裁图。
+
+原图检测框是基础事实。第二次检测只补充气泡清理后显露的文字。
+
+Agent 判断：
 
 - 哪些 `textBoxIds` 属于同一段文字。
 - 区域是 `bubble` 还是 `unframed`。
@@ -80,7 +84,9 @@ const applied = await image.apply(workDirectory, current.revision, {
 
 ## 消字与封装
 
-调用 `erase`。它生成候选，不修改已验收底图：
+调用 `erase`。它按“气泡优先、无框随后”的顺序生成唯一自动结果。它不会修改已验收底图。
+
+背景满足填色条件时直接填色，否则使用 LaMa。笔画掩码不可用时自动回退到文字框掩码：
 
 ```js
 const erased = await image.erase({
@@ -88,31 +94,24 @@ const erased = await image.erase({
   expectedRevision: applied.revision,
 });
 for (const page of erased.pages)
-  for (const material of page.materials)
-    await ws.emitImage(material, { maxEdge: 1600 });
+  await ws.emitImage(page.clean, { maxEdge: 1600 });
 ```
 
-结合完整原页和候选拼图，为每个待译区域选择候选编号、`preserve` 或 `failed`。页面决定必须覆盖该页返回的全部区域：
+结合完整原页、检测证据和自动底图进行整页质检。页面决定必须覆盖本次运行的全部页面：
 
 ```js
 const reviewed = await image.review({
   workDirectory,
   runId: erased.runId,
   expectedRevision: erased.revision,
-  pages: [{
-    pageId,
-    regions: [
-      { regionId: 'r0001', value: 'A' },
-      { regionId: 'u0001', value: 'failed' },
-    ],
-  }],
+  pages: erased.pages.map(({ pageId }) => ({ pageId, accepted: true })),
 });
 ```
 
-- 合格候选继续进入翻译与写字。
-- `preserve` 提交为 `intentional`。
-- `failed` 提交为 `repair_failed`，归档状态成为 `partial`。
-- 未知候选、遗漏区域或过期运行会拒绝整次提交。
+- `accepted: true` 提交该页自动底图。
+- `accepted: false` 保留当前事实和已有验收结果。修正区域后重新运行。
+- 自动修复失败的区域提交为 `repair_failed`，归档状态成为 `partial`。
+- 未知页面、遗漏页面或过期运行会拒绝整次提交。
 
 提交后封装并核对状态：
 
@@ -132,11 +131,17 @@ const packed = await image.pack(workDirectory, 'work/image/ch01.image');
 |`items.json`|按阅读顺序排列的原文与可选说话人|
 |`clean.json`|已验收底图、实际 `eraseMask` 与 `complete | partial` 状态|
 |`layout-areas/<pageId>/<regionId>.png`|译文允许出现的区域|
-|`erase-masks/<pageId>/<regionId>.png`|候选实际改变的像素|
+|`erase-masks/<pageId>/<regionId>.png`|自动消字实际改变的像素|
 
-`textBoxes` 中的 `box` 用于归属和消字，`coreBox` 用于原文字号锚定。`translate` 区域进入工程条目。`preserve` 区域只保留原因。`text: null` 表示尚未翻译，空字符串表示明确不写文字。
+`textBoxes` 中的 `box` 用于归属和消字。`coreBox` 用于原文字号锚定。
+
+`translate` 区域进入工程条目。`preserve` 区域只保留原因。
+
+`text: null` 表示尚未翻译。空字符串表示明确不写文字。
 
 原文、姓名、阅读顺序或方向变化不要求重新消字。区域、`layoutArea`、处置或实际原图变化会使对应底图验收失效。
+
+`textBoxId` 归属保持唯一。不同区域的 `layoutArea` 与不同阶段的 `eraseMask` 可以重叠。后处理像素覆盖前处理像素。
 
 # 可见文本补漏
 
@@ -216,3 +221,4 @@ const delivery = await image.publish({
 - 小字号但已视觉确认可读的区域。
 
 `complete` 只表示文字覆盖完整、底图完整且所有待译页均已视觉接受。
+`partial` 允许交付，但必须同时提醒用户上述未完成页与区域，不能表述为完整成果。

@@ -9,10 +9,11 @@ import { png_fixture } from "../../../test/media-fixture";
 import { write_zip } from "../../../test/zip-fixture";
 import { image_sha256, read_image_package } from "../../file/image/image-format";
 
-const mockState = vi.hoisted(() => ({ bubble: true }));
+const mockState = vi.hoisted(() => ({ bubble: true, eraseFailed: false }));
 
 beforeEach(() => {
   mockState.bubble = true;
+  mockState.eraseFailed = false;
 });
 
 vi.mock("./engine", () => ({
@@ -61,7 +62,7 @@ vi.mock("./engine", () => ({
           ? { r1: { route: "fill", coverage: 1, samplePixels: 1 } }
           : {},
         crops: {},
-        candidates: [],
+        bubbles: [],
         draftRegions: mockState.bubble
           ? [
               {
@@ -104,56 +105,31 @@ vi.mock("./engine", () => ({
     }
     if (command === "erase") {
       const page = args.page as ImagePage;
-      const regions = page.regions
-        .filter((region) => region.disposition === "translate")
-        .map((region) => {
-          const root = path.join(output, region.regionId);
-          fs.mkdirSync(root, { recursive: true });
-          const crop = path.join(root, "A.png");
-          const candidateMask = path.join(root, "A-mask.png");
-          fs.writeFileSync(crop, png);
-          fs.writeFileSync(candidateMask, mask);
-          return {
-            regionId: region.regionId,
-            candidates: [
-              {
-                candidateId: "A",
-                method: "fill",
-                box: [0, 0, 1, 1],
-                crop,
-                cropSha256: pngSha,
-                eraseMask: candidateMask,
-                eraseMaskSha256: maskSha,
-              },
-            ],
-            diagnostics: [],
-          };
-        });
-      const material = path.join(output, "materials", "candidates-001.png");
-      fs.mkdirSync(path.dirname(material), { recursive: true });
-      fs.writeFileSync(material, png);
-      return { regions, materials: regions.length ? [material] : [] };
-    }
-    if (command === "compose_candidates") {
-      const selected = args.selected as {
-        regionId: string;
-        disposition: "translate" | "preserve";
-        preserveReason?: "intentional" | "repair_failed" | "unreadable";
-      }[];
       const clean = path.join(output, "clean.png");
       fs.mkdirSync(output, { recursive: true });
       fs.writeFileSync(clean, png);
-      return {
-        clean,
-        cleanSha256: pngSha,
-        regions: selected.map((region) => {
-          if (region.disposition === "preserve") return region;
-          const maskFile = path.join(output, "masks", `${region.regionId}.png`);
-          fs.mkdirSync(path.dirname(maskFile), { recursive: true });
-          fs.writeFileSync(maskFile, mask);
-          return { ...region, eraseMask: maskFile, eraseMaskSha256: maskSha };
-        }),
-      };
+      const regions = page.regions.map((region) => {
+        if (region.disposition === "preserve" || mockState.eraseFailed)
+          return {
+            regionId: region.regionId,
+            disposition: "preserve" as const,
+            preserveReason:
+              region.disposition === "preserve" ? region.preserveReason : "repair_failed",
+            diagnostics: [],
+          };
+        const eraseMask = path.join(output, "masks", `${region.regionId}.png`);
+        fs.mkdirSync(path.dirname(eraseMask), { recursive: true });
+        fs.writeFileSync(eraseMask, mask);
+        return {
+          regionId: region.regionId,
+          disposition: "translate" as const,
+          method: "fill" as const,
+          eraseMask,
+          eraseMaskSha256: maskSha,
+          diagnostics: [],
+        };
+      });
+      return { clean, cleanSha256: pngSha, regions };
     }
     if (command === "pack") {
       const entries = new Map<string, string | Uint8Array>([
@@ -184,9 +160,9 @@ const confirm = (page: ImagePage, message = "原文") => ({
   confirmed: true,
 });
 
-describe("@lg/image candidate transaction", () => {
-  it("产品 Agent 提交候选决定后可重放并统一归档实际掩码", async () => {
-    using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-candidate-"));
+describe("@lg/image automatic erase transaction", () => {
+  it("产品 Agent 接受自动结果后可重放并统一归档实际掩码", async () => {
+    using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-automatic-"));
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
     const work = path.join(tmp.path, "work");
@@ -194,31 +170,28 @@ describe("@lg/image candidate transaction", () => {
     const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
     const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
 
-    expect(run.pages[0]!.materials).toHaveLength(1);
-    expect(fs.existsSync(run.pages[0]!.materials[0]!)).toBe(true);
+    expect(fs.existsSync(run.pages[0]!.clean)).toBe(true);
+    const rejected = await review({
+      workDirectory: work,
+      runId: run.runId,
+      expectedRevision: run.revision,
+      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: false }],
+    });
+    expect(rejected.revision).toBe(run.revision);
+    expect((await read(work)).reviewStatus[0]!.reviewed).toBe(false);
 
     const committed = await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
-      pages: [
-        {
-          pageId: prepared.book.pages[0]!.pageId,
-          regions: [{ regionId: "r1", value: "A" }],
-        },
-      ],
+      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
     });
     expect(committed.status).toBe("complete");
     const replayed = await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
-      pages: [
-        {
-          pageId: prepared.book.pages[0]!.pageId,
-          regions: [{ regionId: "r1", value: "A" }],
-        },
-      ],
+      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
     });
     expect(replayed.replayed).toBe(true);
     expect(replayed.revision).toBe(committed.revision);
@@ -231,38 +204,29 @@ describe("@lg/image candidate transaction", () => {
     );
   });
 
-  it("非法选择不改草稿，显式失败形成 partial", async () => {
+  it("非法页面决定不改草稿，自动失败形成 partial", async () => {
     using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-invalid-choice-"));
     const source = path.join(tmp.path, "page.png");
     fs.writeFileSync(source, png_fixture());
     const work = path.join(tmp.path, "work");
     const prepared = await prepare({ sources: [source], workDirectory: work });
     const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
+    mockState.eraseFailed = true;
     const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
     await expect(
       review({
         workDirectory: work,
         runId: run.runId,
         expectedRevision: run.revision,
-        pages: [
-          {
-            pageId: prepared.book.pages[0]!.pageId,
-            regions: [{ regionId: "r1", value: "Z" }],
-          },
-        ],
+        pages: [{ pageId: "unknown", accepted: true }],
       }),
-    ).rejects.toThrow("Invalid candidate decision");
+    ).rejects.toThrow("Invalid or duplicate page decision");
     expect((await read(work)).book.pages[0]!.regions[0]!.disposition).toBe("translate");
     const committed = await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
-      pages: [
-        {
-          pageId: prepared.book.pages[0]!.pageId,
-          regions: [{ regionId: "r1", value: "failed" }],
-        },
-      ],
+      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
     });
     expect(committed.status).toBe("partial");
     const current = await read(work);
@@ -357,13 +321,12 @@ describe("@lg/image candidate transaction", () => {
       confirmed: true,
     });
     const run = await erase({ workDirectory: work, expectedRevision: applied.revision });
-    expect(run.pages[0]!.regions).toEqual([]);
-    expect(run.pages[0]!.materials).toEqual([]);
+    expect(run.pages[0]!.regions).toHaveLength(1);
     const committed = await review({
       workDirectory: work,
       runId: run.runId,
       expectedRevision: run.revision,
-      pages: [],
+      pages: run.pages.map((runPage) => ({ pageId: runPage.pageId, accepted: true })),
     });
     expect(committed.status).toBe("complete");
     const current = await read(work);

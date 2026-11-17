@@ -4,7 +4,7 @@ import { inference_configuration } from "../inference/runtime";
 
 // 来源提交与摘要共同固定模型身份，准备阶段不追踪远端最新版本。
 export const IMAGE_MODELS = Object.freeze({
-  text: TEXT_DETECTION_MODELS.small,
+  text: TEXT_DETECTION_MODELS.manga,
   inpaint: {
     file: "lama/lama-large-fp32-unified-webgpu.onnx",
     size: 204452450,
