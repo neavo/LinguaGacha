@@ -7,7 +7,7 @@ import {
 import { is_portable_file_name } from "../../shared/utils/file-name";
 import { insert_by_sort } from "./insert-by-sort";
 
-/** 更新只调整资产身份与位置，内容变化通过新增后删除完成。 */
+/** 更新只调整资产身份与位置，内容变化通过独立替换操作完成。 */
 export type ProjectFileUpdate = {
   file_path: string;
   new_file_path?: string;

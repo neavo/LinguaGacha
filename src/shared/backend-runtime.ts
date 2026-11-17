@@ -1,4 +1,5 @@
 import type { PDFHostOperation } from "./pdf";
+import type { ImageTextHostOperation } from "./image-text";
 import type { AgentImageHostOperation } from "./agent-image";
 import type { LogError, LogErrorContext } from "./error";
 import type { LocaleKey } from "./i18n";
@@ -18,6 +19,7 @@ export type BackendRuntimeResult<T = unknown> =
 /** 必须留在 Electron main 执行的宿主能力。 */
 export type BackendRuntimeHostOperation =
   | PDFHostOperation
+  | ImageTextHostOperation
   | AgentImageHostOperation
   | { kind: "resolve_proxy"; url: string }
   | { kind: "open_directory"; path: string }

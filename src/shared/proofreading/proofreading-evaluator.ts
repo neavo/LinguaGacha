@@ -226,7 +226,10 @@ export function evaluateProofreadingItem(args: {
         args.processingConfig,
       ),
     );
-    if (split_text_lines(item.src).length !== split_text_lines(item.dst).length) {
+    if (
+      item.file_type !== "IMAGE" &&
+      split_text_lines(item.src).length !== split_text_lines(item.dst).length
+    ) {
       warnings.push({ code: "LINE_COUNT_MISMATCH", target_field: "dst" });
     }
   }

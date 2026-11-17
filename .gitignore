@@ -29,6 +29,7 @@ lerna-debug.log*
 
 # Python
 __pycache__
+.ruff_cache
 
 # app
 /log

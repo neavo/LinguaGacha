@@ -55,6 +55,7 @@ import { QualityRuleService } from "../quality/quality-rule-service";
 import { QualityStatisticsService } from "../quality/quality-statistics-service";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
+import type { ImageOutputService } from "../file/image/image-output";
 import type { JsonRecord } from "../../domain/json";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-event";
 import { MODEL_CATALOG_UPDATED_EVENT_TOPIC } from "../../shared/model-catalog";
@@ -77,6 +78,7 @@ export interface BackendServicesOptions {
   publishEvent: (topic: string, payload: JsonRecord) => void; // 公开事件的传输方式归入口层选择。
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
+  imageOutput?: ImageOutputService;
 }
 
 /** GUI 扩展与共享业务服务必须引用同一组状态拥有者。 */
@@ -373,6 +375,8 @@ export class BackendServices {
         options.openOutputFolder,
         this.pdf_worker.run,
         this.logManager,
+        undefined,
+        options.imageOutput,
       ),
       gameFont: new GameFontService(this.game_directory_operations, this.game_prepare_worker.run),
     };

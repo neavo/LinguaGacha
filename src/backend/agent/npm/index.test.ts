@@ -11,7 +11,6 @@ import type { AgentProcessOutput } from "../process-output";
 import { AgentExecutionRuntime } from "../execution/runtime";
 import { AgentWorkspaceRunner, type AgentWorkspaceRunRequest } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
-import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
 
 const electron =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -86,7 +85,6 @@ async function create_fixture(
   const shared = path.join(root, name, "node");
   const workspace = path.join(root, name, "workspace");
   await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
-  await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
   const execution = new AgentExecutionRuntime({
     runtimeDirectory: runtime,
     fontsDirectory: path.join(runtime, "fonts"),

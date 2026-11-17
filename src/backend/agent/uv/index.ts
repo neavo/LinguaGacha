@@ -6,6 +6,7 @@ import { DEFAULT_PYTHON_VERSION, UV_INDEXES, uv_configuration } from "./runtime"
 import type { UvApi } from "./types";
 
 const enqueue = create_command_queue(); // 初始化与命令共用队列，避免并发创建共享工程。
+let runtime_ready = false; // 当前根脚本首次成功声明后不再重复启动 uv。
 // 显式来源策略，出现后不再追加默认索引，避免混合两种来源。
 const INDEX_OPTIONS = new Set([
   "--default-index",
@@ -160,6 +161,28 @@ async function initialize(directory: string): Promise<void> {
   fs.rename(staging, directory);
 }
 
+/** 只维护应用拥有的 editable 来源，其它依赖、配置与锁文件继续交给用户和 uv。 */
+async function prepare_runtime(
+  uvExecutable: string,
+  runtimeDirectory: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  if (runtime_ready) return;
+  await run_command(
+    "uv",
+    uvExecutable,
+    [
+      "--no-config",
+      "add",
+      "--frozen",
+      "--editable",
+      path.join(runtimeDirectory, "runtime", "python"),
+    ],
+    { cwd: process.cwd(), env },
+  );
+  runtime_ready = true;
+}
+
 /** `@lg/uv` 的公开入口，只在完成绑定的根进程中可用。依赖声明、虚拟环境与恢复均由 uv 负责。 */
 export const uv: UvApi = Object.freeze({
   /** 查询路径不创建工程，调用者可先检查或修复声明。 */
@@ -169,11 +192,12 @@ export const uv: UvApi = Object.freeze({
   /** 受理时固定参数与路径，初始化成功后再启动 uv。 */
   async run(args: readonly string[]): Promise<void> {
     const argv = command_arguments(args, "uv");
-    const { pythonRoot, uvExecutable } = uv_configuration();
+    const { pythonRoot, runtimeDirectory, uvExecutable } = uv_configuration();
     const directory = uv.directory;
     await enqueue(async () => {
       await initialize(directory);
       const env = environment(pythonRoot, directory);
+      await prepare_runtime(uvExecutable, runtimeDirectory, env);
       // 清理宿主配置之后注入，显式 CLI 索引参数仍优先于该环境变量。
       if (needs_default_index(argv))
         env["UV_DEFAULT_INDEX"] = UV_INDEXES[await request_package_source()];

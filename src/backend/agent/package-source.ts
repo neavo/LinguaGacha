@@ -120,8 +120,5 @@ export class AgentPackageSources {
 
 /** 根进程经 IPC 取得当前对话的默认源，对话身份由宿主在受理执行时绑定。 */
 export async function request_package_source(): Promise<PackageSource> {
-  const source = await workspace_requests().call({ kind: "resolve_package_source" });
-  if (source !== "official" && source !== "mirror")
-    throw new Error("Invalid package source response.");
-  return source;
+  return workspace_requests().call({ kind: "resolve_package_source" });
 }

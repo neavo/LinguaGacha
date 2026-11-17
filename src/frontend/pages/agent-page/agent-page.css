@@ -473,7 +473,7 @@
   font-size: var(--ui-font-size-12);
 }
 
-/* 标题与耗时组成内容列，长标题先截断，状态灯固定在行尾。 */
+/* 标题、耗时与结果标记组成内容列，长标题先截断，状态灯固定在行尾。 */
 .agent-process-entry {
   display: grid;
   min-width: 0;
@@ -532,6 +532,18 @@
   flex-shrink: 0;
   white-space: pre;
   font-variant-numeric: tabular-nums;
+}
+
+.agent-process-entry__image-marker {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  white-space: pre;
+}
+
+.agent-process-entry__image-marker svg {
+  width: 12px;
+  height: 12px;
 }
 
 /* 只占用标签和耗时之后的剩余宽度，单行截断让时间线高度不随输出跳动。 */
@@ -715,6 +727,16 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.agent-tool-detail__tab-list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  width: max-content;
+  flex: 0 0 auto;
 }
 
 .agent-tool-detail__panel {
@@ -722,9 +744,22 @@
   margin-inline: -24px;
 }
 
+.agent-tool-detail__panel--media:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+
 .agent-tool-detail__viewer {
   height: 100%;
   border-radius: 0;
+}
+
+.agent-tool-image {
+  display: flex;
+  justify-content: center;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .agent-round-footer {

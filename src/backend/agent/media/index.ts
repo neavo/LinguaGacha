@@ -3,35 +3,56 @@
  * 只返回结果或写入调用者指定的工作文件，不读写工程，也不决定最终字幕原文。
  */
 import path from "node:path";
+import type { TSchema } from "typebox";
 import { default_native_fs as fs } from "../../../native/native-fs";
-import { media_configuration } from "./runtime";
+import { inference_configuration } from "../inference/runtime";
 import { require_models } from "./preparation";
 import { helper, operate, validate_device } from "./engine";
 import { ffmpeg_path, inspect } from "./ffmpeg";
 import type { DeviceOptions } from "./worker-protocol";
 import { MEDIA_MODELS } from "./models";
-import { ASR_LANGUAGES, speech_result, type AsrSentence, type AsrWindow } from "./speech";
+import { ASR_LANGUAGES, speech_result, type AsrSentence } from "./speech";
+import type {
+  MediaHelperRequest,
+  MediaSheet,
+  MediaTextBound,
+  MediaTextRegion,
+} from "../../../shared/media";
+import { MEDIA_ITEMS_SCHEMA, MEDIA_PACKAGE_MANIFEST_SCHEMA } from "../../../shared/media-package";
+import { create_schema_renderer } from "../workspace/schema-description";
 
 export type { DeviceOptions } from "./worker-protocol";
 export { ffmpeg, inspect, type ExecuteOptions, type MediaInfo } from "./ffmpeg";
 export { ASR_LANGUAGES, union, type AsrSentence } from "./speech";
 
 export { missing_models, prepare_models } from "./preparation";
-export { probe_gpu, type GpuProbeResult } from "./probe";
-export { DeviceFailure } from "./inference-engine";
+export { DeviceFailure } from "../inference/client";
 export { visualize, type VisualizeOptions, type VisualizeResult } from "./visualize";
+export {
+  MEDIA_ITEMS_SCHEMA,
+  MEDIA_PACKAGE_MANIFEST_SCHEMA,
+  read_media_items,
+  read_media_package_manifest,
+  read_media_writeback_items,
+  read_media_work_manifest,
+} from "../../../shared/media-package";
+
+/** 按需呈现当前 `.media` JSON 形状，领域语义仍由 media skill 说明。 */
+export function describe_package(): string {
+  return create_schema_renderer(
+    new Map<TSchema, string>([
+      [MEDIA_PACKAGE_MANIFEST_SCHEMA, "MediaPackageManifest"],
+      [MEDIA_ITEMS_SCHEMA, "MediaItems"],
+    ]),
+  ).declarations();
+}
 
 /** 画面文字区间，`box` 为归一化 `[x0, y0, x1, y1]`。 */
-export type TextRegion = { id: number; start: number; end: number; at: number; box: number[] };
-export type TextBound = { row: number; start: number | null; end: number | null };
-export type RefineRow = Readonly<{
-  row: number;
-  start: number;
-  end: number;
-  box: readonly number[];
-}>;
-export type SheetEntry = Readonly<{ id: number; start: number; file: string }>;
-export type Sheet = { file: string; ids: number[] };
+export type TextRegion = MediaTextRegion;
+export type TextBound = MediaTextBound;
+export type RefineRow = Readonly<MediaHelperRequest<"refine">["rows"][number]>;
+export type SheetEntry = Readonly<MediaHelperRequest<"sheet">["entries"][number]>;
+export type Sheet = MediaSheet;
 
 /**
  * 一次解码完成人声检测与本地识别，返回整片秒数的人声区间与句级条目。
@@ -54,7 +75,7 @@ export async function listen(
     throw new Error(`Audio track ${track} does not exist.`);
   return operate(
     async (engine) => {
-      const { spans, windows } = (await helper(
+      const { spans, windows } = await helper(
         "speech",
         {
           ffmpeg: ffmpeg_path(),
@@ -62,11 +83,11 @@ export async function listen(
           track,
           center: /\b[57]\.1\b/u.test(stream), // 5.1、7.1 只取中置声道，实测错误明显少于常规下混。
           language: code,
-          vad_mvn: path.join(media_configuration().modelsDirectory, MEDIA_MODELS.vad_mvn.file),
-          asr_mvn: path.join(media_configuration().modelsDirectory, MEDIA_MODELS.asr_mvn.file),
+          vad_mvn: path.join(inference_configuration().modelsDirectory, MEDIA_MODELS.vad_mvn.file),
+          asr_mvn: path.join(inference_configuration().modelsDirectory, MEDIA_MODELS.asr_mvn.file),
         },
         engine,
-      )) as { spans: [number, number][]; windows: AsrWindow[] };
+      );
       return speech_result(spans, windows);
     },
     { device },
@@ -82,18 +103,18 @@ export async function scan(
   { out, device }: Readonly<{ out: string }> & DeviceOptions,
 ): Promise<TextRegion[]> {
   validate_device(device);
-  require_models(device === "gpu" ? ["det_gpu", "rec_gpu"] : ["det_cpu", "rec_cpu"]);
+  require_models(["detection", "recognition"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
   return operate(
     async (engine) => {
       await fs.remove_async(out, { recursive: true, force: true }); // 重跑不能混入上一轮的裁图。
-      const regions = (await helper(
+      const regions = await helper(
         "scan",
         { ffmpeg: ffmpeg_path(), source, ...video, out },
         engine,
-      )) as TextRegion[];
+      );
       // 区间终点是末次检测加 1 秒，片尾不足一秒的部分截到时长。
       return regions.map((region) => ({ ...region, end: Math.min(region.end, info.duration) }));
     },
@@ -107,22 +128,24 @@ export async function refine(
   { rows, device }: Readonly<{ rows: readonly RefineRow[] }> & DeviceOptions,
 ): Promise<TextBound[]> {
   validate_device(device);
-  require_models(device === "gpu" ? ["det_gpu", "rec_gpu"] : ["det_cpu", "rec_cpu"]);
+  require_models(["detection", "recognition"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
   return operate(
     async (engine) =>
-      (await helper(
+      await helper(
         "refine",
-        { ffmpeg: ffmpeg_path(), source, ...video, duration: info.duration, rows },
+        { ffmpeg: ffmpeg_path(), source, ...video, duration: info.duration, rows: [...rows] },
         engine,
-      )) as TextBound[],
+      ),
     { device },
   );
 }
 
 /** 把裁图拼成不超过 1280×1280 的图集写入 `out`，返回 `[{ file, ids }]`。 */
 export async function sheets(entries: readonly SheetEntry[], out: string): Promise<Sheet[]> {
-  return (await helper("sheet", { entries, out })) as Sheet[];
+  return helper("sheet", { entries: [...entries], out });
 }
+
+export { INFERENCE_DEPENDENCIES } from "../inference/environment";

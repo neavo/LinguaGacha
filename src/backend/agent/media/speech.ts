@@ -67,7 +67,12 @@ export function ctc_decode(
   for (let frame = 0; frame < length; frame++) {
     let best = 0;
     const base = frame * classes;
-    for (let k = 1; k < classes; k++) if (logits[base + k]! > logits[base + best]!) best = k;
+    if (!Number.isFinite(logits[base])) throw new Error("Model output is not finite.");
+    for (let k = 1; k < classes; k++) {
+      const value = logits[base + k]!;
+      if (!Number.isFinite(value)) throw new Error("Model output is not finite.");
+      if (value > logits[base + best]!) best = k;
+    }
     if (best !== ASR_BLANK && best !== previous) {
       ids.push(best);
       frames.push(frame);

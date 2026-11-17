@@ -2,8 +2,7 @@ import { bind_emit_image } from "../../tools/emit-image";
 import { bind_doing } from "../../tools/doing";
 import { bind_uv } from "../../uv/runtime";
 import { bind_npm } from "../../npm/runtime";
-import { bind_media } from "../../media/runtime";
-import { readFile } from "node:fs/promises";
+import { bind_inference } from "../../inference/runtime";
 import { install_workspace_module_resolution } from "./module-resolution";
 
 import { ProxyHttpClient } from "../../../network/proxy-http-client";
@@ -34,9 +33,9 @@ async function start_workspace_runtime(): Promise<void> {
     },
   );
   install_workspace_module_resolution(start.runtimeDirectory, start.nodeRoot, start.moduleRoots);
-  bind_uv(start.uv);
+  bind_uv({ ...start.uv, runtimeDirectory: start.runtimeDirectory });
   bind_npm({ runtimeDirectory: start.runtimeDirectory, nodeRoot: start.nodeRoot });
-  bind_media(start.media);
+  bind_inference(start.inference);
   const request_channel = new AgentWorkspaceRequestChannel(send_message, (pending) => {
     // IPC 只在真正等待宿主响应时保活，空闲通道不得改变 Node 的自然退出语义。
     if (pending) process.channel?.ref();
@@ -57,9 +56,8 @@ async function start_workspace_runtime(): Promise<void> {
     { redirects: "request" },
   );
   client.install_as_global_fetch();
-  const contract: unknown = JSON.parse(await readFile("contract.json", "utf8"));
   Object.defineProperty(globalThis, "ws", {
-    value: create_agent_workspace_runtime_api(contract, {
+    value: create_agent_workspace_runtime_api({
       userSkillDirectory: start.userSkillDirectory,
       fontsDirectory: start.fontsDirectory,
       emitImage: bind_emit_image(request_channel),

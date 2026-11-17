@@ -1,0 +1,154 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { build } from "vite";
+import { expect, inject, it } from "vitest";
+
+it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lg-image-text-host-"));
+  try {
+    await build({
+      configFile: false,
+      logLevel: "silent",
+      publicDir: false,
+      build: {
+        outDir: path.join(directory, "bundle"),
+        minify: false,
+        lib: {
+          entry: path.resolve("src/native/image-text-host.ts"),
+          formats: ["es"],
+          fileName: () => "host.mjs",
+        },
+        rolldownOptions: { external: ["electron", /^node:/u], platform: "node" },
+      },
+    });
+    const report = process.env.LINGUAGACHA_IMAGE_TEXT_QA_DIR ?? directory;
+    await fs.mkdir(report, { recursive: true });
+    const entry = path.join(directory, "main.mjs");
+    await fs.writeFile(
+      entry,
+      `
+      import { app, BrowserWindow, nativeImage } from 'electron';
+      import fs from 'node:fs/promises';
+      import assert from 'node:assert/strict';
+      import { create_image_text_host } from ${JSON.stringify(pathToFileURL(path.join(directory, "bundle/host.mjs")).href)};
+      app.setPath('userData', ${JSON.stringify(path.join(directory, "user-data"))});
+      app.commandLine.appendSwitch('disable-gpu');
+      void (async () => {
+        await app.whenReady(); app.on('window-all-closed', () => {});
+        const host = create_image_text_host(${JSON.stringify({
+          fontsDirectory: path.resolve("public/fonts"),
+          workspaceRuntimeDirectory: inject("workspaceRuntimeDirectory"),
+        })});
+        try {
+          function page(direction, text, color = [255,255,255], width = 64, height = 76) {
+            const distance = Buffer.alloc(width*height*4);
+            for(let y=0;y<height;y++)for(let x=0;x<width;x++)distance.writeFloatLE(Math.min(x+1,y+1,width-x,height-y),(y*width+x)*4);
+            const block={blockId:'B1',box:[0,0,width,height],distance:distance.toString('base64'),preferredFontSize:12,sourceEnvelopeArea:400,sourceCenter:[width/2,height/2]};
+            return {kind:'render_image_text_page',page:{pageId:'p1',width,height,regions:[{regionId:'r1',text,direction,fill:{color},candidates:[{candidateId:'C0',blocks:[block]}]}]}};
+          }
+          const samples = [
+            page('horizontal-tb','中文「你好！」'),
+            page('vertical-rl','日本語１２！'),
+            page('horizontal-tb','New York\\n\\ncafé', [0,0,0]),
+            // 竖排及空白段落复用同一候选模型，实际字形由最终像素验收。
+            page('vertical-rl','これで春からまた一緒だね!!', [255,255,255], 44, 86),
+            page('horizontal-tb','LongWordWithoutSpaces0123456789 中文「A12」 café'),
+            page('horizontal-tb','abc 12 \\u202EABC\\u202C 中文'),
+            // 应用字体缺少字形时沿用 Chromium 系统字体回退，并继续执行最终像素门禁。
+            page('horizontal-tb','A😀中文'),
+          ];
+          let firstResult;
+          let captures=0;
+          let rejectNextCapture=false;
+          app.on('web-contents-created',(_event,contents)=>{
+            const send=contents.debugger.sendCommand.bind(contents.debugger);
+            contents.debugger.sendCommand=async (...args)=>{
+              const result=await send(...args);
+              if(args[0]==='Page.captureScreenshot' && rejectNextCapture){
+                rejectNextCapture=false;
+                const size=nativeImage.createFromDataURL('data:image/png;base64,'+result.data).getSize();
+                result.data=nativeImage.createFromBitmap(Buffer.alloc(size.width*size.height*4),size).toPNG().toString('base64');
+              }
+              if(args[0]==='Page.captureScreenshot' && ++captures%100===1){
+                const state=await contents.executeJavaScript('JSON.stringify({style:document.body.firstChild?.style.cssText,text:document.body.innerText,dpr:devicePixelRatio})');
+                await fs.writeFile(${JSON.stringify(path.join(report, "progress.json"))},JSON.stringify({captures,state}));
+                await fs.writeFile(${JSON.stringify(path.join(report, "last.png"))},Buffer.from(result.data,'base64'));
+              }
+              return result;
+            };
+          });
+          for (const [index,sample] of samples.entries()) {
+            const beforeCaptures=captures;
+            const result=await host(sample);
+            assert.notEqual(result[0].result.renderStatus,'failure', JSON.stringify(result));
+            assert.equal(BrowserWindow.getAllWindows().length,0);
+            await fs.writeFile(${JSON.stringify(path.join(report, "sample-"))}+index+'.png',Buffer.from(result[0].png,'base64'));
+            if(index===0){assert.equal(captures-beforeCaptures,1,'A fitting candidate needs only its final raster');firstResult=result[0].result;}
+          }
+          const multi = structuredClone(samples[0]);
+          multi.page.width *= 2;
+          const first=structuredClone(multi.page.regions[0].candidates[0].blocks[0]);
+          first.sourceEnvelopeArea=399;
+          const second={...first,blockId:'B2',box:[64,0,64,76],sourceEnvelopeArea:1};
+          multi.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
+          multi.page.regions[0].candidates.push({candidateId:'C1',blocks:[first,second]});
+          const multiResult = await host(multi);
+          assert.equal(multiResult.length,1,'Short translations only use the required geometry blocks');
+          assert(multiResult.every(r=>r.result.renderStatus!=='failure'));
+          const repeat = await host(samples[0]);
+          assert.deepEqual(repeat[0].result,firstResult);
+          rejectNextCapture=true;
+          const beforeRetry=captures;
+          await assert.rejects(host(samples[0]),/left layout area/);
+          assert.equal(captures-beforeRetry,1,'Only the chosen layout is rasterized');
+          const noRoom = page('vertical-rl','字');
+          noRoom.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
+          const failed = await host(noRoom);
+          assert.equal(failed[0].result.reason,'layout_no_fit');
+          assert.equal(failed[0].png,undefined);
+          let activeDone=false;
+          const active=host(page('horizontal-tb','A')).finally(()=>{activeDone=true});
+          const queuedController=new AbortController();const reason=new Error('queued cancellation');
+          const queued=host(samples[0],queuedController.signal);queuedController.abort(reason);
+          await assert.rejects(queued,e=>e===reason);assert.equal(activeDone,false);await active;
+          const controller=new AbortController();const stopped=new Error('active cancellation');
+          app.once('web-contents-created',(_event,contents)=>{
+            const execute=contents.executeJavaScript.bind(contents);
+            contents.executeJavaScript=(...args)=>{
+              const result=execute(...args);
+              if(args[0].startsWith('globalThis.imageTextTask.next'))setImmediate(()=>controller.abort(stopped));
+              return result;
+            };
+          });
+          await assert.rejects(host(samples[0],controller.signal),e=>e===stopped);
+          assert.equal(BrowserWindow.getAllWindows().length,0);
+          await host(page('horizontal-tb','A'));
+          await host.dispose();
+          await assert.rejects(host(samples[0]));
+          console.log('IMAGE_TEXT_HOST_OK');app.exit(0);
+        } catch(error) {console.error(error);await host.dispose();app.exit(1)}
+      })();
+    `,
+    );
+    const environment: NodeJS.ProcessEnv = { ...process.env, NODE_OPTIONS: "" };
+    delete environment.ELECTRON_RUN_AS_NODE;
+    const result = await promisify(execFile)(
+      createRequire(import.meta.url)("electron") as string,
+      [entry],
+      {
+        windowsHide: true,
+        timeout: 240_000,
+        env: environment,
+        maxBuffer: 2 * 1024 * 1024,
+      },
+    );
+    expect(result.stdout).toContain("IMAGE_TEXT_HOST_OK");
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+}, 250_000);

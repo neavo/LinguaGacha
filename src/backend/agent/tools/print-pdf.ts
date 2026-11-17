@@ -47,5 +47,5 @@ export async function execute_print_pdf_request(
   if (!Check(WORKSPACE_PRINT_PDF_REQUEST_SCHEMA, request))
     throw new Error("Invalid workspace print_pdf request.");
   if (!host) throw new Error("PDF printer unavailable.");
-  return await host(request, signal);
+  return host(request, signal);
 }

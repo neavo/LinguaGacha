@@ -54,6 +54,15 @@ describe("Agent workspace change parser", () => {
     );
     write(
       workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.files.replaces,
+      JSON.stringify({
+        file_path: "book.image",
+        source_path: "work/book.image",
+        inheritance_mode: "inherit",
+      }),
+    );
+    write(
+      workspace,
       AGENT_WORKSPACE_CHANGE_PATHS.files.deletes,
       JSON.stringify({ file_path: "b.txt" }),
     );
@@ -61,6 +70,14 @@ describe("Agent workspace change parser", () => {
       nativeFs: new NativeFs(),
       workspacePath: workspace,
     });
+    expect(parsed.files.replaces).toEqual([
+      {
+        line: 1,
+        file_path: "book.image",
+        source_path: "work/book.image",
+        inheritance_mode: "inherit",
+      },
+    ]);
     expect(parsed.files.creates).toMatchObject([
       { line: 1, source_path: "work/game", inheritance_mode: "inherit" },
     ]);

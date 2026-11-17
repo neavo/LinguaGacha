@@ -17,6 +17,7 @@ describe("工作区 Schema 说明", () => {
       {
         id: Type.Integer({ minimum: 1 }),
         mode: Type.Enum(["read", "write"]),
+        box: Type.Tuple([Type.Number(), Type.Number()]),
         text: Type.Optional(Type.String({ minLength: 2, maxLength: 8, pattern: "^[a-z]+$" })),
         value: Type.Union([
           Type.Null(),
@@ -36,6 +37,7 @@ describe("工作区 Schema 说明", () => {
       "type Update =",
       "id: number",
       'mode: ("read" | "write")',
+      "box: [number, number]",
       "text?: string",
       "value: (\n    | null",
       'kind: "number"',

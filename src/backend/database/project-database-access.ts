@@ -27,6 +27,8 @@ export type ProjectItemTranslationWrite = Readonly<{
 }>;
 type DatabaseRow = Record<string, unknown>;
 
+const SQLITE_MAX_BLOB_BYTES = 1_000_000_000; // 当前 SQLite MAX_LENGTH，行开销仍由事务内实际写入验证。
+
 // SQLite 的 IN 参数统一在数据库边界分块。业务批量大小不应复用这个存储安全值。
 const SQLITE_IN_CLAUSE_CHUNK_SIZE = 500;
 
@@ -506,7 +508,13 @@ export class ProjectDatabaseAccess {
     file_type: string,
     sort_order: number | null,
   ): void {
-    const original_data = Buffer.from(source);
+    // 压缩和 SQLite 写入全程同步，普通 Buffer 借用当前快照；共享内存仍先复制。
+    if (source.byteLength >= SQLITE_MAX_BLOB_BYTES)
+      throw new AppErrors.AppError("file.asset_too_large");
+    const original_data =
+      source.buffer instanceof SharedArrayBuffer
+        ? Buffer.from(source)
+        : Buffer.from(source.buffer, source.byteOffset, source.byteLength);
     const compressed = ZstdTool.compress(original_data);
     const effective_sort_order = sort_order ?? this.get_next_asset_sort_order(db);
     db.prepare(
@@ -531,7 +539,13 @@ export class ProjectDatabaseAccess {
     source: Uint8Array,
     file_type: string,
   ): void {
-    const original_data = Buffer.from(source);
+    // 压缩和 SQLite 写入全程同步，普通 Buffer 借用当前快照；共享内存仍先复制。
+    if (source.byteLength >= SQLITE_MAX_BLOB_BYTES)
+      throw new AppErrors.AppError("file.asset_too_large");
+    const original_data =
+      source.buffer instanceof SharedArrayBuffer
+        ? Buffer.from(source)
+        : Buffer.from(source.buffer, source.byteOffset, source.byteLength);
     const compressed = ZstdTool.compress(original_data);
     const result = db
       .prepare(

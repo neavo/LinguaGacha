@@ -1131,9 +1131,11 @@ describe("AgentConversation", () => {
         user_entry("user-1", "写入", "running", 0, null),
         {
           kind: "tool_call",
+          endedAt: null,
           id: "apply-1",
           toolName: "workspace_apply",
           input: "{}",
+          imageCount: 0,
           status: "running",
           output: null,
           createdAt: 1,
@@ -1663,9 +1665,11 @@ function assistant_entry(id: string, text: string, status: AgentEntryStatus, cre
 function workspace_apply_entry(id: string) {
   return {
     kind: "tool_call" as const,
+    endedAt: 3,
     id,
     toolName: "workspace_apply",
     input: "{}",
+    imageCount: 0,
     status: "success" as const,
     output: ["{}"],
     createdAt: 1,

@@ -8,7 +8,7 @@
 
 ## 页面模型
 
-每个页面保存以下字段，字段结构以 `ws.contract.changes.pages.updates.reference` 为准：
+每个页面保存以下字段，字段结构以 `<workspace_contract>` 为准：
 
 |字段|含义|
 |---|---|

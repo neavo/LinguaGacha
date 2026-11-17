@@ -50,7 +50,7 @@ describe("run_cli_job", () => {
       source_operation,
     );
   });
-  it.each(["PDF", "GENERIC", "MEDIA"])(
+  it.each(["PDF", "GENERIC", "MEDIA", "IMAGE"])(
     "零条目 %s 输入报告排除文件并跳过批量运行",
     async (file_type) => {
       const harness = create_backend_services_harness();

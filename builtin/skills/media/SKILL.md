@@ -33,37 +33,25 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 
 # 原稿与条目
 
-`.media` 是 ZIP 包，视频和纯音频共用。后端只按 `items.json` 的 `message` 和可选的 `name` 建立条目，其余成员和字段由本技能解释。时间均为整片秒数，零点与音频一致。包内不含原文件，生成字幕只需要包，生成成片还需要原文件。
+`.media` 使用 ZIP，保存识别证据与字幕原文。
+
+后端只校验正式 `media.json` 与 `items.json`，再建立工程条目。
+
+时间均为整片秒数，零点与音频一致。
+
+包内不含原文件。
+
+生成字幕只需要包，生成成片还需要原文件。
 
 |成员|内容|
 |---|---|
-|`media.json`|识别证据与原文件身份，见下表|
+|`media.json`|识别证据与原文件身份|
 |`items.json`|字幕原文记录，数组下标就是条目的 `row_number`|
 |`render.mjs`|可选，用户要求固定的定制渲染|
 
-`media.json`：
+`media.json` 的 `source` 用路径、大小、修改时间、音轨和语言找回原文件。`speech` 与 `asr` 保存对白证据。`text` 保存 1 fps 得到的画面文字区间；纯音频没有该分支。并行识别期间允许分支尚未完成，`pack` 只接受全部分支已经结算的正式清单。
 
-|字段|内容|
-|---|---|
-|`source`|原文件身份：`path`、`size`、`mtime_ns`、`track`、`language`。复核和成片时据此找回原文件|
-|`duration`|时长|
-|`video`|原画面尺寸 `{ width, height }`，纯音频为 `null`|
-|`speech`|人声区间 `[[start, end]]`|
-|`asr`|本地识别的句子 `{ start, end, text, tokens }`。`tokens` 是文字 token 的 `[原文, 起点]`，不含标点|
-|`text`|画面文字区间 `{ id, start, end, at, box }`，纯音频为 `null`|
-
-- 无音轨时 `speech` 与 `asr` 为 `null`。
-- `text` 来自 1 fps 检测，`start` 是首次检测到的秒数，`end` 是最后一次检测到的秒数加 1，起止各有约 1 秒误差。`at` 是文字框最大的一帧，`box` 是区间内文字框的并集，归一化为 `[x0, y0, x1, y1]`。
-
-`items.json` 的每行：
-
-|字段|要求|
-|---|---|
-|`start`、`end`|`0 ≤ start < end ≤ duration`|
-|`kind`|`dialogue`（说出的话）或 `screen`（画面文字，只用于视频）|
-|`message`|非空原文|
-|`name`|可选，说话人|
-|`box`|可选，只用于 `screen`，格式同 `text[].box`。生成字幕时译文贴着它摆放|
+`items.json` 的每行是 `dialogue` 或 `screen`。正文不能为空，时间必须在素材时长内。`screen` 只用于视频，可以带归一化 `box`，生成字幕时译文贴着原文框摆放。`asr[].tokens` 保存文字 token 与起点，供对白拆句、合句时取切点。
 
 每个资产使用独立的工作目录 `work/media/<资产名>/`。`translations.json` 保存待写入工程的识别时条目译文。视频还可能有 `text/<id>.jpg`（区间代表帧裁图）和 `sheets/`（图集），两支都可能有 `recognition/`（视频模型补查材料），这些工作材料不打包。
 
@@ -72,7 +60,7 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 |脚本|入口|用途|
 |---|---|---|
 |`media.mjs`|`DEPENDENCIES`、`missing_models`、`prepare_models`|依赖版本，检查、准备识别模型|
-||`probe_gpu`|验证 WebGPU 配置可运行，用于选择设备|
+||`describe_package`、`unpack`|按需获取当前字段声明，安全展开旧包|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白，视频同时检测画面文字，生成初始 `items.json`|
 ||`scan`、`sheets`、`refine`|仅视频：重新检测画面文字并生成裁图、拼图集、校准 `screen` 行的起止时间|
@@ -101,6 +89,13 @@ console.log(diagnostic.split(/\r?\n/u).filter(line => line.includes('silence_'))
 
 需要完整的大输出时，使用对应 FFmpeg 滤镜支持的文件输出。
 
+## 旧包归一化
+
+- 调用 `media.unpack(来源, 新工作目录)`。该入口只检查容器。
+- 调用 `media.describe_package()` 获取当前字段。
+- 根据旧包证据生成当前 `media.json` 与 `items.json`，再调用 `media.pack()`。
+- 无法可靠恢复时间、媒体分支或原文件身份时保留未决。不要猜测或补默认值。
+
 # 环境准备
 
 媒体入口只做计算，不安装依赖。依赖装在所有任务共用的 npm 与 Python 工程中，按 `media.DEPENDENCIES` 的版本安装，不自行升级：
@@ -110,25 +105,25 @@ await npm.run(['install', '--save-exact', ...media.DEPENDENCIES.npm]);
 await uv.run(['add', ...media.DEPENDENCIES.python]);
 ```
 
-npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。识别模型用 `media.missing_models()` 快速检查，`media.prepare_models()` 校验、续传并返回剩余缺口。成片不需要识别模型。
+npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。
+
+识别模型用 `media.missing_models()` 快速检查。用 `media.prepare_models()` 下载、校验并续传缺失模型。
+
+成片不需要识别模型。
 
 1. 任务开始时在独立调用中检查依赖与模型缺口，已安装版本与 `media.DEPENDENCIES` 不符也属于缺口。
-2. 有缺口时先说明下载需求，再用独立调用按上述命令补齐，后续复用已下载的资源。
+2. 本次任务首次发现缺口时，先说明「首次使用需要安装依赖并下载约 550 MB 模型，后续重复使用」，再用独立调用补齐。
 3. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
-4. 开始识别前，在独立调用中执行 `probe_gpu()` 并返回结果，据此选择本次任务的设备：
-   - `{ available: true }`：使用 `device: 'gpu'`。
-   - `{ available: false, reason }`：结合 `reason` 说明本次改用 CPU，处理可能更久。随后使用 `device: 'cpu'`。
-   - 探查抛出错误时不代表 GPU 不可用，按错误本身处理。
 
 ## 设备与重跑
 
-`prepare`、`scan`、`refine` 必须传入本次任务的 `device`。同一任务后续的调用和续跑沿用这一选择，新任务重新探查。SDK 只按传入的设备执行，不会自行换设备重跑。
+任务开始时令 `device = 'gpu'`。`prepare`、`scan`、`refine` 必须传入本次任务的 `device`，SDK 只按传入的设备执行，不会自行换设备重跑。
 
 GPU 处理中失败时：
 
-- `media.DeviceFailure` 表示 GPU 执行失败且资源已释放。告诉用户本次改用 CPU，此后都传 `device: 'cpu'`，用相同的工作目录和参数重跑失败的步骤。`prepare` 已完成的一支会复用。
+- 首次收到 `media.DeviceFailure` 时，告诉用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」，将 `device` 改为 `'cpu'`，用相同的工作目录和参数重跑失败的步骤。`prepare` 已完成的一支会复用。本次任务后续都使用 CPU，不重复提醒。
 - `prepare` 两支同时失败时抛出 `AggregateError`。只有 `errors` 全部是 `DeviceFailure` 时才按上一条处理。
-- 其他错误，包括资源无法释放，按错误本身处理，不靠换设备重试。CPU 也失败时报告原因，不再切回 GPU。
+- 模型、输入、环境和资源关闭错误按原错误处理，不靠换设备重试。CPU 失败时报告原因，不再切回 GPU。
 
 重跑已有结果：
 
@@ -148,7 +143,9 @@ GPU 处理中失败时：
 
 # 识别
 
-调用 `media.prepare(来源, 工作目录, { track, language, device })`，`language` 取 `project_meta.json` 的 `source_language`，`device` 按「环境准备」选择。它运行本地 ASR，视频同时运行画面检测，不请求付费模型。一小时素材通常需要几分钟，使用 CPU 或 4K 素材更久，开始前告诉用户。中断后用相同参数续跑，已完成的部分不再重复。
+调用 `media.prepare(来源, 工作目录, { track, language, device })`，`language` 取 `project_meta.json` 的 `source_language`，`device` 取本次任务的当前值。
+
+执行本地 ASR 的同时执行画面检测，不请求付费模型，需要几分钟时间，4K 或 CPU 模式会显著更久，开始前告诉用户，中断后用相同参数续跑，已完成的部分不再重复。
 
 `prepare` 在缺少 `items.json` 时，把每条 `asr` 转为 `dialogue` 记录。已有 `items.json` 原样保留，包括空数组。`asr` 为 `[]` 表示执行了识别但没有产出文字，如实告诉用户，不编造条目。
 
@@ -223,12 +220,12 @@ GPU 处理中失败时：
 
 # 导入与更新
 
-`media.pack(工作目录, 'work/media/<原文件主名>.media')` 校验 `items.json` 并打包，保留数组顺序。首次导入按 `project-operation` 新增，重新处理已导入的资产时按「更新文件」提交并继承译文。核对打包记录数和回执条目数。
+`media.pack(工作目录, 'work/media/<原文件主名>.media')` 校验正式清单与条目并打包，保留数组顺序。首次导入按 `project-operation` 新增，重新处理已导入的资产时按「更新文件」提交并继承译文。核对打包记录数和回执条目数。
 
 有识别时条目译文时，原文的拆分、合并和排序完成后，把译文按最终行号写入工作目录的 `translations.json`，每项为 `{ row, message, dst }`，`message` 是该行完整原文。导入后写入：
 
 1. 从最新快照按回执中资产实际的 `file_path` 和 `row_number` 找到条目，核对 `src` 与 `message` 一致。
-2. 用当前的 `item_id` 和 `fp`，按 `ws.contract.changes.items.updates.reference` 提交 `dst`。原文与译文相同的条目照常提交。
+2. 用当前的 `item_id` 和 `fp`，按 `<workspace_contract>` 向 `ws.contract.changes.items.updates.path` 提交 `dst`。原文与译文相同的条目照常提交。
 3. 核对回执与最新快照，已识别、已写入、未决和提交失败的条数都要有归属。原文与译文都入库后，才确认条目已双语导入。
 4. 用户需要翻译时，读取最新快照。将本资产状态为 `NONE` 的剩余条目作为限定目标，交由 `translation` 流程处理。
 
@@ -241,7 +238,7 @@ GPU 处理中失败时：
 
 # 复核与重新处理
 
-已导入的资产从 `sources/<file_path>/` 复制到新的工作目录。纯音频直接定位原文件并检查对白。视频的工作目录没有裁图，按「环境准备」准备环境并选择设备后，调用 `media.scan(工作目录, { device })` 重新生成。不同设备或版本使用的检测模型可能不同，新结果的区间编号和框可能与之前不同，只在本次结果内使用。
+已导入的资产从 `sources/<file_path>/` 复制到新的工作目录。纯音频直接定位原文件并检查对白。视频的工作目录没有裁图，按「环境准备」准备环境并沿用本次任务的 `device`，调用 `media.scan(工作目录, { device })` 重新生成。不同设备或版本使用的检测模型可能不同，新结果的区间编号和框可能与之前不同，只在本次结果内使用。
 
 `scan`、`refine`、视频模型补查和音频成片都按 `media.json` 的 `source` 找回原文件。`media.locate(工作目录)` 在原文件不存在或大小、修改时间变化时报错。此时用 `ask_user` 请用户提供新路径，再调用 `media.relink(工作目录, 新路径)`。它核对时长、画面尺寸和所选音轨后更新 `source`。不要自行搜索同名文件替代。资产已导入时，重新打包并按「更新文件」提交，新路径才保存进工程。
 
