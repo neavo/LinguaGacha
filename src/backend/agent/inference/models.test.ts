@@ -5,17 +5,19 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, inject, it, vi } from "vitest";
-import { prepare_model_files, download_model, type InferenceModel } from "./models";
+import { prepare_model_files, type InferenceModel } from "./models";
 
 const CONTENT = Buffer.from(
   Array.from({ length: 3 * 1024 * 1024 }, (_, index) => (index * 31) % 251),
 );
 const CUT = 1024 * 1024; // `cut` 镜像每次只发出这么多字节就断开连接。
 const WRONG = Buffer.alloc(CONTENT.length, 7);
+const SHA256 = createHash("sha256").update(CONTENT).digest("hex");
 
 type Behavior = "ok" | "missing" | "wrong" | "cut";
 const behaviors = new Map<string, Behavior>(); // 镜像名到响应方式。
 const ranges: string[] = []; // 收到的 Range 起点，按镜像记录。
+const requests: string[] = []; // 已有模型不得发出 HEAD 或下载请求。
 let server: http.Server;
 let base = "";
 let root = "";
@@ -24,7 +26,11 @@ let root = "";
 beforeAll(async () => {
   server = http.createServer((request, response) => {
     const mirror = request.url!.split("/")[1]!;
-    const behavior = behaviors.get(mirror) ?? "missing";
+    requests.push(`${request.method}:${mirror}`);
+    const behavior = behaviors.get(mirror);
+    if (behavior === undefined) return void response.writeHead(404).end();
+    if (request.method === "HEAD")
+      return void response.writeHead(200, { "x-linked-etag": SHA256 }).end();
     if (behavior === "missing") return void response.writeHead(404).end();
     const body = behavior === "wrong" ? WRONG : CONTENT;
     const start = Number(/bytes=(\d+)-/u.exec(request.headers.range ?? "")?.[1] ?? 0);
@@ -48,6 +54,7 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "lg-media-models-"));
   behaviors.clear();
   ranges.length = 0;
+  requests.length = 0;
   const runtime = inject("workspaceRuntimeDirectory");
   const aria2 = path.join(runtime, "bin", `${process.platform}-${process.arch}`, "aria2");
   vi.stubEnv("PATH", [aria2, process.env.PATH].join(path.delimiter));
@@ -66,15 +73,13 @@ afterEach(() => rm(root, { recursive: true, force: true }));
 
 const model = (...mirrors: string[]): InferenceModel => ({
   file: "nested/model.onnx",
-  size: CONTENT.length,
-  sha256: createHash("sha256").update(CONTENT).digest("hex"),
   urls: mirrors.map((mirror) => `${base}/${mirror}/model.onnx`),
 });
 const target = () => path.join(root, "models", "nested", "model.onnx");
 const leftovers = async () =>
   (await readdir(path.dirname(target()))).filter((name) => name !== "model.onnx");
 const download = (value: InferenceModel) =>
-  download_model(path.join(root, "models"), path.join(root, "stats.txt"), value);
+  prepare_model_files(path.join(root, "models"), path.join(root, "cache"), [value]);
 
 it("downloads from the reachable mirror and publishes only verified content", async () => {
   behaviors.set("a", "missing").set("b", "ok");
@@ -89,18 +94,12 @@ it("retries each mirror alone after a checksum failure", async () => {
   expect((await readFile(target())).equals(CONTENT)).toBe(true);
 }, 60_000);
 
-it("keeps nothing when no mirror provides the expected content", async () => {
-  behaviors.set("a", "wrong").set("b", "wrong");
-  await expect(download(model("a", "b"))).rejects.toThrow(AggregateError);
-  await expect(readFile(target())).rejects.toMatchObject({ code: "ENOENT" });
-  expect(await leftovers()).toEqual([]);
-}, 60_000);
-
-it("skips verified files without contacting mirrors", async () => {
+it("reuses an existing model without contacting mirrors", async () => {
   await mkdir(path.dirname(target()), { recursive: true });
-  await writeFile(target(), CONTENT);
+  await writeFile(target(), WRONG);
   await download(model("a"));
-  expect(ranges).toEqual([]);
+  expect(await readFile(target())).toEqual(WRONG);
+  expect(requests).toEqual([]);
 }, 60_000);
 
 it("resumes an interrupted download from the retained partial file", async () => {

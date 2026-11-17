@@ -58,7 +58,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     const installedOrt = JSON.parse(await fs.readFile(ortPackage, 'utf8')).version;
     assert.equal(installedOrt, ${JSON.stringify(ORT_VERSION)});
     await uv.run(['add', 'numpy==2.5.4', 'kaldi-native-fbank==1.23.0', 'opencv-python-headless==5.0.0.93', 'pyclipper==1.4.0']);
-    assert.deepEqual(await media.prepare_models(), []);
+    await media.prepare_models();
     const info = await media.inspect(source);
     // helper.test.py 同时检查检测后处理，只在准备了检测用途时执行。
     for (const test of ${JSON.stringify(["fsmn_vad.test.py", "helper.test.py"].map((file) => path.resolve("src/python/tests/media", file)))})

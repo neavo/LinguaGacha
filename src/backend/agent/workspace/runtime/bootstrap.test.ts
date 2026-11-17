@@ -63,21 +63,20 @@ afterAll(async () => {
 });
 
 it("媒体 SDK 使用宿主指定的模型目录", async () => {
-  const { file, size } = MEDIA_MODELS.vad;
+  const { file } = MEDIA_MODELS.vad;
   await run(`
     import assert from 'node:assert/strict';
     import { mkdir, writeFile, rm } from 'node:fs/promises';
     import path from 'node:path';
     import * as media from '@lg/media';
     const models = ${JSON.stringify(path.join(root, "media storage/models"))};
-    const model = ${JSON.stringify({ file, size })};
+    const model = ${JSON.stringify({ file })};
     assert.ok((await media.missing_models()).includes(model.file));
     const file = path.join(models, model.file);
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, Buffer.alloc(model.size));
-    assert.ok(!(await media.missing_models()).includes(model.file));
+    await writeFile(file, "present");
     try {
-      assert.ok((await media.missing_models()).length > 0);
+      assert.ok(!(await media.missing_models()).includes(model.file));
     } finally {
       await rm(file);
     }

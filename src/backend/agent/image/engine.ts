@@ -2,7 +2,7 @@ import path from "node:path";
 import { InferenceClient } from "../inference/client";
 import { ort_entry, python } from "../inference/environment";
 import { run_helper } from "../inference/helper";
-import { model_ready } from "../inference/models";
+import { model_exists } from "../inference/models";
 import {
   close_inference,
   inference_configuration,
@@ -56,7 +56,7 @@ export function pixels<K extends ImageHelperOperation>(
               kind !== "inpaint"
             )
               throw new Error("Unknown image inference request");
-            if (!model_ready(config.modelsDirectory, IMAGE_MODELS[kind]))
+            if (!model_exists(config.modelsDirectory, IMAGE_MODELS[kind]))
               throw new Error(`Image model missing (${kind}); call prepare_models first`);
             client ??= new InferenceClient(
               {

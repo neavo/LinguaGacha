@@ -105,7 +105,11 @@ await npm.run(['install', '--save-exact', ...media.DEPENDENCIES.npm]);
 await uv.run(['add', ...media.DEPENDENCIES.python]);
 ```
 
-npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。识别模型用 `media.missing_models()` 快速检查，`media.prepare_models()` 校验、续传并返回剩余缺口。成片不需要识别模型。
+npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。
+
+识别模型用 `media.missing_models()` 快速检查。用 `media.prepare_models()` 下载、校验并续传缺失模型。
+
+成片不需要识别模型。
 
 1. 任务开始时在独立调用中检查依赖与模型缺口，已安装版本与 `media.DEPENDENCIES` 不符也属于缺口。
 2. 本次任务首次发现缺口时，先告诉用户一次「首次使用需要下载约 700 MB 的依赖与模型，后续重复使用」，再用独立调用按上述命令补齐。

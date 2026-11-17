@@ -7,7 +7,7 @@ vi.mock("../inference/runtime", () => ({
 }));
 vi.mock("../inference/models", async (original) => ({
   ...(await original<typeof import("../inference/models")>()),
-  model_ready: (_directory: string, model: { file: string }) => fake.models.has(model.file),
+  model_exists: (_directory: string, model: { file: string }) => fake.models.has(model.file),
 }));
 
 beforeEach(() => fake.models.clear());

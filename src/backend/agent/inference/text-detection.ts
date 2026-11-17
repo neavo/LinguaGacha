@@ -2,8 +2,8 @@ import type { InferenceModel } from "./models";
 import { check_finite, float, infer, type Ort, type OrtSession } from "./ort";
 
 const PPOCR_URLS = [
-  "https://modelscope.cn/models/neavo7/PP-OCRv6-ONNX/resolve/45e0cc57a4ea02feed488b5a0508257142a6009c",
-  "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/f8d7df21b3cde6d331224b5728d7dffb8058b8d1",
+  "https://modelscope.cn/models/neavo7/PP-OCRv6-ONNX/resolve/master",
+  "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/main",
 ];
 const mirrors = (file: string): string[] => PPOCR_URLS.map((base) => `${base}/${file}`);
 
@@ -11,23 +11,17 @@ const mirrors = (file: string): string[] => PPOCR_URLS.map((base) => `${base}/${
 export const TEXT_DETECTION_MODELS = Object.freeze({
   small: {
     file: "ppocr/v6/PP-OCRv6_det_small.onnx",
-    size: 9929594,
-    sha256: "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
     urls: mirrors("det/PP-OCRv6_det_small.onnx"),
   },
   medium: {
     file: "ppocr/v6/PP-OCRv6_det_medium.onnx",
-    size: 62119454,
-    sha256: "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
     urls: mirrors("det/PP-OCRv6_det_medium.onnx"),
   },
   manga: {
     file: "pp_ocrv6_manga/det/manga_det.onnx",
-    size: 1816958,
-    sha256: "97c434ae8deaad83513fb132b605d5085a3af8ffac2cb15e2aa096815c206172",
     urls: [
       "https://modelscope.cn/models/neavo7/PP-OCRv6-Manga/resolve/master/det/manga_det.onnx",
-      "https://huggingface.co/neavo/PP-OCRv6-Manga/resolve/851eb0e498007ca66420b410e102f5107416b8f6/det/manga_det.onnx",
+      "https://huggingface.co/neavo/PP-OCRv6-Manga/resolve/main/det/manga_det.onnx",
     ],
   },
 } satisfies Record<string, InferenceModel>);

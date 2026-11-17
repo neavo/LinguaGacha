@@ -4,7 +4,7 @@ const fake = vi.hoisted(() => ({
   created: vi.fn(),
   close: vi.fn(),
   request: vi.fn(),
-  ready: true,
+  modelExists: true,
 }));
 vi.mock("../inference/client", () => ({
   InferenceClient: class {
@@ -16,7 +16,7 @@ vi.mock("../inference/client", () => ({
   },
 }));
 vi.mock("../inference/environment", () => ({ ort_entry: () => "ort", python: () => "python" }));
-vi.mock("../inference/models", () => ({ model_ready: () => fake.ready }));
+vi.mock("../inference/models", () => ({ model_exists: () => fake.modelExists }));
 vi.mock("../inference/helper", () => ({
   run_helper: async (
     _executable: string,
@@ -62,7 +62,7 @@ const layout_request = { root: "root", page, maximumBytes: 1 };
 /** 每次测试重置模块与推理路径绑定，避免静态队列状态串扰。 */
 beforeEach(async () => {
   vi.resetModules();
-  fake.ready = true;
+  fake.modelExists = true;
   fake.created.mockClear();
   fake.request.mockReset().mockResolvedValue({ header: {} });
   fake.close.mockReset().mockResolvedValue(undefined);
@@ -86,10 +86,10 @@ it("单次图片创建复用一个 Worker，失败后关闭，纯像素命令不
   expect(fake.created).toHaveBeenCalledTimes(2);
   expect(fake.close).toHaveBeenCalledTimes(2);
 
-  fake.ready = false;
+  fake.modelExists = false;
   await pixels("text_layout", layout_request);
   expect(fake.created).toHaveBeenCalledTimes(2);
-  fake.ready = true;
+  fake.modelExists = true;
   await pixels("create", create_request);
   expect(fake.created).toHaveBeenCalledTimes(3);
   expect(fake.close).toHaveBeenCalledTimes(3);
