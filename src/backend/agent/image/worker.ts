@@ -2,7 +2,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { tensor_shape, type ChannelHeader } from "../inference/channel";
 import { check_finite, float, infer, type Ort, type OrtSession } from "../inference/ort";
-import { detect_text } from "../inference/text-detection";
+import { detect_text, recognize_tokens } from "../inference/ocr";
 import type { ImageModelKind } from "./models";
 import type { ImageWorkerConfig } from "./engine";
 
@@ -81,50 +81,27 @@ async function run_bubble(
 }
 
 /** 将共享文字检测结果装入图片通道的张量列表。 */
-async function run_text(input: Float32Array, shape: number[]) {
-  const result = await detect_text(ort, await session("text"), input, shape);
+async function run_detection(input: Float32Array, shape: number[]) {
+  const result = await detect_text(ort, await session("detection"), input, shape);
   return { header: { shapes: [result.shape] }, payload: result.data.buffer };
 }
 
-/** 按固定词表执行 CTC 贪心解码。 */
+/** 用共享 CTC 结果和图片词典生成原文。 */
 async function run_recognition(input: Float32Array, shape: number[]) {
-  if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== 3 || shape[2] !== 48)
-    throw new Error("Invalid recognition tensor");
-  const model = await session("recognition");
-  const outputs = await infer(model, {
-    [model.inputNames[0]!]: new ort.Tensor("float32", input, shape),
-  });
-  try {
-    const output = outputs[model.outputNames[0]!];
-    if (!output || output.dims.length !== 3 || output.dims[0] !== 1 || !output.dims[1])
-      throw new Error("Invalid recognition output shape");
-    const data = float(output.data);
-    const vocabulary = (recognitionVocabulary ??= [
-      "",
-      ...fs.read_text_file(config.dictionary).split(/\r?\n/u).filter(Boolean),
-      " ",
-    ]);
-    const steps = output.dims[1]!;
-    const classes = output.dims[2]!;
-    if (classes !== vocabulary.length || data.length !== steps * classes)
-      throw new Error("Recognition dictionary does not match model output");
-    let text = "";
-    let previous = -1;
-    for (let step = 0; step < steps; step++) {
-      const base = step * classes;
-      let best = 0;
-      for (let index = 0; index < classes; index++) {
-        const value = data[base + index]!;
-        if (!Number.isFinite(value)) throw new Error("Model output is not finite.");
-        if (value > data[base + best]!) best = index;
-      }
-      if (best !== 0 && best !== previous) text += vocabulary[best]!;
-      previous = best;
-    }
-    return { header: { text } };
-  } finally {
-    for (const tensor of Object.values(outputs)) tensor.dispose();
-  }
+  const { tokens, classes } = await recognize_tokens(
+    ort,
+    await session("recognition"),
+    input,
+    shape,
+  );
+  const vocabulary = (recognitionVocabulary ??= [
+    "",
+    ...fs.read_text_file(config.dictionary).split(/\r?\n/u).filter(Boolean),
+    " ",
+  ]);
+  if (classes !== vocabulary.length)
+    throw new Error("Recognition dictionary does not match model output");
+  return { header: { text: tokens.map((token) => vocabulary[token]!).join("") } };
 }
 
 /** 四通道载荷拆为 RGB 与掩码；修复与检测共用作业内的会话生命周期。 */
@@ -183,17 +160,16 @@ port.on("message", (message: Request) => {
       const input = new Float32Array(message.payload);
       if (
         message.kind !== "bubble" &&
-        message.kind !== "text" &&
+        message.kind !== "detection" &&
         message.kind !== "recognition" &&
         message.kind !== "inpaint"
       )
         throw new Error(`Unknown image task: ${message.kind}`);
-      if (message.kind !== "inpaint") check_finite(input);
       const result =
         message.kind === "bubble"
           ? await run_bubble(input, shape)
-          : message.kind === "text"
-            ? await run_text(input, shape)
+          : message.kind === "detection"
+            ? await run_detection(input, shape)
             : message.kind === "recognition"
               ? await run_recognition(input, shape)
               : await run_inpaint(input, shape);

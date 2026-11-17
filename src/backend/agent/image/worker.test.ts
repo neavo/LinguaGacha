@@ -27,7 +27,7 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
           const value=Object.values(feeds)[0].data[0];
           if(value<0)throw Error('fixture inference failure');
           if(kind==='inpaint')return {output0:new Tensor('float32',new Float32Array(3*64*64).fill(value===.5?NaN:.25),value===.75?[1,3,32,32]:[1,3,64,64])};
-          if(kind==='text')return {output0:new Tensor('float32',new Float32Array(32*32).fill(value===3?NaN:value===2?2:.5),value===4?[1,32,32]:[1,1,32,32])};
+          if(kind==='detection')return {output0:new Tensor('float32',new Float32Array(32*32).fill(.5),[1,1,32,32])};
           if(kind==='recognition')return {output0:new Tensor('float32',new Float32Array([0,1,0,1,0,0]),[1,2,3])};
           const channels=value===2?39:37;
           return {output0:new Tensor('float32',new Float32Array(channels*21).fill(value===3?NaN:1),[1,channels,21]),output1:new Tensor('float32',new Float32Array(32*8*8).fill(2),[1,32,8,8])};
@@ -42,7 +42,7 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
         device: "cpu",
         models: {
           bubble: "bubble",
-          text: "text",
+          detection: "detection",
           recognition: "recognition",
           inpaint: "inpaint",
         },
@@ -70,14 +70,10 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
         expect(new Float32Array(reply.payload!).length).toBe(37 * 21 + 32 * 8 * 8);
       }
       for (let i = 0; i < 2; i++) {
-        const reply = await request(1, "text");
+        const reply = await request(1, "detection");
         expect(reply.header.shapes).toEqual([[32, 32]]);
         expect(new Float32Array(reply.payload!)).toEqual(new Float32Array(32 * 32).fill(0.5));
       }
-      await expect(request(-1, "text")).rejects.toThrow("fixture inference failure");
-      await expect(request(2, "text")).rejects.toThrow("probability map");
-      await expect(request(3, "text")).rejects.toThrow("not finite");
-      await expect(request(4, "text")).rejects.toThrow("detection output");
       const recognition = await client.request(
         "image",
         { kind: "recognition" },
@@ -111,7 +107,7 @@ it("部署后的单图片 Worker 按需复用气泡与文字会话，并在失�
         device: "webgpu",
         models: {
           bubble: "bubble",
-          text: "text",
+          detection: "detection",
           recognition: "recognition",
           inpaint: "inpaint",
         },

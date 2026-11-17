@@ -28,7 +28,7 @@ vi.mock("../inference/helper", () => ({
     if (command === "text_layout") return [];
     if (command === "create") {
       await infer({ kind: "bubble" }, new Uint8Array());
-      await infer({ kind: "text" }, new Uint8Array());
+      await infer({ kind: "detection" }, new Uint8Array());
       await infer({ kind: "inpaint" }, new Uint8Array());
       return { pages: [] };
     }

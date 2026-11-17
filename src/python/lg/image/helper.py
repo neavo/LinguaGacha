@@ -11,20 +11,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 from lg.image import fill, repair
-from lg.inference import text_detection
+from lg.inference import ocr
 from lg.inference.channel import Channel
 
 cv2.setNumThreads(1)
 IMAGE_SIZE, MODEL_STRIDE = 1600, 32
 CONF, IOU, MAX_DET, MAX_NMS = 0.25, 0.7, 300, 30000
-TEXT_SIDE = 1280
-RECOGNITION_HEIGHT = 48
 UNFRAMED_PADDING_RATIO = 0.5
-MANGA_TEXT_MEAN = np.array([0.485, 0.456, 0.406], np.float32)
-MANGA_TEXT_STD = np.array([0.229, 0.224, 0.225], np.float32)
-MANGA_TEXT_THRESHOLD = 0.15
-MANGA_TEXT_BOX_THRESHOLD = 0.25
-MANGA_TEXT_UNCLIP = 1.4
 
 
 def read_image(path):
@@ -162,32 +155,11 @@ def read_layout_area(file, shape):
     return mask
 
 
-def manga_text_input(image):
-    """按页面比例控制 PP-OCRv6-Manga 像素预算并执行 ImageNet 归一化。"""
-    height, width = image.shape[:2]
-    if max(height, width) / min(height, width) > 2:
-        ratio = min(1.0, math.sqrt(0.75 * TEXT_SIDE * TEXT_SIDE / (height * width)))
-    else:
-        ratio = TEXT_SIDE / max(height, width)
-    target_h = max(32, int(round(height * ratio / 32) * 32))
-    target_w = max(32, int(round(width * ratio / 32) * 32))
-    resized = cv2.resize(image, (target_w, target_h)).astype(np.float32) / 255
-    normalized = (resized - MANGA_TEXT_MEAN) / MANGA_TEXT_STD
-    return np.ascontiguousarray(normalized.transpose(2, 0, 1)[None])
-
-
 def detect_text(image, channel):
     """整页等比缩放到 1280 像素预算后检测一次。"""
-    tensor = manga_text_input(image)
-    (probability,) = forward(channel, "text", tensor)
-    return text_detection.det_box_records(
-        probability,
-        *image.shape[:2],
-        round_coords=True,
-        threshold=MANGA_TEXT_THRESHOLD,
-        box_threshold=MANGA_TEXT_BOX_THRESHOLD,
-        unclip_ratio=MANGA_TEXT_UNCLIP,
-    )
+    tensor = ocr.image_detection_input(image)
+    (probability,) = forward(channel, "detection", tensor)
+    return ocr.image_detection_records(probability, *image.shape[:2])
 
 
 def recognize_text(image, box, channel):
@@ -202,12 +174,7 @@ def recognize_text(image, box, channel):
         return "", 0.0
     if crop.shape[0] > crop.shape[1]:
         crop = cv2.rotate(crop, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    height, width = crop.shape[:2]
-    target_width = max(16, round(RECOGNITION_HEIGHT * width / max(1, height)))
-    resized = cv2.resize(crop, (target_width, RECOGNITION_HEIGHT)).astype(np.float32)
-    tensor = np.ascontiguousarray(
-        ((resized / 255 - 0.5) / 0.5).transpose(2, 0, 1)[None]
-    )
+    tensor = ocr.recognition_input(crop)
     header, payload = channel.request("recognition", tensor).result()
     if payload:
         raise ValueError("Recognition response must not contain a payload")

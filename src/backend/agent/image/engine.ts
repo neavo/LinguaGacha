@@ -8,7 +8,7 @@ import {
   inference_configuration,
   run_inference_operation,
 } from "../inference/runtime";
-import { IMAGE_DICTIONARY, IMAGE_MODELS, type ImageModelKind } from "./models";
+import { IMAGE_MODELS, IMAGE_RESOURCES, type ImageModelKind } from "./models";
 import {
   check_image_helper_request,
   read_image_helper_response,
@@ -51,7 +51,7 @@ export function pixels<K extends ImageHelperOperation>(
             const kind = header.kind;
             if (
               kind !== "bubble" &&
-              kind !== "text" &&
+              kind !== "detection" &&
               kind !== "recognition" &&
               kind !== "inpaint"
             )
@@ -64,11 +64,11 @@ export function pixels<K extends ImageHelperOperation>(
                 device: device === "gpu" ? "webgpu" : "cpu",
                 models: {
                   bubble: path.join(config.modelsDirectory, IMAGE_MODELS.bubble.file),
-                  text: path.join(config.modelsDirectory, IMAGE_MODELS.text.file),
+                  detection: path.join(config.modelsDirectory, IMAGE_MODELS.detection.file),
                   recognition: path.join(config.modelsDirectory, IMAGE_MODELS.recognition.file),
                   inpaint: path.join(config.modelsDirectory, IMAGE_MODELS.inpaint.file),
                 },
-                dictionary: path.join(config.modelsDirectory, IMAGE_DICTIONARY.file),
+                dictionary: path.join(config.modelsDirectory, IMAGE_RESOURCES.dictionary.file),
               } satisfies ImageWorkerConfig,
               path.join(runtime, "image-worker.mjs"),
             );

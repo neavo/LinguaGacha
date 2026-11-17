@@ -103,7 +103,7 @@ export async function scan(
   { out, device }: Readonly<{ out: string }> & DeviceOptions,
 ): Promise<TextRegion[]> {
   validate_device(device);
-  require_models(device === "gpu" ? ["det_gpu", "rec_gpu"] : ["det_cpu", "rec_cpu"]);
+  require_models(["detection", "recognition"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
@@ -128,7 +128,7 @@ export async function refine(
   { rows, device }: Readonly<{ rows: readonly RefineRow[] }> & DeviceOptions,
 ): Promise<TextBound[]> {
   validate_device(device);
-  require_models(device === "gpu" ? ["det_gpu", "rec_gpu"] : ["det_cpu", "rec_cpu"]);
+  require_models(["detection", "recognition"]);
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");

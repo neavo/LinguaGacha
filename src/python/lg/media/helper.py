@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
-from lg.inference import text_detection
+from lg.inference import ocr
 from lg.inference.channel import Channel, tensor
 
 IN_FLIGHT = 2  # 每条处理分支的在途请求上限，前后处理与推理重叠一帧即可。
@@ -38,8 +38,7 @@ LINE_GAP = (
     0.6  # 行间距小于较矮一行高度的该倍数时视为同一块（经验值），两行硬字幕合成一块。
 )
 TRACK_IOU = 0.5  # 位置只用于唯一匹配候选，内容由 OCR 另行判断。
-REC_HEIGHT, REC_MIN_WIDTH = 48, 320  # RapidOCR 的文字行输入尺寸，宽度随长宽比扩展。
-REC_VERTICAL_RATIO = 1.5  # 沿用 RapidOCR 的高竖框旋转规则。
+REC_VERTICAL_RATIO = 1.5  # 高竖框旋转后再交给共享 Manga 识别前处理。
 TEXT_DIFFERENCE = 0.25  # 字符编号的编辑距离比例，空识别不能作为内容相同的证据。
 CROP_MARGIN = 0.3  # 裁图四周留出块高的该倍数。
 JPEG_QUALITY = 90
@@ -79,15 +78,6 @@ def initialize(command):
 def log(message):
     """进度与诊断写 stderr，stdout 只承载通道。"""
     print(message, file=sys.stderr, flush=True)
-
-
-DET_SIDE = text_detection.DET_SIDE
-det_input, det_boxes, clockwise, sort_boxes = (
-    text_detection.det_input,
-    text_detection.det_boxes,
-    text_detection.clockwise,
-    text_detection.sort_boxes,
-)
 
 
 def ffmpeg_process(args):
@@ -283,8 +273,8 @@ class TextBlock(NamedTuple):
     lines: tuple[tuple[int, ...], ...]
 
 
-def rec_input(frame, points):
-    """透视裁剪后按 RapidOCR 规则归一化，长文字行扩宽而不截断。"""
+def recognition_input(frame, points):
+    """透视裁剪并横置文字行，共享 Manga 动态宽度识别前处理。"""
     width = int(
         max(
             np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])
@@ -306,23 +296,16 @@ def rec_input(frame, points):
     )
     if height / width >= REC_VERTICAL_RATIO:
         image = np.rot90(image)
-    ratio = image.shape[1] / image.shape[0]
-    width = int(REC_HEIGHT * max(REC_MIN_WIDTH / REC_HEIGHT, ratio))
-    resized = min(width, math.ceil(REC_HEIGHT * ratio))
-    data = (
-        cv2.resize(image, (resized, REC_HEIGHT)).astype(np.float32).transpose(2, 0, 1)
-        / 255
-    )
-    result = np.zeros((1, 3, REC_HEIGHT, width), np.float32)
-    result[0, :, :, :resized] = (data - 0.5) / 0.5
-    return result
+    return ocr.recognition_input(image)
 
 
 def detect_blocks(header, payload, frame):
     """先按几何关系分组，让区域筛选与 OCR 是否成功无关。"""
     pred = tensor(header, payload)
     height = frame.shape[0]
-    found = det_boxes(pred.reshape(pred.shape[-2:]), height, frame.shape[1])
+    found = ocr.media_detection_boxes(
+        pred.reshape(pred.shape[-2:]), height, frame.shape[1]
+    )
     return group_lines(found)
 
 
@@ -330,7 +313,9 @@ def read_block(channel, frame, block):
     """识别一个文字块的成员行。相同帧内的多个条目共享该结果。"""
     lines = []
     for points in block.members:
-        reply, _ = channel.request("rec", rec_input(frame, points)).result()
+        reply, _ = channel.request(
+            "recognition", recognition_input(frame, points)
+        ).result()
         tokens = reply["tokens"]
         if not isinstance(tokens, list) or any(
             type(token) is not int or token <= 0 for token in tokens
@@ -523,7 +508,13 @@ def scan(channel, ffmpeg, source, width, height, out):
 
     for second, frame in enumerate(decode(ffmpeg, source, size, 1)):
         settle(IN_FLIGHT - 1)
-        inflight.append((second, frame, channel.request("det", det_input(frame))))
+        inflight.append(
+            (
+                second,
+                frame,
+                channel.request("detection", ocr.media_detection_input(frame)),
+            )
+        )
     settle(0)
     w, h = size
     return [
@@ -676,7 +667,13 @@ def refine(channel, ffmpeg, source, width, height, duration, rows):
     with closing(refine_frames(ffmpeg, source, size, duration, requests)) as frames:
         for at, frame in frames:
             settle(IN_FLIGHT - 1)
-            inflight.append((at, frame, channel.request("det", det_input(frame))))
+            inflight.append(
+                (
+                    at,
+                    frame,
+                    channel.request("detection", ocr.media_detection_input(frame)),
+                )
+            )
         settle(0)
     # 未读到的采样保留为未知，避免提前结束解码时发布猜测边界。
     return result

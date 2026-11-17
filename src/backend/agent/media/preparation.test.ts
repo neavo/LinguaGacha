@@ -14,9 +14,9 @@ beforeEach(() => fake.models.clear());
 
 it("计算前只要求本次消费的模型", async () => {
   const { require_models } = await import("./preparation");
-  fake.models.add(MEDIA_MODELS.det_cpu.file);
-  expect(() => require_models(["det_cpu"])).not.toThrow();
-  expect(() => require_models(["det_cpu", "det_gpu"])).toThrow(
-    `Media models are missing (${MEDIA_MODELS.det_gpu.file}); call prepare_models() first.`,
+  fake.models.add(MEDIA_MODELS.detection.file);
+  expect(() => require_models(["detection"])).not.toThrow();
+  expect(() => require_models(["detection", "recognition"])).toThrow(
+    `Media models are missing (${MEDIA_MODELS.recognition.file}); call prepare_models() first.`,
   );
 });

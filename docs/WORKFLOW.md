@@ -192,7 +192,7 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/fill.test.py
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/repair.test.py
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/helper.test.py
-uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/inference/text_detection.test.py
+uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/inference/ocr.test.py
 ```
 
 部署验证先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。图片气泡分割、文字检测或 LaMa Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。图片运行时资源部署与工作区请求变化追加 `workspace/runtime/bootstrap.test.ts` 中受影响的用例。
@@ -224,7 +224,7 @@ $env:LINGUAGACHA_MEDIA_LANGUAGE = 'JA'
 npm test -- --project integration src/backend/agent/media/index.test.ts
 ```
 
-`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。验证 ORT 降级时，复用装有高版本的验收环境，并核对 `result.json` 的 `ort` 字段。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。画面流程变化时分别验收 CPU 双 small 和 GPU 双 medium。
+`LINGUAGACHA_MEDIA_LANGUAGE` 使用工程语言枚举，默认 `JA`。再次执行会复用准备缓存。验证 ORT 降级时，复用装有高版本的验收环境，并核对 `result.json` 的 `ort` 字段。GPU 质量与自然退出须在每台目标设备上用相同素材和命令各自验收。画面流程变化时用相同 Manga OCR 权重分别验收 CPU 与 GPU。
 
 可视化验收只显式安装 FFmpeg 与 Python 包，不准备识别模型，同时证明成片不受模型缺失影响。报告目录应位于仓库外，保留独立环境与运行日志：
 

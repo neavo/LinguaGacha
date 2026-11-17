@@ -1,13 +1,9 @@
 import type { InferenceModel } from "../inference/models";
-import { TEXT_DETECTION_MODELS } from "../inference/text-detection";
+import { MANGA_OCR_RESOURCES } from "../inference/ocr";
 const W8A32 = "SenseVoiceSmall-ONNX-WebGPU-W8A32";
 const W8A32_URLS = [
   `https://modelscope.cn/models/neavo7/${W8A32}/resolve/master`,
   `https://huggingface.co/neavo/${W8A32}/resolve/main`,
-];
-const PPOCR_URLS = [
-  "https://modelscope.cn/models/neavo7/PP-OCRv6-ONNX/resolve/master",
-  "https://huggingface.co/neavo/PP-OCRv6-ONNX/resolve/main",
 ];
 const FSMN_URLS = [
   "https://modelscope.cn/models/neavo7/FSMN-VAD-ONNX/resolve/master",
@@ -51,14 +47,6 @@ export const MEDIA_MODELS = Object.freeze({
     file: "sensevoice/am.mvn",
     urls: mirrors(W8A32_URLS, "am.mvn"), // 官方 iic/SenseVoiceSmall 同一文件的自有镜像。
   },
-  det_cpu: TEXT_DETECTION_MODELS.small,
-  det_gpu: TEXT_DETECTION_MODELS.medium,
-  rec_cpu: {
-    file: "ppocr/v6/PP-OCRv6_rec_small.onnx",
-    urls: mirrors(PPOCR_URLS, "rec/PP-OCRv6_rec_small.onnx"),
-  },
-  rec_gpu: {
-    file: "ppocr/v6/PP-OCRv6_rec_medium.onnx",
-    urls: mirrors(PPOCR_URLS, "rec/PP-OCRv6_rec_medium.onnx"),
-  },
+  detection: MANGA_OCR_RESOURCES.detection,
+  recognition: MANGA_OCR_RESOURCES.recognition,
 } satisfies Record<string, InferenceModel>);

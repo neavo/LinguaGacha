@@ -42,14 +42,25 @@ it("returns GPU failure only after closing and lets the caller explicitly retry 
     ["webgpu", path.join("/models", MEDIA_MODELS.asr_gpu.file)],
     ["cpu", path.join("/models", MEDIA_MODELS.asr_cpu.file)],
   ]);
-  expect(fake.created.mock.calls.map(([models]) => [models.det.file, models.rec.file])).toEqual([
+  expect(
+    fake.created.mock.calls.map(([models]) => [
+      models.detection.device,
+      models.detection.file,
+      models.recognition.device,
+      models.recognition.file,
+    ]),
+  ).toEqual([
     [
-      path.join("/models", MEDIA_MODELS.det_gpu.file),
-      path.join("/models", MEDIA_MODELS.rec_gpu.file),
+      "webgpu",
+      path.join("/models", MEDIA_MODELS.detection.file),
+      "webgpu",
+      path.join("/models", MEDIA_MODELS.recognition.file),
     ],
     [
-      path.join("/models", MEDIA_MODELS.det_cpu.file),
-      path.join("/models", MEDIA_MODELS.rec_cpu.file),
+      "cpu",
+      path.join("/models", MEDIA_MODELS.detection.file),
+      "cpu",
+      path.join("/models", MEDIA_MODELS.recognition.file),
     ],
   ]);
 });

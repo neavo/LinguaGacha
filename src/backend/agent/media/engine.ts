@@ -74,7 +74,7 @@ export async function helper<K extends MediaHelperOperation>(
       engine
         ? (header, payload) => {
             const kind = header.kind;
-            if (kind !== "vad" && kind !== "asr" && kind !== "det" && kind !== "rec")
+            if (kind !== "vad" && kind !== "asr" && kind !== "detection" && kind !== "recognition")
               throw new Error("Unexpected media task");
             return engine.request(stream!, kind, header, payload);
           }
@@ -99,8 +99,8 @@ function worker_config(device: MediaDevice): MediaWorkerConfig {
     models: {
       vad: model("vad", "cpu", 1),
       asr: model(device === "cpu" ? "asr_cpu" : "asr_gpu", device),
-      det: model(device === "cpu" ? "det_cpu" : "det_gpu", device),
-      rec: model(device === "cpu" ? "rec_cpu" : "rec_gpu", device),
+      detection: model("detection", device),
+      recognition: model("recognition", device),
     },
   };
 }

@@ -36,8 +36,8 @@ parentPort.on('message', (m) => {
     models: {
       vad: model,
       asr: { ...model, device },
-      det: { ...model, device },
-      rec: { ...model, device },
+      detection: { ...model, device },
+      recognition: { ...model, device },
     },
   };
   const engine = new Engine(config, file);
@@ -50,7 +50,7 @@ const request = (engine: Engine, kind: MediaTask, fail = false) =>
 it("shares two CPU visual workers for detection and OCR independently of audio", async () => {
   const engine = await create("cpu");
   const replies = await Promise.all(
-    ["det", "vad", "rec", "asr", "rec", "asr", "det"].map((kind) =>
+    ["detection", "vad", "recognition", "asr", "recognition", "asr", "detection"].map((kind) =>
       request(engine, kind as MediaTask),
     ),
   );
@@ -65,7 +65,7 @@ it("shares two CPU visual workers for detection and OCR independently of audio",
 it("shares one GPU worker for ASR, detection and OCR while VAD stays on CPU", async () => {
   const engine = await create();
   const replies = await Promise.all(
-    ["asr", "det", "rec", "vad"].map((kind) => request(engine, kind as MediaTask)),
+    ["asr", "detection", "recognition", "vad"].map((kind) => request(engine, kind as MediaTask)),
   );
   const threads = replies.map((reply) => reply.header.thread);
   expect(threads[0]).toBe(threads[1]);
@@ -76,7 +76,7 @@ it("shares one GPU worker for ASR, detection and OCR while VAD stays on CPU", as
 it("marks GPU failures for rerun and keeps VAD errors on CPU", async () => {
   const engine = await create();
   await expect(request(engine, "vad", true)).rejects.not.toBeInstanceOf(DeviceFailure);
-  const error = await request(engine, "det", true).catch((error: unknown) => error);
+  const error = await request(engine, "detection", true).catch((error: unknown) => error);
   expect(error).toBeInstanceOf(DeviceFailure);
   await expect(request(engine, "asr")).rejects.toBe(error);
   await engine.close();

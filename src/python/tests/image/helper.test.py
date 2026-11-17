@@ -24,7 +24,7 @@ class Channel:
 
     def request(self, kind, tensor):
         self.requests.append(kind)
-        if kind == "text":
+        if kind == "detection":
             probability = np.zeros(tensor.shape[2:], np.float32)
             return future(
                 ({"shapes": [list(probability.shape)]}, probability.tobytes())
@@ -58,7 +58,7 @@ def box(x0, y0, x1, y1):
 # 整页检测只发起一次请求；相邻无框框按阅读顺序合并。
 channel = Channel()
 assert image.detect_text(np.zeros((1800, 1200, 3), np.uint8), channel) == []
-assert channel.requests == ["text"]
+assert channel.requests == ["detection"]
 groups = image.group_unframed(
     [
         {**box(70, 10, 90, 30), "text": "右"},
@@ -80,10 +80,10 @@ with tempfile.TemporaryDirectory(prefix="lg-image-create-") as folder:
     source[20:35, 20:45] = 0
     source[20:35, 50:75] = 0
     source_file = image.save(root / "source.png", source)
-    original_detect = image.text_detection.det_box_records
+    original_detect = image.ocr.image_detection_records
     original_recognize = image.recognize_text
     try:
-        image.text_detection.det_box_records = lambda *_args, **_kwargs: [
+        image.ocr.image_detection_records = lambda *_args, **_kwargs: [
             box(18, 18, 47, 37),
             box(48, 18, 77, 37),
         ]
@@ -105,7 +105,7 @@ with tempfile.TemporaryDirectory(prefix="lg-image-create-") as folder:
             Channel(),
         )
     finally:
-        image.text_detection.det_box_records = original_detect
+        image.ocr.image_detection_records = original_detect
         image.recognize_text = original_recognize
     assert len(created["page"]["textBoxes"]) == 2
     assert created["page"]["regions"][0]["kind"] == "unframed"

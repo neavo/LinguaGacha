@@ -62,7 +62,7 @@ class TextInference:
     def request(self, kind, features):
         """检查 OCR 输入，检测请求由各场景提供输出。"""
         future = Future()
-        if kind == "rec":
+        if kind == "recognition":
             assert features.shape[:3] == (1, 3, 48)
             assert (
                 np.isfinite(features).all()
@@ -87,11 +87,11 @@ assert any(box.rect[3] - box.rect[1] > 50 and box.lines == ((),) for box in boxe
 )
 
 # 长行扩宽，成员行分组保留阅读顺序。
-wide = media.rec_input(
+wide = media.recognition_input(
     np.full((20, 1000, 3), 255, np.uint8),
     np.float32([[0, 0], [999, 0], [999, 19], [0, 19]]),
 )
-assert wide.shape[3] > media.REC_MIN_WIDTH and wide.shape[2] == media.REC_HEIGHT
+assert wide.shape[3] > 2400 and wide.shape[2] == 48
 points = [np.float32([[0, y], [40, y], [40, y + 10], [0, y + 10]]) for y in [0, 12]]
 group = media.group_lines(points)[0]
 assert [line[0, 1] for line in group.members] == [0, 12]

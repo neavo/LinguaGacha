@@ -32,7 +32,7 @@ export class Engine {
     const lane =
       this.config.models[kind].device === "webgpu"
         ? "gpu"
-        : kind === "det" || kind === "rec"
+        : kind === "detection" || kind === "recognition"
           ? `vision${this.vision++ % 2}`
           : "audio";
     return this.client.request(lane, { stream, kind }, header, payload);
