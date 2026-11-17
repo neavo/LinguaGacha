@@ -1,5 +1,10 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import {
+  read_media_items,
+  read_media_package_manifest,
+  read_media_writeback_items,
+} from "@lg/media";
 
 const AUDIO_RESOLUTION = { width: 1920, height: 1080 }; // 纯音频没有画面尺寸。
 const FONT = "Arial"; // 视频字幕由播放器所在系统提供字体。
@@ -34,9 +39,10 @@ const MIN_SECONDS = 0.7; // 对话的最短显示时长，避免短句一闪而�
  */
 export async function render({ source, input, translated, bilingual }) {
   const read = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取包内记录与写回输入。
-  const { video, duration, text } = await read(path.join(source, "media.json"));
-  const originals = await read(path.join(source, "items.json"));
-  const targets = await read(input);
+  const manifest = read_media_package_manifest(await read(path.join(source, "media.json")));
+  const { video, duration, text } = manifest;
+  const originals = read_media_items(await read(path.join(source, "items.json")), duration, video);
+  const targets = read_media_writeback_items(await read(input), duration, video);
   if (targets.length !== originals.length) throw new Error("写回输入与包内记录数不一致");
   const { width, height } = video ?? AUDIO_RESOLUTION;
   const audio = video === null;

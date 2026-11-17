@@ -41,6 +41,7 @@ import {
   type AgentWorkspaceRuntimeChildMessage,
   type AgentWorkspaceRuntimeParentMessage,
 } from "./protocol";
+import { is_app_error } from "../../../../shared/error";
 
 export type AgentWorkspaceRunRequest = AgentExecutionRequest &
   Readonly<{
@@ -248,11 +249,12 @@ export class AgentWorkspaceRunner {
             return execute_doing_request(request, controller.signal, run_request.doing);
           if (request.kind === "emit_image")
             return await execute_image_request(request, controller.signal, run_request.emitImage);
-          if (request.kind === "resolve_proxy" && typeof request.url === "string")
-            return await this.proxy_resolver.resolveProxy(request.url, controller.signal);
+          if (request.kind === "resolve_proxy" && typeof request.url === "string") {
+            return this.proxy_resolver.resolveProxy(request.url, controller.signal);
+          }
           if (request.kind === "resolve_package_source") {
             if (!run_request.packageSource) throw new Error("Package source unavailable.");
-            return await run_request.packageSource(controller.signal);
+            return run_request.packageSource(controller.signal);
           }
           if (request.kind === "get_output_paths")
             return execute_get_output_paths_request(
@@ -295,7 +297,18 @@ export class AgentWorkspaceRunner {
                 id,
                 result: {
                   ok: false,
-                  message: error instanceof Error ? error.message : String(error),
+                  error: is_app_error(error)
+                    ? {
+                        code: error.code,
+                        message: error.message,
+                        ...(Object.keys(error.public_details).length === 0
+                          ? {}
+                          : { public_details: error.public_details }),
+                      }
+                    : {
+                        code: "runtime.internal_invariant",
+                        message: error instanceof Error ? error.message : String(error),
+                      },
                 },
               });
             },

@@ -13,6 +13,13 @@ import {
 import { run_helper } from "../inference/helper";
 import { MEDIA_MODELS } from "./models";
 import type { DeviceOptions, MediaDevice, MediaWorkerConfig } from "./worker-protocol";
+import {
+  check_media_helper_request,
+  read_media_helper_response,
+  type MediaHelperOperation,
+  type MediaHelperRequest,
+  type MediaHelperResponse,
+} from "../../../shared/media";
 
 /** 设备来自 AGENT 脚本，未知值必须在资源准备前拒绝。 */
 export function validate_device(device: unknown): void {
@@ -50,14 +57,16 @@ export async function operate<T>(
  * 运行媒体 helper 的一个命令。helper 的推理请求转发给 Worker，应答按编号写回。
  * 正常返回要求收到结果帧、helper 正常退出。任一请求失败时结束 helper 并抛出该失败。
  */
-export async function helper(
-  command: string,
-  job: Readonly<Record<string, unknown>>,
+export async function helper<K extends MediaHelperOperation>(
+  command: K,
+  job: MediaHelperRequest<K>,
   engine?: Engine,
-): Promise<unknown> {
+): Promise<MediaHelperResponse<K>> {
+  if (!check_media_helper_request(command, job))
+    throw new Error(`Invalid media helper request: ${command}`);
   const stream = engine?.open();
   try {
-    return await run_helper(
+    const response = await run_helper(
       python(),
       "lg.media.helper",
       command,
@@ -71,6 +80,7 @@ export async function helper(
           }
         : undefined,
     );
+    return read_media_helper_response(command, response);
   } finally {
     if (stream !== undefined) engine!.release(stream);
   }

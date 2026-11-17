@@ -35,6 +35,22 @@ const BOX = Type.Tuple([
   Type.Integer({ minimum: 1 }),
   Type.Integer({ minimum: 1 }),
 ]);
+const IMAGE_TEXT_BLOCK_SCHEMA = Type.Object(
+  {
+    blockId: ID,
+    box: BOX,
+    distance: Type.String(),
+    centroid: Type.Tuple([Type.Number(), Type.Number()]),
+  },
+  { additionalProperties: false },
+);
+const IMAGE_TEXT_CANDIDATE_SCHEMA = Type.Object(
+  {
+    candidateId: ID,
+    blocks: Type.Array(IMAGE_TEXT_BLOCK_SCHEMA, { minItems: 1, maxItems: 2 }),
+  },
+  { additionalProperties: false },
+);
 export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
   {
     pageId: ID,
@@ -49,27 +65,7 @@ export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
           fill: IMAGE_FILL_SCHEMA,
           preferredFontSize: Type.Integer({ minimum: 2 }),
           sourceLineCount: Type.Integer({ minimum: 1 }),
-          candidates: Type.Array(
-            Type.Object(
-              {
-                candidateId: ID,
-                blocks: Type.Array(
-                  Type.Object(
-                    {
-                      blockId: ID,
-                      box: BOX,
-                      distance: Type.String(),
-                      centroid: Type.Tuple([Type.Number(), Type.Number()]),
-                    },
-                    { additionalProperties: false },
-                  ),
-                  { minItems: 1, maxItems: 2 },
-                ),
-              },
-              { additionalProperties: false },
-            ),
-            { minItems: 1, maxItems: 7 },
-          ),
+          candidates: Type.Array(IMAGE_TEXT_CANDIDATE_SCHEMA, { minItems: 1, maxItems: 7 }),
         },
         { additionalProperties: false },
       ),
@@ -79,25 +75,59 @@ export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 export type ImageTextPage = Static<typeof IMAGE_TEXT_PAGE_SCHEMA>;
-type ImageTextRenderedResult = {
-  regionId: string;
-  box: [number, number, number, number];
-};
-export type ImageTextBlockResult =
-  | (ImageTextRenderedResult & { renderStatus: "success" })
-  | (ImageTextRenderedResult & {
-      renderStatus: "warning";
-      reasons: ("small_font" | "tight_margin" | "off_center")[];
-    })
-  | {
-      regionId: string;
-      renderStatus: "failure";
-      reason: "layout_no_fit" | "outside_layout_area";
-    };
-export type ImageTextPaint = {
-  result: ImageTextBlockResult;
-  png?: string; // 同一原生覆盖层的 PNG，坐标为区域 box。
-};
+export const IMAGE_TEXT_GEOMETRY_REGION_SCHEMA = Type.Object(
+  {
+    regionId: ID,
+    candidates: Type.Array(IMAGE_TEXT_CANDIDATE_SCHEMA, { minItems: 1, maxItems: 7 }),
+  },
+  { additionalProperties: false },
+);
+export type ImageTextGeometryRegion = Static<typeof IMAGE_TEXT_GEOMETRY_REGION_SCHEMA>;
+
+const IMAGE_TEXT_RENDERED_RESULT_SCHEMA = Type.Object(
+  { regionId: ID, box: BOX },
+  { additionalProperties: false },
+);
+export const IMAGE_TEXT_BLOCK_RESULT_SCHEMA = Type.Union([
+  Type.Object(
+    {
+      ...IMAGE_TEXT_RENDERED_RESULT_SCHEMA.properties,
+      renderStatus: Type.Literal("success"),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      ...IMAGE_TEXT_RENDERED_RESULT_SCHEMA.properties,
+      renderStatus: Type.Literal("warning"),
+      reasons: Type.Array(
+        Type.Union([
+          Type.Literal("small_font"),
+          Type.Literal("tight_margin"),
+          Type.Literal("off_center"),
+        ]),
+      ),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      regionId: ID,
+      renderStatus: Type.Literal("failure"),
+      reason: Type.Union([Type.Literal("layout_no_fit"), Type.Literal("outside_layout_area")]),
+    },
+    { additionalProperties: false },
+  ),
+]);
+export type ImageTextBlockResult = Static<typeof IMAGE_TEXT_BLOCK_RESULT_SCHEMA>;
+export const IMAGE_TEXT_PAINT_SCHEMA = Type.Object(
+  {
+    result: IMAGE_TEXT_BLOCK_RESULT_SCHEMA,
+    png: Type.Optional(Type.String()), // 同一原生覆盖层的 PNG，坐标为区域 box。
+  },
+  { additionalProperties: false },
+);
+export type ImageTextPaint = Static<typeof IMAGE_TEXT_PAINT_SCHEMA>;
 export type ImageTextHostOperation = { kind: "render_image_text_page"; page: ImageTextPage };
 export type ImageTextHost = (
   operation: ImageTextHostOperation,

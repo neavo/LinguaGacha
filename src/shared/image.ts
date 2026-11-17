@@ -108,14 +108,93 @@ export type ImageRegion = ImagePage["regions"][number];
 export type ImageClean = Static<typeof IMAGE_CLEAN_SCHEMA>;
 export type ImageCleanPage = ImageClean["pages"][number];
 export type ImageCleanRegion = ImageCleanPage["regions"][number];
-export type ImageRecord = { message: string; pageId: string; regionId: string }; // 与区域对应的原文条目。
+export const IMAGE_RECORD_SCHEMA = Type.Object(
+  { message: Type.String(), pageId: ID, regionId: ID },
+  { additionalProperties: false },
+);
+export type ImageRecord = Static<typeof IMAGE_RECORD_SCHEMA>; // 与区域对应的原文条目。
 
-export type ImageOutputSummary = {
-  success: number;
-  warnings: number;
-  failures: number;
-  originals: number;
-  translated: number;
-};
-export type ImageOutputReport = { path: string; summary: ImageOutputSummary };
+const IMAGE_OUTPUT_REASON_CODE_SCHEMA = Type.Union([
+  Type.Literal("tight_margin"),
+  Type.Literal("off_center"),
+  Type.Literal("small_font"),
+  Type.Literal("layout_no_fit"),
+  Type.Literal("outside_layout_area"),
+  Type.Literal("erase_failed"),
+  Type.Literal("translation_incomplete"),
+]);
+
+const IMAGE_OUTPUT_REASON_SCHEMA = Type.Object(
+  {
+    code: IMAGE_OUTPUT_REASON_CODE_SCHEMA,
+    detail: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+const IMAGE_OUTPUT_ENTRY_SCHEMA = Type.Object(
+  {
+    region_id: Type.Optional(ID),
+    status: Type.Union([Type.Literal("success"), Type.Literal("warning"), Type.Literal("failure")]),
+    output: Type.Union([Type.Literal("original"), Type.Literal("translated")]),
+    reasons: Type.Array(IMAGE_OUTPUT_REASON_SCHEMA),
+  },
+  { additionalProperties: false },
+);
+export const IMAGE_OUTPUT_ASSET_SCHEMA = Type.Object(
+  {
+    asset_path: Type.String({ minLength: 1 }),
+    files: Type.Array(
+      Type.Object(
+        { path: Type.String({ minLength: 1 }), entries: Type.Array(IMAGE_OUTPUT_ENTRY_SCHEMA) },
+        { additionalProperties: false },
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+export type ImageOutputAsset = Static<typeof IMAGE_OUTPUT_ASSET_SCHEMA>;
+
+export const IMAGE_OUTPUT_SUMMARY_SCHEMA = Type.Object(
+  {
+    success: Type.Integer({ minimum: 0 }),
+    warnings: Type.Integer({ minimum: 0 }),
+    failures: Type.Integer({ minimum: 0 }),
+    originals: Type.Integer({ minimum: 0 }),
+    translated: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+export type ImageOutputSummary = Static<typeof IMAGE_OUTPUT_SUMMARY_SCHEMA>;
+
+export const IMAGE_OUTPUT_REPORT_SCHEMA = Type.Object(
+  { path: Type.String({ minLength: 1 }), summary: IMAGE_OUTPUT_SUMMARY_SCHEMA },
+  { additionalProperties: false },
+);
+export type ImageOutputReport = Static<typeof IMAGE_OUTPUT_REPORT_SCHEMA>;
 export type ImageQualityResult = { output_path: string; report: ImageOutputReport };
+
+export const IMAGE_CREATE_RESULT_SCHEMA = Type.Object(
+  {
+    output_path: Type.String({ minLength: 1 }),
+    diagnostics_path: Type.String({ minLength: 1 }),
+    pages: Type.Array(
+      Type.Object(
+        {
+          page_id: ID,
+          preview_path: Type.String({ minLength: 1 }),
+          detected: Type.Integer({ minimum: 0 }),
+          regions: Type.Integer({ minimum: 0 }),
+          failures: Type.Array(
+            Type.Object(
+              { region_id: ID, message: Type.String({ minLength: 1 }) },
+              { additionalProperties: false },
+            ),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+export type ImageCreateResult = Static<typeof IMAGE_CREATE_RESULT_SCHEMA>;

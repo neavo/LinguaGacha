@@ -697,7 +697,28 @@ it.each([false, true])("视频资产只输出写回输入，空记录=%s", async
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-video-export-"));
   const service = create_service();
   const records = empty ? [] : [{ message: "原文", start: 0, end: 2, kind: "dialogue" }];
-  const content = await write_zip(new Map([["items.json", JSON.stringify(records)]]));
+  const content = await write_zip(
+    new Map([
+      [
+        "media.json",
+        JSON.stringify({
+          source: {
+            path: "C:/media/movie.mp4",
+            size: 1,
+            mtime_ns: "1",
+            track: 0,
+            language: "JA",
+          },
+          duration: 2,
+          video: { width: 1920, height: 1080 },
+          speech: null,
+          asr: null,
+          text: [],
+        }),
+      ],
+      ["items.json", JSON.stringify(records)],
+    ]),
+  );
   const parsed = await service.parse_asset("movie.media", content);
   expect(parsed).toMatchObject({ kind: "items", file_type: "MEDIA" });
   if (parsed.kind !== "items") throw new Error("Expected items");

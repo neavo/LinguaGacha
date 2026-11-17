@@ -9,6 +9,13 @@ import {
   run_inference_operation,
 } from "../inference/runtime";
 import { IMAGE_DICTIONARY, IMAGE_MODELS, type ImageModelKind } from "./models";
+import {
+  check_image_helper_request,
+  read_image_helper_response,
+  type ImageHelperOperation,
+  type ImageHelperRequest,
+  type ImageHelperResponse,
+} from "../../../shared/image-helper";
 
 export type ImageDevice = "cpu" | "gpu"; // 调用方可选的推理设备。
 export type ImageWorkerConfig = {
@@ -21,19 +28,21 @@ export type ImageWorkerConfig = {
 let tail: Promise<unknown> = Promise.resolve(); // 串行化所有像素作业的队列尾节点。
 
 /** 页操作串行，单次像素作业内按需创建并复用单个图片 Worker。纯像素命令不创建 Worker。 */
-export function pixels(
-  command: string,
-  args: Readonly<Record<string, unknown>>,
+export function pixels<K extends ImageHelperOperation>(
+  command: K,
+  args: ImageHelperRequest<K>,
   device: ImageDevice = "cpu",
-): Promise<unknown> {
+): Promise<ImageHelperResponse<K>> {
   const result = tail.then(() =>
     run_inference_operation(device, async () => {
+      if (!check_image_helper_request(command, args))
+        throw new Error(`Invalid image helper request: ${command}`);
       const config = inference_configuration();
       const runtime = path.join(config.runtimeDirectory, "runtime");
       const lane = device === "gpu" ? "gpu" : "image";
       let client: InferenceClient | undefined;
       try {
-        return await run_helper(
+        const response = await run_helper(
           python(),
           "lg.image.helper",
           command,
@@ -66,6 +75,7 @@ export function pixels(
             return await client.request(lane, { kind }, header, payload);
           },
         );
+        return read_image_helper_response(command, response);
       } finally {
         if (client) await close_inference(client);
       }

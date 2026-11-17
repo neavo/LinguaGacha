@@ -38,4 +38,29 @@ describe("AgentWorkspaceRequestChannel", () => {
       failed.call({ kind: "resolve_proxy", url: "https://example.com" }),
     ).rejects.toThrow("IPC closed");
   });
+
+  it("恢复宿主应用错误的 code 与公开详情", async () => {
+    const channel = new AgentWorkspaceRequestChannel(
+      async () => undefined,
+      () => undefined,
+    );
+    const pending = channel.call({ kind: "resolve_proxy", url: "https://example.com" });
+    channel.accept({
+      type: "response",
+      id: 1,
+      result: {
+        ok: false,
+        error: {
+          code: "data.revision_conflict",
+          message: "revision changed",
+          public_details: { expected_revision: 2, current_revision: 3 },
+        },
+      },
+    });
+    await expect(pending).rejects.toMatchObject({
+      code: "data.revision_conflict",
+      message: "revision changed",
+      public_details: { expected_revision: 2, current_revision: 3 },
+    });
+  });
 });

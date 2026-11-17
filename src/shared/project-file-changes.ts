@@ -1,13 +1,37 @@
-import type { GodotPackOrder, GodotPackPreview } from "./godot";
+import type { GodotPackOrder } from "./godot";
 import type { ImportInheritanceMode } from "./translation-inheritance";
+import { Type, type Static } from "typebox";
 
 /** 按输入顺序返回内置能力识别的来源资产，未匹配格式不计为失败。 */
-export type SourceInspection = {
-  source_path: string;
-  files: { path: string; kind: "file" | "game" }[];
-  godot_packs: GodotPackPreview[];
-  failures: { path: string; message: string }[];
-};
+export const SOURCE_INSPECTION_SCHEMA = Type.Object(
+  {
+    source_path: Type.String(),
+    files: Type.Array(
+      Type.Object(
+        {
+          path: Type.String(),
+          kind: Type.Union([Type.Literal("file"), Type.Literal("game")]),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    godot_packs: Type.Array(
+      Type.Object(
+        {
+          game_root: Type.String(),
+          game_name: Type.String(),
+          external_pcks: Type.Array(Type.String()),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    failures: Type.Array(
+      Type.Object({ path: Type.String(), message: Type.String() }, { additionalProperties: false }),
+    ),
+  },
+  { additionalProperties: false },
+);
+export type SourceInspection = Static<typeof SOURCE_INSPECTION_SCHEMA>;
 
 /** 新增记录只指定来源，目标名称由提交方在写入占用内分配。 */
 export type ProjectFileCreate = {

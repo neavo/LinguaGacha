@@ -119,7 +119,7 @@ const qa = await generateQA();
 
 - 工程中的每个图片页面都有对应输出。
 - `summary` 中成功、警告、失败、原图输出和译文输出数量与详细条目一致。
-- 详细条目的 `path`、`regionId`、`status`、`output` 和 `reasons` 能说明实际结果，不根据目录或颜色推断状态。
+- 详细条目的 `path`、`region_id`、`status`、`output` 和 `reasons` 能说明实际结果，不根据目录或颜色推断状态。
 
 # 交付说明
 

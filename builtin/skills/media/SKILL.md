@@ -33,37 +33,17 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 
 # 原稿与条目
 
-`.media` 是 ZIP 包，视频和纯音频共用。后端只按 `items.json` 的 `message` 和可选的 `name` 建立条目，其余成员和字段由本技能解释。时间均为整片秒数，零点与音频一致。包内不含原文件，生成字幕只需要包，生成成片还需要原文件。
+`.media` 是视频和纯音频共用的 ZIP 包。后端先校验正式 `media.json` 与 `items.json`，再建立工程条目。时间均为整片秒数，零点与音频一致。包内不含原文件，生成字幕只需要包，生成成片还需要原文件。
 
 |成员|内容|
 |---|---|
-|`media.json`|识别证据与原文件身份，见下表|
+|`media.json`|识别证据与原文件身份|
 |`items.json`|字幕原文记录，数组下标就是条目的 `row_number`|
 |`render.mjs`|可选，用户要求固定的定制渲染|
 
-`media.json`：
+`media.json` 的 `source` 用路径、大小、修改时间、音轨和语言找回原文件。`speech` 与 `asr` 保存对白证据。`text` 保存 1 fps 得到的画面文字区间；纯音频没有该分支。并行识别期间允许分支尚未完成，`pack` 只接受全部分支已经结算的正式清单。
 
-|字段|内容|
-|---|---|
-|`source`|原文件身份：`path`、`size`、`mtime_ns`、`track`、`language`。复核和成片时据此找回原文件|
-|`duration`|时长|
-|`video`|原画面尺寸 `{ width, height }`，纯音频为 `null`|
-|`speech`|人声区间 `[[start, end]]`|
-|`asr`|本地识别的句子 `{ start, end, text, tokens }`。`tokens` 是文字 token 的 `[原文, 起点]`，不含标点|
-|`text`|画面文字区间 `{ id, start, end, at, box }`，纯音频为 `null`|
-
-- 无音轨时 `speech` 与 `asr` 为 `null`。
-- `text` 来自 1 fps 检测，`start` 是首次检测到的秒数，`end` 是最后一次检测到的秒数加 1，起止各有约 1 秒误差。`at` 是文字框最大的一帧，`box` 是区间内文字框的并集，归一化为 `[x0, y0, x1, y1]`。
-
-`items.json` 的每行：
-
-|字段|要求|
-|---|---|
-|`start`、`end`|`0 ≤ start < end ≤ duration`|
-|`kind`|`dialogue`（说出的话）或 `screen`（画面文字，只用于视频）|
-|`message`|非空原文|
-|`name`|可选，说话人|
-|`box`|可选，只用于 `screen`，格式同 `text[].box`。生成字幕时译文贴着它摆放|
+`items.json` 的每行是 `dialogue` 或 `screen`。正文不能为空，时间必须在素材时长内。`screen` 只用于视频，可以带归一化 `box`，生成字幕时译文贴着原文框摆放。`asr[].tokens` 保存文字 token 与起点，供对白拆句、合句时取切点。
 
 每个资产使用独立的工作目录 `work/media/<资产名>/`。`translations.json` 保存待写入工程的识别时条目译文。视频还可能有 `text/<id>.jpg`（区间代表帧裁图）和 `sheets/`（图集），两支都可能有 `recognition/`（视频模型补查材料），这些工作材料不打包。
 
@@ -220,7 +200,7 @@ GPU 处理中失败时：
 
 # 导入与更新
 
-`media.pack(工作目录, 'work/media/<原文件主名>.media')` 校验 `items.json` 并打包，保留数组顺序。首次导入按 `project-operation` 新增，重新处理已导入的资产时按「更新文件」提交并继承译文。核对打包记录数和回执条目数。
+`media.pack(工作目录, 'work/media/<原文件主名>.media')` 校验正式清单与条目并打包，保留数组顺序。首次导入按 `project-operation` 新增，重新处理已导入的资产时按「更新文件」提交并继承译文。核对打包记录数和回执条目数。
 
 有识别时条目译文时，原文的拆分、合并和排序完成后，把译文按最终行号写入工作目录的 `translations.json`，每项为 `{ row, message, dst }`，`message` 是该行完整原文。导入后写入：
 

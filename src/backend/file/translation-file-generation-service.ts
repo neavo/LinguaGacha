@@ -33,7 +33,8 @@ import { create_text_resolver, format_i18n_message, type LocaleKey } from "../..
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { GeneratedFilePaths } from "./file-format-types";
 import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
-import type { ImageOutputAsset, ImageOutputService } from "./image/image-output";
+import type { ImageOutputService } from "./image/image-output";
+import { type ImageOutputAsset } from "../../shared/image";
 
 /**
  * 译文生成层只依赖日志的公开 info/error 能力，避免把完整 LogManager 生命周期传进文件域

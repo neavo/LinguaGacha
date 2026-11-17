@@ -1,11 +1,12 @@
-import type { WorkspaceRequest, WorkspaceRequestResult } from "./protocol";
+import { AppError } from "../../../../shared/error";
+import type { WorkspaceRequest, WorkspaceResponse, WorkspaceResponseFor } from "./protocol";
 import type {
   AgentWorkspaceRuntimeChildMessage,
   AgentWorkspaceRuntimeParentMessage,
 } from "./protocol";
 
 type PendingRequest = {
-  resolve: (value: WorkspaceRequestResult) => void;
+  resolve: (value: WorkspaceResponse) => void;
   reject: (error: unknown) => void;
   signal: AbortSignal | undefined;
   abortListener?: () => void;
@@ -23,14 +24,18 @@ export class AgentWorkspaceRequestChannel {
   ) {}
 
   /** 建立可取消请求，并等待父进程完成操作。 */
-  public async call(
-    operation: WorkspaceRequest,
+  public async call<R extends WorkspaceRequest>(
+    operation: R,
     signal?: AbortSignal,
-  ): Promise<WorkspaceRequestResult> {
+  ): Promise<WorkspaceResponseFor<R>> {
     signal?.throwIfAborted();
     const id = this.next_id++;
-    const result = new Promise<WorkspaceRequestResult>((resolve, reject) => {
-      const request: PendingRequest = { resolve, reject, signal };
+    const result = new Promise<WorkspaceResponseFor<R>>((resolve, reject) => {
+      const request: PendingRequest = {
+        resolve: (value) => resolve(value as WorkspaceResponseFor<R>),
+        reject,
+        signal,
+      };
       if (signal !== undefined) {
         request.abortListener = () => {
           if (!this.pending.delete(id)) return;
@@ -49,7 +54,13 @@ export class AgentWorkspaceRequestChannel {
       this.accept({
         type: "response",
         id,
-        result: { ok: false, message: error instanceof Error ? error.message : String(error) },
+        result: {
+          ok: false,
+          error: {
+            code: "runtime.internal_invariant",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
       });
     });
     return await result;
@@ -65,7 +76,15 @@ export class AgentWorkspaceRequestChannel {
       request.signal.removeEventListener("abort", request.abortListener);
     }
     if (message.result.ok) request.resolve(message.result.value);
-    else request.reject(new Error(message.result.message));
+    else
+      request.reject(
+        new AppError(message.result.error.code, {
+          message: message.result.error.message,
+          ...(message.result.error.public_details === undefined
+            ? {}
+            : { public_details: message.result.error.public_details }),
+        }),
+      );
   }
 }
 

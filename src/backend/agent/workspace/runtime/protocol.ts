@@ -17,27 +17,44 @@ import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";
 import type { UvConfiguration } from "../../uv/types";
 import type { InferenceConfiguration } from "../../inference/runtime";
 import type { WorkspaceSearchRequest, SearchResponse } from "../../search/schema";
+import type { AppErrorCode, AppErrorPublicDetails } from "../../../../shared/error";
 
-export type WorkspaceRequest =
-  | WorkspaceSearchRequest
-  | { kind: "resolve_proxy"; url: string }
-  | { kind: "resolve_package_source" } // 对话身份由宿主绑定，子进程不携带
-  | Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>
-  | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
-  | WorkspacePrintPDFRequest
-  | WorkspaceInspectSourcesRequest
-  | WorkspaceGenerateImageQARequest
-  | WorkspaceGenerateFilesRequest
-  | WorkspaceGetOutputPathsRequest;
-export type WorkspaceRequestResult =
-  | SearchResponse
-  | string
-  | null
-  | WorkspacePrintPDFResult
-  | SourceInspection[]
-  | ImageQualityResult
-  | TranslationFileGenerationResult
-  | TranslationOutputPaths;
+export type WorkspaceOperations = {
+  search: { request: WorkspaceSearchRequest; response: SearchResponse };
+  resolve_proxy: { request: { kind: "resolve_proxy"; url: string }; response: string };
+  resolve_package_source: {
+    request: { kind: "resolve_package_source" }; // 对话身份由宿主绑定，子进程不携带
+    response: "official" | "mirror";
+  };
+  emit_image: { request: Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>; response: null };
+  doing: { request: Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>; response: null };
+  print_pdf: { request: WorkspacePrintPDFRequest; response: WorkspacePrintPDFResult };
+  inspect_sources: { request: WorkspaceInspectSourcesRequest; response: SourceInspection[] };
+  generate_image_qa: {
+    request: WorkspaceGenerateImageQARequest;
+    response: ImageQualityResult;
+  };
+  generate_files: {
+    request: WorkspaceGenerateFilesRequest;
+    response: TranslationFileGenerationResult;
+  };
+  get_output_paths: {
+    request: WorkspaceGetOutputPathsRequest;
+    response: TranslationOutputPaths;
+  };
+};
+export type WorkspaceOperation = keyof WorkspaceOperations;
+export type WorkspaceRequest<K extends WorkspaceOperation = WorkspaceOperation> =
+  WorkspaceOperations[K]["request"];
+export type WorkspaceResponse<K extends WorkspaceOperation = WorkspaceOperation> =
+  WorkspaceOperations[K]["response"];
+export type WorkspaceResponseFor<R extends WorkspaceRequest> =
+  WorkspaceOperations[R["kind"]]["response"];
+export type WorkspaceError = {
+  code: AppErrorCode;
+  message: string;
+  public_details?: AppErrorPublicDetails;
+};
 
 /** 父子进程通过 IPC 交换 JSON 请求与状态。文本走标准流，图片内容由父进程固定。 */
 export type AgentWorkspaceRuntimeParentMessage =
@@ -54,7 +71,7 @@ export type AgentWorkspaceRuntimeParentMessage =
   | {
       type: "response";
       id: number;
-      result: { ok: true; value: WorkspaceRequestResult } | { ok: false; message: string };
+      result: { ok: true; value: WorkspaceResponse } | { ok: false; error: WorkspaceError };
     };
 export type AgentWorkspaceRuntimeChildMessage =
   | { type: "request"; id: number; request: WorkspaceRequest }

@@ -4,9 +4,8 @@ import { default_native_fs as fs } from "../../../native/native-fs";
 import type {
   ImageBook,
   ImageClean,
-  ImagePage,
   ImageQualityResult,
-  ImageRecord,
+  ImageCreateResult,
 } from "../../../shared/image";
 import {
   image_sha256,
@@ -43,40 +42,14 @@ export type {
   ImageOutputSummary,
   ImageQualityResult,
   ImageRecord,
+  ImageCreateResult,
   ImageRegion,
 } from "../../../shared/image";
 
 export type ImageSource = { path: string; relativePath: string };
-export type ImageCreateResult = {
-  path: string;
-  diagnostics: string;
-  pages: {
-    pageId: string;
-    preview: string;
-    detected: number;
-    regions: number;
-    failures: { regionId: string; error: string }[];
-  }[];
-};
-
-type CreatedPage = {
-  page: ImagePage;
-  records: ImageRecord[];
-  clean: ImageClean["pages"][number];
-  diagnostics: Omit<ImageCreateResult["pages"][number], "pageId">;
-};
-
 /** 使用当前工程状态生成整页图片 QA 预览。 */
 export async function generateQA(): Promise<ImageQualityResult> {
-  const result = await workspace_requests().call({ kind: "generate_image_qa" });
-  if (
-    typeof result !== "object" ||
-    result === null ||
-    !("output_path" in result) ||
-    !("report" in result)
-  )
-    throw new Error("Invalid generate_image_qa response.");
-  return result as ImageQualityResult;
+  return workspace_requests().call({ kind: "generate_image_qa" });
 }
 
 /**
@@ -121,11 +94,8 @@ export async function createImage(
         source: normalizedPath,
       });
     }
-    const created = (await pixels("create", { pages: pageSpecs, output: stage }, device)) as {
-      pages: CreatedPage[];
-    };
-    if (!Array.isArray(created.pages) || created.pages.length !== pageSpecs.length)
-      throw new Error("Invalid image creation result");
+    const created = await pixels("create", { pages: pageSpecs, output: stage }, device);
+    if (created.pages.length !== pageSpecs.length) throw new Error("Invalid image creation result");
     const book: ImageBook = { bookId: randomUUID(), pages: created.pages.map((item) => item.page) };
     const records = created.pages.flatMap((item) => item.records);
     const clean: ImageClean = {
@@ -153,12 +123,17 @@ export async function createImage(
     diagnosticsCommitted = true;
     fs.rename(temporary, target);
     return {
-      path: target,
-      diagnostics,
+      output_path: target,
+      diagnostics_path: diagnostics,
       pages: created.pages.map(({ page, diagnostics: item }) => ({
-        pageId: page.pageId,
-        ...item,
-        preview: path.join(diagnostics, path.basename(item.preview)),
+        page_id: page.pageId,
+        preview_path: path.join(diagnostics, path.basename(item.preview)),
+        detected: item.detected,
+        regions: item.regions,
+        failures: item.failures.map((failure) => ({
+          region_id: failure.regionId,
+          message: failure.error,
+        })),
       })),
     };
   } catch (error) {

@@ -152,7 +152,7 @@ describe("TranslationFileGenerationService", () => {
     const imageOutput = {
       write_assets: vi.fn(async (options: Parameters<ImageOutputService["write_assets"]>[0]) =>
         options.assetPaths.map((assetPath) => ({
-          assetPath,
+          asset_path: assetPath,
           files: fixture.book.pages.map((page, index) => {
             const file = path.join(options.outputRoot, "book", page.relativePath);
             fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -162,13 +162,13 @@ describe("TranslationFileGenerationService", () => {
               entries: [
                 index === 3
                   ? {
-                      regionId: "text",
+                      region_id: "text",
                       status: "failure" as const,
                       output: "original" as const,
                       reasons: [{ code: "translation_incomplete" as const }],
                     }
                   : {
-                      regionId: "text",
+                      region_id: "text",
                       status: "success" as const,
                       output: "translated" as const,
                       reasons: [],
@@ -402,6 +402,31 @@ describe("TranslationFileGenerationService", () => {
         ]),
       ),
     );
+    const media_records = [{ ...records[0], start: 0, end: 2, kind: "dialogue" }];
+    const media_content = Buffer.from(
+      await write_zip(
+        new Map([
+          [
+            "media.json",
+            JSON.stringify({
+              source: {
+                path: "C:/media/movie.mp4",
+                size: 1,
+                mtime_ns: "1",
+                track: 0,
+                language: "JA",
+              },
+              duration: 2,
+              video: { width: 1920, height: 1080 },
+              speech: null,
+              asr: null,
+              text: [],
+            }),
+          ],
+          ["items.json", JSON.stringify(media_records)],
+        ]),
+      ),
+    );
     const items = await new GenericFormat().read_from_stream(content, "data.generic");
     items[0] = { ...items[0]!, status: "PROCESSED", dst: "你好" };
     const session = new ProjectSessionState();
@@ -424,7 +449,7 @@ describe("TranslationFileGenerationService", () => {
         ],
         {
           "data.generic": { content, file_type: "GENERIC" },
-          "movie.media": { content, file_type: "MEDIA" },
+          "movie.media": { content: media_content, file_type: "MEDIA" },
           "empty.generic": {
             content: Buffer.from(await write_zip(new Map([["items.json", "[]"]]))),
             file_type: "GENERIC",
@@ -456,7 +481,7 @@ describe("TranslationFileGenerationService", () => {
           "utf8",
         ),
       ),
-    ).toEqual([{ ...records[0], message: "你好" }]);
+    ).toEqual([{ ...media_records[0], message: "你好" }]);
     expect(
       JSON.parse(
         fs.readFileSync(

@@ -9,9 +9,7 @@ export { queryItemContexts } from "./item-contexts";
 
 /** 通过宿主识别来源，返回与输入顺序一致的识别结果。 */
 export async function inspectSources(source_paths: string[]): Promise<SourceInspection[]> {
-  const result = await workspace_requests().call({ kind: "inspect_sources", source_paths });
-  if (!Array.isArray(result)) throw new Error("Invalid inspect_sources response.");
-  return result;
+  return workspace_requests().call({ kind: "inspect_sources", source_paths });
 }
 
 /**
@@ -23,19 +21,13 @@ export async function inspectSources(source_paths: string[]): Promise<SourceInsp
 export async function generateFiles(
   bilingual_files: string[],
 ): Promise<TranslationFileGenerationResult> {
-  const result = await workspace_requests().call({ kind: "generate_files", bilingual_files });
-  if (typeof result !== "object" || result === null || !("accepted" in result))
-    throw new Error("Invalid generate_files response.");
-  return result;
+  return workspace_requests().call({ kind: "generate_files", bilingual_files });
 }
 
 /** 通过宿主查询交付位置，工作区不解释应用保存设置。 */
 export async function getOutputPaths(directory?: string): Promise<TranslationOutputPaths> {
-  const result = await workspace_requests().call({
+  return workspace_requests().call({
     kind: "get_output_paths",
     ...(directory === undefined ? {} : { directory }),
   });
-  if (typeof result !== "object" || result === null || !("manual" in result))
-    throw new Error("Invalid get_output_paths response.");
-  return result;
 }

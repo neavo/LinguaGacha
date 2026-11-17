@@ -1,6 +1,15 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ffmpeg, install, load, locate, save, valid_row } from "./media.mjs";
+import {
+  ffmpeg,
+  install,
+  load,
+  locate,
+  read_items,
+  read_package_manifest,
+  save,
+  valid_row,
+} from "./media.mjs";
 import { union } from "@lg/media";
 
 const MAX_SECONDS = 210; // 单个补查区间的时长上限，更长时模型常常空输出或截断。
@@ -41,7 +50,7 @@ export async function request(directory, { prompt, ranges }) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("必须提供识别提示词");
   if (!Array.isArray(ranges) || !ranges.length) throw new Error("必须指定补查区间");
   const root = path.resolve(directory);
-  const { duration, video, source } = await load(path.join(root, "media.json"));
+  const { duration, video, source } = await read_package_manifest(path.join(root, "media.json"));
   const file = await locate(root);
   const planned = new Map(); // 相同区间只生成一份载荷。
   for (const range of ranges) {
@@ -183,8 +192,10 @@ export async function read(directory, result_file) {
  * 区间内的 `screen` 来自本地流程，保持不变。
  */
 export async function apply(directory, candidate, ranges) {
-  const itemsFile = path.join(path.resolve(directory), "items.json");
-  let items = await load(itemsFile);
+  const root = path.resolve(directory);
+  const itemsFile = path.join(root, "items.json");
+  const manifest = await read_package_manifest(path.join(root, "media.json"));
+  let items = await read_items(itemsFile, manifest.duration, manifest.video);
   const adopted = (await load(candidate)).filter((range) =>
     ranges.some((wanted) => same(wanted, range)),
   );
@@ -230,16 +241,18 @@ function subtract([start, end], cover) {
  */
 export async function check(directory) {
   const root = path.resolve(directory);
-  const { duration, speech, asr } = await load(path.join(root, "media.json"));
+  const { duration, video, speech, asr } = await read_package_manifest(
+    path.join(root, "media.json"),
+  );
   const rows = await load(path.join(root, "items.json"));
   const dialogue = rows.flatMap((row, index) =>
-    valid_row(row, duration) && row.kind === "dialogue"
+    valid_row(row, duration, video) && row.kind === "dialogue"
       ? [{ index, span: [row.start, row.end] }]
       : [],
   );
   const cover = union(dialogue.map(({ span }) => span));
   return {
-    invalid_rows: rows.flatMap((row, index) => (valid_row(row, duration) ? [] : [index])),
+    invalid_rows: rows.flatMap((row, index) => (valid_row(row, duration, video) ? [] : [index])),
     uncovered:
       speech &&
       speech

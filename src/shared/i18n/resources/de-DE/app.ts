@@ -224,8 +224,6 @@ export const de_de_app = {
         "[Fehler] Die Übersetzung ist unvollständig; der Originalinhalt bleibt erhalten …",
       erase_failed:
         "[Fehler] Der Originaltext konnte nicht zuverlässig entfernt werden; der Originalinhalt bleibt erhalten …",
-      page_output_failed:
-        "[Fehler] Die Seitenausgabe ist fehlgeschlagen; der Originalinhalt bleibt erhalten …",
     },
     action: "Übersetzungen exportieren",
     confirmation: {

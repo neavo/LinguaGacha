@@ -25,19 +25,47 @@ vi.mock("../inference/helper", () => ({
     args: Record<string, unknown>,
     infer: NonNullable<Parameters<typeof import("../inference/helper").run_helper>[4]>,
   ) => {
-    if (command === "create" && args.repair) {
-      await infer({ kind: "text" }, new Uint8Array());
-      await infer({ kind: "inpaint" }, new Uint8Array());
-      return;
-    }
-    if (command === "pack" || command === "text_layout") return;
+    if (command === "pack") return { path: String(args.output) };
+    if (command === "text_layout") return [];
     if (command === "create") {
       await infer({ kind: "bubble" }, new Uint8Array());
       await infer({ kind: "text" }, new Uint8Array());
-      return;
+      await infer({ kind: "inpaint" }, new Uint8Array());
+      return { pages: [] };
     }
   },
 }));
+
+const page_spec = {
+  pageId: "page",
+  relativePath: "page.png",
+  original: "originals/page.png",
+  sha256: "a".repeat(64),
+  width: 1,
+  height: 1,
+  orientation: 1,
+  source: "source.png",
+};
+const page = {
+  pageId: page_spec.pageId,
+  relativePath: page_spec.relativePath,
+  original: page_spec.original,
+  sha256: page_spec.sha256,
+  width: page_spec.width,
+  height: page_spec.height,
+  orientation: page_spec.orientation,
+  textBoxes: [],
+  regions: [],
+};
+const create_request = { pages: [page_spec], output: "output" };
+const pack_request = {
+  output: "book.image",
+  book: { bookId: "book", pages: [page] },
+  records: [],
+  clean: { bookId: "book", pages: [{ pageId: "page", clean: "clean/page.png", regions: [] }] },
+  sources: {},
+};
+const layout_request = { root: "root", page, maximumBytes: 1 };
 
 /** 每次测试重置模块与推理路径绑定，避免静态队列状态串扰。 */
 beforeEach(async () => {
@@ -56,22 +84,22 @@ beforeEach(async () => {
 
 it("单次图片创建复用一个 Worker，失败后关闭，纯像素命令不启动模型", async () => {
   const { pixels } = await import("./engine");
-  await pixels("create", {});
-  expect(fake.request).toHaveBeenCalledTimes(2);
+  await pixels("create", create_request);
+  expect(fake.request).toHaveBeenCalledTimes(3);
   expect(fake.created).toHaveBeenCalledOnce();
   expect(fake.close).toHaveBeenCalledOnce();
 
   fake.request.mockRejectedValueOnce(new Error("inference failed"));
-  await expect(pixels("create", {})).rejects.toThrow("inference failed");
+  await expect(pixels("create", create_request)).rejects.toThrow("inference failed");
   expect(fake.created).toHaveBeenCalledTimes(2);
   expect(fake.close).toHaveBeenCalledTimes(2);
 
   fake.ready = false;
-  await pixels("pack", {});
-  await pixels("text_layout", {});
+  await pixels("pack", pack_request);
+  await pixels("text_layout", layout_request);
   expect(fake.created).toHaveBeenCalledTimes(2);
   fake.ready = true;
-  await pixels("create", { repair: true });
+  await pixels("create", create_request);
   expect(fake.created).toHaveBeenCalledTimes(3);
   expect(fake.close).toHaveBeenCalledTimes(3);
 });

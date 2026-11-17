@@ -1,5 +1,3 @@
-import { GENERIC_ITEMS_SCHEMA } from "../../file/shared/archive-records";
-import { create_schema_renderer } from "../workspace/schema-description";
 import { summarize_images } from "./emit-image";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
@@ -17,6 +15,7 @@ import app_package from "../../../../package.json";
 import { UV_DESCRIPTION } from "../uv/description";
 import { NPM_DESCRIPTION } from "../npm/description";
 import { SEARCH_DESCRIPTION } from "../search/description";
+import { format_project_typescript_api } from "../project/api-description";
 
 const { defaultTimeoutSeconds, minTimeoutSeconds, maxTimeoutSeconds } =
   AGENT_WORKSPACE_RUNTIME_POLICY;
@@ -99,15 +98,7 @@ export function create_agent_workspace_run_tool(options: {
       `调用 \`generateFiles\` 前先提交必要译文。产物生成到 \`${AGENT_WORKSPACE_WORK_ROOT}/\` 下的暂存目录，返回值中的路径都是本机绝对路径：\`output_path\` 只含宿主已完成的可安装产物，\`bilingual_output_path\` 为双语对照，\`excluded_files\` 是跳过的资产，\`writeback\` 是仍需格式处理的输入，\`pdf_files\` 报告 PDF 页面结果，\`image_report\` 报告图片成功、警告、失败、原图输出和译文输出数量。`,
       "`getOutputPaths(directory?)` 按应用设置计算交付目录，传入绝对路径时改用该父目录。`manual` 为 `true` 表示用户设置为每次手动选择。返回的目录名已避开现有同名目录，但不会预先创建。",
       "```ts",
-      create_schema_renderer(new Map([[GENERIC_ITEMS_SCHEMA, "GenericItems"]])).declarations(),
-      "declare module '@lg/project' {",
-      "  type SourceInspection = { source_path: string; files: Array<{ path: string; kind: 'file' | 'game' }>; godot_packs: Array<Readonly<{ game_root: string; game_name: string; external_pcks: readonly string[] }>>; failures: Array<{ path: string; message: string }> };",
-      "  function inspectSources(source_paths: string[]): Promise<SourceInspection[]>;",
-      "  function getOutputPaths(directory?: string): Promise<{ manual: boolean; translated_path: string; bilingual_path: string }>;",
-      "  function generateFiles(bilingual_files: string[]): Promise<{ accepted: true; output_path: string; bilingual_output_path: string; excluded_files: string[]; writeback?: { input_path: string; files: string[] }; image_report?: { path: string; summary: { success: number; warnings: number; failures: number; originals: number; translated: number } }; pdf_files: Array<{ file_path: string; written: boolean; translated_pages: number; original_pages: number; omitted_pages: number }> }>;",
-      "  /** `items` 传入按文件连续且文件内自然排列的工程条目数组或异步流，返回目标条目及同文件前后各 2 条非空原文（去重并保持首次出现顺序）。 */",
-      "  function queryItemContexts<Item extends { item_id: number; file_path: string; src: string }>(items: AsyncIterable<Item> | Iterable<Item>, item_ids: readonly number[]): Promise<{ contexts: Array<{ target_item_id: number; item_ids: number[] }>; items: Item[]; missing_item_ids: number[] }>;",
-      "}",
+      format_project_typescript_api(),
       "```",
       "",
       "### `ws` 接口",

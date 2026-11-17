@@ -169,18 +169,16 @@ with tempfile.TemporaryDirectory(prefix="lg-image-output-") as folder:
     paint = root / "paint.json"
     paint.write_text(
         json.dumps(
-            dict(
-                regions=[
-                    dict(
-                        result=dict(
-                            regionId="r1",
-                            box=geometry["box"],
-                            renderStatus="success",
-                        ),
-                        png=base64.b64encode(encoded).decode("ascii"),
-                    )
-                ]
-            )
+            [
+                dict(
+                    result=dict(
+                        regionId="r1",
+                        box=geometry["box"],
+                        renderStatus="success",
+                    ),
+                    png=base64.b64encode(encoded).decode("ascii"),
+                )
+            ]
         ),
         encoding="utf-8",
     )
@@ -213,7 +211,7 @@ with tempfile.TemporaryDirectory(prefix="lg-image-output-") as folder:
             page=page,
             source=compose["output"],
             entries=[
-                dict(regionId="r1", status="success", output="translated", reasons=[])
+                dict(region_id="r1", status="success", output="translated", reasons=[])
             ],
             output=str(root / "qa.png"),
         ),

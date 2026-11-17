@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { default_native_fs } from "../../../../native/native-fs";
+import { AppError } from "../../../../shared/error";
 
 const { fork } = vi.hoisted(() => ({ fork: vi.fn() }));
 vi.mock("node:child_process", () => ({ fork }));
@@ -118,12 +119,48 @@ describe("AgentWorkspaceRunner", () => {
         {
           type: "response",
           id: 1,
-          result: { ok: false, message: expect.any(String) },
+          result: {
+            ok: false,
+            error: { code: "runtime.internal_invariant", message: expect.any(String) },
+          },
         },
         expect.any(Function),
       ),
     );
     expect(host).not.toHaveBeenCalled();
+    child.emit("close", 0);
+    await result;
+  });
+
+  it("宿主应用错误保留 code 与公开详情", async () => {
+    const { child, result } = await start_run(async () => {
+      throw new AppError("data.revision_conflict", {
+        message: "revision changed",
+        public_details: { expected_revision: 2, current_revision: 3 },
+      });
+    });
+    child.emit("message", {
+      type: "request",
+      id: 1,
+      request: { kind: "resolve_proxy", url: "https://example.com" },
+    });
+    await vi.waitFor(() =>
+      expect(child.send).toHaveBeenCalledWith(
+        {
+          type: "response",
+          id: 1,
+          result: {
+            ok: false,
+            error: {
+              code: "data.revision_conflict",
+              message: "revision changed",
+              public_details: { expected_revision: 2, current_revision: 3 },
+            },
+          },
+        },
+        expect.any(Function),
+      ),
+    );
     child.emit("close", 0);
     await result;
   });

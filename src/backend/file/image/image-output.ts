@@ -3,7 +3,8 @@ import path from "node:path";
 import type { Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { default_native_fs as fs, type NativeFs } from "../../../native/native-fs";
-import type { ImageClean, ImagePage, ImageRegion } from "../../../shared/image";
+import type { ImageClean, ImageOutputAsset, ImagePage, ImageRegion } from "../../../shared/image";
+import type { ImagePixelHost } from "../../../shared/image-helper";
 import {
   IMAGE_TEXT_RULES,
   normalize_image_text,
@@ -14,33 +15,8 @@ import {
 import { normalize_image_to_png } from "./image-pixels";
 import { build_image_text_input } from "./image-format";
 
-export type ImageOutputReasonCode =
-  | "tight_margin"
-  | "off_center"
-  | "small_font"
-  | "layout_no_fit"
-  | "outside_layout_area"
-  | "erase_failed"
-  | "page_output_failed"
-  | "translation_incomplete";
-type ImageOutputReason = { code: ImageOutputReasonCode; detail?: string };
-type ImageOutputEntry = {
-  regionId?: string;
-  status: "success" | "warning" | "failure";
-  output: "original" | "translated";
-  reasons: ImageOutputReason[];
-};
-export type ImageOutputAsset = {
-  assetPath: string;
-  files: { path: string; entries: ImageOutputEntry[] }[];
-};
-
-export type ImagePixelHost = (
-  command: "text_layout" | "text_compose" | "qa_preview" | "encode_output",
-  input: Readonly<Record<string, unknown>>,
-) => Promise<unknown>;
-
-type GeometryRegion = Pick<ImageTextPage["regions"][number], "regionId" | "candidates">;
+type ImageOutputEntry = ImageOutputAsset["files"][number]["entries"][number];
+type ImageOutputReason = ImageOutputEntry["reasons"][number];
 
 const center = (box: ImagePage["textBoxes"][number]["coreBox"]): [number, number] => [
   box.reduce((sum, point) => sum + point[0], 0) / box.length,
@@ -83,7 +59,7 @@ function entry(
   reasons: ImageOutputReason[] = [],
 ): ImageOutputEntry {
   return {
-    ...(regionId ? { regionId } : {}),
+    ...(regionId ? { region_id: regionId } : {}),
     status,
     output,
     reasons,
@@ -126,7 +102,7 @@ export class ImageOutputService {
     return outputs;
   }
 
-  /** 每个源页面写出一个成品；页面计算失败时原样复制该页。 */
+  /** 每个源页面写出一个成品；内部计算失败终止本次图片能力。 */
   public async write_asset(options: {
     assetPath: string;
     content: Uint8Array;
@@ -166,35 +142,20 @@ export class ImageOutputService {
         const normalized = await normalize_image_to_png(originalBytes);
         const originalPath = path.join(work, `normalized-${page.pageId}.png`);
         await this.nativeFs.write_file(originalPath, normalized.png);
-        try {
-          files.push({
-            path: reportPath,
-            entries: await this.render_page({
-              page,
-              clean: prepared.clean.pages[pageIndex]!,
-              input: prepared.input,
-              work,
-              originalPath,
-              outputPath,
-              qa: options.qa ?? false,
-            }),
-          });
-        } catch (cause) {
-          await this.nativeFs.write_file(outputPath, originalBytes);
-          files.push({
-            path: reportPath,
-            entries: [
-              entry(undefined, "failure", "original", [
-                {
-                  code: "page_output_failed",
-                  detail: cause instanceof Error ? cause.message : String(cause),
-                },
-              ]),
-            ],
-          });
-        }
+        files.push({
+          path: reportPath,
+          entries: await this.render_page({
+            page,
+            clean: prepared.clean.pages[pageIndex]!,
+            input: prepared.input,
+            work,
+            originalPath,
+            outputPath,
+            qa: options.qa ?? false,
+          }),
+        });
       }
-      return { assetPath: options.assetPath, files };
+      return { asset_path: options.assetPath, files };
     } finally {
       await this.nativeFs.remove_async(work, { recursive: true, force: true });
     }
@@ -224,11 +185,11 @@ export class ImageOutputService {
       );
     });
     const geometry = renderRegions.length
-      ? ((await this.pixelHost("text_layout", {
+      ? await this.pixelHost("text_layout", {
           root: work,
           page: { ...page, regions: renderRegions },
           maximumBytes: IMAGE_TEXT_RULES.maximumMaterialBytes,
-        })) as GeometryRegion[])
+        })
       : [];
     const geometryById = new Map(geometry.map((region) => [region.regionId, region]));
     const hostPage: ImageTextPage = {

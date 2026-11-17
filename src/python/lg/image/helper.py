@@ -764,7 +764,7 @@ def text_compose(args, _channel):
     fallback = set(args["fallbackRegionIds"])
     clean_regions = {region["regionId"]: region for region in args["cleanRegions"]}
     with open(args["paint"], encoding="utf-8") as file:
-        paints = json.load(file)["regions"]
+        paints = json.load(file)
     paints_by_region = {}
     for paint in paints:
         painted = paint["result"]
@@ -812,7 +812,7 @@ def text_compose(args, _channel):
 def qa_preview(args, _channel):
     """在整页成品上按最终输出决定绘制区域框，供一次性视觉确认。"""
     image = read_image(args["source"])
-    entries = {entry.get("regionId"): entry for entry in args["entries"]}
+    entries = {entry.get("region_id"): entry for entry in args["entries"]}
     for region in args["page"]["regions"]:
         entry = entries[region["regionId"]]
         codes = {reason["code"] for reason in entry["reasons"]}

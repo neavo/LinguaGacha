@@ -29,9 +29,12 @@ export const DEPENDENCIES = Object.freeze({
 
 const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。
-const ROW_KINDS = ["dialogue", "screen"]; // 对话与画面文字。
 export const load = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取工作目录中的 JSON 材料。
-const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value); // 普通对象。
+export const read_work_manifest = async (file) => sdk.read_media_work_manifest(await load(file));
+export const read_package_manifest = async (file) =>
+  sdk.read_media_package_manifest(await load(file));
+export const read_items = async (file, duration, video) =>
+  sdk.read_media_items(await load(file), duration, video);
 
 /** 只有缺失表示尚未生成，权限与其他 IO 错误保留。 */
 export async function exists(file) {
@@ -105,7 +108,7 @@ async function detect(directory, options, commit) {
 export async function scan(directory, { device } = {}) {
   directory = path.resolve(directory);
   const manifestFile = path.join(directory, "media.json");
-  const manifest = await load(manifestFile);
+  const manifest = await read_work_manifest(manifestFile);
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
   await detect(directory, { device }, async (fields) => {
     await save(manifestFile, { ...manifest, ...fields });
@@ -142,14 +145,15 @@ export async function prepare(source, directory, { track = 0, language, device, 
   const manifestFile = path.join(directory, "media.json");
   let manifest;
   if (await exists(manifestFile)) {
-    manifest = await load(manifestFile);
-    if (
-      !record(manifest.source) ||
-      Object.entries(identity).some(([key, value]) => manifest.source[key] !== value)
-    )
+    manifest = await read_work_manifest(manifestFile);
+    if (Object.entries(identity).some(([key, value]) => manifest.source[key] !== value))
       throw new Error("来源、音轨或语言已变化，请使用新的工作目录");
   } else {
-    manifest = { source: identity, duration: info.duration, video: info.video };
+    manifest = {
+      source: identity,
+      duration: info.duration,
+      video: info.video,
+    };
     await save(manifestFile, manifest);
   }
   // 分支只在结果完整后发布，保存排队避免同时覆盖清单。
@@ -192,14 +196,17 @@ export async function prepare(source, directory, { track = 0, language, device, 
   const itemsFile = path.join(directory, "items.json");
   const hasItems = await exists(itemsFile); // 续跑保留已编辑的原文，包括有意清空的记录。
   const items = hasItems
-    ? await load(itemsFile)
-    : (manifest.asr ?? []).map(({ start, end, text }) => ({
-        start,
-        end,
-        message: text,
-        kind: "dialogue",
-      }));
-  validate_items(items, manifest.duration);
+    ? await read_items(itemsFile, manifest.duration, manifest.video)
+    : sdk.read_media_items(
+        (manifest.asr ?? []).map(({ start, end, text }) => ({
+          start,
+          end,
+          message: text,
+          kind: "dialogue",
+        })),
+        manifest.duration,
+        manifest.video,
+      );
   if (!hasItems) await save(itemsFile, items);
   return {
     steps,
@@ -216,7 +223,7 @@ export async function prepare(source, directory, { track = 0, language, device, 
  */
 export async function sheets(directory, { ids } = {}) {
   directory = path.resolve(directory);
-  const { text } = await load(path.join(directory, "media.json"));
+  const { text } = await read_work_manifest(path.join(directory, "media.json"));
   if (!text) throw new Error("没有文字区间");
   const wanted = ids ? new Set(ids) : null;
   const out = path.join(directory, "sheets");
@@ -235,17 +242,15 @@ export async function sheets(directory, { ids } = {}) {
  */
 export async function refine(directory, rows, { device } = {}) {
   directory = path.resolve(directory);
-  const manifest = await load(path.join(directory, "media.json"));
+  const manifest = await read_work_manifest(path.join(directory, "media.json"));
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
   const itemsFile = path.join(directory, "items.json");
-  const items = await load(itemsFile);
-  for (const row of rows)
-    if (
-      !valid_row(items[row], manifest.duration) ||
-      items[row].kind !== "screen" ||
-      !items[row].box
-    )
+  const items = await read_items(itemsFile, manifest.duration, manifest.video);
+  for (const row of rows) {
+    const item = items[row];
+    if (!item || item.kind !== "screen" || !item.box)
       throw new Error(`第 ${row} 行不是带 box 的 screen`);
+  }
   const bounds = await sdk.refine(await locate(directory), {
     device,
     rows: rows.map((row) => ({ ...items[row], row })),
@@ -254,7 +259,7 @@ export async function refine(directory, rows, { device } = {}) {
   for (const { row, start, end } of bounds) {
     const next = { ...items[row], start, end };
     // 两个边界都有效才整行采用，未决行保留原时间。
-    if (valid_row(next, manifest.duration)) items[row] = next;
+    if (valid_row(next, manifest.duration, manifest.video)) items[row] = next;
     else unresolved.push(row);
   }
   await save(itemsFile, items);
@@ -266,7 +271,7 @@ export async function refine(directory, rows, { device } = {}) {
  * 由 Agent 请用户提供新路径后调用 `relink`。
  */
 export async function locate(directory) {
-  const { source } = await load(path.join(path.resolve(directory), "media.json"));
+  const { source } = await read_work_manifest(path.join(path.resolve(directory), "media.json"));
   let current = null;
   try {
     current = await identify(source.path);
@@ -282,7 +287,7 @@ export async function locate(directory) {
 export async function relink(directory, file) {
   file = path.resolve(file);
   const manifestFile = path.join(path.resolve(directory), "media.json");
-  const manifest = await load(manifestFile);
+  const manifest = await read_work_manifest(manifestFile);
   const info = await sdk.inspect(file);
   if (
     Math.abs(info.duration - manifest.duration) > DURATION_TOLERANCE ||
@@ -296,40 +301,17 @@ export async function relink(directory, file) {
   return manifest.source;
 }
 
-/** `box` 是归一化的 `[x0, y0, x1, y1]`。 */
-const valid_box = (box) =>
-  Array.isArray(box) &&
-  box.length === 4 &&
-  box.every((value) => Number.isFinite(value) && 0 <= value && value <= 1) &&
-  box[0] < box[2] &&
-  box[1] < box[3];
-
 /**
  * 字幕行的结构与时间是否可用。坏时间不能参与排序和区间运算，姓名须符合后端记录契约。
  * `box` 只属于 `screen`，误写到对白上会让渲染不按预期避让。
  */
-export function valid_row(row, duration) {
-  return (
-    record(row) &&
-    Number.isFinite(row.start) &&
-    Number.isFinite(row.end) &&
-    0 <= row.start &&
-    row.start < row.end &&
-    row.end <= duration &&
-    ROW_KINDS.includes(row.kind) &&
-    typeof row.message === "string" &&
-    row.message.trim() !== "" &&
-    (row.name === undefined || typeof row.name === "string") &&
-    (row.box === undefined || (row.kind === "screen" && valid_box(row.box)))
-  );
-}
-
-/** 保留数组坐标，坏记录必须整批修正，不能过滤或排序后悄悄改变译文归属。 */
-function validate_items(items, duration) {
-  if (!Array.isArray(items)) throw new Error("items.json 必须是数组");
-  const invalid = items.findIndex((item) => !valid_row(item, duration));
-  if (invalid !== -1)
-    throw new Error(`items.json 第 ${invalid} 行不合法：${JSON.stringify(items[invalid])}`);
+export function valid_row(row, duration, video = { width: 1, height: 1 }) {
+  try {
+    sdk.read_media_items([row], duration, video);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -339,13 +321,17 @@ function validate_items(items, duration) {
 export async function pack(directory, output) {
   await install("jszip", "^3.10.2");
   const { default: JSZip } = await import("jszip");
-  const manifest = await load(path.join(directory, "media.json"));
-  const items = await load(path.join(directory, "items.json"));
-  validate_items(items, manifest.duration);
-  const members = ["media.json", "items.json"];
-  if (await exists(path.join(directory, CUSTOM_RENDERER))) members.push(CUSTOM_RENDERER);
+  const manifest = await read_package_manifest(path.join(directory, "media.json"));
+  const items = await read_items(
+    path.join(directory, "items.json"),
+    manifest.duration,
+    manifest.video,
+  );
   const zip = new JSZip();
-  for (const member of members) zip.file(member, await readFile(path.join(directory, member)));
+  zip.file("media.json", JSON.stringify(manifest, null, 2));
+  zip.file("items.json", JSON.stringify(items, null, 2));
+  if (await exists(path.join(directory, CUSTOM_RENDERER)))
+    zip.file(CUSTOM_RENDERER, await readFile(path.join(directory, CUSTOM_RENDERER)));
   await mkdir(path.dirname(output), { recursive: true });
   const temporary = output + ".tmp.media";
   try {

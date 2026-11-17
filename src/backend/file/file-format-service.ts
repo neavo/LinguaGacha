@@ -1,7 +1,9 @@
 import { GenericFormat } from "./generic/generic-format";
+import { MediaFormat } from "./media/media-format";
 import { GENERIC_ITEMS_MEMBER } from "./shared/archive-records";
 import { ImageFormat } from "./image/image-format";
-import type { ImageOutputAsset, ImageOutputService } from "./image/image-output";
+import type { ImageOutputService } from "./image/image-output";
+import type { ImageOutputAsset } from "../../shared/image";
 import { group_items } from "./shared/file-format-helpers";
 import { collect_game_file_list } from "./shared/game/source-files";
 import { resolve_game_source_input } from "./shared/game/source-input";
@@ -88,7 +90,7 @@ export class FileFormatService {
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly image = new ImageFormat();
   private readonly generic = new GenericFormat();
-  private readonly media = new GenericFormat("MEDIA");
+  private readonly media = new MediaFormat();
   private readonly txt: TXTFormat;
   private readonly md: MDV2Format;
   private readonly ass: ASSFormat;
@@ -592,7 +594,7 @@ export class FileFormatService {
         const asset = await asset_reader(file.path);
         if (asset === null)
           throw new AppError("file.not_found", { public_details: { file: file.path } });
-        const output = await this.generic.render_text(
+        const output = await (file.file_type === "MEDIA" ? this.media : this.generic).render_text(
           asset,
           groups[file.file_type].get(file.path) ?? [],
           file.path,

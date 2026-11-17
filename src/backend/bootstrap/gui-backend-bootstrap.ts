@@ -22,6 +22,7 @@ import { BackendResources } from "./backend-resources";
 import { BackendServices } from "./backend-services";
 import { ImageOutputService } from "../file/image/image-output";
 import { run_helper } from "../agent/inference/helper";
+import { read_image_helper_response } from "../../shared/image-helper";
 import path from "node:path";
 
 type GuiBackendBootstrapState = "idle" | "starting" | "ready" | "stopping" | "stopped" | "failed";
@@ -109,16 +110,19 @@ export class GuiBackendBootstrap {
       this.event_stream = event_stream;
       const image_output = this.options.imageTextHost
         ? new ImageOutputService(this.options.imageTextHost, async (command, input) =>
-            run_helper(
-              path.join(
-                resources.paths.get_agent_python_root_dir(),
-                "project",
-                ".venv",
-                ...(process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"]),
-              ),
-              "lg.image.helper",
+            read_image_helper_response(
               command,
-              input,
+              await run_helper(
+                path.join(
+                  resources.paths.get_agent_python_root_dir(),
+                  "project",
+                  ".venv",
+                  ...(process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"]),
+                ),
+                "lg.image.helper",
+                command,
+                input,
+              ),
             ),
           )
         : undefined;

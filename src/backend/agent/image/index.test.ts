@@ -119,11 +119,11 @@ it("整册默认使用 GPU 创建后只保留归档和诊断预览", async () =>
 
   expect(fake.devices[0]).toBe("gpu");
   expect(result).toMatchObject({
-    path: output,
-    diagnostics: `${output}.diagnostics`,
+    output_path: output,
+    diagnostics_path: `${output}.diagnostics`,
     pages: [{ detected: 1, regions: 1, failures: [] }],
   });
-  expect(fs.existsSync(result.pages[0]!.preview)).toBe(true);
+  expect(fs.existsSync(result.pages[0]!.preview_path)).toBe(true);
   expect(archive.records).toEqual([
     { pageId: archive.book.pages[0]!.pageId, regionId: "r0001", message: "原文" },
   ]);
