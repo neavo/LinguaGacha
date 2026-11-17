@@ -18,9 +18,8 @@ const image = await import(new URL('scripts/image.mjs', base_url).href);
 # 来源调查
 
 - 游戏目录中的图片先由对应引擎技能判断归属。只有需要作为独立图片资产处理时，才交给本技能。
-- 按自然阅读顺序组成同一话或同一连续阅读单元。无关图片分开封装。
-- 核对页数、方向、分辨率、重复页与原始相对路径。顺序不明确时先解决。
-- 只查看或分析时直接读取原图。需要进入工程或交付译图时制作 `.image`。
+- 需要进入工程或交付译图时，只枚举用户指定批次的图片路径并确定顺序。不要在 `prepare` 前打开原图、读取图片元数据或计算摘要。
+- 只查看或分析、不进入工程时直接读取原图。
 
 # 导入准备
 
@@ -49,11 +48,7 @@ console.log(JSON.stringify({ missing: image.missing_models() }));
 
 准备失败时重新读取缺口，报告实际剩余资源。不要伪造模型结果继续封包。
 
-新图片整册只调用一次 `prepare`。
-
-它默认使用 GPU。
-
-准备完成后再封包：
+新图片整册只调用一次 `prepare`。它默认使用 GPU：
 
 ```js
 const image = await import(new URL('scripts/image.mjs', base_url).href);
@@ -64,28 +59,38 @@ const prepared = await image.prepare(
   })),
   'work/image/ch01',
 );
-const packed = await image.pack('work/image/ch01', 'work/image/ch01.image');
+console.log(JSON.stringify(prepared, null, 2));
 ```
 
 `relativePath` 相对本批图片共同来源根目录，使用 `/`，保持原目录与文件名。不同页面不能使用大小写不敏感的同一路径。
 
-- `prepared.pages` 提供整页诊断预览、OCR 区域数量和消字失败清单。
+- `prepared.pages` 提供原始相对路径、整页诊断预览、OCR 区域数量和消字失败清单。
+- 逐页查看每个 `preview_path` 一次。诊断预览是图片进入工程前的第一次视觉检查，不重新打开原图。
+- 用 `image.read('work/image/ch01').records` 读取 OCR 原文，结合诊断预览修正 `package/items.json`。
 - 消字失败可以随资产导入，输出时恢复原图区域。
 - 准备抛错时停止并报告。
 - GPU 准备首次抛出 `image.DeviceFailure` 时，告诉用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」。
 - 用相同来源和工作目录在新调用中传入 `{ device: 'cpu' }` 完整重跑。
 - 本次任务的后续图片都使用 CPU，不重复提醒。
 - 模型、输入、环境或资源关闭错误按原错误处理，不靠切换设备重试。CPU 失败后不再切回 GPU。
-- 把 `.image` 交给 `project-operation` 识别和提交。更新已导入资产时使用「更新文件」，继承可复用译文。
+
+诊断与原文修正完成后再校验并封包：
+
+```js
+const packed = await image.pack('work/image/ch01', 'work/image/ch01.image');
+console.log(packed);
+```
+
+把 `.image` 交给 `project-operation` 识别和提交。更新已导入资产时使用「更新文件」，继承可复用译文。
 
 已有 `.image` 需要归一化或修正原文时：
 
 1. 调用 `image.unpack(来源, 新工作目录)`，只做安全解包。
 2. 调用 `image.describe_package()` 获取当前三个 JSON 的机器声明。
-3. 结合旧包实际内容理解页面、区域和原文语义。
+3. 调用 `image.read()`，结合旧包实际内容理解页面、区域和原文语义。
 4. 在工作目录的 `package/` 中构造当前材料。
 5. 只修正原文时编辑 `items.json[].message`。
-6. 调用 `image.read()` 检查当前 JSON，再调用 `image.pack()` 检查成员和像素并封包。
+6. 调用 `image.pack()` 校验成员和像素并封包。
 
 不能可靠映射页面、区域或像素成员时，重新准备原图或保留未决。
 
@@ -123,7 +128,7 @@ const packed = await image.pack('work/image/ch01', 'work/image/ch01.image');
 
 # 翻译后检查
 
-相关译文写入后生成一次整页 QA 图片：
+全部相关译文和状态写入后，只生成一次整页 QA 图片：
 
 ```js
 import { generateQA } from '@lg/image';

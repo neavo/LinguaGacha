@@ -28,13 +28,13 @@ export async function prepare(sources, directory, { device = "gpu" } = {}) {
   await save(path.join(result.package_directory, "image.json"), book);
   await save(path.join(result.package_directory, "items.json"), records);
   await save(path.join(result.package_directory, "clean.json"), clean);
-  await sdk.validate_package(result.package_directory);
   return {
     directory: result.directory,
     package_directory: result.package_directory,
     items: records.length,
     pages: result.pages.map(({ page, diagnostics }) => ({
       page_id: page.pageId,
+      relative_path: page.relativePath,
       preview_path: diagnostics.preview,
       detected: diagnostics.detected,
       regions: diagnostics.regions,

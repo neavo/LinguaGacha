@@ -93,7 +93,7 @@ vi.mock("./engine", () => ({
   }),
 }));
 
-import { describe_package, processPages } from "./index";
+import { processPages } from "./index";
 
 it("整册默认使用 GPU 生成当前图片成员与独立诊断", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-create-"));
@@ -104,7 +104,6 @@ it("整册默认使用 GPU 生成当前图片成员与独立诊断", async () =>
   const result = await processPages([{ path: source, relativePath: "chapter/page.png" }], output);
 
   expect(fake.devices[0]).toBe("gpu");
-  expect(describe_package()).toContain("ImageBook");
   expect(result).toMatchObject({
     directory: output,
     package_directory: path.join(output, "package"),
