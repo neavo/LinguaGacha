@@ -8,9 +8,9 @@ import type { ImageTextPage, ImageTextPaint } from "../../../shared/image-text";
 import type { ImagePixelHost } from "../../../shared/image-helper";
 import { ImageOutputService } from "./image-output";
 
-it("图片警告继续写出，错误区域回退原图，EXCLUDED 不依赖消字结果", async () => {
+it("成功区域写出译文，错误区域回退原图，EXCLUDED 不依赖消字结果", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-output-"));
-  const fixture = image_fixture(["warning", "error", "excluded"]);
+  const fixture = image_fixture(["translated", "error", "excluded"]);
   fixture.clean.pages[2]!.regions = [{ regionId: "text", status: "failed" }];
   const fallbackRequests: string[][] = [];
   const qaPages: string[] = [];
@@ -22,6 +22,8 @@ it("图片警告继续写出，错误区域回退原图，EXCLUDED 不依赖消�
       const page = operation.page;
       return page.regions.map((region) => {
         const block = region.candidates[0]!.blocks[0]!;
+        expect(block).toMatchObject({ sourceEnvelopeArea: 1, sourceCenter: [0.5, 0.5] });
+        expect(block).not.toHaveProperty("sourceTextBoxIds");
         const failed = page.pageId === "error";
         return {
           result: failed
@@ -33,8 +35,7 @@ it("图片警告继续写出，错误区域回退原图，EXCLUDED 不依赖消�
             : {
                 regionId: region.regionId,
                 box: block.box,
-                renderStatus: "warning" as const,
-                reasons: ["tight_margin"] as ["tight_margin"],
+                renderStatus: "success" as const,
               },
           ...(failed ? {} : { png: "fixture" }),
         };
@@ -54,7 +55,7 @@ it("图片警告继续写出，错误区域回退原图，EXCLUDED 不依赖消�
                   blockId: "B1",
                   box: [0, 0, 1, 1],
                   distance: distance.toString("base64"),
-                  centroid: [0.5, 0.5],
+                  sourceTextBoxIds: ["t1"],
                 },
               ],
             },
@@ -92,13 +93,13 @@ it("图片警告继续写出，错误区域回退原图，EXCLUDED 不依赖消�
 
   expect(asset!.files).toMatchObject([
     {
-      path: "comic/chapter/warning.png",
+      path: "comic/chapter/translated.png",
       entries: [
         {
           region_id: "text",
-          status: "warning",
+          status: "success",
           output: "translated",
-          reasons: [{ code: "tight_margin" }],
+          reasons: [],
         },
       ],
     },
@@ -119,9 +120,9 @@ it("图片警告继续写出，错误区域回退原图，EXCLUDED 不依赖消�
     },
   ]);
   expect(fallbackRequests).toEqual([[], ["text"], ["text"]]);
-  expect(layoutPages).toEqual(["warning", "error"]);
-  expect(qaPages).toEqual(["warning", "error", "excluded"]);
-  expect(fs.existsSync(path.join(temporary.path, "comic/chapter/warning.png"))).toBe(true);
+  expect(layoutPages).toEqual(["translated", "error"]);
+  expect(qaPages).toEqual(["translated", "error", "excluded"]);
+  expect(fs.existsSync(path.join(temporary.path, "comic/chapter/translated.png"))).toBe(true);
   expect(fs.existsSync(path.join(temporary.path, "comic/chapter/error.png"))).toBe(true);
   expect(fs.existsSync(path.join(temporary.path, "comic/chapter/excluded.png"))).toBe(true);
 });

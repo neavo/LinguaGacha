@@ -200,11 +200,7 @@ export const zh_cn_app = {
   translation_export: {
     agent_request: "导出翻译成果，无需进行其他操作",
     image_reason: {
-      small_font: "[警告] 字号较小 …",
-      tight_margin: "[警告] 文字距离区域边缘较近 …",
-      off_center: "[警告] 文字位置偏离区域中心 …",
       layout_no_fit: "[失败] 现有区域无法容纳完整译文，保留原始内容 …",
-      outside_layout_area: "[失败] 文字会超出允许区域，保留原始内容 …",
       translation_incomplete: "[失败] 译文尚未完成，保留原始内容 …",
       erase_failed: "[失败] 无法可靠清除原文，保留原始内容 …",
     },

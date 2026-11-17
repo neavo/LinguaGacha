@@ -10,7 +10,6 @@ it("图片 QA 使用独立工作目录并拒绝通用生成参数", async () => 
       path: path.join(output_path, ".lg-export-report.json"),
       summary: {
         success: 1,
-        warnings: 0,
         failures: 0,
         originals: 0,
         translated: 1,

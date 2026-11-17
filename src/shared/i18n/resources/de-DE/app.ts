@@ -213,13 +213,8 @@ export const de_de_app = {
   translation_export: {
     agent_request: "Exportiere die Übersetzungen, ohne weitere Aktionen auszuführen",
     image_reason: {
-      small_font: "[Warnung] Die Schrift ist klein …",
-      tight_margin: "[Warnung] Der Text liegt nahe am Rand des Bereichs …",
-      off_center: "[Warnung] Der Text ist nicht mittig …",
       layout_no_fit:
         "[Fehler] Die vollständige Übersetzung passt nicht; der Originalinhalt bleibt erhalten …",
-      outside_layout_area:
-        "[Fehler] Der Text würde den erlaubten Bereich verlassen; der Originalinhalt bleibt erhalten …",
       translation_incomplete:
         "[Fehler] Die Übersetzung ist unvollständig; der Originalinhalt bleibt erhalten …",
       erase_failed:

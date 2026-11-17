@@ -29,6 +29,7 @@ function evaluate(args: {
   quality?: QualitySnapshot;
   name_src?: ItemNameField;
   name_dst?: ItemNameField;
+  fileType?: string;
   processingConfig?: Partial<TextProcessingConfig>;
 }) {
   const quality = args.quality ?? create_quality();
@@ -43,7 +44,7 @@ function evaluate(args: {
       name_src: args.name_src ?? null,
       name_dst: args.name_dst ?? null,
       status: "PROCESSED",
-      file_type: "TXT",
+      file_type: args.fileType ?? "TXT",
     },
     quality,
     quality_context: buildProofreadingEvaluationContext(quality),
@@ -169,6 +170,14 @@ describe("proofreading-evaluator", () => {
       evaluate({ src: "a\nb", dst: "甲\n乙", sourceLanguage: "EN" }).warnings.map(
         (warning) => warning.code,
       ),
+    ).not.toContain("LINE_COUNT_MISMATCH");
+    expect(
+      evaluate({
+        src: "a\nb",
+        dst: "甲",
+        sourceLanguage: "EN",
+        fileType: "IMAGE",
+      }).warnings.map((warning) => warning.code),
     ).not.toContain("LINE_COUNT_MISMATCH");
   });
 

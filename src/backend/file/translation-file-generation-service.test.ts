@@ -204,7 +204,6 @@ describe("TranslationFileGenerationService", () => {
     ]);
     expect(generated.image_report?.summary).toEqual({
       success: 3,
-      warnings: 0,
       failures: 1,
       originals: 1,
       translated: 3,

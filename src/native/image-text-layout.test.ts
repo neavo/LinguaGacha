@@ -7,7 +7,9 @@ function fixture(width: number, height: number) {
     blockId: "B1",
     box: [0, 0, width, height],
     distance: "",
-    centroid: [width / 2, height / 2],
+    preferredFontSize: 10,
+    sourceEnvelopeArea: 100,
+    sourceCenter: [width / 2, height / 2],
   };
   const distance = Float32Array.from({ length: width * height }, (_, index) =>
     Math.min(
@@ -20,7 +22,7 @@ function fixture(width: number, height: number) {
   return { block, distance };
 }
 
-it("逐行槽位完整位于距离场安全区，并按块重心排列", () => {
+it("逐行槽位完整位于距离场安全区，并按源文字中心排列", () => {
   const { block, distance } = fixture(70, 100);
   const size = 10;
   const sets = image_text_slot_sets(block, "horizontal-tb", distance, size);
@@ -31,7 +33,8 @@ it("逐行槽位完整位于距离场安全区，并按块重心排列", () => {
       for (let y = slot.blockStart; y < slot.blockStart + slot.blockSize; y++)
         for (let x = slot.inlineLow; x < slot.inlineHigh; x++)
           expect(distance[y * 70 + x]! - RULES.squareDistanceCorrection).toBeGreaterThanOrEqual(
-            size * RULES.marginRatio + Math.max(RULES.minimumStroke, size * RULES.strokeRatio) / 2,
+            Math.max(RULES.minimumStroke, size * RULES.strokeRatio) / 2 +
+              RULES.antialiasingAllowance,
           );
     }
   const rotated = fixture(100, 70);

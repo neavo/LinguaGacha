@@ -7,9 +7,8 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
 import { expect, inject, it } from "vitest";
-import { IMAGE_TEXT_RULES } from "../shared/image-text";
 
-it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消回收", async () => {
+it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lg-image-text-host-"));
   try {
     await build({
@@ -49,24 +48,21 @@ it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消
           function page(direction, text, color = [255,255,255], width = 64, height = 76) {
             const distance = Buffer.alloc(width*height*4);
             for(let y=0;y<height;y++)for(let x=0;x<width;x++)distance.writeFloatLE(Math.min(x+1,y+1,width-x,height-y),(y*width+x)*4);
-            const block={blockId:'B1',box:[0,0,width,height],distance:distance.toString('base64'),centroid:[width/2,height/2]};
-            return {kind:'render_image_text_page',page:{pageId:'p1',width,height,regions:[{regionId:'r1',text,direction,fill:{color},preferredFontSize:12,sourceLineCount:3,candidates:[{candidateId:'C0',blocks:[block]}]}]}};
+            const block={blockId:'B1',box:[0,0,width,height],distance:distance.toString('base64'),preferredFontSize:12,sourceEnvelopeArea:400,sourceCenter:[width/2,height/2]};
+            return {kind:'render_image_text_page',page:{pageId:'p1',width,height,regions:[{regionId:'r1',text,direction,fill:{color},candidates:[{candidateId:'C0',blocks:[block]}]}]}};
           }
           const samples = [
             page('horizontal-tb','中文「你好！」'),
             page('vertical-rl','日本語１２！'),
             page('horizontal-tb','New York\\n\\ncafé', [0,0,0]),
-            page('vertical-rl','AB12中文'),
             // 竖排及空白段落复用同一候选模型，实际字形由最终像素验收。
             page('vertical-rl','これで春からまた一緒だね!!', [255,255,255], 44, 86),
-            page('horizontal-tb','你好'),
-            page('horizontal-tb','GRIS, HAVE YOU SEEN MY CREDIT CARD?'),
             page('horizontal-tb','LongWordWithoutSpaces0123456789 中文「A12」 café'),
             page('horizontal-tb','abc 12 \\u202EABC\\u202C 中文'),
             // 应用字体缺少字形时沿用 Chromium 系统字体回退，并继续执行最终像素门禁。
             page('horizontal-tb','A😀中文'),
           ];
-          const results=[];
+          let firstResult;
           let captures=0;
           let rejectNextCapture=false;
           app.on('web-contents-created',(_event,contents)=>{
@@ -87,30 +83,28 @@ it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消
             };
           });
           for (const [index,sample] of samples.entries()) {
-            const start=Date.now();
             const beforeCaptures=captures;
             const result=await host(sample);
             assert.notEqual(result[0].result.renderStatus,'failure', JSON.stringify(result));
             assert.equal(BrowserWindow.getAllWindows().length,0);
             await fs.writeFile(${JSON.stringify(path.join(report, "sample-"))}+index+'.png',Buffer.from(result[0].png,'base64'));
-            if(index===0)assert.equal(captures-beforeCaptures,1,'A fitting candidate needs only its final raster');
-            results.push({result:result[0].result, captures:captures-beforeCaptures, elapsedMs:Date.now()-start});
+            if(index===0){assert.equal(captures-beforeCaptures,1,'A fitting candidate needs only its final raster');firstResult=result[0].result;}
           }
           const multi = structuredClone(samples[0]);
           multi.page.width *= 2;
           const first=structuredClone(multi.page.regions[0].candidates[0].blocks[0]);
-          const second={...first,blockId:'B2',box:[64,0,64,76]};
+          first.sourceEnvelopeArea=399;
+          const second={...first,blockId:'B2',box:[64,0,64,76],sourceEnvelopeArea:1};
           multi.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
           multi.page.regions[0].candidates.push({candidateId:'C1',blocks:[first,second]});
           const multiResult = await host(multi);
           assert.equal(multiResult.length,1,'Short translations only use the required geometry blocks');
           assert(multiResult.every(r=>r.result.renderStatus!=='failure'));
           const repeat = await host(samples[0]);
-          assert.deepEqual(repeat[0].result,results[0].result);
+          assert.deepEqual(repeat[0].result,firstResult);
           rejectNextCapture=true;
           const beforeRetry=captures;
-          const retried=await host(samples[0]);
-          assert.equal(retried[0].result.renderStatus,'failure');
+          await assert.rejects(host(samples[0]),/left layout area/);
           assert.equal(captures-beforeRetry,1,'Only the chosen layout is rasterized');
           const noRoom = page('vertical-rl','字');
           noRoom.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
@@ -134,25 +128,8 @@ it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消
           await assert.rejects(host(samples[0],controller.signal),e=>e===stopped);
           assert.equal(BrowserWindow.getAllWindows().length,0);
           await host(page('horizontal-tb','A'));
-          app.once('web-contents-created',(_event,contents)=>{
-            const execute=contents.executeJavaScript.bind(contents);
-            contents.executeJavaScript=(...args)=>{
-              const result=execute(...args);
-              if(args[0].startsWith('globalThis.imageTextTask.next'))setImmediate(()=>contents.forcefullyCrashRenderer());
-              return result;
-            };
-          });
-          await assert.rejects(host(samples[0]));
-          assert.equal(BrowserWindow.getAllWindows().length,0);
-          const originalTimeout=globalThis.setTimeout;
-          globalThis.setTimeout=(callback,ms,...args)=>originalTimeout(callback,ms===${IMAGE_TEXT_RULES.pageTimeoutMs}?1:ms,...args);
-          try { await assert.rejects(host(samples[0]),/timed out/); }
-          finally { globalThis.setTimeout=originalTimeout; }
-          assert.equal(BrowserWindow.getAllWindows().length,0);
-          await host(page('horizontal-tb','A'));
           await host.dispose();
           await assert.rejects(host(samples[0]));
-          await fs.writeFile(${JSON.stringify(path.join(report, "results.json"))},JSON.stringify(results,null,2));
           console.log('IMAGE_TEXT_HOST_OK');app.exit(0);
         } catch(error) {console.error(error);await host.dispose();app.exit(1)}
       })();

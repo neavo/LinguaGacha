@@ -1,8 +1,4 @@
-import {
-  IMAGE_TEXT_RULES as RULES,
-  image_text_margin,
-  type ImageTextPage,
-} from "../shared/image-text";
+import { IMAGE_TEXT_RULES as RULES, type ImageTextPage } from "../shared/image-text";
 
 type TextBlock = ImageTextPage["regions"][number]["candidates"][number]["blocks"][number];
 
@@ -13,7 +9,7 @@ export type TextSlot = {
   blockSize: number;
 };
 
-/** 距离场按行列生成安全区间。竖排 block 坐标从右向左。 */
+/** 距离场按行列生成安全区间，竖排块坐标从右向左。 */
 export function image_text_slot_sets(
   block: TextBlock,
   direction: ImageTextPage["regions"][number]["direction"],
@@ -24,10 +20,10 @@ export function image_text_slot_sets(
   const vertical = direction === "vertical-rl";
   const inline = vertical ? height : width;
   const blockSize = vertical ? width : height;
-  const inlineCenter = vertical ? block.centroid[1] : block.centroid[0];
-  const center = vertical ? width - block.centroid[0] : block.centroid[1];
+  const inlineCenter = vertical ? block.sourceCenter[1] : block.sourceCenter[0];
+  const center = vertical ? width - block.sourceCenter[0] : block.sourceCenter[1];
   const stroke = Math.max(RULES.minimumStroke, size * RULES.strokeRatio);
-  const threshold = image_text_margin(size) + stroke / 2 + RULES.squareDistanceCorrection;
+  const threshold = stroke / 2 + RULES.antialiasingAllowance + RULES.squareDistanceCorrection;
   const intervals: [number, number][] = [];
   for (let b = 0; b < blockSize; b++) {
     const safe = (u: number) =>

@@ -2,7 +2,6 @@ import { layoutNextLine, prepareWithSegments, type LayoutCursor } from "@chenglo
 import {
   IMAGE_TEXT_RULES as RULES,
   image_text_color,
-  image_text_margin,
   type ImageTextPage,
   type ImageTextPaint,
 } from "../shared/image-text";
@@ -16,103 +15,213 @@ type Region = ImageTextPage["regions"][number];
 type Candidate = Region["candidates"][number];
 type Block = Candidate["blocks"][number];
 type PlannedLine = { text: string; width: number; slot: TextSlot; inlineStart: number };
-type PlannedBlock = { block: Block; lines: PlannedLine[] };
+type PlannedBlock = { block: Block; fontSize: number; lines: PlannedLine[] };
 type PlannedRegion = {
-  candidate: Candidate;
-  fontSize: number;
+  candidateId: string;
   blocks: PlannedBlock[];
   score: number;
 };
 
+/** helper 输出 little-endian Float32 距离场，浏览器按原字节读取。 */
 function decode_distance(block: Block): Float32Array {
   const bytes = Uint8Array.from(atob(block.distance), (character) => character.charCodeAt(0));
   return new Float32Array(bytes.buffer);
 }
 
-/** 每个块选择一种行槽集合。候选最多两个块，组合规模由材料上限约束。 */
-function combinations<T>(values: readonly T[][]): T[][] {
-  return values.reduce<T[][]>(
-    (result, items) => result.flatMap((prefix) => items.map((item) => [...prefix, item])),
-    [[]],
+/** 文本游标是动态规划合并等价状态的唯一键。 */
+function cursor_key(cursor: LayoutCursor | undefined): string {
+  return cursor ? `${cursor.segmentIndex}:${cursor.graphemeIndex}` : "start";
+}
+
+/** 按一组槽位继续消费正文，返回该块实际使用的行。 */
+function flow_block(
+  prepared: ReturnType<typeof prepareWithSegments>,
+  slots: readonly TextSlot[],
+  cursor: LayoutCursor | undefined,
+): { lines: PlannedLine[]; cursor: LayoutCursor } | undefined {
+  const lines: PlannedLine[] = [];
+  let next = cursor;
+  for (const slot of slots) {
+    const line = layoutNextLine(prepared, slot.inlineHigh - slot.inlineLow, next);
+    if (!line) return undefined;
+    lines.push({ text: line.text, width: line.width, slot, inlineStart: slot.inlineLow });
+    next = line.end;
+  }
+  return next ? { lines, cursor: next } : undefined;
+}
+
+/** 横排逐行居中；竖排各行沿内联轴共用源文字中心。 */
+function position_lines(
+  direction: Region["direction"],
+  block: Block,
+  lines: PlannedLine[],
+): boolean {
+  if (direction === "vertical-rl") {
+    const lower = Math.max(...lines.map((line) => line.slot.inlineLow));
+    const upper = Math.min(...lines.map((line) => line.slot.inlineHigh - line.width));
+    if (upper < lower) return false;
+    const target = block.sourceCenter[1] - Math.max(...lines.map((line) => line.width)) / 2;
+    const start = Math.max(lower, Math.min(upper, target));
+    for (const line of lines) line.inlineStart = start;
+  } else {
+    for (const line of lines)
+      line.inlineStart =
+        line.slot.inlineLow + (line.slot.inlineHigh - line.slot.inlineLow - line.width) / 2;
+  }
+  return true;
+}
+
+/** 比较译文与源文字的墨迹面积、中心、齐整度和避头尾禁则。 */
+function block_cost(direction: Region["direction"], planned: PlannedBlock): number {
+  const { block, lines } = planned;
+  const horizontal = direction !== "vertical-rl";
+  let area = 0;
+  let centerX = 0;
+  let centerY = 0;
+  let ragged = 0;
+  let linePenalty = 0;
+  for (const line of lines) {
+    const lineArea = line.width * line.slot.blockSize;
+    const x = horizontal
+      ? line.inlineStart + line.width / 2
+      : block.box[2] - line.slot.blockStart - line.slot.blockSize / 2;
+    const y = horizontal
+      ? line.slot.blockStart + line.slot.blockSize / 2
+      : line.inlineStart + line.width / 2;
+    area += lineArea;
+    centerX += x * lineArea;
+    centerY += y * lineArea;
+    const capacity = line.slot.inlineHigh - line.slot.inlineLow;
+    ragged += ((capacity - line.width) / capacity) ** 2;
+    const text = line.text.trim();
+    if (/^[,.;:!?，。；：！？、）》」』】〕〉〗〙〛]/u.test(text)) linePenalty++;
+    if (/[（《「『【〔〈〖〘〚]$/u.test(text)) linePenalty++;
+    if (lines.length > 1 && Array.from(text).length === 1) linePenalty++;
+  }
+  const shortSide = Math.min(block.box[2], block.box[3]);
+  const centerCost =
+    ((centerX / area - block.sourceCenter[0]) ** 2 +
+      (centerY / area - block.sourceCenter[1]) ** 2) /
+    shortSide ** 2;
+  return (
+    Math.abs(Math.log(area / block.sourceEnvelopeArea)) +
+    centerCost +
+    ragged / lines.length +
+    linePenalty / lines.length
   );
 }
 
-/** 为固定字号枚举可容纳完整正文的候选；几何块可以不使用。 */
-function plan_candidate(region: Region, candidate: Candidate, fontSize: number): PlannedRegion[] {
-  const prepared = prepareWithSegments(region.text, `${fontSize}px ImageText`, {
-    whiteSpace: "pre-wrap",
-  });
-  const slotSets = candidate.blocks.map((block) =>
-    image_text_slot_sets(block, region.direction, decode_distance(block), fontSize),
+type PartialPlan = {
+  cursor: LayoutCursor | undefined;
+  blocks: PlannedBlock[];
+  score: number;
+};
+
+/** 同一文本游标只保留最低成本、最少块的方案。 */
+function better_plan(a: PartialPlan, b: PartialPlan | undefined): boolean {
+  return !b || a.score < b.score || (a.score === b.score && a.blocks.length < b.blocks.length);
+}
+
+/** 文本游标与块位置组成动态规划状态；每个源文本单元最多消费一次。 */
+function plan_candidate(
+  region: Region,
+  candidate: Candidate,
+  distances: readonly Float32Array[],
+  completion: ReturnType<typeof prepareWithSegments>,
+  scale: number,
+): PlannedRegion | undefined {
+  const totalSourceArea = candidate.blocks.reduce(
+    (sum, block) => sum + block.sourceEnvelopeArea,
+    0,
   );
-  const plans: PlannedRegion[] = [];
-  for (const selectedSets of combinations(slotSets.map((sets) => [[], ...sets]))) {
-    const entries = selectedSets.flatMap((slots, blockIndex) =>
-      slots.map((slot) => ({ blockIndex, slot })),
-    );
-    const lines: (PlannedLine & { blockIndex: number })[] = [];
-    let cursor: LayoutCursor | undefined;
-    for (const entry of entries) {
-      const line = layoutNextLine(prepared, entry.slot.inlineHigh - entry.slot.inlineLow, cursor);
-      if (!line) break;
-      lines.push({
-        blockIndex: entry.blockIndex,
-        text: line.text,
-        width: line.width,
-        slot: entry.slot,
-        inlineStart: entry.slot.inlineLow,
-      });
-      cursor = line.end;
-    }
-    if (!cursor || layoutNextLine(prepared, Number.MAX_SAFE_INTEGER, cursor) !== null) continue;
-    const blocks = candidate.blocks
-      .map((block, blockIndex) => ({
-        block,
-        lines: lines.filter((line) => line.blockIndex === blockIndex),
-      }))
-      .filter((block) => block.lines.length > 0);
-    let valid = true;
-    for (const block of blocks) {
-      if (region.direction === "vertical-rl") {
-        const lower = Math.max(...block.lines.map((line) => line.slot.inlineLow));
-        const upper = Math.min(...block.lines.map((line) => line.slot.inlineHigh - line.width));
-        if (upper < lower) {
-          valid = false;
-          break;
-        }
-        const target =
-          block.block.centroid[1] - Math.max(...block.lines.map((line) => line.width)) / 2;
-        const start = Math.max(lower, Math.min(upper, target));
-        for (const line of block.lines) line.inlineStart = start;
-      } else {
-        for (const line of block.lines)
-          line.inlineStart =
-            line.slot.inlineLow + (line.slot.inlineHigh - line.slot.inlineLow - line.width) / 2;
+  let states = new Map<string, PartialPlan>([
+    ["start", { cursor: undefined, blocks: [], score: 0 }],
+  ]);
+  for (const [blockIndex, block] of candidate.blocks.entries()) {
+    const nextStates = new Map<string, PartialPlan>();
+    const fontSize = Math.round(block.preferredFontSize * scale);
+    const prepared =
+      fontSize >= RULES.minimumFontSize
+        ? prepareWithSegments(region.text, `${fontSize}px ImageText`, { whiteSpace: "pre-wrap" })
+        : undefined;
+    const slotSets = prepared
+      ? image_text_slot_sets(block, region.direction, distances[blockIndex]!, fontSize)
+      : [];
+    for (const state of states.values()) {
+      const empty = {
+        ...state,
+        score: state.score + block.sourceEnvelopeArea / totalSourceArea,
+      };
+      const emptyKey = cursor_key(empty.cursor);
+      if (better_plan(empty, nextStates.get(emptyKey))) nextStates.set(emptyKey, empty);
+      if (!prepared) continue;
+      for (const slots of slotSets) {
+        const flowed = flow_block(prepared, slots, state.cursor);
+        if (!flowed || !position_lines(region.direction, block, flowed.lines)) continue;
+        const plannedBlock = { block, fontSize, lines: flowed.lines };
+        const cost = block_cost(region.direction, plannedBlock);
+        if (!Number.isFinite(cost)) continue;
+        const next = {
+          cursor: flowed.cursor,
+          blocks: [...state.blocks, plannedBlock],
+          score: state.score + (block.sourceEnvelopeArea / totalSourceArea) * cost,
+        };
+        const key = cursor_key(next.cursor);
+        if (better_plan(next, nextStates.get(key))) nextStates.set(key, next);
       }
     }
-    if (!valid) continue;
-    const score =
-      Math.abs(lines.length - region.sourceLineCount) * 1000 +
-      lines.reduce((sum, line) => {
-        const capacity = line.slot.inlineHigh - line.slot.inlineLow;
-        return sum + ((capacity - line.width) / capacity) ** 2;
-      }, 0);
-    plans.push({ candidate, fontSize, blocks, score });
+    states = nextStates;
   }
-  return plans;
+  const complete = [...states.values()].filter(
+    (state) =>
+      state.cursor &&
+      state.blocks.length > 0 &&
+      layoutNextLine(completion, Number.MAX_SAFE_INTEGER, state.cursor) === null,
+  );
+  complete.sort((a, b) => a.score - b.score || a.blocks.length - b.blocks.length);
+  return complete[0] ? { candidateId: candidate.candidateId, ...complete[0] } : undefined;
 }
 
-/** 字号从原文尺度递减，首个可行字号内选择得分最低的确定性方案。 */
+/** 从视觉块可用尺度到最小字号枚举共同缩放，并合并相同字号组合。 */
+function candidate_scales(candidate: Candidate): number[] {
+  const maximum = Math.max(
+    ...candidate.blocks.map(
+      (block) => Math.min(block.box[2], block.box[3]) / block.preferredFontSize,
+    ),
+  );
+  const minimum = Math.min(
+    ...candidate.blocks.map((block) => RULES.minimumFontSize / block.preferredFontSize),
+  );
+  const scales = new Set([maximum, 1, minimum]);
+  for (let scale = maximum; scale > minimum; scale /= RULES.lineHeight) scales.add(scale);
+  const fontSizes = new Set<string>();
+  return [...scales].filter((scale) => {
+    if (scale < minimum || scale > maximum) return false;
+    const key = candidate.blocks
+      .map((block) => Math.round(block.preferredFontSize * scale))
+      .join("/");
+    if (fontSizes.has(key)) return false;
+    fontSizes.add(key);
+    return true;
+  });
+}
+
+/** 比较所有视觉候选和共同缩放比例，选择完整、安全且最接近源稿的稳定方案。 */
 function plan_region(region: Region): PlannedRegion | undefined {
-  for (let fontSize = region.preferredFontSize; fontSize >= RULES.minimumFontSize; fontSize--) {
-    const plans = region.candidates.flatMap((candidate) =>
-      plan_candidate(region, candidate, fontSize),
-    );
-    plans.sort(
-      (a, b) => a.score - b.score || a.candidate.candidateId.localeCompare(b.candidate.candidateId),
-    );
-    if (plans[0]) return plans[0];
-  }
+  const completion = prepareWithSegments(region.text, "16px ImageText", { whiteSpace: "pre-wrap" });
+  const plans = region.candidates.flatMap((candidate) => {
+    const distances = candidate.blocks.map(decode_distance);
+    return candidate_scales(candidate)
+      .map((scale) => plan_candidate(region, candidate, distances, completion, scale))
+      .filter((plan): plan is PlannedRegion => plan !== undefined);
+  });
+  plans.sort(
+    (a, b) =>
+      a.score - b.score ||
+      a.blocks.length - b.blocks.length ||
+      a.candidateId.localeCompare(b.candidateId),
+  );
+  return plans[0];
 }
 
 /** 将原生截图解码到一比一像素画布，供最终距离门禁读取 alpha。 */
@@ -131,7 +240,7 @@ async function decode(png: string | undefined, width: number, height: number) {
   return context;
 }
 
-/** Pretext 只搜索断行。Chromium 仅绘制最终候选，距离场继续执行最终像素门禁。 */
+/** Pretext 搜索断行，Chromium 只绘制最终候选，距离场验收最终像素。 */
 export async function* render_page(
   page: ImageTextPage,
   fontCss: string,
@@ -143,8 +252,8 @@ export async function* render_page(
   document.head.replaceChildren(style);
   const output: ImageTextPaint[] = [];
   for (const region of page.regions) {
-    await document.fonts.load(`${region.preferredFontSize}px ImageText`, region.text);
-    if (!document.fonts.check(`${region.preferredFontSize}px ImageText`, region.text))
+    await document.fonts.load(`16px ImageText`, region.text);
+    if (!document.fonts.check(`16px ImageText`, region.text))
       throw new Error("Image text font unavailable");
     const planned = plan_region(region);
     if (!planned) {
@@ -159,8 +268,8 @@ export async function* render_page(
     }
     const ink = image_text_color(region.fill.color);
     const stroke = ink === "black" ? "white" : "black";
-    const strokeWidth = Math.max(RULES.minimumStroke, planned.fontSize * RULES.strokeRatio);
     for (const plannedBlock of planned.blocks) {
+      const strokeWidth = Math.max(RULES.minimumStroke, plannedBlock.fontSize * RULES.strokeRatio);
       const [, , width, height] = plannedBlock.block.box;
       const root = document.createElement("div");
       root.style.cssText = `position:relative;width:${width}px;height:${height}px`;
@@ -168,7 +277,7 @@ export async function* render_page(
         const element = document.createElement("span");
         element.textContent = line.text;
         element.style.cssText =
-          `position:absolute;font-family:ImageText;font-size:${planned.fontSize}px;` +
+          `position:absolute;font-family:ImageText;font-size:${plannedBlock.fontSize}px;` +
           `font-synthesis:none;line-height:1;white-space:pre;writing-mode:${region.direction};` +
           `color:${ink};-webkit-text-stroke:${strokeWidth}px ${stroke};paint-order:stroke fill;`;
         if (region.direction === "vertical-rl") {
@@ -186,58 +295,21 @@ export async function* render_page(
       const context = await decode(png, width, height);
       const pixels = context.getImageData(0, 0, width, height);
       const distance = decode_distance(plannedBlock.block);
-      let x0 = width,
-        y0 = height,
-        x1 = 0,
-        y1 = 0,
-        margin = Infinity;
+      let margin = Infinity;
       for (let index = 0; index < width * height; index++) {
         if (!pixels.data[index * 4 + 3]) continue;
-        const x = index % width;
-        const y = Math.floor(index / width);
-        x0 = Math.min(x0, x);
-        y0 = Math.min(y0, y);
-        x1 = Math.max(x1, x + 1);
-        y1 = Math.max(y1, y + 1);
         margin = Math.min(margin, distance[index]! - RULES.squareDistanceCorrection);
       }
-      const centerError = Math.abs(
-        region.direction === "vertical-rl"
-          ? plannedBlock.block.centroid[0] - (x0 + x1) / 2
-          : plannedBlock.block.centroid[1] - (y0 + y1) / 2,
-      );
-      const requiredMargin = image_text_margin(planned.fontSize);
-      const allowedCenterError = Math.max(
-        RULES.minimumCenterTolerance,
-        planned.fontSize * RULES.centerToleranceRatio,
-      );
-      const valid = Number.isFinite(margin) && margin >= 0;
-      const reasons = [
-        ...(planned.fontSize < RULES.smallFontSize ? (["small_font"] as const) : []),
-        ...(margin < requiredMargin ? (["tight_margin"] as const) : []),
-        ...(centerError > allowedCenterError ? (["off_center"] as const) : []),
-      ];
-      const rendered = {
-        regionId: region.regionId,
-        box: plannedBlock.block.box,
-      };
-      const result: ImageTextPaint["result"] = valid
-        ? reasons.length
-          ? {
-              ...rendered,
-              renderStatus: "warning",
-              reasons,
-            }
-          : {
-              ...rendered,
-              renderStatus: "success",
-            }
-        : {
-            regionId: region.regionId,
-            renderStatus: "failure",
-            reason: "outside_layout_area",
-          };
-      output.push(valid ? { result, png: png! } : { result });
+      if (!Number.isFinite(margin) || margin < 0)
+        throw new Error(`Image text left layout area: ${page.pageId}/${region.regionId}`);
+      output.push({
+        result: {
+          regionId: region.regionId,
+          box: plannedBlock.block.box,
+          renderStatus: "success",
+        },
+        png: png!,
+      });
     }
   }
   document.body.replaceChildren();

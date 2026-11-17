@@ -102,7 +102,6 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
       path: path.join(workspace, "work/image-qa/.lg-export-report.json"),
       summary: {
         success: 1,
-        warnings: 0,
         failures: 0,
         originals: 0,
         translated: 1,

@@ -4,11 +4,12 @@ import type { Item } from "../../../domain/item";
 import { AppError } from "../../../shared/error";
 import { default_native_fs as fs, type NativeFs } from "../../../native/native-fs";
 import type { ImageOutputAsset } from "../../../shared/image";
-import type { ImageClean, ImagePage, ImageRegion } from "../../../shared/image-package";
+import type { ImageClean, ImagePage } from "../../../shared/image-package";
 import type { ImagePixelHost } from "../../../shared/image-helper";
 import {
   IMAGE_TEXT_RULES,
   normalize_image_text,
+  type ImageTextGeometryRegion,
   type ImageTextHost,
   type ImageTextInput,
   type ImageTextPage,
@@ -19,37 +20,70 @@ import { build_image_text_input } from "./image-format";
 type ImageOutputEntry = ImageOutputAsset["files"][number]["entries"][number];
 type ImageOutputReason = ImageOutputEntry["reasons"][number];
 
-const center = (box: ImagePage["textBoxes"][number]["coreBox"]): [number, number] => [
-  box.reduce((sum, point) => sum + point[0], 0) / box.length,
-  box.reduce((sum, point) => sum + point[1], 0) / box.length,
-];
 const edge = (a: readonly number[], b: readonly number[]): number =>
   Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!);
 
-function source_layout(page: ImagePage, region: ImageRegion) {
-  const ids = new Set(region.textBoxIds);
-  const boxes = page.textBoxes.filter((box) => ids.has(box.textBoxId));
-  if (!boxes.length) throw new Error(`Region has no source text boxes: ${region.regionId}`);
-  if (boxes.length === 1) {
-    const box = boxes[0]!.coreBox;
-    return {
-      preferredFontSize: Math.max(
-        IMAGE_TEXT_RULES.minimumFontSize,
-        Math.round(Math.min(edge(box[0]!, box[1]!), edge(box[0]!, box[3]!))),
-      ),
-      sourceLineCount: 1,
-    };
+/** 从 OCR 四边形读取真实面积、质心和短边字号。 */
+function source_box_metrics(box: ImagePage["textBoxes"][number]["coreBox"]): {
+  area: number;
+  center: [number, number];
+  size: number;
+} {
+  let twiceArea = 0;
+  let x = 0;
+  let y = 0;
+  for (let index = 0; index < box.length; index++) {
+    const current = box[index]!;
+    const next = box[(index + 1) % box.length]!;
+    const cross = current[0] * next[1] - next[0] * current[1];
+    twiceArea += cross;
+    x += (current[0] + next[0]) * cross;
+    y += (current[1] + next[1]) * cross;
   }
-  const axis = region.direction === "vertical-rl" ? 0 : 1;
-  const centers = boxes.map((box) => center(box.coreBox)[axis]).sort((a, b) => a - b);
+  const area = Math.abs(twiceArea) / 2;
+  if (!area) throw new Error("Source text box has no area");
+  return {
+    area,
+    center: [x / (3 * twiceArea), y / (3 * twiceArea)],
+    size: Math.min(edge(box[0]!, box[1]!), edge(box[0]!, box[3]!)),
+  };
+}
+
+/** 聚合视觉块的源文字尺度，坐标转换为块内坐标。 */
+function source_layout(
+  page: ImagePage,
+  direction: ImagePage["regions"][number]["direction"],
+  block: ImageTextGeometryRegion["candidates"][number]["blocks"][number],
+) {
+  const ids = new Set(block.sourceTextBoxIds);
+  const boxes = page.textBoxes.filter((box) => ids.has(box.textBoxId));
+  if (boxes.length !== ids.size) throw new Error("Missing source text box for layout block");
+  const metrics = boxes.map((box) => source_box_metrics(box.coreBox));
+  const axis = direction === "vertical-rl" ? 0 : 1;
+  const centers = metrics.map((metric) => metric.center[axis]).sort((a, b) => a - b);
   const pitches = centers.slice(1).map((value, index) => value - centers[index]!);
   pitches.sort((a, b) => a - b);
+  const sizes = metrics.map((metric) => metric.size).sort((a, b) => a - b);
+  const sourceEnvelopeArea = metrics.reduce((sum, metric) => sum + metric.area, 0);
+  const [blockX, blockY] = block.box;
   return {
     preferredFontSize: Math.max(
       IMAGE_TEXT_RULES.minimumFontSize,
-      Math.round(pitches[Math.floor(pitches.length / 2)]! / IMAGE_TEXT_RULES.lineHeight),
+      Math.round(
+        pitches.length
+          ? pitches[Math.floor(pitches.length / 2)]! / IMAGE_TEXT_RULES.lineHeight
+          : sizes[Math.floor(sizes.length / 2)]!,
+      ),
     ),
-    sourceLineCount: boxes.length,
+    sourceEnvelopeArea,
+    sourceCenter: [
+      metrics.reduce((sum, metric) => sum + metric.center[0] * metric.area, 0) /
+        sourceEnvelopeArea -
+        blockX,
+      metrics.reduce((sum, metric) => sum + metric.center[1] * metric.area, 0) /
+        sourceEnvelopeArea -
+        blockY,
+    ] as [number, number],
   };
 }
 
@@ -209,8 +243,15 @@ export class ImageOutputService {
         text: normalize_image_text(text),
         direction: region.direction,
         fill: { color: region.backgroundColor },
-        ...source_layout(page, region),
-        candidates: shape.candidates,
+        candidates: shape.candidates.map((candidate) => ({
+          candidateId: candidate.candidateId,
+          blocks: candidate.blocks.map((block) => ({
+            blockId: block.blockId,
+            box: block.box,
+            distance: block.distance,
+            ...source_layout(page, region.direction, block),
+          })),
+        })),
       });
     }
     const paint = hostPage.regions.length
@@ -253,21 +294,7 @@ export class ImageOutputService {
         continue;
       }
       if (!paints.length) throw new Error("Missing image text result region");
-      const warnings = [
-        ...new Set(
-          paints.flatMap((item) =>
-            item.result.renderStatus === "warning" ? item.result.reasons : [],
-          ),
-        ),
-      ];
-      entries.push(
-        entry(
-          region.regionId,
-          warnings.length ? "warning" : "success",
-          "translated",
-          warnings.map((code) => ({ code })),
-        ),
-      );
+      entries.push(entry(region.regionId, "success", "translated"));
     }
     const paintPath = path.join(work, `paint-${page.pageId}.json`);
     await this.nativeFs.write_file(paintPath, JSON.stringify(paint));

@@ -201,11 +201,7 @@ export const ko_kr_app = {
   translation_export: {
     agent_request: "번역 결과물을 내보내고 다른 작업은 수행하지 마세요",
     image_reason: {
-      small_font: "[경고] 글자 크기가 작습니다 …",
-      tight_margin: "[경고] 글자가 영역 가장자리에 가깝습니다 …",
-      off_center: "[경고] 글자가 영역 중심에서 벗어났습니다 …",
       layout_no_fit: "[실패] 전체 번역문이 영역에 맞지 않아 원본 내용을 유지합니다 …",
-      outside_layout_area: "[실패] 글자가 허용 영역을 벗어나 원본 내용을 유지합니다 …",
       translation_incomplete: "[실패] 번역이 완료되지 않아 원본 내용을 유지합니다 …",
       erase_failed: "[실패] 원문을 안전하게 지울 수 없어 원본 내용을 유지합니다 …",
     },

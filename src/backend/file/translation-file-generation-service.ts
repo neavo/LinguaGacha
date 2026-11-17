@@ -358,7 +358,6 @@ export class TranslationFileGenerationService {
     const entries = assets.flatMap((asset) => asset.files.flatMap((file) => file.entries));
     const summary = {
       success: entries.filter((entry) => entry.status === "success").length,
-      warnings: entries.filter((entry) => entry.status === "warning").length,
       failures: entries.filter((entry) => entry.status === "failure").length,
       originals: entries.filter((entry) => entry.output === "original").length,
       translated: entries.filter((entry) => entry.output === "translated").length,

@@ -12,18 +12,14 @@ export type ImageTextInput = {
   }[];
 };
 
-/** 字号、间距和栅格判定共用规则。调用者只提供正文与已确认区域事实。 */
+/** 字号与栅格判定共用规则。调用者只提供正文与已确认区域事实。 */
 export const IMAGE_TEXT_RULES = Object.freeze({
   fontFile: "LGBaseFont-Regular.ttf",
   lineHeight: 1.1,
   minimumFontSize: 2,
-  smallFontSize: 8,
-  minimumMargin: 2,
-  marginRatio: 0.35,
   minimumStroke: 0.5,
   strokeRatio: 0.04,
-  minimumCenterTolerance: 1,
-  centerToleranceRatio: 0.4,
+  antialiasingAllowance: 1,
   squareDistanceCorrection: Math.SQRT2,
   pageTimeoutMs: 600_000,
   maximumMaterialBytes: 256_000_000,
@@ -35,19 +31,45 @@ const BOX = Type.Tuple([
   Type.Integer({ minimum: 1 }),
   Type.Integer({ minimum: 1 }),
 ]);
+const IMAGE_TEXT_MAX_BLOCKS = 4;
+const IMAGE_TEXT_MAX_CANDIDATES = 7;
+const IMAGE_TEXT_GEOMETRY_BLOCK_SCHEMA = Type.Object(
+  {
+    blockId: ID,
+    box: BOX,
+    distance: Type.String(),
+    sourceTextBoxIds: Type.Array(ID, { minItems: 1, maxItems: 10000 }),
+  },
+  { additionalProperties: false },
+);
+const IMAGE_TEXT_GEOMETRY_CANDIDATE_SCHEMA = Type.Object(
+  {
+    candidateId: ID,
+    blocks: Type.Array(IMAGE_TEXT_GEOMETRY_BLOCK_SCHEMA, {
+      minItems: 1,
+      maxItems: IMAGE_TEXT_MAX_BLOCKS,
+    }),
+  },
+  { additionalProperties: false },
+);
 const IMAGE_TEXT_BLOCK_SCHEMA = Type.Object(
   {
     blockId: ID,
     box: BOX,
     distance: Type.String(),
-    centroid: Type.Tuple([Type.Number(), Type.Number()]),
+    preferredFontSize: Type.Integer({ minimum: IMAGE_TEXT_RULES.minimumFontSize }),
+    sourceEnvelopeArea: Type.Number({ exclusiveMinimum: 0 }),
+    sourceCenter: Type.Tuple([Type.Number(), Type.Number()]),
   },
   { additionalProperties: false },
 );
 const IMAGE_TEXT_CANDIDATE_SCHEMA = Type.Object(
   {
     candidateId: ID,
-    blocks: Type.Array(IMAGE_TEXT_BLOCK_SCHEMA, { minItems: 1, maxItems: 2 }),
+    blocks: Type.Array(IMAGE_TEXT_BLOCK_SCHEMA, {
+      minItems: 1,
+      maxItems: IMAGE_TEXT_MAX_BLOCKS,
+    }),
   },
   { additionalProperties: false },
 );
@@ -63,9 +85,10 @@ export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
           text: Type.String(),
           direction: IMAGE_DIRECTION_SCHEMA,
           fill: IMAGE_FILL_SCHEMA,
-          preferredFontSize: Type.Integer({ minimum: 2 }),
-          sourceLineCount: Type.Integer({ minimum: 1 }),
-          candidates: Type.Array(IMAGE_TEXT_CANDIDATE_SCHEMA, { minItems: 1, maxItems: 7 }),
+          candidates: Type.Array(IMAGE_TEXT_CANDIDATE_SCHEMA, {
+            minItems: 1,
+            maxItems: IMAGE_TEXT_MAX_CANDIDATES,
+          }),
         },
         { additionalProperties: false },
       ),
@@ -78,7 +101,10 @@ export type ImageTextPage = Static<typeof IMAGE_TEXT_PAGE_SCHEMA>;
 export const IMAGE_TEXT_GEOMETRY_REGION_SCHEMA = Type.Object(
   {
     regionId: ID,
-    candidates: Type.Array(IMAGE_TEXT_CANDIDATE_SCHEMA, { minItems: 1, maxItems: 7 }),
+    candidates: Type.Array(IMAGE_TEXT_GEOMETRY_CANDIDATE_SCHEMA, {
+      minItems: 1,
+      maxItems: IMAGE_TEXT_MAX_CANDIDATES,
+    }),
   },
   { additionalProperties: false },
 );
@@ -98,23 +124,9 @@ export const IMAGE_TEXT_BLOCK_RESULT_SCHEMA = Type.Union([
   ),
   Type.Object(
     {
-      ...IMAGE_TEXT_RENDERED_RESULT_SCHEMA.properties,
-      renderStatus: Type.Literal("warning"),
-      reasons: Type.Array(
-        Type.Union([
-          Type.Literal("small_font"),
-          Type.Literal("tight_margin"),
-          Type.Literal("off_center"),
-        ]),
-      ),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
       regionId: ID,
       renderStatus: Type.Literal("failure"),
-      reason: Type.Union([Type.Literal("layout_no_fit"), Type.Literal("outside_layout_area")]),
+      reason: Type.Literal("layout_no_fit"),
     },
     { additionalProperties: false },
   ),
@@ -148,11 +160,6 @@ export function normalize_image_text(text: string): string {
         .replaceAll("\n", ""),
     )
     .join("\n\n");
-}
-
-/** 小字号仍保留最小留白，大字号按比例扩大。 */
-export function image_text_margin(fontSize: number): number {
-  return Math.max(IMAGE_TEXT_RULES.minimumMargin, fontSize * IMAGE_TEXT_RULES.marginRatio);
 }
 
 /** 在线性亮度下比较黑白对比度，底色来自已确认填色。 */

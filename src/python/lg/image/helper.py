@@ -551,6 +551,7 @@ def _box_mask(shape, layout_area, boxes):
 
 PARTITION_RULES = dict(
     max_candidates=6,
+    max_blocks=4,
     min_area_ratio=0.12,
     contour_epsilon=0.004,
     minimum_depth=1.5,
@@ -564,20 +565,20 @@ PARTITION_RULES = dict(
 
 
 def partition_candidates(mask):
-    """只读掩码生成二分候选。不读取样本身份、人工种子或文字切分。"""
-    mask = mask.astype("uint8")
-    area = int(mask.sum())
+    """只读掩码生成二分候选。不读取样本身份、人工种子或文字语义。"""
+    mask = mask.astype(bool)
+    area = int(np.count_nonzero(mask))
     h, w = mask.shape
     yy, xx = np.indices(mask.shape)
     distance = cv2.distanceTransform(
-        np.pad(mask, 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+        np.pad(mask.astype("uint8"), 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
     )[1:-1, 1:-1]
     proposals = []
 
     def add(part):
         """只保留两个连通主体，并按连接宽度排序。"""
-        a = part & (mask > 0)
-        b = ~part & (mask > 0)
+        a = part & mask
+        b = ~part & mask
         if min(a.sum(), b.sum()) < area * PARTITION_RULES["min_area_ratio"]:
             return
         if any(cv2.connectedComponents(x.astype("uint8"))[0] != 2 for x in (a, b)):
@@ -587,7 +588,9 @@ def partition_candidates(mask):
         score = float(edge.sum() / np.sqrt(min(a.sum(), b.sum())))
         proposals.append(dict(mask=a, score=score))
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        mask.astype("uint8"), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
     if not contours:
         return []
     contour = max(contours, key=cv2.contourArea)
@@ -638,7 +641,7 @@ def partition_candidates(mask):
             if ids
             else []
         )
-        if len(ids) != 2:
+        if not 2 <= len(ids) <= PARTITION_RULES["max_blocks"]:
             continue
         fields = [
             cv2.distanceTransform(
@@ -646,13 +649,15 @@ def partition_candidates(mask):
             )
             for i in ids
         ]
-        add(fields[0] <= fields[1])
+        nearest = np.argmin(np.stack(fields), axis=0)
+        for index in range(len(ids)):
+            add(nearest == index)
     chosen = []
     for p in sorted(proposals, key=lambda p: (p["score"], p["mask"].tobytes())):
         if any(
             min(
                 np.count_nonzero(p["mask"] ^ q["mask"]),
-                np.count_nonzero(p["mask"] ^ (mask.astype(bool) ^ q["mask"])),
+                np.count_nonzero(p["mask"] ^ (mask ^ q["mask"])),
             )
             / area
             < PARTITION_RULES["duplicate_ratio"]
@@ -665,9 +670,74 @@ def partition_candidates(mask):
     return chosen
 
 
+def _assign_text_boxes(parts, text_boxes, offset):
+    """每个源文字框按墨迹覆盖面积只归属一个视觉块。"""
+    groups = [[] for _ in parts]
+    x, y = offset
+    for text_box in text_boxes:
+        ink = np.zeros(parts[0].shape, np.uint8)
+        points = np.asarray(text_box["coreBox"], np.int32) - np.array([x, y])
+        cv2.fillConvexPoly(ink, points, 1)
+        overlaps = [int(np.count_nonzero(part & ink)) for part in parts]
+        owner = int(np.argmax(overlaps))
+        if overlaps[owner] == 0:
+            center = points.mean(axis=0)
+            distances = []
+            for part in parts:
+                yy, xx = np.nonzero(part)
+                distances.append(
+                    float(np.min((xx - center[0]) ** 2 + (yy - center[1]) ** 2))
+                )
+            owner = int(np.argmin(distances))
+        groups[owner].append(text_box["textBoxId"])
+    return groups
+
+
+def _partition_choices(mask, text_boxes, offset):
+    """递归生成最多四个有字块；相同源文字分组只保留首个几何候选。"""
+    whole = [mask]
+    choices = [(whole, _assign_text_boxes(whole, text_boxes, offset))]
+    seen = {tuple(tuple(group) for group in choices[0][1])}
+    source_order = {
+        text_box["textBoxId"]: index for index, text_box in enumerate(text_boxes)
+    }
+    index = 0
+    while index < len(choices):
+        parts, _ = choices[index]
+        index += 1
+        if len(parts) >= PARTITION_RULES["max_blocks"]:
+            continue
+        for part_index, part in enumerate(parts):
+            for split in partition_candidates(part):
+                proposed = [
+                    *parts[:part_index],
+                    split["mask"],
+                    part & ~split["mask"],
+                    *parts[part_index + 1 :],
+                ]
+                groups = _assign_text_boxes(proposed, text_boxes, offset)
+                assigned = sorted(
+                    ((part, group) for part, group in zip(proposed, groups) if group),
+                    key=lambda assigned: min(
+                        source_order[text_box_id] for text_box_id in assigned[1]
+                    ),
+                )
+                proposed = [part for part, _ in assigned]
+                groups = [group for _, group in assigned]
+                key = tuple(tuple(group) for group in groups)
+                if len(proposed) <= 1 or key in seen:
+                    continue
+                seen.add(key)
+                choices.append((proposed, groups))
+                if len(choices) > PARTITION_RULES["max_candidates"]:
+                    return choices
+    return choices
+
+
 def text_layout(args, _channel):
-    """生成整体与二分候选的距离场，排版宿主自动选择。"""
+    """生成整体与递归视觉候选的距离场，排版宿主自动选择。"""
     page = args["page"]
+    text_boxes_by_id = {box["textBoxId"]: box for box in page["textBoxes"]}
     regions = []
     budget = 0
     for region in page["regions"]:
@@ -680,34 +750,24 @@ def text_layout(args, _channel):
         )
         x, y, w, h = cv2.boundingRect(mask.astype(np.uint8))
         crop = mask[y : y + h, x : x + w]
-        choices = [[crop]]
-        if region.get("kind") != "unframed":
-            choices += [
-                [p["mask"], crop & ~p["mask"]] for p in partition_candidates(crop)
-            ]
+        text_boxes = [
+            text_boxes_by_id[text_box_id] for text_box_id in region["textBoxIds"]
+        ]
+        choices = (
+            [([crop], [region["textBoxIds"]])]
+            if region.get("kind") == "unframed"
+            else _partition_choices(crop, text_boxes, (x, y))
+        )
         candidates = []
-        for ci, parts in enumerate(choices):
-            parts.sort(
-                key=lambda part: (
-                    (
-                        -float(np.nonzero(part)[1].mean()),
-                        float(np.nonzero(part)[0].mean()),
-                    )
-                    if region["direction"] == "vertical-rl"
-                    else (
-                        float(np.nonzero(part)[0].mean()),
-                        float(np.nonzero(part)[1].mean()),
-                    )
-                )
-            )
+        for ci, (parts, groups) in enumerate(choices):
             blocks = []
-            for bi, part in enumerate(parts):
-                budget += part.size * 4
+            for bi, (part, source_ids) in enumerate(zip(parts, groups)):
+                bx, by, bw, bh = cv2.boundingRect(part.astype(np.uint8))
+                budget += bw * bh * 4
                 if budget > args["maximumBytes"]:
                     raise ValueError(
                         f"Partition material budget exceeded: {region['regionId']}"
                     )
-                bx, by, bw, bh = cv2.boundingRect(part.astype(np.uint8))
                 local = part[by : by + bh, bx : bx + bw]
                 distance = cv2.distanceTransform(
                     np.pad(local.astype(np.uint8), 1),
@@ -715,7 +775,6 @@ def text_layout(args, _channel):
                     cv2.DIST_MASK_PRECISE,
                 )[1:-1, 1:-1]
                 distance = np.round(distance * 64) / 64
-                yy, xx = np.nonzero(local)
                 blocks.append(
                     dict(
                         blockId=f"B{bi + 1}",
@@ -723,7 +782,7 @@ def text_layout(args, _channel):
                         distance=base64.b64encode(
                             distance.astype("<f4").tobytes()
                         ).decode("ascii"),
-                        centroid=[float(xx.mean() + 0.5), float(yy.mean() + 0.5)],
+                        sourceTextBoxIds=source_ids,
                     )
                 )
             candidates.append(dict(candidateId=f"C{ci}", blocks=blocks))

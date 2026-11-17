@@ -148,6 +148,7 @@ with tempfile.TemporaryDirectory(prefix="lg-image-output-") as folder:
         pageId="p1",
         width=50,
         height=40,
+        textBoxes=[dict(textBoxId="t1", **box(20, 15, 30, 25))],
         regions=[
             dict(
                 regionId="r1",
@@ -222,21 +223,26 @@ with tempfile.TemporaryDirectory(prefix="lg-image-output-") as folder:
 
 with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
     root = Path(folder)
-    mask = np.zeros((100, 160), np.uint8)
-    cv2.circle(mask, (40, 50), 30, 255, -1)
-    cv2.circle(mask, (120, 50), 30, 255, -1)
-    cv2.rectangle(mask, (40, 45), (120, 55), 255, -1)
+    mask = np.zeros((100, 240), np.uint8)
+    for center in (40, 120, 200):
+        cv2.circle(mask, (center, 50), 30, 255, -1)
+    cv2.rectangle(mask, (40, 45), (200, 55), 255, -1)
     image.save(root / "mask.png", mask)
     page = dict(
         pageId="p",
-        width=160,
+        width=240,
         height=100,
+        textBoxes=[
+            dict(textBoxId="t1", **box(30, 40, 50, 60)),
+            dict(textBoxId="t2", **box(110, 40, 130, 60)),
+            dict(textBoxId="t3", **box(190, 40, 210, 60)),
+        ],
         regions=[
             dict(
                 regionId="r",
                 kind="bubble",
                 direction="horizontal-tb",
-                textBoxIds=["t1"],
+                textBoxIds=["t1", "t2", "t3"],
                 layoutArea=dict(path="mask.png"),
                 backgroundColor=[255, 255, 255],
             )
@@ -245,9 +251,14 @@ with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
     args = dict(root=str(root), page=page, maximumBytes=1_000_000)
     plan = image.text_layout(args, None)
     assert plan == image.text_layout(args, None)
-    assert (
-        2 <= len(plan[0]["candidates"]) <= image.PARTITION_RULES["max_candidates"] + 1
-    )
+    assert len(plan[0]["candidates"]) >= 2
+    assert any(len(candidate["blocks"]) == 3 for candidate in plan[0]["candidates"])
+    for candidate in plan[0]["candidates"]:
+        assert [
+            text_box_id
+            for block in candidate["blocks"]
+            for text_box_id in block["sourceTextBoxIds"]
+        ] == ["t1", "t2", "t3"]
     page["regions"][0]["kind"] = "unframed"
     assert len(image.text_layout(args, None)[0]["candidates"]) == 1
 
