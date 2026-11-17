@@ -228,7 +228,7 @@ GPU 处理中失败时：
 有识别时条目译文时，原文的拆分、合并和排序完成后，把译文按最终行号写入工作目录的 `translations.json`，每项为 `{ row, message, dst }`，`message` 是该行完整原文。导入后写入：
 
 1. 从最新快照按回执中资产实际的 `file_path` 和 `row_number` 找到条目，核对 `src` 与 `message` 一致。
-2. 用当前的 `item_id` 和 `fp`，按 `ws.contract.changes.items.updates.reference` 提交 `dst`。原文与译文相同的条目照常提交。
+2. 用当前的 `item_id` 和 `fp`，按 `<workspace_contract>` 向 `ws.contract.changes.items.updates.path` 提交 `dst`。原文与译文相同的条目照常提交。
 3. 核对回执与最新快照，已识别、已写入、未决和提交失败的条数都要有归属。原文与译文都入库后，才确认条目已双语导入。
 4. 用户需要翻译时，读取最新快照。将本资产状态为 `NONE` 的剩余条目作为限定目标，交由 `translation` 流程处理。
 

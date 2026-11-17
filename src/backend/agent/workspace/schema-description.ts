@@ -1,7 +1,12 @@
 import type { TSchema } from "@earendil-works/pi-ai";
 
-/** 工具说明和工作区参考共用声明生成器，约束只从原 Schema 读取。 */
-export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, string>) {
+/** system 工作区契约和工具声明共用生成器，约束只从原 Schema 读取。 */
+export function create_schema_renderer(
+  named_schemas: ReadonlyMap<TSchema, string>,
+  options: Readonly<{ compact?: boolean }> = {},
+) {
+  const describe_schema = (schema: TSchema): string =>
+    schema_comment(schema, options.compact === true);
   // 递归 Schema 的本地定义各生成一个命名类型，`$ref` 只输出类型名，自引用由此停止展开。
   const local_definitions = new Map<string, TSchema>();
   for (const schema of named_schemas.keys()) register_local_definitions(schema);
@@ -16,7 +21,7 @@ export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, strin
         "/** 对象仅接受声明字段。带索引签名的对象允许额外字段，字段值须符合索引签名类型。 */",
         ...declared.map(
           ([schema, name]) =>
-            `${schema_comment(schema)}type ${name} = ${render_schema(schema, schema, false)};`,
+            `${describe_schema(schema)}type ${name} = ${render_schema(schema, schema, false)};`,
         ),
       ].join("\n\n"),
   };
@@ -41,7 +46,7 @@ export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, strin
       throw new Error(`Unsupported Agent Workspace schema keyword: ${unsupported}`);
     const named = named_schemas.get(schema);
     if (named !== undefined && definition !== schema) return named;
-    const comment = annotate ? schema_comment(schema) : "";
+    const comment = annotate ? describe_schema(schema) : "";
     const value = schema as unknown as Record<string, unknown>;
     if (value.$ref !== undefined) {
       // 未经命名 Schema 登记的引用没有对应声明，必须失败而不是输出悬空类型名。
@@ -70,7 +75,7 @@ export function create_schema_renderer(named_schemas: ReadonlyMap<TSchema, strin
       const required = new Set(Array.isArray(value.required) ? (value.required as string[]) : []);
       const fields = Object.entries(properties).map(
         ([name, property]) =>
-          `${named_schemas.has(property) ? "" : schema_comment(property)}${render_property_name(name)}${required.has(name) ? "" : "?"}: ${render_schema(property, definition, false)}`,
+          `${named_schemas.has(property) ? "" : describe_schema(property)}${render_property_name(name)}${required.has(name) ? "" : "?"}: ${render_schema(property, definition, false)}`,
       );
       const pattern = value.patternProperties as Record<string, TSchema> | undefined;
       if (pattern !== undefined) {
@@ -107,7 +112,7 @@ const SCHEMA_CONSTRAINTS = {
   default: "省略时",
   uniqueItems: "元素唯一",
 } as const;
-// 未支持的约束必须显式失败，避免参考文档静默丢失实际校验条件。
+// 未支持的约束必须显式失败，避免模型声明静默丢失实际校验条件。
 const SUPPORTED_SCHEMA_KEYS = new Set([
   "type",
   "const",
@@ -125,8 +130,8 @@ const SUPPORTED_SCHEMA_KEYS = new Set([
   ...Object.keys(SCHEMA_CONSTRAINTS),
 ]);
 
-/** 说明按句换行，机器约束逐项列出，注释始终放在对应声明上方。 */
-function schema_comment(schema: TSchema): string {
+/** 默认说明按句换行；system 契约使用单行紧凑约束。 */
+function schema_comment(schema: TSchema, compact: boolean): string {
   const value = schema as unknown as Record<string, unknown>;
   const parts: string[] = [];
   if (typeof value.description === "string")
@@ -138,14 +143,36 @@ function schema_comment(schema: TSchema): string {
     );
   if (value.type === "integer") parts.push("整数");
   for (const [key, label] of Object.entries(SCHEMA_CONSTRAINTS)) {
-    if (value[key] !== undefined) parts.push(`${label}: ${JSON.stringify(value[key])}`);
+    if (value[key] !== undefined)
+      parts.push(
+        compact
+          ? compact_schema_constraint(key, value[key])
+          : `${label}: ${JSON.stringify(value[key])}`,
+      );
   }
   // 转义注释结束符，避免字段说明中的文本改变生成声明的语法。
   const lines = parts.map((part) => part.replaceAll("*/", "*\\/"));
   if (lines.length === 0) return "";
+  if (compact) return `/** ${lines.join("；")} */\n`;
   return lines.length === 1
     ? `/** ${lines[0]} */\n`
     : `/**\n${lines.map((line) => ` * ${line}`).join("\n")}\n */\n`;
+}
+
+function compact_schema_constraint(key: string, value: unknown): string {
+  const literal = JSON.stringify(value);
+  if (key === "minimum") return `≥${literal}`;
+  if (key === "exclusiveMinimum") return `>${literal}`;
+  if (key === "maximum") return `≤${literal}`;
+  if (key === "minItems") return `项数≥${literal}`;
+  if (key === "maxItems") return `项数≤${literal}`;
+  if (key === "minLength") return `长度≥${literal}`;
+  if (key === "maxLength") return `长度≤${literal}`;
+  if (key === "minProperties") return `字段数≥${literal}`;
+  if (key === "pattern") return `格式 ${literal}`;
+  if (key === "default") return `默认 ${literal}`;
+  if (key === "uniqueItems") return value === true ? "元素唯一" : `元素唯一: ${literal}`;
+  throw new Error(`Unsupported compact Workspace schema constraint: ${key}`);
 }
 
 /** 标识符键保持简洁，其余属性名使用 JSON 字符串语法。 */

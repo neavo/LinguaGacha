@@ -3,7 +3,6 @@ import { bind_doing } from "../../tools/doing";
 import { bind_uv } from "../../uv/runtime";
 import { bind_npm } from "../../npm/runtime";
 import { bind_inference } from "../../inference/runtime";
-import { readFile } from "node:fs/promises";
 import { install_workspace_module_resolution } from "./module-resolution";
 
 import { ProxyHttpClient } from "../../../network/proxy-http-client";
@@ -57,9 +56,8 @@ async function start_workspace_runtime(): Promise<void> {
     { redirects: "request" },
   );
   client.install_as_global_fetch();
-  const contract: unknown = JSON.parse(await readFile("contract.json", "utf8"));
   Object.defineProperty(globalThis, "ws", {
-    value: create_agent_workspace_runtime_api(contract, {
+    value: create_agent_workspace_runtime_api({
       userSkillDirectory: start.userSkillDirectory,
       fontsDirectory: start.fontsDirectory,
       emitImage: bind_emit_image(request_channel),

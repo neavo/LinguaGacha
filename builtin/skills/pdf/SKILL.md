@@ -17,7 +17,7 @@ description: 翻译、审校、分析、修改 PDF 文件前必须加载。
 
 ## 原稿与条目
 
-通过 `ws.contract.datasets.pages.path` 读取 `pages`，身份与字段以对应 `reference` 为准。原稿读取位置为 `sources/<file_path>`。`page` 是从 1 开始的原稿页码，MuPDF 的页索引从 0 开始。
+通过 `ws.contract.datasets.pages.path` 读取 `pages`，身份与字段以 `<workspace_contract>` 为准。原稿读取位置为 `sources/<file_path>`。`page` 是从 1 开始的原稿页码，MuPDF 的页索引从 0 开始。
 
 ## 应用接口
 
@@ -150,7 +150,7 @@ await writeFile(image_path, renderPdfPage(output, {
 await ws.emitImage(image_path);
 ```
 
-第二个参数是完整页面更新的 JSONL 草稿，格式见 `ws.contract.changes.pages.updates.reference`。预览与正式提交、导出使用相同的页面判定和生成规则。记录被拒绝时脚本抛出错误，先按行号修复草稿。省略第二个参数时预览当前工程快照。
+第二个参数是符合 `<workspace_contract>` 的完整页面更新 JSONL 草稿，写入 `ws.contract.changes.pages.updates.path`。预览与正式提交、导出使用相同的页面判定和生成规则。记录被拒绝时脚本抛出错误，先按行号修复草稿。省略第二个参数时预览当前工程快照。
 
 生成成功后，通过渲染结果核对阅读顺序和实际版式：
 

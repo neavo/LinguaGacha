@@ -1,7 +1,4 @@
-import {
-  create_workspace_contract,
-  type AgentWorkspaceRuntimeContract,
-} from "../../tools/contract";
+import { AGENT_WORKSPACE_CONTRACT, type AgentWorkspaceRuntimeContract } from "../contract";
 import type { bind_emit_image } from "../../tools/emit-image";
 import type { bind_doing } from "../../tools/doing";
 
@@ -15,8 +12,7 @@ export type AgentWorkspaceRuntimeApi = Readonly<{
 
 /** 装配已初始化的公开能力，冻结 `ws` 外壳以保护绑定关系。 */
 export function create_agent_workspace_runtime_api(
-  contract: unknown,
   members: Omit<AgentWorkspaceRuntimeApi, "contract">,
 ): AgentWorkspaceRuntimeApi {
-  return Object.freeze({ ...members, contract: create_workspace_contract(contract) });
+  return Object.freeze({ ...members, contract: AGENT_WORKSPACE_CONTRACT });
 }

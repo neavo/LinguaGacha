@@ -61,6 +61,7 @@ import { create_agent_read_skill_tool } from "./tools/read-skill";
 import { create_agent_ask_user_tool } from "./tools/ask-user";
 import { AgentInputQueue } from "./agent-input-queue";
 import type { AgentWorkspacePort } from "./workspace/service";
+import { format_agent_workspace_contract_prompt } from "./workspace/contract";
 import { create_agent_workspace_run_tool } from "./tools/workspace-run";
 import { format_agent_skills_for_system_prompt } from "./agent-skills";
 import {
@@ -75,6 +76,7 @@ import { AgentRuntimeLog, type AgentStopReason, type AgentLogStatus } from "./ag
 
 const AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS = 250;
 const AGENT_TOKEN_SPEED_DECIMAL_PLACES = 2;
+const AGENT_WORKSPACE_CONTRACT_PROMPT = format_agent_workspace_contract_prompt();
 
 type AgentServicePaths = Pick<
   AppPathService,
@@ -1021,6 +1023,7 @@ export class AgentService {
           typeof override === "string" ? override : resources.defaultPersonality,
         );
       },
+      workspacePrompt: AGENT_WORKSPACE_CONTRACT_PROMPT,
       skillsPrompt: () => format_agent_skills_for_system_prompt(this.skills.get_current()),
       log,
       onChange: () => this.publish_snapshot(),

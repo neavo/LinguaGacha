@@ -5,7 +5,7 @@ description: 添加、导入或更新工程文件，调查材料中有哪些可�
 
 # 工程文件操作
 
-工程文件的清单和顺序在 `project_meta.json` 的 `files` 中，原稿在 `sources/<file_path>`。文件变更写入 `ws.contract.changes.files`，记录结构、命名和排序规则见其 `reference`。
+工程文件的清单和顺序在 `project_meta.json` 的 `files` 中，原稿在 `sources/<file_path>`。文件变更按 `<workspace_contract>` 写入 `ws.contract.changes.files`。
 
 ## 阶段与完成依据
 

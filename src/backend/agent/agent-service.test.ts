@@ -4778,7 +4778,13 @@ function count_published_events(publish: ReturnType<typeof vi.fn>, type: string)
 /** 集中断言每轮都必须保持的系统指令边界，避免多个用例复制长清单。 */
 function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).toContain(agent_resource_fixture.system_prompt);
+  expect(prompt?.match(/<workspace_contract>/gu)).toHaveLength(1);
+  expect(prompt?.match(/<\/workspace_contract>/gu)).toHaveLength(1);
+  expect(prompt).toContain("type Dataset_items");
   expect(prompt).toContain("<available_skills>");
+  expect((prompt ?? "").indexOf("</workspace_contract>")).toBeLessThan(
+    (prompt ?? "").indexOf("<available_skills>"),
+  );
   expect(prompt).toContain("<name>glossary-audit</name>");
   expect(prompt).toContain("<description>审校术语</description>");
   expect(prompt).not.toContain("Review glossary");

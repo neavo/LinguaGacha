@@ -55,7 +55,6 @@ import {
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./paths";
-import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../tools/contract";
 import { AgentWorkspaceRunError } from "./runtime/runner";
 import type { PackageSource } from "../package-source";
 import {
@@ -792,10 +791,6 @@ describe("AgentWorkspaceService", () => {
     expect(
       fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
     ).toBe("源文件正文");
-    expect(read_json(path.join(active_path, "contract.json"))).toEqual(AGENT_WORKSPACE_CONTRACT);
-    for (const [relative_path, content] of Object.entries(AGENT_WORKSPACE_REFERENCES)) {
-      expect(fs.readFileSync(path.join(active_path, relative_path), "utf8")).toBe(content);
-    }
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items))).toEqual([
       expect.objectContaining({ item_id: 1, file_path: "script.txt" }),
       expect.objectContaining({ item_id: 2, file_path: "script.txt" }),
@@ -1087,7 +1082,7 @@ describe("AgentWorkspaceService", () => {
     const original_write_file = native_fs.write_file.bind(native_fs);
     vi.spyOn(native_fs, "write_file").mockImplementation(async (file_path, content) => {
       const normalized_path = file_path.replaceAll("\\", "/");
-      if (normalized_path.endsWith(AGENT_WORKSPACE_CONTRACT.datasets.items!.reference)) {
+      if (normalized_path.endsWith(AGENT_WORKSPACE_PATHS.knowledge)) {
         delayed_write_pending = true;
         mark_delayed_write_started();
         await delayed_write_release;
@@ -1095,7 +1090,7 @@ describe("AgentWorkspaceService", () => {
         delayed_write_pending = false;
         return;
       }
-      if (file_path.endsWith(AGENT_WORKSPACE_PATHS.contract)) {
+      if (file_path.endsWith(AGENT_WORKSPACE_PATHS.projectMeta)) {
         await delayed_write_started;
         throw new Error("contract write failed");
       }
@@ -1764,7 +1759,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     inspect_sources,
     apply_file_changes,
     active_path: () =>
-      fs.existsSync(path.join(workspace_root, AGENT_WORKSPACE_PATHS.contract))
+      fs.existsSync(path.join(workspace_root, AGENT_WORKSPACE_PATHS.projectMeta))
         ? workspace_root
         : "",
   };
@@ -1960,9 +1955,8 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     expect(services.state.cache.files.readFileEntries()).toEqual([
       { rel_path: "book.pdf", file_type: "PDF", sort_index: 0 },
     ]);
-    const contract = JSON.parse(fs.readFileSync(path.join(root, "contract.json"), "utf8"));
     const page_rows = fs
-      .readFileSync(path.join(root, contract.datasets.pages.path), "utf8")
+      .readFileSync(path.join(root, AGENT_WORKSPACE_PATHS.pages), "utf8")
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
@@ -1994,7 +1988,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     // 通过真实 JSONL 接口提交单页，保留其它页的持久状态。
     const save = async (fp: string, update: PDFPageUpdate, page = 1) => {
       fs.writeFileSync(
-        path.join(root, contract.changes.pages.updates.path),
+        path.join(root, AGENT_WORKSPACE_CHANGE_PATHS.pages.updates),
         JSON.stringify({ file_path: "book.pdf", page, fp, ...update }),
       );
       return workspace.apply_workspace(request_approval);
@@ -2055,7 +2049,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       },
     });
     fs.writeFileSync(
-      path.join(root, contract.changes.pages.updates.path),
+      path.join(root, AGENT_WORKSPACE_CHANGE_PATHS.pages.updates),
       [
         { file_path: "book.pdf", page: 1, fp: baseline_fp, ...draft, notes: "stale" },
         {

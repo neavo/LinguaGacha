@@ -45,7 +45,7 @@ export function create_agent_workspace_apply_tool(options: {
       "",
       "|拒绝原因|含义|",
       "|---|---|",
-      "|`invalid_change`|记录不符合对应 `reference` 中的结构或约束，或文件批次混入了其他变更|",
+      "|`invalid_change`|记录不符合 system 的 `<workspace_contract>`，或文件批次混入了其他变更|",
       "|`fp_mismatch`|对象在快照后已变化。文件批次中指工程文件清单已变化|",
       "|`target_missing`|目标对象不存在|",
       "|`merge_conflict`|同批记录对同一对象重复或冲突|",

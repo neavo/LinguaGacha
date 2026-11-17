@@ -5,7 +5,6 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { define_agent_tool, agent_tool_result } from "../tool-definition";
-import { AGENT_WORKSPACE_CONTRACT } from "./contract";
 import { AGENT_WORKSPACE_PATHS } from "../workspace/paths";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
@@ -92,18 +91,7 @@ export function create_agent_workspace_run_tool(options: {
       "- `sources/<file_path>`：工程原稿。游戏、EPUB、通用数据等容器类资产在同名位置展开为目录，保留资产扩展名、包内路径和原始字节，其余为原始资产文件",
       "- 应用为原稿生成的还原脚本、JSON 投影和文件清单带 `.reference` 标记，只供阅读和定位。原件也可能带同名标记",
       `- \`${AGENT_WORKSPACE_PATHS.sourceIssues}\` 是 \`sources\` 的准备过程遇到的异常项目记录，文件为空表示没有异常，结论依赖原稿完整时先读取该文件`,
-      "- `datasets` 都是工程快照，修改写入对应的 `changes` 后由 `workspace_apply` 提交",
-      ...Object.entries(AGENT_WORKSPACE_CONTRACT.datasets).map(([name, dataset]) => {
-        const operations = Object.keys(AGENT_WORKSPACE_CONTRACT.changes[name] ?? {});
-        return `- datasets.${name}：${dataset.purpose}。${operations.length === 0 ? "" : `变更入口 changes.${name}，操作 ${operations.join("、")}。`}参考 ${dataset.reference}`;
-      }),
-      // 文件与知识等变更组没有同名数据集，单独列出才能被发现。
-      ...Object.entries(AGENT_WORKSPACE_CONTRACT.changes)
-        .filter(([name]) => !Object.hasOwn(AGENT_WORKSPACE_CONTRACT.datasets, name))
-        .map(
-          ([name, operations]) =>
-            `- changes.${name}：操作 ${Object.keys(operations).join("、")}。参考 ${Object.values(operations)[0]?.reference}`,
-        ),
+      "- `datasets` 都是工程快照，记录结构和变更入口见 system 的 `<workspace_contract>`；修改写入对应的 `changes` 后由 `workspace_apply` 提交",
       "",
       "### `@lg/project` 接口",
       "",
@@ -130,12 +118,11 @@ export function create_agent_workspace_run_tool(options: {
       format_agent_workspace_typescript_api(),
       "```",
       "",
-      "通过 `ws.contract` 查阅参考文档并读取数据集：",
+      "通过 `ws.contract` 读取数据集：",
       "",
       "```js",
       'import { readFile } from "node:fs/promises";',
       "",
-      'console.log(await readFile(ws.contract.changes.items.updates.reference, "utf8"));',
       "const path = ws.contract.datasets.project_meta.path;",
       'const meta = JSON.parse(await readFile(path, "utf8"));',
       "console.log(JSON.stringify(meta, null, 2));",

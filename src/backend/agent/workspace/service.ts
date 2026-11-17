@@ -74,7 +74,6 @@ import {
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./paths";
-import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../tools/contract";
 import {
   AgentWorkspaceRunError,
   type AgentWorkspaceRunRequest,
@@ -568,9 +567,6 @@ export class AgentWorkspaceService {
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.knowledge),
           knowledge.text,
         ),
-        ...Object.entries(AGENT_WORKSPACE_REFERENCES).map(([relative_path, content]) =>
-          this.native_fs.write_file(path.join(this.root_path, relative_path), content),
-        ),
         write_jsonl_file(
           this.native_fs,
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.pages),
@@ -587,11 +583,6 @@ export class AgentWorkspaceService {
           this.native_fs,
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.projectMeta),
           project_meta,
-        ),
-        write_json_file(
-          this.native_fs,
-          path.join(this.root_path, AGENT_WORKSPACE_PATHS.contract),
-          AGENT_WORKSPACE_CONTRACT,
         ),
         write_jsonl_file(
           this.native_fs,
@@ -1143,8 +1134,8 @@ export class AgentWorkspaceService {
     const targets = [
       AGENT_WORKSPACE_PATHS.knowledge,
       AGENT_WORKSPACE_PATHS.projectMeta,
-      AGENT_WORKSPACE_PATHS.contract,
-      AGENT_WORKSPACE_PATHS.reference,
+      "contract.json", // 清理旧版本生成的可重建快照文件。
+      "reference",
       "items",
       "pages",
       AGENT_WORKSPACE_PATHS.prompts,

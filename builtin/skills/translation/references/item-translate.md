@@ -61,7 +61,7 @@
 |保护结构|控制符、占位符、标签、转义和其他保护结构保持位置与边界|
 |标点|引号、括号可以转换为目标语言的同类形式。原文的半边结构和跨条目延续的结构保持原样|
 |姓名|`name_dst` 只写姓名译文，沿用同一 `name_src` 已有的译名。称谓、头衔、敬称和解释留在正文的对应位置|
-|提交字段|按 `ws.contract.changes.items.updates.reference` 提交字段修改或显式状态意图|
+|提交字段|按 `<workspace_contract>` 向 `ws.contract.changes.items.updates.path` 提交字段修改或显式状态意图|
 
 ## 4. 可见文本补漏
 

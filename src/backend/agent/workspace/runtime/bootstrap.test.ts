@@ -21,7 +21,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import JSZip from "jszip";
 import { inject, afterAll, beforeAll, expect, it, onTestFinished, vi } from "vitest";
-import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../../tools/contract";
+import { AGENT_WORKSPACE_CONTRACT } from "../contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError } from "./runner";
 import type { AgentProcessOutput } from "../../process-output";
 import { AGENT_WORKSPACE_RUN_ROOT } from "./policy";
@@ -56,11 +56,6 @@ beforeAll(async () => {
   await cp(inject("workspaceRuntimeDirectory"), runtime, { recursive: true });
   await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
   await writeFile(path.join(workspace, "package.json"), JSON.stringify({ type: "module" }));
-  await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
-  for (const [relative_path, content] of Object.entries(AGENT_WORKSPACE_REFERENCES)) {
-    await mkdir(path.dirname(path.join(workspace, relative_path)), { recursive: true });
-    await writeFile(path.join(workspace, relative_path), content);
-  }
 }, 60_000);
 
 afterAll(async () => {
@@ -580,10 +575,6 @@ it.each([false, true])(
       else await mkdir(path.join(logical_workspace, "work"));
       await symlink(external, path.join(logical_workspace, "work", "output"), link_type);
       await writeFile(path.join(external, "helper.mjs"), "export const title = 'linked';");
-      await writeFile(
-        path.join(logical_workspace, "contract.json"),
-        JSON.stringify(AGENT_WORKSPACE_CONTRACT),
-      );
       await writeFile(
         path.join(logical_workspace, "package.json"),
         JSON.stringify({ type: "module" }),

@@ -17,7 +17,9 @@ ws.setDoing();
 ws.emitImage("work/detail.png", { maxEdge: 3840 });
 // @ts-expect-error 尺寸使用数字。
 ws.emitImage("work/detail.png", { maxEdge: "3840" });
-const reference: string = ws.contract.datasets.items.reference;
+      const itemsPath: string = ws.contract.datasets.items.path;
+      // @ts-expect-error 工作区契约不再公开磁盘参考文档。
+      ws.contract.datasets.items.reference;
 const skillDirectory: string = ws.userSkillDirectory;
 const fontsDirectory: string = ws.fontsDirectory;
 // @ts-expect-error 旧阶段写入方法已移除。

@@ -5,7 +5,6 @@ import { expect, inject, it } from "vitest";
 import { AgentExecutionRuntime } from "../execution/runtime";
 import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
-import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
 import { AgentPackageSources } from "../package-source";
 
 const ORT_VERSION = "1.30.0"; // 锁定实际验收版本，避免安装未生效时用旧运行时得到通过结果。
@@ -17,10 +16,6 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     const workspace = path.join(root, "workspace");
     await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
     await writeFile(path.join(workspace, "package.json"), '{"type":"module"}');
-    await writeFile(
-      path.join(workspace, "contract.json"),
-      JSON.stringify(AGENT_WORKSPACE_CONTRACT),
-    );
     const runtime = inject("workspaceRuntimeDirectory");
     const executable =
       process.env.LINGUAGACHA_TEST_ELECTRON ??

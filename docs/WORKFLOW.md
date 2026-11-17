@@ -30,7 +30,7 @@
 |---|---|
 |Agent 会话与指令|[Agent](../src/backend/agent/)、[公开会话类型](../src/shared/agent.ts)、[运行时资源](../builtin/)|
 |工具与工作区|[工具](../src/backend/agent/tools/)、[工作区](../src/backend/agent/workspace/)|
-|模型可读契约|[Schema](../src/backend/agent/workspace/schema.ts)、[契约生成](../src/backend/agent/tools/contract.ts)|
+|模型可读契约|[Schema](../src/backend/agent/workspace/schema.ts)、[契约生成](../src/backend/agent/workspace/contract.ts)|
 |宿主桥与传输|[GUI](../src/gui/)、[桌面传输](../src/frontend/app/desktop/)|
 |前端运行态|[共享状态](../src/frontend/app/state/)、[会话](../src/frontend/app/session/)|
 |业务交互与页面|[共享能力](../src/frontend/features/)、[页面](../src/frontend/pages/)|

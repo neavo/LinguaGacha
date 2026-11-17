@@ -5,7 +5,6 @@ import { expect, inject, it } from "vitest";
 import { AgentExecutionRuntime } from "../execution/runtime";
 import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
-import { AGENT_WORKSPACE_CONTRACT } from "../tools/contract";
 import { AgentPackageSources } from "../package-source";
 
 it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
@@ -16,10 +15,6 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
     const runtime = inject("workspaceRuntimeDirectory");
     await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
     await writeFile(path.join(workspace, "package.json"), '{"type":"module"}');
-    await writeFile(
-      path.join(workspace, "contract.json"),
-      JSON.stringify(AGENT_WORKSPACE_CONTRACT),
-    );
     await cp(path.resolve("public/fonts"), path.join(root, "fonts"), { recursive: true });
     const execution = new AgentExecutionRuntime({
       runtimeDirectory: runtime,
