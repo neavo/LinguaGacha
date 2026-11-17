@@ -177,11 +177,11 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 漫画图片
 
-图片工程契约变化运行 `file/image/image-format.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。SDK 事务流、运行产物和独立验收变化运行 `agent/image/index.test.ts`、`agent/image/state.test.ts`、`agent/image/engine.test.ts`。
+图片工程契约变化运行 `file/image/image-format.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。整册创建、设备选择、运行产物和独立验收变化运行 `agent/image/{index,engine,worker}.test.ts`。
 
 图片文本快照与输出变化运行 `file/image/{image-format,image-output}.test.ts`、生成服务测试与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。协议与取消变化运行 Backend Runtime 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
 
-分区覆盖、块互斥、自动消字顺序、排版区域与笔画填孔、开放字间空隙、语义归属、背景分流、并集边缘过渡、保留区域和掩码外像素边界使用已经准备的共享 Python 环境验证，无需模型：
+自动消字、文字分组、图片合成、QA 标记和排版分区使用已经准备的共享 Python 环境验证，无需模型：
 
 ```powershell
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/fill.test.py
@@ -192,7 +192,7 @@ uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/
 
 部署验证先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。图片气泡分割、文字检测或 LaMa Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。图片运行时资源部署与工作区请求变化追加 `workspace/runtime/bootstrap.test.ts` 中受影响的用例。
 
-真实漫画和容量验收使用独立工作目录。分别记录模型摘要、原稿字节往返、区域恢复、当前生成快照、发布重试及峰值资源。视觉与语义接受必须单独记录，不能从程序检查通过推断。
+真实漫画和容量验收使用独立工作目录。记录吞吐、区域结果与峰值资源。视觉与语义接受分别记录。
 
 #### 媒体推理
 
@@ -208,9 +208,9 @@ uv run --project $mediaPythonProject python -I -B -X utf8 $mediaTestFile
 
 npm、uv 默认包源变化运行 `package-source.test.ts`、`uv/index.test.ts`、工作区 `service.test.ts`，以及集成测试 `npm/index.test.ts` 和工作区 `bootstrap.test.ts`。它们使用替身判定和关闭的代理端口，不访问地区接口。
 
-媒体路由和配置变化运行 `media/probe.test.ts`、`media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `media/preparation`、`inference/channel`、`inference/helper`、`inference/runtime`、`media/speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`；公开探查和资源检查契约同时运行工作区 `bootstrap.test.ts`。这些集成测试使用测试资源，不下载权重。
+媒体路由和配置变化运行 `media/inference-engine.test.ts`、`media/engine.test.ts` 及受影响的 `media/preparation`、`inference/channel`、`inference/helper`、`inference/runtime`、`media/speech` 测试。Worker 变化运行集成测试 `media/worker.test.ts`；公开资源检查契约同时运行工作区 `bootstrap.test.ts`。这些集成测试使用测试资源，不下载权重。
 
-真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 探查、识别、画面处理、显式设备选择与取消后重跑。脚本先经 `@lg/npm`、`@lg/uv` 显式安装技能固定的依赖，再调用 `prepare_models()` 下载权重，默认包源使用真实地区判定。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
+真实媒体验收由 `media/index.test.ts` 显式启用。它验证 GPU 优先与 CPU 回退、识别、画面处理、显式设备选择和取消后重跑。脚本先经 `@lg/npm`、`@lg/uv` 显式安装技能固定的依赖，再调用 `prepare_models()` 下载权重，默认包源使用真实地区判定。报告目录保留模型缓存、原始日志和 `workspace/work/result.json`。
 
 ```powershell
 $env:LINGUAGACHA_MEDIA_SOURCE = '素材的绝对路径'

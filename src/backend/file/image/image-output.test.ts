@@ -7,10 +7,13 @@ import { image_fixture } from "../../../test/image-fixture";
 import type { ImageTextPage, ImageTextPaint } from "../../../shared/image-text";
 import { ImageOutputService } from "./image-output";
 
-it("图片警告继续写出，错误区域请求原文回退", async () => {
+it("图片警告继续写出，错误区域回退原图，EXCLUDED 不依赖消字结果", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-output-"));
-  const fixture = image_fixture(["warning", "error", "page-failure"]);
+  const fixture = image_fixture(["warning", "error", "excluded", "page-failure"]);
+  fixture.clean.pages[2]!.regions = [{ regionId: "text", status: "failed" }];
   const fallbackRequests: string[][] = [];
+  const qaPages: string[] = [];
+  const layoutPages: string[] = [];
   const distance = Buffer.alloc(4);
   distance.writeFloatLE(1);
   const service = new ImageOutputService(
@@ -40,6 +43,7 @@ it("图片警告继续写出，错误区域请求原文回退", async () => {
     async (command, input) => {
       if (command === "text_layout") {
         const page = input.page as ImageTextPage;
+        layoutPages.push(page.pageId);
         return page.regions.map((region) => ({
           regionId: region.regionId,
           candidates: [
@@ -58,15 +62,15 @@ it("图片警告继续写出，错误区域请求原文回退", async () => {
         }));
       }
       if (command === "text_compose") fallbackRequests.push(input.fallbackRegionIds as string[]);
+      if (command === "qa_preview") qaPages.push((input.page as ImageTextPage).pageId);
       const output = String(input.output);
       fs.mkdirSync(path.dirname(output), { recursive: true });
       fs.copyFileSync(String(input.source), output);
       return {};
     },
   );
-  const asset = await service.write_asset({
-    assetPath: "comic/chapter.image",
-    content: await fixture.pack(),
+  const [asset] = await service.write_assets({
+    assetPaths: ["comic/chapter.image"],
     items: fixture.records.map((record, row) =>
       create_item({
         src: record.message,
@@ -74,17 +78,26 @@ it("图片警告继续写出，错误区域请求原文回退", async () => {
         row,
         file_path: "comic/chapter.image",
         file_type: "IMAGE",
-        status: "PROCESSED",
+        status: record.pageId === "excluded" ? "EXCLUDED" : "PROCESSED",
       }),
     ),
+    readAsset: async () => fixture.pack(),
     outputRoot: temporary.path,
     claimedPaths: new Set(),
+    qa: true,
   });
 
-  expect(asset.files).toMatchObject([
+  expect(asset!.files).toMatchObject([
     {
       path: "comic/chapter/warning.png",
-      entries: [{ regionId: "text", status: "warning", reasons: [{ code: "tight_margin" }] }],
+      entries: [
+        {
+          regionId: "text",
+          status: "warning",
+          output: "translated",
+          reasons: [{ code: "tight_margin" }],
+        },
+      ],
     },
     {
       path: "comic/chapter/error.png",
@@ -92,24 +105,31 @@ it("图片警告继续写出，错误区域请求原文回退", async () => {
         {
           regionId: "text",
           status: "failure",
+          output: "original",
           reasons: [{ code: "layout_no_fit" }],
-          fallback: "original",
         },
       ],
+    },
+    {
+      path: "comic/chapter/excluded.png",
+      entries: [{ regionId: "text", status: "success", output: "original", reasons: [] }],
     },
     {
       path: "comic/chapter/page-failure.png",
       entries: [
         {
           status: "failure",
+          output: "original",
           reasons: [{ code: "page_output_failed", detail: "fixture page failure" }],
-          fallback: "original",
         },
       ],
     },
   ]);
-  expect(fallbackRequests).toEqual([[], ["text"]]);
+  expect(fallbackRequests).toEqual([[], ["text"], ["text"]]);
+  expect(layoutPages).toEqual(["warning", "error", "page-failure"]);
+  expect(qaPages).toEqual(["warning", "error", "excluded"]);
   expect(fs.existsSync(path.join(temporary.path, "comic/chapter/warning.png"))).toBe(true);
   expect(fs.existsSync(path.join(temporary.path, "comic/chapter/error.png"))).toBe(true);
+  expect(fs.existsSync(path.join(temporary.path, "comic/chapter/excluded.png"))).toBe(true);
   expect(fs.existsSync(path.join(temporary.path, "comic/chapter/page-failure.png"))).toBe(true);
 });

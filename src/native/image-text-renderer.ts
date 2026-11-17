@@ -37,7 +37,7 @@ function combinations<T>(values: readonly T[][]): T[][] {
   );
 }
 
-/** 为固定字号枚举可容纳完整正文的候选，并以原文行数和剩余空间评分。 */
+/** 为固定字号枚举可容纳完整正文的候选；几何块可以不使用。 */
 function plan_candidate(region: Region, candidate: Candidate, fontSize: number): PlannedRegion[] {
   const prepared = prepareWithSegments(region.text, `${fontSize}px ImageText`, {
     whiteSpace: "pre-wrap",
@@ -45,9 +45,8 @@ function plan_candidate(region: Region, candidate: Candidate, fontSize: number):
   const slotSets = candidate.blocks.map((block) =>
     image_text_slot_sets(block, region.direction, decode_distance(block), fontSize),
   );
-  if (slotSets.some((sets) => sets.length === 0)) return [];
   const plans: PlannedRegion[] = [];
-  for (const selectedSets of combinations(slotSets)) {
+  for (const selectedSets of combinations(slotSets.map((sets) => [[], ...sets]))) {
     const entries = selectedSets.flatMap((slots, blockIndex) =>
       slots.map((slot) => ({ blockIndex, slot })),
     );
@@ -66,11 +65,12 @@ function plan_candidate(region: Region, candidate: Candidate, fontSize: number):
       cursor = line.end;
     }
     if (!cursor || layoutNextLine(prepared, Number.MAX_SAFE_INTEGER, cursor) !== null) continue;
-    const blocks = candidate.blocks.map((block, blockIndex) => ({
-      block,
-      lines: lines.filter((line) => line.blockIndex === blockIndex),
-    }));
-    if (blocks.some((block) => block.lines.length === 0)) continue;
+    const blocks = candidate.blocks
+      .map((block, blockIndex) => ({
+        block,
+        lines: lines.filter((line) => line.blockIndex === blockIndex),
+      }))
+      .filter((block) => block.lines.length > 0);
     let valid = true;
     for (const block of blocks) {
       if (region.direction === "vertical-rl") {

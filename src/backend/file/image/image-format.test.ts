@@ -3,7 +3,6 @@ import { expect, it } from "vitest";
 import {
   ImageFormat,
   build_image_text_input,
-  erase_input_digest,
   image_record_identities,
   image_sha256,
   read_image_package,
@@ -95,7 +94,10 @@ it("图片写回区分完成空正文与未翻译，并固定原稿身份", asyn
   items[0]!.status = "PROCESSED";
   items[0]!.dst = "";
   const { input } = await build_image_text_input(bytes, items, "book.image");
-  expect(input.records.map((row: { text: string | null }) => row.text)).toEqual(["", null]);
+  expect(input.records).toMatchObject([
+    { output: "translated", text: "" },
+    { output: null, text: null },
+  ]);
   items[0]!.dst = items[0]!.src;
   const same = (await build_image_text_input(bytes, items, "book.image")).input;
   expect(same.records[0]!.text).toBe(items[0]!.src);
@@ -105,6 +107,15 @@ it("图片写回区分完成空正文与未翻译，并固定原稿身份", asyn
   await expect(
     build_image_text_input(bytes, [{ ...items[0]!, src: "wrong" }], "book.image"),
   ).rejects.toMatchObject({ code: "file.invalid_structure" });
+
+  const recreated = structuredClone(fixture.book);
+  recreated.bookId = "recreated";
+  recreated.pages[0]!.pageId = "recreated-page";
+  const recreatedRecords = structuredClone(fixture.records);
+  recreatedRecords[0]!.pageId = "recreated-page";
+  expect([...image_record_identities(recreated, recreatedRecords).keys()]).toEqual([
+    ...image_record_identities(fixture.book, fixture.records).keys(),
+  ]);
 });
 
 it("零文本封面完整保留，并允许导出空词条列表", async () => {
@@ -113,7 +124,6 @@ it("零文本封面完整保留，并允许导出空词条列表", async () => {
   page.textBoxes = [];
   page.regions = [];
   fixture.clean.pages[0]!.regions = [];
-  fixture.clean.pages[0]!.inputSha256 = erase_input_digest(page);
   fixture.records.length = 0;
   const bytes = await fixture.pack();
   expect((await read_image_package(bytes, "cover.image")).book.pages).toHaveLength(1);
@@ -122,80 +132,42 @@ it("零文本封面完整保留，并允许导出空词条列表", async () => {
   });
 });
 
-it("归档中的保留记录不进入图片文本输入", async () => {
+it("EXCLUDED 条目成功输出原图且保留译文", async () => {
   const fixture = image_fixture();
-  const page = fixture.book.pages[1]!;
-  page.regions[0]!.disposition = "preserve";
-  page.regions[0]!.backgroundColor = null;
-  page.regions[0]!.direction = null;
-  page.regions[0]!.preserveReason = "intentional";
-  fixture.clean.pages[1]!.regions = [
-    { regionId: "text", disposition: "preserve", preserveReason: "intentional" },
-  ];
-  fixture.clean.pages[1]!.inputSha256 = erase_input_digest(page);
   const bytes = await fixture.pack();
   const format = new ImageFormat();
   const items = (await format.read(bytes, "book.image")).items;
+  items[1]!.status = "EXCLUDED";
+  items[1]!.dst = "既有译文";
   const input = (await build_image_text_input(bytes, items, "book.image")).input;
-  expect(input.records).toEqual([{ pageId: "first", regionId: "text", text: null }]);
-});
-
-it.each([
-  "selection",
-  "identity",
-  "record",
-  "digest",
-  "path",
-  "region",
-  "preserveReason",
-  "cleanSha",
-  "inputSha",
-  "maskMissing",
-])("在图片归档入口拒绝 %s 损坏", async (kind) => {
-  const f = image_fixture();
-  const page = f.book.pages[0]!;
-  const cleanPage = f.clean.pages[0]!;
-  if (kind === "selection") page.regions[0]!.layoutArea!.path = "../mask.png";
-  if (kind === "identity") f.book.pages[1]!.pageId = page.pageId;
-  if (kind === "record") f.records.reverse().pop();
-  if (kind === "digest") page.sha256 = "0".repeat(64);
-  if (kind === "path") page.original = "../escape.png";
-  if (kind === "region") page.regions.push(structuredClone(page.regions[0]!));
-  if (kind === "preserveReason") {
-    page.regions[0]!.disposition = "preserve";
-    page.regions[0]!.backgroundColor = null;
-    page.regions[0]!.direction = null;
-  }
-  if (kind === "cleanSha") cleanPage.cleanSha256 = "0".repeat(64);
-  if (kind === "inputSha") cleanPage.inputSha256 = "0".repeat(64);
-  if (kind === "maskMissing") delete cleanPage.regions[0]!.eraseMask;
-  await expect(read_image_package(await f.pack(), "bad.image")).rejects.toMatchObject({
-    code: "file.invalid_structure",
+  expect(input.records[1]).toEqual({
+    pageId: "second",
+    regionId: "text",
+    output: "original",
+    text: null,
   });
 });
 
-it("eraseInputDigest 与译文/排序/方向/保留原因解耦，与消字规范绑定", () => {
-  const { book } = image_fixture(["p1"]);
-  const page = book.pages[0]!;
-  const digest = erase_input_digest(page);
-  const selection = page.regions[0]!.layoutArea!;
-  page.regions[0]!.layoutArea = { sha256: selection.sha256, path: selection.path };
-  expect(erase_input_digest(page)).toBe(digest);
-  page.regions[0]!.direction = "horizontal-tb";
-  expect(erase_input_digest(page)).toBe(digest);
-  page.regions[0]!.kind = "unframed";
-  const unframedDigest = erase_input_digest(page);
-  expect(unframedDigest).not.toBe(digest);
-  page.regions[0]!.backgroundColor = [20, 30, 40];
-  expect(erase_input_digest(page)).not.toBe(unframedDigest);
-  page.regions[0]!.disposition = "preserve";
-  page.regions[0]!.backgroundColor = null;
-  page.regions[0]!.direction = null;
-  page.regions[0]!.preserveReason = "unreadable";
-  expect(erase_input_digest(page)).not.toBe(digest);
-});
+it.each(["selection", "identity", "record", "path", "region", "cleanStatus", "maskMissing"])(
+  "在图片归档入口拒绝 %s 损坏",
+  async (kind) => {
+    const f = image_fixture();
+    const page = f.book.pages[0]!;
+    const cleanPage = f.clean.pages[0]!;
+    if (kind === "selection") page.regions[0]!.layoutArea.path = "../mask.png";
+    if (kind === "identity") f.book.pages[1]!.pageId = page.pageId;
+    if (kind === "record") f.records.reverse().pop();
+    if (kind === "path") page.original = "../escape.png";
+    if (kind === "region") page.regions.push(structuredClone(page.regions[0]!));
+    if (kind === "cleanStatus") cleanPage.regions[0]!.status = "failed";
+    if (kind === "maskMissing") delete cleanPage.regions[0]!.eraseMask;
+    await expect(read_image_package(await f.pack(), "bad.image")).rejects.toMatchObject({
+      code: "file.invalid_structure",
+    });
+  },
+);
 
-it("模型修复归档保留完整气泡选区，并以独立消字掩码约束像素改动", async () => {
+it("实际消字掩码不能超出排版区域", async () => {
   const fixture = image_fixture(["p1"]);
   const page = fixture.book.pages[0]!,
     clean = fixture.clean.pages[0]!;
@@ -220,15 +192,11 @@ it("模型修复归档保留完整气泡选区，并以独立消字掩码约束�
   const mask = selection_fixture([255, 0]);
   page.width = 2;
   page.sha256 = image_sha256(original);
-  region.layoutArea!.sha256 = image_sha256(selection);
-  clean.cleanSha256 = image_sha256(output);
-  clean.inputSha256 = erase_input_digest(page);
   clean.regions[0]!.eraseMask = "erase-masks/p1/text.png";
-  clean.regions[0]!.eraseMaskSha256 = image_sha256(mask);
   const entries = new Map<string, string | Uint8Array>([
     [page.original, original],
     [clean.clean, output],
-    [region.layoutArea!.path, selection],
+    [region.layoutArea.path, selection],
     [clean.regions[0]!.eraseMask!, mask],
     ["items.json", JSON.stringify(fixture.records)],
   ]);
@@ -238,43 +206,11 @@ it("模型修复归档保留完整气泡选区，并以独立消字掩码约束�
     return write_zip(entries);
   };
   await read_image_package(await archive(), "repair.image");
-  // 即使仍位于气泡内部，实际消字掩码以外的变化也必须拒绝。
-  const tampered = rgb_png(
-    [
-      [255, 255, 255],
-      [255, 255, 255],
-    ],
-    2,
-    1,
-  );
-  entries.set(clean.clean, tampered);
-  clean.cleanSha256 = image_sha256(tampered);
-  await expect(read_image_package(await archive(), "changed.image")).rejects.toThrow(
-    "outside masks",
-  );
-  entries.set(clean.clean, output);
-  clean.cleanSha256 = image_sha256(output);
   const outside = selection_fixture([0, 255]);
-  entries.set(region.layoutArea!.path, outside);
-  region.layoutArea!.sha256 = image_sha256(outside);
-  clean.inputSha256 = erase_input_digest(page);
+  entries.set(region.layoutArea.path, outside);
   await expect(read_image_package(await archive(), "outside.image")).rejects.toThrow(
     "exceeds region layout area",
   );
-});
-
-it("validate_image_book 区分待定方向与修复失败原因", () => {
-  const { book, records } = image_fixture(["p1"]);
-  book.pages[0]!.regions[0]!.direction = null;
-  expect(() => validate_image_book(book, records, { confirmed: false })).not.toThrow();
-  expect(() => validate_image_book(book, records, { confirmed: true })).toThrow();
-  book.pages[0]!.regions[0]!.disposition = "preserve";
-  book.pages[0]!.regions[0]!.backgroundColor = null;
-  book.pages[0]!.regions[0]!.direction = null;
-  book.pages[0]!.regions[0]!.preserveReason = "repair_failed";
-  records.length = 0;
-  expect(() => validate_image_book(book, records)).not.toThrow();
-  expect(image_record_identities(book, records)).toEqual(new Map());
 });
 
 it("图片相对路径拒绝越界与大小写冲突", () => {
@@ -290,201 +226,37 @@ it("图片相对路径拒绝越界与大小写冲突", () => {
   );
 });
 
-it("confirmed 要求每个检测文字框唯一归属区域或明确标为误检", () => {
+it("每个 OCR 有效文字框必须唯一归属区域", () => {
   const { book, records } = image_fixture(["p1"]);
   const page = book.pages[0]!;
   page.regions = [];
   records.length = 0;
-  expect(() => validate_image_book(book, records, { confirmed: true })).toThrow(
-    "every detected text box",
-  );
-  page.falsePositiveTextBoxIds = ["t1"];
-  expect(() => validate_image_book(book, records, { confirmed: true })).not.toThrow();
-  page.regions = [
-    {
-      ...image_fixture(["p1"]).book.pages[0]!.regions[0]!,
-      layoutArea: null,
-    },
-  ];
-  expect(() => validate_image_book(book, records, { confirmed: false })).toThrow("region text box");
+  expect(() => validate_image_book(book, records)).toThrow("must belong to one region");
 });
 
-it("read_image_package 在读取边界严格校验掩码外像素一致性", async () => {
-  const white = rgb_png([[255, 255, 255]], 1, 1);
-  const black = rgb_png([[0, 0, 0]], 1, 1);
-  const f = image_fixture(["cover"]);
-  f.book.pages[0]!.sha256 = image_sha256(white);
-  f.book.pages[0]!.textBoxes = [];
-  f.book.pages[0]!.regions = [];
-  f.clean.pages[0]!.cleanSha256 = image_sha256(black);
-  f.clean.pages[0]!.regions = [];
-  f.clean.pages[0]!.inputSha256 = erase_input_digest(f.book.pages[0]!);
-  f.records.length = 0;
-
-  const badZip = await write_zip(
-    new Map<string, string | Uint8Array>([
-      ["image.json", JSON.stringify(f.book)],
-      ["items.json", JSON.stringify(f.records)],
-      ["clean.json", JSON.stringify(f.clean)],
-      [f.book.pages[0]!.original, white],
-      [f.clean.pages[0]!.clean, black],
-    ]),
-  );
-  await expect(read_image_package(badZip, "tampered-pixel.image")).rejects.toMatchObject({
+it.each(["nonbinary", "empty"])("选区资产拒绝 %s", async (kind) => {
+  const f = image_fixture(["p1"]);
+  const page = f.book.pages[0]!;
+  const region = page.regions[0]!;
+  let mask = f.mask;
+  if (kind === "nonbinary" || kind === "empty") {
+    mask = selection_fixture([kind === "empty" ? 0 : 128]);
+  }
+  const output = f.original;
+  const entries = new Map<string, string | Uint8Array>([
+    ["image.json", JSON.stringify(f.book)],
+    ["items.json", JSON.stringify(f.records)],
+    ["clean.json", JSON.stringify(f.clean)],
+    [page.original, f.original],
+    [f.clean.pages[0]!.clean, output],
+    [region.layoutArea.path, mask],
+  ]);
+  if (f.clean.pages[0]!.regions[0]!.status === "cleaned")
+    entries.set(f.clean.pages[0]!.regions[0]!.eraseMask!, mask);
+  await expect(read_image_package(await write_zip(entries), "bad.image")).rejects.toMatchObject({
     code: "file.invalid_structure",
-    cause: { message: "Pixels changed outside masks" },
   });
-
-  // 2x1 图：左像素在掩码内允许改动，右像素在掩码外必须与原图一致。
-  const orig2 = rgb_png(
-    [
-      [255, 255, 255],
-      [10, 20, 30],
-    ],
-    2,
-    1,
-  );
-  const cleanOk2 = rgb_png(
-    [
-      [0, 0, 0],
-      [10, 20, 30],
-    ],
-    2,
-    1,
-  );
-  const mask2 = selection_fixture([255, 0]);
-  const f2 = image_fixture(["p1"]);
-  f2.book.pages[0]!.width = 2;
-  f2.book.pages[0]!.sha256 = image_sha256(orig2);
-  f2.clean.pages[0]!.cleanSha256 = image_sha256(cleanOk2);
-  f2.book.pages[0]!.regions[0]!.layoutArea!.sha256 = image_sha256(mask2);
-  f2.clean.pages[0]!.inputSha256 = erase_input_digest(f2.book.pages[0]!);
-  f2.clean.pages[0]!.regions[0]!.eraseMaskSha256 = image_sha256(mask2);
-
-  const okZip = await write_zip(
-    new Map<string, string | Uint8Array>([
-      ["image.json", JSON.stringify(f2.book)],
-      ["items.json", JSON.stringify(f2.records)],
-      ["clean.json", JSON.stringify(f2.clean)],
-      [f2.book.pages[0]!.original, orig2],
-      [f2.clean.pages[0]!.clean, cleanOk2],
-      [f2.book.pages[0]!.regions[0]!.layoutArea!.path, mask2],
-      [f2.clean.pages[0]!.regions[0]!.eraseMask!, mask2],
-    ]),
-  );
-  expect((await read_image_package(okZip, "masked-ok.image")).book.pages).toHaveLength(1);
-
-  // JPEG 封面与带 EXIF 方向（6: 顺时针 90°）的原图也必须在读取边界校验掩码外像素一致性。
-  const whiteJpg = Buffer.from(
-    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9/KKKKAP/2Q==",
-    "base64",
-  );
-  const fJpgBad = image_fixture(["cover"]);
-  fJpgBad.book.pages[0]!.original = "originals/cover.jpg";
-  fJpgBad.book.pages[0]!.sha256 = image_sha256(whiteJpg);
-  fJpgBad.book.pages[0]!.textBoxes = [];
-  fJpgBad.book.pages[0]!.regions = [];
-  fJpgBad.clean.pages[0]!.cleanSha256 = image_sha256(black);
-  fJpgBad.clean.pages[0]!.regions = [];
-  fJpgBad.clean.pages[0]!.inputSha256 = erase_input_digest(fJpgBad.book.pages[0]!);
-  fJpgBad.records.length = 0;
-  const badJpgZip = await write_zip(
-    new Map<string, string | Uint8Array>([
-      ["image.json", JSON.stringify(fJpgBad.book)],
-      ["items.json", JSON.stringify(fJpgBad.records)],
-      ["clean.json", JSON.stringify(fJpgBad.clean)],
-      [fJpgBad.book.pages[0]!.original, whiteJpg],
-      [fJpgBad.clean.pages[0]!.clean, black],
-    ]),
-  );
-  await expect(read_image_package(badJpgZip, "tampered-jpg.image")).rejects.toMatchObject({
-    code: "file.invalid_structure",
-    cause: { message: "Pixels changed outside masks" },
-  });
-
-  // 即使整页掩码外通道仅差 1 LSB，JPEG 读取边界也必须严格拒绝。
-  const nearWhiteClean = rgb_png([[254, 255, 255]], 1, 1);
-  fJpgBad.clean.pages[0]!.cleanSha256 = image_sha256(nearWhiteClean);
-  const oneLsbZip = await write_zip(
-    new Map<string, string | Uint8Array>([
-      ["image.json", JSON.stringify(fJpgBad.book)],
-      ["items.json", JSON.stringify(fJpgBad.records)],
-      ["clean.json", JSON.stringify(fJpgBad.clean)],
-      [fJpgBad.book.pages[0]!.original, whiteJpg],
-      [fJpgBad.clean.pages[0]!.clean, nearWhiteClean],
-    ]),
-  );
-  await expect(read_image_package(oneLsbZip, "1lsb-tampered-jpg.image")).rejects.toMatchObject({
-    code: "file.invalid_structure",
-    cause: { message: "Pixels changed outside masks" },
-  });
-
-  const exif6Jpg = Buffer.from(
-    "/9j/4AAQSkZJRgABAQAAAQABAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQIBAQEBAQIBAQECAgICAgICAgIDAwQDAwMDAwICAwQDAwQEBAQEAgMFBQQEBQQEBAT/2wBDAQEBAQEBAQIBAQIEAwIDBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAT/wAARCAACAAEDAREAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD+wv8A4dbf8Eyf+kdH7CX/AIiL8P8A/wCVNb/WsT/z8l97Mfq+H/59x+5H/9k=",
-    "base64",
-  );
-  const fExif = image_fixture(["p1"]);
-  fExif.book.pages[0]!.width = 2;
-  fExif.book.pages[0]!.orientation = 6;
-  fExif.book.pages[0]!.original = "originals/p1.jpg";
-  fExif.book.pages[0]!.sha256 = image_sha256(exif6Jpg);
-  fExif.clean.pages[0]!.cleanSha256 = image_sha256(cleanOk2);
-  fExif.book.pages[0]!.regions[0]!.layoutArea!.sha256 = image_sha256(mask2);
-  fExif.clean.pages[0]!.inputSha256 = erase_input_digest(fExif.book.pages[0]!);
-  fExif.clean.pages[0]!.regions[0]!.eraseMaskSha256 = image_sha256(mask2);
-  const okExifZip = await write_zip(
-    new Map<string, string | Uint8Array>([
-      ["image.json", JSON.stringify(fExif.book)],
-      ["items.json", JSON.stringify(fExif.records)],
-      ["clean.json", JSON.stringify(fExif.clean)],
-      [fExif.book.pages[0]!.original, exif6Jpg],
-      [fExif.clean.pages[0]!.clean, cleanOk2],
-      [fExif.book.pages[0]!.regions[0]!.layoutArea!.path, mask2],
-      [fExif.clean.pages[0]!.regions[0]!.eraseMask!, mask2],
-    ]),
-  );
-  expect((await read_image_package(okExifZip, "exif6-ok.image")).book.pages).toHaveLength(1);
 });
-it.each(["nonbinary", "empty", "result-reference", "preserve-outside"])(
-  "选区资产拒绝 %s",
-  async (kind) => {
-    const f = image_fixture(["p1"]);
-    const page = f.book.pages[0]!;
-    const region = page.regions[0]!;
-    let mask = f.mask;
-    if (kind === "nonbinary" || kind === "empty") {
-      mask = selection_fixture([kind === "empty" ? 0 : 128]);
-      region.layoutArea!.sha256 = image_sha256(mask);
-      f.clean.pages[0]!.regions[0]!.eraseMaskSha256 = image_sha256(mask);
-    }
-    if (kind === "result-reference") f.clean.pages[0]!.regions[0]!.eraseMaskSha256 = "a".repeat(64);
-    if (kind === "preserve-outside") {
-      region.disposition = "preserve";
-      region.backgroundColor = null;
-      region.direction = null;
-      region.preserveReason = "intentional";
-      f.clean.pages[0]!.regions = [
-        { regionId: region.regionId, disposition: "preserve", preserveReason: "intentional" },
-      ];
-    }
-    f.clean.pages[0]!.inputSha256 = erase_input_digest(page);
-    const output = kind === "preserve-outside" ? rgb_png([[255, 255, 255]], 1, 1) : f.original;
-    f.clean.pages[0]!.cleanSha256 = image_sha256(output);
-    const entries = new Map<string, string | Uint8Array>([
-      ["image.json", JSON.stringify(f.book)],
-      ["items.json", JSON.stringify(f.records)],
-      ["clean.json", JSON.stringify(f.clean)],
-      [page.original, f.original],
-      [f.clean.pages[0]!.clean, output],
-      [region.layoutArea!.path, mask],
-    ]);
-    if (region.disposition === "translate")
-      entries.set(f.clean.pages[0]!.regions[0]!.eraseMask!, mask);
-    await expect(read_image_package(await write_zip(entries), "bad.image")).rejects.toMatchObject({
-      code: "file.invalid_structure",
-    });
-  },
-);
 
 it("语义区域保持独立时允许排版区域重叠", async () => {
   const fixture = image_fixture(["p1"]);
@@ -492,48 +264,17 @@ it("语义区域保持独立时允许排版区域重叠", async () => {
   page.textBoxes.push({ ...structuredClone(page.textBoxes[0]!), textBoxId: "t2" });
   page.regions.push({
     ...structuredClone(page.regions[0]!),
-    regionId: "kept",
-    disposition: "preserve",
-    preserveReason: "intentional",
+    regionId: "second",
     textBoxIds: ["t2"],
-    layoutArea: { ...page.regions[0]!.layoutArea!, path: "layout-areas/p1/kept.png" },
-    direction: null,
-    backgroundColor: null,
+    layoutArea: { ...page.regions[0]!.layoutArea, path: "layout-areas/p1/second.png" },
   });
   fixture.clean.pages[0]!.regions.push({
-    regionId: "kept",
-    disposition: "preserve",
-    preserveReason: "intentional",
+    ...structuredClone(fixture.clean.pages[0]!.regions[0]!),
+    regionId: "second",
+    eraseMask: "erase-masks/p1/second.png",
   });
-  fixture.clean.pages[0]!.inputSha256 = erase_input_digest(page);
+  fixture.records.push({ pageId: "p1", regionId: "second", message: "第二段" });
   expect((await read_image_package(await fixture.pack(), "overlap.image")).book.pages).toHaveLength(
     1,
   );
-});
-
-it("无选区漏检保留项保留原因且不改变像素指纹", async () => {
-  const f = image_fixture(["p1"]);
-  const page = f.book.pages[0]!;
-  page.textBoxes = [];
-  page.regions = [
-    {
-      regionId: "missed",
-      kind: "unframed",
-      disposition: "preserve",
-      preserveReason: "repair_failed",
-      textBoxIds: [],
-      layoutArea: null,
-      backgroundColor: null,
-      direction: null,
-    },
-  ];
-  f.clean.pages[0]!.regions = [
-    { regionId: "missed", disposition: "preserve", preserveReason: "repair_failed" },
-  ];
-  f.clean.pages[0]!.inputSha256 = erase_input_digest(page);
-  f.records.length = 0;
-  await expect(read_image_package(await f.pack(), "preserved.image")).resolves.toBeDefined();
-  const digest = erase_input_digest(page);
-  page.regions[0]!.preserveReason = "intentional";
-  expect(erase_input_digest(page)).toBe(digest);
 });

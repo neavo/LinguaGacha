@@ -2,6 +2,8 @@ import type {
   WorkspaceGenerateFilesRequest,
   WorkspaceGetOutputPathsRequest,
 } from "../../tools/generate-files";
+import type { WorkspaceGenerateImageQARequest } from "../../tools/generate-image-qa";
+import type { ImageQualityResult } from "../../../../shared/image";
 import type {
   TranslationFileGenerationResult,
   TranslationOutputPaths,
@@ -24,6 +26,7 @@ export type WorkspaceRequest =
   | Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>
   | WorkspacePrintPDFRequest
   | WorkspaceInspectSourcesRequest
+  | WorkspaceGenerateImageQARequest
   | WorkspaceGenerateFilesRequest
   | WorkspaceGetOutputPathsRequest;
 export type WorkspaceRequestResult =
@@ -32,6 +35,7 @@ export type WorkspaceRequestResult =
   | null
   | WorkspacePrintPDFResult
   | SourceInspection[]
+  | ImageQualityResult
   | TranslationFileGenerationResult
   | TranslationOutputPaths;
 

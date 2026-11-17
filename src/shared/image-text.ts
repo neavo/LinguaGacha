@@ -4,7 +4,12 @@ import { IMAGE_DIRECTION_SCHEMA, IMAGE_FILL_SCHEMA } from "./image";
 const ID = Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" });
 /** 文件生成内部快照保留完成事实，空正文与未翻译分别表示。 */
 export type ImageTextInput = {
-  records: { pageId: string; regionId: string; text: string | null }[];
+  records: {
+    pageId: string;
+    regionId: string;
+    output: "translated" | "original" | null;
+    text: string | null;
+  }[];
 };
 
 /** 字号、间距和栅格判定共用规则。调用者只提供正文与已确认区域事实。 */

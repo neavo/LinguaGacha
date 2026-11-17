@@ -3,7 +3,7 @@ import path from "node:path";
 import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
 
-// 依赖由 AGENT 经 npm、uv 显式准备，模型准备与 GPU 探查分开，设备在每次推理调用中明确传入。
+// 依赖由 AGENT 经 npm、uv 显式准备，设备在每次推理调用中明确传入。
 export {
   ASR_LANGUAGES,
   DeviceFailure,
@@ -11,7 +11,6 @@ export {
   inspect,
   missing_models,
   prepare_models,
-  probe_gpu,
 } from "@lg/media";
 
 // 已验收的依赖版本，由 AGENT 经 npm、uv 显式安装，不随任务升级。

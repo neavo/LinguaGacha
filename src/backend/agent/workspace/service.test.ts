@@ -1188,6 +1188,7 @@ describe("AgentWorkspaceService", () => {
         timeoutMs: VALID_WORKSPACE_RUN.timeoutMs,
         doing: write_doing,
         printPDF: expect.any(Function),
+        generateImageQA: expect.any(Function),
         generateFiles: expect.any(Function),
         getOutputPaths: expect.any(Function),
         inspectSources: expect.any(Function),
@@ -1705,6 +1706,9 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       },
       generate_staging_files: async () => {
         throw new Error("Unexpected generation");
+      },
+      generate_image_qa: async () => {
+        throw new Error("Unexpected image QA");
       },
     },
     files: { inspect_sources, apply_file_changes },

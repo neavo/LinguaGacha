@@ -60,6 +60,4 @@ assert np.all(result[0, 0] == 255) and np.all(result[7, 3] == 128)
 assert np.all(
     fill.render_fill(source, [(np.full_like(left, 255), [255, 255, 255])]) == 255
 )
-print(
-    "fill: background routing, inset, union transition, preserve and page edges passed"
-)
+print("fill: background routing, inset, union transition and page edges passed")

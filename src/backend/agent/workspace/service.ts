@@ -1,4 +1,5 @@
 import { create_file_generator } from "../tools/generate-files";
+import { create_image_qa_generator } from "../tools/generate-image-qa";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
@@ -222,7 +223,7 @@ export class AgentWorkspaceService {
       packageSources: Pick<AgentPackageSources, "resolve" | "forget">; // 应用级缓存，按对话身份隔离
       generation: Pick<
         TranslationFileGenerationService,
-        "generate_staging_files" | "read_output_paths"
+        "generate_image_qa" | "generate_staging_files" | "read_output_paths"
       >;
       pdfHost?: PDFHost | undefined;
       openDirectory: (path: string) => Promise<void>;
@@ -739,6 +740,7 @@ export class AgentWorkspaceService {
                 return result.map((entry, index) => ({ ...entry, source_path: sources[index]! }));
               },
               generateFiles: create_file_generator(this.root_path, this.options.generation),
+              generateImageQA: create_image_qa_generator(this.root_path, this.options.generation),
               getOutputPaths: this.options.generation.read_output_paths.bind(
                 this.options.generation,
               ),

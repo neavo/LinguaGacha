@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Item } from "../../../domain/item";
+import { AppError } from "../../../shared/error";
 import { default_native_fs as fs, type NativeFs } from "../../../native/native-fs";
 import type { ImageClean, ImagePage, ImageRegion } from "../../../shared/image";
 import {
@@ -20,15 +21,14 @@ export type ImageOutputReasonCode =
   | "layout_no_fit"
   | "outside_layout_area"
   | "erase_failed"
-  | "unreadable"
   | "page_output_failed"
   | "translation_incomplete";
 type ImageOutputReason = { code: ImageOutputReasonCode; detail?: string };
 type ImageOutputEntry = {
   regionId?: string;
   status: "success" | "warning" | "failure";
+  output: "original" | "translated";
   reasons: ImageOutputReason[];
-  fallback?: "original";
 };
 export type ImageOutputAsset = {
   assetPath: string;
@@ -36,7 +36,7 @@ export type ImageOutputAsset = {
 };
 
 export type ImagePixelHost = (
-  command: "text_layout" | "text_compose" | "encode_output",
+  command: "text_layout" | "text_compose" | "qa_preview" | "encode_output",
   input: Readonly<Record<string, unknown>>,
 ) => Promise<unknown>;
 
@@ -79,14 +79,14 @@ function source_layout(page: ImagePage, region: ImageRegion) {
 function entry(
   regionId: string | undefined,
   status: ImageOutputEntry["status"],
+  output: ImageOutputEntry["output"],
   reasons: ImageOutputReason[] = [],
-  fallback = false,
 ): ImageOutputEntry {
   return {
     ...(regionId ? { regionId } : {}),
     status,
+    output,
     reasons,
-    ...(fallback ? { fallback: "original" as const } : {}),
   };
 }
 
@@ -98,6 +98,34 @@ export class ImageOutputService {
     private readonly nativeFs: NativeFs = fs,
   ) {}
 
+  /** 图片域统一遍历资产，最终输出与 QA 只切换区域呈现。 */
+  public async write_assets(options: {
+    assetPaths: readonly string[];
+    items: readonly Item[];
+    readAsset: (assetPath: string) => Uint8Array | null | Promise<Uint8Array | null>;
+    outputRoot: string;
+    claimedPaths: Set<string>;
+    qa?: boolean;
+  }): Promise<ImageOutputAsset[]> {
+    const outputs: ImageOutputAsset[] = [];
+    for (const assetPath of options.assetPaths) {
+      const content = await options.readAsset(assetPath);
+      if (content === null)
+        throw new AppError("file.not_found", { public_details: { file: assetPath } });
+      outputs.push(
+        await this.write_asset({
+          assetPath,
+          content,
+          items: options.items.filter((item) => item.file_path === assetPath),
+          outputRoot: options.outputRoot,
+          claimedPaths: options.claimedPaths,
+          ...(options.qa === undefined ? {} : { qa: options.qa }),
+        }),
+      );
+    }
+    return outputs;
+  }
+
   /** 每个源页面写出一个成品；页面计算失败时原样复制该页。 */
   public async write_asset(options: {
     assetPath: string;
@@ -105,6 +133,7 @@ export class ImageOutputService {
     items: readonly Item[];
     outputRoot: string;
     claimedPaths: Set<string>;
+    qa?: boolean;
   }): Promise<ImageOutputAsset> {
     const prepared = await build_image_text_input(
       options.content,
@@ -147,6 +176,7 @@ export class ImageOutputService {
               work,
               originalPath,
               outputPath,
+              qa: options.qa ?? false,
             }),
           });
         } catch (cause) {
@@ -154,17 +184,12 @@ export class ImageOutputService {
           files.push({
             path: reportPath,
             entries: [
-              entry(
-                undefined,
-                "failure",
-                [
-                  {
-                    code: "page_output_failed",
-                    detail: cause instanceof Error ? cause.message : String(cause),
-                  },
-                ],
-                true,
-              ),
+              entry(undefined, "failure", "original", [
+                {
+                  code: "page_output_failed",
+                  detail: cause instanceof Error ? cause.message : String(cause),
+                },
+              ]),
             ],
           });
         }
@@ -183,34 +208,48 @@ export class ImageOutputService {
     work: string;
     originalPath: string;
     outputPath: string;
+    qa: boolean;
   }): Promise<ImageOutputEntry[]> {
     const { page, clean, input, work } = options;
-    const geometry = (await this.pixelHost("text_layout", {
-      root: work,
-      page,
-      maximumBytes: IMAGE_TEXT_RULES.maximumMaterialBytes,
-    })) as GeometryRegion[];
-    const geometryById = new Map(geometry.map((region) => [region.regionId, region]));
     const records = input.records.filter((record) => record.pageId === page.pageId);
+    const recordsById = new Map(records.map((record) => [record.regionId, record]));
+    const cleanById = new Map(clean.regions.map((region) => [region.regionId, region]));
+    const renderRegions = page.regions.filter((region) => {
+      const record = recordsById.get(region.regionId)!;
+      return (
+        cleanById.get(region.regionId)!.status === "cleaned" &&
+        record.output === "translated" &&
+        record.text !== null &&
+        record.text.trim().length > 0
+      );
+    });
+    const geometry = renderRegions.length
+      ? ((await this.pixelHost("text_layout", {
+          root: work,
+          page: { ...page, regions: renderRegions },
+          maximumBytes: IMAGE_TEXT_RULES.maximumMaterialBytes,
+        })) as GeometryRegion[])
+      : [];
+    const geometryById = new Map(geometry.map((region) => [region.regionId, region]));
     const hostPage: ImageTextPage = {
       pageId: page.pageId,
       width: page.width,
       height: page.height,
       regions: [],
     };
-    for (const region of page.regions.filter((item) => item.disposition === "translate")) {
-      const text = records.find((record) => record.regionId === region.regionId)!.text;
+    for (const region of renderRegions) {
+      const record = recordsById.get(region.regionId)!;
+      const text = record.text!;
       const shape = geometryById.get(region.regionId);
       if (!shape) throw new Error("Missing image text geometry");
-      if (text !== null && text.trim())
-        hostPage.regions.push({
-          regionId: region.regionId,
-          text: normalize_image_text(text),
-          direction: region.direction!,
-          fill: { color: region.backgroundColor! },
-          ...source_layout(page, region),
-          candidates: shape.candidates,
-        });
+      hostPage.regions.push({
+        regionId: region.regionId,
+        text: normalize_image_text(text),
+        direction: region.direction,
+        fill: { color: region.backgroundColor },
+        ...source_layout(page, region),
+        candidates: shape.candidates,
+      });
     }
     const paint = hostPage.regions.length
       ? await this.textHost({ kind: "render_image_text_page", page: hostPage })
@@ -218,35 +257,37 @@ export class ImageOutputService {
     const entries: ImageOutputEntry[] = [];
     const fallbackRegionIds: string[] = [];
     for (const region of page.regions) {
-      if (region.disposition === "preserve") {
-        const failed = region.preserveReason !== "intentional";
+      const cleanRegion = cleanById.get(region.regionId)!;
+      const record = recordsById.get(region.regionId)!;
+      if (record.output === "original") {
+        fallbackRegionIds.push(region.regionId);
+        entries.push(entry(region.regionId, "success", "original"));
+        continue;
+      }
+      if (cleanRegion.status === "failed") {
+        fallbackRegionIds.push(region.regionId);
+        entries.push(entry(region.regionId, "failure", "original", [{ code: "erase_failed" }]));
+        continue;
+      }
+      const text = record.text;
+      const paints = paint.filter((item) => item.result.regionId === region.regionId);
+      if (record.output === null || text === null) {
+        fallbackRegionIds.push(region.regionId);
         entries.push(
-          entry(
-            region.regionId,
-            failed ? "failure" : "success",
-            failed
-              ? [{ code: region.preserveReason === "unreadable" ? "unreadable" : "erase_failed" }]
-              : [],
-            failed,
-          ),
+          entry(region.regionId, "failure", "original", [{ code: "translation_incomplete" }]),
         );
         continue;
       }
-      const text = records.find((record) => record.regionId === region.regionId)!.text;
-      const paints = paint.filter((item) => item.result.regionId === region.regionId);
-      if (text === null) {
-        fallbackRegionIds.push(region.regionId);
-        entries.push(entry(region.regionId, "failure", [{ code: "translation_incomplete" }], true));
-        continue;
-      }
       if (!text.trim()) {
-        entries.push(entry(region.regionId, "success"));
+        entries.push(entry(region.regionId, "success", "translated"));
         continue;
       }
       const failed = paints.find((item) => item.result.renderStatus === "failure");
       if (failed?.result.renderStatus === "failure") {
         fallbackRegionIds.push(region.regionId);
-        entries.push(entry(region.regionId, "failure", [{ code: failed.result.reason }], true));
+        entries.push(
+          entry(region.regionId, "failure", "original", [{ code: failed.result.reason }]),
+        );
         continue;
       }
       if (!paints.length) throw new Error("Missing image text result region");
@@ -261,6 +302,7 @@ export class ImageOutputService {
         entry(
           region.regionId,
           warnings.length ? "warning" : "success",
+          "translated",
           warnings.map((code) => ({ code })),
         ),
       );
@@ -278,8 +320,17 @@ export class ImageOutputService {
       paint: paintPath,
       output: previewPath,
     });
+    const encodedSource = options.qa ? path.join(work, `qa-${page.pageId}.png`) : previewPath;
+    if (options.qa)
+      await this.pixelHost("qa_preview", {
+        root: work,
+        page,
+        source: previewPath,
+        entries,
+        output: encodedSource,
+      });
     await this.pixelHost("encode_output", {
-      source: previewPath,
+      source: encodedSource,
       output: options.outputPath,
       extension: path.extname(page.relativePath),
     });

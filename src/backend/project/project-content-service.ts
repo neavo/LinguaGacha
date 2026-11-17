@@ -467,9 +467,7 @@ export class ProjectContentService {
               source.status !== "PROCESSED" ||
               old.image !== next.image ||
               old.source !== next.source ||
-              old.name !== next.name ||
-              source.src !== next.source ||
-              (source.name_src ?? "") !== next.name
+              source.src !== next.source
             )
               continue;
             target.dst = source.dst;

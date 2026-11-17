@@ -112,7 +112,7 @@ export class FileFormatService {
     private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
     private readonly game_prepare_execution?: GamePrepareExecution,
-    private readonly image_output?: Pick<ImageOutputService, "write_asset">,
+    private readonly image_output?: Pick<ImageOutputService, "write_assets">,
   ) {
     this.native_fs = native_fs;
     this.games = Object.fromEntries(
@@ -563,29 +563,24 @@ export class FileFormatService {
     await this.write_subtitles(items, context, bilingual_files);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
-    const image_outputs: ImageOutputAsset[] = [];
-    const image_items = group_items(items, "IMAGE");
+    const image_paths = context.source_files
+      .filter((file) => file.file_type === "IMAGE")
+      .map((file) => file.path);
     const claimed_paths = new Set(
       context.source_files
         .filter((file) => file.file_type !== "IMAGE")
         .map((file) => file.path.replaceAll("\\", "/").toLocaleLowerCase("en-US")),
     );
-    for (const file of context.source_files) {
-      if (file.file_type !== "IMAGE") continue;
-      if (!this.image_output) throw new Error("Image output host unavailable");
-      const asset = await asset_reader(file.path);
-      if (asset === null)
-        throw new AppError("file.not_found", { public_details: { file: file.path } });
-      image_outputs.push(
-        await this.image_output.write_asset({
-          assetPath: file.path,
-          content: asset,
-          items: image_items.get(file.path) ?? [],
+    if (image_paths.length && !this.image_output) throw new Error("Image output host unavailable");
+    const image_outputs = this.image_output
+      ? await this.image_output.write_assets({
+          assetPaths: image_paths,
+          items,
+          readAsset: asset_reader,
           outputRoot: paths.translated_path,
           claimedPaths: claimed_paths,
-        }),
-      );
-    }
+        })
+      : [];
     if (writeback_path !== undefined) {
       // 视频字幕的样式与渲染归 Agent，与通用数据共用写回输入。
       const groups = {

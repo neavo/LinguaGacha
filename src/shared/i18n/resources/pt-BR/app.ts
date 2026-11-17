@@ -216,8 +216,6 @@ export const pt_br_app = {
         "[Falha] A tradução está incompleta; o conteúdo original será mantido …",
       erase_failed:
         "[Falha] O texto original não pôde ser removido com segurança; o conteúdo original será mantido …",
-      unreadable:
-        "[Falha] O texto original não pôde ser lido com segurança; o conteúdo original será mantido …",
       page_output_failed: "[Falha] A saída da página falhou; o conteúdo original será mantido …",
     },
     action: "Exportar traduções",

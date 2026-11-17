@@ -216,7 +216,6 @@ export const ja_jp_app = {
       outside_layout_area: "[失敗] 文字が許可領域を越えるため、元の内容を残します …",
       translation_incomplete: "[失敗] 訳文が未完成のため、元の内容を残します …",
       erase_failed: "[失敗] 原文を安全に消去できないため、元の内容を残します …",
-      unreadable: "[失敗] 原文を確実に読み取れないため、元の内容を残します …",
       page_output_failed: "[失敗] ページ出力でエラーが発生したため、元の内容を残します …",
     },
     action: "翻訳成果物をエクスポート",

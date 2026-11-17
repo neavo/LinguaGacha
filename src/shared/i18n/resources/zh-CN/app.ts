@@ -207,7 +207,6 @@ export const zh_cn_app = {
       outside_layout_area: "[失败] 文字会超出允许区域，保留原始内容 …",
       translation_incomplete: "[失败] 译文尚未完成，保留原始内容 …",
       erase_failed: "[失败] 无法可靠清除原文，保留原始内容 …",
-      unreadable: "[失败] 原文无法可靠识读，保留原始内容 …",
       page_output_failed: "[失败] 页面输出发生异常，保留原始内容 …",
     },
     action: "导出翻译成果",

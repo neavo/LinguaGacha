@@ -103,7 +103,7 @@ it("真实 Chromium 保持横竖排、原生逐行覆盖、透明像素和取消
           multi.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
           multi.page.regions[0].candidates.push({candidateId:'C1',blocks:[first,second]});
           const multiResult = await host(multi);
-          assert.equal(multiResult.length,2);
+          assert.equal(multiResult.length,1,'Short translations only use the required geometry blocks');
           assert(multiResult.every(r=>r.result.renderStatus!=='failure'));
           const repeat = await host(samples[0]);
           assert.deepEqual(repeat[0].result,results[0].result);

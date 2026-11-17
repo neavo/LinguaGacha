@@ -54,7 +54,7 @@ export async function decode_normalized_image_rgb(content: Uint8Array): Promise<
   const rawW = meta.orientation >= 5 ? meta.height : meta.width;
   const rawH = meta.orientation >= 5 ? meta.width : meta.height;
 
-  // 延迟加载 MuPDF，避免仅使用摘要/结构校验的工作区数据模块在初始化阶段引入 WASM 引擎。
+  // 延迟加载 MuPDF，避免仅使用结构校验的工作区数据模块在初始化阶段引入 WASM 引擎。
   const mupdf = await import("mupdf");
   const img = new mupdf.Image(content);
   let pix: ReturnType<typeof img.toPixmap> | undefined;

@@ -15,6 +15,7 @@ import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { JsonRecord } from "../../domain/json";
+import type { ImageOutputReport, ImageQualityResult } from "../../shared/image";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -71,7 +72,7 @@ export class TranslationFileGenerationService {
     private readonly pdf_execution: PDFExecution, // 独立线程的 PDF 计算端口
     private readonly log_manager?: FileGenerationLogManager, // 译文生成诊断
     private readonly native_fs: NativeFs = default_native_fs, // 目录检查与文件写盘
-    private readonly image_output?: Pick<ImageOutputService, "write_asset">,
+    private readonly image_output?: Pick<ImageOutputService, "write_assets">,
   ) {}
 
   /**
@@ -149,6 +150,40 @@ export class TranslationFileGenerationService {
         false,
       ),
     );
+  }
+
+  /** 图片 QA 只读取图片资产并生成整页标记预览，不改变通用交付语义。 */
+  public async generate_image_qa(output_dir: string): Promise<ImageQualityResult> {
+    return this.runtime_gate.run_agent_project_write(async () => {
+      if (!this.image_output) throw new Error("Image output host unavailable");
+      const project_path = this.session_state.require_loaded_project_path();
+      const assets = (await this.database.get_all_asset_records(project_path)).filter(
+        (asset) => asset.file_type === "IMAGE",
+      );
+      if (!assets.length) throw new AppError("project.no_files");
+      const paths = new Set(assets.map((asset) => asset.path));
+      const items = (await this.database.get_all_items(project_path))
+        .map((item) => create_item(item))
+        .filter((item) => paths.has(item.file_path));
+      this.fill_duplicated_translations(items);
+      const output_path = path.resolve(output_dir);
+      this.native_fs.make_dir(output_path);
+      const generated = await this.image_output.write_assets({
+        assetPaths: assets.map((asset) => asset.path),
+        items,
+        readAsset: (asset_path) => this.database.read_asset_content(project_path, asset_path),
+        outputRoot: output_path,
+        claimedPaths: new Set(),
+        qa: true,
+      });
+      const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
+      const report = await this.write_image_report(
+        output_path,
+        generated,
+        create_text_resolver(resolve_app_locale(config.app_language)),
+      );
+      return { output_path, report };
+    });
   }
 
   /** 只查询交付位置，目录创建留给实际写入者。 */
@@ -318,13 +353,14 @@ export class TranslationFileGenerationService {
     outputPath: string,
     assets: ImageOutputAsset[],
     text: ReturnType<typeof create_text_resolver>,
-  ): Promise<NonNullable<TranslationFileGenerationResult["image_report"]>> {
+  ): Promise<ImageOutputReport> {
     const entries = assets.flatMap((asset) => asset.files.flatMap((file) => file.entries));
     const summary = {
       success: entries.filter((entry) => entry.status === "success").length,
       warnings: entries.filter((entry) => entry.status === "warning").length,
       failures: entries.filter((entry) => entry.status === "failure").length,
-      fallbacks: entries.filter((entry) => entry.fallback === "original").length,
+      originals: entries.filter((entry) => entry.output === "original").length,
+      translated: entries.filter((entry) => entry.output === "translated").length,
     };
     const report = {
       summary,

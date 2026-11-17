@@ -22,10 +22,7 @@ export type TranslationFileGenerationResult = {
   bilingual_output_path: string; // 双语成果的目标位置，未生成双语时目录不存在。
   excluded_files: string[];
   writeback?: { input_path: string; files: string[] }; // 已提供输入，仍需 Agent 完成目标格式处理。
-  image_report?: {
-    path: string;
-    summary: { success: number; warnings: number; failures: number; fallbacks: number };
-  };
+  image_report?: ImageOutputReport;
   pdf_files: PDFFileGenerationResult[];
 };
 
@@ -34,3 +31,4 @@ export type TranslationOutputPaths = {
   translated_path: string;
   bilingual_path: string;
 };
+import type { ImageOutputReport } from "./image";

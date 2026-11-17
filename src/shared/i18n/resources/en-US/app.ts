@@ -213,8 +213,6 @@ export const en_us_app = {
       translation_incomplete: "[Failure] Translation is incomplete; original content retained …",
       erase_failed:
         "[Failure] The original text could not be removed reliably; original content retained …",
-      unreadable:
-        "[Failure] The original text could not be read reliably; original content retained …",
       page_output_failed: "[Failure] Page output failed; original content retained …",
     },
     action: "Export translations",

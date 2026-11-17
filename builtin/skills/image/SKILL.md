@@ -1,34 +1,29 @@
 ---
 name: image
-description: 翻译、审校、分析、修改图片或漫画文件，或制作、更新、写回 `.image` 资产时使用。
+description: 调查、翻译、审校或交付漫画与独立图片，或制作、更新、写回 `.image` 资产时使用。
 ---
 
-本技能处理有框与无框文字。目标是完整登记原文、保留原始相对路径，并生成可恢复的无字底图。译图由文件生成服务自动排版、回退和写出。
-
-阶段导航：
-
-|阶段入口|本技能内容|
-|---|---|
-|来源调查|确认图片归属、页面集合和阅读顺序|
-|导入准备|准备环境，确认区域，消字并封装 `.image`|
-|原稿与条目|理解归档事实、区域状态和原文顺序|
-|可见文本补漏|核对检测覆盖，有遗漏时重做 `.image`|
-|翻译后检查|核对译文快照的完成状态|
-|写回与验证|读取自动生成的图片报告|
-|交付说明|报告成功、警告、失败和原文回退|
+本技能处理漫画与独立图片。程序自动完成文字识别、分区、消字和封包；Agent 负责材料归属、运行环境、工程条目取舍、整页确认和结果说明。
 
 # 来源调查
 
-- 独立图片、扫描页和漫画按自然阅读顺序组成处理批次。同一话或同一连续阅读单元通常封装为一个 `.image`。无关图片分开。
-- 游戏目录中的图片先由对应引擎技能判断是否属于游戏资源。需要作为独立图片资产处理时，再交给本技能。
-- 核对页数、方向、分辨率与重复页。顺序或归属不明确时先解决，不凭文件名强行排序。
-- 只需查看或分析时读取原图即可，不制作 `.image`。需要进入工程或交付译图时进入「导入准备」。
+- 游戏目录中的图片先由对应引擎技能判断归属。只有需要作为独立图片资产处理时，才交给本技能。
+- 按自然阅读顺序组成同一话或同一连续阅读单元。无关图片分开封装。
+- 核对页数、方向、分辨率、重复页与原始相对路径。顺序不明确时先解决。
+- 只查看或分析时直接读取原图。需要进入工程或交付译图时制作 `.image`。
 
 # 导入准备
 
-## 环境准备
+图片 SDK 只声明依赖，不自动安装。只在需要制作或重做 `.image` 时准备环境。
 
-图片 SDK 只声明依赖，不自动安装。首次使用或依赖缺失时准备共享环境和模型：
+先在独立调用中检查模型缺口：
+
+```js
+import * as image from '@lg/image';
+console.log(JSON.stringify({ missing: image.missing_models() }));
+```
+
+本次任务首次发现缺口时，先告诉用户一次「首次使用需要下载约 300 MB 的依赖与模型，后续重复使用」，再在新的调用中准备依赖与模型：
 
 ```js
 import { npm } from '@lg/npm';
@@ -37,157 +32,97 @@ import * as image from '@lg/image';
 
 await npm.run(['install', '--save-exact', ...image.IMAGE_DEPENDENCIES.npm]);
 await uv.run(['add', ...image.IMAGE_DEPENDENCIES.python]);
-if (image.missing_models().length > 0) await image.prepare_models();
+await image.prepare_models();
+console.log(JSON.stringify({ missing: image.missing_models() }));
 ```
 
-依赖版本以 `IMAGE_DEPENDENCIES` 为准，不自行升级。模型准备失败时保留工作材料并报告实际缺口。不伪造检测结果继续封包。
+准备失败时重新读取缺口，报告实际剩余资源。不要伪造模型结果继续封包。
 
-## 区域与原文确认
-
-调用 `prepare`。已有工作目录改用 `read`：
+整册只调用一次 `createImage`。它默认使用 GPU：
 
 ```js
-const prepared = await image.prepare({
-  sources: sources.map((source) => ({
+import * as image from '@lg/image';
+
+const created = await image.createImage(
+  sources.map((source) => ({
     path: source.path,
     relativePath: source.relativePath,
   })),
-  workDirectory: 'work/image/ch01',
-  device: 'cpu',
-});
+  'work/image/ch01.image',
+);
 ```
 
-`relativePath` 相对本批图片共同来源根目录，使用 `/`，保持原始目录与文件名。不同页面不能使用大小写不敏感的同一路径。
+`relativePath` 相对本批图片共同来源根目录，使用 `/`，保持原目录与文件名。不同页面不能使用大小写不敏感的同一路径。
 
-逐页查看完整原页、`evidence[].preview`、`fillPreview` 和必要裁图。
-
-原图检测框是基础事实。第二次检测只补充气泡清理后显露的文字。
-
-Agent 判断：
-
-- 哪些 `textBoxIds` 属于同一段文字。
-- 区域是 `bubble` 还是 `unframed`。
-- 文字应翻译、保留、标为无法识读，还是记录为修复失败。
-- 原文、可选说话人、阅读顺序和书写方向。
-- 检测框是否确实不是文字。
-
-气泡区域复用 `prepare` 生成的 `layoutArea`。新建无框区域时填写 `textBoxIds` 并令 `layoutArea: null`，`apply` 会在事务中生成排版区域和背景分析。不要写掩码文件或伪造路径。
-
-每个检测文字框必须恰好属于一个区域，或明确列入该页 `falsePositiveTextBoxIds`。应翻译的文字不能标成误检。已知漏检且无法形成合法区域时，用无文字框的 `preserve + repair_failed` 区域记录缺口。
-
-提交完整页面与原文记录：
-
-```js
-const applied = await image.apply(workDirectory, current.revision, {
-  pages,
-  records,
-  confirmed: true,
-});
-```
-
-确认失败时按错误修正归属、字段或原文。不要降低覆盖要求。
-
-## 消字与封装
-
-调用 `erase`。它按“气泡优先、无框随后”的顺序生成唯一自动结果。它不会修改已验收底图。
-
-背景满足填色条件时直接填色，否则使用 LaMa。笔画掩码不可用时自动回退到文字框掩码：
-
-```js
-const erased = await image.erase({
-  workDirectory,
-  expectedRevision: applied.revision,
-});
-for (const page of erased.pages)
-  await ws.emitImage(page.clean, { maxEdge: 1600 });
-```
-
-结合完整原页、检测证据和自动底图进行整页质检。页面决定必须覆盖本次运行的全部页面：
-
-```js
-const reviewed = await image.review({
-  workDirectory,
-  runId: erased.runId,
-  expectedRevision: erased.revision,
-  pages: erased.pages.map(({ pageId }) => ({ pageId, accepted: true })),
-});
-```
-
-- `accepted: true` 提交该页自动底图。
-- `accepted: false` 保留当前事实和已有验收结果。修正区域后重新运行。
-- 自动修复失败的区域提交为 `repair_failed`，导出时该区域保留原文并记录失败。
-- 未知页面、遗漏页面或过期运行会拒绝整次提交。
-
-提交后封装：
-
-```js
-const packed = await image.pack(workDirectory, 'work/image/ch01.image');
-```
-
-把 `.image` 交回 `project-operation` 识别、提交并完成导入收尾。
+- `created.pages` 提供整页诊断预览、OCR 区域数量和消字失败清单。消字失败可以随资产导入，输出时恢复原图区域；创建抛错时停止并报告。
+- GPU 创建首次抛出 `image.DeviceFailure` 时，告诉用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」，再用相同来源和输出路径在新调用中把第三个参数设为 `'cpu'` 完整重跑。本次任务的后续图片都使用 CPU，不重复提醒。
+- 模型、输入、环境或资源关闭错误按原错误处理，不靠切换设备重试。CPU 失败后不再切回 GPU。
+- 把 `.image` 交给 `project-operation` 识别和提交。更新已导入资产时使用「更新文件」，继承可复用译文。
 
 # 原稿与条目
 
-`.image` 的持久事实：
+条目按页面与阅读顺序排列。`tag` 表示区域来源：
 
-|路径或字段|含义|
-|---|---|
-|`image.json`|页身份、检测文字框、语义区域与 `layoutArea`|
-|`items.json`|按阅读顺序排列的原文与可选说话人|
-|`clean.json`|已验收底图、实际 `eraseMask` 与区域处置|
-|`layout-areas/<pageId>/<regionId>.png`|译文允许出现的区域|
-|`erase-masks/<pageId>/<regionId>.png`|自动消字实际改变的像素|
+- `bubble`：气泡文字，默认进入翻译。
+- `unframed`：无框文字，在「可见文本补漏」中判断是否需要翻译。
 
-`textBoxes` 中的 `box` 用于归属和消字。`coreBox` 用于原文字号锚定。
+所有 OCR 有效区域都进入工程。OCR 空结果不产生条目。图片输出按工程条目状态解释：
 
-`translate` 区域进入工程条目。`preserve` 区域只保留原因。
+|状态|输出|报告|
+|---|---|---|
+|`PROCESSED`|译文|成功、警告或失败后回退原图|
+|`EXCLUDED`|原图区域|成功|
+|其他未完成状态|原图区域|失败：翻译未完成|
 
-`text: null` 表示工程条目尚未完成。空字符串表示已确认不写文字。
-
-原文、姓名、阅读顺序或方向变化不要求重新消字。区域、`layoutArea`、处置或实际原图变化会使对应底图验收失效。
-
-`textBoxId` 归属保持唯一。不同区域的 `layoutArea` 与不同阶段的 `eraseMask` 可以重叠。后处理像素覆盖前处理像素。
+改为 `EXCLUDED` 不会清空已有 `dst`，以后恢复 `PROCESSED` 时可以继续使用已有译文。
 
 # 可见文本补漏
 
-持久化文字框提供机械覆盖门禁，不能证明检测器绝无漏检。处理图片补漏时查看完整原页，并把可见文字与 `textBoxes`、区域和原文记录对应：
+只在 `translation` 的全文补漏条件满足时执行。一次读取目标图片资产的全部 `unframed` 条目：
 
-- 漏掉的气泡、无框文字、界面文字或旁白必须补入区域。
-- 装饰文字只有在不影响理解且确实有意保留时使用 `intentional`。
-- 无法识读使用 `unreadable`。应处理但当前无法形成合法区域使用 `repair_failed`。
-- 发现遗漏、误分组、误检或消字范围错误时，恢复或重做完整 `.image`，按 `project-operation` 的「更新文件」替换资产并继承可复用译文。不在工程译文中用空字符串掩盖区域问题。
+- 明确旁白、正文、标题：保持 `PROCESSED`。
+- 明确拟声词、装饰文字、画面标签：改为 `EXCLUDED`。
+- 仅凭文本无法决定：保持 `PROCESSED`，加入整页视觉待决清单。
+
+`bubble` 默认保持 `PROCESSED`。不要逐条打开原图确认。本节只决定图片是否输出译文，不评价翻译质量。
 
 # 翻译后检查
 
-核对当前 `.image` 写回快照：
+相关译文写入后生成一次整页 QA 图片：
 
-- 每个 `translate` 区域的译文状态符合本次任务范围。
-- 空字符串确实表示有意不写文字，不是漏译。
-- `repair_failed`、`unreadable` 和 `intentional` 仍符合原页事实。
-- 原文、方向或区域在翻译期间发生变化时，先更新 `.image`，再继续写回。
+```js
+import { generateQA } from '@lg/image';
+const qa = await generateQA();
+```
 
-整页排版属于「写回与验证」，只有导出或交付图片成果时执行。
+按 `qa.output_path` 逐页查看完整图片：
+
+- 绿色：输出译文。
+- 灰色：输出原图。
+- 黄色：翻译未完成或仍需判断。
+- 红色：消字或排版失败。
+
+结合「可见文本补漏」的待决清单处理：
+
+- 一眼确认应翻译：保持 `PROCESSED`。
+- 一眼确认不应翻译：改为 `EXCLUDED`。
+- 看不清的非气泡文字：改为 `EXCLUDED`。
+- 红色区域记录失败，不裁图、放大、改译文长度或反复重试。
+
+提交状态调整后结束本阶段，不调用普通 `generateFiles`。正式成果由 `project-operation` 的「导出与交付」生成。
 
 # 写回与验证
 
-`project-operation` 调用 `generateFiles` 时，文件生成服务直接完成图片排版与写出。图片不会进入 `writeback.files`，Agent 不修改排版输入，也不逐页接受或拒绝。
+`project-operation` 调用 `generateFiles` 时，文件生成服务直接完成图片排版、原图回退和写出。图片不会进入 `writeback.files`，Agent 不修改排版输入。
 
-每张页面都按 `.image` 中的原始相对路径输出：
+对照返回的 `image_report` 和其 `path` 指向的 `.lg-export-report.json` 核对：
 
-- 成功区域写入译文。
-- 边距偏小、中心偏移和小字号属于警告，继续写入译文。
-- 无法排版和越界属于文字渲染失败；消字失败和无法识读属于图片准备失败。以上区域均保留原文。应用字体无法绘制某个字形时由 Chromium 自动使用系统字体回退。
-- 译文尚未完成属于失败，对应区域保留原文。
-- 整页计算失败时输出原图，不影响其他页面。
-
-文件生成服务在译文目录写入 `.lg-export-report.json`。Agent 只读取其中的 `summary`、文件 `path` 和区域条目，不根据文件目录推断状态。
-区域条目使用 `success | warning | failure`，警告可以包含多个原因，失败包含一个原因。每个原因同时提供稳定 `code` 和按应用语言生成的自然语言 `reason`。普通警告只说明问题；原文回退与页面失败同时说明处理方式。
+- 工程中的每个图片页面都有对应输出。
+- `summary` 中成功、警告、失败、原图输出和译文输出数量与详细条目一致。
+- 详细条目的 `path`、`regionId`、`status`、`output` 和 `reasons` 能说明实际结果，不根据目录或颜色推断状态。
 
 # 交付说明
 
-对照 `.lg-export-report.json`、`clean.json` 与 `image.json` 汇报：
+交付时说明 `.image`、成品目录、页面总数，以及成功、警告、失败、原图输出和译文输出数量。
 
-- `.image`、成品目录与成功、警告、失败、原文回退数量。
-- `repair_failed`、`unreadable`、未译、无法排版和越界的页与区域。
-- `intentional` 保留文字和确认为误检的检测框。
-- 边距偏小、中心偏移和小字号警告。
+按页面与区域列出消字失败、翻译未完成、无法排版、越界、小字号、边距偏小和中心偏移。没有对应情况时不逐项罗列。

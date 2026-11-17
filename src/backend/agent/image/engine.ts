@@ -8,13 +8,14 @@ import {
   inference_configuration,
   run_inference_operation,
 } from "../inference/runtime";
-import { IMAGE_MODELS, type ImageModelKind } from "./models";
+import { IMAGE_DICTIONARY, IMAGE_MODELS, type ImageModelKind } from "./models";
 
 export type ImageDevice = "cpu" | "gpu"; // 调用方可选的推理设备。
 export type ImageWorkerConfig = {
   ort: string;
   device: "cpu" | "webgpu";
   models: Record<ImageModelKind, string>;
+  dictionary: string;
 }; // 传给图片单推理 Worker 线程的启动配置。
 
 let tail: Promise<unknown> = Promise.resolve(); // 串行化所有像素作业的队列尾节点。
@@ -25,7 +26,6 @@ export function pixels(
   args: Readonly<Record<string, unknown>>,
   device: ImageDevice = "cpu",
 ): Promise<unknown> {
-  if (device !== "cpu" && device !== "gpu") throw new Error("Invalid image device");
   const result = tail.then(() =>
     run_inference_operation(device, async () => {
       const config = inference_configuration();
@@ -40,7 +40,12 @@ export function pixels(
           args,
           async (header, payload) => {
             const kind = header.kind;
-            if (kind !== "bubble" && kind !== "text" && kind !== "inpaint")
+            if (
+              kind !== "bubble" &&
+              kind !== "text" &&
+              kind !== "recognition" &&
+              kind !== "inpaint"
+            )
               throw new Error("Unknown image inference request");
             if (!model_ready(config.modelsDirectory, IMAGE_MODELS[kind]))
               throw new Error(`Image model missing (${kind}); call prepare_models first`);
@@ -51,8 +56,10 @@ export function pixels(
                 models: {
                   bubble: path.join(config.modelsDirectory, IMAGE_MODELS.bubble.file),
                   text: path.join(config.modelsDirectory, IMAGE_MODELS.text.file),
+                  recognition: path.join(config.modelsDirectory, IMAGE_MODELS.recognition.file),
                   inpaint: path.join(config.modelsDirectory, IMAGE_MODELS.inpaint.file),
                 },
+                dictionary: path.join(config.modelsDirectory, IMAGE_DICTIONARY.file),
               } satisfies ImageWorkerConfig,
               path.join(runtime, "image-worker.mjs"),
             );

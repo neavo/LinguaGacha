@@ -72,7 +72,6 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 |脚本|入口|用途|
 |---|---|---|
 |`media.mjs`|`DEPENDENCIES`、`missing_models`、`prepare_models`|依赖版本，检查、准备识别模型|
-||`probe_gpu`|验证 WebGPU 配置可运行，用于选择设备|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白，视频同时检测画面文字，生成初始 `items.json`|
 ||`scan`、`sheets`、`refine`|仅视频：重新检测画面文字并生成裁图、拼图集、校准 `screen` 行的起止时间|
@@ -113,22 +112,18 @@ await uv.run(['add', ...media.DEPENDENCIES.python]);
 npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。识别模型用 `media.missing_models()` 快速检查，`media.prepare_models()` 校验、续传并返回剩余缺口。成片不需要识别模型。
 
 1. 任务开始时在独立调用中检查依赖与模型缺口，已安装版本与 `media.DEPENDENCIES` 不符也属于缺口。
-2. 有缺口时先说明下载需求，再用独立调用按上述命令补齐，后续复用已下载的资源。
+2. 本次任务首次发现缺口时，先告诉用户一次「首次使用需要下载约 700 MB 的依赖与模型，后续重复使用」，再用独立调用按上述命令补齐。
 3. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
-4. 开始识别前，在独立调用中执行 `probe_gpu()` 并返回结果，据此选择本次任务的设备：
-   - `{ available: true }`：使用 `device: 'gpu'`。
-   - `{ available: false, reason }`：结合 `reason` 说明本次改用 CPU，处理可能更久。随后使用 `device: 'cpu'`。
-   - 探查抛出错误时不代表 GPU 不可用，按错误本身处理。
 
 ## 设备与重跑
 
-`prepare`、`scan`、`refine` 必须传入本次任务的 `device`。同一任务后续的调用和续跑沿用这一选择，新任务重新探查。SDK 只按传入的设备执行，不会自行换设备重跑。
+任务开始时令 `device = 'gpu'`。`prepare`、`scan`、`refine` 必须传入本次任务的 `device`，SDK 只按传入的设备执行，不会自行换设备重跑。
 
 GPU 处理中失败时：
 
-- `media.DeviceFailure` 表示 GPU 执行失败且资源已释放。告诉用户本次改用 CPU，此后都传 `device: 'cpu'`，用相同的工作目录和参数重跑失败的步骤。`prepare` 已完成的一支会复用。
+- 首次收到 `media.DeviceFailure` 时，告诉用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」，将 `device` 改为 `'cpu'`，用相同的工作目录和参数重跑失败的步骤。`prepare` 已完成的一支会复用。本次任务后续都使用 CPU，不重复提醒。
 - `prepare` 两支同时失败时抛出 `AggregateError`。只有 `errors` 全部是 `DeviceFailure` 时才按上一条处理。
-- 其他错误，包括资源无法释放，按错误本身处理，不靠换设备重试。CPU 也失败时报告原因，不再切回 GPU。
+- 模型、输入、环境和资源关闭错误按原错误处理，不靠换设备重试。CPU 失败时报告原因，不再切回 GPU。
 
 重跑已有结果：
 
@@ -148,7 +143,9 @@ GPU 处理中失败时：
 
 # 识别
 
-调用 `media.prepare(来源, 工作目录, { track, language, device })`，`language` 取 `project_meta.json` 的 `source_language`，`device` 按「环境准备」选择。它运行本地 ASR，视频同时运行画面检测，不请求付费模型。一小时素材通常需要几分钟，使用 CPU 或 4K 素材更久，开始前告诉用户。中断后用相同参数续跑，已完成的部分不再重复。
+调用 `media.prepare(来源, 工作目录, { track, language, device })`，`language` 取 `project_meta.json` 的 `source_language`，`device` 取本次任务的当前值。
+
+执行本地 ASR 的同时执行画面检测，不请求付费模型，需要几分钟时间，4K 或 CPU 模式会显著更久，开始前告诉用户，中断后用相同参数续跑，已完成的部分不再重复。
 
 `prepare` 在缺少 `items.json` 时，把每条 `asr` 转为 `dialogue` 记录。已有 `items.json` 原样保留，包括空数组。`asr` 为 `[]` 表示执行了识别但没有产出文字，如实告诉用户，不编造条目。
 
@@ -241,7 +238,7 @@ GPU 处理中失败时：
 
 # 复核与重新处理
 
-已导入的资产从 `sources/<file_path>/` 复制到新的工作目录。纯音频直接定位原文件并检查对白。视频的工作目录没有裁图，按「环境准备」准备环境并选择设备后，调用 `media.scan(工作目录, { device })` 重新生成。不同设备或版本使用的检测模型可能不同，新结果的区间编号和框可能与之前不同，只在本次结果内使用。
+已导入的资产从 `sources/<file_path>/` 复制到新的工作目录。纯音频直接定位原文件并检查对白。视频的工作目录没有裁图，按「环境准备」准备环境并沿用本次任务的 `device`，调用 `media.scan(工作目录, { device })` 重新生成。不同设备或版本使用的检测模型可能不同，新结果的区间编号和框可能与之前不同，只在本次结果内使用。
 
 `scan`、`refine`、视频模型补查和音频成片都按 `media.json` 的 `source` 找回原文件。`media.locate(工作目录)` 在原文件不存在或大小、修改时间变化时报错。此时用 `ask_user` 请用户提供新路径，再调用 `media.relink(工作目录, 新路径)`。它核对时长、画面尺寸和所选音轨后更新 `source`。不要自行搜索同名文件替代。资产已导入时，重新打包并按「更新文件」提交，新路径才保存进工程。
 

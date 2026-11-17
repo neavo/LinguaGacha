@@ -150,28 +150,35 @@ describe("TranslationFileGenerationService", () => {
     const session = new ProjectSessionState();
     session.mark_loaded(path.join(temp_dir, "book.lg"));
     const imageOutput = {
-      write_asset: async (options) => ({
-        assetPath: options.assetPath,
-        files: fixture.book.pages.map((page, index) => {
-          const file = path.join(options.outputRoot, "book", page.relativePath);
-          fs.mkdirSync(path.dirname(file), { recursive: true });
-          fs.writeFileSync(file, fixture.original);
-          return {
-            path: path.posix.join("book", page.relativePath),
-            entries: [
-              index === 3
-                ? {
-                    regionId: "text",
-                    status: "failure" as const,
-                    reasons: [{ code: "translation_incomplete" as const }],
-                    fallback: "original" as const,
-                  }
-                : { regionId: "text", status: "success" as const, reasons: [] },
-            ],
-          };
-        }),
-      }),
-    } satisfies Pick<ImageOutputService, "write_asset">;
+      write_assets: vi.fn(async (options: Parameters<ImageOutputService["write_assets"]>[0]) =>
+        options.assetPaths.map((assetPath) => ({
+          assetPath,
+          files: fixture.book.pages.map((page, index) => {
+            const file = path.join(options.outputRoot, "book", page.relativePath);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, fixture.original);
+            return {
+              path: path.posix.join("book", page.relativePath),
+              entries: [
+                index === 3
+                  ? {
+                      regionId: "text",
+                      status: "failure" as const,
+                      output: "original" as const,
+                      reasons: [{ code: "translation_incomplete" as const }],
+                    }
+                  : {
+                      regionId: "text",
+                      status: "success" as const,
+                      output: "translated" as const,
+                      reasons: [],
+                    },
+              ],
+            };
+          }),
+        })),
+      ),
+    } satisfies Pick<ImageOutputService, "write_assets">;
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
@@ -199,7 +206,8 @@ describe("TranslationFileGenerationService", () => {
       success: 3,
       warnings: 0,
       failures: 1,
-      fallbacks: 1,
+      originals: 1,
+      translated: 3,
     });
     expect(path.basename(generated.image_report!.path)).toBe(".lg-export-report.json");
     const report = JSON.parse(fs.readFileSync(generated.image_report!.path, "utf8"));
@@ -216,6 +224,14 @@ describe("TranslationFileGenerationService", () => {
       ],
     });
     expect(items[1]!.status).toBe("DUPLICATED");
+    const qa = await service.generate_image_qa(path.join(temp_dir, "qa"));
+    expect(qa).toMatchObject({
+      output_path: path.join(temp_dir, "qa"),
+      report: { summary: generated.image_report!.summary },
+    });
+    expect(imageOutput.write_assets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ qa: true, assetPaths: ["book.image"] }),
+    );
   });
   it.each(["GENERIC", "MEDIA"])(
     "仅含 %s 时直接生成报告原因与排除清单，且不创建目录",

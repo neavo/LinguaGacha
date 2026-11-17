@@ -208,7 +208,6 @@ export const ko_kr_app = {
       outside_layout_area: "[실패] 글자가 허용 영역을 벗어나 원본 내용을 유지합니다 …",
       translation_incomplete: "[실패] 번역이 완료되지 않아 원본 내용을 유지합니다 …",
       erase_failed: "[실패] 원문을 안전하게 지울 수 없어 원본 내용을 유지합니다 …",
-      unreadable: "[실패] 원문을 정확히 읽을 수 없어 원본 내용을 유지합니다 …",
       page_output_failed: "[실패] 페이지 출력 중 오류가 발생하여 원본 내용을 유지합니다 …",
     },
     action: "번역 결과물 내보내기",

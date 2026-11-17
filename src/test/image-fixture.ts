@@ -1,7 +1,7 @@
 import { crc32, deflateSync } from "node:zlib";
 import { png_fixture } from "./media-fixture";
 import { write_zip } from "./zip-fixture";
-import { erase_input_digest, image_sha256 } from "../backend/file/image/image-format";
+import { image_sha256 } from "../backend/file/image/image-format";
 import type { ImageBook, ImageClean, ImagePage, ImageRecord } from "../shared/image";
 
 /** 构建最小完整 `.image` 归档与原图/底图/掩码字节测试夹具。 */
@@ -9,7 +9,6 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
   const original = png_fixture();
   const sha = image_sha256(original);
   const mask = selection_fixture();
-  const maskSha = image_sha256(mask);
   const pages: ImagePage[] = ids.map((pageId) => ({
     pageId,
     relativePath: `${pageId}.png`,
@@ -33,16 +32,15 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
           [1, 1],
           [0, 1],
         ],
+        text: "うん",
       },
     ],
-    falsePositiveTextBoxIds: [],
     regions: [
       {
         regionId: "text",
         kind: "bubble",
-        disposition: "translate",
         textBoxIds: ["t1"],
-        layoutArea: { path: `layout-areas/${pageId}/text.png`, sha256: maskSha },
+        layoutArea: { path: `layout-areas/${pageId}/text.png` },
         direction: "vertical-rl",
         backgroundColor: [255, 255, 255],
       },
@@ -54,18 +52,10 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
     pages: pages.map((page) => ({
       pageId: page.pageId,
       clean: `clean/${page.pageId}.png`,
-      cleanSha256: sha,
-      inputSha256: erase_input_digest(page),
       regions: page.regions.map((region) => ({
         regionId: region.regionId,
-        disposition: region.disposition,
-        ...(region.preserveReason ? { preserveReason: region.preserveReason } : {}),
-        ...(region.disposition === "translate"
-          ? {
-              eraseMask: `erase-masks/${page.pageId}/${region.regionId}.png`,
-              eraseMaskSha256: maskSha,
-            }
-          : {}),
+        status: "cleaned" as const,
+        eraseMask: `erase-masks/${page.pageId}/${region.regionId}.png`,
       })),
     })),
   };

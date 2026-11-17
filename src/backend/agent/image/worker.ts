@@ -1,4 +1,5 @@
 import { parentPort, workerData } from "node:worker_threads";
+import { default_native_fs as fs } from "../../../native/native-fs";
 import { tensor_shape, type ChannelHeader } from "../inference/channel";
 import { check_finite, float, infer, type Ort, type OrtSession } from "../inference/ort";
 import { detect_text } from "../inference/text-detection";
@@ -11,6 +12,7 @@ const port = parentPort!;
 const loaded = (await import(config.ort)) as Ort & { default?: Ort };
 const ort = loaded.default ?? loaded;
 const pending: Partial<Record<ImageModelKind, Promise<OrtSession>>> = {}; // 创建中的会话也共享，失败后交给宿主结束本次作业。
+let recognitionVocabulary: string[] | undefined;
 
 /** 固定显式后端，初始化失败不切换设备重试。 */
 function session(kind: ImageModelKind): Promise<OrtSession> {
@@ -84,6 +86,47 @@ async function run_text(input: Float32Array, shape: number[]) {
   return { header: { shapes: [result.shape] }, payload: result.data.buffer };
 }
 
+/** 按固定词表执行 CTC 贪心解码。 */
+async function run_recognition(input: Float32Array, shape: number[]) {
+  if (shape.length !== 4 || shape[0] !== 1 || shape[1] !== 3 || shape[2] !== 48)
+    throw new Error("Invalid recognition tensor");
+  const model = await session("recognition");
+  const outputs = await infer(model, {
+    [model.inputNames[0]!]: new ort.Tensor("float32", input, shape),
+  });
+  try {
+    const output = outputs[model.outputNames[0]!];
+    if (!output || output.dims.length !== 3 || output.dims[0] !== 1 || !output.dims[1])
+      throw new Error("Invalid recognition output shape");
+    const data = float(output.data);
+    const vocabulary = (recognitionVocabulary ??= [
+      "",
+      ...fs.read_text_file(config.dictionary).split(/\r?\n/u).filter(Boolean),
+      " ",
+    ]);
+    const steps = output.dims[1]!;
+    const classes = output.dims[2]!;
+    if (classes !== vocabulary.length || data.length !== steps * classes)
+      throw new Error("Recognition dictionary does not match model output");
+    let text = "";
+    let previous = -1;
+    for (let step = 0; step < steps; step++) {
+      const base = step * classes;
+      let best = 0;
+      for (let index = 0; index < classes; index++) {
+        const value = data[base + index]!;
+        if (!Number.isFinite(value)) throw new Error("Model output is not finite.");
+        if (value > data[base + best]!) best = index;
+      }
+      if (best !== 0 && best !== previous) text += vocabulary[best]!;
+      previous = best;
+    }
+    return { header: { text } };
+  } finally {
+    for (const tensor of Object.values(outputs)) tensor.dispose();
+  }
+}
+
 /** 四通道载荷拆为 RGB 与掩码；修复与检测共用作业内的会话生命周期。 */
 async function run_inpaint(input: Float32Array, shape: number[]) {
   if (
@@ -138,7 +181,12 @@ port.on("message", (message: Request) => {
     try {
       const shape = tensor_shape(message.header, message.payload.byteLength);
       const input = new Float32Array(message.payload);
-      if (message.kind !== "bubble" && message.kind !== "text" && message.kind !== "inpaint")
+      if (
+        message.kind !== "bubble" &&
+        message.kind !== "text" &&
+        message.kind !== "recognition" &&
+        message.kind !== "inpaint"
+      )
         throw new Error(`Unknown image task: ${message.kind}`);
       if (message.kind !== "inpaint") check_finite(input);
       const result =
@@ -146,8 +194,11 @@ port.on("message", (message: Request) => {
           ? await run_bubble(input, shape)
           : message.kind === "text"
             ? await run_text(input, shape)
-            : await run_inpaint(input, shape);
-      port.postMessage({ id: message.id, ...result }, [result.payload]);
+            : message.kind === "recognition"
+              ? await run_recognition(input, shape)
+              : await run_inpaint(input, shape);
+      if ("payload" in result) port.postMessage({ id: message.id, ...result }, [result.payload]);
+      else port.postMessage({ id: message.id, ...result });
     } catch (error) {
       port.postMessage({
         id: message.id,

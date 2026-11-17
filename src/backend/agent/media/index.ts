@@ -17,7 +17,6 @@ export { ffmpeg, inspect, type ExecuteOptions, type MediaInfo } from "./ffmpeg";
 export { ASR_LANGUAGES, union, type AsrSentence } from "./speech";
 
 export { missing_models, prepare_models } from "./preparation";
-export { probe_gpu, type GpuProbeResult } from "./probe";
 export { DeviceFailure } from "../inference/client";
 export { visualize, type VisualizeOptions, type VisualizeResult } from "./visualize";
 

@@ -30,8 +30,7 @@ import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
-import { image_fixture } from "../../../../test/image-fixture";
-import { erase_input_digest, read_image_package } from "../../../file/image/image-format";
+import { png_fixture } from "../../../../test/media-fixture";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -62,7 +61,7 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it("媒体 SDK 使用宿主指定的模型目录并拒绝缺失模型的探查", async () => {
+it("媒体 SDK 使用宿主指定的模型目录", async () => {
   const { file, size } = MEDIA_MODELS.vad;
   await run(`
     import assert from 'node:assert/strict';
@@ -77,7 +76,7 @@ it("媒体 SDK 使用宿主指定的模型目录并拒绝缺失模型的探查",
     await writeFile(file, Buffer.alloc(model.size));
     assert.ok(!(await media.missing_models()).includes(model.file));
     try {
-      await assert.rejects(media.probe_gpu(), /Media models are missing/);
+      assert.ok((await media.missing_models()).length > 0);
     } finally {
       await rm(file);
     }
@@ -96,6 +95,20 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   const generateFiles = vi
     .fn(async () => generated)
     .mockRejectedValueOnce(new Error("fixture generation failed"));
+  const imageQA = {
+    output_path: path.join(workspace, "work/image-qa"),
+    report: {
+      path: path.join(workspace, "work/image-qa/.lg-export-report.json"),
+      summary: {
+        success: 1,
+        warnings: 0,
+        failures: 0,
+        originals: 0,
+        translated: 1,
+      },
+    },
+  };
+  const generateImageQA = vi.fn(async () => imageQA);
   const inspectSources = vi.fn(async (sources: string[]) =>
     sources.map((source_path) => ({
       source_path,
@@ -107,15 +120,17 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   const result = await run(
     `
     import { inspectSources, generateFiles, getOutputPaths } from '@lg/project';
+    import { generateQA } from '@lg/image';
     import assert from 'node:assert/strict';
     await assert.rejects(generateFiles([]), /fixture generation failed/);
-    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
+    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), imageQA: await generateQA(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
     undefined,
     undefined,
     {
       inspectSources,
       generateFiles,
+      generateImageQA,
       getOutputPaths: (directory) => ({
         manual: directory === undefined,
         translated_path: workspace,
@@ -125,6 +140,7 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   );
   expect(output_content(result.stdout)).toEqual({
     generated,
+    imageQA,
     paths: { manual: true, translated_path: workspace, bilingual_path: workspace },
     selected: { manual: false, translated_path: workspace, bilingual_path: workspace },
     sources: [
@@ -140,47 +156,26 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
 });
 
 it(
-  "部署后的图片封包传递大正文并保留掩码，媒体共用请求协议",
+  "部署后的图片 SDK 暴露整册创建入口，媒体共用请求协议",
   async () => {
-    const fixture = image_fixture(["text", "kept"]);
-    fixture.records[0]!.message = "中文原稿".repeat(8000); // UTF-8 正文超过旧帧头预算。
-    const kept = fixture.book.pages[1]!;
-    kept.regions[0]!.disposition = "preserve";
-    kept.regions[0]!.backgroundColor = null;
-    kept.regions[0]!.direction = null;
-    kept.regions[0]!.preserveReason = "intentional";
-    fixture.clean.pages[1]!.regions = [
-      { regionId: "text", disposition: "preserve", preserveReason: "intentional" },
-    ];
-    fixture.clean.pages[1]!.inputSha256 = erase_input_digest(kept);
-    const archive = await JSZip.loadAsync(await fixture.pack());
-    for (const entry of Object.values(archive.files)) {
-      if (entry.dir) continue;
-      const file = path.join(workspace, "work/pack-source", entry.name);
-      await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, await entry.async("nodebuffer"));
-    }
+    const source = path.join(workspace, "work/pack-source/originals/text.png");
+    await mkdir(path.dirname(source), { recursive: true });
+    await writeFile(source, png_fixture());
     const result = await run(
       `
-    import { restore, pack, IMAGE_DEPENDENCIES } from '@lg/image';
+    import { createImage, DeviceFailure, IMAGE_DEPENDENCIES } from '@lg/image';
     import { sheets } from '@lg/media';
     import { uv } from '@lg/uv';
     import assert from 'node:assert/strict';
     await uv.run(['add', ...IMAGE_DEPENDENCIES.python, '--default-index', 'https://pypi.org/simple']);
-    await restore('work/pack-source', 'work/pack-work');
-    await pack('work/pack-work', 'work/packed.image');
+    assert.equal(typeof createImage, 'function');
+    assert.equal(typeof DeviceFailure, 'function');
     const result = await sheets([{id:7,start:0,file:'work/pack-source/originals/text.png'}], 'work/sheets');
     assert.deepEqual(result.map(sheet => sheet.ids), [[7]]);
   `,
       AbortSignal.timeout(60_000),
     );
     expect(result.exitCode).toBe(0);
-    const packed = await read_image_package(
-      await readFile(path.join(workspace, "work/packed.image")),
-      "packed.image",
-    );
-    expect(packed.book).toEqual(fixture.book);
-    expect(packed.records).toEqual(fixture.records);
   },
   EXECUTION_TIMEOUT_MS + RUN_TIMEOUT_MS,
 ); // 安装依赖后仍留出脚本取消与进程收尾时间。
@@ -950,6 +945,7 @@ async function run(
     AgentWorkspaceRunRequest,
     | "printPDF"
     | "inspectSources"
+    | "generateImageQA"
     | "generateFiles"
     | "getOutputPaths"
     | "emitImage"

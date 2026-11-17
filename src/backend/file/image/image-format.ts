@@ -12,7 +12,6 @@ import {
   type ImagePage,
   type ImageRecord,
   type ImageRegion,
-  type ImageLayoutArea,
 } from "../../../shared/image";
 import { AppError } from "../../../shared/error";
 import { read_zip_members, validate_zip_member_path } from "../shared/zip-members";
@@ -21,8 +20,8 @@ import { write_message_records } from "../shared/message-records";
 import { read_translation_for_generation } from "../shared/translation-generation-text";
 import type { ImageTextInput } from "../../../shared/image-text";
 
-const IMAGE_STATE_MEMBER = "image.json"; // 归档内保存原稿与确认区域意图的 JSON 成员名。
-const IMAGE_CLEAN_MEMBER = "clean.json"; // 归档内保存已验收底图、掩码与摘要的 JSON 成员名。
+const IMAGE_STATE_MEMBER = "image.json"; // 归档内保存原稿与区域事实的 JSON 成员名。
+const IMAGE_CLEAN_MEMBER = "clean.json"; // 归档内保存自动底图与消字掩码的 JSON 成员名。
 const MEMBER_ERROR_SAMPLE_SIZE = 5; // 诊断保留总数与少量路径，避免损坏归档淹没工具回执。
 const IMAGE_LIMITS = Object.freeze({
   members: 30000,
@@ -32,33 +31,11 @@ const IMAGE_LIMITS = Object.freeze({
   jsonBytes: 16_000_000,
 }); // 压缩包成员数量、体积与单页像素安全上限。
 const BOOK_VALIDATOR = Compile(IMAGE_BOOK_SCHEMA); // 预编译的图片书结构校验器。
-const CLEAN_VALIDATOR = Compile(IMAGE_CLEAN_SCHEMA); // 预编译的已验收底图清单校验器。
+const CLEAN_VALIDATOR = Compile(IMAGE_CLEAN_SCHEMA); // 预编译的自动底图清单校验器。
 
 /** 计算字节或文本的十六进制 SHA-256 摘要。 */
 export const image_sha256 = (bytes: Uint8Array | string): string =>
   createHash("sha256").update(bytes).digest("hex");
-
-/** 计算单页消字输入指纹：按稳定 regionId 排序，与原文、名称、阅读顺序和书写方向解耦。 */
-export function erase_input_digest(page: ImagePage): string {
-  const regions = [...page.regions]
-    .sort((a, b) => (a.regionId < b.regionId ? -1 : a.regionId > b.regionId ? 1 : 0))
-    .map((region) => ({
-      regionId: region.regionId,
-      kind: region.kind,
-      disposition: region.disposition,
-      textBoxIds: [...region.textBoxIds].sort(),
-      layoutArea: region.layoutArea
-        ? { path: region.layoutArea.path, sha256: region.layoutArea.sha256 }
-        : null,
-      ...(region.disposition === "translate" ? { backgroundColor: region.backgroundColor } : {}),
-    }));
-  return image_sha256(
-    JSON.stringify({
-      source: [page.sha256, page.width, page.height, page.orientation],
-      regions,
-    }),
-  );
-}
 
 /** 原中央目录先查重复与预算，避免 JSZip 覆盖同名成员后丢失证据。 */
 function validate_directory(content: Uint8Array): void {
@@ -110,17 +87,14 @@ function validate_directory(content: Uint8Array): void {
   if (offset !== end) throw new Error("Invalid ZIP directory size");
 }
 
-/** 草稿与归档共用结构边界。`confirmed: true` 时要求全部待消字与原文约束完整。 */
+/** 图片归档结构边界：每个有效 OCR 框恰好属于一个区域，每个区域恰好有一条原文。 */
 export function validate_image_book(
   value: unknown,
   records: readonly ImageRecord[],
-  options: { confirmed?: boolean } = {},
 ): asserts value is ImageBook {
-  const confirmed = options.confirmed ?? true;
   if (!BOOK_VALIDATOR.Check(value)) throw new Error("Invalid image state");
   const pageIds = new Set<string>();
   const relativePaths = new Set<string>();
-  const translated = new Set<string>();
   const regions = new Set<string>();
   for (const page of value.pages) {
     if (pageIds.has(page.pageId) || page.width * page.height > IMAGE_LIMITS.pagePixels)
@@ -140,12 +114,6 @@ export function validate_image_book(
       if (textBoxIds.has(textBox.textBoxId)) throw new Error("Duplicate image text box");
       textBoxIds.add(textBox.textBoxId);
     }
-    const falsePositiveIds = new Set<string>();
-    for (const textBoxId of page.falsePositiveTextBoxIds) {
-      if (!textBoxIds.has(textBoxId) || falsePositiveIds.has(textBoxId))
-        throw new Error("Invalid false-positive text box");
-      falsePositiveIds.add(textBoxId);
-    }
     const assignedTextBoxIds = new Set<string>();
     if (
       validate_zip_member_path(page.original) !== page.original ||
@@ -158,16 +126,12 @@ export function validate_image_book(
       regionIds.add(region.regionId);
       const key = page.pageId + "/" + region.regionId;
       regions.add(key);
-      if (
-        region.layoutArea &&
-        region.layoutArea.path !== `layout-areas/${page.pageId}/${region.regionId}.png`
-      )
+      if (region.layoutArea.path !== `layout-areas/${page.pageId}/${region.regionId}.png`)
         throw new Error("Invalid layout area path");
       const localTextBoxIds = new Set<string>();
       for (const textBoxId of region.textBoxIds) {
         if (
           !textBoxIds.has(textBoxId) ||
-          falsePositiveIds.has(textBoxId) ||
           localTextBoxIds.has(textBoxId) ||
           assignedTextBoxIds.has(textBoxId)
         )
@@ -175,56 +139,30 @@ export function validate_image_book(
         localTextBoxIds.add(textBoxId);
         assignedTextBoxIds.add(textBoxId);
       }
-      if (region.disposition === "translate") {
-        if (confirmed && region.textBoxIds.length === 0)
-          throw new Error("Confirmed translate region requires source text boxes");
-        if (region.preserveReason !== undefined)
-          throw new Error("Translate region cannot carry preserveReason");
-        if (
-          confirmed &&
-          (region.direction === null || !region.layoutArea || !region.backgroundColor)
-        )
-          throw new Error(
-            "Confirmed translate region requires direction, layoutArea and backgroundColor",
-          );
-        translated.add(key);
-      } else {
-        if (region.preserveReason === undefined)
-          throw new Error("Preserve region requires preserveReason");
-        if (region.backgroundColor !== null || region.direction !== null)
-          throw new Error("Preserve region cannot carry text settings");
-      }
     }
-    if (confirmed && assignedTextBoxIds.size + falsePositiveIds.size !== textBoxIds.size)
-      throw new Error("Confirmed page requires every detected text box to be classified");
+    if (assignedTextBoxIds.size !== textBoxIds.size)
+      throw new Error("Every detected text box must belong to one region");
   }
   const seen = new Map<string, ImageRecord>();
   const pageOrder = new Map(value.pages.map((page, index) => [page.pageId, index]));
   let previousPage = -1;
   for (const record of records) {
     const key = record.pageId + "/" + record.regionId;
-    if (
-      typeof record.message !== "string" ||
-      (record.name !== undefined && typeof record.name !== "string") ||
-      !regions.has(key) ||
-      seen.has(key)
-    )
+    if (typeof record.message !== "string" || !regions.has(key) || seen.has(key))
       throw new Error("Invalid image record reference");
     const order = pageOrder.get(record.pageId)!;
     if (order < previousPage) throw new Error("Image records do not follow page order");
     previousPage = order;
     seen.set(key, record);
   }
-  if (confirmed) {
-    for (const key of translated) {
-      const record = seen.get(key);
-      if (!record || record.message.trim().length === 0)
-        throw new Error("Confirmed translate region requires non-empty source text");
-    }
+  for (const key of regions) {
+    const record = seen.get(key);
+    if (!record || record.message.trim().length === 0)
+      throw new Error("Image region requires non-empty source text");
   }
 }
 
-/** 校验 `clean.json` 与 `image.json` 的页序、区域引用、状态、输入指纹与成员路径一致性。 */
+/** 校验 `clean.json` 与 `image.json` 的页序、区域顺序、状态与成员路径一致性。 */
 export function validate_image_clean(value: unknown, book: ImageBook): asserts value is ImageClean {
   if (!CLEAN_VALIDATOR.Check(value)) throw new Error("Invalid clean manifest");
   if (value.bookId !== book.bookId || value.pages.length !== book.pages.length)
@@ -239,35 +177,23 @@ export function validate_image_clean(value: unknown, book: ImageBook): asserts v
       cleanPage.clean !== expectedClean
     )
       throw new Error("Invalid clean image path");
-    if (cleanPage.inputSha256 !== erase_input_digest(bookPage))
-      throw new Error("Clean input digest mismatch");
     if (cleanPage.regions.length !== bookPage.regions.length)
       throw new Error("Clean page regions mismatch");
-    const bookRegions = new Map(bookPage.regions.map((region) => [region.regionId, region]));
-    const seen = new Set<string>();
-    for (const cleanRegion of cleanPage.regions) {
-      if (seen.has(cleanRegion.regionId)) throw new Error("Duplicate clean region");
-      seen.add(cleanRegion.regionId);
-      const bookRegion = bookRegions.get(cleanRegion.regionId);
-      if (!bookRegion || cleanRegion.disposition !== bookRegion.disposition)
-        throw new Error("Clean region disposition mismatch");
-      if (cleanRegion.disposition === "preserve") {
-        if (
-          cleanRegion.preserveReason !== bookRegion.preserveReason ||
-          cleanRegion.eraseMask !== undefined ||
-          cleanRegion.eraseMaskSha256 !== undefined
-        )
-          throw new Error("Invalid clean preserve region");
+    for (let regionIndex = 0; regionIndex < bookPage.regions.length; regionIndex++) {
+      const bookRegion = bookPage.regions[regionIndex]!;
+      const cleanRegion = cleanPage.regions[regionIndex]!;
+      if (cleanRegion.regionId !== bookRegion.regionId)
+        throw new Error("Clean region order mismatch");
+      if (cleanRegion.status === "failed") {
+        if (cleanRegion.eraseMask !== undefined) throw new Error("Invalid failed clean region");
       } else {
         const expectedMask = `erase-masks/${bookPage.pageId}/${bookRegion.regionId}.png`;
         if (
-          cleanRegion.preserveReason !== undefined ||
           !cleanRegion.eraseMask ||
           cleanRegion.eraseMask !== expectedMask ||
-          validate_zip_member_path(cleanRegion.eraseMask) !== cleanRegion.eraseMask ||
-          !cleanRegion.eraseMaskSha256
+          validate_zip_member_path(cleanRegion.eraseMask) !== cleanRegion.eraseMask
         )
-          throw new Error("Invalid clean translate region");
+          throw new Error("Invalid cleaned region");
       }
     }
   }
@@ -276,11 +202,10 @@ export function validate_image_clean(value: unknown, book: ImageBook): asserts v
 /** 排版区域与消字产物共用同一二值图解码边界，路径归属由调用方校验。 */
 async function read_image_mask(
   page: ImagePage,
-  reference: ImageLayoutArea,
+  reference: ImageRegion["layoutArea"],
   read: (member: string) => Promise<Uint8Array>,
 ): Promise<Uint8Array> {
   const bytes = await read(reference.path);
-  if (image_sha256(bytes) !== reference.sha256) throw new Error("Region mask digest mismatch");
   if (bytes[24] !== 8 || bytes[25] !== 0)
     throw new Error("Region mask must be an 8-bit grayscale PNG");
   const meta = image_metadata(bytes);
@@ -315,30 +240,19 @@ async function read_image_layout_area(
   page: ImagePage,
   region: ImageRegion,
   read: (member: string) => Promise<Uint8Array>,
-): Promise<Uint8Array | undefined> {
-  if (!region.layoutArea) return;
+): Promise<Uint8Array> {
   if (region.layoutArea.path !== `layout-areas/${page.pageId}/${region.regionId}.png`)
     throw new Error("Invalid layout area path");
   return read_image_mask(page, region.layoutArea, read);
 }
 
-/** 逐项验证排版区域，不在内存中保留整本页面的所有全尺寸掩码。 */
-export async function validate_image_layout_areas(
+/** 校验页面图片尺寸、二值掩码及消字范围。 */
+async function validate_image_page_members(
   page: ImagePage,
-  read: (member: string) => Promise<Uint8Array>,
-): Promise<void> {
-  for (const region of page.regions) await read_image_layout_area(page, region, read);
-}
-
-/** 归档读取和离线恢复共用像素完整性边界。 */
-export async function validate_image_page_pixels(
-  page: ImagePage,
-  cleanPage: Pick<ImageCleanPage, "clean" | "cleanSha256" | "regions">,
+  cleanPage: Pick<ImageCleanPage, "clean" | "regions">,
   read: (member: string) => Promise<Uint8Array>,
 ): Promise<void> {
   const originalBytes = await read(page.original);
-  if (image_sha256(originalBytes) !== page.sha256)
-    throw new Error("Original image digest mismatch");
   const origMeta = image_metadata(originalBytes);
   if (
     origMeta.width !== page.width ||
@@ -348,8 +262,6 @@ export async function validate_image_page_pixels(
     throw new Error("Image metadata mismatch");
 
   const baseBytes = await read(cleanPage.clean);
-  if (image_sha256(baseBytes) !== cleanPage.cleanSha256)
-    throw new Error("Clean image digest mismatch");
   const baseMeta = image_metadata(baseBytes);
   if (
     baseMeta.extension !== ".png" ||
@@ -357,50 +269,20 @@ export async function validate_image_page_pixels(
     baseMeta.height !== page.height
   )
     throw new Error("Clean image dimensions mismatch");
-  const basePixels = await decode_normalized_image_rgb(baseBytes);
-
-  const unionMask = new Uint8Array(page.width * page.height);
-  const regions = new Map(cleanPage.regions.map((region) => [region.regionId, region]));
-  if (regions.size !== page.regions.length || cleanPage.regions.length !== page.regions.length)
-    throw new Error("Erase region count mismatch");
-  for (const region of page.regions) {
+  for (let index = 0; index < page.regions.length; index++) {
+    const region = page.regions[index]!;
+    const result = cleanPage.regions[index]!;
     const layoutArea = await read_image_layout_area(page, region, read);
-    const result = regions.get(region.regionId);
-    if (!result || result.disposition !== region.disposition)
-      throw new Error("Erase region identity mismatch");
-    if (region.disposition === "preserve") {
-      if (result.eraseMask || result.eraseMaskSha256)
-        throw new Error("Preserve region cannot carry erase mask");
-      continue;
-    }
-    if (!result.eraseMask || !result.eraseMaskSha256) throw new Error("Missing erase mask");
-    if (!region.layoutArea || !layoutArea) throw new Error("Translate region requires layout area");
-    const mask = await read_image_mask(
-      page,
-      { path: result.eraseMask, sha256: result.eraseMaskSha256 },
-      read,
-    );
+    if (result.status === "failed") continue;
+    if (!result.eraseMask) throw new Error("Missing erase mask");
+    const mask = await read_image_mask(page, { path: result.eraseMask }, read);
     for (let px = 0; px < mask.length; px++) {
       if (mask[px] && !layoutArea[px]) throw new Error("Erase mask exceeds region layout area");
-      if (mask[px]) unionMask[px] = 1;
     }
-  }
-
-  // 统一复用同一 MuPDF 规范化规则，对 PNG 与 JPEG（含 EXIF 方向）执行零容差掩码外一致性检查。
-  const origPixels = await decode_normalized_image_rgb(originalBytes);
-  for (let px = 0; px < unionMask.length; px++) {
-    if (unionMask[px]) continue;
-    const off = px * 3;
-    if (
-      basePixels.rgb[off] !== origPixels.rgb[off] ||
-      basePixels.rgb[off + 1] !== origPixels.rgb[off + 1] ||
-      basePixels.rgb[off + 2] !== origPixels.rgb[off + 2]
-    )
-      throw new Error("Pixels changed outside masks");
   }
 }
 
-/** 读取并全面校验 `.image` 归档，逐页校验成员白名单、摘要、尺寸、EXIF 方向与掩码外像素一致性。 */
+/** 读取并校验 `.image` 归档的成员、结构、图片尺寸与消字范围。 */
 export async function read_image_package(content: Uint8Array, file: string) {
   try {
     validate_directory(content);
@@ -411,7 +293,7 @@ export async function read_image_package(content: Uint8Array, file: string) {
     const book: unknown = JSON.parse(await stateMember.async("string"));
     const records = (await read_archive_records(members)) as ImageRecord[];
     const clean: unknown = JSON.parse(await cleanMember.async("string"));
-    validate_image_book(book, records, { confirmed: true });
+    validate_image_book(book, records);
     validate_image_clean(clean, book);
     const expected = new Set<string>([
       "items.json",
@@ -420,9 +302,7 @@ export async function read_image_package(content: Uint8Array, file: string) {
       ...book.pages.map((p) => p.original),
       ...clean.pages.map((p) => p.clean),
       ...clean.pages.flatMap((p) => p.regions.flatMap((r) => (r.eraseMask ? [r.eraseMask] : []))),
-      ...book.pages.flatMap((p) =>
-        p.regions.flatMap((r) => (r.layoutArea ? [r.layoutArea.path] : [])),
-      ),
+      ...book.pages.flatMap((p) => p.regions.map((r) => r.layoutArea.path)),
     ]);
     const missing = [...expected].filter((name) => !members.has(name));
     const extra = [...members.keys()].filter((name) => !expected.has(name));
@@ -433,7 +313,7 @@ export async function read_image_package(content: Uint8Array, file: string) {
     for (let i = 0; i < book.pages.length; i++) {
       const page = book.pages[i]!;
       const cleanPage = clean.pages[i]!;
-      await validate_image_page_pixels(page, cleanPage, async (member) => {
+      await validate_image_page_members(page, cleanPage, async (member) => {
         const entry = members.get(member);
         if (!entry) throw new Error("Missing image member");
         return entry.async("uint8array");
@@ -446,18 +326,17 @@ export async function read_image_package(content: Uint8Array, file: string) {
   }
 }
 
-/** 身份映射只解释包，项目域决定是否复制已完成事实，与底图重新生成无关。 */
+/** 相对路径与区域号跨重新创建保持稳定，项目域据此复制已完成事实。 */
 export function image_record_identities(book: ImageBook, records: readonly ImageRecord[]) {
   const pages = new Map(book.pages.map((page) => [page.pageId, page]));
   return new Map(
     records.map((record, row) => {
       const page = pages.get(record.pageId)!;
       return [
-        book.bookId + "/" + record.pageId + "/" + record.regionId,
+        page.relativePath.toLocaleLowerCase("en-US") + "/" + record.regionId,
         {
           row,
           source: record.message,
-          name: record.name ?? "",
           image: [page.sha256, page.orientation, page.width, page.height].join(":"),
         },
       ];
@@ -474,24 +353,22 @@ export async function build_image_text_input(
   const { book, records, clean, members } = await read_image_package(content, file);
   write_message_records(records, items, file);
   const byRow = new Map(items.map((item) => [item.row, item]));
-  const translated = new Set(
-    book.pages.flatMap((page) =>
-      page.regions
-        .filter((region) => region.disposition === "translate")
-        .map((region) => JSON.stringify([page.pageId, region.regionId])),
-    ),
-  );
   const input: ImageTextInput = {
-    records: records.flatMap((record, row) => {
-      if (!translated.has(JSON.stringify([record.pageId, record.regionId]))) return [];
+    records: records.map((record, row) => {
       const item = byRow.get(row);
-      return [
-        {
-          pageId: record.pageId,
-          regionId: record.regionId,
-          text: item ? (read_translation_for_generation(item) ?? null) : null,
-        },
-      ];
+      const output =
+        item?.status === "PROCESSED"
+          ? ("translated" as const)
+          : item?.status === "EXCLUDED"
+            ? ("original" as const)
+            : null;
+      return {
+        pageId: record.pageId,
+        regionId: record.regionId,
+        output,
+        text:
+          output === "translated" && item ? (read_translation_for_generation(item) ?? null) : null,
+      };
     }),
   };
   return { book, clean, input, members };
@@ -502,12 +379,17 @@ export class ImageFormat {
   /** 一次读取同时交付条目和已验证身份，替换流程复用这份解析结果。 */
   public async read(content: Uint8Array, file: string) {
     const { book, records } = await read_image_package(content, file);
+    const regions = new Map(
+      book.pages.flatMap((page) =>
+        page.regions.map((region) => [page.pageId + "/" + region.regionId, region] as const),
+      ),
+    );
     return {
       items: records.map((record, row) =>
         create_item({
           src: record.message,
-          name_src: record.name ?? null,
           row,
+          tag: regions.get(record.pageId + "/" + record.regionId)!.kind,
           file_type: "IMAGE",
           file_path: file,
         }),

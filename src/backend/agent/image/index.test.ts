@@ -1,135 +1,95 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { default_native_fs } from "../../../native/native-fs";
-import type { ImagePage } from "../../../shared/image";
+import { expect, it, vi } from "vitest";
 import { selection_fixture } from "../../../test/image-fixture";
 import { png_fixture } from "../../../test/media-fixture";
 import { write_zip } from "../../../test/zip-fixture";
-import { image_sha256, read_image_package } from "../../file/image/image-format";
+import { read_image_package } from "../../file/image/image-format";
 
-const mockState = vi.hoisted(() => ({ bubble: true, eraseFailed: false }));
-
-beforeEach(() => {
-  mockState.bubble = true;
-  mockState.eraseFailed = false;
-});
-
+const fake = vi.hoisted(() => ({ devices: [] as unknown[] }));
 vi.mock("./engine", () => ({
-  pixels: vi.fn(async (command: string, args: Record<string, unknown>) => {
-    const png = png_fixture();
-    const pngSha = image_sha256(png);
-    const mask = selection_fixture();
-    const maskSha = image_sha256(mask);
-    const output = String(args.output ?? "");
-    if (command === "prepare") {
-      const pageId = String(args.pageId);
-      const preview = path.join(output, "preview.png");
-      fs.mkdirSync(path.dirname(preview), { recursive: true });
-      fs.writeFileSync(preview, png);
-      const layoutArea = { path: `layout-areas/${pageId}/r1.png`, sha256: maskSha };
-      if (mockState.bubble) {
-        const file = path.join(String(args.layoutAreaRoot), layoutArea.path);
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, mask);
-      }
+  pixels: vi.fn(async (command: string, args: Record<string, unknown>, device?: unknown) => {
+    fake.devices.push(device);
+    if (command === "create") {
+      const root = String(args.output);
+      const png = png_fixture();
+      const mask = selection_fixture();
       return {
-        width: 1,
-        height: 1,
-        preview,
-        previewScale: 1,
-        fillPreview: preview,
-        textBoxes: [
-          {
-            textBoxId: "t1",
-            box: [
-              [0, 0],
-              [1, 0],
-              [1, 1],
-              [0, 1],
-            ],
-            coreBox: [
-              [0, 0],
-              [1, 0],
-              [1, 1],
-              [0, 1],
-            ],
-            ownerRegionId: mockState.bubble ? "r1" : null,
-          },
-        ],
-        backgrounds: mockState.bubble
-          ? { r1: { route: "fill", coverage: 1, samplePixels: 1 } }
-          : {},
-        crops: {},
-        bubbles: [],
-        draftRegions: mockState.bubble
-          ? [
-              {
-                regionId: "r1",
-                kind: "bubble",
-                disposition: "translate",
-                textBoxIds: ["t1"],
-                layoutArea,
-                direction: null,
-                backgroundColor: [255, 255, 255],
-              },
-            ]
-          : [],
-      };
-    }
-    if (command === "layout_areas") {
-      const page = args.page as ImagePage;
-      const groups = args.groups as { regionId: string; textBoxIds: string[] }[];
-      const regions = groups.map((group) => {
-        const member = `layout-areas/${page.pageId}/${group.regionId}.png`;
-        const file = path.join(output, member);
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, mask);
-        return {
-          regionId: group.regionId,
-          kind: "unframed" as const,
-          disposition: "translate" as const,
-          textBoxIds: group.textBoxIds,
-          layoutArea: { path: member, sha256: maskSha },
-          direction: null,
-          backgroundColor: [255, 255, 255] as [number, number, number],
-        };
-      });
-      return {
-        regions,
-        backgrounds: Object.fromEntries(
-          groups.map((group) => [group.regionId, { route: "fill", coverage: 1, samplePixels: 1 }]),
-        ),
-      };
-    }
-    if (command === "erase") {
-      const page = args.page as ImagePage;
-      const clean = path.join(output, "clean.png");
-      fs.mkdirSync(output, { recursive: true });
-      fs.writeFileSync(clean, png);
-      const regions = page.regions.map((region) => {
-        if (region.disposition === "preserve" || mockState.eraseFailed)
+        pages: (args.pages as Record<string, unknown>[]).map((spec) => {
+          const pageId = String(spec.pageId);
+          const layout = `layout-areas/${pageId}/r0001.png`;
+          const eraseMask = `erase-masks/${pageId}/r0001.png`;
+          const clean = `clean/${pageId}.png`;
+          const preview = path.join(root, "diagnostics", `${pageId}.png`);
+          for (const [member, bytes] of [
+            [layout, mask],
+            [eraseMask, mask],
+            [clean, png],
+            [path.relative(root, preview), png],
+          ] as const) {
+            const file = path.join(root, member);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, bytes);
+          }
           return {
-            regionId: region.regionId,
-            disposition: "preserve" as const,
-            preserveReason:
-              region.disposition === "preserve" ? region.preserveReason : "repair_failed",
-            diagnostics: [],
+            page: {
+              ...Object.fromEntries(
+                [
+                  "pageId",
+                  "relativePath",
+                  "original",
+                  "sha256",
+                  "width",
+                  "height",
+                  "orientation",
+                ].map((key) => [key, spec[key]]),
+              ),
+              textBoxes: [
+                {
+                  textBoxId: "t0001",
+                  box: [
+                    [0, 0],
+                    [1, 0],
+                    [1, 1],
+                    [0, 1],
+                  ],
+                  coreBox: [
+                    [0, 0],
+                    [1, 0],
+                    [1, 1],
+                    [0, 1],
+                  ],
+                  text: "原文",
+                },
+              ],
+              regions: [
+                {
+                  regionId: "r0001",
+                  kind: "bubble",
+                  textBoxIds: ["t0001"],
+                  layoutArea: { path: layout },
+                  direction: "vertical-rl",
+                  backgroundColor: [255, 255, 255],
+                },
+              ],
+            },
+            records: [{ pageId, regionId: "r0001", message: "原文" }],
+            clean: {
+              pageId,
+              clean,
+              regions: [
+                {
+                  regionId: "r0001",
+                  status: "cleaned",
+                  eraseMask,
+                },
+              ],
+            },
+            diagnostics: { preview, detected: 1, regions: 1, failures: [] },
           };
-        const eraseMask = path.join(output, "masks", `${region.regionId}.png`);
-        fs.mkdirSync(path.dirname(eraseMask), { recursive: true });
-        fs.writeFileSync(eraseMask, mask);
-        return {
-          regionId: region.regionId,
-          disposition: "translate" as const,
-          method: "fill" as const,
-          eraseMask,
-          eraseMaskSha256: maskSha,
-          diagnostics: [],
-        };
-      });
-      return { clean, cleanSha256: pngSha, regions };
+        }),
+      };
     }
     if (command === "pack") {
       const entries = new Map<string, string | Uint8Array>([
@@ -146,211 +106,25 @@ vi.mock("./engine", () => ({
   }),
 }));
 
-import { apply, erase, pack, prepare, read, review } from "./index";
+import { createImage } from "./index";
 
-/** 为准备得到的区域补齐方向与原文。 */
-const confirm = (page: ImagePage, message = "原文") => ({
-  pages: [
-    {
-      ...page,
-      regions: page.regions.map((region) => ({ ...region, direction: "vertical-rl" as const })),
-    },
-  ],
-  records: [{ pageId: page.pageId, regionId: page.regions[0]!.regionId, message }],
-  confirmed: true,
-});
+it("整册默认使用 GPU 创建后只保留归档和诊断预览", async () => {
+  using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-create-"));
+  const source = path.join(temporary.path, "page.png");
+  const output = path.join(temporary.path, "book.image");
+  fs.writeFileSync(source, png_fixture());
 
-describe("@lg/image automatic erase transaction", () => {
-  it("产品 Agent 接受自动结果后可重放并统一归档实际掩码", async () => {
-    using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-automatic-"));
-    const source = path.join(tmp.path, "page.png");
-    fs.writeFileSync(source, png_fixture());
-    const work = path.join(tmp.path, "work");
-    const prepared = await prepare({
-      sources: [{ path: source, relativePath: "page.png" }],
-      workDirectory: work,
-    });
-    const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
-    const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
+  const result = await createImage([{ path: source, relativePath: "chapter/page.png" }], output);
+  const archive = await read_image_package(fs.readFileSync(output), output);
 
-    expect(fs.existsSync(run.pages[0]!.clean)).toBe(true);
-    const rejected = await review({
-      workDirectory: work,
-      runId: run.runId,
-      expectedRevision: run.revision,
-      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: false }],
-    });
-    expect(rejected.revision).toBe(run.revision);
-    expect((await read(work)).reviewStatus[0]!.reviewed).toBe(false);
-
-    const committed = await review({
-      workDirectory: work,
-      runId: run.runId,
-      expectedRevision: run.revision,
-      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
-    });
-    const replayed = await review({
-      workDirectory: work,
-      runId: run.runId,
-      expectedRevision: run.revision,
-      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
-    });
-    expect(replayed.replayed).toBe(true);
-    expect(replayed.revision).toBe(committed.revision);
-
-    const output = path.join(tmp.path, "book.image");
-    await pack(work, output);
-    const archive = await read_image_package(fs.readFileSync(output), output);
-    expect(archive.clean.pages[0]!.regions[0]!.eraseMask).toBe(
-      `erase-masks/${prepared.book.pages[0]!.pageId}/r1.png`,
-    );
+  expect(fake.devices[0]).toBe("gpu");
+  expect(result).toMatchObject({
+    path: output,
+    diagnostics: `${output}.diagnostics`,
+    pages: [{ detected: 1, regions: 1, failures: [] }],
   });
-
-  it("非法页面决定不改草稿，自动失败转为区域保留", async () => {
-    using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-invalid-choice-"));
-    const source = path.join(tmp.path, "page.png");
-    fs.writeFileSync(source, png_fixture());
-    const work = path.join(tmp.path, "work");
-    const prepared = await prepare({
-      sources: [{ path: source, relativePath: "page.png" }],
-      workDirectory: work,
-    });
-    const confirmed = await apply(work, 0, confirm(prepared.book.pages[0]!));
-    mockState.eraseFailed = true;
-    const run = await erase({ workDirectory: work, expectedRevision: confirmed.revision });
-    await expect(
-      review({
-        workDirectory: work,
-        runId: run.runId,
-        expectedRevision: run.revision,
-        pages: [{ pageId: "unknown", accepted: true }],
-      }),
-    ).rejects.toThrow("Invalid or duplicate page decision");
-    expect((await read(work)).book.pages[0]!.regions[0]!.disposition).toBe("translate");
-    await review({
-      workDirectory: work,
-      runId: run.runId,
-      expectedRevision: run.revision,
-      pages: [{ pageId: prepared.book.pages[0]!.pageId, accepted: true }],
-    });
-    const current = await read(work);
-    expect(current.book.pages[0]!.regions[0]!).toMatchObject({
-      disposition: "preserve",
-      preserveReason: "repair_failed",
-    });
-  });
-
-  it("apply 为无框区域生成排版区域并原子提交", async () => {
-    using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-register-"));
-    mockState.bubble = false;
-    const source = path.join(tmp.path, "page.png");
-    fs.writeFileSync(source, png_fixture());
-    const work = path.join(tmp.path, "work");
-    const prepared = await prepare({
-      sources: [{ path: source, relativePath: "page.png" }],
-      workDirectory: work,
-    });
-    const page = prepared.book.pages[0]!;
-    const region = {
-      regionId: "u1",
-      kind: "unframed" as const,
-      disposition: "translate" as const,
-      textBoxIds: ["t1"],
-      layoutArea: null,
-      direction: "horizontal-tb" as const,
-      backgroundColor: [255, 255, 255] as [number, number, number],
-    };
-    await expect(
-      apply(work, 0, {
-        pages: [{ ...page, regions: [region, { ...region, regionId: "u2" }] }],
-        records: [
-          { pageId: page.pageId, regionId: "u1", message: "一" },
-          { pageId: page.pageId, regionId: "u2", message: "二" },
-        ],
-        confirmed: true,
-      }),
-    ).rejects.toThrow("duplicate region text box");
-    const stateFile = path.join(work, "draft.json");
-    const write = default_native_fs.write_file_atomic.bind(default_native_fs);
-    const failure = vi
-      .spyOn(default_native_fs, "write_file_atomic")
-      .mockImplementation((file, bytes) => {
-        if (file === stateFile) throw new Error("state write failed");
-        write(file, bytes);
-      });
-    try {
-      await expect(
-        apply(work, 0, {
-          pages: [{ ...page, regions: [region] }],
-          records: [{ pageId: page.pageId, regionId: "u1", message: "无框原文" }],
-          confirmed: true,
-        }),
-      ).rejects.toThrow("state write failed");
-    } finally {
-      failure.mockRestore();
-    }
-    expect((await read(work)).book.pages[0]!.regions).toEqual([]);
-    const applied = await apply(work, 0, {
-      pages: [{ ...page, regions: [region] }],
-      records: [{ pageId: page.pageId, regionId: "u1", message: "无框原文" }],
-      confirmed: true,
-    });
-    expect(applied.confirmed).toBe(true);
-    expect(applied.book.pages[0]!.regions[0]!).toMatchObject({
-      kind: "unframed",
-      regionId: "u1",
-    });
-  });
-
-  it("全保留页提交原图底图，单页区域变化只撤销该页验收", async () => {
-    using tmp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-preserved-"));
-    const source = path.join(tmp.path, "page.png");
-    fs.writeFileSync(source, png_fixture());
-    const secondSource = path.join(tmp.path, "second.png");
-    fs.copyFileSync(source, secondSource);
-    const work = path.join(tmp.path, "work");
-    const prepared = await prepare({
-      sources: [
-        { path: source, relativePath: "page.png" },
-        { path: secondSource, relativePath: "second.png" },
-      ],
-      workDirectory: work,
-    });
-    const page = prepared.book.pages[0]!;
-    const applied = await apply(work, 0, {
-      pages: prepared.book.pages.map((page) => ({
-        ...page,
-        regions: [
-          {
-            ...page.regions[0]!,
-            disposition: "preserve",
-            preserveReason: "intentional",
-            direction: null,
-            backgroundColor: null,
-          },
-        ],
-      })),
-      records: [],
-      confirmed: true,
-    });
-    const run = await erase({ workDirectory: work, expectedRevision: applied.revision });
-    expect(run.pages[0]!.regions).toHaveLength(1);
-    const committed = await review({
-      workDirectory: work,
-      runId: run.runId,
-      expectedRevision: run.revision,
-      pages: run.pages.map((runPage) => ({ pageId: runPage.pageId, accepted: true })),
-    });
-    const current = await read(work);
-    await apply(work, committed.revision, {
-      pages: current.book.pages.map((item) =>
-        item.pageId === page.pageId
-          ? { ...item, regions: [], falsePositiveTextBoxIds: ["t1"] }
-          : item,
-      ),
-      records: [],
-      confirmed: true,
-    });
-    expect((await read(work)).reviewStatus.map((page) => page.reviewed)).toEqual([false, true]);
-  });
+  expect(fs.existsSync(result.pages[0]!.preview)).toBe(true);
+  expect(archive.records).toEqual([
+    { pageId: archive.book.pages[0]!.pageId, regionId: "r0001", message: "原文" },
+  ]);
 });

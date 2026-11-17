@@ -5,6 +5,15 @@ import { inference_configuration } from "../inference/runtime";
 // 来源提交与摘要共同固定模型身份，准备阶段不追踪远端最新版本。
 export const IMAGE_MODELS = Object.freeze({
   text: TEXT_DETECTION_MODELS.manga,
+  recognition: {
+    file: "pp_ocrv6_manga/rec/manga_rec.onnx",
+    size: 21_334_702,
+    sha256: "5288bd221a9a047c6b7d1ff56bb98de8c875fb613df98ebe8754946448bda540",
+    urls: [
+      "https://modelscope.cn/models/neavo7/PP-OCRv6-Manga/resolve/master/rec/manga_rec.onnx",
+      "https://huggingface.co/neavo/PP-OCRv6-Manga/resolve/851eb0e498007ca66420b410e102f5107416b8f6/rec/manga_rec.onnx",
+    ],
+  },
   inpaint: {
     file: "lama/lama-large-fp32-unified-webgpu.onnx",
     size: 204452450,
@@ -25,12 +34,28 @@ export const IMAGE_MODELS = Object.freeze({
   },
 } satisfies Record<string, InferenceModel>);
 
-export type ImageModelKind = keyof typeof IMAGE_MODELS; // 气泡分割、文字检测与背景修复任务。
+export const IMAGE_DICTIONARY = Object.freeze({
+  file: "pp_ocrv6_manga/ppocrv6_dict.txt",
+  size: 76_327,
+  sha256: "4f0f8971ecb95e3a4d278985d6eaac154413e81fda0b4c941db17389580e9e9b",
+  urls: [
+    "https://modelscope.cn/models/neavo7/PP-OCRv6-Manga/resolve/master/ppocrv6_dict.txt",
+    "https://huggingface.co/neavo/PP-OCRv6-Manga/resolve/851eb0e498007ca66420b410e102f5107416b8f6/ppocrv6_dict.txt",
+  ],
+} satisfies InferenceModel);
+
+export type ImageModelKind = keyof typeof IMAGE_MODELS; // 气泡分割、文字检测、识别与背景修复任务。
+export type ImageResourceKind = ImageModelKind | "dictionary";
 
 /** 检查当前缺失的图片推理权重标识。 */
-export function missing_models(): ImageModelKind[] {
+export function missing_models(): ImageResourceKind[] {
   const { modelsDirectory } = inference_configuration();
-  return (Object.entries(IMAGE_MODELS) as [ImageModelKind, InferenceModel][])
+  return (
+    [...Object.entries(IMAGE_MODELS), ["dictionary", IMAGE_DICTIONARY]] as [
+      ImageResourceKind,
+      InferenceModel,
+    ][]
+  )
     .filter(([, model]) => !model_ready(modelsDirectory, model))
     .map(([kind]) => kind);
 }
@@ -38,5 +63,8 @@ export function missing_models(): ImageModelKind[] {
 /** 共用下载统计文件，准备锁覆盖整批模型校验。 */
 export async function prepare_models(): Promise<void> {
   const { modelsDirectory, cacheDirectory } = inference_configuration();
-  await prepare_model_files(modelsDirectory, cacheDirectory, Object.values(IMAGE_MODELS));
+  await prepare_model_files(modelsDirectory, cacheDirectory, [
+    ...Object.values(IMAGE_MODELS),
+    IMAGE_DICTIONARY,
+  ]);
 }
