@@ -26,8 +26,8 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
         rolldownOptions: { external: ["electron", /^node:/u], platform: "node" },
       },
     });
-    const report = process.env.LINGUAGACHA_IMAGE_TEXT_QA_DIR ?? directory;
-    await fs.mkdir(report, { recursive: true });
+    const report = process.env.LINGUAGACHA_IMAGE_TEXT_QA_DIR;
+    if (report) await fs.mkdir(report, { recursive: true });
     const entry = path.join(directory, "main.mjs");
     await fs.writeFile(
       entry,
@@ -45,72 +45,83 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
           workspaceRuntimeDirectory: inject("workspaceRuntimeDirectory"),
         })});
         try {
-          function page(direction, text, color = [255,255,255], width = 64, height = 76) {
+          function page(direction, text, color = [255,255,255], width = 64, height = 76,
+            distanceAt = (x,y) => Math.min(x+1,y+1,width-x,height-y)) {
             const distance = Buffer.alloc(width*height*4);
-            for(let y=0;y<height;y++)for(let x=0;x<width;x++)distance.writeFloatLE(Math.min(x+1,y+1,width-x,height-y),(y*width+x)*4);
-            const block={blockId:'B1',box:[0,0,width,height],distance:distance.toString('base64'),preferredFontSize:12,sourceEnvelopeArea:400,sourceCenter:[width/2,height/2]};
-            return {kind:'render_image_text_page',page:{pageId:'p1',width,height,regions:[{regionId:'r1',text,direction,fill:{color},candidates:[{candidateId:'C0',blocks:[block]}]}]}};
+            for(let y=0;y<height;y++)for(let x=0;x<width;x++)distance.writeFloatLE(distanceAt(x,y),(y*width+x)*4);
+            const region={regionId:'r1',text,direction,kind:'bubble',backgroundColor:color,box:[0,0,width,height],distance:distance.toString('base64'),sourceLines:[]};
+            return {kind:'render_image_text_page',page:{pageId:'p1',regions:[region]}};
           }
           const samples = [
             page('horizontal-tb','中文「你好！」'),
             page('vertical-rl','日本語１２！'),
             page('horizontal-tb','New York\\n\\ncafé', [0,0,0]),
-            // 竖排及空白段落复用同一候选模型，实际字形由最终像素验收。
             page('vertical-rl','これで春からまた一緒だね!!', [255,255,255], 44, 86),
             page('horizontal-tb','LongWordWithoutSpaces0123456789 中文「A12」 café'),
             page('horizontal-tb','abc 12 \\u202EABC\\u202C 中文'),
             // 应用字体缺少字形时沿用 Chromium 系统字体回退，并继续执行最终像素门禁。
             page('horizontal-tb','A😀中文'),
           ];
-          let firstResult;
-          let captures=0;
           let rejectNextCapture=false;
+          let layouts;
           app.on('web-contents-created',(_event,contents)=>{
             const send=contents.debugger.sendCommand.bind(contents.debugger);
             contents.debugger.sendCommand=async (...args)=>{
               const result=await send(...args);
+              if(args[0]==='Page.captureScreenshot' && layouts){
+                layouts.push(await contents.executeJavaScript(
+                  'Array.from(document.querySelectorAll("span"), line => ({ text: line.textContent, size: parseFloat(line.style.fontSize), top: parseFloat(line.style.top) }))'
+                ));
+              }
               if(args[0]==='Page.captureScreenshot' && rejectNextCapture){
                 rejectNextCapture=false;
-                const size=nativeImage.createFromDataURL('data:image/png;base64,'+result.data).getSize();
-                result.data=nativeImage.createFromBitmap(Buffer.alloc(size.width*size.height*4),size).toPNG().toString('base64');
-              }
-              if(args[0]==='Page.captureScreenshot' && ++captures%100===1){
-                const state=await contents.executeJavaScript('JSON.stringify({style:document.body.firstChild?.style.cssText,text:document.body.innerText,dpr:devicePixelRatio})');
-                await fs.writeFile(${JSON.stringify(path.join(report, "progress.json"))},JSON.stringify({captures,state}));
-                await fs.writeFile(${JSON.stringify(path.join(report, "last.png"))},Buffer.from(result.data,'base64'));
+                const raster=nativeImage.createFromDataURL('data:image/png;base64,'+result.data);
+                const bitmap=raster.toBitmap();
+                bitmap[3]=255; // 左上角墨迹落在安全区域之外。
+                result.data=nativeImage.createFromBitmap(bitmap,raster.getSize()).toPNG().toString('base64');
               }
               return result;
             };
           });
-          for (const [index,sample] of samples.entries()) {
-            const beforeCaptures=captures;
-            const result=await host(sample);
-            assert.notEqual(result[0].result.renderStatus,'failure', JSON.stringify(result));
-            assert.equal(BrowserWindow.getAllWindows().length,0);
-            await fs.writeFile(${JSON.stringify(path.join(report, "sample-"))}+index+'.png',Buffer.from(result[0].png,'base64'));
-            if(index===0){assert.equal(captures-beforeCaptures,1,'A fitting candidate needs only its final raster');firstResult=result[0].result;}
+          const batch = structuredClone(samples[0]);
+          batch.page.regions = samples.map(({page}, index) => ({...page.regions[0], regionId:'sample'+index}));
+          const rasters = await host(batch);
+          for (const [index,paint] of rasters.entries()) {
+            assert(paint.png, 'No raster for sample '+index);
+            const report=${JSON.stringify(report)};
+            if(report) await fs.writeFile(report+'/sample-'+index+'.png',Buffer.from(paint.png,'base64'));
           }
-          const multi = structuredClone(samples[0]);
-          multi.page.width *= 2;
-          const first=structuredClone(multi.page.regions[0].candidates[0].blocks[0]);
-          first.sourceEnvelopeArea=399;
-          const second={...first,blockId:'B2',box:[64,0,64,76],sourceEnvelopeArea:1};
-          multi.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
-          multi.page.regions[0].candidates.push({candidateId:'C1',blocks:[first,second]});
-          const multiResult = await host(multi);
-          assert.equal(multiResult.length,1,'Short translations only use the required geometry blocks');
-          assert(multiResult.every(r=>r.result.renderStatus!=='failure'));
-          const repeat = await host(samples[0]);
-          assert.deepEqual(repeat[0].result,firstResult);
+          const text = '桃色吐息式告白眼看做不成了';
+          const balanced = page('vertical-rl',text, [255,255,255], 42, 112).page.regions[0];
+          const largerBubble = page('vertical-rl',text, [255,255,255], 84, 224).page.regions[0];
+          largerBubble.regionId = 'large';
+          const round = page('vertical-rl','我不会因此就讨厌你的', [255,255,255], 100, 104, (x,y) => {
+            const radius = Math.hypot((x+0.5-50)/49, (y+0.5-52)/51);
+            return radius <= 1 ? Math.max(1,(1-radius)*49) : 0;
+          }).page.regions[0];
+          round.regionId = 'round';
+          layouts = [];
+          const paints = await host({ kind:'render_image_text_page', page:{ pageId:'p1', regions:[balanced, largerBubble, round] } });
+          assert(paints.every(paint => paint.png));
+          const [balancedLines, largerBubbleLines, roundLines] = layouts;
+          layouts = undefined;
+          assert.equal(balancedLines.map(line => line.text).join(''), text);
+          assert(balancedLines.length === 2 && Math.abs(balancedLines[0].text.length - balancedLines[1].text.length) <= 1,
+            'A narrow bubble should balance both columns');
+          assert(largerBubbleLines[0].size > balancedLines[0].size, 'The same translation should grow in a larger container');
+          assert(roundLines.length > 1 && roundLines[0].text.length > 1 && roundLines.at(-1).text.length > 1,
+            'An oval should avoid single-character outer columns: '+JSON.stringify(roundLines));
+          for (const lines of [balancedLines, roundLines]) {
+            assert(lines.every(line => line.top === lines[0].top), 'Columns in the same paragraph should share a top: '+JSON.stringify(lines));
+          }
+          assert.equal(BrowserWindow.getAllWindows().length,0);
           rejectNextCapture=true;
-          const beforeRetry=captures;
-          await assert.rejects(host(samples[0]),/left layout area/);
-          assert.equal(captures-beforeRetry,1,'Only the chosen layout is rasterized');
+          const adjacent = structuredClone(samples[0]);
+          adjacent.page.regions.push({...adjacent.page.regions[0],regionId:'r2',box:[64,0,64,76]});
           const noRoom = page('vertical-rl','字');
-          noRoom.page.regions[0].candidates[0].blocks[0].distance=Buffer.alloc(64*76*4).toString('base64');
-          const failed = await host(noRoom);
-          assert.equal(failed[0].result.reason,'layout_no_fit');
-          assert.equal(failed[0].png,undefined);
+          adjacent.page.regions.push({...noRoom.page.regions[0],regionId:'r3',distance:Buffer.alloc(64*76*4).toString('base64')});
+          const fallback = await host(adjacent);
+          assert.deepEqual(fallback.map(({regionId,png})=>[regionId,Boolean(png)]),[['r1',false],['r2',true],['r3',false]]);
           let activeDone=false;
           const active=host(page('horizontal-tb','A')).finally(()=>{activeDone=true});
           const queuedController=new AbortController();const reason=new Error('queued cancellation');

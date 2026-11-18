@@ -3,6 +3,7 @@ import path from "node:path";
 import { BrowserWindow, session, type Session } from "electron";
 import { default_native_fs as fs } from "./native-fs";
 import { run_window_task } from "./window-task";
+import type { ImageTextRenderStep } from "./image-text-renderer";
 import { IMAGE_TEXT_RULES, type ImageTextHost, type ImageTextPaint } from "../shared/image-text";
 
 const CSP =
@@ -37,13 +38,15 @@ export function create_image_text_host(resources: {
     const result = tail.then(async () => {
       combined.removeEventListener("abort", cancelQueued);
       combined.throwIfAborted();
-      browserSession ??= session.fromPartition(`image-text-${randomUUID()}`, { cache: false });
-      browserSession.webRequest.onBeforeRequest((details, callback) =>
-        callback({ cancel: !details.url.startsWith("data:") }),
-      );
-      browserSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-        callback(false),
-      );
+      if (!browserSession) {
+        browserSession = session.fromPartition(`image-text-${randomUUID()}`, { cache: false });
+        browserSession.webRequest.onBeforeRequest((details, callback) =>
+          callback({ cancel: !details.url.startsWith("data:") }),
+        );
+        browserSession.setPermissionRequestHandler((_contents, _permission, callback) =>
+          callback(false),
+        );
+      }
       const window = new BrowserWindow({
         show: false,
         transparent: true,
@@ -83,15 +86,7 @@ export function create_image_text_host(resources: {
             window.webContents.executeJavaScript(
               `globalThis.imageTextTask.next(${JSON.stringify(screenshot)})`,
             ),
-          )) as IteratorResult<
-            {
-              kind: "resize" | "capture" | "progress";
-              width?: number;
-              height?: number;
-              rect?: { x: number; y: number; width: number; height: number };
-            },
-            ImageTextPaint[]
-          >;
+          )) as IteratorResult<ImageTextRenderStep, ImageTextPaint[]>;
           screenshot = undefined;
           if (next.done) return next.value;
           if (next.value.kind === "resize") {
@@ -105,14 +100,15 @@ export function create_image_text_host(resources: {
               }),
             );
             window.webContents.setZoomFactor(1);
-          } else if (next.value.kind === "capture") {
+          } else {
             // CDP 等待当前布局的合成帧；位图保持透明，不把画稿交给浏览器重编码。
+            const { rect } = next.value;
             const capture = (await step("capture", () =>
               debuggerPort.sendCommand("Page.captureScreenshot", {
                 format: "png",
                 fromSurface: true,
                 captureBeyondViewport: true,
-                clip: { ...next.value.rect, scale: 1 },
+                clip: { ...rect, scale: 1 },
               }),
             )) as { data: string };
             screenshot = capture.data;

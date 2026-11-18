@@ -1,145 +1,67 @@
 import { Type, type Static } from "typebox";
-import { IMAGE_DIRECTION_SCHEMA, IMAGE_FILL_SCHEMA } from "./image-package";
-
-const ID = Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" });
-/** 文件生成内部快照保留完成事实，空正文与未翻译分别表示。 */
-export type ImageTextInput = {
-  records: {
-    pageId: string;
-    regionId: string;
-    output: "translated" | "original" | null;
-    text: string | null;
-  }[];
-};
+import { IMAGE_ID_SCHEMA, type ImageRegion } from "./image-package";
 
 /** 字号与栅格判定共用规则。调用者只提供正文与已确认区域事实。 */
 export const IMAGE_TEXT_RULES = Object.freeze({
   fontFile: "LGBaseFont-Regular.ttf",
   lineHeight: 1.1,
   minimumFontSize: 2,
-  minimumStroke: 0.5,
-  strokeRatio: 0.04,
+  fontSizeScale: 1.5,
+  rotationAllowance: 1,
+  minimumStroke: 1,
+  strokeRatio: 0.08,
   antialiasingAllowance: 1,
   squareDistanceCorrection: Math.SQRT2,
   pageTimeoutMs: 600_000,
   maximumMaterialBytes: 256_000_000,
 });
 
-const BOX = Type.Tuple([
-  Type.Integer(),
-  Type.Integer(),
-  Type.Integer({ minimum: 1 }),
-  Type.Integer({ minimum: 1 }),
-]);
-const IMAGE_TEXT_MAX_BLOCKS = 4;
-const IMAGE_TEXT_MAX_CANDIDATES = 7;
-const IMAGE_TEXT_GEOMETRY_BLOCK_SCHEMA = Type.Object(
+const SIZE = Type.Tuple([Type.Integer({ minimum: 1 }), Type.Integer({ minimum: 1 })]);
+const POINT = Type.Tuple([Type.Number(), Type.Number()]);
+const QUAD = Type.Tuple([POINT, POINT, POINT, POINT]);
+export const IMAGE_TEXT_GEOMETRY_REGION_SCHEMA = Type.Object(
   {
-    blockId: ID,
-    box: BOX,
+    regionId: IMAGE_ID_SCHEMA,
+    box: Type.Tuple([Type.Integer(), Type.Integer(), ...SIZE.items]),
     distance: Type.String(),
-    sourceTextBoxIds: Type.Array(ID, { minItems: 1, maxItems: 10000 }),
-  },
-  { additionalProperties: false },
-);
-const IMAGE_TEXT_GEOMETRY_CANDIDATE_SCHEMA = Type.Object(
-  {
-    candidateId: ID,
-    blocks: Type.Array(IMAGE_TEXT_GEOMETRY_BLOCK_SCHEMA, {
-      minItems: 1,
-      maxItems: IMAGE_TEXT_MAX_BLOCKS,
-    }),
-  },
-  { additionalProperties: false },
-);
-const IMAGE_TEXT_BLOCK_SCHEMA = Type.Object(
-  {
-    blockId: ID,
-    box: BOX,
-    distance: Type.String(),
-    preferredFontSize: Type.Integer({ minimum: IMAGE_TEXT_RULES.minimumFontSize }),
-    sourceEnvelopeArea: Type.Number({ exclusiveMinimum: 0 }),
-    sourceCenter: Type.Tuple([Type.Number(), Type.Number()]),
-  },
-  { additionalProperties: false },
-);
-const IMAGE_TEXT_CANDIDATE_SCHEMA = Type.Object(
-  {
-    candidateId: ID,
-    blocks: Type.Array(IMAGE_TEXT_BLOCK_SCHEMA, {
-      minItems: 1,
-      maxItems: IMAGE_TEXT_MAX_BLOCKS,
-    }),
-  },
-  { additionalProperties: false },
-);
-export const IMAGE_TEXT_PAGE_SCHEMA = Type.Object(
-  {
-    pageId: ID,
-    width: Type.Integer({ minimum: 1, maximum: 100000 }),
-    height: Type.Integer({ minimum: 1, maximum: 100000 }),
-    regions: Type.Array(
+    sourceLines: Type.Array(QUAD, { maxItems: 10000 }), // 气泡按容器排版，无框文字才传原行框。
+    alignment: Type.Optional(
       Type.Object(
         {
-          regionId: ID,
-          text: Type.String(),
-          direction: IMAGE_DIRECTION_SCHEMA,
-          fill: IMAGE_FILL_SCHEMA,
-          candidates: Type.Array(IMAGE_TEXT_CANDIDATE_SCHEMA, {
-            minItems: 1,
-            maxItems: IMAGE_TEXT_MAX_CANDIDATES,
-          }),
+          size: SIZE,
+          distance: Type.String(),
+          transform: Type.Tuple([
+            Type.Number(),
+            Type.Number(),
+            Type.Number(),
+            Type.Number(),
+            Type.Number(),
+            Type.Number(),
+          ]),
         },
         { additionalProperties: false },
       ),
-      { maxItems: 10000 },
     ),
-  },
-  { additionalProperties: false },
-);
-export type ImageTextPage = Static<typeof IMAGE_TEXT_PAGE_SCHEMA>;
-export const IMAGE_TEXT_GEOMETRY_REGION_SCHEMA = Type.Object(
-  {
-    regionId: ID,
-    candidates: Type.Array(IMAGE_TEXT_GEOMETRY_CANDIDATE_SCHEMA, {
-      minItems: 1,
-      maxItems: IMAGE_TEXT_MAX_CANDIDATES,
-    }),
   },
   { additionalProperties: false },
 );
 export type ImageTextGeometryRegion = Static<typeof IMAGE_TEXT_GEOMETRY_REGION_SCHEMA>;
 
-const IMAGE_TEXT_RENDERED_RESULT_SCHEMA = Type.Object(
-  { regionId: ID, box: BOX },
-  { additionalProperties: false },
-);
-export const IMAGE_TEXT_BLOCK_RESULT_SCHEMA = Type.Union([
-  Type.Object(
-    {
-      ...IMAGE_TEXT_RENDERED_RESULT_SCHEMA.properties,
-      renderStatus: Type.Literal("success"),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      regionId: ID,
-      renderStatus: Type.Literal("failure"),
-      reason: Type.Literal("layout_no_fit"),
-    },
-    { additionalProperties: false },
-  ),
-]);
-export type ImageTextBlockResult = Static<typeof IMAGE_TEXT_BLOCK_RESULT_SCHEMA>;
-export const IMAGE_TEXT_PAINT_SCHEMA = Type.Object(
-  {
-    result: IMAGE_TEXT_BLOCK_RESULT_SCHEMA,
-    png: Type.Optional(Type.String()), // 同一原生覆盖层的 PNG，坐标为区域 box。
-  },
-  { additionalProperties: false },
-);
-export type ImageTextPaint = Static<typeof IMAGE_TEXT_PAINT_SCHEMA>;
+export type ImageTextRegion = ImageTextGeometryRegion & {
+  text: string;
+  direction: ImageRegion["direction"];
+  kind: ImageRegion["kind"];
+  backgroundColor: ImageRegion["backgroundColor"];
+};
+
+export type ImageTextPage = {
+  pageId: string;
+  regions: ImageTextRegion[];
+};
+
+/** 空位图表示区域无法安全排版。绘制坐标沿用请求的 `box`。 */
+export type ImageTextPaint = { regionId: string; png: string | null };
+
 export type ImageTextHostOperation = { kind: "render_image_text_page"; page: ImageTextPage };
 export type ImageTextHost = (
   operation: ImageTextHostOperation,
@@ -162,7 +84,12 @@ export function normalize_image_text(text: string): string {
     .join("\n\n");
 }
 
-/** 在线性亮度下比较黑白对比度，底色来自已确认填色。 */
+/** 排版预留与 Chromium 绘制共用描边宽度。 */
+export function image_text_stroke_width(fontSize: number): number {
+  return Math.max(IMAGE_TEXT_RULES.minimumStroke, fontSize * IMAGE_TEXT_RULES.strokeRatio);
+}
+
+/** 按区域背景色的线性亮度比较黑白对比度。 */
 export function image_text_color(color: readonly number[]): "black" | "white" {
   const linear = color.map((channel) => {
     const value = channel / 255;

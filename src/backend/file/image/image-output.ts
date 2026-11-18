@@ -1,115 +1,56 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Item } from "../../../domain/item";
+import { AGENT_IMAGE_MAX_EDGE } from "../../../shared/agent-image";
 import { AppError } from "../../../shared/error";
-import { default_native_fs as fs, type NativeFs } from "../../../native/native-fs";
-import type { ImageOutputAsset } from "../../../shared/image";
-import type { ImageClean, ImagePage } from "../../../shared/image-package";
-import type { ImagePixelHost } from "../../../shared/image-helper";
+import { default_native_fs as fs } from "../../../native/native-fs";
+import type { ImageClean, ImagePage, ImageRegion } from "../../../shared/image-package";
+import type { ImageHelperRequest, ImagePixelHost } from "../../../shared/image-helper";
 import {
   IMAGE_TEXT_RULES,
   normalize_image_text,
-  type ImageTextGeometryRegion,
   type ImageTextHost,
-  type ImageTextInput,
-  type ImageTextPage,
+  type ImageTextRegion,
 } from "../../../shared/image-text";
 import { normalize_image_to_png } from "./image-pixels";
-import { build_image_text_input } from "./image-format";
+import { build_image_text_input, type ImageTextRecord } from "./image-format";
 
-type ImageOutputEntry = ImageOutputAsset["files"][number]["entries"][number];
-type ImageOutputReason = ImageOutputEntry["reasons"][number];
+type ImageOutputReason = "layout_no_fit" | "erase_failed" | "translation_incomplete";
+type ImageOutputEntry = {
+  region_id: string;
+  status: "success" | "failure";
+  output: "original" | "translated";
+  reasons: { code: ImageOutputReason }[];
+};
+export type ImageOutputAsset = {
+  asset_path: string;
+  files: { path: string; entries: ImageOutputEntry[] }[];
+};
+type ImageLayer = { eraseMask: string; overlay?: { box: ImageTextRegion["box"]; png: string } };
 
-const edge = (a: readonly number[], b: readonly number[]): number =>
-  Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!);
-
-/** 从 OCR 四边形读取真实面积、质心和短边字号。 */
-function source_box_metrics(box: ImagePage["textBoxes"][number]["coreBox"]): {
-  area: number;
-  center: [number, number];
-  size: number;
-} {
-  let twiceArea = 0;
-  let x = 0;
-  let y = 0;
-  for (let index = 0; index < box.length; index++) {
-    const current = box[index]!;
-    const next = box[(index + 1) % box.length]!;
-    const cross = current[0] * next[1] - next[0] * current[1];
-    twiceArea += cross;
-    x += (current[0] + next[0]) * cross;
-    y += (current[1] + next[1]) * cross;
-  }
-  const area = Math.abs(twiceArea) / 2;
-  if (!area) throw new Error("Source text box has no area");
-  return {
-    area,
-    center: [x / (3 * twiceArea), y / (3 * twiceArea)],
-    size: Math.min(edge(box[0]!, box[1]!), edge(box[0]!, box[3]!)),
-  };
-}
-
-/** 聚合视觉块的源文字尺度，坐标转换为块内坐标。 */
-function source_layout(
-  page: ImagePage,
-  direction: ImagePage["regions"][number]["direction"],
-  block: ImageTextGeometryRegion["candidates"][number]["blocks"][number],
-) {
-  const ids = new Set(block.sourceTextBoxIds);
-  const boxes = page.textBoxes.filter((box) => ids.has(box.textBoxId));
-  if (boxes.length !== ids.size) throw new Error("Missing source text box for layout block");
-  const metrics = boxes.map((box) => source_box_metrics(box.coreBox));
-  const axis = direction === "vertical-rl" ? 0 : 1;
-  const centers = metrics.map((metric) => metric.center[axis]).sort((a, b) => a - b);
-  const pitches = centers.slice(1).map((value, index) => value - centers[index]!);
-  pitches.sort((a, b) => a - b);
-  const sizes = metrics.map((metric) => metric.size).sort((a, b) => a - b);
-  const sourceEnvelopeArea = metrics.reduce((sum, metric) => sum + metric.area, 0);
-  const [blockX, blockY] = block.box;
-  return {
-    preferredFontSize: Math.max(
-      IMAGE_TEXT_RULES.minimumFontSize,
-      Math.round(
-        pitches.length
-          ? pitches[Math.floor(pitches.length / 2)]! / IMAGE_TEXT_RULES.lineHeight
-          : sizes[Math.floor(sizes.length / 2)]!,
-      ),
-    ),
-    sourceEnvelopeArea,
-    sourceCenter: [
-      metrics.reduce((sum, metric) => sum + metric.center[0] * metric.area, 0) /
-        sourceEnvelopeArea -
-        blockX,
-      metrics.reduce((sum, metric) => sum + metric.center[1] * metric.area, 0) /
-        sourceEnvelopeArea -
-        blockY,
-    ] as [number, number],
-  };
-}
-
+/** 原图输出可以是主动排除，也可以是带原因的区域回退。 */
 function entry(
-  regionId: string | undefined,
-  status: ImageOutputEntry["status"],
+  regionId: string,
   output: ImageOutputEntry["output"],
-  reasons: ImageOutputReason[] = [],
+  reason?: ImageOutputReason,
 ): ImageOutputEntry {
   return {
-    ...(regionId ? { region_id: regionId } : {}),
-    status,
+    region_id: regionId,
+    status: reason ? "failure" : "success",
     output,
-    reasons,
+    reasons: reason ? [{ code: reason }] : [],
   };
 }
 
 /** 后端文件生成直接拥有图片排版、原文回退、源格式编码和结果事实。 */
 export class ImageOutputService {
+  /** 排版与像素宿主分别负责绘字与成图。 */
   public constructor(
     private readonly textHost: ImageTextHost,
     private readonly pixelHost: ImagePixelHost,
-    private readonly nativeFs: NativeFs = fs,
   ) {}
 
-  /** 图片域统一遍历资产，最终输出与 QA 只切换区域呈现。 */
+  /** 图片域统一遍历资产，正式输出和 QA 共用译图合成。 */
   public async write_assets(options: {
     assetPaths: readonly string[];
     items: readonly Item[];
@@ -119,6 +60,7 @@ export class ImageOutputService {
     qa?: boolean;
   }): Promise<ImageOutputAsset[]> {
     const outputs: ImageOutputAsset[] = [];
+    const itemsByAsset = Map.groupBy(options.items, (item) => item.file_path);
     for (const assetPath of options.assetPaths) {
       const content = await options.readAsset(assetPath);
       if (content === null)
@@ -127,7 +69,7 @@ export class ImageOutputService {
         await this.write_asset({
           assetPath,
           content,
-          items: options.items.filter((item) => item.file_path === assetPath),
+          items: itemsByAsset.get(assetPath) ?? [],
           outputRoot: options.outputRoot,
           claimedPaths: options.claimedPaths,
           ...(options.qa === undefined ? {} : { qa: options.qa }),
@@ -138,7 +80,7 @@ export class ImageOutputService {
   }
 
   /** 每个源页面写出一个成品；内部计算失败终止本次图片能力。 */
-  public async write_asset(options: {
+  private async write_asset(options: {
     assetPath: string;
     content: Uint8Array;
     items: readonly Item[];
@@ -152,177 +94,152 @@ export class ImageOutputService {
       options.assetPath,
     );
     const assetRoot = options.assetPath.replace(/\.image$/iu, "");
-    const work = path.join(options.outputRoot, `.image-${randomUUID()}`);
     const files = [];
-    await this.nativeFs.make_dir_async(work);
-    try {
-      for (const [name, member] of prepared.members) {
-        await this.nativeFs.write_file(
-          path.join(work, ...name.split("/")),
-          await member.async("uint8array"),
-        );
-      }
-      for (const [pageIndex, page] of prepared.book.pages.entries()) {
-        const outputPath = path.join(
-          options.outputRoot,
-          assetRoot,
-          ...page.relativePath.split("/"),
-        );
-        const reportPath = path.posix.join(assetRoot.replaceAll("\\", "/"), page.relativePath);
-        const outputKey = reportPath.toLocaleLowerCase("en-US");
-        if (options.claimedPaths.has(outputKey))
-          throw new Error(`Duplicate output path: ${reportPath}`);
-        options.claimedPaths.add(outputKey);
-        const originalBytes = this.nativeFs.read_file(path.join(work, page.original));
-        const normalized = await normalize_image_to_png(originalBytes);
-        const originalPath = path.join(work, `normalized-${page.pageId}.png`);
-        await this.nativeFs.write_file(originalPath, normalized.png);
+    const recordsByPage = Map.groupBy(prepared.textRecords, (record) => record.pageId);
+    for (const [pageIndex, page] of prepared.book.pages.entries()) {
+      // 附加后缀保留原扩展名，避免同名 PNG 和 JPEG 的 QA 预览冲突。
+      const relativePath = options.qa ? `${page.relativePath}.webp` : page.relativePath;
+      const reportPath = path.posix.join(assetRoot.replaceAll("\\", "/"), relativePath);
+      const outputKey = reportPath.toLocaleLowerCase("en-US");
+      if (options.claimedPaths.has(outputKey))
+        throw new Error(`Duplicate output path: ${reportPath}`);
+      options.claimedPaths.add(outputKey);
+
+      const work = path.join(options.outputRoot, `.image-${randomUUID()}`);
+      const staged = new Set<string>(); // QA 可复用排版已展开的区域掩码。
+      /** 包索引已校验路径和成员全集，按需展开并复用同一成员。 */
+      const stage = async (member: string) => {
+        const destination = path.join(work, member);
+        if (!staged.has(member)) {
+          await fs.write_file(destination, await prepared.members.get(member)!.async("uint8array"));
+          staged.add(member);
+        }
+        return destination;
+      };
+      try {
+        const bytes = await prepared.members.get(page.original)!.async("uint8array");
+        const original = path.join(work, "original.png");
+        await fs.write_file(original, (await normalize_image_to_png(bytes)).png);
         files.push({
           path: reportPath,
           entries: await this.render_page({
             page,
             clean: prepared.clean.pages[pageIndex]!,
-            input: prepared.input,
+            records: recordsByPage.get(page.pageId) ?? [],
             work,
-            originalPath,
-            outputPath,
+            original,
+            output: path.join(options.outputRoot, reportPath),
             qa: options.qa ?? false,
+            stage,
           }),
         });
+      } finally {
+        await fs.remove_async(work, { recursive: true, force: true });
       }
-      return { asset_path: options.assetPath, files };
-    } finally {
-      await this.nativeFs.remove_async(work, { recursive: true, force: true });
     }
+    return { asset_path: options.assetPath, files };
   }
 
   /** 按区域生成覆盖层并交给像素 helper 合成，失败区域保留原文。 */
   private async render_page(options: {
     page: ImagePage;
     clean: ImageClean["pages"][number];
-    input: ImageTextInput;
+    records: readonly ImageTextRecord[];
     work: string;
-    originalPath: string;
-    outputPath: string;
+    original: string;
+    output: string;
     qa: boolean;
+    stage: (member: string) => Promise<string>;
   }): Promise<ImageOutputEntry[]> {
-    const { page, clean, input, work } = options;
-    const records = input.records.filter((record) => record.pageId === page.pageId);
+    const { page, clean, records, work, stage } = options;
     const recordsById = new Map(records.map((record) => [record.regionId, record]));
-    const cleanById = new Map(clean.regions.map((region) => [region.regionId, region]));
-    const renderRegions = page.regions.filter((region) => {
+    const translated: { index: number; region: ImageRegion; text: string; eraseMask: string }[] =
+      [];
+    const entries = page.regions.map((region, index) => {
       const record = recordsById.get(region.regionId)!;
-      return (
-        cleanById.get(region.regionId)!.status === "cleaned" &&
-        record.output === "translated" &&
-        record.text !== null &&
-        record.text.trim().length > 0
-      );
+      const cleanRegion = clean.regions[index]!; // 包读取器已校验同页区域顺序。
+      if (record.output === "original") return entry(region.regionId, "original");
+      if (cleanRegion.status === "failed")
+        return entry(region.regionId, "original", "erase_failed");
+      if (record.output === null)
+        return entry(region.regionId, "original", "translation_incomplete");
+      const text = record.text.trim() ? normalize_image_text(record.text) : "";
+      translated.push({ index, region, text, eraseMask: cleanRegion.eraseMask! });
+      return entry(region.regionId, "translated");
     });
-    const geometry = renderRegions.length
+
+    const toRender = translated.filter(({ text }) => text);
+    for (const { region } of toRender) await stage(region.layoutArea.path);
+    const geometry = toRender.length
       ? await this.pixelHost("text_layout", {
           root: work,
-          page: { ...page, regions: renderRegions },
+          page: { ...page, regions: toRender.map(({ region }) => region) },
           maximumBytes: IMAGE_TEXT_RULES.maximumMaterialBytes,
         })
       : [];
     const geometryById = new Map(geometry.map((region) => [region.regionId, region]));
-    const hostPage: ImageTextPage = {
-      pageId: page.pageId,
-      width: page.width,
-      height: page.height,
-      regions: [],
-    };
-    for (const region of renderRegions) {
-      const record = recordsById.get(region.regionId)!;
-      const text = record.text!;
+    const regions = toRender.map(({ region, text }) => {
       const shape = geometryById.get(region.regionId);
       if (!shape) throw new Error("Missing image text geometry");
-      hostPage.regions.push({
-        regionId: region.regionId,
-        text: normalize_image_text(text),
+      return {
+        ...shape,
+        text,
         direction: region.direction,
-        fill: { color: region.backgroundColor },
-        candidates: shape.candidates.map((candidate) => ({
-          candidateId: candidate.candidateId,
-          blocks: candidate.blocks.map((block) => ({
-            blockId: block.blockId,
-            box: block.box,
-            distance: block.distance,
-            ...source_layout(page, region.direction, block),
-          })),
-        })),
-      });
-    }
-    const paint = hostPage.regions.length
-      ? await this.textHost({ kind: "render_image_text_page", page: hostPage })
+        kind: region.kind,
+        backgroundColor: region.backgroundColor,
+      };
+    });
+    const paint = regions.length
+      ? await this.textHost({
+          kind: "render_image_text_page",
+          page: { pageId: page.pageId, regions },
+        })
       : [];
-    const entries: ImageOutputEntry[] = [];
-    const fallbackRegionIds: string[] = [];
-    for (const region of page.regions) {
-      const cleanRegion = cleanById.get(region.regionId)!;
-      const record = recordsById.get(region.regionId)!;
-      if (record.output === "original") {
-        fallbackRegionIds.push(region.regionId);
-        entries.push(entry(region.regionId, "success", "original"));
-        continue;
+    const paintById = new Map(paint.map(({ regionId, png }) => [regionId, png]));
+    if (paint.length !== regions.length) throw new Error("Unexpected image text result count");
+    const layers: ImageLayer[] = [];
+    for (const {
+      index,
+      region: { regionId },
+      text,
+      eraseMask,
+    } of translated) {
+      // 完成空正文只应用消字层，原图输出的区域不进入合成清单。
+      if (!text) layers.push({ eraseMask });
+      else {
+        const png = paintById.get(regionId);
+        if (png === undefined) throw new Error("Missing image text result region");
+        if (png === null) entries[index] = entry(regionId, "original", "layout_no_fit");
+        else layers.push({ eraseMask, overlay: { box: geometryById.get(regionId)!.box, png } });
       }
-      if (cleanRegion.status === "failed") {
-        fallbackRegionIds.push(region.regionId);
-        entries.push(entry(region.regionId, "failure", "original", [{ code: "erase_failed" }]));
-        continue;
-      }
-      const text = record.text;
-      const paints = paint.filter((item) => item.result.regionId === region.regionId);
-      if (record.output === null || text === null) {
-        fallbackRegionIds.push(region.regionId);
-        entries.push(
-          entry(region.regionId, "failure", "original", [{ code: "translation_incomplete" }]),
-        );
-        continue;
-      }
-      if (!text.trim()) {
-        entries.push(entry(region.regionId, "success", "translated"));
-        continue;
-      }
-      const failed = paints.find((item) => item.result.renderStatus === "failure");
-      if (failed?.result.renderStatus === "failure") {
-        fallbackRegionIds.push(region.regionId);
-        entries.push(
-          entry(region.regionId, "failure", "original", [{ code: failed.result.reason }]),
-        );
-        continue;
-      }
-      if (!paints.length) throw new Error("Missing image text result region");
-      entries.push(entry(region.regionId, "success", "translated"));
     }
-    const paintPath = path.join(work, `paint-${page.pageId}.json`);
-    await this.nativeFs.write_file(paintPath, JSON.stringify(paint));
-    const previewPath = path.join(work, `preview-${page.pageId}.png`);
-    await this.pixelHost("text_compose", {
+    const request: ImageHelperRequest<"text_output"> = {
       root: work,
-      page,
-      source: path.join(work, clean.clean),
-      original: options.originalPath,
-      cleanRegions: clean.regions,
-      fallbackRegionIds,
-      paint: paintPath,
-      output: previewPath,
-    });
-    const encodedSource = options.qa ? path.join(work, `qa-${page.pageId}.png`) : previewPath;
-    if (options.qa)
-      await this.pixelHost("qa_preview", {
-        root: work,
-        page,
-        source: previewPath,
-        entries,
-        output: encodedSource,
+      original: options.original,
+      output: options.output,
+    };
+    if (layers.length) {
+      for (const { eraseMask } of layers) await stage(eraseMask);
+      const layersPath = path.join(work, "layers.json");
+      await fs.write_file(layersPath, JSON.stringify(layers)); // 位图走临时文件，避免撑大请求帧。
+      request.composition = { clean: await stage(clean.clean), layers: layersPath };
+    }
+    if (options.qa) {
+      const marks = entries.flatMap((entry, index) => {
+        if (entry.status !== "failure") return [];
+        const { regionId, layoutArea } = page.regions[index]!;
+        return [
+          {
+            regionId,
+            layoutArea: layoutArea.path,
+            incomplete: entry.reasons.some(({ code }) => code === "translation_incomplete"),
+          },
+        ];
       });
-    await this.pixelHost("encode_output", {
-      source: encodedSource,
-      output: options.outputPath,
-      extension: path.extname(page.relativePath),
-    });
+      for (const { layoutArea } of marks) await stage(layoutArea);
+      request.qa = { maxEdge: AGENT_IMAGE_MAX_EDGE, marks };
+    }
+    await this.pixelHost("text_output", request);
     return entries;
   }
 }

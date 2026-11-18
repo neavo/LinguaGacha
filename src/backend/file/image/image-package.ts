@@ -28,8 +28,12 @@ const IMAGE_LIMITS = Object.freeze({
   jsonBytes: 16_000_000,
 }); // 图片包可能很大，解压前限制声明体积。
 
-/** 读取并校验当前 `.image` 归档。 */
-export async function read_image_package(content: Uint8Array, file: string) {
+/** 导入核对成员像素，读取已入库原稿时直接复用导入结果。 */
+export async function read_image_package(
+  content: Uint8Array,
+  file: string,
+  options: { validatePixels?: boolean } = {},
+) {
   try {
     validate_zip_budget(content);
     const members = await read_zip_members(content, file);
@@ -39,11 +43,14 @@ export async function read_image_package(content: Uint8Array, file: string) {
     const records = read_image_records(await read_package_items(members));
     const book = read_image_book(JSON.parse(await stateMember.async("string")), records);
     const clean = read_image_clean(JSON.parse(await cleanMember.async("string")), book);
-    await validate_image_members(book, clean, members.keys(), async (member) => {
-      const entry = members.get(member);
-      if (!entry) throw new Error("Missing image member");
-      return entry.async("uint8array");
-    });
+    await validate_image_members(
+      book,
+      clean,
+      members.keys(),
+      options.validatePixels === false
+        ? undefined
+        : (member) => members.get(member)!.async("uint8array"),
+    );
     return { book, records, clean, members };
   } catch (cause) {
     if (cause instanceof AppError && cause.code === "file.asset_too_large") throw cause;
@@ -73,7 +80,7 @@ async function validate_image_members(
   book: ImageBook,
   clean: ImageClean,
   actualMembers: Iterable<string>,
-  read: (member: string) => Promise<Uint8Array>,
+  read?: (member: string) => Promise<Uint8Array>,
 ): Promise<void> {
   const expected = new Set<string>([
     PACKAGE_ITEMS_MEMBER,
@@ -93,8 +100,9 @@ async function validate_image_members(
     throw new Error(
       `Image members mismatch: missing ${missing.length} ${JSON.stringify(missing.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}; extra ${extra.length} ${JSON.stringify(extra.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}`,
     );
-  for (let index = 0; index < book.pages.length; index++)
-    await validate_image_page_members(book.pages[index]!, clean.pages[index]!, read);
+  if (read)
+    for (let index = 0; index < book.pages.length; index++)
+      await validate_image_page_members(book.pages[index]!, clean.pages[index]!, read);
 }
 
 /** 页面原图、底图、排版区域和实际掩码必须属于同一像素空间。 */
@@ -118,8 +126,7 @@ async function validate_image_page_members(
     const result = cleanPage.regions[index]!;
     const layoutArea = await read_image_mask(page, region.layoutArea, read);
     if (result.status === "failed") continue;
-    if (!result.eraseMask) throw new Error("Missing erase mask");
-    const mask = await read_image_mask(page, { path: result.eraseMask }, read);
+    const mask = await read_image_mask(page, { path: result.eraseMask! }, read); // 清单已校验成功区域的掩码引用。
     for (let pixel = 0; pixel < mask.length; pixel++)
       if (mask[pixel] && !layoutArea[pixel])
         throw new Error("Erase mask exceeds region layout area");
@@ -138,7 +145,6 @@ async function read_image_mask(
   const metadata = image_metadata(bytes);
   if (
     metadata.extension !== ".png" ||
-    metadata.orientation !== 1 ||
     metadata.width !== page.width ||
     metadata.height !== page.height
   )
@@ -147,14 +153,8 @@ async function read_image_mask(
   const mask = new Uint8Array(page.width * page.height);
   let nonempty = false;
   for (let pixel = 0; pixel < mask.length; pixel++) {
-    const offset = pixel * 3;
-    const value = pixels.rgb[offset]!;
-    if (
-      (value !== 0 && value !== 255) ||
-      pixels.rgb[offset + 1] !== value ||
-      pixels.rgb[offset + 2] !== value
-    )
-      throw new Error("Region mask must be binary");
+    const value = pixels.rgb[pixel * 3]!; // PNG 头限定灰阶，读取任一 RGB 通道即可。
+    if (value !== 0 && value !== 255) throw new Error("Region mask must be binary");
     mask[pixel] = value;
     nonempty ||= value !== 0;
   }
