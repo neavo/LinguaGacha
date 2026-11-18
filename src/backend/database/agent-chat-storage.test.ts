@@ -53,6 +53,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
     kind: "test.counter",
     version: 1,
     scope: "session",
+    checkpointWhen: () => false,
     initial: () => ({ count: 0 }),
   });
   const harness = await Harness.open(

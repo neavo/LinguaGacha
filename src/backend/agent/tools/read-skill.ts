@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { default_native_fs } from "../../../native/native-fs";

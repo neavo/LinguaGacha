@@ -9,7 +9,7 @@ import type {
   TaskRecord,
   UsageState,
 } from "@earendil-works/pi-durable";
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
@@ -45,7 +45,7 @@ export class AgentChatView {
   public readonly conversations = new Map<number, ConversationRecord>(); // 分支继承关系，用于计算祖先切点
   public readonly submissions = new Map<number, SubmissionRecord>(); // 产品输入与实际历史条目的关联回执
   public readonly compactions = new Map<number, TaskRecordValue>(); // 公开压缩条目的任务事实
-  public readonly live = new Map<number, LiveState>(); // 按分支保存的已提交生成进度
+  public live: Readonly<LiveState> = {}; // 活动分支的内存进度，落盘回执不覆盖它。
   public readonly pendingUsages = new Map<number, UsageState>(); // 结算后释放的用量回执
   public usage: AgentUsageSnapshot = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   private conversationId: number | undefined;
@@ -118,18 +118,19 @@ export class AgentChatView {
         this.pendingTasks.add(change.value.id);
       } else if (
         change.type === "document" &&
-        change.value !== null &&
-        change.conversationId !== undefined
+        change.kind === "change" &&
+        change.conversationId !== undefined &&
+        change.record.kind === "pi.usage"
       ) {
-        if (change.record.kind === "pi.live") {
-          this.live.set(change.conversationId, change.value as LiveState);
-          if (change.conversationId === this.conversationId) this.liveChanged = true;
-        }
-        if (change.record.kind === "pi.usage") {
-          this.pendingUsages.set(change.conversationId, change.value as UsageState);
-        }
+        this.pendingUsages.set(change.conversationId, change.value as UsageState);
       }
     }
+  }
+
+  /** 标记流式条目，下一次刷新与正式回执一起发布。 */
+  public update_live(live: Readonly<LiveState>): void {
+    this.live = live;
+    this.liveChanged = true;
   }
 
   /** 分支切换或补读历史时重建索引，其余提交增量更新。 */
@@ -149,7 +150,7 @@ export class AgentChatView {
         this.branch_records(),
         this.submissions,
         [...this.compactions.values()].filter((task) => this.visible(task.conversationId, task.id)),
-        this.live.get(conversationId) ?? {},
+        this.live,
         state,
       );
     } else {
@@ -186,8 +187,7 @@ export class AgentChatView {
         const task = this.compactions.get(id)!;
         if (this.visible(task.conversationId, id)) this.read_task(task);
       }
-      if (this.liveChanged || previous.rounds !== state.rounds)
-        this.read_live(this.live.get(conversationId) ?? {});
+      if (this.liveChanged || previous.rounds !== state.rounds) this.read_live(this.live);
     }
     for (const [id, state] of this.pendingUsages) {
       const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };

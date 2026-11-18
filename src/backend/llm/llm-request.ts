@@ -1,4 +1,4 @@
-import type { StreamOptions } from "@earendil-works/pi-ai";
+import { getOpenCodeSessionHeaders, type StreamOptions } from "@earendil-works/pi-ai";
 
 import {
   Model,
@@ -18,7 +18,6 @@ import {
 } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { resolve_model_endpoint, type ResolvedModelEndpoint } from "../../domain/model-endpoint";
-import { ENDPOINT_REQUEST_OVERRIDES } from "./llm-overrides";
 
 export const LLM_REQUEST_MAX_BYTES = 64_000_000; // 批量输入与最终媒体载荷共用的字节上限。
 
@@ -149,8 +148,6 @@ export function build_request_headers(
   identity: ModelRequestIdentity,
   extra_headers: Readonly<JsonRecord>,
 ): Record<string, string> {
-  const hostname = URL.parse(base_url)?.hostname;
-  const endpoint = ENDPOINT_REQUEST_OVERRIDES.find((override) => override.hostname === hostname);
   const headers = Object.fromEntries(
     Object.entries(extra_headers).map(([key, value]) => [key.toLowerCase(), String(value)]),
   );
@@ -158,9 +155,7 @@ export function build_request_headers(
   delete headers["user-agent"];
   return {
     "User-Agent": user_agent,
-    ...(endpoint === undefined || identity.session_id === undefined
-      ? {}
-      : { [endpoint.session_header]: identity.session_id }),
+    ...getOpenCodeSessionHeaders({ baseUrl: base_url, provider: "" }, identity.session_id),
     ...headers,
   };
 }

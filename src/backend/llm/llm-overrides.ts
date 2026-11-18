@@ -132,16 +132,3 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
     },
   },
 ]);
-
-type EndpointRequestOverride = Readonly<{
-  hostname: string;
-  session_header: string; // 请求时填入当前任务或对话的会话 ID。
-}>;
-
-/** 接入点按精确主机名匹配，会话头用于标识同一任务或对话的推理请求。 */
-export const ENDPOINT_REQUEST_OVERRIDES: readonly EndpointRequestOverride[] = Object.freeze([
-  {
-    hostname: "opencode.ai",
-    session_header: "x-opencode-session",
-  },
-]);

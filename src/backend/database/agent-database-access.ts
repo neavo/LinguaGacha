@@ -66,6 +66,9 @@ export class AgentDatabaseAccess implements SqliteDatabase {
   public run(sql: string, ...params: SqliteValue[]): Promise<void> {
     return this.run_operation((db) => db.run(sql, ...params), true);
   }
+  public runCounted(sql: string, ...params: SqliteValue[]): Promise<number> {
+    return this.run_operation((db) => db.runCounted(sql, ...params), true);
+  }
   public get<T extends object>(sql: string, ...params: SqliteValue[]): Promise<T | undefined> {
     return this.run_operation((db) => db.get<T>(sql, ...params));
   }

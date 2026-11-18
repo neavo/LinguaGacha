@@ -99,6 +99,7 @@ export class AgentChatStorage {
       SqliteStorage.open({
         exec: (sql) => this.database.exec(sql),
         run: (sql, ...params) => this.database.run(sql, ...params),
+        runCounted: (sql, ...params) => this.database.runCounted(sql, ...params),
         get: (sql, ...params) => this.database.get(sql, ...params),
         all: (sql, ...params) => this.database.all(sql, ...params),
         transaction: (callback) => this.database.transaction(callback),

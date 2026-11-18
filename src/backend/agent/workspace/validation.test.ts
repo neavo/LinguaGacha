@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 
 import { describe_agent_workspace_schema_error } from "./validation";

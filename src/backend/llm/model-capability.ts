@@ -112,20 +112,21 @@ type TemplateSelection = Readonly<{
   exact: boolean; // 地址、协议与模型均命中目录记录
 }>;
 
-/** 端点扩展、缓存协议和路由字段只能由精确端点记录授权，名称回退的记录可能属于其他端点。 */
-const ENDPOINT_COMPAT_FIELDS = [
-  "supportsMidConvoEffort",
-  "supportsMidConvoSystemMessages",
-  "supportsMidConvoToolAdditions",
-  "supportsMidConvoToolChanges",
-  "supportsAdditionalTools", // Responses 的会话内工具定义。
-  "supportsToolSearch", // Responses 的会话内工具搜索回执。
-  "cacheControlFormat",
-  "supportsLongCacheRetention",
-  "supportsExplicitPromptCacheMode",
-  "supportsCacheControlOnTools",
-  "sessionAffinityFormat",
-  "sendSessionAffinityHeaders",
+/** 仅继承模型族的消息格式与生成参数。新网关字段只有精确匹配才能使用。 */
+const MODEL_COMPAT_FIELDS = [
+  "supportsReasoningEffort",
+  "thinkingFormat",
+  "thinkingTokenBudgetField",
+  "supportsThinkingTokenBudget",
+  "chatTemplateArgs",
+  "chatTemplateKwargs",
+  "requiresThinkingAsText",
+  "requiresReasoningContentOnAssistantMessages",
+  "supportsDeveloperRole",
+  "supportsTemperature",
+  "forceAdaptiveThinking",
+  "maxTokensField",
+  "supportsMaxOutputTokens",
 ] as const satisfies readonly (keyof (OpenAICompletionsCompat &
   OpenAIResponsesCompat &
   AnthropicMessagesCompat))[];
@@ -311,9 +312,11 @@ function read_template_compat(
     (target_api === "openai-responses" && template.api === "azure-openai-responses");
   if (!same_api) return undefined;
   if (selection.exact || template.compat === undefined) return template.compat;
-  const compat = { ...template.compat };
-  for (const field of ENDPOINT_COMPAT_FIELDS) Reflect.deleteProperty(compat, field);
-  return compat;
+  return Object.fromEntries(
+    Object.entries(template.compat).filter(([key]) =>
+      MODEL_COMPAT_FIELDS.some((field) => field === key),
+    ),
+  );
 }
 
 /** 按产品协议选择 Pi API 形态；同形态再交给供应商优先级决胜。 */

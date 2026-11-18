@@ -1,4 +1,4 @@
-import { Type, type TSchema } from "@earendil-works/pi-ai";
+import { Type, type TSchema } from "typebox";
 import { describe, expect, it } from "vitest";
 
 import { check_typescript } from "../../../test/typescript-fixture";

@@ -8,7 +8,7 @@ import {
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
 import { create_schema_renderer } from "../workspace/schema-description";
 import type { AgentWorkspaceRequestChannel } from "../workspace/runtime/request-channel";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 /** 图片选项的运行时校验和模型声明共用此 Schema。 */
 export const WORKSPACE_IMAGE_OPTIONS_SCHEMA = Type.Object(
   {

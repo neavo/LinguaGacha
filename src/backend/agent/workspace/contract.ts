@@ -9,7 +9,7 @@ import {
 } from "./paths";
 import type { AgentWorkspaceQualityChangeOperation } from "./paths";
 import { create_schema_renderer } from "./schema-description";
-import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
+import { Type, type Static, type TSchema } from "typebox";
 
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import {

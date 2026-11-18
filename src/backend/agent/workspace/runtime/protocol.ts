@@ -10,7 +10,7 @@ import type {
 } from "../../../../shared/translation-generation";
 import type { SourceInspection } from "../../../../shared/project-file-changes";
 import type { WorkspaceInspectSourcesRequest } from "../../tools/inspect-sources";
-import type { Static } from "@earendil-works/pi-ai";
+import type { Static } from "typebox";
 import type { WorkspacePrintPDFRequest, WorkspacePrintPDFResult } from "../../tools/print-pdf";
 import type { WORKSPACE_IMAGE_REQUEST_SCHEMA } from "../../tools/emit-image";
 import type { WORKSPACE_DOING_REQUEST_SCHEMA } from "../../tools/doing";

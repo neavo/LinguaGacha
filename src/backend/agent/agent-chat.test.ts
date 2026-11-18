@@ -23,7 +23,7 @@ import {
 import { ProjectDatabase } from "../database/database-operations";
 import type { AgentChatStorage } from "../database/agent-chat-storage";
 import { AgentChat, type AgentExecution } from "./agent-chat";
-import { AgentChatDoc } from "./agent-chat-data";
+import { AgentChatDoc, AGENT_INPUT_ENTRY_KIND } from "./agent-chat-data";
 import { AgentRuntimeLog } from "./agent-runtime-log";
 import { define_agent_tool, agent_tool_result, AgentToolError } from "./tool-definition";
 import { AgentChatView } from "./agent-chat-view";
@@ -186,13 +186,19 @@ it("工具执行结束后等待 SDK 提交，日志不能提前结算", async ()
   });
   const { chat, provider, append } = await create_chat(() => {}, { tools: [tool], storage });
   const commit = storage.commit.bind(storage);
-  const waiting = vi.spyOn(storage, "commit").mockImplementation(async (writes, context) => {
-    if (writes.some((write) => write.type === "entry" && write.value.kind === "pi.tool-result")) {
-      committing.resolve();
-      await release.promise;
-    }
-    return commit(writes, context);
-  });
+  const waiting = vi
+    .spyOn(storage, "commit")
+    .mockImplementation(async (batches, receive, context) => {
+      if (
+        batches
+          .flat()
+          .some((write) => write.type === "entry" && write.value.kind === "pi.tool-result")
+      ) {
+        committing.resolve();
+        await release.promise;
+      }
+      return commit(batches, receive, context);
+    });
   provider.setResponses([
     fauxAssistantMessage([fauxToolCall("fixture_tool", {})], { stopReason: "toolUse" }),
     fauxAssistantMessage("完成"),
@@ -253,7 +259,7 @@ it("队列事务失败完整回滚，读出的副本无法修改已提交事实"
       throw new Error("提交失败");
     }),
   ).rejects.toThrow("提交失败");
-  chat.queue.delete(queued.id);
+  chat.queue.read_snapshot(false).items.pop();
   queued.text = "外部改写";
   expect(chat.queue.read_snapshot(false)).toEqual(before);
 });
@@ -281,7 +287,7 @@ it("同一执行取得正常工具进展后可以再次截断恢复，结束时�
     name: "progress_fixture",
     description: "提供正常进展",
     parameters: Type.Object({}),
-    execute: async () => agent_tool_result({ text: "新的工具资料 ".repeat(16_000) }),
+    execute: async () => agent_tool_result({ text: "新的工具资料 ".repeat(32_000) }),
   });
   const { chat, provider } = await create_chat(() => {}, { tools: [tool] });
   const history = "history ".repeat(16_000);
@@ -698,7 +704,7 @@ it("压缩后修订早期输入在受理时切换历史与旧意图，并采用�
   chat.models.setProvider(replacement.provider);
   const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("新答"));
   replacement.setResponses([respond]);
-  await chat.revise_user(before[0]!, replacement.getModel(), "high", "revision");
+  const conversation = await chat.fork_user_revision(before[0]!, replacement.getModel(), "high");
   expect(chat.state.activeConversationId).toBe(active);
   expect(chat.entries).toEqual(before);
   expect(chat.state.doing).toBe("旧任务");
@@ -723,6 +729,7 @@ it("压缩后修订早期输入在受理时切换历史与旧意图，并采用�
     { text: "新问", images: [] },
     execution,
     "round",
+    { conversation },
   );
   expect(chat.state.commands.revision!.status).toBe("accepted");
   expect(chat.state.activeConversationId).not.toBe(active);
@@ -743,68 +750,100 @@ it("压缩后修订早期输入在受理时切换历史与旧意图，并采用�
   expect(chat.entries).toMatchObject([{ text: "新问" }, { parts: [{ text: "新答" }] }]);
 });
 
-it.each([false, true])("SQLite 重开按修订输入回执恢复分支：已受理=%s", async (admitted) => {
-  const { database, file } = await project();
-  let store = database.open_agent_store(file);
-  await store.create("revision-recovery");
-  const first = await open(store);
-  first.models.setProvider(first.provider.provider);
-  await first.chat.configure(first.provider.getModel(), "off");
-  first.provider.setResponses([fauxAssistantMessage("原答"), fauxAssistantMessage("新答")]);
-  const execution = await talk(first.chat, "原问");
-  const original = structuredClone(first.chat.entries);
-  await first.chat.change((state) => {
-    state.commands.revision = {
-      kind: "revise",
-      request: {},
-      status: "pending",
-      conversationId: null,
-      requestId: null,
-    };
-    state.doing = "旧任务";
-  });
-  await first.chat.change_queue((queue) => queue.enqueue({ text: "旧队列", attachments: [] }));
-  await first.chat.revise_user(original[0]!, first.provider.getModel(), "off", "revision");
-  if (admitted) {
+it.each(["rollback", "accepted", "legacy"] as const)(
+  "SQLite 重开只激活已受理修订的分支：%s",
+  async (mode) => {
+    const admitted = mode !== "rollback";
+    const { database, file } = await project();
+    let store = database.open_agent_store(file);
+    await store.create("revision-recovery");
+    const first = await open(store);
+    first.models.setProvider(first.provider.provider);
+    await first.chat.configure(first.provider.getModel(), "off");
+    first.provider.setResponses([fauxAssistantMessage("原答"), fauxAssistantMessage("新答")]);
+    const execution = await talk(first.chat, "原问");
+    const original = first.chat.entries;
+    await first.chat.change((state) => {
+      state.commands.revision = {
+        kind: "revise",
+        request: {},
+        status: "pending",
+        conversationId: null,
+        requestId: null,
+      };
+      state.doing = "旧任务";
+    });
+    await first.chat.change_queue((queue) => queue.enqueue({ text: "旧队列", attachments: [] }));
+    const conversation = await first.chat.fork_user_revision(
+      original[0]!,
+      first.provider.getModel(),
+      "off",
+    );
     execution.commandId = "revision";
     execution.roundId = null;
     first.chat.execution = execution;
-    const change = first.chat.change.bind(first.chat);
-    let calls = 0;
-    const fault = vi.spyOn(first.chat, "change").mockImplementation(async (callback) => {
-      if (++calls === 2) throw new Error("模拟受理后切换前中断");
-      await change(callback);
-    });
-    await expect(
-      first.chat.submit(
+    if (mode === "legacy") {
+      // 1.3.0 的 SDK 已受理，而切换产品分支的后续提交尚未发生。
+      await first.chat.change((state) => {
+        state.commands.revision!.conversationId = conversation.id;
+        state.commands.revision!.requestId = "old-attempt";
+      });
+      const message = { text: "新问", attachments: [] };
+      const submission = await conversation.submit(
+        {
+          type: "input",
+          content: message.text,
+          requestId: "old-attempt",
+          entry: {
+            kind: AGENT_INPUT_ENTRY_KIND,
+            data: { message, delivery: "round", roundId: "old-attempt", queuedId: null },
+          },
+        },
+        BACKGROUND_CONTEXT,
+      );
+      await submission.wait(BACKGROUND_CONTEXT);
+    } else {
+      const input = first.chat.submit(
         { text: "新问", attachments: [] },
         { text: "新问", images: [] },
         execution,
         "round",
-      ),
-    ).rejects.toThrow("模拟受理后切换前中断");
-    fault.mockRestore();
-  }
-  await first.chat.close();
-  await store.close();
-  store = database.open_agent_store(file);
-  const restored = await open(store);
-  try {
-    expect(restored.chat.state.commands.revision!.status).toBe(admitted ? "accepted" : "cancelled");
-    expect(restored.chat.entries[0]).toMatchObject({ text: admitted ? "新问" : "原问" });
-    expect(restored.chat.state.doing).toBe(admitted ? null : "旧任务");
-    expect(restored.chat.queue.read_snapshot(false).items.map((item) => item.text)).toEqual(
-      admitted ? [] : ["旧队列"],
-    );
-    expect(restored.provider.state.callCount).toBe(0);
-  } finally {
-    await restored.chat.close();
+        {
+          conversation,
+          change: () => {
+            if (!admitted) throw new Error("受理事务回滚");
+          },
+        },
+      );
+      if (admitted) await input;
+      else {
+        await expect(input).rejects.toThrow("受理事务回滚");
+        expect(first.provider.state.callCount).toBe(1);
+      }
+    }
+    await first.chat.close();
     await store.close();
-    await database.close();
-  }
-});
+    store = database.open_agent_store(file);
+    const restored = await open(store);
+    try {
+      expect(restored.chat.state.commands.revision!.status).toBe(
+        admitted ? "accepted" : "cancelled",
+      );
+      expect(restored.chat.entries[0]).toMatchObject({ text: admitted ? "新问" : "原问" });
+      expect(restored.chat.state.doing).toBe(admitted ? null : "旧任务");
+      expect(restored.chat.queue.read_snapshot(false).items.map((item) => item.text)).toEqual(
+        admitted ? [] : ["旧队列"],
+      );
+      expect(restored.provider.state.callCount).toBe(0);
+    } finally {
+      await restored.chat.close();
+      await store.close();
+      await database.close();
+    }
+  },
+);
 
-it("正常响应立即校准预算，使低字符量历史可以手动压缩", async () => {
+it("正常响应采用互斥的缓存与输入用量，超过保留预算后可手动压缩", async () => {
   const { chat, provider } = await create_chat();
   provider.setResponses([
     fauxAssistantMessage("第一答"),
@@ -812,10 +851,29 @@ it("正常响应立即校准预算，使低字符量历史可以手动压缩", a
     fauxAssistantMessage("摘要"),
   ]);
   await talk(chat, "x".repeat(20_000));
-  const execution = await talk(chat, "x".repeat(80_000));
+  expect(chat.context.compactable).toBe(false);
+  const execution = await talk(chat, "x".repeat(148_000));
   expect(chat.context.compactable).toBe(true);
   expect(await chat.compact("manual", execution)).toEqual({ status: "success" });
   expect(chat.entries.at(-1)).toMatchObject({ kind: "context_compaction", status: "success" });
+});
+
+it("附件准备结束时 SDK 已空闲，拒绝插话且不启动新的生成", async () => {
+  const { chat, provider } = await create_chat();
+  provider.setResponses([fauxAssistantMessage("完成")]);
+  const execution = await talk(chat, "原任务");
+  const entries = chat.entries;
+  const count = provider.state.callCount;
+  await expect(
+    chat.submit(
+      { text: "迟到", attachments: [] },
+      { text: "迟到", images: [] },
+      execution,
+      "steer",
+    ),
+  ).rejects.toMatchObject({ name: "ConversationIdle" });
+  expect(provider.state.callCount).toBe(count);
+  expect(chat.entries).toEqual(entries);
 });
 
 it("无切点的压缩返回 skipped，公开时间线不产生压缩块", async () => {

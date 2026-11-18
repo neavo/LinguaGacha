@@ -334,6 +334,8 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 |应用入口与合并后的 SDK|[index.test.ts](../src/index.test.ts) 的仓库外 ASAR 集成测试|
 |部署后的工作区执行|仓库外 Electron bootstrap 集成测试|
 
+首次用 Pi Durable `1.5` 打开会话前备份 `.lg`，以便回退到 `1.3`。
+
 ### 发行包运行验证
 
 先执行 `npm run build`，再用环境变量把真实 Electron 集成测试指向发行产物：

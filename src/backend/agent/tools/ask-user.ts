@@ -1,4 +1,4 @@
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import {

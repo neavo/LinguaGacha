@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { setTimeout } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 

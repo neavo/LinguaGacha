@@ -1,4 +1,4 @@
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import type { TaskRecord, SubmissionRecord } from "@earendil-works/pi-durable";
 
 export type AgentCompactionResult =

@@ -221,7 +221,12 @@ describe("统一模型能力", () => {
       api: "openai-completions",
       provider: "openrouter",
       baseUrl: "https://router.example/v1",
-      compat: { thinkingFormat: "openrouter", supportsMidConvoSystemMessages: true },
+      compat: {
+        thinkingFormat: "openrouter",
+        supportsMidConvoSystemMessages: true,
+        promptCacheKeyMode: "enabled",
+        requiresToolsWithToolHistory: true,
+      },
     };
     const hosted: PiCatalogModel = {
       ...router,

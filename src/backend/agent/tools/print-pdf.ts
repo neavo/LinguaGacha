@@ -4,7 +4,7 @@ import type { NativeFs } from "../../../native/native-fs";
 import type { PDFHost } from "../../../shared/pdf";
 import { Check } from "typebox/value";
 import { AGENT_WORKSPACE_WORK_ROOT } from "../workspace/runtime/policy";
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 /** 父进程在打印 HTML 前校验脚本请求。 */
 export const WORKSPACE_PRINT_PDF_REQUEST_SCHEMA = Type.Object(
   {
