@@ -212,6 +212,9 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
   expect(view.take_change().entries).toMatchObject([
     { id: "assistant:5000", status: "running", parts: [{ text: "重试正文" }] },
   ]);
+  view.update_live(live);
+  view.refresh(conversationId, state, "stopping");
+  expect(view.take_change().entries).toEqual([]);
   const completed: EntryRecord = {
     id: 5002 as EntryId,
     conversationId,
@@ -221,7 +224,7 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
   };
   view.update_live({});
   view.observe({ seq: 4 as Seq, changes: [{ type: "entry", value: completed }] });
-  view.refresh(conversationId, state);
+  view.refresh(conversationId, state, "stopping");
   expect(view.take_change()).toMatchObject({
     replace: false,
     entries: [{ id: "assistant:5000", status: "success", parts: [{ text: "完整回答" }] }],

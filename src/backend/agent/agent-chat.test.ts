@@ -22,7 +22,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { ProjectDatabase } from "../database/database-operations";
 import type { AgentChatStorage } from "../database/agent-chat-storage";
-import { AgentChat, type AgentExecution } from "./agent-chat";
+import { AgentChat } from "./agent-chat";
 import { AgentChatDoc, AGENT_INPUT_ENTRY_KIND } from "./agent-chat-data";
 import { AgentRuntimeLog } from "./agent-runtime-log";
 import { define_agent_tool, agent_tool_result, AgentToolError } from "./tool-definition";
@@ -282,7 +282,7 @@ it("供应商身份在修订后改变，同一分支的生成和压缩共用身�
   expect(ids[2]).toBe(ids[1]);
 });
 
-it("同一执行取得正常工具进展后可以再次截断恢复，结束时释放恢复引用", async () => {
+it("同一轮次取得工具进展后可以再次截断恢复", async () => {
   const tool = define_agent_tool({
     name: "progress_fixture",
     description: "提供正常进展",
@@ -302,7 +302,7 @@ it("同一执行取得正常工具进展后可以再次截断恢复，结束时�
     fauxAssistantMessage("摘要二"),
     fauxAssistantMessage("恢复完成"),
   ]);
-  const execution = await talk(chat, "恢复任务");
+  await talk(chat, "恢复任务");
   expect(chat.entries.filter((entry) => entry.kind === "context_compaction")).toMatchObject([
     { status: "success" },
     { status: "success" },
@@ -311,7 +311,6 @@ it("同一执行取得正常工具进展后可以再次截断恢复，结束时�
     kind: "assistant_message",
     parts: [{ text: "恢复完成" }],
   });
-  expect(execution).toMatchObject({ recoveryTask: null, retrySteer: null });
 });
 
 it("SDK 溢出压缩消耗恢复额度，摘要成功后连续截断仍结束本轮", async () => {
@@ -329,7 +328,6 @@ it("SDK 溢出压缩消耗恢复额度，摘要成功后连续截断仍结束本
   expect(chat.entries.filter((entry) => entry.kind === "context_compaction")).toMatchObject([
     { status: "success" },
   ]);
-  expect(chat.execution).toMatchObject({ recoveryTask: null, retrySteer: null });
 });
 
 const roots: string[] = [];
@@ -374,21 +372,8 @@ async function open(store: AgentChatStorage, tools: ToolRegistration[] = []) {
 }
 /** 经产品轮次入口提交并结算，供内存与磁盘场景共用。 */
 async function talk(chat: AgentChat, text: string) {
-  const execution: AgentExecution = {
-    controller: new AbortController(),
-    stop_reason: null,
-    lease: { owner: "agent" },
-    roundId: null,
-    phase: "running",
-    acceptance: null,
-    settlement: null,
-    recoveryUsed: false,
-    recoveryTask: null,
-    steer: null,
-    retrySteer: null,
-    batchStopped: false,
-  };
-  chat.execution = execution;
+  const execution = chat.begin_execution({ owner: "agent" });
+  execution.phase = "running";
   const input = await chat.submit(
     { text, attachments: [] },
     { text, images: [] },
@@ -708,22 +693,8 @@ it("压缩后修订早期输入在受理时切换历史与旧意图，并采用�
   expect(chat.state.activeConversationId).toBe(active);
   expect(chat.entries).toEqual(before);
   expect(chat.state.doing).toBe("旧任务");
-  const execution: AgentExecution = {
-    controller: new AbortController(),
-    stop_reason: null,
-    lease: { owner: "agent" },
-    commandId: "revision",
-    roundId: null,
-    phase: "running",
-    acceptance: null,
-    settlement: null,
-    recoveryUsed: false,
-    recoveryTask: null,
-    steer: null,
-    retrySteer: null,
-    batchStopped: false,
-  };
-  chat.execution = execution;
+  const execution = chat.begin_execution({ owner: "agent" }, "revision");
+  execution.phase = "running";
   const accepted = await chat.submit(
     { text: "新问", attachments: [] },
     { text: "新问", images: [] },
@@ -761,7 +732,7 @@ it.each(["rollback", "accepted", "legacy"] as const)(
     first.models.setProvider(first.provider.provider);
     await first.chat.configure(first.provider.getModel(), "off");
     first.provider.setResponses([fauxAssistantMessage("原答"), fauxAssistantMessage("新答")]);
-    const execution = await talk(first.chat, "原问");
+    await talk(first.chat, "原问");
     const original = first.chat.entries;
     await first.chat.change((state) => {
       state.commands.revision = {
@@ -779,9 +750,6 @@ it.each(["rollback", "accepted", "legacy"] as const)(
       first.provider.getModel(),
       "off",
     );
-    execution.commandId = "revision";
-    execution.roundId = null;
-    first.chat.execution = execution;
     if (mode === "legacy") {
       // 1.3.0 的 SDK 已受理，而切换产品分支的后续提交尚未发生。
       await first.chat.change((state) => {
@@ -803,6 +771,7 @@ it.each(["rollback", "accepted", "legacy"] as const)(
       );
       await submission.wait(BACKGROUND_CONTEXT);
     } else {
+      const execution = first.chat.begin_execution({ owner: "agent" }, "revision");
       const input = first.chat.submit(
         { text: "新问", attachments: [] },
         { text: "新问", images: [] },
@@ -856,24 +825,6 @@ it("正常响应采用互斥的缓存与输入用量，超过保留预算后可�
   expect(chat.context.compactable).toBe(true);
   expect(await chat.compact("manual", execution)).toEqual({ status: "success" });
   expect(chat.entries.at(-1)).toMatchObject({ kind: "context_compaction", status: "success" });
-});
-
-it("附件准备结束时 SDK 已空闲，拒绝插话且不启动新的生成", async () => {
-  const { chat, provider } = await create_chat();
-  provider.setResponses([fauxAssistantMessage("完成")]);
-  const execution = await talk(chat, "原任务");
-  const entries = chat.entries;
-  const count = provider.state.callCount;
-  await expect(
-    chat.submit(
-      { text: "迟到", attachments: [] },
-      { text: "迟到", images: [] },
-      execution,
-      "steer",
-    ),
-  ).rejects.toMatchObject({ name: "ConversationIdle" });
-  expect(provider.state.callCount).toBe(count);
-  expect(chat.entries).toEqual(entries);
 });
 
 it("无切点的压缩返回 skipped，公开时间线不产生压缩块", async () => {

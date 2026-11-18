@@ -1,5 +1,3 @@
-import { ConversationIdle } from "@earendil-works/pi-durable";
-import type { AgentChatData } from "./agent-chat-data";
 import { create_agent_batch_llm_request_tool } from "./tools/batch-llm-request";
 import { create_search_port } from "./search/request";
 import {
@@ -44,6 +42,7 @@ import {
   type AgentTokenSpeedSnapshot,
   type AgentRunOutputSnapshot,
   type AgentMessageInput,
+  type AgentQueuedInput,
   type AgentChatChange,
   type AgentChatSnapshot,
 } from "../../shared/agent";
@@ -124,6 +123,22 @@ type AgentChatFields = Pick<
   | "runOutput"
 >;
 
+/** 占用完成后才能取消，命令则等待新轮次受理。 */
+type QueuedInterrupt = {
+  reservation: Promise<AgentQueuedInput>;
+  commandId: string | undefined;
+  accepted: PromiseWithResolvers<void>;
+};
+
+type AgentWork = () => Promise<void>;
+
+/** 调度循环持有租约，轮次各自持有取消信号。 */
+type AgentRun = {
+  execution: AgentExecution;
+  settlement: Promise<void> | null;
+  interrupt: QueuedInterrupt | null;
+};
+
 /** 启动时加载的基础提示词和会话种子。 */
 type LoadedAgentResources = Readonly<{
   baseSystemPrompt: string;
@@ -159,7 +174,7 @@ export class AgentService {
   private store: AgentChatStorage | null = null; // 工程连接的使用权覆盖 SDK 与上传收尾
   private chat: AgentChat | null = null;
   private model_config: Model | null = null; // 当前主模型配置供批量翻译跟随解析
-  private execution: AgentExecution | null = null; // 唯一活动执行，旧会话收尾依原执行身份释放租约
+  private run: AgentRun | null = null;
   private readonly input_commands = new Map<
     string,
     { kind: AgentInputCommandKind; request: JsonRecord; work: Promise<AgentInputCommandAck> }
@@ -169,6 +184,10 @@ export class AgentService {
   private revision = 0;
   private disposed = false;
   private publishedFields: AgentChatFields | null = null; // 上一批已发布的控制字段，用于抑制重复通知
+
+  private get execution(): AgentExecution | null {
+    return this.run?.execution ?? null;
+  }
 
   /** 连接工程生命周期、技能变更与决定协调器，会话事实统一提交后发布。 */
   public constructor(options: AgentServiceOptions) {
@@ -485,18 +504,20 @@ export class AgentService {
     this.assert_queue_available();
     this.session_state.require_loaded_project_path();
     const message = this.read_message(request);
+    const execution = this.execution;
     if (
-      this.execution !== null &&
-      this.execution.phase !== "preparing" &&
-      this.read_fields().state === "running"
+      execution !== null &&
+      execution.phase !== "preparing" &&
+      execution.phase !== "settling" &&
+      !execution.controller.signal.aborted
     ) {
       await chat.change_queue((queue) => queue.enqueue(message), read_input_command_id(request));
       return this.ack();
     }
     if (chat.queue.is_paused) throw agent_queue_validation_error("agent_continue_required");
     this.require_resources();
-    const execution = this.begin_execution(read_input_command_id(request));
-    return this.accept(execution, () => this.accept_round(execution, message));
+    const run = this.begin_run(read_input_command_id(request));
+    return this.accept(run, () => this.prepare_run(chat, run, message));
   }
   /** 编辑只作用于尚未发送的草稿，附件身份在服务边界解析。 */
   public async update_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
@@ -523,45 +544,53 @@ export class AgentService {
     await chat.change_queue((queue) => queue.reorder(ids as string[]));
     return this.ack();
   }
-  /** 运行中按 `steer` 受理选中草稿，准备失败时恢复发送占用。 */
+  /** 运行中占用选中的草稿并请求停止，由当前调度循环接续。 */
   public async send_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
     const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
     this.session_state.require_loaded_project_path();
     const id = read_queue_id(request);
-    const item = chat.queue.read(id);
-    if (this.execution !== null) {
-      const execution = this.execution;
-      if (!chat.can_steer || execution.acceptance !== null)
-        throw new AppErrors.AppError("runtime.busy");
-      await chat.change_queue((queue) => queue.begin_send(id));
-      return this.accept(
-        execution,
-        async () => {
-          try {
-            const prepared = await this.prepare_message(item);
-            this.assert_execution(execution);
-            if (!chat.can_steer) {
-              await chat.change_queue((queue) => queue.cancel_send());
-              return;
-            }
-            await chat.submit(item, prepared, execution, "steer", {
-              queuedId: id,
-              commandId: read_input_command_id(request),
-            });
-          } catch (error) {
-            await chat.change_queue((queue) => queue.cancel_send());
-            if (error instanceof ConversationIdle) return;
-            throw error;
-          }
-        },
-        false,
-      );
+    const commandId = read_input_command_id(request);
+    const run = this.run;
+    if (run === null) {
+      const started = this.begin_run(commandId);
+      return this.accept(started, async () => {
+        const item = await chat.change_queue((queue) => queue.begin_send(id));
+        return this.prepare_run(chat, started, item, { queuedId: id });
+      });
     }
-    const execution = this.begin_execution(read_input_command_id(request));
-    return this.accept(execution, () => this.accept_round(execution, item, id));
+    if (!this.can_send_now()) throw new AppErrors.AppError("runtime.busy");
+    const execution = run.execution;
+    const interrupt: QueuedInterrupt = {
+      commandId,
+      accepted: Promise.withResolvers<void>(),
+      reservation: chat
+        .change_queue((queue) => queue.begin_send(id))
+        .then(async (item) => {
+          // 事务期间轮次可能自然结束或进入不可停止的工具。
+          if (this.chat !== chat || execution.controller.signal.aborted)
+            throw new AppErrors.AppError("runtime.cancelled");
+          if (execution.phase === "settling") return item;
+          if (!chat.can_stop || this.decisions.has_pending) {
+            await chat.change_queue((queue) => queue.cancel_send());
+            throw new AppErrors.AppError("runtime.busy");
+          }
+          this.cancel_execution(chat, execution, "queue_send");
+          return item;
+        }),
+    };
+    run.interrupt = interrupt;
+    try {
+      await Promise.all([interrupt.reservation, interrupt.accepted.promise]);
+      return this.ack();
+    } finally {
+      if (run.interrupt === interrupt) {
+        run.interrupt = null;
+        this.publish_snapshot();
+      }
+    }
   }
-  /** 失败轮次以隐藏输入续跑，暂停草稿在同一租约内恢复 FIFO。 */
+  /** 继续优先发送队首，空队列才恢复原失败轮次。 */
   public async continue_chat(request: JsonRecord): Promise<AgentCommandAck> {
     const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
@@ -572,18 +601,25 @@ export class AgentService {
     const failed =
       round?.kind === "user_message" && round.delivery === "round" && round.status === "error";
     const message = read_agent_continue_message(request, this.resolve_file);
-    if (!chat.queue.has_items && !failed)
-      throw agent_queue_validation_error("agent_continue_unavailable");
-    if (message !== null && !chat.queue.has_items)
+    const has_items = chat.queue.has_items;
+    if (!has_items && !failed) throw agent_queue_validation_error("agent_continue_unavailable");
+    if (message !== null && !has_items)
       throw agent_queue_validation_error("agent_continue_message_without_queue");
-    const execution = this.begin_execution(read_input_command_id(request));
-    return this.accept(execution, async () => {
-      const resume = (state: AgentChatData): void => {
-        const queue = new AgentInputQueue(state.queue);
-        if (message !== null) queue.enqueue(message);
-        queue.resume();
-      };
-      if (failed) {
+    const run = this.begin_run(read_input_command_id(request));
+    const execution = run.execution;
+    return this.accept(run, async () => {
+      if (has_items) {
+        const next = await chat.change_queue((queue) => queue.begin_next(true));
+        if (next === null) throw agent_queue_validation_error("agent_continue_unavailable");
+        return this.prepare_run(chat, run, next, {
+          queuedId: next.id,
+          change: (state) => {
+            const queue = new AgentInputQueue(state.queue);
+            if (message !== null) queue.enqueue(message);
+            queue.resume();
+          },
+        });
+      } else if (failed) {
         await this.update_model(chat, execution);
         execution.roundId = round.id;
         execution.phase = "running";
@@ -597,18 +633,13 @@ export class AgentService {
                 ),
               };
         const accepted = await chat.continue_round(execution, (state) => {
-          resume(state);
           const previous = state.rounds[round.id]!;
           previous.status = "running";
           previous.endedAt = null;
           previous.averageTokensPerSecond = null;
         });
         chat.log.begin_run(round.id, "continue");
-        this.launch(chat, execution, () => this.drive(chat, execution, accepted));
-      } else {
-        const next = chat.queue.read_next(true);
-        if (next === null) throw agent_queue_validation_error("agent_continue_unavailable");
-        await this.accept_round(execution, next, next.id, resume);
+        return () => this.drive(chat, run, accepted);
       }
     });
   }
@@ -620,11 +651,8 @@ export class AgentService {
     const roundId = request["roundId"];
     if (typeof roundId !== "string")
       throw agent_queue_validation_error("agent_revision_unavailable");
-    const execution = this.begin_execution(read_input_command_id(request));
-    return this.accept(execution, async () => {
-      await chat.fork_round(roundId, read_input_command_id(request));
-      this.release(execution);
-    });
+    const run = this.begin_run(read_input_command_id(request));
+    return this.accept(run, () => chat.fork_round(roundId, read_input_command_id(request)));
   }
 
   /** 用户输入按轮次修订，助手回复仅限最新轮次末条。预检完成后才创建分支。 */
@@ -666,19 +694,18 @@ export class AgentService {
     if (!valid || target === undefined || round === undefined)
       throw agent_queue_validation_error("agent_revision_unavailable");
     this.session_state.require_loaded_project_path();
-    const execution = this.begin_execution(read_input_command_id(request));
-    return this.accept(execution, async () => {
+    const run = this.begin_run(read_input_command_id(request));
+    const execution = run.execution;
+    return this.accept(run, async () => {
       if (target.kind === "assistant_message") {
         chat.log.revise(round.id, "assistant", revision.message.text);
         await chat.revise_assistant(target, revision.message.text, read_input_command_id(request));
-        this.release(execution);
         return;
       }
       const resolved = await this.prepare_model(chat, execution);
       const prepared = await this.prepare_message(revision.message);
       this.assert_execution(execution);
       chat.log.revise(round.id, "user", revision.message.text);
-      execution.commandId = commandId;
       const conversation = await chat.fork_user_revision(
         target,
         resolved.model,
@@ -687,7 +714,7 @@ export class AgentService {
       const accepted = await this.submit_round(chat, execution, revision.message, prepared, {
         conversation,
       });
-      this.launch(chat, execution, () => this.drive(chat, execution, accepted));
+      return () => this.drive(chat, run, accepted);
     });
   }
   /** 手动压缩返回受理回执，摘要结算由后台持有租约。 */
@@ -698,11 +725,12 @@ export class AgentService {
     if (!chat.context.compactable)
       throw agent_queue_validation_error("agent_context_not_compactable");
     this.session_state.require_loaded_project_path();
-    const execution = this.begin_execution();
-    return this.accept(execution, async () => {
+    const run = this.begin_run();
+    const execution = run.execution;
+    return this.accept(run, async () => {
       await this.update_model(chat, execution);
       this.assert_execution(execution);
-      this.launch(chat, execution, async () => {
+      return async () => {
         try {
           execution.phase = "compacting";
           const result = await chat.compact("manual", execution);
@@ -715,7 +743,7 @@ export class AgentService {
           )
             chat.log.report_failure("compaction", error);
         }
-      });
+      };
     });
   }
   /** 工程提交保持原子边界，其余执行公开停止请求并等待 SDK 结算。 */
@@ -725,9 +753,7 @@ export class AgentService {
     const execution = this.execution;
     if (chat?.can_stop === false) throw new AppErrors.AppError("runtime.busy");
     if (execution === null || execution.cancellation !== undefined) return this.ack();
-    const average = this.token_speed.finish_round(performance.now());
-    this.token_speed_snapshot = null;
-    this.cancel_execution(chat, execution, "user", average);
+    this.cancel_execution(chat, execution, "user");
     return this.ack();
   }
   /** 空闲重置也占用 Agent 租约，防止清理与其他运行重叠。 */
@@ -768,96 +794,102 @@ export class AgentService {
     await this.transition(() => this.close_chat("shutdown"));
   }
 
-  /** 每次运行只有一个控制器和租约，迟到操作依执行对象身份失效。 */
-  private begin_execution(commandId?: string): AgentExecution {
+  /** 一次运行持有全局租约，队列接续只替换轮次执行身份。 */
+  private begin_run(commandId?: string): AgentRun {
     const chat = this.require_chat();
     chat.assert_usable();
     const lease = this.runtime_gate.begin_runtime("agent");
-    const execution = chat.begin_execution(lease, commandId);
-    this.execution = execution;
-    return execution;
+    const run = {
+      execution: chat.begin_execution(lease, commandId),
+      settlement: null,
+      interrupt: null,
+    };
+    this.run = run;
+    return run;
   }
-  /** 区分命令受理与后台结算，受理失败只释放尚未转交的租约。 */
+  /** 命令在受理后返回，运行结算覆盖预检、后台执行和清理。 */
   private async accept(
-    execution: AgentExecution,
-    operation: () => Promise<void>,
-    releaseOnFailure = true,
+    run: AgentRun,
+    prepare: () => Promise<AgentWork | void>,
   ): Promise<AgentCommandAck> {
     const chat = this.require_chat();
-    const acceptance = operation();
+    const execution = run.execution;
+    const acceptance = prepare();
     execution.acceptance = acceptance;
+    // 关闭入口从预检起就等待同一次结算，避免与预检失败同时清理会话。
+    const settlement = acceptance.then(
+      (work) => {
+        execution.acceptance = null;
+        return work === undefined ? this.finish_run(chat, run, []) : this.run_work(chat, run, work);
+      },
+      () => {
+        execution.acceptance = null;
+        return this.finish_run(chat, run, [], true);
+      },
+    );
+    run.settlement = settlement;
+    void settlement.catch(() => undefined); // 命令或后台运行负责报告对应阶段的故障。
+
+    let work: AgentWork | void;
     try {
-      await acceptance;
-      await chat.flush();
-      chat.assert_usable();
-      return this.ack();
+      work = await acceptance;
     } catch (error) {
-      if (releaseOnFailure && execution.settlement === null) {
-        const errors: unknown[] = [error];
-        try {
-          if (!chat.sealed) {
-            await chat.cancel_inputs(execution);
-            await chat.change_queue((queue) => queue.pause());
-          }
-        } catch (cleanup) {
-          errors.push(cleanup);
-        }
-        await this.finish_execution(chat, execution, errors);
+      try {
+        await settlement;
+      } catch (cleanup) {
+        throw new AggregateError([error, cleanup], "Agent input preparation and cleanup failed", {
+          cause: error,
+        });
       }
       throw error;
-    } finally {
-      if (execution.acceptance === acceptance) execution.acceptance = null;
+    }
+    if (work === undefined) await settlement;
+    await chat.flush();
+    chat.assert_usable();
+    return this.ack();
+  }
+  /** 后台执行与取消共用收尾，清理故障由拥有者记录。 */
+  private async run_work(chat: AgentChat, run: AgentRun, work: AgentWork): Promise<void> {
+    const errors: unknown[] = [];
+    try {
+      await work();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      await this.finish_run(chat, run, errors);
+    } catch (error) {
+      const cancellation = await run.execution.cancellation?.catch((cause: unknown) => cause);
+      if (cancellation !== error) {
+        chat.log.report_failure("cleanup", error);
+        chat.log.flush();
+      }
+      throw error;
     }
   }
-  /** 后台结算统一等待受理与取消收尾，保存终态后释放原执行的租约。 */
-  private launch(chat: AgentChat, execution: AgentExecution, operation: () => Promise<void>): void {
-    const settlement = (async () => {
-      const errors: unknown[] = [];
-      try {
-        await operation();
-      } catch (error) {
-        errors.push(error);
-      }
-      await this.finish_execution(chat, execution, errors);
-    })();
-    execution.settlement = settlement;
-    void settlement.catch(async (error) => {
-      // 取消 Promise 的拥有者已记录其失败，等待者只传播同一错误。
-      if (execution.cancellation !== undefined) {
-        try {
-          await execution.cancellation;
-        } catch (cause) {
-          if (cause === error) return;
-        }
-      }
-      chat.log.report_failure("cleanup", error);
-      chat.log.flush();
-    });
-  }
   /** 受理和后台执行共用退出边界，清理错误附加到首个故障，副作用退出后才释放租约。 */
-  private async finish_execution(
+  private async finish_run(
     chat: AgentChat,
-    execution: AgentExecution,
+    run: AgentRun,
     errors: unknown[],
+    pause = errors.length > 0,
   ): Promise<void> {
+    const execution = run.execution;
     try {
-      await execution.acceptance?.catch(() => undefined); // 受理错误由原命令负责报告。
+      await run.interrupt?.reservation.catch(() => undefined); // 等待占用事务退出，避免迟到提交。
+      await execution.cancellation?.catch((error) => errors.push(error));
       try {
-        await execution.cancellation;
-        if (!chat.sealed) await chat.flush();
+        if (!chat.sealed) {
+          if (execution.controller.signal.aborted || pause) await this.pause_queue(chat);
+          else await chat.flush();
+        }
       } catch (error) {
         errors.push(error);
-      } finally {
-        if (chat.sealed) {
-          try {
-            await chat.close();
-          } catch (error) {
-            errors.push(error);
-          }
-        }
       }
+      if (chat.sealed) await chat.close().catch((error) => errors.push(error));
     } finally {
-      this.release(execution);
+      run.interrupt?.accepted.reject(errors[0] ?? new AppErrors.AppError("runtime.cancelled"));
+      this.release(run);
     }
     const failures = [...new Set(errors)];
     if (failures.length === 1) throw failures[0];
@@ -867,26 +899,30 @@ export class AgentService {
       });
   }
 
-  /** 附件与模型预检成功后才受理轮次，失败时保留待发送草稿。 */
-  private async accept_round(
+  /** 首条输入受理后返回调度循环，由运行拥有者负责启动。 */
+  private async prepare_run(
+    chat: AgentChat,
+    run: AgentRun,
+    message: AgentMessageInput,
+    options?: AgentSubmitOptions,
+  ): Promise<AgentWork> {
+    const accepted = await this.prepare_round(chat, run.execution, message, options);
+    return () => this.drive(chat, run, accepted);
+  }
+
+  /** 显式发送与队列接续共用附件、模型准备和 SDK 受理。 */
+  private async prepare_round(
+    chat: AgentChat,
     execution: AgentExecution,
     message: AgentMessageInput,
-    queuedId?: string,
-    change?: (state: AgentChatData) => void,
-  ): Promise<void> {
-    if (queuedId !== undefined)
-      await this.require_chat().change_queue((queue) => queue.begin_send(queuedId));
+    options?: AgentSubmitOptions,
+  ): ReturnType<AgentChat["submit"]> {
     this.require_resources();
-    const chat = this.require_chat();
     await this.skills.refresh();
     const prepared = await this.prepare_message(message);
     this.assert_execution(execution);
     await this.update_model(chat, execution);
-    const accepted = await this.submit_round(chat, execution, message, prepared, {
-      queuedId,
-      change,
-    });
-    this.launch(chat, execution, () => this.drive(chat, execution, accepted));
+    return this.submit_round(chat, execution, message, prepared, options);
   }
 
   /** 显式发送、修订与 FIFO 共用轮次初始化，速度与恢复额度随新轮次重置。 */
@@ -898,20 +934,21 @@ export class AgentService {
     options: AgentSubmitOptions = {},
   ): ReturnType<AgentChat["submit"]> {
     execution.phase = "running";
-    execution.batchStopped = false;
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
     return chat.submit(message, prepared, execution, "round", options);
   }
-  /** 串行结算轮次并续取 FIFO，失败暂停队列，后台结算统一收尾。 */
+  /** 结算当前轮次后才安排下一轮，连续失败只自动接续一次。 */
   private async drive(
     chat: AgentChat,
-    execution: AgentExecution,
+    run: AgentRun,
     initial: Awaited<ReturnType<AgentChat["submit"]>>,
   ): Promise<void> {
     let accepted = initial;
+    let following_failure = false;
     for (;;) {
+      const execution = run.execution;
       let status: AgentLogStatus = "success";
       let failure: unknown;
       try {
@@ -931,48 +968,64 @@ export class AgentService {
             ? {}
             : { error: failure }),
       });
-      if (chat.sealed) {
-        await chat.close();
-        break;
-      }
-      if (execution.controller.signal.aborted) {
-        // 真实故障先封口，取消清理只结算仍在运行的轮次。
-        if (status === "error") await chat.finish_round(execution, status, null);
-        break;
-      }
-      const success = status === "success";
-      await chat.finish_round(
-        execution,
-        success ? "success" : "error",
-        this.token_speed.finish_round(performance.now()),
-      );
+      if (chat.sealed) return;
+      await chat.finish_round(execution, status, this.token_speed.finish_round(performance.now()));
       this.token_speed_snapshot = null;
-      await chat.cancel_inputs(execution);
-      if (!success) {
-        await chat.change_queue((queue) => queue.pause());
-        break;
+
+      const interrupt = run.interrupt;
+      const selected = interrupt === null ? null : await interrupt.reservation.catch(() => null);
+      await execution.cancellation;
+      if (this.chat !== chat) return;
+      if (selected === null && status === "error" && following_failure) {
+        await this.pause_queue(chat);
+        return;
       }
-      const next = chat.queue.read_next();
-      if (next === null) break;
-      execution.phase = "preparing";
-      await chat.change_queue((queue) => queue.begin_send(next.id));
+      const next =
+        selected ??
+        (!execution.controller.signal.aborted && chat.queue.has_items && !chat.queue.is_paused
+          ? await chat.change_queue((queue) => queue.begin_next())
+          : null);
+      if (
+        next === null ||
+        this.chat !== chat ||
+        (execution.controller.signal.aborted && execution.stop_reason !== "queue_send")
+      )
+        return;
+
+      const following = chat.begin_execution(
+        execution.lease,
+        selected === null ? undefined : interrupt?.commandId,
+      );
+      run.execution = following;
+      this.publish_snapshot();
+      const acceptance = this.prepare_round(chat, following, next, { queuedId: next.id });
+      following.acceptance = acceptance;
       try {
-        await this.update_model(chat, execution);
-        const prepared = await this.prepare_message(next);
-        this.assert_execution(execution);
-        accepted = await this.submit_round(chat, execution, next, prepared, { queuedId: next.id });
+        accepted = await acceptance;
+        if (selected !== null) {
+          run.interrupt = null;
+          interrupt?.accepted.resolve();
+        }
       } catch (error) {
-        if (chat.sealed) await chat.close();
-        else
-          await chat.change_queue((queue) => {
-            queue.cancel_send();
-            queue.pause();
-          });
-        if (!is_agent_cancellation(error, execution.controller.signal))
-          chat.log.report_failure("input_prepare", error);
-        break;
+        if (is_agent_cancellation(error, following.controller.signal)) return;
+        if (!chat.sealed) await this.pause_queue(chat);
+        if (selected !== null) interrupt?.accepted.reject(error);
+        else chat.log.report_failure("input_prepare", error);
+        return;
+      } finally {
+        following.acceptance = null;
       }
+      this.publish_snapshot();
+      following_failure = selected === null && status === "error";
     }
+  }
+
+  /** 一次提交归还占用并暂停队列，保证重连读取同一份清理结果。 */
+  private pause_queue(chat: AgentChat): Promise<void> {
+    return chat.change_queue((queue) => {
+      queue.cancel_send();
+      queue.pause();
+    });
   }
   /** 已存在的会话在配置前检查认证，失败保留原有历史。 */
   private async update_model(chat: AgentChat, execution: AgentExecution): Promise<void> {
@@ -1249,23 +1302,29 @@ export class AgentService {
     this.publish_snapshot();
     return { revision: this.revision };
   }
-  /** 即时发送同时受用户决定、产品阶段与全局运行占用约束。 */
+  /** 只有可停止的产品轮次接受插队，空闲时发送仍受全局租约约束。 */
   private can_send_now(): boolean {
+    const chat = this.chat;
+    if (chat === null || chat.sealed || this.decisions.has_pending) return false;
+    const run = this.run;
+    if (run === null) return this.runtime_gate.get_snapshot().owner === null;
+    const execution = run.execution;
     return (
-      this.chat?.sealed !== true &&
-      !this.decisions.has_pending &&
-      (this.execution === null
-        ? this.runtime_gate.get_snapshot().owner === null
-        : this.chat?.can_steer === true)
+      chat.can_stop &&
+      run.interrupt === null &&
+      execution.roundId !== null &&
+      execution.acceptance === null &&
+      !execution.controller.signal.aborted &&
+      execution.phase !== "preparing" &&
+      execution.phase !== "settling"
     );
   }
-  /** 旧执行只释放自己的租约，当前身份匹配时才清空会话运行态。 */
-  private release(execution: AgentExecution): void {
-    if (this.execution === execution) {
-      this.execution = null;
-      if (this.chat?.execution === execution) this.chat.execution = null;
-    }
-    this.runtime_gate.finish_runtime(execution.lease);
+  /** 只有当前调度循环可以释放租约，迟到的清理不能影响下一次运行。 */
+  private release(run: AgentRun): void {
+    if (this.run !== run) return;
+    this.run = null;
+    if (this.chat?.execution === run.execution) this.chat.execution = null;
+    this.runtime_gate.finish_runtime(run.execution.lease);
     this.publish_snapshot();
   }
   /** 命令和工程生命周期共用关闭屏障。所有权切换只在旧使用者收尾后发生。 */
@@ -1306,8 +1365,7 @@ export class AgentService {
       await this.transition(async () => {
         const previous = current();
         if (!previous.sealed) return; // 并发命令排入屏障后可能已由前一个命令完成恢复。
-        await this.execution?.acceptance?.catch(() => undefined); // 原命令负责报告受理错误。
-        await this.execution?.settlement?.catch(() => undefined); // 后台结算已记录诊断。
+        await this.run?.settlement?.catch(() => undefined); // 后台结算已记录诊断。
         current();
         await previous.close();
         current();
@@ -1352,9 +1410,10 @@ export class AgentService {
   /** 关闭保存事实并释放资源。目录删除只由显式重置和数量清理负责。 */
   private async close_chat(reason: AgentStopReason): Promise<void> {
     const chat = this.chat;
-    const execution = this.execution;
+    const run = this.run;
+    const execution = run?.execution;
     const store = this.store;
-    if (execution !== null) this.cancel_execution(chat, execution, reason, null);
+    if (execution !== undefined) this.cancel_execution(chat, execution, reason);
     this.chat = null;
     this.images.clear();
     this.workspace.cancel_uploads();
@@ -1364,13 +1423,7 @@ export class AgentService {
     this.token_speed_snapshot = null;
     try {
       try {
-        await execution?.acceptance?.catch(() => undefined); // 受理失败由命令报告，关闭继续收尾。
-        const results = await Promise.allSettled([execution?.cancellation, execution?.settlement]);
-        const errors = results.flatMap((result) =>
-          result.status === "rejected" ? [result.reason] : [],
-        );
-        if (errors.length > 0)
-          throw new AggregateError(errors, "Agent execution cleanup failed", { cause: errors[0] });
+        await run?.settlement;
       } finally {
         try {
           await chat?.close();
@@ -1379,7 +1432,6 @@ export class AgentService {
         }
       }
     } finally {
-      if (execution !== null) this.release(execution);
       this.store = null;
       this.chat_id = AGENT_INACTIVE_CHAT_ID;
       await store?.close();
@@ -1436,20 +1488,22 @@ export class AgentService {
     chat: AgentChat | null,
     execution: AgentExecution,
     reason: AgentStopReason,
-    average: number | null,
   ): void {
     if (execution.stop_reason !== null) return;
     execution.stop_reason = reason;
     chat?.log.request_stop(reason);
+    this.token_speed.finish_round(performance.now());
+    this.token_speed_snapshot = null;
     execution.controller.abort();
     this.decisions.reset();
     if (chat !== null) {
-      execution.cancellation = chat.stop(execution, average);
+      execution.cancellation = chat.stop();
       void execution.cancellation.catch((error) => {
         chat.log.report_failure("cleanup", error);
         chat.log.flush();
       });
     }
+    this.publish_snapshot();
   }
   /** 隐藏继续消息采用当前应用语言。 */
   private read_continue_text(): string {

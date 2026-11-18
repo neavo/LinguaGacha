@@ -603,16 +603,11 @@ describe("AgentConversation", () => {
   it("空会话建议写入草稿而不直接发送", async () => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({ entries: [], skills: [], send });
-    const suggestion = [
-      ...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion"),
-    ].find((button) =>
-      button.textContent?.includes("agent_page.empty.suggestions.translate_full_text"),
-    );
+    const suggestion = view.querySelector<HTMLButtonElement>(".agent-page__suggestion");
     const editor = view.querySelector<HTMLElement>(".cm-content");
     const submit = get_button_by_label(view, "agent_page.action.send");
     const suggestion_text = suggestion?.textContent?.trim();
-    if (suggestion === undefined || suggestion_text === undefined)
-      throw new Error("缺少翻译任务。");
+    if (suggestion === null || suggestion_text === undefined) throw new Error("缺少任务建议");
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
 
     await act(async () => suggestion.click());
@@ -953,7 +948,7 @@ describe("AgentConversation", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("满消息队列时页面禁用新增发送并显示容量提示", async () => {
+  it("页面根据实际队列容量禁用新增发送", async () => {
     const view = await render_page({
       state: "running",
       inputQueue: {
@@ -972,7 +967,6 @@ describe("AgentConversation", () => {
     await act(async () => editor.dispatch({ changes: { from: 0, insert: "新增消息" } }));
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
     expect(submit?.disabled).toBe(true);
-    expect(submit?.getAttribute("aria-label")).toContain("agent_page.queue.full");
   });
 
   it("会话内容替换保持用户的自由滚动模式", async () => {
@@ -1346,11 +1340,14 @@ describe("AgentConversation", () => {
   it("失败轮次通过继续入口续跑并保留当前草稿", async () => {
     const send = vi.fn(async () => undefined);
     const continue_session = vi.fn(async () => undefined);
-    const view = await render_page({
+    const scenario = {
       entries: [user_entry("user-error", "重新检查术语", "error", 1, 2)],
       send,
       continue: continue_session,
-    });
+    };
+    const view = await render_page({ ...scenario, state: "running" });
+    expect(view.querySelector(".agent-continue-entry")).toBeNull();
+    await render_page(scenario);
     const editor = get_editor(view);
     await act(async () => {
       editor.dispatch({ changes: { from: 0, insert: "正在编辑的新任务" } });

@@ -149,7 +149,7 @@ export type AgentQueuedInput = AgentMessageInput & {
   createdAt: number;
 };
 
-/** paused 只阻止自动续取。canSendNow 表示当前运行时已经到达 Pi 可 `steer` 的阶段。 */
+/** paused 阻止自动续取，canSendNow 表示当前允许直接发送或停止当前轮次后发送。 */
 export type AgentInputQueueSnapshot = JsonRecord & {
   paused: boolean;
   canSendNow: boolean;

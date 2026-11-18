@@ -713,16 +713,14 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               compact_available={compact_available}
               on_compact={compact_context}
               follow_reset_revision={follow_reset_revision}
-              on_continue={continue_latest_round}
+              on_continue={is_running || compacting ? undefined : continue_latest_round}
               on_edit={start_edit}
               render_entry_editor={render_entry_editor}
               on_add_annotation={add_response_annotation}
               on_fork={set_fork_round_id}
               fork_disabled={history_disabled}
               revision_disabled={history_disabled}
-              continue_disabled={
-                controls.command !== null || is_running || compacting || unavailable_reason !== null
-              }
+              continue_disabled={controls.command !== null || unavailable_reason !== null}
               annotation_disabled={
                 controls.command !== null ||
                 active_inline_edit !== null ||
@@ -749,8 +747,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                   disabled={
                     controls.command !== null ||
                     active_inline_edit !== null ||
-                    unavailable_reason !== null ||
-                    compacting
+                    unavailable_reason !== null
                   }
                   active_edit_item_id={
                     active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null

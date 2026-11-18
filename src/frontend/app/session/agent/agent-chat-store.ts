@@ -123,7 +123,6 @@ type PendingInputCommand = {
 
 type StoreSlice = "speed" | "run_output" | "controls" | "queue" | "skills" | "input" | "countdown";
 type Listener = () => void;
-type CommandEventQueue = { base_revision: number; events: AgentChatEvent[] };
 
 const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
@@ -157,7 +156,6 @@ export class AgentChatStore {
   private event_source: EventSource | null = null;
   private restoring_generation: number | null = null; // 同一连接世代只允许一个 `snapshot` 恢复请求
   private pending_events: AgentChatEvent[] = []; // `snapshot` 期间暂存，成功后按 `revision` 重放
-  private command_events: CommandEventQueue | null = null;
   private readonly draft = new AgentInputDraft();
   private input_history: string[];
   private pending_input: PendingInputCommand | null;
@@ -372,15 +370,13 @@ export class AgentChatStore {
     );
   }
 
-  /** 按连接世代接收事件，命令与恢复期间暂存，缺口触发快照恢复。 */
+  /** 按修订实时接收事件，只在快照恢复期间暂存。 */
   private receive_message(message: MessageEvent<string>, generation: number): void {
     if (!this.is_current(generation)) return;
     try {
       const event = normalize_agent_event(JSON.parse(message.data) as unknown);
       if (event === null) return;
-      if (this.command_events !== null) {
-        this.command_events.events.push(event);
-      } else if (this.restoring_generation === generation) {
+      if (this.restoring_generation === generation) {
         this.pending_events.push(event);
       } else if (!this.apply_event(event)) {
         this.pending_events.push(event);
@@ -403,14 +399,19 @@ export class AgentChatStore {
     this.restoring_generation = generation;
     this.sync_countdown();
     try {
-      const snapshot = normalize_snapshot(await api_get<AgentChatSnapshot>("/api/agent/snapshot"));
-      if (!this.is_current(generation)) return;
-      this.apply_snapshot(snapshot);
-      const events = this.pending_events
-        .splice(0)
-        .sort((left, right) => left.revision - right.revision);
-      if (!this.apply_events(events)) {
-        throw new TypeError("Agent chat event revision gap remains after snapshot recovery.");
+      try {
+        const snapshot = normalize_snapshot(
+          await api_get<AgentChatSnapshot>("/api/agent/snapshot"),
+        );
+        if (!this.is_current(generation)) return;
+        this.apply_snapshot(snapshot);
+        // 同一 SSE 连接按发送顺序交付，修订缺口仍由投影检查。
+        if (!this.apply_events(this.pending_events.splice(0))) {
+          throw new TypeError("Agent chat event revision gap remains after snapshot recovery.");
+        }
+      } finally {
+        // 快照已接回事件流，命令状态核对期间仍可应用新事件。
+        if (this.restoring_generation === generation) this.restoring_generation = null;
       }
       await this.reconcile_input();
       if (!this.is_current(generation)) return;
@@ -422,7 +423,6 @@ export class AgentChatStore {
         this.set_transport_failure();
       }
     } finally {
-      if (this.restoring_generation === generation) this.restoring_generation = null;
       this.sync_countdown();
     }
   }
@@ -566,48 +566,17 @@ export class AgentChatStore {
     }
   }
 
-  /** 同步占用唯一命令槽，并记录受理期间的事件基线。 */
-  private begin_command(command: Exclude<AgentCommand, null>): CommandEventQueue | null {
-    if (this.command_events !== null) return null;
-    const queue = { base_revision: this.revision, events: [] };
-    this.command_events = queue;
-    this.set_controls({ command });
-    return queue;
-  }
-
-  /** 先重放命令期事件，再用 ack 判断是否需要补取权威快照。 */
-  private async finish_command(
-    queue: CommandEventQueue,
-    acknowledgement?: AgentCommandAck,
-  ): Promise<void> {
-    if (this.command_events !== queue) return;
-    this.command_events = null;
-    const events = queue.events.sort((left, right) => left.revision - right.revision);
-    const continuous = this.apply_events(events);
-    const acknowledgement_valid =
-      acknowledgement === undefined || acknowledgement.revision >= queue.base_revision;
-    const acknowledgement_reached =
-      acknowledgement === undefined || acknowledgement.revision <= this.revision;
-    if (!continuous || !acknowledgement_reached) {
-      this.pending_events.push(...events.filter((event) => event.revision > this.revision));
-      await this.restore_snapshot(this.connection_generation);
-    }
-    if (!acknowledgement_valid) throw new TypeError("Agent command acknowledgement is stale.");
-  }
-
-  /** 统一命令占用、ack 校验与失败收尾。 */
+  /** 命令槽只负责串行提交，回执用于核对事件投影是否追上后端。 */
   private async execute_command(
     command: Exclude<AgentCommand, null>,
     request: () => Promise<AgentCommandAck>,
   ): Promise<void> {
-    const queue = this.begin_command(command);
-    if (queue === null) return;
+    if (this.controls.command !== null) return;
+    this.set_controls({ command });
     try {
       const acknowledgement = normalize_acknowledgement(await request());
-      await this.finish_command(queue, acknowledgement);
-    } catch (error) {
-      await this.finish_command(queue);
-      throw error;
+      if (acknowledgement.revision > this.revision)
+        await this.restore_snapshot(this.connection_generation);
     } finally {
       this.set_controls({ command: null });
     }
@@ -859,7 +828,7 @@ export class AgentChatStore {
     id: string,
     request: () => Promise<AgentCommandAck>,
   ): Promise<void> {
-    if (this.command_events !== null || this.controls.transport !== "ready") return;
+    if (this.controls.command !== null || this.controls.transport !== "ready") return;
     this.countdown.stop(id);
     try {
       await this.execute_command("decision", request);

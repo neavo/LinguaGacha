@@ -134,8 +134,12 @@ export class AgentChatView {
   }
 
   /** 分支切换或补读历史时重建索引，其余提交增量更新。 */
-  public refresh(conversationId: number, state: Readonly<AgentChatData>, restored = false): void {
-    if (restored || conversationId !== this.conversationId) {
+  public refresh(
+    conversationId: number,
+    state: Readonly<AgentChatData>,
+    mode?: "restore" | "stopping",
+  ): void {
+    if (mode === "restore" || conversationId !== this.conversationId) {
       this.conversationId = conversationId;
       this.bounds.clear();
       let record = this.conversations.get(conversationId);
@@ -187,7 +191,8 @@ export class AgentChatView {
         const task = this.compactions.get(id)!;
         if (this.visible(task.conversationId, id)) this.read_task(task);
       }
-      if (this.liveChanged || previous.rounds !== state.rounds) this.read_live(this.live);
+      if (this.liveChanged || previous.rounds !== state.rounds)
+        this.read_live(this.live, mode === "stopping");
     }
     for (const [id, state] of this.pendingUsages) {
       const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -429,7 +434,9 @@ export class AgentChatView {
   }
 
   /** 流式正文沿用任务身份，正式条目以 SDK 排序身份接替临时位置。 */
-  private read_live(live: Readonly<LiveState>): void {
+  private read_live(live: Readonly<LiveState>, stopping = false): void {
+    // 停止后冻结临时正文，SDK 最终回执仍可替换或撤回该条目。
+    if (stopping && live.generation !== undefined) return;
     const message = live.generation?.message as AssistantMessage | undefined;
     const parts = message === undefined ? null : project_assistant_message_parts(message);
     const nextId =
