@@ -1,24 +1,16 @@
 import {
   IMAGE_TEXT_RULES as RULES,
   image_text_color,
-  image_text_stroke_width,
   type ImageTextPage,
   type ImageTextPaint,
 } from "../shared/image-text";
-import { plan_image_text } from "./image-text-plan";
 
 /** renderer 依次请求视口和透明截图，main 负责实际捕获。 */
 export type ImageTextRenderStep =
   | { kind: "capture"; rect: { x: number; y: number; width: number; height: number } }
   | { kind: "resize"; width: number; height: number };
 
-/** helper 输出 little-endian Float32 距离场，浏览器按原字节读取。 */
-function decode_distance(value: string): Float32Array {
-  const bytes = Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
-  return new Float32Array(bytes.buffer);
-}
-
-/** 将原生截图解码到一比一像素画布，供最终距离门禁读取 alpha。 */
+/** 将原生截图解码到一比一像素画布，确认捕获确实包含文字。 */
 async function decode(png: string, width: number, height: number) {
   const image = new Image();
   image.src = "data:image/png;base64," + png;
@@ -33,7 +25,7 @@ async function decode(png: string, width: number, height: number) {
   return context;
 }
 
-/** Chromium 绘制排版方案，原图坐标的距离场验收最终像素。 */
+/** Chromium 负责换行、书写方向与字形回退。应用只拟合矩形。 */
 export async function* render_page(
   page: ImageTextPage,
   fontCss: string,
@@ -41,76 +33,77 @@ export async function* render_page(
   const style = document.createElement("style");
   style.textContent =
     fontCss +
-    "html,body{margin:0;background:transparent}*{box-sizing:border-box}body{overflow:hidden}";
+    `
+    html, body { margin: 0; background: transparent; }
+    * { box-sizing: border-box; }
+    .box { display: flex; flex-direction: column; justify-content: center; }
+    .text {
+      flex: none; inline-size: 100%;
+      white-space: pre-wrap; overflow-wrap: anywhere; text-align: center;
+      font-family: ImageText; font-synthesis: none;
+      paint-order: stroke fill;
+    }
+  `;
   document.head.replaceChildren(style);
-  // 同一页共用一个字体文件，Chromium 负责缺字回退。
   if (!(await document.fonts.load("16px ImageText")).length)
     throw new Error("Image text font unavailable");
+
   const output: ImageTextPaint[] = [];
   for (const region of page.regions) {
-    const distance = decode_distance(region.distance);
-    const workingDistance = region.alignment
-      ? decode_distance(region.alignment.distance)
-      : distance;
-    const planned = plan_image_text(region, workingDistance);
-    if (!planned) {
+    const [, , width, height] = region.box;
+    const root = document.createElement("div");
+    root.className = "box";
+    root.style.width = width + "px";
+    root.style.height = height + "px";
+    root.style.writingMode = region.direction;
+    root.style.padding = Math.min(width, height) > 2 ? "1px" : "0";
+    const element = document.createElement("div");
+    element.className = "text";
+    element.textContent = region.text;
+    const color = image_text_color(region.backgroundColor);
+    element.style.color = color;
+    element.style.lineHeight = String(RULES.lineHeight);
+    element.style.setProperty(
+      "-webkit-text-stroke",
+      "0.5px " + (color === "black" ? "white" : "black"),
+    );
+    root.append(element);
+    document.body.replaceChildren(root);
+    yield { kind: "resize", width, height };
+
+    let low = 1;
+    let high = Math.max(low, Math.floor(Math.min(width, height) / 3));
+    let size = 0;
+    const bounds = root.getBoundingClientRect();
+    const content = document.createRange();
+    content.selectNodeContents(element);
+    while (low <= high) {
+      const trial = Math.floor((low + high) / 2);
+      element.style.fontSize = trial + "px";
+      const fits = Array.from(content.getClientRects()).every(
+        (rect) =>
+          rect.left >= bounds.left &&
+          rect.right <= bounds.right &&
+          rect.top >= bounds.top &&
+          rect.bottom <= bounds.bottom,
+      );
+      if (fits) {
+        size = trial;
+        low = trial + 1;
+      } else high = trial - 1;
+    }
+    if (!size) {
       output.push({ regionId: region.regionId, png: null });
       continue;
     }
-    const [, , width, height] = region.box;
-    const [workingWidth, workingHeight] = region.alignment?.size ?? [width, height];
-    const root = document.createElement("div");
-    root.style.cssText =
-      "position:relative;width:" + workingWidth + "px;height:" + workingHeight + "px";
-    if (region.alignment) {
-      root.style.transformOrigin = "0 0";
-      root.style.transform = "matrix(" + region.alignment.transform.join(",") + ")";
-    }
-    const ink = image_text_color(region.backgroundColor);
-    const stroke = ink === "black" ? "white" : "black";
-    const strokeWidth = image_text_stroke_width(planned.fontSize);
-    for (const line of planned.lines) {
-      const element = document.createElement("span");
-      element.textContent = line.text;
-      element.style.cssText =
-        "position:absolute;font-family:ImageText;font-size:" +
-        planned.fontSize +
-        "px;" +
-        "font-synthesis:none;line-height:1;white-space:pre;writing-mode:" +
-        region.direction +
-        ";" +
-        "color:" +
-        ink +
-        ";-webkit-text-stroke:" +
-        strokeWidth +
-        "px " +
-        stroke +
-        ";paint-order:stroke fill;";
-      if (region.direction === "vertical-rl") {
-        element.style.left = workingWidth - line.slot.blockStart - planned.fontSize + "px";
-        element.style.top = line.inlineStart + "px";
-      } else {
-        element.style.left = line.inlineStart + "px";
-        element.style.top = line.slot.blockStart + "px";
-      }
-      root.append(element);
-    }
-    document.body.replaceChildren(root);
-    yield { kind: "resize", width, height };
+
+    element.style.fontSize = size + "px";
     const png = yield { kind: "capture", rect: { x: 0, y: 0, width, height } };
     if (!png) throw new Error("Missing native text screenshot");
     const context = await decode(png, width, height);
-    const pixels = context.getImageData(0, 0, width, height);
-    let fits = false; // 完全透明的截图也不可用于覆盖原文。
-    for (let index = 0; index < width * height; index++) {
-      if (!pixels.data[index * 4 + 3]) continue;
-      fits = distance[index]! >= RULES.squareDistanceCorrection;
-      if (!fits) break;
-    }
-    output.push({
-      regionId: region.regionId,
-      png: fits ? png : null,
-    });
+    const { data } = context.getImageData(0, 0, width, height);
+    const visible = data.some((value, index) => index % 4 === 3 && value !== 0);
+    output.push({ regionId: region.regionId, png: visible ? png : null });
   }
   return output;
 }

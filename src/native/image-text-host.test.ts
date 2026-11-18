@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { build } from "vite";
 import { expect, inject, it } from "vitest";
 
-it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
+it("真实 Chromium 在矩形内绘字并正确处理取消", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lg-image-text-host-"));
   try {
     await build({
@@ -45,11 +45,8 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
           workspaceRuntimeDirectory: inject("workspaceRuntimeDirectory"),
         })});
         try {
-          function page(direction, text, color = [255,255,255], width = 64, height = 76,
-            distanceAt = (x,y) => Math.min(x+1,y+1,width-x,height-y)) {
-            const distance = Buffer.alloc(width*height*4);
-            for(let y=0;y<height;y++)for(let x=0;x<width;x++)distance.writeFloatLE(distanceAt(x,y),(y*width+x)*4);
-            const region={regionId:'r1',text,direction,kind:'bubble',backgroundColor:color,box:[0,0,width,height],distance:distance.toString('base64'),sourceLines:[]};
+          function page(direction, text, color = [255,255,255], width = 64, height = 76) {
+            const region={regionId:'r1',text,direction,backgroundColor:color,box:[0,0,width,height]};
             return {kind:'render_image_text_page',page:{pageId:'p1',regions:[region]}};
           }
           const samples = [
@@ -59,26 +56,20 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
             page('vertical-rl','これで春からまた一緒だね!!', [255,255,255], 44, 86),
             page('horizontal-tb','LongWordWithoutSpaces0123456789 中文「A12」 café'),
             page('horizontal-tb','abc 12 \\u202EABC\\u202C 中文'),
-            // 应用字体缺少字形时沿用 Chromium 系统字体回退，并继续执行最终像素门禁。
+            // 应用字体缺少字形时沿用 Chromium 系统字体回退。
             page('horizontal-tb','A😀中文'),
+            page('horizontal-tb','看见', [255,255,255], 150, 120),
           ];
           let rejectNextCapture=false;
-          let layouts;
           app.on('web-contents-created',(_event,contents)=>{
             const send=contents.debugger.sendCommand.bind(contents.debugger);
             contents.debugger.sendCommand=async (...args)=>{
               const result=await send(...args);
-              if(args[0]==='Page.captureScreenshot' && layouts){
-                layouts.push(await contents.executeJavaScript(
-                  'Array.from(document.querySelectorAll("span"), line => ({ text: line.textContent, size: parseFloat(line.style.fontSize), top: parseFloat(line.style.top) }))'
-                ));
-              }
               if(args[0]==='Page.captureScreenshot' && rejectNextCapture){
                 rejectNextCapture=false;
                 const raster=nativeImage.createFromDataURL('data:image/png;base64,'+result.data);
-                const bitmap=raster.toBitmap();
-                bitmap[3]=255; // 左上角墨迹落在安全区域之外。
-                result.data=nativeImage.createFromBitmap(bitmap,raster.getSize()).toPNG().toString('base64');
+                const {width,height}=raster.getSize();
+                result.data=nativeImage.createFromBitmap(Buffer.alloc(width*height*4),{width,height}).toPNG().toString('base64');
               }
               return result;
             };
@@ -91,35 +82,22 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
             const report=${JSON.stringify(report)};
             if(report) await fs.writeFile(report+'/sample-'+index+'.png',Buffer.from(paint.png,'base64'));
           }
-          const text = '桃色吐息式告白眼看做不成了';
-          const balanced = page('vertical-rl',text, [255,255,255], 42, 112).page.regions[0];
-          const largerBubble = page('vertical-rl',text, [255,255,255], 84, 224).page.regions[0];
-          largerBubble.regionId = 'large';
-          const round = page('vertical-rl','我不会因此就讨厌你的', [255,255,255], 100, 104, (x,y) => {
-            const radius = Math.hypot((x+0.5-50)/49, (y+0.5-52)/51);
-            return radius <= 1 ? Math.max(1,(1-radius)*49) : 0;
-          }).page.regions[0];
-          round.regionId = 'round';
-          layouts = [];
-          const paints = await host({ kind:'render_image_text_page', page:{ pageId:'p1', regions:[balanced, largerBubble, round] } });
-          assert(paints.every(paint => paint.png));
-          const [balancedLines, largerBubbleLines, roundLines] = layouts;
-          layouts = undefined;
-          assert.equal(balancedLines.map(line => line.text).join(''), text);
-          assert(balancedLines.length === 2 && Math.abs(balancedLines[0].text.length - balancedLines[1].text.length) <= 1,
-            'A narrow bubble should balance both columns');
-          assert(largerBubbleLines[0].size > balancedLines[0].size, 'The same translation should grow in a larger container');
-          assert(roundLines.length > 1 && roundLines[0].text.length > 1 && roundLines.at(-1).text.length > 1,
-            'An oval should avoid single-character outer columns: '+JSON.stringify(roundLines));
-          for (const lines of [balancedLines, roundLines]) {
-            assert(lines.every(line => line.top === lines[0].top), 'Columns in the same paragraph should share a top: '+JSON.stringify(lines));
+          const readable = nativeImage.createFromDataURL('data:image/png;base64,'+rasters.at(-1).png);
+          const raster = readable.toBitmap();
+          const {width,height} = readable.getSize();
+          let rowsWithInk = 0;
+          for (let y=0;y<height;y++) {
+            for (let x=0;x<width;x++) {
+              if (raster[(y*width+x)*4+3]) { rowsWithInk++; break; }
+            }
           }
+          assert(rowsWithInk >= 25, 'A large writing box should produce visibly sized lettering');
           assert.equal(BrowserWindow.getAllWindows().length,0);
           rejectNextCapture=true;
           const adjacent = structuredClone(samples[0]);
           adjacent.page.regions.push({...adjacent.page.regions[0],regionId:'r2',box:[64,0,64,76]});
-          const noRoom = page('vertical-rl','字');
-          adjacent.page.regions.push({...noRoom.page.regions[0],regionId:'r3',distance:Buffer.alloc(64*76*4).toString('base64')});
+          const noRoom = page('vertical-rl','字'.repeat(200),[255,255,255],1,1);
+          adjacent.page.regions.push({...noRoom.page.regions[0],regionId:'r3'});
           const fallback = await host(adjacent);
           assert.deepEqual(fallback.map(({regionId,png})=>[regionId,Boolean(png)]),[['r1',false],['r2',true],['r3',false]]);
           let activeDone=false;

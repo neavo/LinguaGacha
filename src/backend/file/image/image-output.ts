@@ -4,18 +4,18 @@ import type { Item } from "../../../domain/item";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../shared/agent-image";
 import { AppError } from "../../../shared/error";
 import { default_native_fs as fs } from "../../../native/native-fs";
-import type { ImageClean, ImagePage, ImageRegion } from "../../../shared/image-package";
+import type { ImagePage, ImageRegion } from "../../../shared/image-package";
 import type { ImageHelperRequest, ImagePixelHost } from "../../../shared/image-helper";
 import {
-  IMAGE_TEXT_RULES,
   normalize_image_text,
   type ImageTextHost,
   type ImageTextRegion,
 } from "../../../shared/image-text";
+import { image_metadata } from "./image-metadata";
 import { normalize_image_to_png } from "./image-pixels";
 import { build_image_text_input, type ImageTextRecord } from "./image-format";
 
-type ImageOutputReason = "layout_no_fit" | "erase_failed" | "translation_incomplete";
+type ImageOutputReason = "layout_no_fit" | "translation_incomplete" | "erase_failed";
 type ImageOutputEntry = {
   region_id: string;
   status: "success" | "failure";
@@ -26,7 +26,10 @@ export type ImageOutputAsset = {
   asset_path: string;
   files: { path: string; entries: ImageOutputEntry[] }[];
 };
-type ImageLayer = { eraseMask: string; overlay?: { box: ImageTextRegion["box"]; png: string } };
+type ImageLayer = {
+  patch: NonNullable<ImageRegion["patch"]>;
+  overlay?: { box: ImageTextRegion["box"]; png: string };
+};
 
 /** 原图输出可以是主动排除，也可以是带原因的区域回退。 */
 function entry(
@@ -96,7 +99,7 @@ export class ImageOutputService {
     const assetRoot = options.assetPath.replace(/\.image$/iu, "");
     const files = [];
     const recordsByPage = Map.groupBy(prepared.textRecords, (record) => record.pageId);
-    for (const [pageIndex, page] of prepared.book.pages.entries()) {
+    for (const page of prepared.book.pages) {
       // 附加后缀保留原扩展名，避免同名 PNG 和 JPEG 的 QA 预览冲突。
       const relativePath = options.qa ? `${page.relativePath}.webp` : page.relativePath;
       const reportPath = path.posix.join(assetRoot.replaceAll("\\", "/"), relativePath);
@@ -106,28 +109,20 @@ export class ImageOutputService {
       options.claimedPaths.add(outputKey);
 
       const work = path.join(options.outputRoot, `.image-${randomUUID()}`);
-      const staged = new Set<string>(); // QA 可复用排版已展开的区域掩码。
-      /** 包索引已校验路径和成员全集，按需展开并复用同一成员。 */
       const stage = async (member: string) => {
-        const destination = path.join(work, member);
-        if (!staged.has(member)) {
-          await fs.write_file(destination, await prepared.members.get(member)!.async("uint8array"));
-          staged.add(member);
-        }
-        return destination;
+        await fs.write_file(
+          path.join(work, member),
+          await prepared.members.get(member)!.async("uint8array"),
+        );
       };
       try {
-        const bytes = await prepared.members.get(page.original)!.async("uint8array");
-        const original = path.join(work, "original.png");
-        await fs.write_file(original, (await normalize_image_to_png(bytes)).png);
         files.push({
           path: reportPath,
           entries: await this.render_page({
             page,
-            clean: prepared.clean.pages[pageIndex]!,
             records: recordsByPage.get(page.pageId) ?? [],
             work,
-            original,
+            readOriginal: () => prepared.members.get(page.original)!.async("uint8array"),
             output: path.join(options.outputRoot, reportPath),
             qa: options.qa ?? false,
             stage,
@@ -143,52 +138,62 @@ export class ImageOutputService {
   /** 按区域生成覆盖层并交给像素 helper 合成，失败区域保留原文。 */
   private async render_page(options: {
     page: ImagePage;
-    clean: ImageClean["pages"][number];
     records: readonly ImageTextRecord[];
     work: string;
-    original: string;
+    readOriginal: () => Promise<Uint8Array>;
     output: string;
     qa: boolean;
-    stage: (member: string) => Promise<string>;
+    stage: (member: string) => Promise<void>;
   }): Promise<ImageOutputEntry[]> {
-    const { page, clean, records, work, stage } = options;
+    const { page, records, work, stage } = options;
     const recordsById = new Map(records.map((record) => [record.regionId, record]));
-    const translated: { index: number; region: ImageRegion; text: string; eraseMask: string }[] =
-      [];
-    const entries = page.regions.map((region, index) => {
+    const byId = new Map(page.regions.map((region) => [region.regionId, region]));
+    const hidden = new Set<string>();
+    const conflicts = new Set<string>();
+    for (const whole of page.regions) {
+      if (!whole.parts) continue;
+      const wholeActive = recordsById.get(whole.regionId)!.output !== "original";
+      const splitActive = whole.parts.some((id) => recordsById.get(id)!.output !== "original");
+      if (wholeActive && splitActive) conflicts.add(whole.regionId);
+      if (!wholeActive && splitActive) hidden.add(whole.regionId);
+      else for (const id of whole.parts) hidden.add(id);
+    }
+
+    const visible = page.regions.filter(({ regionId }) => !hidden.has(regionId));
+    const translated: {
+      index: number;
+      region: ImageRegion;
+      patches: ImageLayer["patch"][];
+      text: string;
+    }[] = [];
+    const entries = visible.map((region, index) => {
       const record = recordsById.get(region.regionId)!;
-      const cleanRegion = clean.regions[index]!; // 包读取器已校验同页区域顺序。
+      if (conflicts.has(region.regionId)) return entry(region.regionId, "original");
       if (record.output === "original") return entry(region.regionId, "original");
-      if (cleanRegion.status === "failed")
+      // 整泡启用时应用所有子格补丁，子格状态只决定分格版的输出。
+      const patches = region.parts?.map((id) => byId.get(id)!.patch) ?? [region.patch];
+      if (!patches.every((patch) => patch !== null))
         return entry(region.regionId, "original", "erase_failed");
       if (record.output === null)
         return entry(region.regionId, "original", "translation_incomplete");
       const text = record.text.trim() ? normalize_image_text(record.text) : "";
-      translated.push({ index, region, text, eraseMask: cleanRegion.eraseMask! });
+      translated.push({ index, region, patches, text });
       return entry(region.regionId, "translated");
     });
 
-    const toRender = translated.filter(({ text }) => text);
-    for (const { region } of toRender) await stage(region.layoutArea.path);
-    const geometry = toRender.length
-      ? await this.pixelHost("text_layout", {
-          root: work,
-          page: { ...page, regions: toRender.map(({ region }) => region) },
-          maximumBytes: IMAGE_TEXT_RULES.maximumMaterialBytes,
-        })
-      : [];
-    const geometryById = new Map(geometry.map((region) => [region.regionId, region]));
-    const regions = toRender.map(({ region, text }) => {
-      const shape = geometryById.get(region.regionId);
-      if (!shape) throw new Error("Missing image text geometry");
-      return {
-        ...shape,
-        text,
-        direction: region.direction,
-        kind: region.kind,
-        backgroundColor: region.backgroundColor,
-      };
-    });
+    const regions = translated.flatMap(({ region, text }) =>
+      text
+        ? [
+            {
+              regionId: region.regionId,
+              box: region.box,
+              direction: region.direction,
+              backgroundColor: region.backgroundColor,
+              text,
+            },
+          ]
+        : [],
+    );
     const paint = regions.length
       ? await this.textHost({
           kind: "render_image_text_page",
@@ -198,45 +203,58 @@ export class ImageOutputService {
     const paintById = new Map(paint.map(({ regionId, png }) => [regionId, png]));
     if (paint.length !== regions.length) throw new Error("Unexpected image text result count");
     const layers: ImageLayer[] = [];
-    for (const {
-      index,
-      region: { regionId },
-      text,
-      eraseMask,
-    } of translated) {
-      // 完成空正文只应用消字层，原图输出的区域不进入合成清单。
-      if (!text) layers.push({ eraseMask });
-      else {
-        const png = paintById.get(regionId);
-        if (png === undefined) throw new Error("Missing image text result region");
-        if (png === null) entries[index] = entry(regionId, "original", "layout_no_fit");
-        else layers.push({ eraseMask, overlay: { box: geometryById.get(regionId)!.box, png } });
+    for (const { index, region, patches, text } of translated) {
+      const { regionId, box } = region;
+      const png = text ? paintById.get(regionId) : null;
+      if (png === undefined) throw new Error("Missing image text result region");
+      if (text && png === null) {
+        entries[index] = entry(regionId, "original", "layout_no_fit");
+        continue;
+      }
+      for (const [index, patch] of patches.entries()) {
+        await stage(patch.path);
+        // helper 先合成全部补丁，再按区域写一次译文。
+        layers.push({
+          patch,
+          ...(png && index === patches.length - 1 ? { overlay: { box, png } } : {}),
+        });
       }
     }
+    const bytes = await options.readOriginal();
+    // 整页保留原稿时直接复用原字节，避免 JPEG 再编码。
+    if (
+      !options.qa &&
+      !layers.length &&
+      (image_metadata(bytes).extension === ".png") === /\.png$/iu.test(options.output)
+    ) {
+      await fs.write_file(options.output, bytes);
+      return entries;
+    }
+    const original = path.join(work, "original.png");
+    await fs.write_file(original, (await normalize_image_to_png(bytes)).png);
     const request: ImageHelperRequest<"text_output"> = {
       root: work,
-      original: options.original,
+      original,
       output: options.output,
     };
     if (layers.length) {
-      for (const { eraseMask } of layers) await stage(eraseMask);
       const layersPath = path.join(work, "layers.json");
       await fs.write_file(layersPath, JSON.stringify(layers)); // 位图走临时文件，避免撑大请求帧。
-      request.composition = { clean: await stage(clean.clean), layers: layersPath };
+      request.layers = layersPath;
     }
     if (options.qa) {
-      const marks = entries.flatMap((entry, index) => {
-        if (entry.status !== "failure") return [];
-        const { regionId, layoutArea } = page.regions[index]!;
+      const marks = entries.flatMap(({ reasons }, index) => {
+        if (!reasons.length) return [];
+        const { regionId, box } = visible[index]!;
+        const code = reasons[0]!.code;
         return [
           {
             regionId,
-            layoutArea: layoutArea.path,
-            incomplete: entry.reasons.some(({ code }) => code === "translation_incomplete"),
+            box,
+            warning: code === "translation_incomplete",
           },
         ];
       });
-      for (const { layoutArea } of marks) await stage(layoutArea);
       request.qa = { maxEdge: AGENT_IMAGE_MAX_EDGE, marks };
     }
     await this.pixelHost("text_output", request);

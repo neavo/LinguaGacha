@@ -184,9 +184,9 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 整册计算、设备选择、运行产物和独立验收变化运行 `agent/image/{index,engine,worker}.test.ts`。
 
-图片文本快照与输出变化运行 `file/image/{image-format,image-output}.test.ts`、生成服务测试与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。协议与取消变化运行 Backend Runtime 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
+图片文本快照与输出变化运行 `file/image/{image-format,image-output}.test.ts`、生成服务测试与 `shared/image-text.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。协议与取消变化运行 Backend Runtime 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
 
-自动消字、文字分组、图片合成、QA 标记和排版分区使用已经准备的共享 Python 环境验证，无需模型：
+候选扫描、气泡分格、消字降级、矩形边界和像素合成使用已经准备的共享 Python 环境验证，无需模型：
 
 ```powershell
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/fill.test.py

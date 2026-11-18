@@ -1,10 +1,13 @@
 import { Type, type Static, type TSchema } from "typebox";
 import { Check } from "typebox/value";
-import { IMAGE_BOOK_SCHEMA, IMAGE_CLEAN_SCHEMA, IMAGE_RECORD_SCHEMA } from "./image-package";
-import { IMAGE_TEXT_GEOMETRY_REGION_SCHEMA } from "./image-text";
+import {
+  IMAGE_BOOK_SCHEMA,
+  IMAGE_BOX_SCHEMA,
+  IMAGE_ID_SCHEMA,
+  IMAGE_RECORD_SCHEMA,
+} from "./image-package";
 
 const PAGE_SCHEMA = IMAGE_BOOK_SCHEMA.properties.pages.items;
-const CLEAN_PAGE_SCHEMA = IMAGE_CLEAN_SCHEMA.properties.pages.items;
 
 const CREATE_PAGE_SCHEMA = Type.Object(
   {
@@ -19,32 +22,63 @@ const CREATE_PAGE_SCHEMA = Type.Object(
   },
   { additionalProperties: false },
 );
-const CREATE_RESULT_SCHEMA = Type.Object(
+const SCAN_RESULT_SCHEMA = Type.Object(
   {
     pages: Type.Array(
       Type.Object(
         {
-          page: PAGE_SCHEMA,
-          records: Type.Array(IMAGE_RECORD_SCHEMA),
-          clean: CLEAN_PAGE_SCHEMA,
-          diagnostics: Type.Object(
-            {
-              preview: Type.String({ minLength: 1 }),
-              detected: Type.Integer({ minimum: 0 }),
-              regions: Type.Integer({ minimum: 0 }),
-              failures: Type.Array(
-                Type.Object(
-                  { regionId: Type.String({ minLength: 1 }), error: Type.String({ minLength: 1 }) },
-                  { additionalProperties: false },
-                ),
-              ),
-            },
-            { additionalProperties: false },
+          pageId: IMAGE_ID_SCHEMA,
+          relativePath: PAGE_SCHEMA.properties.relativePath,
+          preview: Type.String(),
+          records: Type.Array(
+            Type.Object(
+              {
+                regionId: IMAGE_ID_SCHEMA,
+                group: IMAGE_ID_SCHEMA,
+                message: IMAGE_RECORD_SCHEMA.properties.message,
+                kind: PAGE_SCHEMA.properties.regions.items.properties.kind,
+              },
+              { additionalProperties: false },
+            ),
           ),
         },
         { additionalProperties: false },
       ),
     ),
+  },
+  { additionalProperties: false },
+);
+
+const BUBBLE_GROUP_PROPERTIES = {
+  pageId: IMAGE_ID_SCHEMA,
+  group: IMAGE_ID_SCHEMA,
+};
+const BUBBLE_GROUP_SCHEMA = Type.Object(BUBBLE_GROUP_PROPERTIES, { additionalProperties: false });
+const BUBBLE_PARTITION_SCHEMA = Type.Object(
+  {
+    ...BUBBLE_GROUP_PROPERTIES,
+    parts: Type.Array(
+      Type.Object(
+        {
+          textBoxIds: Type.Array(IMAGE_ID_SCHEMA, { minItems: 1 }),
+          translate: Type.Boolean(),
+        },
+        { additionalProperties: false },
+      ),
+      { minItems: 1 },
+    ),
+  },
+  { additionalProperties: false },
+);
+export type ImageBubbleGroup = Static<typeof BUBBLE_GROUP_SCHEMA>;
+export type ImageBubblePartition = Static<typeof BUBBLE_PARTITION_SCHEMA>;
+
+const SELECTION_SCHEMA = Type.Object(
+  {
+    pageId: IMAGE_ID_SCHEMA,
+    regionId: IMAGE_ID_SCHEMA,
+    message: Type.Optional(IMAGE_RECORD_SCHEMA.properties.message),
+    contour: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
@@ -54,38 +88,66 @@ const PATH_RESULT_SCHEMA = Type.Object(
 );
 /** Python 图片 helper 的请求与结果只在这一处定义。 */
 export const IMAGE_HELPER_OPERATION_SCHEMAS = {
-  create: {
+  scan: {
     request: Type.Object(
       { pages: Type.Array(CREATE_PAGE_SCHEMA, { minItems: 1 }), output: Type.String() },
       { additionalProperties: false },
     ),
-    response: CREATE_RESULT_SCHEMA,
+    response: SCAN_RESULT_SCHEMA,
   },
-  text_layout: {
+  inspect_bubble_group: {
     request: Type.Object(
+      { root: Type.String(), output: Type.String(), ...BUBBLE_GROUP_PROPERTIES },
+      { additionalProperties: false },
+    ),
+    response: Type.Object(
       {
-        root: Type.String(),
-        page: PAGE_SCHEMA,
-        maximumBytes: Type.Integer({ minimum: 1 }),
+        preview: Type.String(),
+        lines: Type.Array(
+          Type.Object(
+            { textBoxId: IMAGE_ID_SCHEMA, message: IMAGE_RECORD_SCHEMA.properties.message },
+            { additionalProperties: false },
+          ),
+        ),
       },
       { additionalProperties: false },
     ),
-    response: Type.Array(IMAGE_TEXT_GEOMETRY_REGION_SCHEMA),
+  },
+  prepare: {
+    request: Type.Object(
+      {
+        root: Type.String(),
+        output: Type.String(),
+        selected: Type.Array(SELECTION_SCHEMA),
+        partitions: Type.Array(BUBBLE_PARTITION_SCHEMA),
+        variants: Type.Boolean(),
+        repartition: Type.Optional(BUBBLE_GROUP_SCHEMA),
+        reserved: Type.Optional(Type.Array(IMAGE_BOX_SCHEMA)),
+      },
+      { additionalProperties: false },
+    ),
+    response: Type.Object(
+      {
+        pages: Type.Array(PAGE_SCHEMA),
+        records: Type.Array(IMAGE_RECORD_SCHEMA),
+      },
+      { additionalProperties: false },
+    ),
   },
   text_output: {
     request: Type.Object(
       {
         root: Type.String(),
         original: Type.String(),
-        composition: Type.Optional(Type.Object({ clean: Type.String(), layers: Type.String() })),
+        layers: Type.Optional(Type.String()),
         qa: Type.Optional(
           Type.Object({
             maxEdge: Type.Integer({ minimum: 2 }),
             marks: Type.Array(
               Type.Object({
                 regionId: Type.String(),
-                layoutArea: Type.String(),
-                incomplete: Type.Boolean(),
+                box: IMAGE_BOX_SCHEMA,
+                warning: Type.Boolean(),
               }),
             ),
           }),

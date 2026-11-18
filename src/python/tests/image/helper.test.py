@@ -74,138 +74,17 @@ tilted["box"] = tilted["box"] @ np.array([[0.94, 0.34], [-0.34, 0.94]])
 assert not image.adjacent_text({**box(70, 10, 90, 30), "text": "正文"}, tilted)
 
 
-with tempfile.TemporaryDirectory(prefix="lg-image-create-") as folder:
-    root = Path(folder)
-    source = np.full((80, 120, 3), 240, np.uint8)
-    source[20:35, 20:45] = 0
-    source[20:35, 50:75] = 0
-    source_file = image.save(root / "source.png", source)
-    spec = dict(
-        pageId="p1",
-        relativePath="page.png",
-        original="originals/p1.png",
-        sha256="0" * 64,
-        width=120,
-        height=80,
-        orientation=1,
-        source=source_file,
-    )
-    original_detect = image.ocr.image_detection_records
-    original_recognize = image.recognize_text
-    analyze_background = image.fill.analyze_background
-    text_mask = image.repair.text_mask
-    try:
-        image.ocr.image_detection_records = lambda *_args, **_kwargs: [
-            box(18, 18, 47, 37),
-            box(48, 18, 77, 37),
-        ]
-        image.recognize_text = lambda _frame, points, _channel: (
-            "第一" if np.asarray(points)[0, 0] < 40 else "第二"
-        )
-        created = image.create_page(spec, root, Channel())
-        # 复杂背景找不到笔画时，准备流程应记录失败。
-        image.fill.analyze_background = lambda *_: ({"route": "model"}, None)
-        image.repair.text_mask = lambda *_: (_ for _ in ()).throw(
-            ValueError("no strokes")
-        )
-        failed = image.create_page(spec, root, Channel())
-    finally:
-        image.ocr.image_detection_records = original_detect
-        image.recognize_text = original_recognize
-        image.fill.analyze_background = analyze_background
-        image.repair.text_mask = text_mask
-    assert created["page"]["regions"][0]["kind"] == "unframed"
-    assert created["records"][0]["message"] == "第一\n第二"
-    assert created["clean"]["regions"][0]["status"] == "cleaned"
-    region_id = created["records"][0]["regionId"]
-    assert failed["clean"]["regions"] == [{"regionId": region_id, "status": "failed"}]
-    assert failed["diagnostics"]["failures"] == [
-        {"regionId": region_id, "error": "no strokes"}
-    ]
-
-
-with tempfile.TemporaryDirectory(prefix="lg-image-output-") as folder:
-    root = Path(folder)
-    clean_pixels = np.full((40, 50, 3), (130, 170, 230), np.uint8)
-    mask = np.zeros((40, 50), np.uint8)
-    mask[3:37, 4:46] = 255
-    original_pixels = clean_pixels.copy()
-    original_pixels[mask > 0] = 0
-    clean_file = image.save(root / "clean.png", clean_pixels)
-    original_file = image.save(root / "original.png", original_pixels)
-    image.save(root / "layout-areas/p1/r1.png", mask)
-    image.save(root / "erase-masks/p1/r1.png", mask)
-    page = dict(
-        pageId="p1",
-        width=50,
-        height=40,
-        textBoxes=[dict(textBoxId="t1", **box(20, 15, 30, 25))],
-        regions=[
-            dict(
-                regionId="r1",
-                kind="bubble",
-                textBoxIds=["t1"],
-                layoutArea=dict(path="layout-areas/p1/r1.png"),
-                direction="horizontal-tb",
-                backgroundColor=[230, 170, 130],
-            )
-        ],
-    )
-    geometry = image.text_layout(
-        dict(root=str(root), page=page, maximumBytes=1_000_000), None
-    )[0]
-    x, y, width, height = geometry["box"]
-    overlay = np.zeros((height, width, 4), np.uint8)
-    overlay[height // 2, width // 2] = (255, 255, 255, 255)
-    encoded = cv2.imencode(".png", overlay)[1]
-    layers = root / "layers.json"
-    layers.write_text(
-        json.dumps(
-            [
-                dict(
-                    eraseMask="erase-masks/p1/r1.png",
-                    overlay=dict(
-                        box=geometry["box"],
-                        png=base64.b64encode(encoded).decode("ascii"),
-                    ),
-                )
-            ]
-        ),
-        encoding="utf-8",
-    )
-    request = dict(
-        root=str(root),
-        original=original_file,
-        composition=dict(clean=clean_file, layers=str(layers)),
-        output=str(root / "page.png"),
-    )
-    composed = image.read_image(image.text_output(request, None)["path"])
-    expected = clean_pixels.copy()
-    expected[y + height // 2, x + width // 2] = 255
-    assert np.array_equal(composed, expected)
-
-    request.update(qa=dict(maxEdge=80, marks=[]), output=str(root / "qa.webp"))
-    comparison = image.read_image(image.text_output(request, None)["path"])
-    assert comparison.shape == (32, 80, 3)
-    for actual, expected in zip(
-        np.split(comparison, 2, axis=1), (original_pixels, composed)
-    ):
-        scaled = cv2.resize(expected, (40, 32), interpolation=cv2.INTER_AREA)
-        assert cv2.absdiff(actual, scaled).mean() < 6
-
-    # 没有合成层且无需缩放时也只能在右侧绘制标记。
-    request.pop("composition")
-    request["qa"] = dict(
-        maxEdge=100,
-        marks=[
-            dict(regionId="r1", layoutArea="layout-areas/p1/r1.png", incomplete=True)
-        ],
-    )
-    comparison = image.read_image(image.text_output(request, None)["path"])
-    original, translated = np.split(comparison, 2, axis=1)
-    assert cv2.absdiff(original, original_pixels).mean() < 6
-    blue, green, red = cv2.split(translated)
-    assert np.any((blue < 60) & (green > 150) & (red > 180))
+# 原文中心落在可写区域的空洞里时，写字框仍须完整落在区域内。
+area = np.zeros((32, 32), np.uint8)
+area[4:28, 4:28] = 255
+area[12:20, 12:20] = 0
+ink = np.zeros_like(area)
+ink[14:18, 14:18] = 255
+x, y, width, height = image._write_box(area, ink)
+assert 0 <= x < x + width <= area.shape[1]
+assert 0 <= y < y + height <= area.shape[0]
+assert width >= 4 and height >= 4
+assert np.all(area[y : y + height, x : x + width] != 0)
 
 
 with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
@@ -231,7 +110,9 @@ with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
         x, y = line["box"][0]
         messages[x, y] = message
         source[y + 1 : y + 10, x + 1 : x + 5] = 0
-    original_path = image.save(root / "source.png", source)
+    # 纯色填充恢复整个内区，包括不在文字框里的浅色纹理。
+    source[41, 70] = 225
+    original_path = image.save(root / "normalized/p.png", source)
     detect, recognize, postprocess = (
         image.detect_text,
         image.recognize_text,
@@ -241,19 +122,24 @@ with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
         image.detect_text = lambda *_: [line for _, line in lines]
         image.recognize_text = lambda _, points, __: messages[tuple(points[0])]
         image.postprocess = lambda *_: iter([({}, mask)])
-        created = image.create_page(
+        channel = Channel()
+        scanned = image.scan(
             dict(
-                pageId="p",
-                relativePath="page.png",
-                original="originals/p.png",
-                sha256="0" * 64,
-                width=170,
-                height=246,
-                orientation=1,
-                source=original_path,
+                pages=[
+                    dict(
+                        pageId="p",
+                        relativePath="page.png",
+                        original="originals/p.png",
+                        sha256="0" * 64,
+                        width=170,
+                        height=246,
+                        orientation=1,
+                        source=original_path,
+                    )
+                ],
+                output=str(root),
             ),
-            root,
-            Channel(),
+            channel,
         )
     finally:
         image.detect_text, image.recognize_text, image.postprocess = (
@@ -262,58 +148,195 @@ with tempfile.TemporaryDirectory(prefix="lg-image-partition-") as folder:
             postprocess,
         )
 
-    page = created["page"]
+    assert "inpaint" not in channel.requests
+    page = scanned["pages"][0]
     expected = [
         ("r0001-1", "上右\n上左"),
         ("r0001-2", "中右\n中左"),
         ("r0001-3", "下右\n下左"),
         ("r0002", "旁白"),
     ]
-    assert [(r["regionId"], r["message"]) for r in created["records"]] == expected
+    assert [(r["regionId"], r["message"]) for r in page["records"]] == expected
+    [draft] = json.loads((root / "scan.json").read_text(encoding="utf-8"))
     parts = [
-        image.read_layout_area(root / region["layoutArea"]["path"], mask.shape)
-        for region in page["regions"][:3]
+        image._read_candidate_area(root, "p", region, mask.shape)
+        for region in draft["candidates"][:3]
     ]
     assert np.array_equal(np.bitwise_or.reduce(parts), image.fill.inset_selection(mask))
     assert all(not np.any(a & b) for i, a in enumerate(parts) for b in parts[i + 1 :])
-    assert all(
-        np.array_equal(
-            part, image.read_layout_area(root / region["eraseMask"], mask.shape)
-        )
-        for part, region in zip(parts, created["clean"]["regions"])
+    selected = [
+        dict(pageId="p", regionId="r0001-1", message="修正原文"),
+        dict(pageId="p", regionId="r0001-3", contour=True),
+    ]
+    prepared = image.prepare(
+        dict(root=str(root), output=str(root), selected=selected), channel
     )
+    regions = prepared["pages"][0]["regions"]
+    assert [region["regionId"] for region in regions] == ["r0001-1", "r0001-3"]
+    assert prepared["records"][0]["message"] == "修正原文"
+    assert all(region["patch"] for region in regions)
+    assert not (root / "patches/p/r0001-2.png").exists()
+    for region, part in zip(regions, (parts[0], parts[2])):
+        x, y, w, h = region["box"]
+        assert np.all(part[y : y + h, x : x + w] != 0)
 
+    overlay = np.full((1, 1, 4), (50, 120, 230, 255), np.uint8)
+    encoded = base64.b64encode(cv2.imencode(".png", overlay)[1]).decode("ascii")
+    write_x, write_y = regions[0]["box"][:2]
     layers = root / "layers.json"
     layers.write_text(
         json.dumps(
             [
-                dict(eraseMask=created["clean"]["regions"][index]["eraseMask"])
-                for index in (0, 2)
+                dict(
+                    patch=regions[0]["patch"],
+                    overlay=dict(box=[write_x, write_y, 1, 1], png=encoded),
+                ),
+                dict(patch=regions[1]["patch"]),
             ]
         ),
         encoding="utf-8",
     )
-    output = image.text_output(
-        dict(
-            root=str(root),
-            original=original_path,
-            composition=dict(
-                clean=str(root / created["clean"]["clean"]), layers=str(layers)
-            ),
-            output=str(root / "out.png"),
-        ),
+    request = dict(
+        root=str(root),
+        original=original_path,
+        layers=str(layers),
+        output=str(root / "out.png"),
+    )
+    composed = image.read_image(image.text_output(request, None)["path"])
+    assert np.array_equal(composed[parts[1] != 0], source[parts[1] != 0])
+    assert np.all(composed[parts[2] != 0] == 255)
+    assert np.array_equal(composed[write_y, write_x], overlay[0, 0, :3])
+
+    request.update(qa=dict(maxEdge=340, marks=[]), output=str(root / "qa.webp"))
+    comparison = image.read_image(image.text_output(request, None)["path"])
+    for actual, expected in zip(np.split(comparison, 2, axis=1), (source, composed)):
+        assert cv2.absdiff(actual, expected).mean() < 6
+
+    complete = image.prepare(
+        {
+            "root": str(root),
+            "output": str(root / "complete"),
+            "selected": [
+                {"pageId": "p", "regionId": record["regionId"]}
+                for record in page["records"]
+            ],
+        },
+        channel,
+    )
+    whole = next(
+        region for region in complete["pages"][0]["regions"] if "parts" in region
+    )
+    physical = complete["pages"][0]["regions"][:3]
+    assert whole["parts"] == [region["regionId"] for region in physical]
+    assert whole["patch"] is None
+    assert len(list((root / "complete/patches/p").glob("*.png"))) == len(
+        page["records"]
+    )
+    whole_record = next(
+        record
+        for record in complete["records"]
+        if record["regionId"] == whole["regionId"]
+    )
+    assert whole_record["message"] == "上右\n上左\n中右\n中左\n下右\n下左"
+    layers.write_text(
+        json.dumps([{"patch": region["patch"]} for region in physical]), encoding="utf8"
+    )
+    body = source.copy()
+    image._compose_text(body, layers, root / "complete")
+    assert source[41, 70, 0] == 225 and body[41, 70, 0] == 255
+    assert np.array_equal(body[mask == 0], source[mask == 0])
+    analyze_background = image.fill.analyze_background
+    inpaint, text_mask = image.repair.inpaint, image.repair.text_mask
+    try:
+        image.fill.analyze_background = lambda *_: ({"route": "model"}, [255, 255, 255])
+
+        def skip_top(frame, selection, boxes, **options):
+            if boxes[0][0][1] < 60:
+                raise ValueError("Empty repair mask")
+            return text_mask(frame, selection, boxes, **options)
+
+        def unchanged(frame, write_mask, forward):
+            forward(np.zeros((1, 4, 64, 64), np.float32))
+            return frame[write_mask > 0]
+
+        image.repair.inpaint = unchanged
+        image.repair.text_mask = skip_top
+        selected[1].pop("contour")
+        degraded = image.prepare(
+            dict(root=str(root), output=str(root / "failed"), selected=selected),
+            channel,
+        )
+        assert channel.requests.count("inpaint") == 1
+        assert [region["patch"] for region in degraded["pages"][0]["regions"]] == [
+            None,
+            None,
+        ]
+        assert not (root / "failed/patches").exists()
+        assert degraded["records"] == prepared["records"]
+    finally:
+        image.fill.analyze_background = analyze_background
+        image.repair.inpaint, image.repair.text_mask = inpaint, text_mask
+
+    inspected = image.inspect_bubble_group(
+        {
+            "root": str(root),
+            "output": str(root / "review.png"),
+            "pageId": "p",
+            "group": "r0001",
+        },
         None,
     )
-    composed = image.read_image(output["path"])
-    assert np.array_equal(composed[parts[1] != 0], source[parts[1] != 0])
-    assert np.all(composed[(parts[0] | parts[2]) != 0] == 255)
+    ids = {line["message"]: line["textBoxId"] for line in inspected["lines"]}
+    assert len(ids) == 6
+    assert image.read_image(inspected["preview"]).shape == source.shape
+    target = {"pageId": "p", "group": "r0001"}
+    correction = {
+        **target,
+        "parts": [
+            {
+                "textBoxIds": [ids["上右"], ids["上左"], ids["中右"], ids["中左"]],
+                "translate": True,
+            },
+            {"textBoxIds": [ids["下右"], ids["下左"]], "translate": False},
+        ],
+    }
+    request = {
+        "root": str(root),
+        "output": str(root / "corrected"),
+        "selected": [],
+        "partitions": [correction],
+        "repartition": target,
+        "reserved": [],
+    }
+    corrected = image.prepare(request, channel)
+    [record] = corrected["records"]
+    assert record["regionId"].startswith("r0001-qa-")
+    assert set(record["message"].splitlines()) == {"上右", "上左", "中右", "中左"}
+    assert len(corrected["pages"][0]["regions"]) == 1
+    composed = source.copy()
+    patched = root / "correction-layers.json"
+    patch = corrected["pages"][0]["regions"][0]["patch"]
+    patched.write_text(json.dumps([{"patch": patch}]), encoding="utf-8")
+    image._compose_text(composed, patched, root / "corrected")
+    assert np.array_equal(composed[parts[2] != 0], source[parts[2] != 0])
+    # 新分格可以继续通过普通的局部消字入口处理。
+    request.pop("repartition")
+    request["selected"] = [
+        {"pageId": "p", "regionId": record["regionId"], "contour": True}
+    ]
+    replayed = image.prepare(request, channel)
+    assert replayed["records"] == corrected["records"]
 
+    correction["parts"][1]["textBoxIds"][0] = ids["上右"]
+    try:
+        image.prepare(request, channel)
+    except ValueError as error:
+        assert "exactly one part" in str(error)
+    else:
+        raise AssertionError("Accepted duplicate OCR box assignment")
 
 print(
     json.dumps(
-        {
-            "ok": True,
-            "checks": "single-pass OCR, grouping, erase fallback, composition, QA and partition",
-        }
+        {"ok": True, "checks": "OCR, selection, partition, contour, composition and QA"}
     )
 )

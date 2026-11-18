@@ -2836,9 +2836,9 @@ describe("ProjectContentService", () => {
   });
 });
 
-it("图片替换按稳定身份保留同文不同译法、空译文并在坏包失败后保留整份旧资产", async () => {
+it("图片替换保留同文不同译法、空译文及排除状态，坏包失败时保留旧资产", async () => {
   const { database, service, lg_path } = await create_service();
-  const f = image_fixture(["first", "second", "empty"]);
+  const f = image_fixture(["first", "second", "empty", "excluded"]);
   const source = project_path("book.image");
   fs.writeFileSync(source, await f.pack());
   const request = {
@@ -2865,13 +2865,12 @@ it("图片替换按稳定身份保留同文不同译法、空译文并在坏包�
         lg_path,
         items.map((item, index) => ({
           ...item,
-          status: "PROCESSED",
-          dst: ["是的", "嗯", ""][index]!,
+          status: index === 3 ? "EXCLUDED" : "PROCESSED",
+          dst: ["是的", "嗯", "", "保留旧译文"][index]!,
         })),
       ),
     );
     f.book.pages.reverse();
-    f.clean.pages.reverse();
     f.records.reverse();
     fs.writeFileSync(source, await f.pack());
     const result = await service.apply_file_changes({
@@ -2885,10 +2884,15 @@ it("图片替换按稳定身份保留同文不同译法、空译文并在坏包�
     });
     await database.close_project(lg_path);
     const saved = await database.get_all_items(lg_path);
-    expect(saved.map((item) => item["dst"])).toEqual(["", "嗯", "是的"]);
+    expect(saved.map((item) => [item["status"], item["dst"]])).toEqual([
+      ["EXCLUDED", "保留旧译文"],
+      ["PROCESSED", ""],
+      ["PROCESSED", "嗯"],
+      ["PROCESSED", "是的"],
+    ]);
     const asset = await database.read_asset_content(lg_path, "book.image");
     const output = (await new ImageFormat().read(asset!, "book.image")).items;
-    expect(output).toHaveLength(3);
+    expect(output).toHaveLength(4);
     fs.writeFileSync(source, "broken");
     expect(
       await service.apply_file_changes({

@@ -33,10 +33,12 @@ def fill_holes(mask):
     return result
 
 
-def text_mask(image, selection, boxes):
-    """暗笔画、邻近白描边、填孔和外扩使用固定规则，不按样本身份调参。"""
+def text_mask(image, selection, boxes, light_text=False):
+    """深色底上的亮字通过反色复用同一套笔画提取。"""
     x, y, w, h = cv2.boundingRect(selection)
     crop = image[y : y + h, x : x + w]
+    if light_text:
+        crop = cv2.bitwise_not(crop)
     selected = selection[y : y + h, x : x + w]
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     white = (gray >= WHITE_MIN) & (

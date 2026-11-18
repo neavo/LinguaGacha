@@ -271,7 +271,8 @@ PDF API 以字节交换文档，支持跨版本、线程和进程调用。`@lg/p
 
 - 用户指定的图片批次构成一个 `.image` 资产。
 - 用户顺序优先，目录来源按原始相对路径的自然顺序排列。
-- 选条与整页 QA 由图片格式技能负责。 [图片格式技能](../builtin/skills/image/SKILL.md)
+- 扫描和消字是两次独立的批次调用。每次调用内部跨页复用 Worker。产品 Agent 在两次调用之间确认哪些区域需要翻译。
+- 加载图片格式技能确定选字和视觉复核方法。 [图片格式技能](../builtin/skills/image/SKILL.md)
 
 `@lg/image.generateQA()` 与 `generateFiles` 共用文件生成服务，按调用时的工程状态生成图片。
 

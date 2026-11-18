@@ -168,13 +168,16 @@ it(
     );
     const result = await run(
       `
-    import { describe_package as describeImage, processPages, DeviceFailure, IMAGE_DEPENDENCIES } from '@lg/image';
+    import { describe_package as describeImage, scanPages, preparePages, inspectBubbleGroup, repartitionBubbleGroup, DeviceFailure, IMAGE_DEPENDENCIES } from '@lg/image';
     import { describe_package as describeMedia, sheets } from '@lg/media';
     import { uv } from '@lg/uv';
     import { mkdir, writeFile } from 'node:fs/promises';
     import assert from 'node:assert/strict';
     await uv.run(['add', ...IMAGE_DEPENDENCIES.python, '--default-index', 'https://pypi.org/simple']);
-    assert.equal(typeof processPages, 'function');
+    assert.equal(typeof scanPages, 'function');
+    assert.equal(typeof preparePages, 'function');
+    assert.equal(typeof inspectBubbleGroup, 'function');
+    assert.equal(typeof repartitionBubbleGroup, 'function');
     assert.equal(typeof DeviceFailure, 'function');
     assert.match(describeImage(), /ImageBook/);
     assert.match(describeMedia(), /MediaPackageManifest/);

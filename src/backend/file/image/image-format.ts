@@ -32,7 +32,7 @@ export async function build_image_text_input(
   items: readonly Item[],
   file: string,
 ) {
-  const { book, records, clean, members } = await read_image_package(content, file, {
+  const { book, records, members } = await read_image_package(content, file, {
     validatePixels: false, // 生成只消费已入库的图片资产，各像素宿主仍核对消费的尺寸。
   });
   const byRow = index_message_items(records, items, file);
@@ -44,7 +44,7 @@ export async function build_image_text_input(
       ? { pageId, regionId, output: null }
       : { pageId, regionId, output: "translated", text };
   });
-  return { book, clean, textRecords, members };
+  return { book, textRecords, members };
 }
 
 /** 图片格式建立工程条目；文件生成服务消费同一归档契约写出译图。 */
@@ -58,15 +58,17 @@ export class ImageFormat {
       ),
     );
     return {
-      items: records.map((record, row) =>
-        create_item({
+      items: records.map((record, row) => {
+        const region = regions.get(record.pageId + "/" + record.regionId)!;
+        return create_item({
           src: record.message,
           row,
-          tag: regions.get(record.pageId + "/" + record.regionId)!.kind,
+          tag: region.kind,
+          status: region.kind === "unframed" || region.parts ? "EXCLUDED" : "NONE",
           file_type: "IMAGE",
           file_path: file,
-        }),
-      ),
+        });
+      }),
       image: { book, records },
     };
   }

@@ -1,15 +1,18 @@
 """区域检测、自动消字、文字分区与离线归档。推理由宿主 Worker 执行。"""
 
 import base64
+import hashlib
 import json
 import math
 import sys
 import threading
 import traceback
+from itertools import groupby
 from pathlib import Path
 
 import cv2
 import numpy as np
+
 from lg.image import fill, repair
 from lg.inference import ocr
 from lg.inference.channel import Channel
@@ -18,8 +21,8 @@ cv2.setNumThreads(1)
 IMAGE_SIZE, MODEL_STRIDE = 1600, 32
 CONF, IOU, MAX_DET, MAX_NMS = 0.25, 0.7, 300, 30000
 UNFRAMED_PADDING_RATIO = 0.5
-SOURCE_LINE_MIN_ANGLE = 3
-SOURCE_LINE_ANGLE_SPREAD = 5
+SCAN_PREVIEW_EDGE = 1600
+TEXT_MARGIN = 2
 QA_WEBP_QUALITY = 85
 
 
@@ -320,26 +323,30 @@ def _background_color(image, selection, text_mask):
     return background, color
 
 
-def _erase_group(image, clean, selection, kind, members, background, color, channel):
-    """同一气泡共用一次消字，避免沿格界分别修补留下接缝。"""
-    boxes = [member["box"] for member in members]
-    if background["route"] == "fill":
-        mask = selection if kind == "bubble" else _box_mask(selection, boxes)
-        if np.any(mask):
-            return fill.render_fill(clean, [(mask, color)]), mask, None
-    try:
-        mask = repair.text_mask(image, selection, boxes)
-        repaired = repair.inpaint(
-            image, mask, lambda tensor: forward(channel, "inpaint", tensor)[0]
-        )
-    except ValueError as error:
-        return clean, None, str(error)
-    clean[mask > 0] = repaired
-    return clean, mask, None
+def _text_candidate(region_id, group, kind, lines):
+    """扫描和纠错共用区域原文与 OCR 框的组织方式。"""
+    direction = text_direction(lines)
+    message = ordered_text(lines, direction)
+    return {
+        "regionId": region_id,
+        "group": group,
+        "kind": kind,
+        "direction": direction,
+        "message": message,
+        "lines": [
+            {
+                "textBoxId": line["textBoxId"],
+                "box": np.asarray(line["box"], np.int32).tolist(),
+                "coreBox": np.asarray(line["coreBox"], np.int32).tolist(),
+                "text": line["text"],
+            }
+            for line in lines
+        ],
+    }
 
 
-def create_page(spec, root, channel):
-    """单页完成气泡分割、OCR、自动分区、消字和诊断预览。"""
+def scan_page(spec, root, channel):
+    """先识别和分格。区域编号在选字前确定。"""
     image = read_image(spec["source"])
     h, w = image.shape[:2]
     tensor = model_input(image)
@@ -367,17 +374,8 @@ def create_page(spec, root, channel):
                 "owner": owner_for_text(record, occupied),
             }
         )
-    text_boxes = []
     for index, record in enumerate(recognized, 1):
         record["textBoxId"] = f"t{index:04d}"
-        text_boxes.append(
-            dict(
-                textBoxId=record["textBoxId"],
-                box=np.asarray(record["box"]).tolist(),
-                coreBox=np.asarray(record["coreBox"]).tolist(),
-                text=record["text"],
-            )
-        )
 
     groups = []
     for owner in bubble_masks:
@@ -401,112 +399,464 @@ def create_page(spec, root, channel):
         key=lambda group: min(detected_order[id(record)] for record in group[1])
     )
 
-    text_mask = np.zeros((h, w), np.uint8)
-    for record in recognized:
-        cv2.fillConvexPoly(text_mask, np.asarray(record["box"], np.int32), 255)
     page_id = spec["pageId"]
-    regions, records, clean_regions, failures = [], [], [], []
-    clean = image.copy()
+    candidates = []
     preview = image.copy()
     for index, (kind, members, selection) in enumerate(groups, 1):
-        region_id = f"r{index:04d}"  # 拆格不影响后续区域的译文继承身份。
+        group_id = f"r{index:04d}"
         direction = text_direction(members)
-        background, color = _background_color(image, selection, text_mask)
         parts = split_bubble(selection, members, direction) if kind == "bubble" else []
-        clean, erased, failure = _erase_group(
-            image, clean, selection, kind, members, background, color, channel
-        )
-        preview_color = (30, 180, 30) if kind == "bubble" else (220, 150, 20)
+        color = (30, 180, 30) if kind == "bubble" else (220, 150, 20)
         for child, (area, lines) in enumerate(parts or [(selection, members)], 1):
-            rid = f"{region_id}-{child}" if parts else region_id
-            writing = text_direction(lines) if parts else direction
-            message = ordered_text(lines, writing)
-            member = f"layout-areas/{page_id}/{rid}.png"
-            save(root / member, area)
-            region = dict(
-                regionId=rid,
-                kind=kind,
-                textBoxIds=[line["textBoxId"] for line in lines],
-                layoutArea=dict(path=member),
-                direction=writing,
-                backgroundColor=color,
-            )
-            regions.append(region)
-            records.append(dict(pageId=page_id, regionId=rid, message=message))
-            # 只记录本格实际擦除的像素，供导出时逐格回退。
-            child_mask = erased
-            if parts and erased is not None:
-                child_mask = erased & area
-                if not np.any(child_mask):
-                    child_mask = None
-            if child_mask is not None:
-                erase_member = f"erase-masks/{page_id}/{rid}.png"
-                save(root / erase_member, child_mask)
-                clean_regions.append(
-                    dict(regionId=rid, status="cleaned", eraseMask=erase_member)
-                )
-            else:
-                failures.append(
-                    dict(regionId=rid, error=failure or "Empty erase mask in region")
-                )
-                clean_regions.append(dict(regionId=rid, status="failed"))
+            rid = f"{group_id}-{child}" if parts else group_id
+            candidate = _text_candidate(rid, group_id, kind, lines)
+            x, y, w, h = cv2.boundingRect(area)
+            save(root / "areas" / page_id / f"{rid}.png", area[y : y + h, x : x + w])
+            candidates.append({**candidate, "area": [x, y, w, h]})
             contours, _ = cv2.findContours(
                 area, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
-            cv2.drawContours(preview, contours, -1, preview_color, 2)
-            x, y, _, _ = cv2.boundingRect(area)
-            cv2.putText(preview, rid, (x, max(18, y)), 0, 0.55, preview_color, 2)
-            for line in lines:
+            cv2.drawContours(preview, contours, -1, color, 2)
+            cv2.putText(preview, rid, (x, max(18, y)), 0, 0.55, color, 2)
+            for line in candidate["lines"]:
                 cv2.polylines(
-                    preview, [np.asarray(line["box"], np.int32)], True, preview_color, 1
+                    preview, [np.asarray(line["box"], np.int32)], True, color, 1
                 )
-    page = {
-        key: spec[key]
-        for key in (
-            "pageId",
-            "relativePath",
-            "original",
-            "sha256",
-            "width",
-            "height",
-            "orientation",
-        )
-    }
-    page.update(textBoxes=text_boxes, regions=regions)
-    clean_member = f"clean/{page_id}.png"
-    save(root / clean_member, clean)
-    scale = min(1.0, 1600 / max(h, w))
-    preview_file = save(
+    page = {key: value for key, value in spec.items() if key != "source"}
+    page["candidates"] = candidates
+    scale = min(1.0, SCAN_PREVIEW_EDGE / max(h, w))
+    preview_path = save(
         root / "diagnostics" / f"{page_id}.png",
         cv2.resize(preview, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA),
     )
-    return dict(
-        page=page,
-        records=records,
-        clean=dict(pageId=page_id, clean=clean_member, regions=clean_regions),
-        diagnostics=dict(
-            preview=preview_file,
-            detected=len(text_boxes),
-            regions=len(regions),
-            failures=failures,
-        ),
+    return page, dict(
+        pageId=page_id,
+        relativePath=page["relativePath"],
+        preview=preview_path,
+        records=[
+            {key: candidate[key] for key in ("regionId", "group", "kind", "message")}
+            for candidate in candidates
+        ],
     )
 
 
-def create(args, channel):
-    """整册共用一次 helper 与推理 Worker，模型会话跨页复用。"""
+def scan(args, channel):
+    """整批共享 OCR 与气泡分割会话，工作目录留待选字。"""
     root = Path(args["output"])
-    return dict(pages=[create_page(page, root, channel) for page in args["pages"]])
+    results = [scan_page(page, root, channel) for page in args["pages"]]
+    (root / "scan.json").write_text(
+        json.dumps([page for page, _ in results], ensure_ascii=False), encoding="utf-8"
+    )
+    return dict(pages=[diagnostics for _, diagnostics in results])
 
 
-def _box_mask(layout_area, boxes):
-    """无框填色只覆盖 OCR 框附近，保留外围用于排版的空间。"""
-    mask = np.zeros_like(layout_area)
+def _box_mask(shape, boxes):
+    mask = np.zeros(shape, np.uint8)
     for box in boxes:
         cv2.fillConvexPoly(mask, np.asarray(box, np.int32), 255)
-    if np.any(mask):
-        mask = cv2.dilate(mask, repair.ellipse(2)) & layout_area
     return mask
+
+
+def _write_box(area, ink):
+    """在可写区域内找能放下的矩形，再选靠近原文的位置。"""
+    x, y, w, h = cv2.boundingRect(area)
+    if not w:
+        raise ValueError("Empty writing area")
+    crop = area[y : y + h, x : x + w]
+    ix, iy, iw, ih = cv2.boundingRect(ink)
+    inset = cv2.erode(
+        crop, repair.ellipse(TEXT_MARGIN), borderType=cv2.BORDER_CONSTANT, borderValue=0
+    )
+    valid = inset if cv2.countNonZero(inset) else crop
+    edge = max(w, h)
+    low, high = 2, edge
+    centers = valid
+    width = height = 1
+    # 先在整个区域内试放，避免把矩形锁在离原文最近的狭窄边缘。
+    while low <= high:
+        size = (low + high) // 2
+        trial = max(1, w * size // edge), max(1, h * size // edge)
+        fits = cv2.erode(
+            valid,
+            cv2.getStructuringElement(cv2.MORPH_RECT, trial),
+            borderType=cv2.BORDER_CONSTANT,
+            borderValue=0,
+        )
+        if cv2.countNonZero(fits):
+            width, height = trial
+            centers = fits
+            low = size + 1
+        else:
+            high = size - 1
+    rows, cols = np.nonzero(centers)
+    cx, cy = ix + iw // 2 - x, iy + ih // 2 - y
+    nearest = np.argmin((cols - cx) ** 2 + (rows - cy) ** 2)
+    return [
+        x + int(cols[nearest]) - width // 2,
+        y + int(rows[nearest]) - height // 2,
+        width,
+        height,
+    ]
+
+
+def _save_patch(root, page_id, region_id, original, repaired, mask):
+    """透明像素由原稿提供。保存局部补丁即可按区域生成消字版。"""
+    changed = (mask > 0) & np.any(original != repaired, axis=2)
+    x, y, w, h = cv2.boundingRect(changed.astype(np.uint8))
+    if not w:
+        x, y, _, _ = cv2.boundingRect(mask)
+        w, h = 1, 1
+    crop = np.s_[y : y + h, x : x + w]
+    alpha = changed[crop].astype(np.uint8) * 255
+    pixels = repaired[crop].copy()
+    pixels[alpha == 0] = 0
+    member = f"patches/{page_id}/{region_id}.png"
+    save(root / member, np.dstack((pixels, alpha)))
+    return dict(path=member, box=[x, y, w, h])
+
+
+def _read_candidate_area(root, page_id, candidate, shape):
+    x, y, w, h = candidate["area"]
+    crop = candidate.get("mask")
+    if crop is None:
+        crop = read_layout_area(
+            root / "areas" / page_id / f"{candidate['regionId']}.png", (h, w)
+        )
+    mask = np.zeros(shape, np.uint8)
+    mask[y : y + h, x : x + w] = crop
+    return mask
+
+
+def _prepare_group(
+    image,
+    candidates,
+    available,
+    root,
+    output,
+    page_id,
+    occupied,
+    expanded,
+    writing,
+    channel,
+    variants,
+):
+    """同一气泡只消字一次，补丁按格保存。"""
+    shape = image.shape[:2]
+    selection = np.zeros(shape, np.uint8)
+    blocks = []
+    bubble = candidates[0]["kind"] == "bubble"
+    whole = (
+        bubble
+        and variants
+        and len(candidates) > 1
+        and all(candidate["regionId"] in available for candidate in candidates)
+    )
+    previously_written = writing.copy() if whole else None
+    for candidate in candidates:
+        rid = candidate["regionId"]
+        part_area = _read_candidate_area(root, page_id, candidate, shape)
+        selection |= part_area
+        pick = available.get(rid)
+        if pick is None:
+            continue
+        index = candidate["index"]
+        area = np.where((occupied == 0) | (occupied == index), part_area, 0)
+        boxes = [line["box"] for line in candidate["lines"]]
+        ink = _box_mask(shape, boxes)
+        # 笔画邻域只分给一块，局部重做与本次选字无关。
+        local = np.where(
+            (occupied == index) | ((occupied == 0) & (expanded == index)), area, 0
+        )
+        if not np.any(local):
+            raise ValueError(f"No writable text pixels in {rid}")
+        area[writing] = 0
+        box = _write_box(area, ink)
+        x, y, w, h = box
+        writing[y : y + h, x : x + w] = True
+        blocks.append((candidate, pick, box, local, part_area, boxes))
+    background, color = _background_color(image, selection, occupied)
+    dark_background = (
+        cv2.cvtColor(np.uint8([[color[::-1]]]), cv2.COLOR_BGR2GRAY)[0, 0] < 128
+    )
+    masks = {}
+    union = np.zeros(shape, np.uint8)
+    fills = []
+    for candidate, pick, _, local, part_area, boxes in blocks:
+        rid = candidate["regionId"]
+        if background["route"] == "fill" and not pick.get("contour"):
+            mask = part_area if bubble else local
+            fills.append((mask, color))
+            masks[rid] = (mask, "fill")
+            continue
+        try:
+            stroke = repair.text_mask(image, local, boxes, light_text=dark_background)
+        except ValueError:
+            stroke = None
+        if pick.get("contour"):
+            masks[rid] = (local if stroke is None else stroke, "contour")
+        elif stroke is not None:
+            masks[rid] = (stroke, "lama")
+            union |= stroke
+
+    # 气泡边缘只沿整个内缩掩码混合，分格沿内部切口共享同一份底图。
+    if fills and bubble:
+        fills = [(selection, color)]
+    repaired = fill.render_fill(image, fills) if fills else image.copy()
+    if np.any(union):
+        try:
+            repaired[union > 0] = repair.inpaint(
+                image, union, lambda tensor: forward(channel, "inpaint", tensor)[0]
+            )
+        except ValueError:
+            # 这些区域仍可导入，导出时保留原图，供 Agent 按需补做。
+            masks = {
+                rid: result for rid, result in masks.items() if result[1] != "lama"
+            }
+
+    part_records = []
+    for candidate, pick, box, _, _, _ in blocks:
+        rid = candidate["regionId"]
+        background_color = color
+        patch = None
+        if rid in masks:
+            mask, method = masks[rid]
+            if method == "contour":
+                tone = 0 if dark_background else 255
+                repaired[mask > 0] = tone
+                background_color = [tone] * 3
+            if method != "lama" or not np.array_equal(
+                image[mask > 0], repaired[mask > 0]
+            ):
+                patch = _save_patch(output, page_id, rid, image, repaired, mask)
+        region = dict(
+            regionId=rid,
+            kind=candidate["kind"],
+            direction=candidate["direction"],
+            backgroundColor=background_color,
+            box=box,
+            patch=patch,
+        )
+        record = dict(
+            pageId=page_id,
+            regionId=rid,
+            message=pick.get("message", candidate["message"]),
+        )
+        part_records.append(record)
+        yield region, record
+
+    if whole:
+        part_ids = [record["regionId"] for record in part_records]
+        signature = hashlib.sha256(",".join(part_ids).encode()).hexdigest()[:12]
+        whole_id = f"{candidates[0]['group']}-whole-{signature}"
+        lines = [line for candidate in candidates for line in candidate["lines"]]
+        ink = _box_mask(shape, [line["box"] for line in lines])
+        selection[previously_written] = 0
+        box = _write_box(selection, ink)
+        x, y, w, h = box
+        writing[y : y + h, x : x + w] = True
+        yield (
+            dict(
+                regionId=whole_id,
+                kind="bubble",
+                direction=text_direction(lines),
+                backgroundColor=color,
+                box=box,
+                patch=None,
+                parts=part_ids,
+            ),
+            dict(
+                pageId=page_id,
+                regionId=whole_id,
+                message="\n".join(record["message"] for record in part_records),
+            ),
+        )
+
+
+def _bubble_group(page, group_id):
+    group = [
+        candidate for candidate in page["candidates"] if candidate["group"] == group_id
+    ]
+    if not group or group[0]["kind"] != "bubble":
+        raise ValueError(f"Unknown bubble group: {group_id}")
+    if any("lines" not in candidate for candidate in group):
+        raise ValueError("Bubble correction requires a scan with OCR box IDs")
+    return group
+
+
+def _group_area(root, page, group):
+    shape = (page["height"], page["width"])
+    area = np.zeros(shape, np.uint8)
+    for candidate in group:
+        area |= _read_candidate_area(root, page["pageId"], candidate, shape)
+    return area
+
+
+def inspect_bubble_group(args, _channel):
+    """只标注指定气泡组，保留整页原图作为参照。"""
+    root = Path(args["root"])
+    pages = json.loads((root / "scan.json").read_text(encoding="utf-8"))
+    page = next((page for page in pages if page["pageId"] == args["pageId"]), None)
+    if page is None:
+        raise ValueError("Unknown image page")
+    group = _bubble_group(page, args["group"])
+    image = read_image(root / "normalized" / f"{page['pageId']}.png")
+    h, w = image.shape[:2]
+    scale = min(1.0, SCAN_PREVIEW_EDGE / max(h, w))
+    preview = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    area = _group_area(root, page, group)
+    contours, _ = cv2.findContours(area, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(
+        preview,
+        [np.rint(contour * scale).astype(np.int32) for contour in contours],
+        -1,
+        (30, 180, 30),
+        2,
+    )
+    lines = []
+    for candidate in group:
+        for line in candidate["lines"]:
+            points = np.rint(np.asarray(line["box"]) * scale).astype(np.int32)
+            cv2.polylines(preview, [points], True, (30, 180, 30), 1)
+            x, y, _, _ = cv2.boundingRect(points)
+            cv2.putText(
+                preview,
+                line["textBoxId"],
+                (x, max(16, y - 2)),
+                0,
+                0.5,
+                (30, 180, 30),
+                1,
+            )
+            lines.append({"textBoxId": line["textBoxId"], "message": line["text"]})
+    return {"preview": save(Path(args["output"]), preview), "lines": lines}
+
+
+def _repartition_group(root, page, group, correction):
+    group_id = correction["group"]
+    known = {
+        line["textBoxId"]: line for candidate in group for line in candidate["lines"]
+    }
+    partitions = correction["parts"]
+    submitted = [key for part in partitions for key in part["textBoxIds"]]
+    if len(set(submitted)) != len(submitted) or set(submitted) != known.keys():
+        raise ValueError("Assign every OCR box in the bubble group to exactly one part")
+
+    area = _group_area(root, page, group)
+    x, y, w, h = cv2.boundingRect(area)
+    cropped = area[y : y + h, x : x + w]
+    supported = np.zeros(cropped.shape, bool)
+    distances = np.full(cropped.shape, np.inf, np.float32)
+    owners = np.zeros(cropped.shape, np.int32)
+    lines_by_part = []
+    for i, part in enumerate(partitions, 1):
+        lines = [known[key] for key in part["textBoxIds"]]
+        # 已确认的原字框作切分种子。重叠字框无法安全分给不同格。
+        seeds = _box_mask(
+            cropped.shape, [np.asarray(line["coreBox"]) - [x, y] for line in lines]
+        )
+        seed = (seeds != 0) & (cropped != 0)
+        if not np.any(seed) or np.any(seed & supported):
+            raise ValueError("OCR boxes overlap or fall outside the bubble")
+        supported |= seed
+        distance = cv2.distanceTransform(
+            (~seed).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+        )
+        nearer = (distance < distances) & (cropped != 0)
+        owners[nearer] = i
+        distances[nearer] = distance[nearer]
+        lines_by_part.append(lines)
+
+    before = {
+        frozenset(line["textBoxId"] for line in candidate["lines"]): candidate[
+            "regionId"
+        ]
+        for candidate in group
+    }
+    corrected = []
+    selected = {}
+    for i, (part, lines) in enumerate(zip(partitions, lines_by_part), 1):
+        identity = frozenset(part["textBoxIds"])
+        digest = hashlib.sha256(",".join(sorted(identity)).encode()).hexdigest()[:12]
+        rid = before.get(identity, f"{group_id}-qa-{digest}")
+        candidate = _text_candidate(rid, group_id, "bubble", lines)
+        corrected.append(
+            {
+                **candidate,
+                "area": [x, y, w, h],
+                "mask": (owners == i).astype(np.uint8) * 255,
+            }
+        )
+        if part["translate"]:
+            selected[rid] = {"pageId": page["pageId"], "regionId": rid}
+    return corrected, selected
+
+
+def prepare(args, channel):
+    root, output = Path(args["root"]), Path(args["output"])
+    pages = json.loads((root / "scan.json").read_text(encoding="utf-8"))
+    by_page = {}
+    for pick in args["selected"]:
+        selected = by_page.setdefault(pick["pageId"], {})
+        region_id = pick["regionId"]
+        if region_id in selected:
+            raise ValueError(f"Duplicate selected region: {region_id}")
+        selected[region_id] = pick
+    records = []
+    target = args.get("repartition")
+    for page in pages:
+        page_id = page["pageId"]
+        selected = by_page.pop(page_id, {})
+        repairing = target is not None and target["pageId"] == page_id
+        if selected or repairing:
+            for correction in args.get("partitions", []):
+                if correction["pageId"] != page_id:
+                    continue
+                group_id = correction["group"]
+                old = _bubble_group(page, group_id)
+                corrected, new_picks = _repartition_group(root, page, old, correction)
+                start = page["candidates"].index(old[0])
+                page["candidates"][start : start + len(old)] = corrected
+                if repairing and group_id == target["group"]:
+                    selected = new_picks
+        candidates = page.pop("candidates")
+        if not selected.keys() <= {candidate["regionId"] for candidate in candidates}:
+            raise ValueError(f"Unknown selected region on {page_id}")
+        page["regions"] = []
+        if not selected:
+            continue
+        original = read_image(root / "normalized" / f"{page_id}.png")
+        shape = original.shape[:2]
+        occupied = np.zeros(shape, np.float32)
+        for index, candidate in enumerate(candidates, 1):
+            candidate["index"] = index
+            for line in candidate["lines"]:
+                cv2.fillConvexPoly(occupied, np.asarray(line["box"], np.int32), index)
+        expanded = cv2.dilate(occupied, repair.ellipse(TEXT_MARGIN))
+        writing = np.zeros(shape, bool)
+        if repairing:
+            for x, y, w, h in args["reserved"]:
+                writing[y : y + h, x : x + w] = True
+        for _, group in groupby(candidates, key=lambda candidate: candidate["group"]):
+            group = list(group)
+            if any(candidate["regionId"] in selected for candidate in group):
+                for region, record in _prepare_group(
+                    original,
+                    group,
+                    selected,
+                    root,
+                    output,
+                    page_id,
+                    occupied,
+                    expanded,
+                    writing,
+                    channel,
+                    args.get("variants", True),
+                ):
+                    page["regions"].append(region)
+                    records.append(record)
+    if by_page:
+        raise ValueError("Unknown selected image page")
+    return dict(pages=pages, records=records)
 
 
 PARTITION_RULES = dict(
@@ -734,117 +1084,44 @@ def split_bubble(selection, members, direction):
     return output
 
 
-def _line_alignment(lines, width, height, direction):
-    """在倾斜原行带的局部坐标系里求解，再把字形变换回原图。"""
-    if direction != "horizontal-tb" or len(lines) < 3:
-        return None
-    axes = np.asarray([line[1] - line[0] + line[2] - line[3] for line in lines])
-    angles = np.degrees(np.arctan2(axes[:, 1], axes[:, 0]))
-    angle = float(np.median(angles))
+def _apply_overlay(result, overlay, box):
+    x, y, w, h = box
     if (
-        abs(angle) < SOURCE_LINE_MIN_ANGLE
-        or np.max(np.abs(angles - angle)) > SOURCE_LINE_ANGLE_SPREAD
+        overlay is None
+        or overlay.dtype != np.uint8
+        or overlay.shape != (h, w, 4)
+        or min(x, y) < 0
+        or x + w > result.shape[1]
+        or y + h > result.shape[0]
     ):
-        return None
-    transform = cv2.getRotationMatrix2D((0.0, 0.0), angle, 1.0)
-    corners = (
-        np.asarray([[0, 0], [width, 0], [width, height], [0, height]])
-        @ transform[:, :2].T
-    )
-    low = np.floor(corners.min(axis=0))
-    size = tuple((np.ceil(corners.max(axis=0)) - low).astype(int).tolist())
-    transform[:, 2] = -low
-    return transform, size
+        raise ValueError("Invalid image overlay")
+    destination = result[y : y + h, x : x + w]
+    covered = overlay[:, :, 3] > 0
+    alpha = overlay[covered, 3:4].astype(np.float64) / 255
+    destination[covered] = np.floor(
+        overlay[covered, :3] * alpha + destination[covered] * (1 - alpha) + 0.5
+    ).astype(np.uint8)
 
 
-def _distance_field(mask):
-    """补零边后测量到区域外的距离，输出 Chromium 读取的 Float32 字节。"""
-    distance = cv2.distanceTransform(
-        np.pad(mask.astype(np.uint8), 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
-    )[1:-1, 1:-1]
-    return base64.b64encode(distance.astype("<f4").tobytes()).decode("ascii")
-
-
-def text_layout(args, _channel):
-    """只为准备阶段已确定的区域生成距离场与原行带。"""
-    page = args["page"]
-    boxes = {box["textBoxId"]: box["coreBox"] for box in page["textBoxes"]}
-    output, budget = [], 0
-    for region in page["regions"]:
-        mask = read_layout_area(
-            Path(args["root"]) / region["layoutArea"]["path"],
-            (page["height"], page["width"]),
-        )
-        x, y, w, h = cv2.boundingRect(mask)
-        crop = mask[y : y + h, x : x + w]
-        geometry = dict(regionId=region["regionId"], box=[x, y, w, h])
-        lines, alignment = [], None
-        if region["kind"] == "unframed":
-            lines = [
-                np.asarray(boxes[text_box_id], np.float64) - [x, y]
-                for text_box_id in region["textBoxIds"]
-            ]
-            alignment = _line_alignment(lines, w, h, region["direction"])
-        budget += w * h * 4
-        if alignment is not None:
-            transform, size = alignment
-            budget += math.prod(size) * 4
-        if budget > args["maximumBytes"]:
-            raise ValueError(
-                f"Image text material budget exceeded: {region['regionId']}"
-            )
-        geometry["distance"] = _distance_field(crop)
-        if alignment is not None:
-            aligned = cv2.warpAffine(crop, transform, size, flags=cv2.INTER_NEAREST)
-            inverse = cv2.invertAffineTransform(transform)
-            geometry["alignment"] = dict(
-                size=size,
-                distance=_distance_field(aligned),
-                transform=inverse.T.reshape(-1).tolist(),  # CSS matrix 按列接收系数。
-            )
-            lines = [line @ transform[:, :2].T + transform[:, 2] for line in lines]
-        geometry["sourceLines"] = [line.tolist() for line in lines]
-        output.append(geometry)
-    return output
-
-
-def _compose_text(result, composition, root):
-    """按区域顺序叠加消字与译文像素，原图提供其余像素。"""
-    clean = read_image(composition["clean"])
-    if clean.shape != result.shape:
-        raise ValueError("Text base dimensions mismatch")
-    with open(composition["layers"], encoding="utf-8") as file:
+def _compose_text(result, layers_path, root):
+    """先恢复底图 B，再写译文，消字补丁不会盖住相邻译文。"""
+    with open(layers_path, encoding="utf-8") as file:
         layers = json.load(file)
     for layer in layers:
-        mask = cv2.imdecode(
-            np.fromfile(str(root / layer["eraseMask"]), dtype=np.uint8),
-            cv2.IMREAD_GRAYSCALE,
+        patch = layer["patch"]
+        pixels = cv2.imdecode(
+            np.fromfile(str(root / patch["path"]), dtype=np.uint8), cv2.IMREAD_UNCHANGED
         )
-        if mask is None or mask.shape != clean.shape[:2]:
-            raise ValueError("Invalid erase mask")
-        changed = mask > 0
-        result[changed] = clean[changed]
-        paint = layer.get("overlay")
-        if paint is not None:
-            x, y, w, h = paint["box"]
+        _apply_overlay(result, pixels, patch["box"])
+    for layer in layers:
+        if paint := layer.get("overlay"):
             raw = np.frombuffer(base64.b64decode(paint["png"], validate=True), np.uint8)
-            overlay = cv2.imdecode(raw, cv2.IMREAD_UNCHANGED)
-            if (
-                overlay is None
-                or overlay.dtype != np.uint8
-                or overlay.shape != (h, w, 4)
-            ):
-                raise ValueError("Invalid text overlay")
-            covered = overlay[:, :, 3] > 0
-            alpha = overlay[:, :, 3:4].astype(np.float64) / 255
-            destination = result[y : y + h, x : x + w]
-            composite = np.floor(
-                overlay[:, :, :3] * alpha + destination * (1 - alpha) + 0.5
-            ).astype(np.uint8)
-            destination[covered] = composite[covered]
+            _apply_overlay(
+                result, cv2.imdecode(raw, cv2.IMREAD_UNCHANGED), paint["box"]
+            )
 
 
-def _qa_preview(original, translated, qa, root):
+def _qa_preview(original, translated, qa):
     """等比例并排原图与译图，仅在译图标记异常区域。"""
     height, width = original.shape[:2]
     scale = min(1, qa["maxEdge"] / max(2 * width, height))
@@ -855,17 +1132,12 @@ def _qa_preview(original, translated, qa, root):
     elif translated is original and qa["marks"]:
         translated = original.copy()  # 无合成层时，标记仍只画在右侧。
     for mark in qa["marks"]:
-        # 黄色待译，红色消字或排版失败。
-        color = (0, 220, 255) if mark["incomplete"] else (0, 0, 230)
-        mask = read_layout_area(root / mark["layoutArea"], (height, width))
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        x, y, _, _ = cv2.boundingRect(mask)
-        # 在预览尺寸绘制标记，保留大图缩小后的区域编号可读性。
-        if scale < 1:
-            contours = [
-                np.rint(contour * scale).astype(np.int32) for contour in contours
-            ]
-        cv2.drawContours(translated, contours, -1, color, 3, cv2.LINE_AA)
+        color = (0, 220, 255) if mark["warning"] else (0, 0, 230)
+        x, y, w, h = mark["box"]
+        end = (round((x + w - 1) * scale), round((y + h - 1) * scale))
+        cv2.rectangle(
+            translated, (round(x * scale), round(y * scale)), end, color, 3, cv2.LINE_AA
+        )
         origin = (round(x * scale), max(18, round(y * scale)))
         cv2.putText(translated, mark["regionId"], origin, 0, 0.55, color, 2)
     return np.concatenate((original, translated), axis=1)
@@ -875,17 +1147,17 @@ def text_output(args, _channel):
     """合成后直接编码，正式输出和 QA 共用同一页译图像素。"""
     root = Path(args["root"])
     original = read_image(args["original"])
-    composition, qa = args.get("composition"), args.get("qa")
+    layers, qa = args.get("layers"), args.get("qa")
     translated = original
-    if composition is not None:
+    if layers is not None:
         translated = original.copy() if qa is not None else original
-        _compose_text(translated, composition, root)
+        _compose_text(translated, layers, root)
     output = args["output"]
     if qa is not None:
         return dict(
             path=save(
                 output,
-                _qa_preview(original, translated, qa, root),
+                _qa_preview(original, translated, qa),
                 ".webp",
                 [cv2.IMWRITE_WEBP_QUALITY, QA_WEBP_QUALITY],
             )
@@ -906,8 +1178,9 @@ def text_output(args, _channel):
 
 
 COMMANDS = {
-    "create": create,
-    "text_layout": text_layout,
+    "scan": scan,
+    "inspect_bubble_group": inspect_bubble_group,
+    "prepare": prepare,
     "text_output": text_output,
 }
 

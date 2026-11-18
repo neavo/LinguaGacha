@@ -467,7 +467,7 @@ export class ProjectContentService {
               !old ||
               !source ||
               !target ||
-              source.status !== "PROCESSED" ||
+              (source.status !== "PROCESSED" && source.status !== "EXCLUDED") ||
               old.image !== next.image ||
               old.source !== next.source ||
               source.src !== next.source
@@ -475,8 +475,10 @@ export class ProjectContentService {
               continue;
             target.dst = source.dst;
             target.name_dst = source.name_dst;
-            target.status = "PROCESSED";
-            preserved.set(draft.rel_path, (preserved.get(draft.rel_path) ?? 0) + 1);
+            // 局部修正不应重新启用同一资产中已经确认保留原图的区域。
+            target.status = source.status;
+            if (source.status === "PROCESSED")
+              preserved.set(draft.rel_path, (preserved.get(draft.rel_path) ?? 0) + 1);
           }
         }
         const pending = candidates.filter((item) => item.status !== "PROCESSED"); // 记录继承前的未完成条目。

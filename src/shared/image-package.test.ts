@@ -16,9 +16,10 @@ it("图片相对路径拒绝越界与大小写冲突", () => {
   );
 });
 
-it("每个 OCR 有效文字框必须唯一归属区域", () => {
+it("写字区域必须有原文，纯原图页可以没有条目", () => {
   const { book, records } = image_fixture(["p1"]);
+  expect(() => read_image_book(book, [])).toThrow("requires non-empty source text");
   book.pages[0]!.regions = [];
-  records.length = 0;
-  expect(() => read_image_book(book, records)).toThrow("must belong to one region");
+  expect(() => read_image_book(book, records)).toThrow("Invalid image record reference");
+  expect(read_image_book(book, []).pages).toHaveLength(1);
 });
