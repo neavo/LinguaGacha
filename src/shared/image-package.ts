@@ -34,10 +34,6 @@ const IMAGE_TEXT_BOX_SCHEMA = Type.Object(
 );
 const COLOR_CHANNEL = Type.Integer({ minimum: 0, maximum: 255 });
 const IMAGE_COLOR_SCHEMA = Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]);
-export const IMAGE_FILL_SCHEMA = Type.Object(
-  { color: IMAGE_COLOR_SCHEMA },
-  { additionalProperties: false },
-); // 译文区域的纯色填充。
 const REGION_SCHEMA = Type.Object(
   {
     regionId: IMAGE_ID_SCHEMA,
@@ -141,7 +137,7 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
   if (!Check(IMAGE_BOOK_SCHEMA, value)) throw new Error("Invalid image state");
   const pageIds = new Set<string>();
   const relativePaths = new Set<string>();
-  const regions = new Set<string>();
+  const regions = new Set<string>(); // 与原文记录对齐时逐个移除，剩余区域缺少原文。
   for (const page of value.pages) {
     if (pageIds.has(page.pageId) || page.width * page.height > IMAGE_PAGE_MAX_PIXELS)
       throw new Error("Invalid image page");
@@ -174,37 +170,26 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
       regions.add(key);
       if (region.layoutArea.path !== `layout-areas/${page.pageId}/${region.regionId}.png`)
         throw new Error("Invalid layout area path");
-      const localTextBoxIds = new Set<string>();
       for (const textBoxId of region.textBoxIds) {
-        if (
-          !textBoxIds.has(textBoxId) ||
-          localTextBoxIds.has(textBoxId) ||
-          assignedTextBoxIds.has(textBoxId)
-        )
+        if (!textBoxIds.has(textBoxId) || assignedTextBoxIds.has(textBoxId))
           throw new Error("Invalid or duplicate region text box");
-        localTextBoxIds.add(textBoxId);
         assignedTextBoxIds.add(textBoxId);
       }
     }
     if (assignedTextBoxIds.size !== textBoxIds.size)
       throw new Error("Every detected text box must belong to one region");
   }
-  const seen = new Map<string, ImageRecord>();
   const pageOrder = new Map(value.pages.map((page, index) => [page.pageId, index]));
   let previousPage = -1;
   for (const record of records) {
     const key = record.pageId + "/" + record.regionId;
-    if (!regions.has(key) || seen.has(key)) throw new Error("Invalid image record reference");
+    if (!regions.delete(key)) throw new Error("Invalid image record reference");
+    if (!record.message.trim()) throw new Error("Image region requires non-empty source text");
     const order = pageOrder.get(record.pageId)!;
     if (order < previousPage) throw new Error("Image records do not follow page order");
     previousPage = order;
-    seen.set(key, record);
   }
-  for (const key of regions) {
-    const record = seen.get(key);
-    if (!record || record.message.trim().length === 0)
-      throw new Error("Image region requires non-empty source text");
-  }
+  if (regions.size) throw new Error("Image region requires non-empty source text");
   return value;
 }
 

@@ -1,9 +1,12 @@
 import { create_item, type Item } from "../../../domain/item";
 import type { ImageBook, ImageRecord } from "../../../shared/image-package";
-import type { ImageTextInput } from "../../../shared/image-text";
-import { write_message_records } from "../shared/message-records";
+import { index_message_items } from "../shared/message-records";
 import { read_translation_for_generation } from "../shared/translation-generation-text";
 import { read_image_package } from "./image-package";
+
+/** 完成空正文仍是译文，排除和未完成各有自己的输出语义。 */
+export type ImageTextRecord = Pick<ImageRecord, "pageId" | "regionId"> &
+  ({ output: "translated"; text: string } | { output: "original" } | { output: null });
 
 /** 相对路径与区域号跨重新创建保持稳定，项目域据此复制已完成事实。 */
 export function image_record_identities(book: ImageBook, records: readonly ImageRecord[]) {
@@ -29,28 +32,19 @@ export async function build_image_text_input(
   items: readonly Item[],
   file: string,
 ) {
-  const { book, records, clean, members } = await read_image_package(content, file);
-  write_message_records(records, items, file);
-  const byRow = new Map(items.map((item) => [item.row, item]));
-  const input: ImageTextInput = {
-    records: records.map((record, row) => {
-      const item = byRow.get(row);
-      const output =
-        item?.status === "PROCESSED"
-          ? ("translated" as const)
-          : item?.status === "EXCLUDED"
-            ? ("original" as const)
-            : null;
-      return {
-        pageId: record.pageId,
-        regionId: record.regionId,
-        output,
-        text:
-          output === "translated" && item ? (read_translation_for_generation(item) ?? null) : null,
-      };
-    }),
-  };
-  return { book, clean, input, members };
+  const { book, records, clean, members } = await read_image_package(content, file, {
+    validatePixels: false, // 生成只消费已入库的图片资产，各像素宿主仍核对消费的尺寸。
+  });
+  const byRow = index_message_items(records, items, file);
+  const textRecords = records.map(({ pageId, regionId }, row): ImageTextRecord => {
+    const item = byRow.get(row);
+    if (item?.status === "EXCLUDED") return { pageId, regionId, output: "original" };
+    const text = item && read_translation_for_generation(item);
+    return text === undefined
+      ? { pageId, regionId, output: null }
+      : { pageId, regionId, output: "translated", text };
+  });
+  return { book, clean, textRecords, members };
 }
 
 /** 图片格式建立工程条目；文件生成服务消费同一归档契约写出译图。 */

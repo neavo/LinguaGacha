@@ -4,136 +4,122 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { create_item } from "../../../domain/item";
 import { image_fixture } from "../../../test/image-fixture";
-import type { ImageTextPage, ImageTextPaint } from "../../../shared/image-text";
-import type { ImagePixelHost } from "../../../shared/image-helper";
+import { check_image_helper_request, type ImagePixelHost } from "../../../shared/image-helper";
 import { ImageOutputService } from "./image-output";
 
-it("成功区域写出译文，错误区域回退原图，EXCLUDED 不依赖消字结果", async () => {
+it.each([false, true])("图片生成按区域裁决，只展开本页所需成员（QA=%s）", async (qa) => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-output-"));
-  const fixture = image_fixture(["translated", "error", "excluded"]);
+  const fixture = image_fixture([
+    "translated",
+    "no-fit",
+    "excluded",
+    "blank",
+    "unfinished",
+    "cover",
+  ]);
   fixture.clean.pages[2]!.regions = [{ regionId: "text", status: "failed" }];
-  const fallbackRequests: string[][] = [];
-  const qaPages: string[] = [];
-  const layoutPages: string[] = [];
-  const distance = Buffer.alloc(4);
-  distance.writeFloatLE(1);
+  fixture.book.pages.at(-1)!.textBoxes = [];
+  fixture.book.pages.at(-1)!.regions = [];
+  fixture.clean.pages.at(-1)!.regions = [];
+  fixture.records.pop();
+
   const service = new ImageOutputService(
-    async (operation) => {
-      const page = operation.page;
-      return page.regions.map((region) => {
-        const block = region.candidates[0]!.blocks[0]!;
-        expect(block).toMatchObject({ sourceEnvelopeArea: 1, sourceCenter: [0.5, 0.5] });
-        expect(block).not.toHaveProperty("sourceTextBoxIds");
-        const failed = page.pageId === "error";
-        return {
-          result: failed
-            ? {
-                regionId: region.regionId,
-                renderStatus: "failure" as const,
-                reason: "layout_no_fit" as const,
-              }
-            : {
-                regionId: region.regionId,
-                box: block.box,
-                renderStatus: "success" as const,
+    async ({ page }) =>
+      page.regions.map(({ regionId }) => ({
+        regionId,
+        png: page.pageId === "no-fit" ? null : "fixture",
+      })),
+    (async (command: string, input: unknown) => {
+      if (command === "text_layout" && check_image_helper_request(command, input)) {
+        return input.page.regions.map(({ regionId, layoutArea }) => {
+          expect(fs.existsSync(path.join(input.root, layoutArea.path))).toBe(true);
+          return { regionId, box: [0, 0, 1, 1], distance: "", sourceLines: [] };
+        });
+      }
+      if (command !== "text_output" || !check_image_helper_request(command, input))
+        throw new Error(`Unexpected command: ${command}`);
+      const page = path.basename(input.output).split(".")[0];
+      const layers = input.composition
+        ? JSON.parse(fs.readFileSync(input.composition.layers, "utf8"))
+        : [];
+      expect(layers).toEqual(
+        page === "translated"
+          ? [
+              {
+                eraseMask: "erase-masks/translated/text.png",
+                overlay: { box: [0, 0, 1, 1], png: "fixture" },
               },
-          ...(failed ? {} : { png: "fixture" }),
-        };
-      }) satisfies ImageTextPaint[];
-    },
-    (async (command: string, input: Record<string, unknown>) => {
-      if (command === "text_layout") {
-        const page = input.page as ImageTextPage;
-        layoutPages.push(page.pageId);
-        return page.regions.map((region) => ({
-          regionId: region.regionId,
-          candidates: [
-            {
-              candidateId: "C0",
-              blocks: [
+            ]
+          : page === "blank"
+            ? [{ eraseMask: "erase-masks/blank/text.png" }]
+            : [],
+      );
+      expect(fs.existsSync(path.join(input.root, "clean"))).toBe(layers.length > 0);
+      expect(input.qa?.marks).toEqual(
+        qa
+          ? page === "no-fit" || page === "unfinished"
+            ? [
                 {
-                  blockId: "B1",
-                  box: [0, 0, 1, 1],
-                  distance: distance.toString("base64"),
-                  sourceTextBoxIds: ["t1"],
+                  regionId: "text",
+                  layoutArea: `layout-areas/${page}/text.png`,
+                  incomplete: page === "unfinished",
                 },
-              ],
-            },
-          ],
-        }));
-      }
-      if (command === "text_compose") {
-        expect(JSON.parse(fs.readFileSync(String(input.paint), "utf8"))).toEqual(expect.any(Array));
-        fallbackRequests.push(input.fallbackRegionIds as string[]);
-      }
-      if (command === "qa_preview") qaPages.push((input.page as ImageTextPage).pageId);
-      const output = String(input.output);
-      fs.mkdirSync(path.dirname(output), { recursive: true });
-      fs.copyFileSync(String(input.source), output);
-      return {};
-    }) as unknown as ImagePixelHost,
+              ]
+            : []
+          : undefined,
+      );
+      fs.mkdirSync(path.dirname(input.output), { recursive: true });
+      fs.copyFileSync(input.original, input.output);
+      return { path: input.output };
+    }) as ImagePixelHost,
   );
   const [asset] = await service.write_assets({
     assetPaths: ["comic/chapter.image"],
     items: fixture.records.map((record, row) =>
       create_item({
         src: record.message,
-        dst: "译文",
+        dst: record.pageId === "blank" ? "" : "译文",
         row,
         file_path: "comic/chapter.image",
         file_type: "IMAGE",
-        status: record.pageId === "excluded" ? "EXCLUDED" : "PROCESSED",
+        status:
+          record.pageId === "excluded"
+            ? "EXCLUDED"
+            : record.pageId === "unfinished"
+              ? "NONE"
+              : "PROCESSED",
       }),
     ),
-    readAsset: async () => fixture.pack(),
+    readAsset: fixture.pack,
     outputRoot: temporary.path,
     claimedPaths: new Set(),
-    qa: true,
+    qa,
   });
 
-  expect(asset!.files).toMatchObject([
-    {
-      path: "comic/chapter/translated.png",
-      entries: [
-        {
-          region_id: "text",
-          status: "success",
-          output: "translated",
-          reasons: [],
-        },
-      ],
-    },
-    {
-      path: "comic/chapter/error.png",
-      entries: [
-        {
-          region_id: "text",
-          status: "failure",
-          output: "original",
-          reasons: [{ code: "layout_no_fit" }],
-        },
-      ],
-    },
-    {
-      path: "comic/chapter/excluded.png",
-      entries: [{ region_id: "text", status: "success", output: "original", reasons: [] }],
-    },
+  const extension = qa ? ".png.webp" : ".png";
+  expect(asset!.files.map(({ path }) => path)).toEqual(
+    fixture.book.pages.map(({ pageId }) => `comic/chapter/${pageId}${extension}`),
+  );
+  expect(
+    asset!.files.map(({ entries }) =>
+      entries.map(({ output, reasons }) => [output, reasons[0]?.code]),
+    ),
+  ).toEqual([
+    [["translated", undefined]],
+    [["original", "layout_no_fit"]],
+    [["original", undefined]],
+    [["translated", undefined]],
+    [["original", "translation_incomplete"]],
+    [],
   ]);
-  expect(fallbackRequests).toEqual([[], ["text"], ["text"]]);
-  expect(layoutPages).toEqual(["translated", "error"]);
-  expect(qaPages).toEqual(["translated", "error", "excluded"]);
-  expect(fs.existsSync(path.join(temporary.path, "comic/chapter/translated.png"))).toBe(true);
-  expect(fs.existsSync(path.join(temporary.path, "comic/chapter/error.png"))).toBe(true);
-  expect(fs.existsSync(path.join(temporary.path, "comic/chapter/excluded.png"))).toBe(true);
+  expect(fs.readdirSync(temporary.path)).toEqual(["comic"]);
 });
 
 it("图片 helper 内部错误终止输出", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-output-error-"));
   const fixture = image_fixture(["page"]);
   const service = new ImageOutputService(
-    async () => {
-      throw new Error("renderer protocol failed");
-    },
+    async () => [],
     async (command) => {
       if (command === "text_layout") throw new Error("helper protocol failed");
       throw new Error("unexpected command");

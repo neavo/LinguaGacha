@@ -3,21 +3,33 @@ import type { JsonRecord } from "../../../domain/json";
 import { AppError } from "../../../shared/error";
 import { read_translation_for_generation } from "./translation-generation-text";
 
-/** 两种记录格式共享坐标校验与译文取值，调用方持有各自的读取契约。 */
+/** 工程条目的行号和原文必须匹配原稿，同一行只接纳一条译文。 */
+export function index_message_items(
+  messages: readonly { message: string }[],
+  items: readonly Item[],
+  rel_path: string,
+) {
+  const byRow = new Map<number, Item>();
+  for (const item of items) {
+    const record = messages[item.row];
+    if (!record) throw invalid_structure(rel_path, "message_row_not_found", item.row);
+    if (byRow.has(item.row)) throw invalid_structure(rel_path, "duplicate_message_row", item.row);
+    if (record.message !== item.src)
+      throw invalid_structure(rel_path, "message_source_mismatch", item.row);
+    byRow.set(item.row, item);
+  }
+  return byRow;
+}
+
+/** 消费已对齐条目的译文与译名。 */
 export function write_message_records(
   messages: (JsonRecord & { message: string })[],
   items: readonly Item[],
   rel_path: string,
   allow_names_array = false, // 仅 MESSAGEJSON 解释 `names`，通用记录的同名字段属于私有数据。
 ): void {
-  const written = new Set<number>(); // 每个源对象只接纳一条译文，避免后写覆盖前写。
-  for (const item of items) {
-    const record = messages[item.row];
-    if (!record) throw invalid_structure(rel_path, "message_row_not_found", item.row);
-    if (written.has(item.row)) throw invalid_structure(rel_path, "duplicate_message_row", item.row);
-    if (record.message !== item.src)
-      throw invalid_structure(rel_path, "message_source_mismatch", item.row);
-    written.add(item.row);
+  for (const [row, item] of index_message_items(messages, items, rel_path)) {
+    const record = messages[row]!;
     record.message = read_translation_for_generation(item) ?? item.src;
     // 姓名独立于正文状态。双字段沿用 `name` 优先规则。
     if (!item.name_dst) continue; // 空译名保留源姓名结构。
