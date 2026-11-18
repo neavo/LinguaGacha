@@ -1,6 +1,7 @@
 import type { Api, Model as PiModel } from "@earendil-works/pi-ai";
 import { is_json_record } from "../../domain/json";
 import type { ModelSpeedLevel, ModelApiFormat } from "../../domain/model";
+import { MISTRAL_API_BASE_URL } from "../../domain/model-endpoint";
 import { AppError } from "../../shared/error";
 import { apply_chatgpt_payload } from "./chatgpt-request";
 import type { ModelRequestPolicy } from "./llm-overrides";
@@ -33,6 +34,8 @@ export function apply_request_overrides(
   { compat, request, one_shot_signal }: RequestOverrideOptions = {},
 ): Record<string, unknown> {
   const record = { ...read_pi_record(payload, snapshot.api_format) };
+  if (snapshot.endpoint.api === "mistral-conversations")
+    return apply_mistral_chat_extensions(record, snapshot, one_shot_signal !== undefined);
   if (snapshot.thinking_level === "DEFAULT")
     remove_thinking_controls(record, snapshot.api_format, compat);
   const top_p =
@@ -65,8 +68,10 @@ export function apply_request_overrides(
     return apply_anthropic_extensions(record, snapshot);
   }
   if (snapshot.api_format === "OpenAIResponses") {
-    if (request?.supports_reasoning_summary === false)
+    const mistral = snapshot.endpoint.base_url === MISTRAL_API_BASE_URL;
+    if (mistral || request?.supports_reasoning_summary === false)
       remove_nested_fields(record, "reasoning", ["summary"]);
+    if (mistral) delete record["include"]; // Mistral 回传明文 reasoning item，按原样随历史发送。
     // 应用档位先覆盖 SDK 自动值，用户自定义请求体仍拥有最终覆盖权。
     if (snapshot.speed_level === "DEFAULT") delete record["service_tier"];
     else record["service_tier"] = RESPONSE_SERVICE_TIERS[snapshot.speed_level];
@@ -81,6 +86,30 @@ export function apply_request_overrides(
   return snapshot.auth_type === "oauth"
     ? apply_chatgpt_payload(record, snapshot.extra_body)
     : { ...record, ...snapshot.extra_body };
+}
+
+/** Pi 的 Mistral onPayload 在转换线上字段之前执行，先去掉会覆盖用户显式字段的 SDK 别名。 */
+function apply_mistral_chat_extensions(
+  record: Record<string, unknown>,
+  snapshot: ModelRequestSnapshot,
+  one_shot: boolean,
+): Record<string, unknown> {
+  if (snapshot.thinking_level === "DEFAULT") {
+    delete record["reasoningEffort"];
+    delete record["promptMode"];
+  }
+  if (one_shot) {
+    const max_tokens = resolve_max_tokens_for_request(snapshot);
+    if (max_tokens === null) delete record["maxTokens"];
+    else record["maxTokens"] = max_tokens;
+    const top_p = read_custom_number(snapshot.generation, "top_p");
+    if (top_p !== null) record["top_p"] = top_p;
+  }
+  for (const wire_key of Object.keys(snapshot.extra_body)) {
+    const sdk_key = wire_key.replace(/_([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+    delete record[sdk_key];
+  }
+  return { ...record, ...snapshot.extra_body };
 }
 
 /** 清理 SDK 自动生成的思考控制，用户扩展随后合并。 */

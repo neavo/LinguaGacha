@@ -89,6 +89,18 @@ describe("模型接口地址", () => {
     ).toBe("OpenAI");
   });
 
+  it.each([
+    ["OpenAI", "https://api.mistral.ai", "mistral-conversations", "https://api.mistral.ai/v1"],
+    [
+      "OpenAI",
+      "https://api.mistral.ai.proxy.example/v1",
+      "OpenAI",
+      "https://api.mistral.ai.proxy.example/v1",
+    ],
+  ] as const)("%s 在 %s 选择适配器并保留列表根地址", (format, url, api, base_url) => {
+    expect(resolve_model_endpoint(url, format, "test-model")).toMatchObject({ api, base_url });
+  });
+
   it("Vertex 短名称与完整资源名指向同一请求地址", () => {
     const scoped =
       "https://aiplatform.googleapis.com/v1/projects/gemini-4-project/locations/global";

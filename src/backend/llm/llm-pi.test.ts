@@ -43,6 +43,46 @@ const TEST_USER_AGENT = "LinguaGacha/Test";
 const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 describe("pi-ai 请求适配", () => {
+  it.each(["OpenAI", "OpenAIResponses"] as const)(
+    "%s 官方 Mistral 从目录读取档位并发送对应协议字段",
+    async (api_format) => {
+      const chat = api_format === "OpenAI";
+      for (const [level, effort] of [
+        ["DEFAULT", undefined],
+        ["OFF", "none"],
+        ["MAX", "max"],
+      ] as const) {
+        const request = resolve_request({
+          api_format,
+          api_url: "https://api.mistral.ai/v1",
+          model_id: "deepseek-v4-1-flash-1017",
+          thinking: { level },
+          threshold: { output_token_limit: 0 },
+          generation: { top_p: 0.8, top_p_custom_enable: true },
+        });
+        const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+          Response.json({}, { status: 400 }),
+        );
+        await request
+          .stream(request.model, request.context, { ...request.options, fetch })
+          .result();
+        const sent = new Request(...fetch.mock.calls[0]!);
+        const payload = await sent.json();
+        if (chat) {
+          expect(payload.reasoning_effort).toBe(effort);
+          if (level === "DEFAULT") {
+            expect(payload).toHaveProperty("top_p", 0.8);
+            expect(payload).not.toHaveProperty("max_tokens");
+            expect(payload).not.toHaveProperty("stream_options");
+          }
+        } else {
+          expect(payload.reasoning).toEqual(effort === undefined ? undefined : { effort });
+          expect(payload).not.toHaveProperty("include");
+        }
+      }
+    },
+  );
+
   it.each([
     "gemini-2.5-flash",
     "projects/gemini-4-project/locations/global/publishers/google/models/gemini-2.5-flash",
