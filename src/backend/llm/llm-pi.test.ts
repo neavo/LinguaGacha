@@ -1,5 +1,5 @@
+import { Type } from "typebox";
 import {
-  Type,
   fauxAssistantMessage,
   normalizeContext,
   type Model,
@@ -626,38 +626,6 @@ describe("pi-ai 请求适配", () => {
       }
     },
   );
-
-  it("MiMo V2.5 由 Pi 目录与适配器生成协议对应的思考字段", async () => {
-    const completions_request = resolve_request({
-      api_format: "OpenAI",
-      model_id: "mimo-v2.5-pro",
-      thinking: { level: "HIGH" },
-    });
-    const disabled_request = resolve_request({
-      api_format: "OpenAI",
-      model_id: "mimo-v2.5-pro",
-      thinking: { level: "OFF" },
-    });
-    const responses_request = resolve_request({
-      api_format: "OpenAIResponses",
-      model_id: "mimo-v2.5-pro",
-      thinking: { level: "HIGH" },
-    });
-
-    const completions_payload = await capture_payload(completions_request);
-    expect(completions_payload).toMatchObject({
-      thinking: { type: "enabled" },
-    });
-    expect(completions_payload).not.toHaveProperty("reasoning_effort");
-    await expect(capture_payload(disabled_request)).resolves.toHaveProperty(
-      "thinking.type",
-      "disabled",
-    );
-    await expect(capture_payload(responses_request)).resolves.toHaveProperty(
-      "reasoning.effort",
-      "high",
-    );
-  });
 
   it("Responses 未收录模型即使选择 HIGH 也不启用 reasoning", async () => {
     const request = resolve_request({

@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../domain/json";
-import { copyJson } from "@earendil-works/chord";
+import { copyJson } from "@earendil-works/chord/json";
 import { uuidv7 } from "@earendil-works/pi-ai";
 
 import {
@@ -94,9 +94,12 @@ export class AgentInputQueue {
     return copy_queue_value(this.state.items[index]!);
   }
 
-  /** 读取等待队首但不提交，准备完成后统一通过 commit_send 消费。 */
-  public read_next(): AgentQueuedInput | null {
-    if (this.state.paused || this.state.items.some((item) => item.status === "sending"))
+  /** 显式继续可预读暂停队首，恢复队列与受理输入在同一事务提交。 */
+  public read_next(resume = false): AgentQueuedInput | null {
+    if (
+      (!resume && this.state.paused) ||
+      this.state.items.some((item) => item.status === "sending")
+    )
       return null;
     const item = this.state.items.find((candidate) => candidate.status === "queued");
     return item === undefined ? null : copy_queue_value(item);

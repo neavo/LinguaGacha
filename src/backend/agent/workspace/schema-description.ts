@@ -1,4 +1,4 @@
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
 
 /** system 工作区契约和工具声明共用生成器，约束只从原 Schema 读取。 */
 export function create_schema_renderer(

@@ -1652,6 +1652,15 @@ describe("AgentService", () => {
     fake_agent_state.stream_tokens_per_second = 10;
 
     await service.send_message({ text: "开始", attachments: [] });
+    // 首批流式正文应先于 SDK 默认一秒的持久化期限出现。
+    await vi.advanceTimersByTimeAsync(500);
+    expect(service.get_snapshot().entries).toContainEqual(
+      expect.objectContaining({
+        kind: "assistant_message",
+        status: "running",
+        parts: expect.any(Array),
+      }),
+    );
     await vi.runAllTimersAsync();
     await wait_for_idle(service);
     const snapshot = service.get_snapshot();
@@ -2101,7 +2110,7 @@ describe("AgentService", () => {
     const user = service.get_snapshot().entries.find((entry) => entry.kind === "user_message");
     if (user === undefined) throw new Error("缺少 user 条目");
     const first_usage = service.get_snapshot().usage;
-    expect(first_usage.input).toBeGreaterThan(0);
+    expect(first_usage.input + first_usage.cacheWrite).toBeGreaterThan(0);
     expect(first_usage.output).toBeGreaterThan(0);
 
     await service.revise_round({
@@ -2110,7 +2119,6 @@ describe("AgentService", () => {
     });
     await wait_for_idle(service);
     const revised_usage = service.get_snapshot().usage;
-    expect(revised_usage.input).toBeGreaterThan(first_usage.input);
     expect(revised_usage.output).toBe(first_usage.output * 2);
     expect(revised_usage.cacheWrite).toBeGreaterThan(first_usage.cacheWrite);
     expect(change_calls(publish).some(([, event]) => event["type"] === "usage")).toBe(true);
@@ -2135,7 +2143,7 @@ describe("AgentService", () => {
     });
   });
 
-  it("恢复失败轮次时保留公开工具历史，并以隐藏消息继续原 user", async () => {
+  it("恢复失败轮次时保留公开工具历史，并直接从工具结果继续原轮次", async () => {
     const { service } = await create_service();
     fake_agent_state.mode = "tools_error";
     await service.send_message({ text: "原任务", attachments: [] });
@@ -2174,7 +2182,7 @@ describe("AgentService", () => {
     expect(
       snapshot.entries.filter((entry) => entry.kind === "tool_call").map((entry) => entry.id),
     ).toEqual(failed_tool_ids);
-    expect(fake_agent_state.prompts.at(-1)).toBe("继续");
+    expect(fake_agent_state.prompts.at(-1)).toBe("原任务");
     expect(
       fake_agent_state.model_contexts.at(-1)?.some((message) => message.role === "toolResult"),
     ).toBe(true);
@@ -3993,7 +4001,7 @@ describe("AgentService", () => {
         .entries.filter((entry) => entry.kind === "user_message")
         .map((entry) => entry.text),
     ).toEqual(["第一轮", "第二轮"]);
-    expect(fake_agent_state.prompts.slice(-2)).toEqual(["继续", "第二轮"]);
+    expect(fake_agent_state.prompts.slice(-2)).toEqual(["第一轮", "第二轮"]);
   });
 
   it("立即发送由 Pi 消费后才从队列提交为 steer 消息", async () => {

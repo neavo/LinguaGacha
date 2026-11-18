@@ -1,5 +1,5 @@
 import { summarize_images } from "./emit-image";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { define_agent_tool, agent_tool_result } from "../tool-definition";

@@ -1,4 +1,4 @@
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 
 export const SEARCH_TIMEOUT_MS = 15_000; // 执行与模型说明共用时限。
 

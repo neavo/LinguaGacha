@@ -1,4 +1,4 @@
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
 import type { SourceInspection } from "../../../shared/project-file-changes";
 

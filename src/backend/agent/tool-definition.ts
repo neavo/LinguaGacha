@@ -3,8 +3,8 @@ import {
   type ToolRegistration,
   type ToolExecutionResult,
 } from "@earendil-works/pi-durable";
-import type { JsonValue } from "@earendil-works/chord";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { JsonValue } from "@earendil-works/chord/json";
+import type { TSchema } from "typebox";
 
 import type { JsonRecord } from "../../domain/json";
 import { is_app_error, type AppError } from "../../shared/error";

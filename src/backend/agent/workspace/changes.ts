@@ -1,9 +1,9 @@
-import type { Static } from "@earendil-works/pi-ai";
+import type { Static } from "typebox";
 import type { AgentWorkspacePageUpdateIntent } from "../../project/agent-workspace-page-write";
 import path from "node:path";
 
 import { Check } from "typebox/value";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
 import { is_json_record, type JsonRecord } from "../../../domain/json";
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";

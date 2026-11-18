@@ -1,3 +1,5 @@
+import { ConversationIdle } from "@earendil-works/pi-durable";
+import type { AgentChatData } from "./agent-chat-data";
 import { create_agent_batch_llm_request_tool } from "./tools/batch-llm-request";
 import { create_search_port } from "./search/request";
 import {
@@ -25,7 +27,7 @@ import { create_agent_batch_item_translation_tool } from "./tools/batch-item-tra
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { isDeepStrictEqual } from "node:util";
-import { AgentChat, type AgentExecution } from "./agent-chat";
+import { AgentChat, type AgentExecution, type AgentSubmitOptions } from "./agent-chat";
 
 import { resolve_app_locale } from "../../domain/app-language";
 import { is_json_record, type JsonRecord } from "../../domain/json";
@@ -420,8 +422,6 @@ export class AgentService {
       throw agent_queue_validation_error("agent_input_command_invalid");
     const commandId = request["commandId"];
     const running = this.input_commands.has(this.chat_id + ":" + commandId);
-    if (!running && chat.state.commands[commandId]?.status === "pending")
-      await chat.settle_input_command(commandId);
     await chat.flush();
     chat.assert_usable();
     this.assert_available();
@@ -444,8 +444,6 @@ export class AgentService {
         kind,
         request: body,
         status: "pending",
-        conversationId: null,
-        requestId: null,
       };
     });
     try {
@@ -471,13 +469,13 @@ export class AgentService {
       }
     } catch (error) {
       if (!chat.sealed)
-        await chat.settle_input_command(commandId).catch((failure) => {
+        await chat.cancel_pending_command(commandId).catch((failure) => {
           chat.log.report_failure("cleanup", failure);
           chat.log.flush();
         });
       throw error;
     }
-    await chat.settle_input_command(commandId);
+    await chat.cancel_pending_command(commandId);
     return { ...this.ack(), status: chat.state.commands[commandId]!.status };
   }
 
@@ -547,16 +545,13 @@ export class AgentService {
               await chat.change_queue((queue) => queue.cancel_send());
               return;
             }
-            await chat.submit(
-              item,
-              prepared,
-              execution,
-              "steer",
-              id,
-              read_input_command_id(request),
-            );
+            await chat.submit(item, prepared, execution, "steer", {
+              queuedId: id,
+              commandId: read_input_command_id(request),
+            });
           } catch (error) {
             await chat.change_queue((queue) => queue.cancel_send());
+            if (error instanceof ConversationIdle) return;
             throw error;
           }
         },
@@ -583,10 +578,11 @@ export class AgentService {
       throw agent_queue_validation_error("agent_continue_message_without_queue");
     const execution = this.begin_execution(read_input_command_id(request));
     return this.accept(execution, async () => {
-      await chat.change_queue((queue) => {
+      const resume = (state: AgentChatData): void => {
+        const queue = new AgentInputQueue(state.queue);
         if (message !== null) queue.enqueue(message);
         queue.resume();
-      }, read_input_command_id(request));
+      };
       if (failed) {
         await this.update_model(chat, execution);
         execution.roundId = round.id;
@@ -600,25 +596,19 @@ export class AgentService {
                   round.averageTokensPerSecond.toFixed(AGENT_TOKEN_SPEED_DECIMAL_PLACES),
                 ),
               };
-        await chat.change((state) => {
+        const accepted = await chat.continue_round(execution, (state) => {
+          resume(state);
           const previous = state.rounds[round.id]!;
           previous.status = "running";
           previous.endedAt = null;
           previous.averageTokensPerSecond = null;
         });
-        const text = this.read_continue_text();
-        const accepted = await chat.submit(
-          { text, attachments: [] },
-          { text, images: [] },
-          execution,
-          "hidden",
-        );
         chat.log.begin_run(round.id, "continue");
         this.launch(chat, execution, () => this.drive(chat, execution, accepted));
       } else {
-        const next = chat.queue.read_next();
+        const next = chat.queue.read_next(true);
         if (next === null) throw agent_queue_validation_error("agent_continue_unavailable");
-        await this.accept_round(execution, next, next.id);
+        await this.accept_round(execution, next, next.id, resume);
       }
     });
   }
@@ -689,8 +679,14 @@ export class AgentService {
       this.assert_execution(execution);
       chat.log.revise(round.id, "user", revision.message.text);
       execution.commandId = commandId;
-      await chat.revise_user(target, resolved.model, resolved.thinkingLevel, commandId);
-      const accepted = await this.submit_round(chat, execution, revision.message, prepared);
+      const conversation = await chat.fork_user_revision(
+        target,
+        resolved.model,
+        resolved.thinkingLevel,
+      );
+      const accepted = await this.submit_round(chat, execution, revision.message, prepared, {
+        conversation,
+      });
       this.launch(chat, execution, () => this.drive(chat, execution, accepted));
     });
   }
@@ -876,6 +872,7 @@ export class AgentService {
     execution: AgentExecution,
     message: AgentMessageInput,
     queuedId?: string,
+    change?: (state: AgentChatData) => void,
   ): Promise<void> {
     if (queuedId !== undefined)
       await this.require_chat().change_queue((queue) => queue.begin_send(queuedId));
@@ -885,7 +882,10 @@ export class AgentService {
     const prepared = await this.prepare_message(message);
     this.assert_execution(execution);
     await this.update_model(chat, execution);
-    const accepted = await this.submit_round(chat, execution, message, prepared, queuedId);
+    const accepted = await this.submit_round(chat, execution, message, prepared, {
+      queuedId,
+      change,
+    });
     this.launch(chat, execution, () => this.drive(chat, execution, accepted));
   }
 
@@ -895,14 +895,14 @@ export class AgentService {
     execution: AgentExecution,
     message: AgentMessageInput,
     prepared: PreparedAgentMessage,
-    queuedId?: string,
+    options: AgentSubmitOptions = {},
   ): ReturnType<AgentChat["submit"]> {
     execution.phase = "running";
     execution.batchStopped = false;
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
-    return chat.submit(message, prepared, execution, "round", queuedId ?? null);
+    return chat.submit(message, prepared, execution, "round", options);
   }
   /** 串行结算轮次并续取 FIFO，失败暂停队列，后台结算统一收尾。 */
   private async drive(
@@ -960,7 +960,7 @@ export class AgentService {
         await this.update_model(chat, execution);
         const prepared = await this.prepare_message(next);
         this.assert_execution(execution);
-        accepted = await this.submit_round(chat, execution, next, prepared, next.id);
+        accepted = await this.submit_round(chat, execution, next, prepared, { queuedId: next.id });
       } catch (error) {
         if (chat.sealed) await chat.close();
         else
@@ -1031,8 +1031,8 @@ export class AgentService {
       onClosing: (closing) => {
         if (this.chat === closing) this.decisions.reset();
       },
-      onReport: (error) => {
-        log.report_failure("cleanup", error);
+      onReport: (error, operation = "cleanup") => {
+        log.report_failure(operation, error);
         log.flush();
       },
     });

@@ -1,5 +1,5 @@
 import { ITEM_STATUSES } from "../../../domain/item";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type {
   AgentBatchTranslationRequest,

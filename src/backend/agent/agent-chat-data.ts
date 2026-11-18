@@ -57,8 +57,8 @@ export type AgentInputCommandRecord = {
   kind: AgentInputCommandKind;
   request: JsonRecord;
   status: AgentInputCommandStatus;
-  conversationId: ConversationId | null; // 保存 SDK 提交归属，重开时据此核对回执
-  requestId: string | null; // 实际发送时生成，与可编辑队列的入队命令分离
+  conversationId?: ConversationId | null; // 1.3.0 遗留 pending 命令的回执索引
+  requestId?: string | null; // 与旧 conversationId 配对，新受理随 SDK 一次提交
 };
 
 /** 产品事实跨分叉保留，输入关联按不可变身份筛选。 */
@@ -78,6 +78,7 @@ export const AgentChatDoc = defineDocFamily<AgentChatData, null>({
   kind: "linguagacha.chat",
   version: 2,
   scope: "session",
+  checkpointWhen: () => false,
   family: true,
   initial: () => ({
     activeConversationId: null,

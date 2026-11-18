@@ -72,6 +72,7 @@ it("旧版产品文档读取时保留对话事实，压缩时间索引从空记�
     kind: AgentChatDoc.definition.kind,
     version: 1,
     scope: "session",
+    checkpointWhen: () => false,
     family: true,
     initial: () => {
       const { compactionStartedAt: _times, ...state } = AgentChatDoc.definition.initial(null);

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
 import type { ImageQualityResult } from "../../../shared/image";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";

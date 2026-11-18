@@ -3,7 +3,7 @@ import {
   PDF_PAGE_SCHEMA,
   PDF_PAGE_UPDATE_SCHEMA,
 } from "../../../shared/pdf-schema";
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 
 import {
   PROJECT_ITEM_PUBLIC_SCHEMA,

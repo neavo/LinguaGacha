@@ -1,9 +1,7 @@
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type Message } from "@earendil-works/pi-ai";
 import type {
   ConversationId,
-  CommitPublication,
-  DocumentId,
   LiveState,
   Seq,
   TaskId,
@@ -176,28 +174,13 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
   const oldEntry = view.entries[1];
   const partial = fauxAssistantMessage("开头", { timestamp: 2000 });
   const live: LiveState = {
-    run: { taskId, inputs: [1 as SubmissionId] },
+    run: { taskId, turns: 0, inputs: [1 as SubmissionId] },
     generation: {
       attempt: 0,
       message: partial as NonNullable<NonNullable<LiveState["generation"]>["message"]>,
     },
   };
-  const liveChange: Extract<CommitPublication["changes"][number], { type: "document" }> = {
-    type: "document",
-    record: {
-      id: 1 as DocumentId,
-      kind: "pi.live",
-      scope: { kind: "conversation", conversationId },
-      history: "latest",
-      fork: "initial",
-      createdAt: 1 as Seq,
-    },
-    conversationId,
-    version: 1,
-    value: live,
-    ops: [],
-  };
-  view.observe({ seq: 1 as Seq, changes: [liveChange] });
+  view.update_live(live);
   view.refresh(conversationId, state);
   expect(view.take_change()).toMatchObject({
     replace: false,
@@ -210,12 +193,10 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
     kind: "pi.assistant",
     model: [fauxAssistantMessage("中间失败", { timestamp: 2000, stopReason: "error" })],
   };
+  view.update_live({});
   view.observe({
     seq: 2 as Seq,
-    changes: [
-      { ...liveChange, value: {} },
-      { type: "entry", value: failed },
-    ],
+    changes: [{ type: "entry", value: failed }],
   });
   view.refresh(conversationId, state);
   view.take_change();
@@ -226,7 +207,7 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
       message: { ...live.generation!.message!, content: [{ type: "text", text: "重试正文" }] },
     },
   };
-  view.observe({ seq: 3 as Seq, changes: [{ ...liveChange, value: retry }] });
+  view.update_live(retry);
   view.refresh(conversationId, state);
   expect(view.take_change().entries).toMatchObject([
     { id: "assistant:5000", status: "running", parts: [{ text: "重试正文" }] },
@@ -238,12 +219,8 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
     kind: "pi.assistant",
     model: [fauxAssistantMessage("完整回答", { timestamp: 2000 })],
   };
-  const changes: CommitPublication["changes"] = [
-    { ...liveChange, value: {} },
-    { type: "entry", value: completed },
-  ];
-  // `LiveDoc` 在正式条目前出现，消费者仍以整批提交后的事实为准。
-  view.observe({ seq: 4 as Seq, changes });
+  view.update_live({});
+  view.observe({ seq: 4 as Seq, changes: [{ type: "entry", value: completed }] });
   view.refresh(conversationId, state);
   expect(view.take_change()).toMatchObject({
     replace: false,

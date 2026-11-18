@@ -1,4 +1,4 @@
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { TSchema } from "typebox";
 import { Errors } from "typebox/value";
 
 /** 将结构校验失败收口为可修复的字段信息，避免向模型回传整个 Schema 或输入。 */
