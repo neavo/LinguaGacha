@@ -1,5 +1,6 @@
 import { create_file_generator } from "../tools/generate-files";
-import { create_image_qa_generator } from "../tools/generate-image-qa";
+import { create_image_text_renderer } from "../tools/render-image-text";
+import type { ImageTextHost } from "../../../shared/image-text";
 import type { TranslationFileGenerationService } from "../../file/translation-file-generation-service";
 import type { ProjectKnowledgeService } from "../../project/project-knowledge-service";
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
@@ -223,9 +224,10 @@ export class AgentWorkspaceService {
       packageSources: Pick<AgentPackageSources, "resolve" | "forget">; // 应用级缓存，按对话身份隔离
       generation: Pick<
         TranslationFileGenerationService,
-        "generate_image_qa" | "generate_staging_files" | "read_output_paths"
+        "generate_staging_files" | "read_output_paths"
       >;
       pdfHost?: PDFHost | undefined;
+      imageTextHost?: ImageTextHost | undefined;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -715,6 +717,7 @@ export class AgentWorkspaceService {
           for (const filename of ["function_models.json", "model_configs.json"]) {
             await this.native_fs.remove_async(path.join(this.root_path, filename), { force: true });
           }
+          const imageTextHost = this.options.imageTextHost;
           const execution = await this.options.run(
             {
               workspacePath: this.root_path,
@@ -740,7 +743,13 @@ export class AgentWorkspaceService {
                 return result.map((entry, index) => ({ ...entry, source_path: sources[index]! }));
               },
               generateFiles: create_file_generator(this.root_path, this.options.generation),
-              generateImageQA: create_image_qa_generator(this.root_path, this.options.generation),
+              ...(imageTextHost && {
+                renderImageText: create_image_text_renderer({
+                  root: this.root_path,
+                  nativeFs: this.native_fs,
+                  host: imageTextHost,
+                }),
+              }),
               getOutputPaths: this.options.generation.read_output_paths.bind(
                 this.options.generation,
               ),

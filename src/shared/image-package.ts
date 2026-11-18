@@ -21,7 +21,7 @@ export const IMAGE_BOX_SCHEMA = Type.Tuple([
 ]);
 const IMAGE_KIND_SCHEMA = Type.Union([Type.Literal("bubble"), Type.Literal("unframed")]);
 const COLOR_CHANNEL = Type.Integer({ minimum: 0, maximum: 255 });
-const IMAGE_COLOR_SCHEMA = Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]);
+export const IMAGE_COLOR_SCHEMA = Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]);
 const REGION_SCHEMA = Type.Object(
   {
     regionId: IMAGE_ID_SCHEMA,
@@ -80,7 +80,7 @@ export const IMAGE_RECORD_SCHEMA = Type.Object(
 export const IMAGE_RECORDS_SCHEMA = Type.Array(IMAGE_RECORD_SCHEMA);
 export type ImageRecord = Static<typeof IMAGE_RECORD_SCHEMA>;
 
-const IMAGE_PAGE_MAX_PIXELS = 100_000_000; // 限制单页解码与掩码内存。
+export const IMAGE_PAGE_MAX_PIXELS = 100_000_000; // 限制单页解码与掩码内存。
 
 /** 包内路径跨平台保存，Schema 之外拒绝越界与 Windows 路径别名。 */
 function read_image_member_path(value: string): string {
@@ -155,5 +155,37 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
     previousPage = order;
   }
   if (regions.size) throw new Error("Image region requires non-empty source text");
+  return value;
+}
+
+const WRITEBACK_ID = { pageId: IMAGE_ID_SCHEMA, regionId: IMAGE_ID_SCHEMA };
+const IMAGE_WRITEBACK_ITEM_SCHEMA = Type.Union([
+  Type.Object(
+    { ...WRITEBACK_ID, output: Type.Literal("translated"), text: Type.String() },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { ...WRITEBACK_ID, output: Type.Union([Type.Literal("original"), Type.Null()]) },
+    { additionalProperties: false },
+  ),
+]);
+
+export type ImageWritebackItem = Static<typeof IMAGE_WRITEBACK_ITEM_SCHEMA>;
+const IMAGE_WRITEBACK_SCHEMA = Type.Array(IMAGE_WRITEBACK_ITEM_SCHEMA);
+
+/** 写回输入与原稿条目使用同一顺序，每个区域只有一个输出决定。 */
+export function read_image_writeback(
+  value: unknown,
+  records: readonly ImageRecord[],
+): ImageWritebackItem[] {
+  if (
+    !Check(IMAGE_WRITEBACK_SCHEMA, value) ||
+    value.length !== records.length ||
+    value.some(
+      (item, index) =>
+        item.pageId !== records[index]!.pageId || item.regionId !== records[index]!.regionId,
+    )
+  )
+    throw new Error("Image writeback does not match the source records");
   return value;
 }

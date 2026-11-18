@@ -24,7 +24,6 @@ import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
-import type { ImageOutputService } from "./image/image-output";
 import {
   TranslationFileGenerationService,
   type OutputFolderOpener,
@@ -134,8 +133,11 @@ function create_database(
 }
 
 describe("TranslationFileGenerationService", () => {
-  it("图片直接保留原始相对路径并报告空正文与未翻译", async () => {
-    const fixture = image_fixture(["completed", "duplicated", "blank", "unfinished"]);
+  it("图片交给 Agent 写回并沿用同组译文", async () => {
+    const fixture = image_fixture(["completed", "duplicated"]);
+    const cover = image_fixture(["cover"]);
+    cover.book.pages[0]!.regions = [];
+    cover.records.pop();
     const items = fixture.records.map((record, row) =>
       create_item({
         id: row + 1,
@@ -143,122 +145,91 @@ describe("TranslationFileGenerationService", () => {
         row,
         file_path: "book.image",
         file_type: "IMAGE",
-        status: (["PROCESSED", "DUPLICATED", "PROCESSED", "NONE"] as const)[row],
+        status: row === 0 ? "PROCESSED" : "DUPLICATED",
         dst: row === 0 ? "同组译文" : "",
+      }),
+    );
+    items.push(
+      create_item({
+        id: items.length + 1,
+        src: "保留文本",
+        dst: "文本译文",
+        status: "PROCESSED",
+        file_path: "plain.txt",
+        file_type: "TXT",
       }),
     );
     const session = new ProjectSessionState();
     session.mark_loaded(path.join(temp_dir, "book.lg"));
-    const imageOutput = {
-      write_assets: vi.fn(async (options: Parameters<ImageOutputService["write_assets"]>[0]) =>
-        options.assetPaths.map((assetPath) => ({
-          asset_path: assetPath,
-          files: fixture.book.pages.map((page, index) => {
-            const file = path.join(options.outputRoot, "book", page.relativePath);
-            fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, fixture.original);
-            return {
-              path: path.posix.join("book", page.relativePath),
-              entries: [
-                index === 3
-                  ? {
-                      region_id: "text",
-                      status: "failure" as const,
-                      output: "original" as const,
-                      reasons: [{ code: "translation_incomplete" as const }],
-                    }
-                  : {
-                      region_id: "text",
-                      status: "success" as const,
-                      output: "translated" as const,
-                      reasons: [],
-                    },
-              ],
-            };
-          }),
-        })),
-      ),
-    } satisfies Pick<ImageOutputService, "write_assets">;
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
       new GameDirectoryOperations(),
       create_database(items, {
         "book.image": { content: Buffer.from(await fixture.pack()), file_type: "IMAGE" },
+        "cover.image": { content: Buffer.from(await cover.pack()), file_type: "IMAGE" },
+        "plain.txt": { content: Buffer.from("保留文本"), file_type: "TXT" },
       }),
       create_setting_service(),
       session,
       async () => {},
       create_pdf_execution(),
-      undefined,
-      undefined,
-      imageOutput,
     );
     const generated = await service.generate_staging_files(path.join(temp_dir, "staging"), []);
-    expect(generated.writeback).toBeUndefined();
-    expect(fs.readdirSync(path.join(generated.output_path, "book"))).toEqual([
-      "blank.png",
-      "completed.png",
-      "duplicated.png",
-      "unfinished.png",
-    ]);
-    expect(generated.image_report?.summary).toEqual({
-      success: 3,
-      failures: 1,
-      originals: 1,
-      translated: 3,
+    expect(generated.writeback?.files).toEqual(["book.image", "cover.image"]);
+    expect(fs.readdirSync(generated.output_path)).toEqual(["plain.txt"]);
+    const direct = await service.generate_files({
+      project_path: path.join(temp_dir, "book.lg"),
+      expected_section_revisions: { files: 0 },
     });
-    expect(path.basename(generated.image_report!.path)).toBe(".lg-export-report.json");
-    const report = JSON.parse(fs.readFileSync(generated.image_report!.path, "utf8"));
+    expect(direct.excluded_files).toEqual(["book.image", "cover.image"]);
+    expect(fs.readdirSync(direct.output_path)).toEqual(["plain.txt"]);
     expect(
-      report.assets[0].files.find((file: { path: string }) => file.path.endsWith("unfinished.png"))
-        .entries[0],
-    ).toMatchObject({
-      status: "failure",
-      reasons: [
-        {
-          code: "translation_incomplete",
-          reason: expect.any(String),
-        },
-      ],
-    });
+      JSON.parse(
+        fs.readFileSync(
+          path.join(generated.writeback!.input_path, "cover.image", "items.json"),
+          "utf8",
+        ),
+      ),
+    ).toEqual([]);
+    const snapshot = path.join(generated.writeback!.input_path, "book.image", "items.json");
+    expect(JSON.parse(fs.readFileSync(snapshot, "utf8"))).toEqual([
+      { pageId: "completed", regionId: "text", output: "translated", text: "同组译文" },
+      { pageId: "duplicated", regionId: "text", output: "translated", text: "同组译文" },
+    ]);
     expect(items[1]!.status).toBe("DUPLICATED");
-    const qa = await service.generate_image_qa(path.join(temp_dir, "qa"));
-    expect(qa).toMatchObject({
-      output_path: path.join(temp_dir, "qa"),
-      report: { summary: generated.image_report!.summary },
-    });
-    expect(imageOutput.write_assets).toHaveBeenLastCalledWith(
-      expect.objectContaining({ qa: true, assetPaths: ["book.image"] }),
-    );
   });
-  it.each(["GENERIC", "MEDIA"])(
-    "仅含 %s 时直接生成报告原因与排除清单，且不创建目录",
-    async (file_type) => {
-      const session = new ProjectSessionState();
-      const project_path = path.join(temp_dir, "agent-only.lg");
-      await session.mark_loaded(project_path);
-      const service = new TranslationFileGenerationService(
-        create_generation_gate(),
-        { check_section_revisions: async () => {} },
-        new GameDirectoryOperations(),
-        create_database([], { asset: { content: Buffer.alloc(0), file_type } }),
-        create_setting_service(),
-        session,
-        async () => {},
-        create_pdf_execution(),
-      );
-      for (const generate of [
-        () => service.generate_files({ project_path, expected_section_revisions: { files: 0 } }),
-        () => service.generate_files_to_directory(path.join(temp_dir, "cli")),
-      ])
-        await expect(generate()).rejects.toMatchObject({
-          code: "project.no_files",
-          public_details: { reason: "no_generatable_files", excluded_files: ["asset"] },
-        });
-      expect(fs.readdirSync(temp_dir)).toEqual([]);
-    },
-  );
+  it("仅含写回资产时直接生成报告排除清单，且不创建目录", async () => {
+    const session = new ProjectSessionState();
+    const project_path = path.join(temp_dir, "agent-only.lg");
+    await session.mark_loaded(project_path);
+    const service = new TranslationFileGenerationService(
+      create_generation_gate(),
+      { check_section_revisions: async () => {} },
+      new GameDirectoryOperations(),
+      create_database([], {
+        "data.generic": { content: Buffer.alloc(0), file_type: "GENERIC" },
+        "video.media": { content: Buffer.alloc(0), file_type: "MEDIA" },
+        "book.image": { content: Buffer.alloc(0), file_type: "IMAGE" },
+      }),
+      create_setting_service(),
+      session,
+      async () => {},
+      create_pdf_execution(),
+    );
+    for (const generate of [
+      () => service.generate_files({ project_path, expected_section_revisions: { files: 0 } }),
+      () => service.generate_files_to_directory(path.join(temp_dir, "cli")),
+    ])
+      await expect(generate()).rejects.toMatchObject({
+        code: "project.no_files",
+        public_details: {
+          reason: "no_generatable_files",
+          excluded_files: ["data.generic", "video.media", "book.image"],
+        },
+      });
+    expect(fs.readdirSync(temp_dir)).toEqual([]);
+  });
 
   it("生成持有工程独占范围，Agent 暂存生成必须归属当前回合", async () => {
     const gate = new RuntimeOperationGate();

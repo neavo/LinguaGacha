@@ -42,24 +42,35 @@ export async function read_image_package(
         ? undefined
         : (member) => members.get(member)!.async("uint8array"),
     );
-    return { book, records, members };
+    return { book, records };
   } catch (cause) {
     if (cause instanceof AppError && cause.code === "file.asset_too_large") throw cause;
     throw new AppError("file.invalid_structure", { cause, public_details: { file } });
   }
 }
 
-/** Skill 封包前从工作目录执行与后端相同的当前物理契约。 */
-export async function validate_image_package_directory(directory: string): Promise<{
+/** 读取工作目录的两份清单，核对区域与条目的关系。 */
+export function read_image_package_manifest(directory: string) {
+  const records = read_image_records(read_json(path.join(directory, PACKAGE_ITEMS_MEMBER)));
+  const book = read_image_book(read_json(path.join(directory, IMAGE_STATE_MEMBER)), records);
+  return { book, records };
+}
+
+/** 封包需要物理契约，局部补做只需定位并复用已有成员。 */
+export async function validate_image_package_directory(
+  directory: string,
+  { validatePixels = true } = {},
+): Promise<{
   book: ImageBook;
   records: ImageRecord[];
 }> {
   directory = path.resolve(directory);
-  const records = read_image_records(read_json(path.join(directory, PACKAGE_ITEMS_MEMBER)));
-  const book = read_image_book(read_json(path.join(directory, IMAGE_STATE_MEMBER)), records);
+  const { book, records } = read_image_package_manifest(directory);
   const members = collect_directory_members(directory);
-  await validate_image_members(book, members, async (member) =>
-    fs.read_file(path.join(directory, member)),
+  await validate_image_members(
+    book,
+    members,
+    validatePixels ? async (member) => fs.read_file(path.join(directory, member)) : undefined,
   );
   return { book, records };
 }

@@ -1,93 +1,56 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import type { TSchema } from "typebox";
 
 import { default_native_fs as fs } from "../../../native/native-fs";
-import type { ImageQualityResult } from "../../../shared/image";
 import type {
   ImageBubbleGroup,
   ImageBubblePartition,
   ImageHelperRequest,
   ImageHelperResponse,
 } from "../../../shared/image-helper";
-import {
-  IMAGE_BOOK_SCHEMA,
-  IMAGE_RECORDS_SCHEMA,
-  read_image_book,
-  type ImageRecord,
-  type ImageRegion,
-  read_image_records,
-} from "../../../shared/image-package";
+import { read_image_book, type ImageRecord, type ImageRegion } from "../../../shared/image-package";
 import { validate_image_package_directory } from "../../file/image/image-package";
-import { image_metadata } from "../../file/image/image-metadata";
 import { normalize_image_to_png } from "../../file/image/image-pixels";
 import { INFERENCE_DEPENDENCIES } from "../inference/environment";
-import { create_schema_renderer } from "../workspace/schema-description";
+import type { ImageTextPage, ImageTextPaint } from "../../../shared/image-text";
 import { workspace_requests } from "../workspace/runtime/request-channel";
 import { pixels, type ImageDevice } from "./engine";
 
-export { INFERENCE_DEPENDENCIES };
 export { DeviceFailure } from "../inference/client";
-export type { ImageDevice } from "./engine";
 export { missing_models, prepare_models } from "./models";
+
+export const IMAGE_PIXEL_DEPENDENCIES = [
+  `numpy==${INFERENCE_DEPENDENCIES.numpy}`,
+  `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`,
+] as const;
 
 /** 图片领域显式安装依赖（与共享推理底座和媒体版本保持一致）。 */
 export const IMAGE_DEPENDENCIES = Object.freeze({
   npm: [`onnxruntime-node@${INFERENCE_DEPENDENCIES.ort}`],
-  python: [
-    `pyclipper==${INFERENCE_DEPENDENCIES.pyclipper}`,
-    `numpy==${INFERENCE_DEPENDENCIES.numpy}`,
-    `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`,
-  ],
+  python: [...IMAGE_PIXEL_DEPENDENCIES, `pyclipper==${INFERENCE_DEPENDENCIES.pyclipper}`],
 });
-export type {
-  ImageOutputReport,
-  ImageOutputSummary,
-  ImageQualityResult,
-} from "../../../shared/image";
-export {
-  IMAGE_BOOK_SCHEMA,
-  IMAGE_RECORDS_SCHEMA,
-  read_image_book,
-  read_image_records,
-} from "../../../shared/image-package";
-export type { ImageBook, ImagePage, ImageRecord, ImageRegion } from "../../../shared/image-package";
+export { read_image_writeback } from "../../../shared/image-package";
+export { read_image_package_manifest } from "../../file/image/image-package";
 
-export type ImageSource = { path: string; relativePath: string };
-export type ImageScanResult = Readonly<{
+type ImageSource = { path: string; relativePath: string };
+type ImageScanResult = Readonly<{
   directory: string;
   pages: ImageHelperResponse<"scan">["pages"];
 }>;
 
-/** 按需呈现当前 `.image` 两个 JSON 的目标形状。 */
-export function describe_package(): string {
-  return create_schema_renderer(
-    new Map<TSchema, string>([
-      [IMAGE_BOOK_SCHEMA, "ImageBook"],
-      [IMAGE_RECORDS_SCHEMA, "ImageRecords"],
-    ]),
-  ).declarations();
-}
-
 /** Skill 封包前执行与后端相同的当前图片物理契约。 */
 export const validate_package = validate_image_package_directory;
 
-/** 使用当前工程状态生成整页图片 QA 预览。 */
-export async function generateQA(): Promise<ImageQualityResult> {
-  return workspace_requests().call({ kind: "generate_image_qa" });
-}
-
 /** 整册共享识别会话。选字前只生成原稿、候选区域和预览。 */
-export async function scanPages(
+async function scanPages(
+  script: URL,
   sources: readonly ImageSource[],
   directory: string,
   device: ImageDevice = "gpu",
 ): Promise<ImageScanResult> {
   if (sources.length === 0) throw new Error("At least one source image is required");
-  if (device !== "cpu" && device !== "gpu") throw new Error("Invalid image device");
   const target = path.resolve(directory);
   if (fs.exists(target)) throw new Error("Image work directory already exists");
-  await fs.make_dir_async(path.dirname(target));
   const stage = path.join(path.dirname(target), `.${path.basename(target)}-${randomUUID()}`);
   const normalizedDirectory = path.join(stage, "normalized");
   await fs.make_dir_async(normalizedDirectory);
@@ -95,11 +58,10 @@ export async function scanPages(
     const pageSpecs = [];
     for (const source of sources) {
       const bytes = fs.read_file(source.path);
-      const metadata = image_metadata(bytes);
-      const pageId = randomUUID();
-      const original = `originals/${pageId}${metadata.extension}`;
-      fs.write_file_atomic(path.join(stage, original), bytes);
       const normalized = await normalize_image_to_png(bytes);
+      const pageId = randomUUID();
+      const original = `originals/${pageId}${normalized.extension}`;
+      await fs.write_file(path.join(stage, original), bytes); // 整册在暂存目录完成后才发布。
       const normalizedPath = path.join(normalizedDirectory, `${pageId}.png`);
       await fs.write_file(normalizedPath, normalized.png);
       pageSpecs.push({
@@ -107,13 +69,13 @@ export async function scanPages(
         relativePath: source.relativePath.replaceAll("\\", "/"),
         original,
         sha256: createHash("sha256").update(bytes).digest("hex"),
-        width: metadata.width,
-        height: metadata.height,
-        orientation: metadata.orientation,
+        width: normalized.width,
+        height: normalized.height,
+        orientation: normalized.orientation,
         source: normalizedPath,
       });
     }
-    const scanned = await pixels("scan", { pages: pageSpecs, output: stage }, device);
+    const scanned = await pixels(script, "scan", { pages: pageSpecs, output: stage }, device);
     if (scanned.pages.length !== pageSpecs.length) throw new Error("Invalid image scan result");
     fs.rename(stage, target);
     return {
@@ -129,7 +91,8 @@ export async function scanPages(
 }
 
 /** 查看目标气泡组的 OCR 编号，预览保持整页。 */
-export async function inspectBubbleGroup(
+async function inspectBubbleGroup(
+  script: URL,
   directory: string,
   target: ImageBubbleGroup,
   output: string,
@@ -137,7 +100,7 @@ export async function inspectBubbleGroup(
   const preview = path.resolve(output);
   if (path.extname(preview).toLowerCase() !== ".png" || fs.exists(preview))
     throw new Error("Bubble preview requires a new PNG path");
-  return pixels("inspect_bubble_group", {
+  return pixels(script, "inspect_bubble_group", {
     ...target,
     root: path.resolve(directory),
     output: preview,
@@ -147,32 +110,36 @@ export async function inspectBubbleGroup(
 type PrepareOptions = { device?: ImageDevice; update?: string };
 
 /** 只处理已选区域。局部补做沿用已入包的原文与写字框。 */
-export async function preparePages(
+async function preparePages(
+  script: URL,
   directory: string,
   selected: ImageHelperRequest<"prepare">["selected"],
   output: string,
   options: PrepareOptions = {},
 ) {
-  return prepare_book(directory, selected, output, options);
+  return prepare_book(script, directory, selected, output, options);
 }
 
 /** 纠正一个气泡组，生成可原子替换的完整资产。 */
-export async function repartitionBubbleGroup(
+async function repartitionBubbleGroup(
+  script: URL,
   directory: string,
   correction: ImageBubblePartition,
   previous: string,
   output: string,
   options: { device?: ImageDevice } = {},
 ) {
-  return prepare_book(directory, [], output, { ...options, update: previous }, correction);
+  return prepare_book(script, directory, [], output, { ...options, update: previous }, correction);
 }
 
+/** 子格编号保留原气泡组编号及分隔符。 */
 function region_in_group(regionId: string, group: string): boolean {
-  // 所有子格编号都保留原气泡组的完整前缀。
   return regionId === group || regionId.startsWith(group + "-");
 }
 
+/** 按原稿身份合并补做结果，整册落盘后一次发布。 */
 async function prepare_book(
+  script: URL,
   directory: string,
   selected: ImageHelperRequest<"prepare">["selected"],
   output: string,
@@ -180,7 +147,6 @@ async function prepare_book(
   correction?: ImageBubblePartition,
 ) {
   const { device = "gpu", update } = options;
-  if (device !== "cpu" && device !== "gpu") throw new Error("Invalid image device");
   const root = path.resolve(directory);
   const target = path.resolve(output);
   if (fs.exists(target)) throw new Error("Image package work directory already exists");
@@ -190,7 +156,8 @@ async function prepare_book(
   const previousDirectory = update ? path.resolve(update, "package") : undefined;
   await fs.make_dir_async(packageDirectory);
   try {
-    const previous = previousDirectory && (await validate_package(previousDirectory));
+    const previous =
+      previousDirectory && (await validate_package(previousDirectory, { validatePixels: false })); // 封包前统一检查补丁像素。
     const partitionFile = update && path.resolve(update, "partitions.json");
     let partitions: ImageBubblePartition[] =
       partitionFile && fs.exists(partitionFile) ? JSON.parse(fs.read_text_file(partitionFile)) : [];
@@ -229,6 +196,7 @@ async function prepare_book(
         : [pick];
     });
     const prepared = await pixels(
+      script,
       "prepare",
       {
         root,
@@ -247,8 +215,11 @@ async function prepare_book(
       },
       device,
     );
-    let records = read_image_records(prepared.records);
-    let book = read_image_book({ bookId: randomUUID(), pages: prepared.pages }, records);
+    let { records } = prepared;
+    let book = read_image_book(
+      { bookId: previous ? previous.book.bookId : randomUUID(), pages: prepared.pages },
+      records,
+    );
     const regionIds = correction
       ? book.pages.flatMap((page) =>
           page.regions.filter((region) => !region.parts).map(({ regionId }) => regionId),
@@ -323,5 +294,31 @@ async function prepare_book(
     };
   } finally {
     await fs.remove_async(stage, { recursive: true, force: true });
+  }
+}
+
+export { AGENT_IMAGE_MAX_EDGE } from "../../../shared/agent-image";
+export { normalize_image_text } from "../../../shared/image-text";
+export { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
+export { normalize_image_to_png };
+
+/** 技能入口固定本次使用的脚本路径，各作业仍共享 SDK 的推理监管。 */
+export function create_image_pipeline(script: URL) {
+  return {
+    scan: scanPages.bind(undefined, script),
+    inspectGroup: inspectBubbleGroup.bind(undefined, script),
+    prepare: preparePages.bind(undefined, script),
+    repartition: repartitionBubbleGroup.bind(undefined, script),
+    compose: (job: ImageHelperRequest<"text_output">) => pixels(script, "text_output", job),
+  };
+}
+
+/** 与 PDF 打印一样，宿主用临时文件交接结果，SDK 读取后释放。 */
+export async function render_image_text_page(page: ImageTextPage): Promise<ImageTextPaint[]> {
+  const result = await workspace_requests().call({ kind: "render_image_text_page", page });
+  try {
+    return JSON.parse(fs.read_text_file(result.path));
+  } finally {
+    fs.unlink(result.path, { force: true });
   }
 }

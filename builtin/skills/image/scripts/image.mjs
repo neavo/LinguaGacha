@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { render_book } from "./render.mjs";
 import path from "node:path";
 
 import * as generic from "@lg/generic";
@@ -7,14 +7,17 @@ import * as sdk from "@lg/image";
 export {
   DeviceFailure,
   IMAGE_DEPENDENCIES,
-  describe_package,
+  IMAGE_PIXEL_DEPENDENCIES,
   missing_models,
   prepare_models,
-  scanPages as scan,
-  preparePages as prepare,
-  inspectBubbleGroup as inspectGroup,
-  repartitionBubbleGroup as repartition,
 } from "@lg/image";
+
+const pipeline = sdk.create_image_pipeline(new URL("./helper.py", import.meta.url));
+export const { scan, prepare, inspectGroup, repartition } = pipeline;
+
+export function render(options) {
+  return render_book(options, pipeline.compose);
+}
 
 /** 旧图片包只安全展开，Agent 在 `package/` 中按实际语义构造当前材料。 */
 export async function unpack(source, directory) {
@@ -26,10 +29,7 @@ export async function unpack(source, directory) {
 
 /** 读取并校验工作目录中的当前两个 JSON。 */
 export async function read(directory) {
-  const packageDirectory = path.join(path.resolve(directory), "package");
-  const records = sdk.read_image_records(await load(path.join(packageDirectory, "items.json")));
-  const book = sdk.read_image_book(await load(path.join(packageDirectory, "image.json")), records);
-  return { book, records };
+  return sdk.read_image_package_manifest(path.resolve(directory, "package"));
 }
 
 /** 当前材料通过领域物理校验后，交给基础容器原子封包。 */
@@ -43,9 +43,4 @@ export async function pack(directory, output) {
     items: current.records.length,
     members: result.members,
   };
-}
-
-/** 保存可重建的当前包材料。 */
-async function load(file) {
-  return JSON.parse(await readFile(file, "utf8"));
 }

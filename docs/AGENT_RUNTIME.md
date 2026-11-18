@@ -239,7 +239,7 @@ npm 与 uv 按对话共用宿主的默认包源判定，避免脚本重启或工
 
 应用拥有 Node `@lg/*` 与 Python `lg-runtime` 的源码。Node SDK 只向根脚本及其加载的模块注入，子进程和 worker 保留 Node 标准行为。`lg-runtime` 的包源码随应用部署，由 uv 以 editable 方式安装到共享环境；普通 Python 后代使用标准导入并可读取源码。历史用户工程中的旧 SDK 和归档由用户处理。
 
-根脚本首次调用 `uv.run` 时更新 `lg-runtime` 的应用来源。声明准备不等于环境同步；内部 Python helper 启动前，调用者须通过正常的 `uv sync --inexact` 或其它可同步命令准备共享环境。计算过程只使用已准备的解释器，并通过 `python -m` 启动固定模块，不隐式安装或修复环境。
+根脚本首次调用 `uv.run` 时更新 `lg-runtime` 的应用来源。调用者通过 `uv sync --inexact` 等命令同步共享环境，再用准备好的解释器启动模块或技能脚本。
 
 第三方包缺失时直接失败，避免应用或开发目录掩盖用户的卸载结果。
 
@@ -274,7 +274,7 @@ PDF API 以字节交换文档，支持跨版本、线程和进程调用。`@lg/p
 - 扫描和消字是两次独立的批次调用。每次调用内部跨页复用 Worker。产品 Agent 在两次调用之间确认哪些区域需要翻译。
 - 加载图片格式技能确定选字和视觉复核方法。 [图片格式技能](../builtin/skills/image/SKILL.md)
 
-`@lg/image.generateQA()` 与 `generateFiles` 共用文件生成服务，按调用时的工程状态生成图片。
+图片技能从同次工作区执行取得原稿投影与译文快照。译图与 QA 共用一次像素合成。
 
 原稿和排版边界见 [BACKEND](BACKEND.md#图片)，共享推理占用遵循 [ARCHITECTURE](ARCHITECTURE.md#占用持续到收尾)。
 

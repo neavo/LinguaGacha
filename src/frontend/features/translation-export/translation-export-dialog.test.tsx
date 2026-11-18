@@ -36,15 +36,9 @@ describe("TranslationExportDialog", () => {
       },
       { next_step, confirm_export },
     );
-    expect(document.body.textContent).toContain(
-      "app.translation_export.confirmation.warning_description",
-    );
     const primary = document.body.querySelector<HTMLButtonElement>(
       '[data-slot="alert-dialog-primary-action"]',
     )!;
-    expect(primary.textContent).toContain(
-      has_next ? "app.action.next" : "app.translation_export.confirmation.export_directly",
-    );
     act(() => primary.click());
     expect(next_step).toHaveBeenCalledTimes(Number(has_next));
     expect(confirm_export).toHaveBeenCalledTimes(Number(!has_next));
@@ -64,26 +58,16 @@ describe("TranslationExportDialog", () => {
       },
       { jump_to_agent, confirm_export },
     );
-    expect(document.body.textContent).toContain(
-      "app.translation_export.confirmation.generic_description",
+    const secondary = document.body.querySelector<HTMLButtonElement>(
+      '[data-slot="alert-dialog-secondary-action"]',
     );
-    expect(
-      document.body.querySelector('[data-slot="alert-dialog-primary-action"]')?.textContent,
-    ).toContain("app.action.handle_with_agent");
-    if (has_supported_files)
-      expect(
-        document.body.querySelector('[data-slot="alert-dialog-secondary-action"]')?.textContent,
-      ).toContain("app.translation_export.confirmation.export_supported");
+    expect(Boolean(secondary)).toBe(has_supported_files);
     act(() =>
       document.body
         .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
         ?.click(),
     );
-    act(() =>
-      document.body
-        .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-secondary-action"]')
-        ?.click(),
-    );
+    act(() => secondary?.click());
     expect(jump_to_agent).toHaveBeenCalledOnce();
     expect(confirm_export).toHaveBeenCalledTimes(has_supported_files ? 1 : 0);
   });

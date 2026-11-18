@@ -9,17 +9,16 @@ import { unpack } from "../../agent/generic/package";
 import { image_fixture, patch_fixture } from "../../../test/image-fixture";
 import { read_image_package, validate_image_package_directory } from "./image-package";
 
-it("工作目录与归档执行同一当前图片物理契约", async () => {
+it("补做读取清单，封包负责检查补丁像素", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-package-"));
   const source = path.join(temporary.path, "source.image");
   const directory = path.join(temporary.path, "package");
   await writeFile(source, await image_fixture(["page"]).pack());
   await unpack(source, directory);
 
-  await expect(validate_image_package_directory(directory)).resolves.toMatchObject({
-    book: { pages: [{ pageId: "page" }] },
-    records: [{ pageId: "page", message: "うん" }],
-  });
+  await writeFile(path.join(directory, "patches/page/text.png"), patch_fixture([128]));
+  await validate_image_package_directory(directory, { validatePixels: false });
+  await expect(validate_image_package_directory(directory)).rejects.toThrow("alpha must be binary");
 });
 
 it("成员不匹配同时报告缺失与多余路径", async () => {

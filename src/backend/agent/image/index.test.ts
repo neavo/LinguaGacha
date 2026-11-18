@@ -12,7 +12,7 @@ const fake = vi.hoisted(() => ({
 }));
 
 vi.mock("./engine", () => ({
-  pixels: async (command: string, args: Record<string, unknown>, device: unknown) => {
+  pixels: async (_script: URL, command: string, args: Record<string, unknown>, device: unknown) => {
     fake.calls.push([command, device]);
     if (command === "scan") {
       const { pages, output } = args as ImageHelperRequest<"scan">;
@@ -75,7 +75,13 @@ vi.mock("./engine", () => ({
   },
 }));
 
-import { preparePages, repartitionBubbleGroup, scanPages, validate_package } from "./index";
+import { create_image_pipeline, validate_package } from "./index";
+
+const {
+  scan: scanPages,
+  prepare: preparePages,
+  repartition: repartitionBubbleGroup,
+} = create_image_pipeline(new URL("file:///fixture/helper.py"));
 
 it("先发布选字预览，再封装已确认原文和消字补丁", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-prepare-"));
@@ -89,16 +95,12 @@ it("先发布选字预览，再封装已确认原文和消字补丁", async () =
   expect(fs.existsSync(page.preview)).toBe(true);
   expect(fs.existsSync(path.join(scan.directory, "package"))).toBe(false);
   const output = path.join(temporary.path, "book");
-  const prepared = await preparePages(
+  await preparePages(
     scan.directory,
     [{ pageId: page.pageId, regionId: "r1", message: "校正后的原文" }],
     output,
     { device: "cpu" },
   );
-  expect(prepared).toMatchObject({
-    pages: 1,
-    items: 1,
-  });
   const updated = path.join(temporary.path, "updated");
   await preparePages(
     scan.directory,

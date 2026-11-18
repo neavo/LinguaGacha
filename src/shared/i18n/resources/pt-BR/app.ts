@@ -205,17 +205,10 @@ export const pt_br_app = {
   },
   translation_export: {
     agent_request: "Exporte as traduções sem realizar outras operações",
-    image_reason: {
-      layout_no_fit: "[Falha] A tradução completa não cabe; o conteúdo original será mantido …",
-      translation_incomplete:
-        "[Falha] A tradução está incompleta; o conteúdo original será mantido …",
-      erase_failed:
-        "[Falha] O texto original não pôde ser removido com segurança; o conteúdo original será mantido …",
-    },
     action: "Exportar traduções",
     confirmation: {
-      generic_description:
-        "Este projeto contém arquivos de áudio/vídeo ou pacotes de dados genéricos que precisam ser processados pelo AGENT e serão ignorados na exportação direta …",
+      agent_description:
+        "Este projeto contém recursos que precisam ser finalizados pelo AGENT. A exportação direta ignorará esses recursos …",
       description: "Exportar as traduções disponíveis no momento?",
       checking: "Verificando arquivos do projeto e avisos de revisão …",
       check_failed:

@@ -5,7 +5,7 @@ description: 翻译、审校、分析、修改图片文件（含 .image 文件�
 
 # 图片处理能力
 
-本技能提供图片与漫画资产的端到端处理方法。应用负责文字识别、气泡分割、消字与排版框计算；Agent 负责工程流转、状态管理与质控。
+本技能提供图片与漫画资产的端到端处理方法，技能脚本负责图片准备、成图和质控材料，应用提供工程译文快照、推理与绘字能力。
 
 阶段导航：
 
@@ -16,8 +16,6 @@ description: 翻译、审校、分析、修改图片文件（含 .image 文件�
 |原稿与条目|「条目状态与互斥」「气泡与文本规则」「旧包解包与维护」|
 |写回与验证|「写回成图」「QA 集中视觉复核」「质控速查」「异常修复分支」|
 |交付说明|「交付说明」|
-
-阶段例外：写回成图由文件生成服务直接渲染输出，无需 Agent 重绘图像。
 
 > [!IMPORTANT]
 > **看图与视觉复核的两条铁律**：
@@ -132,20 +130,38 @@ const { book, records } = await image.read(unpacked.directory);
 
 ## 写回成图
 
-交付流程由 `project-operation` 调用 `generateFiles`。应用使用工程译文直接生成成品图片，并在译文目录生成 `.lg-export-report.json`。
+提交本次变更后，在同一次 `workspace_run` 中调用 `generateFiles(bilingual_files)`，再逐个处理 `writeback.files` 中的图片资产。
+
+```js
+import path from "node:path";
+import { generateFiles } from "@lg/project";
+const image = await import(new URL("scripts/image.mjs", base_url).href);
+const generated = await generateFiles(bilingual_files);
+for (const asset of generated.writeback?.files ?? []) {
+  if (!/\.image$/iu.test(asset)) continue;
+  console.log(await image.render({
+    asset_path: asset,
+    source: path.join("sources", asset),
+    input: path.join(generated.writeback.input_path, asset, "items.json"),
+    output: path.join(path.dirname(generated.output_path), "image", asset),
+  }));
+}
+```
+
+`image.render()` 在输出目录下生成译图、双拼对照图及 `report.json` 质控报告，供后续集中复核与交付使用。
 
 ## QA 集中视觉复核
 
-**这是全流程唯一允许看图的阶段**。导出成图后，整页逐页集中看图核验：
+**这是全流程唯一允许看图的阶段**，导出成图后，整页逐页集中看图核验：
 
-1. 调用 `@lg/image.generateQA()` 生成双拼比对报告。
-2. 从 `qa.report.path` 取得相对路径，与 `qa.output_path` 拼接得到图片路径。
-3. 逐页打开整页双拼图，一并核验图面质量与译文。严禁局部切片或放大。
+1. 使用「写回成图」中 `image.render()` 同时生成的双拼图和报告。
+2. 读取每册 `report.path` 指向的报告，将每页的 `files[].qa` 相对路径与 `qa_path` 拼接得到图片路径。
+3. 逐页打开整页双拼图，一并核验图面质量与译文，严禁局部切片或放大。
 4. 审查图面标记：
    - **左原右译**：左侧为原图，右侧为译图。
    - **黄色标记框**：表示当前区域仍处于待译状态。
-   - **红色标记框**：表示当前区域消字或写字失败，查阅报告原因。
-5. **终结条件**：整页质控无异常时直接交付；发现瑕疵时按速查表修复。
+   - **红色标记框**：表示当前区域消字或写字失败，或整泡版与分格版同时启用，查阅报告原因。
+5. **终结条件**：整页质控无异常时直接交付，发现瑕疵时按速查表修复。
 
 ## 质控速查
 
@@ -156,6 +172,7 @@ const { book, records } = await image.read(unpacked.directory);
 |发现 OCR 识别文本明显有误|识别错误|更新对应条目的原文与译文，重新生成译图|
 |页边广告、装饰字无需翻译却被擦除或残缺|误擦除无需翻译区域|封包前从 `selected` 移除，或在工程中将条目设为 `EXCLUDED` 后重新生成|
 |发现关键叙事或对白的无框文字未翻译|无框文字默认未启用|启用对应条目（设为 `NONE` 或恢复 `PROCESSED`），补齐译文后重新生成|
+|同一气泡的整泡版与分格版同时启用|版本冲突（`variant_conflict`）|只保留一个版本启用，重新生成并检查该组|
 |整泡版比分格版更贴合原稿气泡表现|分格切分不合理|在工程条目中切换版本状态（禁用分格版，启用整泡版）|
 |连体气泡一格拥挤、一格留白过多|格界划分不合理或漏译|分格正确时核对空格是否漏译；格界错误时执行连体气泡纠正|
 |译文填入错误的气泡格内|分格对应错位|对照原字位置与阅读流向，调换或写回正确条目|

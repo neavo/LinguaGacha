@@ -1,9 +1,8 @@
 import { Type, type Static } from "typebox";
-import { IMAGE_OUTPUT_REPORT_SCHEMA } from "./image";
 
 /** 这些资产仍需要 Agent 完成目标格式处理。 */
 export function requires_agent_generation(file_type: string): boolean {
-  return file_type === "GENERIC" || file_type === "MEDIA";
+  return file_type === "GENERIC" || file_type === "MEDIA" || file_type === "IMAGE";
 }
 
 /** 每个 PDF 的覆盖按原页计数，与重排后的输出页数独立。 */
@@ -36,7 +35,6 @@ export const TRANSLATION_FILE_GENERATION_RESULT_SCHEMA = Type.Object(
         { additionalProperties: false },
       ),
     ), // 已提供输入，仍需 Agent 完成目标格式处理。
-    image_report: Type.Optional(IMAGE_OUTPUT_REPORT_SCHEMA),
     pdf_files: Type.Array(PDF_FILE_GENERATION_RESULT_SCHEMA),
   },
   { additionalProperties: false },

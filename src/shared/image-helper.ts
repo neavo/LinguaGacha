@@ -82,10 +82,6 @@ const SELECTION_SCHEMA = Type.Object(
   },
   { additionalProperties: false },
 );
-const PATH_RESULT_SCHEMA = Type.Object(
-  { path: Type.String({ minLength: 1 }) },
-  { additionalProperties: false },
-);
 /** Python 图片 helper 的请求与结果只在这一处定义。 */
 export const IMAGE_HELPER_OPERATION_SCHEMAS = {
   scan: {
@@ -140,23 +136,22 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
         root: Type.String(),
         original: Type.String(),
         layers: Type.Optional(Type.String()),
-        qa: Type.Optional(
-          Type.Object({
-            maxEdge: Type.Integer({ minimum: 2 }),
-            marks: Type.Array(
-              Type.Object({
-                regionId: Type.String(),
-                box: IMAGE_BOX_SCHEMA,
-                warning: Type.Boolean(),
-              }),
-            ),
-          }),
-        ),
-        output: Type.String(),
+        qa: Type.Object({
+          path: Type.String(),
+          maxEdge: Type.Integer({ minimum: 2 }),
+          marks: Type.Array(
+            Type.Object({
+              regionId: Type.String(),
+              box: IMAGE_BOX_SCHEMA,
+              warning: Type.Boolean(),
+            }),
+          ),
+        }),
+        output: Type.Optional(Type.String()),
       },
       { additionalProperties: false },
     ),
-    response: PATH_RESULT_SCHEMA,
+    response: Type.Null(), // 调用方已指定译图和 QA 的落盘路径。
   },
 } as const satisfies Record<string, { request: TSchema; response: TSchema }>;
 
@@ -167,11 +162,6 @@ export type ImageHelperRequest<K extends ImageHelperOperation> = Static<
 export type ImageHelperResponse<K extends ImageHelperOperation> = Static<
   (typeof IMAGE_HELPER_OPERATION_SCHEMAS)[K]["response"]
 >;
-export type ImagePixelHost = <K extends ImageHelperOperation>(
-  command: K,
-  input: ImageHelperRequest<K>,
-) => Promise<ImageHelperResponse<K>>;
-
 export function check_image_helper_request<K extends ImageHelperOperation>(
   command: K,
   value: unknown,

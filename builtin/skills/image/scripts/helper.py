@@ -13,9 +13,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from lg.image import fill, repair
 from lg.inference import ocr
 from lg.inference.channel import Channel
+
+# 隔离模式不含脚本目录，从技能目录导入同包模块。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fill
+import repair
 
 cv2.setNumThreads(1)
 IMAGE_SIZE, MODEL_STRIDE = 1600, 32
@@ -214,6 +218,7 @@ def interval_overlap(a0, a1, b0, b1):
 
 
 def text_angle(box):
+    """把 OCR 框的反向边折到同一角度，供相邻文字比较。"""
     edge = np.asarray(box, np.float32)[1] - np.asarray(box, np.float32)[0]
     angle = math.degrees(math.atan2(float(edge[1]), float(edge[0]))) % 180
     return min(angle, 180 - angle)
@@ -272,6 +277,7 @@ def group_unframed(records):
 
 
 def text_direction(records):
+    """横竖排票数相同时沿用漫画竖排顺序。"""
     vertical = sum(
         box_metrics(record["box"])[5] > box_metrics(record["box"])[4] * 1.5
         for record in records
@@ -299,6 +305,7 @@ def ordered_text(records, direction):
 
 
 def owner_for_text(record, occupied):
+    """气泡至少覆盖一半文字框才取得归属，避免误收邻近的无框字。"""
     support = np.zeros(occupied.shape, np.uint8)
     cv2.fillConvexPoly(support, np.asarray(record["box"], np.int32), 255)
     pixels = np.count_nonzero(support)
@@ -516,6 +523,7 @@ def _save_patch(root, page_id, region_id, original, repaired, mask):
 
 
 def _read_candidate_area(root, page_id, candidate, shape):
+    """恢复整页坐标。重分格使用内存掩码，旧扫描使用裁下的掩码文件。"""
     x, y, w, h = candidate["area"]
     crop = candidate.get("mask")
     if crop is None:
@@ -673,6 +681,7 @@ def _prepare_group(
 
 
 def _bubble_group(page, group_id):
+    """按组取得原 OCR 框，供诊断和重分格共用。"""
     group = [
         candidate for candidate in page["candidates"] if candidate["group"] == group_id
     ]
@@ -684,6 +693,7 @@ def _bubble_group(page, group_id):
 
 
 def _group_area(root, page, group):
+    """重分格沿用整组的原气泡范围。"""
     shape = (page["height"], page["width"])
     area = np.zeros(shape, np.uint8)
     for candidate in group:
@@ -732,6 +742,7 @@ def inspect_bubble_group(args, _channel):
 
 
 def _repartition_group(root, page, group, correction):
+    """用分配后的 OCR 框划分原气泡，并生成本次选字结果。"""
     group_id = correction["group"]
     known = {
         line["textBoxId"]: line for candidate in group for line in candidate["lines"]
@@ -792,6 +803,7 @@ def _repartition_group(root, page, group, correction):
 
 
 def prepare(args, channel):
+    """把选字与重分格结果转成可封包的条目和消字补丁。"""
     root, output = Path(args["root"]), Path(args["output"])
     pages = json.loads((root / "scan.json").read_text(encoding="utf-8"))
     by_page = {}
@@ -1085,6 +1097,7 @@ def split_bubble(selection, members, direction):
 
 
 def _apply_overlay(result, overlay, box):
+    """按字层或补丁的透明度合成，保留完全透明处的底图像素。"""
     x, y, w, h = box
     if (
         overlay is None
@@ -1104,7 +1117,7 @@ def _apply_overlay(result, overlay, box):
 
 
 def _compose_text(result, layers_path, root):
-    """先恢复底图 B，再写译文，消字补丁不会盖住相邻译文。"""
+    """先应用全部消字补丁，再叠字层，避免补丁盖住相邻译文。"""
     with open(layers_path, encoding="utf-8") as file:
         layers = json.load(file)
     for layer in layers:
@@ -1144,36 +1157,29 @@ def _qa_preview(original, translated, qa):
 
 
 def text_output(args, _channel):
-    """合成后直接编码，正式输出和 QA 共用同一页译图像素。"""
+    """每页只合成一次，QA 右侧使用实际写出的译图。"""
     root = Path(args["root"])
     original = read_image(args["original"])
-    layers, qa = args.get("layers"), args.get("qa")
+    layers, output, qa = args.get("layers"), args.get("output"), args["qa"]
     translated = original
     if layers is not None:
-        translated = original.copy() if qa is not None else original
+        translated = original.copy()
         _compose_text(translated, layers, root)
-    output = args["output"]
-    if qa is not None:
-        return dict(
-            path=save(
-                output,
-                _qa_preview(original, translated, qa),
-                ".webp",
-                [cv2.IMWRITE_WEBP_QUALITY, QA_WEBP_QUALITY],
-            )
-        )
-    # JPEG 写出已旋正的像素，避免携带原稿方向元数据。
-    extension = Path(output).suffix.lower()
-    if extension not in (".png", ".jpg", ".jpeg"):
-        raise ValueError("Unsupported image output format")
-    parameters = [cv2.IMWRITE_JPEG_QUALITY, 95] if extension != ".png" else []
-    return dict(
-        path=save(
-            output,
-            translated,
-            ".jpg" if extension == ".jpeg" else extension,
-            parameters,
-        )
+    if output is not None:
+        # 写出的 JPEG 已旋正，QA 读回编码后的像素。
+        extension = Path(output).suffix.lower()
+        if extension not in (".png", ".jpg", ".jpeg"):
+            raise ValueError("Unsupported image output format")
+        if extension == ".png":
+            save(output, translated)
+        else:
+            save(output, translated, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
+            translated = read_image(output)
+    save(
+        qa["path"],
+        _qa_preview(original, translated, qa),
+        ".webp",
+        [cv2.IMWRITE_WEBP_QUALITY, QA_WEBP_QUALITY],
     )
 
 

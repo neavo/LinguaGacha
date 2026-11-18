@@ -94,7 +94,7 @@ export function TranslationExportDialog(props: TranslationExportDialogProps): JS
     <AppActionDialog
       key="files"
       open
-      description={t("app.translation_export.confirmation.generic_description")}
+      description={t("app.translation_export.confirmation.agent_description")}
       submitting={submitting}
       submittingAction="secondary"
       primaryAction={{

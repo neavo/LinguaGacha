@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { ImageFormat, build_image_text_input, image_record_identities } from "./image-format";
+import { ImageFormat, image_record_identities } from "./image-format";
+import { read_image_writeback } from "../../../shared/image-package";
 import { image_fixture } from "../../../test/image-fixture";
 
 it("图片译文快照区分完成空正文、排除与未翻译", async () => {
@@ -10,7 +11,10 @@ it("图片译文快照区分完成空正文、排除与未翻译", async () => {
   items[0]!.dst = "";
   items[1]!.status = "EXCLUDED";
   items[1]!.dst = "既有译文";
-  const { textRecords } = await build_image_text_input(bytes, items, "book.image");
+  const writeback: unknown = JSON.parse(
+    await new ImageFormat().render_text(bytes, items, "book.image"),
+  );
+  const textRecords = read_image_writeback(writeback, fixture.records);
   expect(textRecords).toMatchObject([
     { output: "translated", text: "" },
     { output: "original" },
