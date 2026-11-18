@@ -23,6 +23,7 @@ import {
   type ModelAgentLimits,
 } from "../../domain/model-agent";
 import {
+  MISTRAL_API_BASE_URL,
   resolve_model_base_url,
   resolve_model_endpoint,
   type ResolvedModelEndpoint,
@@ -42,6 +43,7 @@ const FALLBACK_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
 const LARGE_CONTEXT_WINDOW_THRESHOLD = 500_000;
 const SMALL_AUTOMATIC_OUTPUT_LIMIT = 32_000;
 const LARGE_AUTOMATIC_OUTPUT_LIMIT = 64_000;
+const MISTRAL_RESPONSES_DEEPSEEK_FLASH_ID = "deepseek-v4-1-flash-1017";
 
 /** 产品等级到 Pi 等级的唯一投影，未进入该表的值不会发给 adapter。 */
 const PRODUCT_TO_PI_LEVEL = {
@@ -142,7 +144,7 @@ export function resolve_model_capability(
   const model_id = endpoint.model_id;
   const matches = match_pi_catalog_models(model_id, catalog);
   const api_order = resolve_pi_api_order(endpoint.api);
-  const selection = select_pi_thinking_template(model, matches, model_id, api_order);
+  const selection = select_pi_thinking_template(model.api_format, endpoint, matches, api_order);
   const pi_template = selection?.model;
   const app_override = match_model_capability_override(model_id);
   const protocol_override = app_override?.protocols[model.api_format];
@@ -269,22 +271,32 @@ function is_model_id_word_character(value: string | undefined): boolean {
 
 /** 完整请求身份优先，按协议与供应商顺序回退，选出一条完整思考模板。 */
 function select_pi_thinking_template(
-  model: ModelCapabilityInput,
+  api_format: ModelApiFormat,
+  endpoint: ResolvedModelEndpoint,
   matches: readonly PiCatalogModel[],
-  model_id: string,
   api_order: readonly Api[],
 ): TemplateSelection | null {
-  const endpoint = normalize_catalog_endpoint(model.api_url, model.api_format);
-  const configured_id = model_id.trim().toLowerCase();
-  const exact =
-    endpoint === null
-      ? []
-      : matches.filter(
-          (candidate) =>
-            candidate.id.toLowerCase() === configured_id &&
-            candidate.api === api_order[0] &&
-            normalize_catalog_endpoint(candidate.baseUrl, model.api_format) === endpoint,
-        );
+  const base_url = normalize_catalog_endpoint(endpoint.base_url);
+  const configured_id = endpoint.model_id.trim().toLowerCase();
+  const matches_endpoint = (candidate: PiCatalogModel) =>
+    base_url !== null &&
+    candidate.id.toLowerCase() === configured_id &&
+    normalize_catalog_endpoint(resolve_model_base_url(candidate.baseUrl, api_format)) === base_url;
+  const exact = matches.filter(
+    (candidate) => candidate.api === api_order[0] && matches_endpoint(candidate),
+  );
+  if (
+    exact.length === 0 &&
+    endpoint.api === "OpenAIResponses" &&
+    base_url === MISTRAL_API_BASE_URL &&
+    configured_id === MISTRAL_RESPONSES_DEEPSEEK_FLASH_ID
+  ) {
+    // Pi 在原生 Chat 目录提供同一部署的档位。read_template_compat 会按协议筛选兼容字段。
+    const chat = matches.find(
+      (candidate) => candidate.api === "mistral-conversations" && matches_endpoint(candidate),
+    );
+    if (chat !== undefined) return { model: chat, exact: false };
+  }
   const templates = exact.length > 0 ? exact : matches;
   for (const api of api_order) {
     const candidates = templates.filter((candidate) => candidate.api === api);
@@ -321,6 +333,7 @@ function read_template_compat(
 
 /** 按产品协议选择 Pi API 形态；同形态再交给供应商优先级决胜。 */
 function resolve_pi_api_order(api: ResolvedModelEndpoint["api"]): readonly Api[] {
+  if (api === "mistral-conversations") return [api];
   if (api === "google-vertex") return ["google-vertex", "google-generative-ai"];
   if (api === "google-generative-ai") return ["google-generative-ai", "google-vertex"];
   if (api === "Anthropic") return ["anthropic-messages"];
@@ -416,8 +429,8 @@ function resolve_agent_limits(
   };
 }
 
-/** 与请求共用 API 根地址规则，URL 标准化处理主机大小写和默认端口，路径仍参与匹配。 */
-function normalize_catalog_endpoint(url: string, api_format: ModelApiFormat): string | null {
-  const parsed = URL.parse(resolve_model_base_url(url, api_format));
+/** 比较已解析的根地址时，忽略主机大小写、默认端口和末尾斜杠。 */
+function normalize_catalog_endpoint(base_url: string): string | null {
+  const parsed = URL.parse(base_url);
   return parsed === null ? null : parsed.href.replace(/\/+$/u, "");
 }

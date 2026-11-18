@@ -10,11 +10,13 @@ import {
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { googleVertexApi } from "@earendil-works/pi-ai/api/google-vertex.lazy";
+import { mistralConversationsApi } from "@earendil-works/pi-ai/api/mistral-conversations.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import type { OpenAICompletionsOptions } from "@earendil-works/pi-ai/api/openai-completions";
 import type { AnthropicOptions } from "@earendil-works/pi-ai/api/anthropic-messages";
 
+import { MISTRAL_API_ORIGIN } from "../../domain/model-endpoint";
 import { AppError } from "../../shared/error";
 import {
   LLM_REQUEST_MAX_BYTES,
@@ -31,9 +33,16 @@ export type PiApi =
   | "openai-completions"
   | "openai-responses"
   | "anthropic-messages"
+  | "mistral-conversations"
   | "google-generative-ai"
   | "google-vertex";
-type PiProvider = "openai" | "openai-compatible" | "anthropic" | "google" | "google-vertex";
+type PiProvider =
+  | "openai"
+  | "openai-compatible"
+  | "anthropic"
+  | "google"
+  | "google-vertex"
+  | "mistral";
 const ANTHROPIC_FALLBACK_MAX_TOKENS = 64_000; // 缺少模型规格时仍满足 Messages API 必填上限
 
 /** 共用选项沿用 Pi 正式类型，协议专属字段只在对应请求分支写入。 */
@@ -88,7 +97,8 @@ export function resolve_pi_model(
     name: settings.name,
     provider: api.provider,
     api: api.api,
-    baseUrl: snapshot.endpoint.base_url,
+    // 原生 Mistral 自行追加 /v1/chat/completions，API 根地址已包含 /v1。
+    baseUrl: api.api === "mistral-conversations" ? MISTRAL_API_ORIGIN : snapshot.endpoint.base_url,
     reasoning: capability.reasoning,
     ...(capability.thinking_level_map === undefined
       ? {}
@@ -142,6 +152,11 @@ export function resolve_one_shot_pi_request(
           },
         }
       : resolved.model;
+  // 原生适配器用 streamSimple 转换档位；OpenAI 直接调用以保留自动输出上限语义。
+  const simple_stream =
+    snapshot.api_format === "Google" ||
+    snapshot.api_format === "Anthropic" ||
+    model.api === "mistral-conversations";
   const options: OneShotOptions = {
     apiKey: snapshot.api_keys[0] ?? "no_key_required",
     cacheRetention: "none",
@@ -149,15 +164,10 @@ export function resolve_one_shot_pi_request(
     maxRetries: 0,
     signal,
     ...generation,
-    ...((snapshot.api_format === "OpenAI" || snapshot.api_format === "OpenAIResponses") &&
-    resolved.model.reasoning &&
-    resolved.thinkingLevel !== "off"
-      ? { reasoningEffort: resolved.thinkingLevel }
-      : {}),
-    ...((snapshot.api_format === "Google" || snapshot.api_format === "Anthropic") &&
-    resolved.model.reasoning &&
-    resolved.thinkingLevel !== "off"
-      ? { reasoning: resolved.thinkingLevel }
+    ...(resolved.model.reasoning && resolved.thinkingLevel !== "off"
+      ? simple_stream
+        ? { reasoning: resolved.thinkingLevel }
+        : { reasoningEffort: resolved.thinkingLevel }
       : {}),
     ...(snapshot.api_format === "Anthropic" ? { interleavedThinking: false } : {}),
     onPayload: (payload, active_model) => {
@@ -182,11 +192,7 @@ export function resolve_one_shot_pi_request(
       return result;
     },
   };
-  // Google / Anthropic 由 `streamSimple` 转换思考等级，OpenAI 直接调用以保留自动输出上限语义。
-  const provider_stream =
-    snapshot.api_format === "Google" || snapshot.api_format === "Anthropic"
-      ? resolved.streamSimple
-      : resolved.stream;
+  const provider_stream = simple_stream ? resolved.streamSimple : resolved.stream;
   return {
     model,
     context: build_pi_context(snapshot, messages),
@@ -205,6 +211,9 @@ function resolve_pi_api(api: ModelRequestSnapshot["endpoint"]["api"]): {
 } {
   if (api === "google-vertex") {
     return { provider: "google-vertex", api: "google-vertex", ...googleVertexApi() };
+  }
+  if (api === "mistral-conversations") {
+    return { provider: "mistral", api, ...mistralConversationsApi() };
   }
   if (api === "SakuraLLM") {
     return { provider: "openai-compatible", api: "openai-completions", ...openAICompletionsApi() };

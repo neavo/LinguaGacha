@@ -32,6 +32,9 @@ const MODEL_ENDPOINTS: Readonly<Record<ModelApiFormat, ModelEndpoint>> = Object.
 });
 const GOOGLE_API_VERSION_SEGMENT_PATTERN = /\/v1(?:beta|alpha)?\d*$/iu; // 用户显式填写的版本段原样保留
 const GOOGLE_DEFAULT_API_VERSION = "/v1beta"; // Pi 关闭 SDK 版本拼接，缺省版本由这里补齐
+export const MISTRAL_API_ORIGIN = "https://api.mistral.ai";
+const MISTRAL_API_PATH = "/v1";
+export const MISTRAL_API_BASE_URL = MISTRAL_API_ORIGIN + MISTRAL_API_PATH;
 const VERTEX_HOST_PATTERN = /^[a-z]+(?:-[a-z]+)*\d+-aiplatform\.googleapis\.com$/u;
 const VERTEX_PATH_PATTERN =
   /^(?:\/(v1(?:beta\d+)?))?(?:\/(projects\/[^/]+\/locations\/[^/]+))?(?:\/publishers\/google)?$/u;
@@ -40,13 +43,17 @@ const VERTEX_MODEL_PATTERN =
 
 /** 配置可暂时处于编辑中的无效状态，调用入口负责阻止发送并反馈错误。 */
 export type ResolvedModelEndpoint = Readonly<{
-  api: Exclude<ModelApiFormat, "Google"> | "google-generative-ai" | "google-vertex";
-  base_url: string; // SDK 根地址包含当前请求作用域。
+  api:
+    | Exclude<ModelApiFormat, "Google">
+    | "google-generative-ai"
+    | "google-vertex"
+    | "mistral-conversations";
+  base_url: string; // 模型列表和请求预览使用的 API 根地址，含版本与作用域。
   model_id: string; // SDK 模型身份不包含 Vertex 项目与区域，避免影响其型号判断。
   error: "vertex_path" | "vertex_model" | "vertex_scope" | null;
 }>;
 
-/** Google 官方主机决定接口形态；Vertex 作用域归根地址，模型短名交给 SDK 判断型号。 */
+/** 官方接入点可选择原生适配器；Vertex 的项目与区域进入根地址。 */
 export function resolve_model_endpoint(
   api_url: string,
   api_format: ModelApiFormat,
@@ -78,6 +85,22 @@ export function resolve_model_endpoint(
       error,
     });
   }
+  // 归一化官方根地址和生成端点，保留含凭据、查询或片段的显式地址。
+  if (
+    (api_format === "OpenAI" || api_format === "OpenAIResponses") &&
+    url?.origin === MISTRAL_API_ORIGIN &&
+    url.href === url.origin + url.pathname
+  ) {
+    const path = url.pathname.replace(OPENAI_ENDPOINT.endpoint_suffix_pattern, "");
+    if (path === "" || path === "/" || path === MISTRAL_API_PATH) {
+      return Object.freeze({
+        api: api_format === "OpenAI" ? "mistral-conversations" : api_format,
+        base_url: MISTRAL_API_BASE_URL,
+        model_id,
+        error: null,
+      });
+    }
+  }
   const endpoint = MODEL_ENDPOINTS[api_format];
   const base_url =
     normalized === ""
@@ -97,7 +120,7 @@ export function resolve_model_endpoint(
   });
 }
 
-/** 用户地址转为 SDK 根地址；显式默认值让请求、列表、能力匹配和预览共用同一去向。 */
+/** 显式默认值让请求、列表、能力匹配和预览共用同一 API 根地址。 */
 export function resolve_model_base_url(api_url: string, api_format: ModelApiFormat): string {
   return resolve_model_endpoint(api_url, api_format, "").base_url;
 }

@@ -178,6 +178,93 @@ beforeEach(() => {
 });
 
 describe("Agent 模型注册", () => {
+  it("Mistral Chat 解码思考和工具调用，并用相同调用 ID 发送工具结果", async () => {
+    const runtime = createModels();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAI", {
+        api_url: "https://api.mistral.ai/v1",
+        model_id: "deepseek-v4-1-flash-1017",
+        request: {
+          extra_body_custom_enable: true,
+          extra_body: { max_tokens: 1024, reasoning_effort: "low" },
+        },
+      }),
+      TEST_REQUEST_IDENTITY,
+      catalog,
+    );
+    const thinking = { type: "thinking", thinking: [{ type: "text", text: "先查资料" }] };
+    const call_id = "Abcd12345";
+    const choices = [
+      { delta: { content: [thinking] }, finish_reason: null },
+      {
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              id: call_id,
+              type: "function",
+              function: { name: "lookup", arguments: "{}" },
+            },
+          ],
+        },
+        finish_reason: "tool_calls",
+      },
+    ];
+    const events = choices.map((choice) => `data: ${JSON.stringify({ choices: [choice] })}\n\n`);
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response(events.join("") + "data: [DONE]\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}, { status: 400 }));
+    const user = { role: "user" as const, content: "查资料", timestamp: 0 };
+    const options = { fetch, reasoning: "max" as const, maxRetries: 0 }; // 用冲突档位验证扩展优先级。
+    const first = await runtime
+      .streamSimple(resolved.model, { messages: [user] }, options)
+      .result();
+    expect(first.stopReason).toBe("toolUse");
+    expect(first.content).toMatchObject([
+      { type: "thinking", thinking: "先查资料" },
+      { type: "toolCall", id: call_id, name: "lookup", arguments: {} },
+    ]);
+    await runtime
+      .streamSimple(
+        resolved.model,
+        {
+          messages: [
+            user,
+            first,
+            {
+              role: "toolResult",
+              toolCallId: call_id,
+              toolName: "lookup",
+              content: [{ type: "text", text: "资料" }],
+              isError: false,
+              timestamp: 1,
+            },
+          ],
+        },
+        options,
+      )
+      .result();
+    const request = new Request(...fetch.mock.calls[1]!);
+    expect(request.url).toBe("https://api.mistral.ai/v1/chat/completions");
+    const payload = await request.json();
+    expect(payload).toMatchObject({
+      max_tokens: 1024,
+      reasoning_effort: "low",
+      messages: [
+        { role: "user" },
+        { role: "assistant", content: [thinking], tool_calls: [{ id: call_id }] },
+        { role: "tool", tool_call_id: call_id },
+      ],
+    });
+    expect(payload).not.toHaveProperty("store");
+  });
+
   it("豆包 Responses 在实际 SDK 请求中清理自动摘要并保留思考等级", async () => {
     const { openAIResponsesApi } = await vi.importActual<
       typeof import("@earendil-works/pi-ai/api/openai-responses.lazy")
