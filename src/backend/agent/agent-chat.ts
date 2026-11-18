@@ -73,16 +73,10 @@ const RETRY_SETTINGS = { enabled: true, maxRetries: 3, baseDelayMs: 2_000 };
 
 export type AgentSubmitOptions = {
   queuedId?: string | null | undefined;
-  commandId?: string | undefined;
   conversation?: Conversation | undefined;
   change?: ((state: AgentChatData) => void) | undefined;
 };
 
-type SubmittedInput = {
-  submission: Submission;
-  input: AgentInputRecord;
-  prepared: PreparedAgentMessage;
-};
 /** 轮次分叉与用户修订共用事务内更新，避免旧意图进入新分支。 */
 function switch_branch(state: AgentChatData, conversationId: ConversationId): void {
   state.activeConversationId = conversationId;
@@ -102,21 +96,18 @@ function accept_input_command(
   if (command.kind === "revise") switch_branch(state, conversationId);
 }
 
-/** 唯一执行对象同时承担迟到身份校验和资源所有权，恢复时沿用同一租约。 */
+/** 一个轮次的取消与恢复共用执行身份，连续轮次借用同一个运行租约。 */
 export type AgentExecution = {
   readonly controller: AbortController;
   readonly lease: RuntimeLease;
   stop_reason: AgentStopReason | null; // 执行拥有者在取消前固定来源，迟到收尾沿用该执行
   commandId?: string; // 只关联本次产品命令的首次 SDK 输入，后续自动轮次独立
   roundId: string | null;
-  phase: "preparing" | "running" | "recovering" | "compacting" | "settling";
-  acceptance: Promise<void> | null;
-  settlement: Promise<void> | null;
+  phase: "preparing" | "running" | "compacting" | "settling";
+  acceptance: Promise<unknown> | null;
   cancellation?: Promise<void>; // 重复停止与生命周期关闭等待同一次 SDK 取消
   recoveryUsed: boolean;
   recoveryTask: TaskId | null;
-  steer: SubmittedInput | null;
-  retrySteer: SubmittedInput | null;
   batchStopped: boolean; // 用户停止任一批量工具后，本轮拒绝从两个入口再次启动。
 };
 
@@ -285,12 +276,8 @@ export class AgentChat {
             beforeRequest: (request, api) => {
               chat.contextBudget.before_request(api.taskId, request.messages);
             },
-            onYield: async (message, api) => {
-              await chat.register_recovery(
-                chat.taskExecutions.get(api.taskId),
-                message,
-                api.taskId,
-              );
+            onYield: (message, api) => {
+              chat.register_recovery(chat.taskExecutions.get(api.taskId), message, api.taskId);
               return undefined;
             },
             afterResponse: async (message, api) => {
@@ -333,8 +320,6 @@ export class AgentChat {
             },
           },
           retry: RETRY_SETTINGS,
-          steeringMode: "one-at-a-time",
-          followUpMode: "one-at-a-time",
         },
         identity: { attribution: null }, // 请求沿用宿主身份。
         onReport: (report) =>
@@ -406,11 +391,8 @@ export class AgentChat {
       roundId: null,
       phase: "preparing",
       acceptance: null,
-      settlement: null,
       recoveryUsed: false,
       recoveryTask: null,
-      steer: null,
-      retrySteer: null,
       batchStopped: false,
     };
     this.execution = execution;
@@ -531,14 +513,14 @@ export class AgentChat {
         BACKGROUND_CONTEXT,
       ))!;
       await this.restore_records();
-      this.view.refresh(this.state.activeConversationId!, this.state, true);
+      this.view.refresh(this.state.activeConversationId!, this.state, "restore");
       this.schedule_refresh();
       await this.flush();
     }
   }
 
   /** 原生自动压缩与产品主动压缩共用互斥判据。 */
-  public get is_compacting(): boolean {
+  private get is_compacting(): boolean {
     return (this.view.live.compactions?.length ?? 0) > 0 || this.execution?.phase === "compacting";
   }
   /** 工程写入的原子边界取自 SDK 当前工具轮次，避免依赖时间线刷新时机。 */
@@ -547,19 +529,8 @@ export class AgentChat {
       (tool) => tool.name === "workspace_apply" && tool.status !== "done",
     );
   }
-  /** 恢复、压缩和停止期间关闭即时输入受理。 */
-  public get can_steer(): boolean {
-    return (
-      this.execution?.phase === "running" &&
-      !this.execution.controller.signal.aborted &&
-      !this.is_compacting
-    );
-  }
   /** 读取已提交队列，只有事务草稿提供写入口。 */
-  public get queue(): Pick<
-    AgentInputQueue,
-    "is_paused" | "has_items" | "read" | "read_next" | "read_snapshot"
-  > {
+  public get queue(): Pick<AgentInputQueue, "is_paused" | "has_items" | "read_snapshot"> {
     return new AgentInputQueue(this.state.queue);
   }
   /** 产品事实只经 `Harness` 事务写入，返回前同步公开投影。 */
@@ -616,10 +587,10 @@ export class AgentChat {
   private async admit(
     conversation: Conversation,
     execution: AgentExecution,
-    commandId: string | undefined,
     submit: (tx: Tx, state: AgentChatData) => Promise<SubmissionId>,
     change?: ((state: AgentChatData) => void) | undefined,
   ): Promise<Submission> {
+    const { commandId } = execution;
     const context = withAbortSignal(execution.controller.signal, BACKGROUND_CONTEXT);
     const id = await this.harness.commit(async (tx) => {
       execution.controller.signal.throwIfAborted();
@@ -630,38 +601,28 @@ export class AgentChat {
       return id;
     }, context);
     this.conversation = conversation;
-    if (execution.commandId === commandId) delete execution.commandId;
+    delete execution.commandId;
     const submission = await this.harness.submission(id, BACKGROUND_CONTEXT);
     if (submission === undefined) throw new Error("Missing committed submission");
     return submission;
   }
 
-  /** 普通输入建立轮次；即时插话与截断重发共用输入记录，各自声明空闲时的受理规则。 */
+  /** 普通输入建立轮次，隐藏输入延续已有轮次。 */
   public async submit(
     message: AgentMessageInput,
     prepared: PreparedAgentMessage,
     execution: AgentExecution,
-    mode: AgentInputRecord["delivery"] | "retry-steer",
-    {
-      queuedId = null,
-      commandId = execution.commandId,
-      conversation = this.conversation,
-      change,
-    }: AgentSubmitOptions = {},
+    delivery: "round" | "hidden",
+    { queuedId = null, conversation = this.conversation, change }: AgentSubmitOptions = {},
   ): Promise<Submission> {
     this.assert_usable();
-    const delivery = mode === "retry-steer" ? "steer" : mode;
     const requestId = uuidv7();
-    if (delivery === "round") {
-      execution.roundId = requestId;
-      this.reset_recovery(execution);
-    }
+    if (delivery === "round") execution.roundId = requestId;
     if (execution.roundId === null) throw new Error("Agent execution has no round");
     const input: AgentInputRecord = { roundId: execution.roundId, message, delivery, queuedId };
     const submission = await this.admit(
       conversation,
       execution,
-      commandId,
       async (tx, state) => {
         if (delivery === "round") {
           // 新轮次从受理前的分支末尾修订，SDK 同时解析祖先切点。
@@ -678,15 +639,13 @@ export class AgentChat {
           content: [{ type: "text", text: prepared.text }, ...prepared.images],
           requestId,
           entry: { kind: AGENT_INPUT_ENTRY_KIND, data: input },
-          whenBusy: delivery === "steer" ? "steer" : "reject",
-          ...(mode === "steer" ? { whenIdle: "reject" } : {}),
+          whenBusy: "reject",
         });
       },
       change,
     );
     if (delivery === "round")
       this.log.begin_run(requestId, queuedId === null ? "prompt" : "queued");
-    if (delivery === "steer") execution.steer = { submission, input, prepared };
     this.log.handle_event({
       type: "message_start",
       message: {
@@ -716,7 +675,6 @@ export class AgentChat {
     return this.admit(
       conversation,
       execution,
-      execution.commandId,
       (tx) => conversation.submit(tx, { type: "continue" }),
       change,
     );
@@ -748,38 +706,18 @@ export class AgentChat {
     execution.recoveryUsed = true;
   }
 
-  /** Hook 只登记恢复并接管未消费输入，草稿持续由原执行占用。 */
-  private async register_recovery(
+  /** Hook 只登记恢复，摘要与下一次输入等 SDK 当前任务收尾后处理。 */
+  private register_recovery(
     execution: AgentExecution | undefined,
     message: AssistantMessage,
     task: TaskId,
-  ): Promise<void> {
+  ): void {
     if (
       !this.owns_execution(execution) ||
       !isRecoverableLength(message, this.require_model().maxTokens)
     )
       return;
-    execution.phase = "recovering";
     execution.recoveryTask = task;
-    await execution.acceptance?.catch(() => undefined); // 受理错误由原命令回传，这里只等待其退出。
-    if (!this.owns_execution(execution)) return;
-    const steer = execution.steer;
-    if (
-      steer !== null &&
-      (await steer.submission.abort(BACKGROUND_CONTEXT)) === "aborted" &&
-      this.owns_execution(execution)
-    ) {
-      execution.retrySteer = steer;
-      execution.steer = null;
-    }
-  }
-
-  /** 交接冻结输入或结束恢复时释放临时引用，摘要成功本身不重置额度。 */
-  private finish_recovery(execution: AgentExecution): SubmittedInput | null {
-    const steer = execution.retrySteer;
-    execution.retrySteer = null;
-    execution.recoveryTask = null;
-    return steer;
   }
 
   /** 等待当前全部 SDK 生成，只在异常截断时接管一次恢复。 */
@@ -790,25 +728,16 @@ export class AgentChat {
       for (;;) {
         const settled = await current.wait(BACKGROUND_CONTEXT);
         await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
-        await execution.acceptance?.catch(() => undefined); // 受理错误由原命令回传，这里只等待其退出。
-        await this.conversation.waitForIdle(BACKGROUND_CONTEXT);
         await this.flush();
         this.assert_usable();
         if (execution.controller.signal.aborted) return;
         const runFailure = this.view.live.runFailure;
-        // 同一产品轮次可能有多个 SDK 输入；只核对失败执行自己的回执。
-        const failedRound = runFailure?.inputs.some((id) => {
-          if (id === current.id) return true;
-          const record = this.view.submissions.get(id);
-          return (
-            record?.type === "input" &&
-            record.entry !== undefined &&
-            read_agent_input(this.view.records.get(record.entry), record, this.state)?.roundId ===
-              execution.roundId
-          );
-        });
         const unanswered =
-          settled.status === "unanswered" ? settled : failedRound ? runFailure : undefined;
+          settled.status === "unanswered"
+            ? settled
+            : runFailure?.inputs.includes(current.id)
+              ? runFailure
+              : undefined;
         if (unanswered !== undefined) {
           const failure = this.view.live.compactionFailure;
           if (failure !== undefined && failure.taskId >= firstSubmission) {
@@ -824,15 +753,15 @@ export class AgentChat {
         }
         const recovery = execution.recoveryTask;
         if (recovery === null) break;
+        execution.recoveryTask = null; // 隐藏输入可登记下一次恢复。
         current = await this.recover_length(recovery, execution);
       }
-      execution.phase = "settling";
     } finally {
-      this.finish_recovery(execution);
+      execution.phase = "settling";
     }
   }
 
-  /** SDK 结算后串行排除截断贡献、消耗额度，并用冻结输入创建新的尝试。 */
+  /** SDK 结算后排除截断贡献，压缩后用隐藏输入延续轮次。 */
   private async recover_length(recovery: TaskId, execution: AgentExecution): Promise<Submission> {
     const task = await this.harness.waitForTask(recovery, BACKGROUND_CONTEXT);
     const result = task.state.outcome;
@@ -862,15 +791,8 @@ export class AgentChat {
       throw new Error("Truncated response recovery could not compact history.");
     execution.controller.signal.throwIfAborted();
     execution.phase = "running";
-    const steer = this.finish_recovery(execution);
-    if (steer !== null) {
-      return this.submit(steer.input.message, steer.prepared, execution, "retry-steer", {
-        queuedId: steer.input.queuedId,
-      });
-    } else {
-      const text = this.options.continueText();
-      return this.submit({ text, attachments: [] }, { text, images: [] }, execution, "hidden");
-    }
+    const text = this.options.continueText();
+    return this.submit({ text, attachments: [] }, { text, images: [] }, execution, "hidden");
   }
 
   /** 摘要任务结束与摘要写入均完成后，才允许产品轮次继续。 */
@@ -921,28 +843,11 @@ export class AgentChat {
       }
     });
   }
-  /** 撤回未消费的即时输入并恢复草稿，已入历史的输入由提交回执消费。 */
-  public async cancel_inputs(execution: AgentExecution): Promise<void> {
-    const steer = execution.steer;
-    if (steer !== null) {
-      await steer.submission.abort(BACKGROUND_CONTEXT);
-      execution.steer = null;
-    }
-    await this.flush();
-    await this.change_queue((queue) => queue.cancel_send());
-  }
-  /** SDK 取消回执决定工具与正文终态，产品结算轮次并暂停草稿。 */
-  public async stop(execution: AgentExecution, average: number | null): Promise<void> {
+  /** 等待 SDK 取消回执与副作用退出，队列去向由运行拥有者决定。 */
+  public async stop(): Promise<void> {
     if (this.sealed) return this.close();
     await this.conversation.abort(BACKGROUND_CONTEXT);
     await this.flush();
-    await this.change_queue((queue) => {
-      queue.cancel_send();
-      queue.pause();
-    });
-    await this.finish_round(execution, "stopped", average);
-    this.finish_recovery(execution);
-    execution.steer = null;
   }
   /** 下一轮的起点界定完整前缀，工具结果与隐藏恢复输入一起继承。 */
   public async fork_round(roundId: string, commandId?: string): Promise<void> {
@@ -1085,10 +990,6 @@ export class AgentChat {
         } catch (error) {
           errors.push(error);
         } finally {
-          if (this.execution !== null) {
-            this.finish_recovery(this.execution);
-            this.execution.steer = null;
-          }
           if (this.providerSession !== undefined) cleanupSessionResources(this.providerSession);
           this.taskExecutions.clear();
           this.log.finish_tools();
@@ -1173,8 +1074,6 @@ export class AgentChat {
         ) {
           const input = read_agent_input(this.view.records.get(record.entry), record, this.state);
           if (input?.queuedId != null) this.consumedInputs.add(input.queuedId);
-          if (input?.delivery === "steer" && input.roundId === this.execution?.roundId)
-            this.reset_recovery(this.execution);
         }
       }
     }
@@ -1265,7 +1164,11 @@ export class AgentChat {
             }, BACKGROUND_CONTEXT);
             for (const id of consumed) this.consumedInputs.delete(id);
           }
-          this.view.refresh(conversation.id, this.state);
+          this.view.refresh(
+            conversation.id,
+            this.state,
+            this.execution?.controller.signal.aborted ? "stopping" : undefined,
+          );
           for (const [id, reason] of this.pendingCompactionLogs)
             this.finish_compaction_log(this.view.compactions.get(id)!, reason);
           this.options.onChange();

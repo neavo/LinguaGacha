@@ -148,7 +148,6 @@ const fake_agent_state = vi.hoisted(() => ({
     | "tool_compaction"
     | "overflow"
     | "length"
-    | "length_pending"
     | "tools",
   length_responses_remaining: 0,
   batch_mode: false,
@@ -322,14 +321,6 @@ function register_fake_agent_model(model_runtime: MutableModels, config: JsonRec
 
 /** 只描述模型响应，不复制 Agent 的事件协议、工具执行或生命周期。 */
 function create_fake_response(context: TranscriptContext): FauxResponseStep {
-  if (fake_agent_state.mode === "length_pending") {
-    fake_agent_state.mode = "success";
-    return async (_context, options) =>
-      wait_for_pending_release(
-        options?.signal,
-        fauxAssistantMessage("废弃的恢复尝试", { stopReason: "length" }),
-      );
-  }
   if (fake_agent_state.length_responses_remaining > 0) {
     fake_agent_state.length_responses_remaining--;
     return fauxAssistantMessage("废弃的恢复尝试", { stopReason: "length" });
@@ -500,10 +491,7 @@ function read_last_user_text(context: TranscriptContext): string {
 }
 
 /** pending 响应可选择在 abort 后继续占住，用于验证 reset/dispose 的真实收尾屏障。 */
-function wait_for_pending_release(
-  signal: AbortSignal | undefined,
-  response = fauxAssistantMessage("已完成"),
-): Promise<AssistantMessage> {
+function wait_for_pending_release(signal: AbortSignal | undefined): Promise<AssistantMessage> {
   return new Promise((resolve) => {
     let settled = false;
     const release = () => {
@@ -513,7 +501,7 @@ function wait_for_pending_release(
       if (fake_agent_state.release_pending === release) {
         fake_agent_state.release_pending = null;
       }
-      resolve(response);
+      resolve(fauxAssistantMessage("已完成"));
     };
     const handle_abort = () => {
       fake_agent_state.abort_count += 1;
@@ -2191,22 +2179,10 @@ describe("AgentService", () => {
   it("修改中间轮次 user 后保留前缀，替换目标及后续轮次并重新调用模型", async () => {
     const { service } = await create_service();
     for (const text of ["第一轮", "原输入", "第三轮"]) {
-      if (text === "原输入") fake_agent_state.mode = "pending";
       await service.send_message({ text, attachments: [] });
-      if (text === "原输入") {
-        await service.send_message({ text: "旧轮次插队消息", attachments: [] });
-        const queued = service.get_snapshot().inputQueue.items[0]!;
-        await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
-        await service.send_queued_message({ id: queued.id });
-        fake_agent_state.mode = "success";
-        fake_agent_state.release_pending?.();
-      }
       await wait_for_idle(service);
     }
     const before = service.get_snapshot().entries;
-    expect(before).toContainEqual(
-      expect.objectContaining({ text: "旧轮次插队消息", delivery: "steer" }),
-    );
     const user = before.find((entry) => entry.kind === "user_message" && entry.text === "原输入");
     const old_assistant = before.find((entry) => entry.kind === "assistant_message");
     if (user === undefined || old_assistant === undefined) throw new Error("缺少历史轮次条目");
@@ -2239,7 +2215,6 @@ describe("AgentService", () => {
     expect(context).toContain("第一轮");
     expect(context).not.toContain("原输入");
     expect(context).not.toContain("第三轮");
-    expect(context).not.toContain("旧轮次插队消息");
   });
 
   it("认证失效时仍可修改最新 assistant，并保留此前完整工具历史", async () => {
@@ -2745,12 +2720,8 @@ describe("AgentService", () => {
     const { service, runtime_gate, log_append } = await create_service();
     const original = AgentChat.prototype.stop;
     const failure = new Error("取消收尾失败");
-    vi.spyOn(AgentChat.prototype, "stop").mockImplementation(async function (
-      this: AgentChat,
-      execution,
-      average,
-    ) {
-      await original.call(this, execution, average);
+    vi.spyOn(AgentChat.prototype, "stop").mockImplementation(async function (this: AgentChat) {
+      await original.call(this);
       throw failure;
     });
     fake_agent_state.mode = "pending";
@@ -2886,6 +2857,13 @@ describe("AgentService", () => {
     });
 
     await expect(service.stop()).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
+    await service.send_message({ text: "排在提交后", attachments: [] });
+    const queue = service.get_snapshot().inputQueue;
+    expect(queue.canSendNow).toBe(false);
+    await expect(service.send_queued_message({ id: queue.items[0]!.id })).rejects.toThrow(
+      expect.objectContaining({ code: "runtime.busy" }),
+    );
+    await service.delete_queued_message({ id: queue.items[0]!.id });
     expect(service.get_snapshot()).toMatchObject({ state: "running" });
 
     fake_agent_state.release_tool_execution?.();
@@ -3217,81 +3195,30 @@ describe("AgentService", () => {
     expect(diagnostics()).toEqual([]);
   });
 
-  it("已受理 steer 的后续生成失败时，整个产品轮次失败并暂停草稿", async () => {
+  it("插队可取消截断恢复中的摘要，直接开启新轮次", async () => {
     const { service } = await create_service();
-    fake_agent_state.mode = "pending";
-    await service.send_message({ text: "初始输入", attachments: [] });
-    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
-    await service.send_message({ text: "即时输入", attachments: [] });
-    await service.send_queued_message({ id: service.get_snapshot().inputQueue.items[0]!.id });
-    await service.send_message({ text: "后续草稿", attachments: [] });
-    fake_agent_state.mode = "error";
-    fake_agent_state.release_pending?.();
-    await wait_for_idle(service);
-    expect(service.get_snapshot().entries[0]).toMatchObject({ status: "error" });
-    expect(service.get_snapshot().inputQueue).toMatchObject({
-      paused: true,
-      items: [{ text: "后续草稿" }],
-    });
-  });
+    await prepare_manual_compaction_history(service);
+    fake_agent_state.mode = "length";
+    fake_agent_state.hold_next_summary = true;
+    await service.send_message({ text: "触发恢复", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
+    await service.send_message({ text: "换个方向", attachments: [] });
+    const queue = service.get_snapshot().inputQueue;
+    expect(queue.canSendNow).toBe(true);
 
-  it.each(["success", "stop", "failure"] as const)(
-    "截断恢复持续占用未消费 steer，%s 后按回执消费或归还",
-    async (outcome) => {
-      const { service, runtime_gate } = await create_service();
-      await prepare_manual_compaction_history(service);
-      const before = fake_agent_state.model_call_count;
-      fake_agent_state.mode = "length_pending";
-      await service.send_message({ text: "需要恢复", attachments: [] });
-      await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
-      await service.send_message({ text: "恢复后优先处理", attachments: [] });
-      const id = service.get_snapshot().inputQueue.items[0]!.id;
-      await service.send_queued_message({ id });
-      expect(service.get_snapshot().inputQueue.items[0]?.status).toBe("sending");
-      fake_agent_state.hold_next_summary = true;
-      fake_agent_state.release_pending?.();
-      await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
-      expect(service.get_snapshot().inputQueue.items[0]?.status).toBe("sending");
-      await expect(service.delete_queued_message({ id })).rejects.toThrow();
-      await expect(
-        service.update_queued_message({ id, message: { text: "不能改写", attachments: [] } }),
-      ).rejects.toThrow();
-      if (outcome === "stop") await service.stop();
-      if (outcome === "failure") fake_agent_state.summary_failures_remaining = 100;
-      fake_agent_state.release_summary?.();
-      await wait_for_idle(service);
-      if (outcome !== "success") {
-        expect(service.get_snapshot().inputQueue).toMatchObject({
-          paused: true,
-          items: [{ id, text: "恢复后优先处理", status: "queued" }],
-        });
-        expect(
-          service
-            .get_snapshot()
-            .entries.some(
-              (entry) => entry.kind === "user_message" && entry.text === "恢复后优先处理",
-            ),
-        ).toBe(false);
-        await service.update_queued_message({ id, message: { text: "可编辑", attachments: [] } });
-        expect(runtime_gate.get_snapshot().owner).toBeNull();
-        return;
-      }
-      expect(fake_agent_state.model_call_count - before).toBe(2);
-      expect(
-        service
-          .get_snapshot()
-          .entries.filter(
-            (entry) => entry.kind === "user_message" && entry.text === "恢复后优先处理",
-          ),
-      ).toMatchObject([{ delivery: "steer" }]);
-      expect(service.get_snapshot().inputQueue.items).toEqual([]);
-      expect(JSON.stringify(fake_agent_state.summary_contexts)).not.toContain("废弃的恢复尝试");
-      expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain(
-        "废弃的恢复尝试",
-      );
-      expect(runtime_gate.get_snapshot().owner).toBeNull();
-    },
-  );
+    await service.send_queued_message({ id: queue.items[0]!.id });
+    await wait_for_idle(service);
+
+    const entries = service.get_snapshot().entries;
+    expect(entries).toContainEqual(
+      expect.objectContaining({ kind: "context_compaction", status: "stopped" }),
+    );
+    expect(entries.filter((entry) => entry.kind === "user_message").slice(-2)).toMatchObject([
+      { text: "触发恢复", status: "stopped" },
+      { text: "换个方向", status: "success" },
+    ]);
+    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain("废弃的恢复尝试");
+  });
   it("连续截断只补救一次，保留用量并以失败结束", async () => {
     const { service } = await create_service();
     await prepare_manual_compaction_history(service);
@@ -3320,7 +3247,7 @@ describe("AgentService", () => {
   });
 
   it.each(["overflow", "length"] as const)(
-    "%s 恢复失败按当前运行结算并暂停队列，继续时不重放废弃响应",
+    "%s 恢复失败后自动发送队首，下一轮不重放废弃响应",
     async (mode) => {
       const { service } = await create_service();
       await prepare_manual_compaction_history(service);
@@ -3334,21 +3261,17 @@ describe("AgentService", () => {
       fake_agent_state.release_summary?.();
       await wait_for_idle(service);
 
-      expect(service.get_snapshot()).toMatchObject({
-        inputQueue: { paused: true, items: [{ text: "排队工作" }] },
-      });
-      expect(
-        service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
-      ).toMatchObject({ text: "触发恢复", status: "error" });
-      expect(fake_agent_state.prompts).not.toContain("排队工作");
-
-      await service.continue_chat({});
-      await wait_for_idle(service);
       expect(JSON.stringify(fake_agent_state.model_contexts)).not.toContain("废弃的恢复尝试");
       expect(service.get_snapshot()).toMatchObject({ inputQueue: { paused: false, items: [] } });
       expect(
-        service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
-      ).toMatchObject({ text: "排队工作", status: "success" });
+        service
+          .get_snapshot()
+          .entries.filter((entry) => entry.kind === "user_message")
+          .slice(-2),
+      ).toMatchObject([
+        { text: "触发恢复", status: "error" },
+        { text: "排队工作", status: "success" },
+      ]);
     },
   );
 
@@ -3663,66 +3586,7 @@ describe("AgentService", () => {
     expect(result_index).toBeGreaterThan(call_index);
   });
 
-  it("工具轮次压缩后优先消费待发送 steer", async () => {
-    const { service, read_items } = await create_service();
-    await prepare_long_tool_history(service, read_items);
-    const prompts_before = fake_agent_state.prompts.length;
-    fake_agent_state.mode = "tool_compaction";
-    fake_agent_state.hold_tool_execution = true;
-    await service.send_message({ text: "检查长条目", attachments: [] });
-    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
-    await service.send_message({ text: "插队优先", attachments: [] });
-    const queued = service.get_snapshot();
-    await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
-    await service.send_queued_message({ id: queued.inputQueue.items[0]!.id });
-
-    fake_agent_state.mode = "success";
-    fake_agent_state.release_tool_execution?.();
-    await wait_for_idle(service);
-
-    const prompts = fake_agent_state.prompts.slice(prompts_before);
-    expect(prompts).toContain("插队优先");
-    expect(prompts).not.toContain("继续");
-    expect(service.get_snapshot().entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "context_compaction", status: "success" }),
-        expect.objectContaining({
-          kind: "user_message",
-          delivery: "steer",
-          text: "插队优先",
-        }),
-      ]),
-    );
-  });
-
-  it("同一 run 压缩结束后恢复队列即时发送能力", async () => {
-    const { service, read_items, publish } = await create_service();
-    await prepare_long_tool_history(service, read_items);
-    fake_agent_state.mode = "tool_compaction";
-    fake_agent_state.hold_tool_execution = true;
-    await service.send_message({ text: "检查长条目", attachments: [] });
-    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
-    await service.send_message({ text: "等待发送", attachments: [] });
-
-    fake_agent_state.mode = "success";
-    fake_agent_state.release_tool_execution?.();
-    await wait_for_idle(service);
-
-    const events = change_calls(publish).map(([, event]) => event as PublishedChange);
-    const compaction_end_index = events.findIndex(
-      (event) =>
-        event.type === "entry_upsert" &&
-        event.entry.kind === "context_compaction" &&
-        event.entry.status === "success",
-    );
-    expect(
-      events
-        .slice(compaction_end_index + 1)
-        .some((event) => event.type === "input_queue" && event.inputQueue.canSendNow),
-    ).toBe(true);
-  });
-
-  it("阻塞自动压缩失败结束本轮并暂停队列，下一轮可以重试", async () => {
+  it("阻塞自动压缩失败结束本轮，下一轮可以重试", async () => {
     const { service, read_items, log_append } = await create_service();
     await prepare_long_tool_history(service, read_items);
     fake_agent_state.mode = "tool_compaction";
@@ -3732,7 +3596,6 @@ describe("AgentService", () => {
 
     await service.send_message({ text: "检查长条目", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
-    await service.send_message({ text: "待继续", attachments: [] });
     fake_agent_state.release_summary?.();
     await wait_for_idle(service);
 
@@ -3744,7 +3607,6 @@ describe("AgentService", () => {
     ).toMatchObject({ text: "检查长条目", status: "error" });
     expect(failed_compaction).toMatchObject({ status: "error" });
     expect(fake_agent_state.model_call_count - calls_before_compaction).toBe(1);
-    expect(service.get_snapshot().inputQueue.paused).toBe(true);
     expect(
       log_append.mock.calls
         .map(([payload]) => payload)
@@ -3762,7 +3624,6 @@ describe("AgentService", () => {
 
     fake_agent_state.summary_failures_remaining = 0;
     fake_agent_state.mode = "success";
-    await service.delete_queued_message({ id: service.get_snapshot().inputQueue.items[0]!.id });
     await service.send_message({ text: "下一轮", attachments: [] });
     await wait_for_idle(service);
     expect(
@@ -3835,9 +3696,6 @@ describe("AgentService", () => {
     expect(images.prepare).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
     await expect(service.send_queued_message({ id })).rejects.toThrow("decode failed");
-    expect(service.get_snapshot().inputQueue.items).toMatchObject([{ id, status: "queued" }]);
-    fake_agent_state.mode = "success";
-    fake_agent_state.release_pending?.();
     await wait_for_idle(service);
     expect(service.get_snapshot().inputQueue).toMatchObject({
       paused: true,
@@ -3976,19 +3834,27 @@ describe("AgentService", () => {
     );
   });
 
-  it("失败轮次 continue 成功后自动消费暂停队列", async () => {
+  it("轮次失败后自动用队首继续，接续也失败时保留剩余队列", async () => {
     const { service } = await create_service();
     fake_agent_state.mode = "tools_error";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "第一轮", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
     await service.send_message({ text: "第二轮", attachments: [] });
+    await service.send_message({ text: "第三轮", attachments: [] });
+    fake_agent_state.hold_tool_execution = false;
     fake_agent_state.release_tool_execution?.();
     await wait_for_idle(service);
     expect(service.get_snapshot().inputQueue).toMatchObject({
       paused: true,
-      items: [{ text: "第二轮" }],
+      items: [{ text: "第三轮" }],
     });
+    expect(
+      service.get_snapshot().entries.filter((entry) => entry.kind === "user_message"),
+    ).toMatchObject([
+      { text: "第一轮", status: "error" },
+      { text: "第二轮", status: "error" },
+    ]);
 
     fake_agent_state.mode = "success";
     await service.continue_chat({});
@@ -3999,34 +3865,71 @@ describe("AgentService", () => {
       service
         .get_snapshot()
         .entries.filter((entry) => entry.kind === "user_message")
-        .map((entry) => entry.text),
-    ).toEqual(["第一轮", "第二轮"]);
-    expect(fake_agent_state.prompts.slice(-2)).toEqual(["第一轮", "第二轮"]);
+        .map(({ text, status }) => [text, status]),
+    ).toEqual([
+      ["第一轮", "error"],
+      ["第二轮", "error"],
+      ["第三轮", "success"],
+    ]);
+    expect(fake_agent_state.prompts.at(-1)).toBe("第三轮");
   });
 
-  it("立即发送由 Pi 消费后才从队列提交为 steer 消息", async () => {
-    const { service } = await create_service();
-    fake_agent_state.mode = "pending";
+  it("插队立即取消活动工具，收尾后在同一租约内优先发送选中消息", async () => {
+    const { service, workspace, runtime_gate } = await create_service();
+    const stopped = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const tool = vi.spyOn(workspace, "run").mockImplementationOnce(async (_script, signal) => {
+      await once(signal, "abort");
+      stopped.resolve();
+      await release.promise;
+      throw signal.reason;
+    });
+    fake_agent_state.mode = "tool_only";
     await service.send_message({ text: "第一轮", attachments: [] });
+    await vi.waitFor(() => expect(tool).toHaveBeenCalledOnce());
+    await service.send_message({ text: "普通队列", attachments: [] });
     await service.send_message({ text: "插队消息", attachments: [] });
-    const queued = service.get_snapshot();
-    const item_id = queued.inputQueue.items[0]?.id;
-    expect(item_id).toBeDefined();
+    const selected = service.get_snapshot().inputQueue.items[1]!;
     await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
 
-    await service.send_queued_message({ id: item_id! });
-    expect(service.get_snapshot().inputQueue.items[0]?.status).toBe("sending");
-    fake_agent_state.mode = "success";
-    fake_agent_state.release_pending?.();
+    const owners: (string | null)[] = [];
+    runtime_gate.subscribe(({ owner }) => owners.push(owner));
+    const command = {
+      chatId: service.get_snapshot().chatId,
+      commandId: "interrupt-selected",
+      id: selected.id,
+    };
+    const sending = service.input_command("queue_send", command);
+    void sending.catch(() => undefined); // 测试在工具收尾后检查命令结果。
+    try {
+      await vi.waitFor(() => expect(service.get_snapshot().state).toBe("stopping"));
+      await stopped.promise;
+      expect(runtime_gate.get_snapshot().owner).toBe("agent");
+      expect(fake_agent_state.prompts).toEqual(["第一轮"]);
+      expect(service.get_snapshot().inputQueue.items[1]?.status).toBe("sending");
+      await expect(service.input_command_status(command)).resolves.toMatchObject({
+        status: "pending",
+      });
+    } finally {
+      fake_agent_state.mode = "success";
+      release.resolve();
+      await expect(sending).resolves.toMatchObject({ status: "accepted" });
+    }
     await wait_for_idle(service);
 
+    await expect(service.input_command("queue_send", command)).resolves.toMatchObject({
+      status: "accepted",
+    });
+    expect(owners).toEqual([null]);
     expect(service.get_snapshot().inputQueue.items).toEqual([]);
-    expect(service.get_snapshot().entries.filter((entry) => entry.kind === "user_message")).toEqual(
-      [
-        expect.objectContaining({ text: "第一轮", delivery: "round" }),
-        expect.objectContaining({ text: "插队消息", delivery: "steer" }),
-      ],
-    );
+    expect(fake_agent_state.prompts).toEqual(["第一轮", "插队消息", "普通队列"]);
+    expect(
+      service.get_snapshot().entries.filter((entry) => entry.kind === "user_message"),
+    ).toMatchObject([
+      { text: "第一轮", delivery: "round", status: "stopped" },
+      { text: "插队消息", delivery: "round", status: "success" },
+      { text: "普通队列", delivery: "round", status: "success" },
+    ]);
   });
 
   it("批量请求默认保留思考配置，显式降级取得最低等级", async () => {

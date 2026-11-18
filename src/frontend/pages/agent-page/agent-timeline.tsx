@@ -50,7 +50,7 @@ type AgentTimelineProps = {
   on_compact: () => void;
 
   follow_reset_revision: number;
-  on_continue: () => void;
+  on_continue: (() => void) | undefined;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: ((entry: UserEntry | AssistantEntry) => ReactNode | null) | undefined;
   on_add_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
@@ -115,7 +115,7 @@ type AgentRoundProps = {
   follow_reset_revision: number;
   t: Translate;
   is_latest_round: boolean;
-  on_continue: () => void;
+  on_continue: (() => void) | undefined;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: ((entry: UserEntry | AssistantEntry) => ReactNode | null) | undefined;
   on_fork?: ((roundId: string) => void) | undefined;
@@ -138,7 +138,8 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
   const ended = user.status !== "running";
   // 任意已结束轮次可编辑起始输入，助手修订与失败继续只属于最新轮次。
   const latest_ended = props.is_latest_round && ended;
-  const show_failure_continue = latest_ended && user.status === "error";
+  const continue_action =
+    props.is_latest_round && user.status === "error" ? props.on_continue : undefined;
   const user_editor = props.render_entry_editor?.(user) ?? null;
   return (
     <>
@@ -181,12 +182,12 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
           revisionAvailable={latest_ended}
         />
       ))}
-      {show_failure_continue ? (
+      {continue_action !== undefined ? (
         <AgentContinueEntry
           label={props.t("app.feedback.model_request_failed")}
           action_label={props.t("agent_page.action.continue")}
           disabled={props.continue_disabled}
-          on_continue={props.on_continue}
+          on_continue={continue_action}
         />
       ) : null}
       <AgentRoundFooter user={user} />

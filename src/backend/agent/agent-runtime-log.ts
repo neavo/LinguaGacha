@@ -13,7 +13,7 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import type { LogManager } from "../log/log-manager";
 import { project_assistant_message_parts, read_agent_tool_result_status } from "./agent-message";
 
-export type AgentStopReason = "user" | "reset" | "project_change" | "shutdown";
+export type AgentStopReason = "user" | "queue_send" | "reset" | "project_change" | "shutdown";
 export type AgentLogStatus = "success" | "error" | "stopped";
 type AgentLogEnd = {
   status: AgentLogStatus;

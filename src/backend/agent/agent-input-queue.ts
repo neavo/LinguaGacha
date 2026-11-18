@@ -88,24 +88,18 @@ export class AgentInputQueue {
     this.state.items = ordered as AgentQueuedInput[];
   }
 
-  /** 异步准备运行时前读取选中项，但不提前移除。 */
-  public read(id: string): AgentQueuedInput {
-    const index = this.find_queued_index(id);
-    return copy_queue_value(this.state.items[index]!);
-  }
-
-  /** 显式继续可预读暂停队首，恢复队列与受理输入在同一事务提交。 */
-  public read_next(resume = false): AgentQueuedInput | null {
+  /** 在事务内领取队首。显式继续可先领取暂停项，待 SDK 受理后解除暂停。 */
+  public begin_next(resume = false): AgentQueuedInput | null {
     if (
       (!resume && this.state.paused) ||
       this.state.items.some((item) => item.status === "sending")
     )
       return null;
     const item = this.state.items.find((candidate) => candidate.status === "queued");
-    return item === undefined ? null : copy_queue_value(item);
+    return item === undefined ? null : this.begin_send(item.id);
   }
 
-  /** steer 受理前先占用队列项，保证同一时刻只有一个待提交输入。 */
+  /** 受理前占用队列项，保证同一时刻只有一个待提交输入。 */
   public begin_send(id: string): AgentQueuedInput {
     if (this.state.items.some((item) => item.status === "sending")) {
       throw new AppErrors.AppError("runtime.busy");
@@ -126,7 +120,7 @@ export class AgentInputQueue {
     return copy_queue_value(item);
   }
 
-  /** steer 未提交即失败或停止时，把占用项恢复为普通 queued。 */
+  /** 输入未提交即失败或停止时，把占用项恢复为 queued。 */
   public cancel_send(): void {
     const index = this.state.items.findIndex((item) => item.status === "sending");
     const current = this.state.items[index];
