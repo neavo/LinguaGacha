@@ -25,7 +25,8 @@ const BATCH_LLM_REQUEST_SCHEMA = Type.Object(
     }),
     thinking_downgrade: Type.Optional(
       Type.Boolean({
-        description: "默认 `false`，即保持思考等级，任务简单时设置为 `true` 以减少费用和加快速度",
+        description:
+          "默认设为 `false`，即保持思考等级，任务简单时设置为 `true` 以减少费用和加快速度",
       }),
     ),
     request_file: Type.String({

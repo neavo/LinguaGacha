@@ -110,7 +110,7 @@ export function create_agent_batch_item_translation_tool(
         thinking_downgrade: Type.Optional(
           Type.Boolean({
             description:
-              "默认 `true`：即降低思考等级，供应商不接受降低思考等级时设为 `false` 并重试",
+              "默认设为 `true`：即降低思考等级，只有在供应商报错信息显示不接受降低时设为 `false` 并重试",
           }),
         ),
       },
