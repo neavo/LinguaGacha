@@ -45,9 +45,10 @@ H264 = ["-c:v", "libx264", "-preset", "medium", "-crf", "28", "-pix_fmt", "yuv42
 
 
 class Process:
-    """FFmpeg 子进程。后台线程持续读取 stderr，防止管道写满阻塞，只保留有界尾部用于报错。"""
+    """持有 FFmpeg 子进程和它的管道。"""
 
     def __init__(self, args, cwd=None, stdin=None, stdout=None):
+        """启动进程后立即读取诊断管道，避免 FFmpeg 因写满管道而阻塞。"""
         self.tail = b""
         self.child = subprocess.Popen(
             args,
@@ -61,15 +62,16 @@ class Process:
         self.reader.start()
 
     def drain(self):
+        """只保留有界的诊断尾部。"""
         while block := self.child.stderr.read(4096):
             self.tail = (self.tail + block)[-LOG_TAIL:]
 
-    def close(self, abort=False):
+    def close(self, abort=False, timeout=TIMEOUT):
         """等待退出并关闭全部管道。`abort` 用于失败路径，先结束进程且不再报告退出码。"""
         if abort and self.child.poll() is None:
             self.child.kill()
         try:
-            code = self.child.wait(timeout=TIMEOUT)
+            code = self.child.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self.child.kill()
             self.child.wait()
@@ -86,9 +88,7 @@ class Process:
 
 def run(args, cwd):
     """运行一次 FFmpeg 直到结束，非零退出时以诊断尾部报错。"""
-    process = Process(args, cwd=cwd)
-    process.child.wait()  # 音轨转码按真实素材耗时，不套用收尾时限。
-    process.close()
+    Process(args, cwd=cwd).close(timeout=None)  # 音轨转码按素材耗时，由工作区监管。
 
 
 def incompatible(message):
@@ -122,6 +122,7 @@ class Histogram:
         self.counts = np.zeros(round(2 * DB_RANGE / DB_STEP) + 1, np.int64)
 
     def add(self, values):
+        """将本帧频段幅度累加到固定的 dB 桶。"""
         db = 20 * np.log10(np.maximum(values, np.finfo(np.float64).tiny))
         indices = np.clip(
             np.rint((db + DB_RANGE) / DB_STEP), 0, len(self.counts) - 1
@@ -218,13 +219,15 @@ def render(job, directory):
     base = np.fromfile(job["background"], dtype=np.uint8)
     base = cv2.imdecode(base, cv2.IMREAD_COLOR)
     if base is None or base.shape != (HEIGHT, WIDTH, 3):
-        raise ValueError("Background must be a decodable 1920x1080 image")
+        raise ValueError(f"Background must be a decodable {WIDTH}x{HEIGHT} image")
     subtitle = Path(job["subtitles"]).read_text(encoding="utf-8-sig")
     if not all(
         re.search(rf"(?m)^PlayRes{axis}:\s*{size}\s*$", subtitle)
         for axis, size in (("X", WIDTH), ("Y", HEIGHT))
     ):
-        raise ValueError("Subtitles must declare PlayResX: 1920 and PlayResY: 1080")
+        raise ValueError(
+            f"Subtitles must declare PlayResX: {WIDTH} and PlayResY: {HEIGHT}"
+        )
     # 字幕与字体复制为工作目录内的固定短名，`ass` 滤镜参数无需转义用户路径。
     (directory / "subtitles.ass").write_text(subtitle, encoding="utf-8")
     (directory / "fonts").mkdir()
@@ -330,11 +333,9 @@ def render(job, directory):
                 )
             encoder.child.stdin.write(canvas.tobytes())
         encoder.child.stdin.close()
-        encoder.close()
         complete = True
     finally:
-        if not complete:
-            encoder.close(abort=True)
+        encoder.close(abort=not complete)
     timings["render"] = time.perf_counter() - start
     (directory / "result.json").write_text(
         json.dumps(

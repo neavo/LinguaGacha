@@ -2,11 +2,11 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { encode_frame, FrameReader, type ChannelHeader } from "./channel";
 import { CLOSE_TIMEOUT_MS } from "./client";
-let shutdown_failure: unknown; // helper 未确认退出时，阻止后续计算继续占用其资源。
+let shutdown_failure: Error | undefined; // helper 未确认退出时，阻止后续计算继续占用其资源。
 /** 桥接固定 helper 的推理请求，返回前等待进程及全部在途作业收尾。 */
 export async function run_helper(
   executable: string,
-  entry: string | URL,
+  script: URL,
   command: string,
   job: Readonly<Record<string, unknown>>,
   infer?: (
@@ -18,8 +18,8 @@ export async function run_helper(
   // 作业正文走载荷；启动前完成编码，非法输入不能留下等待首帧的子进程。
   const request = encode_frame({ command }, Buffer.from(JSON.stringify(job)));
   // -I 隔离宿主配置，-B 保护应用源码，-X utf8 让日志在任何代码页下都是 UTF-8。
-  const target = typeof entry === "string" ? ["-m", entry] : [fileURLToPath(entry)];
-  const child = spawn(executable, ["-I", "-B", "-X", "utf8", ...target], {
+  const script_path = fileURLToPath(script);
+  const child = spawn(executable, ["-I", "-B", "-X", "utf8", script_path], {
     shell: false,
     windowsHide: true,
     stdio: ["pipe", "pipe", "inherit"],
@@ -31,6 +31,15 @@ export async function run_helper(
   const fail = (error: unknown): void => {
     failure ??= error;
     child.kill();
+  };
+  /** 通道结束后留出时间清理原生资源。超时交给工作区监管器收尾。 */
+  const wait_for_exit = (): void => {
+    stopping ??= setTimeout(() => {
+      shutdown_failure = new Error("Inference helper did not close; the host must end this run.", {
+        cause: failure,
+      });
+      child.kill();
+    }, CLOSE_TIMEOUT_MS);
   };
   const write = (header: ChannelHeader, payload?: ArrayBuffer): void => {
     if (child.stdin.writable)
@@ -50,12 +59,7 @@ export async function run_helper(
         if ("result" in header) {
           result = { value: JSON.parse(Buffer.from(payload).toString("utf8")) };
           child.stdin.end(); // helper 的读线程随 EOF 结束后自然退出。
-          stopping ??= setTimeout(() => {
-            shutdown_failure = new Error(
-              "Inference helper did not close; the host must end this run.",
-            );
-            child.kill();
-          }, CLOSE_TIMEOUT_MS);
+          wait_for_exit();
           continue;
         }
         const { id } = header;
@@ -67,14 +71,7 @@ export async function run_helper(
             (error: unknown) => {
               failure ??= error;
               write({ id, error: error instanceof Error ? error.message : String(error) });
-              // 先让 helper 完成自身 finally，再判断其是否按时退出。
-              stopping ??= setTimeout(() => {
-                shutdown_failure = new Error(
-                  "Inference helper did not close; the host must end this run.",
-                  { cause: failure },
-                );
-                child.kill();
-              }, CLOSE_TIMEOUT_MS);
+              wait_for_exit();
             },
           )
           .catch(fail)
@@ -101,6 +98,7 @@ export async function run_helper(
       failure = error;
     }
   if (failure !== undefined) throw failure;
-  if (code !== 0 || !result) throw new Error(`${entry} ${command} failed (${code}); see the log.`);
+  if (code !== 0 || !result)
+    throw new Error(`${script_path} ${command} failed (${code}); see the log.`);
   return result.value;
 }

@@ -194,15 +194,11 @@ uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/
 
 #### 媒体推理
 
-使用已准备的媒体 Python 项目运行 `helper.test.py`。安装清单见 `builtin/skills/media/scripts/media.mjs` 和 `builtin/skills/image/scripts/image.mjs` 的 `NPM_DEPENDENCIES` 与 `PIP_DEPENDENCIES`。
+媒体技能的 Python 脚本启动或分发变化时，运行工作区 bootstrap 的联系表用例。它在仓库外从用户技能目录加载媒体入口，通过部署后的 SDK 和共享 Python 通道验证启动。Windows 路径问题须在 Windows 验证。
 
 ```powershell
-$mediaPythonProject = '<已准备媒体环境的 Python 项目目录，含 pyproject.toml>'
-$mediaTestFile = (Resolve-Path 'src/python/tests/media/helper.test.py').Path
-uv run --project $mediaPythonProject python -I -B -X utf8 $mediaTestFile
+npm test -- --project integration src/backend/agent/workspace/runtime/bootstrap.test.ts -t "联系表"
 ```
-
-验证部署产物时，先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。Windows 路径问题须在 Windows 验证。
 
 npm、uv 默认包源变化运行 `package-source.test.ts`、`uv/index.test.ts`、工作区 `service.test.ts`，以及集成测试 `npm/index.test.ts` 和工作区 `bootstrap.test.ts`。它们使用替身判定和关闭的代理端口，不访问地区接口。
 
@@ -226,7 +222,7 @@ $env:LINGUAGACHA_VISUALIZE_REPORT = '<仓库外验收目录绝对路径>'
 npm test -- --project integration src/backend/agent/media/visualize.test.ts
 ```
 
-该入口在部署环境执行 `visualize.test.py`。正式资源还需用当前技能脚本生成字幕并做视觉检查。长音频验收记录实际耗时、进程峰值内存和临时空间，并完整解码检查成片。
+正式资源还需用当前技能脚本生成字幕并做视觉检查。长音频验收记录实际耗时、进程峰值内存和临时空间，并完整解码检查成片。
 
 界面、PDF 与字幕烧录共用 `public/fonts/` 中的 TTF 字体。更新字体资源后，验证字体加载及中日韩、拉丁文、等宽文字和 emoji 显示。
 

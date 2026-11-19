@@ -11,7 +11,7 @@ afterEach(async () => {
   if (directory) await rm(directory, { recursive: true, force: true });
 });
 
-it("deployed VAD worker isolates streams and disposes tensors on replacement, release and errors", async () => {
+it("deployed VAD worker carries state across blocks and disposes tensors on failure and close", async () => {
   directory = await mkdtemp(path.join(os.tmpdir(), "media deployment "));
   const ort = path.join(directory, "ort.mjs");
   await writeFile(
@@ -26,9 +26,11 @@ export const InferenceSession={ create:async()=>({
   outputNames:['logits',...Array.from({length:4},(_,i)=>'out_cache'+i)],
   async run(feeds) {
     const n=feeds.speech.dims[1], previous=feeds.in_cache0.data[0];
-    if(feeds.speech.data[0]===-1) throw Error('fixture inference failure');
+    const inputs = new Set(Object.values(feeds));
+    if([...live].some(tensor=>!inputs.has(tensor))) throw Error('stale tensors');
     const value=previous+1;
-    return {logits:new Tensor('float32',new Float32Array(n*248).fill(value),[1,n,248]),
+    const score=feeds.speech.data[0]===-1?NaN:value;
+    return {logits:new Tensor('float32',new Float32Array(n*248).fill(score),[1,n,248]),
       ...Object.fromEntries(Array.from({length:4},(_,i)=>['out_cache'+i,new Tensor('float32',new Float32Array(128*19).fill(value),[1,128,19,1])]))};
   },
   async release() { if(live.size) throw Error('leaked tensors: '+live.size); }
@@ -44,10 +46,9 @@ export const InferenceSession={ create:async()=>({
     config,
     path.join(inject("workspaceRuntimeDirectory"), "runtime/media-worker.mjs"),
   );
-  const request = async (stream: number, value = 0) => {
+  const request = async (value = 0) => {
     const input = new Float32Array(800).fill(value);
     const result = await engine.request(
-      stream,
       "vad",
       { dtype: "float32", shape: [1, 2, 400] },
       new Uint8Array(input.buffer),
@@ -56,17 +57,10 @@ export const InferenceSession={ create:async()=>({
     return new Float32Array(result.payload!)[0];
   };
   try {
-    expect(await request(0)).toBe(1);
-    expect(await request(1)).toBe(1);
-    expect(await request(0)).toBe(2);
-    engine.release(0);
-    engine.release(0);
-    expect(await request(0)).toBe(1);
-    await expect(request(0, -1)).rejects.toThrow("fixture inference failure");
-    expect(await request(0)).toBe(1);
-    await expect(
-      engine.request(0, "vad", { dtype: "float32", shape: [1, 0, 400] }, new Uint8Array(0)),
-    ).rejects.toThrow();
+    expect(await request()).toBe(1);
+    expect(await request()).toBe(2);
+    await expect(request(-1)).rejects.toThrow("not finite");
+    expect(await request()).toBe(1);
   } finally {
     await engine.close();
   }
@@ -113,7 +107,6 @@ it("deployed ASR worker decodes output and rejects nonfinite values", async () =
     const input = new Float32Array(2 * 560);
     if (invalid) input[0] = -1;
     return engine.request(
-      0,
       "asr",
       { dtype: "float32", shape: [1, 2, 560], language: "auto" },
       new Uint8Array(input.buffer),
@@ -161,7 +154,6 @@ it("deployed OCR worker returns shared token ids", async () => {
   try {
     const input = new Float32Array(3 * 48 * 32);
     const result = await engine.request(
-      0,
       "recognition",
       { dtype: "float32", shape: [1, 3, 48, 32] },
       new Uint8Array(input.buffer),

@@ -29,6 +29,7 @@ class Frontend:
     """fbank 帧编号连续。只在真实 EOF 补齐 LFR 的右侧上下文。"""
 
     def __init__(self, mvn):
+        """按模型的固定配置初始化连续特征提取和 CMVN。"""
         options = knf.FbankOptions()
         options.frame_opts.samp_freq = SAMPLE_RATE
         options.frame_opts.dither = 0
@@ -179,12 +180,8 @@ class Segmenter:
 
     def accept(self, scores, waveform, final):
         """处理一块模型得分及其配套波形，返回本块结束的 `[起点, 终点]` 采样区间。"""
-        if (
-            scores.ndim != 3
-            or scores.shape[0] != 1
-            or scores.shape[2] != PDFS
-            or not np.isfinite(scores).all()
-        ):
+        # Worker 已检查模型得分的有限性，这里核对与本批波形匹配的张量形状。
+        if scores.ndim != 3 or scores.shape[0] != 1 or scores.shape[2] != PDFS:
             raise ValueError("Invalid FSMN scores")
         count = scores.shape[1]
         if len(waveform) != (count - 1) * FRAME_SHIFT + FRAME_LENGTH:

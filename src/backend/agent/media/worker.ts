@@ -72,14 +72,11 @@ async function recognize_speech(
   }
 }
 
-/** 每路音频唯一拥有四个 FSMN 循环缓存。 */
-type VadStream = OrtTensor[];
-
-/** 每个 Worker 独占会话与 VAD 流状态，按消息顺序执行。 */
+/** 每个 Worker 独占当前作业的会话与 VAD 状态，按消息顺序执行。 */
 async function serve(): Promise<void> {
   const models = config.models;
   const sessions = new Map<MediaTask, Promise<OrtSession>>(); // 按任务首次请求时创建。
-  const streams = new Map<number, VadStream>();
+  let vad_state: OrtTensor[] | undefined; // 四个 FSMN 循环缓存跨音频块复用。
   let vocabulary: string[] | undefined; // ASR 首次请求时读取。
   /** 同一任务共用一个会话，并发首请求共享同一个创建过程。 */
   const session = (task: MediaTask): Promise<OrtSession> => {
@@ -92,45 +89,38 @@ async function serve(): Promise<void> {
     return current;
   };
 
-  /** 释放一路的全部缓存，重复释放空流无副作用。 */
-  const release = (stream: number): void => {
-    for (const tensor of streams.get(stream) ?? []) tensor.dispose();
-    streams.delete(stream);
+  /** 推理失败或关闭时结束当前音频序列。 */
+  const reset_vad = (): void => {
+    for (const tensor of vad_state ?? []) tensor.dispose();
+    vad_state = undefined;
   };
-  /** 一路首次请求从零缓存开始。成功后新缓存替换旧缓存，失败则丢弃该路状态。 */
-  const vad = async (
-    stream: number,
-    input: Float32Array,
-    rows: number,
-  ): Promise<Float32Array<ArrayBuffer>> => {
+  /** 首块从零缓存开始，成功后才用新缓存替换旧缓存。 */
+  const vad = async (input: Float32Array, rows: number): Promise<Float32Array<ArrayBuffer>> => {
     const model = await session("vad");
-    let state = streams.get(stream);
-    if (!state) {
-      state = Array.from(
-        { length: VAD_CACHES },
-        () =>
-          new ort.Tensor(
-            "float32",
-            new Float32Array(VAD_STATE.reduce((size, n) => size * n)),
-            VAD_STATE,
-          ),
-      );
-      streams.set(stream, state);
-    }
+    vad_state ??= Array.from(
+      { length: VAD_CACHES },
+      () =>
+        new ort.Tensor(
+          "float32",
+          new Float32Array(VAD_STATE.reduce((size, n) => size * n)),
+          VAD_STATE,
+        ),
+    );
     const speech = new ort.Tensor("float32", input, [1, rows, VAD_FEATURES]);
     let outputs: Record<string, OrtTensor> = {};
     const owned = new Set<OrtTensor>();
     try {
       outputs = await model.run({
         speech,
-        ...Object.fromEntries(state.map((tensor, i) => [`in_cache${i}`, tensor])),
+        ...Object.fromEntries(vad_state.map((tensor, i) => [`in_cache${i}`, tensor])),
       });
       const logits = outputs.logits;
       if (Object.keys(outputs).length !== VAD_CACHES + 1)
         throw new Error("Unexpected FSMN output count.");
       if (!logits || logits.dims.join() !== [1, rows, VAD_PDFS].join())
         throw new Error("Unexpected FSMN logits shape.");
-      check_finite(float(logits.data));
+      const scores = float(logits.data);
+      check_finite(scores);
       const next = Array.from({ length: VAD_CACHES }, (_, i) => {
         const tensor = outputs[`out_cache${i}`];
         if (!tensor || tensor.dims.join() !== VAD_STATE.join())
@@ -138,13 +128,13 @@ async function serve(): Promise<void> {
         check_finite(float(tensor.data));
         return tensor;
       });
-      const result = new Float32Array(float(logits.data));
-      release(stream);
-      streams.set(stream, next);
+      const result = new Float32Array(scores); // 输出张量释放前复制供通道传输。
+      reset_vad();
+      vad_state = next;
       for (const tensor of next) owned.add(tensor);
       return result;
     } catch (error) {
-      release(stream); // 失败不能留下半更新的流状态。
+      reset_vad();
       throw error;
     } finally {
       speech.dispose();
@@ -152,13 +142,10 @@ async function serve(): Promise<void> {
     }
   };
 
-  /** 推理请求总有应答，模型错误转为失败应答。释放与关闭消息没有应答。 */
-  const handle = async (message: MediaWorkerRequest): Promise<MediaWorkerReply | undefined> => {
-    if (message.type === "release") {
-      release(message.stream);
-      return undefined;
-    }
-    if (message.type === "close") return undefined;
+  /** 推理请求总有应答，模型错误转为失败应答。 */
+  const handle = async (
+    message: Extract<MediaWorkerRequest, { type: "infer" }>,
+  ): Promise<MediaWorkerReply> => {
     const { id, kind, header } = message;
     try {
       const input = new Float32Array(message.payload);
@@ -172,7 +159,7 @@ async function serve(): Promise<void> {
           shape[1]! > VAD_BLOCK
         )
           throw new Error(`Unexpected VAD input: ${JSON.stringify(shape)}`);
-        const probs = await vad(message.stream, input, shape[1]!);
+        const probs = await vad(input, shape[1]!);
         return {
           id,
           header: { dtype: "float32", shape: [1, shape[1]!, VAD_PDFS] },
@@ -211,13 +198,13 @@ async function serve(): Promise<void> {
   let queue = Promise.resolve();
   port.on("message", (message: MediaWorkerRequest) => {
     queue = queue.then(async () => {
-      const reply = await handle(message);
-      if (reply)
-        port.postMessage(reply, "payload" in reply && reply.payload ? [reply.payload] : []);
       if (message.type === "close") {
-        for (const stream of streams.keys()) release(stream);
+        reset_vad();
         await shutdown(sessions);
+        return;
       }
+      const reply = await handle(message);
+      port.postMessage(reply, "payload" in reply && reply.payload ? [reply.payload] : []);
     });
   });
 }

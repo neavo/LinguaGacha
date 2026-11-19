@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import lockfile from "proper-lockfile";
 import { execute, ffmpeg_path, inspect } from "./ffmpeg";
 import { python } from "../inference/environment";
 
-const FRAME = { width: 1920, height: 1080 }; // 与 `visualize.py` 的成片尺寸一致。
 const DURATION_TOLERANCE = 0.15; // 成片与解码样本时长的允许差（秒），覆盖封装取整。
 const LOCK_RETRY = { retries: 40, minTimeout: 250, maxTimeout: 500 }; // 同一输出正在生成时最多等待约 20 秒。
 
@@ -26,22 +26,29 @@ export type VisualizeResult = Readonly<{
 }>;
 
 /**
- * 用纯音频的所选音轨与已生成的双语 ASS 合成固定预设的可视化 MP4。
- * 不读取工程，字幕正文由调用者决定。成片检查通过后才替换 `output`，失败时旧成片保留。
+ * 用技能预设、所选音轨与已生成的双语 ASS 合成 MP4。
+ * 通过成片检查后原子替换 `output`，失败时保留旧成片。
  */
 export async function visualize(
+  script: URL,
   source: string,
   options: VisualizeOptions,
 ): Promise<VisualizeResult> {
   const info = await inspect(source);
   if (info.video !== null) throw new Error("Visualization requires audio-only media.");
-  if (!Number.isInteger(options.track) || options.track < 0 || !info.audio[options.track])
+  if (!Number.isInteger(options.track) || !info.audio[options.track])
     throw new Error(`Audio track ${options.track} does not exist.`);
   const output = path.resolve(options.output);
-  const inputs = [source, options.background, options.subtitles].map((file) => path.resolve(file));
+  const inputs = {
+    source: path.resolve(source),
+    background: path.resolve(options.background),
+    subtitles: path.resolve(options.subtitles),
+  };
+  // 比较真实路径，避免经符号链接指定了输入文件。
   const identity = (file: string): string =>
     fs.to_identity_path(fs.exists(file) ? fs.real_path(file) : file);
-  if (inputs.some((file) => identity(file) === identity(output)))
+  const output_identity = identity(output);
+  if (Object.values(inputs).some((file) => identity(file) === output_identity))
     throw new Error("Output must not replace an input file.");
   await fs.make_dir_async(path.dirname(output));
   const release = await lockfile.lock(output, {
@@ -61,15 +68,13 @@ export async function visualize(
     await fs.write_file(
       job,
       JSON.stringify({
-        source: inputs[0],
-        background: inputs[1],
-        subtitles: inputs[2],
+        ...inputs,
         fonts: path.resolve(options.fonts),
         track: options.track,
         ffmpeg: ffmpeg_path(),
       }),
     );
-    await execute(python(), ["-I", "-B", "-X", "utf8", "-m", "lg.media.visualize", job]);
+    await execute(python(), ["-I", "-B", "-X", "utf8", fileURLToPath(script), job]);
     const temporary = path.join(directory, "result.mp4");
     const result = JSON.parse(fs.read_text_file(path.join(directory, "result.json"))) as Omit<
       VisualizeResult,
@@ -77,8 +82,7 @@ export async function visualize(
     >;
     const checked = await inspect(temporary);
     if (
-      checked.video?.width !== FRAME.width ||
-      checked.video.height !== FRAME.height ||
+      checked.video === null ||
       checked.audio.length !== 1 ||
       Math.abs(checked.duration - result.duration) > DURATION_TOLERANCE
     )

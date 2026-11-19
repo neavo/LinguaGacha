@@ -46,7 +46,7 @@ export function create_agent_workspace_run_tool(options: {
       "  - `@lg/npm`：应用随附的 npm，管理共享 npm 工程与调用包提供的命令行工具",
       "  - `@lg/search`：网页搜索，调用方式与响应契约见下文",
       "  - `@lg/pdf`、`@lg/pdf/mupdf`：PDF 读取、渲染与打印，用法见 `pdf` 技能",
-      "  - `@lg/media`：音视频本地识别、画面文字检测与音频可视化成片，用法见 `media` 技能",
+      "  - `@lg/media`：音视频推理监管、FFmpeg、包校验与音频可视化成片，用法见 `media` 技能",
       "  - `@lg/image`：图片推理、包校验与绘字，用法见 `image` 技能",
       "  - `@lg/generic`：安全解包、封装数据包并校验通用记录，用法见 `generic-data` 技能",
       "  - `@lg/project`：识别来源、查询条目邻近语境、生成原生产物和通用写回输入，用法见下文及 `project-operation` 技能",

@@ -23,7 +23,6 @@ async function create(device: "cpu" | "webgpu" = "webgpu"): Promise<Engine> {
     `import { parentPort, threadId } from 'node:worker_threads';
 parentPort.on('message', (m) => {
   if (m.type === 'close') return parentPort.close();
-  if (m.type === 'release') return;
   parentPort.postMessage(m.header.fail
     ? { id:m.id, error:'model failed' }
     : { id:m.id, header:{ thread:threadId, id:m.id, kind:m.kind } });
@@ -45,7 +44,7 @@ parentPort.on('message', (m) => {
   return engine;
 }
 const request = (engine: Engine, kind: MediaTask, fail = false) =>
-  engine.request(0, kind, { fail }, new Uint8Array(0));
+  engine.request(kind, { fail }, new Uint8Array(0));
 
 it("shares two CPU visual workers for detection and OCR independently of audio", async () => {
   const engine = await create("cpu");

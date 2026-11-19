@@ -4,6 +4,8 @@ import * as generic from "@lg/generic";
 import * as sdk from "@lg/media";
 import { npm } from "@lg/npm";
 
+const pipeline = sdk.create_media_pipeline(new URL("./helper.py", import.meta.url));
+
 // 依赖由 AGENT 经 npm、uv 显式准备，设备在每次推理调用中明确传入。
 export {
   ASR_LANGUAGES,
@@ -81,9 +83,9 @@ async function identify(file) {
  * 检测完成后替换裁图，由调用者发布清单；清单失败时恢复旧裁图。
  * 计算失败时保留原有裁图。
  */
-async function detect(directory, options, commit) {
+async function detect(source, directory, options, commit) {
   const staging = path.join(directory, "text.staging");
-  const text = await sdk.scan(await locate(directory), { out: staging, ...options });
+  const text = await pipeline.scan(source, { out: staging, ...options });
   const crops = path.join(directory, "text");
   const backup = path.join(directory, "text.previous");
   // 清单发布失败时恢复旧裁图，避免原区间编号指向新图片。
@@ -112,7 +114,8 @@ export async function scan(directory, { device } = {}) {
   const manifestFile = path.join(directory, "media.json");
   const manifest = await read_work_manifest(manifestFile);
   if (manifest.video === null) throw new Error("纯音频素材没有画面");
-  await detect(directory, { device }, async (fields) => {
+  const source = await locate_source(manifest.source);
+  await detect(source, directory, { device }, async (fields) => {
     await save(manifestFile, { ...manifest, ...fields });
     Object.assign(manifest, fields);
   });
@@ -170,7 +173,7 @@ export async function prepare(source, directory, { track = 0, language, device, 
     "asr" in manifest && !rerun.includes("speech")
       ? null
       : info.audio.length
-        ? sdk.listen(source, { track, language, device }).then(async (result) => {
+        ? pipeline.listen(source, { track, language, device }).then(async (result) => {
             await commit(result);
             steps.speech = rerun.includes("speech") ? "rerun" : "executed";
           })
@@ -180,7 +183,7 @@ export async function prepare(source, directory, { track = 0, language, device, 
     "text" in manifest && !rerun.includes("text")
       ? null
       : info.video
-        ? detect(directory, { device }, commit).then(() => {
+        ? detect(source, directory, { device }, commit).then(() => {
             steps.text = rerun.includes("text") ? "rerun" : "executed";
           })
         : commit({ text: null }).then(() => {
@@ -230,7 +233,7 @@ export async function sheets(directory, { ids } = {}) {
   const wanted = ids ? new Set(ids) : null;
   const out = path.join(directory, "sheets");
   await rm(out, { recursive: true, force: true });
-  return sdk.sheets(
+  return pipeline.sheets(
     text
       .filter((region) => !wanted || wanted.has(region.id))
       .map(({ id, start }) => ({ id, start, file: path.join(directory, "text", `${id}.jpg`) })),
@@ -253,7 +256,7 @@ export async function refine(directory, rows, { device } = {}) {
     if (!item || item.kind !== "screen" || !item.box)
       throw new Error(`第 ${row} 行不是带 box 的 screen`);
   }
-  const bounds = await sdk.refine(await locate(directory), {
+  const bounds = await pipeline.refine(await locate_source(manifest.source), {
     device,
     rows: rows.map((row) => ({ ...items[row], row })),
   });
@@ -274,6 +277,11 @@ export async function refine(directory, rows, { device } = {}) {
  */
 export async function locate(directory) {
   const { source } = await read_work_manifest(path.join(path.resolve(directory), "media.json"));
+  return locate_source(source);
+}
+
+/** 已读取清单的调用者沿用同一份来源身份和音轨。 */
+export async function locate_source(source) {
   let current = null;
   try {
     current = await identify(source.path);

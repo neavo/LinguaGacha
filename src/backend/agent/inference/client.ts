@@ -58,11 +58,6 @@ export class InferenceClient {
     return current.worker;
   }
 
-  /** 释放等控制消息只发送到已有通道，不为收尾额外创建 Worker。 */
-  send(lane: string, message: unknown): void {
-    if (!this.failure) this.workers.get(lane)?.worker.postMessage(message);
-  }
-
   /** 载荷所在的 ArrayBuffer 转移给 Worker，调用者之后不能再使用它。 */
   request(
     lane: string,

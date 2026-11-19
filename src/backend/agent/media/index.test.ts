@@ -36,6 +36,9 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
       proxyResolver: { resolveProxy: async () => "DIRECT" },
     });
     const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/media.mjs`;
+    const helper = JSON.stringify(
+      new URL("../../../../builtin/skills/media/scripts/helper.py", import.meta.url).href,
+    );
     await writeFile(
       path.join(workspace, scriptPath),
       `
@@ -45,7 +48,9 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     import fs from 'node:fs/promises';
     import path from 'node:path';
     import assert from 'node:assert/strict';
+    const pipeline = media.create_media_pipeline(new URL(${helper}));
     const source = ${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))};
+    await assert.rejects(pipeline.scan(source, {out:'work/scan/text',device:'auto'}), /cpu or gpu/);
     const began = Date.now();
     console.log('before', JSON.stringify(await media.missing_models()));
     const ortPackage = path.join(npm.directory, 'node_modules/onnxruntime-node/package.json');
@@ -59,13 +64,10 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     await uv.run(['add', 'kaldi-native-fbank==1.23.1', 'numpy==2.5.5', 'opencv-python-headless==5.1.0.95', 'pyclipper==1.4.0']);
     await media.prepare_models();
     const info = await media.inspect(source);
-    // helper.test.py 同时检查检测后处理，只在准备了检测用途时执行。
-    for (const test of ${JSON.stringify(["fsmn_vad.test.py", "helper.test.py"].map((file) => path.resolve("src/python/tests/media", file)))})
-      if (info.video || test.endsWith('fsmn_vad.test.py')) await uv.run(['run', 'python', '-I', test]);
     const run = async device => {
-      const listened = await media.listen(source, {device, language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} });
-      const scanned = info.video ? await media.scan(source, {out:'work/scan/text',device}) : [];
-      const refined = info.video ? await media.refine(source, {device,rows:scanned.slice(0,2).map((x,row)=>({...x,row}))}) : [];
+      const listened = await pipeline.listen(source, {device, language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")} });
+      const scanned = info.video ? await pipeline.scan(source, {out:'work/scan/text',device}) : [];
+      const refined = info.video ? await pipeline.refine(source, {device,rows:scanned.slice(0,2).map((x,row)=>({...x,row}))}) : [];
       return {listened, scanned, refined};
     };
     let device = 'gpu';
@@ -118,8 +120,9 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
           import * as media from '@lg/media';
           import fs from 'node:fs/promises';
           import assert from 'node:assert/strict';
+          const pipeline = media.create_media_pipeline(new URL(${helper}));
           await media.ffmpeg(['-y','-i',${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))},'-t','2','-c','copy','work/short.mp4']);
-          const result = await media.scan('work/short.mp4', {out:'work/override/text',device:'cpu'});
+          const result = await pipeline.scan('work/short.mp4', {out:'work/override/text',device:'cpu'});
           assert.ok(Array.isArray(result));
           await fs.writeFile('work/override.json',JSON.stringify({device:'cpu',regions:result.length}));
           console.log('explicit CPU completed',result.length);
@@ -141,9 +144,10 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
       await writeFile(
         path.join(workspace, retryPath),
         `
-        import * as media from '@lg/media';
+        import { create_media_pipeline } from '@lg/media';
+        const { listen } = create_media_pipeline(new URL(${helper}));
         console.log('inference starting');
-        const result = await media.listen(${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))}, {device:"cpu",language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")}});
+        const result = await listen(${JSON.stringify(path.resolve(process.env.LINGUAGACHA_MEDIA_SOURCE!))}, {device:"cpu",language:${JSON.stringify(process.env.LINGUAGACHA_MEDIA_LANGUAGE ?? "JA")}});
         console.log('inference completed', result.asr.length);
       `,
       );

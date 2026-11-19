@@ -29,6 +29,7 @@ import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
+import type { MediaWorkManifest } from "../../../../shared/media-package";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { png_fixture } from "../../../../test/media-fixture";
 import { create_image_text_renderer } from "../../tools/render-image-text";
@@ -143,17 +144,30 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
 });
 
 it(
-  "部署后的媒体 SDK 通过共享 Python 通道生成联系表",
+  "部署后的媒体技能从用户技能目录启动 Python 生成联系表",
   async () => {
-    const source = path.join(workspace, "work/sheet-source.png");
-    await writeFile(source, png_fixture());
+    const scripts = path.join(skill_paths.get_agent_user_skill_dir(), "媒体", "scripts");
+    await cp(new URL("../../../../../builtin/skills/media/scripts/", import.meta.url), scripts, {
+      recursive: true,
+    });
+    const entry = pathToFileURL(path.join(scripts, "media.mjs")).href;
+    const directory = path.join(workspace, "work", "sheets");
+    await mkdir(path.join(directory, "text"), { recursive: true });
+    await writeFile(path.join(directory, "text", "7.jpg"), png_fixture());
+    const manifest: MediaWorkManifest = {
+      source: { path: "source.mp4", size: 0, mtime_ns: "0", track: 0, language: null },
+      duration: 1,
+      video: { width: 1, height: 1 },
+      text: [{ id: 7, start: 0, end: 1, at: 0, box: [0, 0, 1, 1] }],
+    };
+    await writeFile(path.join(directory, "media.json"), JSON.stringify(manifest));
     await run(
       `
-        import { sheets } from "@lg/media";
         import { uv } from "@lg/uv";
         import assert from "node:assert/strict";
+        const { sheets } = await import(${JSON.stringify(entry)});
         await uv.run(["add", "numpy==2.5.5", "opencv-python-headless==5.1.0.95", "--default-index", "https://pypi.org/simple"]);
-        const result = await sheets([{ id: 7, start: 0, file: "work/sheet-source.png" }], "work/sheets");
+        const result = await sheets("work/sheets");
         assert.deepEqual(result.map(sheet => sheet.ids), [[7]]);
       `,
       AbortSignal.timeout(EXECUTION_TIMEOUT_MS),

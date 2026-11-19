@@ -1,13 +1,13 @@
 /**
- * `@lg/media`：音视频本地识别与画面文字检测的稳定计算能力。
- * 只返回结果或写入调用者指定的工作文件，不读写工程，也不决定最终字幕原文。
+ * `@lg/media`：音视频推理监管、FFmpeg、包校验与音频可视化成片能力。
+ * 领域 Python 脚本由调用方从技能包注入；本模块只返回结果或写入指定工作文件，不读写工程，也不决定最终字幕原文。
  */
 import path from "node:path";
 import type { TSchema } from "typebox";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { inference_configuration } from "../inference/runtime";
 import { require_models } from "./preparation";
-import { helper, operate, validate_device } from "./engine";
+import { helper, operate } from "./engine";
 import { ffmpeg_path, inspect } from "./ffmpeg";
 import type { DeviceOptions } from "./worker-protocol";
 import { MEDIA_MODELS } from "./models";
@@ -55,11 +55,17 @@ export type RefineRow = Readonly<MediaHelperRequest<"refine">["rows"][number]>;
 export type SheetEntry = Readonly<MediaHelperRequest<"sheet">["entries"][number]>;
 export type Sheet = MediaSheet;
 
+/** SDK 入口接收技能脚本的设备选项，先拒绝未知设备再准备资源。 */
+function validate_device(device: unknown): void {
+  if (device !== "cpu" && device !== "gpu") throw new Error("Media device must be cpu or gpu.");
+}
+
 /**
  * 一次解码完成人声检测与本地识别，返回整片秒数的人声区间与句级条目。
  * 语言取工程原文语言，必须在 `ASR_LANGUAGES` 中。
  */
-export async function listen(
+async function listen(
+  script: URL,
   source: string,
   { track = 0, language, device }: Readonly<{ track?: number; language: string }> & DeviceOptions,
 ): Promise<{ speech: [number, number][]; asr: AsrSentence[] }> {
@@ -77,6 +83,7 @@ export async function listen(
   return operate(
     async (engine) => {
       const { spans, windows } = await helper(
+        script,
         "speech",
         {
           ffmpeg: ffmpeg_path(),
@@ -99,7 +106,8 @@ export async function listen(
  * 以 1 fps 检测、识别整片画面文字，按位置和内容分段，代表裁图写入 `out/<id>.jpg`。
  * `out` 每次重建，由调用者在成功后发布。
  */
-export async function scan(
+async function scan(
+  script: URL,
   source: string,
   { out, device }: Readonly<{ out: string }> & DeviceOptions,
 ): Promise<TextRegion[]> {
@@ -112,6 +120,7 @@ export async function scan(
     async (engine) => {
       await fs.remove_async(out, { recursive: true, force: true }); // 重跑不能混入上一轮的裁图。
       const regions = await helper(
+        script,
         "scan",
         { ffmpeg: ffmpeg_path(), source, ...video, out },
         engine,
@@ -124,7 +133,8 @@ export async function scan(
 }
 
 /** 在原文件上以 4 fps 检查小窗口内同一内容的边界，无法确定的边界为 null。 */
-export async function refine(
+async function refine(
+  script: URL,
   source: string,
   { rows, device }: Readonly<{ rows: readonly RefineRow[] }> & DeviceOptions,
 ): Promise<TextBound[]> {
@@ -133,11 +143,14 @@ export async function refine(
   const info = await inspect(source);
   const video = info.video;
   if (!video) throw new Error("Audio-only media has no picture.");
+  // 调用者可传带原文等字段的记录，Python 只接收校准使用的字段。
+  const targets = rows.map(({ row, start, end, box }) => ({ row, start, end, box }));
   return operate(
     async (engine) =>
       await helper(
+        script,
         "refine",
-        { ffmpeg: ffmpeg_path(), source, ...video, duration: info.duration, rows: [...rows] },
+        { ffmpeg: ffmpeg_path(), source, ...video, duration: info.duration, rows: targets },
         engine,
       ),
     { device },
@@ -145,6 +158,16 @@ export async function refine(
 }
 
 /** 把裁图拼成不超过 1280×1280 的图集写入 `out`，返回 `[{ file, ids }]`。 */
-export async function sheets(entries: readonly SheetEntry[], out: string): Promise<Sheet[]> {
-  return helper("sheet", { entries: [...entries], out });
+async function sheets(script: URL, entries: readonly SheetEntry[], out: string): Promise<Sheet[]> {
+  return helper(script, "sheet", { entries: [...entries], out });
+}
+
+/** 技能入口固定 helper 脚本路径，各作业仍共享 SDK 的推理监管。 */
+export function create_media_pipeline(script: URL) {
+  return {
+    listen: listen.bind(undefined, script),
+    scan: scan.bind(undefined, script),
+    refine: refine.bind(undefined, script),
+    sheets: sheets.bind(undefined, script),
+  };
 }
