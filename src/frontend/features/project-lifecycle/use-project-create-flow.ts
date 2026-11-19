@@ -112,11 +112,11 @@ function collect_loaded_default_preset_names(
 }
 
 const EMPTY_PROJECT_LOADING_MS = 3_000; // 空工程创建太快，留出完成的实感。
-// 草稿固定为术语、翻译和审校三步，后两步共用翻译技能。
 const TRANSLATION_STEPS = [
   { label_key: "app.agent_input.steps.glossary", skill: "glossary" },
   { label_key: "app.agent_input.steps.translate", skill: "translation" },
   { label_key: "app.agent_input.steps.review", skill: "translation" },
+  { label_key: "app.translation_export.agent_request", skill: "project-operation" },
 ] as const satisfies readonly AgentInputStep[];
 
 /** 有来源时只给步骤，空工程先请求导入，没有拖入路径时选中占位行。 */

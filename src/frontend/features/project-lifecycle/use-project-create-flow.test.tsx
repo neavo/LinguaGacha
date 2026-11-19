@@ -131,7 +131,14 @@ it.each([
   expect(request.text.slice(request.selection!.from, request.selection!.to)).toBe(
     t("app.agent_input.path_placeholder"),
   );
-  expect(request.text).toContain(`\n\n${t("app.agent_input.steps_intro_after_instruction")}\n1. `);
+  expect(request.text.split("\n").slice(-6)).toEqual([
+    "",
+    t("app.agent_input.steps_intro_after_instruction"),
+    `1. ${t("app.agent_input.steps.glossary")} @skill("glossary")`,
+    `2. ${t("app.agent_input.steps.translate")} @skill("translation")`,
+    `3. ${t("app.agent_input.steps.review")} @skill("translation")`,
+    `4. ${t("app.translation_export.agent_request")} @skill("project-operation")`,
+  ]);
 });
 
 it("取消保存位置不创建也不预置草稿", async () => {
