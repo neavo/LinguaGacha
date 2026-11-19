@@ -109,6 +109,7 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
           assert(paints.every(paint => paint.png));
           const [balancedLines, largerBubbleLines, roundLines] = layouts;
           layouts = undefined;
+          assert.equal(paints[0].fontSize, balancedLines[0].size);
           assert.equal(balancedLines.map(line => line.text).join(''), text);
           assert(balancedLines.length === 2 && Math.abs(balancedLines[0].text.length - balancedLines[1].text.length) <= 1,
             'A narrow bubble should balance both columns');

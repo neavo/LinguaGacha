@@ -465,22 +465,16 @@ def _box_mask(shape, boxes):
     return mask
 
 
-def _save_layout_area(root, page_id, region_id, area):
-    """只保存可写区域的裁剪掩码，坐标由区域记录持有。"""
-    x, y, w, h = cv2.boundingRect(area)
-    if not w:
-        raise ValueError(f"No writable text pixels in {region_id}")
-    save(
-        root / "layout-areas" / page_id / f"{region_id}.png", area[y : y + h, x : x + w]
-    )
-    return [x, y, w, h]
+def _layout_area_path(root, page_id, region_id):
+    """定位 `.image` 包约定的掩码成员。"""
+    return root / "layout-areas" / page_id / f"{region_id}.png"
 
 
 def _read_packaged_area(root, page_id, region):
     """按包内坐标恢复裁剪后的可写掩码。"""
     _, _, w, h = region["box"]
     return read_layout_area(
-        root / "layout-areas" / page_id / f"{region['regionId']}.png", (h, w)
+        _layout_area_path(root, page_id, region["regionId"]), (h, w)
     )
 
 
@@ -552,17 +546,20 @@ def _prepare_group(
             writing |= area > 0
             if pick is None:
                 continue
-            box = _save_layout_area(output, page_id, rid, area)
+            box = list(cv2.boundingRect(area))
         else:
             if pick is None:
                 continue
-            # 补做沿用原来的可写掩码，避免把消字像素写入相邻区域。
+            # 补做同时遵守已入包的像素归属和原扫描范围，段落留白仅供绘字。
             previous, regions = previous_layout
             region = regions[rid]
             box = region["box"]
             x, y, w, h = box
             area = np.zeros(shape, np.uint8)
-            area[y : y + h, x : x + w] = _read_packaged_area(previous, page_id, region)
+            crop = np.s_[y : y + h, x : x + w]
+            area[crop] = (
+                _read_packaged_area(previous, page_id, region) & part_area[crop]
+            )
         boxes = [line["box"] for line in candidate["lines"]]
         # 笔画邻域只分给一块，局部重做与本次选字无关。
         local = np.where(
@@ -613,7 +610,7 @@ def _prepare_group(
             }
 
     part_records = []
-    for candidate, pick, box, _, _, _ in blocks:
+    for candidate, pick, box, _, area, _ in blocks:
         rid = candidate["regionId"]
         background_color = color
         patch = None
@@ -641,7 +638,9 @@ def _prepare_group(
             message=pick.get("message", candidate["message"]),
         )
         part_records.append(record)
-        yield region, record
+        x, y, w, h = box
+        layout = area[y : y + h, x : x + w] if previous_layout is None else None
+        yield region, record, layout
 
     if whole:
         part_ids = [record["regionId"] for record in part_records]
@@ -671,6 +670,7 @@ def _prepare_group(
                 regionId=whole_id,
                 message="\n".join(record["message"] for record in part_records),
             ),
+            None,  # 整泡复用子格的可写掩码。
         )
 
 
@@ -780,13 +780,16 @@ def _repartition_group(root, page, group, correction):
     corrected = []
     selected = {}
     for i, (part, lines) in enumerate(zip(partitions, lines_by_part), 1):
-        identity = frozenset(part["textBoxIds"])
-        digest = hashlib.sha256(",".join(sorted(identity)).encode()).hexdigest()[:12]
-        rid = (
-            group_id
-            if len(partitions) == 1
-            else before.get(identity, f"{group_id}-qa-{digest}")
-        )
+        rid = group_id
+        if len(partitions) > 1:
+            identity = frozenset(part["textBoxIds"])
+            rid = before.get(identity)
+            if rid is None:
+                # 新子格按原字框集合生成稳定编号，便于替换资产时识别同一格。
+                digest = hashlib.sha256(
+                    ",".join(sorted(identity)).encode()
+                ).hexdigest()[:12]
+                rid = f"{group_id}-qa-{digest}"
         candidate = _text_candidate(rid, group_id, "bubble", lines)
         corrected.append(
             {
@@ -801,7 +804,7 @@ def _repartition_group(root, page, group, correction):
 
 
 def prepare(args, channel):
-    """把选字与重分格结果转成可封包的条目和消字补丁。"""
+    """从扫描结果准备封包条目、消字补丁与排版掩码。"""
     root, output = Path(args["root"]), Path(args["output"])
     pages = json.loads((root / "scan.json").read_text(encoding="utf-8"))
     by_page = {}
@@ -847,7 +850,7 @@ def prepare(args, channel):
             continue
         original = read_image(root / "normalized" / f"{page_id}.png")
         shape = original.shape[:2]
-        occupied = np.zeros(shape, np.float32)
+        occupied = np.zeros(shape, np.float32)  # 原字框的像素归属。
         for index, candidate in enumerate(candidates, 1):
             candidate["index"] = index
             for line in candidate["lines"]:
@@ -862,6 +865,7 @@ def prepare(args, channel):
                 x, y, w, h = region["box"]
                 mask = _read_packaged_area(previous, page_id, region)
                 writing[y : y + h, x : x + w] |= mask > 0
+        unframed_layouts = []
         for group_id, group in groupby(
             candidates, key=lambda candidate: candidate["group"]
         ):
@@ -872,7 +876,7 @@ def prepare(args, channel):
                 candidate["regionId"] in selected for candidate in group
             ):
                 continue
-            for region, record in _prepare_group(
+            for region, record, layout in _prepare_group(
                 original,
                 group,
                 selected,
@@ -888,6 +892,22 @@ def prepare(args, channel):
             ):
                 page["regions"].append(region)
                 records.append(record)
+                if layout is None:
+                    continue
+                if region["kind"] == "unframed":
+                    unframed_layouts.append(
+                        (region, layout.copy())
+                    )  # 仅保留裁下的掩码。
+                else:
+                    save(_layout_area_path(output, page_id, region["regionId"]), layout)
+        # 原文字与区域先保留归属，再按扫描顺序分配外框内的空白。
+        for region, layout in unframed_layouts:
+            x, y, w, h = region["box"]
+            crop = np.s_[y : y + h, x : x + w]
+            claimed = writing[crop]
+            layout[~claimed & (occupied[crop] == 0)] = 255
+            claimed[:] = True  # 本区取得框内所有空白，后续外框避让整框。
+            save(_layout_area_path(output, page_id, region["regionId"]), layout)
     if by_page:
         raise ValueError("Unknown selected image page")
     return dict(pages=pages, records=records)

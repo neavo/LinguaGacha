@@ -15,8 +15,11 @@ export const IMAGE_TEXT_RULES = Object.freeze({
   maximumMaterialBytes: 256_000_000,
 });
 
-/** 空位图表示区域无法安全排版。位图尺寸与请求一致。 */
-export type ImageTextPaint = { regionId: string; png: string | null };
+/** 成功时返回原图像素字号，空位图表示区域无法安全排版。 */
+export type ImageTextPaint = { regionId: string } & (
+  | { png: string; fontSize: number }
+  | { png: null }
+);
 
 export type ImageTextHostOperation = { kind: "render_image_text_page"; page: ImageTextPage };
 export type ImageTextHost = (

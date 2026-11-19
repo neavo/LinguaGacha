@@ -168,7 +168,7 @@ it(
 );
 
 it("图片整册出图沿用清单字号，选页试排只生成目标页", async () => {
-  const fixture = image_fixture(["saved", "override", "auto"]);
+  const fixture = image_fixture(["saved", "override", "auto", "failed"]);
   for (const page of fixture.book.pages) page.regions[0]!.fontSize = 18;
   const directory = path.join(workspace, "work/image-layout");
   const source = path.join(directory, "source");
@@ -193,7 +193,7 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
     ),
   );
 
-  const sizes: Array<number | undefined> = [];
+  const png = fixture.patch.toString("base64");
   await run(
     `
     import { render_book } from '../image-layout/render.mjs';
@@ -208,6 +208,7 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
       fontSizes: [
         { pageId: 'override', regionId: 'text', fontSize: 21 },
         { pageId: 'auto', regionId: 'text', fontSize: null },
+        { pageId: 'failed', regionId: 'text', fontSize: 100 },
       ],
     };
     const pixels = {
@@ -215,14 +216,22 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
         ...value, size: [1, 1], distance: 'AAAAAA==', direction: 'vertical-rl',
         backgroundColor: [255, 255, 255],
       })))),
-      compose: async ({ original, qa }) => {
-        await mkdir(path.dirname(qa.path), { recursive: true });
-        await copyFile(original, qa.path);
+      compose: async ({ original, output, qa }) => {
+        for (const file of [qa.path, output]) {
+          if (!file) continue;
+          await mkdir(path.dirname(file), { recursive: true });
+          await copyFile(original, file);
+        }
       },
     };
     const { report } = await render_book(options, pixels);
     const { files } = JSON.parse(await readFile(report.path, 'utf8'));
-    assert.deepEqual(files.map(({ pageId }) => pageId), ['saved', 'override', 'auto']);
+    assert.deepEqual(files.map(({ pageId, entries }) => [pageId, entries]), [
+      ['saved', [{ regionId: 'text', output: 'translated', fontSize: 18 }]],
+      ['override', [{ regionId: 'text', output: 'translated', fontSize: 21 }]],
+      ['auto', [{ regionId: 'text', output: 'translated', fontSize: 16 }]],
+      ['failed', [{ regionId: 'text', output: 'original', reason: 'layout_no_fit' }]],
+    ]);
     const preview = await render_book({
       ...options,
       output: 'work/image-layout/preview',
@@ -242,14 +251,15 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
       renderImageText: create_image_text_renderer({
         root: workspace,
         nativeFs: default_native_fs,
-        host: async ({ page }) => {
-          sizes.push(...page.map(({ fontSize }) => fontSize));
-          return page.map(({ regionId }) => ({ regionId, png: null }));
-        },
+        host: async ({ page }) =>
+          page.map(({ regionId, fontSize }) =>
+            fontSize === 100
+              ? { regionId, png: null }
+              : { regionId, png, fontSize: fontSize ?? 16 },
+          ),
       }),
     },
   );
-  expect(sizes).toEqual([18, 21, undefined, 18, undefined]);
 });
 
 it("停止绘字脚本时向宿主传递取消并等待窗口收尾", async () => {

@@ -120,23 +120,25 @@ async function render_page(page, records, paths, { layout, compose }, sizes) {
   }
 
   const lettering = candidates.flatMap(({ lettering }) => (lettering ? [lettering] : []));
-  const layersById = new Map();
+  const paints = new Map();
   if (lettering.length) {
     const material = path.join(paths.scratch, "lettering.json");
     await layout({ root: paths.source, output: material, page, lettering });
-    for (const { regionId, png } of await render_image_text_page(material))
-      layersById.set(regionId, png);
+    for (const paint of await render_image_text_page(material)) paints.set(paint.regionId, paint);
   }
 
   const layers = [];
   for (const { region, patches, lettering, entry } of candidates) {
-    const png = layersById.get(region.regionId);
-    if (lettering && png === undefined)
+    const paint = paints.get(region.regionId);
+    // 宿主漏回结果时中止，避免把待绘字的区域仅消字后发布。
+    if (lettering && !paint)
       throw new Error(`Missing lettering for ${page.relativePath} region ${region.regionId}`);
-    if (lettering && png === null) {
+    if (paint?.png === null) {
       entry.reason = "layout_no_fit";
       continue;
     }
+    if (paint) entry.fontSize = paint.fontSize;
+    const png = paint?.png;
     entry.output = "translated";
     for (const [index, patch] of patches.entries()) {
       // Python 先合成所有补丁，再对每个区域写字一次。

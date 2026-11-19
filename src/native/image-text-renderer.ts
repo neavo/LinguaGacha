@@ -94,10 +94,11 @@ export async function* render_page(
       fits = distance[index]! >= RULES.squareDistanceCorrection;
       if (!fits) break;
     }
-    output.push({
-      regionId: region.regionId,
-      png: fits ? png : null,
-    });
+    output.push(
+      fits
+        ? { regionId: region.regionId, png, fontSize: planned.fontSize }
+        : { regionId: region.regionId, png: null },
+    );
   }
   return output;
 }

@@ -63,10 +63,10 @@ await image.prepare_models();
 
 |入口|CPU 调用参数写法|说明|
 |---|---|---|
-|`scan`|`image.scan(sources, dir, 'cpu')`|第三参数传 `'cpu'`|
-|`prepare`|`image.prepare(dir, selected, outDir, { device: 'cpu' })`|第四参数传 `{ device: 'cpu' }`|
-|`repartition`|`image.repartition(scanDir, opts, prepDir, outDir, { device: 'cpu' })`|第五参数传 `{ device: 'cpu' }`|
-|`prepare` (补做)|`image.prepare(scanDir, targets, outDir, { update, device: 'cpu' })`|选项传入 `update` 与 `device`|
+|`scan`|`image.scan(sources, scanDir, 'cpu')`|第 3 参数传 `'cpu'`|
+|`prepareAndPack`|`image.prepareAndPack(scanDir, selected, prepDir, archivePath, { device: 'cpu' })`|末参数传 `{ device: 'cpu' }`|
+|`prepareAndPack`（补做消字）|`image.prepareAndPack(scanDir, targets, outDir, archivePath, { update: prepDir, device: 'cpu' })`|末参数同时传 `update` 与 `device`|
+|`repartitionAndPack`|`image.repartitionAndPack(scanDir, correction, prepDir, outDir, archivePath, { device: 'cpu' })`|末参数传 `{ device: 'cpu' }`|
 
 其他异常按原样抛出。
 
@@ -76,8 +76,7 @@ await image.prepare_models();
 
 1. **执行扫描**：整批 `sources` 传入 `scan`。每项提供 `path` 与 `relativePath`（以 `/` 分隔并保留原文件名）。
 2. **收集选字**：自动全选已识别区域，不看诊断图，直接组装 `selected`。
-3. **准备补丁**：调用 `prepare` 生成写字框与消字掩码。
-4. **封装资产**：调用 `pack` 封装为 `.image` 包并提交工程。
+3. **准备并封包**：调用 `prepareAndPack` 一步生成消字补丁、排版掩码并封装为 `.image` 包，返回准备目录 `directory` 与资产包路径 `package`。
 
 ```js
 import { writeFile } from 'node:fs/promises';
@@ -87,12 +86,16 @@ await writeFile('work/image/scan-result.json', JSON.stringify(scan), 'utf8');
 const selected = scan.pages.flatMap(({ pageId, records }) =>
   records.map(({ regionId }) => ({ pageId, regionId })),
 );
-const prepared = await image.prepare(scan.directory, selected, 'work/image/book');
-const packed = await image.pack(prepared.directory, 'work/image/book.image');
+const packed = await image.prepareAndPack(
+  scan.directory,
+  selected,
+  'work/image/book',
+  'work/image/book.image',
+);
 console.log(packed);
 ```
 
-封包后按 `project-operation` 提交新增。更新工程已有来源时沿用「更新文件」。
+保留扫描目录与最新准备目录至 QA 完成，供后续局部修复复用。封包后按 `project-operation` 提交新增，更新工程已有来源时沿用「更新文件」。
 
 # 原稿与条目
 
@@ -110,6 +113,7 @@ console.log(packed);
 
 ## 气泡与文本规则
 
+- **无框文字**：默认按各 OCR 分组的外接矩形排版并自动换行（避让相邻区域），消字仍按原扫描范围处理，不随外框扩大。
 - **换行与空格**：
   - 译文保留显式换行与空格，成图时强制断行。
   - 软换行由排版引擎自动计算，仅在需要固定分行时显式换行。
@@ -128,6 +132,7 @@ const { book, records } = await image.read(unpacked.directory);
 
 - 原文修正写入 `package/items.json` 的 `message`，再重新封包提交。
 - 若原图确有漏识别文字且包内无对应条目，从原图重新扫描。
+- 旧包若要采用新的无框文字外框几何，基于原图重新准备（不传 `update`），再按 `project-operation` 的 `files.replaces` 替换资产。`prepareAndPack` 的 `{ update, device }` 选项会沿用包内已有掩码，仅用于补做消字。
 
 # 写回与验证
 
@@ -146,7 +151,7 @@ const { book, records } = await image.read(unpacked.directory);
 |`pageIds`|否|目标页面 `pageId` 数组；指定时仅出指定页，省略时生成整册|
 |`fontSizes`|否|字号临时覆盖项 `[{ pageId, regionId, fontSize }]`|
 
-- **整册出图**：首次集中 QA 与最终交付省略 `pageIds`。
+- **整册出图**：首次集中 QA 省略 `pageIds`。最终交付时若当前快照尚无通过 QA 的整册产物，再执行一次整册出图。
 - **选页复核**：局部修复或试排时传入受影响的 `pageIds`，避免重复生成整册。
 
 ```js
@@ -176,16 +181,16 @@ const preview = await image.render({
 });
 ```
 
-成图后在输出目录下生成译图、双拼对照图及 `report.json`。
+成图后返回 `{ output_path, qa_path, report }`，在输出目录生成译图、双拼对照图与 `report.json`（路径为 `report.path`），其中仅成功绘字的区域在 `files[].entries[].fontSize` 记录实际字号（原图像素）。
 
 ## QA 集中视觉复核
 
 **这是全流程唯一允许看图的阶段**。按 10 页一组分批核验，每组完成后记录进度，避免大项目中途中断丢失已检记录。
 
-1. 使用「写回成图」中 `image.render()` 生成的双拼图和报告。
+1. 使用「写回成图」中 `image.render()` 生成的双拼图和 `report.json`（读取自 `report.path`）。
 2. 读取报告的 `files` 数组，按每组 10 页拆分（末组不足 10 页时合入）。
 3. 逐组执行：
-   - 打开本组各页的整页双拼图，一并核验图面质量与译文，严禁局部切片或放大。
+   - 打开本组各页的整页双拼图，结合报告中的 `reason` 与 `fontSize` 一并核验图面质量与译文，严禁局部切片或放大。
    - 审查图面标记：
      - **左原右译**：左侧为原图，右侧为译图。
      - **黄色标记框**：当前区域处于待译状态。
@@ -193,7 +198,7 @@ const preview = await image.render({
    - 本组发现瑕疵时，当场按速查表修复并选页复核，确认通过后再继续。
    - 本组通过后，将已检页数写入 `work/image/qa-progress.json`（如 `{ "checked": 20 }`）。
 4. 中途中断恢复时，读取进度文件，从未检的组继续。
-5. 全部通过后，执行最新整册出图进入交付。
+5. 全部通过后进入交付：当前最新快照已有通过 QA 的整册产物时直接交付；期间有局部修复的，提交全部变更后执行一次整册出图再交付。
 
 ## 质控速查
 
@@ -201,8 +206,10 @@ const preview = await image.render({
 
 |观察到的图面现象|判定原因|处理动作|
 |---|---|---|
-|红色框保留原图且报告提示 `layout_no_fit`|排版放不下（字数过多、断行不当或字号过大）|按「字号与排版微调」调整断行/字数，或针对该页试排字号；复杂连体气泡转分格|
-|消字处有残字、网点破损，或明显的涂抹、图形错误，或报告提示 `erase_failed`|背景复杂消字效果差|对受损区域调用 `prepareAndPack` 补做轮廓填色作为文字背景|
+|红色框保留原图且报告提示 `layout_no_fit`|排版放不下（字数过多、断行不当或字号过大）|按「字号与排版微调」调整断行、精简译文或试排字号；复杂连体气泡转分格|
+|译文字号偏大、偏小，或版面拥挤|自动字号与观感不匹配|按「字号与排版微调」，以报告中的 `fontSize` 为基准批量试排并固化|
+|无框文字外框覆盖插图或其他图面|外框圈入非文本区域|无需翻译则设为 `EXCLUDED`；确需翻译则收紧 `layout-areas/<pageId>/<regionId>.png` 掩码，重封包替换资产|
+|消字处有原字残留、网点破损或明显涂抹，或报告提示 `erase_failed`|背景复杂导致消字效果差|按「补做轮廓填字与封包」，用 `prepareAndPack`（带 `update`）补做消字|
 |画面有多个气泡，文字却挤在其中一侧|连体气泡未分格排版|按「已知格界的气泡拆合」切换为分格排版，替换资产后补译|
 |黄色框标出且图上仍为原文|条目遗漏翻译（处于待译）|补齐对应条目译文|
 |关键文字保留原图未翻译|无框文字默认未启用|按「启用无框文字」将条目设为 `NONE` 并补译|
@@ -263,7 +270,10 @@ const preview = await image.render({
 
 ### 3. 补做轮廓填字与封包
 
-纯色消字在复杂网点或彩色背景上产生残损、断裂（报告提示 `erase_failed` 或目视残字）时执行。轮廓补做复用原掩码，仅用于修复消字质量，无法为排版腾出空间；排版放不下（`layout_no_fit`）应调整断行或字号。
+纯色消字在复杂网点或彩色背景上出现原字残留、残损或断裂（报告提示 `erase_failed` 或目视残字）时执行。
+
+- `prepareAndPack` 传入 `update` 时继续使用包内已有掩码，消字仍限定在原扫描范围内，不会扩展或改动可写区。
+- 本分支仅修复消字质量，无法为排版腾出空间，排版放不下（`layout_no_fit`）或字号不佳时转入「字号与排版微调」。
 
 1. **指定目标区域**：复用同次扫描，修复区域标记为 `{ pageId, regionId, contour: true }`。
 2. **一步准备并封包**：
@@ -276,36 +286,31 @@ const preview = await image.render({
      { update: preparedDir, device },
    );
    ```
-   （若此前曾做过连体气泡纠错，`update` 传入最新一次成功的准备目录；若仅重试封包，可直接传本次已成功的准备目录）。
+   - `update` 传入最新一次成功的准备目录（包含连体气泡纠错或前一次补做产出的目录）。
+   - 若仅重做封包，直接对已成功的准备目录调用 `image.pack`。
 3. **提交更新**：按 `files.replaces` 提交资产替换，传入受影响页的 `pageIds` 选页成图复核消字质量。
 
 ### 4. 字号与排版微调
 
-遇到 `layout_no_fit`、文字拥挤或需精确控制版面时执行：
+遇到 `layout_no_fit`、译文字号偏大或偏小、版面拥挤时执行：
 
-1. **排版与断行微调**：
-   - 显式换行符与空格直接进入排版并强制断行。
-   - 在译文条目中调整换行位置或精简措辞，传入对应 `pageIds` 选页复核。
-2. **字号试排（快速验证）**：
-   - 同时传入 `pageIds` 与 `fontSizes` 临时覆盖字号（原图像素整数，≥4；`null` 恢复自动）：
-     ```js
-     await image.render({
-       asset_path: 'book.image',
-       source: 'sources/book.image',
-       input: path.join(generated.writeback.input_path, 'book.image', 'items.json'),
-       output: 'work/image/preview',
-       pageIds: [pageId],
-       fontSizes: [{ pageId, regionId, fontSize: 18 }],
-     });
-     ```
-   - 仅在临时目录生成目标页预览，便于快速比对，不改动工程与资产。
-3. **固化字号（随资产持久保存）**：
-   - 试排满意且需持久复现时，写入准备目录（或解包目录）并封包提交：
-     ```js
-     image.setFontSizes(preparedDir, [{ pageId, regionId, fontSize: 18 }]);
-     await image.pack(preparedDir, 'work/image/book.image');
-     ```
-   - 按 `project-operation` 的 `files.replaces` 提交资产替换，后续重新生成自动沿用包内字号。
+1. **断行与字数微调**：在译文条目中调整显式换行或精简措辞，传入受影响的 `pageIds` 选页复核。
+2. **批量字号试排**：以 `report.path` 中 `files[].entries[].fontSize` 为基准，将受影响页传入 `pageIds` 并设置 `fontSizes`（原图像素整数，≥4；`null` 恢复自动），在临时目录生成预览，不改动工程与资产：
+   ```js
+   await image.render({
+     asset_path: 'book.image',
+     source: 'sources/book.image',
+     input: path.join(generated.writeback.input_path, 'book.image', 'items.json'),
+     output: 'work/image/preview',
+     pageIds: affectedPageIds,
+     fontSizes: [{ pageId, regionId, fontSize: 18 }],
+   });
+   ```
+3. **固化字号**：试排满意后写入准备目录（或解包目录，`null` 清除固定字号），重新封包并按 `files.replaces` 提交资产替换：
+   ```js
+   image.setFontSizes(preparedDir, [{ pageId, regionId, fontSize: 18 }]);
+   await image.pack(preparedDir, 'work/image/book.image');
+   ```
 
 ### 5. 启用无框文字
 
@@ -319,7 +324,8 @@ const preview = await image.render({
 
 # 交付说明
 
-交付成果须来自省略 `pageIds` 的最新整册出图（局部预览仅用于中间调试）。
+- 交付成果须来自省略 `pageIds` 的整册出图（局部选页预览仅用于中间复核）。
+- 当前最新快照已有通过 QA 的整册产物时，直接复用交付，无需重复整册出图，期间有局部修复的，提交全部变更后基于最新快照执行一次整册出图再交付。
 
 交付汇报时，按下述结构向用户说明成果与质控事实：
 
