@@ -199,15 +199,9 @@ export const zh_cn_app = {
   },
   translation_export: {
     agent_request: "导出翻译成果，无需进行其他操作",
-    image_reason: {
-      layout_no_fit: "[失败] 现有区域无法容纳完整译文，保留原始内容 …",
-      translation_incomplete: "[失败] 译文尚未完成，保留原始内容 …",
-      erase_failed: "[失败] 无法可靠清除原文，保留原始内容 …",
-    },
     action: "导出翻译成果",
     confirmation: {
-      generic_description:
-        "工程包含音视频或通用数据包，这些文件需要 AGENT 处理，直接导出将跳过它们 …",
+      agent_description: "工程包含需要 AGENT 写回的资产，直接导出将跳过这些资产 …",
       description: "是否导出当前可用的翻译成果？",
       checking: "正在检查工程文件和校对警告 …",
       check_failed: "检查工程文件或校对警告失败，请重新检查或由 AGENT 处理 …",

@@ -12,7 +12,11 @@ import {
 import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
-import { create_item, build_project_item_public_record } from "../../domain/item";
+import {
+  create_item,
+  build_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "../../domain/item";
 import { type JsonRecord, type JsonValue } from "../../domain/json";
 import { PROMPT_KINDS, type PromptKind } from "../../domain/prompt";
 import {
@@ -33,10 +37,7 @@ import {
   apply_project_item_manual_update,
   type ProjectItemManualUpdate,
 } from "../../shared/project/project-item-update";
-import {
-  plan_project_item_changes,
-  type ProjectItemWriteRecord,
-} from "../../shared/project/project-item-write-planner";
+import { plan_project_item_changes } from "../../shared/project/project-item-write-planner";
 import type { ProjectItemWriteChange } from "./project-write-request";
 
 export type AgentWorkspaceRejectionReason =
@@ -177,18 +178,18 @@ export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceInten
 
 /** 把数据库 item 归一为工作区公开字段，并绑定对象事实指纹。 */
 export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
-  return project_workspace_item(read_item_write_record(item));
+  return workspace_item_facts(read_item_write_record(item));
 }
 
 /** 存储与公开字段在工作区读取边界转换一次，内部意图只消费已收窄事实。 */
-function read_item_write_record(item: JsonRecord): ProjectItemWriteRecord {
+function read_item_write_record(item: JsonRecord): ProjectItemPublicRecord {
   return build_project_item_public_record(
     create_item({ ...item, id: item["item_id"] ?? item["id"] }),
   );
 }
 
-/** 工作区显示当前姓名，指纹绑定同一字段视图。 */
-function project_workspace_item(item: ProjectItemWriteRecord): JsonRecord {
+/** 工作区展示与提交校验共用同一份条目事实。 */
+function workspace_item_facts(item: ProjectItemPublicRecord) {
   const row = {
     item_id: item.item_id,
     src: item.src,
@@ -199,7 +200,18 @@ function project_workspace_item(item: ProjectItemWriteRecord): JsonRecord {
     row_number: item.row_number,
     status: item.status,
   };
-  return { ...row, fp: workspace_fingerprint(item_fingerprint_tuple(row)) };
+  const fingerprint: JsonValue[] = [
+    "item",
+    row.item_id,
+    row.src,
+    row.dst,
+    row.name_src,
+    row.name_dst,
+    row.file_path,
+    row.row_number,
+    row.status,
+  ];
+  return { ...row, fp: workspace_fingerprint(fingerprint) };
 }
 
 /** 把 quality entry 的内部身份与业务字段投影为带当前位置的工作区对象。 */
@@ -322,21 +334,6 @@ function workspace_fingerprint(tuple: JsonValue[]): string {
   return agent_workspace_fingerprint(JsonTool.stringifyStrict(tuple));
 }
 
-/** item fp 覆盖工作区公开的完整对象事实，任何字段漂移都会失效。 */
-function item_fingerprint_tuple(row: JsonRecord): JsonValue[] {
-  return [
-    "item",
-    row["item_id"] ?? null,
-    row["src"] ?? "",
-    row["dst"] ?? "",
-    row["name_src"] ?? "",
-    row["name_dst"] ?? "",
-    row["file_path"] ?? "",
-    row["row_number"] ?? 0,
-    row["status"] ?? "NONE",
-  ];
-}
-
 /** quality fp 绑定 kind、稳定身份与业务字段，排序由独立 sort 意图表达。 */
 function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): JsonValue[] {
   return [
@@ -352,7 +349,7 @@ function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): Json
 /** 同一 item 的互补字段可合并，异值字段与对象漂移按 item 整体拒绝。 */
 function resolve_items(
   intents: readonly AgentWorkspaceItemUpdateIntent[],
-  current_items: readonly ProjectItemWriteRecord[],
+  current_items: readonly ProjectItemPublicRecord[],
 ): {
   changes: ProjectItemWriteChange[];
   rejected: AgentWorkspaceRejectedChange[];
@@ -369,7 +366,7 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "target_missing"));
       continue;
     }
-    const current_fp = String(project_workspace_item(current)["fp"]);
+    const { fp: current_fp } = workspace_item_facts(current);
     if (group.some((intent) => intent.fp !== current_fp)) {
       rejected.push(item_rejection(item_id, "fp_mismatch"));
       continue;
@@ -379,7 +376,11 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "merge_conflict"));
       continue;
     }
-    const current_fields = { dst: current.dst, name_dst: current.name_dst, status: current.status };
+    const current_fields = {
+      dst: current.dst,
+      name_dst: current.name_dst,
+      status: current.status,
+    };
     const next = apply_project_item_manual_update(current_fields, update);
     if (next === null) continue;
     changes.push({

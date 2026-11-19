@@ -1,25 +1,19 @@
 import path from "node:path";
 
 import {
+  image_layout_area_path,
   read_image_book,
-  read_image_clean,
   read_image_records,
   type ImageBook,
-  type ImageClean,
-  type ImageCleanPage,
   type ImagePage,
-  type ImageRecord,
-  type ImageRegion,
 } from "../../../shared/image-package";
 import { AppError } from "../../../shared/error";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { PACKAGE_ITEMS_MEMBER, read_package_items } from "../shared/package-items";
 import { read_zip_members } from "../shared/zip-members";
 import { image_metadata } from "./image-metadata";
-import { decode_normalized_image_rgb } from "./image-pixels";
 
-const IMAGE_STATE_MEMBER = "image.json"; // 页面、文字框和区域事实。
-const IMAGE_CLEAN_MEMBER = "clean.json"; // 自动底图与实际消字掩码。
+export const IMAGE_STATE_MEMBER = "image.json"; // 编辑与归档共用同一个清单成员。
 const MEMBER_ERROR_SAMPLE_SIZE = 5; // 成员不一致时只展示少量路径。
 const IMAGE_LIMITS = Object.freeze({
   members: 30000,
@@ -32,66 +26,46 @@ const IMAGE_LIMITS = Object.freeze({
 export async function read_image_package(
   content: Uint8Array,
   file: string,
-  options: { validatePixels?: boolean } = {},
+  { stored = false }: { stored?: boolean } = {},
 ) {
   try {
-    validate_zip_budget(content);
+    if (!stored) validate_zip_budget(content);
     const members = await read_zip_members(content, file);
     const stateMember = members.get(IMAGE_STATE_MEMBER);
-    const cleanMember = members.get(IMAGE_CLEAN_MEMBER);
-    if (!stateMember || !cleanMember) throw new Error("Missing image.json or clean.json");
+    if (!stateMember) throw new Error("Missing image.json");
     const records = read_image_records(await read_package_items(members));
     const book = read_image_book(JSON.parse(await stateMember.async("string")), records);
-    const clean = read_image_clean(JSON.parse(await cleanMember.async("string")), book);
-    await validate_image_members(
-      book,
-      clean,
-      members.keys(),
-      options.validatePixels === false
-        ? undefined
-        : (member) => members.get(member)!.async("uint8array"),
-    );
-    return { book, records, clean, members };
+    if (!stored) {
+      validate_image_members(book, members.keys());
+      for (const page of book.pages)
+        await validate_image_page_members(page, (name) => members.get(name)!.async("uint8array"));
+    }
+    return { book, records };
   } catch (cause) {
     if (cause instanceof AppError && cause.code === "file.asset_too_large") throw cause;
     throw new AppError("file.invalid_structure", { cause, public_details: { file } });
   }
 }
 
-/** Skill 封包前从工作目录执行与后端相同的当前物理契约。 */
-export async function validate_image_package_directory(directory: string): Promise<{
-  book: ImageBook;
-  records: ImageRecord[];
-  clean: ImageClean;
-}> {
-  directory = path.resolve(directory);
+/** 读取工作目录的两份清单，核对区域与条目的关系。 */
+export function read_image_package_manifest(directory: string) {
   const records = read_image_records(read_json(path.join(directory, PACKAGE_ITEMS_MEMBER)));
   const book = read_image_book(read_json(path.join(directory, IMAGE_STATE_MEMBER)), records);
-  const clean = read_image_clean(read_json(path.join(directory, IMAGE_CLEAN_MEMBER)), book);
-  const members = collect_directory_members(directory);
-  await validate_image_members(book, clean, members, async (member) =>
-    fs.read_file(path.join(directory, member)),
-  );
-  return { book, records, clean };
+  return { book, records };
 }
 
-/** 结构读取器已确认引用关系，这里只核对成员全集与像素事实。 */
-async function validate_image_members(
-  book: ImageBook,
-  clean: ImageClean,
-  actualMembers: Iterable<string>,
-  read?: (member: string) => Promise<Uint8Array>,
-): Promise<void> {
+/** 先核对成员全集，使像素校验只读取清单声明的成员。 */
+function validate_image_members(book: ImageBook, actualMembers: Iterable<string>): void {
   const expected = new Set<string>([
     PACKAGE_ITEMS_MEMBER,
     IMAGE_STATE_MEMBER,
-    IMAGE_CLEAN_MEMBER,
-    ...book.pages.map((page) => page.original),
-    ...clean.pages.map((page) => page.clean),
-    ...clean.pages.flatMap((page) =>
-      page.regions.flatMap((region) => (region.eraseMask ? [region.eraseMask] : [])),
-    ),
-    ...book.pages.flatMap((page) => page.regions.map((region) => region.layoutArea.path)),
+    ...book.pages.flatMap((page) => [
+      page.original,
+      ...page.regions.flatMap(({ regionId, parts, patch }) => [
+        ...(parts ? [] : [image_layout_area_path(page.pageId, regionId)]),
+        ...(patch ? [patch.path] : []),
+      ]),
+    ]),
   ]);
   const actual = new Set(actualMembers);
   const missing = [...expected].filter((name) => !actual.has(name));
@@ -100,15 +74,11 @@ async function validate_image_members(
     throw new Error(
       `Image members mismatch: missing ${missing.length} ${JSON.stringify(missing.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}; extra ${extra.length} ${JSON.stringify(extra.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}`,
     );
-  if (read)
-    for (let index = 0; index < book.pages.length; index++)
-      await validate_image_page_members(book.pages[index]!, clean.pages[index]!, read);
 }
 
-/** 页面原图、底图、排版区域和实际掩码必须属于同一像素空间。 */
+/** 核对原图与像素成员各自的坐标尺寸。 */
 async function validate_image_page_members(
   page: ImagePage,
-  cleanPage: Pick<ImageCleanPage, "clean" | "regions">,
   read: (member: string) => Promise<Uint8Array>,
 ): Promise<void> {
   const original = image_metadata(await read(page.original));
@@ -118,48 +88,71 @@ async function validate_image_page_members(
     original.orientation !== page.orientation
   )
     throw new Error("Image metadata mismatch");
-  const base = image_metadata(await read(cleanPage.clean));
-  if (base.extension !== ".png" || base.width !== page.width || base.height !== page.height)
-    throw new Error("Clean image dimensions mismatch");
-  for (let index = 0; index < page.regions.length; index++) {
-    const region = page.regions[index]!;
-    const result = cleanPage.regions[index]!;
-    const layoutArea = await read_image_mask(page, region.layoutArea, read);
-    if (result.status === "failed") continue;
-    const mask = await read_image_mask(page, { path: result.eraseMask! }, read); // 清单已校验成功区域的掩码引用。
-    for (let pixel = 0; pixel < mask.length; pixel++)
-      if (mask[pixel] && !layoutArea[pixel])
-        throw new Error("Erase mask exceeds region layout area");
+  for (const { regionId, box, parts, patch } of page.regions) {
+    if (!parts) {
+      const bytes = await read(image_layout_area_path(page.pageId, regionId));
+      const metadata = image_metadata(bytes);
+      if (
+        metadata.extension !== ".png" ||
+        metadata.width !== box[2] ||
+        metadata.height !== box[3] ||
+        metadata.orientation !== 1 ||
+        bytes[24] !== 8 ||
+        bytes[25] !== 0
+      )
+        throw new Error("Image layout area must be an 8-bit grayscale PNG matching its box");
+      await validate_binary_pixels(bytes, box[2], box[3], "layout area");
+    }
+    if (!patch) continue;
+    const bytes = await read(patch.path);
+    const metadata = image_metadata(bytes);
+    const [, , width, height] = patch.box;
+    if (
+      metadata.extension !== ".png" ||
+      metadata.width !== width ||
+      metadata.height !== height ||
+      metadata.orientation !== 1 ||
+      bytes[24] !== 8 ||
+      bytes[25] !== 6
+    )
+      throw new Error("Image patch must be an 8-bit RGBA PNG matching its box");
+    await validate_binary_pixels(bytes, width, height, "patch alpha");
   }
 }
 
-/** 二值掩码必须是单通道 PNG，并与页面尺寸一致。 */
-async function read_image_mask(
-  page: ImagePage,
-  reference: ImageRegion["layoutArea"],
-  read: (member: string) => Promise<Uint8Array>,
-): Promise<Uint8Array> {
-  const bytes = await read(reference.path);
-  if (bytes[24] !== 8 || bytes[25] !== 0)
-    throw new Error("Region mask must be an 8-bit grayscale PNG");
-  const metadata = image_metadata(bytes);
-  if (
-    metadata.extension !== ".png" ||
-    metadata.width !== page.width ||
-    metadata.height !== page.height
-  )
-    throw new Error("Region mask dimensions mismatch");
-  const pixels = await decode_normalized_image_rgb(bytes);
-  const mask = new Uint8Array(page.width * page.height);
-  let nonempty = false;
-  for (let pixel = 0; pixel < mask.length; pixel++) {
-    const value = pixels.rgb[pixel * 3]!; // PNG 头限定灰阶，读取任一 RGB 通道即可。
-    if (value !== 0 && value !== 255) throw new Error("Region mask must be binary");
-    mask[pixel] = value;
-    nonempty ||= value !== 0;
+/** 掩码取灰度，补丁取 alpha。两者都只允许二值。 */
+async function validate_binary_pixels(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+  channel: "layout area" | "patch alpha",
+): Promise<void> {
+  const { Image } = await import("mupdf");
+  const image = new Image(bytes);
+  try {
+    const pixels = image.toPixmap();
+    try {
+      const alpha = channel === "patch alpha";
+      if (
+        pixels.getWidth() !== width ||
+        pixels.getHeight() !== height ||
+        Boolean(pixels.getAlpha()) !== alpha
+      )
+        throw new Error(`Invalid decoded image ${channel}`);
+      const data = pixels.getPixels();
+      const components = pixels.getNumberOfComponents();
+      let nonempty = false;
+      for (let offset = components - 1; offset < data.length; offset += components) {
+        if (data[offset] === 255) nonempty = true;
+        else if (data[offset] !== 0) throw new Error(`Image ${channel} must be binary`);
+      }
+      if (!alpha && !nonempty) throw new Error("Image layout area is empty");
+    } finally {
+      pixels.destroy();
+    }
+  } finally {
+    image.destroy();
   }
-  if (!nonempty) throw new Error("Region mask is empty");
-  return mask;
 }
 
 /** 原中央目录只检查图片包仍需要的展开预算。 */
@@ -183,7 +176,7 @@ function validate_zip_budget(content: Uint8Array): void {
     offset + bytes.readUInt32LE(end + 12) !== end
   )
     throw new Error("Unsupported ZIP directory");
-  const jsonMembers = new Set([IMAGE_STATE_MEMBER, PACKAGE_ITEMS_MEMBER, IMAGE_CLEAN_MEMBER]);
+  const jsonMembers = new Set([IMAGE_STATE_MEMBER, PACKAGE_ITEMS_MEMBER]);
   for (let index = 0; index < count; index++) {
     if (offset + 46 > end || bytes.readUInt32LE(offset) !== 0x02014b50)
       throw new Error("Invalid ZIP entry");
@@ -205,18 +198,6 @@ function validate_zip_budget(content: Uint8Array): void {
     offset = next;
   }
   if (offset !== end) throw new Error("Invalid ZIP directory size");
-}
-
-/** 目录校验与封包共用规范成员路径，不跟随链接。 */
-function collect_directory_members(root: string, directory = root): string[] {
-  const members: string[] = [];
-  for (const entry of fs.read_dirents(directory)) {
-    const file = path.join(directory, entry.name);
-    if (entry.isDirectory()) members.push(...collect_directory_members(root, file));
-    else if (entry.isFile()) members.push(path.relative(root, file).split(path.sep).join("/"));
-    else throw new Error(`Unsupported image package member: ${entry.name}`);
-  }
-  return members;
 }
 
 /** 当前 JSON 使用 UTF-8，解析错误由调用边界归类。 */

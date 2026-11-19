@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { render_book } from "./render.mjs";
 import path from "node:path";
 
 import * as generic from "@lg/generic";
@@ -8,42 +7,33 @@ import * as sdk from "@lg/image";
 export {
   DeviceFailure,
   IMAGE_DEPENDENCIES,
-  describe_package,
+  IMAGE_PIXEL_DEPENDENCIES,
   missing_models,
   prepare_models,
 } from "@lg/image";
 
-/** 新图片经应用计算后，由 skill 构造唯一的当前包材料。 */
-export async function prepare(sources, directory, { device = "gpu" } = {}) {
-  const result = await sdk.processPages(sources, directory, device);
-  const records = sdk.read_image_records(result.pages.flatMap((item) => item.records));
-  const book = sdk.read_image_book(
-    { bookId: randomUUID(), pages: result.pages.map((item) => item.page) },
-    records,
-  );
-  const clean = sdk.read_image_clean(
-    { bookId: book.bookId, pages: result.pages.map((item) => item.clean) },
-    book,
-  );
-  await save(path.join(result.package_directory, "image.json"), book);
-  await save(path.join(result.package_directory, "items.json"), records);
-  await save(path.join(result.package_directory, "clean.json"), clean);
-  return {
-    directory: result.directory,
-    package_directory: result.package_directory,
-    items: records.length,
-    pages: result.pages.map(({ page, diagnostics }) => ({
-      page_id: page.pageId,
-      relative_path: page.relativePath,
-      preview_path: diagnostics.preview,
-      detected: diagnostics.detected,
-      regions: diagnostics.regions,
-      failures: diagnostics.failures.map((failure) => ({
-        region_id: failure.regionId,
-        message: failure.error,
-      })),
-    })),
-  };
+const pipeline = sdk.create_image_pipeline(new URL("./helper.py", import.meta.url));
+const { scan, prepare, inspectGroup, repartition } = pipeline;
+export { scan, inspectGroup };
+
+/** 将指定气泡切换为分格排版。 */
+export function splitBubble(directory, target) {
+  return sdk.set_image_bubble_layout(directory, target, "split");
+}
+
+/** 将指定气泡切换为整泡排版。 */
+export function mergeBubble(directory, target) {
+  return sdk.set_image_bubble_layout(directory, target, "whole");
+}
+
+/** 将确认的字号写入准备目录。 */
+export function setFontSizes(directory, fontSizes) {
+  sdk.set_image_font_sizes(directory, fontSizes);
+}
+
+/** 原子生成译图、双语双拼图、QA 对照图与 report.json 报告，默认渲染整册。 */
+export function render(options) {
+  return render_book(options, pipeline);
 }
 
 /** 旧图片包只安全展开，Agent 在 `package/` 中按实际语义构造当前材料。 */
@@ -54,34 +44,42 @@ export async function unpack(source, directory) {
   return { directory, package_directory: packageDirectory, members: result.members };
 }
 
-/** 读取并校验工作目录中的当前三个 JSON。 */
-export async function read(directory) {
-  const packageDirectory = path.join(path.resolve(directory), "package");
-  const records = sdk.read_image_records(await load(path.join(packageDirectory, "items.json")));
-  const book = sdk.read_image_book(await load(path.join(packageDirectory, "image.json")), records);
-  const clean = sdk.read_image_clean(await load(path.join(packageDirectory, "clean.json")), book);
-  return { book, records, clean };
+/** 读取准备目录的清单和原文。 */
+export function read(directory) {
+  return sdk.read_image_package_manifest(path.resolve(directory, "package"));
 }
 
-/** 当前材料通过领域物理校验后，交给基础容器原子封包。 */
+/** 带上归档位置与成员数。清单由工作目录的入口核对。 */
+async function write_package(directory, output) {
+  const { output_path, members } = await generic.pack(path.resolve(directory, "package"), output);
+  return { package: output_path, members };
+}
+
+/** 校验清单后封包。工程导入核对成员与像素。 */
 export async function pack(directory, output) {
-  const packageDirectory = path.join(path.resolve(directory), "package");
-  const current = await sdk.validate_package(packageDirectory);
-  const result = await generic.pack(packageDirectory, output);
+  const { book } = read(directory);
   return {
-    package: result.output_path,
-    pages: current.book.pages.length,
-    items: current.records.length,
-    members: result.members,
+    ...(await write_package(directory, output)),
+    pages: book.pages.length,
+    items: sdk.select_image_regions(book).size,
   };
 }
 
-/** 保存可重建的当前包材料。 */
-async function save(file, value) {
-  await writeFile(file, JSON.stringify(value, null, 2));
+/** 准备消字补丁与排版掩码，并原子封装为 .image 资产包。 */
+export async function prepareAndPack(directory, selected, output, archive, options) {
+  const prepared = await prepare(directory, selected, output, options);
+  return { ...prepared, ...(await write_package(prepared.directory, archive)) };
 }
 
-/** 工作材料只按 UTF-8 JSON 读取。 */
-async function load(file) {
-  return JSON.parse(await readFile(file, "utf8"));
+/** 重新划分连体气泡格界，并原子封装为 .image 资产包。 */
+export async function repartitionAndPack(
+  directory,
+  correction,
+  previous,
+  output,
+  archive,
+  options,
+) {
+  const prepared = await repartition(directory, correction, previous, output, options);
+  return { ...prepared, ...(await write_package(prepared.directory, archive)) };
 }

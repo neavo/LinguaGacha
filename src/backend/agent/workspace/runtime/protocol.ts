@@ -2,12 +2,14 @@ import type {
   WorkspaceGenerateFilesRequest,
   WorkspaceGetOutputPathsRequest,
 } from "../../tools/generate-files";
-import type { WorkspaceGenerateImageQARequest } from "../../tools/generate-image-qa";
-import type { ImageQualityResult } from "../../../../shared/image";
 import type {
   TranslationFileGenerationResult,
   TranslationOutputPaths,
 } from "../../../../shared/translation-generation";
+import type {
+  WorkspaceRenderImageTextRequest,
+  WorkspaceRenderImageTextResult,
+} from "../../tools/render-image-text";
 import type { SourceInspection } from "../../../../shared/project-file-changes";
 import type { WorkspaceInspectSourcesRequest } from "../../tools/inspect-sources";
 import type { Static } from "typebox";
@@ -30,9 +32,9 @@ export type WorkspaceOperations = {
   doing: { request: Static<typeof WORKSPACE_DOING_REQUEST_SCHEMA>; response: null };
   print_pdf: { request: WorkspacePrintPDFRequest; response: WorkspacePrintPDFResult };
   inspect_sources: { request: WorkspaceInspectSourcesRequest; response: SourceInspection[] };
-  generate_image_qa: {
-    request: WorkspaceGenerateImageQARequest;
-    response: ImageQualityResult;
+  render_image_text_page: {
+    request: WorkspaceRenderImageTextRequest;
+    response: WorkspaceRenderImageTextResult;
   };
   generate_files: {
     request: WorkspaceGenerateFilesRequest;

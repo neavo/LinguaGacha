@@ -1,5 +1,6 @@
 import { image_metadata } from "./image-metadata";
 
+/** 按 EXIF 调整坐标，使后续消字和绘字使用同一原点。 */
 function apply_exif_orientation(
   rgb: Uint8Array,
   rawW: number,
@@ -43,7 +44,7 @@ function apply_exif_orientation(
 }
 
 /** 统一规范化像素解码：复用 MuPDF 解码静态非透明 PNG/JPEG 并按 EXIF 方向旋正为 RGB。 */
-export async function decode_normalized_image_rgb(content: Uint8Array): Promise<{
+async function decode_normalized_image_rgb(content: Uint8Array): Promise<{
   extension: string;
   width: number;
   height: number;
@@ -104,6 +105,7 @@ export async function decode_normalized_image_rgb(content: Uint8Array): Promise<
 
 /** 统一无损规范化编码：将 PNG/JPEG 原稿按与读取校验完全一致的规则转换为 EXIF 旋正后 RGB PNG。 */
 export async function normalize_image_to_png(content: Uint8Array): Promise<{
+  extension: string;
   width: number;
   height: number;
   orientation: number;
@@ -119,6 +121,7 @@ export async function normalize_image_to_png(content: Uint8Array): Promise<{
   try {
     pix.getPixels().set(decoded.rgb);
     return {
+      extension: decoded.extension,
       width: decoded.width,
       height: decoded.height,
       orientation: decoded.orientation,

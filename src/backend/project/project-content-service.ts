@@ -444,7 +444,7 @@ export class ProjectContentService {
               public_details: { file: draft.rel_path },
             });
           const before = await read_image_package(oldContent, draft.rel_path, {
-            validatePixels: false, // 旧资产已入库，继承只读取原稿身份。
+            stored: true,
           });
           const after = draft.image!; // 新包在解析入口已校验，复用结果避免再次展开大包。
           const previous = image_record_identities(before.book, before.records);
@@ -467,16 +467,16 @@ export class ProjectContentService {
               !old ||
               !source ||
               !target ||
-              source.status !== "PROCESSED" ||
+              (source.status !== "PROCESSED" && source.status !== "EXCLUDED") ||
               old.image !== next.image ||
-              old.source !== next.source ||
               source.src !== next.source
             )
               continue;
             target.dst = source.dst;
             target.name_dst = source.name_dst;
-            target.status = "PROCESSED";
-            preserved.set(draft.rel_path, (preserved.get(draft.rel_path) ?? 0) + 1);
+            target.status = source.status;
+            if (source.status === "PROCESSED")
+              preserved.set(draft.rel_path, (preserved.get(draft.rel_path) ?? 0) + 1);
           }
         }
         const pending = candidates.filter((item) => item.status !== "PROCESSED"); // 记录继承前的未完成条目。

@@ -203,16 +203,10 @@ export const en_us_app = {
   },
   translation_export: {
     agent_request: "Export translations without performing other operations",
-    image_reason: {
-      layout_no_fit: "[Failure] The full translation does not fit; original content retained …",
-      translation_incomplete: "[Failure] Translation is incomplete; original content retained …",
-      erase_failed:
-        "[Failure] The original text could not be removed reliably; original content retained …",
-    },
     action: "Export translations",
     confirmation: {
-      generic_description:
-        "This project contains audio/video files or generic data packages that require AGENT processing and will be skipped during direct export …",
+      agent_description:
+        "This project contains assets that require AGENT writeback. Direct export will skip those assets …",
       description: "Export the currently available translations?",
       checking: "Checking project files and proofreading warnings …",
       check_failed:

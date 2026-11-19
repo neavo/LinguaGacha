@@ -208,15 +208,10 @@ export const ja_jp_app = {
   },
   translation_export: {
     agent_request: "翻訳成果物をエクスポートし、他の操作は行わないでください",
-    image_reason: {
-      layout_no_fit: "[失敗] 訳文全体を領域に収められないため、元の内容を残します …",
-      translation_incomplete: "[失敗] 訳文が未完成のため、元の内容を残します …",
-      erase_failed: "[失敗] 原文を安全に消去できないため、元の内容を残します …",
-    },
     action: "翻訳成果物をエクスポート",
     confirmation: {
-      generic_description:
-        "プロジェクトには音声・動画または汎用データパッケージが含まれており、これらは AGENT による処理が必要なため、直接エクスポートするとスキップされます …",
+      agent_description:
+        "このプロジェクトには AGENT による書き戻しが必要なアセットがあります。直接エクスポートでは対象外になります …",
       description: "現在利用可能な翻訳成果物をエクスポートしますか？",
       checking: "プロジェクトのファイルと校正警告を確認中 …",
       check_failed:

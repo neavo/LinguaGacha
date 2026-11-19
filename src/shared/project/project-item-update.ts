@@ -22,13 +22,6 @@ export type ProjectItemWriteFields = Pick<Item, "dst" | "name_dst"> & {
 /** GUI 与 Agent 共用的单条人工 Item 更新意图。 */
 export type ProjectItemManualUpdate = Readonly<Static<typeof PROJECT_ITEM_MANUAL_UPDATE_SCHEMA>>;
 
-/** 差异构造允许消费尚未完成边界收窄的字段来源。 */
-type ProjectItemFieldPatchSource = {
-  dst?: unknown;
-  name_dst?: unknown;
-  status?: unknown;
-};
-
 // 外部 patch 只允许公开字段，坏值和空 patch 都收敛为 null。
 export function normalize_project_item_field_patch(value: unknown): ProjectItemFieldPatch | null {
   if (!is_json_record(value)) {
@@ -103,25 +96,17 @@ export function apply_project_item_manual_update<TItem extends ProjectItemWriteF
   return build_project_item_field_patch(current, next) === null ? null : next;
 }
 
-// 对比当前与下一状态生成最小字段 patch，姓名使用标量比较。
+/** 对比已校验的条目字段，并将历史状态归一为当前状态。 */
 export function build_project_item_field_patch(
-  current: ProjectItemFieldPatchSource,
-  next: ProjectItemFieldPatchSource,
+  current: ProjectItemWriteFields,
+  next: ProjectItemWriteFields,
 ): ProjectItemFieldPatch | null {
   const patch: ProjectItemFieldPatch = {};
-  if (typeof next.dst === "string" && next.dst !== current.dst) {
-    patch.dst = next.dst;
-  }
-  if (Object.hasOwn(next, "name_dst")) {
-    const name_dst = next.name_dst;
-    if ((name_dst === null || typeof name_dst === "string") && name_dst !== current.name_dst) {
-      patch.name_dst = name_dst;
-    }
-  }
+  if (next.dst !== current.dst) patch.dst = next.dst;
+  if (next.name_dst !== current.name_dst) patch.name_dst = next.name_dst;
   const status: ItemStatus = normalize_item_status(next.status);
   if (status !== current.status) {
     patch.status = status;
   }
-
   return Object.keys(patch).length === 0 ? null : patch;
 }

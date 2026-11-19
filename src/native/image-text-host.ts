@@ -3,7 +3,7 @@ import path from "node:path";
 import { BrowserWindow, session, type Session } from "electron";
 import { default_native_fs as fs } from "./native-fs";
 import { run_window_task } from "./window-task";
-import type { ImageTextRenderStep } from "./image-text-renderer";
+import type { ImageTextCapture } from "./image-text-renderer";
 import { IMAGE_TEXT_RULES, type ImageTextHost, type ImageTextPaint } from "../shared/image-text";
 
 const CSP =
@@ -86,33 +86,28 @@ export function create_image_text_host(resources: {
             window.webContents.executeJavaScript(
               `globalThis.imageTextTask.next(${JSON.stringify(screenshot)})`,
             ),
-          )) as IteratorResult<ImageTextRenderStep, ImageTextPaint[]>;
-          screenshot = undefined;
+          )) as IteratorResult<ImageTextCapture, ImageTextPaint[]>;
           if (next.done) return next.value;
-          if (next.value.kind === "resize") {
-            const { width, height } = next.value;
-            await step("viewport", () =>
-              debuggerPort.sendCommand("Emulation.setDeviceMetricsOverride", {
-                width,
-                height,
-                deviceScaleFactor: 1,
-                mobile: false,
-              }),
-            );
-            window.webContents.setZoomFactor(1);
-          } else {
-            // CDP 等待当前布局的合成帧；位图保持透明，不把画稿交给浏览器重编码。
-            const { rect } = next.value;
-            const capture = (await step("capture", () =>
-              debuggerPort.sendCommand("Page.captureScreenshot", {
-                format: "png",
-                fromSurface: true,
-                captureBeyondViewport: true,
-                clip: { ...rect, scale: 1 },
-              }),
-            )) as { data: string };
-            screenshot = capture.data;
-          }
+          const { width, height } = next.value;
+          await step("viewport", () =>
+            debuggerPort.sendCommand("Emulation.setDeviceMetricsOverride", {
+              width,
+              height,
+              deviceScaleFactor: 1,
+              mobile: false,
+            }),
+          );
+          window.webContents.setZoomFactor(1);
+          // CDP 等待当前布局的合成帧并保留透明背景。
+          const capture = (await step("capture", () =>
+            debuggerPort.sendCommand("Page.captureScreenshot", {
+              format: "png",
+              fromSurface: true,
+              captureBeyondViewport: true,
+              clip: { x: 0, y: 0, width, height, scale: 1 },
+            }),
+          )) as { data: string };
+          screenshot = capture.data;
         }
       });
     });

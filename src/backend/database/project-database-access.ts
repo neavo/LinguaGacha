@@ -10,8 +10,10 @@ import { DatabaseSync } from "node:sqlite";
 import { ZstdTool } from "./zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
-import type { ProjectItemWriteFields } from "../../shared/project/project-item-update";
-import { normalize_project_item_field_patch } from "../../shared/project/project-item-update";
+import {
+  normalize_project_item_field_patch,
+  type ProjectItemWriteFields,
+} from "../../shared/project/project-item-update";
 
 import {
   read_json_record,
@@ -20,7 +22,7 @@ import {
   type MutableJsonRecord,
 } from "../../domain/json";
 
-/** 事务规划完成后的三个可写字段，格式私有数据仍留在原 JSON 中。 */
+/** 写入口接收规划后的译文字段。 */
 export type ProjectItemTranslationWrite = Readonly<{
   item_id: number;
   next: Readonly<ProjectItemWriteFields>;
@@ -712,7 +714,11 @@ export class ProjectDatabaseAccess {
     patches: readonly ProjectItemTranslationWrite[],
   ): void {
     const statement = db.prepare(
-      "UPDATE items SET data = json_set(data, '$.dst', ?, '$.name_dst', json(?), '$.status', ?) WHERE id = ?",
+      `UPDATE items
+       SET data = json_set(
+         data,
+         '$.dst', ?, '$.name_dst', json(?), '$.status', ?
+       ) WHERE id = ?`,
     );
     for (const { item_id, next } of patches) {
       const fields = normalize_project_item_field_patch(next);

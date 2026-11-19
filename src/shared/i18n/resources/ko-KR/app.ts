@@ -200,15 +200,10 @@ export const ko_kr_app = {
   },
   translation_export: {
     agent_request: "번역 결과물을 내보내고 다른 작업은 수행하지 마세요",
-    image_reason: {
-      layout_no_fit: "[실패] 전체 번역문이 영역에 맞지 않아 원본 내용을 유지합니다 …",
-      translation_incomplete: "[실패] 번역이 완료되지 않아 원본 내용을 유지합니다 …",
-      erase_failed: "[실패] 원문을 안전하게 지울 수 없어 원본 내용을 유지합니다 …",
-    },
     action: "번역 결과물 내보내기",
     confirmation: {
-      generic_description:
-        "프로젝트에 오디오·비디오 또는 범용 데이터 패키지가 포함되어 있으며, 이 파일은 AGENT의 처리가 필요하므로 직접 내보내면 건너뜁니다 …",
+      agent_description:
+        "이 프로젝트에는 AGENT가 쓰기 작업을 완료해야 하는 에셋이 포함되어 있습니다. 직접 내보내기에서는 해당 에셋을 건너뜁니다 …",
       description: "현재 사용 가능한 번역 결과물을 내보낼까요?",
       checking: "프로젝트 파일 및 교정 경고 확인 중 …",
       check_failed:
