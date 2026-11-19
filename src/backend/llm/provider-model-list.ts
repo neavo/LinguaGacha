@@ -1,6 +1,5 @@
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
-import { Model } from "../../domain/model";
-import { CHATGPT_BASE_URL } from "../../domain/model";
+import { CHATGPT_BASE_URL, Model } from "../../domain/model";
 import type { AvailableModel } from "../../shared/model-catalog";
 import { create_provider_error, read_provider_response_error } from "../network/provider-error";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
@@ -11,8 +10,6 @@ import { get_primary_api_key, read_model_request_snapshot } from "./llm-request"
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 const GOOGLE_MODEL_LIST_PAGE_SIZE = 1000;
-// TODO(#955): 上游修复无 `client_version` 时缺少新模型的问题后，移除该参数。
-const CHATGPT_MODEL_LIST_CLIENT_VERSION = "0.160.0";
 
 /**
  * 按已解析的根地址查询远端列表；Vertex 候选由 ModelService 提供。
@@ -31,13 +28,10 @@ export async function list_available_models(
       });
       const credential = await auth.resolve(auth.bind());
       const data = read_json_record(
-        await fetch_json(
-          `${CHATGPT_BASE_URL}/models?client_version=${CHATGPT_MODEL_LIST_CLIENT_VERSION}`,
-          {
-            ...snapshot.headers,
-            Authorization: `Bearer ${credential.apiKey}`,
-          },
-        ),
+        await fetch_json(`${CHATGPT_BASE_URL}/models`, {
+          ...snapshot.headers,
+          Authorization: `Bearer ${credential.apiKey}`,
+        }),
       );
       const entries = Array.isArray(data["models"]) ? data["models"] : [];
       return entries.flatMap((value) => {

@@ -34,7 +34,10 @@ describe("provider-model-list", () => {
       { id: "model-a", name: "Second model" },
     ]);
     expect(resolve).toHaveBeenCalledWith("session");
-    expect(fetch_mock).toHaveBeenCalledOnce();
+    expect(fetch_mock).toHaveBeenCalledExactlyOnceWith("https://api.openai.com/v1/models", {
+      method: "GET",
+      headers: expect.objectContaining({ Authorization: "Bearer oauth-token" }),
+    });
   });
   it.each(["OpenAI", "OpenAIResponses", "SakuraLLM"])(
     "%s 模型列表读取 data[].id、排序并附带浏览器 UA",
