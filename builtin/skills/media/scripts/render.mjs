@@ -24,43 +24,36 @@ const DENSE = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}＀-￯]/u;
 const TEXT_LEAD_SECONDS = 1; // 文字区间起点在 1 fps 下最多晚 1 秒。
 const SCREEN_GAP = 0.3; // 画面文字译文与原文框的间距（字号倍数）。
 const OUTLINE_COLOUR = "&H00000000"; // 描边：不透明黑色。
-const SHADOW_COLOUR = "&H80000000"; // 阴影：半透明黑色。
-const BOX_COLOUR = "&H40000000"; // 对白底框：约 75% 不透明。
-const BOX_PADDING = 8; // BorderStyle=4 使用 Shadow 控制整条字幕的底框留白。
+const VIDEO_OUTLINE = 3; // 描边宽度，单位为 ASS 像素。
 const TAIL_SECONDS = 0.2; // 对话结束后的阅读留白。
 const MIN_SECONDS = 0.7; // 对话的最短显示时长，避免短句一闪而过。
+const WORD_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "word" });
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-/**
- * 默认渲染：按写回输入生成译文 ASS 和双语 ASS。
- * 视频：对白在底部居中，与画面上已有文字重叠时逐条改用半透明底框；画面文字的译文贴着原文框摆放。
- * 纯音频：按 1920×1080 成片排版，双语时译文在上、原文在下，两者作为一条事件整体换行与避让。
- * 定制样式时复制本文件为包目录的 `render.mjs` 修改，保持导出签名不变。
- * `source` 是包目录，`input` 是该资产的写回输入 `items.json`。
- */
+/** 从包目录 `source` 和写回文件 `input` 生成译文 ASS 和双语 ASS。 */
 export async function render({ source, input, translated, bilingual }) {
   const read = async (file) => JSON.parse(await readFile(file, "utf8")); // 读取包内记录与写回输入。
   const manifest = read_media_package_manifest(await read(path.join(source, "media.json")));
   const { video, duration, text } = manifest;
   const originals = read_media_items(await read(path.join(source, "items.json")), duration, video);
   const targets = read_media_writeback_items(await read(input), duration, video);
-  if (targets.length !== originals.length) throw new Error("写回输入与包内记录数不一致");
+  if (targets.length !== originals.length) throw new Error("写回输入与包内记录数不一致"); // 按数组下标配对原文和译文。
   const { width, height } = video ?? AUDIO_RESOLUTION;
   const audio = video === null;
   const size = audio ? AUDIO_SIZE : Math.max(1, Math.round(height * FONT_HEIGHT_RATIO));
   const margin = audio ? AUDIO_MARGIN : Math.round(height * MARGIN_HEIGHT_RATIO);
+  const [font, colour, outline] = audio
+    ? [AUDIO_FONT, AUDIO_COLOUR, 0]
+    : [FONT, TEXT_COLOUR, VIDEO_OUTLINE];
   // 画面上已有的文字，避让按区间起点提前 1 秒判断，宁宽勿漏。
-  const regions = (audio ? [] : (text ?? [])).map(({ start, end, box }) => ({
+  const regions = (text ?? []).map(({ start, end, box }) => ({
     start: start - TEXT_LEAD_SECONDS,
     end,
     rect: [box[0] * width, box[1] * height, box[2] * width, box[3] * height],
   }));
-  /** 三种 ASS 样式共用字段顺序。纯音频在亮色底图上用深色字，不加描边、阴影和底框。 */
-  const style = (name, align, border, outline, shadow, back_colour) => {
-    const [font, colour, effect] = audio
-      ? [AUDIO_FONT, AUDIO_COLOUR, "1,0,0"]
-      : [FONT, TEXT_COLOUR, `${border},${outline},${shadow}`];
-    return `Style: ${name},${font},${size},${colour},&H00FFFFFF,${OUTLINE_COLOUR},${back_colour},0,0,0,0,100,100,0,0,${effect},${align},${margin},${margin},${margin},1`;
-  };
+  // 两种 ASS 样式共用字形外观，分别指定底部和顶部对齐。
+  const style = (name, align) =>
+    `Style: ${name},${font},${size},${colour},&H00FFFFFF,${OUTLINE_COLOUR},&HFF000000,0,0,0,0,100,100,0,0,1,${outline},0,${align},${margin},${margin},${margin},1`;
   const header = [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -70,10 +63,8 @@ export async function render({ source, input, translated, bilingual }) {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    style("Dialogue", 2, 1, 2, 0, SHADOW_COLOUR),
-    // ASS 不能用行内标签切换 BorderStyle，底框只能另设样式。
-    style("DialogueBox", 2, 4, 2, BOX_PADDING, BOX_COLOUR),
-    style("Screen", 8, 1, 2, 0, SHADOW_COLOUR),
+    style("Dialogue", 2),
+    style("Screen", 8),
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -92,13 +83,10 @@ export async function render({ source, input, translated, bilingual }) {
     return { w: widest, h: lines * size * LINE_HEIGHT };
   };
   const overlaps = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; // 边缘相接不算遮挡。
-  const during = (start, end) => (item) => item.start < end && start < item.end; // 半开时间区间。
 
   // 随附 libass 未启用 Unicode 自动断行，音频字幕先按字宽换行，再交给它摆放整个双语块。
   const wrap_audio = (value, font_size) => {
     const limit = (width - 2 * margin) / font_size;
-    const words = new Intl.Segmenter(undefined, { granularity: "word" });
-    const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
     return value
       .split(/\r\n|\r|\n/u)
       .flatMap((line) => {
@@ -111,9 +99,9 @@ export async function render({ source, input, translated, bilingual }) {
           }
           current += current ? part : part.trimStart();
         };
-        for (const { segment } of words.segment(line)) {
+        for (const { segment } of WORD_SEGMENTER.segment(line)) {
           if (units(segment) <= limit) append(segment);
-          else for (const { segment: part } of graphemes.segment(segment)) append(part);
+          else for (const { segment: part } of GRAPHEME_SEGMENTER.segment(segment)) append(part);
         }
         lines.push(current.trimEnd());
         return lines;
@@ -130,29 +118,17 @@ export async function render({ source, input, translated, bilingual }) {
       .map((start, index, starts) => [start, starts[index + 1] ?? duration]),
   );
 
-  /**
-   * 生成一份 ASS 的事件。`content` 给出每行的文本块 `[文字, 字号]`，后续块是小字号原文。
-   * 两份输出的行数不同，避让分别计算。
-   */
-  const events = (content) => {
+  /** 两份 ASS 分别按各自的画面文字内容计算避让位置。 */
+  const events = (with_source) => {
     const placed = []; // 已摆放的画面文字译文。
     return targets.map((cue, row) => {
-      const { start, kind, box } = cue;
+      const { start, kind, box, message } = cue;
       let { end } = cue;
-      if (
-        !(
-          Number.isFinite(start) &&
-          Number.isFinite(end) &&
-          0 <= start &&
-          start < end &&
-          (kind === "dialogue" || kind === "screen")
-        )
-      )
-        throw new Error(`第 ${row} 行时间或类型不合法`);
-      const blocks = content(cue, row);
-      const { w, h } = measure(blocks.map(([value]) => value).join("\n"));
-      let name = kind === "dialogue" ? "Dialogue" : "Screen",
-        tags = "";
+      const original = originals[row].message;
+      const show_original = with_source && message.trim() !== "" && message !== original;
+      const caption = !audio && show_original ? `${original}\n${message}` : message;
+      const name = kind === "dialogue" ? "Dialogue" : "Screen";
+      let tags = "";
       if (kind === "dialogue") {
         // 留白只延长显示，不越过下一句对话和片尾。本已重叠的多人对话保持原样。
         const next = next_starts.get(start);
@@ -160,63 +136,50 @@ export async function render({ source, input, translated, bilingual }) {
           end,
           Math.min(Math.max(end + TAIL_SECONDS, start + MIN_SECONDS), next, duration),
         );
-        const area = [(width - w) / 2, height - margin - h, (width + w) / 2, height];
-        if (regions.filter(during(start, end)).some((region) => overlaps(region.rect, area)))
-          name = "DialogueBox";
       } else if (box) {
-        // 分别寻找原文框下方和上方的空位，先采用画面内的下方位置。
+        const { w, h } = measure(caption);
         const source_rect = [box[0] * width, box[1] * height, box[2] * width, box[3] * height];
         const gap = size * SCREEN_GAP;
         const x = Math.min(Math.max((source_rect[0] + source_rect[2]) / 2, w / 2), width - w / 2);
-        const others = [
+        const active = (item) => item.start < end && start < item.end; // 半开时间区间。
+        const blockers = [
           ...regions
-            .filter(during(start, end))
-            .map((region) => region.rect)
-            .filter((rect) => !overlaps(rect, source_rect)),
-          ...placed.filter(during(start, end)).map((item) => item.rect),
+            .filter((region) => active(region) && !overlaps(region.rect, source_rect))
+            .map((region) => region.rect),
+          ...placed.filter(active).map((item) => item.rect),
         ];
-        const positions = [true, false].map((below) => {
-          let y = below ? source_rect[3] + gap : source_rect[1] - gap - h; // 统一以译文顶边定位。
-          const blockers = [...others].sort((a, b) => (below ? a[1] - b[1] : b[3] - a[3]));
-          for (const other of blockers)
+        // 按寻找方向依次跨过障碍，以字幕顶边计算候选位置。
+        const position = (below) => {
+          let y = below ? source_rect[3] + gap : source_rect[1] - gap - h;
+          const ordered = blockers.toSorted((a, b) => (below ? a[1] - b[1] : b[3] - a[3]));
+          for (const other of ordered)
             if (overlaps(other, [x - w / 2, y, x + w / 2, y + h]))
               y = below ? other[3] + gap : other[1] - gap - h;
           return y;
-        });
-        // shortcut: 画面无空位时保留可见位置，复杂排版需求使用定制渲染。
-        const y =
-          positions.find((top) => top >= 0 && top + h <= height) ??
-          Math.max(0, Math.min(height - h, positions[0]));
+        };
+        const fits = (top) => top >= 0 && top + h <= height;
+        let y = position(true);
+        if (!fits(y)) {
+          const above = position(false);
+          y = fits(above) ? above : Math.max(0, Math.min(height - h, y)); // 上下均无空位时优先保证可见。
+        }
         placed.push({ start, end, rect: [x - w / 2, y, x + w / 2, y + h] });
         tags = `{\\an8\\pos(${Math.round(x)},${Math.round(y)})}`;
       }
-      const body = blocks
-        .map(
-          ([value, font_size], index) =>
-            (index ? `\\N{\\fs${font_size}\\c${SOURCE_COLOUR}}` : "") +
-            escape(audio ? wrap_audio(value, font_size) : value),
-        )
-        .join("");
+      const body = escape(audio ? wrap_audio(caption, size) : caption);
+      // 纯音频双语把小字号原文与译文放在同一事件中，由 libass 整体避让。
+      const source_line =
+        audio && show_original
+          ? `\\N{\\fs${SOURCE_SIZE}\\c${SOURCE_COLOUR}}${escape(wrap_audio(original, SOURCE_SIZE))}`
+          : "";
       // ASS 只有百分秒精度，向外取整保留不足一帧的合法字幕。
-      return `Dialogue: 0,${time(Math.floor(start * 100))},${time(Math.ceil(end * 100))},${name},,0,0,0,,${tags}${body}`;
+      return `Dialogue: 0,${time(Math.floor(start * 100))},${time(Math.ceil(end * 100))},${name},,0,0,0,,${tags}${body}${source_line}`;
     });
   };
 
-  const single = events((cue) => [[cue.message, size]]);
-  const dual = events((cue, row) => {
-    const source_text = originals[row].message;
-    if (cue.message.trim() === "" || cue.message === source_text) return [[cue.message, size]];
-    // 纯音频译文在上、原文小字在下，同一事件让 libass 整体换行和避让。视频原文在前。
-    return audio
-      ? [
-          [cue.message, size],
-          [source_text, SOURCE_SIZE],
-        ]
-      : [[`${source_text}\n${cue.message}`, size]];
-  });
   for (const [file, lines] of [
-    [translated, single],
-    [bilingual, dual],
+    [translated, events(false)],
+    [bilingual, events(true)],
   ]) {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, [...header, ...lines].join("\n") + "\n");
