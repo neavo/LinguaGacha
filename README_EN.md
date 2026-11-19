@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>All-in-One Translation AGENT Harness · Audio Video Games E-books · One-Click · High Quality · All Formats</p>
+<p align='center'>All-in-One Translation AGENT Harness · Comics Games Audio & Video E-books · One-Click · High Quality · All Formats</p>
 
 &ensp;
 &ensp;
@@ -10,17 +10,15 @@
 
 ## Overview 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), a next-generation `AGENT Harness` specialized in translation
-- `One-Click`
+- `One-Click` Drop it in, hit start, and wait for the finished translation
   - Fully automatic one-click translation across languages
-  - Drop it in, hit start, get ready-to-enjoy results
   - No technical background or foreign language knowledge required
-- `High Quality`
-  - Unbound by model censorship, free output
+- `High Quality` Translate freely without restrictions
   - Automatically builds a glossary to keep proper nouns consistent throughout the work
-  - Fully preserves formatting and styles across `Subtitles`, `E-books`, and `Game Engines`
+  - Fully preserves formatting and styles across `Comics`, `Games`, and `Audio & Video`
   - Semantic smart proofreading: just point out the issue and `AGENT` automatically corrects and polishes the translation
-- `All Formats`
-  - Translate virtually anything, including but not limited to:
+- `All Formats` Translate virtually anything, including:
+  - Images & Comics - `Manga`, `Western comics`, `Black and white`, `Color`, `Horizontal text`, and `Vertical text`
   - Audio & Video - `ASMR`, `Anime`, `TV & Film`, `Dynamic Comics`, and more
   - Subtitles & E-books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`, and more
   - Game Engines & Data Files - `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
@@ -36,6 +34,7 @@
 ## Showcase ✨
 <table>
   <tbody>
+    <tr><td><details open><summary><b>🗯️ Images · Automatic comic lettering fitted to text boxes</b></summary><br><img width="1280" alt="Images" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 Video · Line-by-line timeline synchronization</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 Audio · Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 Games · Fully automated game translation, no technical knowledge required</b></summary><br><img width="1280" alt="Games" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -81,22 +80,9 @@
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Recent Updates 📅
-- 20261113 v0.141.2
-  - Fixed an issue affecting `AGENT` task execution speed [#1101](../../issues/1101)
-  - Fixes and improvements [#1102](../../issues/1102)
-
-- 20261113 v0.141.2
-  - Improved `audio and video` translation [1095](../../issues/1092)
-  - Fixes and improvements [#1097](../../issues/1097) [#1098](../../issues/1098)
-
-- 20261112 v0.141.1
-  - Improved `audio and video` translation [#1092](../../issues/1092)
-  - Fixes and improvements [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
-
-- 20261110 v0.141.0
-  - Added `Audio (ASMR)` translation [#1085](../../pull/1085)
-  - Added `Video` translation [#1085](../../pull/1085)
-  - Fixes and improvements [#1083](../../issues/1083) [#1084](../../issues/1084)
+- 20261119 v0.142.1
+  - Added `image (comic)` translation [#1109](../../pull/1109)
+  - Fixes and improvements [#1111](../../issues/1111) [#1112](../../issues/1112)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)

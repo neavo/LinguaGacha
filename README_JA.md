@@ -1,6 +1,6 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>万能翻訳 AGENT Harness · 音声 動画 ゲーム 電子書籍 · ワンクリック · 高品質 · 全形式</p>
+<p align='center'>万能翻訳 AGENT Harness · 漫画 ゲーム 音声・動画 電子書籍 · ワンクリック · 高品質 · 全形式</p>
 
 &ensp;
 &ensp;
@@ -10,17 +10,15 @@
 
 ## 概要 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)、翻訳に特化した次世代の `AGENT Harness`
-- `ワンクリック`
+- `ワンクリック` ドラッグして開始を押せば、あとは翻訳の完成を待つだけ
   - 多言語間の全自動ワンクリック相互翻訳
-  - ドラッグして開始を押すだけで完成品を取得
   - 技術的な背景知識も外国語の知識も不要
-- `高品質`
-  - モデルの検閲制限を受けない自由な出力
+- `高品質` 制限なく自由に出力
   - 用語集を自動生成し、固有名詞の訳語を作品全体で統一
-  - 各種 `字幕` `電子書籍` `ゲームエンジン` のレイアウトとスタイルを完全に保持
+  - 各種 `漫画` `ゲーム` `音声・動画` のレイアウトや演出を完全に保持
   - セマンティックなスマート校正：問題点を伝えるだけで `AGENT` が自動で修正・推敲
-- `全形式`
-  - あらゆる形式を翻訳可能（一例）：
+- `全形式` あらゆる形式を翻訳可能（一例）：
+  - 画像・漫画 - `日本の漫画` `アメコミ` `白黒` `カラー` `横書き` `縦書き` に対応
   - 音声・動画 - `ASMR` `アニメ` `映画・ドラマ` `モーションコミック` など
   - 字幕・電子書籍 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` など
   - ゲームエンジン・データファイル - `Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` など
@@ -36,6 +34,7 @@
 ## 翻訳サンプル ✨
 <table>
   <tbody>
+    <tr><td><details open><summary><b>🗯️ 画像 · 漫画の文字を枠に合わせて自動配置</b></summary><br><img width="1280" alt="画像" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 動画 · セリフごとの精密タイムライン同期</b></summary><br><img width="1280" alt="動画" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 音声 · 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 ゲーム · 技術知識不要の全自動ゲーム翻訳</b></summary><br><img width="1280" alt="ゲーム" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -81,22 +80,9 @@
 - 各機能の詳しい説明は [Wiki](https://github.com/neavo/LinguaGacha/wiki) をご覧ください
 
 ## 最近の更新 📅
-- 20261113 v0.141.2
-  - `AGENT` のタスク実行速度に影響する問題を修正 [#1101](../../issues/1101)
-  - 修正と改善 [#1102](../../issues/1102)
-
-- 20261113 v0.141.2
-  - `音声・動画`の翻訳機能を改善 [1095](../../issues/1092)
-  - 修正と改善 [#1097](../../issues/1097) [#1098](../../issues/1098)
-
-- 20261112 v0.141.1
-  - `音声・動画`の翻訳機能を改善 [#1092](../../issues/1092)
-  - 修正と改善 [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
-
-- 20261110 v0.141.0
-  - `音声（ASMR）`の翻訳に対応 [#1085](../../pull/1085)
-  - `動画`の翻訳に対応 [#1085](../../pull/1085)
-  - 修正と改善 [#1083](../../issues/1083) [#1084](../../issues/1084)
+- 20261119 v0.142.1
+  - `画像（漫画）` の翻訳を追加 [#1109](../../pull/1109)
+  - 修正と改善 [#1111](../../issues/1111) [#1112](../../issues/1112)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール

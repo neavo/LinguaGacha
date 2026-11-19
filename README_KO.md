@@ -1,23 +1,21 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>올인원 번역 AGENT Harness · 오디오 동영상 게임 전자책 · 원클릭 · 고품질 · 전 형식</p>
+<p align='center'>올인원 번역 AGENT Harness · 만화 게임 오디오·동영상 전자책 · 원클릭 · 고품질 · 전 형식</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 개요 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), 번역에 특화된 차세대 `AGENT Harness`
-- `원클릭`
+- `원클릭` 끌어다 놓고 시작을 누른 뒤 번역이 끝날 때까지 기다리면 끝
   - 다양한 언어 간 전자동 원클릭 상호 번역
-  - 끌어다 놓고 시작만 누르면 바로 완성본 수령
   - 기술적 배경이나 외국어 지식이 전혀 필요 없음
-- `고품질`
-  - 모델 검열 제한 없는 자유로운 출력
+- `고품질` 제한 없이 자유롭게 출력
   - 용어집을 자동 생성하여 작품 전체에서 고유 명사를 일관되게 유지
-  - 다양한 `자막` `전자책` `게임 엔진`의 서식과 스타일을 완벽하게 보존
+  - 다양한 `만화` `게임` `오디오·동영상`의 서식과 연출을 완벽하게 보존
   - 시맨틱 스마트 검수: 문제점만 짚어 주면 `AGENT`가 알아서 수정하고 다듬기
-- `전 형식`
-  - 다음을 비롯한 모든 콘텐츠 번역 가능:
+- `전 형식` 다음을 비롯한 모든 콘텐츠 번역 가능:
+  - 이미지 및 만화 - `일본 만화` `미국 만화` `흑백` `컬러` `가로쓰기` `세로쓰기` 모두 지원
   - 오디오 및 동영상 - `ASMR` `애니메이션` `영화 및 드라마` `모션 코믹스` 등
   - 자막 및 전자책 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 등
   - 게임 엔진 및 데이터 파일 - `Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` 등
@@ -33,6 +31,7 @@
 ## 번역 결과 미리보기 ✨
 <table>
   <tbody>
+    <tr><td><details open><summary><b>🗯️ 이미지 · 만화 대사를 텍스트 영역에 자동 배치</b></summary><br><img width="1280" alt="이미지" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 동영상 · 대사 단위 정밀 타임라인 동기화</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 오디오 · 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 게임 · 기술 지식 없이 전자동 게임 번역</b></summary><br><img width="1280" alt="게임" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -78,22 +77,9 @@
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
 
 ## 최근 업데이트 📅
-- 20261113 v0.141.2
-  - `AGENT` 작업 실행 속도에 영향을 주는 문제 수정 [#1101](../../issues/1101)
-  - 수정 및 개선 [#1102](../../issues/1102)
-
-- 20261113 v0.141.2
-  - `오디오 및 동영상` 번역 기능 개선 [1095](../../issues/1092)
-  - 수정 및 개선 [#1097](../../issues/1097) [#1098](../../issues/1098)
-
-- 20261112 v0.141.1
-  - `오디오 및 동영상` 번역 기능 개선 [#1092](../../issues/1092)
-  - 수정 및 개선 [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
-
-- 20261110 v0.141.0
-  - `오디오(ASMR)` 번역 추가 [#1085](../../pull/1085)
-  - `동영상` 번역 추가 [#1085](../../pull/1085)
-  - 수정 및 개선 [#1083](../../issues/1083) [#1084](../../issues/1084)
+- 20261119 v0.142.1
+  - `이미지(만화)` 번역 추가 [#1109](../../pull/1109)
+  - 수정 및 개선 [#1111](../../issues/1111) [#1112](../../issues/1112)
 
 ## 개발 안내 🛠️
 - [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다

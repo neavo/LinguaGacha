@@ -1,23 +1,21 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>All-in-One-Übersetzungs-AGENT Harness · Audio Video Spiele E-Books · Ein Klick · Hohe Qualität · Alle Formate</p>
+<p align='center'>All-in-One-Übersetzungs-AGENT Harness · Comics Spiele Audio & Video E-Books · Ein Klick · Hohe Qualität · Alle Formate</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Überblick 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), ein auf Übersetzung spezialisiertes `AGENT Harness` der nächsten Generation
-- `Ein Klick`
+- `Ein Klick` Datei hineinziehen, auf Start klicken und auf die fertige Übersetzung warten
   - Vollautomatische Übersetzung zwischen verschiedenen Sprachen per Knopfdruck
-  - Hineinziehen, Start klicken, fertige Übersetzung mitnehmen
   - Keine technischen Vorkenntnisse und keine Fremdsprachenkenntnisse nötig
-- `Hohe Qualität`
-  - Freie Ausgabe ohne Einschränkungen durch Modellzensur
+- `Hohe Qualität` Freie Ausgabe ohne Einschränkungen
   - Erstellt automatisch ein Glossar für durchgehend einheitliche Eigennamen
-  - Erhält Formatierung und Stile in `Untertiteln`, `E-Books` und `Game-Engines` vollständig
+  - Erhält Formatierung und Stile in `Comics`, `Spielen` und `Audio & Video` vollständig
   - Semantisches Smart-Lektorat: Einfach das Problem benennen, und `AGENT` korrigiert die Übersetzung automatisch und verfeinert ihren Stil
-- `Alle Formate`
-  - Alles lässt sich übersetzen, unter anderem:
+- `Alle Formate` Alles lässt sich übersetzen, unter anderem:
+  - Bilder & Comics - `Manga`, `US-Comics`, `Schwarz-Weiß`, `Farbe`, `horizontaler Text` und `vertikaler Text`
   - Audio & Video - `ASMR`, `Anime`, `Filme & Serien`, `Motion Comics` und mehr
   - Untertitel & E-Books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` und weitere Formate
   - Game-Engines & Datendateien - `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` und mehr
@@ -33,6 +31,7 @@
 ## Ergebnis-Vorschau ✨
 <table>
   <tbody>
+    <tr><td><details open><summary><b>🗯️ Bilder · Automatischer Comicsatz passend zu den Textfeldern</b></summary><br><img width="1280" alt="Bilder" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 Video · Zeilengenaue Zeitachsen-Synchronisation</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 Audio · Untertitel- &amp; Spektrum-Video-Doppelausgabe</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 Spiele · Vollautomatische Spielübersetzung ohne technische Vorkenntnisse</b></summary><br><img width="1280" alt="Spiele" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -78,22 +77,9 @@
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Neueste Updates 📅
-- 20261113 v0.141.2
-  - Ein Problem behoben, das die Ausführungsgeschwindigkeit von `AGENT`-Aufgaben beeinträchtigte [#1101](../../issues/1101)
-  - Fehlerbehebungen und Verbesserungen [#1102](../../issues/1102)
-
-- 20261113 v0.141.2
-  - Übersetzung von `Audio und Videos` verbessert [1095](../../issues/1092)
-  - Fehlerbehebungen und Verbesserungen [#1097](../../issues/1097) [#1098](../../issues/1098)
-
-- 20261112 v0.141.1
-  - Übersetzung von `Audio und Videos` verbessert [#1092](../../issues/1092)
-  - Fehlerbehebungen und Verbesserungen [#1088](../../issues/1088) [#1089](../../issues/1089) [#1090](../../issues/1090) [#1091](../../issues/1091) [#1093](../../issues/1093)
-
-- 20261110 v0.141.0
-  - Übersetzung von `Audio (ASMR)` hinzugefügt [#1085](../../pull/1085)
-  - Übersetzung von `Videos` hinzugefügt [#1085](../../pull/1085)
-  - Fehlerbehebungen und Verbesserungen [#1083](../../issues/1083) [#1084](../../issues/1084)
+- 20261119 v0.142.1
+  - Übersetzung von `Bildern (Comics)` hinzugefügt [#1109](../../pull/1109)
+  - Fehlerbehebungen und Verbesserungen [#1111](../../issues/1111) [#1112](../../issues/1112)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)
