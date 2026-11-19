@@ -2,6 +2,7 @@ import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
 import { is_portable_file_name } from "./utils/file-name";
 import { GENERIC_ITEM_SCHEMA } from "./generic-package";
+import { IMAGE_FONT_SIZE_SCHEMA } from "./image-font-size";
 
 export const IMAGE_ID_SCHEMA = Type.String({
   minLength: 1,
@@ -13,33 +14,30 @@ export const IMAGE_DIRECTION_SCHEMA = Type.Union([
   Type.Literal("horizontal-tb"),
   Type.Literal("vertical-rl"),
 ]); // 文本块书写方向。
-const IMAGE_LAYOUT_AREA_SCHEMA = Type.Object(
-  { path: Type.String({ minLength: 1 }) },
-  { additionalProperties: false },
-);
-const IMAGE_QUAD_SCHEMA = Type.Tuple([
-  Type.Tuple([Type.Integer(), Type.Integer()]),
-  Type.Tuple([Type.Integer(), Type.Integer()]),
-  Type.Tuple([Type.Integer(), Type.Integer()]),
-  Type.Tuple([Type.Integer(), Type.Integer()]),
+export const IMAGE_BOX_SCHEMA = Type.Tuple([
+  Type.Integer({ minimum: 0 }),
+  Type.Integer({ minimum: 0 }),
+  Type.Integer({ minimum: 1 }),
+  Type.Integer({ minimum: 1 }),
 ]);
-const IMAGE_TEXT_BOX_SCHEMA = Type.Object(
-  {
-    textBoxId: IMAGE_ID_SCHEMA,
-    box: IMAGE_QUAD_SCHEMA,
-    coreBox: IMAGE_QUAD_SCHEMA,
-    text: Type.String({ minLength: 1 }),
-  },
-  { additionalProperties: false },
-);
+export const IMAGE_KIND_SCHEMA = Type.Union([Type.Literal("bubble"), Type.Literal("unframed")]);
 const COLOR_CHANNEL = Type.Integer({ minimum: 0, maximum: 255 });
-const IMAGE_COLOR_SCHEMA = Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]);
+export const IMAGE_COLOR_SCHEMA = Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]);
 const REGION_SCHEMA = Type.Object(
   {
     regionId: IMAGE_ID_SCHEMA,
-    kind: Type.Union([Type.Literal("bubble"), Type.Literal("unframed")]),
-    textBoxIds: Type.Array(IMAGE_ID_SCHEMA, { minItems: 1, maxItems: 10000 }),
-    layoutArea: IMAGE_LAYOUT_AREA_SCHEMA,
+    kind: IMAGE_KIND_SCHEMA,
+    box: IMAGE_BOX_SCHEMA,
+    patch: Type.Union([
+      Type.Object(
+        { path: Type.String({ minLength: 1 }), box: IMAGE_BOX_SCHEMA },
+        { additionalProperties: false },
+      ),
+      Type.Null(), // 自动消字失败后仍保留区域和原文，供后续补做。
+    ]),
+    parts: Type.Optional(Type.Array(IMAGE_ID_SCHEMA, { minItems: 2 })),
+    layout: Type.Optional(Type.Literal("whole")),
+    fontSize: Type.Optional(IMAGE_FONT_SIZE_SCHEMA),
     direction: IMAGE_DIRECTION_SCHEMA,
     backgroundColor: IMAGE_COLOR_SCHEMA,
   },
@@ -60,36 +58,7 @@ export const IMAGE_BOOK_SCHEMA = Type.Object(
           width: Type.Integer({ minimum: 1, maximum: 100000 }),
           height: Type.Integer({ minimum: 1, maximum: 100000 }),
           orientation: Type.Integer({ minimum: 1, maximum: 8 }),
-          textBoxes: Type.Array(IMAGE_TEXT_BOX_SCHEMA, { maxItems: 10000 }),
           regions: Type.Array(REGION_SCHEMA, { maxItems: 10000 }),
-        },
-        { additionalProperties: false },
-      ),
-      { minItems: 1, maxItems: 10000 },
-    ),
-  },
-  { additionalProperties: false },
-);
-
-const CLEAN_REGION_SCHEMA = Type.Object(
-  {
-    regionId: IMAGE_ID_SCHEMA,
-    status: Type.Union([Type.Literal("cleaned"), Type.Literal("failed")]),
-    eraseMask: Type.Optional(Type.String({ minLength: 1 })),
-  },
-  { additionalProperties: false },
-);
-
-/** 自动底图与实际掩码清单契约（`clean.json`）。 */
-export const IMAGE_CLEAN_SCHEMA = Type.Object(
-  {
-    bookId: IMAGE_ID_SCHEMA,
-    pages: Type.Array(
-      Type.Object(
-        {
-          pageId: IMAGE_ID_SCHEMA,
-          clean: Type.String({ minLength: 1 }),
-          regions: Type.Array(CLEAN_REGION_SCHEMA, { maxItems: 10000 }),
         },
         { additionalProperties: false },
       ),
@@ -103,9 +72,52 @@ export type ImageDirection = Static<typeof IMAGE_DIRECTION_SCHEMA>;
 export type ImageBook = Static<typeof IMAGE_BOOK_SCHEMA>;
 export type ImagePage = ImageBook["pages"][number];
 export type ImageRegion = ImagePage["regions"][number];
-export type ImageClean = Static<typeof IMAGE_CLEAN_SCHEMA>;
-export type ImageCleanPage = ImageClean["pages"][number];
-export type ImageCleanRegion = ImageCleanPage["regions"][number];
+
+/** 默认选分格。版式只决定哪些区域参与翻译，区域本身仍可保留原图。 */
+export function select_image_regions(book: ImageBook): Map<string, ImageRegion> {
+  const selected = new Map<string, ImageRegion>();
+  for (const page of book.pages) {
+    const inactive = new Set(
+      page.regions.flatMap(({ regionId, parts, layout }) =>
+        parts ? (layout === "whole" ? parts : [regionId]) : [],
+      ),
+    );
+    for (const region of page.regions)
+      if (!inactive.has(region.regionId)) selected.set(page.pageId + "/" + region.regionId, region);
+  }
+  return selected;
+}
+
+const IMAGE_FONT_SIZES_SCHEMA = Type.Array(
+  Type.Object(
+    {
+      pageId: IMAGE_ID_SCHEMA,
+      regionId: IMAGE_ID_SCHEMA,
+      fontSize: Type.Union([IMAGE_FONT_SIZE_SCHEMA, Type.Null()]),
+    },
+    { additionalProperties: false },
+  ),
+);
+
+/** 同一批字号修改必须指向现有区域，每个区域只有一个值。 */
+export function read_image_font_sizes(book: ImageBook, value: unknown): Map<string, number | null> {
+  if (!Check(IMAGE_FONT_SIZES_SCHEMA, value)) throw new Error("Invalid image font sizes");
+  const regions = new Set(
+    book.pages.flatMap((page) => page.regions.map(({ regionId }) => page.pageId + "/" + regionId)),
+  );
+  const sizes = new Map<string, number | null>();
+  for (const { pageId, regionId, fontSize } of value) {
+    const key = pageId + "/" + regionId;
+    if (!regions.delete(key)) throw new Error("Unknown or duplicate image font size target");
+    sizes.set(key, fontSize);
+  }
+  return sizes;
+}
+
+/** 物理区域单独保存掩码，整泡复用子格路径。 */
+export function image_layout_area_path(pageId: string, regionId: string): string {
+  return `layout-areas/${pageId}/${regionId}.png`;
+}
 export const IMAGE_RECORD_SCHEMA = Type.Object(
   {
     message: GENERIC_ITEM_SCHEMA.properties.message,
@@ -117,7 +129,7 @@ export const IMAGE_RECORD_SCHEMA = Type.Object(
 export const IMAGE_RECORDS_SCHEMA = Type.Array(IMAGE_RECORD_SCHEMA);
 export type ImageRecord = Static<typeof IMAGE_RECORD_SCHEMA>;
 
-const IMAGE_PAGE_MAX_PIXELS = 100_000_000; // 限制单页解码与掩码内存。
+export const IMAGE_PAGE_MAX_PIXELS = 100_000_000; // 限制单页解码与掩码内存。
 
 /** 包内路径跨平台保存，Schema 之外拒绝越界与 Windows 路径别名。 */
 function read_image_member_path(value: string): string {
@@ -132,7 +144,7 @@ export function read_image_records(value: unknown): ImageRecord[] {
   return value;
 }
 
-/** 每个有效 OCR 框恰好属于一个区域，每个区域恰好有一条原文。 */
+/** 每个区域恰好有一条原文。写字框和消字补丁都以旋正后的原图为准。 */
 export function read_image_book(value: unknown, records: readonly ImageRecord[]): ImageBook {
   if (!Check(IMAGE_BOOK_SCHEMA, value)) throw new Error("Invalid image state");
   const pageIds = new Set<string>();
@@ -151,33 +163,42 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
     )
       throw new Error("Invalid or duplicate image relative path");
     relativePaths.add(relativeKey);
-    const textBoxIds = new Set<string>();
-    for (const textBox of page.textBoxes) {
-      if (textBoxIds.has(textBox.textBoxId)) throw new Error("Duplicate image text box");
-      textBoxIds.add(textBox.textBoxId);
-    }
-    const assignedTextBoxIds = new Set<string>();
     if (
       read_image_member_path(page.original) !== page.original ||
       !/^originals\/[^/]+\.(png|jpe?g)$/iu.test(page.original)
     )
       throw new Error("Invalid original path");
-    const regionIds = new Set<string>();
+    const regionIds = new Map<string, ImageRegion>();
     for (const region of page.regions) {
       if (regionIds.has(region.regionId)) throw new Error("Duplicate region");
-      regionIds.add(region.regionId);
+      regionIds.set(region.regionId, region);
       const key = page.pageId + "/" + region.regionId;
       regions.add(key);
-      if (region.layoutArea.path !== `layout-areas/${page.pageId}/${region.regionId}.png`)
-        throw new Error("Invalid layout area path");
-      for (const textBoxId of region.textBoxIds) {
-        if (!textBoxIds.has(textBoxId) || assignedTextBoxIds.has(textBoxId))
-          throw new Error("Invalid or duplicate region text box");
-        assignedTextBoxIds.add(textBoxId);
+      const { patch } = region;
+      if (patch && patch.path !== `patches/${page.pageId}/${region.regionId}.png`)
+        throw new Error("Invalid image patch path");
+      for (const [x, y, width, height] of patch ? [region.box, patch.box] : [region.box])
+        if (x + width > page.width || y + height > page.height)
+          throw new Error("Image region bounds exceed page");
+    }
+    const assignedParts = new Set<string>();
+    for (const region of page.regions) {
+      if (!region.parts) {
+        if (region.layout !== undefined) throw new Error("Image layout requires bubble parts");
+        continue;
+      }
+      if (region.kind !== "bubble" || region.patch) throw new Error("Invalid whole-bubble region");
+      for (const id of region.parts) {
+        const part = regionIds.get(id);
+        if (part?.kind !== "bubble" || part.parts || assignedParts.has(id))
+          throw new Error("Invalid or duplicate bubble part");
+        const [x, y, width, height] = region.box;
+        const [left, top, partWidth, partHeight] = part.box;
+        if (left < x || top < y || left + partWidth > x + width || top + partHeight > y + height)
+          throw new Error("Bubble part lies outside its whole bubble");
+        assignedParts.add(id);
       }
     }
-    if (assignedTextBoxIds.size !== textBoxIds.size)
-      throw new Error("Every detected text box must belong to one region");
   }
   const pageOrder = new Map(value.pages.map((page, index) => [page.pageId, index]));
   let previousPage = -1;
@@ -193,40 +214,34 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
   return value;
 }
 
-/** `clean.json` 与 `image.json` 的页序、区域顺序、状态和成员路径必须一致。 */
-export function read_image_clean(value: unknown, book: ImageBook): ImageClean {
-  if (!Check(IMAGE_CLEAN_SCHEMA, value)) throw new Error("Invalid clean manifest");
-  if (value.bookId !== book.bookId || value.pages.length !== book.pages.length)
-    throw new Error("Clean manifest book mismatch");
-  for (let i = 0; i < book.pages.length; i++) {
-    const bookPage = book.pages[i]!;
-    const cleanPage = value.pages[i]!;
-    if (cleanPage.pageId !== bookPage.pageId) throw new Error("Clean page order mismatch");
-    const expectedClean = `clean/${bookPage.pageId}.png`;
-    if (
-      read_image_member_path(cleanPage.clean) !== cleanPage.clean ||
-      cleanPage.clean !== expectedClean
+const WRITEBACK_ID = { pageId: IMAGE_ID_SCHEMA, regionId: IMAGE_ID_SCHEMA };
+const IMAGE_WRITEBACK_ITEM_SCHEMA = Type.Union([
+  Type.Object(
+    { ...WRITEBACK_ID, output: Type.Literal("translated"), text: Type.String() },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { ...WRITEBACK_ID, output: Type.Union([Type.Literal("original"), Type.Null()]) },
+    { additionalProperties: false },
+  ),
+]);
+
+export type ImageWritebackItem = Static<typeof IMAGE_WRITEBACK_ITEM_SCHEMA>;
+const IMAGE_WRITEBACK_SCHEMA = Type.Array(IMAGE_WRITEBACK_ITEM_SCHEMA);
+
+/** 写回输入与当前版式的原稿条目顺序一致，每个参与区域只有一个输出决定。 */
+export function read_image_writeback(
+  value: unknown,
+  records: readonly ImageRecord[],
+): ImageWritebackItem[] {
+  if (
+    !Check(IMAGE_WRITEBACK_SCHEMA, value) ||
+    value.length !== records.length ||
+    value.some(
+      (item, index) =>
+        item.pageId !== records[index]!.pageId || item.regionId !== records[index]!.regionId,
     )
-      throw new Error("Invalid clean image path");
-    if (cleanPage.regions.length !== bookPage.regions.length)
-      throw new Error("Clean page regions mismatch");
-    for (let regionIndex = 0; regionIndex < bookPage.regions.length; regionIndex++) {
-      const bookRegion = bookPage.regions[regionIndex]!;
-      const cleanRegion = cleanPage.regions[regionIndex]!;
-      if (cleanRegion.regionId !== bookRegion.regionId)
-        throw new Error("Clean region order mismatch");
-      if (cleanRegion.status === "failed") {
-        if (cleanRegion.eraseMask !== undefined) throw new Error("Invalid failed clean region");
-      } else {
-        const expectedMask = `erase-masks/${bookPage.pageId}/${bookRegion.regionId}.png`;
-        if (
-          !cleanRegion.eraseMask ||
-          cleanRegion.eraseMask !== expectedMask ||
-          read_image_member_path(cleanRegion.eraseMask) !== cleanRegion.eraseMask
-        )
-          throw new Error("Invalid cleaned region");
-      }
-    }
-  }
+  )
+    throw new Error("Image writeback does not match the source records");
   return value;
 }

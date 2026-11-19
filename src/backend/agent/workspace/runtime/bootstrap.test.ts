@@ -29,8 +29,11 @@ import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
+import { INFERENCE_DEPENDENCIES } from "../../inference/environment";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { png_fixture } from "../../../../test/media-fixture";
+import { create_image_text_renderer } from "../../tools/render-image-text";
+import { default_native_fs } from "../../../../native/native-fs";
 import { image_fixture } from "../../../../test/image-fixture";
 
 const electron_path =
@@ -95,19 +98,6 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   const generateFiles = vi
     .fn(async () => generated)
     .mockRejectedValueOnce(new Error("fixture generation failed"));
-  const imageQA = {
-    output_path: path.join(workspace, "work/image-qa"),
-    report: {
-      path: path.join(workspace, "work/image-qa/.lg-export-report.json"),
-      summary: {
-        success: 1,
-        failures: 0,
-        originals: 0,
-        translated: 1,
-      },
-    },
-  };
-  const generateImageQA = vi.fn(async () => imageQA);
   const inspectSources = vi.fn(async (sources: string[]) =>
     sources.map((source_path) => ({
       source_path,
@@ -120,18 +110,16 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     `
     import { inspectSources, generateFiles, getOutputPaths } from '@lg/project';
     import { describe_package } from '@lg/generic';
-    import { generateQA } from '@lg/image';
     import assert from 'node:assert/strict';
     assert.match(describe_package(), /GenericItems/);
     await assert.rejects(generateFiles([]), /fixture generation failed/);
-    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), imageQA: await generateQA(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
+    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
     undefined,
     undefined,
     {
       inspectSources,
       generateFiles,
-      generateImageQA,
       getOutputPaths: (directory) => ({
         manual: directory === undefined,
         translated_path: workspace,
@@ -141,7 +129,6 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
   );
   expect(output_content(result.stdout)).toEqual({
     generated,
-    imageQA,
     paths: { manual: true, translated_path: workspace, bilingual_path: workspace },
     selected: { manual: false, translated_path: workspace, bilingual_path: workspace },
     sources: [
@@ -157,45 +144,193 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
 });
 
 it(
-  "部署后的图片 SDK 暴露整册计算入口，媒体共用请求协议",
+  "部署后的媒体 SDK 通过共享 Python 通道生成联系表",
   async () => {
-    const source = path.join(workspace, "work/pack-source/originals/text.png");
-    await mkdir(path.dirname(source), { recursive: true });
+    const source = path.join(workspace, "work/sheet-source.png");
     await writeFile(source, png_fixture());
-    await writeFile(
-      path.join(workspace, "work/source.image"),
-      await image_fixture(["page"]).pack(),
-    );
-    const result = await run(
+    const dependencies = [
+      `numpy==${INFERENCE_DEPENDENCIES.numpy}`,
+      `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`,
+    ];
+    await run(
       `
-    import { describe_package as describeImage, processPages, DeviceFailure, IMAGE_DEPENDENCIES } from '@lg/image';
-    import { describe_package as describeMedia, sheets } from '@lg/media';
-    import { uv } from '@lg/uv';
-    import { mkdir, writeFile } from 'node:fs/promises';
-    import assert from 'node:assert/strict';
-    await uv.run(['add', ...IMAGE_DEPENDENCIES.python, '--default-index', 'https://pypi.org/simple']);
-    assert.equal(typeof processPages, 'function');
-    assert.equal(typeof DeviceFailure, 'function');
-    assert.match(describeImage(), /ImageBook/);
-    assert.match(describeMedia(), /MediaPackageManifest/);
-    const imageSkill = await import(${JSON.stringify(pathToFileURL(path.resolve("builtin/skills/image/scripts/image.mjs")).href)});
-    await imageSkill.unpack('work/source.image', 'work/image-current');
-    assert.equal((await imageSkill.read('work/image-current')).records.length, 1);
-    assert.equal((await imageSkill.pack('work/image-current', 'work/repacked.image')).items, 1);
-    const mediaSkill = await import(${JSON.stringify(pathToFileURL(path.resolve("builtin/skills/media/scripts/media.mjs")).href)});
-    await mkdir('work/media-current', { recursive: true });
-    await writeFile('work/media-current/media.json', JSON.stringify({ source: { path: 'audio.wav', size: 1, mtime_ns: '1', track: 0, language: 'JA' }, duration: 1, video: null, speech: [], asr: [], text: null }));
-    await writeFile('work/media-current/items.json', JSON.stringify([{ message: 'text', start: 0, end: 1, kind: 'dialogue' }]));
-    assert.equal((await mediaSkill.pack('work/media-current', 'work/current.media')).items, 1);
-    const result = await sheets([{id:7,start:0,file:'work/pack-source/originals/text.png'}], 'work/sheets');
-    assert.deepEqual(result.map(sheet => sheet.ids), [[7]]);
-  `,
-      AbortSignal.timeout(60_000),
+        import { sheets } from "@lg/media";
+        import { uv } from "@lg/uv";
+        import assert from "node:assert/strict";
+        await uv.run(["add", ...${JSON.stringify(dependencies)}, "--default-index", "https://pypi.org/simple"]);
+        const result = await sheets([{ id: 7, start: 0, file: "work/sheet-source.png" }], "work/sheets");
+        assert.deepEqual(result.map(sheet => sheet.ids), [[7]]);
+      `,
+      AbortSignal.timeout(EXECUTION_TIMEOUT_MS),
     );
-    expect(result.exitCode).toBe(0);
   },
   EXECUTION_TIMEOUT_MS + RUN_TIMEOUT_MS,
-); // 安装依赖后仍留出脚本取消与进程收尾时间。
+);
+
+it("图片分批出图沿用清单字号与页序，选页试排只生成目标页", async () => {
+  const fixture = image_fixture(["saved", "override", "auto", "failed"]);
+  for (const page of fixture.book.pages) page.regions[0]!.fontSize = 18;
+  const directory = path.join(workspace, "work/image-layout");
+  const source = path.join(directory, "source");
+  await mkdir(path.join(source, "originals"), { recursive: true });
+  await cp(
+    new URL("../../../../../builtin/skills/image/scripts/render.mjs", import.meta.url),
+    path.join(directory, "render.mjs"),
+  );
+  await writeFile(path.join(source, "image.json"), JSON.stringify(fixture.book));
+  await writeFile(path.join(source, "items.json"), JSON.stringify(fixture.records));
+  for (const page of fixture.book.pages)
+    await writeFile(path.join(source, page.original), fixture.original);
+  await writeFile(
+    path.join(directory, "writeback.json"),
+    JSON.stringify(
+      fixture.records.map(({ pageId, regionId }) => ({
+        pageId,
+        regionId,
+        output: "translated",
+        text: "译文",
+      })),
+    ),
+  );
+
+  const png = fixture.patch.toString("base64");
+  await run(
+    `
+    import { render_book } from '../image-layout/render.mjs';
+    import assert from 'node:assert/strict';
+    import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    const options = {
+      asset_path: 'book.image',
+      source: 'work/image-layout/source',
+      input: 'work/image-layout/writeback.json',
+      output: 'work/image-layout/output',
+      fontSizes: [
+        { pageId: 'override', regionId: 'text', fontSize: 21 },
+        { pageId: 'auto', regionId: 'text', fontSize: null },
+        { pageId: 'failed', regionId: 'text', fontSize: 100 },
+      ],
+    };
+    const layoutBatches = [], compositionBatches = [];
+    const pixels = {
+      layout: async ({ pages }) => {
+        layoutBatches.push(pages.length);
+        for (const { output, lettering } of pages) {
+          await writeFile(output, JSON.stringify(lettering.map(value => ({
+            ...value, size: [1, 1], distance: 'AAAAAA==', direction: 'vertical-rl',
+            backgroundColor: [255, 255, 255],
+          }))));
+        }
+      },
+      compose: async ({ pages }) => {
+        compositionBatches.push(pages.length);
+        assert.equal(new Set(pages.map(job => job.original)).size, pages.length);
+        for (const { original, output, bilingual, qa } of pages) {
+          for (const file of [qa.path, bilingual, output]) {
+            if (!file) continue;
+            await mkdir(path.dirname(file), { recursive: true });
+            await copyFile(original, file);
+          }
+        }
+      },
+    };
+    const { report } = await render_book(options, pixels);
+    const { files } = JSON.parse(await readFile(report.path, 'utf8'));
+    assert.deepEqual(files.map(({ pageId, entries }) => [pageId, entries]), [
+      ['saved', [{ regionId: 'text', output: 'translated', fontSize: 18 }]],
+      ['override', [{ regionId: 'text', output: 'translated', fontSize: 21 }]],
+      ['auto', [{ regionId: 'text', output: 'translated', fontSize: 16 }]],
+      ['failed', [{ regionId: 'text', output: 'original', reason: 'layout_no_fit' }]],
+    ]);
+    assert(layoutBatches.some(size => size > 1), 'Lettering requests should include multiple pages');
+    assert(compositionBatches.some(size => size > 1), 'Composition requests should include multiple pages');
+    const preview = await render_book({
+      ...options,
+      output: 'work/image-layout/preview',
+      pageIds: ['auto', 'saved'],
+    }, pixels);
+    const previewReport = JSON.parse(await readFile(preview.report.path, 'utf8'));
+    assert.deepEqual(previewReport.files, [files[0], files[2]]);
+    assert.deepEqual((await readdir(path.join(preview.output_path, 'book'))).sort(), ['auto.png', 'saved.png']);
+    assert.deepEqual((await readdir(path.join(preview.bilingual_output_path, 'book'))).sort(), ['auto.png', 'saved.png']);
+    assert.deepEqual((await readdir(preview.qa_path)).sort(), ['auto.png.webp', 'saved.png.webp']);
+    const failedOutput = 'work/image-layout/failed-output';
+    await assert.rejects(render_book({ ...options, output: failedOutput }, {
+      ...pixels,
+      compose: async job => {
+        await pixels.compose({ pages: job.pages.slice(0, 1) });
+        throw new Error('Composition failed');
+      },
+    }), /Composition failed/);
+    await assert.rejects(stat(failedOutput), { code: 'ENOENT' });
+    for (const pageIds of [[], ['missing'], ['saved', 'saved']]) {
+      await assert.rejects(render_book({ ...options, output: 'work/image-layout/invalid', pageIds }, pixels), /page/i);
+    }
+  `,
+    undefined,
+    undefined,
+    {
+      renderImageText: create_image_text_renderer({
+        root: workspace,
+        nativeFs: default_native_fs,
+        host: async ({ page }) =>
+          page.map(({ regionId, fontSize }) =>
+            fontSize === 100
+              ? { regionId, png: null }
+              : { regionId, png, fontSize: fontSize ?? 16 },
+          ),
+      }),
+    },
+  );
+});
+
+it("停止绘字脚本时向宿主传递取消并等待窗口收尾", async () => {
+  const controller = new AbortController();
+  const entered = Promise.withResolvers<void>();
+  const cancelled = Promise.withResolvers<void>();
+  const closed = Promise.withResolvers<void>();
+  let finished = false;
+  const pending = run(
+    `
+    import { render_image_text_page } from '@lg/image';
+    import assert from 'node:assert/strict';
+    import { writeFile } from 'node:fs/promises';
+    const file = 'work/lettering.json';
+    const region = { regionId: 'r1', size: [64,76], distance: Buffer.alloc(64*76*4).toString('base64'), direction: 'vertical-rl', backgroundColor: [255,255,255], text: '译文', fontSize: 20 };
+    await writeFile(file, JSON.stringify([{...region, fontSize:3}]));
+    await assert.rejects(render_image_text_page(file), /Invalid workspace render_image_text_page request/);
+    await assert.rejects(render_image_text_page('package.json'), /outside the workspace/);
+    await writeFile(file, JSON.stringify([region]));
+    await render_image_text_page(file);
+  `,
+    controller.signal,
+    undefined,
+    {
+      renderImageText: create_image_text_renderer({
+        root: workspace,
+        nativeFs: default_native_fs,
+        host: async (_request, signal) => {
+          signal!.addEventListener("abort", () => cancelled.resolve(), { once: true });
+          entered.resolve();
+          await closed.promise;
+          return [];
+        },
+      }),
+    },
+  ).finally(() => {
+    finished = true;
+  });
+  const rejection = expect(pending).rejects.toThrow("停止图片绘字");
+  try {
+    await Promise.race([entered.promise, pending]);
+    controller.abort(new Error("停止图片绘字"));
+    await cancelled.promise;
+    expect(finished).toBe(false);
+  } finally {
+    closed.resolve();
+    await rejection;
+  }
+});
 
 it("搜索 SDK 经真实 IPC 保留原生响应并校验参数", async () => {
   const response = {
@@ -962,7 +1097,7 @@ async function run(
     AgentWorkspaceRunRequest,
     | "printPDF"
     | "inspectSources"
-    | "generateImageQA"
+    | "renderImageText"
     | "generateFiles"
     | "getOutputPaths"
     | "emitImage"

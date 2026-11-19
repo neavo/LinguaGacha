@@ -71,7 +71,7 @@ describe("run_backend_runtime", () => {
     const pending = imageTextHost(
       {
         kind: "render_image_text_page",
-        page: { pageId: "page", regions: [] },
+        page: [],
       },
       controller.signal,
     ).finally(() => {

@@ -7,10 +7,8 @@ import {
 } from "../shared/image-text";
 import { plan_image_text } from "./image-text-plan";
 
-/** renderer 依次请求视口和透明截图，main 负责实际捕获。 */
-export type ImageTextRenderStep =
-  | { kind: "capture"; rect: { x: number; y: number; width: number; height: number } }
-  | { kind: "resize"; width: number; height: number };
+/** main 按区域尺寸设置视口并捕获透明截图。 */
+export type ImageTextCapture = { width: number; height: number };
 
 /** helper 输出 little-endian Float32 距离场，浏览器按原字节读取。 */
 function decode_distance(value: string): Float32Array {
@@ -19,7 +17,7 @@ function decode_distance(value: string): Float32Array {
 }
 
 /** 将原生截图解码到一比一像素画布，供最终距离门禁读取 alpha。 */
-async function decode(png: string, width: number, height: number) {
+async function decode_screenshot(png: string, width: number, height: number) {
   const image = new Image();
   image.src = "data:image/png;base64," + png;
   await image.decode();
@@ -37,57 +35,47 @@ async function decode(png: string, width: number, height: number) {
 export async function* render_page(
   page: ImageTextPage,
   fontCss: string,
-): AsyncGenerator<ImageTextRenderStep, ImageTextPaint[], string | undefined> {
+): AsyncGenerator<ImageTextCapture, ImageTextPaint[], string | undefined> {
   const style = document.createElement("style");
-  style.textContent =
-    fontCss +
-    "html,body{margin:0;background:transparent}*{box-sizing:border-box}body{overflow:hidden}";
+  style.textContent = fontCss + "html,body{margin:0;background:transparent}body{overflow:hidden}";
   document.head.replaceChildren(style);
   // 同一页共用一个字体文件，Chromium 负责缺字回退。
   if (!(await document.fonts.load("16px ImageText")).length)
     throw new Error("Image text font unavailable");
   const output: ImageTextPaint[] = [];
-  for (const region of page.regions) {
+  for (const region of page) {
     const distance = decode_distance(region.distance);
-    const workingDistance = region.alignment
-      ? decode_distance(region.alignment.distance)
-      : distance;
-    const planned = plan_image_text(region, workingDistance);
+    const planned = plan_image_text(region, distance);
     if (!planned) {
       output.push({ regionId: region.regionId, png: null });
       continue;
     }
-    const [, , width, height] = region.box;
-    const [workingWidth, workingHeight] = region.alignment?.size ?? [width, height];
+    const [width, height] = region.size;
     const root = document.createElement("div");
-    root.style.cssText =
-      "position:relative;width:" + workingWidth + "px;height:" + workingHeight + "px";
-    if (region.alignment) {
-      root.style.transformOrigin = "0 0";
-      root.style.transform = "matrix(" + region.alignment.transform.join(",") + ")";
-    }
     const ink = image_text_color(region.backgroundColor);
     const stroke = ink === "black" ? "white" : "black";
     const strokeWidth = image_text_stroke_width(planned.fontSize);
+    root.style.cssText = `
+      position:relative;width:${width}px;height:${height}px;
+      font:${planned.fontSize}px/1 ImageText;font-synthesis:none;
+      white-space:pre;writing-mode:${region.direction};color:${ink};
+      -webkit-text-stroke:${strokeWidth}px ${stroke};paint-order:stroke fill;
+    `;
     for (const line of planned.lines) {
       const element = document.createElement("span");
-      element.textContent = line.text;
-      element.style.cssText =
-        "position:absolute;font-family:ImageText;font-size:" +
-        planned.fontSize +
-        "px;" +
-        "font-synthesis:none;line-height:1;white-space:pre;writing-mode:" +
-        region.direction +
-        ";" +
-        "color:" +
-        ink +
-        ";-webkit-text-stroke:" +
-        strokeWidth +
-        "px " +
-        stroke +
-        ";paint-order:stroke fill;";
+      element.style.position = "absolute";
+      for (const part of line.parts) {
+        if (part.combined) {
+          const mark = document.createElement("span");
+          mark.style.textCombineUpright = "all";
+          mark.textContent = part.text;
+          element.append(mark);
+        } else {
+          element.append(part.text);
+        }
+      }
       if (region.direction === "vertical-rl") {
-        element.style.left = workingWidth - line.slot.blockStart - planned.fontSize + "px";
+        element.style.left = width - line.slot.blockStart - planned.fontSize + "px";
         element.style.top = line.inlineStart + "px";
       } else {
         element.style.left = line.inlineStart + "px";
@@ -96,10 +84,9 @@ export async function* render_page(
       root.append(element);
     }
     document.body.replaceChildren(root);
-    yield { kind: "resize", width, height };
-    const png = yield { kind: "capture", rect: { x: 0, y: 0, width, height } };
+    const png = yield { width, height };
     if (!png) throw new Error("Missing native text screenshot");
-    const context = await decode(png, width, height);
+    const context = await decode_screenshot(png, width, height);
     const pixels = context.getImageData(0, 0, width, height);
     let fits = false; // 完全透明的截图也不可用于覆盖原文。
     for (let index = 0; index < width * height; index++) {
@@ -107,10 +94,11 @@ export async function* render_page(
       fits = distance[index]! >= RULES.squareDistanceCorrection;
       if (!fits) break;
     }
-    output.push({
-      regionId: region.regionId,
-      png: fits ? png : null,
-    });
+    output.push(
+      fits
+        ? { regionId: region.regionId, png, fontSize: planned.fontSize }
+        : { regionId: region.regionId, png: null },
+    );
   }
   return output;
 }

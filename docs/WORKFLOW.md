@@ -180,24 +180,17 @@ GUI、preload、native 或 Backend Runtime worker 变化时，先运行相关目
 
 #### 漫画图片
 
-图片工程契约变化运行 `file/image/{image-package,image-format}.test.ts`、`project-content-service.test.ts`、`workspace/sources.test.ts`、`workspace/service.test.ts` 与生成服务测试。
+- 工程契约变化运行 `file/image/{image-package,image-format}.test.ts`、工程内容与原稿测试。译文快照变化追加生成服务测试。
+- 整册计算或设备变化运行 `agent/image/{index,engine,worker}.test.ts`。涉及共享推理时追加媒体检测与 `inference/models.test.ts`。
+- 绘字变化运行 `shared/image-text.test.ts` 与真实 Electron 测试 `native/image-text-host.test.ts`。通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保存字层。协议与取消变化运行 Backend Runtime 与工作区 bootstrap 的对应测试。
 
-整册计算、设备选择、运行产物和独立验收变化运行 `agent/image/{index,engine,worker}.test.ts`。
-
-图片文本快照与输出变化运行 `file/image/{image-format,image-output}.test.ts`、生成服务测试与 `shared/image-text.test.ts`。几何变化运行 `native/image-text-layout.test.ts`。宿主与 renderer 共用真实 Electron 测试 `native/image-text-host.test.ts`，通过 `LINGUAGACHA_IMAGE_TEXT_QA_DIR` 保留栅格报告。协议与取消变化运行 Backend Runtime 及 bootstrap 的对应测试。新增浏览器资源须先通过统一资源入口部署。
-
-自动消字、文字分组、图片合成、QA 标记和排版分区使用已经准备的共享 Python 环境验证，无需模型：
+共享 OCR 前后处理变化可在已准备的共享 Python 环境验证：
 
 ```powershell
-uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/fill.test.py
-uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/repair.test.py
-uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/image/helper.test.py
 uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/tests/inference/ocr.test.py
 ```
 
-部署验证先构建发行工作区，再让上述脚本通过共享 Python 工程导入 `runtime/python/lg/`。图片气泡分割、文字检测或 LaMa Worker 变化运行 `npm test -- --project integration src/backend/agent/image/worker.test.ts`。涉及共享推理边界时，回归下方媒体检测与 `inference/models.test.ts`。图片运行时资源部署与工作区请求变化追加 `workspace/runtime/bootstrap.test.ts` 中受影响的用例。
-
-真实漫画和容量验收使用独立工作目录。记录吞吐、区域结果与峰值资源。视觉与语义接受分别记录。
+图片技能变更时，在独立工作目录使用代表性漫画，按变化核对扫描、消字、译图和整页 QA。涉及容量时记录吞吐、区域结果与峰值资源。
 
 #### 媒体推理
 

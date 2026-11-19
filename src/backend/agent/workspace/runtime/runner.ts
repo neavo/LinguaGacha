@@ -5,9 +5,9 @@ import {
   type WorkspaceGenerateFilesPort,
 } from "../../tools/generate-files";
 import {
-  execute_generate_image_qa_request,
-  type WorkspaceGenerateImageQAPort,
-} from "../../tools/generate-image-qa";
+  execute_render_image_text_request,
+  type WorkspaceRenderImageTextPort,
+} from "../../tools/render-image-text";
 import type { WorkspaceRequest } from "./protocol";
 import { execute_search_request } from "../../search/request";
 import type { SearchPort } from "../../search/schema";
@@ -47,7 +47,7 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
   Readonly<{
     scriptPath: string; // 同一执行的脚本与两路日志路径由 WorkspaceService 唯一确定
     search?: SearchPort; // 本次执行的凭据留在宿主闭包中。
-    generateImageQA?: WorkspaceGenerateImageQAPort;
+    renderImageText?: WorkspaceRenderImageTextPort;
     generateFiles?: WorkspaceGenerateFilesPort;
     getOutputPaths?: WorkspaceGetOutputPathsPort;
     printPDF?: WorkspacePrintPDFPort;
@@ -268,11 +268,11 @@ export class AgentWorkspaceRunner {
               controller.signal,
               run_request.generateFiles,
             );
-          if (request.kind === "generate_image_qa")
-            return execute_generate_image_qa_request(
+          if (request.kind === "render_image_text_page")
+            return execute_render_image_text_request(
               request,
               controller.signal,
-              run_request.generateImageQA,
+              run_request.renderImageText,
             );
           if (request.kind === "print_pdf")
             return execute_print_pdf_request(request, controller.signal, run_request.printPDF);
