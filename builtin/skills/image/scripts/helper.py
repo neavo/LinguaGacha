@@ -319,17 +319,6 @@ def owner_for_text(record, occupied):
     return owner if count >= pixels * 0.5 else None
 
 
-def _background_color(image, selection, text_mask):
-    """复杂背景用区域中位色估算译文字色。"""
-    background, color = fill.analyze_background(image, selection, text_mask)
-    if color is None:
-        pixels = image[selection > 0]
-        if not len(pixels):
-            raise ValueError("Empty region selection")
-        color = np.median(pixels, axis=0).round().astype(np.uint8)[::-1].tolist()
-    return background, color
-
-
 def _text_candidate(region_id, group, kind, lines):
     """扫描和纠错共用区域原文与 OCR 框的组织方式。"""
     direction = text_direction(lines)
@@ -478,11 +467,15 @@ def _read_packaged_area(root, page_id, region):
     )
 
 
-def _save_patch(root, page_id, region_id, original, repaired, mask):
-    """透明像素由原稿提供。保存局部补丁即可按区域生成消字版。"""
+def _save_patch(
+    root, page_id, region_id, original, repaired, mask, origin, *, omit_unchanged
+):
+    """比较区域像素并保存透明补丁，清单记录原图坐标。"""
     changed = (mask > 0) & np.any(original != repaired, axis=2)
     x, y, w, h = cv2.boundingRect(changed.astype(np.uint8))
     if not w:
+        if omit_unchanged:
+            return None  # LaMa 未改变笔画时，成图保留原文。
         x, y, _, _ = cv2.boundingRect(mask)
         w, h = 1, 1
     crop = np.s_[y : y + h, x : x + w]
@@ -491,24 +484,31 @@ def _save_patch(root, page_id, region_id, original, repaired, mask):
     pixels[alpha == 0] = 0
     member = f"patches/{page_id}/{region_id}.png"
     save(root / member, np.dstack((pixels, alpha)))
-    return dict(path=member, box=[x, y, w, h])
+    left, top = origin
+    return dict(path=member, box=[left + x, top + y, w, h])
 
 
-def _read_candidate_area(root, page_id, candidate, shape):
-    """恢复整页坐标。重分格使用内存掩码，旧扫描使用裁下的掩码文件。"""
-    x, y, w, h = candidate["area"]
-    crop = candidate.get("mask")
-    if crop is None:
-        crop = read_layout_area(
-            root / "areas" / page_id / f"{candidate['regionId']}.png", (h, w)
-        )
-    mask = np.zeros(shape, np.uint8)
-    mask[y : y + h, x : x + w] = crop
-    return mask
+def _read_candidate_mask(root, page_id, candidate):
+    """读取扫描保存的裁切掩码，重分格直接使用内存掩码。"""
+    if "mask" in candidate:
+        return candidate["mask"]
+    _, _, w, h = candidate["area"]
+    return read_layout_area(
+        root / "areas" / page_id / f"{candidate['regionId']}.png", (h, w)
+    )
+
+
+def _box_union(boxes):
+    """返回覆盖所有矩形的外接框。"""
+    left = min(x for x, _, _, _ in boxes)
+    top = min(y for _, y, _, _ in boxes)
+    right = max(x + w for x, _, w, _ in boxes)
+    bottom = max(y + h for _, y, _, h in boxes)
+    return [left, top, right - left, bottom - top]
 
 
 def _prepare_group(
-    image,
+    original,
     candidates,
     available,
     root,
@@ -521,7 +521,23 @@ def _prepare_group(
     variants,
     previous_layout=None,
 ):
-    """同一气泡只消字一次，补丁按格保存。"""
+    """在组的局部坐标中消字，按格保存原图坐标的补丁与排版掩码。"""
+    bounds = [candidate["area"] for candidate in candidates]
+    if previous_layout is not None:
+        previous, regions = previous_layout
+        # 已分配的无框文字版式可能延伸到原扫描范围之外。
+        bounds.extend(
+            regions[candidate["regionId"]]["box"]
+            for candidate in candidates
+            if candidate["regionId"] in available
+        )
+    x, y, w, h = _box_union(bounds)
+    border = fill.CONTEXT_BORDER
+    left, top = max(0, x - border), max(0, y - border)
+    origin = (left, top)
+    group = np.s_[top : y + h + border, left : x + w + border]
+    image = original[group]
+    occupied, expanded, writing = occupied[group], expanded[group], writing[group]
     shape = image.shape[:2]
     selection = np.zeros(shape, np.uint8)
     blocks = []
@@ -534,7 +550,11 @@ def _prepare_group(
     )
     for candidate in candidates:
         rid = candidate["regionId"]
-        part_area = _read_candidate_area(root, page_id, candidate, shape)
+        x, y, w, h = candidate["area"]
+        part_area = np.zeros(shape, np.uint8)
+        part_area[y - top : y - top + h, x - left : x - left + w] = (
+            _read_candidate_mask(root, page_id, candidate)
+        )
         selection |= part_area
         index = candidate["index"]
         pick = available.get(rid)
@@ -551,57 +571,64 @@ def _prepare_group(
             if pick is None:
                 continue
             # 补做同时遵守已入包的像素归属和原扫描范围，段落留白仅供绘字。
-            previous, regions = previous_layout
             region = regions[rid]
-            box = region["box"]
-            x, y, w, h = box
+            x, y, w, h = region["box"]
+            x, y = x - left, y - top
+            box = [x, y, w, h]
             area = np.zeros(shape, np.uint8)
             crop = np.s_[y : y + h, x : x + w]
             area[crop] = (
                 _read_packaged_area(previous, page_id, region) & part_area[crop]
             )
-        boxes = [line["box"] for line in candidate["lines"]]
         # 笔画邻域只分给一块，局部重做与本次选字无关。
         local = np.where(
             (occupied == index) | ((occupied == 0) & (expanded == index)), area, 0
         )
         if not np.any(local):
             raise ValueError(f"No writable text pixels in {rid}")
-        blocks.append((candidate, pick, box, local, area, boxes))
+        blocks.append((candidate, pick, box, local, area))
     if not blocks:
         return
-    background, color = _background_color(image, selection, occupied)
+    use_fill, color = fill.analyze_background(image, selection, occupied)
     dark_background = (
         cv2.cvtColor(np.uint8([[color[::-1]]]), cv2.COLOR_BGR2GRAY)[0, 0] < 128
     )
     masks = {}
-    union = np.zeros(shape, np.uint8)
-    fills = []
-    for candidate, pick, _, local, part_area, boxes in blocks:
+    automatic = np.zeros(shape, np.uint8)  # 同组共用一次自动填色或 LaMa 修复。
+    for candidate, pick, _, local, part_area in blocks:
         rid = candidate["regionId"]
-        if background["route"] == "fill" and not pick.get("contour"):
+        if use_fill and not pick.get("contour"):
             mask = part_area if bubble else local
-            fills.append((mask, color))
+            automatic |= mask
             masks[rid] = (mask, "fill")
             continue
+        boxes = [line["box"] for line in candidate["lines"]]
         try:
-            stroke = repair.text_mask(image, local, boxes, light_text=dark_background)
+            stroke = repair.text_mask(
+                image, local, boxes, origin, light_text=dark_background
+            )
         except ValueError:
             stroke = None
         if pick.get("contour"):
             masks[rid] = (local if stroke is None else stroke, "contour")
         elif stroke is not None:
             masks[rid] = (stroke, "lama")
-            union |= stroke
+            automatic |= stroke
 
     # 气泡边缘只沿整个内缩掩码混合，分格沿内部切口共享同一份底图。
-    if fills and bubble:
-        fills = [(selection, color)]
-    repaired = fill.render_fill(image, fills) if fills else image.copy()
-    if np.any(union):
+    has_automatic = np.any(automatic)
+    repaired = (
+        fill.render_fill(image, selection if bubble else automatic, color)
+        if has_automatic and use_fill
+        else image.copy()
+    )
+    if has_automatic and not use_fill:
         try:
-            repaired[union > 0] = repair.inpaint(
-                image, union, lambda tensor: forward(channel, "inpaint", tensor)[0]
+            repaired[automatic > 0] = repair.inpaint(
+                original,
+                automatic,
+                origin,
+                lambda tensor: forward(channel, "inpaint", tensor)[0],
             )
         except ValueError:
             # 这些区域仍可导入，导出时保留原图，供 Agent 按需补做。
@@ -610,7 +637,7 @@ def _prepare_group(
             }
 
     part_records = []
-    for candidate, pick, box, _, area, _ in blocks:
+    for candidate, pick, box, _, area in blocks:
         rid = candidate["regionId"]
         background_color = color
         patch = None
@@ -620,16 +647,23 @@ def _prepare_group(
                 tone = 0 if dark_background else 255
                 repaired[mask > 0] = tone
                 background_color = [tone] * 3
-            if method != "lama" or not np.array_equal(
-                image[mask > 0], repaired[mask > 0]
-            ):
-                patch = _save_patch(output, page_id, rid, image, repaired, mask)
+            patch = _save_patch(
+                output,
+                page_id,
+                rid,
+                image,
+                repaired,
+                mask,
+                origin,
+                omit_unchanged=method == "lama",
+            )
+        x, y, w, h = box
         region = dict(
             regionId=rid,
             kind=candidate["kind"],
             direction=candidate["direction"],
             backgroundColor=background_color,
-            box=box,
+            box=[left + x, top + y, w, h],
             patch=patch,
         )
         record = dict(
@@ -638,7 +672,6 @@ def _prepare_group(
             message=pick.get("message", candidate["message"]),
         )
         part_records.append(record)
-        x, y, w, h = box
         layout = area[y : y + h, x : x + w] if previous_layout is None else None
         yield region, record, layout
 
@@ -646,22 +679,14 @@ def _prepare_group(
         part_ids = [record["regionId"] for record in part_records]
         whole_id = candidates[0]["group"]
         lines = [line for candidate in candidates for line in candidate["lines"]]
-        boxes = [block[2] for block in blocks]
-        x = min(box[0] for box in boxes)
-        y = min(box[1] for box in boxes)
-        box = [
-            x,
-            y,
-            max(left + width for left, _, width, _ in boxes) - x,
-            max(top + height for _, top, _, height in boxes) - y,
-        ]
+        x, y, w, h = _box_union([block[2] for block in blocks])
         yield (
             dict(
                 regionId=whole_id,
                 kind="bubble",
                 direction=text_direction(lines),
                 backgroundColor=color,
-                box=box,
+                box=[left + x, top + y, w, h],
                 patch=None,
                 parts=part_ids,
             ),
@@ -691,7 +716,10 @@ def _group_area(root, page, group):
     shape = (page["height"], page["width"])
     area = np.zeros(shape, np.uint8)
     for candidate in group:
-        area |= _read_candidate_area(root, page["pageId"], candidate, shape)
+        x, y, w, h = candidate["area"]
+        area[y : y + h, x : x + w] |= _read_candidate_mask(
+            root, page["pageId"], candidate
+        )
     return area
 
 
@@ -1146,17 +1174,16 @@ def _distance_field(mask):
     return base64.b64encode(distance.astype("<f4").tobytes()).decode("ascii")
 
 
-def text_layout(args, _channel):
-    """将当前要写的区域几何写到工作目录，避免距离场进入推理通道。"""
-    page = args["page"]
+def _write_text_layout(root, job, maximum_bytes):
+    """每页单独写入距离场，供宿主按页绘字。"""
+    page = job["page"]
     regions = {region["regionId"]: region for region in page["regions"]}
-    root = Path(args["root"])
     output, budget = [], 0
-    for target in args["lettering"]:
+    for target in job["lettering"]:
         region = regions[target["regionId"]]
         x, y, w, h = region["box"]
         budget += w * h * 4
-        if budget > args["maximumBytes"]:
+        if budget > maximum_bytes:
             raise ValueError("Image text material budget exceeded")
         crop = np.zeros((h, w), np.uint8)
         for part_id in region.get("parts", [region["regionId"]]):
@@ -1173,10 +1200,17 @@ def text_layout(args, _channel):
                 distance=_distance_field(crop),
             )
         )
-    Path(args["output"]).write_text(
+    Path(job["output"]).write_text(
         json.dumps(output, ensure_ascii=False, allow_nan=False),
         encoding="utf-8",
     )
+
+
+def text_layout(args, _channel):
+    """批内逐页准备绘字材料，宿主可按页消费。"""
+    root = Path(args["root"])
+    for job in args["pages"]:
+        _write_text_layout(root, job, args["maximumBytes"])
 
 
 def _apply_overlay(result, overlay, box):
@@ -1203,18 +1237,14 @@ def _compose_text(result, layers_path, root):
     """先应用全部消字补丁，再叠字层，避免补丁盖住相邻译文。"""
     with open(layers_path, encoding="utf-8") as file:
         layers = json.load(file)
-    for layer in layers:
-        patch = layer["patch"]
+    for patch in layers["patches"]:
         pixels = cv2.imdecode(
             np.fromfile(str(root / patch["path"]), dtype=np.uint8), cv2.IMREAD_UNCHANGED
         )
         _apply_overlay(result, pixels, patch["box"])
-    for layer in layers:
-        if paint := layer.get("overlay"):
-            raw = np.frombuffer(base64.b64decode(paint["png"], validate=True), np.uint8)
-            _apply_overlay(
-                result, cv2.imdecode(raw, cv2.IMREAD_UNCHANGED), paint["box"]
-            )
+    for paint in layers["overlays"]:
+        raw = np.frombuffer(base64.b64decode(paint["png"], validate=True), np.uint8)
+        _apply_overlay(result, cv2.imdecode(raw, cv2.IMREAD_UNCHANGED), paint["box"])
 
 
 def _qa_preview(original, translated, qa):
@@ -1251,12 +1281,11 @@ def _save_output_image(file, image):
     return extension
 
 
-def text_output(args, _channel):
+def _write_text_output(root, job):
     """每页只合成一次，同时写出译图、双语双拼图与 QA 对照图。"""
-    root = Path(args["root"])
-    original = read_image(args["original"])
-    layers, output = args.get("layers"), args.get("output")
-    bilingual, qa = args["bilingual"], args["qa"]
+    original = read_image(job["original"])
+    layers, output = job.get("layers"), job.get("output")
+    bilingual, qa = job["bilingual"], job["qa"]
     translated = original
     if layers is not None:
         translated = original.copy()
@@ -1273,6 +1302,13 @@ def text_output(args, _channel):
         ".webp",
         [cv2.IMWRITE_WEBP_QUALITY, QA_WEBP_QUALITY],
     )
+
+
+def text_output(args, _channel):
+    """批内逐页合成，使峰值解码内存由单页决定。"""
+    root = Path(args["root"])
+    for job in args["pages"]:
+        _write_text_output(root, job)
 
 
 COMMANDS = {

@@ -13,6 +13,9 @@ import {
   select_image_regions,
 } from "@lg/image";
 
+const MAX_BATCH_PAGES = 10; // 素材预算允许时，与 QA 的 10 页分组对齐。
+const MAX_BATCH_BYTES = 64_000_000;
+
 /** 从同一份快照生成译图、双语双拼图和整页对照。所有目标页成功后才发布目录。 */
 export async function render_book(
   { asset_path, source, input, output, pageIds, fontSizes },
@@ -48,28 +51,21 @@ export async function render_book(
   if (existsSync(target)) throw new Error(`Image output directory already exists: ${target}`);
   await mkdir(path.dirname(target), { recursive: true });
   const stage = await mkdtemp(path.join(path.dirname(target), ".image-"));
-  const scratch = path.join(stage, "scratch");
+  const paths = { assetRoot, source, stage, scratch: path.join(stage, "scratch") };
   const files = [];
   try {
-    await mkdir(scratch);
-    for (const page of pages) {
-      const file = `${assetRoot}/${page.relativePath}`;
-      const qa = `${page.relativePath}.webp`;
-      const entries = await render_page(
-        page,
-        byPage.get(page.pageId) ?? [],
-        {
-          source,
-          scratch,
-          output: path.join(stage, "translated", file),
-          bilingual: path.join(stage, "bilingual", file),
-          qa: path.join(stage, "qa", qa),
-        },
-        pixels,
-        sizes,
-      );
-      files.push({ pageId: page.pageId, path: file, qa, entries });
-      console.log(`Image page ${files.length}/${pages.length}: ${file}`);
+    for (const batch of page_batches(pages, byPage, sizes, paths)) {
+      await mkdir(paths.scratch);
+      const layout = batch.flatMap((plan) => (plan.layout ? [plan.layout] : []));
+      if (layout.length) await pixels.layout({ root: source, pages: layout });
+      const composition = [];
+      for (const plan of batch) composition.push(await prepare_composition(plan, paths));
+      await pixels.compose({ root: source, pages: composition });
+      await rm(paths.scratch, { recursive: true });
+      for (const { report } of batch) {
+        files.push(report);
+        console.log(`Image page ${files.length}/${pages.length}: ${report.path}`);
+      }
     }
     const summary = { translated: 0, originals: 0, failures: 0 };
     for (const { entries } of files) {
@@ -79,7 +75,6 @@ export async function render_book(
         if (entry.reason) summary.failures++;
       }
     }
-    await rm(scratch, { recursive: true });
     await writeFile(
       path.join(stage, "report.json"),
       JSON.stringify({ asset_path, files, summary }, null, 2),
@@ -96,8 +91,28 @@ export async function render_book(
   }
 }
 
-/** 将当前版式的区域结果同时用于译图和 QA。 */
-async function render_page(page, records, paths, { layout, compose }, sizes) {
+/** 按页数和预估素材体积限制在途批次，超出批次预算的单页仍按原有单页限制处理。 */
+function* page_batches(pages, byPage, sizes, paths) {
+  let batch = [];
+  let bytes = 0;
+  for (const [index, page] of pages.entries()) {
+    const plan = plan_page(page, byPage.get(page.pageId) ?? [], sizes, paths, index);
+    if (
+      batch.length &&
+      (batch.length === MAX_BATCH_PAGES || bytes + plan.bytes > MAX_BATCH_BYTES)
+    ) {
+      yield batch;
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(plan);
+    bytes += plan.bytes;
+  }
+  if (batch.length) yield batch;
+}
+
+/** 从当前版式确定区域结果与待绘字清单。 */
+function plan_page(page, records, sizes, { assetRoot, scratch }, index) {
   const regions = new Map(page.regions.map((region) => [region.regionId, region]));
   const entries = [];
   const candidates = [];
@@ -122,15 +137,42 @@ async function render_page(page, records, paths, { layout, compose }, sizes) {
   }
 
   const lettering = candidates.flatMap(({ lettering }) => (lettering ? [lettering] : []));
+  const scratchBase = path.join(scratch, String(index));
+  const layout = lettering.length
+    ? { output: `${scratchBase}.lettering.json`, page, lettering }
+    : undefined;
+  // RGB 和 Base64 距离场估算暂存体积，布局请求计入预算以避免合批撑大通道帧。
+  let bytes = page.width * page.height * 3;
+  if (layout) {
+    bytes += Buffer.byteLength(JSON.stringify(layout));
+    for (const { regionId } of lettering) {
+      const [, , width, height] = regions.get(regionId).box;
+      bytes += Math.ceil((width * height * 4) / 3) * 4;
+    }
+  }
+  const report = {
+    pageId: page.pageId,
+    path: `${assetRoot}/${page.relativePath}`,
+    qa: `${page.relativePath}.webp`,
+    entries,
+  };
+  return { page, regions, candidates, layout, report, bytes, scratchBase };
+}
+
+/** 宿主按页绘字，合成所需的原图和字层在同批暂存。 */
+async function prepare_composition(
+  { page, regions, candidates, layout, report, scratchBase },
+  paths,
+) {
   const paints = new Map();
-  if (lettering.length) {
-    const material = path.join(paths.scratch, "lettering.json");
-    await layout({ root: paths.source, output: material, page, lettering });
-    for (const paint of await render_image_text_page(material)) paints.set(paint.regionId, paint);
+  if (layout) {
+    for (const paint of await render_image_text_page(layout.output))
+      paints.set(paint.regionId, paint);
   }
 
-  const layers = [];
-  for (const { region, patches, lettering, entry } of candidates) {
+  const patches = [];
+  const overlays = [];
+  for (const { region, patches: regionPatches, lettering, entry } of candidates) {
     const paint = paints.get(region.regionId);
     // 宿主漏回结果时中止，避免把待绘字的区域仅消字后发布。
     if (lettering && !paint)
@@ -140,31 +182,24 @@ async function render_page(page, records, paths, { layout, compose }, sizes) {
       continue;
     }
     if (paint) entry.fontSize = paint.fontSize;
-    const png = paint?.png;
     entry.output = "translated";
-    for (const [index, patch] of patches.entries()) {
-      // Python 先合成所有补丁，再对每个区域写字一次。
-      layers.push(
-        png && index === patches.length - 1
-          ? { patch, overlay: { box: region.box, png } }
-          : { patch },
-      );
-    }
+    patches.push(...regionPatches);
+    if (paint?.png) overlays.push({ box: region.box, png: paint.png });
   }
 
   const source = path.join(paths.source, page.original);
   const bytes = await readFile(source);
   const { extension, png } = await normalize_image_to_png(bytes);
-  const normalized = path.join(paths.scratch, "original.png");
+  const normalized = `${scratchBase}.original.png`;
   await writeFile(normalized, png);
+  const output = path.join(paths.stage, "translated", report.path);
   const job = {
-    root: paths.source,
     original: normalized,
-    bilingual: paths.bilingual,
+    bilingual: path.join(paths.stage, "bilingual", report.path),
     qa: {
-      path: paths.qa,
+      path: path.join(paths.stage, "qa", report.qa),
       maxEdge: AGENT_IMAGE_MAX_EDGE,
-      marks: entries
+      marks: report.entries
         .filter(({ reason }) => reason)
         .map(({ regionId, reason }) => ({
           regionId,
@@ -173,15 +208,14 @@ async function render_page(page, records, paths, { layout, compose }, sizes) {
         })),
     },
   };
-  if (!layers.length && (extension === ".png") === /\.png$/iu.test(paths.output)) {
-    await mkdir(path.dirname(paths.output), { recursive: true });
-    await writeFile(paths.output, bytes); // 保留原图字节，QA 使用旋正后的像素。
-  } else job.output = paths.output;
-  if (layers.length) {
+  if (!patches.length && (extension === ".png") === /\.png$/iu.test(output)) {
+    await mkdir(path.dirname(output), { recursive: true });
+    await writeFile(output, bytes); // 保留原图字节，QA 使用旋正后的像素。
+  } else job.output = output;
+  if (patches.length) {
     // 字层写入文件，避免 PNG 数据超过 Python 通道的帧上限。
-    job.layers = path.join(paths.scratch, "layers.json");
-    await writeFile(job.layers, JSON.stringify(layers));
+    job.layers = `${scratchBase}.layers.json`;
+    await writeFile(job.layers, JSON.stringify({ patches, overlays }));
   }
-  await compose(job);
-  return entries;
+  return job;
 }

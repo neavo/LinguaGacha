@@ -25,9 +25,9 @@ export type ImageWorkerConfig = {
   dictionary: string;
 }; // 传给图片单推理 Worker 线程的启动配置。
 
-let tail: Promise<unknown> = Promise.resolve(); // 串行化所有像素作业的队列尾节点。
+let tail: Promise<unknown> = Promise.resolve();
 
-/** 页操作串行，单次像素作业内按需创建并复用单个图片 Worker。纯像素命令不创建 Worker。 */
+/** 图片作业按调用顺序串行。扫描与准备在单次作业中按需创建并复用图片 Worker。 */
 export function pixels<K extends ImageHelperOperation>(
   script: URL,
   command: K,

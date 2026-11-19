@@ -33,8 +33,8 @@ def fill_holes(mask):
     return result
 
 
-def text_mask(image, selection, boxes, light_text=False):
-    """深色底上的亮字通过反色复用同一套笔画提取。"""
+def text_mask(image, selection, boxes, origin, light_text=False):
+    """在区域内提取笔画，原图坐标的文字框只平移一次。"""
     x, y, w, h = cv2.boundingRect(selection)
     crop = image[y : y + h, x : x + w]
     if light_text:
@@ -45,8 +45,9 @@ def text_mask(image, selection, boxes, light_text=False):
         np.ptp(crop.astype(np.int16), axis=2) <= WHITE_SPREAD
     )
     strokes = np.zeros_like(gray)
+    offset = np.array([origin[0] + x, origin[1] + y], np.int32)
     for points in boxes:
-        polygon = np.asarray(points, np.int32) - np.array([x, y], np.int32)
+        polygon = np.asarray(points, np.int32) - offset
         box = np.zeros_like(gray)
         cv2.fillConvexPoly(box, polygon, 255)
         support = (box > 0) & (selected > 0)
@@ -75,15 +76,19 @@ def text_mask(image, selection, boxes, light_text=False):
     return result
 
 
-def inpaint(image, mask, forward):
-    """只返回掩码像素；各区域共用原图上下文，前一区域结果不参与后一区域推理。"""
-    x, y, w, h = cv2.boundingRect(mask)
+def inpaint(image, mask, origin, forward):
+    """按局部掩码的原图坐标取上下文，返回掩码内像素。"""
+    left, top = origin
+    mx, my, w, h = cv2.boundingRect(mask)
+    x, y = left + mx, top + my
     margin = max(CONTEXT_MIN, round(max(w, h) * CONTEXT_RATIO))
     x0, y0 = max(0, x - margin), max(0, y - margin)
     x1, y1 = min(image.shape[1], x + w + margin), min(image.shape[0], y + h + margin)
     crop = image[y0:y1, x0:x1]
-    submask = mask[y0:y1, x0:x1]
     ch, cw = crop.shape[:2]
+    submask = np.zeros((ch, cw), np.uint8)
+    dx, dy = x - x0, y - y0
+    submask[dy : dy + h, dx : dx + w] = mask[my : my + h, mx : mx + w]
     scale = min(1.0, INPUT_EDGE / max(ch, cw))
     sh, sw = max(1, round(ch * scale)), max(1, round(cw * scale))
     ph, pw = (sh + STRIDE - 1) // STRIDE * STRIDE, (sw + STRIDE - 1) // STRIDE * STRIDE

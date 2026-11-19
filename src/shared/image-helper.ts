@@ -143,19 +143,28 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
     request: Type.Object(
       {
         root: Type.String(),
-        output: Type.String(),
-        page: PAGE_SCHEMA,
-        lettering: Type.Array(
+        maximumBytes: Type.Integer({ minimum: 1 }),
+        pages: Type.Array(
           Type.Object(
             {
-              regionId: IMAGE_ID_SCHEMA,
-              text: Type.String(),
-              fontSize: Type.Optional(IMAGE_FONT_SIZE_SCHEMA),
+              output: Type.String(),
+              page: PAGE_SCHEMA,
+              lettering: Type.Array(
+                Type.Object(
+                  {
+                    regionId: IMAGE_ID_SCHEMA,
+                    text: Type.String(),
+                    fontSize: Type.Optional(IMAGE_FONT_SIZE_SCHEMA),
+                  },
+                  { additionalProperties: false },
+                ),
+                { minItems: 1 },
+              ),
             },
             { additionalProperties: false },
           ),
+          { minItems: 1 },
         ),
-        maximumBytes: Type.Integer({ minimum: 1 }),
       },
       { additionalProperties: false },
     ),
@@ -165,21 +174,29 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
     request: Type.Object(
       {
         root: Type.String(),
-        original: Type.String(),
-        layers: Type.Optional(Type.String()),
-        bilingual: Type.String(),
-        qa: Type.Object({
-          path: Type.String(),
-          maxEdge: Type.Integer({ minimum: 2 }),
-          marks: Type.Array(
-            Type.Object({
-              regionId: Type.String(),
-              box: IMAGE_BOX_SCHEMA,
-              warning: Type.Boolean(),
-            }),
+        pages: Type.Array(
+          Type.Object(
+            {
+              original: Type.String(),
+              layers: Type.Optional(Type.String()),
+              bilingual: Type.String(),
+              qa: Type.Object({
+                path: Type.String(),
+                maxEdge: Type.Integer({ minimum: 2 }),
+                marks: Type.Array(
+                  Type.Object({
+                    regionId: Type.String(),
+                    box: IMAGE_BOX_SCHEMA,
+                    warning: Type.Boolean(),
+                  }),
+                ),
+              }),
+              output: Type.Optional(Type.String()),
+            },
+            { additionalProperties: false },
           ),
-        }),
-        output: Type.Optional(Type.String()),
+          { minItems: 1 },
+        ),
       },
       { additionalProperties: false },
     ),

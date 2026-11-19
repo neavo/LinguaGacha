@@ -49,23 +49,26 @@ export function read(directory) {
   return sdk.read_image_package_manifest(path.resolve(directory, "package"));
 }
 
+/** 带上归档位置与成员数。清单由工作目录的入口核对。 */
+async function write_package(directory, output) {
+  const { output_path, members } = await generic.pack(path.resolve(directory, "package"), output);
+  return { package: output_path, members };
+}
+
 /** 校验清单后封包。工程导入核对成员与像素。 */
 export async function pack(directory, output) {
-  const packageDirectory = path.join(path.resolve(directory), "package");
-  const { book } = sdk.read_image_package_manifest(packageDirectory);
-  const result = await generic.pack(packageDirectory, output);
+  const { book } = read(directory);
   return {
-    package: result.output_path,
+    ...(await write_package(directory, output)),
     pages: book.pages.length,
     items: sdk.select_image_regions(book).size,
-    members: result.members,
   };
 }
 
 /** 准备消字补丁与排版掩码，并原子封装为 .image 资产包。 */
 export async function prepareAndPack(directory, selected, output, archive, options) {
   const prepared = await prepare(directory, selected, output, options);
-  return { ...prepared, ...(await pack(prepared.directory, archive)) };
+  return { ...prepared, ...(await write_package(prepared.directory, archive)) };
 }
 
 /** 重新划分连体气泡格界，并原子封装为 .image 资产包。 */
@@ -78,5 +81,5 @@ export async function repartitionAndPack(
   options,
 ) {
   const prepared = await repartition(directory, correction, previous, output, options);
-  return { ...prepared, ...(await pack(prepared.directory, archive)) };
+  return { ...prepared, ...(await write_package(prepared.directory, archive)) };
 }

@@ -4,7 +4,6 @@ const fake = vi.hoisted(() => ({
   created: vi.fn(),
   close: vi.fn(),
   request: vi.fn(),
-  modelExists: true,
 }));
 vi.mock("../inference/client", () => ({
   InferenceClient: class {
@@ -16,7 +15,7 @@ vi.mock("../inference/client", () => ({
   },
 }));
 vi.mock("../inference/environment", () => ({ ort_entry: () => "ort", python: () => "python" }));
-vi.mock("../inference/models", () => ({ model_exists: () => fake.modelExists }));
+vi.mock("../inference/models", () => ({ model_exists: () => true }));
 vi.mock("../inference/helper", () => ({
   run_helper: async (
     _executable: string,
@@ -51,7 +50,6 @@ const scan_request = { pages: [page_spec], output: "output" };
 /** 每次测试重置模块与推理路径绑定，避免静态队列状态串扰。 */
 beforeEach(async () => {
   vi.resetModules();
-  fake.modelExists = true;
   fake.created.mockClear();
   fake.request.mockReset().mockResolvedValue({ header: {} });
   fake.close.mockReset().mockResolvedValue(undefined);
@@ -66,7 +64,6 @@ beforeEach(async () => {
 it("单次图片识别复用一个 Worker，失败后关闭，纯像素命令不启动模型", async () => {
   const { pixels } = await import("./engine");
   await pixels(script, "scan", scan_request);
-  expect(fake.request).toHaveBeenCalledTimes(3);
   expect(fake.created).toHaveBeenCalledOnce();
   expect(fake.close).toHaveBeenCalledOnce();
 
@@ -75,15 +72,17 @@ it("单次图片识别复用一个 Worker，失败后关闭，纯像素命令不
   expect(fake.created).toHaveBeenCalledTimes(2);
   expect(fake.close).toHaveBeenCalledTimes(2);
 
-  fake.modelExists = false;
   await pixels(script, "text_output", {
     root: "root",
-    original: "source.png",
-    bilingual: "out.png",
-    qa: { path: "out.webp", maxEdge: 128, marks: [] },
+    pages: [
+      {
+        original: "source.png",
+        bilingual: "out.png",
+        qa: { path: "out.webp", maxEdge: 128, marks: [] },
+      },
+    ],
   });
   expect(fake.created).toHaveBeenCalledTimes(2);
-  fake.modelExists = true;
   await pixels(script, "scan", scan_request);
   expect(fake.created).toHaveBeenCalledTimes(3);
   expect(fake.close).toHaveBeenCalledTimes(3);

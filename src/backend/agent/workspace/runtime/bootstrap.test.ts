@@ -167,7 +167,7 @@ it(
   EXECUTION_TIMEOUT_MS + RUN_TIMEOUT_MS,
 );
 
-it("图片整册出图沿用清单字号，选页试排只生成目标页", async () => {
+it("图片分批出图沿用清单字号与页序，选页试排只生成目标页", async () => {
   const fixture = image_fixture(["saved", "override", "auto", "failed"]);
   for (const page of fixture.book.pages) page.regions[0]!.fontSize = 18;
   const directory = path.join(workspace, "work/image-layout");
@@ -198,7 +198,7 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
     `
     import { render_book } from '../image-layout/render.mjs';
     import assert from 'node:assert/strict';
-    import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+    import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
     import path from 'node:path';
     const options = {
       asset_path: 'book.image',
@@ -211,16 +211,26 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
         { pageId: 'failed', regionId: 'text', fontSize: 100 },
       ],
     };
+    const layoutBatches = [], compositionBatches = [];
     const pixels = {
-      layout: ({ output, lettering }) => writeFile(output, JSON.stringify(lettering.map(value => ({
-        ...value, size: [1, 1], distance: 'AAAAAA==', direction: 'vertical-rl',
-        backgroundColor: [255, 255, 255],
-      })))),
-      compose: async ({ original, output, bilingual, qa }) => {
-        for (const file of [qa.path, bilingual, output]) {
-          if (!file) continue;
-          await mkdir(path.dirname(file), { recursive: true });
-          await copyFile(original, file);
+      layout: async ({ pages }) => {
+        layoutBatches.push(pages.length);
+        for (const { output, lettering } of pages) {
+          await writeFile(output, JSON.stringify(lettering.map(value => ({
+            ...value, size: [1, 1], distance: 'AAAAAA==', direction: 'vertical-rl',
+            backgroundColor: [255, 255, 255],
+          }))));
+        }
+      },
+      compose: async ({ pages }) => {
+        compositionBatches.push(pages.length);
+        assert.equal(new Set(pages.map(job => job.original)).size, pages.length);
+        for (const { original, output, bilingual, qa } of pages) {
+          for (const file of [qa.path, bilingual, output]) {
+            if (!file) continue;
+            await mkdir(path.dirname(file), { recursive: true });
+            await copyFile(original, file);
+          }
         }
       },
     };
@@ -232,6 +242,8 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
       ['auto', [{ regionId: 'text', output: 'translated', fontSize: 16 }]],
       ['failed', [{ regionId: 'text', output: 'original', reason: 'layout_no_fit' }]],
     ]);
+    assert(layoutBatches.some(size => size > 1), 'Lettering requests should include multiple pages');
+    assert(compositionBatches.some(size => size > 1), 'Composition requests should include multiple pages');
     const preview = await render_book({
       ...options,
       output: 'work/image-layout/preview',
@@ -242,6 +254,15 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
     assert.deepEqual((await readdir(path.join(preview.output_path, 'book'))).sort(), ['auto.png', 'saved.png']);
     assert.deepEqual((await readdir(path.join(preview.bilingual_output_path, 'book'))).sort(), ['auto.png', 'saved.png']);
     assert.deepEqual((await readdir(preview.qa_path)).sort(), ['auto.png.webp', 'saved.png.webp']);
+    const failedOutput = 'work/image-layout/failed-output';
+    await assert.rejects(render_book({ ...options, output: failedOutput }, {
+      ...pixels,
+      compose: async job => {
+        await pixels.compose({ pages: job.pages.slice(0, 1) });
+        throw new Error('Composition failed');
+      },
+    }), /Composition failed/);
+    await assert.rejects(stat(failedOutput), { code: 'ENOENT' });
     for (const pageIds of [[], ['missing'], ['saved', 'saved']]) {
       await assert.rejects(render_book({ ...options, output: 'work/image-layout/invalid', pageIds }, pixels), /page/i);
     }
