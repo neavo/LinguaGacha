@@ -34,6 +34,8 @@ description: 翻译、审校、分析、修改图片文件（含 .image 文件�
 
 ## 环境与设备
 
+提醒用户「使用 Gemini 等视觉能力较强的模型以获得更佳效果」
+
 从 `read_skill` 返回的 `base_url` 动态导入脚本：
 
 ```js
@@ -41,7 +43,7 @@ const image = await import(new URL('scripts/image.mjs', base_url).href);
 console.log(JSON.stringify({ missing: image.missing_models() }));
 ```
 
-- 发现缺口时，告知用户：「首次使用需要下载约 300 MB 的依赖与模型，后续重复使用」。
+- 发现缺口时，告知用户「首次使用需要下载约 300 MB 的依赖与模型，后续重复使用」
 - 调用工具安装依赖并下载权重：
 
 ```js
@@ -112,6 +114,7 @@ console.log(packed);
   - 译文保留显式换行与空格，成图时强制断行。
   - 软换行由排版引擎自动计算，仅在需要固定分行时显式换行。
   - 纯空白译文视为空译文，成图时仅消字不写字。
+- **竖排问叹号**：自动使用纵中横（连续符号整组占一格），译文正常书写即可。
 - **连体气泡**：依照阅读流向通读上下文，保证语意连贯。
 
 ## 旧包解包与维护
@@ -130,52 +133,77 @@ const { book, records } = await image.read(unpacked.directory);
 
 ## 写回成图
 
-提交本次变更后，在同一次 `workspace_run` 中调用 `generateFiles(bilingual_files)`，再逐个处理 `writeback.files` 中的图片资产。
+提交变更后，在同一次 `workspace_run` 中调用 `generateFiles(bilingual_files)` 取得整册写回快照，再处理 `writeback.files` 中的图片资产。
+
+`image.render(options)` 调用参数：
+
+|字段|必填|说明|
+|---|---|---|
+|`asset_path`|是|工程中以 `.image` 结尾的资产路径|
+|`source`|是|原稿投影目录，通常为 `sources/<asset_path>`|
+|`input`|是|`generateFiles` 生成的整册写回文件 `items.json`|
+|`output`|是|本次成图输出目录（须尚未存在）|
+|`pageIds`|否|目标页面 `pageId` 数组；指定时仅出指定页，省略时生成整册|
+|`fontSizes`|否|字号临时覆盖项 `[{ pageId, regionId, fontSize }]`|
+
+- **整册出图**：首次集中 QA 与最终交付省略 `pageIds`。
+- **选页复核**：局部修复或试排时传入受影响的 `pageIds`，避免重复生成整册。
 
 ```js
 import path from "node:path";
 import { generateFiles } from "@lg/project";
 const image = await import(new URL("scripts/image.mjs", base_url).href);
 const generated = await generateFiles(bilingual_files);
+
+// 首次 QA / 最终交付：生成整册
 for (const asset of generated.writeback?.files ?? []) {
   if (!/\.image$/iu.test(asset)) continue;
-  console.log(await image.render({
+  await image.render({
     asset_path: asset,
     source: path.join("sources", asset),
     input: path.join(generated.writeback.input_path, asset, "items.json"),
     output: path.join(path.dirname(generated.output_path), "image", asset),
-  }));
+  });
 }
+
+// 局部修复后复核：仅生成受影响页
+const preview = await image.render({
+  asset_path: asset,
+  source: path.join("sources", asset),
+  input: path.join(generated.writeback.input_path, asset, "items.json"),
+  output: path.join(path.dirname(generated.output_path), "image-preview", asset),
+  pageIds: affectedPageIds,
+});
 ```
 
-`image.render()` 在输出目录下生成译图、双拼对照图及 `report.json` 质控报告，供后续集中复核与交付使用。
+成图后在输出目录下生成译图、双拼对照图及 `report.json`。
 
 ## QA 集中视觉复核
 
 **这是全流程唯一允许看图的阶段**，导出成图后，整页逐页集中看图核验：
 
-1. 使用「写回成图」中 `image.render()` 同时生成的双拼图和报告。
+1. 使用「写回成图」中 `image.render()` 生成的双拼图和报告。
 2. 读取每册 `report.path` 指向的报告，将每页的 `files[].qa` 相对路径与 `qa_path` 拼接得到图片路径。
 3. 逐页打开整页双拼图，一并核验图面质量与译文，严禁局部切片或放大。
 4. 审查图面标记：
    - **左原右译**：左侧为原图，右侧为译图。
    - **黄色标记框**：表示当前区域处于待译状态。
    - **红色标记框**：表示当前区域异常保留原图（消字失败或排版失败），查阅报告并按速查表处理。
-5. **终结条件**：整页质控无异常时直接交付，发现瑕疵时按速查表修复。
+5. **终结条件**：整页质控无异常时直接交付，发现瑕疵时按速查表修复并选页复核。
 
 ## 质控速查
 
-发现视觉瑕疵时，对照下表采取相应动作：
+发现视觉瑕疵时，对照下表采取相应动作。局部修复取得最新快照后，传入对应 `pageIds` 选页成图复核，无需重复整册出图：
 
 |观察到的图面现象|判定原因|处理动作|
 |---|---|---|
-|红色框保留原图且报告提示 `layout_no_fit`|排版放不下（字数过多、断行不当或字号过大）|按「字号与排版微调」调整断行/字数，或试调字号后重新出图；复杂连体气泡转分格流程|
-|消字处有残字、网点破损，或报告提示 `erase_failed`|背景复杂填色失效|对受损区域调用 `prepareAndPack` 补做轮廓填字（仅修消字，不扩展排版空间）|
+|红色框保留原图且报告提示 `layout_no_fit`|排版放不下（字数过多、断行不当或字号过大）|按「字号与排版微调」调整断行/字数，或针对该页试排字号；复杂连体气泡转分格|
+|消字处有残字、网点破损，或明显的涂抹、图形错误，或报告提示 `erase_failed`|背景复杂消字效果差|对受损区域调用 `prepareAndPack` 补做轮廓填色作为文字背景|
 |画面有多个气泡，文字却挤在其中一侧|连体气泡未分格排版|按「已知格界的气泡拆合」切换为分格排版，替换资产后补译|
-|黄色框标出且图上仍为原文|条目遗漏翻译（处于待译）|补齐对应条目译文后重新出图|
-|关键文字保留原图未翻译|无框文字默认未启用|按「启用无框文字」将条目设为 `NONE`，补齐译文后重新出图|
-|页边广告、纯装饰字被擦除或残缺|误擦除无需翻译区域|在工程中将条目设为 `EXCLUDED` 后重新生成|
-|对照双拼发现 OCR 文本明显有错漏|OCR 识别偏差|更新对应条目的原文与译文，重新生成译图|
+|黄色框标出且图上仍为原文|条目遗漏翻译（处于待译）|补齐对应条目译文|
+|关键文字保留原图未翻译|无框文字默认未启用|按「启用无框文字」将条目设为 `NONE` 并补译|
+|页边广告、纯装饰字被擦除或残缺|误擦除无需翻译区域|在工程中将条目设为 `EXCLUDED`|
+|对照双拼发现 OCR 文本明显有错漏|OCR 识别偏差|更新对应条目的原文与译文|
 
 ## 异常修复分支
 
@@ -198,7 +226,7 @@ for (const asset of generated.writeback?.files ?? []) {
    - 工程自动按物理区域继承已有译文。
 3. **补译受影响条目**：
    - 读取最新工程快照，补齐新出现的 `NONE` 待译条目。
-   - 重新执行写回成图并复核该页。
+   - 传入受影响页的 `pageIds` 选页成图并复核。
 
 ### 2. 重新划分格界与封包
 
@@ -226,9 +254,8 @@ for (const asset of generated.writeback?.files ?? []) {
    );
    ```
 3. **替换资产与补译**：
-   以返回的 `result.package` 按 `project-operation` 的 `files.replaces`（「更新文件」）提交。
-   核对回执，补译受影响条目并复查该页。
-   **保留 `scanDir` 和最新准备目录至 QA 完成**，供后续局部纠错复用。
+   - 按 `files.replaces` 提交资产替换并补译，传入对应 `pageIds` 选页成图复核。
+   - **保留 `scanDir` 和最新准备目录至 QA 完成**，供后续局部纠错复用。
 
 ### 3. 补做轮廓填字与封包
 
@@ -246,7 +273,7 @@ for (const asset of generated.writeback?.files ?? []) {
    );
    ```
    （若此前曾做过连体气泡纠错，`update` 传入最新一次成功的准备目录；若仅重试封包，可直接传本次已成功的准备目录）。
-3. **提交更新**：按 `files.replaces` 提交，重新生成并核验新补丁的对比度与消字质量。
+3. **提交更新**：按 `files.replaces` 提交资产替换，传入受影响页的 `pageIds` 选页成图复核消字质量。
 
 ### 4. 字号与排版微调
 
@@ -254,21 +281,22 @@ for (const asset of generated.writeback?.files ?? []) {
 
 1. **排版与断行微调**：
    - 显式换行符与空格直接进入排版并强制断行。
-   - 在译文条目中调整换行位置或精简措辞，重新出图复核。
+   - 在译文条目中调整换行位置或精简措辞，传入对应 `pageIds` 选页复核。
 2. **字号试排（快速验证）**：
-   - 在 `image.render()` 中传入 `fontSizes` 临时覆盖字号（原图像素整数，≥4；传入 `null` 临时恢复自动计算）：
+   - 同时传入 `pageIds` 与 `fontSizes` 临时覆盖字号（原图像素整数，≥4；`null` 恢复自动）：
      ```js
      await image.render({
        asset_path: 'book.image',
        source: 'sources/book.image',
        input: path.join(generated.writeback.input_path, 'book.image', 'items.json'),
        output: 'work/image/preview',
+       pageIds: [pageId],
        fontSizes: [{ pageId, regionId, fontSize: 18 }],
      });
      ```
-   - 试排仅在临时输出目录生成译图与报告，便于快速比对效果，不改动工程与资产。
+   - 仅在临时目录生成目标页预览，便于快速比对，不改动工程与资产。
 3. **固化字号（随资产持久保存）**：
-   - 试排满意且需要跨会话持久复现时，将确认字号写入准备目录（或解包目录）：
+   - 试排满意且需持久复现时，写入准备目录（或解包目录）并封包提交：
      ```js
      image.setFontSizes(preparedDir, [{ pageId, regionId, fontSize: 18 }]);
      await image.pack(preparedDir, 'work/image/book.image');
@@ -281,14 +309,16 @@ for (const asset of generated.writeback?.files ?? []) {
 - 文字承担角色对白、独白、旁白或正文功能。
 - 文字为章节标题或关卡名称。
 - 读者理解剧情转折或场景切换所必需的关键线索。
-- *氛围艺术字、拟音词默认不翻译；拿不准时保留原图*。
+- **氛围艺术字、拟音词默认不翻译，拿不准时保留原图**
 
-启用时通过常规条目更新将对应条目设为 `NONE`，补齐译文后重新出图。
+启用时通过常规条目更新将对应条目设为 `NONE` 并补译，传入目标 `pageIds` 选页成图复核。
 
 # 交付说明
 
+交付成果须来自省略 `pageIds` 的最新整册出图（局部预览仅用于中间调试）。
+
 交付汇报时，按下述结构向用户说明成果与质控事实：
 
-- **基本产物**：输出目录路径、总生成页数与区域统计。
+- **基本产物**：输出目录路径、总生成页数与区域统计（取自整册 `report.json`）。
 - **异常区域说明**：按页列出未翻译、消字失败或写字失败的区域编号与报告原因。
-- **质控复核记录**：说明 QA 视觉复核的抽查/覆盖范围及修复的问题；若因环境受限未查看成图，如实说明。
+- **质控复核记录**：说明 QA 视觉复核的覆盖范围及修复的问题；若因环境受限未查看成图，如实说明。

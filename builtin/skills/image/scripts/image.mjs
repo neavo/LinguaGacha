@@ -31,7 +31,7 @@ export function setFontSizes(directory, fontSizes) {
   sdk.set_image_font_sizes(directory, fontSizes);
 }
 
-/** 渲染整册译图，原子生成译图、QA 对照图与 report.json 报告。 */
+/** 原子生成译图、QA 对照图与 report.json 报告，默认渲染整册。 */
 export function render(options) {
   return render_book(options, pipeline);
 }

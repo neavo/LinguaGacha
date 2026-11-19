@@ -69,11 +69,8 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
                   [
                     'Array.from(document.querySelectorAll("body > div > span"), line => {',
                     '  const font = getComputedStyle(line);',
-                    '  const canvas = document.createElement("canvas").getContext("2d");',
-                    '  canvas.font = font.fontSize + " " + font.fontFamily;',
                     '  const marks = Array.from(line.children, mark => ({',
                     '    text: mark.textContent, advance: mark.getBoundingClientRect().height,',
-                    '    horizontal: canvas.measureText(mark.textContent).width',
                     '  }));',
                     '  return { text: line.textContent, size: parseFloat(font.fontSize), top: parseFloat(line.style.top), marks };',
                     '})',
@@ -122,22 +119,33 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
             assert(lines.every(line => line.top === lines[0].top), 'Columns in the same paragraph should share a top: '+JSON.stringify(lines));
           }
 
-          const adjusted = page('vertical-rl','  甲　乙⁉\\n\\n丙丁戊己庚辛', [255,255,255], 164, 140);
+          const adjusted = page('vertical-rl','  甲　！？乙⁉\\n\\n丙丁戊己庚辛？', [255,255,255], 164, 156);
           adjusted.page[0].fontSize = 24;
           adjusted.page.push({...adjusted.page[0],regionId:'too-large',fontSize:100});
+          // 气泡只有一列两格，连续问叹号必须在测量时就合为一格才能放下。
+          const narrow = page('vertical-rl','甲！！！！', [255,255,255], 44, 70).page[0];
+          adjusted.page.push({...narrow,regionId:'narrow',fontSize:24});
           layouts = [];
-          const [fixed, tooLarge] = await host(adjusted);
+          const [fixed, tooLarge, combined] = await host(adjusted);
           assert(fixed.png);
           assert.equal(tooLarge.png, null);
-          const [fixedColumns] = layouts;
+          assert(combined.png, 'A punctuation run should fit in one cell');
+          const [fixedColumns, narrowColumns] = layouts;
           layouts = undefined;
-          assert.deepEqual(fixedColumns.slice(0, 2).map(({text}) => text), ['  甲　乙⁉', '']);
-          assert(fixedColumns.length >= 4, 'Text after hard breaks can still wrap');
-          assert.equal(fixedColumns.slice(2).map(({text}) => text).join(''), '丙丁戊己庚辛');
+          const blank = fixedColumns.findIndex(({text}) => text === '');
+          assert(blank > 0, 'Explicit empty lines are kept');
+          assert.equal(fixedColumns.slice(0, blank).map(({text}) => text).join(''), '  甲　！？乙⁉');
+          assert(fixedColumns.length > blank + 2, 'Text after hard breaks can still wrap');
+          assert.equal(fixedColumns.slice(blank + 1).map(({text}) => text).join(''), '丙丁戊己庚辛？');
           assert(fixedColumns.every(({size}) => size === 24));
-          const [mark] = fixedColumns[0].marks;
-          assert.equal(mark?.text, '⁉');
-          assert(Math.abs(mark.advance - mark.horizontal) < 1, 'Rotated marks use the horizontal glyph advance');
+          const marks = [...fixedColumns, ...narrowColumns].flatMap(line => line.marks);
+          assert.deepEqual(marks.map(({text}) => text), ['！？', '⁉', '？', '！！！！']);
+          assert(marks.every(({advance}) => Math.abs(advance - 24) < 1), 'Each mark group occupies one vertical cell');
+          const report = ${JSON.stringify(report)};
+          if(report) {
+            await fs.writeFile(report+'/vertical-marks.png',Buffer.from(fixed.png,'base64'));
+            await fs.writeFile(report+'/vertical-narrow-marks.png',Buffer.from(combined.png,'base64'));
+          }
 
           assert.equal(BrowserWindow.getAllWindows().length,0);
           rejectNextCapture=true;

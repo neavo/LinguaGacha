@@ -13,6 +13,8 @@ const FONT_PROBES = 32;
 const BALANCE_SLACK_EM = [0.5, 1, undefined] as const;
 const MAX_SHORT_COLUMN = 2;
 const ALIGNMENT_TOLERANCE_PX = 1;
+const QUESTION_EXCLAMATION_RUN = /[?!？！⁇⁈⁉‼]+/gu;
+const COMBINED_MARK_CELL = "！";
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 type PreparedText = ReturnType<typeof prepareWithSegments>;
@@ -24,6 +26,11 @@ type PlannedLine = {
   paragraphStart: boolean;
 };
 type PlannedRegion = { fontSize: number; lines: PlannedLine[] };
+type LinePart = { text: string; combined?: true };
+type PlacedText = {
+  fontSize: number;
+  lines: (Pick<PlannedLine, "slot" | "inlineStart"> & { parts: LinePart[] })[];
+};
 type Reading = { topGap: number; shortEdges: number };
 type Candidate = { plan: PlannedRegion; reading: Reading };
 const GOOD_READING: Readonly<Reading> = { topGap: 0, shortEdges: 0 };
@@ -157,13 +164,21 @@ function flow_stack(
 export function plan_image_text(
   region: ImageTextRegion,
   distance: Float32Array,
-): PlannedRegion | undefined {
+): PlacedText | undefined {
   const slots = image_text_slots(region, distance);
   const minimum = region.fontSize ?? RULES.minimumFontSize;
   const maximum = region.fontSize ?? slots.maximumFontSize; // 固定字号只试一个值。
   if (minimum > slots.maximumFontSize) return undefined;
-  const maximumLines = region.text.length;
   const vertical = region.direction === "vertical-rl";
+  const marks: string[] = [];
+  // 全角叹号让纵中横组按一个字宽参与 Pretext 测量，并沿用闭合标点的断行规则。
+  const layoutText = vertical
+    ? region.text.replace(QUESTION_EXCLAMATION_RUN, (mark) => {
+        marks.push(mark);
+        return COMBINED_MARK_CELL;
+      })
+    : region.text;
+  const maximumLines = layoutText.length;
   const prepared = new Map<number, { text: PreparedText; length: number }>(); // 偏移搜索复用测量。
   const best: { candidate?: Candidate & { distance: number } } = {};
   for (const search of [false, true]) {
@@ -174,7 +189,7 @@ export function plan_image_text(
       let measurement = prepared.get(size);
       if (!measurement) {
         // 已保存的换行是硬断点，额外的软换行由当前行带宽度决定。
-        const text = prepareWithSegments(region.text, size + "px ImageText", {
+        const text = prepareWithSegments(layoutText, size + "px ImageText", {
           whiteSpace: "pre-wrap",
         });
         let length = 0;
@@ -222,5 +237,24 @@ export function plan_image_text(
     }
     if (best.candidate && compare_reading(best.candidate.reading, GOOD_READING) === 0) break;
   }
-  return best.candidate?.plan;
+  const plan = best.candidate?.plan;
+  if (!plan) return undefined;
+  let markIndex = 0;
+  return {
+    fontSize: plan.fontSize,
+    lines: plan.lines.map(({ text, slot, inlineStart }) => ({
+      slot,
+      inlineStart,
+      // 按阅读顺序取回原标点，每个占位符对应一个待绘制的纵中横组。
+      parts: marks.length
+        ? text
+            .split(COMBINED_MARK_CELL)
+            .flatMap<LinePart>((plain, index) =>
+              index === 0
+                ? [{ text: plain }]
+                : [{ text: marks[markIndex++]!, combined: true }, { text: plain }],
+            )
+        : [{ text }],
+    })),
+  };
 }

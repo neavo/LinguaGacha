@@ -167,7 +167,7 @@ it(
   EXECUTION_TIMEOUT_MS + RUN_TIMEOUT_MS,
 );
 
-it("图片出图沿用清单字号，试排可更换字号或恢复自动", async () => {
+it("图片整册出图沿用清单字号，选页试排只生成目标页", async () => {
   const fixture = image_fixture(["saved", "override", "auto"]);
   for (const page of fixture.book.pages) page.regions[0]!.fontSize = 18;
   const directory = path.join(workspace, "work/image-layout");
@@ -198,8 +198,9 @@ it("图片出图沿用清单字号，试排可更换字号或恢复自动", asyn
     `
     import { render_book } from '../image-layout/render.mjs';
     import assert from 'node:assert/strict';
-    import { readFile, writeFile } from 'node:fs/promises';
-    const { report } = await render_book({
+    import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    const options = {
       asset_path: 'book.image',
       source: 'work/image-layout/source',
       input: 'work/image-layout/writeback.json',
@@ -208,15 +209,32 @@ it("图片出图沿用清单字号，试排可更换字号或恢复自动", asyn
         { pageId: 'override', regionId: 'text', fontSize: 21 },
         { pageId: 'auto', regionId: 'text', fontSize: null },
       ],
-    }, {
+    };
+    const pixels = {
       layout: ({ output, lettering }) => writeFile(output, JSON.stringify(lettering.map(value => ({
         ...value, size: [1, 1], distance: 'AAAAAA==', direction: 'vertical-rl',
         backgroundColor: [255, 255, 255],
       })))),
-      compose: async () => {},
-    });
+      compose: async ({ original, qa }) => {
+        await mkdir(path.dirname(qa.path), { recursive: true });
+        await copyFile(original, qa.path);
+      },
+    };
+    const { report } = await render_book(options, pixels);
     const { files } = JSON.parse(await readFile(report.path, 'utf8'));
     assert.deepEqual(files.map(({ pageId }) => pageId), ['saved', 'override', 'auto']);
+    const preview = await render_book({
+      ...options,
+      output: 'work/image-layout/preview',
+      pageIds: ['auto', 'saved'],
+    }, pixels);
+    const previewReport = JSON.parse(await readFile(preview.report.path, 'utf8'));
+    assert.deepEqual(previewReport.files, [files[0], files[2]]);
+    assert.deepEqual((await readdir(path.join(preview.output_path, 'book'))).sort(), ['auto.png', 'saved.png']);
+    assert.deepEqual((await readdir(preview.qa_path)).sort(), ['auto.png.webp', 'saved.png.webp']);
+    for (const pageIds of [[], ['missing'], ['saved', 'saved']]) {
+      await assert.rejects(render_book({ ...options, output: 'work/image-layout/invalid', pageIds }, pixels), /page/i);
+    }
   `,
     undefined,
     undefined,
@@ -231,7 +249,7 @@ it("图片出图沿用清单字号，试排可更换字号或恢复自动", asyn
       }),
     },
   );
-  expect(sizes).toEqual([18, 21, undefined]);
+  expect(sizes).toEqual([18, 21, undefined, 18, undefined]);
 });
 
 it("停止绘字脚本时向宿主传递取消并等待窗口收尾", async () => {

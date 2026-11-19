@@ -7,8 +7,6 @@ import {
 } from "../shared/image-text";
 import { plan_image_text } from "./image-text-plan";
 
-const SIDEWAYS_MARKS = /([?!？！⁇⁈⁉‼]+)/u;
-
 /** main 按区域尺寸设置视口并捕获透明截图。 */
 export type ImageTextCapture = { width: number; height: number };
 
@@ -66,22 +64,20 @@ export async function* render_page(
     for (const line of planned.lines) {
       const element = document.createElement("span");
       element.style.position = "absolute";
-      if (region.direction === "vertical-rl") {
-        // 横排字形旋转后沿竖排方向使用同一个 advance，和 Pretext 的测量一致。
-        for (const [index, text] of line.text.split(SIDEWAYS_MARKS).entries()) {
-          if (index % 2 === 0) {
-            element.append(text);
-          } else {
-            const mark = document.createElement("span");
-            mark.style.textOrientation = "sideways";
-            mark.textContent = text;
-            element.append(mark);
-          }
+      for (const part of line.parts) {
+        if (part.combined) {
+          const mark = document.createElement("span");
+          mark.style.textCombineUpright = "all";
+          mark.textContent = part.text;
+          element.append(mark);
+        } else {
+          element.append(part.text);
         }
+      }
+      if (region.direction === "vertical-rl") {
         element.style.left = width - line.slot.blockStart - planned.fontSize + "px";
         element.style.top = line.inlineStart + "px";
       } else {
-        element.textContent = line.text;
         element.style.left = line.inlineStart + "px";
         element.style.top = line.slot.blockStart + "px";
       }

@@ -13,11 +13,22 @@ import {
   select_image_regions,
 } from "@lg/image";
 
-/** 从同一份快照生成译图和整页对照。整册成功后才发布目录。 */
-export async function render_book({ asset_path, source, input, output, fontSizes }, pixels) {
+/** 从同一份快照生成译图和整页对照。所有目标页成功后才发布目录。 */
+export async function render_book(
+  { asset_path, source, input, output, pageIds, fontSizes },
+  pixels,
+) {
   if (!/\.image$/iu.test(asset_path)) throw new Error("Expected an .image asset path");
   const assetRoot = asset_path.replaceAll("\\", "/").slice(0, -".image".length);
   const { book, records } = read_image_package_manifest(source);
+  let pages = book.pages;
+  if (pageIds !== undefined) {
+    if (!Array.isArray(pageIds) || pageIds.length === 0)
+      throw new Error("Expected a non-empty array of image page IDs");
+    const requested = new Set(pageIds);
+    pages = pages.filter((page) => requested.has(page.pageId));
+    if (pages.length !== pageIds.length) throw new Error("Unknown or duplicate image page ID");
+  }
   const selected = select_image_regions(book); // 按原稿顺序核对当前版式的写回记录。
   const writeback = read_image_writeback(
     JSON.parse(await readFile(input, "utf8")),
@@ -28,7 +39,7 @@ export async function render_book({ asset_path, source, input, output, fontSizes
   // QA 追加扩展名后可能产生译图目录里没有的文件与目录冲突。
   const outputPaths = new ProjectAssetPathIndex();
   const qaPaths = new ProjectAssetPathIndex();
-  for (const { relativePath } of book.pages) {
+  for (const { relativePath } of pages) {
     outputPaths.add(`${assetRoot}/${relativePath}`);
     qaPaths.add(`${relativePath}.webp`);
   }
@@ -41,7 +52,7 @@ export async function render_book({ asset_path, source, input, output, fontSizes
   const files = [];
   try {
     await mkdir(scratch);
-    for (const page of book.pages) {
+    for (const page of pages) {
       const file = `${assetRoot}/${page.relativePath}`;
       const qa = `${page.relativePath}.webp`;
       const entries = await render_page(
@@ -57,7 +68,7 @@ export async function render_book({ asset_path, source, input, output, fontSizes
         sizes,
       );
       files.push({ pageId: page.pageId, path: file, qa, entries });
-      console.log(`Image page ${files.length}/${book.pages.length}: ${file}`);
+      console.log(`Image page ${files.length}/${pages.length}: ${file}`);
     }
     const summary = { translated: 0, originals: 0, failures: 0 };
     for (const { entries } of files) {
