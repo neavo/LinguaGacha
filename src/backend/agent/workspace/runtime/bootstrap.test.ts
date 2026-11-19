@@ -216,8 +216,8 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
         ...value, size: [1, 1], distance: 'AAAAAA==', direction: 'vertical-rl',
         backgroundColor: [255, 255, 255],
       })))),
-      compose: async ({ original, output, qa }) => {
-        for (const file of [qa.path, output]) {
+      compose: async ({ original, output, bilingual, qa }) => {
+        for (const file of [qa.path, bilingual, output]) {
           if (!file) continue;
           await mkdir(path.dirname(file), { recursive: true });
           await copyFile(original, file);
@@ -240,6 +240,7 @@ it("图片整册出图沿用清单字号，选页试排只生成目标页", asyn
     const previewReport = JSON.parse(await readFile(preview.report.path, 'utf8'));
     assert.deepEqual(previewReport.files, [files[0], files[2]]);
     assert.deepEqual((await readdir(path.join(preview.output_path, 'book'))).sort(), ['auto.png', 'saved.png']);
+    assert.deepEqual((await readdir(path.join(preview.bilingual_output_path, 'book'))).sort(), ['auto.png', 'saved.png']);
     assert.deepEqual((await readdir(preview.qa_path)).sort(), ['auto.png.webp', 'saved.png.webp']);
     for (const pageIds of [[], ['missing'], ['saved', 'saved']]) {
       await assert.rejects(render_book({ ...options, output: 'work/image-layout/invalid', pageIds }, pixels), /page/i);

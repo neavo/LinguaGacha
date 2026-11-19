@@ -13,7 +13,7 @@ import {
   select_image_regions,
 } from "@lg/image";
 
-/** 从同一份快照生成译图和整页对照。所有目标页成功后才发布目录。 */
+/** 从同一份快照生成译图、双语双拼图和整页对照。所有目标页成功后才发布目录。 */
 export async function render_book(
   { asset_path, source, input, output, pageIds, fontSizes },
   pixels,
@@ -62,6 +62,7 @@ export async function render_book(
           source,
           scratch,
           output: path.join(stage, "translated", file),
+          bilingual: path.join(stage, "bilingual", file),
           qa: path.join(stage, "qa", qa),
         },
         pixels,
@@ -86,6 +87,7 @@ export async function render_book(
     await rename(stage, target);
     return {
       output_path: path.join(target, "translated"),
+      bilingual_output_path: path.join(target, "bilingual"),
       qa_path: path.join(target, "qa"),
       report: { path: path.join(target, "report.json"), pages: files.length, summary },
     };
@@ -158,6 +160,7 @@ async function render_page(page, records, paths, { layout, compose }, sizes) {
   const job = {
     root: paths.source,
     original: normalized,
+    bilingual: paths.bilingual,
     qa: {
       path: paths.qa,
       maxEdge: AGENT_IMAGE_MAX_EDGE,

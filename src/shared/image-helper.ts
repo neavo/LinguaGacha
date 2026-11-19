@@ -167,6 +167,7 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
         root: Type.String(),
         original: Type.String(),
         layers: Type.Optional(Type.String()),
+        bilingual: Type.String(),
         qa: Type.Object({
           path: Type.String(),
           maxEdge: Type.Integer({ minimum: 2 }),
@@ -182,7 +183,7 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
       },
       { additionalProperties: false },
     ),
-    response: Type.Null(), // 调用方已指定译图和 QA 的落盘路径。
+    response: Type.Null(), // 调用方已指定译图、双语图和 QA 的落盘路径。
   },
 } as const satisfies Record<string, { request: TSchema; response: TSchema }>;
 

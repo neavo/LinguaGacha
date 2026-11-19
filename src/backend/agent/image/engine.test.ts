@@ -79,6 +79,7 @@ it("单次图片识别复用一个 Worker，失败后关闭，纯像素命令不
   await pixels(script, "text_output", {
     root: "root",
     original: "source.png",
+    bilingual: "out.png",
     qa: { path: "out.webp", maxEdge: 128, marks: [] },
   });
   expect(fake.created).toHaveBeenCalledTimes(2);

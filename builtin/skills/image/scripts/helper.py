@@ -1239,24 +1239,33 @@ def _qa_preview(original, translated, qa):
     return np.concatenate((original, translated), axis=1)
 
 
+def _save_output_image(file, image):
+    """按目标扩展名写出交付级图片，返回规范化后的扩展名。"""
+    extension = Path(file).suffix.lower()
+    if extension not in (".png", ".jpg", ".jpeg"):
+        raise ValueError("Unsupported image output format")
+    if extension == ".png":
+        save(file, image)
+    else:
+        save(file, image, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
+    return extension
+
+
 def text_output(args, _channel):
-    """每页只合成一次，QA 右侧使用实际写出的译图。"""
+    """每页只合成一次，同时写出译图、双语双拼图与 QA 对照图。"""
     root = Path(args["root"])
     original = read_image(args["original"])
-    layers, output, qa = args.get("layers"), args.get("output"), args["qa"]
+    layers, output = args.get("layers"), args.get("output")
+    bilingual, qa = args["bilingual"], args["qa"]
     translated = original
     if layers is not None:
         translated = original.copy()
         _compose_text(translated, layers, root)
+    # 双语双拼图直接使用内存中的原图与译图，避免 JPEG 二次压缩。
+    _save_output_image(bilingual, np.concatenate((original, translated), axis=1))
     if output is not None:
         # 写出的 JPEG 已旋正，QA 读回编码后的像素。
-        extension = Path(output).suffix.lower()
-        if extension not in (".png", ".jpg", ".jpeg"):
-            raise ValueError("Unsupported image output format")
-        if extension == ".png":
-            save(output, translated)
-        else:
-            save(output, translated, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
+        if _save_output_image(output, translated) != ".png":
             translated = read_image(output)
     save(
         qa["path"],
