@@ -29,7 +29,6 @@ import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
-import { INFERENCE_DEPENDENCIES } from "../../inference/environment";
 import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { png_fixture } from "../../../../test/media-fixture";
 import { create_image_text_renderer } from "../../tools/render-image-text";
@@ -148,16 +147,12 @@ it(
   async () => {
     const source = path.join(workspace, "work/sheet-source.png");
     await writeFile(source, png_fixture());
-    const dependencies = [
-      `numpy==${INFERENCE_DEPENDENCIES.numpy}`,
-      `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`,
-    ];
     await run(
       `
         import { sheets } from "@lg/media";
         import { uv } from "@lg/uv";
         import assert from "node:assert/strict";
-        await uv.run(["add", ...${JSON.stringify(dependencies)}, "--default-index", "https://pypi.org/simple"]);
+        await uv.run(["add", "numpy==2.5.5", "opencv-python-headless==5.1.0.95", "--default-index", "https://pypi.org/simple"]);
         const result = await sheets([{ id: 7, start: 0, file: "work/sheet-source.png" }], "work/sheets");
         assert.deepEqual(result.map(sheet => sheet.ids), [[7]]);
       `,

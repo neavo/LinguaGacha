@@ -17,7 +17,6 @@ import {
 } from "../../../shared/image-package";
 import { IMAGE_STATE_MEMBER, read_image_package_manifest } from "../../file/image/image-package";
 import { normalize_image_to_png } from "../../file/image/image-pixels";
-import { INFERENCE_DEPENDENCIES } from "../inference/environment";
 import { IMAGE_TEXT_RULES, type ImageTextPaint } from "../../../shared/image-text";
 import { workspace_requests } from "../workspace/runtime/request-channel";
 import { pixels, type ImageDevice } from "./engine";
@@ -26,16 +25,6 @@ export { DeviceFailure } from "../inference/client";
 export { set_image_bubble_layout, set_image_font_sizes } from "./layout";
 export { missing_models, prepare_models } from "./models";
 
-export const IMAGE_PIXEL_DEPENDENCIES = [
-  `numpy==${INFERENCE_DEPENDENCIES.numpy}`,
-  `opencv-python-headless==${INFERENCE_DEPENDENCIES.opencv}`,
-] as const;
-
-/** 图片领域显式安装依赖（与共享推理底座和媒体版本保持一致）。 */
-export const IMAGE_DEPENDENCIES = Object.freeze({
-  npm: [`onnxruntime-node@${INFERENCE_DEPENDENCIES.ort}`],
-  python: [...IMAGE_PIXEL_DEPENDENCIES, `pyclipper==${INFERENCE_DEPENDENCIES.pyclipper}`],
-});
 export {
   read_image_font_sizes,
   read_image_writeback,

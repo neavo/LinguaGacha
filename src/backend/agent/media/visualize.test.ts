@@ -22,7 +22,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       executablePath:
         process.env.LINGUAGACHA_TEST_ELECTRON ??
         (createRequire(import.meta.url)("electron") as string),
-      electronVersion: "45.2.3",
+      electronVersion: createRequire(import.meta.url)("electron/package.json").version as string,
       paths: {
         get_agent_node_root_dir: () => path.join(root, "node"),
         get_agent_models_dir: () => path.join(root, "models"),
@@ -66,8 +66,8 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       import fs from 'node:fs/promises';
       import assert from 'node:assert/strict';
       // 成片只需要 FFmpeg 与 Python 包，不准备识别模型。
-      await npm.run(['install', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@^5.2.5\`]);
-      await uv.run(['add', 'numpy==2.5.4', 'kaldi-native-fbank==1.23.0', 'opencv-python-headless==5.0.0.93', 'pyclipper==1.4.0']);
+      await npm.run(['install', '--save-exact', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@5.2.5\`]);
+      await uv.run(['add', 'numpy==2.5.5', 'opencv-python-headless==5.1.0.95']);
       await uv.run(['run','python','-I', ${JSON.stringify(path.resolve("src/python/tests/media/visualize.test.py"))}]);
       await media.ffmpeg(['-v','error','-y','-f','lavfi','-i','color=c=white:s=1920x1080','-frames:v','1','work/background.png']);
       await fs.writeFile('work/subtitles.ass', '[Script Info]\\nScriptType: v4.00+\\nPlayResX: 1920\\nPlayResY: 1080\\n[V4+ Styles]\\nFormat: Name, Fontname, Fontsize, PrimaryColour, Alignment\\nStyle: Default,LGBaseFont,48,&H002C2725,2\\n[Events]\\nFormat: Layer, Start, End, Style, Text\\nDialogue: 0,0:00:00.00,0:00:02.00,Default,字幕テスト 한글 Latin\\n');

@@ -7,7 +7,7 @@ import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AgentPackageSources } from "../package-source";
 
-const ORT_VERSION = "1.30.0"; // 锁定实际验收版本，避免安装未生效时用旧运行时得到通过结果。
+const ORT_VERSION = "1.30.0"; // 验收固定运行时版本，核对实际安装结果。
 
 it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
   "real workspace prepares media and completes listen, scan and refine",
@@ -24,7 +24,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
       runtimeDirectory: runtime,
       fontsDirectory: path.resolve("public/fonts"),
       executablePath: executable,
-      electronVersion: "45.2.3",
+      electronVersion: createRequire(import.meta.url)("electron/package.json").version as string,
       paths: {
         get_agent_node_root_dir: () => path.join(root, "node"),
         get_agent_models_dir: () => path.join(root, "models"),
@@ -53,11 +53,10 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
       if (error.code === 'ENOENT') return '{}';
       throw error;
     })).version ?? null;
-    // 依赖按 media 技能「环境准备」的固定版本显式安装，计算入口不再隐式准备。
     await npm.run(['install', '--save-exact', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@5.2.5\`, ${JSON.stringify(`onnxruntime-node@${ORT_VERSION}`)}]);
     const installedOrt = JSON.parse(await fs.readFile(ortPackage, 'utf8')).version;
     assert.equal(installedOrt, ${JSON.stringify(ORT_VERSION)});
-    await uv.run(['add', 'numpy==2.5.4', 'kaldi-native-fbank==1.23.0', 'opencv-python-headless==5.0.0.93', 'pyclipper==1.4.0']);
+    await uv.run(['add', 'kaldi-native-fbank==1.23.1', 'numpy==2.5.5', 'opencv-python-headless==5.1.0.95', 'pyclipper==1.4.0']);
     await media.prepare_models();
     const info = await media.inspect(source);
     // helper.test.py 同时检查检测后处理，只在准备了检测用途时执行。

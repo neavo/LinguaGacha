@@ -4,13 +4,8 @@ import { pathToFileURL } from "node:url";
 import { npm } from "../npm";
 import { uv } from "../uv";
 import { default_native_fs as fs } from "../../../native/native-fs";
-export const ORT_PACKAGE = "onnxruntime-node";
-export const INFERENCE_DEPENDENCIES = Object.freeze({
-  ort: "1.30.0",
-  pyclipper: "1.4.0",
-  numpy: "2.5.4",
-  opencv: "5.0.0.93",
-});
+const ORT_PACKAGE = "onnxruntime-node";
+
 /** 根线程只解析 ORT，原生模块始终在 Worker 中导入。 */
 export function ort_entry(): string {
   const root = path.join(npm.directory, "node_modules", ORT_PACKAGE);

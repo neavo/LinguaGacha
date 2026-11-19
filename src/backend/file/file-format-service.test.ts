@@ -20,7 +20,7 @@ import { NativeFs } from "../../native/native-fs";
 import { write_zip } from "../../test/zip-fixture";
 import { FileFormatService } from "./file-format-service";
 import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
-import { create_renpy_fixture, compiled_fixture } from "../../test/renpy-fixture";
+import { create_renpy_fixture, compiled_fixture, extract_fixture } from "../../test/renpy-fixture";
 import { read_renpy_metadata } from "./renpy/item";
 import { read_renpy_format_metadata } from "./renpy/profile";
 
@@ -69,6 +69,7 @@ it.each(["script", "unselected"])("Ren’Py %s 读取失败按真实依赖保留
   );
   expect(metadata.old_substitutions).toBe(true);
   const output = path.join(temp.path, "out");
+  const game_output = path.join(output, entry.rel_path.replace(/\.renpy$/u, ""));
   const context = {
     paths: { translated_path: output, bilingual_path: output },
     source_files: [{ path: entry.rel_path, file_type: "RENPY" }],
@@ -81,10 +82,14 @@ it.each(["script", "unselected"])("Ren’Py %s 读取失败按真实依赖保留
     const code = parsed.items.find(
       (item) => read_renpy_metadata(item.extra_field).usage === "code",
     )!;
-    await expect(
-      service.write_items([{ ...code, status: "PROCESSED", dst: "代码译文" }], context),
-    ).resolves.toEqual([]);
-  } else await expect(write).resolves.toEqual([]);
+    await service.write_items([{ ...code, status: "PROCESSED", dst: "代码译文" }], context);
+  } else {
+    await write;
+  }
+  const script = native.read_file(path.join(game_output, "game/script.rpyc"));
+  expect((await extract_fixture(script)).candidates).toContainEqual(
+    expect.objectContaining({ text: failure === "script" ? "代码译文" : "译文" }),
+  );
 });
 
 /**

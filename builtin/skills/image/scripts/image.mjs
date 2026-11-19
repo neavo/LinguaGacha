@@ -4,13 +4,14 @@ import path from "node:path";
 import * as generic from "@lg/generic";
 import * as sdk from "@lg/image";
 
-export {
-  DeviceFailure,
-  IMAGE_DEPENDENCIES,
-  IMAGE_PIXEL_DEPENDENCIES,
-  missing_models,
-  prepare_models,
-} from "@lg/image";
+export { DeviceFailure, missing_models, prepare_models } from "@lg/image";
+
+export const NPM_DEPENDENCIES = ["onnxruntime-node@1.30.0"];
+export const PIP_DEPENDENCIES = [
+  "numpy==2.5.5",
+  "opencv-python-headless==5.1.0.95",
+  "pyclipper==1.4.0",
+];
 
 const pipeline = sdk.create_image_pipeline(new URL("./helper.py", import.meta.url));
 const { scan, prepare, inspectGroup, repartition } = pipeline;
