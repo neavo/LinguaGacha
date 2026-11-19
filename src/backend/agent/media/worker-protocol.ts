@@ -17,12 +17,10 @@ export type MediaWorkerRequest =
   | Readonly<{
       type: "infer";
       id: number;
-      stream: number; // 发起请求的 helper，区分各路 VAD 状态。
       kind: MediaTask;
       header: ChannelHeader;
       payload: ArrayBuffer;
     }>
-  | Readonly<{ type: "release"; stream: number }>
   | Readonly<{ type: "close" }>;
 
 /** 失败应答只带消息，设备归因由派发方按实际通道判断。 */

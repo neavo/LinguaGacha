@@ -1,4 +1,4 @@
-"""音视频计算的 Python 部分：解码、特征、检测前后处理、区间跟踪与图集。
+"""媒体技能的 Python 计算：解码、特征、检测前后处理、区间跟踪与图集。
 
 由 `@lg/media` 以受控解释器启动，标准输入输出是与应用 ONNX Worker 之间的二进制通道。
 本进程不创建任何模型会话，推理一律经通道请求。日志只写 stderr。
@@ -65,8 +65,10 @@ def initialize(command):
     """按命令导入依赖。各用途只准备自己的 Python 包，纯音频识别不能因缺少图像依赖而失败。"""
     global cv2, pyclipper, knf, fsmn_vad
     if command == "speech":
+        # 隔离模式不含脚本目录，语音命令从当前技能包加载 FSMN。
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import fsmn_vad
         import kaldi_native_fbank as knf
-        from lg.media import fsmn_vad
     else:
         import cv2
 
@@ -165,6 +167,7 @@ def speech(channel, ffmpeg, source, track, center, language, asr_mvn, vad_mvn):
     retained, offset = np.zeros(0, np.float32), 0  # 缓冲中的采样及其起点。
 
     def settle(limit):
+        """按提交顺序取回识别结果，供调用者与人声区间对应。"""
         while len(inflight) > limit:
             index, future = inflight.popleft()
             header, _ = future.result()
@@ -442,8 +445,9 @@ class TextTracker:
                     max(box[3], rect[3]),
                 ),
             )
-            if area(rect) > region["size"]:
-                region.update(size=area(rect), at=second)
+            size = area(rect)
+            if size > region["size"]:
+                region.update(size=size, at=second)
                 crops.append((region["id"], rect))
             current.append({**old, "rect": rect, "lines": block.lines})
         self.previous = current  # 空白、未知和竞争均不能唤回更早的轨迹。

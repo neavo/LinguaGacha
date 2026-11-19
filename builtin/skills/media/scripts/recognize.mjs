@@ -4,7 +4,7 @@ import {
   ffmpeg,
   install,
   load,
-  locate,
+  locate_source,
   read_items,
   read_package_manifest,
   save,
@@ -51,7 +51,7 @@ export async function request(directory, { prompt, ranges }) {
   if (!Array.isArray(ranges) || !ranges.length) throw new Error("必须指定补查区间");
   const root = path.resolve(directory);
   const { duration, video, source } = await read_package_manifest(path.join(root, "media.json"));
-  const file = await locate(root);
+  const file = await locate_source(source);
   const planned = new Map(); // 相同区间只生成一份载荷。
   for (const range of ranges) {
     const { start, end } = range;

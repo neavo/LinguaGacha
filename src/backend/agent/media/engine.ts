@@ -21,29 +21,18 @@ import {
   type MediaHelperResponse,
 } from "../../../shared/media";
 
-/** 设备来自 AGENT 脚本，未知值必须在资源准备前拒绝。 */
-export function validate_device(device: unknown): void {
-  if (device !== "cpu" && device !== "gpu") throw new Error("Media device must be cpu or gpu.");
-}
-
 /** 模型路径只取宿主绑定的共享目录。 */
 const model_file = (model: { file: string }): string =>
   path.join(inference_configuration().modelsDirectory, model.file);
-/** 私有运行资源随应用部署。 */
-export const runtime_file = (name: string): string =>
-  path.join(inference_configuration().runtimeDirectory, "runtime", name);
-
 /** 每次调用独占引擎。调用者在安全收尾后决定是否重跑。 */
 export async function operate<T>(
   action: (engine: Engine) => Promise<T>,
   { device }: DeviceOptions,
 ): Promise<T> {
-  validate_device(device);
-  // 在真正执行时检查关闭失败，覆盖排队期间发生的故障。
   return run_inference_operation(device, async () => {
     const engine = new Engine(
       worker_config(device === "gpu" ? "webgpu" : "cpu"),
-      runtime_file("media-worker.mjs"),
+      path.join(inference_configuration().runtimeDirectory, "runtime", "media-worker.mjs"),
     );
     try {
       return await action(engine);
@@ -54,36 +43,30 @@ export async function operate<T>(
 }
 
 /**
- * 运行媒体 helper 的一个命令。helper 的推理请求转发给 Worker，应答按编号写回。
- * 正常返回要求收到结果帧、helper 正常退出。任一请求失败时结束 helper 并抛出该失败。
+ * 一次推理作业的 helper 独占引擎。联系表只使用 Python 通道。
  */
 export async function helper<K extends MediaHelperOperation>(
+  script: URL,
   command: K,
   job: MediaHelperRequest<K>,
   engine?: Engine,
 ): Promise<MediaHelperResponse<K>> {
   if (!check_media_helper_request(command, job))
     throw new Error(`Invalid media helper request: ${command}`);
-  const stream = engine?.open();
-  try {
-    const response = await run_helper(
-      python(),
-      "lg.media.helper",
-      command,
-      job,
-      engine
-        ? (header, payload) => {
-            const kind = header.kind;
-            if (kind !== "vad" && kind !== "asr" && kind !== "detection" && kind !== "recognition")
-              throw new Error("Unexpected media task");
-            return engine.request(stream!, kind, header, payload);
-          }
-        : undefined,
-    );
-    return read_media_helper_response(command, response);
-  } finally {
-    if (stream !== undefined) engine!.release(stream);
-  }
+  const response = await run_helper(
+    python(),
+    script,
+    command,
+    job,
+    engine &&
+      ((header, payload) => {
+        const kind = header.kind;
+        if (kind !== "vad" && kind !== "asr" && kind !== "detection" && kind !== "recognition")
+          throw new Error("Unexpected media task");
+        return engine.request(kind, header, payload);
+      }),
+  );
+  return read_media_helper_response(command, response);
 }
 
 /** 配置与路径在父进程解析，执行核心不访问共享环境绑定。 */

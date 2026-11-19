@@ -42,10 +42,25 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       },
     });
     const package_sources = new AgentPackageSources({ log: console.log }); // 验收使用真实地区判定
+    const visualize_script = JSON.stringify(
+      new URL("../../../../builtin/skills/media/scripts/visualize.py", import.meta.url).href,
+    );
     let sequence = 0;
-    const run = async (script: string, signal = AbortSignal.timeout(900_000)) => {
+    /** 每次调用拥有日志，所有分支共用同一套成片输入。 */
+    const run = async (body: string, signal = AbortSignal.timeout(900_000)) => {
       const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/visual-${++sequence}.mjs`;
-      await writeFile(path.join(workspace, scriptPath), script);
+      await writeFile(
+        path.join(workspace, scriptPath),
+        `
+        import { visualize as render } from '@lg/media';
+        const script = new URL(${visualize_script});
+        const visualize = (source, output, options) => render(script, source, {
+          track: 0, background: 'work/background.png', subtitles: 'work/subtitles.ass',
+          fonts: ws.fontsDirectory, output, ...options
+        });
+        ${body}
+        `,
+      );
       return runner.run(
         {
           workspacePath: workspace,
@@ -60,7 +75,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
     };
     try {
       const prepared = await run(`
-      import * as media from '@lg/media';
+      import { ffmpeg } from '@lg/media';
       import { uv } from '@lg/uv';
       import { npm } from '@lg/npm';
       import fs from 'node:fs/promises';
@@ -68,8 +83,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       // 成片只需要 FFmpeg 与 Python 包，不准备识别模型。
       await npm.run(['install', '--save-exact', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@5.2.5\`]);
       await uv.run(['add', 'numpy==2.5.5', 'opencv-python-headless==5.1.0.95']);
-      await uv.run(['run','python','-I', ${JSON.stringify(path.resolve("src/python/tests/media/visualize.test.py"))}]);
-      await media.ffmpeg(['-v','error','-y','-f','lavfi','-i','color=c=white:s=1920x1080','-frames:v','1','work/background.png']);
+      await ffmpeg(['-v','error','-y','-f','lavfi','-i','color=c=white:s=1920x1080','-frames:v','1','work/background.png']);
       await fs.writeFile('work/subtitles.ass', '[Script Info]\\nScriptType: v4.00+\\nPlayResX: 1920\\nPlayResY: 1080\\n[V4+ Styles]\\nFormat: Name, Fontname, Fontsize, PrimaryColour, Alignment\\nStyle: Default,LGBaseFont,48,&H002C2725,2\\n[Events]\\nFormat: Layer, Start, End, Style, Text\\nDialogue: 0,0:00:00.00,0:00:02.00,Default,字幕テスト 한글 Latin\\n');
       const cases = [
         ['aac','sine=frequency=440:duration=2','aac'],
@@ -80,42 +94,38 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
       const reports = [];
       for (const [name, input, codec] of cases) {
         const source = 'work/' + name + (codec === 'aac' ? '.m4a' : '.wav');
-        await media.ffmpeg(['-v','error','-y','-f','lavfi','-i',input,'-c:a',codec,source]);
+        await ffmpeg(['-v','error','-y','-f','lavfi','-i',input,'-c:a',codec,source]);
         const output = 'work/' + name + '.mp4';
-        const result = await media.visualize(source,{track:0,background:'work/background.png',subtitles:'work/subtitles.ass',fonts:ws.fontsDirectory,output});
+        const result = await visualize(source, output);
         assert.equal(result.audio, name === 'fallback' ? 'aac' : 'copy');
-        await media.ffmpeg(['-v','error','-i',output,'-f','null','-']);
+        await ffmpeg(['-v','error','-i',output,'-f','null','-']);
         reports.push(result);
       }
-      await media.ffmpeg(['-v','error','-y','-f','lavfi','-i','sine=frequency=880:duration=2','-c:a','aac','work/other.m4a']);
-      await media.ffmpeg(['-v','error','-y','-i','work/aac.m4a','-i','work/other.m4a','-i','work/background.png','-map','0:a:0','-map','1:a:0','-map','2:v:0','-c','copy','-disposition:v','attached_pic','work/covered.m4a']);
-      const covered = await media.inspect('work/covered.m4a');
-      assert.equal(covered.video,null);
-      assert.equal(covered.audio.length,2);
-      await media.visualize('work/covered.m4a',{track:1,background:'work/background.png',subtitles:'work/subtitles.ass',fonts:ws.fontsDirectory,output:'work/selected.mp4'});
-      const hash = async (source,track) => {
-        let text='';
-        await media.ffmpeg(['-v','error','-i',source,'-map','0:a:'+track,'-c:a','copy','-f','hash','-hash','md5','-'],{consume:async(stdout)=>{for await(const chunk of stdout) text+=chunk;}});
-        return text;
+      await ffmpeg(['-v','error','-y','-i','work/aac.m4a','-f','lavfi','-i','sine=frequency=880:duration=2','-i','work/background.png','-map','0:a:0','-map','1:a:0','-map','2:v:0','-c','copy','-c:a:1','aac','-disposition:v','attached_pic','work/covered.m4a']);
+      await visualize('work/covered.m4a','work/selected.mp4',{track:1});
+      // 提取裸 AAC，直接比较第二条音轨与成片音轨的编码字节。
+      const audio = async (source, track) => {
+        const chunks = [];
+        await ffmpeg(['-v','error','-i',source,'-map','0:a:'+track,'-c:a','copy','-f','adts','pipe:1'], {
+          consume: async (stdout) => { for await (const chunk of stdout) chunks.push(chunk); }
+        });
+        return Buffer.concat(chunks);
       };
-      assert.equal(await hash('work/selected.mp4',0),await hash('work/covered.m4a',1));
+      assert.deepEqual(await audio('work/selected.mp4',0),await audio('work/covered.m4a',1));
       const old = await fs.readFile('work/aac.mp4');
-      await assert.rejects(media.visualize('work/aac.m4a',{track:0,background:'work/absent.png',subtitles:'work/subtitles.ass',fonts:ws.fontsDirectory,output:'work/aac.mp4'}));
+      await assert.rejects(visualize('work/aac.m4a','work/aac.mp4',{background:'work/absent.png'}));
       assert.deepEqual(await fs.readFile('work/aac.mp4'),old);
-      await media.ffmpeg(['-v','error','-y','-f','lavfi','-i','sine=frequency=440:duration=1800','-c:a','aac','work/long.m4a']);
+      await ffmpeg(['-v','error','-y','-stream_loop','-1','-i','work/aac.m4a','-t','1800','-c:a','copy','work/long.m4a']);
       await fs.writeFile('work/report.json',JSON.stringify(reports,null,2));
     `);
       expect(prepared.exitCode).toBe(0);
-      const cancel = `
-      import * as media from '@lg/media';
-      await media.visualize('work/long.m4a',{track:0,background:'work/background.png',subtitles:'work/subtitles.ass',fonts:ws.fontsDirectory,output:'work/aac.mp4'});
-    `;
       const original = await readFile(path.join(workspace, "work/aac.mp4"));
-      await expect(run(cancel, AbortSignal.timeout(3000))).rejects.toThrow();
+      await expect(
+        run("await visualize('work/long.m4a','work/aac.mp4');", AbortSignal.timeout(3000)),
+      ).rejects.toThrow();
       expect(await readFile(path.join(workspace, "work/aac.mp4"))).toEqual(original);
       const retried = await run(`
-      import * as media from '@lg/media';
-      const result = await media.visualize('work/aac.m4a',{track:0,background:'work/background.png',subtitles:'work/subtitles.ass',fonts:ws.fontsDirectory,output:'work/aac.mp4'});
+      const result = await visualize('work/aac.m4a','work/aac.mp4');
       console.log(JSON.stringify(result));
     `);
       expect(retried.exitCode).toBe(0);

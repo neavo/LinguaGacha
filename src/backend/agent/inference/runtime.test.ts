@@ -2,11 +2,12 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 beforeEach(() => vi.resetModules());
 
-it("两个推理领域共用 GPU 收尾队列，CPU 操作可继续", async () => {
+it("GPU 作业失败后按收尾顺序继续，CPU 操作可并行", async () => {
   const { run_inference_operation, close_inference } = await import("./runtime");
   const closing = Promise.withResolvers<void>();
   const entered = Promise.withResolvers<void>();
   const order: string[] = [];
+  const failure = new Error("inference failed");
   const media = run_inference_operation("gpu", async () => {
     order.push("media");
     await close_inference({
@@ -15,7 +16,8 @@ it("两个推理领域共用 GPU 收尾队列，CPU 操作可继续", async () =
         return closing.promise;
       },
     });
-  });
+    throw failure;
+  }).catch((error: unknown) => error);
   await entered.promise;
   const image = run_inference_operation("gpu", async () => {
     order.push("image");
@@ -25,7 +27,7 @@ it("两个推理领域共用 GPU 收尾队列，CPU 操作可继续", async () =
   });
   expect(order).toEqual(["media", "cpu"]);
   closing.resolve();
-  await Promise.all([media, image]);
+  await expect(Promise.all([media, image])).resolves.toEqual([failure, undefined]);
   expect(order).toEqual(["media", "cpu", "image"]);
 });
 
