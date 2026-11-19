@@ -15,7 +15,6 @@ import { isDeepStrictEqual } from "node:util";
 import {
   create_item,
   build_project_item_public_record,
-  is_item_status,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
 import { type JsonRecord, type JsonValue } from "../../domain/json";
@@ -39,6 +38,7 @@ import {
   type ProjectItemManualUpdate,
 } from "../../shared/project/project-item-update";
 import { plan_project_item_changes } from "../../shared/project/project-item-write-planner";
+import { build_image_item_extra, read_image_item_extra } from "../../shared/project/image-item";
 import type { ProjectItemWriteChange } from "./project-write-request";
 
 export type AgentWorkspaceRejectionReason =
@@ -59,7 +59,7 @@ export type AgentWorkspaceItemUpdateIntent = Readonly<{
   line: number;
   item_id: number;
   fp: string;
-  update: ProjectItemManualUpdate & { bubble_active?: boolean };
+  update: ProjectItemManualUpdate & { bubble_active?: boolean; image_font_size?: number | null };
 }>;
 
 export type AgentWorkspaceKnowledgeUpdateIntent = Readonly<{
@@ -179,7 +179,7 @@ export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceInten
 
 /** 把数据库 item 归一为工作区公开字段，并绑定对象事实指纹。 */
 export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
-  return project_workspace_item(read_item_write_record(item));
+  return workspace_item_facts(read_item_write_record(item)).entry;
 }
 
 /** 存储与公开字段在工作区读取边界转换一次，内部意图只消费已收窄事实。 */
@@ -189,8 +189,10 @@ function read_item_write_record(item: JsonRecord): ProjectItemPublicRecord {
   );
 }
 
-/** 工作区显示当前姓名，指纹绑定同一字段视图。 */
-function project_workspace_item(item: ProjectItemPublicRecord): JsonRecord {
+/** 工作区显示当前姓名与字号。提交也从同一份图片事实计算指纹。 */
+function workspace_item_facts(item: ProjectItemPublicRecord) {
+  const image = item.file_type === "IMAGE" ? read_image_item_extra(item.extra_field) : undefined;
+  const fontSize = image?.fontSize;
   const row = {
     item_id: item.item_id,
     src: item.src,
@@ -200,10 +202,21 @@ function project_workspace_item(item: ProjectItemPublicRecord): JsonRecord {
     file_path: item.file_path,
     row_number: item.row_number,
     status: item.status,
+    ...(fontSize !== undefined && { image_font_size: fontSize }),
   };
-  const fingerprint = item_fingerprint_tuple(row);
-  if (item.file_type === "IMAGE") fingerprint.push(item.extra_field ?? "");
-  return { ...row, fp: workspace_fingerprint(fingerprint) };
+  const fingerprint: JsonValue[] = [
+    "item",
+    row.item_id,
+    row.src,
+    row.dst,
+    row.name_src,
+    row.name_dst,
+    row.file_path,
+    row.row_number,
+    row.status,
+  ];
+  if (image) fingerprint.push(image.inactiveStatus ?? null, fontSize ?? null);
+  return { entry: { ...row, fp: workspace_fingerprint(fingerprint) }, image };
 }
 
 /** 把 quality entry 的内部身份与业务字段投影为带当前位置的工作区对象。 */
@@ -326,21 +339,6 @@ function workspace_fingerprint(tuple: JsonValue[]): string {
   return agent_workspace_fingerprint(JsonTool.stringifyStrict(tuple));
 }
 
-/** item fp 覆盖工作区公开的完整对象事实，任何字段漂移都会失效。 */
-function item_fingerprint_tuple(row: JsonRecord): JsonValue[] {
-  return [
-    "item",
-    row["item_id"] ?? null,
-    row["src"] ?? "",
-    row["dst"] ?? "",
-    row["name_src"] ?? "",
-    row["name_dst"] ?? "",
-    row["file_path"] ?? "",
-    row["row_number"] ?? 0,
-    row["status"] ?? "NONE",
-  ];
-}
-
 /** quality fp 绑定 kind、稳定身份与业务字段，排序由独立 sort 意图表达。 */
 function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): JsonValue[] {
   return [
@@ -373,7 +371,10 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "target_missing"));
       continue;
     }
-    const current_fp = String(project_workspace_item(current)["fp"]);
+    const {
+      entry: { fp: current_fp },
+      image,
+    } = workspace_item_facts(current);
     if (group.some((intent) => intent.fp !== current_fp)) {
       rejected.push(item_rejection(item_id, "fp_mismatch"));
       continue;
@@ -389,25 +390,44 @@ function resolve_items(
       status: current.status,
       extra_field: current.extra_field,
     };
-    let next: typeof current_fields | null;
-    if (update.bubble_active === undefined) {
-      next = apply_project_item_manual_update(current_fields, update);
-    } else {
-      if (current.file_type !== "IMAGE" || Object.keys(update).length !== 1) {
-        rejected.push(item_rejection(item_id, "invalid_change"));
-        continue;
-      }
-      // 停用与主动排除都使用 EXCLUDED，只有停用保存恢复状态。
-      const status =
-        current.status === "EXCLUDED" && is_item_status(current.extra_field)
-          ? current.extra_field
-          : current.status;
-      next = update.bubble_active
-        ? { ...current_fields, status, extra_field: "" }
-        : { ...current_fields, status: "EXCLUDED", extra_field: status };
-      if (next.status === current.status && next.extra_field === current.extra_field) continue;
+    const { bubble_active, image_font_size, ...manual } = update;
+    const editsImage = bubble_active !== undefined || image_font_size !== undefined;
+    if (
+      (editsImage && !image) ||
+      (bubble_active !== undefined && Object.keys(update).length !== 1)
+    ) {
+      rejected.push(item_rejection(item_id, "invalid_change"));
+      continue;
     }
-    if (next === null) continue;
+    let next = apply_project_item_manual_update(current_fields, manual) ?? current_fields;
+    if (image && editsImage) {
+      const { inactiveStatus, fontSize } = image;
+      let nextStatus = next.status;
+      let nextInactive = inactiveStatus;
+      // 停用与主动排除都使用 EXCLUDED，只有停用保存恢复状态。
+      if (bubble_active !== undefined) {
+        const status =
+          current.status === "EXCLUDED" ? (inactiveStatus ?? current.status) : current.status;
+        nextStatus = bubble_active ? status : "EXCLUDED";
+        nextInactive = bubble_active ? undefined : status;
+      }
+      const nextFontSize =
+        image_font_size === undefined ? fontSize : (image_font_size ?? undefined);
+      if (
+        nextStatus !== next.status ||
+        nextInactive !== inactiveStatus ||
+        nextFontSize !== fontSize
+      )
+        next = {
+          ...next,
+          status: nextStatus,
+          extra_field: build_image_item_extra({
+            inactiveStatus: nextInactive,
+            fontSize: nextFontSize,
+          }),
+        };
+    }
+    if (next === current_fields) continue;
     changes.push({
       item_id,
       current: current_fields,

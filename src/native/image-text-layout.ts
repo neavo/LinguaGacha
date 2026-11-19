@@ -8,7 +8,7 @@ type Span = readonly [start: number, end: number];
 type Point = readonly [inline: number, block: number];
 type TextRectangle = { along: Span; across: Span };
 
-const BUBBLE_PADDING_EM = 0.25;
+const PADDING_EM = 0.25;
 
 export type TextSlot = {
   inlineLow: number;
@@ -16,15 +16,6 @@ export type TextSlot = {
   blockStart: number;
   anchor: number;
 };
-
-function median(values: number[]): number {
-  values.sort((a, b) => a - b); // 取代表性行高，避免个别大字抬高整区字号。
-  return values[Math.floor(values.length / 2)]!;
-}
-
-function midpoint([start, end]: Span): number {
-  return (start + end) / 2; // 行带落到像素格时再取整。
-}
 
 /** 按排序方向计算文字凸包的一侧。 */
 function hull_chain(points: readonly Point[]): Point[] {
@@ -78,75 +69,37 @@ function hull_area(rectangles: readonly TextRectangle[], rows: readonly Span[][]
   return area;
 }
 
-/** 投影到书写方向，横排按行，竖排从右向左按列。 */
-function source_lines(region: ImageTextRegion, width: number): TextRectangle[] {
-  const vertical = region.direction === "vertical-rl";
-  const projected: TextRectangle[] = region.sourceLines.map((quad) => {
-    const along = quad.map(([x, y]) => (vertical ? y : x));
-    const across = quad.map(([x, y]) => (vertical ? width - x : y));
-    return {
-      along: [Math.min(...along), Math.max(...along)],
-      across: [Math.min(...across), Math.max(...across)],
-    };
-  });
-  projected.sort((a, b) => midpoint(a.across) - midpoint(b.across));
-
-  const lines: TextRectangle[] = [];
-  for (const line of projected) {
-    const last = lines.at(-1);
-    const [a, b] = line.across;
-    // OCR 可能把同一行拆成多个框。重叠半行以上的框共用一个行带。
-    if (
-      last &&
-      Math.min(last.across[1], b) - Math.max(last.across[0], a) >
-        Math.min(last.across[1] - last.across[0], b - a) / 2
-    ) {
-      last.along = [Math.min(last.along[0], line.along[0]), Math.max(last.along[1], line.along[1])];
-      last.across = [Math.min(last.across[0], a), Math.max(last.across[1], b)];
-    } else lines.push(line);
-  }
-  return lines;
-}
-
-/** 只在区域内部生成安全行带。竖排从右向左，倾斜区域使用 helper 提供的局部坐标。 */
-export function image_text_slots(region: ImageTextRegion, distance: Float32Array) {
-  const [width, height] = region.alignment?.size ?? [region.box[2], region.box[3]];
+/** 只在掩码内生成安全行带，竖排从右向左。 */
+export function image_text_slots(
+  region: Pick<ImageTextRegion, "size" | "direction">,
+  distance: Float32Array,
+) {
+  const [width, height] = region.size;
   const vertical = region.direction === "vertical-rl";
   const inline = vertical ? height : width;
   const block = vertical ? width : height;
-  const isBubble = region.kind === "bubble";
-  const lines = isBubble ? [] : source_lines(region, width);
-  const maximumFontSize = Math.min(
-    inline,
-    isBubble ? Math.floor(block / (1 + 2 * BUBBLE_PADDING_EM)) : block,
-  );
+  const maximumFontSize = Math.min(inline, Math.floor(block / (1 + 2 * PADDING_EM)));
   const at = (u: number, v: number) =>
     distance[vertical ? u * width + width - 1 - v : v * width + u]!;
-  let inlineCenter = inline / 2;
-  let blockCenter = block / 2;
   let containerArea = 0;
-  if (isBubble) {
-    let weight = 0;
-    let x = 0;
-    let y = 0;
-    // 细尾巴的距离值小，对主体中心的影响自然较小。
-    for (let i = 0; i < distance.length; i++) {
-      const value = distance[i]!;
-      if (value <= 0) continue;
-      containerArea++;
-      const mass = value ** 2;
-      weight += mass;
-      x += ((i % width) + 0.5) * mass;
-      y += (Math.floor(i / width) + 0.5) * mass;
-    }
-    if (weight) {
-      inlineCenter = vertical ? y / weight : x / weight;
-      blockCenter = vertical ? width - x / weight : y / weight;
-    }
+  let weight = 0;
+  let x = 0;
+  let y = 0;
+  // 细尾巴的距离值小，对主体中心的影响自然较小。
+  for (let i = 0; i < distance.length; i++) {
+    const value = distance[i]!;
+    if (value <= 0) continue;
+    containerArea++;
+    const mass = value ** 2;
+    weight += mass;
+    x += ((i % width) + 0.5) * mass;
+    y += (Math.floor(i / width) + 0.5) * mass;
   }
+  const inlineCenter = weight ? (vertical ? y : x) / weight : inline / 2;
+  const blockCenter = weight ? (vertical ? width - x / weight : y / weight) : block / 2;
 
   const spansByMargin = new Map<number, Span[][]>(); // 留边取整，多个字号可以复用同一组区间。
-  /** 将安全像素压缩为连续区间，供同留边的字号复用。 */
+  /** 逐行提取满足留边的连续区间。 */
   function spans(margin: number): Span[][] {
     const cached = spansByMargin.get(margin);
     if (cached) return cached;
@@ -165,22 +118,20 @@ export function image_text_slots(region: ImageTextRegion, distance: Float32Array
     return rows;
   }
 
-  /** 留出描边、抗锯齿和旋转余量，气泡额外保留呼吸空间。 */
+  /** 从可写掩码先扣除字层的像素余量，再留出阅读空间。 */
   function safe_spans(size: number): Span[][] {
     return spans(
       Math.ceil(
         image_text_stroke_width(size) / 2 +
           RULES.antialiasingAllowance +
           RULES.squareDistanceCorrection +
-          (region.alignment ? RULES.rotationAllowance : 0) +
-          (isBubble ? size * BUBBLE_PADDING_EM : 0),
+          size * PADDING_EM,
       ),
     );
   }
 
   /** 取整条行带都能容纳的区间，优先靠近文字的对齐点。 */
-  function band(rows: Span[][], size: number, start: number, anchor: number): TextSlot | undefined {
-    if (start < 0 || start + size > block) return undefined;
+  function band(rows: Span[][], size: number, start: number): TextSlot | undefined {
     let low = 0;
     let high = inline;
     for (let v = start; v < start + size; v++) {
@@ -190,7 +141,7 @@ export function image_text_slots(region: ImageTextRegion, distance: Float32Array
         const left = Math.max(a, low);
         const right = Math.min(b, high);
         if (left >= right) continue;
-        const score = right - left - 2 * Math.max(0, left - anchor, anchor - right);
+        const score = right - left - 2 * Math.max(0, left - inlineCenter, inlineCenter - right);
         if (score > bestScore) {
           best = [left, right];
           bestScore = score;
@@ -199,11 +150,11 @@ export function image_text_slots(region: ImageTextRegion, distance: Float32Array
       if (!best) return undefined;
       [low, high] = best;
     }
-    return { inlineLow: low, inlineHigh: high, blockStart: start, anchor };
+    return { inlineLow: low, inlineHigh: high, blockStart: start, anchor: inlineCenter };
   }
 
   /** 居中已试尽时，只生成偏移后的位置。 */
-  function* bubble(
+  function* stacks(
     size: number,
     search: boolean,
     maximumLines: number,
@@ -212,7 +163,7 @@ export function image_text_slots(region: ImageTextRegion, distance: Float32Array
     const pitch = size * RULES.lineHeight;
     for (let count = 1; count <= maximumLines; count++) {
       const extent = (count - 1) * pitch + size;
-      const limit = Math.floor(block - extent);
+      const limit = Math.floor(block - extent); // 从这个范围取起点，最后一条行带仍在掩码尺寸内。
       if (limit < 0) break;
       const middle = Math.max(0, Math.min(limit, Math.round(blockCenter - extent / 2)));
       const step = Math.max(1, Math.round(size / 3));
@@ -228,7 +179,7 @@ export function image_text_slots(region: ImageTextRegion, distance: Float32Array
       for (const start of starts) {
         const slots: TextSlot[] = [];
         for (let i = 0; i < count; i++) {
-          const slot = band(rows, size, Math.round(start + i * pitch), inlineCenter);
+          const slot = band(rows, size, Math.round(start + i * pitch));
           if (!slot) break;
           slots.push(slot);
         }
@@ -237,34 +188,10 @@ export function image_text_slots(region: ImageTextRegion, distance: Float32Array
     }
   }
 
-  /** 每个原行带保留自己的位置和对齐点。 */
-  function unframed(size: number): (TextSlot | undefined)[] {
-    const rows = safe_spans(size);
-    return lines.map((line) =>
-      band(rows, size, Math.round(midpoint(line.across) - size / 2), midpoint(line.along)),
-    );
-  }
-
   function coverage(rectangles: readonly TextRectangle[]): number {
     // 距离场以像素为单位，掩码内最近的边界像素距离为 1。
     return containerArea ? hull_area(rectangles, spans(1)) / containerArea : 0;
   }
 
-  return {
-    maximumFontSize,
-    unframedFontSize: lines.length
-      ? Math.min(
-          maximumFontSize,
-          Math.max(
-            RULES.minimumFontSize,
-            Math.round(
-              median(lines.map(({ across: [start, end] }) => end - start)) * RULES.fontSizeScale,
-            ),
-          ),
-        )
-      : 0,
-    coverage,
-    bubble,
-    unframed,
-  };
+  return { maximumFontSize, coverage, stacks };
 }

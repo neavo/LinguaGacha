@@ -1,5 +1,6 @@
 import { image_record_identities } from "../file/image/image-format";
 import { read_image_package } from "../file/image/image-package";
+import { build_image_item_extra, read_image_item_extra } from "../../shared/project/image-item";
 import { resolve_app_locale } from "../../domain/app-language";
 import type { AppSettingService } from "../app/app-setting-service";
 import type {
@@ -54,7 +55,6 @@ import { ProjectSessionState } from "./project-session-state";
 import {
   build_project_item_persistent_records,
   collect_project_item_missing_public_fields,
-  is_item_status,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
   type Item,
@@ -468,24 +468,37 @@ export class ProjectContentService {
               !old ||
               !source ||
               !target ||
-              (source.status !== "PROCESSED" && source.status !== "EXCLUDED") ||
               old.image !== next.image ||
               old.source !== next.source ||
               source.src !== next.source
             )
               continue;
+            const sameLayout = old.layout === next.layout;
+            const sourceImage = read_image_item_extra(source.extra_field);
+            const targetImage = read_image_item_extra(target.extra_field);
+            if (source.status !== "PROCESSED" && source.status !== "EXCLUDED") {
+              if (sameLayout && sourceImage.fontSize !== undefined)
+                target.extra_field = build_image_item_extra({
+                  ...targetImage,
+                  fontSize: sourceImage.fontSize,
+                });
+              continue;
+            }
             target.dst = source.dst;
             target.name_dst = source.name_dst;
             const status =
-              source.status === "EXCLUDED" && is_item_status(source.extra_field)
-                ? source.extra_field
+              source.status === "EXCLUDED"
+                ? (sourceImage.inactiveStatus ?? source.status)
                 : source.status;
-            if (old.layout === next.layout) {
+            if (sameLayout) {
               // 关系一致时复用布局选择，也保留主动排除。
               target.status = source.status;
               target.extra_field = source.extra_field;
-            } else if (is_item_status(target.extra_field)) {
-              target.extra_field = status;
+            } else if (targetImage.inactiveStatus !== undefined) {
+              target.extra_field = build_image_item_extra({
+                ...targetImage,
+                inactiveStatus: status,
+              });
             } else {
               target.status = status;
             }

@@ -8,11 +8,12 @@ import {
 } from "../../domain/item";
 import type { Static } from "typebox";
 import { is_json_record } from "../../domain/json";
+import { is_image_item_extra, type ImageItemExtra } from "./image-item";
 
 /** 数据库写入规划使用的翻译字段补丁。 */
 export type ProjectItemFieldPatch = Partial<
   Pick<ProjectItemPublicRecord, "dst" | "name_dst" | "status">
-> & { extra_field?: ItemStatus | "" };
+> & { extra_field?: ImageItemExtra | "" };
 
 /** 项目 Item 字段写入共同依赖的完整事实。 */
 export type ProjectItemWriteFields = Pick<Item, "dst" | "name_dst"> & {
@@ -22,14 +23,6 @@ export type ProjectItemWriteFields = Pick<Item, "dst" | "name_dst"> & {
 
 /** GUI 与 Agent 共用的单条人工 Item 更新意图。 */
 export type ProjectItemManualUpdate = Readonly<Static<typeof PROJECT_ITEM_MANUAL_UPDATE_SCHEMA>>;
-
-/** 差异构造允许消费尚未完成边界收窄的字段来源。 */
-type ProjectItemFieldPatchSource = {
-  dst?: unknown;
-  name_dst?: unknown;
-  status?: unknown;
-  extra_field?: unknown;
-};
 
 // 外部 patch 只允许公开字段，坏值和空 patch 都收敛为 null。
 export function normalize_project_item_field_patch(value: unknown): ProjectItemFieldPatch | null {
@@ -109,28 +102,22 @@ export function apply_project_item_manual_update<TItem extends ProjectItemWriteF
   return build_project_item_field_patch(current, next) === null ? null : next;
 }
 
-// 对比当前与下一状态生成最小字段 patch，姓名使用标量比较。
+/** 对比已校验的条目字段，并将历史状态归一为当前状态。 */
 export function build_project_item_field_patch(
-  current: ProjectItemFieldPatchSource,
-  next: ProjectItemFieldPatchSource,
+  current: ProjectItemWriteFields,
+  next: ProjectItemWriteFields,
 ): ProjectItemFieldPatch | null {
   const patch: ProjectItemFieldPatch = {};
-  if (typeof next.dst === "string" && next.dst !== current.dst) {
-    patch.dst = next.dst;
-  }
-  if (Object.hasOwn(next, "name_dst")) {
-    const name_dst = next.name_dst;
-    if ((name_dst === null || typeof name_dst === "string") && name_dst !== current.name_dst) {
-      patch.name_dst = name_dst;
-    }
-  }
+  if (next.dst !== current.dst) patch.dst = next.dst;
+  if (next.name_dst !== current.name_dst) patch.name_dst = next.name_dst;
   const status: ItemStatus = normalize_item_status(next.status);
   if (status !== current.status) {
     patch.status = status;
   }
+  // 条目更新只接纳图片的私有状态，其它格式的数据由原稿管理。
   if (
     next.extra_field !== current.extra_field &&
-    (next.extra_field === "" || is_item_status(next.extra_field))
+    (next.extra_field === "" || is_image_item_extra(next.extra_field))
   )
     patch.extra_field = next.extra_field;
 

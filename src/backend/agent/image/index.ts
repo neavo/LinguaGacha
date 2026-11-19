@@ -311,7 +311,6 @@ async function prepare_book(
 }
 
 export { AGENT_IMAGE_MAX_EDGE } from "../../../shared/agent-image";
-export { normalize_image_text } from "../../../shared/image-text";
 export { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
 export { normalize_image_to_png };
 

@@ -50,20 +50,14 @@ export function create_image_text_renderer(options: {
     if (!Check(IMAGE_TEXT_PAGE_SCHEMA, page))
       throw new Error("Invalid workspace render_image_text_page request.");
     let bytes = 0;
-    const check_distance = (width: number, height: number, distance: string) => {
+    for (const {
+      size: [width, height],
+      distance,
+    } of page) {
       const size = width * height * 4;
       bytes += size;
       if (bytes > maximum || Buffer.byteLength(distance, "base64") !== size)
         throw new Error("Invalid image text distance field");
-    };
-    // 旋正前后的距离场都占用同一份页面预算。
-    for (const {
-      box: [, , width, height],
-      distance,
-      alignment,
-    } of page.regions) {
-      check_distance(width, height, distance);
-      if (alignment) check_distance(...alignment.size, alignment.distance);
     }
     const paint = await options.host({ kind: request.kind, page }, signal);
     signal.throwIfAborted(); // 停止后不再写入字层。

@@ -28,6 +28,7 @@ import {
   project_agent_workspace_item,
   project_agent_workspace_prompt,
   type AgentWorkspaceIntentBatch,
+  type AgentWorkspaceItemUpdateIntent,
 } from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
@@ -1072,7 +1073,7 @@ describe("ProjectWriteStore", () => {
     });
   });
 
-  it("气泡拆合可以重试部分提交并恢复空译文与主动排除", async () => {
+  it("气泡拆合可以重试并恢复空译文、主动排除和各区域字号", async () => {
     const { database, project_path, store } = await create_store("bubble-layout");
     await database.transaction(project_path, (writer) =>
       writer.add_asset(project_path, "page.image", Buffer.from("image"), "IMAGE", null),
@@ -1086,7 +1087,7 @@ describe("ProjectWriteStore", () => {
           file_type: "IMAGE",
           src: "整泡",
           status: "EXCLUDED",
-          extra_field: "NONE",
+          extra_field: { image: { inactiveStatus: "NONE" } },
         }),
         create_item({
           id: 2,
@@ -1107,21 +1108,39 @@ describe("ProjectWriteStore", () => {
         }),
       ]),
     );
-    const switch_layout = async (whole: boolean, stale?: number) => {
-      const rows = await read_items(database, project_path);
-      const items = rows.map((row, index) => ({
-        line: index + 1,
-        item_id: index + 1,
-        fp: index + 1 === stale ? "old!" : String(project_agent_workspace_item(row)["fp"]),
-        update: { bubble_active: index === 0 ? whole : !whole },
-      }));
+    const read_snapshot = async () =>
+      (await read_items(database, project_path)).map(project_agent_workspace_item);
+    const submit = async (
+      updates: [number, AgentWorkspaceItemUpdateIntent["update"]][],
+      stale?: { item_id: number; fp: string },
+    ) => {
+      const rows = await read_snapshot();
       return store.apply_agent_workspace_changes({
         projectPath: project_path,
         source: "agent_workspace_apply",
-        batch: agent_batch({ items, quality: {}, prompts: [] }),
+        batch: agent_batch({
+          prompts: [],
+          quality: {},
+          items: updates.map(([item_id, update], index) => ({
+            line: index + 1,
+            item_id,
+            fp: String(stale?.item_id === item_id ? stale.fp : rows[item_id - 1]!["fp"]),
+            update,
+          })),
+        }),
       });
     };
-    const partial = await switch_layout(true, 2);
+    const before = await read_snapshot();
+    await submit([
+      [1, { image_font_size: 22 }],
+      [2, { image_font_size: 18 }],
+    ]);
+    const switch_layout = (whole: boolean, stale?: { item_id: number; fp: string }) =>
+      submit(
+        [1, 2, 3].map((id) => [id, { bubble_active: id === 1 ? whole : !whole }]),
+        stale,
+      );
+    const partial = await switch_layout(true, { item_id: 2, fp: String(before[1]!["fp"]) });
     expect(partial).toMatchObject({
       applied: { items: { updated: 2 } },
       rejected: [{ id: 2, reason: "fp_mismatch" }],
@@ -1130,16 +1149,21 @@ describe("ProjectWriteStore", () => {
     expect((await switch_layout(true)).applied.items).toBeUndefined();
     await switch_layout(false);
     expect(
-      (await read_items(database, project_path)).map(({ status, dst, extra_field }) => [
+      (await read_snapshot()).map(({ status, dst, image_font_size }) => [
         status,
         dst,
-        extra_field,
+        image_font_size,
       ]),
     ).toEqual([
-      ["EXCLUDED", "", "NONE"],
-      ["PROCESSED", "", ""],
-      ["EXCLUDED", "", ""],
+      ["EXCLUDED", "", 22],
+      ["PROCESSED", "", 18],
+      ["EXCLUDED", "", undefined],
     ]);
+    await submit([[1, { image_font_size: null }]]);
+    await switch_layout(true);
+    const [whole] = await read_snapshot();
+    expect(whole).toMatchObject({ status: "NONE" });
+    expect(whole).not.toHaveProperty("image_font_size");
   });
 
   it("Agent 无实际变化时不推进 revision 或发布事件", async () => {

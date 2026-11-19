@@ -7,15 +7,9 @@ import {
 import { image_text_slots } from "./image-text-layout";
 
 function fixture(width: number, height: number, vertical = false) {
-  const region: ImageTextRegion = {
-    regionId: "r",
-    box: [0, 0, width, height],
-    distance: "",
-    sourceLines: [],
-    kind: "bubble",
+  const region: Pick<ImageTextRegion, "size" | "direction"> = {
+    size: [width, height],
     direction: vertical ? "vertical-rl" : "horizontal-tb",
-    text: "译文",
-    backgroundColor: [255, 255, 255],
   };
   const distance = Float32Array.from({ length: width * height }, (_, index) =>
     Math.min(
@@ -32,7 +26,7 @@ it("横竖排共用以气泡主体为中心的安全行带", () => {
   const { region, distance } = fixture(70, 100);
   const size = 25;
   const margin = image_text_stroke_width(size) / 2 + RULES.antialiasingAllowance;
-  const stacks = [...image_text_slots(region, distance).bubble(size, false, 3)];
+  const stacks = [...image_text_slots(region, distance).stacks(size, false, 3)];
   expect(stacks.length).toBeGreaterThan(0);
   let closest = Infinity;
   for (const slots of stacks)
@@ -44,31 +38,9 @@ it("横竖排共用以气泡主体为中心的安全行带", () => {
     }
   expect(closest).toBeGreaterThanOrEqual(margin);
   const rotated = fixture(100, 70, true);
-  expect([...image_text_slots(rotated.region, rotated.distance).bubble(size, false, 3)]).toEqual(
+  expect([...image_text_slots(rotated.region, rotated.distance).stacks(size, false, 3)]).toEqual(
     stacks,
   );
-});
-
-it("无框文字沿原行带排版，跨过行间的掩码空白", () => {
-  const { region, distance } = fixture(70, 100);
-  region.kind = "unframed";
-  region.sourceLines = [
-    [
-      [8, 13],
-      [58, 13],
-      [58, 23],
-      [8, 23],
-    ],
-    [
-      [8, 65],
-      [58, 65],
-      [58, 75],
-      [8, 75],
-    ],
-  ];
-  distance.fill(0, 30 * 70, 60 * 70);
-  const rows = image_text_slots(region, distance).unframed(10);
-  expect(rows.map((slot) => slot?.blockStart)).toEqual([13, 65]);
 });
 
 it("文字凸包占比只计入掩码内的面积", () => {

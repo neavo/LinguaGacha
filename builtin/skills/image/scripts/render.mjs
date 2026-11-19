@@ -5,7 +5,6 @@ import path from "node:path";
 import {
   AGENT_IMAGE_MAX_EDGE,
   ProjectAssetPathIndex,
-  normalize_image_text,
   normalize_image_to_png,
   read_image_package_manifest,
   read_image_writeback,
@@ -105,25 +104,29 @@ async function render_page(page, records, paths, { layout, compose }) {
     if (patches.some((patch) => patch === null)) entry.reason = "erase_failed";
     else if (decision.output === null) entry.reason = "translation_incomplete";
     else {
-      const text = decision.text.trim() ? normalize_image_text(decision.text) : "";
-      candidates.push({ region, patches, text, entry });
+      const { text, fontSize } = decision;
+      const lettering = text.trim()
+        ? { regionId, text, ...(fontSize !== undefined && { fontSize }) }
+        : undefined;
+      candidates.push({ region, patches, lettering, entry });
     }
   }
 
-  const lettering = candidates
-    .filter(({ text }) => text)
-    .map(({ region: { regionId }, text }) => ({ regionId, text }));
-  const material = path.join(paths.scratch, "lettering.json");
-  if (lettering.length) await layout({ root: paths.source, output: material, page, lettering });
-  const painted = lettering.length ? await render_image_text_page(material) : [];
-  const layersById = new Map(painted.map(({ regionId, png }) => [regionId, png]));
+  const lettering = candidates.flatMap(({ lettering }) => (lettering ? [lettering] : []));
+  const layersById = new Map();
+  if (lettering.length) {
+    const material = path.join(paths.scratch, "lettering.json");
+    await layout({ root: paths.source, output: material, page, lettering });
+    for (const { regionId, png } of await render_image_text_page(material))
+      layersById.set(regionId, png);
+  }
 
   const layers = [];
-  for (const { region, patches, text, entry } of candidates) {
+  for (const { region, patches, lettering, entry } of candidates) {
     const png = layersById.get(region.regionId);
-    if (text && png === undefined)
+    if (lettering && png === undefined)
       throw new Error(`Missing lettering for ${page.relativePath} region ${region.regionId}`);
-    if (text && !png) {
+    if (lettering && png === null) {
       entry.reason = "layout_no_fit";
       continue;
     }

@@ -718,7 +718,7 @@ export class ProjectDatabaseAccess {
     const statement = db.prepare(
       `UPDATE items
        SET data = json_set(
-         CASE WHEN ? IS NULL THEN data ELSE json_set(data, '$.extra_field', ?) END,
+         CASE WHEN ? IS NULL THEN data ELSE json_set(data, '$.extra_field', json(?)) END,
          '$.dst', ?, '$.name_dst', json(?), '$.status', ?
        ) WHERE id = ?`,
     );
@@ -736,7 +736,8 @@ export class ProjectDatabaseAccess {
           diagnostic_context: { reason: "invalid_translation_fields", item_id },
         });
       }
-      const extra_field = patch?.extra_field ?? null;
+      const extra_field =
+        patch?.extra_field === undefined ? null : JsonTool.stringifyStrict(patch.extra_field);
       const result = statement.run(
         extra_field,
         extra_field,

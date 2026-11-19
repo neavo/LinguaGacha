@@ -1,5 +1,6 @@
 import { Type, type Static, type TSchema } from "typebox";
 import { Check } from "typebox/value";
+import { IMAGE_FONT_SIZE_SCHEMA } from "./image-font-size";
 import {
   IMAGE_BOOK_SCHEMA,
   IMAGE_BOX_SCHEMA,
@@ -144,7 +145,16 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
         root: Type.String(),
         output: Type.String(),
         page: PAGE_SCHEMA,
-        lettering: Type.Array(Type.Object({ regionId: IMAGE_ID_SCHEMA, text: Type.String() })),
+        lettering: Type.Array(
+          Type.Object(
+            {
+              regionId: IMAGE_ID_SCHEMA,
+              text: Type.String(),
+              fontSize: Type.Optional(IMAGE_FONT_SIZE_SCHEMA),
+            },
+            { additionalProperties: false },
+          ),
+        ),
         maximumBytes: Type.Integer({ minimum: 1 }),
       },
       { additionalProperties: false },

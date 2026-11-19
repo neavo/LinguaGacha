@@ -1,5 +1,6 @@
 import {
   layoutNextLine,
+  layoutNextLineRange,
   prepareWithSegments,
   walkLineRanges,
   type LayoutCursor,
@@ -7,8 +8,8 @@ import {
 import { IMAGE_TEXT_RULES as RULES, type ImageTextRegion } from "../shared/image-text";
 import { image_text_slots, type TextSlot } from "./image-text-layout";
 
-const BUBBLE_COVERAGE_TARGET = 0.75;
-const BUBBLE_FONT_PROBES = 32;
+const COVERAGE_TARGET = 0.75;
+const FONT_PROBES = 32;
 const BALANCE_SLACK_EM = [0.5, 1, undefined] as const;
 const MAX_SHORT_COLUMN = 2;
 const ALIGNMENT_TOLERANCE_PX = 1;
@@ -24,21 +25,17 @@ type PlannedLine = {
 };
 type PlannedRegion = { fontSize: number; lines: PlannedLine[] };
 type Reading = { topGap: number; shortEdges: number };
-type BubblePlan = { plan: PlannedRegion; reading: Reading };
+type Candidate = { plan: PlannedRegion; reading: Reading };
 const GOOD_READING: Readonly<Reading> = { topGap: 0, shortEdges: 0 };
-
-function slot_capacity(slot: TextSlot): number {
-  return slot.inlineHigh - slot.inlineLow;
-}
 
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
 }
 
-/** 排完整段文字。Pretext 的游标只在同一区域的行列之间移动。 */
+/** 尝试恰好填完这一组行带。由 Pretext 区分硬换行与软换行。 */
 function flow_lines(
   prepared: PreparedText,
-  slots: readonly (TextSlot | undefined)[],
+  slots: readonly TextSlot[],
   fontSize: number,
   balance?: { length: number; slack: number },
 ): PlannedRegion | undefined {
@@ -46,13 +43,10 @@ function flow_lines(
   let cursor: LayoutCursor | undefined;
   let length = balance?.length ?? 0;
   let room = balance
-    ? slots.reduce((total, slot) => total + (slot ? slot_capacity(slot) : 0), 0)
+    ? slots.reduce((total, slot) => total + (slot.inlineHigh - slot.inlineLow), 0)
     : 0;
   for (const slot of slots) {
-    if (!slot) return undefined;
-    const previous = lines.at(-1);
-    if (previous && previous.slot.blockStart + fontSize > slot.blockStart) return undefined;
-    const capacity = slot_capacity(slot);
+    const capacity = slot.inlineHigh - slot.inlineLow;
     const remaining = slots.length - lines.length;
     room -= capacity;
     // 给剩余行带均分文字，同时补足后续较短行带放不下的部分。
@@ -66,6 +60,7 @@ function flow_lines(
       !cursor ||
       (line.start.graphemeIndex === 0 &&
         prepared.kinds[line.start.segmentIndex - 1] === "hard-break");
+    // 自动断行避开行首闭合标点。显式换行保留 Agent 的选择。
     if (!paragraphStart && /^[\p{Pe}\p{Pf},.;:!?，。；：！？、]/u.test(line.text.trimStart()))
       return undefined;
     const inlineStart = clamp(
@@ -76,10 +71,11 @@ function flow_lines(
     lines.push({ text: line.text, slot, inlineStart, width: line.width, paragraphStart });
     length -= line.width;
     cursor = line.end;
-    if (layoutNextLine(prepared, Number.MAX_SAFE_INTEGER, cursor) === null)
-      return { fontSize, lines };
   }
-  return undefined;
+  // 最后一条行带用完后，再判定是否还有可排内容。
+  return layoutNextLineRange(prepared, Number.MAX_SAFE_INTEGER, cursor) === null
+    ? { fontSize, lines }
+    : undefined;
 }
 
 /** 只数影响列长的字形，数到足以判断短列即可。 */
@@ -138,18 +134,18 @@ function compare_reading(a: Reading, b: Reading): number {
 }
 
 /** 先试均衡断行，必要时放宽列宽。 */
-function flow_bubble(
+function flow_stack(
   prepared: PreparedText,
   stack: readonly TextSlot[],
   fontSize: number,
   length: number,
   vertical: boolean,
-): BubblePlan | undefined {
-  let best: BubblePlan | undefined;
+): Candidate | undefined {
+  let best: Candidate | undefined;
   for (const em of stack.length > 1 ? BALANCE_SLACK_EM : [undefined]) {
     const balance = em === undefined ? undefined : { length, slack: em * fontSize };
     const plan = flow_lines(prepared, stack, fontSize, balance);
-    if (plan?.lines.length !== stack.length) continue;
+    if (!plan) continue;
     const reading = vertical ? align_vertical_paragraphs(plan) : GOOD_READING;
     if (compare_reading(reading, GOOD_READING) === 0) return { plan, reading };
     if (!best || compare_reading(reading, best.reading) < 0) best = { plan, reading };
@@ -158,27 +154,38 @@ function flow_bubble(
 }
 
 /** 在可读方案中选取最接近目标占比的字号和位置。 */
-function plan_bubble(
-  slots: ReturnType<typeof image_text_slots>,
-  prepare: (size: number) => PreparedText,
-  maximumLines: number,
-  vertical: boolean,
+export function plan_image_text(
+  region: ImageTextRegion,
+  distance: Float32Array,
 ): PlannedRegion | undefined {
-  const minimum = RULES.minimumFontSize;
-  const maximum = slots.maximumFontSize;
-  const best: { candidate?: BubblePlan & { distance: number } } = {};
+  const slots = image_text_slots(region, distance);
+  const minimum = region.fontSize ?? RULES.minimumFontSize;
+  const maximum = region.fontSize ?? slots.maximumFontSize; // 固定字号只试一个值。
+  if (minimum > slots.maximumFontSize) return undefined;
+  const maximumLines = region.text.length;
+  const vertical = region.direction === "vertical-rl";
+  const prepared = new Map<number, { text: PreparedText; length: number }>(); // 偏移搜索复用测量。
+  const best: { candidate?: Candidate & { distance: number } } = {};
   for (const search of [false, true]) {
     const tried = new Set<number>();
     const try_size = (size: number) => {
       if (size < minimum || size > maximum || tried.has(size)) return;
       tried.add(size);
-      const text = prepare(size);
-      let length = 0;
-      walkLineRanges(text, Number.MAX_SAFE_INTEGER, (line) => {
-        length += line.width;
-      });
-      for (const stack of slots.bubble(size, search, maximumLines)) {
-        const candidate = flow_bubble(text, stack, size, length, vertical);
+      let measurement = prepared.get(size);
+      if (!measurement) {
+        // 已保存的换行是硬断点，额外的软换行由当前行带宽度决定。
+        const text = prepareWithSegments(region.text, size + "px ImageText", {
+          whiteSpace: "pre-wrap",
+        });
+        let length = 0;
+        walkLineRanges(text, Number.MAX_SAFE_INTEGER, (line) => {
+          length += line.width;
+        });
+        measurement = { text, length };
+        prepared.set(size, measurement);
+      }
+      for (const stack of slots.stacks(size, search, maximumLines)) {
+        const candidate = flow_stack(measurement.text, stack, size, measurement.length, vertical);
         if (!candidate) continue;
         const current = best.candidate;
         const reading = current ? compare_reading(candidate.reading, current.reading) : -1;
@@ -191,7 +198,7 @@ function plan_bubble(
               across: [line.slot.blockStart, line.slot.blockStart + size],
             })),
         );
-        const distance = Math.abs(coverage - BUBBLE_COVERAGE_TARGET);
+        const distance = Math.abs(coverage - COVERAGE_TARGET);
         if (
           !current ||
           reading < 0 ||
@@ -204,7 +211,7 @@ function plan_bubble(
     };
 
     // shortcut: 大气泡先取样再细化，发现漏选可见字号时再扩大搜索。
-    let step = Math.max(1, Math.ceil((maximum - minimum) / BUBBLE_FONT_PROBES));
+    let step = Math.max(1, Math.ceil((maximum - minimum) / FONT_PROBES));
     for (let size = minimum; size <= maximum; size += step) try_size(size);
     try_size(maximum);
     while (best.candidate && step > 1) {
@@ -216,53 +223,4 @@ function plan_bubble(
     if (best.candidate && compare_reading(best.candidate.reading, GOOD_READING) === 0) break;
   }
   return best.candidate?.plan;
-}
-
-/** 气泡按容器占比选版，无框文字优先使用原行带。 */
-export function plan_image_text(
-  region: ImageTextRegion,
-  distance: Float32Array,
-): PlannedRegion | undefined {
-  const slots = image_text_slots(region, distance);
-  const prepared = new Map<number, PreparedText>(); // 同字号的断点和测量结果跨候选位置复用。
-  const prepare = (fontSize: number) => {
-    let value = prepared.get(fontSize);
-    if (!value) {
-      value = prepareWithSegments(region.text, fontSize + "px ImageText", {
-        whiteSpace: "pre-wrap",
-      });
-      prepared.set(fontSize, value);
-    }
-    return value;
-  };
-
-  const maximumLines = Array.from(region.text).length;
-  if (region.kind === "bubble")
-    return plan_bubble(slots, prepare, maximumLines, region.direction === "vertical-rl");
-
-  for (let size = slots.unframedFontSize; size >= RULES.minimumFontSize; size--) {
-    const rows = slots.unframed(size);
-    let best: PlannedRegion | undefined;
-    let centerOffset = Infinity;
-    for (let start = 0; start < rows.length; start++) {
-      const planned = flow_lines(prepare(size), rows.slice(start), size);
-      if (!planned) continue;
-      const offset = Math.abs(2 * start + planned.lines.length - rows.length);
-      if (offset < centerOffset) {
-        best = planned;
-        centerOffset = offset;
-      }
-    }
-    if (best) return best;
-  }
-
-  for (const search of [false, true]) {
-    for (let size = slots.unframedFontSize; size >= RULES.minimumFontSize; size--) {
-      for (const stack of slots.bubble(size, search, maximumLines)) {
-        const planned = flow_lines(prepare(size), stack, size);
-        if (planned?.lines.length === stack.length) return planned;
-      }
-    }
-  }
-  return undefined;
 }

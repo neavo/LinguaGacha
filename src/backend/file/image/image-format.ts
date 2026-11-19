@@ -1,5 +1,6 @@
 import { create_item, type Item } from "../../../domain/item";
 import type { ImageBook, ImageRecord, ImageWritebackItem } from "../../../shared/image-package";
+import { build_image_item_extra, read_image_item_extra } from "../../../shared/project/image-item";
 import { index_message_items } from "../shared/message-records";
 import { read_translation_for_generation } from "../shared/translation-generation-text";
 import { read_image_package } from "./image-package";
@@ -48,7 +49,9 @@ export class ImageFormat {
           row,
           tag: region.kind,
           status: region.kind === "unframed" || region.parts ? "EXCLUDED" : "NONE",
-          ...(region.parts ? { extra_field: "NONE" } : {}),
+          ...(region.parts
+            ? { extra_field: build_image_item_extra({ inactiveStatus: "NONE" }) }
+            : {}),
           file_type: "IMAGE",
           file_path: file,
         });
@@ -71,9 +74,16 @@ export class ImageFormat {
       const item = byRow.get(row);
       if (item?.status === "EXCLUDED") return { pageId, regionId, output: "original" };
       const text = item && read_translation_for_generation(item);
+      const { fontSize } = read_image_item_extra(item?.extra_field);
       return text === undefined
         ? { pageId, regionId, output: null }
-        : { pageId, regionId, output: "translated", text };
+        : {
+            pageId,
+            regionId,
+            output: "translated",
+            text,
+            ...(fontSize !== undefined && { fontSize }),
+          };
     });
     return JSON.stringify(writeback);
   }

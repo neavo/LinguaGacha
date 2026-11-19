@@ -178,11 +178,11 @@ it("停止绘字脚本时向宿主传递取消并等待窗口收尾", async () =
     import assert from 'node:assert/strict';
     import { writeFile } from 'node:fs/promises';
     const file = 'work/lettering.json';
-    const region = { regionId: 'r1', kind: 'bubble', box: [0,0,64,76], distance: Buffer.alloc(64*76*4).toString('base64'), sourceLines: [], direction: 'vertical-rl', backgroundColor: [255,255,255], text: '译文' };
-    await writeFile(file, JSON.stringify({ pageId:'p', regions:[{...region, box:[0,0,0,76]}] }));
+    const region = { regionId: 'r1', size: [64,76], distance: Buffer.alloc(64*76*4).toString('base64'), direction: 'vertical-rl', backgroundColor: [255,255,255], text: '译文', fontSize: 20 };
+    await writeFile(file, JSON.stringify([{...region, fontSize:3}]));
     await assert.rejects(render_image_text_page(file), /Invalid workspace render_image_text_page request/);
     await assert.rejects(render_image_text_page('package.json'), /outside the workspace/);
-    await writeFile(file, JSON.stringify({ pageId:'p', regions:[region] }));
+    await writeFile(file, JSON.stringify([region]));
     await render_image_text_page(file);
   `,
     controller.signal,

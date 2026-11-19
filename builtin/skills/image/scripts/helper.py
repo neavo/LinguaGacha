@@ -27,8 +27,6 @@ CONF, IOU, MAX_DET, MAX_NMS = 0.25, 0.7, 300, 30000
 UNFRAMED_PADDING_RATIO = 0.5
 SCAN_PREVIEW_EDGE = 1600
 TEXT_MARGIN = 2
-SOURCE_LINE_MIN_ANGLE = 3
-SOURCE_LINE_ANGLE_SPREAD = 5
 QA_WEBP_QUALITY = 85
 
 
@@ -637,8 +635,6 @@ def _prepare_group(
             box=box,
             patch=patch,
         )
-        if candidate["kind"] == "unframed":
-            region["sourceLines"] = [line["coreBox"] for line in candidate["lines"]]
         record = dict(
             pageId=page_id,
             regionId=rid,
@@ -1122,29 +1118,6 @@ def split_bubble(selection, members, direction):
     return output
 
 
-def _line_alignment(lines, width, height, direction):
-    """在倾斜原行带的局部坐标系里求解，再把字形变换回原图。"""
-    if direction != "horizontal-tb" or len(lines) < 3:
-        return None
-    axes = np.asarray([line[1] - line[0] + line[2] - line[3] for line in lines])
-    angles = np.degrees(np.arctan2(axes[:, 1], axes[:, 0]))
-    angle = float(np.median(angles))
-    if (
-        abs(angle) < SOURCE_LINE_MIN_ANGLE
-        or np.max(np.abs(angles - angle)) > SOURCE_LINE_ANGLE_SPREAD
-    ):
-        return None
-    transform = cv2.getRotationMatrix2D((0.0, 0.0), angle, 1.0)
-    corners = (
-        np.asarray([[0, 0], [width, 0], [width, height], [0, height]])
-        @ transform[:, :2].T
-    )
-    low = np.floor(corners.min(axis=0))
-    size = tuple((np.ceil(corners.max(axis=0)) - low).astype(int).tolist())
-    transform[:, 2] = -low
-    return transform, size
-
-
 def _distance_field(mask):
     """补零边后测量到区域外的距离，输出 Chromium 读取的 Float32 字节。"""
     distance = cv2.distanceTransform(
@@ -1171,38 +1144,17 @@ def text_layout(args, _channel):
             crop[top - y : top - y + height, left - x : left - x + width] |= (
                 _read_packaged_area(root, page["pageId"], regions[part_id])
             )
-        lines = [
-            np.asarray(line, np.float64) - [x, y]
-            for line in region.get("sourceLines", [])
-        ]
-        text = {
-            key: region[key]
-            for key in ("regionId", "box", "kind", "direction", "backgroundColor")
-        }
-        text["text"] = target["text"]
-        text["distance"] = _distance_field(crop)
-        alignment = _line_alignment(lines, w, h, region["direction"])
-        if alignment is not None:
-            transform, size = alignment
-            budget += math.prod(size) * 4
-            if budget > args["maximumBytes"]:
-                raise ValueError("Image text material budget exceeded")
-            aligned = cv2.warpAffine(crop, transform, size, flags=cv2.INTER_NEAREST)
-            inverse = cv2.invertAffineTransform(transform)
-            text["alignment"] = dict(
-                size=size,
-                distance=_distance_field(aligned),
-                transform=inverse.T.reshape(-1).tolist(),
+        output.append(
+            dict(
+                target,
+                size=[w, h],
+                direction=region["direction"],
+                backgroundColor=region["backgroundColor"],
+                distance=_distance_field(crop),
             )
-            lines = [line @ transform[:, :2].T + transform[:, 2] for line in lines]
-        text["sourceLines"] = [line.tolist() for line in lines]
-        output.append(text)
+        )
     Path(args["output"]).write_text(
-        json.dumps(
-            dict(pageId=page["pageId"], regions=output),
-            ensure_ascii=False,
-            allow_nan=False,
-        ),
+        json.dumps(output, ensure_ascii=False, allow_nan=False),
         encoding="utf-8",
     )
 

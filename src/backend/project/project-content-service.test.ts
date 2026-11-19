@@ -2867,6 +2867,7 @@ it("图片替换保留同文不同译法、空译文及排除状态，坏包失�
           ...item,
           status: index === 3 ? "EXCLUDED" : "PROCESSED",
           dst: ["是的", "嗯", "", "保留旧译文"][index]!,
+          ...(index < 2 && { extra_field: { image: { fontSize: 18 + index } } }),
         })),
       ),
     );
@@ -2884,11 +2885,11 @@ it("图片替换保留同文不同译法、空译文及排除状态，坏包失�
     });
     await database.close_project(lg_path);
     const saved = await database.get_all_items(lg_path);
-    expect(saved.map((item) => [item["status"], item["dst"]])).toEqual([
-      ["EXCLUDED", "保留旧译文"],
-      ["PROCESSED", ""],
-      ["PROCESSED", "嗯"],
-      ["PROCESSED", "是的"],
+    expect(saved.map((item) => [item["status"], item["dst"], item["extra_field"]])).toEqual([
+      ["EXCLUDED", "保留旧译文", ""],
+      ["PROCESSED", "", ""],
+      ["PROCESSED", "嗯", { image: { fontSize: 19 } }],
+      ["PROCESSED", "是的", { image: { fontSize: 18 } }],
     ]);
     const asset = await database.read_asset_content(lg_path, "book.image");
     const output = (await new ImageFormat().read(asset!, "book.image")).items;

@@ -4,6 +4,8 @@ import {
   PDF_PAGE_UPDATE_SCHEMA,
 } from "../../../shared/pdf-schema";
 import { Type, type Static } from "typebox";
+import { IMAGE_FONT_SIZE_SCHEMA } from "../../../shared/image-font-size";
+import { IMAGE_TEXT_RULES } from "../../../shared/image-text";
 
 import {
   PROJECT_ITEM_PUBLIC_SCHEMA,
@@ -56,6 +58,12 @@ export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
     file_path: PROJECT_ITEM_PUBLIC_SCHEMA.properties.file_path,
     row_number: NON_NEGATIVE_INTEGER_SCHEMA,
     status: PROJECT_ITEM_PUBLIC_SCHEMA.properties.status,
+    image_font_size: Type.Optional(
+      Type.Integer({
+        minimum: IMAGE_TEXT_RULES.minimumFontSize,
+        description: "图片条目的手动排版字号（原图像素）。未显式设定时缺省并自动排版。",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -136,6 +144,12 @@ export const AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA = Type.Object(
     fp: AGENT_WORKSPACE_FP_SCHEMA,
     ...PROJECT_ITEM_MANUAL_UPDATE_SCHEMA.properties,
     bubble_active: Type.Optional(Type.Boolean()),
+    image_font_size: Type.Optional(
+      Type.Union([IMAGE_FONT_SIZE_SCHEMA, Type.Null()], {
+        description:
+          "修改图片排版字号（原图像素）。传入整数设定固定字号，传入 null 恢复自动计算。可与 dst 同批提交。",
+      }),
+    ),
   },
   {
     additionalProperties: false,
