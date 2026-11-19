@@ -27,6 +27,8 @@ CONF, IOU, MAX_DET, MAX_NMS = 0.25, 0.7, 300, 30000
 UNFRAMED_PADDING_RATIO = 0.5
 SCAN_PREVIEW_EDGE = 1600
 TEXT_MARGIN = 2
+SOURCE_LINE_MIN_ANGLE = 3
+SOURCE_LINE_ANGLE_SPREAD = 5
 QA_WEBP_QUALITY = 85
 
 
@@ -458,52 +460,30 @@ def scan(args, channel):
 
 
 def _box_mask(shape, boxes):
+    """将 OCR 四边形画入同一个掩码。"""
     mask = np.zeros(shape, np.uint8)
     for box in boxes:
         cv2.fillConvexPoly(mask, np.asarray(box, np.int32), 255)
     return mask
 
 
-def _write_box(area, ink):
-    """在可写区域内找能放下的矩形，再选靠近原文的位置。"""
+def _save_layout_area(root, page_id, region_id, area):
+    """只保存可写区域的裁剪掩码，坐标由区域记录持有。"""
     x, y, w, h = cv2.boundingRect(area)
     if not w:
-        raise ValueError("Empty writing area")
-    crop = area[y : y + h, x : x + w]
-    ix, iy, iw, ih = cv2.boundingRect(ink)
-    inset = cv2.erode(
-        crop, repair.ellipse(TEXT_MARGIN), borderType=cv2.BORDER_CONSTANT, borderValue=0
+        raise ValueError(f"No writable text pixels in {region_id}")
+    save(
+        root / "layout-areas" / page_id / f"{region_id}.png", area[y : y + h, x : x + w]
     )
-    valid = inset if cv2.countNonZero(inset) else crop
-    edge = max(w, h)
-    low, high = 2, edge
-    centers = valid
-    width = height = 1
-    # 先在整个区域内试放，避免把矩形锁在离原文最近的狭窄边缘。
-    while low <= high:
-        size = (low + high) // 2
-        trial = max(1, w * size // edge), max(1, h * size // edge)
-        fits = cv2.erode(
-            valid,
-            cv2.getStructuringElement(cv2.MORPH_RECT, trial),
-            borderType=cv2.BORDER_CONSTANT,
-            borderValue=0,
-        )
-        if cv2.countNonZero(fits):
-            width, height = trial
-            centers = fits
-            low = size + 1
-        else:
-            high = size - 1
-    rows, cols = np.nonzero(centers)
-    cx, cy = ix + iw // 2 - x, iy + ih // 2 - y
-    nearest = np.argmin((cols - cx) ** 2 + (rows - cy) ** 2)
-    return [
-        x + int(cols[nearest]) - width // 2,
-        y + int(rows[nearest]) - height // 2,
-        width,
-        height,
-    ]
+    return [x, y, w, h]
+
+
+def _read_packaged_area(root, page_id, region):
+    """按包内坐标恢复裁剪后的可写掩码。"""
+    _, _, w, h = region["box"]
+    return read_layout_area(
+        root / "layout-areas" / page_id / f"{region['regionId']}.png", (h, w)
+    )
 
 
 def _save_patch(root, page_id, region_id, original, repaired, mask):
@@ -547,6 +527,7 @@ def _prepare_group(
     writing,
     channel,
     variants,
+    previous_layout=None,
 ):
     """同一气泡只消字一次，补丁按格保存。"""
     shape = image.shape[:2]
@@ -559,29 +540,41 @@ def _prepare_group(
         and len(candidates) > 1
         and all(candidate["regionId"] in available for candidate in candidates)
     )
-    previously_written = writing.copy() if whole else None
     for candidate in candidates:
         rid = candidate["regionId"]
         part_area = _read_candidate_area(root, page_id, candidate, shape)
         selection |= part_area
-        pick = available.get(rid)
-        if pick is None:
-            continue
         index = candidate["index"]
-        area = np.where((occupied == 0) | (occupied == index), part_area, 0)
+        pick = available.get(rid)
+        if previous_layout is None:
+            # OCR 归属优先，剩余像素按扫描顺序分配。
+            area = np.where(
+                ((occupied == 0) | (occupied == index)) & ~writing, part_area, 0
+            )
+            writing |= area > 0
+            if pick is None:
+                continue
+            box = _save_layout_area(output, page_id, rid, area)
+        else:
+            if pick is None:
+                continue
+            # 补做沿用原来的可写掩码，避免把消字像素写入相邻区域。
+            previous, regions = previous_layout
+            region = regions[rid]
+            box = region["box"]
+            x, y, w, h = box
+            area = np.zeros(shape, np.uint8)
+            area[y : y + h, x : x + w] = _read_packaged_area(previous, page_id, region)
         boxes = [line["box"] for line in candidate["lines"]]
-        ink = _box_mask(shape, boxes)
         # 笔画邻域只分给一块，局部重做与本次选字无关。
         local = np.where(
             (occupied == index) | ((occupied == 0) & (expanded == index)), area, 0
         )
         if not np.any(local):
             raise ValueError(f"No writable text pixels in {rid}")
-        area[writing] = 0
-        box = _write_box(area, ink)
-        x, y, w, h = box
-        writing[y : y + h, x : x + w] = True
-        blocks.append((candidate, pick, box, local, part_area, boxes))
+        blocks.append((candidate, pick, box, local, area, boxes))
+    if not blocks:
+        return
     background, color = _background_color(image, selection, occupied)
     dark_background = (
         cv2.cvtColor(np.uint8([[color[::-1]]]), cv2.COLOR_BGR2GRAY)[0, 0] < 128
@@ -644,6 +637,8 @@ def _prepare_group(
             box=box,
             patch=patch,
         )
+        if candidate["kind"] == "unframed":
+            region["sourceLines"] = [line["coreBox"] for line in candidate["lines"]]
         record = dict(
             pageId=page_id,
             regionId=rid,
@@ -654,14 +649,17 @@ def _prepare_group(
 
     if whole:
         part_ids = [record["regionId"] for record in part_records]
-        signature = hashlib.sha256(",".join(part_ids).encode()).hexdigest()[:12]
-        whole_id = f"{candidates[0]['group']}-whole-{signature}"
+        whole_id = candidates[0]["group"]
         lines = [line for candidate in candidates for line in candidate["lines"]]
-        ink = _box_mask(shape, [line["box"] for line in lines])
-        selection[previously_written] = 0
-        box = _write_box(selection, ink)
-        x, y, w, h = box
-        writing[y : y + h, x : x + w] = True
+        boxes = [block[2] for block in blocks]
+        x = min(box[0] for box in boxes)
+        y = min(box[1] for box in boxes)
+        box = [
+            x,
+            y,
+            max(left + width for left, _, width, _ in boxes) - x,
+            max(top + height for _, top, _, height in boxes) - y,
+        ]
         yield (
             dict(
                 regionId=whole_id,
@@ -788,7 +786,11 @@ def _repartition_group(root, page, group, correction):
     for i, (part, lines) in enumerate(zip(partitions, lines_by_part), 1):
         identity = frozenset(part["textBoxIds"])
         digest = hashlib.sha256(",".join(sorted(identity)).encode()).hexdigest()[:12]
-        rid = before.get(identity, f"{group_id}-qa-{digest}")
+        rid = (
+            group_id
+            if len(partitions) == 1
+            else before.get(identity, f"{group_id}-qa-{digest}")
+        )
         candidate = _text_candidate(rid, group_id, "bubble", lines)
         corrected.append(
             {
@@ -815,6 +817,17 @@ def prepare(args, channel):
         selected[region_id] = pick
     records = []
     target = args.get("repartition")
+    previous = Path(args["previous"]) if "previous" in args else None
+    previous_pages = (
+        {
+            page["pageId"]: {region["regionId"]: region for region in page["regions"]}
+            for page in json.loads(
+                (previous / "image.json").read_text(encoding="utf-8")
+            )["pages"]
+        }
+        if previous is not None and target is None
+        else {}
+    )
     for page in pages:
         page_id = page["pageId"]
         selected = by_page.pop(page_id, {})
@@ -845,27 +858,40 @@ def prepare(args, channel):
                 cv2.fillConvexPoly(occupied, np.asarray(line["box"], np.int32), index)
         expanded = cv2.dilate(occupied, repair.ellipse(TEXT_MARGIN))
         writing = np.zeros(shape, bool)
+        previous_layout = (
+            (previous, previous_pages[page_id]) if previous_pages else None
+        )
         if repairing:
-            for x, y, w, h in args["reserved"]:
-                writing[y : y + h, x : x + w] = True
-        for _, group in groupby(candidates, key=lambda candidate: candidate["group"]):
+            for region in args["reserved"]:
+                x, y, w, h = region["box"]
+                mask = _read_packaged_area(previous, page_id, region)
+                writing[y : y + h, x : x + w] |= mask > 0
+        for group_id, group in groupby(
+            candidates, key=lambda candidate: candidate["group"]
+        ):
+            if repairing and group_id != target["group"]:
+                continue
             group = list(group)
-            if any(candidate["regionId"] in selected for candidate in group):
-                for region, record in _prepare_group(
-                    original,
-                    group,
-                    selected,
-                    root,
-                    output,
-                    page_id,
-                    occupied,
-                    expanded,
-                    writing,
-                    channel,
-                    args.get("variants", True),
-                ):
-                    page["regions"].append(region)
-                    records.append(record)
+            if previous_layout is not None and not any(
+                candidate["regionId"] in selected for candidate in group
+            ):
+                continue
+            for region, record in _prepare_group(
+                original,
+                group,
+                selected,
+                root,
+                output,
+                page_id,
+                occupied,
+                expanded,
+                writing,
+                channel,
+                args.get("variants", True),
+                previous_layout,
+            ):
+                page["regions"].append(region)
+                records.append(record)
     if by_page:
         raise ValueError("Unknown selected image page")
     return dict(pages=pages, records=records)
@@ -1096,6 +1122,91 @@ def split_bubble(selection, members, direction):
     return output
 
 
+def _line_alignment(lines, width, height, direction):
+    """在倾斜原行带的局部坐标系里求解，再把字形变换回原图。"""
+    if direction != "horizontal-tb" or len(lines) < 3:
+        return None
+    axes = np.asarray([line[1] - line[0] + line[2] - line[3] for line in lines])
+    angles = np.degrees(np.arctan2(axes[:, 1], axes[:, 0]))
+    angle = float(np.median(angles))
+    if (
+        abs(angle) < SOURCE_LINE_MIN_ANGLE
+        or np.max(np.abs(angles - angle)) > SOURCE_LINE_ANGLE_SPREAD
+    ):
+        return None
+    transform = cv2.getRotationMatrix2D((0.0, 0.0), angle, 1.0)
+    corners = (
+        np.asarray([[0, 0], [width, 0], [width, height], [0, height]])
+        @ transform[:, :2].T
+    )
+    low = np.floor(corners.min(axis=0))
+    size = tuple((np.ceil(corners.max(axis=0)) - low).astype(int).tolist())
+    transform[:, 2] = -low
+    return transform, size
+
+
+def _distance_field(mask):
+    """补零边后测量到区域外的距离，输出 Chromium 读取的 Float32 字节。"""
+    distance = cv2.distanceTransform(
+        np.pad(mask.astype(np.uint8), 1), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+    )[1:-1, 1:-1]
+    return base64.b64encode(distance.astype("<f4").tobytes()).decode("ascii")
+
+
+def text_layout(args, _channel):
+    """将当前要写的区域几何写到工作目录，避免距离场进入推理通道。"""
+    page = args["page"]
+    regions = {region["regionId"]: region for region in page["regions"]}
+    root = Path(args["root"])
+    output, budget = [], 0
+    for target in args["lettering"]:
+        region = regions[target["regionId"]]
+        x, y, w, h = region["box"]
+        budget += w * h * 4
+        if budget > args["maximumBytes"]:
+            raise ValueError("Image text material budget exceeded")
+        crop = np.zeros((h, w), np.uint8)
+        for part_id in region.get("parts", [region["regionId"]]):
+            left, top, width, height = regions[part_id]["box"]
+            crop[top - y : top - y + height, left - x : left - x + width] |= (
+                _read_packaged_area(root, page["pageId"], regions[part_id])
+            )
+        lines = [
+            np.asarray(line, np.float64) - [x, y]
+            for line in region.get("sourceLines", [])
+        ]
+        text = {
+            key: region[key]
+            for key in ("regionId", "box", "kind", "direction", "backgroundColor")
+        }
+        text["text"] = target["text"]
+        text["distance"] = _distance_field(crop)
+        alignment = _line_alignment(lines, w, h, region["direction"])
+        if alignment is not None:
+            transform, size = alignment
+            budget += math.prod(size) * 4
+            if budget > args["maximumBytes"]:
+                raise ValueError("Image text material budget exceeded")
+            aligned = cv2.warpAffine(crop, transform, size, flags=cv2.INTER_NEAREST)
+            inverse = cv2.invertAffineTransform(transform)
+            text["alignment"] = dict(
+                size=size,
+                distance=_distance_field(aligned),
+                transform=inverse.T.reshape(-1).tolist(),
+            )
+            lines = [line @ transform[:, :2].T + transform[:, 2] for line in lines]
+        text["sourceLines"] = [line.tolist() for line in lines]
+        output.append(text)
+    Path(args["output"]).write_text(
+        json.dumps(
+            dict(pageId=page["pageId"], regions=output),
+            ensure_ascii=False,
+            allow_nan=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _apply_overlay(result, overlay, box):
     """按字层或补丁的透明度合成，保留完全透明处的底图像素。"""
     x, y, w, h = box
@@ -1187,6 +1298,7 @@ COMMANDS = {
     "scan": scan,
     "inspect_bubble_group": inspect_bubble_group,
     "prepare": prepare,
+    "text_layout": text_layout,
     "text_output": text_output,
 }
 

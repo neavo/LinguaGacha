@@ -12,7 +12,12 @@ import {
 import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
-import { create_item, build_project_item_public_record } from "../../domain/item";
+import {
+  create_item,
+  build_project_item_public_record,
+  is_item_status,
+  type ProjectItemPublicRecord,
+} from "../../domain/item";
 import { type JsonRecord, type JsonValue } from "../../domain/json";
 import { PROMPT_KINDS, type PromptKind } from "../../domain/prompt";
 import {
@@ -33,10 +38,7 @@ import {
   apply_project_item_manual_update,
   type ProjectItemManualUpdate,
 } from "../../shared/project/project-item-update";
-import {
-  plan_project_item_changes,
-  type ProjectItemWriteRecord,
-} from "../../shared/project/project-item-write-planner";
+import { plan_project_item_changes } from "../../shared/project/project-item-write-planner";
 import type { ProjectItemWriteChange } from "./project-write-request";
 
 export type AgentWorkspaceRejectionReason =
@@ -57,7 +59,7 @@ export type AgentWorkspaceItemUpdateIntent = Readonly<{
   line: number;
   item_id: number;
   fp: string;
-  update: ProjectItemManualUpdate;
+  update: ProjectItemManualUpdate & { bubble_active?: boolean };
 }>;
 
 export type AgentWorkspaceKnowledgeUpdateIntent = Readonly<{
@@ -181,14 +183,14 @@ export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
 }
 
 /** 存储与公开字段在工作区读取边界转换一次，内部意图只消费已收窄事实。 */
-function read_item_write_record(item: JsonRecord): ProjectItemWriteRecord {
+function read_item_write_record(item: JsonRecord): ProjectItemPublicRecord {
   return build_project_item_public_record(
     create_item({ ...item, id: item["item_id"] ?? item["id"] }),
   );
 }
 
 /** 工作区显示当前姓名，指纹绑定同一字段视图。 */
-function project_workspace_item(item: ProjectItemWriteRecord): JsonRecord {
+function project_workspace_item(item: ProjectItemPublicRecord): JsonRecord {
   const row = {
     item_id: item.item_id,
     src: item.src,
@@ -199,7 +201,9 @@ function project_workspace_item(item: ProjectItemWriteRecord): JsonRecord {
     row_number: item.row_number,
     status: item.status,
   };
-  return { ...row, fp: workspace_fingerprint(item_fingerprint_tuple(row)) };
+  const fingerprint = item_fingerprint_tuple(row);
+  if (item.file_type === "IMAGE") fingerprint.push(item.extra_field ?? "");
+  return { ...row, fp: workspace_fingerprint(fingerprint) };
 }
 
 /** 把 quality entry 的内部身份与业务字段投影为带当前位置的工作区对象。 */
@@ -352,7 +356,7 @@ function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): Json
 /** 同一 item 的互补字段可合并，异值字段与对象漂移按 item 整体拒绝。 */
 function resolve_items(
   intents: readonly AgentWorkspaceItemUpdateIntent[],
-  current_items: readonly ProjectItemWriteRecord[],
+  current_items: readonly ProjectItemPublicRecord[],
 ): {
   changes: ProjectItemWriteChange[];
   rejected: AgentWorkspaceRejectedChange[];
@@ -379,8 +383,30 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "merge_conflict"));
       continue;
     }
-    const current_fields = { dst: current.dst, name_dst: current.name_dst, status: current.status };
-    const next = apply_project_item_manual_update(current_fields, update);
+    const current_fields = {
+      dst: current.dst,
+      name_dst: current.name_dst,
+      status: current.status,
+      extra_field: current.extra_field,
+    };
+    let next: typeof current_fields | null;
+    if (update.bubble_active === undefined) {
+      next = apply_project_item_manual_update(current_fields, update);
+    } else {
+      if (current.file_type !== "IMAGE" || Object.keys(update).length !== 1) {
+        rejected.push(item_rejection(item_id, "invalid_change"));
+        continue;
+      }
+      // 停用与主动排除都使用 EXCLUDED，只有停用保存恢复状态。
+      const status =
+        current.status === "EXCLUDED" && is_item_status(current.extra_field)
+          ? current.extra_field
+          : current.status;
+      next = update.bubble_active
+        ? { ...current_fields, status, extra_field: "" }
+        : { ...current_fields, status: "EXCLUDED", extra_field: status };
+      if (next.status === current.status && next.extra_field === current.extra_field) continue;
+    }
     if (next === null) continue;
     changes.push({
       item_id,

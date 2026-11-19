@@ -7,6 +7,13 @@ import { read_image_package } from "./image-package";
 /** 相对路径与区域号跨重新创建保持稳定，项目域据此复制已完成事实。 */
 export function image_record_identities(book: ImageBook, records: readonly ImageRecord[]) {
   const pages = new Map(book.pages.map((page) => [page.pageId, page]));
+  const groups = new Map<string, string>();
+  for (const page of book.pages)
+    for (const { regionId, parts } of page.regions) {
+      if (!parts) continue;
+      const layout = JSON.stringify([regionId, ...parts]); // 子格阅读顺序参与布局身份比较。
+      for (const id of [regionId, ...parts]) groups.set(page.pageId + "/" + id, layout);
+    }
   return new Map(
     records.map((record, row) => {
       const page = pages.get(record.pageId)!;
@@ -16,6 +23,7 @@ export function image_record_identities(book: ImageBook, records: readonly Image
           row,
           source: record.message,
           image: [page.sha256, page.orientation, page.width, page.height].join(":"),
+          layout: groups.get(record.pageId + "/" + record.regionId),
         },
       ];
     }),
@@ -40,6 +48,7 @@ export class ImageFormat {
           row,
           tag: region.kind,
           status: region.kind === "unframed" || region.parts ? "EXCLUDED" : "NONE",
+          ...(region.parts ? { extra_field: "NONE" } : {}),
           file_type: "IMAGE",
           file_path: file,
         });

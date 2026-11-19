@@ -1,25 +1,8 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { writeFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { expect, it } from "vitest";
 
-import { unpack } from "../../agent/generic/package";
-import { image_fixture, patch_fixture } from "../../../test/image-fixture";
-import { read_image_package, validate_image_package_directory } from "./image-package";
-
-it("补做读取清单，封包负责检查补丁像素", async () => {
-  using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-image-package-"));
-  const source = path.join(temporary.path, "source.image");
-  const directory = path.join(temporary.path, "package");
-  await writeFile(source, await image_fixture(["page"]).pack());
-  await unpack(source, directory);
-
-  await writeFile(path.join(directory, "patches/page/text.png"), patch_fixture([128]));
-  await validate_image_package_directory(directory, { validatePixels: false });
-  await expect(validate_image_package_directory(directory)).rejects.toThrow("alpha must be binary");
-});
+import { image_fixture, layout_area_fixture, patch_fixture } from "../../../test/image-fixture";
+import { read_image_package } from "./image-package";
 
 it("成员不匹配同时报告缺失与多余路径", async () => {
   const fixture = image_fixture(["page"]);
@@ -33,6 +16,14 @@ it("成员不匹配同时报告缺失与多余路径", async () => {
       message: expect.stringMatching(/missing 1.*patches\/page\/text\.png.*extra 1.*extra\.png/u),
     },
   });
+});
+
+it("拒绝含灰度像素的可写掩码", async () => {
+  const archive = await JSZip.loadAsync(await image_fixture(["page"]).pack());
+  archive.file("layout-areas/page/text.png", layout_area_fixture(128));
+  await expect(
+    read_image_package(await archive.generateAsync({ type: "uint8array" }), "bad.image"),
+  ).rejects.toThrow("layout area must be binary");
 });
 
 it("超额成员声明在解压前拒绝", async () => {

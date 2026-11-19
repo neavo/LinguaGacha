@@ -169,18 +169,85 @@ for (const asset of generated.writeback?.files ?? []) {
 
 |观察到的图面现象|判定原因|处理动作|
 |---|---|---|
-|发现 OCR 识别文本明显有误|识别错误|更新对应条目的原文与译文，重新生成译图|
-|页边广告、装饰字无需翻译却被擦除或残缺|误擦除无需翻译区域|封包前从 `selected` 移除，或在工程中将条目设为 `EXCLUDED` 后重新生成|
-|发现关键叙事或对白的无框文字未翻译|无框文字默认未启用|启用对应条目（设为 `NONE` 或恢复 `PROCESSED`），补齐译文后重新生成|
-|同一气泡的整泡版与分格版同时启用|版本冲突（`variant_conflict`）|只保留一个版本启用，重新生成并检查该组|
-|整泡版比分格版更贴合原稿气泡表现|分格切分不合理|在工程条目中切换版本状态（禁用分格版，启用整泡版）|
-|连体气泡一格拥挤、一格留白过多|格界划分不合理或漏译|分格正确时核对空格是否漏译；格界错误时执行连体气泡纠正|
-|译文填入错误的气泡格内|分格对应错位|对照原字位置与阅读流向，调换或写回正确条目|
-|消字失败，有明显残字、网点或线条损伤|背景复杂填色失效|对受损区域补做轮廓填字|
+|画面有多个气泡，文字却挤在其中一侧（另侧留白或堆叠过挤）|连体气泡未分格排版|调用 `image.splitBubble` 拆分气泡分别排版，提交后补译|
+|气泡被红色框标出且保留原图（报告提示 `variant_conflict`）|整泡版与分格版同时启用|调用 `image.splitBubble` 明确单套布局，重新出图|
+|气泡被红色框标出，或消字处有明显残字、网点破损|背景复杂填色失效|对受损区域调用 `prepareAndPack` 补做轮廓填字并替换资产|
+|区域被黄色框标出且图上仍为原文|条目遗漏翻译（处于待译）|补齐对应条目译文后重新出图|
+|关键对白、独白或标题等无框文字保留原图未翻译|无框文字默认未启用|启用对应条目（设为 `NONE`），补齐译文后重新生成|
+|页边广告、纯装饰字无需翻译，却被擦除或残缺|误擦除无需翻译区域|在工程中将条目设为 `EXCLUDED` 后重新生成|
+|对照双拼发现 OCR 识别文本明显有错漏|OCR 识别偏差|更新对应条目的原文与译文，重新生成译图|
 
 ## 异常修复分支
 
-### 1. 启用条目与切换版本
+### 1. 已知格界的气泡拆合
+
+**核心原则：以拆为主**。整页 QA 观察到画面有多个明显气泡（如连体葫芦泡、双叶泡），文字却全部堆在其中一侧而另一侧留白时，**一律执行拆分**：
+
+1. **登记布局意图**：
+   在工作区根目录下调用 `splitBubble`（极少需要回退整泡排版时调用 `mergeBubble`）：
+   ```js
+   const result = image.splitBubble({ assetPath, pageId, regionId });
+   // 或合并回退为整泡：image.mergeBubble({ assetPath, pageId, regionId });
+   ```
+   - `assetPath` 为工程相对路径（如 `book.image`），`regionId` 可传入整泡或任一子格编号。
+   - 同一批次可登记多组，但同一组在同一批次严格只能选择一种目标布局。
+2. **提交与补译**：
+   - 返回 `{ status: "queued", itemIds }` 时，意图已自动写入变更清单，无需手动查 `parts` 或猜测旧状态。
+   - 直接调用 `workspace_apply` 提交审批。
+   - 读取最新快照，仅对返回的 `itemIds` 中为 `NONE` 的待译条目补译。停用版本的译文及暂停前状态由工程自动保留。
+3. **异常处理**：
+   - 收到 `partial` 拒绝或指纹失效时，刷新工程快照，对同组重试原操作，复核提交回执后再出图。
+   - 返回 `{ status: "repartition_required" }` 时，表示无预置对应关系，转入下文「重新划分格界与封包」。
+
+### 2. 重新划分格界与封包
+
+收到 `repartition_required`、原有分格切分错误、或需要合回但无预置整泡时执行：
+
+1. **获取原 OCR 框**：
+   调用 `image.inspectGroup(scanDir, { pageId, group }, previewPath)` 生成编号图，从返回的 `lines` 读取 OCR 框编号。
+2. **划分分组并一步封包**：
+   按阅读顺序将每个 OCR 框恰好编入一组（每个框恰好出现一次；若合回整泡则全部放入同一组）：
+   ```js
+   const result = await image.repartitionAndPack(
+     scanDir,
+     {
+       pageId,
+       group,
+       parts: [
+         { textBoxIds: firstBoxIds, translate: true },
+         { textBoxIds: secondBoxIds, translate: true },
+       ],
+     },
+     preparedDir,
+     'work/image/repartitioned',
+     'work/image/repartitioned.image',
+     { device },
+   );
+   ```
+3. **替换资产与补译**：
+   以返回的 `result.package` 按 `project-operation` 的 `files.replaces`（「更新文件」）提交。
+   核对回执，补译受影响条目并复查该页。
+   **保留 `scanDir` 和最新准备目录至 QA 完成**，供后续局部纠错复用。
+
+### 3. 补做轮廓填字与封包
+
+纯色消字在复杂网点或彩色背景上产生残损、线条断裂时执行：
+
+1. **指定目标区域**：复用同次扫描，修复区域标记为 `{ pageId, regionId, contour: true }`。
+2. **一步准备并封包**：
+   ```js
+   const result = await image.prepareAndPack(
+     scanDir,
+     targets,
+     'work/image/contour-fix',
+     'work/image/contour-fix.image',
+     { update: preparedDir, device },
+   );
+   ```
+   （若此前曾做过连体气泡纠错，`update` 传入最新一次成功的准备目录；若仅重试封包，可直接传本次已成功的准备目录）。
+3. **提交更新**：按 `files.replaces` 提交，重新生成并核验新补丁的对比度与消字质量。
+
+### 4. 启用无框文字
 
 **无框文字启用标准**（仅满足下列之一方可启用）：
 - 文字承担角色对白、独白、旁白或正文功能。
@@ -188,59 +255,7 @@ for (const asset of generated.writeback?.files ?? []) {
 - 读者理解剧情转折或场景切换所必需的关键线索。
 - *氛围艺术字、拟音词默认不翻译；拿不准时保留原图*。
 
-**操作步骤**：
-1. 通过 `image.read(工作目录).book` 查询对应页与区域编号。
-2. 整泡条目的 `parts` 字段对应分格条目编号。
-3. 同一批次内将旧版设为 `EXCLUDED`，新版设为 `NONE`（需补译）或 `PROCESSED`（已有译文）。
-4. 提交工程变更，重新生成并复查受影响页的双拼图。
-
-### 2. 纠正连体气泡分格
-
-当默认的整泡版与分格版均无法正确表达格界时执行：
-
-1. **诊断并查看编号**：
-   调用 `image.inspectGroup(scan.directory, { pageId, group }, 预览路径)` 生成编号图，从返回的 `lines` 读取 OCR 框编号。
-2. **重新划分格界并封包**：
-   按阅读顺序划分各格，每个 OCR 框恰好归入一格，不翻译的格标记 `translate: false`：
-
-```js
-const result = await image.repartition(
-  scan.directory,
-  {
-    pageId,
-    group,
-    parts: [
-      { textBoxIds: firstBoxIds, translate: true },
-      { textBoxIds: secondBoxIds, translate: true },
-    ],
-  },
-  prepared.directory,
-  'work/image/repartitioned',
-  { device },
-);
-await image.pack(result.directory, 'work/image/repartitioned.image');
-```
-
-3. **提交更新**：按「更新文件」提交，仅补译受影响区域，并复查该页双拼图。若无法可靠分割，保留原图并记录页码与区域。
-
-### 3. 补做轮廓填字
-
-当纯色消字在复杂网点或背景上产生残损时执行：
-
-1. **指定目标区域**：复用同次扫描，修复区域标记为 `{ pageId, regionId, contour: true }`。
-2. **增量准备**：调用 `prepare` 传入已准备目录（若曾纠正分格，`update` 使用最新准备目录）：
-
-```js
-const updated = await image.prepare(
-  scan.directory,
-  targets,
-  'work/image/contour-fix',
-  { update: prepared.directory, device },
-);
-await image.pack(updated.directory, 'work/image/contour-fix.image');
-```
-
-3. **提交更新**：封包后按「更新文件」提交。程序复用其余补丁并保留写字框与原文，补做后的消字像素自动应用于该气泡的两种版本。
+启用时通过常规条目更新将对应条目设为 `NONE`，补齐译文后重新出图。
 
 # 交付说明
 

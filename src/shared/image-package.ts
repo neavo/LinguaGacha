@@ -19,7 +19,9 @@ export const IMAGE_BOX_SCHEMA = Type.Tuple([
   Type.Integer({ minimum: 1 }),
   Type.Integer({ minimum: 1 }),
 ]);
-const IMAGE_KIND_SCHEMA = Type.Union([Type.Literal("bubble"), Type.Literal("unframed")]);
+export const IMAGE_KIND_SCHEMA = Type.Union([Type.Literal("bubble"), Type.Literal("unframed")]);
+const POINT = Type.Tuple([Type.Number(), Type.Number()]);
+export const IMAGE_QUAD_SCHEMA = Type.Tuple([POINT, POINT, POINT, POINT]);
 const COLOR_CHANNEL = Type.Integer({ minimum: 0, maximum: 255 });
 export const IMAGE_COLOR_SCHEMA = Type.Tuple([COLOR_CHANNEL, COLOR_CHANNEL, COLOR_CHANNEL]);
 const REGION_SCHEMA = Type.Object(
@@ -27,6 +29,7 @@ const REGION_SCHEMA = Type.Object(
     regionId: IMAGE_ID_SCHEMA,
     kind: IMAGE_KIND_SCHEMA,
     box: IMAGE_BOX_SCHEMA,
+    sourceLines: Type.Optional(Type.Array(IMAGE_QUAD_SCHEMA, { minItems: 1, maxItems: 10000 })),
     patch: Type.Union([
       Type.Object(
         { path: Type.String({ minLength: 1 }), box: IMAGE_BOX_SCHEMA },
@@ -69,6 +72,11 @@ export type ImageDirection = Static<typeof IMAGE_DIRECTION_SCHEMA>;
 export type ImageBook = Static<typeof IMAGE_BOOK_SCHEMA>;
 export type ImagePage = ImageBook["pages"][number];
 export type ImageRegion = ImagePage["regions"][number];
+
+/** 物理区域单独保存掩码，整泡复用子格路径。 */
+export function image_layout_area_path(pageId: string, regionId: string): string {
+  return `layout-areas/${pageId}/${regionId}.png`;
+}
 export const IMAGE_RECORD_SCHEMA = Type.Object(
   {
     message: GENERIC_ITEM_SCHEMA.properties.message,
@@ -126,6 +134,8 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
       const key = page.pageId + "/" + region.regionId;
       regions.add(key);
       const { patch } = region;
+      if ((region.kind === "unframed") !== (region.sourceLines !== undefined))
+        throw new Error("Invalid image source lines");
       if (patch && patch.path !== `patches/${page.pageId}/${region.regionId}.png`)
         throw new Error("Invalid image patch path");
       for (const [x, y, width, height] of patch ? [region.box, patch.box] : [region.box])
@@ -140,6 +150,10 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
         const part = regionIds.get(id);
         if (part?.kind !== "bubble" || part.parts || assignedParts.has(id))
           throw new Error("Invalid or duplicate bubble part");
+        const [x, y, width, height] = region.box;
+        const [left, top, partWidth, partHeight] = part.box;
+        if (left < x || top < y || left + partWidth > x + width || top + partHeight > y + height)
+          throw new Error("Bubble part lies outside its whole bubble");
         assignedParts.add(id);
       }
     }

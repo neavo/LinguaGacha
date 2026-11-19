@@ -13,7 +13,7 @@ import {
 } from "@lg/image";
 
 /** 从同一份快照生成译图和整页对照。整册成功后才发布目录。 */
-export async function render_book({ asset_path, source, input, output }, compose) {
+export async function render_book({ asset_path, source, input, output }, pixels) {
   if (!/\.image$/iu.test(asset_path)) throw new Error("Expected an .image asset path");
   const assetRoot = asset_path.replaceAll("\\", "/").slice(0, -".image".length);
   const { book, records } = read_image_package_manifest(source);
@@ -47,7 +47,7 @@ export async function render_book({ asset_path, source, input, output }, compose
           output: path.join(stage, "translated", file),
           qa: path.join(stage, "qa", qa),
         },
-        compose,
+        pixels,
       );
       files.push({ path: file, qa, entries });
       console.log(`Image page ${files.length}/${book.pages.length}: ${file}`);
@@ -77,7 +77,7 @@ export async function render_book({ asset_path, source, input, output }, compose
 }
 
 /** 先裁决启用区域，再把同一份区域结果用于译图和 QA。 */
-async function render_page(page, records, paths, compose) {
+async function render_page(page, records, paths, { layout, compose }) {
   const decisions = new Map(records.map((record) => [record.regionId, record]));
   const regions = new Map(page.regions.map((region) => [region.regionId, region]));
   const hidden = new Set();
@@ -112,16 +112,10 @@ async function render_page(page, records, paths, compose) {
 
   const lettering = candidates
     .filter(({ text }) => text)
-    .map(({ region: { regionId, box, direction, backgroundColor }, text }) => ({
-      regionId,
-      box,
-      direction,
-      backgroundColor,
-      text,
-    }));
-  const painted = lettering.length
-    ? await render_image_text_page({ pageId: page.pageId, regions: lettering })
-    : [];
+    .map(({ region: { regionId }, text }) => ({ regionId, text }));
+  const material = path.join(paths.scratch, "lettering.json");
+  if (lettering.length) await layout({ root: paths.source, output: material, page, lettering });
+  const painted = lettering.length ? await render_image_text_page(material) : [];
   const layersById = new Map(painted.map(({ regionId, png }) => [regionId, png]));
 
   const layers = [];

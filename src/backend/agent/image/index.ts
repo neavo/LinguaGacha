@@ -8,15 +8,24 @@ import type {
   ImageHelperRequest,
   ImageHelperResponse,
 } from "../../../shared/image-helper";
-import { read_image_book, type ImageRecord, type ImageRegion } from "../../../shared/image-package";
-import { validate_image_package_directory } from "../../file/image/image-package";
+import {
+  image_layout_area_path,
+  read_image_book,
+  type ImageRecord,
+  type ImageRegion,
+} from "../../../shared/image-package";
+import {
+  read_image_package_manifest,
+  validate_image_package_directory,
+} from "../../file/image/image-package";
 import { normalize_image_to_png } from "../../file/image/image-pixels";
 import { INFERENCE_DEPENDENCIES } from "../inference/environment";
-import type { ImageTextPage, ImageTextPaint } from "../../../shared/image-text";
+import { IMAGE_TEXT_RULES, type ImageTextPaint } from "../../../shared/image-text";
 import { workspace_requests } from "../workspace/runtime/request-channel";
 import { pixels, type ImageDevice } from "./engine";
 
 export { DeviceFailure } from "../inference/client";
+export { queue_image_bubble_layout } from "./bubble-layout";
 export { missing_models, prepare_models } from "./models";
 
 export const IMAGE_PIXEL_DEPENDENCIES = [
@@ -156,8 +165,7 @@ async function prepare_book(
   const previousDirectory = update ? path.resolve(update, "package") : undefined;
   await fs.make_dir_async(packageDirectory);
   try {
-    const previous =
-      previousDirectory && (await validate_package(previousDirectory, { validatePixels: false })); // 封包前统一检查补丁像素。
+    const previous = previousDirectory && read_image_package_manifest(previousDirectory);
     const partitionFile = update && path.resolve(update, "partitions.json");
     let partitions: ImageBubblePartition[] =
       partitionFile && fs.exists(partitionFile) ? JSON.parse(fs.read_text_file(partitionFile)) : [];
@@ -204,22 +212,20 @@ async function prepare_book(
         selected: requested,
         partitions,
         variants: !previous || correction !== undefined,
+        ...(previousDirectory ? { previous: previousDirectory } : {}),
         ...(correction && targetPage
           ? {
               repartition: { pageId: correction.pageId, group: correction.group },
               reserved: targetPage.regions
-                .filter(({ regionId }) => !affected.has(regionId))
-                .map(({ box }) => box),
+                .filter(({ regionId, parts }) => !parts && !affected.has(regionId))
+                .map(({ regionId, box }) => ({ regionId, box })),
             }
           : {}),
       },
       device,
     );
     let { records } = prepared;
-    let book = read_image_book(
-      { bookId: previous ? previous.book.bookId : randomUUID(), pages: prepared.pages },
-      records,
-    );
+    let book = { bookId: previous ? previous.book.bookId : randomUUID(), pages: prepared.pages };
     const regionIds = correction
       ? book.pages.flatMap((page) =>
           page.regions.filter((region) => !region.parts).map(({ regionId }) => regionId),
@@ -248,6 +254,12 @@ async function prepare_book(
             await fs.make_dir_async(path.dirname(destination));
             fs.copy_file(path.join(previousDirectory, region.patch.path), destination);
           }
+          if (!region.parts) {
+            const member = image_layout_area_path(page.pageId, region.regionId);
+            const destination = path.join(packageDirectory, member);
+            await fs.make_dir_async(path.dirname(destination));
+            fs.copy_file(path.join(previousDirectory, member), destination);
+          }
           retained.push(region);
         }
         if (page.pageId === correction?.pageId) {
@@ -272,8 +284,9 @@ async function prepare_book(
           return replacements;
         });
       } else records = previous.records;
-      book = read_image_book(previous.book, records);
+      book = previous.book;
     }
+    read_image_book(book, records); // 补做结果只携带目标区域，合并后才校验整包。
     await fs.make_dir_async(path.join(packageDirectory, "originals"));
     for (const { original } of book.pages)
       fs.copy_file(
@@ -309,13 +322,21 @@ export function create_image_pipeline(script: URL) {
     inspectGroup: inspectBubbleGroup.bind(undefined, script),
     prepare: preparePages.bind(undefined, script),
     repartition: repartitionBubbleGroup.bind(undefined, script),
+    layout: (job: Omit<ImageHelperRequest<"text_layout">, "maximumBytes">) =>
+      pixels(script, "text_layout", {
+        ...job,
+        maximumBytes: IMAGE_TEXT_RULES.maximumMaterialBytes,
+      }),
     compose: (job: ImageHelperRequest<"text_output">) => pixels(script, "text_output", job),
   };
 }
 
 /** 与 PDF 打印一样，宿主用临时文件交接结果，SDK 读取后释放。 */
-export async function render_image_text_page(page: ImageTextPage): Promise<ImageTextPaint[]> {
-  const result = await workspace_requests().call({ kind: "render_image_text_page", page });
+export async function render_image_text_page(file: string): Promise<ImageTextPaint[]> {
+  const result = await workspace_requests().call({
+    kind: "render_image_text_page",
+    path: path.resolve(file),
+  });
   try {
     return JSON.parse(fs.read_text_file(result.path));
   } finally {

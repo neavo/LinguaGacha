@@ -54,6 +54,7 @@ import { ProjectSessionState } from "./project-session-state";
 import {
   build_project_item_persistent_records,
   collect_project_item_missing_public_fields,
+  is_item_status,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
   type Item,
@@ -475,9 +476,20 @@ export class ProjectContentService {
               continue;
             target.dst = source.dst;
             target.name_dst = source.name_dst;
-            // 局部修正不应重新启用同一资产中已经确认保留原图的区域。
-            target.status = source.status;
-            if (source.status === "PROCESSED")
+            const status =
+              source.status === "EXCLUDED" && is_item_status(source.extra_field)
+                ? source.extra_field
+                : source.status;
+            if (old.layout === next.layout) {
+              // 关系一致时复用布局选择，也保留主动排除。
+              target.status = source.status;
+              target.extra_field = source.extra_field;
+            } else if (is_item_status(target.extra_field)) {
+              target.extra_field = status;
+            } else {
+              target.status = status;
+            }
+            if (status === "PROCESSED")
               preserved.set(draft.rel_path, (preserved.get(draft.rel_path) ?? 0) + 1);
           }
         }

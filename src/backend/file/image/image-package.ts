@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import {
+  image_layout_area_path,
   read_image_book,
   read_image_records,
   type ImageBook,
@@ -56,21 +57,16 @@ export function read_image_package_manifest(directory: string) {
   return { book, records };
 }
 
-/** 封包需要物理契约，局部补做只需定位并复用已有成员。 */
-export async function validate_image_package_directory(
-  directory: string,
-  { validatePixels = true } = {},
-): Promise<{
+/** 封包前核对成员与像素契约。 */
+export async function validate_image_package_directory(directory: string): Promise<{
   book: ImageBook;
   records: ImageRecord[];
 }> {
   directory = path.resolve(directory);
   const { book, records } = read_image_package_manifest(directory);
   const members = collect_directory_members(directory);
-  await validate_image_members(
-    book,
-    members,
-    validatePixels ? async (member) => fs.read_file(path.join(directory, member)) : undefined,
+  await validate_image_members(book, members, async (member) =>
+    fs.read_file(path.join(directory, member)),
   );
   return { book, records };
 }
@@ -86,7 +82,10 @@ async function validate_image_members(
     IMAGE_STATE_MEMBER,
     ...book.pages.flatMap((page) => [
       page.original,
-      ...page.regions.flatMap(({ patch }) => (patch ? [patch.path] : [])),
+      ...page.regions.flatMap(({ regionId, parts, patch }) => [
+        ...(parts ? [] : [image_layout_area_path(page.pageId, regionId)]),
+        ...(patch ? [patch.path] : []),
+      ]),
     ]),
   ]);
   const actual = new Set(actualMembers);
@@ -99,7 +98,7 @@ async function validate_image_members(
   if (read) for (const page of book.pages) await validate_image_page_members(page, read);
 }
 
-/** 原图和局部消字补丁必须与声明的尺寸一致。 */
+/** 核对原图与像素成员各自的坐标尺寸。 */
 async function validate_image_page_members(
   page: ImagePage,
   read: (member: string) => Promise<Uint8Array>,
@@ -111,7 +110,21 @@ async function validate_image_page_members(
     original.orientation !== page.orientation
   )
     throw new Error("Image metadata mismatch");
-  for (const { patch } of page.regions) {
+  for (const { regionId, box, parts, patch } of page.regions) {
+    if (!parts) {
+      const bytes = await read(image_layout_area_path(page.pageId, regionId));
+      const metadata = image_metadata(bytes);
+      if (
+        metadata.extension !== ".png" ||
+        metadata.width !== box[2] ||
+        metadata.height !== box[3] ||
+        metadata.orientation !== 1 ||
+        bytes[24] !== 8 ||
+        bytes[25] !== 0
+      )
+        throw new Error("Image layout area must be an 8-bit grayscale PNG matching its box");
+      await validate_binary_pixels(bytes, box[2], box[3], "layout area");
+    }
     if (!patch) continue;
     const bytes = await read(patch.path);
     const metadata = image_metadata(bytes);
@@ -125,24 +138,42 @@ async function validate_image_page_members(
       bytes[25] !== 6
     )
       throw new Error("Image patch must be an 8-bit RGBA PNG matching its box");
-    const mupdf = await import("mupdf");
-    const image = new mupdf.Image(bytes);
+    await validate_binary_pixels(bytes, width, height, "patch alpha");
+  }
+}
+
+/** 掩码取灰度，补丁取 alpha。两者都只允许二值。 */
+async function validate_binary_pixels(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+  channel: "layout area" | "patch alpha",
+): Promise<void> {
+  const { Image } = await import("mupdf");
+  const image = new Image(bytes);
+  try {
+    const pixels = image.toPixmap();
     try {
-      const pixels = image.toPixmap();
-      try {
-        if (pixels.getWidth() !== width || pixels.getHeight() !== height || !pixels.getAlpha())
-          throw new Error("Invalid decoded image patch");
-        const data = pixels.getPixels();
-        const components = pixels.getNumberOfComponents();
-        for (let offset = components - 1; offset < data.length; offset += components)
-          if (data[offset] !== 0 && data[offset] !== 255)
-            throw new Error("Image patch alpha must be binary");
-      } finally {
-        pixels.destroy();
+      const alpha = channel === "patch alpha";
+      if (
+        pixels.getWidth() !== width ||
+        pixels.getHeight() !== height ||
+        Boolean(pixels.getAlpha()) !== alpha
+      )
+        throw new Error(`Invalid decoded image ${channel}`);
+      const data = pixels.getPixels();
+      const components = pixels.getNumberOfComponents();
+      let nonempty = false;
+      for (let offset = components - 1; offset < data.length; offset += components) {
+        if (data[offset] === 255) nonempty = true;
+        else if (data[offset] !== 0) throw new Error(`Image ${channel} must be binary`);
       }
+      if (!alpha && !nonempty) throw new Error("Image layout area is empty");
     } finally {
-      image.destroy();
+      pixels.destroy();
     }
+  } finally {
+    image.destroy();
   }
 }
 

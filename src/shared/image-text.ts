@@ -1,21 +1,24 @@
-import type { ImageRegion } from "./image-package";
+import type { ImageTextPage } from "./image-text-schema";
+export type { ImageTextPage, ImageTextRegion } from "./image-text-schema";
 
+/** 字号与栅格判定共用规则。调用者只提供正文与已确认区域事实。 */
 export const IMAGE_TEXT_RULES = Object.freeze({
   fontFile: "LGBaseFont-Regular.ttf",
   lineHeight: 1.1,
+  minimumFontSize: 2,
+  fontSizeScale: 1.5,
+  rotationAllowance: 1,
+  minimumStroke: 1,
+  strokeRatio: 0.08,
+  antialiasingAllowance: 1,
+  squareDistanceCorrection: Math.SQRT2,
   pageTimeoutMs: 600_000,
+  maximumMaterialBytes: 256_000_000,
 });
 
-export type ImageTextRegion = Pick<
-  ImageRegion,
-  "regionId" | "box" | "direction" | "backgroundColor"
-> & {
-  text: string;
-};
-export type ImageTextPage = { pageId: string; regions: ImageTextRegion[] };
-
-/** 无法完整写入时返回空位图，写出方据此保留原图。 */
+/** 空位图表示区域无法安全排版。绘制坐标沿用请求的 `box`。 */
 export type ImageTextPaint = { regionId: string; png: string | null };
+
 export type ImageTextHostOperation = { kind: "render_image_text_page"; page: ImageTextPage };
 export type ImageTextHost = (
   operation: ImageTextHostOperation,
@@ -36,6 +39,11 @@ export function normalize_image_text(text: string): string {
         .replaceAll("\n", ""),
     )
     .join("\n\n");
+}
+
+/** 排版预留与 Chromium 绘制共用描边宽度。 */
+export function image_text_stroke_width(fontSize: number): number {
+  return Math.max(IMAGE_TEXT_RULES.minimumStroke, fontSize * IMAGE_TEXT_RULES.strokeRatio);
 }
 
 /** 按区域背景色的线性亮度比较黑白对比度。 */

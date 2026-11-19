@@ -1072,6 +1072,76 @@ describe("ProjectWriteStore", () => {
     });
   });
 
+  it("气泡拆合可以重试部分提交并恢复空译文与主动排除", async () => {
+    const { database, project_path, store } = await create_store("bubble-layout");
+    await database.transaction(project_path, (writer) =>
+      writer.add_asset(project_path, "page.image", Buffer.from("image"), "IMAGE", null),
+    );
+    await database.transaction(project_path, (writer) =>
+      writer.set_items(project_path, [
+        create_item({
+          id: 1,
+          row: 0,
+          file_path: "page.image",
+          file_type: "IMAGE",
+          src: "整泡",
+          status: "EXCLUDED",
+          extra_field: "NONE",
+        }),
+        create_item({
+          id: 2,
+          row: 1,
+          file_path: "page.image",
+          file_type: "IMAGE",
+          src: "上格",
+          status: "PROCESSED",
+          dst: "",
+        }),
+        create_item({
+          id: 3,
+          row: 2,
+          file_path: "page.image",
+          file_type: "IMAGE",
+          src: "下格",
+          status: "EXCLUDED",
+        }),
+      ]),
+    );
+    const switch_layout = async (whole: boolean, stale?: number) => {
+      const rows = await read_items(database, project_path);
+      const items = rows.map((row, index) => ({
+        line: index + 1,
+        item_id: index + 1,
+        fp: index + 1 === stale ? "old!" : String(project_agent_workspace_item(row)["fp"]),
+        update: { bubble_active: index === 0 ? whole : !whole },
+      }));
+      return store.apply_agent_workspace_changes({
+        projectPath: project_path,
+        source: "agent_workspace_apply",
+        batch: agent_batch({ items, quality: {}, prompts: [] }),
+      });
+    };
+    const partial = await switch_layout(true, 2);
+    expect(partial).toMatchObject({
+      applied: { items: { updated: 2 } },
+      rejected: [{ id: 2, reason: "fp_mismatch" }],
+    });
+    expect((await switch_layout(true)).applied.items?.updated).toBe(1);
+    expect((await switch_layout(true)).applied.items).toBeUndefined();
+    await switch_layout(false);
+    expect(
+      (await read_items(database, project_path)).map(({ status, dst, extra_field }) => [
+        status,
+        dst,
+        extra_field,
+      ]),
+    ).toEqual([
+      ["EXCLUDED", "", "NONE"],
+      ["PROCESSED", "", ""],
+      ["EXCLUDED", "", ""],
+    ]);
+  });
+
   it("Agent 无实际变化时不推进 revision 或发布事件", async () => {
     const project_event_handler = vi.fn();
     const { database, project_path, store, published_changes } = await create_store(

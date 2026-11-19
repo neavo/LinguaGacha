@@ -135,6 +135,7 @@ export const AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA = Type.Object(
     item_id: PROJECT_ITEM_PUBLIC_SCHEMA.properties.item_id,
     fp: AGENT_WORKSPACE_FP_SCHEMA,
     ...PROJECT_ITEM_MANUAL_UPDATE_SCHEMA.properties,
+    bubble_active: Type.Optional(Type.Boolean()),
   },
   {
     additionalProperties: false,

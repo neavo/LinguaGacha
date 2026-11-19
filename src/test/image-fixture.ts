@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { crc32, deflateSync } from "node:zlib";
 import { png_fixture } from "./media-fixture";
 import { write_zip } from "./zip-fixture";
-import type { ImageBook, ImagePage, ImageRecord } from "../shared/image-package";
+import {
+  image_layout_area_path,
+  type ImageBook,
+  type ImagePage,
+  type ImageRecord,
+} from "../shared/image-package";
 
 /** 构建最小完整 `.image` 归档与原图与消字补丁字节测试夹具。 */
 export function image_fixture(ids: string[] = ["first", "second"]) {
@@ -41,7 +46,11 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
     ]);
     for (const page of book.pages) {
       entries.set(page.original, original);
-      for (const region of page.regions) if (region.patch) entries.set(region.patch.path, patch);
+      for (const region of page.regions) {
+        if (!region.parts)
+          entries.set(image_layout_area_path(page.pageId, region.regionId), layout_area_fixture());
+        if (region.patch) entries.set(region.patch.path, patch);
+      }
     }
     return write_zip(entries);
   };
@@ -51,6 +60,16 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
 /** 测试自有 RGBA 补丁，可覆盖透明度校验。 */
 export function patch_fixture(values: readonly number[] = [255]): Buffer {
   const width = values.length;
+  const raw = Buffer.alloc(width * 4 + 1);
+  for (let x = 0; x < width; x++) raw[(x + 1) * 4] = values[x]!;
+  return image_png(width, 6, raw);
+}
+
+export function layout_area_fixture(value = 255): Buffer {
+  return image_png(1, 0, Buffer.from([0, value]));
+}
+
+function image_png(width: number, colorType: number, raw: Buffer): Buffer {
   const chunk = (type: string, data: Buffer) => {
     const body = Buffer.concat([Buffer.from(type), data]);
     const length = Buffer.alloc(4),
@@ -63,9 +82,7 @@ export function patch_fixture(values: readonly number[] = [255]): Buffer {
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(1, 4);
   header[8] = 8;
-  header[9] = 6;
-  const raw = Buffer.alloc(width * 4 + 1);
-  for (let x = 0; x < width; x++) raw[(x + 1) * 4] = values[x]!;
+  header[9] = colorType;
   return Buffer.concat([
     Buffer.from("89504e470d0a1a0a", "hex"),
     chunk("IHDR", header),

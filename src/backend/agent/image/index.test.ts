@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { patch_fixture } from "../../../test/image-fixture";
+import { layout_area_fixture, patch_fixture } from "../../../test/image-fixture";
 import { png_fixture } from "../../../test/media-fixture";
 import type { ImageHelperRequest } from "../../../shared/image-helper";
 
@@ -32,15 +32,16 @@ vi.mock("./engine", () => ({
       };
     }
     if (command === "prepare") {
-      const { output, selected, repartition, reserved } = args as ImageHelperRequest<"prepare">;
+      const { output, selected, previous, repartition, reserved } =
+        args as ImageHelperRequest<"prepare">;
       const picks = repartition
         ? [
             { pageId: repartition.pageId, regionId: "r1-qa-a", message: "第一格", contour: true },
             { pageId: repartition.pageId, regionId: "r1-qa-b", message: "第二格" },
-            { pageId: repartition.pageId, regionId: "r1-whole", message: "两格对白" },
+            { pageId: repartition.pageId, regionId: "r1", message: "两格对白" },
           ]
         : selected;
-      if (repartition && reserved?.length !== 1) throw new Error("Missing unchanged writing box");
+      if (repartition && reserved?.length !== 1) throw new Error("Missing unchanged layout area");
       return {
         records: picks.map(({ pageId, regionId, message }) => ({
           pageId,
@@ -52,8 +53,14 @@ vi.mock("./engine", () => ({
           regions: picks
             .filter(({ pageId }) => pageId === page.pageId)
             .map(({ regionId, contour }) => {
+              const whole = repartition && regionId === repartition.group;
               const member = ["patches", page.pageId, regionId + ".png"].join("/");
               const file = path.join(output, member);
+              if (!whole && (!previous || repartition)) {
+                const area = path.join(output, "layout-areas", page.pageId, regionId + ".png");
+                fs.mkdirSync(path.dirname(area), { recursive: true });
+                fs.writeFileSync(area, layout_area_fixture());
+              }
               if (contour) {
                 fs.mkdirSync(path.dirname(file), { recursive: true });
                 fs.writeFileSync(file, patch_fixture());
@@ -65,7 +72,7 @@ vi.mock("./engine", () => ({
                 direction: "vertical-rl",
                 backgroundColor: [255, 255, 255],
                 patch: contour ? { path: member, box: [0, 0, 1, 1] } : null,
-                ...(regionId === "r1-whole" ? { parts: ["r1-qa-a", "r1-qa-b"] } : {}),
+                ...(whole ? { parts: ["r1-qa-a", "r1-qa-b"] } : {}),
               };
             }),
         })),
@@ -164,7 +171,7 @@ it("补做分格只替换目标组，整泡补做复用子格补丁", async () =
   expect(check.records.map(({ regionId, message }) => [regionId, message])).toEqual([
     ["r1-qa-a", "第一格"],
     ["r1-qa-b", "第二格"],
-    ["r1-whole", "两格对白"],
+    ["r1", "原文"],
     ["r10", "不变的原文"],
   ]);
   const untouched = check.book.pages[0]!.regions.find(({ regionId }) => regionId === "r10")!.patch!
@@ -173,7 +180,7 @@ it("补做分格只替换目标组，整泡补做复用子格补丁", async () =
     fs.readFileSync(path.join(previous, "package", untouched)),
   );
   const updated = path.join(temporary.path, "updated");
-  await preparePages(scan.directory, [{ pageId, regionId: "r1-whole", contour: true }], updated, {
+  await preparePages(scan.directory, [{ pageId, regionId: "r1", contour: true }], updated, {
     update: corrected,
   });
   const after = await validate_package(path.join(updated, "package"));
@@ -181,7 +188,8 @@ it("补做分格只替换目标组，整泡补做复用子格补丁", async () =
   expect(
     after.book.pages[0]!.regions.filter(({ parts }) => !parts).every(({ patch }) => patch),
   ).toBe(true);
-  expect(
-    after.book.pages[0]!.regions.find(({ regionId }) => regionId === "r1-whole"),
-  ).toMatchObject({ patch: null, parts: ["r1-qa-a", "r1-qa-b"] });
+  expect(after.book.pages[0]!.regions.find(({ regionId }) => regionId === "r1")).toMatchObject({
+    patch: null,
+    parts: ["r1-qa-a", "r1-qa-b"],
+  });
 });

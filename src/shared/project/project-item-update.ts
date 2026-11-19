@@ -12,11 +12,12 @@ import { is_json_record } from "../../domain/json";
 /** 数据库写入规划使用的翻译字段补丁。 */
 export type ProjectItemFieldPatch = Partial<
   Pick<ProjectItemPublicRecord, "dst" | "name_dst" | "status">
->;
+> & { extra_field?: ItemStatus | "" };
 
 /** 项目 Item 字段写入共同依赖的完整事实。 */
 export type ProjectItemWriteFields = Pick<Item, "dst" | "name_dst"> & {
   status: string; // 读取旧项目时可能尚未归一的持久状态
+  extra_field?: Item["extra_field"];
 };
 
 /** GUI 与 Agent 共用的单条人工 Item 更新意图。 */
@@ -27,6 +28,7 @@ type ProjectItemFieldPatchSource = {
   dst?: unknown;
   name_dst?: unknown;
   status?: unknown;
+  extra_field?: unknown;
 };
 
 // 外部 patch 只允许公开字段，坏值和空 patch 都收敛为 null。
@@ -76,6 +78,10 @@ export function apply_project_item_field_patch<TItem extends ProjectItemWriteFie
     next_item.status = patch.status;
     touched = true;
   }
+  if (patch.extra_field !== undefined && patch.extra_field !== item.extra_field) {
+    next_item.extra_field = patch.extra_field;
+    touched = true;
+  }
 
   return touched ? next_item : null;
 }
@@ -122,6 +128,11 @@ export function build_project_item_field_patch(
   if (status !== current.status) {
     patch.status = status;
   }
+  if (
+    next.extra_field !== current.extra_field &&
+    (next.extra_field === "" || is_item_status(next.extra_field))
+  )
+    patch.extra_field = next.extra_field;
 
   return Object.keys(patch).length === 0 ? null : patch;
 }

@@ -118,7 +118,15 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
         partitions: Type.Array(BUBBLE_PARTITION_SCHEMA),
         variants: Type.Boolean(),
         repartition: Type.Optional(BUBBLE_GROUP_SCHEMA),
-        reserved: Type.Optional(Type.Array(IMAGE_BOX_SCHEMA)),
+        previous: Type.Optional(Type.String()),
+        reserved: Type.Optional(
+          Type.Array(
+            Type.Object({
+              regionId: IMAGE_ID_SCHEMA,
+              box: IMAGE_BOX_SCHEMA,
+            }),
+          ),
+        ),
       },
       { additionalProperties: false },
     ),
@@ -129,6 +137,19 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
       },
       { additionalProperties: false },
     ),
+  },
+  text_layout: {
+    request: Type.Object(
+      {
+        root: Type.String(),
+        output: Type.String(),
+        page: PAGE_SCHEMA,
+        lettering: Type.Array(Type.Object({ regionId: IMAGE_ID_SCHEMA, text: Type.String() })),
+        maximumBytes: Type.Integer({ minimum: 1 }),
+      },
+      { additionalProperties: false },
+    ),
+    response: Type.Null(),
   },
   text_output: {
     request: Type.Object(
