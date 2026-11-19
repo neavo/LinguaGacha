@@ -28,6 +28,7 @@ export { ASR_LANGUAGES, union, type AsrSentence } from "./speech";
 export { missing_models, prepare_models } from "./preparation";
 export { DeviceFailure } from "../inference/client";
 export { visualize, type VisualizeOptions, type VisualizeResult } from "./visualize";
+
 export {
   MEDIA_ITEMS_SCHEMA,
   MEDIA_PACKAGE_MANIFEST_SCHEMA,
@@ -147,5 +148,3 @@ export async function refine(
 export async function sheets(entries: readonly SheetEntry[], out: string): Promise<Sheet[]> {
   return helper("sheet", { entries: [...entries], out });
 }
-
-export { INFERENCE_DEPENDENCIES } from "../inference/environment";

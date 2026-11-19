@@ -52,8 +52,8 @@ console.log(JSON.stringify({ missing: image.missing_models() }));
 import { npm } from '@lg/npm';
 import { uv } from '@lg/uv';
 const image = await import(new URL('scripts/image.mjs', base_url).href);
-await npm.run(['install', '--save-exact', ...image.IMAGE_DEPENDENCIES.npm]);
-await uv.run(['add', ...image.IMAGE_DEPENDENCIES.python]);
+await npm.run(['install', '--save-exact', ...image.NPM_DEPENDENCIES]);
+await uv.run(['add', ...image.PIP_DEPENDENCIES]);
 await image.prepare_models();
 ```
 

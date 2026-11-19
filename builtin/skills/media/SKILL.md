@@ -1,6 +1,6 @@
 ---
 name: media
-description: 识别、翻译、审校、修改视频或音频，或为视频或音频生成字幕与音频成片前必须加载。
+description: 翻译、审校、分析、修改音视频文件（含 .media 文件）前必须加载。
 ---
 
 本技能提供视频与音频的本地识别、画面文字识别与翻译、核对、字幕渲染和纯音频的双语成片方法。
@@ -59,7 +59,8 @@ description: 识别、翻译、审校、修改视频或音频，或为视频或�
 
 |脚本|入口|用途|
 |---|---|---|
-|`media.mjs`|`DEPENDENCIES`、`missing_models`、`prepare_models`|依赖版本，检查、准备识别模型|
+|`media.mjs`|`NPM_DEPENDENCIES`、`PIP_DEPENDENCIES`|媒体技能的安装清单|
+||`missing_models`、`prepare_models`|检查、准备识别模型|
 ||`describe_package`、`unpack`|按需获取当前字段声明，安全展开旧包|
 ||`inspect`、`ffmpeg`|读取媒体信息，截帧、提取字幕等 ffmpeg 操作|
 ||`prepare`|本地识别对白，视频同时检测画面文字，生成初始 `items.json`|
@@ -98,11 +99,11 @@ console.log(diagnostic.split(/\r?\n/u).filter(line => line.includes('silence_'))
 
 # 环境准备
 
-媒体入口只做计算，不安装依赖。依赖装在所有任务共用的 npm 与 Python 工程中，按 `media.DEPENDENCIES` 的版本安装，不自行升级：
+识别、检测和音频成片统一使用 `scripts/media.mjs` 的安装清单。调用前在任务共用的 npm 与 Python 工程里按清单安装固定版本。
 
 ```js
-await npm.run(['install', '--save-exact', ...media.DEPENDENCIES.npm]);
-await uv.run(['add', ...media.DEPENDENCIES.python]);
+await npm.run(['install', '--save-exact', ...media.NPM_DEPENDENCIES]);
+await uv.run(['add', ...media.PIP_DEPENDENCIES]);
 ```
 
 npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准。
@@ -111,8 +112,8 @@ npm 拦截 `onnxruntime-node` 安装脚本的警告可以忽略，不要批准�
 
 成片不需要识别模型。
 
-1. 任务开始时在独立调用中检查依赖与模型缺口，已安装版本与 `media.DEPENDENCIES` 不符也属于缺口。
-2. 本次任务首次发现缺口时，先说明「首次使用需要安装依赖并下载约 550 MB 模型，后续重复使用」，再用独立调用补齐。
+1. 任务开始时在独立调用中按所选清单检查依赖，版本不符也属于缺口。需要识别或检测时，同时检查模型。
+2. 用独立调用补齐缺口。需要首次准备识别模型时，先告知用户模型下载量约 550 MB，后续可复用。
 3. 用 `inspect` 确定分支，按「来源调查」处理字幕流和音轨。
 
 ## 设备与重跑

@@ -15,19 +15,16 @@ export {
   prepare_models,
 } from "@lg/media";
 
-// 已验收的依赖版本，由 AGENT 经 npm、uv 显式安装，不随任务升级。
-export const DEPENDENCIES = Object.freeze({
-  npm: [
-    `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
-    `onnxruntime-node@${sdk.INFERENCE_DEPENDENCIES.ort}`, // 1.31.1 存在宿主退出卡住问题，固定已通过退出验收的版本。
-  ],
-  python: [
-    `numpy==${sdk.INFERENCE_DEPENDENCIES.numpy}`,
-    "kaldi-native-fbank==1.23.0",
-    `opencv-python-headless==${sdk.INFERENCE_DEPENDENCIES.opencv}`,
-    `pyclipper==${sdk.INFERENCE_DEPENDENCIES.pyclipper}`,
-  ],
-});
+export const NPM_DEPENDENCIES = [
+  `ffmpeg-static-electron-v5-${process.platform}-${process.arch}@5.2.5`,
+  "onnxruntime-node@1.30.0",
+];
+export const PIP_DEPENDENCIES = [
+  "kaldi-native-fbank==1.23.1",
+  "numpy==2.5.5",
+  "opencv-python-headless==5.1.0.95",
+  "pyclipper==1.4.0",
+];
 
 const DURATION_TOLERANCE = 0.05; // 重新指定原文件时允许的时长误差（秒）。
 const CUSTOM_RENDERER = "render.mjs"; // 包内可选的定制渲染。

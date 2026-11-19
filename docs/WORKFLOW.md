@@ -194,7 +194,7 @@ uv run --project '<共享 Python 工程目录>' python -I -B -X utf8 src/python/
 
 #### 媒体推理
 
-Python 媒体行为可通过 `helper.test.py` 独立验证，无需模型或视频。使用已准备的媒体 Python 项目。共享推理版本见 `src/backend/agent/inference/environment.ts`，媒体专属依赖见 `builtin/skills/media/scripts/media.mjs` 的 `DEPENDENCIES`：
+使用已准备的媒体 Python 项目运行 `helper.test.py`。安装清单见 `builtin/skills/media/scripts/media.mjs` 和 `builtin/skills/image/scripts/image.mjs` 的 `NPM_DEPENDENCIES` 与 `PIP_DEPENDENCIES`。
 
 ```powershell
 $mediaPythonProject = '<已准备媒体环境的 Python 项目目录，含 pyproject.toml>'
