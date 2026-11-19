@@ -13,7 +13,7 @@ description: 翻译、审校、分析、修改图片文件（含 .image 文件�
 |---|---|
 |来源调查|「来源调查」|
 |导入准备|「环境与设备」「扫描与封包流水线」|
-|原稿与条目|「条目状态与互斥」「气泡与文本规则」「旧包解包与维护」|
+|原稿与条目|「条目初始状态」「气泡与文本规则」「旧包解包与维护」|
 |写回与验证|「写回成图」「QA 集中视觉复核」「质控速查」「异常修复分支」|
 |交付说明|「交付说明」|
 
@@ -94,20 +94,17 @@ console.log(packed);
 
 # 原稿与条目
 
-## 条目状态与互斥
+## 条目初始状态
 
-导入完成后，条目按类别设置初始状态：
+导入完成后，工程仅包含当前版式的区域条目，并按类别设置初始状态：
 
 |文字类别|默认状态|说明|
 |---|---|---|
 |有框文字（气泡内）|`NONE`|默认待翻译|
 |无框文字（`unframed`）|`EXCLUDED`|默认不翻译，满足特定条件方可启用|
-|分格版条目|`NONE`|连体气泡首轮默认按分格版翻译|
-|备用整泡版条目|`EXCLUDED`|与分格版条目互斥，作为备选保留|
 
-- **互斥原则**：同一气泡严格只能启用一种版本（整泡版或分格版），严禁同时启用。
 - **零看图翻译**：条目翻译纯按提取文本执行，不查阅原图；图文对照统一后置到 QA 阶段。
-- **上下文构造**：向翻译流程组装上下文时，严格只传入当前启用的条目。
+- **单套版式保证**：工程仅导入当前版式条目，未选中的备用版式留在资产包内，无需手动互斥管理。
 
 ## 气泡与文本规则
 
@@ -163,7 +160,7 @@ for (const asset of generated.writeback?.files ?? []) {
 4. 审查图面标记：
    - **左原右译**：左侧为原图，右侧为译图。
    - **黄色标记框**：表示当前区域处于待译状态。
-   - **红色标记框**：表示当前区域异常保留原图（消字失败、写字失败或布局冲突），查阅报告并按速查表处理。
+   - **红色标记框**：表示当前区域异常保留原图（消字失败或排版失败），查阅报告并按速查表处理。
 5. **终结条件**：整页质控无异常时直接交付，发现瑕疵时按速查表修复。
 
 ## 质控速查
@@ -172,10 +169,9 @@ for (const asset of generated.writeback?.files ?? []) {
 
 |观察到的图面现象|判定原因|处理动作|
 |---|---|---|
-|红色框保留原图且报告提示 `layout_no_fit`|排版放不下（字数过多、断行不当或字号过大）|按「字号与排版微调」调整断行/字数，或调整 `image_font_size` 后重新出图；复杂多格转分格流程|
+|红色框保留原图且报告提示 `layout_no_fit`|排版放不下（字数过多、断行不当或字号过大）|按「字号与排版微调」调整断行/字数，或试调字号后重新出图；复杂连体气泡转分格流程|
 |消字处有残字、网点破损，或报告提示 `erase_failed`|背景复杂填色失效|对受损区域调用 `prepareAndPack` 补做轮廓填字（仅修消字，不扩展排版空间）|
-|红色框保留原图且报告提示 `variant_conflict`|整泡版与分格版同时启用|调用 `image.splitBubble` 明确单套布局，重新出图|
-|画面有多个气泡，文字却挤在其中一侧|连体气泡未分格排版|调用 `image.splitBubble` 拆分气泡分别排版，提交后补译|
+|画面有多个气泡，文字却挤在其中一侧|连体气泡未分格排版|按「已知格界的气泡拆合」切换为分格排版，替换资产后补译|
 |黄色框标出且图上仍为原文|条目遗漏翻译（处于待译）|补齐对应条目译文后重新出图|
 |关键文字保留原图未翻译|无框文字默认未启用|按「启用无框文字」将条目设为 `NONE`，补齐译文后重新出图|
 |页边广告、纯装饰字被擦除或残缺|误擦除无需翻译区域|在工程中将条目设为 `EXCLUDED` 后重新生成|
@@ -187,21 +183,22 @@ for (const asset of generated.writeback?.files ?? []) {
 
 **核心原则：以拆为主**。整页 QA 观察到画面有多个明显气泡（如连体葫芦泡、双叶泡），文字却全部堆在其中一侧而另一侧留白时，**一律执行拆分**：
 
-1. **登记布局意图**：
-   在工作区根目录下调用 `splitBubble`（极少需要回退整泡排版时调用 `mergeBubble`）：
+1. **切换准备目录版式**：
+   在准备目录（或解包目录）中调用 `splitBubble`（极少需要合回整泡时调用 `mergeBubble`）：
    ```js
-   const result = image.splitBubble({ assetPath, pageId, regionId });
-   // 或合并回退为整泡：image.mergeBubble({ assetPath, pageId, regionId });
+   const result = image.splitBubble(preparedDir, { pageId, regionId });
+   // 或合回整泡：image.mergeBubble(preparedDir, { pageId, regionId });
    ```
-   - `assetPath` 为工程相对路径（如 `book.image`），`regionId` 可传入整泡或任一子格编号。
-   - 同一批次可登记多组，但同一组在同一批次严格只能选择一种目标布局。
-2. **提交与补译**：
-   - 返回 `{ status: "queued", itemIds }` 时，意图已自动写入变更清单，无需手动查 `parts` 或猜测旧状态。
-   - 直接调用 `workspace_apply` 提交审批。
-   - 读取最新快照，仅对返回的 `itemIds` 中为 `NONE` 的待译条目补译。停用版本的译文及暂停前状态由工程自动保留。
-3. **异常处理**：
-   - 收到 `partial` 拒绝或指纹失效时，刷新工程快照，对同组重试原操作，复核提交回执后再出图。
-   - 返回 `{ status: "repartition_required" }` 时，表示无预置对应关系，转入下文「重新划分格界与封包」。
+   - `regionId` 传入整泡或任一子格编号均可定位同组。
+   - 返回 `{ status: "prepared" }` 表示切换成功。
+   - 返回 `{ status: "repartition_required" }` 表示无预置对应关系，转入「重新划分格界与封包」。
+2. **重新封包与替换资产**：
+   - 调用 `image.pack(preparedDir, 'work/image/book.image')` 重新封包。
+   - 按 `project-operation` 的 `files.replaces`（「更新文件」）提交资产替换并审批。
+   - 工程自动按物理区域继承已有译文。
+3. **补译受影响条目**：
+   - 读取最新工程快照，补齐新出现的 `NONE` 待译条目。
+   - 重新执行写回成图并复核该页。
 
 ### 2. 重新划分格界与封包
 
@@ -253,17 +250,30 @@ for (const asset of generated.writeback?.files ?? []) {
 
 ### 4. 字号与排版微调
 
-遇到 `layout_no_fit` 或需要微调字号与断行时执行：
+遇到 `layout_no_fit`、文字拥挤或需精确控制版面时执行：
 
-1. **定位条目**：用报告中的 `pageId` 与 `regionId` 查包内 `items.json` 的行号（`row_number`），获取工作区快照中该条目的 `item_id` 与最新 `fp`。
-2. **调整字号或译文**：
-   - **字号**：提交 `image_font_size`（原图像素整数，≥4；`null` 恢复自动）。字号随条目保存，重新出图自动沿用，整泡与子格各自保存。
-   - **断行**：调整译文内的换行符与空格。
-   - **提交**：字号可与 `dst` 同批提交；单独改字号保留原翻译状态；`bubble_active` 须单独提交。
-   ```json
-   {"item_id": 42, "fp": "<从当前快照复制>", "image_font_size": 18, "dst": "第一行\n第二行"}
-   ```
-3. **重新出图**：提交并审批工作区变更后，重新执行 `generateFiles` 与 `image.render` 出图复核。
+1. **排版与断行微调**：
+   - 显式换行符与空格直接进入排版并强制断行。
+   - 在译文条目中调整换行位置或精简措辞，重新出图复核。
+2. **字号试排（快速验证）**：
+   - 在 `image.render()` 中传入 `fontSizes` 临时覆盖字号（原图像素整数，≥4；传入 `null` 临时恢复自动计算）：
+     ```js
+     await image.render({
+       asset_path: 'book.image',
+       source: 'sources/book.image',
+       input: path.join(generated.writeback.input_path, 'book.image', 'items.json'),
+       output: 'work/image/preview',
+       fontSizes: [{ pageId, regionId, fontSize: 18 }],
+     });
+     ```
+   - 试排仅在临时输出目录生成译图与报告，便于快速比对效果，不改动工程与资产。
+3. **固化字号（随资产持久保存）**：
+   - 试排满意且需要跨会话持久复现时，将确认字号写入准备目录（或解包目录）：
+     ```js
+     image.setFontSizes(preparedDir, [{ pageId, regionId, fontSize: 18 }]);
+     await image.pack(preparedDir, 'work/image/book.image');
+     ```
+   - 按 `project-operation` 的 `files.replaces` 提交资产替换，后续重新生成自动沿用包内字号。
 
 ### 5. 启用无框文字
 

@@ -1,6 +1,5 @@
 import { image_record_identities } from "../file/image/image-format";
 import { read_image_package } from "../file/image/image-package";
-import { build_image_item_extra, read_image_item_extra } from "../../shared/project/image-item";
 import { resolve_app_locale } from "../../domain/app-language";
 import type { AppSettingService } from "../app/app-setting-service";
 import type {
@@ -445,7 +444,7 @@ export class ProjectContentService {
               public_details: { file: draft.rel_path },
             });
           const before = await read_image_package(oldContent, draft.rel_path, {
-            validatePixels: false, // 旧资产已入库，继承只读取原稿身份。
+            stored: true,
           });
           const after = draft.image!; // 新包在解析入口已校验，复用结果避免再次展开大包。
           const previous = image_record_identities(before.book, before.records);
@@ -468,41 +467,15 @@ export class ProjectContentService {
               !old ||
               !source ||
               !target ||
+              (source.status !== "PROCESSED" && source.status !== "EXCLUDED") ||
               old.image !== next.image ||
-              old.source !== next.source ||
               source.src !== next.source
             )
               continue;
-            const sameLayout = old.layout === next.layout;
-            const sourceImage = read_image_item_extra(source.extra_field);
-            const targetImage = read_image_item_extra(target.extra_field);
-            if (source.status !== "PROCESSED" && source.status !== "EXCLUDED") {
-              if (sameLayout && sourceImage.fontSize !== undefined)
-                target.extra_field = build_image_item_extra({
-                  ...targetImage,
-                  fontSize: sourceImage.fontSize,
-                });
-              continue;
-            }
             target.dst = source.dst;
             target.name_dst = source.name_dst;
-            const status =
-              source.status === "EXCLUDED"
-                ? (sourceImage.inactiveStatus ?? source.status)
-                : source.status;
-            if (sameLayout) {
-              // 关系一致时复用布局选择，也保留主动排除。
-              target.status = source.status;
-              target.extra_field = source.extra_field;
-            } else if (targetImage.inactiveStatus !== undefined) {
-              target.extra_field = build_image_item_extra({
-                ...targetImage,
-                inactiveStatus: status,
-              });
-            } else {
-              target.status = status;
-            }
-            if (status === "PROCESSED")
+            target.status = source.status;
+            if (source.status === "PROCESSED")
               preserved.set(draft.rel_path, (preserved.get(draft.rel_path) ?? 0) + 1);
           }
         }

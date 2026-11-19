@@ -7,17 +7,21 @@ import {
 } from "./project-item-write-planner";
 
 describe("project item write planner", () => {
-  it("显式排除代表项时在同一计划中晋升后续重复项", () => {
+  it("排除代表时只晋升下一条，撤销的状态变化不写入", () => {
     const current = item(1, "NONE");
+    const last = item(3, "DUPLICATED");
     expect(
       plan_project_item_changes({
-        items: [current, item(2, "DUPLICATED")],
-        explicit_changes: [change(current, { ...current, status: "EXCLUDED" })],
+        items: [current, item(2, "DUPLICATED"), last],
+        explicit_changes: [
+          change(current, { ...current, status: "EXCLUDED" }),
+          change(last, { ...last, status: "NONE" }),
+        ],
         duplicate_filter_enabled: true,
-      }).map(({ item_id, patch }) => ({ item_id, patch })),
-    ).toEqual([
-      { item_id: 1, patch: { status: "EXCLUDED" } },
-      { item_id: 2, patch: { status: "NONE" } },
+      }),
+    ).toMatchObject([
+      { item_id: 1, next: { status: "EXCLUDED" } },
+      { item_id: 2, next: { status: "NONE" } },
     ]);
   });
 
@@ -28,12 +32,12 @@ describe("project item write planner", () => {
         items: [item(1, "NONE"), current],
         explicit_changes: [change(current, { ...current, dst: "译文", status: "PROCESSED" })],
         duplicate_filter_enabled: true,
-      }).map(({ item_id, patch }) => ({ item_id, patch })),
-    ).toEqual([
-      { item_id: 1, patch: { status: "DUPLICATED" } },
+      }),
+    ).toMatchObject([
+      { item_id: 1, next: { status: "DUPLICATED" } },
       {
         item_id: 2,
-        patch: { dst: "译文", status: "PROCESSED" },
+        next: { dst: "译文", status: "PROCESSED" },
       },
     ]);
   });

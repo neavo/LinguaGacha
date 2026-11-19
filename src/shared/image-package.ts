@@ -36,6 +36,8 @@ const REGION_SCHEMA = Type.Object(
       Type.Null(), // 自动消字失败后仍保留区域和原文，供后续补做。
     ]),
     parts: Type.Optional(Type.Array(IMAGE_ID_SCHEMA, { minItems: 2 })),
+    layout: Type.Optional(Type.Literal("whole")),
+    fontSize: Type.Optional(IMAGE_FONT_SIZE_SCHEMA),
     direction: IMAGE_DIRECTION_SCHEMA,
     backgroundColor: IMAGE_COLOR_SCHEMA,
   },
@@ -70,6 +72,47 @@ export type ImageDirection = Static<typeof IMAGE_DIRECTION_SCHEMA>;
 export type ImageBook = Static<typeof IMAGE_BOOK_SCHEMA>;
 export type ImagePage = ImageBook["pages"][number];
 export type ImageRegion = ImagePage["regions"][number];
+
+/** 默认选分格。版式只决定哪些区域参与翻译，区域本身仍可保留原图。 */
+export function select_image_regions(book: ImageBook): Map<string, ImageRegion> {
+  const selected = new Map<string, ImageRegion>();
+  for (const page of book.pages) {
+    const inactive = new Set(
+      page.regions.flatMap(({ regionId, parts, layout }) =>
+        parts ? (layout === "whole" ? parts : [regionId]) : [],
+      ),
+    );
+    for (const region of page.regions)
+      if (!inactive.has(region.regionId)) selected.set(page.pageId + "/" + region.regionId, region);
+  }
+  return selected;
+}
+
+const IMAGE_FONT_SIZES_SCHEMA = Type.Array(
+  Type.Object(
+    {
+      pageId: IMAGE_ID_SCHEMA,
+      regionId: IMAGE_ID_SCHEMA,
+      fontSize: Type.Union([IMAGE_FONT_SIZE_SCHEMA, Type.Null()]),
+    },
+    { additionalProperties: false },
+  ),
+);
+
+/** 同一批字号修改必须指向现有区域，每个区域只有一个值。 */
+export function read_image_font_sizes(book: ImageBook, value: unknown): Map<string, number | null> {
+  if (!Check(IMAGE_FONT_SIZES_SCHEMA, value)) throw new Error("Invalid image font sizes");
+  const regions = new Set(
+    book.pages.flatMap((page) => page.regions.map(({ regionId }) => page.pageId + "/" + regionId)),
+  );
+  const sizes = new Map<string, number | null>();
+  for (const { pageId, regionId, fontSize } of value) {
+    const key = pageId + "/" + regionId;
+    if (!regions.delete(key)) throw new Error("Unknown or duplicate image font size target");
+    sizes.set(key, fontSize);
+  }
+  return sizes;
+}
 
 /** 物理区域单独保存掩码，整泡复用子格路径。 */
 export function image_layout_area_path(pageId: string, regionId: string): string {
@@ -140,7 +183,10 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
     }
     const assignedParts = new Set<string>();
     for (const region of page.regions) {
-      if (!region.parts) continue;
+      if (!region.parts) {
+        if (region.layout !== undefined) throw new Error("Image layout requires bubble parts");
+        continue;
+      }
       if (region.kind !== "bubble" || region.patch) throw new Error("Invalid whole-bubble region");
       for (const id of region.parts) {
         const part = regionIds.get(id);
@@ -171,12 +217,7 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
 const WRITEBACK_ID = { pageId: IMAGE_ID_SCHEMA, regionId: IMAGE_ID_SCHEMA };
 const IMAGE_WRITEBACK_ITEM_SCHEMA = Type.Union([
   Type.Object(
-    {
-      ...WRITEBACK_ID,
-      output: Type.Literal("translated"),
-      text: Type.String(),
-      fontSize: Type.Optional(IMAGE_FONT_SIZE_SCHEMA),
-    },
+    { ...WRITEBACK_ID, output: Type.Literal("translated"), text: Type.String() },
     { additionalProperties: false },
   ),
   Type.Object(
@@ -188,7 +229,7 @@ const IMAGE_WRITEBACK_ITEM_SCHEMA = Type.Union([
 export type ImageWritebackItem = Static<typeof IMAGE_WRITEBACK_ITEM_SCHEMA>;
 const IMAGE_WRITEBACK_SCHEMA = Type.Array(IMAGE_WRITEBACK_ITEM_SCHEMA);
 
-/** 写回输入与原稿条目使用同一顺序，每个区域只有一个输出决定。 */
+/** 写回输入与当前版式的原稿条目顺序一致，每个参与区域只有一个输出决定。 */
 export function read_image_writeback(
   value: unknown,
   records: readonly ImageRecord[],

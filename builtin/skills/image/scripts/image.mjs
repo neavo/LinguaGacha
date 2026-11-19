@@ -16,14 +16,19 @@ const pipeline = sdk.create_image_pipeline(new URL("./helper.py", import.meta.ur
 const { scan, prepare, inspectGroup, repartition } = pipeline;
 export { scan, inspectGroup };
 
-/** 登记将指定气泡切换为分格版本的条目意图，目标可用整泡或任一子格编号。 */
-export function splitBubble(target) {
-  return sdk.queue_image_bubble_layout(process.cwd(), target, "split");
+/** 将指定气泡切换为分格排版。 */
+export function splitBubble(directory, target) {
+  return sdk.set_image_bubble_layout(directory, target, "split");
 }
 
-/** 登记将指定气泡切换为整泡版本的条目意图，目标可用整泡或任一子格编号。 */
-export function mergeBubble(target) {
-  return sdk.queue_image_bubble_layout(process.cwd(), target, "whole");
+/** 将指定气泡切换为整泡排版。 */
+export function mergeBubble(directory, target) {
+  return sdk.set_image_bubble_layout(directory, target, "whole");
+}
+
+/** 将确认的字号写入准备目录。 */
+export function setFontSizes(directory, fontSizes) {
+  sdk.set_image_font_sizes(directory, fontSizes);
 }
 
 /** 渲染整册译图，原子生成译图、QA 对照图与 report.json 报告。 */
@@ -39,15 +44,20 @@ export async function unpack(source, directory) {
   return { directory, package_directory: packageDirectory, members: result.members };
 }
 
-/** 当前材料通过领域物理校验后，交给基础容器原子封包。 */
+/** 读取准备目录的清单和原文。 */
+export function read(directory) {
+  return sdk.read_image_package_manifest(path.resolve(directory, "package"));
+}
+
+/** 校验清单后封包。工程导入核对成员与像素。 */
 export async function pack(directory, output) {
   const packageDirectory = path.join(path.resolve(directory), "package");
-  const current = await sdk.validate_package(packageDirectory);
+  const { book } = sdk.read_image_package_manifest(packageDirectory);
   const result = await generic.pack(packageDirectory, output);
   return {
     package: result.output_path,
-    pages: current.book.pages.length,
-    items: current.records.length,
+    pages: book.pages.length,
+    items: sdk.select_image_regions(book).size,
     members: result.members,
   };
 }

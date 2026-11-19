@@ -7,13 +7,11 @@ import { png_fixture } from "../../../test/media-fixture";
 import type { ImageHelperRequest } from "../../../shared/image-helper";
 
 const fake = vi.hoisted(() => ({
-  calls: [] as [string, unknown][],
   pages: [] as ImageHelperRequest<"scan">["pages"],
 }));
 
 vi.mock("./engine", () => ({
-  pixels: async (_script: URL, command: string, args: Record<string, unknown>, device: unknown) => {
-    fake.calls.push([command, device]);
+  pixels: async (_script: URL, command: string, args: Record<string, unknown>) => {
     if (command === "scan") {
       const { pages, output } = args as ImageHelperRequest<"scan">;
       fake.pages = pages;
@@ -82,7 +80,7 @@ vi.mock("./engine", () => ({
   },
 }));
 
-import { create_image_pipeline, validate_package } from "./index";
+import { create_image_pipeline, read_image_package_manifest } from "./index";
 
 const {
   scan: scanPages,
@@ -106,7 +104,6 @@ it("先发布选字预览，再封装已确认原文和消字补丁", async () =
     scan.directory,
     [{ pageId: page.pageId, regionId: "r1", message: "校正后的原文" }],
     output,
-    { device: "cpu" },
   );
   const updated = path.join(temporary.path, "updated");
   await preparePages(
@@ -114,7 +111,6 @@ it("先发布选字预览，再封装已确认原文和消字补丁", async () =
     [{ pageId: page.pageId, regionId: "r1", contour: true }],
     updated,
     {
-      device: "cpu",
       update: output,
     },
   );
@@ -124,11 +120,6 @@ it("先发布选字预览，再封装已确认原文和消字补丁", async () =
   expect(fs.readFileSync(path.join(updated, "package/items.json"), "utf8")).toBe(
     fs.readFileSync(path.join(output, "package/items.json"), "utf8"),
   );
-  expect(fake.calls).toEqual([
-    ["scan", "gpu"],
-    ["prepare", "cpu"],
-    ["prepare", "cpu"],
-  ]);
   expect(JSON.parse(fs.readFileSync(path.join(output, "package/items.json"), "utf8"))).toEqual([
     { pageId: page.pageId, regionId: "r1", message: "校正后的原文" },
   ]);
@@ -153,7 +144,7 @@ it("补做分格只替换目标组，整泡补做复用子格补丁", async () =
     previous,
   );
   const corrected = path.join(temporary.path, "corrected");
-  const result = await repartitionBubbleGroup(
+  await repartitionBubbleGroup(
     scan.directory,
     {
       pageId,
@@ -166,8 +157,7 @@ it("补做分格只替换目标组，整泡补做复用子格补丁", async () =
     previous,
     corrected,
   );
-  expect(result.regionIds).toEqual(["r1-qa-a", "r1-qa-b"]);
-  const check = await validate_package(path.join(corrected, "package"));
+  const check = read_image_package_manifest(path.join(corrected, "package"));
   expect(check.records.map(({ regionId, message }) => [regionId, message])).toEqual([
     ["r1-qa-a", "第一格"],
     ["r1-qa-b", "第二格"],
@@ -183,7 +173,7 @@ it("补做分格只替换目标组，整泡补做复用子格补丁", async () =
   await preparePages(scan.directory, [{ pageId, regionId: "r1", contour: true }], updated, {
     update: corrected,
   });
-  const after = await validate_package(path.join(updated, "package"));
+  const after = read_image_package_manifest(path.join(updated, "package"));
   expect(after.records).toEqual(check.records);
   expect(
     after.book.pages[0]!.regions.filter(({ parts }) => !parts).every(({ patch }) => patch),

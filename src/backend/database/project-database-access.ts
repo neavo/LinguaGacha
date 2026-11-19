@@ -10,11 +10,10 @@ import { DatabaseSync } from "node:sqlite";
 import { ZstdTool } from "./zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
-import type {
-  ProjectItemFieldPatch,
-  ProjectItemWriteFields,
+import {
+  normalize_project_item_field_patch,
+  type ProjectItemWriteFields,
 } from "../../shared/project/project-item-update";
-import { normalize_project_item_field_patch } from "../../shared/project/project-item-update";
 
 import {
   read_json_record,
@@ -23,11 +22,10 @@ import {
   type MutableJsonRecord,
 } from "../../domain/json";
 
-/** 格式私有状态只随显式规划差异写入。 */
+/** 写入口接收规划后的译文字段。 */
 export type ProjectItemTranslationWrite = Readonly<{
   item_id: number;
   next: Readonly<ProjectItemWriteFields>;
-  patch?: Readonly<ProjectItemFieldPatch>;
 }>;
 type DatabaseRow = Record<string, unknown>;
 
@@ -718,11 +716,11 @@ export class ProjectDatabaseAccess {
     const statement = db.prepare(
       `UPDATE items
        SET data = json_set(
-         CASE WHEN ? IS NULL THEN data ELSE json_set(data, '$.extra_field', json(?)) END,
+         data,
          '$.dst', ?, '$.name_dst', json(?), '$.status', ?
        ) WHERE id = ?`,
     );
-    for (const { item_id, next, patch } of patches) {
+    for (const { item_id, next } of patches) {
       const fields = normalize_project_item_field_patch(next);
       if (
         !Number.isInteger(item_id) ||
@@ -736,11 +734,7 @@ export class ProjectDatabaseAccess {
           diagnostic_context: { reason: "invalid_translation_fields", item_id },
         });
       }
-      const extra_field =
-        patch?.extra_field === undefined ? null : JsonTool.stringifyStrict(patch.extra_field);
       const result = statement.run(
-        extra_field,
-        extra_field,
         fields.dst,
         JsonTool.stringifyStrict(fields.name_dst),
         fields.status,

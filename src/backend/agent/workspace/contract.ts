@@ -89,7 +89,6 @@ const workspace_notes: readonly Readonly<{ title: string; lines: readonly string
       "- `dst` 或 `name_dst` 实际变化时状态默认改为 `PROCESSED`，同值提交不改变状态。",
       '- 显式 `status` 优先于默认状态，接受现有译文时可只提交 `status: "PROCESSED"`。',
       "- 同一文件中 `src` 与 `name_src` 相同的条目为同文组，宿主按重复过滤设置自动维护组内的 `NONE` 与 `DUPLICATED`。",
-      "- 图片条目支持提交 `image_font_size` 微调排版字号（传入 `null` 恢复自动计算），单独改字号不改变翻译状态；`bubble_active` 为气泡布局切换意图，须单独提交。",
     ],
   },
   {

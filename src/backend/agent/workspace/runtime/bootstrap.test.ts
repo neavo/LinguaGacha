@@ -34,6 +34,7 @@ import { DEFAULT_PYTHON_VERSION } from "../../uv/runtime";
 import { png_fixture } from "../../../../test/media-fixture";
 import { create_image_text_renderer } from "../../tools/render-image-text";
 import { default_native_fs } from "../../../../native/native-fs";
+import { image_fixture } from "../../../../test/image-fixture";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -165,6 +166,73 @@ it(
   },
   EXECUTION_TIMEOUT_MS + RUN_TIMEOUT_MS,
 );
+
+it("图片出图沿用清单字号，试排可更换字号或恢复自动", async () => {
+  const fixture = image_fixture(["saved", "override", "auto"]);
+  for (const page of fixture.book.pages) page.regions[0]!.fontSize = 18;
+  const directory = path.join(workspace, "work/image-layout");
+  const source = path.join(directory, "source");
+  await mkdir(path.join(source, "originals"), { recursive: true });
+  await cp(
+    new URL("../../../../../builtin/skills/image/scripts/render.mjs", import.meta.url),
+    path.join(directory, "render.mjs"),
+  );
+  await writeFile(path.join(source, "image.json"), JSON.stringify(fixture.book));
+  await writeFile(path.join(source, "items.json"), JSON.stringify(fixture.records));
+  for (const page of fixture.book.pages)
+    await writeFile(path.join(source, page.original), fixture.original);
+  await writeFile(
+    path.join(directory, "writeback.json"),
+    JSON.stringify(
+      fixture.records.map(({ pageId, regionId }) => ({
+        pageId,
+        regionId,
+        output: "translated",
+        text: "译文",
+      })),
+    ),
+  );
+
+  const sizes: Array<number | undefined> = [];
+  await run(
+    `
+    import { render_book } from '../image-layout/render.mjs';
+    import assert from 'node:assert/strict';
+    import { readFile, writeFile } from 'node:fs/promises';
+    const { report } = await render_book({
+      asset_path: 'book.image',
+      source: 'work/image-layout/source',
+      input: 'work/image-layout/writeback.json',
+      output: 'work/image-layout/output',
+      fontSizes: [
+        { pageId: 'override', regionId: 'text', fontSize: 21 },
+        { pageId: 'auto', regionId: 'text', fontSize: null },
+      ],
+    }, {
+      layout: ({ output, lettering }) => writeFile(output, JSON.stringify(lettering.map(value => ({
+        ...value, size: [1, 1], distance: 'AAAAAA==', direction: 'vertical-rl',
+        backgroundColor: [255, 255, 255],
+      })))),
+      compose: async () => {},
+    });
+    const { files } = JSON.parse(await readFile(report.path, 'utf8'));
+    assert.deepEqual(files.map(({ pageId }) => pageId), ['saved', 'override', 'auto']);
+  `,
+    undefined,
+    undefined,
+    {
+      renderImageText: create_image_text_renderer({
+        root: workspace,
+        nativeFs: default_native_fs,
+        host: async ({ page }) => {
+          sizes.push(...page.map(({ fontSize }) => fontSize));
+          return page.map(({ regionId }) => ({ regionId, png: null }));
+        },
+      }),
+    },
+  );
+  expect(sizes).toEqual([18, 21, undefined]);
+});
 
 it("停止绘字脚本时向宿主传递取消并等待窗口收尾", async () => {
   const controller = new AbortController();

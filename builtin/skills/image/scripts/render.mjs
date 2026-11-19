@@ -6,17 +6,24 @@ import {
   AGENT_IMAGE_MAX_EDGE,
   ProjectAssetPathIndex,
   normalize_image_to_png,
+  read_image_font_sizes,
   read_image_package_manifest,
   read_image_writeback,
   render_image_text_page,
+  select_image_regions,
 } from "@lg/image";
 
 /** 从同一份快照生成译图和整页对照。整册成功后才发布目录。 */
-export async function render_book({ asset_path, source, input, output }, pixels) {
+export async function render_book({ asset_path, source, input, output, fontSizes }, pixels) {
   if (!/\.image$/iu.test(asset_path)) throw new Error("Expected an .image asset path");
   const assetRoot = asset_path.replaceAll("\\", "/").slice(0, -".image".length);
   const { book, records } = read_image_package_manifest(source);
-  const writeback = read_image_writeback(JSON.parse(await readFile(input, "utf8")), records);
+  const selected = select_image_regions(book); // 按原稿顺序核对当前版式的写回记录。
+  const writeback = read_image_writeback(
+    JSON.parse(await readFile(input, "utf8")),
+    records.filter(({ pageId, regionId }) => selected.has(pageId + "/" + regionId)),
+  );
+  const sizes = fontSizes === undefined ? new Map() : read_image_font_sizes(book, fontSizes);
   const byPage = Map.groupBy(writeback, ({ pageId }) => pageId);
   // QA 追加扩展名后可能产生译图目录里没有的文件与目录冲突。
   const outputPaths = new ProjectAssetPathIndex();
@@ -47,8 +54,9 @@ export async function render_book({ asset_path, source, input, output }, pixels)
           qa: path.join(stage, "qa", qa),
         },
         pixels,
+        sizes,
       );
-      files.push({ path: file, qa, entries });
+      files.push({ pageId: page.pageId, path: file, qa, entries });
       console.log(`Image page ${files.length}/${book.pages.length}: ${file}`);
     }
     const summary = { translated: 0, originals: 0, failures: 0 };
@@ -75,36 +83,24 @@ export async function render_book({ asset_path, source, input, output }, pixels)
   }
 }
 
-/** 先裁决启用区域，再把同一份区域结果用于译图和 QA。 */
-async function render_page(page, records, paths, { layout, compose }) {
-  const decisions = new Map(records.map((record) => [record.regionId, record]));
+/** 将当前版式的区域结果同时用于译图和 QA。 */
+async function render_page(page, records, paths, { layout, compose }, sizes) {
   const regions = new Map(page.regions.map((region) => [region.regionId, region]));
-  const hidden = new Set();
-  const conflicts = new Set();
-  for (const region of page.regions) {
-    if (!region.parts) continue;
-    const wholeActive = decisions.get(region.regionId).output !== "original";
-    const splitActive = region.parts.some((id) => decisions.get(id).output !== "original");
-    if (wholeActive && splitActive) conflicts.add(region.regionId);
-    if (!wholeActive && splitActive) hidden.add(region.regionId);
-    else for (const id of region.parts) hidden.add(id);
-  }
-
   const entries = [];
   const candidates = [];
-  for (const region of page.regions) {
-    const { regionId } = region;
-    if (hidden.has(regionId)) continue;
-    const decision = decisions.get(regionId);
+  for (const decision of records) {
+    const { regionId } = decision;
+    const region = regions.get(regionId);
     const entry = { regionId, output: "original" };
     entries.push(entry);
-    if (conflicts.has(regionId)) entry.reason = "variant_conflict";
-    if (entry.reason || decision.output === "original") continue;
+    if (decision.output === "original") continue;
     const patches = region.parts?.map((id) => regions.get(id).patch) ?? [region.patch];
     if (patches.some((patch) => patch === null)) entry.reason = "erase_failed";
     else if (decision.output === null) entry.reason = "translation_incomplete";
     else {
-      const { text, fontSize } = decision;
+      const { text } = decision;
+      const size = sizes.get(page.pageId + "/" + regionId);
+      const fontSize = size === null ? undefined : (size ?? region.fontSize); // null 只在本次试排恢复自动。
       const lettering = text.trim()
         ? { regionId, text, ...(fontSize !== undefined && { fontSize }) }
         : undefined;

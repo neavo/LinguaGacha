@@ -1,5 +1,4 @@
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import type { ProjectItemFieldPatch } from "./project-item-update";
 import {
   coordinate_project_duplicate_statuses,
   type ProjectItemDuplicateIdentity,
@@ -24,7 +23,6 @@ export type ProjectItemPlannedChange = Readonly<{
   item_id: number; // 实际变化条目，包含同组被动变化
   current: Readonly<ProjectItemWriteRecord>; // 事务开始时事实
   next: Readonly<ProjectItemWriteRecord>; // 协调完成后的事实
-  patch: ProjectItemFieldPatch; // 数据库最小字段补丁
 }>;
 
 /**
@@ -35,8 +33,8 @@ export function plan_project_item_changes(args: {
   explicit_changes: readonly ProjectItemExplicitChange[];
   duplicate_filter_enabled: boolean;
 }): ProjectItemPlannedChange[] {
-  const current_by_id = new Map(args.items.map((item) => [item.item_id, { ...item }]));
-  const next_by_id = new Map(args.items.map((item) => [item.item_id, { ...item }]));
+  const current_by_id = new Map(args.items.map((item) => [item.item_id, item]));
+  const next_by_id = new Map(current_by_id); // 规划只替换发生变化的条目。
   const affected_item_ids = new Set<number>(); // 只有状态变化会改变当前可写字段下的重复资格
 
   for (const explicit of args.explicit_changes) {
@@ -63,9 +61,13 @@ export function plan_project_item_changes(args: {
   const changes: ProjectItemPlannedChange[] = [];
   for (const [item_id, next] of next_by_id) {
     const current = current_by_id.get(item_id);
-    if (current === undefined) continue;
-    const patch = build_project_item_field_patch(current, next);
-    if (patch !== null) changes.push({ item_id, current, next, patch });
+    // 重复协调可能恢复原状态，先跳过原引用，再比较改过的字段。
+    if (
+      current !== undefined &&
+      current !== next &&
+      build_project_item_field_patch(current, next) !== null
+    )
+      changes.push({ item_id, current, next });
   }
   return changes;
 }

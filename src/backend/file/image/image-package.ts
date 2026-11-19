@@ -6,7 +6,6 @@ import {
   read_image_records,
   type ImageBook,
   type ImagePage,
-  type ImageRecord,
 } from "../../../shared/image-package";
 import { AppError } from "../../../shared/error";
 import { default_native_fs as fs } from "../../../native/native-fs";
@@ -14,7 +13,7 @@ import { PACKAGE_ITEMS_MEMBER, read_package_items } from "../shared/package-item
 import { read_zip_members } from "../shared/zip-members";
 import { image_metadata } from "./image-metadata";
 
-const IMAGE_STATE_MEMBER = "image.json";
+export const IMAGE_STATE_MEMBER = "image.json"; // 编辑与归档共用同一个清单成员。
 const MEMBER_ERROR_SAMPLE_SIZE = 5; // 成员不一致时只展示少量路径。
 const IMAGE_LIMITS = Object.freeze({
   members: 30000,
@@ -27,22 +26,20 @@ const IMAGE_LIMITS = Object.freeze({
 export async function read_image_package(
   content: Uint8Array,
   file: string,
-  options: { validatePixels?: boolean } = {},
+  { stored = false }: { stored?: boolean } = {},
 ) {
   try {
-    validate_zip_budget(content);
+    if (!stored) validate_zip_budget(content);
     const members = await read_zip_members(content, file);
     const stateMember = members.get(IMAGE_STATE_MEMBER);
     if (!stateMember) throw new Error("Missing image.json");
     const records = read_image_records(await read_package_items(members));
     const book = read_image_book(JSON.parse(await stateMember.async("string")), records);
-    await validate_image_members(
-      book,
-      members.keys(),
-      options.validatePixels === false
-        ? undefined
-        : (member) => members.get(member)!.async("uint8array"),
-    );
+    if (!stored) {
+      validate_image_members(book, members.keys());
+      for (const page of book.pages)
+        await validate_image_page_members(page, (name) => members.get(name)!.async("uint8array"));
+    }
     return { book, records };
   } catch (cause) {
     if (cause instanceof AppError && cause.code === "file.asset_too_large") throw cause;
@@ -57,26 +54,8 @@ export function read_image_package_manifest(directory: string) {
   return { book, records };
 }
 
-/** 封包前核对成员与像素契约。 */
-export async function validate_image_package_directory(directory: string): Promise<{
-  book: ImageBook;
-  records: ImageRecord[];
-}> {
-  directory = path.resolve(directory);
-  const { book, records } = read_image_package_manifest(directory);
-  const members = collect_directory_members(directory);
-  await validate_image_members(book, members, async (member) =>
-    fs.read_file(path.join(directory, member)),
-  );
-  return { book, records };
-}
-
-/** 结构读取器已确认引用关系，这里只核对成员全集与像素事实。 */
-async function validate_image_members(
-  book: ImageBook,
-  actualMembers: Iterable<string>,
-  read?: (member: string) => Promise<Uint8Array>,
-): Promise<void> {
+/** 先核对成员全集，使像素校验只读取清单声明的成员。 */
+function validate_image_members(book: ImageBook, actualMembers: Iterable<string>): void {
   const expected = new Set<string>([
     PACKAGE_ITEMS_MEMBER,
     IMAGE_STATE_MEMBER,
@@ -95,7 +74,6 @@ async function validate_image_members(
     throw new Error(
       `Image members mismatch: missing ${missing.length} ${JSON.stringify(missing.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}; extra ${extra.length} ${JSON.stringify(extra.slice(0, MEMBER_ERROR_SAMPLE_SIZE))}`,
     );
-  if (read) for (const page of book.pages) await validate_image_page_members(page, read);
 }
 
 /** 核对原图与像素成员各自的坐标尺寸。 */
@@ -220,18 +198,6 @@ function validate_zip_budget(content: Uint8Array): void {
     offset = next;
   }
   if (offset !== end) throw new Error("Invalid ZIP directory size");
-}
-
-/** 目录校验与封包共用规范成员路径，不跟随链接。 */
-function collect_directory_members(root: string, directory = root): string[] {
-  const members: string[] = [];
-  for (const entry of fs.read_dirents(directory)) {
-    const file = path.join(directory, entry.name);
-    if (entry.isDirectory()) members.push(...collect_directory_members(root, file));
-    else if (entry.isFile()) members.push(path.relative(root, file).split(path.sep).join("/"));
-    else throw new Error(`Unsupported image package member: ${entry.name}`);
-  }
-  return members;
 }
 
 /** 当前 JSON 使用 UTF-8，解析错误由调用边界归类。 */

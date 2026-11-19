@@ -2867,12 +2867,12 @@ it("图片替换保留同文不同译法、空译文及排除状态，坏包失�
           ...item,
           status: index === 3 ? "EXCLUDED" : "PROCESSED",
           dst: ["是的", "嗯", "", "保留旧译文"][index]!,
-          ...(index < 2 && { extra_field: { image: { fontSize: 18 + index } } }),
         })),
       ),
     );
     f.book.pages.reverse();
     f.records.reverse();
+    f.book.pages[2]!.regions[0]!.fontSize = 19;
     fs.writeFileSync(source, await f.pack());
     const result = await service.apply_file_changes({
       ...request,
@@ -2888,12 +2888,13 @@ it("图片替换保留同文不同译法、空译文及排除状态，坏包失�
     expect(saved.map((item) => [item["status"], item["dst"], item["extra_field"]])).toEqual([
       ["EXCLUDED", "保留旧译文", ""],
       ["PROCESSED", "", ""],
-      ["PROCESSED", "嗯", { image: { fontSize: 19 } }],
-      ["PROCESSED", "是的", { image: { fontSize: 18 } }],
+      ["PROCESSED", "嗯", ""],
+      ["PROCESSED", "是的", ""],
     ]);
     const asset = await database.read_asset_content(lg_path, "book.image");
-    const output = (await new ImageFormat().read(asset!, "book.image")).items;
-    expect(output).toHaveLength(4);
+    const output = await new ImageFormat().read(asset!, "book.image");
+    expect(output.items).toHaveLength(4);
+    expect(output.image.book.pages[2]!.regions[0]!.fontSize).toBe(19);
     fs.writeFileSync(source, "broken");
     expect(
       await service.apply_file_changes({

@@ -11,13 +11,11 @@ import type {
 import {
   image_layout_area_path,
   read_image_book,
+  select_image_regions,
   type ImageRecord,
   type ImageRegion,
 } from "../../../shared/image-package";
-import {
-  read_image_package_manifest,
-  validate_image_package_directory,
-} from "../../file/image/image-package";
+import { IMAGE_STATE_MEMBER, read_image_package_manifest } from "../../file/image/image-package";
 import { normalize_image_to_png } from "../../file/image/image-pixels";
 import { INFERENCE_DEPENDENCIES } from "../inference/environment";
 import { IMAGE_TEXT_RULES, type ImageTextPaint } from "../../../shared/image-text";
@@ -25,7 +23,7 @@ import { workspace_requests } from "../workspace/runtime/request-channel";
 import { pixels, type ImageDevice } from "./engine";
 
 export { DeviceFailure } from "../inference/client";
-export { queue_image_bubble_layout } from "./bubble-layout";
+export { set_image_bubble_layout, set_image_font_sizes } from "./layout";
 export { missing_models, prepare_models } from "./models";
 
 export const IMAGE_PIXEL_DEPENDENCIES = [
@@ -38,7 +36,11 @@ export const IMAGE_DEPENDENCIES = Object.freeze({
   npm: [`onnxruntime-node@${INFERENCE_DEPENDENCIES.ort}`],
   python: [...IMAGE_PIXEL_DEPENDENCIES, `pyclipper==${INFERENCE_DEPENDENCIES.pyclipper}`],
 });
-export { read_image_writeback } from "../../../shared/image-package";
+export {
+  read_image_font_sizes,
+  read_image_writeback,
+  select_image_regions,
+} from "../../../shared/image-package";
 export { read_image_package_manifest } from "../../file/image/image-package";
 
 type ImageSource = { path: string; relativePath: string };
@@ -46,9 +48,6 @@ type ImageScanResult = Readonly<{
   directory: string;
   pages: ImageHelperResponse<"scan">["pages"];
 }>;
-
-/** Skill 封包前执行与后端相同的当前图片物理契约。 */
-export const validate_package = validate_image_package_directory;
 
 /** 整册共享识别会话。选字前只生成原稿、候选区域和预览。 */
 async function scanPages(
@@ -226,11 +225,6 @@ async function prepare_book(
     );
     let { records } = prepared;
     let book = { bookId: previous ? previous.book.bookId : randomUUID(), pages: prepared.pages };
-    const regionIds = correction
-      ? book.pages.flatMap((page) =>
-          page.regions.filter((region) => !region.parts).map(({ regionId }) => regionId),
-        )
-      : undefined;
     if (previous && previousDirectory) {
       const pages = new Map(book.pages.map((page) => [page.pageId, page]));
       if (pages.size !== previous.book.pages.length)
@@ -293,7 +287,7 @@ async function prepare_book(
         path.join(previousDirectory ?? root, original),
         path.join(packageDirectory, original),
       );
-    await fs.write_file(path.join(packageDirectory, "image.json"), JSON.stringify(book));
+    await fs.write_file(path.join(packageDirectory, IMAGE_STATE_MEMBER), JSON.stringify(book));
     await fs.write_file(path.join(packageDirectory, "items.json"), JSON.stringify(records));
     // 后续局部消字仍可用同一次扫描定位新格。纠错记录留在工作目录。
     if (partitions.length)
@@ -302,8 +296,7 @@ async function prepare_book(
     return {
       directory: target,
       pages: book.pages.length,
-      items: records.length,
-      ...(regionIds && { regionIds }),
+      items: select_image_regions(book).size,
     };
   } finally {
     await fs.remove_async(stage, { recursive: true, force: true });
