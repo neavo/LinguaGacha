@@ -273,8 +273,7 @@ PDF API 以字节交换文档，支持跨版本、线程和进程调用。`@lg/p
 
 - 用户指定的图片批次构成一个 `.image` 资产。
 - 用户顺序优先，目录来源按原始相对路径的自然顺序排列。
-- 扫描和消字是两次独立的批次调用。每次调用内部跨页复用 Worker。产品 Agent 在两次调用之间确认哪些区域需要翻译。
-- 加载图片格式技能确定选字和视觉复核方法。 [图片格式技能](../builtin/skills/image/SKILL.md)
+- 扫描与消字分别批量运行，各自跨页复用 Worker。选区和视觉复核由图片格式技能定义。 [图片格式技能](../builtin/skills/image/SKILL.md)
 
 原稿和排版边界见 [BACKEND](BACKEND.md#图片)，共享推理占用遵循 [ARCHITECTURE](ARCHITECTURE.md#占用持续到收尾)。
 

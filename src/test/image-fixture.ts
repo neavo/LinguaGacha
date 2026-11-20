@@ -9,25 +9,36 @@ import {
   type ImageRecord,
 } from "../shared/image-package";
 
-/** 构建最小完整 `.image` 归档与原图与消字补丁字节测试夹具。 */
-export function image_fixture(ids: string[] = ["first", "second"]) {
-  const original = png_fixture();
+/** 构建完整 `.image` 夹具，测试可替换像素成员及其清单尺寸。 */
+export function image_fixture(
+  ids: string[] = ["first", "second"],
+  {
+    original = png_fixture(),
+    size: [width, height] = [1, 1],
+    layoutArea = layout_area_fixture(),
+    patch = patch_fixture(),
+  }: {
+    original?: Buffer;
+    size?: readonly [number, number];
+    layoutArea?: Uint8Array;
+    patch?: Buffer;
+  } = {},
+) {
   const sha = createHash("sha256").update(original).digest("hex");
-  const patch = patch_fixture();
   const pages: ImagePage[] = ids.map((pageId) => ({
     pageId,
     relativePath: `${pageId}.png`,
     original: `originals/${pageId}.png`,
     sha256: sha,
-    width: 1,
-    height: 1,
+    width,
+    height,
     orientation: 1,
     regions: [
       {
         regionId: "text",
         kind: "bubble",
-        box: [0, 0, 1, 1],
-        patch: { path: `patches/${pageId}/text.png`, box: [0, 0, 1, 1] },
+        box: [0, 0, width, height],
+        patch: { path: `patches/${pageId}/text.png`, box: [0, 0, width, height] },
         direction: "vertical-rl",
         backgroundColor: [255, 255, 255],
       },
@@ -48,7 +59,7 @@ export function image_fixture(ids: string[] = ["first", "second"]) {
       entries.set(page.original, original);
       for (const region of page.regions) {
         if (!region.parts)
-          entries.set(image_layout_area_path(page.pageId, region.regionId), layout_area_fixture());
+          entries.set(image_layout_area_path(page.pageId, region.regionId), layoutArea);
         if (region.patch) entries.set(region.patch.path, patch);
       }
     }
@@ -62,31 +73,39 @@ export function patch_fixture(values: readonly number[] = [255]): Buffer {
   const width = values.length;
   const raw = Buffer.alloc(width * 4 + 1);
   for (let x = 0; x < width; x++) raw[(x + 1) * 4] = values[x]!;
-  return image_png(width, 6, raw);
+  return image_png(width, 1, 6, raw);
 }
 
 export function layout_area_fixture(value = 255): Buffer {
-  return image_png(1, 0, Buffer.from([0, value]));
+  return image_png(1, 1, 0, Buffer.from([0, value]));
 }
 
-function image_png(width: number, colorType: number, raw: Buffer): Buffer {
-  const chunk = (type: string, data: Buffer) => {
-    const body = Buffer.concat([Buffer.from(type), data]);
-    const length = Buffer.alloc(4),
-      checksum = Buffer.alloc(4);
-    length.writeUInt32BE(data.length);
-    checksum.writeUInt32BE(crc32(body));
-    return Buffer.concat([length, body, checksum]);
-  };
+/** 编码单个完整块，测试可组合连续或被打断的 IDAT。 */
+export function png_chunk(type: string, data: Buffer): Buffer {
+  const body = Buffer.concat([Buffer.from(type), data]);
+  const length = Buffer.alloc(4),
+    checksum = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  checksum.writeUInt32BE(crc32(body));
+  return Buffer.concat([length, body, checksum]);
+}
+
+/** 接收已编码的扫描行，测试可直接指定滤波与像素数据。 */
+export function image_png(
+  width: number,
+  height: number,
+  colorType: number,
+  raw: Uint8Array,
+): Buffer {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(1, 4);
+  header.writeUInt32BE(height, 4);
   header[8] = 8;
   header[9] = colorType;
   return Buffer.concat([
     Buffer.from("89504e470d0a1a0a", "hex"),
-    chunk("IHDR", header),
-    chunk("IDAT", deflateSync(raw)),
-    chunk("IEND", Buffer.alloc(0)),
+    png_chunk("IHDR", header),
+    png_chunk("IDAT", deflateSync(raw)),
+    png_chunk("IEND", Buffer.alloc(0)),
   ]);
 }

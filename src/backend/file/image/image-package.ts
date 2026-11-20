@@ -1,4 +1,5 @@
 import path from "node:path";
+import { inflateSync } from "node:zlib";
 
 import {
   image_layout_area_path,
@@ -11,10 +12,11 @@ import { AppError } from "../../../shared/error";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { PACKAGE_ITEMS_MEMBER, read_package_items } from "../shared/package-items";
 import { read_zip_members } from "../shared/zip-members";
-import { image_metadata } from "./image-metadata";
+import { image_metadata, read_png_chunks, read_png_header } from "./image-metadata";
 
 export const IMAGE_STATE_MEMBER = "image.json"; // 编辑与归档共用同一个清单成员。
 const MEMBER_ERROR_SAMPLE_SIZE = 5; // 成员不一致时只展示少量路径。
+const PNG_FILTER = Object.freeze({ none: 0, sub: 1, up: 2, average: 3, paeth: 4 });
 const IMAGE_LIMITS = Object.freeze({
   members: 30000,
   expandedBytes: 950_000_000,
@@ -91,68 +93,102 @@ async function validate_image_page_members(
   for (const { regionId, box, parts, patch } of page.regions) {
     if (!parts) {
       const bytes = await read(image_layout_area_path(page.pageId, regionId));
-      const metadata = image_metadata(bytes);
-      if (
-        metadata.extension !== ".png" ||
-        metadata.width !== box[2] ||
-        metadata.height !== box[3] ||
-        metadata.orientation !== 1 ||
-        bytes[24] !== 8 ||
-        bytes[25] !== 0
-      )
-        throw new Error("Image layout area must be an 8-bit grayscale PNG matching its box");
-      await validate_binary_pixels(bytes, box[2], box[3], "layout area");
+      validate_binary_pixels(bytes, box[2], box[3], "layout area");
     }
-    if (!patch) continue;
-    const bytes = await read(patch.path);
-    const metadata = image_metadata(bytes);
-    const [, , width, height] = patch.box;
-    if (
-      metadata.extension !== ".png" ||
-      metadata.width !== width ||
-      metadata.height !== height ||
-      metadata.orientation !== 1 ||
-      bytes[24] !== 8 ||
-      bytes[25] !== 6
-    )
-      throw new Error("Image patch must be an 8-bit RGBA PNG matching its box");
-    await validate_binary_pixels(bytes, width, height, "patch alpha");
+    if (patch)
+      validate_binary_pixels(await read(patch.path), patch.box[2], patch.box[3], "patch alpha");
   }
 }
 
 /** 掩码取灰度，补丁取 alpha。两者都只允许二值。 */
-async function validate_binary_pixels(
-  bytes: Uint8Array,
+function validate_binary_pixels(
+  content: Uint8Array,
   width: number,
   height: number,
   channel: "layout area" | "patch alpha",
-): Promise<void> {
-  const { Image } = await import("mupdf");
-  const image = new Image(bytes);
-  try {
-    const pixels = image.toPixmap();
-    try {
-      const alpha = channel === "patch alpha";
-      if (
-        pixels.getWidth() !== width ||
-        pixels.getHeight() !== height ||
-        Boolean(pixels.getAlpha()) !== alpha
-      )
-        throw new Error(`Invalid decoded image ${channel}`);
-      const data = pixels.getPixels();
-      const components = pixels.getNumberOfComponents();
-      let nonempty = false;
-      for (let offset = components - 1; offset < data.length; offset += components) {
-        if (data[offset] === 255) nonempty = true;
-        else if (data[offset] !== 0) throw new Error(`Image ${channel} must be binary`);
+): void {
+  const alpha = channel === "patch alpha";
+  const bytes = Buffer.from(content.buffer, content.byteOffset, content.byteLength);
+  const png = read_png_header(bytes);
+  const color_type = alpha ? 6 : 0; // PNG 颜色类型为 RGBA 或灰度。
+  if (png?.color_type !== color_type || png.width !== width || png.height !== height)
+    throw new Error(
+      alpha
+        ? "Image patch must be an 8-bit RGBA PNG matching its box"
+        : "Image layout area must be an 8-bit grayscale PNG matching its box",
+    );
+  // PNG 的压缩、滤波与隔行字段分别位于 IHDR 的最后三个字节。
+  if (bytes[26] || bytes[27] || bytes[28]) throw new Error("Unsupported PNG header");
+
+  const components = alpha ? 4 : 1;
+  const scanline_length = 1 + width * components; // 每行以滤波类型开头。
+  const expected = scanline_length * height; // 清单已限制页面像素数和区域尺寸。
+  const raw = inflateSync(collect_png_idat(bytes), { maxOutputLength: expected });
+  if (raw.length !== expected) throw new Error("Invalid PNG scanline length");
+
+  let nonempty = false;
+  for (let row_start = 0; row_start < raw.length; row_start += scanline_length) {
+    const filter = raw[row_start]!;
+    if (filter > PNG_FILTER.paeth) throw new Error("Unsupported PNG filter");
+    const first = row_start + components; // 跳过滤波字节，取像素末通道。
+    const end = row_start + scanline_length;
+    // PNG 预测只读取同一通道。原地还原灰度或 alpha，补丁的 RGB 无需解码。
+    for (let index = first; index < end; index += components) {
+      if (filter !== PNG_FILTER.none) {
+        const left = index > first ? raw[index - components]! : 0;
+        const above = row_start > 0 ? raw[index - scanline_length]! : 0;
+        let predictor: number;
+        switch (filter) {
+          case PNG_FILTER.sub:
+            predictor = left;
+            break;
+          case PNG_FILTER.up:
+            predictor = above;
+            break;
+          case PNG_FILTER.average:
+            predictor = (left + above) >> 1;
+            break;
+          default: {
+            const upper_left =
+              row_start > 0 && index > first ? raw[index - scanline_length - components]! : 0;
+            predictor = paeth(left, above, upper_left);
+          }
+        }
+        raw[index] = (raw[index]! + predictor) & 0xff;
       }
-      if (!alpha && !nonempty) throw new Error("Image layout area is empty");
-    } finally {
-      pixels.destroy();
+      if (raw[index] === 255) nonempty = true;
+      else if (raw[index] !== 0) throw new Error(`Image ${channel} must be binary`);
     }
-  } finally {
-    image.destroy();
   }
+  if (!alpha && !nonempty) throw new Error("Image layout area is empty");
+}
+
+/** IDAT 必须连续，所有分片共同组成一个 zlib 流。 */
+function collect_png_idat(bytes: Buffer): Buffer {
+  const chunks: Buffer[] = [];
+  let previous_type: string | undefined;
+  for (const { type, data } of read_png_chunks(bytes)) {
+    if (type === "IDAT") {
+      if (chunks.length && previous_type !== "IDAT") throw new Error("Nonconsecutive PNG IDAT");
+      chunks.push(data);
+    } else if (type === "IEND") {
+      if (data.length !== 0) throw new Error("Invalid PNG IEND");
+      if (chunks.length > 0) return chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks);
+      break;
+    }
+    previous_type = type;
+  }
+  throw new Error("Incomplete PNG data");
+}
+
+/** Paeth 同距时依次优先取左侧、上方、左上。 */
+function paeth(left: number, above: number, upper_left: number): number {
+  const estimate = left + above - upper_left;
+  const left_distance = Math.abs(estimate - left);
+  const above_distance = Math.abs(estimate - above);
+  const upper_left_distance = Math.abs(estimate - upper_left);
+  if (left_distance <= above_distance && left_distance <= upper_left_distance) return left;
+  return above_distance <= upper_left_distance ? above : upper_left;
 }
 
 /** 原中央目录只检查图片包仍需要的展开预算。 */
