@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { default_native_fs as fs } from "../../../native/native-fs";
+import { resolve_raster_image_extension } from "../../../shared/image-formats";
 import type {
   ImageBubbleGroup,
   ImageBubblePartition,
@@ -16,7 +17,6 @@ import {
   type ImageRegion,
 } from "../../../shared/image-package";
 import { IMAGE_STATE_MEMBER, read_image_package_manifest } from "../../file/image/image-package";
-import { normalize_image_to_png } from "../../file/image/image-pixels";
 import { IMAGE_TEXT_RULES, type ImageTextPaint } from "../../../shared/image-text";
 import { workspace_requests } from "../workspace/runtime/request-channel";
 import { pixels, type ImageDevice } from "./engine";
@@ -49,27 +49,22 @@ async function scanPages(
   const target = path.resolve(directory);
   if (fs.exists(target)) throw new Error("Image work directory already exists");
   const stage = path.join(path.dirname(target), `.${path.basename(target)}-${randomUUID()}`);
-  const normalizedDirectory = path.join(stage, "normalized");
-  await fs.make_dir_async(normalizedDirectory);
+  await fs.make_dir_async(path.join(stage, "originals"));
   try {
     const pageSpecs = [];
     for (const source of sources) {
+      const relativePath = source.relativePath.replaceAll("\\", "/");
+      const extension = resolve_raster_image_extension(relativePath);
+      if (!extension) throw new Error(`Unsupported image source format: ${relativePath}`);
       const bytes = fs.read_file(source.path);
-      const normalized = await normalize_image_to_png(bytes);
       const pageId = randomUUID();
-      const original = `originals/${pageId}${normalized.extension}`;
-      await fs.write_file(path.join(stage, original), bytes); // 整册在暂存目录完成后才发布。
-      const normalizedPath = path.join(normalizedDirectory, `${pageId}.png`);
-      await fs.write_file(normalizedPath, normalized.png);
+      const original = `originals/${pageId}.${extension}`;
+      await fs.write_file(path.join(stage, original), bytes);
       pageSpecs.push({
         pageId,
-        relativePath: source.relativePath.replaceAll("\\", "/"),
+        relativePath,
         original,
-        sha256: createHash("sha256").update(bytes).digest("hex"),
-        width: normalized.width,
-        height: normalized.height,
-        orientation: normalized.orientation,
-        source: normalizedPath,
+        sha256: createHash("sha256").update(bytes).digest("hex"), // 同一份原字节用于入包及译文继承。
       });
     }
     const scanned = await pixels(script, "scan", { pages: pageSpecs, output: stage }, device);
@@ -228,17 +223,18 @@ async function prepare_book(
         for (const region of page.regions) {
           if (page.pageId === correction?.pageId && affected.has(region.regionId)) continue;
           const replacement = replacements.get(region.regionId);
+          // 局部补做沿用排版区域。未重算的补丁与覆盖掩码一起复制。
+          const members = region.parts
+            ? []
+            : [image_layout_area_path(page.pageId, region.regionId)];
           if (replacement) {
             replacements.delete(region.regionId);
             region.patch = replacement.patch;
             region.backgroundColor = replacement.backgroundColor;
           } else if (region.patch) {
-            const destination = path.join(packageDirectory, region.patch.path);
-            await fs.make_dir_async(path.dirname(destination));
-            fs.copy_file(path.join(previousDirectory, region.patch.path), destination);
+            members.push(region.patch.path, region.patch.mask);
           }
-          if (!region.parts) {
-            const member = image_layout_area_path(page.pageId, region.regionId);
+          for (const member of members) {
             const destination = path.join(packageDirectory, member);
             await fs.make_dir_async(path.dirname(destination));
             fs.copy_file(path.join(previousDirectory, member), destination);
@@ -294,7 +290,6 @@ async function prepare_book(
 
 export { AGENT_IMAGE_MAX_EDGE } from "../../../shared/agent-image";
 export { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-export { normalize_image_to_png };
 
 /** 技能入口固定本次使用的脚本路径，各作业仍共享 SDK 的推理监管。 */
 export function create_image_pipeline(script: URL) {

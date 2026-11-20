@@ -3,6 +3,7 @@ import { Check } from "typebox/value";
 import { is_portable_file_name } from "./utils/file-name";
 import { GENERIC_ITEM_SCHEMA } from "./generic-package";
 import { IMAGE_FONT_SIZE_SCHEMA } from "./image-font-size";
+import { resolve_raster_image_extension } from "./image-formats";
 
 export const IMAGE_ID_SCHEMA = Type.String({
   minLength: 1,
@@ -30,7 +31,11 @@ const REGION_SCHEMA = Type.Object(
     box: IMAGE_BOX_SCHEMA,
     patch: Type.Union([
       Type.Object(
-        { path: Type.String({ minLength: 1 }), box: IMAGE_BOX_SCHEMA },
+        {
+          path: Type.String({ minLength: 1 }),
+          mask: Type.String({ minLength: 1 }),
+          box: IMAGE_BOX_SCHEMA,
+        },
         { additionalProperties: false },
       ),
       Type.Null(), // 自动消字失败后仍保留区域和原文，供后续补做。
@@ -129,7 +134,7 @@ export const IMAGE_RECORD_SCHEMA = Type.Object(
 export const IMAGE_RECORDS_SCHEMA = Type.Array(IMAGE_RECORD_SCHEMA);
 export type ImageRecord = Static<typeof IMAGE_RECORD_SCHEMA>;
 
-export const IMAGE_PAGE_MAX_PIXELS = 100_000_000; // 限制单页解码与掩码内存。
+const IMAGE_PAGE_MAX_PIXELS = 100_000_000; // 限制单页解码与掩码内存。
 
 /** 包内路径跨平台保存，Schema 之外拒绝越界与 Windows 路径别名。 */
 function read_image_member_path(value: string): string {
@@ -158,14 +163,15 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
     const relativeKey = relativePath.toLocaleLowerCase("en-US");
     if (
       relativePath !== page.relativePath ||
-      !/\.(png|jpe?g)$/iu.test(relativePath) ||
+      !resolve_raster_image_extension(relativePath) ||
       relativePaths.has(relativeKey)
     )
       throw new Error("Invalid or duplicate image relative path");
     relativePaths.add(relativeKey);
     if (
       read_image_member_path(page.original) !== page.original ||
-      !/^originals\/[^/]+\.(png|jpe?g)$/iu.test(page.original)
+      !/^originals\/[^/]+$/u.test(page.original) ||
+      !resolve_raster_image_extension(page.original)
     )
       throw new Error("Invalid original path");
     const regionIds = new Map<string, ImageRegion>();
@@ -175,8 +181,8 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
       const key = page.pageId + "/" + region.regionId;
       regions.add(key);
       const { patch } = region;
-      if (patch && patch.path !== `patches/${page.pageId}/${region.regionId}.png`)
-        throw new Error("Invalid image patch path");
+      if (patch && (patch.path !== `patches/${key}.png` || patch.mask !== `patch-masks/${key}.png`))
+        throw new Error("Invalid image patch member path");
       for (const [x, y, width, height] of patch ? [region.box, patch.box] : [region.box])
         if (x + width > page.width || y + height > page.height)
           throw new Error("Image region bounds exceed page");

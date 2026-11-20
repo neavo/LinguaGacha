@@ -519,13 +519,13 @@ describe("AgentWorkspaceService", () => {
   it("预览图片保持字节，多份读取互不占锁，脚本写入期间拒绝预览", async () => {
     const fixture = await create_file_fixture(temp_dir);
     const bytes = Buffer.from([137, 80, 78, 71, 0, 255]);
-    fs.writeFileSync(path.join(fixture.workspace_root, "work", "chart.png"), bytes);
+    fs.writeFileSync(path.join(fixture.workspace_root, "work", "chart.AVIF"), bytes);
     const [document, image] = await Promise.all([
       fixture.service.read_document(fixture.href),
-      fixture.service.read_document_image("work/chart.png"),
+      fixture.service.read_document_image("work/chart.AVIF"),
     ]);
     expect(document.content).toBe("报告");
-    expect(image).toEqual({ bytes, mime: "image/png" });
+    expect(image).toEqual({ bytes, mime: "image/avif" });
     fixture.run.mockImplementationOnce(async () => {
       await expect(fixture.service.read_document(fixture.href)).rejects.toMatchObject({
         code: "runtime.busy",

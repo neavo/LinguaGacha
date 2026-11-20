@@ -1,4 +1,5 @@
 import { find_agent_reference_ranges } from "@shared/agent-reference";
+import { SUPPORTED_RASTER_IMAGE_EXTENSIONS } from "@shared/image-formats";
 import { read_file_paths } from "@frontend/app/desktop/source-paths";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
@@ -58,14 +59,9 @@ import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-inp
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AgentFileDropTarget } from "./agent-file-drop-target";
 
-/** 编辑器按扩展名选择上传附件，图片格式对应后端 `read_image_type`。 */
+/** 编辑器按扩展名选择上传附件。 */
 const AGENT_UPLOAD_EXTENSIONS: readonly string[] = Object.freeze([
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "bmp",
-  "avif",
+  ...SUPPORTED_RASTER_IMAGE_EXTENSIONS,
   "txt",
   "json",
   "jsonl",

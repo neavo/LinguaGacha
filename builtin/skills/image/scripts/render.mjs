@@ -5,7 +5,6 @@ import path from "node:path";
 import {
   AGENT_IMAGE_MAX_EDGE,
   ProjectAssetPathIndex,
-  normalize_image_to_png,
   read_image_font_sizes,
   read_image_package_manifest,
   read_image_writeback,
@@ -141,8 +140,8 @@ function plan_page(page, records, sizes, { assetRoot, scratch }, index) {
   const layout = lettering.length
     ? { output: `${scratchBase}.lettering.json`, page, lettering }
     : undefined;
-  // RGB 和 Base64 距离场估算暂存体积，布局请求计入预算以避免合批撑大通道帧。
-  let bytes = page.width * page.height * 3;
+  // 按 RGBA 和 Base64 距离场估算暂存体积，布局请求计入预算以避免合批撑大通道帧。
+  let bytes = page.width * page.height * 4;
   if (layout) {
     bytes += Buffer.byteLength(JSON.stringify(layout));
     for (const { regionId } of lettering) {
@@ -159,7 +158,7 @@ function plan_page(page, records, sizes, { assetRoot, scratch }, index) {
   return { page, regions, candidates, layout, report, bytes, scratchBase };
 }
 
-/** 宿主按页绘字，合成所需的原图和字层在同批暂存。 */
+/** 宿主按页绘字，合成时直接读取包内原图。 */
 async function prepare_composition(
   { page, regions, candidates, layout, report, scratchBase },
   paths,
@@ -187,14 +186,12 @@ async function prepare_composition(
     if (paint?.png) overlays.push({ box: region.box, png: paint.png });
   }
 
-  const source = path.join(paths.source, page.original);
-  const bytes = await readFile(source);
-  const { extension, png } = await normalize_image_to_png(bytes);
-  const normalized = `${scratchBase}.original.png`;
-  await writeFile(normalized, png);
-  const output = path.join(paths.stage, "translated", report.path);
   const job = {
-    original: normalized,
+    original: path.join(paths.source, page.original),
+    width: page.width,
+    height: page.height,
+    orientation: page.orientation,
+    output: path.join(paths.stage, "translated", report.path),
     bilingual: path.join(paths.stage, "bilingual", report.path),
     qa: {
       path: path.join(paths.stage, "qa", report.qa),
@@ -208,10 +205,6 @@ async function prepare_composition(
         })),
     },
   };
-  if (!patches.length && (extension === ".png") === /\.png$/iu.test(output)) {
-    await mkdir(path.dirname(output), { recursive: true });
-    await writeFile(output, bytes); // 保留原图字节，QA 使用旋正后的像素。
-  } else job.output = output;
   if (patches.length) {
     // 字层写入文件，避免 PNG 数据超过 Python 通道的帧上限。
     job.layers = `${scratchBase}.layers.json`;

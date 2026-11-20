@@ -11,7 +11,7 @@ import {
 describe("text-resource-reference", () => {
   it("按优先级识别 Base64 data URI、URI 和无 scheme 资源路径", () => {
     const base64 = "data:image/png;base64,AAABBB==";
-    const text = `${base64} https://example.com/a.png?size=2#cover bg\\scene.WEBP 资源/背景图.png cover.avif manual.DOCX archive.tar.gz`;
+    const text = `${base64} https://example.com/a.png?size=2#cover bg\\scene.WEBP 资源/背景图.png cover.avif logo.svg source.psd manual.DOCX archive.tar.gz`;
 
     expect(collect_text_resource_references(text).map(({ value }) => value)).toEqual([
       base64,
@@ -19,6 +19,8 @@ describe("text-resource-reference", () => {
       "bg\\scene.WEBP",
       "资源/背景图.png",
       "cover.avif",
+      "logo.svg",
+      "source.psd",
       "manual.DOCX",
       "archive.tar.gz",
     ]);

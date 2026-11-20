@@ -202,7 +202,7 @@ it("图片分批出图沿用清单字号与页序，选页试排只生成目标�
     ),
   );
 
-  const png = fixture.patch.toString("base64");
+  const png = png_fixture().toString("base64");
   await run(
     `
     import { render_book } from '../image-layout/render.mjs';
@@ -234,9 +234,11 @@ it("图片分批出图沿用清单字号与页序，选页试排只生成目标�
       compose: async ({ pages }) => {
         compositionBatches.push(pages.length);
         assert.equal(new Set(pages.map(job => job.original)).size, pages.length);
-        for (const { original, output, bilingual, qa } of pages) {
+        for (const { original, width, height, orientation, output, bilingual, qa } of pages) {
+          assert.equal(width, 1);
+          assert.equal(height, 1);
+          assert.equal(orientation, 1);
           for (const file of [qa.path, bilingual, output]) {
-            if (!file) continue;
             await mkdir(path.dirname(file), { recursive: true });
             await copyFile(original, file);
           }

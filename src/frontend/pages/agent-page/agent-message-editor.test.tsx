@@ -570,7 +570,7 @@ describe("AgentMessageEditor", () => {
     const view = await render_editor({ input_state });
     const form = view.querySelector<HTMLFormElement>(".agent-composer");
     if (form === null) throw new Error("缺少 Composer 表单");
-    const dropped = new File([], "drop.webp", { type: "image/webp" });
+    const dropped = new File([], "drop.gif", { type: "image/gif" });
     const drop = new Event("drop", { bubbles: true, cancelable: true });
     Object.defineProperty(drop, "dataTransfer", {
       value: { types: ["Files"], files: [dropped], dropEffect: "none" },
@@ -590,7 +590,7 @@ describe("AgentMessageEditor", () => {
 
     expect(input_state.draft.read()).toEqual({
       text: "",
-      attachments: image_attachments("webp-drop.webp", "webp-paste.png"),
+      attachments: image_attachments("webp-drop.gif", "webp-paste.png"),
     });
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
   });

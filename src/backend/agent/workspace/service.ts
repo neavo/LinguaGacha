@@ -22,11 +22,8 @@ import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import {
-  is_agent_file_url,
-  resolve_agent_text_format,
-  resolve_agent_workspace_image_mime,
-} from "../../../shared/agent-workspace-file";
+import { is_agent_file_url, resolve_agent_text_format } from "../../../shared/agent-workspace-file";
+import { resolve_workspace_image_mime } from "../../../shared/image-formats";
 
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
@@ -262,7 +259,7 @@ export class AgentWorkspaceService {
         ? this.uploads.list().find((file) => file.path === decodeURIComponent(target.href))
         : undefined;
     const filename = path.basename(target.path);
-    const mime = upload?.imageMimeType ?? resolve_agent_workspace_image_mime(filename);
+    const mime = upload?.imageMimeType ?? resolve_workspace_image_mime(filename);
     return {
       path: target.href,
       name: upload?.name ?? filename,

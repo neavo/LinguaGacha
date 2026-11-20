@@ -11,6 +11,7 @@ import type {
 } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord/json";
 import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
+import { SUPPORTED_RASTER_IMAGE_MIMES } from "../../shared/image-formats";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
   project_assistant_message_parts,
@@ -24,16 +25,6 @@ import { read_agent_compaction_result } from "./agent-compaction";
 export const assistant_entry_id = (task: number | undefined, entry: number): string =>
   `assistant:${task ?? `entry:${entry}`}`;
 const UNCOMMITTED_ENTRY_ORDER = Number.MAX_SAFE_INTEGER; // 尚无 SDK 条目身份的正文暂居轮次末尾
-
-// 历史可来自导入工程；公开图片响应只接受光栅 MIME，避免把活动文档作为图片下发。
-const TOOL_IMAGE_MIME_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-  "image/avif",
-  "image/bmp",
-]);
 
 type TaskRecordValue = TaskRecord<JsonValue, JsonValue, JsonValue>;
 type Row = { order: number; entry: AgentEntry };
@@ -399,7 +390,7 @@ export class AgentChatView {
           (part): part is ImageContent =>
             part.type === "image" &&
             part.data.length > 0 &&
-            TOOL_IMAGE_MIME_TYPES.has(part.mimeType),
+            SUPPORTED_RASTER_IMAGE_MIMES.has(part.mimeType),
         );
         if (images.length > 0) this.toolImages.set(row.entry.id, images);
         else this.toolImages.delete(row.entry.id);

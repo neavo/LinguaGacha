@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { layout_area_fixture, patch_fixture } from "../../../test/image-fixture";
+import {
+  IMAGE_LAYOUT_FIXTURE,
+  IMAGE_PATCH_FIXTURE,
+  IMAGE_PATCH_MASK_FIXTURE,
+} from "../../../test/image-fixture";
 import { png_fixture } from "../../../test/media-fixture";
 import type { ImageHelperRequest } from "../../../shared/image-helper";
 
@@ -46,22 +50,29 @@ vi.mock("./engine", () => ({
           regionId,
           message: message ?? "原文",
         })),
-        pages: fake.pages.map(({ source: _source, ...page }) => ({
+        pages: fake.pages.map((page) => ({
           ...page,
+          width: 1,
+          height: 1,
+          orientation: 1,
           regions: picks
             .filter(({ pageId }) => pageId === page.pageId)
             .map(({ regionId, contour }) => {
               const whole = repartition && regionId === repartition.group;
-              const member = ["patches", page.pageId, regionId + ".png"].join("/");
+              const member = `patches/${page.pageId}/${regionId}.png`;
+              const mask = `patch-masks/${page.pageId}/${regionId}.png`;
               const file = path.join(output, member);
               if (!whole && (!previous || repartition)) {
                 const area = path.join(output, "layout-areas", page.pageId, regionId + ".png");
                 fs.mkdirSync(path.dirname(area), { recursive: true });
-                fs.writeFileSync(area, layout_area_fixture());
+                fs.writeFileSync(area, IMAGE_LAYOUT_FIXTURE);
               }
               if (contour) {
                 fs.mkdirSync(path.dirname(file), { recursive: true });
-                fs.writeFileSync(file, patch_fixture());
+                fs.writeFileSync(file, IMAGE_PATCH_FIXTURE);
+                const maskFile = path.join(output, mask);
+                fs.mkdirSync(path.dirname(maskFile), { recursive: true });
+                fs.writeFileSync(maskFile, IMAGE_PATCH_MASK_FIXTURE);
               }
               return {
                 regionId,
@@ -69,7 +80,7 @@ vi.mock("./engine", () => ({
                 box: [0, 0, 1, 1],
                 direction: "vertical-rl",
                 backgroundColor: [255, 255, 255],
-                patch: contour ? { path: member, box: [0, 0, 1, 1] } : null,
+                patch: contour ? { path: member, mask, box: [0, 0, 1, 1] } : null,
                 ...(whole ? { parts: ["r1-qa-a", "r1-qa-b"] } : {}),
               };
             }),
@@ -105,6 +116,9 @@ it("先发布选字预览，再封装已确认原文和消字补丁", async () =
     [{ pageId: page.pageId, regionId: "r1", message: "校正后的原文" }],
     output,
   );
+  const prepared = read_image_package_manifest(path.join(output, "package"));
+  const { original } = prepared.book.pages[0]!;
+  expect(fs.readFileSync(path.join(output, "package", original))).toEqual(fs.readFileSync(source));
   const updated = path.join(temporary.path, "updated");
   await preparePages(
     scan.directory,
@@ -116,7 +130,7 @@ it("先发布选字预览，再封装已确认原文和消字补丁", async () =
   );
   const patchPath = path.join("package", "patches", page.pageId, "r1.png");
   expect(fs.existsSync(path.join(output, patchPath))).toBe(false);
-  expect(fs.readFileSync(path.join(updated, patchPath))).toEqual(patch_fixture());
+  expect(fs.readFileSync(path.join(updated, patchPath))).toEqual(IMAGE_PATCH_FIXTURE);
   expect(fs.readFileSync(path.join(updated, "package/items.json"), "utf8")).toBe(
     fs.readFileSync(path.join(output, "package/items.json"), "utf8"),
   );
@@ -164,16 +178,17 @@ it("补做分格只替换目标组，整泡补做复用子格补丁", async () =
     ["r1", "原文"],
     ["r10", "不变的原文"],
   ]);
-  const untouched = check.book.pages[0]!.regions.find(({ regionId }) => regionId === "r10")!.patch!
-    .path;
-  expect(fs.readFileSync(path.join(corrected, "package", untouched))).toEqual(
-    fs.readFileSync(path.join(previous, "package", untouched)),
-  );
+  const untouched = check.book.pages[0]!.regions.find(({ regionId }) => regionId === "r10")!.patch!;
   const updated = path.join(temporary.path, "updated");
   await preparePages(scan.directory, [{ pageId, regionId: "r1", contour: true }], updated, {
     update: corrected,
   });
   const after = read_image_package_manifest(path.join(updated, "package"));
+  for (const member of [untouched.path, untouched.mask]) {
+    const bytes = fs.readFileSync(path.join(previous, "package", member));
+    expect(fs.readFileSync(path.join(corrected, "package", member))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(updated, "package", member))).toEqual(bytes);
+  }
   expect(after.records).toEqual(check.records);
   expect(
     after.book.pages[0]!.regions.filter(({ parts }) => !parts).every(({ patch }) => patch),

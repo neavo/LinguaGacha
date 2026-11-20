@@ -8,6 +8,7 @@ import {
   type AgentImageOptions,
 } from "../../shared/agent-image";
 import { AppError } from "../../shared/error";
+import type { SupportedRasterImageMime } from "../../shared/image-formats";
 
 export const AGENT_IMAGE_INPUT_MAX_BYTES = 20 * 1024 * 1024;
 export const AGENT_IMAGE_POLICY = Object.freeze({
@@ -141,7 +142,7 @@ function digest(bytes: Uint8Array): string {
 }
 
 /** 文件头只负责选择允许的解码格式，完整有效性由 Chromium 解码证明。 */
-export function read_image_type(bytes: Uint8Array): string | null {
+export function read_image_type(bytes: Uint8Array): SupportedRasterImageMime | null {
   const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
     return "image/png";
@@ -149,6 +150,8 @@ export function read_image_type(bytes: Uint8Array): string | null {
   if (data.toString("ascii", 0, 4) === "RIFF" && data.toString("ascii", 8, 12) === "WEBP")
     return "image/webp";
   if (data.toString("ascii", 0, 2) === "BM") return "image/bmp";
+  const signature = data.toString("ascii", 0, 6);
+  if (signature === "GIF87a" || signature === "GIF89a") return "image/gif";
   if (data.toString("ascii", 4, 8) === "ftyp") {
     const box_size = Math.min(data.readUInt32BE(0), data.length);
     for (let offset = 8; offset + 4 <= box_size; offset += 4) {
