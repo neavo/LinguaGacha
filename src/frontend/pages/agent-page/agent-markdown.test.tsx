@@ -116,6 +116,22 @@ describe("AgentMarkdown", () => {
     ).toBeNull();
   });
 
+  it("消息和文档只把显式邮寄地址渲染为邮件链接", async () => {
+    const text = [
+      "邮箱 a@example.com 或 <b@example.com>",
+      "[联系](mailto:c@example.com?subject=Report)",
+      "https://example.com",
+    ].join("\n\n");
+    for (const document_path of [undefined, "work/report.md"]) {
+      const view = await render_markdown(text, document_path === undefined, document_path);
+      expect(view.textContent).toContain("邮箱 a@example.com 或 b@example.com");
+      expect([...view.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([
+        "mailto:c@example.com?subject=Report",
+        "https://example.com",
+      ]);
+    }
+  });
+
   it("被过滤的目标呈现文本，页内链接保留原生跳转", async () => {
     const view = await render_markdown(
       '[文件](javascript:alert)\n\n[盘符](E:/report.md)\n\n[跳转](#section)\n\n<span id="section">目标</span>',

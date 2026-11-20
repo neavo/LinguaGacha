@@ -2,9 +2,14 @@ export const zh_cn_agent_page = {
   project_required: "请首先创建或者打开工程文件 …",
   document: {
     conversation: "对话",
-    view: "查看",
+    open: "打开",
     save_as: "另存为",
-    open_folder: "打开所在文件夹",
+  },
+  link: {
+    open: "打开链接",
+    copy: "复制链接",
+    copy_selection: "复制选中文字",
+    jump_to_anchor: "跳转到锚点",
   },
   function_models: {
     title: "子模型",

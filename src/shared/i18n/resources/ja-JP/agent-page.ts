@@ -4,9 +4,14 @@ export const ja_jp_agent_page = {
   project_required: "まずプロジェクトファイルを作成または開いてください …",
   document: {
     conversation: "会話",
-    view: "表示",
+    open: "開く",
     save_as: "名前を付けて保存",
-    open_folder: "ファイルの場所を開く",
+  },
+  link: {
+    open: "リンクを開く",
+    copy: "リンクをコピー",
+    copy_selection: "選択したテキストをコピー",
+    jump_to_anchor: "アンカーに移動",
   },
   function_models: {
     title: "サブモデル",

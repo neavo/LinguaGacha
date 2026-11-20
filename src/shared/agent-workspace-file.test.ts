@@ -33,6 +33,8 @@ describe("Agent 文件链接", () => {
       "work/%E7%BB%93%E6%9E%9C%20%23%2523.MD#结论",
     );
     expect(resolve_agent_file_href("#结论", "work/check.md")).toBe("work/check.md#结论");
+    expect(resolve_agent_file_href("../", "work/check.md")).toBe("./");
+    expect(resolve_agent_file_href(".")).toBe(".");
   });
   it.each([
     ["work/%E6%8A%A5%E5%91%8A.MARKDOWN#结论", "markdown"],

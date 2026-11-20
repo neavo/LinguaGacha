@@ -4,9 +4,14 @@ export const ko_kr_agent_page = {
   project_required: "먼저 프로젝트 파일을 만들거나 열어 주세요 …",
   document: {
     conversation: "대화",
-    view: "보기",
+    open: "열기",
     save_as: "다른 이름으로 저장",
-    open_folder: "파일이 있는 폴더 열기",
+  },
+  link: {
+    open: "링크 열기",
+    copy: "링크 복사",
+    copy_selection: "선택한 텍스트 복사",
+    jump_to_anchor: "앵커로 이동",
   },
   function_models: {
     title: "하위 모델",

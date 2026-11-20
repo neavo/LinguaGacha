@@ -126,11 +126,11 @@ export function AgentResponseAnnotationSelection(
         sync_selection();
       });
     };
-    /** 新选择保留原生选区，让双击和 Shift+点击沿用浏览器语义。 */
+    /** 主键开始新选择；保留右键菜单和原生复制使用的选区。 */
     const pointer_down = (event: PointerEvent): void => {
+      if (event.button !== 0) return;
       if (!(event.target instanceof Node) || refs.floating.current?.contains(event.target)) return;
       if (
-        event.button === 0 &&
         root_ref.current?.contains(event.target) &&
         !(event.target instanceof Element && event.target.closest(EXCLUDED))
       ) {

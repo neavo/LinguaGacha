@@ -225,7 +225,7 @@ export class AgentService {
     return this.workspace.activate_path(is_json_record(request) ? request["path"] : undefined);
   }
 
-  /** 文件描述绑定当前会话，菜单无法复用旧会话的同名工作文件。 */
+  /** 文件描述绑定当前会话，旧标签不能打开新会话的同名文件。 */
   public describe_workspace_file(request: JsonRecord): AgentFile {
     this.assert_preview_chat(request["chatId"]);
     return this.workspace.describe_file(request["path"]);

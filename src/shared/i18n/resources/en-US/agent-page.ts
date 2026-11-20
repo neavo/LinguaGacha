@@ -2,9 +2,14 @@ export const en_us_agent_page = {
   project_required: "Please create or open a project file first …",
   document: {
     conversation: "Conversation",
-    view: "View",
+    open: "Open",
     save_as: "Save as",
-    open_folder: "Open containing folder",
+  },
+  link: {
+    open: "Open link",
+    copy: "Copy link",
+    copy_selection: "Copy selected text",
+    jump_to_anchor: "Jump to anchor",
   },
   function_models: {
     title: "Submodels",

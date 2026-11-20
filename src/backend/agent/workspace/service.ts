@@ -22,7 +22,11 @@ import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import { is_agent_file_url, resolve_agent_text_format } from "../../../shared/agent-workspace-file";
+import {
+  is_agent_file_url,
+  resolve_agent_text_format,
+  resolve_agent_workspace_image_mime,
+} from "../../../shared/agent-workspace-file";
 
 import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
@@ -88,15 +92,6 @@ import { watch_agent_process_output, type AgentProcessOutputTail } from "../proc
 import type { AgentPackageSources } from "../package-source";
 
 const AGENT_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
-
-const WORKSPACE_IMAGE_TYPES: Readonly<Record<string, string>> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".svg": "image/svg+xml",
-};
 
 /** 公开失败阶段，供模型恢复与诊断定位使用。 */
 enum WorkspaceRunPhase {
@@ -266,13 +261,11 @@ export class AgentWorkspaceService {
       target.scope === "uploads"
         ? this.uploads.list().find((file) => file.path === decodeURIComponent(target.href))
         : undefined;
-    const mime =
-      upload?.imageMimeType ??
-      WORKSPACE_IMAGE_TYPES[path.extname(target.path).toLowerCase()] ??
-      null;
+    const filename = path.basename(target.path);
+    const mime = upload?.imageMimeType ?? resolve_agent_workspace_image_mime(filename);
     return {
       path: target.href,
-      name: upload?.name ?? path.basename(target.path),
+      name: upload?.name ?? filename,
       kind: target.kind,
       mime,
       preview:
@@ -302,8 +295,7 @@ export class AgentWorkspaceService {
         if (version !== this.link_versions[scope]) {
           throw new AppErrors.AppError("file.not_found");
         }
-        const current = this.resolve_path(href);
-        if (current.kind !== "file" || current.path !== target.path) {
+        if (this.resolve_path(href).kind !== "file") {
           throw new AppErrors.AppError("file.not_found");
         }
         if (!path.isAbsolute(destination)) {
@@ -320,7 +312,7 @@ export class AgentWorkspaceService {
           throw new AppErrors.AppError("request.validation_failed");
         }
         // 同步复制和替换在当前 worker 回合内完成，清理与脚本无法插入其中。
-        this.native_fs.copy_file_atomic(current.path, destination);
+        this.native_fs.copy_file_atomic(target.path, destination);
         return { status: "saved" };
       });
     } catch (cause) {
@@ -369,7 +361,7 @@ export class AgentWorkspaceService {
     this.link_versions.snapshot += 1;
   }
 
-  /** 统一文件身份与生命周期归属，文件访问仍沿目录链接自然到达目标。 */
+  /** 以入口路径判断归属，跟随目录链接读取目标类型。 */
   private resolve_path(href: unknown): WorkspacePath {
     if (typeof href !== "string") {
       throw new AppErrors.AppError("request.validation_failed");
@@ -408,7 +400,7 @@ export class AgentWorkspaceService {
       return {
         path: file_path,
         href: inside
-          ? inside_path.split(path.sep).map(encodeURIComponent).join("/")
+          ? inside_path.split(path.sep).map(encodeURIComponent).join("/") || "."
           : pathToFileURL(file_path).href,
         kind: stat.isDirectory() ? "directory" : "file",
         scope: !inside

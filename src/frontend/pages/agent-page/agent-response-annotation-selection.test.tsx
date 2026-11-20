@@ -61,8 +61,8 @@ describe("AgentResponseAnnotationSelection", () => {
   const button = (): HTMLButtonElement => document.querySelector('[role="toolbar"] button')!; // 获取用户进入批注编辑的操作。
   const text = (): Node => container.querySelector("p")!.firstChild!; // 默认回复提供稳定的文字节点，供选区与替换场景使用。
   /** 指针事件沿真实文档路径传播，覆盖容器外松手。 */
-  const pointer = (target: EventTarget, type: string): void => {
-    target.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0 }));
+  const pointer = (target: EventTarget, type: string, button = 0): void => {
+    target.dispatchEvent(new PointerEvent(type, { bubbles: true, button }));
   };
   /** 等待待执行的选区同步及其 React 提交。 */
   async function flush(): Promise<void> {
@@ -70,6 +70,15 @@ describe("AgentResponseAnnotationSelection", () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
   }
+
+  it("右键按下保留普通正文的原生选区供复制菜单使用", async () => {
+    await render();
+    select(text());
+    await flush();
+    expect(toolbar()).not.toBeNull();
+    await act(async () => pointer(container.querySelector("p")!, "pointerdown", 2));
+    expect(window.getSelection()?.toString()).toBe("第一段");
+  });
 
   it.each(["之前", "之后"])("选区在松手%s更新，容器外结束拖选也能出现动作条", async (order) => {
     await render();

@@ -2,9 +2,14 @@ export const de_de_agent_page = {
   project_required: "Bitte zuerst eine Projektdatei erstellen oder öffnen …",
   document: {
     conversation: "Unterhaltung",
-    view: "Ansehen",
+    open: "Öffnen",
     save_as: "Speichern unter",
-    open_folder: "Übergeordneten Ordner öffnen",
+  },
+  link: {
+    open: "Link öffnen",
+    copy: "Link kopieren",
+    copy_selection: "Ausgewählten Text kopieren",
+    jump_to_anchor: "Zum Anker springen",
   },
   function_models: {
     title: "Untermodelle",

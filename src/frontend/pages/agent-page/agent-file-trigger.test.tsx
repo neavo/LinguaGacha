@@ -45,7 +45,15 @@ async function render(active = true, path = file.path) {
   );
   return container.querySelector("button")!;
 }
-it.each(["markdown", null] as const)("文件能力 %s 同时决定默认动作与右键菜单", async (preview) => {
+
+async function open_menu(trigger: HTMLElement): Promise<HTMLElement[]> {
+  await act(async () =>
+    trigger.dispatchEvent(new MouseEvent("contextmenu", { button: 2, bubbles: true })),
+  );
+  return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+}
+
+it.each(["markdown", null] as const)("执行时的预览能力 %s 决定打开行为", async (preview) => {
   mocks.api.mockImplementation(async (route) =>
     route.endsWith("/file") ? { ...file, preview } : { status: "cancelled" },
   );
@@ -59,17 +67,13 @@ it.each(["markdown", null] as const)("文件能力 %s 同时决定默认动作�
     });
   mocks.open.mockClear();
   mocks.api.mockClear();
-  await act(async () =>
-    trigger.dispatchEvent(new MouseEvent("contextmenu", { button: 2, bubbles: true })),
-  );
-  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-  expect(items.map((item) => item.textContent)).toEqual(
-    preview
-      ? ["agent_page.document.view", "agent_page.document.save_as"]
-      : ["agent_page.document.save_as"],
-  );
+  const items = await open_menu(trigger);
+  expect(items.map((item) => item.textContent)).toEqual([
+    "agent_page.document.open",
+    "agent_page.link.copy",
+  ]);
   expect(mocks.open).not.toHaveBeenCalled();
-  expect(mocks.api.mock.calls.some(([route]) => route.endsWith("activate-path"))).toBe(false);
+  expect(mocks.api).not.toHaveBeenCalled();
   await act(async () => items[0]!.click());
   if (preview)
     expect(mocks.open).toHaveBeenCalledWith(file.path, expect.objectContaining({ preview }));
@@ -78,43 +82,45 @@ it.each(["markdown", null] as const)("文件能力 %s 同时决定默认动作�
       path: file.path,
     });
 });
-it.each([
-  ["file:///E:/report.bin", "agent_page.document.open_folder"],
-  ["work/report.bin", "agent_page.document.save_as"],
-])("菜单按后端规范身份 %s 选择文案，复用同一激活入口", async (path, label) => {
-  const href = "file:///E:/report.bin";
-  mocks.api.mockImplementation(async (route) =>
-    route.endsWith("/file") ? { ...file, path, preview: null } : { status: "opened" },
-  );
+it("缺失文件仍能打开菜单并复制地址，执行打开时才报告错误", async () => {
+  const href = "file:///E:/missing.md#section";
+  const missing = new Error("ENOENT");
+  const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  mocks.api.mockRejectedValue(missing);
   const trigger = await render(true, href);
-  await act(async () =>
-    trigger.dispatchEvent(new MouseEvent("contextmenu", { button: 2, bubbles: true })),
-  );
-  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-  expect(items.map((item) => item.textContent)).toEqual([label]);
-  await act(async () => items[0]!.click());
-  expect(mocks.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", { path: href });
+  const items = await open_menu(trigger);
+  expect(items.map((item) => item.textContent)).toEqual([
+    "agent_page.document.open",
+    "agent_page.link.copy",
+  ]);
+  await act(async () => items[1]!.click());
+  expect(copy).toHaveBeenCalledExactlyOnceWith(href);
+  expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("success", "agent_page.action.copied");
+  expect(mocks.api).not.toHaveBeenCalled();
+  const [open] = await open_menu(trigger);
+  await act(async () => open!.click());
+  expect(mocks.toast).toHaveBeenLastCalledWith("app.feedback.activate_link", missing);
   expect(mocks.open).not.toHaveBeenCalled();
 });
 
-it("保存确认期间合并点击，取消无提示，失败仅报告一次", async () => {
-  let finish!: (value: { status: string }) => void;
-  mocks.api.mockImplementation(async (route) =>
-    route.endsWith("/file")
-      ? { ...file, preview: null }
-      : new Promise((resolve) => {
-          finish = resolve;
-        }),
-  );
+it("查询与另存共用一次打开操作，取消后可以再次执行", async () => {
+  const description = Promise.withResolvers<AgentFile>();
+  const save = Promise.withResolvers<{ status: string }>();
+  mocks.api.mockReturnValueOnce(description.promise).mockReturnValueOnce(save.promise);
   const trigger = await render();
   await act(async () => trigger.click());
   await act(async () => trigger.click());
-  expect(mocks.api.mock.calls.filter(([route]) => route.endsWith("activate-path"))).toHaveLength(1);
-  await act(async () => finish({ status: "cancelled" }));
-  expect(mocks.toast).not.toHaveBeenCalled();
-  mocks.api.mockRejectedValueOnce(new Error("missing"));
+  expect(mocks.api).toHaveBeenCalledOnce();
+  await act(async () => description.resolve({ ...file, preview: null }));
   await act(async () => trigger.click());
-  expect(mocks.toast).toHaveBeenCalledOnce();
+  expect(mocks.api.mock.calls.map(([route]) => route)).toEqual([
+    "/api/agent/workspace/file",
+    "/api/agent/workspace/activate-path",
+  ]);
+  await act(async () => save.resolve({ status: "cancelled" }));
+  expect(mocks.toast).not.toHaveBeenCalled();
+  await act(async () => trigger.click());
+  expect(mocks.open).toHaveBeenCalledExactlyOnceWith(file.path, file);
 });
 it("离开标签取消能力读取，迟到响应不打开预览", async () => {
   let finish!: (value: AgentFile) => void;
@@ -129,17 +135,4 @@ it("离开标签取消能力读取，迟到响应不打开预览", async () => {
   await act(async () => finish(file));
   expect(mocks.open).not.toHaveBeenCalled();
   expect(mocks.toast).not.toHaveBeenCalled();
-});
-it("右键目录不执行打开，左键沿用目录操作", async () => {
-  mocks.api.mockResolvedValue({ ...file, kind: "directory", preview: null });
-  const trigger = await render();
-  await act(async () =>
-    trigger.dispatchEvent(new MouseEvent("contextmenu", { button: 2, bubbles: true })),
-  );
-  expect(document.querySelector('[role="menu"]')).toBeNull();
-  expect(mocks.api.mock.calls.some(([route]) => route.endsWith("activate-path"))).toBe(false);
-  await act(async () => trigger.click());
-  expect(mocks.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
-    path: file.path,
-  });
 });
