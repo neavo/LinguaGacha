@@ -285,8 +285,40 @@ def text_direction(records):
     return "vertical-rl" if vertical * 2 >= len(records) else "horizontal-tb"
 
 
+def _is_cjk_join_char(character):
+    """中日文与全角标点跨行直接相连，其余语言（含空格分词的拉丁/谚文）按词界补空格。"""
+    code = ord(character)
+    return (
+        0x3000 <= code <= 0x30FF
+        or 0x3400 <= code <= 0x9FFF
+        or 0xF900 <= code <= 0xFAFF
+        or 0xFF00 <= code <= 0xFFEF
+    )
+
+
+def join_text_fragments(fragments):
+    """按自然语流拼接同区域 OCR 片段，不再把物理折行写成硬换行。"""
+    result = ""
+    for fragment in fragments:
+        piece = fragment.strip()
+        if not piece:
+            continue
+        if result:
+            left, right = result[-1], piece[0]
+            needs_space = (
+                not _is_cjk_join_char(left)
+                and not _is_cjk_join_char(right)
+                and left not in "([{'\"-–—"
+                and right not in ".,;:!?)]}'\""
+            )
+            result = f"{result} {piece}" if needs_space else f"{result}{piece}"
+        else:
+            result = piece
+    return result
+
+
 def ordered_text(records, direction):
-    """区域内横排从上到下、竖排从右到左，并保留 OCR 行边界。"""
+    """区域内横排从上到下、竖排从右到左，按自然语流拼接正文。"""
     if direction == "vertical-rl":
         records.sort(
             key=lambda record: (
@@ -301,7 +333,7 @@ def ordered_text(records, direction):
                 box_metrics(record["box"])[0],
             )
         )
-    return "\n".join(record["text"] for record in records)
+    return join_text_fragments(record["text"] for record in records)
 
 
 def owner_for_text(record, occupied):
@@ -693,7 +725,9 @@ def _prepare_group(
             dict(
                 pageId=page_id,
                 regionId=whole_id,
-                message="\n".join(record["message"] for record in part_records),
+                message=join_text_fragments(
+                    record["message"] for record in part_records
+                ),
             ),
             None,  # 整泡复用子格的可写掩码。
         )
