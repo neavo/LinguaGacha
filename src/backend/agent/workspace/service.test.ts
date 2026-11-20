@@ -451,6 +451,9 @@ describe("AgentWorkspaceService", () => {
       kind: "directory",
       preview: null,
     });
+    const root = fixture.service.describe_file(pathToFileURL(fixture.workspace_root).href);
+    expect(root).toMatchObject({ path: ".", kind: "directory" });
+    expect(fixture.service.describe_file(root.path)).toEqual(root);
     fs.writeFileSync(path.join(fixture.workspace_root, "work", "data.bin"), "data");
     expect(fixture.service.describe_file("work/data.bin").preview).toBeNull();
     const file = await fixture.service.uploads.upload(

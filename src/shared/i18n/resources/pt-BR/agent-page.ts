@@ -2,9 +2,14 @@ export const pt_br_agent_page = {
   project_required: "Crie ou abra um arquivo de projeto primeiro …",
   document: {
     conversation: "Conversa",
-    view: "Visualizar",
+    open: "Abrir",
     save_as: "Salvar como",
-    open_folder: "Abrir pasta do arquivo",
+  },
+  link: {
+    open: "Abrir link",
+    copy: "Copiar link",
+    copy_selection: "Copiar texto selecionado",
+    jump_to_anchor: "Ir para a âncora",
   },
   function_models: {
     title: "Submodelos",

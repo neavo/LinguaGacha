@@ -104,7 +104,16 @@ describe("AgentMessageAttachments", () => {
     });
     const file_button = view.querySelector<HTMLButtonElement>(".agent-attachment__body")!;
     expect(file_button.textContent).toBe(file.name);
-    await act(async () => file_button.click());
+    await act(async () =>
+      file_button.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, button: 2 })),
+    );
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items.map((item) => item.textContent)).toEqual([
+      "agent_page.document.save_as",
+      "agent_page.link.copy",
+    ]);
+    expect(files.api).not.toHaveBeenCalled();
+    await act(async () => items[0]!.click());
     expect(files.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
       path: file.path,
     });

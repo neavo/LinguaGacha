@@ -8,6 +8,10 @@ import type {
   AgentMessageAttachment,
   AgentResponseAnnotationAttachment,
 } from "@shared/agent";
+import {
+  resolve_agent_text_format,
+  resolve_agent_workspace_image_mime,
+} from "@shared/agent-workspace-file";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
@@ -57,6 +61,10 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
       {props.attachments.map((attachment, index) => {
         const annotation = attachment.kind === "response_annotation";
         const image = attachment.kind === "file" && attachment.imageMimeType !== null;
+        const file_path =
+          attachment.kind === "file"
+            ? attachment.path.split("/").map(encodeURIComponent).join("/")
+            : null;
         const pending = attachment.kind === "upload";
         const name = annotation ? attachment.selectedText : attachment.name;
         const open = selected_attachment === attachment;
@@ -95,9 +103,14 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
           </>
         );
         const trigger =
-          attachment.kind === "file" ? (
+          file_path !== null ? (
             <AgentFileTrigger
-              path={attachment.path.split("/").map(encodeURIComponent).join("/")}
+              path={file_path}
+              attachment_preview={
+                image || resolve_agent_workspace_image_mime(file_path.split("/").at(-1)!)
+                  ? "image"
+                  : resolve_agent_text_format(file_path)
+              }
               render={<button type="button" className="agent-attachment__body" />}
             >
               {content}

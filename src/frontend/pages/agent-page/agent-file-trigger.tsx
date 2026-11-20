@@ -8,128 +8,95 @@ import {
   type ReactNode,
   type JSX,
 } from "react";
-import { is_agent_file_url, type AgentFile } from "@shared/agent-workspace-file";
+import type { AgentFile } from "@shared/agent-workspace-file";
 import type { AgentWorkspaceLinkResult } from "@shared/agent";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-
 import { useI18n } from "@frontend/app/locale/locale-context";
-import {
-  AppContextMenu,
-  AppContextMenuTrigger,
-  AppContextMenuContent,
-  AppContextMenuItem,
-} from "@frontend/widgets/app-context-menu";
+import { AppContextMenuItem } from "@frontend/widgets/app-context-menu";
 import { AgentFileContext } from "./agent-file-context";
+import { AgentLinkMenu } from "./agent-link-menu";
 
 /** 文件链接、正文图片和文件附件共用唯一动作入口。 */
 export function AgentFileTrigger({
   path,
+  attachment_preview,
   render,
   children,
 }: {
   path: string;
+  attachment_preview?: AgentFile["preview"]; // 已上传附件的文件信息可直接用于菜单。
   render: ReactElement;
   children?: ReactNode;
 }): JSX.Element {
   const context = useContext(AgentFileContext);
   const { t } = useI18n();
   const [pending, set_pending] = useState(false);
-  const [open, set_open] = useState(false);
-  const [file, set_file] = useState<AgentFile | null>(null);
-  const controller = useRef<AbortController | null>(null);
-  const activating = useRef(false);
-  // 标签隐藏、链接目标改变或卸载时，旧菜单与在途读取一起失效。
-  useEffect(() => {
-    set_open(false);
-    return () => controller.current?.abort();
-  }, [context?.active, path]);
-  /** 文件操作共用一次用户可见错误反馈。 */
-  const report = (error: unknown): void => {
-    push_error_toast(t("app.feedback.activate_link"), error);
-  };
-  /** 后端决定打开位置或另存，操作结束前合并重复点击。 */
-  const activate = async (): Promise<void> => {
-    if (activating.current) return;
-    activating.current = true;
+  // 文件描述随阅读位置取消。系统操作已交给后端时，仍等待对话框和保存结果。
+  const operation = useRef<AbortController | "system" | null>(null);
+  useEffect(
+    () => () => {
+      if (operation.current instanceof AbortController) operation.current.abort();
+    },
+    [context?.active, path],
+  );
+
+  /** 左键和菜单共用一次文件操作，合并重复点击并统一反馈。 */
+  const run = async (action: "open" | "save_as"): Promise<void> => {
+    if (!context?.active || operation.current !== null) return;
+    const file_request = action === "open" ? new AbortController() : null;
+    operation.current = file_request ?? "system";
+    set_pending(true);
     try {
+      if (file_request) {
+        const file = await api_fetch<AgentFile>(
+          "/api/agent/workspace/file",
+          { path, chatId: context.chat_id },
+          file_request.signal,
+        );
+        if (file_request.signal.aborted) return;
+        if (file.preview) {
+          context.open_file(path, file);
+          return;
+        }
+        operation.current = "system";
+      }
       const result = await api_fetch<AgentWorkspaceLinkResult>(
         "/api/agent/workspace/activate-path",
         { path },
       );
       if (result.status === "saved") push_toast("success", t("agent_page.file_saved"));
     } catch (error) {
-      report(error);
+      if (!file_request?.signal.aborted) push_error_toast(t("app.feedback.activate_link"), error);
     } finally {
-      activating.current = false;
-    }
-  };
-  /** 先识别文件能力；右键只提供动作，左键才执行默认操作。 */
-  const resolve = async (menu: boolean): Promise<void> => {
-    if (!context?.active) return;
-    controller.current?.abort();
-    set_pending(true);
-    const request = new AbortController();
-    controller.current = request;
-    try {
-      const next = await api_fetch<AgentFile>(
-        "/api/agent/workspace/file",
-        { path, chatId: context?.chat_id },
-        request.signal,
-      );
-      if (request.signal.aborted) return;
-      if (menu) {
-        set_file(next);
-        set_open(next.kind === "file");
-      } else if (next.preview) context.open_file(path, next);
-      else await activate();
-    } catch (error) {
-      if (!request.signal.aborted) report(error);
-    } finally {
-      if (controller.current === request) set_pending(false);
+      operation.current = null;
+      set_pending(false);
     }
   };
   return (
-    <AppContextMenu
-      open={open}
-      onOpenChange={(value) => {
-        if (value) void resolve(true);
-        else set_open(false);
-      }}
-    >
-      <AppContextMenuTrigger
-        render={render}
-        className={pending ? "select-text cursor-progress" : "select-text"}
-        aria-busy={pending}
-        onClick={(event) => {
+    <AgentLinkMenu
+      trigger={{
+        render,
+        children,
+        className: pending ? "select-text cursor-progress" : "select-text",
+        "aria-busy": pending,
+        onClick: (event) => {
           event.preventDefault();
           event.stopPropagation();
-          void resolve(false);
-        }}
-      >
-        {children}
-      </AppContextMenuTrigger>
-      <AppContextMenuContent>
-        {file?.preview && context ? (
-          <AppContextMenuItem
-            onClick={() => {
-              context.open_file(path, file);
-            }}
-          >
-            {t("agent_page.document.view")}
-          </AppContextMenuItem>
-        ) : null}
-        <AppContextMenuItem
-          onClick={() => {
-            void activate();
-          }}
-        >
-          {t(
-            file && is_agent_file_url(file.path)
-              ? "agent_page.document.open_folder"
-              : "agent_page.document.save_as",
-          )}
+          void run("open");
+        },
+      }}
+      copy_href={path}
+    >
+      <AppContextMenuItem onClick={() => void run("open")}>
+        {t(
+          attachment_preview === null ? "agent_page.document.save_as" : "agent_page.document.open",
+        )}
+      </AppContextMenuItem>
+      {attachment_preview ? (
+        <AppContextMenuItem onClick={() => void run("save_as")}>
+          {t("agent_page.document.save_as")}
         </AppContextMenuItem>
-      </AppContextMenuContent>
-    </AppContextMenu>
+      ) : null}
+    </AgentLinkMenu>
   );
 }
