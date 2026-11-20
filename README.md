@@ -7,14 +7,14 @@
 
 ## 概述 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，翻译特化的次世代 `AGENT Harness`
-- `一键` 拖进去，点开始，等熟肉
+- `一键 - 拖进去，点开始，等熟肉`
   - 各语言全自动一键互译
   - 无需任何技术背景，无需任何语言知识
-- `高质量` 不受限制，自由输出
+- `高质量 - 不受限制，自由输出`
   - 自动生成术语表，保证专有名词在整部作品中的统一
   - 完美保留各种 `漫画` `游戏` `音视频` 的样式效果
   - 语义化智能审校，只管指出问题，AGENT 自动帮你修正与润色
-- `全格式` 万物皆可译，包括但不限于：
+- `全格式 - 万物皆可译，包括但不限于以下内容`
   - 图片与漫画 - `日漫` `美漫` `黑白` `彩色` `横排` `竖排` 通杀
   - 音频与视频 - `ASMR` `动画` `影视剧` `动态漫画` 等形式
   - 字幕与电子书 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 等格式
@@ -24,14 +24,14 @@
 
 > <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
-## 特别说明 ⚠️
-- 如您在翻译过程中使用了 [LinguaGacha](https://github.com/neavo/LinguaGacha) ，请在作品信息或发布页面的显要位置进行说明！
-- 如您的项目涉及任何商业行为或者商业收益，在使用 [LinguaGacha](https://github.com/neavo/LinguaGacha) 前，请先与作者联系以获得授权！
+> [!IMPORTANT]
+> - 发布使用 [LinguaGacha](https://github.com/neavo/LinguaGacha) 翻译的作品时，必须在显要位置提及 [LinguaGacha](https://github.com/neavo/LinguaGacha) …!
+> - 作者保留所有权利，源码仅作展示用途，禁止一切形式的集成、修改、分发、转售或二次开发 …!
 
 ## 效果展示 ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ 图片 · 漫画自动对框</b></summary><br><img width="1280" alt="图片" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ 漫画和图片 · 自动排版</b></summary><br><img width="1280" alt="图片" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 视频 · 逐对话对齐时间轴</b></summary><br><img width="1280" alt="视频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 音频 · 字幕/频谱可视化双输出</b></summary><br><img width="1280" alt="音频" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 游戏 · 全自动汉化，无需技术知识</b></summary><br><img width="1280" alt="游戏" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -69,6 +69,7 @@
   - [自定义提示词](https://github.com/neavo/LinguaGacha/wiki/CustomPrompt)　　[实验室](https://github.com/neavo/LinguaGacha/wiki/Laboratory)　　[功能设置](https://github.com/neavo/LinguaGacha/wiki/Settings)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)　　[高级设置](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeatures)
 - **最佳实践**
   - [高质量翻译 音视频 的最佳实践](https://github.com/neavo/LinguaGacha/wiki/Media)
+  - [高质量翻译 漫画和图片 的最佳实践](https://github.com/neavo/LinguaGacha/wiki/Image)
   - [高质量翻译 Godot 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
   - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [高质量翻译 Tyrano 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyrano)
@@ -77,18 +78,14 @@
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍
 
 ## 近期更新 📅
+- 20261120 v0.142.2
+  - 支持透明 `图片` 的翻译 [#1120](../../pull/1120)
+  - 显著优化 `图片（漫画）` 的翻译排版 [#1116](../../pull/1116)
+  - 修复与改进 [#1117](../../issues/1117) [#1118](../../issues/1118) [#1119](../../issues/1119)
+
 - 20261119 v0.142.1
   - 新增 `图片（漫画）` 翻译 [#1109](../../pull/1109)
   - 修复与改进 [#1111](../../issues/1111) [#1112](../../issues/1112)
-
-## 开发指南 🛠️
-- 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]
-- 安装依赖 `npm install`
-- 更新依赖 `npm ci`
-- 运行应用 `npm run dev`
-- 构建发布 `npm run build`
-- 提交 PR 前请根据改动范围执行 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) 中的对应验证
-- 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 
 ## 问题反馈 😥
 - 运行时的日志保存在应用根目录下的 `log` 等文件夹

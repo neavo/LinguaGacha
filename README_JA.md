@@ -10,14 +10,14 @@
 
 ## 概要 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)、翻訳に特化した次世代の `AGENT Harness`
-- `ワンクリック` ドラッグして開始を押せば、あとは翻訳の完成を待つだけ
+- `ワンクリック - ドラッグして開始を押せば、あとは翻訳の完成を待つだけ`
   - 多言語間の全自動ワンクリック相互翻訳
   - 技術的な背景知識も外国語の知識も不要
-- `高品質` 制限なく自由に出力
+- `高品質 - 制限なく自由に出力`
   - 用語集を自動生成し、固有名詞の訳語を作品全体で統一
   - 各種 `漫画` `ゲーム` `音声・動画` のレイアウトや演出を完全に保持
   - セマンティックなスマート校正：問題点を伝えるだけで `AGENT` が自動で修正・推敲
-- `全形式` あらゆる形式を翻訳可能（一例）：
+- `全形式 - 以下を含むあらゆる形式を翻訳可能`
   - 画像・漫画 - `日本の漫画` `アメコミ` `白黒` `カラー` `横書き` `縦書き` に対応
   - 音声・動画 - `ASMR` `アニメ` `映画・ドラマ` `モーションコミック` など
   - 字幕・電子書籍 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` など
@@ -27,14 +27,14 @@
 
 > <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
-## 特別なお知らせ ⚠️
-- 翻訳中に [LinguaGacha](https://github.com/neavo/LinguaGacha) を使用する場合は、作品の情報やリリースページの目立つ場所に明確な帰属を含めてください！
-- 商業活動や利益を伴うプロジェクトの場合は、[LinguaGacha](https://github.com/neavo/LinguaGacha) を使用する前に、著者に連絡して許可を得てください！
+> [!IMPORTANT]
+> - [LinguaGacha](https://github.com/neavo/LinguaGacha) で翻訳した作品を公開する際は、目立つ場所に必ず [LinguaGacha](https://github.com/neavo/LinguaGacha) を明記してください！
+> - 作者はすべての権利を留保します。ソースコードは閲覧用としてのみ公開しており、いかなる形での組み込み、改変、配布、転売、二次開発も禁止します！
 
 ## 翻訳サンプル ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ 画像 · 漫画の文字を枠に合わせて自動配置</b></summary><br><img width="1280" alt="画像" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ 漫画・画像 · 自動文字組み</b></summary><br><img width="1280" alt="画像" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 動画 · セリフごとの精密タイムライン同期</b></summary><br><img width="1280" alt="動画" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 音声 · 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 ゲーム · 技術知識不要の全自動ゲーム翻訳</b></summary><br><img width="1280" alt="ゲーム" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -72,6 +72,7 @@
   - [カスタムプロンプト](https://github.com/neavo/LinguaGacha/wiki/CustomPromptEN)　　[ラボ](https://github.com/neavo/LinguaGacha/wiki/LaboratoryEN)　　[機能設定](https://github.com/neavo/LinguaGacha/wiki/SettingsEN)　　[MTool オプティマイザー](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[コマンドラインモード](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[高度な機能](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
 - **ベストプラクティス**
   - [音声・動画の高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/MediaEN)
+  - [漫画・画像の高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/ImageEN)
   - [Godot ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
   - [RenPy ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Tyrano ゲームの高品質翻訳ガイド](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
@@ -80,18 +81,14 @@
 - 各機能の詳しい説明は [Wiki](https://github.com/neavo/LinguaGacha/wiki) をご覧ください
 
 ## 最近の更新 📅
+- 20261120 v0.142.2
+  - 透明な `画像` の翻訳に対応 [#1120](../../pull/1120)
+  - `画像（漫画）` 翻訳の文字組みを大幅に改善 [#1116](../../pull/1116)
+  - 修正と改善 [#1117](../../issues/1117) [#1118](../../issues/1118) [#1119](../../issues/1119)
+
 - 20261119 v0.142.1
   - `画像（漫画）` の翻訳を追加 [#1109](../../pull/1109)
   - 修正と改善 [#1111](../../issues/1111) [#1112](../../issues/1112)
-
-## 開発ガイド 🛠️
-- [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール
-- 依存関係のインストール: `npm install`
-- 依存関係の更新: `npm ci`
-- アプリの実行: `npm run dev`
-- リリースのビルド: `npm run build`
-- PRを提出する前に、変更範囲に応じて [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) の対応する検証を実行してください
-- 非開発者の方は [リリースページ](https://github.com/neavo/LinguaGacha/releases) からビルド済みバージョンをダウンロードすることをお勧めします
 
 ## サポート 😥
 - 実行時のログは `log` フォルダに保存されます

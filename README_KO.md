@@ -7,14 +7,14 @@
 
 ## 개요 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), 번역에 특화된 차세대 `AGENT Harness`
-- `원클릭` 끌어다 놓고 시작을 누른 뒤 번역이 끝날 때까지 기다리면 끝
+- `원클릭 - 끌어다 놓고 시작을 누른 뒤 번역이 끝날 때까지 기다리면 끝`
   - 다양한 언어 간 전자동 원클릭 상호 번역
   - 기술적 배경이나 외국어 지식이 전혀 필요 없음
-- `고품질` 제한 없이 자유롭게 출력
+- `고품질 - 제한 없이 자유롭게 출력`
   - 용어집을 자동 생성하여 작품 전체에서 고유 명사를 일관되게 유지
   - 다양한 `만화` `게임` `오디오·동영상`의 서식과 연출을 완벽하게 보존
   - 시맨틱 스마트 검수: 문제점만 짚어 주면 `AGENT`가 알아서 수정하고 다듬기
-- `전 형식` 다음을 비롯한 모든 콘텐츠 번역 가능:
+- `전 형식 - 다음을 비롯한 모든 콘텐츠 번역 가능`
   - 이미지 및 만화 - `일본 만화` `미국 만화` `흑백` `컬러` `가로쓰기` `세로쓰기` 모두 지원
   - 오디오 및 동영상 - `ASMR` `애니메이션` `영화 및 드라마` `모션 코믹스` 등
   - 자막 및 전자책 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 등
@@ -24,14 +24,14 @@
 
 > <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
-## 특별 안내 ⚠️
-- 번역 과정에서 [LinguaGacha](https://github.com/neavo/LinguaGacha)를 사용했다면 작품 정보나 배포 페이지의 눈에 잘 띄는 곳에 사용 사실을 밝혀 주세요!
-- 프로젝트에 상업적 활동이나 수익이 관련되어 있다면 [LinguaGacha](https://github.com/neavo/LinguaGacha)를 사용하기 전에 제작자에게 연락하여 허가를 받아 주세요!
+> [!IMPORTANT]
+> - [LinguaGacha](https://github.com/neavo/LinguaGacha)로 번역한 작품을 공개할 때는 눈에 잘 띄는 곳에 [LinguaGacha](https://github.com/neavo/LinguaGacha)를 반드시 명시해야 합니다!
+> - 저자는 모든 권리를 보유합니다. 소스 코드는 열람용으로만 제공되며, 어떠한 형태의 통합, 수정, 배포, 재판매 또는 2차 개발도 금지됩니다!
 
 ## 번역 결과 미리보기 ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ 이미지 · 만화 대사를 텍스트 영역에 자동 배치</b></summary><br><img width="1280" alt="이미지" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ 만화 및 이미지 · 자동 텍스트 배치</b></summary><br><img width="1280" alt="이미지" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 동영상 · 대사 단위 정밀 타임라인 동기화</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 오디오 · 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 게임 · 기술 지식 없이 전자동 게임 번역</b></summary><br><img width="1280" alt="게임" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -69,6 +69,7 @@
   - [사용자 정의 프롬프트](https://github.com/neavo/LinguaGacha/wiki/CustomPrompt)　　[실험실](https://github.com/neavo/LinguaGacha/wiki/Laboratory)　　[기능 설정](https://github.com/neavo/LinguaGacha/wiki/Settings)　　[MTool 최적화 도구](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[명령줄 모드](https://github.com/neavo/LinguaGacha/wiki/CLIMode)　　[고급 기능](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeatures)
 - **모범 사례**
   - [오디오·동영상 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/Media)
+  - [만화·이미지 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/Image)
   - [Godot 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
   - [RenPy 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [Tyrano 엔진 게임 고품질 번역 가이드](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyrano)
@@ -77,18 +78,14 @@
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
 
 ## 최근 업데이트 📅
+- 20261120 v0.142.2
+  - 투명 `이미지` 번역 지원 [#1120](../../pull/1120)
+  - `이미지(만화)` 번역의 텍스트 배치를 크게 개선 [#1116](../../pull/1116)
+  - 수정 및 개선 [#1117](../../issues/1117) [#1118](../../issues/1118) [#1119](../../issues/1119)
+
 - 20261119 v0.142.1
   - `이미지(만화)` 번역 추가 [#1109](../../pull/1109)
   - 수정 및 개선 [#1111](../../issues/1111) [#1112](../../issues/1112)
-
-## 개발 안내 🛠️
-- [Go](https://go.dev)와 [`Node.js`](https://nodejs.org)를 설치합니다
-- 의존성 설치: `npm install`
-- 의존성 업데이트: `npm ci`
-- 앱 실행: `npm run dev`
-- 릴리스 빌드: `npm run build`
-- PR을 제출하기 전에 변경 범위에 맞게 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md)의 해당 검증을 수행해 주세요
-- 개발자가 아니라면 [릴리스 페이지](https://github.com/neavo/LinguaGacha/releases)에서 패키징된 버전을 바로 다운로드해 주세요
 
 ## 문제 제보 😥
 - 실행 로그는 앱 루트 디렉터리의 `log` 등의 폴더에 저장됩니다

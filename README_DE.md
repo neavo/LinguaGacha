@@ -7,14 +7,14 @@
 
 ## Überblick 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), ein auf Übersetzung spezialisiertes `AGENT Harness` der nächsten Generation
-- `Ein Klick` Datei hineinziehen, auf Start klicken und auf die fertige Übersetzung warten
+- `Ein Klick - Datei hineinziehen, auf Start klicken und auf die fertige Übersetzung warten`
   - Vollautomatische Übersetzung zwischen verschiedenen Sprachen per Knopfdruck
   - Keine technischen Vorkenntnisse und keine Fremdsprachenkenntnisse nötig
-- `Hohe Qualität` Freie Ausgabe ohne Einschränkungen
+- `Hohe Qualität - Freie Ausgabe ohne Einschränkungen`
   - Erstellt automatisch ein Glossar für durchgehend einheitliche Eigennamen
   - Erhält Formatierung und Stile in `Comics`, `Spielen` und `Audio & Video` vollständig
   - Semantisches Smart-Lektorat: Einfach das Problem benennen, und `AGENT` korrigiert die Übersetzung automatisch und verfeinert ihren Stil
-- `Alle Formate` Alles lässt sich übersetzen, unter anderem:
+- `Alle Formate - Alles lässt sich übersetzen, zum Beispiel`
   - Bilder & Comics - `Manga`, `US-Comics`, `Schwarz-Weiß`, `Farbe`, `horizontaler Text` und `vertikaler Text`
   - Audio & Video - `ASMR`, `Anime`, `Filme & Serien`, `Motion Comics` und mehr
   - Untertitel & E-Books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` und weitere Formate
@@ -24,14 +24,14 @@
 
 > <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
-## Besondere Hinweise ⚠️
-- Wenn Sie [LinguaGacha](https://github.com/neavo/LinguaGacha) für Ihre Übersetzung verwenden, weisen Sie bitte an gut sichtbarer Stelle in den Werkangaben oder auf der Veröffentlichungsseite darauf hin!
-- Wenn Ihr Projekt kommerzielle Aktivitäten oder Einnahmen umfasst, kontaktieren Sie bitte vor der Nutzung von [LinguaGacha](https://github.com/neavo/LinguaGacha) den Autor, um eine Genehmigung einzuholen!
+> [!IMPORTANT]
+> - Wenn Sie ein mit [LinguaGacha](https://github.com/neavo/LinguaGacha) übersetztes Werk veröffentlichen, müssen Sie [LinguaGacha](https://github.com/neavo/LinguaGacha) an gut sichtbarer Stelle nennen!
+> - Der Autor behält sich alle Rechte vor. Der Quellcode dient ausschließlich der Veranschaulichung. Integration, Änderung, Verbreitung, Weiterverkauf und Weiterentwicklung sind in jeder Form untersagt!
 
 ## Ergebnis-Vorschau ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ Bilder · Automatischer Comicsatz passend zu den Textfeldern</b></summary><br><img width="1280" alt="Bilder" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ Comics und Bilder · Automatischer Textsatz</b></summary><br><img width="1280" alt="Bilder" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 Video · Zeilengenaue Zeitachsen-Synchronisation</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 Audio · Untertitel- &amp; Spektrum-Video-Doppelausgabe</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 Spiele · Vollautomatische Spielübersetzung ohne technische Vorkenntnisse</b></summary><br><img width="1280" alt="Spiele" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -69,6 +69,7 @@
   - [Benutzerdefinierte Prompts](https://github.com/neavo/LinguaGacha/wiki/CustomPrompt)　　[Labor](https://github.com/neavo/LinguaGacha/wiki/Laboratory)　　[Funktionseinstellungen](https://github.com/neavo/LinguaGacha/wiki/Settings)　　[MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)　　[Erweiterte Funktionen](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeatures)
 - **Bewährte Vorgehensweisen**
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von Audio und Videos](https://github.com/neavo/LinguaGacha/wiki/Media)
+  - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von Comics und Bildern](https://github.com/neavo/LinguaGacha/wiki/Image)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von Godot-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodot)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RenPy-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von Tyrano-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyrano)
@@ -77,18 +78,14 @@
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Neueste Updates 📅
+- 20261120 v0.142.2
+  - Übersetzung transparenter `Bilder` hinzugefügt [#1120](../../pull/1120)
+  - Textsatz bei der Übersetzung von `Bildern (Comics)` deutlich verbessert [#1116](../../pull/1116)
+  - Fehlerbehebungen und Verbesserungen [#1117](../../issues/1117) [#1118](../../issues/1118) [#1119](../../issues/1119)
+
 - 20261119 v0.142.1
   - Übersetzung von `Bildern (Comics)` hinzugefügt [#1109](../../pull/1109)
   - Fehlerbehebungen und Verbesserungen [#1111](../../issues/1111) [#1112](../../issues/1112)
-
-## Entwicklung 🛠️
-- Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)
-- Abhängigkeiten installieren: `npm install`
-- Abhängigkeiten aktualisieren: `npm ci`
-- Anwendung starten: `npm run dev`
-- Release erstellen: `npm run build`
-- Führen Sie vor dem Einreichen eines PR die zum Änderungsumfang passenden Prüfungen aus [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) aus
-- Wenn Sie nicht selbst entwickeln möchten, laden Sie die fertige Version direkt von der [Release-Seite](https://github.com/neavo/LinguaGacha/releases) herunter
 
 ## Probleme melden 😥
 - Laufzeitprotokolle werden unter anderem im Ordner `log` im Stammverzeichnis der Anwendung gespeichert

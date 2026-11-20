@@ -10,14 +10,14 @@
 
 ## Overview 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), a next-generation `AGENT Harness` specialized in translation
-- `One-Click` Drop it in, hit start, and wait for the finished translation
+- `One-Click - Drop it in, hit start, and wait for the finished translation`
   - Fully automatic one-click translation across languages
   - No technical background or foreign language knowledge required
-- `High Quality` Translate freely without restrictions
+- `High Quality - Translate freely without restrictions`
   - Automatically builds a glossary to keep proper nouns consistent throughout the work
   - Fully preserves formatting and styles across `Comics`, `Games`, and `Audio & Video`
   - Semantic smart proofreading: just point out the issue and `AGENT` automatically corrects and polishes the translation
-- `All Formats` Translate virtually anything, including:
+- `All Formats - Translate virtually anything`
   - Images & Comics - `Manga`, `Western comics`, `Black and white`, `Color`, `Horizontal text`, and `Vertical text`
   - Audio & Video - `ASMR`, `Anime`, `TV & Film`, `Dynamic Comics`, and more
   - Subtitles & E-books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`, and more
@@ -27,14 +27,14 @@
 
 > <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
-## Special Notice ⚠️
-- If you use [LinguaGacha](https://github.com/neavo/LinguaGacha) during translation, please include clear attribution in prominent locations of your work's information or release pages!
-- For projects involving commercial activities or profits, please contact the author for authorization before using [LinguaGacha](https://github.com/neavo/LinguaGacha)!
+> [!IMPORTANT]
+> - When publishing a work translated with [LinguaGacha](https://github.com/neavo/LinguaGacha), you must credit [LinguaGacha](https://github.com/neavo/LinguaGacha) prominently!
+> - The author reserves all rights. The source code is provided for display purposes only. All forms of integration, modification, distribution, resale, and further development are prohibited!
 
 ## Showcase ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ Images · Automatic comic lettering fitted to text boxes</b></summary><br><img width="1280" alt="Images" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ Comics and Images · Automatic Typesetting</b></summary><br><img width="1280" alt="Images" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 Video · Line-by-line timeline synchronization</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 Audio · Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 Games · Fully automated game translation, no technical knowledge required</b></summary><br><img width="1280" alt="Games" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -72,6 +72,7 @@
   - [Custom Prompts](https://github.com/neavo/LinguaGacha/wiki/CustomPromptEN)　　[Laboratory](https://github.com/neavo/LinguaGacha/wiki/LaboratoryEN)　　[Function Settings](https://github.com/neavo/LinguaGacha/wiki/SettingsEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Advanced Features](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
 - **Best Practices**
   - [Best Practices for High-Quality Translation of Audio and Video](https://github.com/neavo/LinguaGacha/wiki/MediaEN)
+  - [Best Practices for High-Quality Translation of Comics and Images](https://github.com/neavo/LinguaGacha/wiki/ImageEN)
   - [Best Practices for High-Quality Translation of Godot Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
   - [Best Practices for High-Quality Translation of RenPy Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Best Practices for High-Quality Translation of Tyrano Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
@@ -80,18 +81,14 @@
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Recent Updates 📅
+- 20261120 v0.142.2
+  - Added translation support for transparent `images` [#1120](../../pull/1120)
+  - Significantly improved typesetting for `image (comic)` translation [#1116](../../pull/1116)
+  - Fixes and improvements [#1117](../../issues/1117) [#1118](../../issues/1118) [#1119](../../issues/1119)
+
 - 20261119 v0.142.1
   - Added `image (comic)` translation [#1109](../../pull/1109)
   - Fixes and improvements [#1111](../../issues/1111) [#1112](../../issues/1112)
-
-## Development Guide 🛠️
-- Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)
-- Install dependencies `npm install`
-- Update dependencies `npm ci`
-- Run the application `npm run dev`
-- Build the release `npm run build`
-- Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
-- For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 
 ## Support 😥
 - Runtime logs are stored in `log` folder

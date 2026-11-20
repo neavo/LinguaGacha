@@ -10,14 +10,14 @@
 
 ## Visão Geral 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), um `AGENT Harness` de nova geração especializado em tradução
-- `Um Clique` Arraste o arquivo, clique em iniciar e aguarde a tradução
+- `Um Clique - Arraste o arquivo, clique em iniciar e aguarde a tradução`
   - Tradução totalmente automática entre vários idiomas com apenas um clique
   - Não exige conhecimento técnico nem domínio de outros idiomas
-- `Alta Qualidade` Saída livre, sem restrições
+- `Alta Qualidade - Saída livre, sem restrições`
   - Gera glossários automaticamente para manter os nomes próprios consistentes em toda a obra
   - Preserva integralmente os estilos e a formatação de `Quadrinhos`, `Jogos` e `Áudio e Vídeo`
   - Revisão semântica inteligente: basta apontar o problema e o `AGENTE` corrige e aprimora a tradução automaticamente
-- `Todos os Formatos` Tudo pode ser traduzido, incluindo:
+- `Todos os Formatos - Tudo pode ser traduzido, incluindo os exemplos abaixo`
   - Imagens e Quadrinhos - `Mangás`, `Quadrinhos americanos`, `Preto e branco`, `Colorido`, `Texto horizontal` e `Texto vertical`
   - Áudio e Vídeo - `ASMR`, `Anime`, `Filmes e Séries`, `Motion Comics` e muito mais
   - Legendas e E-books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` e outros formatos
@@ -27,14 +27,14 @@
 
 > <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
-## Aviso Especial ⚠️
-- Se você usar o [LinguaGacha](https://github.com/neavo/LinguaGacha) durante a tradução, inclua a atribuição clara em locais de destaque nas informações ou páginas de lançamento do seu trabalho!
-- Para projetos comerciais ou com fins lucrativos, entre em contato com o autor para autorização antes de utilizar o [LinguaGacha](https://github.com/neavo/LinguaGacha)!
+> [!IMPORTANT]
+> - Ao publicar uma obra traduzida com o [LinguaGacha](https://github.com/neavo/LinguaGacha), você deve dar crédito ao [LinguaGacha](https://github.com/neavo/LinguaGacha) em local de destaque!
+> - O autor reserva todos os direitos. O código-fonte é disponibilizado apenas para demonstração. É proibida qualquer forma de integração, modificação, distribuição, revenda ou desenvolvimento derivado!
 
 ## Demonstração ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ Imagens · Diagramação automática de quadrinhos com ajuste às caixas de texto</b></summary><br><img width="1280" alt="Imagens" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ Quadrinhos e Imagens · Diagramação Automática</b></summary><br><img width="1280" alt="Imagens" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎬 Vídeo · Alinhamento preciso de linha do tempo por diálogo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎧 Áudio · Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
     <tr><td><details open><summary><b>🎮 Jogos · Tradução totalmente automática, sem necessidade de conhecimentos técnicos</b></summary><br><img width="1280" alt="Jogos" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
@@ -72,6 +72,7 @@
   - [Prompts Personalizados](https://github.com/neavo/LinguaGacha/wiki/CustomPromptEN)　　[Laboratório](https://github.com/neavo/LinguaGacha/wiki/LaboratoryEN)　　[Configurações](https://github.com/neavo/LinguaGacha/wiki/SettingsEN)　　[Otimizador MTool](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[Modo CLI](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)　　[Recursos Avançados](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeaturesEN)
 - **Melhores Práticas**
   - [Melhores Práticas para Áudio e Vídeo](https://github.com/neavo/LinguaGacha/wiki/MediaEN)
+  - [Melhores Práticas para Tradução de Alta Qualidade de Quadrinhos e Imagens](https://github.com/neavo/LinguaGacha/wiki/ImageEN)
   - [Melhores Práticas para Jogos em Godot Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForGodotEN)
   - [Melhores Práticas para Jogos em RenPy Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPyEN)
   - [Melhores Práticas para Jogos em Tyrano Engine](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForTyranoEN)
@@ -80,18 +81,14 @@
 - Mais detalhes sobre cada recurso podem ser encontrados na [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Atualizações Recentes 📅
+- 20261120 v0.142.2
+  - Adicionado suporte à tradução de `imagens` transparentes [#1120](../../pull/1120)
+  - Melhoria significativa na diagramação do texto na tradução de `imagens (quadrinhos)` [#1116](../../pull/1116)
+  - Correções e melhorias [#1117](../../issues/1117) [#1118](../../issues/1118) [#1119](../../issues/1119)
+
 - 20261119 v0.142.1
   - Adicionada a tradução de `imagens (quadrinhos)` [#1109](../../pull/1109)
   - Correções e melhorias [#1111](../../issues/1111) [#1112](../../issues/1112)
-
-## Guia de Desenvolvimento 🛠️
-- Instale [Go](https://go.dev) e [`Node.js`](https://nodejs.org)
-- Instale as dependências: `npm install`
-- Atualize as dependências: `npm ci`
-- Execute a aplicação: `npm run dev`
-- Compile o pacote de distribuição: `npm run build`
-- Antes de submeter um PR, execute as verificações correspondentes em [`docs/WORKFLOW.md`](./docs/WORKFLOW.md)
-- Para usuários comuns, faça o download da versão empacotada diretamente na [página de Releases](https://github.com/neavo/LinguaGacha/releases)
 
 ## Suporte 😥
 - Os registros de execução são armazenados na pasta `log`
