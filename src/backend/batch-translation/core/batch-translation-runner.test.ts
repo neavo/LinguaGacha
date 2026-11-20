@@ -1234,12 +1234,14 @@ describe("BatchTranslationRunner", () => {
     cleanup_paths.push(builtin_root);
     const files = {
       "prefix.txt": "翻译前缀",
-      "base.txt": "翻译正文 {target_language}",
       "thinking.txt": "翻译思考",
       "suffix.txt": "翻译后缀",
     };
     const template_dir = path.join(builtin_root, "translation_prompt", "template", "zh");
+    const preset_dir = path.join(builtin_root, "translation_prompt", "preset");
     fs.mkdirSync(template_dir, { recursive: true });
+    fs.mkdirSync(preset_dir, { recursive: true });
+    fs.writeFileSync(path.join(preset_dir, "中文.txt"), "翻译正文 {target_language}", "utf-8");
     for (const [file_name, content] of Object.entries(files)) {
       fs.writeFileSync(path.join(template_dir, file_name), content, "utf-8");
     }

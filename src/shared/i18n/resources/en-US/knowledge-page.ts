@@ -27,6 +27,7 @@ export const en_us_knowledge_page = {
     reset: "Reset",
     delete_skill_confirm: "Confirm deleting the skill …?",
     reset_skill_confirm: "Confirm resetting the skill …?",
+    reset_knowledge_confirm: "Confirm resetting project knowledge …?",
     back: "Back to list",
     files: "Files",
     create_file: "New file",

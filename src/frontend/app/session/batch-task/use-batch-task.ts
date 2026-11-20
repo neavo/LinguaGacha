@@ -56,8 +56,7 @@ export type BatchTask = {
   task_waveform_history: number[];
   task_detail_sheet_open: boolean;
   task_confirm_state: TranslationTaskConfirmState | null;
-  translation_task_menu_disabled: boolean;
-  translation_task_menu_busy: boolean;
+  translation_action_blocked: boolean;
   open_task_detail_sheet: () => void;
   close_task_detail_sheet: () => void;
   request_start_or_continue_translation: () => Promise<void>;
@@ -95,11 +94,9 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
       : batch_task;
   const task_metrics = batch_task_metrics(task_display_snapshot, now_seconds);
 
-  const translation_dialog_open = task_confirm_state !== null;
+  const translation_dialog_open = task_confirm_state !== null; // 确认框打开期间延后导出提示。
   const translation_action_blocked =
     !project_snapshot.loaded || is_runtime_busy(runtime_snapshot) || translation_dialog_open;
-  const translation_task_menu_busy = task_confirm_state?.submitting ?? false;
-  const translation_task_menu_disabled = translation_action_blocked;
   const can_open_task_detail_sheet = project_snapshot.loaded;
   const translation_task_active = is_active_batch_translation_status(batch_task.status);
   const has_unsettled_translation_waveform_tail =
@@ -385,8 +382,7 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
     task_waveform_history,
     task_detail_sheet_open,
     task_confirm_state,
-    translation_task_menu_disabled,
-    translation_task_menu_busy,
+    translation_action_blocked,
     open_task_detail_sheet,
     close_task_detail_sheet,
     request_start_or_continue_translation,

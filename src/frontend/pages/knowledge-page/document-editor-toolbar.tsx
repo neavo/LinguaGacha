@@ -1,5 +1,5 @@
 import { type JSX, type ReactNode, Fragment, useState } from "react";
-import { ChevronLeft, RotateCcw, Trash2 } from "lucide-react";
+import { BrushCleaning, ChevronLeft, Trash2 } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
@@ -92,7 +92,7 @@ export function DocumentEditorToolbar(props: {
                     />
                   }
                 >
-                  {props.action === "reset" ? <RotateCcw /> : <Trash2 />}
+                  {props.action === "reset" ? <BrushCleaning /> : <Trash2 />}
                 </TooltipTrigger>
                 <TooltipContent side="left">{action_label}</TooltipContent>
               </Tooltip>

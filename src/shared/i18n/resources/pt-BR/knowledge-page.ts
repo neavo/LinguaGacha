@@ -27,6 +27,7 @@ export const pt_br_knowledge_page = {
     reset: "Redefinir",
     delete_skill_confirm: "Confirma a exclusão da habilidade …?",
     reset_skill_confirm: "Confirma a redefinição da habilidade …?",
+    reset_knowledge_confirm: "Confirma a redefinição do conhecimento do projeto …?",
     back: "Voltar para a lista",
     files: "Arquivos",
     create_file: "Novo arquivo",

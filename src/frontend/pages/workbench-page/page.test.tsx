@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
     game_backup_confirm: { dialog_props: {} },
   },
   task: {
-    translation_task_menu_disabled: false,
+    translation_action_blocked: false,
     request_start_or_continue_translation: vi.fn(async () => {}),
   },
   navigate_to_agent: vi.fn(),
@@ -62,7 +62,7 @@ describe("WorkbenchPage translation entry", () => {
     state.workbench.cache_status = "ready";
     state.workbench.readonly = false;
     state.workbench.settled_project_path = "project.lg";
-    state.task.translation_task_menu_disabled = false;
+    state.task.translation_action_blocked = false;
     vi.clearAllMocks();
     container = document.createElement("div");
     document.body.append(container);
@@ -131,10 +131,10 @@ describe("WorkbenchPage translation entry", () => {
     await render();
     expect(container.querySelector("button")!.disabled).toBe(true);
     state.workbench.readonly = false;
-    state.task.translation_task_menu_disabled = true;
+    state.task.translation_action_blocked = true;
     await render();
     expect(container.querySelector("button")!.disabled).toBe(true);
-    state.task.translation_task_menu_disabled = false;
+    state.task.translation_action_blocked = false;
     await render();
     await click("start");
     state.workbench.cache_status = "refreshing";

@@ -13,7 +13,11 @@ import path from "node:path";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { CacheReadPort } from "../cache/cache-types";
-import { AppPathService, resolve_preset_file } from "../app/app-path-service";
+import {
+  AppPathService,
+  find_existing_preset_path,
+  resolve_preset_file,
+} from "../app/app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { require_project_expected_section_revisions } from "../project/project-write-request";
@@ -188,28 +192,22 @@ export class QualityRuleService {
    * 保存用户规则预设，确保文件名和目录规则一致
    */
   public save_rule_preset(request: JsonRecord): QualityRulePresetSaveResponse {
-    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
+    const rule = QualityRule.from_json(request["rule_type"]);
     const name = this.normalize_preset_name(String(request["name"] ?? ""));
-    const rule_type = QualityRule.from_json(request["rule_type"]).kind;
-    const entries = this.normalize_rule_entries(rule_type, request["entries"]);
-    const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
+    const entries = this.normalize_rule_entries(rule.kind, request["entries"]);
+    const { file_path } = this.resolve_rule_preset_file(rule.preset_directory, `user:${name}.json`);
+    const directory = path.dirname(file_path);
     this.native_fs.make_dir(directory);
-    const preset_file = resolve_preset_file({
-      virtual_id: `user:${name}.json`,
-      extension: ".json",
-      builtin_directory: directory,
-      user_directory: directory,
-    });
     const preset_entries = entries.map((entry) => {
       const { entry_id: _entry_id, ...fields } = entry;
       return fields;
     });
     this.native_fs.write_file_sync(
-      preset_file.file_path,
+      file_path,
       JsonTool.stringifyStrict(preset_entries, { indent: 4 }),
     );
     return {
-      item: this.build_preset_item("user", preset_file.file_name, directory, ".json"),
+      item: this.build_preset_item("user", path.basename(file_path), directory, ".json"),
     };
   }
 
@@ -230,10 +228,11 @@ export class QualityRuleService {
       user_directory: directory,
     });
     if (id === next_id) return this.preset_change_snapshot(rule.kind);
+    const existing_path = find_existing_preset_path(next.file_path, this.native_fs);
     if (
-      this.native_fs.exists(next.file_path) &&
+      existing_path !== undefined &&
       this.native_fs.to_identity_path(current.file_path) !==
-        this.native_fs.to_identity_path(next.file_path)
+        this.native_fs.to_identity_path(existing_path)
     )
       throw new AppErrors.AppError("request.validation_failed");
     const key = rule.default_preset_setting_key;
@@ -399,8 +398,8 @@ export class QualityRuleService {
       name: file_name.slice(0, -extension.length),
       file_name,
       virtual_id: `${source}:${file_name}`,
-      path: preset_file.file_path.replace(/\\/g, "/"),
-      type: source,
+      path: path.join(path_dir, file_name).replace(/\\/g, "/"),
+      type: preset_file.source,
     };
   }
 
@@ -411,20 +410,23 @@ export class QualityRuleService {
     preset_directory: string,
     virtual_id: string,
   ): ReturnType<typeof resolve_preset_file> {
-    return resolve_preset_file({
-      virtual_id,
-      extension: ".json",
-      builtin_directory: this.paths.get_quality_rule_builtin_preset_dir(preset_directory),
-      user_directory: this.paths.get_quality_rule_user_preset_dir(preset_directory),
-      allow_legacy_namespace: true,
-    });
+    return resolve_preset_file(
+      {
+        virtual_id,
+        extension: ".json",
+        builtin_directory: this.paths.get_quality_rule_builtin_preset_dir(preset_directory),
+        user_directory: this.paths.get_quality_rule_user_preset_dir(preset_directory),
+        allow_legacy_namespace: true,
+      },
+      this.native_fs,
+    );
   }
 
   /**
    * 归一预设显示名，保持文件名和 UI 文案一致
    */
   private normalize_preset_name(name: string): string {
-    const normalized_name = name.trim();
+    const normalized_name = name.trim().normalize("NFC");
     if (normalized_name === "") {
       throw new AppErrors.AppError("request.validation_failed");
     }

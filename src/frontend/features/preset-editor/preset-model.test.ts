@@ -4,29 +4,24 @@ import {
   build_user_preset_virtual_id,
   decorate_preset_items,
   has_casefold_duplicate_preset,
-  normalize_preset_name,
 } from "./preset-model";
 
 describe("preset model", () => {
-  it("生成 JSON/TXT 虚拟路径并裁剪名称空白", () => {
-    expect(build_user_preset_virtual_id("示例")).toBe("user:示例.json");
-    expect(build_user_preset_virtual_id("示例", "txt")).toBe("user:示例.txt");
-    expect(normalize_preset_name("  示例  ")).toBe("示例");
-  });
-
   it("忽略大小写检查用户预设重名，并排除当前预设", () => {
-    const items = [{ name: "Demo", virtual_id: "user:Demo.json", type: "user" as const }];
+    const id = "user:Português.txt";
+    const items = [{ name: "Português", virtual_id: id, type: "user" as const }];
+    const target_id = build_user_preset_virtual_id("português".normalize("NFD"), "txt");
 
-    expect(has_casefold_duplicate_preset(items, "user:demo.json", null)).toBe(true);
-    expect(has_casefold_duplicate_preset(items, "user:demo.json", "user:Demo.json")).toBe(false);
+    expect(has_casefold_duplicate_preset(items, target_id, null)).toBe(true);
+    expect(has_casefold_duplicate_preset(items, target_id, id.normalize("NFD"))).toBe(false);
   });
 
   it("合并预设并标出默认项", () => {
     expect(
       decorate_preset_items(
         [{ name: "内置", virtual_id: "builtin:default", type: "builtin" }],
-        [{ name: "用户", virtual_id: "user:demo.json", type: "user" }],
-        "user:demo.json",
+        [{ name: "用户", virtual_id: "user:한국어.txt", type: "user" }],
+        "user:한국어.txt".normalize("NFD"),
       ),
     ).toEqual([
       {
@@ -37,7 +32,7 @@ describe("preset model", () => {
       },
       {
         name: "用户",
-        virtual_id: "user:demo.json",
+        virtual_id: "user:한국어.txt",
         type: "user",
         is_default: true,
       },

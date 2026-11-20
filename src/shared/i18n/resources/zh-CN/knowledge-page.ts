@@ -26,6 +26,7 @@ export const zh_cn_knowledge_page = {
     reset: "重置",
     delete_skill_confirm: "是否确认删除技能 …?",
     reset_skill_confirm: "是否确认重置技能 …?",
+    reset_knowledge_confirm: "是否确认重置工程知识 …?",
     back: "返回列表",
     files: "文件",
     create_file: "新增文件",

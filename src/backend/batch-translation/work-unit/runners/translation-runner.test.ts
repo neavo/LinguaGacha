@@ -931,9 +931,15 @@ async function create_template_root(): Promise<string> {
   const builtin_root = await mkdtemp(path.join(tmpdir(), "linguagacha-translation-runner-"));
   cleanup_roots.push(builtin_root);
   const dir = path.join(builtin_root, "translation_prompt", "template", "zh");
+  const preset_dir = path.join(builtin_root, "translation_prompt", "preset");
   await mkdir(dir, { recursive: true });
+  await mkdir(preset_dir, { recursive: true });
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
-  await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
+  await writeFile(
+    path.join(preset_dir, "中文.txt"),
+    "从 {source_language} 到 {target_language}",
+    "utf-8",
+  );
   await writeFile(path.join(dir, "thinking.txt"), "提示词增强", "utf-8");
   await writeFile(
     path.join(dir, "suffix.txt"),

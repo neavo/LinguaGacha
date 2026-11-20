@@ -12,7 +12,6 @@ import {
   create_empty_preset_input_state,
   decorate_preset_items,
   has_casefold_duplicate_preset,
-  normalize_preset_name,
 } from "@frontend/features/preset-editor/preset-model";
 import type {
   PresetInputState as CustomPromptPresetInputState,
@@ -213,21 +212,15 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
     });
   }, []);
 
-  /** 校验名称并写入当前内容，完成后刷新预设列表。 */
+  /** 写入已确认的预设名称和当前正文，完成后刷新列表。 */
   const save_preset = useCallback(
     async (name: string): Promise<boolean> => {
       if (load_status !== "ready") return false;
-      const normalized_name = normalize_preset_name(name);
-      if (normalized_name === "") {
-        push_toast("warning", t("preset_editor.feedback.name_required"));
-        return false;
-      }
-
       let error_key: LocaleKey = "app.feedback.save_failed";
       try {
         await api_fetch("/api/quality/prompts/presets/save", {
-          name: normalized_name,
-          text: prompt_text.trim(),
+          name,
+          text: prompt_text,
         });
         error_key = "app.feedback.load_failed";
         await refresh_preset_menu();
@@ -243,19 +236,13 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
   /** 重命名后同步默认项引用并刷新列表。 */
   const rename_preset = useCallback(
     async (virtual_id: string, name: string): Promise<boolean> => {
-      const normalized_name = normalize_preset_name(name);
-      if (normalized_name === "") {
-        push_toast("warning", t("preset_editor.feedback.name_required"));
-        return false;
-      }
-
       let error_key: LocaleKey = "app.feedback.rename_failed";
       try {
         const payload = await api_fetch<{ item?: CustomPromptPresetItem }>(
           "/api/quality/prompts/presets/rename",
           {
             virtual_id,
-            new_name: normalized_name,
+            new_name: name,
           },
         );
         const target_preset = preset_items.find((item) => item.virtual_id === virtual_id);
@@ -329,20 +316,20 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
       return;
     }
 
-    const normalized_name = normalize_preset_name(preset_input_state.value);
-    if (normalized_name === "") {
+    const name = preset_input_state.value.trim();
+    if (name === "") {
       push_toast("warning", t("preset_editor.feedback.name_required"));
       return;
     }
 
-    const next_virtual_id = build_user_preset_virtual_id(normalized_name, "txt");
+    const next_virtual_id = build_user_preset_virtual_id(name, "txt");
     if (
       preset_input_state.mode === "save" &&
       has_casefold_duplicate_preset(preset_items, next_virtual_id, null)
     ) {
       set_confirm_state({
         kind: "overwrite-preset",
-        preset_input_value: normalized_name,
+        preset_input_value: name,
         submitting: false,
       });
       return;
@@ -369,10 +356,10 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
 
     const succeeded =
       preset_input_state.mode === "save"
-        ? await save_preset(normalized_name)
+        ? await save_preset(name)
         : preset_input_state.target_virtual_id === null
           ? false
-          : await rename_preset(preset_input_state.target_virtual_id, normalized_name);
+          : await rename_preset(preset_input_state.target_virtual_id, name);
 
     if (succeeded) {
       set_preset_input_state(create_empty_preset_input_state());

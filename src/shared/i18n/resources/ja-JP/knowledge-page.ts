@@ -27,6 +27,7 @@ export const ja_jp_knowledge_page = {
     reset: "リセット",
     delete_skill_confirm: "スキルを削除しますか …?",
     reset_skill_confirm: "スキルをリセットしますか …?",
+    reset_knowledge_confirm: "プロジェクトナレッジをリセットしますか …?",
     back: "一覧に戻る",
     files: "ファイル",
     create_file: "ファイルを追加",

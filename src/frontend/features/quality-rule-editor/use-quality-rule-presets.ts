@@ -10,7 +10,6 @@ import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   create_empty_preset_input_state,
   decorate_preset_items,
-  normalize_preset_name,
   build_user_preset_virtual_id,
   has_casefold_duplicate_preset,
 } from "@frontend/features/preset-editor/preset-model";
@@ -198,7 +197,7 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
   /** 校验名称及重名关系，再执行保存或重命名。 */
   async function submit_preset_input(): Promise<void> {
     if (!preset_input_state.open || busy.current) return;
-    const name = normalize_preset_name(preset_input_state.value);
+    const name = preset_input_state.value.trim();
     if (name === "") {
       push_toast("warning", t("preset_editor.feedback.name_required"));
       return;

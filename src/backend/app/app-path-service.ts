@@ -25,47 +25,52 @@ const PRESET_DIR_NAME = "preset";
 const VERSION_FILE_NAME = "version.txt";
 
 /**
- * 纯解析预设虚拟 ID，并将结果约束到调用方提供的内置或用户根目录。
+ * 预设 ID 只允许单段文件名。传入文件系统时优先定位已有文件，返回的名称始终使用 NFC。
  */
-export function resolve_preset_file(options: {
-  virtual_id: string;
-  extension: ".json" | ".txt";
-  builtin_directory: string;
-  user_directory: string;
-  allow_legacy_namespace?: boolean;
-}): { source: "builtin" | "user"; file_name: string; file_path: string } {
+export function resolve_preset_file(
+  options: {
+    virtual_id: string;
+    extension: ".json" | ".txt";
+    builtin_directory: string;
+    user_directory: string;
+    allow_legacy_namespace?: boolean;
+  },
+  native_fs?: NativeFs,
+): { source: "builtin" | "user"; file_name: string; file_path: string } {
   const parts = options.virtual_id.split(":");
   const has_valid_part_count =
     parts.length === 2 || (options.allow_legacy_namespace === true && parts.length === 3);
   const source = parts[0];
-  const file_name = parts.at(-1) ?? "";
-  const has_path_boundary =
-    path.basename(file_name) !== file_name ||
-    path.win32.basename(file_name) !== file_name ||
-    path.posix.basename(file_name) !== file_name ||
-    path.isAbsolute(file_name) ||
-    path.win32.isAbsolute(file_name) ||
-    path.posix.isAbsolute(file_name);
+  const file_name = (parts.at(-1) ?? "").normalize("NFC");
   if (
     !has_valid_part_count ||
     (source !== "builtin" && source !== "user") ||
-    file_name === "" ||
-    has_path_boundary ||
+    path.win32.basename(file_name) !== file_name || // 同时识别两种路径分隔符和盘符。
     !file_name.toLowerCase().endsWith(options.extension)
   ) {
     throw new AppErrors.AppError("request.validation_failed");
   }
   const directory = source === "builtin" ? options.builtin_directory : options.user_directory;
-  const file_path = path.join(directory, file_name);
-  const relative_path = path.relative(path.resolve(directory), path.resolve(file_path));
-  if (
-    relative_path === ".." ||
-    relative_path.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative_path)
-  ) {
-    throw new AppErrors.AppError("request.validation_failed");
-  }
+  const candidate = path.join(directory, file_name);
+  const file_path = native_fs
+    ? (find_existing_preset_path(candidate, native_fs) ?? candidate)
+    : candidate;
   return { source, file_name, file_path };
+}
+
+/** 规范路径缺失时才扫描原目录，兼容磁盘保留的等价文件名。 */
+export function find_existing_preset_path(
+  file_path: string,
+  native_fs: NativeFs,
+): string | undefined {
+  if (native_fs.exists(file_path)) return file_path;
+  const directory = path.dirname(file_path);
+  if (!native_fs.exists(directory)) return undefined;
+  const file_name = path.basename(file_path);
+  const entry = native_fs
+    .read_dir_names(directory)
+    .find((name) => name.normalize("NFC") === file_name);
+  return entry === undefined ? undefined : path.join(directory, entry);
 }
 
 /**

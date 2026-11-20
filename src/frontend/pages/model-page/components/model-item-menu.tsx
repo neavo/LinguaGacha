@@ -1,5 +1,12 @@
 import type { JSX } from "react";
-import { Copy, GraduationCap, ListTodo, Recycle, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  BrushCleaning,
+  Copy,
+  GraduationCap,
+  ListTodo,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 
 import { Model } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -57,7 +64,7 @@ export function ModelItemMenu(props: ModelItemMenuProps): JSX.Element {
           disabled={props.readonly}
           onClick={props.on_reset}
         >
-          <Recycle />
+          <BrushCleaning />
           {t("model_page.action.reset")}
         </AppDropdownMenuItem>
       ) : (

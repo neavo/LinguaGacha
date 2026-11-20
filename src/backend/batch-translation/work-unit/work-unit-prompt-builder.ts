@@ -148,16 +148,20 @@ export class PromptBuilder {
    */
   public build_main(mode: TranslationPromptMode = "text"): string {
     const context = this.resolve_prompt_context();
-    const prefix = this.read_prompt_text(context.prompt_language, "prefix.txt");
+    const template = ["template", context.prompt_language];
+    const prefix = this.read_prompt_text(...template, "prefix.txt");
     const base =
       this.quality_snapshot.translation_prompt_enable &&
       this.quality_snapshot.translation_prompt !== null
         ? this.quality_snapshot.translation_prompt
-        : this.read_prompt_text(context.prompt_language, "base.txt");
+        : this.read_prompt_text(
+            "preset",
+            TRANSLATION_PROMPT.default_preset_files[context.prompt_language],
+          );
     const enhancement = this.config.prompt_enhancement_enable
-      ? this.read_prompt_text(context.prompt_language, "thinking.txt")
+      ? this.read_prompt_text(...template, "thinking.txt")
       : "";
-    const suffix = this.read_prompt_text(context.prompt_language, "suffix.txt");
+    const suffix = this.read_prompt_text(...template, "suffix.txt");
     const sections = [`${prefix}\n${base}`];
     if (enhancement !== "") sections.push(enhancement);
     // 自定义规则和增强段共用最后的输出约束。
@@ -273,14 +277,8 @@ export class PromptBuilder {
   /**
    * worker 同步读取内置模板，按完整路径隔离不同资产根的缓存。
    */
-  private read_prompt_text(language: TranslationPromptLanguage, file_name: string): string {
-    const template_path = path.join(
-      this.builtin_root,
-      TRANSLATION_PROMPT.directory_name,
-      "template",
-      language,
-      file_name,
-    );
+  private read_prompt_text(...parts: string[]): string {
+    const template_path = path.join(this.builtin_root, TRANSLATION_PROMPT.directory_name, ...parts);
     const cached = PromptBuilder.template_cache.get(template_path);
     if (cached !== undefined) return cached;
     const text = default_native_fs.read_text_file(template_path).trim();

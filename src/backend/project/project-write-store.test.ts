@@ -113,9 +113,10 @@ describe("ProjectWriteStore", () => {
       store.save_knowledge({
         projectPath: project_path,
         fp: project_knowledge_fingerprint(full),
-        text: "stale",
+        text: null,
       }),
     ).rejects.toMatchObject({ code: "data.revision_conflict" });
+    expect(await database.read_knowledge(project_path)).toBe("updated");
   });
   it("结构事务迁移全部路径归属，删除统计和失败回滚保持一致", async () => {
     const { database, project_path, store } = await create_store("file-layout");

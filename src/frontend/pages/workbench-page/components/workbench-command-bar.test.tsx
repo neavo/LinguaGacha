@@ -14,63 +14,27 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@frontend/pages/workbench-page/components/workbench-translation-menu", () => ({
-  WorkbenchTranslationMenu: (props: { on_request_start: () => void }) => (
-    <button
-      type="button"
-      onClick={() => {
-        props.on_request_start();
-      }}
-    >
-      translation-task
-    </button>
-  ),
-}));
-
 /** 构造命令栏公开契约所需的最小完整状态。 */
 function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCommandBar> {
-  const stats = {
-    total_items: 4,
-    completed_count: 1,
-    pending_count: 3,
-    skipped_count: 0,
-    completion_percent: 25,
-  };
-  const task_metrics = {
-    status: "idle" as const,
-    total: 4,
-    completion_percent: 25,
-    active: false,
-    stopping: false,
-    elapsed_seconds: 0,
-    remaining_seconds: 0,
-    average_generation_speed: 0,
-    input_tokens: 0,
-    reasoning_tokens: 0,
-    output_tokens: 0,
-    request_in_flight_count: 0,
-  };
-
   return {
     can_start_translation: true,
     on_request_start_translation: vi.fn(),
     batch_task: {
       task_display_snapshot: null,
-      task_metrics,
+      task_metrics: batch_task_metrics(null, 0),
       task_waveform_history: [],
       task_detail_sheet_open: false,
       task_confirm_state: null,
-      translation_task_menu_disabled: false,
-      translation_task_menu_busy: false,
+      translation_action_blocked: false,
       open_task_detail_sheet: () => {},
       close_task_detail_sheet: () => {},
       request_start_or_continue_translation: vi.fn(async () => {}),
-      request_task_action_confirmation: () => {},
+      request_task_action_confirmation: vi.fn(),
       confirm_task_action: async () => {},
       close_task_action_confirmation: () => {},
     },
 
-    translation_stats: stats,
+    translation_stats: null,
 
     can_edit_files: true,
     can_delete_selected_files: true,
@@ -94,7 +58,7 @@ describe("WorkbenchCommandBar", () => {
     root = null;
   });
 
-  /** 挂载命令栏，验证按钮权限与任务启动回调。 */
+  /** 挂载命令栏并保留共用浮层环境。 */
   async function render_command_bar(
     props = create_workbench_command_bar_props(),
   ): Promise<ComponentProps<typeof WorkbenchCommandBar>> {
@@ -139,12 +103,24 @@ describe("WorkbenchCommandBar", () => {
     expect(props.on_delete_selected).not.toHaveBeenCalled();
   });
 
-  it("翻译按钮请求页面选择执行方式", async () => {
+  it("重置按钮请求会话确认", async () => {
     const props = await render_command_bar();
+    await act(async () => find_button("app.action.reset").click());
+    expect(props.batch_task.request_task_action_confirmation).toHaveBeenCalledExactlyOnceWith(
+      "reset-all",
+    );
+  });
 
-    await act(async () => find_button("translation-task").click());
-
-    expect(props.on_request_start_translation).toHaveBeenCalledOnce();
+  it("任务运行时禁用重置，仍可悬停查看用途", async () => {
+    const props = create_workbench_command_bar_props();
+    props.batch_task.task_metrics.active = true;
+    await render_command_bar(props);
+    const reset = find_button("app.action.reset");
+    expect(reset.disabled).toBe(true);
+    await act(async () => {
+      reset.parentElement!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull();
   });
 
   it("运行摘要使用同一批量任务的类型与完成率", async () => {

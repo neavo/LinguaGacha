@@ -23,8 +23,8 @@ describe("PromptBuilder", () => {
     for (const version of ["第一版内置", "第二版内置"]) {
       const builtin_root = await create_template_root();
       await writeFile(
-        path.join(builtin_root, "translation_prompt", "template", "zh", "base.txt"),
-        version,
+        path.join(builtin_root, "translation_prompt", "preset", "中文.txt"),
+        `\uFEFF${version}\n`,
       );
       for (const enabled of [false, true]) {
         const builder = new PromptBuilder(
@@ -309,10 +309,13 @@ async function create_template_root(): Promise<string> {
 async function write_template(
   builtin_root: string,
   language: "zh" | "en",
-  sections: Record<"prefix" | "base" | "thinking" | "suffix", string>,
+  { base, ...sections }: Record<"prefix" | "base" | "thinking" | "suffix", string>,
 ): Promise<void> {
   const dir = path.join(builtin_root, "translation_prompt", "template", language);
+  const preset_dir = path.join(builtin_root, "translation_prompt", "preset");
   await mkdir(dir, { recursive: true });
+  await mkdir(preset_dir, { recursive: true });
+  await writeFile(path.join(preset_dir, language === "zh" ? "中文.txt" : "English.txt"), base);
   for (const [name, content] of Object.entries(sections)) {
     await writeFile(path.join(dir, `${name}.txt`), content, "utf-8");
   }

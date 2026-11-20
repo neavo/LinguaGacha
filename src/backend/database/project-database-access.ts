@@ -152,15 +152,17 @@ export class ProjectDatabaseAccess {
     });
   }
 
-  /** 工程层先校验正文，调用方事务负责原子提交。 */
-  public set_knowledge(project_path: string, text: string): void {
-    this.with_project_connection(project_path, (db) =>
-      db
-        .prepare(
-          "INSERT INTO knowledge(path, text) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET text = excluded.text",
-        )
-        .run(PROJECT_KNOWLEDGE_DOCUMENT, text),
-    );
+  /** 工程层先校验正文，`null` 在同一事务中清除覆盖。 */
+  public set_knowledge(project_path: string, text: string | null): void {
+    this.with_project_connection(project_path, (db) => {
+      if (text === null) {
+        db.prepare("DELETE FROM knowledge WHERE path = ?").run(PROJECT_KNOWLEDGE_DOCUMENT);
+        return;
+      }
+      db.prepare(
+        "INSERT INTO knowledge(path, text) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET text = excluded.text",
+      ).run(PROJECT_KNOWLEDGE_DOCUMENT, text);
+    });
   }
 
   /** 推进 files/items revision，重复 section 在同次调用中只计一次。 */
