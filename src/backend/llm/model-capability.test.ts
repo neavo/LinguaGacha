@@ -371,6 +371,59 @@ describe("统一模型能力", () => {
     expect(responses.compat).toBeUndefined();
     expect(responses.thinking_level_map).toMatchObject({ off: null, max: "max" });
   });
+
+  it("官方 Mistral Responses 按同部署借用原生 Chat 思考档位并剥离协议兼容字段", () => {
+    const mistral_chat: PiCatalogModel = {
+      ...create_catalog_model("mistral-fixture"),
+      api: "mistral-conversations",
+      provider: "mistral",
+      baseUrl: "https://api.mistral.ai",
+      thinkingLevelMap: { off: null, minimal: null, low: "low", medium: "medium", high: "high" },
+      compat: { supportsMidConvoSystemMessages: true },
+    };
+    const third_party: PiCatalogModel = {
+      ...create_catalog_model("mistral-fixture"),
+      api: "openai-completions",
+      provider: "opencode",
+      baseUrl: "https://opencode.example/v1",
+      thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: "high" },
+    };
+    const official_model = Model.from_json(
+      {
+        api_format: "OpenAIResponses",
+        api_url: "https://api.mistral.ai/v1",
+        model_id: "mistral-fixture",
+      },
+      "official",
+    );
+    const borrowed = resolve_model_capability(official_model, [third_party, mistral_chat]);
+    expect(borrowed.available_thinking_levels).toEqual(["DEFAULT", "LOW", "MEDIUM", "HIGH"]);
+    expect(borrowed.compat).toBeUndefined();
+
+    // 同部署存在原生 Responses 记录时不再跨协议借用。
+    const native_responses: PiCatalogModel = {
+      ...mistral_chat,
+      api: "openai-responses",
+      thinkingLevelMap: { off: "none", minimal: null, low: null, medium: null, high: "high" },
+    };
+    expect(
+      resolve_model_capability(official_model, [mistral_chat, native_responses])
+        .available_thinking_levels,
+    ).toEqual(["DEFAULT", "OFF", "HIGH"]);
+
+    // 非官方中转不会跨协议借用 mistral-conversations。
+    const relay_model = Model.from_json(
+      {
+        api_format: "OpenAIResponses",
+        api_url: "https://relay.example/v1",
+        model_id: "mistral-fixture",
+      },
+      "relay",
+    );
+    expect(resolve_model_capability(relay_model, [mistral_chat]).available_thinking_levels).toEqual(
+      ["DEFAULT"],
+    );
+  });
 });
 
 /** 以默认用户配置观察公开能力结果。 */
