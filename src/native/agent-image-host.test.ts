@@ -60,12 +60,19 @@ it("真实 Chromium 转换、缩小、透明度、规范字节复用与取消释
           assert.equal(detailed.height, detailEdge / 2);
           const verifier = new BrowserWindow({show:false});
           await verifier.loadURL('about:blank');
-          const decoded = await verifier.webContents.executeJavaScript(
-            '(async () => { const b=await createImageBitmap(new Blob([Uint8Array.from(atob(' + JSON.stringify(image.data) + '),c=>c.charCodeAt(0))],{type:"image/webp"})); const c=document.createElement("canvas"); c.width=b.width;c.height=b.height;const x=c.getContext("2d");x.drawImage(b,0,0);const result={width:b.width,alpha:x.getImageData(0,0,1,1).data[3]};b.close();return result; })()'
+          const firstPixel = data => verifier.webContents.executeJavaScript(
+            '(async data => { const b=await createImageBitmap(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:"image/webp"})); const c=document.createElement("canvas"); c.width=b.width;c.height=b.height;const x=c.getContext("2d");x.drawImage(b,0,0);const result={width:b.width,rgba:Array.from(x.getImageData(0,0,1,1).data)};b.close();return result; })(' + JSON.stringify(data) + ')'
           );
+          // Two frames, red then blue. The model receives one WebP frame.
+          const animated = Buffer.from('R0lGODlhAgACAIEAAP8AAAAAAAAAAAAAACH5BAAKAAAALAAAAAACAAIAAAgGAAEIBBAQACH5BAEKAAEALAAAAAACAAIAgQAA/wAAAAAAAAAAAAgGAAEIBBAQADs=', 'base64');
+          const gif = await images.prepare(animated);
+          assert.equal(gif.mimeType, 'image/webp');
+          const { rgba } = await firstPixel(gif.data);
+          assert.ok(rgba[0] > 240 && rgba[2] < 15);
+          const decoded = await firstPixel(image.data);
           verifier.destroy();
           assert.equal(decoded.width, image.width);
-          assert.equal(decoded.alpha, 0);
+          assert.equal(decoded.rgba[3], 0);
           images.clear();
           const reused = await images.prepare(Buffer.from(image.data, "base64"));
           assert.equal(reused.data, image.data);

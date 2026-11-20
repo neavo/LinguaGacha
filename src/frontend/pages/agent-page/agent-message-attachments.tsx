@@ -8,10 +8,8 @@ import type {
   AgentMessageAttachment,
   AgentResponseAnnotationAttachment,
 } from "@shared/agent";
-import {
-  resolve_agent_text_format,
-  resolve_agent_workspace_image_mime,
-} from "@shared/agent-workspace-file";
+import { resolve_agent_text_format } from "@shared/agent-workspace-file";
+import { resolve_workspace_image_mime } from "@shared/image-formats";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
@@ -107,7 +105,7 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
             <AgentFileTrigger
               path={file_path}
               attachment_preview={
-                image || resolve_agent_workspace_image_mime(file_path.split("/").at(-1)!)
+                image || resolve_workspace_image_mime(file_path.split("/").at(-1)!)
                   ? "image"
                   : resolve_agent_text_format(file_path)
               }

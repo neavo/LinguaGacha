@@ -10,7 +10,11 @@ import { ruby_array } from "../../../test/rgss-fixture";
 import { wolf_files } from "../../../test/wolf-fixture";
 import { create_godot_fixture } from "../../../test/godot-fixture";
 import { compiled_fixture } from "../../../test/renpy-fixture";
-import { image_fixture } from "../../../test/image-fixture";
+import {
+  image_fixture,
+  IMAGE_PATCH_FIXTURE,
+  IMAGE_PATCH_MASK_FIXTURE,
+} from "../../../test/image-fixture";
 
 it("普通原稿按资产相对路径保留原始字节", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
@@ -233,7 +237,9 @@ it("IMAGE 原稿展开原图、条目和消字补丁", async () => {
   const base = path.join(root.path, "manga.image");
   expect(fs.existsSync(path.join(base, "image.json"))).toBe(true);
   expect(fs.existsSync(path.join(base, "items.json"))).toBe(true);
-  expect(fs.existsSync(path.join(base, "patches", "p1", "text.png"))).toBe(true);
-  expect(fs.readFileSync(path.join(base, "originals/p1.png")).equals(fixture.original)).toBe(true);
-  expect(fs.readFileSync(path.join(base, "patches/p1/text.png")).equals(fixture.patch)).toBe(true);
+  expect(fs.readFileSync(path.join(base, "originals/p1.png"))).toEqual(fixture.original);
+  expect(fs.readFileSync(path.join(base, "patches/p1/text.png"))).toEqual(IMAGE_PATCH_FIXTURE);
+  expect(fs.readFileSync(path.join(base, "patch-masks/p1/text.png"))).toEqual(
+    IMAGE_PATCH_MASK_FIXTURE,
+  );
 });

@@ -35,7 +35,7 @@ export const WORKSPACE_IMAGE_REQUEST_SCHEMA = Type.Object(
 /** 模型声明与校验复用图片选项。 */
 export function describe_emit_image(): string {
   return (
-    `/** 输出本机图片文件，\`path\` 为绝对路径或工作区相对路径。图片按调用顺序附在本次结果中，程序失败时不返回图片。每次程序最多 ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} 张、合计 ${AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes / 1024 / 1024} MiB，更多图片分到后续 \`workspace_run\` 调用。 */\n` +
+    `/** 输出本机图片文件（PNG、JPEG、WebP、BMP、AVIF、GIF），\`path\` 为绝对路径或工作区相对路径，每次最多 ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} 张 */\n` +
     `emitImage(path: string, options?: ${create_schema_renderer(new Map()).render(WORKSPACE_IMAGE_OPTIONS_SCHEMA)}): Promise<void>;`
   );
 }

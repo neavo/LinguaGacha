@@ -98,10 +98,11 @@ describe("ApiGatewayServer", () => {
       data: { chatId: "session", path: "work/report.md", content: "# 报告\n检查通过" },
     });
     const image = await fetch(
-      `${baseUrl}/api/agent/workspace/image?chatId=session&path=work%2Fchart.png`,
+      `${baseUrl}/api/agent/workspace/image?chatId=session&path=work%2Fchart.svg`,
     );
-    expect(image.headers.get("Content-Type")).toBe("image/png");
+    expect(image.headers.get("Content-Type")).toBe("image/svg+xml");
     expect(image.headers.get("Cache-Control")).toBe("no-store");
+    expect(image.headers.get("Content-Security-Policy")).toBe("default-src 'none'; sandbox");
     expect(
       Buffer.from(await image.arrayBuffer()).equals(Uint8Array.from([0, 255, 1, 128, 13, 10])),
     ).toBe(true);
@@ -409,7 +410,7 @@ describe("ApiGatewayServer", () => {
         content: "# 报告\n检查通过",
       }),
       read_workspace_image: async () => ({
-        mime: "image/png",
+        mime: "image/svg+xml",
         bytes: Uint8Array.from([0, 255, 1, 128, 13, 10]),
       }),
       get_snapshot: vi.fn(() => ({

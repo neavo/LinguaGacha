@@ -39,10 +39,6 @@ const page_spec = {
   relativePath: "page.png",
   original: "originals/page.png",
   sha256: "a".repeat(64),
-  width: 1,
-  height: 1,
-  orientation: 1,
-  source: "source.png",
 };
 const script = new URL("file:///fixture/helper.py");
 const scan_request = { pages: [page_spec], output: "output" };
@@ -77,6 +73,10 @@ it("单次图片识别复用一个 Worker，失败后关闭，纯像素命令不
     pages: [
       {
         original: "source.png",
+        width: 1,
+        height: 1,
+        orientation: 1,
+        output: "translated.png",
         bilingual: "out.png",
         qa: { path: "out.webp", maxEdge: 128, marks: [] },
       },

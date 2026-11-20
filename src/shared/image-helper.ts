@@ -10,17 +10,9 @@ import {
 
 const PAGE_SCHEMA = IMAGE_BOOK_SCHEMA.properties.pages.items;
 
-const CREATE_PAGE_SCHEMA = Type.Object(
-  {
-    pageId: PAGE_SCHEMA.properties.pageId,
-    relativePath: PAGE_SCHEMA.properties.relativePath,
-    original: PAGE_SCHEMA.properties.original,
-    sha256: PAGE_SCHEMA.properties.sha256,
-    width: PAGE_SCHEMA.properties.width,
-    height: PAGE_SCHEMA.properties.height,
-    orientation: PAGE_SCHEMA.properties.orientation,
-    source: Type.String({ minLength: 1 }),
-  },
+const CREATE_PAGE_SCHEMA = Type.Pick(
+  PAGE_SCHEMA,
+  ["pageId", "relativePath", "original", "sha256"],
   { additionalProperties: false },
 );
 const SCAN_RESULT_SCHEMA = Type.Object(
@@ -178,6 +170,10 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
           Type.Object(
             {
               original: Type.String(),
+              width: PAGE_SCHEMA.properties.width,
+              height: PAGE_SCHEMA.properties.height,
+              orientation: PAGE_SCHEMA.properties.orientation,
+              output: Type.String(),
               layers: Type.Optional(Type.String()),
               bilingual: Type.String(),
               qa: Type.Object({
@@ -191,7 +187,6 @@ export const IMAGE_HELPER_OPERATION_SCHEMAS = {
                   }),
                 ),
               }),
-              output: Type.Optional(Type.String()),
             },
             { additionalProperties: false },
           ),

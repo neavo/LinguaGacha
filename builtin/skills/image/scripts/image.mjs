@@ -10,6 +10,7 @@ export const NPM_DEPENDENCIES = ["onnxruntime-node@1.30.0"];
 export const PIP_DEPENDENCIES = [
   "numpy==2.5.5",
   "opencv-python-headless==5.1.0.95",
+  "pillow==13.0.0",
   "pyclipper==1.4.0",
 ];
 
@@ -56,7 +57,7 @@ async function write_package(directory, output) {
   return { package: output_path, members };
 }
 
-/** 校验清单后封包。工程导入核对成员与像素。 */
+/** 根据工作目录清单封包，入库时核对成员集合。 */
 export async function pack(directory, output) {
   const { book } = read(directory);
   return {

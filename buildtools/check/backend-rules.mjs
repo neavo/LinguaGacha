@@ -241,19 +241,15 @@ function create_backend_services_dependency_rule() {
 
 /** 运行目录依赖只从独立工作区入口或显式配置的运行目录加载。 */
 export function create_workspace_runtime_package_boundary_rule() {
-  const image_pixels = "src/backend/file/image/image-pixels.ts";
   const pdf_document = "src/backend/file/pdf/pdf-document.ts";
   const pdf_mupdf = "src/backend/file/pdf/mupdf.ts";
-  const image_sdk = "src/backend/agent/image/index.ts";
   const pdf_sdk = "src/backend/agent/pdf/index.ts";
   const pdf_worker_entry = "src/backend/file/pdf/pdf-worker-entry.ts";
-  const package_owners = new Set([image_pixels, pdf_document, pdf_mupdf]);
+  const package_owners = new Set([pdf_document, pdf_mupdf]);
   // 约束到入口为止，避免桌面经 SDK 间接到达工作区专用模块。
   const workspace_importers = new Map([
-    [image_pixels, [image_sdk]],
     [pdf_document, [pdf_sdk, pdf_worker_entry, "src/backend/file/pdf/pdf-worker.ts"]], // 同进程分支仅供测试。
     [pdf_mupdf, []],
-    [image_sdk, []],
     [pdf_sdk, []],
     [pdf_worker_entry, []],
   ]);

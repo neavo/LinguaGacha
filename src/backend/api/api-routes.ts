@@ -272,13 +272,16 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/batch-task/snapshot", () => batch_translation.get_snapshot());
 }
 
-/** 二进制图片响应禁用嗅探和缓存，避免复用或跨会话残留。 */
+/** 图片响应禁止嗅探和缓存。直接打开 SVG 时隔离活动内容。 */
 function create_image_response(image: { bytes: Uint8Array; mime: string }): Response {
   return new Response(new Uint8Array(image.bytes), {
     headers: {
       "Content-Type": image.mime,
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
+      ...(image.mime === "image/svg+xml" && {
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+      }),
     },
   });
 }

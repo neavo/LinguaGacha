@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import math
+import shutil
 import sys
 import threading
 import traceback
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from lg.inference import ocr
 from lg.inference.channel import Channel
@@ -28,22 +30,95 @@ UNFRAMED_PADDING_RATIO = 0.5
 SCAN_PREVIEW_EDGE = 1600
 TEXT_MARGIN = 2
 QA_WEBP_QUALITY = 85
+PAGE_MAX_PIXELS = 100_000_000  # 与 src/shared/image-package.ts 的单页像素预算一致。
+Image.MAX_IMAGE_PIXELS = PAGE_MAX_PIXELS
+SOURCE_FORMATS = {
+    ".png": "PNG",
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".webp": "WEBP",
+    ".bmp": "BMP",
+    ".avif": "AVIF",
+    ".gif": "GIF",
+}
+EXIF_ORIENTATION_TRANSPOSE = {
+    2: Image.Transpose.FLIP_LEFT_RIGHT,
+    3: Image.Transpose.ROTATE_180,
+    4: Image.Transpose.FLIP_TOP_BOTTOM,
+    5: Image.Transpose.TRANSPOSE,
+    6: Image.Transpose.ROTATE_270,
+    7: Image.Transpose.TRANSVERSE,
+    8: Image.Transpose.ROTATE_90,
+}
+GIF_ALPHA_THRESHOLD = 128
+QA_CHECKER_SIZE = 16
 
 
-def read_image(path):
-    """读取宿主已规范化的 RGB PNG，返回 OpenCV 使用的 BGR 像素。"""
-    encoded = np.fromfile(str(path), dtype=np.uint8)
-    image = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
-    if (
-        image is None
-        or image.dtype != np.uint8
-        or image.ndim != 3
-        or image.shape[2] != 3
-    ):
-        raise ValueError(f"Expected normalized RGB image: {path}")
-    if image.shape[0] * image.shape[1] > 100_000_000:
-        raise ValueError("Image pixel budget exceeded")
-    return image
+def load_source_image(path, *, orientation=None):
+    """解码静态光栅原图并按方向旋正，返回 `(BGR 或 BGRA, orientation)`。
+
+    - 拒绝多帧动图和超像素预算原图。
+    - 仅当图像实际包含 `alpha < 255` 的像素时返回 4 通道 BGRA；全不透明原图一律返回 3 通道 BGR。
+    - 传入 `orientation` 时按清单记录的既有方向旋正，保证扫描、准备与出图坐标一致。
+    """
+    expected = SOURCE_FORMATS.get(Path(path).suffix.lower())
+    if expected is None:
+        raise ValueError(f"Unsupported image source format: {path}")
+    with Image.open(path, formats=[expected]) as source:
+        if getattr(source, "n_frames", 1) > 1:
+            raise ValueError(f"Animated image is unsupported: {path}")
+        if source.width * source.height > PAGE_MAX_PIXELS:
+            raise ValueError("Image pixel budget exceeded")
+        if orientation is None:
+            orientation = source.getexif().get(274, 1)
+            if orientation not in range(1, 9):
+                orientation = 1
+        transpose = EXIF_ORIENTATION_TRANSPOSE.get(orientation)
+        image = source.transpose(transpose) if transpose is not None else source
+        if image.mode.startswith("I;16"):
+            # Pillow 将 16 位灰度直接转 RGB 会截断到 255；手动右移 8 位并保留 tRNS 透明色键。
+            samples = np.asarray(image, dtype=np.uint16)
+            gray = (samples >> 8).astype(np.uint8)
+            transparent = image.info.get("transparency")
+            if transparent is not None:
+                covered = samples == transparent
+                if np.any(covered):
+                    bgra = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGRA)
+                    bgra[covered, 3] = 0
+                    return bgra, orientation
+            return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR), orientation
+        if image.has_transparency_data:
+            rgba = image.convert("RGBA")
+            order = (
+                cv2.COLOR_RGBA2BGRA
+                if rgba.getchannel("A").getextrema()[0] < 255
+                else cv2.COLOR_RGBA2BGR
+            )
+            return cv2.cvtColor(np.asarray(rgba), order), orientation
+        return cv2.cvtColor(
+            np.asarray(image.convert("RGB")), cv2.COLOR_RGB2BGR
+        ), orientation
+
+
+def _matte(image, background):
+    """将 4 通道直通 BGRA 合成到指定灰度衬底（标量或二维数组），返回 3 通道 BGR。"""
+    alpha = image[:, :, 3].astype(np.uint16)
+    result = np.empty_like(image[:, :, :3])
+    for channel in range(3):
+        result[:, :, channel] = (
+            image[:, :, channel] * alpha + background * (255 - alpha) + 127
+        ) // 255
+    return result
+
+
+def inference_image(image):
+    """为推理和诊断图提供 3 通道 BGR 视图；4 通道透明图按可见像素亮度自动选深/浅反差衬底。"""
+    if image.shape[2] == 3:
+        return image
+    visible = image[:, :, 3] > fill.TRANSPARENT_ALPHA_MAX
+    pixels = image[:, :, :3][visible]
+    light = len(pixels) and fill.median_luma(pixels) >= 128
+    return _matte(image, 20 if light else 240)
 
 
 def save(file, image, extension=".png", parameters=()):
@@ -155,14 +230,22 @@ def postprocess(raw, proto, shape, input_shape):
         )
 
 
-def read_layout_area(file, shape):
-    """解码并校验程序生成的二值排版区域。"""
+def read_binary_mask(file, shape):
+    """解码并校验程序生成的二值 PNG 掩码。"""
     encoded = np.fromfile(str(file), dtype=np.uint8)
     mask = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
     if mask is None or mask.dtype != np.uint8 or mask.shape != shape:
         raise ValueError("Invalid binary selection dimensions")
-    if not np.all((mask == 0) | (mask == 255)) or not np.any(mask):
-        raise ValueError("Layout area must be nonempty and binary")
+    if not np.all((mask == 0) | (mask == 255)):
+        raise ValueError("Image mask must be binary")
+    return mask
+
+
+def read_layout_area(file, shape):
+    """排版区必须有可用面积，消字覆盖掩码则允许为空。"""
+    mask = read_binary_mask(file, shape)
+    if not np.any(mask):
+        raise ValueError("Layout area must be nonempty")
     return mask
 
 
@@ -375,14 +458,16 @@ def _text_candidate(region_id, group, kind, lines):
 
 def scan_page(spec, root, channel):
     """先识别和分格。区域编号在选字前确定。"""
-    image = read_image(spec["source"])
-    h, w = image.shape[:2]
+    page_id = spec["pageId"]
+    image, orientation = load_source_image(root / spec["original"])
+    image = inference_image(image)
+    height, width = image.shape[:2]
     tensor = model_input(image)
     raw, proto = forward(channel, "bubble", tensor)
-    occupied = np.zeros((h, w), np.uint16)
+    occupied = np.zeros((height, width), np.uint16)
     bubble_masks = {}
     for owner, (_, raw_mask) in enumerate(
-        postprocess(raw, proto, (h, w), tensor.shape[2:]), 1
+        postprocess(raw, proto, (height, width), tensor.shape[2:]), 1
     ):
         inner = fill.inset_selection(raw_mask)
         inner[occupied > 0] = 0
@@ -412,7 +497,7 @@ def scan_page(spec, root, channel):
             groups.append(("bubble", members, bubble_masks[owner]))
     outside = [record for record in recognized if record["owner"] is None]
     for members in group_unframed(outside):
-        selection = np.zeros((h, w), np.uint8)
+        selection = np.zeros((height, width), np.uint8)
         sizes = []
         for record in members:
             cv2.fillConvexPoly(selection, np.asarray(record["box"], np.int32), 255)
@@ -427,7 +512,6 @@ def scan_page(spec, root, channel):
         key=lambda group: min(detected_order[id(record)] for record in group[1])
     )
 
-    page_id = spec["pageId"]
     candidates = []
     preview = image.copy()
     for index, (kind, members, selection) in enumerate(groups, 1):
@@ -450,9 +534,10 @@ def scan_page(spec, root, channel):
                 cv2.polylines(
                     preview, [np.asarray(line["box"], np.int32)], True, color, 1
                 )
-    page = {key: value for key, value in spec.items() if key != "source"}
-    page["candidates"] = candidates
-    scale = min(1.0, SCAN_PREVIEW_EDGE / max(h, w))
+    page = dict(
+        spec, width=width, height=height, orientation=orientation, candidates=candidates
+    )
+    scale = min(1.0, SCAN_PREVIEW_EDGE / max(height, width))
     preview_path = save(
         root / "diagnostics" / f"{page_id}.png",
         cv2.resize(preview, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA),
@@ -502,7 +587,7 @@ def _read_packaged_area(root, page_id, region):
 def _save_patch(
     root, page_id, region_id, original, repaired, mask, origin, *, omit_unchanged
 ):
-    """比较区域像素并保存透明补丁，清单记录原图坐标。"""
+    """独立保存覆盖掩码和目标像素，清单记录原图坐标。"""
     changed = (mask > 0) & np.any(original != repaired, axis=2)
     x, y, w, h = cv2.boundingRect(changed.astype(np.uint8))
     if not w:
@@ -511,13 +596,20 @@ def _save_patch(
         x, y, _, _ = cv2.boundingRect(mask)
         w, h = 1, 1
     crop = np.s_[y : y + h, x : x + w]
-    alpha = changed[crop].astype(np.uint8) * 255
-    pixels = repaired[crop].copy()
-    pixels[alpha == 0] = 0
+    covered = changed[crop]
+    pixels = repaired[crop]
+    pixels = (
+        cv2.cvtColor(pixels, cv2.COLOR_BGR2BGRA)
+        if pixels.shape[2] == 3
+        else pixels.copy()
+    )
+    pixels[~covered] = 0
     member = f"patches/{page_id}/{region_id}.png"
-    save(root / member, np.dstack((pixels, alpha)))
+    mask_member = f"patch-masks/{page_id}/{region_id}.png"
+    save(root / member, pixels)
+    save(root / mask_member, covered.astype(np.uint8) * 255)
     left, top = origin
-    return dict(path=member, box=[left + x, top + y, w, h])
+    return dict(path=member, mask=mask_member, box=[left + x, top + y, w, h])
 
 
 def _read_candidate_mask(root, page_id, candidate):
@@ -539,8 +631,19 @@ def _box_union(boxes):
     return [left, top, right - left, bottom - top]
 
 
+def _alpha_text_mask(image, area, local, background_alpha):
+    """OCR 框可能切掉字缘，在已分配的区域内沿可见笔画补齐。"""
+    foreground = (image[:, :, 3] > background_alpha) & (area > 0)
+    count, labels = cv2.connectedComponents(foreground.astype(np.uint8))
+    touches_text = np.zeros(count, bool)
+    touches_text[labels[local > 0]] = True
+    touches_text[0] = False
+    return np.where(touches_text[labels], 255, local).astype(np.uint8)
+
+
 def _prepare_group(
     original,
+    inference,
     candidates,
     available,
     root,
@@ -621,7 +724,13 @@ def _prepare_group(
         blocks.append((candidate, pick, box, local, area))
     if not blocks:
         return
-    use_fill, color = fill.analyze_background(image, selection, occupied)
+    mode, color, target, opaque_only = fill.analyze_background(
+        image, selection, occupied
+    )
+    stroke_image = inference[group]
+    use_fill = mode == "fill"
+    if opaque_only:
+        opaque = image[:, :, 3] == 255
     dark_background = (
         cv2.cvtColor(np.uint8([[color[::-1]]]), cv2.COLOR_BGR2GRAY)[0, 0] < 128
     )
@@ -629,15 +738,28 @@ def _prepare_group(
     automatic = np.zeros(shape, np.uint8)  # 同组共用一次自动填色或 LaMa 修复。
     for candidate, pick, _, local, part_area in blocks:
         rid = candidate["regionId"]
+        if mode == "transparent":
+            mask = _alpha_text_mask(image, part_area, local, 0)
+            automatic |= mask
+            masks[rid] = (mask, mode)
+            continue
+        if opaque_only:
+            local = np.where(opaque, local, 0)
+            part_area = np.where(opaque, part_area, 0)
+            if not np.any(local):
+                continue
         if use_fill and not pick.get("contour"):
             mask = part_area if bubble else local
+            if not bubble and image.shape[2] == 4 and not opaque_only:
+                mask = _alpha_text_mask(image, part_area, local, target[3])
+                mask = part_area & cv2.dilate(mask, repair.ellipse(fill.CONTEXT_BORDER))
             automatic |= mask
             masks[rid] = (mask, "fill")
             continue
         boxes = [line["box"] for line in candidate["lines"]]
         try:
             stroke = repair.text_mask(
-                image, local, boxes, origin, light_text=dark_background
+                stroke_image, local, boxes, origin, light_text=dark_background
             )
         except ValueError:
             stroke = None
@@ -649,19 +771,25 @@ def _prepare_group(
 
     # 气泡边缘只沿整个内缩掩码混合，分格沿内部切口共享同一份底图。
     has_automatic = np.any(automatic)
-    repaired = (
-        fill.render_fill(image, selection if bubble else automatic, color)
-        if has_automatic and use_fill
-        else image.copy()
-    )
-    if has_automatic and not use_fill:
+    if has_automatic and use_fill:
+        fill_area = selection if bubble else automatic
+        if opaque_only:
+            fill_area = np.where(opaque, fill_area, 0)
+        repaired = fill.render_fill(image, fill_area, target)
+    else:
+        repaired = image.copy()
+    if has_automatic and mode == "transparent":
+        repaired[automatic > 0] = 0
+    elif has_automatic and not use_fill:
         try:
-            repaired[automatic > 0] = repair.inpaint(
-                original,
+            repaired[automatic > 0, :3] = repair.inpaint(
+                inference,
                 automatic,
                 origin,
                 lambda tensor: forward(channel, "inpaint", tensor)[0],
             )
+            if image.shape[2] == 4:
+                repaired[automatic > 0, 3] = target[3]
         except ValueError:
             # 这些区域仍可导入，导出时保留原图，供 Agent 按需补做。
             masks = {
@@ -677,7 +805,9 @@ def _prepare_group(
             mask, method = masks[rid]
             if method == "contour":
                 tone = 0 if dark_background else 255
-                repaired[mask > 0] = tone
+                repaired[mask > 0, :3] = tone
+                if image.shape[2] == 4:
+                    repaired[mask > 0, 3] = target[3]
                 background_color = [tone] * 3
             patch = _save_patch(
                 output,
@@ -765,7 +895,10 @@ def inspect_bubble_group(args, _channel):
     if page is None:
         raise ValueError("Unknown image page")
     group = _bubble_group(page, args["group"])
-    image = read_image(root / "normalized" / f"{page['pageId']}.png")
+    image, _ = load_source_image(
+        root / page["original"], orientation=page["orientation"]
+    )
+    image = inference_image(image)
     h, w = image.shape[:2]
     scale = min(1.0, SCAN_PREVIEW_EDGE / max(h, w))
     preview = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
@@ -910,7 +1043,10 @@ def prepare(args, channel):
         page["regions"] = []
         if not selected:
             continue
-        original = read_image(root / "normalized" / f"{page_id}.png")
+        original, _ = load_source_image(
+            root / page["original"], orientation=page["orientation"]
+        )
+        inference = inference_image(original)
         shape = original.shape[:2]
         occupied = np.zeros(shape, np.float32)  # 原字框的像素归属。
         for index, candidate in enumerate(candidates, 1):
@@ -940,6 +1076,7 @@ def prepare(args, channel):
                 continue
             for region, record, layout in _prepare_group(
                 original,
+                inference,
                 group,
                 selected,
                 root,
@@ -1247,23 +1384,45 @@ def text_layout(args, _channel):
         _write_text_layout(root, job, args["maximumBytes"])
 
 
-def _apply_overlay(result, overlay, box):
-    """按字层或补丁的透明度合成，保留完全透明处的底图像素。"""
+def _layer_destination(result, pixels, box):
+    """核对 RGBA 字层或补丁与其页面坐标。"""
     x, y, w, h = box
     if (
-        overlay is None
-        or overlay.dtype != np.uint8
-        or overlay.shape != (h, w, 4)
+        pixels is None
+        or pixels.dtype != np.uint8
+        or pixels.shape != (h, w, 4)
         or min(x, y) < 0
         or x + w > result.shape[1]
         or y + h > result.shape[0]
     ):
-        raise ValueError("Invalid image overlay")
-    destination = result[y : y + h, x : x + w]
+        raise ValueError("Invalid image layer")
+    return result[y : y + h, x : x + w]
+
+
+def _apply_patch(result, pixels, mask, box):
+    """按二值覆盖掩码写回补丁目标像素（含 4 通道中的全透明或半透明像素）。"""
+    destination = _layer_destination(result, pixels, box)
+    covered = mask > 0
+    destination[covered] = pixels[covered, : result.shape[2]]
+
+
+def _apply_overlay(result, overlay, box):
+    """以直通 alpha（Porter-Duff source-over）叠加 Chromium 渲染的译文字层。"""
+    destination = _layer_destination(result, overlay, box)
     covered = overlay[:, :, 3] > 0
     alpha = overlay[covered, 3:4].astype(np.float64) / 255
+    if result.shape[2] == 3:
+        destination[covered] = np.floor(
+            overlay[covered, :3] * alpha + destination[covered] * (1 - alpha) + 0.5
+        ).astype(np.uint8)
+        return
+    background = destination[covered]
+    weight = background[:, 3:4].astype(np.float64) / 255 * (1 - alpha)
+    out_alpha = alpha + weight
+    # covered 保证 alpha > 0，因此分母恒正；在全透明底上抗锯齿边缘保留纯净字色，不产生黑边。
+    rgb = (overlay[covered, :3] * alpha + background[:, :3] * weight) / out_alpha
     destination[covered] = np.floor(
-        overlay[covered, :3] * alpha + destination[covered] * (1 - alpha) + 0.5
+        np.concatenate((rgb, out_alpha * 255), axis=1) + 0.5
     ).astype(np.uint8)
 
 
@@ -1275,7 +1434,9 @@ def _compose_text(result, layers_path, root):
         pixels = cv2.imdecode(
             np.fromfile(str(root / patch["path"]), dtype=np.uint8), cv2.IMREAD_UNCHANGED
         )
-        _apply_overlay(result, pixels, patch["box"])
+        _, _, w, h = patch["box"]
+        mask = read_binary_mask(root / patch["mask"], (h, w))
+        _apply_patch(result, pixels, mask, patch["box"])
     for paint in layers["overlays"]:
         raw = np.frombuffer(base64.b64decode(paint["png"], validate=True), np.uint8)
         _apply_overlay(result, cv2.imdecode(raw, cv2.IMREAD_UNCHANGED), paint["box"])
@@ -1284,13 +1445,26 @@ def _compose_text(result, layers_path, root):
 def _qa_preview(original, translated, qa):
     """等比例并排原图与译图，仅在译图标记异常区域。"""
     height, width = original.shape[:2]
+    unchanged = translated is original
+    if original.shape[2] == 4 or translated.shape[2] == 4:
+        rows, columns = np.ogrid[:height, :width]
+        checker = np.where(
+            (rows // QA_CHECKER_SIZE % 2) != (columns // QA_CHECKER_SIZE % 2),
+            np.uint16(204),
+            np.uint16(238),
+        )
+        if original.shape[2] == 4:
+            original = _matte(original, checker)
+        if not unchanged and translated.shape[2] == 4:
+            translated = _matte(translated, checker)
     scale = min(1, qa["maxEdge"] / max(2 * width, height))
     size = (max(1, int(width * scale)), max(1, int(height * scale)))
     if scale < 1:
-        translated = cv2.resize(translated, size, interpolation=cv2.INTER_AREA)
         original = cv2.resize(original, size, interpolation=cv2.INTER_AREA)
-    elif translated is original and qa["marks"]:
-        translated = original.copy()  # 无合成层时，标记仍只画在右侧。
+        if not unchanged:
+            translated = cv2.resize(translated, size, interpolation=cv2.INTER_AREA)
+    if unchanged:
+        translated = original.copy() if qa["marks"] else original
     for mark in qa["marks"]:
         color = (0, 220, 255) if mark["warning"] else (0, 0, 230)
         x, y, w, h = mark["box"]
@@ -1304,32 +1478,72 @@ def _qa_preview(original, translated, qa):
 
 
 def _save_output_image(file, image):
-    """按目标扩展名写出交付级图片，返回规范化后的扩展名。"""
-    extension = Path(file).suffix.lower()
-    if extension not in (".png", ".jpg", ".jpeg"):
-        raise ValueError("Unsupported image output format")
-    if extension == ".png":
-        save(file, image)
+    """按目标扩展名编码 6 种静态光栅格式并保留透明通道（GIF 量化为二值透明）。"""
+    output = Path(file)
+    extension = output.suffix.lower()
+    format = SOURCE_FORMATS.get(extension)
+    if format in ("PNG", "BMP"):
+        # 32 位 BMP 经 OpenCV 写出带显式 alpha 位掩码（BI_BITFIELDS），可被 Pillow 原样读回。
+        save(output, image, extension)
+        return
+    transparent = image.shape[2] == 4
+    if format == "JPEG":
+        if transparent:
+            raise ValueError("JPEG output requires an opaque image")
+        save(output, image, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
+        return
+    color = cv2.COLOR_BGRA2RGBA if transparent else cv2.COLOR_BGR2RGB
+    rendered = Image.fromarray(cv2.cvtColor(image, color))
+    if format == "WEBP":
+        options = {"quality": 95}
+    elif format == "AVIF":
+        # AVIF 的质量参数同时作用于 alpha，含透明图使用 100 以避免覆盖边界失真。
+        options = {"quality": 100 if transparent else 90, "subsampling": "4:4:4"}
+    elif format == "GIF":
+        options = {"optimize": False}
+        palette = rendered.convert("RGB")
+        if transparent:
+            mask = rendered.getchannel("A").point(
+                lambda alpha: 255 if alpha < GIF_ALPHA_THRESHOLD else 0
+            )
+            if mask.getbbox():
+                palette.paste(0, mask=mask)
+                palette = palette.quantize(colors=255)
+                palette.paste(255, mask=mask)
+                options["transparency"] = 255
+        rendered = palette
     else:
-        save(file, image, ".jpg", [cv2.IMWRITE_JPEG_QUALITY, 95])
-    return extension
+        raise ValueError(f"Unsupported image output format: {file}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    rendered.save(output, format=format, **options)  # 整册由调用方从暂存目录原子发布。
 
 
 def _write_text_output(root, job):
-    """每页只合成一次，同时写出译图、双语双拼图与 QA 对照图。"""
-    original = read_image(job["original"])
-    layers, output = job.get("layers"), job.get("output")
+    """单页一次合成，同时写出译图、双语双拼图与 QA 对照图；无改动且同格式页直接拷贝原字节。"""
+    source, output = Path(job["original"]), Path(job["output"])
+    # 包内坐标以扫描记录的方向为准，既有清单与补丁可按原坐标绘制。
+    original, _ = load_source_image(source, orientation=job["orientation"])
+    if original.shape[:2] != (job["height"], job["width"]):
+        raise ValueError(f"Image dimensions do not match the package: {source}")
+    layers = job.get("layers")
     bilingual, qa = job["bilingual"], job["qa"]
     translated = original
     if layers is not None:
         translated = original.copy()
         _compose_text(translated, layers, root)
-    # 双语双拼图直接使用内存中的原图与译图，避免 JPEG 二次压缩。
+    # 双语双拼图直接使用内存中的像素，避免二次压缩。
     _save_output_image(bilingual, np.concatenate((original, translated), axis=1))
-    if output is not None:
-        # 写出的 JPEG 已旋正，QA 读回编码后的像素。
-        if _save_output_image(output, translated) != ".png":
-            translated = read_image(output)
+    if (
+        layers is None
+        and SOURCE_FORMATS[source.suffix.lower()]
+        == SOURCE_FORMATS[output.suffix.lower()]
+    ):
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, output)  # 原样交付，包含原始 EXIF、调色板等元数据。
+    else:
+        _save_output_image(output, translated)
+        if output.suffix.lower() not in (".png", ".bmp"):
+            translated, _ = load_source_image(output)
     save(
         qa["path"],
         _qa_preview(original, translated, qa),

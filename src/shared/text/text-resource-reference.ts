@@ -1,3 +1,5 @@
+import { SUPPORTED_WORKSPACE_IMAGE_EXTENSIONS } from "../image-formats";
+
 /** 文本内资源引用的原始半开区间。 */
 export type TextResourceReference = {
   start: number; // 引用起始 UTF-16 offset
@@ -30,18 +32,11 @@ export const RESOURCE_EXTENSIONS = [
   "m4a", // MPEG-4 音频
   "aac", // AAC 音频
   // 图片
-  "png", // PNG 位图
-  "jpg", // JPEG 位图常用扩展
-  "jpeg", // JPEG 位图完整扩展
-  "gif", // GIF 位图或动图
+  ...SUPPORTED_WORKSPACE_IMAGE_EXTENSIONS,
   "psd", // Photoshop 图像工程
-  "webp", // WebP 图像
   "heif", // HEIF 图像
   "heic", // HEIC 图像
-  "bmp", // BMP 位图
-  "svg", // SVG 矢量图
   "ico", // 图标文件
-  "avif", // AVIF 图像
   // 视频
   "avi", // AVI 视频
   "mp4", // MPEG-4 视频

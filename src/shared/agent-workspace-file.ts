@@ -14,21 +14,6 @@ export type AgentDocument = Readonly<{
   content: string;
 }>;
 
-const WORKSPACE_IMAGE_TYPES: Readonly<Record<string, string>> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".svg": "image/svg+xml",
-};
-
-/** 后端文件描述与已上传附件的菜单共用图片扩展名规则。 */
-export function resolve_agent_workspace_image_mime(filename: string): string | null {
-  const dot = filename.lastIndexOf(".");
-  return dot > 0 ? (WORKSPACE_IMAGE_TYPES[filename.slice(dot).toLowerCase()] ?? null) : null;
-}
-
 /** 按解码后的扩展名选择预览入口，查询和锚点不参与格式判断。 */
 export function resolve_agent_text_format(href: string): AgentTextFormat | null {
   try {
