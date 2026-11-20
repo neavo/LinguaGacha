@@ -18,7 +18,7 @@ export const ja_jp_workbench_page = {
     reset: "ファイルデータをリセット",
     translation_task: "翻訳",
     start_translation: "翻訳を開始",
-    reset_task_all: "すべてのデータをリセット",
+    reset_all_tooltip: "翻訳データを初期状態にリセット",
   },
   dialog: {
     start_translation: {

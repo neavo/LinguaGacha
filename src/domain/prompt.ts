@@ -1,4 +1,5 @@
 import { read_json_record } from "./json";
+import type { TranslationPromptLanguage } from "./app-language";
 import { Type, type Static } from "typebox";
 import { PROJECT_REVISION_SCHEMA, read_project_revision } from "./project-revision";
 
@@ -24,7 +25,10 @@ export const TRANSLATION_PROMPT = Object.freeze({
   default_preset_setting_key: "translation_custom_prompt_default_preset", // 默认预设引用的应用设置键。
   store_key: "translation", // 公开提示词切片标识。
   preset_extension: ".txt", // 提示词预设文件扩展名。
-  template_files: Object.freeze(["base.txt", "prefix.txt", "thinking.txt", "suffix.txt"] as const), // 内置模板片段文件名。
+  default_preset_files: Object.freeze({
+    zh: "中文.txt",
+    en: "English.txt",
+  } as const satisfies Record<TranslationPromptLanguage, string>), // 默认正文直接复用内置预设。
 } as const);
 export type PromptKind = typeof TRANSLATION_PROMPT.store_key;
 export const PROMPT_KINDS = [TRANSLATION_PROMPT.store_key] as const;

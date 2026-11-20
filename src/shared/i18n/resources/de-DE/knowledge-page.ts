@@ -28,6 +28,7 @@ export const de_de_knowledge_page = {
     reset: "Zurücksetzen",
     delete_skill_confirm: "Skill wirklich löschen …?",
     reset_skill_confirm: "Skill wirklich zurücksetzen …?",
+    reset_knowledge_confirm: "Projektwissen wirklich zurücksetzen …?",
     back: "Zurück zur Liste",
     files: "Dateien",
     create_file: "Neue Datei",

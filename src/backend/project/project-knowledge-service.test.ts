@@ -9,8 +9,9 @@ import { ProjectWriteStore } from "./project-write-store";
 import { ProjectKnowledgeService } from "./project-knowledge-service";
 import { project_knowledge_file } from "./project-knowledge";
 import { adapt_project_change } from "./project-write-event-adapter";
+import type { AppLanguage } from "../../domain/app-language";
 
-it("旧工程读取时补模板，首次保存才落盘，之后按指纹保存并发布分区事件", async () => {
+it("工程知识按指纹保存和重置，并仅在实际写入时推进修订", async () => {
   using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-knowledge-"));
   const project = path.join(temporary.path, "test.lg");
   const db = new ProjectDatabase("1.0.0");
@@ -24,9 +25,9 @@ it("旧工程读取时补模板，首次保存才落盘，之后按指纹保存�
       () => undefined,
       (change) => adapt_project_change(session, change),
     );
-    const service = new ProjectKnowledgeService(db, session, writes, gate, {
-      read_app_language: () => "EN",
-    });
+    let language: AppLanguage = "EN";
+    const settings = { read_app_language: () => language };
+    const service = new ProjectKnowledgeService(db, session, writes, gate, settings);
     const template = await service.read();
     expect(template).toEqual(project_knowledge_file(null, "en-US"));
     expect(await db.read_knowledge(project)).toBeNull();
@@ -38,9 +39,6 @@ it("旧工程读取时补模板，首次保存才落盘，之后按指纹保存�
     expect(created.document.text).toBe("first");
     const updated = await service.save({ fp: created.document.fp, text: "second" });
     expect(updated.document.text).toBe("second");
-    await expect(service.save({ fp: created.document.fp, text: "stale" })).rejects.toMatchObject({
-      code: "data.revision_conflict",
-    });
     await expect(service.save({ text: "missing fp" })).rejects.toMatchObject({
       code: "request.validation_failed",
     });
@@ -49,7 +47,21 @@ it("旧工程读取时补模板，首次保存才落盘，之后按指纹保存�
       code: "runtime.busy",
     });
     gate.finish_runtime(lease);
-    expect((await service.read()).text).toBe("second");
+
+    language = "ZH";
+    const reset = await service.save({ fp: updated.document.fp, text: null });
+    expect(reset.changes[0]).toMatchObject({
+      updatedSections: ["knowledge"],
+      sectionRevisions: { knowledge: 3 },
+    });
+    expect(reset.document).toEqual(project_knowledge_file(null, "zh-CN"));
+    expect(await db.read_knowledge(project)).toBeNull();
+
+    language = "EN";
+    const repeated = await service.save({ fp: reset.document.fp, text: null });
+    expect(repeated.changes).toEqual([]);
+    expect(repeated.document).toEqual(template);
+    expect((await db.get_all_meta(project))["project_runtime_revision.knowledge"]).toBe(3);
   } finally {
     await db.close();
   }

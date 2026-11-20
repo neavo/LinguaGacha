@@ -33,7 +33,7 @@ export function WorkbenchPage(): JSX.Element {
   const can_start_translation =
     workbench_state.cache_status === "ready" &&
     !workbench_state.readonly &&
-    !batch_task.translation_task_menu_disabled &&
+    !batch_task.translation_action_blocked &&
     (requires_agent || workbench_state.entries.some((entry) => entry.progress.total_count > 0));
 
   // 文件刷新、运行占用或工程切换后结束旧选择，避免沿用过期的文件判断。

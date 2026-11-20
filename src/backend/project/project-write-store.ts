@@ -697,33 +697,32 @@ export class ProjectWriteStore {
     });
   }
 
-  /** 管理页按指纹整篇写入，任何拒绝均保留用户草稿对应的数据库基线。 */
+  /** 管理页按指纹保存整篇正文，`null` 清除已保存的覆盖。 */
   public async save_knowledge(request: {
     projectPath: string;
     fp: string;
-    text: string;
+    text: string | null;
   }): Promise<ProjectWriteResult> {
+    const { projectPath, fp, text } = request;
     return this.commit_runtime_change({
-      projectPath: request.projectPath,
+      projectPath,
       source: "project_knowledge",
       requireExpectedSectionRevisions: false,
       revisionSections: [],
       updatedSections: [],
       prepare: (context) => {
-        const stored = context.database.read_knowledge(request.projectPath);
-        if (request.fp !== project_knowledge_fingerprint(stored))
+        const stored = context.database.read_knowledge(projectPath);
+        if (fp !== project_knowledge_fingerprint(stored))
           throw new AppErrors.AppError("data.revision_conflict");
-        if (project_knowledge_text_too_large(request.text))
+        if (text !== null && project_knowledge_text_too_large(text))
           throw new AppErrors.AppError("request.validation_failed", {
             public_details: { reason: "knowledge_document_too_large" },
           });
-        const sections: ProjectDataSection[] = request.text === stored ? [] : ["knowledge"];
+        if (text === stored) return { writes: [], updatedSections: [] };
+        const sections: ProjectDataSection[] = ["knowledge"];
         this.stage_section_revisions({ ...context, sections });
         return {
-          writes: this.build_knowledge_writes(
-            request.projectPath,
-            sections.length ? request.text : null,
-          ),
+          writes: [(db) => db.set_knowledge(projectPath, text)],
           updatedSections: sections,
         };
       },

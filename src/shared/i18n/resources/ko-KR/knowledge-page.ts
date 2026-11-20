@@ -26,6 +26,7 @@ export const ko_kr_knowledge_page = {
     reset: "초기화",
     delete_skill_confirm: "스킬을 삭제하시겠습니까 …?",
     reset_skill_confirm: "스킬을 초기화하시겠습니까 …?",
+    reset_knowledge_confirm: "프로젝트 지식을 초기화하시겠습니까 …?",
     back: "목록으로 돌아가기",
     files: "파일",
     create_file: "새 파일",

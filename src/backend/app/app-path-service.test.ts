@@ -91,21 +91,21 @@ describe("AppPathService", () => {
 });
 
 describe("resolve_preset_file", () => {
-  it("按虚拟来源解析受控根目录并显式兼容旧 JSON 命名空间", () => {
+  it("按虚拟来源解析目录，归一文件名并兼容旧 JSON 命名空间", () => {
     const builtin_directory = path.join("builtin", "glossary", "preset");
     const user_directory = path.join("userdata", "glossary");
 
     expect(
       resolve_preset_file({
-        virtual_id: "user:demo.json",
+        virtual_id: "user:Português.json".normalize("NFD"),
         extension: ".json",
         builtin_directory,
         user_directory,
       }),
     ).toEqual({
       source: "user",
-      file_name: "demo.json",
-      file_path: path.join(user_directory, "demo.json"),
+      file_name: "Português.json",
+      file_path: path.join(user_directory, "Português.json"),
     });
     expect(
       resolve_preset_file({

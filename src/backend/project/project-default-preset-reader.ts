@@ -142,7 +142,16 @@ export class ProjectDefaultPresetReader {
 
   /** 读取质量规则预设；任一非法条目由调用方现有 warning/skip 分支整体跳过。 */
   private read_quality_rule_preset(rule: QualityRule, virtual_id: string): QualityRuleEntry[] {
-    const preset_path = this.resolve_quality_rule_preset_path(rule, virtual_id);
+    const { file_path: preset_path } = resolve_preset_file(
+      {
+        virtual_id,
+        extension: rule.preset_extension,
+        builtin_directory: this.paths.get_quality_rule_builtin_preset_dir(rule.preset_directory),
+        user_directory: this.paths.get_quality_rule_user_preset_dir(rule.preset_directory),
+        allow_legacy_namespace: true,
+      },
+      this.native_fs,
+    );
     const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
     if (!Array.isArray(data)) {
       throw new AppErrors.AppError("request.validation_failed", {
@@ -158,36 +167,16 @@ export class ProjectDefaultPresetReader {
    * 读取提示词预设正文，统一去掉 BOM 与首尾空白。
    */
   private read_prompt_preset(virtual_id: string): string {
-    const preset_path = this.resolve_prompt_preset_path(virtual_id);
-    return this.native_fs
-      .read_text_file(preset_path)
-      .replace(/^\uFEFF/u, "")
-      .trim();
-  }
-
-  /**
-   * 解析质量规则预设虚拟 ID 到真实路径。
-   */
-  private resolve_quality_rule_preset_path(rule: QualityRule, virtual_id: string): string {
-    return resolve_preset_file({
-      virtual_id,
-      extension: rule.preset_extension,
-      builtin_directory: this.paths.get_quality_rule_builtin_preset_dir(rule.preset_directory),
-      user_directory: this.paths.get_quality_rule_user_preset_dir(rule.preset_directory),
-      allow_legacy_namespace: true,
-    }).file_path;
-  }
-
-  /**
-   * 解析提示词预设虚拟 ID 到真实路径。
-   */
-  private resolve_prompt_preset_path(virtual_id: string): string {
-    return resolve_preset_file({
-      virtual_id,
-      extension: TRANSLATION_PROMPT.preset_extension,
-      builtin_directory: this.paths.get_prompt_builtin_preset_dir(),
-      user_directory: this.paths.get_prompt_user_preset_dir(),
-    }).file_path;
+    const { file_path } = resolve_preset_file(
+      {
+        virtual_id,
+        extension: TRANSLATION_PROMPT.preset_extension,
+        builtin_directory: this.paths.get_prompt_builtin_preset_dir(),
+        user_directory: this.paths.get_prompt_user_preset_dir(),
+      },
+      this.native_fs,
+    );
+    return this.native_fs.read_text_file(file_path).trim();
   }
 
   /**

@@ -66,7 +66,6 @@ const shared_props = {
   active: false,
   workbench_stats,
   disabled: false,
-  busy: false,
   model_selection: {
     snapshot: {
       model_selection: {
@@ -81,9 +80,7 @@ const shared_props = {
     updating: false,
     select_model: vi.fn(async () => undefined),
   },
-  active_task_action_kind: null,
   on_request_start: () => {},
-  on_request_reset: () => {},
 };
 
 describe("WorkbenchTranslationMenu", () => {
@@ -124,24 +121,17 @@ describe("WorkbenchTranslationMenu", () => {
     });
   }
 
-  it("开始翻译请求页面选择方式，重置交给会话层", async () => {
+  it("开始翻译请求页面选择方式", async () => {
     const on_request_start = vi.fn();
-    const on_request_reset = vi.fn();
     await render_menu(
-      <WorkbenchTranslationMenu
-        {...shared_props}
-        on_request_start={on_request_start}
-        on_request_reset={on_request_reset}
-      />,
+      <WorkbenchTranslationMenu {...shared_props} on_request_start={on_request_start} />,
     );
 
     await act(async () => {
       find_button("workbench_page.action.start_translation").click();
-      find_button("workbench_page.action.reset_task_all").click();
     });
 
     expect(on_request_start).toHaveBeenCalledOnce();
-    expect(on_request_reset).toHaveBeenCalledExactlyOnceWith("reset-all");
   });
 
   it("开始入口遵循页面权限，零文本条目的 PDF 工程仍可进入选择", async () => {

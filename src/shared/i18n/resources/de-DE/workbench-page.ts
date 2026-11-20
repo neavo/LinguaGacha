@@ -19,7 +19,7 @@ export const de_de_workbench_page = {
     reset: "Dateidaten zurücksetzen",
     translation_task: "Übersetzung",
     start_translation: "Übersetzung starten",
-    reset_task_all: "Alle Daten zurücksetzen",
+    reset_all_tooltip: "Übersetzungsdaten auf den Ausgangszustand zurücksetzen",
   },
   dialog: {
     start_translation: {

@@ -1,5 +1,5 @@
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
-import { Pencil, Recycle } from "lucide-react";
+import { BrushCleaning, Pencil } from "lucide-react";
 import { type JSX, useMemo, useState } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -159,7 +159,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                   disabled={props.readonly}
                   onClick={() => props.on_reset(payload.row_id)}
                 >
-                  <Recycle data-icon="inline-start" />
+                  <BrushCleaning data-icon="inline-start" />
                   {t("workbench_page.action.reset")}
                 </AppContextMenuItem>
               </AppContextMenuGroup>

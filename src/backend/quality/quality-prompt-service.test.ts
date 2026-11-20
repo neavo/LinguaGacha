@@ -27,10 +27,7 @@ describe("QualityPromptService", () => {
     const project_path = path.join(create_temp_dir(), "overrides.lg");
     await database.create_project(project_path);
     session_state.mark_loaded(project_path);
-    const template_dir = path.join(app_root, "builtin", "translation_prompt", "template", "zh");
-    fs.mkdirSync(template_dir, { recursive: true });
-    for (const file of ["base.txt", "prefix.txt", "suffix.txt"])
-      fs.writeFileSync(path.join(template_dir, file), "默认第一版");
+    const default_path = write_template(app_root, "默认第一版");
     expect(await database.get_rule_text(project_path, "translation_prompt")).toBeNull();
     let revision = 0;
     const output = path.join(app_root, "export.txt");
@@ -42,7 +39,7 @@ describe("QualityPromptService", () => {
       });
       await database.close();
       expect(await database.get_rule_text(project_path, "translation_prompt")).toBe(text);
-      fs.writeFileSync(path.join(template_dir, "base.txt"), "默认第二版");
+      fs.writeFileSync(default_path, "默认第二版");
       await service.export({ path: output });
       expect(fs.readFileSync(output, "utf-8")).toBe(text ?? "默认第二版");
       expect(await database.get_all_meta(project_path)).toMatchObject({
@@ -51,14 +48,34 @@ describe("QualityPromptService", () => {
       });
     }
   });
-  it("用户提示词预设删除完成后才返回，内置资源受保护", async () => {
+  it("非 ASCII 预设可以列出、读取、重命名和删除，新文件用 NFC 命名", async () => {
+    const { service, app_root } = create_service();
+    const directory = path.join(app_root, "userdata", "translation_prompt");
+    const legacy_name = "中文 Português";
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, `${legacy_name.normalize("NFD")}.txt`), "原始正文");
+    const legacy_id = `user:${legacy_name}.txt`;
+    expect(service.list_presets({}).user_presets).toMatchObject([{ virtual_id: legacy_id }]);
+    expect(service.read_preset({ virtual_id: legacy_id })).toEqual({ text: "原始正文" });
+    service.save_preset({ name: legacy_name, text: "覆盖正文" });
+    expect(fs.readdirSync(directory)).toHaveLength(1);
+
+    expect(
+      service.rename_preset({ virtual_id: legacy_id, new_name: "한국어".normalize("NFD") }),
+    ).toMatchObject({ item: { name: "한국어", virtual_id: "user:한국어.txt" } });
+    expect(service.read_preset({ virtual_id: "user:한국어.txt" })).toEqual({ text: "覆盖正文" });
+    await service.delete_preset({ virtual_id: "user:한국어.txt" });
+    expect(service.list_presets({}).user_presets).toEqual([]);
+    await expect(service.delete_preset({ virtual_id: "builtin:中文.txt" })).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+  });
+
+  it("保存时拒绝 Windows 设备名", () => {
     const { service } = create_service();
-    service.save_preset({ name: "delete-fixture", text: "fixture" });
-    const result = await service.delete_preset({ virtual_id: "user:delete-fixture.txt" });
-    expect(fs.existsSync(String(result.path))).toBe(false);
-    await expect(
-      service.delete_preset({ virtual_id: "builtin:delete-fixture.txt" }),
-    ).rejects.toMatchObject({ code: "request.validation_failed" });
+    expect(() => service.save_preset({ name: "CON", text: "fixture" })).toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
   });
   const cleanup_paths: string[] = [];
   const cleanup_databases: ProjectDatabase[] = [];
@@ -74,22 +91,14 @@ describe("QualityPromptService", () => {
 
   it("读取翻译模板时填充输出格式占位符", () => {
     const { service, app_root } = create_service();
-    const template_dir = path.join(app_root, "builtin", "translation_prompt", "template", "zh");
-    fs.mkdirSync(template_dir, { recursive: true });
-    fs.writeFileSync(path.join(template_dir, "base.txt"), "默认提示词", "utf-8");
-    fs.writeFileSync(path.join(template_dir, "prefix.txt"), "固定前缀", "utf-8");
-    fs.writeFileSync(
-      path.join(template_dir, "suffix.txt"),
-      "输出 JSONLINE\n{translation_output_format}",
-      "utf-8",
-    );
-
-    const result = service.get_template({ task_type: "translation" });
-    const template = result["template"] as Record<string, string>;
-
-    expect(template["suffix_text"]).toBe(
+    write_template(app_root, "\uFEFF默认提示词\n");
+    const { template } = service.get_template({});
+    expect(template.suffix_text).toBe(
       `输出 JSONLINE\n${build_translation_output_format("text", "zh")}`,
     );
+    expect(service.read_preset({ virtual_id: "builtin:中文.txt" })).toEqual({
+      text: template.default_text,
+    });
   });
 
   it("读取当前任务类型提示词切片与 revision", () => {
@@ -160,6 +169,22 @@ describe("QualityPromptService", () => {
       }),
     ).not.toThrow();
   });
+
+  function write_template(app_root: string, text: string): string {
+    const prompt_dir = path.join(app_root, "builtin", "translation_prompt");
+    const template_dir = path.join(prompt_dir, "template", "zh");
+    const preset_dir = path.join(prompt_dir, "preset");
+    fs.mkdirSync(template_dir, { recursive: true });
+    fs.mkdirSync(preset_dir, { recursive: true });
+    fs.writeFileSync(path.join(template_dir, "prefix.txt"), "固定前缀");
+    fs.writeFileSync(
+      path.join(template_dir, "suffix.txt"),
+      "输出 JSONLINE\n{translation_output_format}",
+    );
+    const default_path = path.join(preset_dir, "中文.txt");
+    fs.writeFileSync(default_path, text);
+    return default_path;
+  }
 
   /** 组合真实设置、项目写入口与最小缓存，隔离每个用例的文件和运行租约。 */
   function create_service(

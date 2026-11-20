@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { BrushCleaning, Play, ScanText } from "lucide-react";
+import { Play, ScanText } from "lucide-react";
 
 import "@frontend/features/batch-task/batch-task.css";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -18,29 +18,20 @@ import {
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import { SegmentedProgress } from "@frontend/widgets/segmented-progress/segmented-progress";
-import type { TranslationTaskActionKind } from "@shared/batch-translation/batch-translation";
 
 type WorkbenchTranslationMenuProps = {
   active: boolean;
   workbench_stats: ProjectTranslationStats | null;
   disabled: boolean;
-  busy: boolean;
   model_selection: ModelSelectionController;
-  active_task_action_kind: TranslationTaskActionKind | null;
   can_start: boolean;
   on_request_start: () => void;
-  on_request_reset: (kind: "reset-all") => void;
 };
 
-/**
- * 翻译任务菜单展示进度并提供模型选择、开始与重置操作。
- *
- * 页面决定启动方式，运行事实和重置动作由会话层提供。
- */
+/** 翻译菜单展示进度、开始翻译入口与模型选择。 */
 export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): JSX.Element {
   const { t } = useI18n();
-  const action_items_disabled =
-    props.active || props.busy || props.disabled || props.model_selection.updating;
+  const action_items_disabled = props.active || props.disabled || props.model_selection.updating;
   const progress_percent = props.workbench_stats?.completion_percent;
 
   return (
@@ -111,25 +102,6 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
           usage="translation"
           disabled={action_items_disabled}
         />
-
-        <AppDropdownMenuSeparator />
-
-        <AppDropdownMenuGroup>
-          <AppDropdownMenuItem
-            variant="destructive"
-            disabled={action_items_disabled}
-            onClick={() => {
-              props.on_request_reset("reset-all");
-            }}
-          >
-            {props.active_task_action_kind === "reset-all" && props.busy ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <BrushCleaning data-icon="inline-start" />
-            )}
-            {t("workbench_page.action.reset_task_all")}
-          </AppDropdownMenuItem>
-        </AppDropdownMenuGroup>
       </AppDropdownMenuContent>
     </AppDropdownMenu>
   );

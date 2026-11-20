@@ -12,7 +12,7 @@ import { DocumentEditorToolbar } from "./document-editor-toolbar";
 import type { ProjectWriteResult } from "@shared/project-event";
 import { useAutosaveDocument } from "./use-autosave-document";
 
-/** 每个工程只有一篇知识，随工程建立且不能删除，自动保存接入离页流程。 */
+/** 工程知识自动保存，重置与离页共用同一写入流程。 */
 export function ProjectKnowledgeEditor({ on_back }: { on_back: () => void }): JSX.Element {
   const { t } = useI18n();
   const editor = useProjectKnowledgeEditor();
@@ -34,6 +34,9 @@ export function ProjectKnowledgeEditor({ on_back }: { on_back: () => void }): JS
     >
       <DocumentEditorToolbar
         path={[PROJECT_KNOWLEDGE_DOCUMENT]}
+        action="reset"
+        confirm_description={t("knowledge_page.editor.reset_knowledge_confirm")}
+        on_action={editor.reset}
         busy={editor.busy || leaving}
         locked={locked || !editor.file}
         status={
@@ -100,59 +103,76 @@ export function ProjectKnowledgeEditor({ on_back }: { on_back: () => void }): JS
   );
 }
 
+/** 编辑器统一使用 LF，草稿和保存基线按同一换行形式比较。 */
+function read_knowledge_text(file: KnowledgeFile): string {
+  return file.text.replace(/\r\n?/g, "\n");
+}
+
 /** 页面只持有当前草稿，指纹冲突与事务写入交给工程服务。 */
 function useProjectKnowledgeEditor() {
   const { commit_project_write } = useDesktopState();
   const locked = useRuntimeSnapshot().owner !== null;
-  const operation = useRef<Promise<boolean> | null>(null); // 离页等待冲突恢复命令。
+  const operation = useRef<Promise<boolean> | null>(null); // 暂停自动保存，离页等待同一命令。
+  /** 自动保存、覆盖和重置共用工程写入回执。 */
+  async function save(file: KnowledgeFile, text: string | null): Promise<KnowledgeFile> {
+    const result = await commit_project_write({
+      operation: "knowledge.save",
+      run: () =>
+        api_fetch<ProjectWriteResult & { document: KnowledgeFile }>("/api/project/knowledge/save", {
+          fp: file.fp,
+          text,
+        }),
+    });
+    return result.payload.document;
+  }
   const autosave = useAutosaveDocument<KnowledgeFile>({
     locked,
-    read_text: (file) => file.text.replace(/\r\n?/g, "\n"),
-    save: async (file, draft) => {
-      const result = await commit_project_write({
-        operation: "knowledge.save",
-        run: () =>
-          api_fetch<ProjectWriteResult & { document: KnowledgeFile }>(
-            "/api/project/knowledge/save",
-            { fp: file.fp, text: draft },
-          ),
-      });
-      return result.payload.document;
-    },
+    read_text: read_knowledge_text,
+    paused: () => operation.current !== null,
+    save,
   });
   const { current, mounted, update, report, cancel, flush, write } = autosave;
+  const replace_document = useCallback(
+    (file: KnowledgeFile) =>
+      update({
+        file,
+        draft: read_knowledge_text(file),
+        save_failure: null,
+        reset_count: current.current.reset_count + 1, // 替换基线后清除旧正文的撤销历史。
+      }),
+    [current, update],
+  );
   /** 读取成功后替换基线，已取消的读取不能覆盖当前草稿。 */
   const reload = useCallback(
     async (signal?: AbortSignal) => {
       update({ loading: true });
       try {
         const file = await api_fetch<KnowledgeFile>("/api/project/knowledge/read", {}, signal);
-        if (!signal?.aborted && mounted.current)
-          update({
-            file,
-            draft: file.text.replace(/\r\n?/g, "\n"),
-            save_failure: null,
-            reset_count: current.current.reset_count + 1,
-          });
+        if (!signal?.aborted && mounted.current) replace_document(file);
       } catch (error) {
         if (!signal?.aborted && mounted.current) report(error, "load_failed");
       } finally {
         if (!signal?.aborted && mounted.current) update({ loading: false });
       }
     },
-    [current, mounted, update, report],
+    [mounted, replace_document, update, report],
   );
   useEffect(() => {
     const controller = new AbortController();
     void reload(controller.signal);
     return () => controller.abort();
   }, [reload]);
-  /** 恢复命令独占，失败时保留草稿与恢复入口。 */
-  async function run(action: () => Promise<boolean>) {
+  /** 命令接管自动保存，等待在途写入后读取最新指纹。 */
+  async function run(action: (file: KnowledgeFile) => Promise<void>) {
     if (operation.current || locked) return false;
     cancel();
     update({ busy: true });
-    const pending = action().catch((error: unknown) => {
+    const pending = (async () => {
+      await write.current;
+      const latest = await api_fetch<KnowledgeFile>("/api/project/knowledge/read", {});
+      await action(latest);
+      return true;
+    })().catch((error: unknown) => {
       report(error);
       return false;
     });
@@ -164,7 +184,7 @@ function useProjectKnowledgeEditor() {
       update({ busy: false });
     }
   }
-  /** 先等待恢复命令，再判断最新草稿是否已保存。 */
+  /** 先等待文档命令，再判断最新草稿是否已保存。 */
   const finish = useCallback(async () => {
     if (operation.current && !(await operation.current)) return false;
     return flush();
@@ -177,22 +197,20 @@ function useProjectKnowledgeEditor() {
     compose: autosave.compose,
     flush: finish,
     reload: () => reload(),
+    reset: () =>
+      run(async (latest) => {
+        replace_document(await save(latest, null));
+      }),
     /** 放弃时换成最新正文，覆盖时以最新指纹重新保存草稿。 */
     recover: (overwrite: boolean) =>
-      run(async () => {
-        if (write.current) await write.current;
-        const file = await api_fetch<KnowledgeFile>("/api/project/knowledge/read", {});
-        update({
-          file,
-          save_failure: null,
-          ...(!overwrite
-            ? {
-                draft: file.text.replace(/\r\n?/g, "\n"),
-                reset_count: current.current.reset_count + 1,
-              }
-            : {}),
-        });
-        return overwrite ? flush() : true;
+      run(async (latest) => {
+        if (!overwrite) {
+          replace_document(latest);
+          return;
+        }
+        const draft = current.current.draft;
+        const file = draft === read_knowledge_text(latest) ? latest : await save(latest, draft);
+        update({ file, draft: read_knowledge_text(file), save_failure: null });
       }),
   };
 }

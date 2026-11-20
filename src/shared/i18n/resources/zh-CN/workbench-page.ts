@@ -16,7 +16,7 @@ export const zh_cn_workbench_page = {
     reset: "重置文件数据",
     translation_task: "翻译",
     start_translation: "开始翻译",
-    reset_task_all: "重置所有数据",
+    reset_all_tooltip: "置翻译数据为初始状态",
   },
   dialog: {
     start_translation: {

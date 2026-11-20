@@ -16,6 +16,7 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import { fill_translation_output_format_placeholder } from "../../shared/text/translation-output-format";
+import { validate_file_name } from "../../shared/utils/file-name";
 
 /**
  * 工程提示词查询、写入、模板与预设文件操作。
@@ -57,14 +58,16 @@ export class QualityPromptService {
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     const prompt_language = resolve_prompt_template_language(config.app_language);
     const template_dir = this.paths.get_prompt_template_dir(prompt_language);
+    const default_path = path.join(
+      this.paths.get_prompt_builtin_preset_dir(),
+      TRANSLATION_PROMPT.default_preset_files[prompt_language],
+    );
     const fill_template_section = (text: string): string => {
       return fill_translation_output_format_placeholder(text, "text", prompt_language);
     };
     return {
       template: {
-        default_text: fill_template_section(
-          this.read_text_file(path.join(template_dir, "base.txt")),
-        ),
+        default_text: fill_template_section(this.read_text_file(default_path)),
         prefix_text: fill_template_section(
           this.read_text_file(path.join(template_dir, "prefix.txt")),
         ),
@@ -157,16 +160,10 @@ export class QualityPromptService {
    * 保存用户提示词预设。
    */
   public save_preset(request: JsonRecord): JsonRecord {
-    const directory = this.paths.get_prompt_user_preset_dir();
-    this.native_fs.make_dir(directory);
-    const preset_file = resolve_preset_file({
-      virtual_id: `user:${this.normalize_preset_name(String(request["name"] ?? ""))}.txt`,
-      extension: ".txt",
-      builtin_directory: directory,
-      user_directory: directory,
-    });
-    this.native_fs.write_file_sync(preset_file.file_path, String(request["text"] ?? "").trim());
-    return { path: preset_file.file_path.replace(/\\/g, "/") };
+    const file_path = this.resolve_user_preset_path(String(request["name"] ?? ""));
+    this.native_fs.make_dir(path.dirname(file_path));
+    this.native_fs.write_file_sync(file_path, String(request["text"] ?? "").trim());
+    return { path: file_path.replace(/\\/g, "/") };
   }
 
   /**
@@ -177,15 +174,11 @@ export class QualityPromptService {
     if (current_file.source !== "user") {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    const directory = this.paths.get_prompt_user_preset_dir();
-    const new_file = resolve_preset_file({
-      virtual_id: `user:${this.normalize_preset_name(String(request["new_name"] ?? ""))}.txt`,
-      extension: ".txt",
-      builtin_directory: directory,
-      user_directory: directory,
-    });
-    this.native_fs.rename(current_file.file_path, new_file.file_path);
-    return { item: this.build_preset_item("user", new_file.file_name, directory) };
+    const file_path = this.resolve_user_preset_path(String(request["new_name"] ?? ""));
+    this.native_fs.rename(current_file.file_path, file_path);
+    return {
+      item: this.build_preset_item("user", path.basename(file_path), path.dirname(file_path)),
+    };
   }
 
   /**
@@ -242,40 +235,39 @@ export class QualityPromptService {
       builtin_directory: path_dir,
       user_directory: path_dir,
     });
+    const normalized_name = preset_file.file_name;
     return {
-      name: file_name.slice(0, -".txt".length),
-      file_name,
-      virtual_id: `${source}:${file_name}`,
-      path: preset_file.file_path.replace(/\\/g, "/"),
+      name: normalized_name.slice(0, -".txt".length),
+      file_name: normalized_name,
+      virtual_id: `${source}:${normalized_name}`,
+      path: path.join(path_dir, file_name).replace(/\\/g, "/"), // 展示路径沿用磁盘文件名。
       type: source,
     };
   }
 
   /** 按虚拟 ID 解析翻译提示词预设文件。 */
   private resolve_prompt_preset_file(virtual_id: string): ReturnType<typeof resolve_preset_file> {
-    return resolve_preset_file({
-      virtual_id,
-      extension: ".txt",
-      builtin_directory: this.paths.get_prompt_builtin_preset_dir(),
-      user_directory: this.paths.get_prompt_user_preset_dir(),
-    });
+    return resolve_preset_file(
+      {
+        virtual_id,
+        extension: TRANSLATION_PROMPT.preset_extension,
+        builtin_directory: this.paths.get_prompt_builtin_preset_dir(),
+        user_directory: this.paths.get_prompt_user_preset_dir(),
+      },
+      this.native_fs,
+    );
   }
 
-  /** 预设名去空白后仍为空则拒绝。 */
-  private normalize_preset_name(name: string): string {
-    const normalized_name = name.trim();
-    if (normalized_name === "") {
-      throw new AppErrors.AppError("request.validation_failed");
-    }
-    return normalized_name;
+  /** 验证新名称可跨平台写入，已有预设沿用等价的磁盘文件名。 */
+  private resolve_user_preset_path(name: string): string {
+    const trimmed = name.trim();
+    validate_file_name(trimmed);
+    return this.resolve_prompt_preset_file(`user:${trimmed}.txt`).file_path;
   }
 
   /** 读取文本并去掉 BOM 与首尾空白。 */
   private read_text_file(file_path: string): string {
-    return this.native_fs
-      .read_text_file(file_path)
-      .replace(/^\uFEFF/u, "")
-      .trim();
+    return this.native_fs.read_text_file(file_path).trim();
   }
 
   /** 导出路径没有 .txt 时自动补齐。 */

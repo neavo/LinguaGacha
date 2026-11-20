@@ -24,41 +24,32 @@ export function build_user_preset_virtual_id(
 }
 
 /**
- * 预设名只裁掉首尾空白，文件名合法性继续由后端写入边界负责。
- */
-export function normalize_preset_name(name: string): string {
-  return name.trim();
-}
-
-/**
- * 重名检查只覆盖用户预设，并在重命名时排除当前虚拟 ID。
+ * 按 NFC 忽略大小写检查用户预设重名，重命名时排除当前预设。
  */
 export function has_casefold_duplicate_preset(
   preset_items: readonly PresetItem[],
   target_virtual_id: string,
   current_virtual_id: string | null,
 ): boolean {
-  const target_key = target_virtual_id.toLocaleLowerCase();
-
+  const target_key = target_virtual_id.normalize("NFC").toLocaleLowerCase();
+  const current_id = current_virtual_id?.normalize("NFC"); // 已有规则预设可能仍使用磁盘原名。
   return preset_items.some((item) => {
-    return (
-      item.type === "user" &&
-      item.virtual_id !== current_virtual_id &&
-      item.virtual_id.toLocaleLowerCase() === target_key
-    );
+    const id = item.virtual_id.normalize("NFC");
+    return item.type === "user" && id !== current_id && id.toLocaleLowerCase() === target_key;
   });
 }
 
 /**
- * 保持“内置在前、用户在后”的菜单顺序，并从设置快照投影唯一默认项。
+ * 内置预设排在用户预设之前，按等价 ID 标记已有设置中的默认项。
  */
 export function decorate_preset_items(
   builtin_presets: readonly PresetItem[],
   user_presets: readonly PresetItem[],
   default_virtual_id: string,
 ): PresetItem[] {
+  const default_id = default_virtual_id.normalize("NFC");
   return [...builtin_presets, ...user_presets].map((item) => ({
     ...item,
-    is_default: item.virtual_id === default_virtual_id,
+    is_default: item.virtual_id.normalize("NFC") === default_id,
   }));
 }

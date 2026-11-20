@@ -24,20 +24,26 @@ export class ProjectKnowledgeService {
   /** 页面与 AGENT 工作区共用的读取入口，旧工程尚未保存时返回模板。 */
   public async read(project = this.session.require_loaded_project_path()): Promise<KnowledgeFile> {
     const stored = await this.database.read_knowledge(project);
-    return project_knowledge_file(stored, resolve_app_locale(this.settings.read_app_language()));
+    return this.make_document(stored);
   }
 
-  /** 保存须携带读取时的指纹，旧工程首次保存时才落盘。 */
+  /** 按读取时的指纹保存正文，或清除覆盖后回到默认模板。 */
   public save(request: JsonRecord): Promise<ProjectWriteResult & { document: KnowledgeFile }> {
     return this.gate.run_project_write(async () => {
-      if (typeof request.text !== "string" || typeof request.fp !== "string")
+      const { text, fp } = request;
+      if ((text !== null && typeof text !== "string") || typeof fp !== "string")
         throw new AppError("request.validation_failed");
       const write = await this.writes.save_knowledge({
         projectPath: this.session.require_loaded_project_path(),
-        fp: request.fp,
-        text: request.text,
+        fp,
+        text,
       });
-      return { ...write, document: await this.read() };
+      return { ...write, document: this.make_document(text) }; // 事务原样保存正文或清除覆盖。
     });
+  }
+
+  /** 读取与保存回执使用同一模板语言。 */
+  private make_document(text: string | null): KnowledgeFile {
+    return project_knowledge_file(text, resolve_app_locale(this.settings.read_app_language()));
   }
 }

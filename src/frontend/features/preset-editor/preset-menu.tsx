@@ -1,5 +1,6 @@
 import { Fragment, type JSX } from "react";
 import {
+  BrushCleaning,
   FileInput,
   FileText,
   FileCheck2,
@@ -7,7 +8,6 @@ import {
   Pin,
   PinOff,
   PencilLine,
-  RotateCcw,
   Save,
   Trash2,
 } from "lucide-react";
@@ -78,7 +78,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
             disabled={props.project_write_disabled}
             onClick={props.on_request_reset}
           >
-            <RotateCcw />
+            <BrushCleaning />
             {t("app.action.reset")}
           </AppDropdownMenuItem>
           <AppDropdownMenuItem onClick={props.on_request_save}>

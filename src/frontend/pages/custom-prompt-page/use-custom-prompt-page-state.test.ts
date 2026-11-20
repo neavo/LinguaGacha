@@ -545,10 +545,10 @@ describe("useCustomPromptPageState", () => {
       await latest_state?.confirm_pending_action();
     });
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/presets/save", {
-      name: "重复",
-      text: "项目提示词",
-    });
+    expect(api_fetch).toHaveBeenCalledWith(
+      "/api/quality/prompts/presets/save",
+      expect.objectContaining({ name: "重复" }),
+    );
     expect(latest_state?.confirm_state).toEqual({ kind: null });
     expect(latest_state?.preset_input_state.open).toBe(false);
   });

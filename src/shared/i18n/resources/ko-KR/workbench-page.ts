@@ -18,7 +18,7 @@ export const ko_kr_workbench_page = {
     reset: "파일 데이터 초기화",
     translation_task: "번역",
     start_translation: "번역 시작",
-    reset_task_all: "모든 데이터 초기화",
+    reset_all_tooltip: "번역 데이터를 초기 상태로 되돌리기",
   },
   dialog: {
     start_translation: {

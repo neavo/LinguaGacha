@@ -19,7 +19,7 @@ export const en_us_workbench_page = {
     reset: "Reset file data",
     translation_task: "Translation",
     start_translation: "Start translation",
-    reset_task_all: "Reset all data",
+    reset_all_tooltip: "Reset translation data to its initial state",
   },
   dialog: {
     start_translation: {

@@ -30,7 +30,13 @@ describe("ProjectDefaultPresetReader", () => {
       JsonTool.stringifyStrict([{ src: "勇者", dst: "Hero" }]),
     );
     write_file(
-      path.join(app_root, "builtin", "translation_prompt", "preset", "base.txt"),
+      path.join(
+        app_root,
+        "builtin",
+        "translation_prompt",
+        "preset",
+        "Português.txt".normalize("NFD"),
+      ),
       "\uFEFF翻译提示词\n",
     );
     const log_manager = create_log_manager();
@@ -39,7 +45,7 @@ describe("ProjectDefaultPresetReader", () => {
       log_manager,
       config: {
         glossary_default_preset: "builtin:base.json",
-        translation_custom_prompt_default_preset: "builtin:base.txt",
+        translation_custom_prompt_default_preset: "builtin:Português.txt",
       },
     });
 

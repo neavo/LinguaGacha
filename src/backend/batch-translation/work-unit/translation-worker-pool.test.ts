@@ -4,7 +4,7 @@ import {
   read_project_language_settings,
 } from "../../../domain/project-settings";
 import { read_text_quality_snapshot } from "../../../shared/text/text-processing";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -14,7 +14,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TranslationWorkerPool } from "./translation-worker-pool";
 import { AppError } from "../../../shared/error";
 
-const cleanup_roots: string[] = []; // 记录测试创建的临时内置资产根和 worker 文件目录
+const cleanup_roots: string[] = []; // 只清理测试创建的 worker 文件目录。
+const builtin_root = path.resolve(process.cwd(), "builtin"); // 进程内执行消费随产品发布的资源。
 
 describe("TranslationWorkerPool", () => {
   afterEach(async () => {
@@ -40,7 +41,7 @@ describe("TranslationWorkerPool", () => {
       }),
     };
     const pool = new TranslationWorkerPool({
-      builtinRoot: await create_template_root(),
+      builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
 
@@ -256,7 +257,7 @@ parentPort.on("message", (message) => {
 
   it("释放后拒绝新任务并返回结构化运行时错误", async () => {
     const pool = new TranslationWorkerPool({
-      builtinRoot: await create_template_root(),
+      builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
 
@@ -271,7 +272,7 @@ parentPort.on("message", (message) => {
 
   it("执行失败经快照还原原始 AppError", async () => {
     const pool = new TranslationWorkerPool({
-      builtinRoot: await create_template_root(),
+      builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
     const failure = new AppError("model.provider_failed", {
@@ -313,7 +314,7 @@ parentPort.on("message", (message) => {
       }),
     };
     const pool = new TranslationWorkerPool({
-      builtinRoot: await create_template_root(),
+      builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
     const execution = pool.execute_unit(
@@ -361,20 +362,6 @@ function create_translation_unit(unit_id: string) {
       followings: [],
     },
   };
-}
-
-/**
- * in_process runner 测试需要真实模板目录，用临时内置资产根隔离资源读取。
- */
-async function create_template_root(): Promise<string> {
-  const builtin_root = await create_temp_root();
-  const dir = path.join(builtin_root, "translation_prompt", "template", "zh");
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
-  await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
-  await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
-  await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
-  return builtin_root;
 }
 
 /**
