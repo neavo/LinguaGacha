@@ -43,7 +43,6 @@ const FALLBACK_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
 const LARGE_CONTEXT_WINDOW_THRESHOLD = 500_000;
 const SMALL_AUTOMATIC_OUTPUT_LIMIT = 32_000;
 const LARGE_AUTOMATIC_OUTPUT_LIMIT = 64_000;
-const MISTRAL_RESPONSES_DEEPSEEK_FLASH_ID = "deepseek-v4-1-flash-1017";
 
 /** 产品等级到 Pi 等级的唯一投影，未进入该表的值不会发给 adapter。 */
 const PRODUCT_TO_PI_LEVEL = {
@@ -288,8 +287,7 @@ function select_pi_thinking_template(
   if (
     exact.length === 0 &&
     endpoint.api === "OpenAIResponses" &&
-    base_url === MISTRAL_API_BASE_URL &&
-    configured_id === MISTRAL_RESPONSES_DEEPSEEK_FLASH_ID
+    base_url === MISTRAL_API_BASE_URL
   ) {
     // Pi 在原生 Chat 目录提供同一部署的档位。read_template_compat 会按协议筛选兼容字段。
     const chat = matches.find(
