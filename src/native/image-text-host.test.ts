@@ -104,10 +104,22 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
             return radius <= 1 ? Math.max(1,(1-radius)*49) : 0;
           }).page[0];
           round.regionId = 'round';
+          // 复现漫画竖排气泡：上缘对齐、规避「我…」单字+符号列、列长均衡且括号/引号/句逗/省略号/破折号原生竖排。
+          const manga = page('vertical-rl','水原还没真的「喜欢上」我，…—', [255,255,255], 96, 128).page[0];
+          manga.regionId = 'manga';
+          // 显式单换行强制分列，同组竖排列仍保持上缘对齐。
+          const manualBreak = page('vertical-rl','那次接吻\\n对水原来说\\n“调查”。', [255,255,255], 96, 140).page[0];
+          manualBreak.regionId = 'manual-break';
+          // 横排多行同样执行均衡断行与防单字/符号末行。
+          const horizontalBalanced = page('horizontal-tb','那次接吻对水原来说也只是调查的一环…', [255,255,255], 160, 80).page[0];
+          horizontalBalanced.regionId = 'horizontal-balanced';
           layouts = [];
-          const paints = await host({ kind:'render_image_text_page', page:[balanced, largerBubble, round] });
+          const paints = await host({
+            kind:'render_image_text_page',
+            page:[balanced, largerBubble, round, manga, manualBreak, horizontalBalanced],
+          });
           assert(paints.every(paint => paint.png));
-          const [balancedLines, largerBubbleLines, roundLines] = layouts;
+          const [balancedLines, largerBubbleLines, roundLines, mangaLines, manualBreakLines, horizontalLines] = layouts;
           layouts = undefined;
           assert.equal(paints[0].fontSize, balancedLines[0].size);
           assert.equal(balancedLines.map(line => line.text).join(''), text);
@@ -116,22 +128,35 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
           assert(largerBubbleLines[0].size > balancedLines[0].size, 'The same translation should grow in a larger container');
           assert(roundLines.length > 1 && roundLines[0].text.length > 1 && roundLines.at(-1).text.length > 1,
             'An oval should avoid single-character outer columns: '+JSON.stringify(roundLines));
-          for (const lines of [balancedLines, roundLines]) {
-            assert(lines.every(line => line.top === lines[0].top), 'Columns in the same paragraph should share a top: '+JSON.stringify(lines));
+          for (const lines of [balancedLines, roundLines, mangaLines, manualBreakLines]) {
+            assert(lines.every(line => line.top === lines[0].top), 'Columns in the same group should share a top: '+JSON.stringify(lines));
+          }
+          assert.equal(mangaLines.map(line => line.text).join(''), '水原还没真的﹁喜欢上﹂我︐︙︱');
+          assert.equal(manualBreakLines.length, 3, 'Single explicit breaks split columns within one aligned group');
+          assert.equal(manualBreakLines.at(-1).text, '﹁调查﹂︒');
+          for (const lines of [mangaLines, horizontalLines]) {
+            assert(lines.length >= 2 && lines.every(line => (line.text.match(/[\\p{L}\\p{N}]/gu) ?? []).length >= 2),
+              'Multi-line layout should avoid orphan symbol or single-character lines: '+JSON.stringify(lines));
+            const lengths = lines.map(line => Array.from(line.text).length);
+            assert(Math.max(...lengths) - Math.min(...lengths) <= 2,
+              'Lines should stay balanced: '+JSON.stringify(lines));
           }
 
           const adjusted = page('vertical-rl','  甲　！？乙⁉\\n\\n丙丁戊己庚辛？', [255,255,255], 164, 156);
           adjusted.page[0].fontSize = 24;
           adjusted.page.push({...adjusted.page[0],regionId:'too-large',fontSize:100});
-          // 气泡只有一列两格，连续问叹号必须在测量时就合为一格才能放下。
-          const narrow = page('vertical-rl','甲！！！！', [255,255,255], 44, 70).page[0];
+          // 气泡只有一列两格，最多合并 3 个连续问叹号为一格；超过 3 个拆成多组。
+          const narrow = page('vertical-rl','甲！！！', [255,255,255], 44, 70).page[0];
           adjusted.page.push({...narrow,regionId:'narrow',fontSize:24});
+          const overflowMarks = page('vertical-rl','甲！！！！', [255,255,255], 44, 110).page[0];
+          adjusted.page.push({...overflowMarks,regionId:'overflow-marks',fontSize:24});
           layouts = [];
-          const [fixed, tooLarge, combined] = await host(adjusted);
+          const [fixed, tooLarge, combined, splitMarks] = await host(adjusted);
           assert(fixed.png);
           assert.equal(tooLarge.png, null);
-          assert(combined.png, 'A punctuation run should fit in one cell');
-          const [fixedColumns, narrowColumns] = layouts;
+          assert(combined.png, 'Up to 3 punctuation marks should fit in one cell');
+          assert(splitMarks.png, 'More than 3 punctuation marks should split into multiple cells');
+          const [fixedColumns, narrowColumns, overflowColumns] = layouts;
           layouts = undefined;
           const blank = fixedColumns.findIndex(({text}) => text === '');
           assert(blank > 0, 'Explicit empty lines are kept');
@@ -139,8 +164,8 @@ it("真实 Chromium 保持排版、像素门禁和取消回收", async () => {
           assert(fixedColumns.length > blank + 2, 'Text after hard breaks can still wrap');
           assert.equal(fixedColumns.slice(blank + 1).map(({text}) => text).join(''), '丙丁戊己庚辛？');
           assert(fixedColumns.every(({size}) => size === 24));
-          const marks = [...fixedColumns, ...narrowColumns].flatMap(line => line.marks);
-          assert.deepEqual(marks.map(({text}) => text), ['！？', '⁉', '？', '！！！！']);
+          const marks = [...fixedColumns, ...narrowColumns, ...overflowColumns].flatMap(line => line.marks);
+          assert.deepEqual(marks.map(({text}) => text), ['！？', '⁉', '？', '！！！', '！！！', '！']);
           assert(marks.every(({advance}) => Math.abs(advance - 24) < 1), 'Each mark group occupies one vertical cell');
           const report = ${JSON.stringify(report)};
           if(report) {
