@@ -59,7 +59,7 @@ export const de_de_project = {
     deprecated_tooltip:
       "Nicht mehr die beste Wahl. Bitte bevorzugt die oben genannten Formate verwenden",
     empty_project_hint:
-      "Keine Dateien auswählen: Einfach auf „{ACTION}“ klicken und die Dateien dann in das AGENT-Eingabefeld ziehen …!",
+      "Ohne Dateiauswahl auf „{ACTION}“ klicken, dann die Dateien ins AGENT-Eingabefeld ziehen …!",
     generic: "Generische Daten",
     title: "Besonders optimierte Formate",
     txt: "Nur Text",
@@ -84,7 +84,7 @@ export const de_de_project = {
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce Spieldatei",
     deprecated_title: "Besonders optimierte Formate (Unterstützung endet bald)",
     any_format_notice:
-      "Auch andere Videos, Audiodateien, Spiele und E-Books werden unterstützt. Kein Problem, wenn sie oben nicht aufgeführt sind …!",
+      "Wir unterstützen auch andere Formate für Bilder, Comics, Spiele, E-Books, Audio und Video …!",
     rpy: "RenPy-Spieltext",
     xlsx: "XLSX-Spieltext",
     trans_export: "Translator++ Spieltext",

@@ -80,7 +80,7 @@ export const ko_kr_project = {
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce 게임 파일",
     deprecated_title: "특별히 최적화된 형식 (지원 종료 예정)",
     any_format_notice:
-      "다른 동영상, 오디오, 게임, 전자책도 모두 지원해요. 위 목록에 없어도 전혀 문제없어요 …!",
+      "위 목록에 없어도 문제없어요. 다양한 이미지, 만화, 게임, 전자책, 오디오와 동영상을 지원해요 …!",
     rpy: "RenPy 게임 텍스트",
     xlsx: "XLSX 게임 텍스트",
     trans_export: "Translator++에서 내보낸 게임 텍스트",

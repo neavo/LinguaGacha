@@ -80,7 +80,7 @@ export const ja_jp_project = {
     rpgmaker_rgss: "RPGMAKER XP/VX/VXAce ゲームファイル",
     deprecated_title: "特に最適化された形式（対応終了予定）",
     any_format_notice:
-      "その他の動画、音声、ゲーム、電子書籍にも対応しています。上の一覧になくてもまったく問題ありません …!",
+      "一覧になくても大丈夫。さまざまな画像・漫画・ゲーム・電子書籍・音声・動画に対応しています …!",
     rpy: "RenPy ゲームテキスト",
     xlsx: "XLSX ゲームテキスト",
     trans_export: "Translator++ から出力したゲームテキスト",

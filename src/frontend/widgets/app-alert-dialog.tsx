@@ -123,7 +123,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
           }}
           aria-label={title === null ? props.primaryAction.label : undefined}
           className={cn(
-            "fixed top-1/2 left-1/2 z-(--ui-layer-overlay) flex max-h-[calc(100vh-32px)] w-[calc(100%-32px)] max-w-xs -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "fixed top-1/2 left-1/2 z-(--ui-layer-overlay) flex max-h-[calc(100vh-32px)] w-[calc(100%-32px)] max-w-xs -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-[480px] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             props.contentClassName,
           )}
         >
