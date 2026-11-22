@@ -1,8 +1,3 @@
-import {
-  PDF_DOCUMENT_SCHEMA,
-  PDF_PAGE_SCHEMA,
-  PDF_PAGE_UPDATE_SCHEMA,
-} from "../../../shared/pdf-schema";
 import { Type, type Static } from "typebox";
 
 import {
@@ -23,26 +18,6 @@ export const AGENT_WORKSPACE_FP_SCHEMA = Type.String({
   description: "从当前快照原样复制对象指纹，提交时用它检查对象是否已变化。",
 });
 const NON_NEGATIVE_INTEGER_SCHEMA = Type.Integer({ minimum: 0 });
-
-/** pages 复用 PDF 内容结构，工作区只增加对象身份与并发校验字段。 */
-export const AGENT_WORKSPACE_PAGE_SCHEMA = Type.Object(
-  {
-    file_path: Type.String({ minLength: 1 }),
-    fp: AGENT_WORKSPACE_FP_SCHEMA,
-    digest: PDF_DOCUMENT_SCHEMA.properties.digest,
-    ...PDF_PAGE_SCHEMA.properties,
-  },
-  { additionalProperties: false },
-);
-export const AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA = Type.Object(
-  {
-    file_path: Type.String({ minLength: 1 }),
-    page: PDF_PAGE_SCHEMA.properties.page,
-    fp: AGENT_WORKSPACE_FP_SCHEMA,
-    ...PDF_PAGE_UPDATE_SCHEMA.properties,
-  },
-  { additionalProperties: false },
-);
 
 /** 显式选择模型可读字段，避免格式私有元数据随公开条目结构进入工作区。 */
 export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
@@ -181,7 +156,6 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
       {
         files: NON_NEGATIVE_INTEGER_SCHEMA,
         items: NON_NEGATIVE_INTEGER_SCHEMA,
-        pages: NON_NEGATIVE_INTEGER_SCHEMA,
         items_with_warnings: NON_NEGATIVE_INTEGER_SCHEMA,
         glossary: NON_NEGATIVE_INTEGER_SCHEMA,
         text_preserve: NON_NEGATIVE_INTEGER_SCHEMA,
@@ -193,7 +167,7 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
     files: Type.Array(
       Type.Object(
         {
-          file_path: Type.String({ description: "资产身份，用于关联条目和页面" }),
+          file_path: Type.String({ description: "资产身份，用于关联工程条目" }),
           file_type: Type.String(),
         },
         { additionalProperties: false },

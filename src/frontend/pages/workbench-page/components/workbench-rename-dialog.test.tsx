@@ -12,8 +12,7 @@ function entry(rel_path: string, file_type = "TXT"): WorkbenchFileEntry {
     file_type,
     sort_index: 0,
     progress: {
-      unit: "line",
-      total_count: 0,
+      total_items: 0,
       completed_count: 0,
       skipped_count: 0,
       pending_count: 0,

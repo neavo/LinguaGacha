@@ -1,183 +1,220 @@
 ---
 name: pdf
-description: 翻译、审校、分析、修改 PDF 文件前必须加载。
+description: 翻译、审校、分析、修改 PDF 文件（含 .media 文件）前必须加载。
 ---
 
 # PDF 处理能力
 
-页面模型以 `translation` 的「页面模型」为准。本技能补充 PDF 专属的读取、译稿写法、排版和预览方法。
+内置解析器不识别 PDF，原稿经 `generic-data` 封装为 `.generic` 资产进入工程。处理 PDF 通用包时同时加载 `generic-data`。
 
 阶段导航：
 
 |阶段入口|章节|
 |---|---|
-|原稿与条目|「原稿与条目」「应用接口」「阅读与定位」「准备完整译稿」|
-|翻译后检查|「翻译后检查」「预览与核验」|
+|来源调查|「来源调查」|
+|导入准备|「环境与依赖」「准备与封包」|
+|旧版静态迁移包|按需读取 [旧版 PDF 迁移指南](references/migration.md)|
+|原稿与条目|「条目结构与处置」「分组与视觉翻译」「阅读原页与裁剪」「Markdown 译稿与资源」|
+|翻译后检查|「翻译后检查」|
+|写回与验证|「写回 PDF」「视觉复核与常见问题」|
 |交付说明|「交付说明」|
 
-## 原稿与条目
+阶段例外：PDF 翻译须结合原页版面、图表与图像判断，在当前对话中按每组约 `5` 页逐组翻译（走 `translation` 的当前对话分支，不调用 `batch_item_translation`）。
 
-通过 `ws.contract.datasets.pages.path` 读取 `pages`，身份与字段以 `<workspace_contract>` 为准。原稿读取位置为 `sources/<file_path>`。`page` 是从 1 开始的原稿页码，MuPDF 的页索引从 0 开始。
+# 来源调查
 
-## 应用接口
+按材料形态确定处理入口：
 
-PDF 接口以字节交换文档，MuPDF 对象只在所属实例内使用。
+|材料形态|识别特征|处理入口|
+|---|---|---|
+|原始 `.pdf` 文件|上传目录或本机 `.pdf` 文件，不属于内置解析器范围|按「导入准备」提取页面并封包为 `.generic`|
+|正式 PDF 通用包|`.generic` 资产，展开目录含 `source.pdf`、`pdf.json`、`writeback.mjs` 与非空 `items.json`|按当前契约直接翻译、审校、修改或写回|
+|旧版静态迁移包|`.generic` 资产，展开目录含 `legacy-pdf.json` 且 `items.json` 为空数组 `[]`|先读取 [旧版 PDF 迁移指南](references/migration.md) 完成转换与旧译稿回填|
 
-|入口|用途|
-|---|---|
-|`readPdfDocument(bytes)`|返回 `{ digest, pages }`，即原稿摘要和各页的尺寸、旋转与页码标签。不提取文字|
-|`renderPdfPage(bytes, { page, scale, region? })`|把页面或区域渲染为 PNG 字节|
-|`printPdf(html)`|把静态 HTML 打印为 PDF 字节。打印不执行脚本，也不加载外部资源|
-|`@lg/pdf/mupdf`|应用使用的 MuPDF 实例，API 与 MuPDF.js 相同|
+准备依赖后，调用 `pdf.inspect(source)` 读取原稿摘要（`digest`）、页数、各页尺寸、旋转、页码标签和内嵌文字；内嵌文字稀疏或疑似扫描页时，用 `pdf.renderPage` 抽样查看代表页。
 
-前三项从 `@lg/pdf` 导入。
+# 导入准备
 
-## 阅读与定位
+## 环境与依赖
 
-用 `@lg/pdf/mupdf` 提取文字、字体与坐标，用 `renderPdfPage` 渲染页面或区域，再通过 `ws.emitImage` 查看。多栏、表格、扫描页、图注和公式结合图像判断，跨页内容连同邻页读取。没有提取文字时仍需查看原页。
-
-先看整页确认结构，再裁剪小字、图例和表格细节。区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算。`region.page` 须与请求页一致。
-
-同一程序中复用已读取的原稿字节，用 `try/finally` 释放 MuPDF 的页面、提取结果和文档。
-
-### 整页阅读与文字提取
+PDF 脚本入口从本技能 `read_skill` 返回的 `base_url` 动态导入。任何阶段首次使用前，先调用 `missingDependencies()` 检查共享 npm 环境的依赖缺口：
 
 ```js
-import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from '@lg/pdf/mupdf';
-import { renderPdfPage } from '@lg/pdf';
-const bytes = new Uint8Array(await readFile('sources/book.pdf'));
-const document = new mupdf.PDFDocument(bytes);
-let scale;
-try {
-  const page = document.loadPage(0);
-  try {
-    const [x0, y0, x1, y1] = page.getBounds();
-    scale = 1920 / Math.max(x1 - x0, y1 - y0);
-    const text = page.toStructuredText('');
-    try { await writeFile('work/page-1.json', text.asJSON()); }
-    finally { text.destroy(); }
-  } finally { page.destroy(); }
-} finally { document.destroy(); }
-await writeFile('work/page-1.png', renderPdfPage(bytes, { page: 1, scale }));
-await ws.emitImage('work/page-1.png');
+import { npm } from '@lg/npm';
+const pdf = await import(new URL('scripts/pdf.mjs', base_url).href);
+const missing = pdf.missingDependencies();
+if (missing.length) {
+  await npm.run(['install', '--save-exact', ...missing]);
+}
 ```
 
-### 裁剪与细节
+- 存在缺口时，先告知用户「首次处理 PDF 需要下载约 15–20 MB 的 npm 依赖，后续跨工程复用」，再执行安装。
+- 安装完成后，在**下一次** `workspace_run` 调用中再运行依赖 `mupdf` 的脚本（同一次调用内无法加载刚安装的包）。
+- `@lg/pdf` 只导出 `printPdf(html)`，由应用宿主打印静态 HTML 为 PDF 字节（不执行脚本、不加载外部资源）；需要底层 MuPDF 对象时直接 `import * as mupdf from 'mupdf'`。
 
-所选区域保留完整表格行、图例和图注。放大图像不会恢复原稿中缺失的细节。
+## 准备与封包
 
-以下代码假定 `bytes` 是已读取的原稿字节。
+调用 `pdf.prepareAndPack(source, output)` 读取一次原稿，冻结 `source.pdf`，为每页生成记录并封装为 `.generic` 包（内置 `source.pdf`、`items.json`、`pdf.json`、`README.md` 及写回脚本）：
+
+```js
+const pdf = await import(new URL('scripts/pdf.mjs', base_url).href);
+const packed = await pdf.prepareAndPack('uploads/book.pdf', 'work/book.pdf.generic');
+console.log(packed); // { output_path, pages, digest, ... }
+```
+
+- 普通有内嵌文字且页内唯一的页直接保存提取文本。仅两类页会自动补系统标识（用于区分跨页空译稿，并防止后端按原文去重克隆译稿或替换继承冲突）：
+  - 无内嵌文字页：`[PAGE N - NO TEXT]`（扫描页需补充参考原文时，结合原页图像或 OCR 替换正文，保持数组次序且避免与同文档其他页正文完全相同）
+  - 同文档内正文完全重复的页：`[PAGE N - DUPLICATED PAGE]\n<提取文本>`
+- 封包后将 `packed.output_path` 交回 `project-operation` 识别与提交。
+- 更换底稿 PDF 时必须重新封包并按「更新文件」提交；底稿摘要变化会使旧的 `pdf-image:DIGEST/...` 引用失效。
+
+# 原稿与条目
+
+## 条目结构与处置
+
+正式 PDF 通用包在 `sources/<file_path>/` 展开，底稿位于 `sources/<file_path>/source.pdf`，文档摘要位于 `pdf.json` 的 `digest`。`items.json` 按原稿页序每页占 1 条（`row_number === page - 1`；`page` 为 1 基原稿页码，MuPDF 页索引为 0 基）。
+
+- 源记录中出现的 `[PAGE N - NO TEXT]`、`[PAGE N - DUPLICATED PAGE]` 均为防冲突占位标识，**译稿 `dst` 只写实际 Markdown 正文，不翻译也不复制这类标识**。
+- 原稿页与输出页独立：内容归属与覆盖统计按原稿页追踪；排版问题按输出页定位，输出页数与页码会随译稿排版变化。
+
+页面四态处置与写回规则：
+
+|业务处置|工程条目与包内记录方式|写回行为|
+|---|---|---|
+|输出译稿|`status: "PROCESSED"`，`dst` 写本页完整最终 Markdown|按原页可见尺寸排版打印；同尺寸、同背景的相邻译稿连续排版，变化时新起一页|
+|跨页接管（被合并页）|`status: "PROCESSED"`，`dst: ""`（空字符串）|跳过打印，前后同尺寸、同背景的译稿继续连续排版|
+|保留原页|`status: "EXCLUDED"`（保留原文）；未处理的 `NONE` 条目同样沿用原页|原页矢量无损直通，结束连续排版|
+|省略原页|修改包内 `items.json` 该页 `omit: true` 并重打包替换，同时条目设为 `EXCLUDED`|不输出该页，结束连续排版|
+
+- **跨页内容归属**：跨页段落、表格或图注可整体归入其中一页，其余被接管页提交 `dst: ""` 与 `status: "PROCESSED"`；调整跨页归属时同批提交全部受影响条目，确保无遗漏、无重复。
+- **修改包内私有配置**：调整 `omit`、`background` 或 `notes` 时，将 `sources/<file_path>/` 复制到 `work/` 新目录修改 `items.json`（保持 `message` 与数组顺序不变），调用 `@lg/generic` 的 `pack()` 重打包，再按 `project-operation` 的 `files.replaces`（`inheritance_mode: "inherit"`）就地替换，已有译文自动继承。
+
+## 分组与视觉翻译
+
+- 按原稿页序分组，每组约 `5` 页，跨页段落、表格与图注涉及的页保持在同一业务单元。
+- 多栏、表格、扫描页、图注、公式或无内嵌文字的页面，必须渲染原页并通过 `ws.emitImage` 查看确认，跨页内容连同邻页查看。
+- 每页译稿须覆盖正文、标题、列表、表格、数字、单位、图注、注释和引用；确认无需翻译的页设为 `EXCLUDED`，缺少决定性事实时保持 `NONE` 并记为未决。
+
+## 阅读原页与裁剪
+
+用 `pdf.renderPage(source, { page, scale, region? })` 渲染整页或区域，再用 `ws.emitImage` 查看。区域坐标以旋转后页面左上角为原点，按 `scale = 1` 计量，`region.page` 须与 `page` 一致。
 
 ```js
 import { writeFile } from 'node:fs/promises';
-import { renderPdfPage } from '@lg/pdf';
+const pdf = await import(new URL('scripts/pdf.mjs', base_url).href);
+const source = 'sources/book.pdf.generic/source.pdf';
+
+// 整页概览
+const info = await pdf.inspect(source);
+const page1 = info.pages[0];
+await writeFile(
+  'work/page-1.png',
+  await pdf.renderPage(source, { page: 1, scale: 1920 / Math.max(page1.width, page1.height) }),
+);
+await ws.emitImage('work/page-1.png');
+
+// 局部裁剪（保留完整表格行、图例和图注）
 const region = { page: 1, x: 40, y: 80, width: 400, height: 240 };
 const maxEdge = 3840;
-await writeFile('work/detail.png', renderPdfPage(bytes, {
-  page: region.page,
-  region,
-  scale: maxEdge / Math.max(region.width, region.height),
-}));
+await writeFile(
+  'work/detail.png',
+  await pdf.renderPage(source, {
+    page: region.page,
+    region,
+    scale: maxEdge / Math.max(region.width, region.height),
+  }),
+);
 await ws.emitImage('work/detail.png', { maxEdge });
 ```
 
-整页概览使用默认尺寸。密集小字优先裁剪，仍需细节时使用 `ws.emitImage(path, { maxEdge: 3840 })`。按区域尺寸计算渲染比例，渲染与发送使用相同目标最长边。实际尺寸还受字节额度约束，按工具返回的图片尺寸判断有效细节。
+- 整页概览用默认看图尺寸；密集小字优先裁剪，再按相同 `maxEdge` 渲染与发送（按工具实际返回尺寸判断有效细节，放大不恢复原稿缺失细节）。
+- 需要提取字体、坐标等底层结构时，直接 `import * as mupdf from 'mupdf'`，同一脚本内复用原稿字节，并用 `try/finally` 释放 `page`、结构化文本与 `document`。
+- 需要拼接多个区域或在图片上标注中文时，读取 [区域拼接与标注](references/image-tools.md)。
 
-### 渲染修改后的文档
+## Markdown 译稿与资源
 
-内存中修改过的文档先保存为字节再渲染。`asUint8Array()` 只是 Buffer 内存的视图，先复制再释放 Buffer。
+每个原页的 Markdown 独立编译，支持标题、强调、列表、引用、代码、GFM 表格列对齐、提示块、KaTeX 公式与编号注释：
 
-```js
-import { writeFile } from 'node:fs/promises';
-import { renderPdfPage } from '@lg/pdf';
-// document 是脚本用 mupdf 打开并修改过的文档，由调用者释放。
-const buffer = document.saveToBuffer();
-let edited;
-try { edited = buffer.asUint8Array().slice(); }
-finally { buffer.destroy(); }
-await writeFile('work/edited.pdf', edited);
-await writeFile('work/edited-1.png', renderPdfPage(edited, { page: 1, scale: 2 }));
-await ws.emitImage('work/edited-1.png');
-```
+- **原稿嵌图**：写作 `![译文图注](pdf-image:DIGEST/PAGE/X,Y,WIDTH,HEIGHT)`。`DIGEST` 必须与包内 `pdf.json` 的 `digest` 一致，区域位于对应原页边界内。地图、图表与公式截图保留必要标记、比例尺及图例，图内待译文字另行补充译文。`work/` 中编辑的图片只用于分析，正式译稿仅接受原稿区域引用。
+- **页面背景**：包内记录的 `background: { page, x, y, width, height }` 引用本原稿干净装饰区域，按比例覆盖译稿生成页且不占正文空间。设置前先看图确认范围，避免残留文字叠印正文。
+- **公式**：行内公式用 `$...$`，独立公式用单独成行的 `$$` 块，货币美元符号写作 `\$`。公式编译报错时按提示位置修正，确需截图时使用清晰原稿区域。
+- **提示块与注释**：提示块支持 `> [!NOTE]`、`TIP`、`IMPORTANT`、`WARNING`、`CAUTION`。注释用 `[^id]` 与 `[^id]: 内容`，引用与定义放在同一原页译稿内，输出在该页译稿末尾并提供回链。
+- **链接与标签**：链接支持 `http(s)://`、`mailto:` 与按当前原页标题顺序编号的页内锚点 `#heading-1`、`#heading-2`。HTML 标签与注释按字面显示，换行使用 Markdown 语法。
 
-需要拼接多个区域，或在图片上标注、绘制中文时，读取 `references/image-tools.md`。
+# 翻译后检查
 
-亮度、伽马或颜色调整只用于辅助观察，数值、图例和颜色语义仍与原图核对。
+翻译或审校提交译稿后，调用 `generateFiles()` 并执行源包自带的 `writeback.mjs` 完成一次完整写回（见「写回 PDF」）：
 
-## 准备完整译稿
+- 写回报错时，按返回的页号与位置修正对应条目，重新提交并再次写回，直到成功。
+- 记录最终生成的输出页数量，供交付汇报使用。
+- 仅翻译流程只核验写回成功与输出页数，不逐页查看渲染图；审校或交付验证时再按「视觉复核与常见问题」看图检查。
 
-处置和字段的含义见 `translation` 的「页面模型」。`translate` 处置写作 `{ kind: "translate", markdown, background? }`：
+# 写回与验证
 
-- `markdown`：本页的译稿，可以为空。
-- `background`：可选的背景区域。
+## 写回 PDF
 
-两个字段的写法见「Markdown 与资源」。
-
-译稿采用所属原页的可见尺寸。相邻正文译稿的尺寸和背景相同时连续排版，变化时开始新页。保留和省略页面会结束连续排版。全部为空译稿或省略时，整份预览返回无输出页，导出正常完成并省略该文件。
-
-### Markdown 与资源
-
-每个原页的 Markdown 独立校验、编译，支持标题、强调、列表、引用、代码、GFM 表格列对齐、提示块、公式和编号注释。
-
-- 图片使用 `![译文图注](pdf-image:DIGEST/PAGE/X,Y,WIDTH,HEIGHT)`。`DIGEST` 为当前原稿摘要，区域位于对应原页。地图、图表和公式截图保留必要的标记、比例尺及图例。图内待译文字另行核对并补充对应译文。
-- `background: { page, x, y, width, height }` 引用本原稿的干净装饰区域，按比例覆盖译稿生成页且不占正文空间。先看图确认范围，背景中的文字和图形都会进入生成页。
-- 行内公式用 `$...$`，独立公式用单独成行的 `$$` 包围块，货币美元符号用 `\$`。公式错误按返回位置修正，确需截图时使用清晰原稿区域。
-- 提示块使用 `> [!NOTE]`、`TIP`、`IMPORTANT`、`WARNING`、`CAUTION`。注释以 `[^id]` 和 `[^id]: 内容` 表达，引用与定义放在同一原页译稿，输出在该页译稿末尾并提供回链。
-- 链接支持 HTTP(S)、`mailto:` 和按当前原页译稿标题顺序编号的页内锚点 `#heading-1`、`#heading-2`。HTML 标签与注释按字面显示，换行使用 Markdown 语法。字体、样式及资源加载由应用控制。
-- `work/` 中编辑后的图片用于分析和检查，正式译稿的图片引用只接受原稿身份与区域。
-
-## 预览与核验
-
-使用本包脚本生成预览，再重新打开返回的 PDF 并查看实际输出。`base_url` 取自本技能的 `read_skill` 返回值或显式注入，是原包根目录地址。
+预览检查与正式交付共用源包自带的 `writeback.mjs`，输入来自本次 `generateFiles()` 返回的 `<writeback.input_path>/<file_path>/items.json`：
 
 ```js
-import { readFile, writeFile } from 'node:fs/promises';
-import { readPdfDocument, renderPdfPage } from '@lg/pdf';
-const { preview } = await import(new URL('scripts/preview.mjs', base_url).href);
-const result = await preview('book.pdf', 'work/page-updates.jsonl');
-if (result.path === null) throw new Error(result.message);
-const output = new Uint8Array(await readFile(result.path));
-const { pages } = readPdfDocument(output); // 输出页尺寸，坐标与渲染一致
-console.log({ output_pages: pages.length });
-const output_page = 1; // 按工具图片额度分批查看输出页
-const { width, height } = pages[output_page - 1];
-const image_path = `work/preview-${output_page}.png`;
-await writeFile(image_path, renderPdfPage(output, {
-  page: output_page,
-  scale: 1920 / Math.max(width, height),
-}));
-await ws.emitImage(image_path);
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { generateFiles } from '@lg/project';
+const pdf = await import(new URL('scripts/pdf.mjs', base_url).href);
+
+const generated = await generateFiles();
+const asset = 'book.pdf.generic';
+const directory = path.join('sources', asset);
+const output = 'work/preview/book.pdf';
+await mkdir(path.dirname(output), { recursive: true });
+
+const { build } = await import(pathToFileURL(path.resolve(directory, 'writeback.mjs')).href);
+const result = await build({
+  directory,
+  itemsPath: path.join(generated.writeback.input_path, asset, 'items.json'),
+  output,
+});
+if (result.path === null) {
+  console.log({ output_path: null, output_pages: 0 });
+} else {
+  const info = await pdf.inspect(result.path);
+  console.log({ output_path: result.path, output_pages: info.pages.length });
+  const page = info.pages[0];
+  await writeFile(
+    'work/preview/page-1.png',
+    await pdf.renderPage(result.path, {
+      page: 1,
+      scale: 1920 / Math.max(page.width, page.height),
+    }),
+  );
+  await ws.emitImage('work/preview/page-1.png');
+}
 ```
 
-第二个参数是符合 `<workspace_contract>` 的完整页面更新 JSONL 草稿，写入 `ws.contract.changes.pages.updates.path`。预览与正式提交、导出使用相同的页面判定和生成规则。记录被拒绝时脚本抛出错误，先按行号修复草稿。省略第二个参数时预览当前工程快照。
+- `output` 所在目录须先创建，文件本身须尚未存在（防止覆盖既有产物）。
+- 写回按位置核对原稿页码并使用封包时的 `digest` 解析嵌图；整份所有页均省略或为空译稿时返回 `{ path: null }`。
+- 正式交付的文件名去掉资产路径末尾的 `.generic`（或按 `pdf.json` 的 `original_file_name` 确认），再按 `project-operation` 的「导出与交付」复制到交付目录。
 
-生成成功后，通过渲染结果核对阅读顺序和实际版式：
+## 视觉复核与常见问题
+
+审校、排版微调或最终交付核验时，按工具图片额度分批渲染输出页并结合 `ws.emitImage` 核对阅读顺序与版式：
 
 |观察到的问题|处理动作|
 |---|---|
-|方框、缺字或公式异常|核对字符与公式源文，检查修正后的渲染。字体或排版能力受限时记录具体位置|
-|表格过宽、单元格裁切|保持数据对应关系，按语义拆分表格并补必要表头，重新检查分页|
-|图像标注读不清或裁剪缺项|放大对应区域，确认完整保留图例、单位、标记和图注|
-|标题孤悬或图注与图像分离|调整相关 Markdown 内容组织，再查看输出衔接|
-|背景文字叠印或遮挡|重新选择干净区域或移除背景，查看实际生成页|
-|跨页遗漏、重复或顺序错误|核对来源与接管页面，修正涉及的完整载荷并预览连续排版段|
+|方框、缺字或公式异常|核对字符与公式源文，修正后复查渲染；字体或排版受限时记录具体位置|
+|表格过宽或单元格裁切|保持数据对应关系，按语义拆分表格并补全表头，重新检查分页|
+|图像标注不清或裁剪缺项|放大原页核对，重新选取包含完整图例、单位、标记和图注的区域|
+|标题孤悬或图注与图像分离|调整相关 Markdown 内容组织，重新查看输出衔接|
+|背景文字叠印或遮挡正文|重选干净背景区域或移除 `background`，重打包替换后复查|
+|跨页遗漏、重复或错序|核对来源与被接管条目，同批修正全部受影响条目并复查连续排版段|
 
-修正后复查受影响输出。译稿长度、尺寸或背景变化可能改变后续分页，此时按原页身份、标题或内容片段重新定位相关连续排版段及其与保留原页的衔接。旧输出页码仅作为历史记录。
+译稿长度、尺寸或背景变化会改变后续输出分页。修正后按原页身份、标题或内容片段重新定位受影响的连续排版段及其与保留原页的衔接，不沿用旧输出页码。看图或打印宿主失败时保留工作材料，如实说明未完成的核验范围。
 
-图片请求或宿主失败时保留材料，说明未完成的核验。
+# 交付说明
 
-预览使用读取时的快照，正式提交重新判定当前工程事实。单页变化不影响邻页指纹，原稿摘要变化会使该文件的旧指纹失效，此时重读快照并更新变更清单。
-
-## 翻译后检查
-
-翻译流程提交译稿后，用「预览与核验」的脚本预览当前工程快照。
-
-- 预览失败或记录被拒绝时，按返回的行号和位置修正译稿，重新提交，再次预览，直到预览成功。
-- 记录输出页数量，供交付使用。
-
-逐页查看渲染结果属于审校，翻译流程不执行。
-
-## 交付说明
-
-预览 PDF 用于内部排版检查，默认不在回复中提供其文件或所在目录的下载链接。用户明确要求查看或下载预览时，提供标为“排版预览”的链接，并说明它基于工程现值还是未提交草稿。正式 PDF 按 `project-operation` 的「导出与交付」生成。
+- **仅单语交付**：PDF 仅交付单语成果；用户明确要求双语对照 PDF 时，须在译稿排版阶段将原文与译文编排进同一份译稿。
+- **预览边界**：内部排版检查生成的预览 PDF 默认不在回复中提供下载链接；用户明确要求查看或下载预览时提供链接，并标明“排版预览”。
+- **汇报要点**：正式 PDF 按 `project-operation` 的「导出与交付」生成并交付，汇报时说明：
+  - 交付路径、原稿页数、输出页数，以及各处置统计（译稿、空译稿接管、保留原页、省略原页、未决）
+  - 视觉复核覆盖范围与修复的排版问题
+  - 剩余限制或未决事项（例如未看图核验范围、缺字位置或整份无输出页）

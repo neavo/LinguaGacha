@@ -5,11 +5,11 @@ it("资产决定文件集合、身份和顺序，零条目文件保留类型", (
     build_project_file_records([
       { path: "data/Actors.json", file_type: "RPGMAKER_MV_MZ", sort_order: 2 },
       { path: " a.txt ", file_type: "TXT", sort_order: 0 },
-      { path: "empty.pdf", file_type: "PDF", sort_order: 1 },
+      { path: "empty.generic", file_type: "GENERIC", sort_order: 1 },
     ]),
   ).toEqual({
     " a.txt ": { rel_path: " a.txt ", file_type: "TXT", sort_index: 0 },
-    "empty.pdf": { rel_path: "empty.pdf", file_type: "PDF", sort_index: 1 },
+    "empty.generic": { rel_path: "empty.generic", file_type: "GENERIC", sort_index: 1 },
     "data/Actors.json": {
       rel_path: "data/Actors.json",
       file_type: "RPGMAKER_MV_MZ",

@@ -62,7 +62,6 @@ export const en_us_agent_page = {
       workspace: "Workspace file",
       upload: "Upload",
       items: "{COUNT} entries",
-      pages: "{COUNT} pages",
       loading: "Loading file list …",
       error: "Failed to load file list …",
     },
@@ -117,7 +116,6 @@ export const en_us_agent_page = {
     title: "Writing project data",
     summary: {
       files: "{count} files",
-      pages: "Page data: {count} pages",
       items: "Entry data: {count} entries",
       glossary: "{count} glossary rules",
       text_preserve: "{count} text-preserve rules",

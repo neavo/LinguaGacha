@@ -3,11 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProofreadingTable } from "@frontend/pages/proofreading-page/components/proofreading-table";
-import type {
-  ProofreadingClientItem,
-  ProofreadingRow,
-  ProofreadingVisibleItem,
-} from "@shared/proofreading/proofreading-types";
+import type { ProofreadingClientItem } from "@shared/proofreading/proofreading-types";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 vi.mock("@frontend/app/locale/locale-context", () => {
   return {
@@ -34,9 +30,8 @@ vi.mock("@tanstack/react-virtual", async (import_original) => {
   };
 });
 
-// 摘要与正文故意不同，验证浮层读取完整字段而非重复表格摘要。
-function create_visible_item(overrides: Partial<ProofreadingClientItem>): ProofreadingVisibleItem {
-  const item: ProofreadingClientItem = {
+function create_visible_item(overrides: Partial<ProofreadingClientItem>): ProofreadingClientItem {
+  return {
     item_id: 1,
     row_id: "1",
     file_path: "chapter.txt",
@@ -49,16 +44,7 @@ function create_visible_item(overrides: Partial<ProofreadingClientItem>): Proofr
     status: "PROCESSED",
     warnings: [],
     glossary_applications: [],
-    compressed_src: "src-preview",
-    compressed_dst: "dst-preview",
     ...overrides,
-  };
-  return {
-    kind: "item",
-    row_id: item.row_id,
-    item,
-    compressed_src: item.compressed_src,
-    compressed_dst: item.compressed_dst,
   };
 }
 
@@ -77,7 +63,7 @@ describe("ProofreadingTable", () => {
 
   // 挂载生产表格，行读取沿用页面提供的远端窗口接口。
   async function render_table(
-    item: ProofreadingRow,
+    item: ProofreadingClientItem,
     on_open_edit = vi.fn(),
     on_selection_change = vi.fn(),
     options: {
@@ -123,22 +109,12 @@ describe("ProofreadingTable", () => {
     });
   }
 
-  it.each(["text", "page", "mixed", "readonly"])(
-    "%s 选区只显示适用操作，文本写操作保留完整目标集合",
+  it.each(["editable", "readonly"])(
+    "%s 权限显示适用操作，可编辑时保留完整目标集合",
     async (kind) => {
       vi.useFakeTimers();
-      const page: ProofreadingRow = {
-        kind: "page",
-        row_id: 'page:["book.pdf",1]',
-        page: { file_path: "book.pdf", page: 1, status: "PROCESSED" },
-      };
-      const item = kind === "page" ? page : create_visible_item({});
-      const ids =
-        kind === "mixed"
-          ? [item.row_id, page.row_id]
-          : kind === "text"
-            ? [item.row_id, "2"]
-            : [item.row_id];
+      const item = create_visible_item({});
+      const ids = [item.row_id, "2"];
       const on_retranslate = vi.fn();
       await render_table(item, vi.fn(), vi.fn(), {
         readonly: kind === "readonly",
@@ -157,9 +133,9 @@ describe("ProofreadingTable", () => {
       for (const action of ["retranslate", "clear_translation", "set_translation_status"]) {
         expect(
           items.some((item) => item.textContent === `proofreading_page.action.${action}`),
-        ).toBe(kind === "text");
+        ).toBe(kind === "editable");
       }
-      if (kind === "text") {
+      if (kind === "editable") {
         await act(async () => {
           items
             .find((item) => item.textContent === "proofreading_page.action.retranslate")!
@@ -198,6 +174,7 @@ describe("ProofreadingTable", () => {
       `.proofreading-page__table-${column === "src" ? "source" : "translation"}-cell`,
     )!;
     const text = cell.querySelector<HTMLElement>(".proofreading-page__table-text")!;
+    expect(text.textContent).not.toContain("\n");
     await act(async () => {
       text.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
       text.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
@@ -215,9 +192,7 @@ describe("ProofreadingTable", () => {
   });
 
   it("原文和译文为空时省略预览入口", async () => {
-    await render_table(
-      create_visible_item({ src: "", dst: "", compressed_src: "", compressed_dst: "" }),
-    );
+    await render_table(create_visible_item({ src: "", dst: "" }));
     expect(container!.querySelector(".proofreading-page__table-text-line button")).toBeNull();
   });
 
@@ -268,42 +243,5 @@ describe("ProofreadingTable", () => {
     )!;
     await act(async () => text.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
     expect(on_open_edit).toHaveBeenCalledWith("1");
-  });
-
-  it.each(["NONE", "PROCESSED"] as const)("页面 %s 的入口、状态提示和双击查看", async (status) => {
-    vi.useFakeTimers();
-    const on_open = vi.fn();
-    await render_table(
-      {
-        kind: "page",
-        row_id: 'page:["book.pdf",1]',
-        page: {
-          file_path: "book.pdf",
-          page: 1,
-          status,
-        },
-      },
-      on_open,
-    );
-    const translation = container!.querySelector<HTMLElement>(
-      ".proofreading-page__table-translation-cell",
-    )!;
-    const status_cell = container!.querySelector<HTMLElement>(
-      ".proofreading-page__table-status-cell",
-    )!;
-    expect(Boolean(translation.textContent)).toBe(status !== "NONE");
-    await act(async () => translation.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-    expect(on_open).toHaveBeenCalledWith('page:["book.pdf",1]');
-    if (status === "NONE") {
-      expect(status_cell.querySelector("[data-slot='tooltip-trigger']")).toBeNull();
-      return;
-    }
-    const trigger = status_cell.querySelector<HTMLElement>(".proofreading-page__status-icon")!;
-    await act(async () => {
-      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-      vi.runAllTimers();
-    });
-    expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull();
   });
 });

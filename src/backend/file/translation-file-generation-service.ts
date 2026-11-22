@@ -1,19 +1,14 @@
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
-import type { PDFExecution } from "./pdf/pdf-worker";
 import { AppError, is_app_error } from "../../shared/error";
 import { requires_agent_generation } from "../../shared/translation-generation";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ProjectWriteStore } from "../project/project-write-store";
 import { is_json_record } from "../../domain/json";
 import type {
-  PDFFileGenerationResult,
   TranslationOutputPaths,
   TranslationFileGenerationResult,
 } from "../../shared/translation-generation";
-import { render_pdf_translation } from "./pdf/pdf-translation";
-import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
-import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { JsonRecord } from "../../domain/json";
 
 import type { ProjectDatabase } from "../database/database-operations";
@@ -42,9 +37,7 @@ const FILE_GENERATION_LOG_SOURCE = "translation-generation"; // 各入口共用�
 
 type GenerationTarget = Readonly<{
   paths: GeneratedFilePaths;
-  writeback_path?: string; // 提供目录时才生成 Agent 写回输入。
-  skip_pdf: boolean;
-  bilingual_files?: readonly string[]; // Agent 明确选择双语资产，GUI 和 CLI 沿用格式默认输出。
+  writeback_path?: string; // 提供目录时才生成 Agent 写回输入，且不预建空双语目录。
 }>;
 
 export type OutputFolderOpener = (output_path: string) => Promise<void>;
@@ -67,7 +60,6 @@ export class TranslationFileGenerationService {
     private readonly app_setting_service: AppSettingService, // 译文生成格式和完成后动作
     private readonly session_state: ProjectSessionState, // 当前 .lg 工程身份
     private readonly output_folder_opener: OutputFolderOpener, // 宿主打开目录的副作用
-    private readonly pdf_execution: PDFExecution, // 独立线程的 PDF 计算端口
     private readonly log_manager?: FileGenerationLogManager, // 译文生成诊断
     private readonly native_fs: NativeFs = default_native_fs, // 目录检查与文件写盘
   ) {}
@@ -102,13 +94,12 @@ export class TranslationFileGenerationService {
         ]);
         return this.write_files(project_path, setting, {
           paths: this.resolve_output_paths(project_path, setting, input.output_directory),
-          skip_pdf: false,
         });
       }, true),
     );
   }
 
-  /** CLI 保留既有目录布局，跳过页面翻译与通用写回。 */
+  /** CLI 保留既有目录布局，跳过需 Agent 处理的通用写回。 */
   public async generate_files_to_directory(
     output_dir: string,
   ): Promise<TranslationFileGenerationResult> {
@@ -120,7 +111,6 @@ export class TranslationFileGenerationService {
               translated_path: path.resolve(output_dir),
               bilingual_path: path.resolve(output_dir, "bilingual"),
             },
-            skip_pdf: true,
           }),
         false,
       ),
@@ -130,7 +120,6 @@ export class TranslationFileGenerationService {
   /** 工作材料与可交付产物分开存放，交付前由 Agent 核对完整集合。 */
   public async generate_staging_files(
     output_dir: string,
-    bilingual_files: readonly string[],
   ): Promise<TranslationFileGenerationResult> {
     return this.runtime_gate.run_agent_project_write(() =>
       this.run_generation(
@@ -141,8 +130,6 @@ export class TranslationFileGenerationService {
               bilingual_path: path.resolve(output_dir, "bilingual"),
             },
             writeback_path: path.resolve(output_dir, "writeback"),
-            bilingual_files,
-            skip_pdf: false,
           }),
         false,
       ),
@@ -216,7 +203,7 @@ export class TranslationFileGenerationService {
     }
   }
 
-  /** 各入口共用 PDF 预检与写出，格式调度按各自类型选择资产。 */
+  /** 格式调度按各自类型选择资产。 */
   private async write_files(
     project_path: string,
     setting: JsonRecord,
@@ -228,8 +215,7 @@ export class TranslationFileGenerationService {
     const excluded_files = all_assets
       .filter(
         (asset) =>
-          (target.writeback_path === undefined && requires_agent_generation(asset.file_type)) ||
-          (target.skip_pdf && asset.file_type === "PDF"),
+          target.writeback_path === undefined && requires_agent_generation(asset.file_type),
       )
       .map((asset) => asset.path);
     const excluded = new Set(excluded_files);
@@ -239,33 +225,21 @@ export class TranslationFileGenerationService {
         public_details: { reason: "no_generatable_files", excluded_files },
       });
     if (assets.length === 0) throw new AppError("project.no_files");
-    // 资产被移除或改名后，旧清单必须在写盘前报错，避免悄悄漏掉双语成果。
-    for (const file of target.bilingual_files ?? []) {
-      if (!all_assets.some((asset) => asset.path === file))
-        throw new AppError("file.not_found", { public_details: { file } });
-    }
     // 重复译文填充只修改导出副本。
     const included = new Set(assets.map((asset) => asset.path));
     const items = (await this.database.get_all_items(project_path))
       .map((item) => create_item(item))
       .filter((item) => included.has(item.file_path));
-    const documents = target.skip_pdf
-      ? []
-      : await this.read_generation_pdf_files(
-          project_path,
-          Object.keys(await this.database.read_pdf_summaries(project_path)),
-        );
     this.fill_duplicated_translations(items);
     const { paths, writeback_path } = target;
     const writeback_files = assets
       .filter((asset) => requires_agent_generation(asset.file_type))
       .map((asset) => asset.path);
     this.native_fs.make_dir(paths.translated_path);
-    if (target.bilingual_files === undefined) this.native_fs.make_dir(paths.bilingual_path);
+    if (writeback_path === undefined) this.native_fs.make_dir(paths.bilingual_path);
     const format_service = new FileFormatService(
       this.game_directory_operations,
       { target_language: config.target_language },
-      this.pdf_execution,
       this.native_fs,
     );
     await format_service.write_items(
@@ -276,9 +250,7 @@ export class TranslationFileGenerationService {
         source_files: assets,
       },
       writeback_path,
-      target.bilingual_files,
     );
-    const pdf_files = await this.write_pdf_files(project_path, paths, documents);
     return {
       accepted: true,
       output_path: paths.translated_path,
@@ -292,61 +264,7 @@ export class TranslationFileGenerationService {
               files: writeback_files,
             },
           }),
-      pdf_files,
     };
-  }
-
-  /** 在任何输出落盘前固定译稿并验证可确定条件，避免不同入口各自解释 PDF 规则。 */
-  private async read_generation_pdf_files(
-    project_path: string,
-    file_paths: readonly string[],
-  ): Promise<PDFDocumentRecord[]> {
-    const documents = await this.database.read(project_path, (reader) =>
-      file_paths.map((file_path) => {
-        const document = reader.read_pdf_document(project_path, file_path);
-        if (!document)
-          throw new AppError("file.not_found", { public_details: { file: file_path } });
-        return { file_path, document };
-      }),
-    );
-    for (const { file_path, document } of documents) {
-      try {
-        render_pdf_translation(document);
-      } catch (error) {
-        throw new AppError("file.invalid_structure", {
-          public_details: { file: file_path },
-          cause: error,
-        });
-      }
-    }
-    return documents;
-  }
-
-  /** 落盘成功后按原页覆盖生成回执，输出页数由打印排版决定。 */
-  private async write_pdf_files(
-    project_path: string,
-    paths: GeneratedFilePaths,
-    documents: readonly PDFDocumentRecord[],
-  ): Promise<PDFFileGenerationResult[]> {
-    const written = await new PDFFormat(this.pdf_execution).write_to_path(documents, {
-      paths,
-      asset_reader: (file_path) => this.database.read_asset_content(project_path, file_path),
-    });
-    return documents.map(({ file_path, document }) => {
-      let translated_pages = 0;
-      let omitted_pages = 0;
-      for (const page of document.pages) {
-        if (page.translation?.kind === "translate") translated_pages++;
-        else if (page.translation?.kind === "omit") omitted_pages++;
-      }
-      return {
-        file_path,
-        written: written.includes(file_path),
-        translated_pages,
-        original_pages: document.pages.length - translated_pages - omitted_pages,
-        omitted_pages,
-      };
-    });
   }
 
   /**

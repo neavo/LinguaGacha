@@ -134,7 +134,7 @@ describe("WorkbenchTranslationMenu", () => {
     expect(on_request_start).toHaveBeenCalledOnce();
   });
 
-  it("开始入口遵循页面权限，零文本条目的 PDF 工程仍可进入选择", async () => {
+  it("开始入口遵循页面权限，零条目的通用数据工程仍可进入选择", async () => {
     const props = { ...shared_props, workbench_stats: { ...workbench_stats, total_items: 0 } };
     await render_menu(<WorkbenchTranslationMenu {...props} />);
     expect(find_button("workbench_page.action.start_translation").disabled).toBe(false);

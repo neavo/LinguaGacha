@@ -64,7 +64,6 @@ function create_cache_read_port(options: {
     files: {
       readFileEntries: () => [{ rel_path: "script.txt", file_type: "TXT", sort_index: 0 }],
     },
-    pdf: { readBlock: () => ({}) },
     quality: {
       readBlock: () => ({
         ...create_empty_quality_rule_block(),
@@ -136,7 +135,6 @@ describe("ProofreadingCache", () => {
     const expected_item = structuredClone(item); // 查看结果被修改后，预期仍保留原始缓存事实。
     const worker = create_worker();
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: create_cache_read_port({ items: [item] }),
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -165,7 +163,6 @@ describe("ProofreadingCache", () => {
     items.replace([create_cache_item()]);
     const cache_port = create_cache_read_port({ revisions });
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: { ...cache_port, items, snapshot: () => structuredClone(cache_port.snapshot()) },
       workerClient: create_worker(),
       reader: createProofreadingReader(),
@@ -176,7 +173,6 @@ describe("ProofreadingCache", () => {
   it("同一工程身份下只执行一次 sync task 并用本地 reader 查询", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: create_cache_read_port({}),
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -236,7 +232,6 @@ describe("ProofreadingCache", () => {
     const cache_port = create_cache_read_port({});
     const read_items = vi.spyOn(cache_port.items, "readItems");
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: cache_port,
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -333,7 +328,6 @@ describe("ProofreadingCache", () => {
         { rel_path: "game.trans", file_type, sort_index: 0 },
       ];
       const cache = new ProofreadingCache({
-        readPages: async () => [],
         cache: cache_port,
         workerClient: worker,
         reader: createProofreadingReader(),
@@ -349,10 +343,8 @@ describe("ProofreadingCache", () => {
         is_regex: false,
         sort_state: null,
       });
-      expect(sync.data.files).toEqual([
-        { file_path: "game.trans", internal_file_path, kind: "item", count: 1 },
-      ]);
-      expect(view.data.window_rows[0]).toMatchObject({ item: { internal_file_path } });
+      expect(sync.data.files).toEqual([{ file_path: "game.trans", internal_file_path, count: 1 }]);
+      expect(view.data.window_rows[0]).toMatchObject({ internal_file_path });
       expect(rows.data[0]).toMatchObject({
         item_id: 1,
         internal_file_path,
@@ -368,7 +360,6 @@ describe("ProofreadingCache", () => {
       target_language: "ZH",
     };
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: create_cache_read_port({ revisions, languages }),
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -395,7 +386,6 @@ describe("ProofreadingCache", () => {
   it("只清理匹配工程或当前校对缓存", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: create_cache_read_port({}),
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -422,7 +412,6 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: create_cache_read_port({ revisions, items }),
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -457,7 +446,7 @@ describe("ProofreadingCache", () => {
     expect(next_sync.data.revisions.items).toBe(2);
     expect(rows.data).toMatchObject([{ item_id: 1, dst: "生命值" }]);
     expect(warnings.data).toMatchObject({ total_item_count: 0, items: [] });
-    expect(old_window.data.rows).toMatchObject([{ item: { item_id: 1, dst: "生命值" } }]);
+    expect(old_window.data.rows).toMatchObject([{ item_id: 1, dst: "生命值" }]);
   });
 
   it("规范行增量更新旧列表窗口内容并保留排序", async () => {
@@ -480,7 +469,6 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: create_cache_read_port({ revisions, items }),
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -515,7 +503,7 @@ describe("ProofreadingCache", () => {
 
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(window.data.rows.map((row) => row.row_id)).toEqual(["1", "2"]);
-    expect(window.data.rows.filter((row) => row.kind === "item")[1]?.item).toMatchObject({
+    expect(window.data.rows[1]).toMatchObject({
       item_id: 2,
       dst: "A",
       status: "PROCESSED",
@@ -526,7 +514,6 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({
-      readPages: async () => [],
       cache: create_cache_read_port({ revisions }),
       workerClient: worker,
       reader: createProofreadingReader(),
@@ -546,105 +533,6 @@ describe("ProofreadingCache", () => {
   });
 });
 
-it("页面修订号单独触发补读，滚动和文本增量复用页面与评估", async () => {
-  const revisions = { files: 1, items: 1, quality: 1, proofreading: 0, pdf: 1 };
-  const cache = create_cache_read_port({ revisions, items: [] });
-  cache.files.readFileEntries = () => [
-    { rel_path: "book.pdf", file_type: "PDF", sort_index: 0 },
-    { rel_path: "script.txt", file_type: "TXT", sort_index: 1 },
-  ];
-  const readPages = vi.fn(async () => [
-    {
-      file_path: "book.pdf",
-      document: {
-        digest: "test",
-        pages: [
-          {
-            page: 1,
-            width: 300,
-            height: 300,
-            rotation: 0,
-            label: null,
-            translation: null,
-            reviewed: false,
-            notes: "",
-          },
-        ],
-      },
-    },
-  ]);
-  const worker = create_worker();
-  const service = new ProofreadingCache({
-    cache,
-    readPages,
-    workerClient: worker,
-    reader: createProofreadingReader(),
-  });
-  const initial = await service.sync();
-  const view = await service.list({
-    filters: initial.data.defaultFilters,
-    keyword: "",
-    scope: "all",
-    is_regex: false,
-    sort_state: null,
-  });
-  expect(view.data.window_rows).toMatchObject([{ kind: "page" }]);
-  expect(view.data.row_count).toBe(1);
-  revisions.pdf++;
-  const updated = await service.sync();
-  await service.window({ view_id: view.data.view_id, start: 0, count: 10 });
-  expect(updated.data.revisions.pdf).toBe(2);
-  expect(worker.run).toHaveBeenCalledTimes(1);
-  expect(readPages).toHaveBeenCalledTimes(2);
-  revisions.items++;
-  await service.applyChange({ ...create_delta_change(), sectionRevisions: revisions });
-  await service.sync();
-  expect(readPages).toHaveBeenCalledTimes(2);
-  expect(worker.run).toHaveBeenCalledTimes(1);
-  revisions.quality++;
-  await service.applyChange({
-    ...create_delta_change({ updatedSections: ["quality"] }),
-    sectionRevisions: revisions,
-  });
-  await service.sync();
-  expect(readPages).toHaveBeenCalledTimes(2);
-  expect(worker.run).toHaveBeenCalledTimes(2);
-  expect(
-    (
-      await service.list({
-        filters: initial.data.defaultFilters,
-        keyword: "",
-        scope: "all",
-        is_regex: false,
-        sort_state: null,
-      })
-    ).data.window_rows,
-  ).toMatchObject([{ kind: "page" }]);
-});
-
-it("页面读取排队期间撤销同步，迟到页面不能恢复旧工程索引", async () => {
-  const entered = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const reader = createProofreadingReader();
-  const service = new ProofreadingCache({
-    cache: create_cache_read_port({}),
-    readPages: async () => {
-      entered.resolve();
-      await release.promise;
-      return [];
-    },
-    workerClient: create_worker(),
-    reader,
-  });
-  const sync = service.sync();
-  const rejected = expect(sync).rejects.toMatchObject({ code: "request.validation_failed" });
-  await entered.promise;
-  service.clearProject();
-  release.resolve();
-  await rejected;
-  expect(reader.read_items_by_row_ids({ row_ids: ["1"] })).toEqual([]);
-});
-
 it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () => {
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {
@@ -653,10 +541,8 @@ it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () =
   const cache = create_cache_read_port({});
   const worker = create_worker(() => pending);
   const reader = createProofreadingReader();
-  const readPages = vi.fn(async () => []);
   const service = new ProofreadingCache({
     cache,
-    readPages,
     workerClient: worker,
     reader,
   });
@@ -665,7 +551,6 @@ it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () =
   await service.clearProject();
   release();
   await rejected;
-  expect(readPages).not.toHaveBeenCalled();
   expect(reader.read_items_by_row_ids({ row_ids: ["1"] })).toEqual([]);
 });
 
@@ -695,7 +580,6 @@ it.each(["files", "items"] as const)(
       cache,
       workerClient: worker,
       reader,
-      readPages: async () => [],
     });
     const sync = service.sync();
     const rejected = section === "items" ? expect(sync).rejects.toThrow() : null;
@@ -739,7 +623,6 @@ it("热同步响应的修订号绑定返回快照，不借用等待期间发生�
     cache: create_cache_read_port({ revisions }),
     reader: createProofreadingReader(),
     workerClient: create_worker(),
-    readPages: async () => [],
   });
   await service.sync();
   const pending = service.sync();

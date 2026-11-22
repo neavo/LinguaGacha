@@ -31,7 +31,7 @@ export interface CLIJobServices {
     settings: Pick<AppSettingService, "set_transient_overrides">;
   };
   project: {
-    summary: Pick<ProjectSummaryService, "read">;
+    summary: Pick<ProjectSummaryService, "read_translation_stats">;
     lifecycle: Pick<
       ProjectLifecycleService,
       "create_project_commit" | "apply_task_input" | "unload_project"
@@ -88,8 +88,7 @@ export async function run_cli_job(
     source_operation = read_source_operation_result(created.source_operation);
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
-    const { entries } = (await backend_services.project.summary.read()).snapshot;
-    if (entries.some((entry) => entry.progress.unit === "line" && entry.progress.total_count > 0))
+    if (backend_services.project.summary.read_translation_stats().stats.total_items > 0)
       await start_and_wait_for_translation(backend_services, status_reporter);
     const generated =
       await backend_services.files.translationGeneration.generate_files_to_directory(

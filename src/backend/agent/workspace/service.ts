@@ -25,7 +25,6 @@ import { decode_text_content } from "../../../shared/utils/text-tool";
 import { is_agent_file_url, resolve_agent_text_format } from "../../../shared/agent-workspace-file";
 import { resolve_workspace_image_mime } from "../../../shared/image-formats";
 
-import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
 import { random_id } from "../../../shared/utils/identifier";
 import { Readable } from "node:stream";
@@ -164,17 +163,14 @@ export class AgentWorkspaceService {
 
   /** 查询现有文件事实，不触发工作区生成或解析原稿。 */
   public async list_files(): Promise<AgentFileCandidate[]> {
-    const snapshot = this.options.cache.snapshot();
-    const counts =
-      snapshot.projectPath === ""
-        ? new Map<string, number>()
-        : await this.options.database.read_file_counts(snapshot.projectPath);
+    const counts = new Map<string, number>();
+    for (const item of this.options.cache.items.readItems())
+      counts.set(item.file_path, (counts.get(item.file_path) ?? 0) + 1);
     return [
       ...this.options.cache.files.readFileEntries().map((file): AgentFileCandidate => ({
         kind: "workspace",
         path: file.rel_path,
         count: counts.get(file.rel_path) ?? 0,
-        unit: file.file_type === "PDF" ? "pages" : "items",
       })),
       ...(this.upload_store?.list() ?? []).map((file): AgentFileCandidate => ({
         kind: "upload",
@@ -196,15 +192,7 @@ export class AgentWorkspaceService {
       sessionState: Pick<ProjectSessionState, "require_loaded_project_path">;
       cache: CacheReadPort;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
-      database: Pick<
-        ProjectDatabase,
-        | "get_all_meta"
-        | "read_asset_content"
-        | "read_pdf_document"
-        | "read_knowledge"
-        | "read_pdf_documents"
-        | "read_file_counts"
-      >;
+      database: Pick<ProjectDatabase, "get_all_meta" | "read_asset_content" | "read_knowledge">;
       knowledge: Pick<ProjectKnowledgeService, "read">; // 投影与知识页共用补位模板
       runtimeGate: {
         run_agent_project_write<T>(operation: (signal: AbortSignal) => Promise<T> | T): Promise<T>;
@@ -533,9 +521,6 @@ export class AgentWorkspaceService {
       currentLanguageKey: JsonTool.stringifyStrict(this.options.cache.languages.readBlock()),
     });
 
-    const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
-      ? await this.options.database.read_pdf_documents(project_path)
-      : [];
     const knowledge = await this.options.knowledge.read(project_path);
     const project_meta: JsonRecord = {
       knowledge: { fp: knowledge.fp },
@@ -543,7 +528,6 @@ export class AgentWorkspaceService {
       counts: {
         files: snapshot_files.length,
         items: current_items.length,
-        pages: pdf_documents.reduce((count, { document }) => count + document.pages.length, 0),
         items_with_warnings: warning_result.data.items.length,
         ...Object.fromEntries(
           QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
@@ -558,18 +542,6 @@ export class AgentWorkspaceService {
         this.native_fs.write_file(
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.knowledge),
           knowledge.text,
-        ),
-        write_jsonl_file(
-          this.native_fs,
-          path.join(this.root_path, AGENT_WORKSPACE_PATHS.pages),
-          pdf_documents.flatMap(({ file_path, document }) =>
-            document.pages.map((page) => ({
-              file_path,
-              fp: agent_workspace_page_fingerprint(file_path, document.digest, page),
-              digest: document.digest,
-              ...page,
-            })),
-          ) as unknown as JsonRecord[],
         ),
         write_json_file(
           this.native_fs,
@@ -822,19 +794,6 @@ export class AgentWorkspaceService {
             ? await this.options.database.read_knowledge(active.projectPath)
             : null,
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
-          pdfDocuments: (
-            await Promise.all(
-              [...new Set(parsed.batch.pages.map((intent) => intent.file_path))].map(
-                async (file_path) => {
-                  const document = await this.options.database.read_pdf_document(
-                    active.projectPath,
-                    file_path,
-                  );
-                  return document ? [{ file_path, document }] : [];
-                },
-              ),
-            )
-          ).flat(),
           quality: Object.fromEntries(
             QUALITY_RULE_KINDS.map((kind) => [kind, quality[kind].entries]),
           ),
@@ -1137,7 +1096,6 @@ export class AgentWorkspaceService {
       "contract.json", // 清理旧版本生成的可重建快照文件。
       "reference",
       "items",
-      "pages",
       AGENT_WORKSPACE_PATHS.prompts,
       ...QUALITY_RULE_KINDS,
       "changes",
@@ -1204,7 +1162,6 @@ function summarize_applied_changes(
     knowledge: applied.knowledge?.updated ?? 0,
     files: 0,
     items: applied.items?.updated ?? 0,
-    pages: applied.pages?.updated ?? 0,
     glossary: count_quality("glossary"),
     textPreserve: count_quality("text_preserve"),
     preReplacement: count_quality("pre_replacement"),
@@ -1256,13 +1213,6 @@ function normalize_workspace_rejections(
       ),
     ]),
   ) as Partial<Record<QualityRuleKind, Map<string, string>>>;
-  const baseline_pages = drift_candidates.some((rejection) => rejection.scope === "pages")
-    ? new Map(
-        read_workspace_jsonl(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.pages)).map(
-          (row) => [JSON.stringify([row["file_path"], row["page"]]), String(row["fp"])],
-        ),
-      )
-    : new Map<string, string>();
   const needs_prompts = drift_candidates.some((rejection) => rejection.scope === "prompts");
   const baseline_prompts = needs_prompts
     ? read_workspace_json(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts))
@@ -1285,16 +1235,6 @@ function normalize_workspace_rejections(
         batch.knowledge.every((intent) => intent.fp === baseline_knowledge)
         ? rejection
         : { ...rejection, reason: "invalid_change" };
-    if (rejection.scope === "pages") {
-      const fp = baseline_pages.get(JSON.stringify([rejection["file_path"], rejection["page"]]));
-      const intents = batch.pages.filter(
-        (intent) =>
-          intent.file_path === rejection["file_path"] && intent.page === rejection["page"],
-      );
-      return fp !== undefined && intents.length > 0 && intents.every((intent) => intent.fp === fp)
-        ? rejection
-        : { ...rejection, reason: "invalid_change" };
-    }
     const baseline_fp = read_rejection_baseline_fp(
       rejection,
       baseline_items,
@@ -1413,9 +1353,10 @@ function pick_workspace_revisions(
 /** apply 回执只暴露本工具可能改变的 section。 */
 function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecord {
   return Object.fromEntries(
-    (["items", "proofreading", "quality", "prompts", "pdf", "knowledge"] as const).map(
-      (section) => [section, read_json_integer(revisions[section], 0)],
-    ),
+    (["items", "proofreading", "quality", "prompts", "knowledge"] as const).map((section) => [
+      section,
+      read_json_integer(revisions[section], 0),
+    ]),
   );
 }
 

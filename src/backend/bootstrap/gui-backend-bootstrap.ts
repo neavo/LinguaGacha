@@ -112,7 +112,6 @@ export class GuiBackendBootstrap {
         logManager: resources.logManager,
         publishEvent: (topic, payload) => event_stream.publish(topic, payload),
         openOutputFolder: this.options.openDirectory,
-        pdfHost: this.options.pdfHost,
         workspaceRuntimeDirectory: this.options.workspaceRuntimeDirectory,
         workerExecution: this.options.workerExecution,
       });

@@ -27,8 +27,6 @@ it("姓名替换更新当前姓名并完成条目", async () => {
     status: "NONE",
     warnings: [],
     glossary_applications: [],
-    compressed_src: "原文",
-    compressed_dst: "既有译文",
   };
   let saved = item;
   vi.mocked(api_fetch).mockResolvedValue({
@@ -36,15 +34,7 @@ it("姓名替换更新当前姓名并完成条目", async () => {
       view_id: "view-1",
       start: 0,
       row_count: 1,
-      rows: [
-        {
-          kind: "item",
-          row_id: item.row_id,
-          item,
-          compressed_src: item.src,
-          compressed_dst: item.dst,
-        },
-      ],
+      rows: [item],
     },
   });
   const options: Parameters<typeof useProofreadingReplaceActions>[0] = {

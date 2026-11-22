@@ -6,7 +6,6 @@ import type { Item } from "../../../domain/item";
 import { NativeFs } from "../../../native/native-fs";
 import { write_tyrano_app } from "../../../test/tyrano-fixture";
 import { FileFormatService } from "../file-format-service";
-import { create_pdf_execution } from "../pdf/test-support";
 import { GameDirectoryOperations } from "../shared/game/game-directory-operations";
 
 it("一个游戏一个资产，离线重建条目，常规导出只写翻译原稿且写回失败终止导出", async () => {
@@ -17,17 +16,12 @@ it("一个游戏一个资产，离线重建条目，常规导出只写翻译原�
     "data/scenario/first.ks": "台詞[p]\n",
     "data/others/plugin/p/en.json": "{}",
   });
-  const service = new FileFormatService(
-    new GameDirectoryOperations(),
-    { target_language: "ZH" },
-    create_pdf_execution(),
-  );
+  const service = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" });
   const [entry, ...rest] = await service.collect_source_file_entries([temp.path]);
   expect(rest).toEqual([]);
   expect([entry!.rel_path, entry!.file_type]).toEqual(["Game.tyrano", "TYRANO"]);
   const prepared = await service.prepare_source(entry!);
   const parsed = await service.parse_asset("Game.tyrano", prepared.content, "TYRANO");
-  if (parsed.kind !== "items") throw new Error("Unexpected PDF");
   expect(parsed.items.map((item) => [item.src, item.status])).toEqual([
     ["台詞", "NONE"],
     ["テスト", "NONE"],

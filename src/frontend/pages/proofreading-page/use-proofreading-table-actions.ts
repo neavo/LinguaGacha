@@ -13,7 +13,7 @@ import type {
   ProofreadingFilterPanelState,
   ProofreadingListView,
   ProofreadingSearchScope,
-  ProofreadingRow,
+  ProofreadingClientItem,
 } from "@shared/proofreading/proofreading-types";
 import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-reader";
 import type {
@@ -32,7 +32,7 @@ type UseProofreadingTableActionsOptions = {
   is_refreshing: boolean;
   list_view: ProofreadingListView;
   project_loaded: boolean;
-  visible_items: ProofreadingRow[];
+  visible_items: ProofreadingClientItem[];
   visible_row_index_by_id: Map<string, number>;
   filter_dialog_filters_ref: MutableRefObject<ProofreadingContentFilters>;
   filter_dialog_open_ref: MutableRefObject<boolean>;
@@ -78,7 +78,7 @@ type UseProofreadingTableActionsResult = {
   update_regex: (next_is_regex: boolean) => void;
   apply_table_selection: (payload: AppTableSelectionChange) => void;
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void;
-  get_visible_row_at_index: (index: number) => ProofreadingRow | undefined;
+  get_visible_row_at_index: (index: number) => ProofreadingClientItem | undefined;
   get_visible_row_id_at_index: (index: number) => string | undefined;
   resolve_visible_row_index: (row_id: string) => number | undefined;
   resolve_visible_row_index_async: (row_id: string) => Promise<number | undefined>;
@@ -163,7 +163,7 @@ export function useProofreadingTableActions(
   );
 
   const get_visible_row_at_index = useCallback(
-    (index: number): ProofreadingRow | undefined => {
+    (index: number): ProofreadingClientItem | undefined => {
       const window_index = index - options.list_view.window_start;
       if (window_index < 0 || window_index >= options.visible_items.length) {
         return undefined;

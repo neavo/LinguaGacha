@@ -1,10 +1,9 @@
 import type { SourceConfirmations } from "../project-source-formats";
 import type { ImportInheritanceMode } from "../translation-inheritance";
-type WorkbenchCommandSection = "files" | "items" | "pdf";
+type WorkbenchCommandSection = "files" | "items";
 type WorkbenchSectionRevisions = Record<string, number | undefined>;
 
 type WorkbenchPlannerFileRecord = {
-  file_type?: string; // PDF 内容重置需要其独立 revision
   rel_path: string; // 后端 query 返回的项目内相对路径
 };
 
@@ -20,18 +19,16 @@ export type WorkbenchCommandPlan = {
   requestBody: Record<string, unknown>; // 只包含命令体，不包含渲染进程计算的最终 items/meta
 };
 
-// 建立当前文件路径索引，planner 只做路径存在与冲突判断。
-function build_file_map(
-  state: WorkbenchCommandPlanningState,
-): Map<string, WorkbenchPlannerFileRecord> {
-  const file_map = new Map<string, WorkbenchPlannerFileRecord>();
+// 建立当前文件路径集合，planner 只做路径存在与冲突判断。
+function build_file_set(state: WorkbenchCommandPlanningState): Set<string> {
+  const file_set = new Set<string>();
   for (const file of state.files) {
     if (file.rel_path === "") {
       continue;
     }
-    file_map.set(file.rel_path, file);
+    file_set.add(file.rel_path);
   }
-  return file_map;
+  return file_set;
 }
 
 // 用户选择的目标路径去空去重，保证命令体路径集合稳定。
@@ -60,11 +57,11 @@ export function create_workbench_reorder_plan(args: {
   state: WorkbenchCommandPlanningState;
   ordered_rel_paths: string[];
 }): WorkbenchCommandPlan {
-  const file_map = build_file_map(args.state);
+  const file_set = build_file_set(args.state);
   const ordered_rel_paths = normalize_target_rel_paths(args.ordered_rel_paths);
   if (
-    ordered_rel_paths.length !== file_map.size ||
-    ordered_rel_paths.some((rel_path) => !file_map.has(rel_path))
+    ordered_rel_paths.length !== file_set.size ||
+    ordered_rel_paths.some((rel_path) => !file_set.has(rel_path))
   ) {
     throw new Error("File order must contain every current workbench file exactly once.");
   }
@@ -83,22 +80,20 @@ export function create_workbench_reset_file_plan(args: {
   state: WorkbenchCommandPlanningState;
   rel_path: string;
 }): WorkbenchCommandPlan {
-  const file_map = build_file_map(args.state);
+  const file_set = build_file_set(args.state);
   const target_rel_path = args.rel_path;
   if (target_rel_path.trim() === "") {
     throw new Error("A target file path is required.");
   }
-  if (!file_map.has(target_rel_path)) {
+  if (!file_set.has(target_rel_path)) {
     throw new Error("Target file was not found in the current workbench.");
   }
 
-  const sections: WorkbenchCommandSection[] =
-    file_map.get(target_rel_path)?.file_type === "PDF" ? ["items", "pdf"] : ["items"];
   return {
-    updatedSections: sections,
+    updatedSections: ["items"],
     requestBody: {
       rel_paths: [target_rel_path],
-      expected_section_revisions: build_expected_revisions(args.state, ["files", ...sections]),
+      expected_section_revisions: build_expected_revisions(args.state, ["files", "items"]),
     },
   };
 }
@@ -109,8 +104,8 @@ export function create_workbench_delete_files_plan(args: {
   rel_paths: string[];
 }): WorkbenchCommandPlan {
   const target_rel_paths = normalize_target_rel_paths(args.rel_paths);
-  const file_map = build_file_map(args.state);
-  if (!target_rel_paths.some((rel_path) => file_map.has(rel_path))) {
+  const file_set = build_file_set(args.state);
+  if (!target_rel_paths.some((rel_path) => file_set.has(rel_path))) {
     throw new Error("No target file exists in the current workbench.");
   }
 
@@ -129,7 +124,7 @@ export function create_workbench_rename_file_plan(args: {
   rel_path: string;
   new_rel_path: string;
 }): WorkbenchCommandPlan {
-  if (!build_file_map(args.state).has(args.rel_path)) {
+  if (!build_file_set(args.state).has(args.rel_path)) {
     throw new Error("Target file was not found in the current workbench.");
   }
 

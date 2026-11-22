@@ -27,8 +27,6 @@ const item: ProofreadingClientItem = {
   status: "NONE",
   warnings: [],
   glossary_applications: [],
-  compressed_src: "原文",
-  compressed_dst: "译文",
 };
 
 const saved_item = build_project_item_public_record(

@@ -26,8 +26,6 @@ import {
   normalize_project_asset_path,
   SourceFilePathIndex,
 } from "../../shared/project/project-asset-paths";
-import type { PDFExecution } from "./pdf/pdf-worker";
-import { PDFFormat } from "./pdf/pdf-format";
 import path from "node:path";
 
 import { type Item, type ItemFileType, type ItemStatus } from "../../domain/item";
@@ -109,7 +107,6 @@ export class FileFormatService {
   public constructor(
     private readonly game_directory_operations: GameDirectoryOperations,
     config: FileFormatServiceConfig,
-    private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
     private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
@@ -145,7 +142,6 @@ export class FileFormatService {
   ): Promise<FileFormatReadResult> {
     if (is_game_file_type(file_type))
       return {
-        kind: "items",
         file_type,
         ...(await this.games[file_type].read_from_stream(content, rel_path, signal)),
       };
@@ -160,7 +156,6 @@ export class FileFormatService {
       ".epub": "EPUB",
       ".rpy": "RENPY_RPY",
       ".trans": "TRANS",
-      ".pdf": "PDF",
       ".generic": "GENERIC",
       ".media": "MEDIA",
       ".image": "IMAGE",
@@ -185,7 +180,6 @@ export class FileFormatService {
           ? "KVJSON"
           : "NONE";
       return {
-        kind: "items",
         file_type: type as ItemFileType,
         items:
           type === "KVJSON"
@@ -196,19 +190,13 @@ export class FileFormatService {
       };
     }
     if (type === "TRANS")
-      return { kind: "items", file_type: type, ...this.trans.read_from_stream(content, rel_path) };
-    if (type === "PDF")
-      return {
-        kind: "pdf",
-        document: await new PDFFormat(this.pdf_execution).read_from_stream(content),
-      };
+      return { file_type: type, ...this.trans.read_from_stream(content, rel_path) };
     if (
       type === "XLSX" ||
       type === "WOLFXLSX" ||
       (type === undefined && path.extname(rel_path).toLowerCase() === ".xlsx")
     )
       return {
-        kind: "items",
         ...(await this.xlsx.read_asset(
           content,
           rel_path,
@@ -216,7 +204,7 @@ export class FileFormatService {
         )),
       };
     if (type === "IMAGE")
-      return { kind: "items", file_type: "IMAGE", ...(await this.image.read(content, rel_path)) };
+      return { file_type: "IMAGE", ...(await this.image.read(content, rel_path)) };
     const formats = {
       GENERIC: this.generic,
       MEDIA: this.media,
@@ -229,11 +217,9 @@ export class FileFormatService {
       EPUB: this.epub,
       RENPY_RPY: this.renpy_rpy,
     };
-    if (!type || !Object.hasOwn(formats, type))
-      return { kind: "items", file_type: "NONE", items: [] };
+    if (!type || !Object.hasOwn(formats, type)) return { file_type: "NONE", items: [] };
     const format = formats[type as keyof typeof formats];
     return {
-      kind: "items",
       file_type: type as ItemFileType,
       items: await format.read_from_stream(content, rel_path),
     };
@@ -468,7 +454,6 @@ export class FileFormatService {
                 read = {
                   ok: true,
                   result: {
-                    kind: "items",
                     file_type: source.file_type,
                     ...format.collect_read(imported.read, rel_path),
                   },
@@ -545,7 +530,6 @@ export class FileFormatService {
     items: Item[],
     context: FileFormatServiceWriteContext,
     writeback_path?: string, // 调用方指定独立目录时才生成 Agent 写回输入。
-    bilingual_files?: readonly string[],
   ): Promise<void> {
     const { paths, asset_reader } = context;
     const failures: unknown[] = [];
@@ -557,9 +541,9 @@ export class FileFormatService {
         failures.push(error);
       }
     }
-    await this.txt.write_to_path(items, paths, bilingual_files);
+    await this.txt.write_to_path(items, paths);
     await this.md.write_to_path(items, paths);
-    await this.write_subtitles(items, context, bilingual_files);
+    await this.write_subtitles(items, context);
     await this.kvjson.write_to_path(items, paths, asset_reader);
     await this.write_messagejson(items, context);
     if (writeback_path !== undefined) {
@@ -586,7 +570,7 @@ export class FileFormatService {
     await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy_rpy.write_to_path(items, paths, asset_reader);
-    await this.epub.write_to_path(items, paths, asset_reader, bilingual_files);
+    await this.epub.write_to_path(items, paths, asset_reader);
     if (failures.length === 1) throw failures[0];
     if (failures.length) throw new AggregateError(failures, "Game assets could not be exported");
   }
@@ -614,7 +598,6 @@ export class FileFormatService {
   private async write_subtitles(
     items: Item[],
     context: FileFormatServiceWriteContext,
-    bilingual_files?: readonly string[],
   ): Promise<void> {
     const by_file = new Map<string, Item[]>();
     for (const item of items) {
@@ -637,11 +620,10 @@ export class FileFormatService {
         path.join(context.paths.translated_path, file),
         output.translated,
       );
-      if (bilingual_files === undefined || bilingual_files.includes(file))
-        await this.native_fs.write_file(
-          path.join(context.paths.bilingual_path, file),
-          output.bilingual,
-        );
+      await this.native_fs.write_file(
+        path.join(context.paths.bilingual_path, file),
+        output.bilingual,
+      );
     }
   }
 

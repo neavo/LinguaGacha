@@ -7,5 +7,4 @@ export const de_de_task_progress = {
   translation_pending: "Übersetzung ausstehend",
   translation_skipped: "Keine Übersetzung nötig",
   line: "{status} - {count} Zeilen",
-  page: "{status} - {count} Seiten",
 } satisfies LocaleMessageSchema<typeof zh_cn_task_progress>;

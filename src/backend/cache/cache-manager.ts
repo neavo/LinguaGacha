@@ -1,4 +1,3 @@
-import type { PDFSummary } from "../../shared/pdf";
 import { AppError } from "../../shared/error";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -66,10 +65,6 @@ export class CacheManager implements CacheReadPort {
   private section_revisions: ProjectDataSectionRevisions = {}; // 对外暴露的 section revision 快照。
   public readonly items = new ItemCache(() => this.recover_if_needed());
   public readonly files = new FileCache(() => this.recover_if_needed());
-  public readonly pdf = new ProjectDataBlockCache<Record<string, PDFSummary>>(
-    () => this.recover_if_needed(),
-    () => ({}),
-  );
   public readonly quality = new ProjectDataBlockCache<QualityRuleBlock>(
     () => this.recover_if_needed(),
     create_empty_quality_rule_block,
@@ -100,7 +95,6 @@ export class CacheManager implements CacheReadPort {
       cache: this,
       workerClient: options.workerClient,
       reader: createProofreadingReader(),
-      readPages: (projectPath) => this.database.read_pdf_documents(projectPath),
     });
     this.qualityStatistics = new QualityRuleStatisticsCache({
       cache: this,
@@ -122,7 +116,6 @@ export class CacheManager implements CacheReadPort {
     this.freshness = "recoverable_error"; // 安装中断后，下次读取必须重建全部基础事实。
     this.items.replace(snapshot.items);
     this.files.replace(snapshot.files);
-    this.pdf.replace(snapshot.pdf);
     this.quality.replace(snapshot.quality);
     this.prompts.replace(snapshot.prompts);
     this.languages.replace(snapshot.languages);
@@ -148,7 +141,6 @@ export class CacheManager implements CacheReadPort {
     this.freshness = "empty";
     this.items.clear();
     this.files.clear();
-    this.pdf.clear();
     this.quality.clear();
     this.prompts.clear();
     this.languages.clear();
@@ -165,7 +157,6 @@ export class CacheManager implements CacheReadPort {
     try {
       if (committed.items !== undefined) this.items.applyChange(committed.items);
       if (committed.files !== undefined) this.files.replace(committed.files);
-      if (committed.pdf !== undefined) this.pdf.replace(committed.pdf);
       if (committed.quality !== undefined) this.quality.replace(committed.quality);
       if (committed.prompts !== undefined) this.prompts.replace(committed.prompts);
       if (committed.languages !== undefined) this.languages.replace(committed.languages);

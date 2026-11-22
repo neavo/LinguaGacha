@@ -7,5 +7,4 @@ export const en_us_task_progress = {
   translation_pending: "Awaiting translation",
   translation_skipped: "No translation needed",
   line: "{status} - {count} lines",
-  page: "{status} - {count} pages",
 } satisfies LocaleMessageSchema<typeof zh_cn_task_progress>;

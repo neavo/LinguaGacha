@@ -15,8 +15,8 @@ it("旧工程迁移保留身份与前序写入，关闭重开后实际导出已�
   const database = new ProjectDatabase("1.0.0");
   try {
     await database.create_project(project_path, (database) => {
-      database.add_asset(project_path, "book.epub", epub_content, "EPUB", null);
-      database.add_asset(project_path, "demo.md", Buffer.from("正文"), "MD", null);
+      database.add_asset(project_path, "book.epub", epub_content, "EPUB");
+      database.add_asset(project_path, "demo.md", Buffer.from("正文"), "MD");
       database.set_rule_text(project_path, "CUSTOM_PROMPT_EN", "旧提示词");
       database.set_meta(project_path, "text_preserve_enable", true);
       database.set_items(project_path, [

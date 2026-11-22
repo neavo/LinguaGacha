@@ -6,5 +6,4 @@ export const ja_jp_task_progress = {
   translation_pending: "翻訳待ち",
   translation_skipped: "翻訳不要",
   line: "{status} - {count} 行",
-  page: "{status} - {count} ページ",
 } satisfies LocaleMessageSchema<typeof zh_cn_task_progress>;

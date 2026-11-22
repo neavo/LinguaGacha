@@ -1,15 +1,12 @@
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
-import { read_pdf_document } from "./pdf/pdf-document";
-import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import { write_zip } from "../../test/zip-fixture";
 import { GenericFormat } from "./generic/generic-format";
 import { create_epub_fixture } from "../../test/epub-fixture";
 import { EPUBFormat } from "./epub/epub-format";
 import { create_item } from "../../domain/item";
 import { image_fixture } from "../../test/image-fixture";
-import type { PDFDocument } from "../../shared/pdf";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,7 +14,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
-import * as pdf_translation from "./pdf/pdf-translation";
 import { default_native_fs } from "../../native/native-fs";
 import { create_text_resolver } from "../../shared/i18n";
 import { AppError } from "../../shared/error";
@@ -37,49 +33,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
-it("渲染校验开始前已关闭真实工程连接，校验失败保留文件名和原因且没有输出", async () => {
-  const project = path.join(temp_dir, "source.lg");
-  const output = path.join(temp_dir, "output");
-  const bytes = create_pdf_fixture();
-  const document = read_pdf_document(bytes);
-  const database = new ProjectDatabase("1.0.0");
-  const session = new ProjectSessionState();
-  const failure = new Error("invalid markdown");
-  try {
-    await database.create_project(project, (writer) =>
-      writer.add_asset(project, "book.pdf", bytes, "PDF", document),
-    );
-    await session.mark_loaded(project);
-    const sidecars: boolean[] = [];
-    const render = vi.spyOn(pdf_translation, "render_pdf_translation").mockImplementation(() => {
-      sidecars.push(fs.existsSync(project + "-wal"), fs.existsSync(project + "-shm"));
-      throw failure;
-    });
-    const execute = vi.fn();
-    const service = new TranslationFileGenerationService(
-      create_generation_gate(),
-      { check_section_revisions: async () => {} },
-      new GameDirectoryOperations(),
-      database,
-      create_setting_service(),
-      session,
-      async () => {},
-      execute,
-    );
-    await expect(service.generate_staging_files(output, [])).rejects.toMatchObject({
-      code: "file.invalid_structure",
-      public_details: { file: "book.pdf" },
-      cause: failure,
-    });
-    expect(render).toHaveBeenCalledTimes(1);
-    expect(sidecars).toEqual([false, false]);
-    expect(execute).not.toHaveBeenCalled();
-    expect(fs.existsSync(output)).toBe(false);
-  } finally {
-    await database.close();
-  }
 });
 
 /** 只提供译文生成消费的设置，避免启动应用配置存储。 */
@@ -109,14 +62,10 @@ function create_database(
       { content: Buffer.from(String(item.src ?? "")), file_type: String(item.file_type) },
     ]),
   ),
-  documents: Record<string, PDFDocument> = {},
   meta: Record<string, unknown> = {},
 ): ProjectDatabase {
   return {
     get_all_meta: () => meta,
-    read_pdf_summaries: () =>
-      Object.fromEntries(Object.keys(documents).map((file_path) => [file_path, {}])),
-    read_pdf_document: (_project_path: string, file_path: string) => documents[file_path] ?? null,
     async read<T>(_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
       return callback(this as unknown as ProjectDatabaseAccess);
     },
@@ -173,9 +122,8 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
-    const generated = await service.generate_staging_files(path.join(temp_dir, "staging"), []);
+    const generated = await service.generate_staging_files(path.join(temp_dir, "staging"));
     expect(generated.writeback?.files).toEqual(["book.image", "cover.image"]);
     expect(fs.readdirSync(generated.output_path)).toEqual(["plain.txt"]);
     const direct = await service.generate_files({
@@ -215,7 +163,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     for (const generate of [
       () => service.generate_files({ project_path, expected_section_revisions: { files: 0 } }),
@@ -255,7 +202,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     const pending = service.generate_files({
       project_path,
@@ -274,12 +220,12 @@ describe("TranslationFileGenerationService", () => {
       await pending;
     }
     await expect(
-      service.generate_staging_files(path.join(temp_dir, "staging"), []),
+      service.generate_staging_files(path.join(temp_dir, "staging")),
     ).rejects.toMatchObject({ code: "runtime.busy" });
     const lease = gate.begin_runtime("agent");
     try {
       await expect(
-        service.generate_staging_files(path.join(temp_dir, "staging"), []),
+        service.generate_staging_files(path.join(temp_dir, "staging")),
       ).resolves.toMatchObject({ accepted: true, excluded_files: [] });
     } finally {
       gate.finish_runtime(lease);
@@ -298,43 +244,47 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     for (const generate of [
       () => service.generate_files({ expected_section_revisions: { files: 0 }, project_path }),
       () => service.generate_files_to_directory(path.join(temp_dir, "cli")),
-      () => service.generate_staging_files(path.join(temp_dir, "agent"), []),
+      () => service.generate_staging_files(path.join(temp_dir, "agent")),
     ])
       await expect(generate()).rejects.toMatchObject({ code: "project.no_files" });
     expect(fs.readdirSync(temp_dir)).toEqual([]);
   });
 
-  it("Agent 只为清单中的资产生成双语，空清单不创建双语目录", async () => {
+  it("Agent 暂存生成自动为原生双语格式输出双语，仅单语资产时不创建双语目录", async () => {
     const book = await create_epub_fixture("书籍正文");
     const book_items = await new EPUBFormat({ target_language: "ZH" }).read_from_stream(
       book,
       "book.epub",
     );
     const assets = {
-      "README.txt": { content: Buffer.from("说明"), file_type: "TXT" },
       "novel.txt": { content: Buffer.from("小说"), file_type: "TXT" },
       "book.epub": { content: book, file_type: "EPUB" },
       "movie.srt": {
         content: Buffer.from("1\n00:00:01,000 --> 00:00:02,000\nHello\n"),
         file_type: "SRT",
       },
+      "notes.md": { content: Buffer.from("# Title\n"), file_type: "MD_V2" },
     };
     const items = [
       ...book_items,
-      ...["README.txt", "novel.txt"].map((file_path) =>
-        create_item({
-          file_path,
-          file_type: "TXT",
-          src: "原文",
-          dst: "译文",
-          status: "PROCESSED",
-        }),
-      ),
+      create_item({
+        file_path: "novel.txt",
+        file_type: "TXT",
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+      }),
+      create_item({
+        file_path: "notes.md",
+        file_type: "MD_V2",
+        src: "Title",
+        dst: "标题",
+        status: "PROCESSED",
+      }),
     ];
     const session = new ProjectSessionState();
     await session.mark_loaded(path.join(temp_dir, "mixed.lg"));
@@ -346,19 +296,38 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
-    for (const selected of [[], ["novel.txt", "book.epub", "movie.srt"]]) {
-      const result = await service.generate_staging_files(path.join(temp_dir, "agent"), selected);
-      expect(fs.readdirSync(result.output_path).sort()).toEqual(Object.keys(assets).sort());
-      if (selected.length > 0)
-        expect(fs.readdirSync(result.bilingual_output_path).sort()).toEqual(selected.sort());
-      else expect(fs.existsSync(result.bilingual_output_path)).toBe(false);
-    }
-    await expect(
-      service.generate_staging_files(path.join(temp_dir, "invalid"), ["missing.txt"]),
-    ).rejects.toMatchObject({ code: "file.not_found" });
-    expect(fs.existsSync(path.join(temp_dir, "invalid"))).toBe(false);
+    const mixed = await service.generate_staging_files(path.join(temp_dir, "agent-mixed"));
+    expect(fs.readdirSync(mixed.output_path).sort()).toEqual(Object.keys(assets).sort());
+    expect(fs.readdirSync(mixed.bilingual_output_path).sort()).toEqual([
+      "book.epub",
+      "movie.srt",
+      "novel.txt",
+    ]);
+
+    const mono_service = new TranslationFileGenerationService(
+      create_generation_gate(),
+      { check_section_revisions: async () => {} },
+      new GameDirectoryOperations(),
+      create_database(
+        [
+          create_item({
+            file_path: "notes.md",
+            file_type: "MD_V2",
+            src: "Title",
+            dst: "标题",
+            status: "PROCESSED",
+          }),
+        ],
+        { "notes.md": assets["notes.md"] },
+      ),
+      create_setting_service(),
+      session,
+      async () => {},
+    );
+    const mono = await mono_service.generate_staging_files(path.join(temp_dir, "agent-mono"));
+    expect(fs.readdirSync(mono.output_path)).toEqual(["notes.md"]);
+    expect(fs.existsSync(mono.bilingual_output_path)).toBe(false);
   });
 
   it("普通生成报告排除的通用与视频资产，暂存生成隔离写回输入", async () => {
@@ -430,7 +399,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     const gui = await service.generate_files({
       expected_section_revisions: { files: 0 },
@@ -441,7 +409,7 @@ describe("TranslationFileGenerationService", () => {
     expect(fs.existsSync(path.join(gui.output_path, "data.generic"))).toBe(false);
     expect(fs.existsSync(path.join(gui.output_path, "empty.generic"))).toBe(false);
     expect(gui.excluded_files).toEqual(["data.generic", "movie.media", "empty.generic"]);
-    const generated = await service.generate_staging_files(path.join(temp_dir, "agent"), []);
+    const generated = await service.generate_staging_files(path.join(temp_dir, "agent"));
     expect(generated.excluded_files).toEqual([]);
     expect(generated.writeback!.files).toEqual(gui.excluded_files);
     expect(
@@ -513,7 +481,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     const text = create_text_resolver("zh-CN");
     fs.mkdirSync(
@@ -618,7 +585,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     const result = await service.generate_files_to_directory(path.join(temp_dir, "legacy"));
     expect(fs.readFileSync(path.join(result.output_path, "old/sub.txt"), "utf8")).toBe(
@@ -646,147 +612,11 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     const result = await service.generate_files_to_directory(path.join(temp_dir, "out"));
     for (const [file, { content }] of Object.entries(assets)) {
       expect(fs.readFileSync(path.join(result.output_path, file)).equals(content)).toBe(true);
     }
-  });
-
-  it.each(["gui", "staging", "cli"] as const)(
-    "%s 译文生成已存译稿与确认保留的原页，全保留文件原样写出",
-    async (entry) => {
-      const source = create_pdf_fixture();
-      const document = read_pdf_document(source);
-      const partial = structuredClone(document);
-      partial.pages[0]!.translation = { kind: "keep", reason: "无需翻译" };
-      partial.pages[1]!.translation = { kind: "translate", markdown: "已有译稿" };
-      partial.pages[2]!.translation = { kind: "omit", reason: "装饰空页" };
-      for (const page of document.pages)
-        page.translation = { kind: "keep", reason: "按用户要求保留原稿" };
-      const empty = structuredClone(document);
-      for (const page of empty.pages) page.translation = { kind: "omit", reason: "省略" };
-      const database = create_database(
-        [],
-        {
-          "book.pdf": { content: Buffer.from(source), file_type: "PDF" },
-          "original.pdf": { content: Buffer.from(source), file_type: "PDF" },
-          "empty.pdf": { content: Buffer.from(source), file_type: "PDF" },
-        },
-        { "book.pdf": partial, "original.pdf": document, "empty.pdf": empty },
-      );
-      const session = new ProjectSessionState();
-      session.mark_loaded(path.join(temp_dir, "project.lg"));
-      const host = vi.fn(async () => create_pdf_fixture(["Translated"]));
-      const service = new TranslationFileGenerationService(
-        create_generation_gate(),
-        { check_section_revisions: async () => {} },
-        new GameDirectoryOperations(),
-        database,
-        create_setting_service(),
-        session,
-        async () => {},
-        create_pdf_execution(host),
-      );
-      if (entry === "cli") {
-        await expect(
-          service.generate_files_to_directory(path.join(temp_dir, "out")),
-        ).rejects.toMatchObject({
-          code: "project.no_files",
-          public_details: { excluded_files: ["book.pdf", "original.pdf", "empty.pdf"] },
-        });
-        expect(fs.existsSync(path.join(temp_dir, "out"))).toBe(false);
-        expect(host).not.toHaveBeenCalled();
-        return;
-      }
-      const result =
-        entry === "gui"
-          ? await service.generate_files({
-              expected_section_revisions: { files: 0 },
-              project_path: session.require_loaded_project_path(),
-              output_directory: temp_dir,
-            })
-          : await service.generate_staging_files(path.join(temp_dir, "out"), []);
-      expect(result.pdf_files).toEqual([
-        {
-          file_path: "book.pdf",
-          written: true,
-          translated_pages: 1,
-          original_pages: 1,
-          omitted_pages: 1,
-        },
-        {
-          file_path: "original.pdf",
-          written: true,
-          translated_pages: 0,
-          original_pages: 3,
-          omitted_pages: 0,
-        },
-        {
-          file_path: "empty.pdf",
-          written: false,
-          translated_pages: 0,
-          original_pages: 0,
-          omitted_pages: empty.pages.length,
-        },
-      ]);
-      expect(
-        fs.readFileSync(path.join(result.output_path, "original.pdf")).equals(Buffer.from(source)),
-      ).toBe(true);
-      const exported = read_pdf_document(
-        new Uint8Array(fs.readFileSync(path.join(result.output_path, "book.pdf"))),
-      );
-      expect(exported.pages).toHaveLength(2);
-      expect(host).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  it("原文译文生成不要求打印宿主，页面顺序错误在文本文件落盘前报告", async () => {
-    const source = create_pdf_fixture();
-    const document = read_pdf_document(source);
-    const database = create_database(
-      [
-        {
-          id: 1,
-          src: "source",
-          dst: "text",
-          status: "PROCESSED",
-          file_type: "TXT",
-          file_path: "text.txt",
-          row: 0,
-        },
-      ],
-      { "book.pdf": { content: Buffer.from(source), file_type: "PDF" } },
-      { "book.pdf": document },
-    );
-    const session = new ProjectSessionState();
-    session.mark_loaded(path.join(temp_dir, "project.lg"));
-    const service = new TranslationFileGenerationService(
-      create_generation_gate(),
-      { check_section_revisions: async () => {} },
-      new GameDirectoryOperations(),
-      database,
-      create_setting_service(),
-      session,
-      async () => {},
-      create_pdf_execution(),
-    );
-    const output = await service.generate_files({
-      expected_section_revisions: { files: 0 },
-      project_path: session.require_loaded_project_path(),
-      output_directory: temp_dir,
-    });
-    expect(
-      fs.readFileSync(path.join(output.output_path, "book.pdf")).equals(Buffer.from(source)),
-    ).toBe(true);
-    document.pages[0]!.page = 4;
-    const directory = path.join(temp_dir, "conflict");
-    await expect(service.generate_staging_files(directory, [])).rejects.toMatchObject({
-      code: "file.invalid_structure",
-      public_details: { file: "book.pdf" },
-    });
-    expect(fs.existsSync(directory)).toBe(false);
   });
 
   it.each(["译文", ""])("普通译文生成复用已完成正文 %j 并写出 TXT", async (dst) => {
@@ -822,7 +652,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session_state,
       output_folder_opener,
-      create_pdf_execution(),
     );
 
     const result = await service.generate_files({
@@ -852,7 +681,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session_state,
       async () => {},
-      create_pdf_execution(),
     );
     await service.generate_files_to_directory(output);
     expect(fs.readFileSync(patch, "utf8")).toBe("installed patch");
@@ -863,14 +691,9 @@ describe("TranslationFileGenerationService", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
     const content = Buffer.from("WEBVTT\n\n00:00.000 --> 00:02.000\n<lang ja>こんにちは</lang>\n");
-    const parsed = await new FileFormatService(
-      new GameDirectoryOperations(),
-      {
-        target_language: "ZH",
-      },
-      create_pdf_execution(),
-    ).parse_asset("sub.vtt", content, "VTT");
-    if (parsed.kind !== "items") throw new Error("VTT fixture must produce items.");
+    const parsed = await new FileFormatService(new GameDirectoryOperations(), {
+      target_language: "ZH",
+    }).parse_asset("sub.vtt", content, "VTT");
     const database = create_database(
       parsed.items.map((item, index) => ({
         ...item,
@@ -879,7 +702,6 @@ describe("TranslationFileGenerationService", () => {
         status: "PROCESSED",
       })) as unknown as Array<Record<string, unknown>>,
       { "sub.vtt": { content, file_type: "VTT" } },
-      {},
       { target_language: "EN" },
     );
     const service = new TranslationFileGenerationService(
@@ -890,7 +712,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session_state,
       vi.fn<OutputFolderOpener>(),
-      create_pdf_execution(),
     );
 
     const result = await service.generate_files({
@@ -964,7 +785,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session_state,
       vi.fn<OutputFolderOpener>(),
-      create_pdf_execution(),
     );
 
     const result = await service.generate_files({
@@ -1020,7 +840,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session_state,
       vi.fn<OutputFolderOpener>(),
-      create_pdf_execution(),
     );
 
     const result = await service.generate_files({
@@ -1058,7 +877,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service({ app_language: "DE" }),
       session_state,
       vi.fn<OutputFolderOpener>(),
-      create_pdf_execution(),
       log_collector,
     );
     const text = create_text_resolver("de-DE"); // 验证语言选择与参数传递，文案由当前词典决定。
@@ -1080,7 +898,6 @@ describe("TranslationFileGenerationService", () => {
     ).resolves.toEqual({
       accepted: true,
       excluded_files: [],
-      pdf_files: [],
       output_path: translated_path,
       bilingual_output_path: bilingual_path,
     });
@@ -1118,7 +935,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener,
-      create_pdf_execution(),
     );
 
     const result = await service.generate_files({
@@ -1154,13 +970,11 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener,
-      create_pdf_execution(),
     );
 
     await expect(service.generate_files_to_directory(output_dir)).resolves.toEqual({
       accepted: true,
       excluded_files: [],
-      pdf_files: [],
       output_path: output_dir,
       bilingual_output_path: path.join(output_dir, "bilingual"),
     });
@@ -1196,7 +1010,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener,
-      create_pdf_execution(),
       log_collector,
     );
 
@@ -1214,15 +1027,12 @@ describe("TranslationFileGenerationService", () => {
     );
   });
 
-  it.each(["gui-write", "directory-prepare", "directory-pdf"] as const)(
+  it.each(["gui-write", "directory-prepare"] as const)(
     "%s 失败时统一报告译文生成错误并保留一份原始诊断",
     async (entry) => {
       const project_path = path.join(temp_dir, "demo.lg");
       const session_state = new ProjectSessionState();
       session_state.mark_loaded(project_path);
-      const source = create_pdf_fixture();
-      const document = read_pdf_document(source);
-      document.pages[0]!.translation = { kind: "translate", markdown: "译文" };
       const database = create_database(
         [
           {
@@ -1236,10 +1046,8 @@ describe("TranslationFileGenerationService", () => {
           },
         ],
         {
-          "book.pdf": { content: Buffer.from(source), file_type: "PDF" },
           "script.txt": { content: Buffer.from("原文"), file_type: "TXT" },
         },
-        { "book.pdf": document },
       );
       const log_collector = { info: vi.fn(), error: vi.fn() };
       const cause = new Error("底层原因");
@@ -1251,7 +1059,6 @@ describe("TranslationFileGenerationService", () => {
           throw error;
         });
       }
-      const execute = create_pdf_execution();
       const service = new TranslationFileGenerationService(
         create_generation_gate(),
         { check_section_revisions: async () => {} },
@@ -1260,11 +1067,6 @@ describe("TranslationFileGenerationService", () => {
         create_setting_service({ output_folder_open_on_finish: true }),
         session_state,
         vi.fn<OutputFolderOpener>(),
-        entry === "directory-pdf"
-          ? async () => {
-              throw error;
-            }
-          : execute,
         log_collector,
       );
 
@@ -1275,7 +1077,7 @@ describe("TranslationFileGenerationService", () => {
               project_path: session_state.require_loaded_project_path(),
               output_directory: temp_dir,
             })
-          : service.generate_staging_files(path.join(temp_dir, "out"), []);
+          : service.generate_staging_files(path.join(temp_dir, "out"));
       await expect(result).rejects.toMatchObject({
         code: "translation.generation_failed",
         cause: error,
@@ -1315,7 +1117,6 @@ describe("TranslationFileGenerationService", () => {
       create_setting_service(),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     await expect(
       service.generate_files({
@@ -1345,7 +1146,6 @@ it.each(["PROJECT", "FIXED", "MANUAL"] as const)(
       create_setting_service({ translation_save_mode: mode, translation_fixed_path: fixed }),
       session,
       async () => {},
-      create_pdf_execution(),
     );
     const paths = service.read_output_paths();
     expect(paths.manual).toBe(mode === "MANUAL");

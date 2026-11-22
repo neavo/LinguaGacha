@@ -61,7 +61,6 @@ export const zh_cn_agent_page = {
       workspace: "工作区文件",
       upload: "上传",
       items: "{COUNT} 条",
-      pages: "{COUNT} 页",
       loading: "正在读取文件列表 …",
       error: "文件列表读取失败 …",
     },
@@ -114,7 +113,6 @@ export const zh_cn_agent_page = {
     title: "正在写入工程数据",
     summary: {
       files: "文件 {count} 个",
-      pages: "分页数据 {count} 页",
       items: "条目数据 {count} 条",
       glossary: "术语规则 {count} 条",
       text_preserve: "文本保护规则 {count} 条",

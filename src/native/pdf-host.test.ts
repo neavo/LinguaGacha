@@ -1,4 +1,3 @@
-import { read_pdf_document } from "../backend/file/pdf/pdf-document";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
@@ -8,18 +7,11 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
 import { inject, expect, it } from "vitest";
-import { create_pdf_fixture } from "../backend/file/pdf/test-support";
-import * as mupdf from "mupdf";
 
-it("真实打印保持图文分页、隔离脚本并在取消后继续调度", async () => {
+it("真实打印嵌入共享字体、隔离脚本并在取消后继续调度", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-pdf-host-"));
   try {
     const runtime = inject("workspaceRuntimeDirectory");
-    await fs.symlink(
-      path.join(runtime, "node_modules"),
-      path.join(directory, "node_modules"),
-      process.platform === "win32" ? "junction" : "dir",
-    );
     await build({
       configFile: false,
       logLevel: "silent",
@@ -29,24 +21,14 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
         lib: {
           entry: {
             host: path.resolve("src/native/pdf-host.ts"),
-            document: path.resolve("src/backend/file/pdf/pdf-document.ts"),
           },
           formats: ["es"],
           fileName: (_format, name) => `${name}.mjs`,
         },
-        rolldownOptions: { external: ["electron", /^node:/u, "mupdf"], platform: "node" },
+        rolldownOptions: { external: ["electron", /^node:/u], platform: "node" },
         minify: false,
       },
     });
-    const source = create_pdf_fixture(undefined, [612, 792]);
-    await fs.writeFile(path.join(directory, "source.pdf"), source);
-    const parsed = read_pdf_document(source);
-    parsed.pages[0]!.translation = {
-      kind: "translate",
-      markdown:
-        "# 中文研究报告\n\n跨页内容已经整理为连续的语义段落。\n\n| 项目 | 结果 |\n| --- | --- |\n| 准确率 | 98% |\n| 页数 | 3 |\n\n## 结果说明\n\n- 来源身份稳定\n- 停止后继续处理\n\n图例：蓝色矩形。",
-    };
-    await fs.writeFile(path.join(directory, "document.json"), JSON.stringify(parsed));
     const entry = path.join(directory, "main.mjs");
     await fs.writeFile(
       entry,
@@ -55,8 +37,6 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
       import fs from 'node:fs/promises';
       import assert from 'node:assert/strict';
       import { create_pdf_host } from ${JSON.stringify(pathToFileURL(path.join(directory, "bundle/host.mjs")).href)};
-      import * as mupdf from "mupdf";
-      import { build_pdf_document, render_pdf_page } from ${JSON.stringify(pathToFileURL(path.join(directory, "bundle/document.mjs")).href)};
       app.setPath('userData', ${JSON.stringify(path.join(directory, "user-data"))}); // 并发 Electron 实例各用独立缓存。
       app.commandLine.appendSwitch('disable-gpu');
       void (async () => {
@@ -64,34 +44,12 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
       app.on('window-all-closed', () => {});
       try {
         const host = create_pdf_host(${JSON.stringify({
-          stylesPath: path.resolve(runtime, "..", "pdf-print.css"),
           fontsDirectory: path.resolve(runtime, "..", "fonts"),
         })});
-        const source = new Uint8Array(await fs.readFile(${JSON.stringify(path.join(directory, "source.pdf"))}));
-        const document = JSON.parse(await fs.readFile(${JSON.stringify(path.join(directory, "document.json"))}, 'utf8'));
-        const output = await build_pdf_document({
-          title: '中文 PDF 验证', document, source_bytes: source,
-          print: html => host({kind:'print_pdf',html: html + '<script>document.body.textContent="UNSAFE_SCRIPT_EXECUTED"</script>'}),
-        });
-        await fs.writeFile(${JSON.stringify(path.join(directory, "translated.pdf"))}, output);
-        document.pages[0].translation.background = {page:3,x:40,y:672,width:120,height:80};
-        document.pages[0].translation.markdown += '\\n\\n公式 $E=mc^2$。\\n\\n$$\\n\\\\frac{1}{2}\\n$$\\n\\n> [!NOTE]\\n> 说明正文。\\n\\n带注释的正文[^a]。\\n\\n[^a]: 注释内容。';
-        const decorated = await build_pdf_document({title:'公式与背景',document,source_bytes:source,print:html=>host({kind:'print_pdf',html})});
-        await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.pdf"))}, decorated);
-        await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.png"))}, render_pdf_page(decorated,{page:1,scale:1.5}));
-        delete document.pages[0].translation.background;
-        document.pages[0].translation.markdown = '# 地图与图注\\n\\n![完整图注](pdf-image:' + document.digest + '/3/0,0,612,792)';
-        const illustrated = await build_pdf_document({title:'插图分页',document,source_bytes:source,print:html=>host({kind:'print_pdf',html})});
-        const illustratedPdf = new mupdf.PDFDocument(illustrated);
-        assert.equal(illustratedPdf.countPages(),3,'标题、整页比例插图与短图注应能一起排入一页');
-        await fs.writeFile(${JSON.stringify(path.join(directory, "illustrated.png"))},render_pdf_page(illustrated,{page:1,scale:1.5}));
-        illustratedPdf.destroy();
-        const rendered = render_pdf_page(output,{page:1,scale:1.5});
-        await fs.writeFile(${JSON.stringify(path.join(directory, "translated.png"))}, rendered);
-        const original_page = render_pdf_page(output,{page:3,scale:1.5});
-        await fs.writeFile(${JSON.stringify(path.join(directory, "original.png"))}, original_page);
-        await host({kind:'print_pdf',html:'<!--' + 'x'.repeat(2_100_000) + '--><p>Second document</p>'});
-        assert.equal(BrowserWindow.getAllWindows().length,0);
+        const html = \`<style>body { font-family: LGBaseFont } .second { break-before: page }</style><p>中文报告</p><p class="second">Second page</p><script>document.body.replaceChildren()</script>\`;
+        const output = await host({kind:"print_pdf", html});
+        await fs.writeFile(${JSON.stringify(path.join(directory, "host.pdf"))}, output);
+        assert.equal(BrowserWindow.getAllWindows().length, 0);
         let activeFinished = false;
         const active = host({kind:'print_pdf',html:'<p>Active print</p>'}).finally(() => { activeFinished = true; });
         const queuedController = new AbortController();
@@ -156,46 +114,17 @@ it("真实打印保持图文分页、隔离脚本并在取消后继续调度", a
       maxBuffer: 2 * 1024 * 1024,
     });
     expect(result.stdout).toContain("PDF_HOST_OK");
-    const document = new mupdf.PDFDocument(
-      new Uint8Array(await fs.readFile(path.join(directory, "translated.pdf"))),
-    );
-    try {
-      expect(document.countPages()).toBe(3);
-      // 用实际 PDF 文本验证中文保留和脚本隔离，忽略 Chromium 的空白分段。
-      const read_text = (index: number) => {
-        const page = document.loadPage(index);
-        const text = page.toStructuredText("");
-        try {
-          return text.asText().replaceAll(/\s/g, "");
-        } finally {
-          text.destroy();
-          page.destroy();
-        }
-      };
-      expect(read_text(1)).toContain("secondhalf");
-      expect(read_text(0)).toContain("中文研究报告");
-      expect(read_text(0)).not.toContain("UNSAFE_SCRIPT_EXECUTED");
-    } finally {
-      document.destroy();
-    }
-    // 可选 QA 目录只保留本次生成物，便于人工检查真实 Chromium 版式。
-    if (process.env.LINGUAGACHA_PDF_QA_DIR) {
-      await fs.mkdir(process.env.LINGUAGACHA_PDF_QA_DIR, { recursive: true });
-      for (const name of [
-        "translated.pdf",
-        "translated.png",
-        "original.png",
-        "decorated.pdf",
-        "decorated.png",
-        "illustrated.png",
-      ])
-        await fs.copyFile(
-          path.join(directory, name),
-          path.join(process.env.LINGUAGACHA_PDF_QA_DIR, name),
-        );
+    const pdf = await fs.readFile(path.join(directory, "host.pdf"), "latin1");
+    expect(pdf).toMatch(/^%PDF-/u);
+    expect(pdf.match(/\/Type\s*\/Page\b/gu)).toHaveLength(2);
+    expect(pdf).toMatch(/\/FontFile2\s+\d+\s+0\s+R/u);
+    expect(pdf).toMatch(/\/BaseFont\s*\/[^\s]*LGBaseFont/u);
+    const qa = process.env.LINGUAGACHA_PDF_QA_DIR;
+    if (qa) {
+      await fs.mkdir(qa, { recursive: true });
+      await fs.copyFile(path.join(directory, "host.pdf"), path.join(qa, "host.pdf"));
     }
   } finally {
-    await fs.unlink(path.join(directory, "node_modules"));
     await fs.rm(directory, { recursive: true, force: true });
   }
 }, 90_000);

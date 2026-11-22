@@ -25,7 +25,6 @@ import { AGENT_WORKSPACE_CONTRACT } from "../contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError } from "./runner";
 import type { AgentProcessOutput } from "../../process-output";
 import { AGENT_WORKSPACE_RUN_ROOT } from "./policy";
-import { create_pdf_fixture } from "../../../file/pdf/test-support";
 import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 import app_package from "../../../../../package.json";
 import { MEDIA_MODELS } from "../../media/models";
@@ -93,7 +92,6 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     bilingual_output_path: path.join(workspace, "work/output/bilingual"),
     excluded_files: [],
     writeback: { input_path: path.join(workspace, "work/output/writeback"), files: [] },
-    pdf_files: [],
   };
   const generateFiles = vi
     .fn(async () => generated)
@@ -112,8 +110,8 @@ it("领域 SDK 通过绑定通道识别来源和生成文件，失败原因传�
     import { describe_package } from '@lg/generic';
     import assert from 'node:assert/strict';
     assert.match(describe_package(), /GenericItems/);
-    await assert.rejects(generateFiles([]), /fixture generation failed/);
-    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles([]), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
+    await assert.rejects(generateFiles(), /fixture generation failed/);
+    console.log(JSON.stringify({ sources: await inspectSources(['work/input.txt']), generated: await generateFiles(), paths: await getOutputPaths(), selected: await getOutputPaths(${JSON.stringify(workspace)}) }));
   `,
     undefined,
     undefined,
@@ -443,51 +441,10 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   }
 });
 
-it("PDF 引擎与渲染 API 共用实例，Markdown 从用户 npm 工程加载", async () => {
-  await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
-  const result = await run(`
-    import { readFile } from 'node:fs/promises';
-    import assert from 'node:assert/strict';
-    import * as mupdf from '@lg/pdf/mupdf';
-    import {renderPdfPage} from '@lg/pdf';
-    import { unified } from 'unified';
-    import remarkParse from 'remark-parse';
-    import remarkGfm from 'remark-gfm';
-    const loadPage = mupdf.PDFDocument.prototype.loadPage;
-    let rendered = false;
-    mupdf.PDFDocument.prototype.loadPage = function(index) {
-      rendered = true;
-      return loadPage.call(this, index);
-    };
-    const pdf = new mupdf.PDFDocument(new Uint8Array(await readFile('work/source.pdf')));
-    try {
-      const page = pdf.loadPage(0); const text = page.toStructuredText();
-      try {
-        rendered = false;
-        const buffer = pdf.saveToBuffer('');
-        let image;
-        try { image = renderPdfPage(buffer.asUint8Array(), {page:3,scale:1}); }
-        finally { buffer.destroy(); }
-        assert.equal(rendered, true, 'PDF API 必须使用公开引擎的同一原型');
-        console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:image.length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type }));
-      }
-      finally { text.destroy(); page.destroy(); }
-    } finally { pdf.destroy(); }
-
-  `);
-  expect(result.exitCode).toBe(0);
-  expect(JSON.stringify(output_content(result.stdout))).toContain("First half");
-  expect(JSON.stringify(output_content(result.stdout))).toContain("heading");
-});
-
 it.each(["user", "builtin"])(
   "%s 原目录技能直接导入相对模块、npm 与应用模板，并通过 IPC 调用宿主",
   async (kind) => {
-    await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
-    await writeFile(
-      path.join(workspace, "work/printed.pdf"),
-      create_pdf_fixture(["Printed fixture"]),
-    );
+    await writeFile(path.join(workspace, "work/printed.pdf"), "%PDF-1.4 fixture");
     const source = path.join(
       kind === "user"
         ? skill_paths.get_agent_user_skill_dir()
@@ -501,7 +458,7 @@ it.each(["user", "builtin"])(
       `
     import { unified } from 'unified';
     import remarkParse from 'remark-parse';
-    import { buildPdfDocument } from '@lg/pdf';
+    import { printPdf } from '@lg/pdf';
     import { readFile, writeFile } from 'node:fs/promises';
     import { title } from './helper.mjs';
     import { queryItemContexts } from '@lg/project';
@@ -511,10 +468,7 @@ it.each(["user", "builtin"])(
       const contexts = await queryItemContexts([JSON.parse(await readFile('work/items.jsonl', 'utf8'))], [1]);
       const matcher = compileLiteralPatterns([{key:'street',text:'STRASSE',case_sensitive:false}]);
       if (contexts.items.length !== 1 || !matcher.matches(contexts.items[0].src)) throw new Error('Item contexts or text import failed');
-      const bytes = await buildPdfDocument({
-        title, source_bytes: new Uint8Array(await readFile('work/source.pdf')),
-        document:{digest:'a'.repeat(64),pages:[1,2,3].map(page=>({page,width:300,height:300,rotation:0,label:null,translation:page===2?{kind:'translate',markdown:'# fixture'}:null,reviewed:false,notes:''}))},
-      });
+      const bytes = await printPdf("<p>" + title + "</p>");
       await writeFile('work/fixture.pdf', bytes);
       return {type:unified().use(remarkParse).parse('# fixture').children[0].type,path:'work/fixture.pdf'};
     }
@@ -872,23 +826,6 @@ it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", a
   expect(output_content(result.stdout)).toContain("image rejected");
 });
 
-it("页面更新模块在部署工作区解析记录并判定目标", async () => {
-  const result = await run(`
-    import { registerHooks } from 'node:module';
-    registerHooks({ resolve(specifier, context, nextResolve) {
-      if (specifier === 'mupdf') throw new Error('工作区数据模块不应初始化 PDF 引擎');
-      return nextResolve(specifier, context);
-    }});
-    await import('@lg/project');
-    const { parsePageUpdate, resolvePageUpdates } = await import('@lg/pdf/page-updates');
-    const value = {file_path:'sample.pdf',page:1,fp:'abcd',translation:null,reviewed:false,notes:''};
-    const valid = parsePageUpdate({line:2,value});
-    const missing = resolvePageUpdates([valid.intent], []);
-    console.log(JSON.stringify(missing.rejected));
-  `);
-  expect(output_content(result.stdout)).toMatchObject([{ reason: "target_missing", line: 2 }]);
-});
-
 it("模型说明列出的预装包都能导入", async () => {
   const result = await run(`
     const failed = [];
@@ -942,7 +879,7 @@ it("切换应用目录直接更新 SDK，保留用户工程且不调用 npm", as
         `
         import assert from 'node:assert/strict';
         import version from '${fixture}';
-        for (const name of ['@lg/project/bootstrap', '@lg/project/prepare', '@lg/pdf/worker', '@lg/utils']) {
+        for (const name of ['@lg/project/bootstrap', '@lg/project/prepare', '@lg/pdf/worker', '@lg/pdf/mupdf', '@lg/pdf/page-updates', '@lg/utils']) {
           await assert.rejects(import(name), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
         }
         console.log(version);

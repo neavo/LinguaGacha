@@ -41,11 +41,11 @@ describe("Agent mention 菜单候选", () => {
   it.each(["", " \t "])("无筛选时只按来源顺序展示前三个工程文件：%j", (query) => {
     const files: AgentFileCandidate[] = [
       { kind: "upload", path: "uploads/first.txt", size: 10 },
-      { kind: "workspace", path: "z.txt", count: 1, unit: "items" },
-      { kind: "workspace", path: "a.txt", count: 1, unit: "items" },
+      { kind: "workspace", path: "z.txt", count: 1 },
+      { kind: "workspace", path: "a.txt", count: 1 },
       { kind: "upload", path: "uploads/b.txt", size: 10 },
-      { kind: "workspace", path: "b.txt", count: 1, unit: "items" },
-      { kind: "workspace", path: "c.txt", count: 1, unit: "items" },
+      { kind: "workspace", path: "b.txt", count: 1 },
+      { kind: "workspace", path: "c.txt", count: 1 },
     ];
     const result = create_agent_mention_candidates({
       locale: "zh-CN",
@@ -62,7 +62,6 @@ describe("Agent mention 菜单候选", () => {
       kind: "workspace",
       path: `chapter-${index}.txt`,
       count: 1,
-      unit: "items",
     }));
     const args = { locale: "zh-CN" as const, skills: [], instructions: [], files };
     const result = create_agent_mention_candidates({ ...args, query: "chapter" });
@@ -101,7 +100,7 @@ it("工作区和上传文件按路径检索，并生成不同来源的引用", (
     skills: [],
     instructions: [],
     files: [
-      { kind: "workspace", path: "资料/设定.xlsx", count: 3, unit: "items" },
+      { kind: "workspace", path: "资料/设定.xlsx", count: 3 },
       { kind: "upload", path: "uploads/资料_设定.xlsx", size: 128 },
     ],
   });

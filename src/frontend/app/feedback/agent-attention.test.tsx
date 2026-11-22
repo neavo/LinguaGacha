@@ -226,7 +226,6 @@ function make_decision(kind: AgentPendingDecision["kind"], id: string): AgentPen
     kind: "write_approval",
     id,
     summary: {
-      pages: 1,
       items: 0,
       glossary: 0,
       textPreserve: 0,

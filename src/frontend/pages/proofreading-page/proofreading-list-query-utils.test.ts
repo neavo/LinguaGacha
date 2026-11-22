@@ -21,6 +21,7 @@ import {
 import {
   create_empty_proofreading_list_view,
   type ProofreadingFilterOptions,
+  type ProofreadingClientItem,
 } from "@shared/proofreading/proofreading-types";
 
 // 构造具备稳定身份的旧视图，供窗口复用与失效判定共享。
@@ -76,13 +77,7 @@ describe("proofreading-list-query-utils", () => {
     const list_view = {
       ...create_list_view(5),
       window_start: 1,
-      window_rows: Array.from({ length: 3 }, (_, index) => ({
-        kind: "item" as const,
-        row_id: (1 + index).toString(),
-        item: {} as never,
-        compressed_src: "",
-        compressed_dst: "",
-      })),
+      window_rows: Array<ProofreadingClientItem>(3),
     };
 
     expect(
@@ -293,11 +288,11 @@ describe("proofreading-list-query-utils", () => {
     });
   });
 
-  it("仅文件与页面变化保留阅读位置，窗口失效交由列表查询恢复", () => {
+  it("仅文件变化保留阅读位置，窗口失效交由列表查询恢复", () => {
     expect(
       resolve_proofreading_refresh_signal({
         seq: 1,
-        updated_sections: ["files", "pdf"],
+        updated_sections: ["files"],
         results: [],
       }),
     ).toEqual({ seq: 1, mode: "delta", itemIds: [] });

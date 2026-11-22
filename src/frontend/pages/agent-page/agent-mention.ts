@@ -90,7 +90,7 @@ export function create_agent_mention_candidates(
     title: file.path,
     description:
       file.kind === "workspace"
-        ? `${t("agent_page.mention.files.workspace")} · ${t(file.unit === "pages" ? "agent_page.mention.files.pages" : "agent_page.mention.files.items", { COUNT: file.count.toLocaleString(args.locale) })}`
+        ? `${t("agent_page.mention.files.workspace")} · ${t("agent_page.mention.files.items", { COUNT: file.count.toLocaleString(args.locale) })}`
         : `${t("agent_page.mention.files.upload")} · ${format_file_size(file.size)}`,
     insertText: format_agent_reference(file),
   }));

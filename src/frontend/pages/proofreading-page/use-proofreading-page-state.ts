@@ -236,11 +236,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     );
   }, [list_view.window_start, visible_items]);
   const visible_item_by_id = useMemo(() => {
-    return new Map(
-      visible_items.flatMap((row) =>
-        row.kind === "item" ? [[row.row_id, row.item] as const] : [],
-      ),
-    );
+    return new Map(visible_items.map((row) => [row.row_id, row] as const));
   }, [visible_items]);
   const readonly = is_runtime_busy(runtime_snapshot);
   const retranslating_row_ids = useMemo(

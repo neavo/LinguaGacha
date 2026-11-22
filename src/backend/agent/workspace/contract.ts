@@ -1,5 +1,4 @@
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../../shared/agent";
-import { PDF_REGION_SCHEMA } from "../../../shared/pdf-schema";
 import {
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
@@ -16,8 +15,6 @@ import {
   AGENT_WORKSPACE_KNOWLEDGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_FILE_SCHEMAS,
   AGENT_WORKSPACE_FP_SCHEMA,
-  AGENT_WORKSPACE_PAGE_SCHEMA,
-  AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_ITEM_SCHEMA,
   AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
   AGENT_WORKSPACE_PROMPTS_SCHEMA,
@@ -80,7 +77,7 @@ const workspace_notes: readonly Readonly<{ title: string; lines: readonly string
       "- `new_file_path` 不能与本批未删除的保留资产重名（不区分大小写），同批不支持交换名称或链式改名。",
       "- 任一资产路径不能成为另一资产的父目录，游戏资产去掉扩展名后的输出目录同样独占。",
       "- 排序时，先从保留资产中抽出指定了 `sort` 的更新项，其余保留相对顺序，再按 `sort` 从小到大插回（`-1` 放末尾，同位置按更新行序排列）。",
-      "- 删除资产会一并移除它的原稿、条目、页面和译文。",
+      "- 删除资产会一并移除它的原稿、条目和译文。",
     ],
   },
   {
@@ -89,13 +86,6 @@ const workspace_notes: readonly Readonly<{ title: string; lines: readonly string
       "- `dst` 或 `name_dst` 实际变化时状态默认改为 `PROCESSED`，同值提交不改变状态。",
       '- 显式 `status` 优先于默认状态，接受现有译文时可只提交 `status: "PROCESSED"`。',
       "- 同一文件中 `src` 与 `name_src` 相同的条目为同文组，宿主按重复过滤设置自动维护组内的 `NONE` 与 `DUPLICATED`。",
-    ],
-  },
-  {
-    title: "页面",
-    lines: [
-      "- 以 `file_path` 和 `page` 定位页面，同批每页只提交一次，各页独立接受或拒绝。",
-      "- 更新完整替换 `translation`、`reviewed` 和 `notes`。",
     ],
   },
   {
@@ -148,10 +138,6 @@ const quality_changes = Object.fromEntries<
 /** 路径和记录 Schema 在此关联，运行时索引与 system 契约均从这里生成。 */
 const definition = {
   datasets: {
-    pages: {
-      path: AGENT_WORKSPACE_PATHS.pages,
-      schema: AGENT_WORKSPACE_PAGE_SCHEMA,
-    },
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
       schema: AGENT_WORKSPACE_PROJECT_META_SCHEMA,
@@ -186,12 +172,6 @@ const definition = {
         },
       ]),
     ),
-    pages: {
-      updates: {
-        path: AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
-        schema: AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
-      },
-    },
     items: {
       updates: {
         path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
@@ -241,35 +221,9 @@ export function format_agent_workspace_contract_prompt(): string {
       type_name: `Change_${name}_${operation}`,
     })),
   );
-  const page_update = changes.find(
-    (entry) => entry.name === "pages" && entry.operation === "updates",
-  )!;
-  const page_dataset = datasets.find((entry) => entry.name === "pages")!;
-  const page_update_properties = (page_update.schema as { properties: Record<string, TSchema> })
-    .properties;
-  const page_dataset_properties = (page_dataset.schema as { properties: Record<string, TSchema> })
-    .properties;
-  const page_update_keys = Object.keys(page_update_properties);
-  const page_update_required = new Set(
-    (page_update.schema as { required?: string[] }).required ?? [],
-  );
-  const page_dataset_required = new Set(
-    (page_dataset.schema as { required?: string[] }).required ?? [],
-  );
-  if (
-    page_update_keys.some(
-      (key) =>
-        JSON.stringify(page_update_properties[key]) !==
-          JSON.stringify(page_dataset_properties[key]) ||
-        page_update_required.has(key) !== page_dataset_required.has(key),
-    )
-  )
-    throw new Error("Workspace page update no longer matches the page dataset.");
   const record_candidates = [
     ...datasets,
-    ...changes.filter(
-      (entry) => !quality_kinds.has(entry.name) && entry.type_name !== page_update.type_name,
-    ),
+    ...changes.filter((entry) => !quality_kinds.has(entry.name)),
   ];
   const rendered_records: typeof record_candidates = [];
   const record_aliases: string[] = [];
@@ -282,19 +236,11 @@ export function format_agent_workspace_contract_prompt(): string {
       rendered_records.push(entry);
     } else record_aliases.push(`type ${entry.type_name} = ${known.type_name};`);
   }
-  record_aliases.push(
-    `type ${page_update.type_name} = Pick<${page_dataset.type_name}, ${page_update_keys.map((key) => JSON.stringify(key)).join(" | ")}>;`,
-  );
   const renderer = create_schema_renderer(
     new Map<TSchema, string>([
       [AGENT_WORKSPACE_FP_SCHEMA, "WorkspaceFingerprint"],
       [AGENT_WORKSPACE_ITEM_SCHEMA.properties.item_id, "ItemId"],
       [AGENT_WORKSPACE_ITEM_SCHEMA.properties.row_number, "NonNegativeInteger"],
-      [AGENT_WORKSPACE_PAGE_SCHEMA.properties.page, "PageNumber"],
-      [AGENT_WORKSPACE_PAGE_SCHEMA.properties.width, "PositiveNumber"],
-      [PDF_REGION_SCHEMA.properties.x, "NonNegativeNumber"],
-      [AGENT_WORKSPACE_PAGE_SCHEMA.properties.digest, "Sha256Digest"],
-      [AGENT_WORKSPACE_PAGE_SCHEMA.properties.translation, "PageTranslation"],
       [AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA.properties.text, "PromptText"],
       [AGENT_WORKSPACE_FILE_SCHEMAS.deletes.properties.file_path, "FileTarget"],
       [AGENT_WORKSPACE_QUALITY_SCHEMAS.glossary.entries.properties.id, "QualityRuleId"],

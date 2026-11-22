@@ -79,7 +79,6 @@ const POST_PATHS = new Set([
   "/api/project/settings/update",
   "/api/workbench/translation/reset",
   "/api/proofreading/query",
-  "/api/proofreading/page",
   "/api/proofreading/items/update",
   "/api/proofreading/translations/clear",
   "/api/proofreading/items/replace-all",

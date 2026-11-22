@@ -7,7 +7,6 @@ import { read_translation } from "./godot/translation";
 import { GAME_METADATA_MEMBER, read_game_container } from "./shared/game/format";
 import { evb_fixture } from "../../test/evb-fixture";
 import { encrypted_media, MEDIA_KEY, png_fixture } from "../../test/media-fixture";
-import { create_pdf_execution } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -31,13 +30,11 @@ it.each(["script", "unselected"])("Ren’Py %s 读取失败按真实依赖保留
   const service = new FileFormatService(
     new GameDirectoryOperations(native),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const entry = (await service.collect_source_file_entries([root]))[0]!;
   const original = await service.prepare_source(entry);
   const original_parsed = await service.parse_asset(entry.rel_path, original.content, "RENPY");
-  if (original_parsed.kind !== "items") throw new Error("Expected Ren’Py items");
   // 首次导入直接交付联合分析结果，与离线解析同一份固化原稿的结果一致。
   expect(original.read).toEqual({ ok: true, result: original_parsed });
   const display = original_parsed.items.find(
@@ -62,7 +59,6 @@ it.each(["script", "unselected"])("Ren’Py %s 读取失败按真实依赖保留
     await input.get(GAME_METADATA_MEMBER)!.async("uint8array"),
   );
   const parsed = await service.parse_asset(entry.rel_path, prepared.content, "RENPY");
-  if (parsed.kind !== "items") throw new Error("Expected Ren’Py items");
   expect(prepared.read).toEqual({ ok: true, result: parsed });
   expect(parsed.items.some((item) => read_renpy_metadata(item.extra_field).usage === "say")).toBe(
     failure !== "script",
@@ -96,13 +92,9 @@ it.each(["script", "unselected"])("Ren’Py %s 读取失败按真实依赖保留
  * 测试统一使用显式配置，避免依赖用户本机设置
  */
 function create_service(): FileFormatService {
-  return new FileFormatService(
-    new GameDirectoryOperations(),
-    {
-      target_language: "ZH",
-    },
-    create_pdf_execution(),
-  );
+  return new FileFormatService(new GameDirectoryOperations(), {
+    target_language: "ZH",
+  });
 }
 
 it.each(["member", "commit"])("Godot %s 失败仍归档可靠原稿，胜出资源不回退", async (failure) => {
@@ -134,7 +126,6 @@ it.each(["member", "commit"])("Godot %s 失败仍归档可靠原稿，胜出资�
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const prepared = await service.prepare_source(
@@ -163,7 +154,6 @@ describe("FileFormatService", () => {
     const service = new FileFormatService(
       new GameDirectoryOperations(native),
       { target_language: "ZH" },
-      create_pdf_execution(),
       native,
     );
     const result = await service.summarize_source_files([bad, good]);
@@ -223,7 +213,6 @@ describe("FileFormatService", () => {
     const service = new FileFormatService(
       new GameDirectoryOperations(),
       { target_language: "ZH" },
-      create_pdf_execution(),
       native,
     );
     const bytes = await write_zip(new Map([["data/Actors.json", "[]"]]));
@@ -318,7 +307,6 @@ describe("FileFormatService", () => {
     );
     const result = await create_service().parse_asset("book.xlsx", bytes);
     expect(result).toMatchObject({
-      kind: "items",
       items: [expect.objectContaining({ src: "正文", file_type })],
     });
   });
@@ -336,8 +324,6 @@ describe("FileFormatService", () => {
       new TextEncoder().encode(JSON.stringify([{ name: "名", message: "台词" }])),
     );
 
-    if (txt_items.kind !== "items" || kv_items.kind !== "items" || message_items.kind !== "items")
-      throw new Error("Expected text items");
     expect(txt_items.items.map((item) => item.file_type)).toEqual(["TXT"]);
     expect(kv_items.items.map((item) => item.file_type)).toEqual(["KVJSON"]);
     expect(message_items.items.map((item) => item.file_type)).toEqual(["MESSAGEJSON"]);
@@ -359,7 +345,6 @@ describe("FileFormatService", () => {
 
     const items = await service.parse_asset(rel_path, new TextEncoder().encode(content));
 
-    if (items.kind !== "items") throw new Error("Expected text items");
     expect(items.items.at(-1)?.file_type).toBe(expected_type);
   });
 
@@ -368,7 +353,7 @@ describe("FileFormatService", () => {
 
     await expect(service.parse_asset("a.bin", new TextEncoder().encode("bytes"))).resolves.toEqual({
       items: [],
-      kind: "items",
+
       file_type: "NONE",
     });
   });
@@ -425,7 +410,6 @@ describe("FileFormatService", () => {
       "\n",
     );
     const parsed = await service.parse_asset("script.rpy", new TextEncoder().encode(text));
-    if (parsed.kind !== "items") throw new Error("Expected RenPy items");
     const [item] = parsed.items;
     if (item === undefined) {
       throw new Error("测试样本应生成 RenPy 条目。");
@@ -446,7 +430,6 @@ describe("FileFormatService", () => {
       "script.rpy",
       fs.readFileSync(path.join(temp_dir.path, "script.rpy")),
     );
-    if (output.kind !== "items") throw new Error("Expected RenPy items");
     expect(output.items).toMatchObject([{ dst: "你好", name_dst: "爱丽丝" }]);
   });
 });
@@ -457,11 +440,7 @@ it("识别失败与正常来源共同进入只读摘要，正式导入重新识�
     text = path.join(temp.path, "ok.txt");
   fs.writeFileSync(source, evb_fixture(new Map()).subarray(0, -1));
   fs.writeFileSync(text, "text");
-  const service = new FileFormatService(
-    new GameDirectoryOperations(),
-    { target_language: "ZH" },
-    async () => null,
-  );
+  const service = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" });
   const summary = await service.summarize_source_files([temp.path]);
   expect(summary.source_file_count).toBe(1);
   expect(fs.readdirSync(temp.path).sort()).toEqual(["bad.exe", "ok.txt"]);
@@ -499,7 +478,6 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   expect((await service.summarize_source_files([temp.path])).source_file_count).toBe(1);
@@ -517,7 +495,6 @@ it("正式导入容器使用当前数据，不在游戏目录生成备份", asyn
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const files = new Map<string, string | Buffer>([
@@ -569,7 +546,6 @@ it.each(["read", "existing-read"])("导入 %s 失败保留准备结果并允许�
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
@@ -601,7 +577,6 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出", async (
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    create_pdf_execution(),
     native,
   );
   const carrier = path.join(root, "game.pck");
@@ -616,7 +591,6 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出", async (
   const entry = (await service.collect_source_file_entries([root]))[0]!;
   const container = await service.prepare_source(entry);
   const parsed = await service.parse_asset(entry.rel_path, container.content, entry.file_type);
-  if (parsed.kind !== "items") throw new Error("Expected game items");
   expect(parsed.warnings).toEqual([]);
   expect(
     parsed.items.some((item) => FileFormatService.default_status(item) === "RULE_SKIPPED"),
@@ -650,7 +624,6 @@ it("MESSAGEJSON 按资产导出零条目文件并保留真实输出中的附加�
     "nested/story.json",
     Buffer.from(originals.get("nested/story.json")!),
   );
-  if (parsed.kind !== "items") throw new Error("Expected message items");
   await service.write_items(
     [{ ...parsed.items[0]!, status: "PROCESSED", dst: "你好", name_dst: "爱丽丝" }],
     {
@@ -677,7 +650,6 @@ it.each(["missing", "mismatch"])("MESSAGEJSON %s 在本文件写入前报告错�
     "story.json",
     Buffer.from('[{"message":"one"},{"message":"two"}]'),
   );
-  if (parsed.kind !== "items") throw new Error("Expected message items");
   fs.writeFileSync(path.join(temp.path, "story.json"), "existing output");
   await expect(
     service.write_items(
@@ -725,8 +697,7 @@ it.each([false, true])("视频资产只输出写回输入，空记录=%s", async
     ]),
   );
   const parsed = await service.parse_asset("movie.media", content);
-  expect(parsed).toMatchObject({ kind: "items", file_type: "MEDIA" });
-  if (parsed.kind !== "items") throw new Error("Expected items");
+  expect(parsed).toMatchObject({ file_type: "MEDIA" });
   expect(parsed.items.map((item) => [item.src, item.row, item.file_type])).toEqual(
     empty ? [] : [["原文", 0, "MEDIA"]],
   );

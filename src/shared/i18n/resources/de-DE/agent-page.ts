@@ -62,7 +62,6 @@ export const de_de_agent_page = {
       workspace: "Arbeitsbereichsdatei",
       upload: "Upload",
       items: "{COUNT} Einträge",
-      pages: "{COUNT} Seiten",
       loading: "Dateiliste wird geladen …",
       error: "Dateiliste konnte nicht geladen werden …",
     },
@@ -119,7 +118,6 @@ export const de_de_agent_page = {
     title: "Projektdaten werden geschrieben",
     summary: {
       files: "{count} Dateien",
-      pages: "Seitendaten: {count} Seiten",
       items: "Eintragsdaten: {count} Einträge",
       glossary: "{count} Glossarregeln",
       text_preserve: "{count} Textschutzregeln",

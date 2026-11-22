@@ -52,7 +52,6 @@ export type AppliedFiles = {
     source_path: string;
     files: number;
     items: number;
-    pages: number;
     inherited: number; // 继承前未完成、继承后已完成的条目数。
     contested: number[][]; // 实际票选且有多种译文结果的已提交条目 ID，按 `src` 与 `name_src` 分组。
     renamed: { from: string; to: string }[];

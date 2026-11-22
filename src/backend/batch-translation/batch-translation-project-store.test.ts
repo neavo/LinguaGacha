@@ -279,7 +279,7 @@ describe("BatchTranslationProjectStore", () => {
   /** 准备含已用字段的数据库条目，验证局部提交保留其它事实。 */
   async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
     await database.transaction(project_path, (writer) =>
-      writer.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT", null),
+      writer.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT"),
     );
     await database.transaction(project_path, (writer) =>
       writer.set_items(

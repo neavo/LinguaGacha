@@ -48,11 +48,6 @@ it.each([false, true])("重翻确认提交稳定身份并完成回执或错误�
       root.render(createElement(Probe));
     });
     await act(async () => {
-      actions.request_retranslate_row_ids(["1", 'page:["book.pdf",1]']);
-    });
-    expect(actions.pending_confirmation).toBeNull();
-    expect(options.read_items_by_row_ids).not.toHaveBeenCalled();
-    await act(async () => {
       actions.request_retranslate_row_ids(["2", "1", "2"]);
     });
     expect(api_fetch).not.toHaveBeenCalled();

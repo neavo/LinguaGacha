@@ -250,7 +250,7 @@ console.log(diagnostic.split(/\r?\n/u).filter((line) => line.includes('silence_'
 
 ## 字幕渲染
 
-调用 `generateFiles(bilingual_files)` 后，用 `render({ source, input, translated, bilingual })` 写出与原文件同主名的 ASS，先输出到 `work/` 暂存：`source` 为 `sources/` 中的包目录，`input` 为 `<writeback.input_path>/<file_path>/items.json`，`translated` 与 `bilingual` 为输出路径。
+调用 `generateFiles()` 后，用 `render({ source, input, translated, bilingual })` 写出与原文件同主名的 ASS，先输出到 `work/` 暂存：`source` 为 `sources/` 中的包目录，`input` 为 `<writeback.input_path>/<file_path>/items.json`，`translated` 与 `bilingual` 为输出路径。
 
 - 包内有 `render.mjs` 时读取检查后改用；字幕只来自写回输入，不从 `asr` 或旧 `translations.json` 重建，未翻译条目如实呈现。
 - **视频默认排版**使用白字、黑描边、零投影。对白底部居中，双语原文在前。带 `box` 的画面文字译文优先在原文框下方避让，其次在上方。上下均无空位时优先保证可见。无 `box` 的画面文字译文顶部居中。

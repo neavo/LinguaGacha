@@ -84,14 +84,6 @@ export const PROJECT_SOURCE_FORMATS = [
   },
   {
     source_kind: "file",
-    id: "pdf",
-    support_status: "supported",
-    extension: ".pdf",
-    title_key: "project.formats.pdf",
-    description_keys: [],
-  },
-  {
-    source_kind: "file",
     id: "epub",
     support_status: "supported",
     extension: ".epub",

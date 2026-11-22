@@ -4,8 +4,8 @@ import {
   type SourceFileFailure,
 } from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "./file-format-service";
-import type { PDFDocument } from "../../shared/pdf";
-import type { PreparedRead, ProjectFileType, SourceFileParseWarning } from "./file-format-types";
+import type { PreparedRead, SourceFileParseWarning } from "./file-format-types";
+import type { ItemFileType } from "../../domain/item";
 import { is_app_error } from "../../shared/error";
 
 export type SourceFileParseCommand = import("./source-discovery").DiscoveredSource;
@@ -22,10 +22,9 @@ export type SourceFileAsset = Readonly<{
 /** 取得原稿即形成可提交草稿，解析失败时条目为空。 */
 export type SourceFileParsedDraft = {
   rel_path: string;
-  file_type: ProjectFileType; // 解析器提供文件身份，零条目字幕也保留类型
+  file_type: ItemFileType; // 解析器提供文件身份，零条目字幕也保留类型
   game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
   content: Uint8Array;
-  pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   image?: {
     book: import("../../shared/image-package").ImageBook;
     records: import("../../shared/image-package").ImageRecord[];
@@ -52,10 +51,9 @@ export type SourceFileProjectDraft = {
   warnings: SourceFileParseWarning[]; // 本次解析的局部遗漏，仅供后端操作日志使用。
   files: Array<{
     rel_path: string;
-    file_type: ProjectFileType;
+    file_type: ItemFileType;
     sort_index: number;
     content: Uint8Array;
-    pdf_document: PDFDocument | null;
   }>; // 资产写入清单，文件类型同时用于新建预过滤。
   items: ProjectItemPersistentRecord[]; // 已分配临时 id、file_path 和 file_type
   failures: SourceFileFailure[];
@@ -91,7 +89,6 @@ export class SourceFileParsePipeline {
         rel_path: draft.rel_path,
         file_type: draft.file_type,
         sort_index,
-        pdf_document: draft.pdf_document,
         content: draft.content,
       });
       for (const parsed_item of draft.parsed_items) {
@@ -142,9 +139,8 @@ export class SourceFileParsePipeline {
   ): Promise<SourceFileAssetParse> {
     const draft: SourceFileParsedDraft = {
       rel_path: asset.rel_path,
-      file_type: (asset.file_type ?? "NONE") as ProjectFileType,
+      file_type: (asset.file_type ?? "NONE") as ItemFileType,
       content: asset.content,
-      pdf_document: null,
       parsed_items: [],
     };
     try {
@@ -159,18 +155,13 @@ export class SourceFileParsePipeline {
             asset.file_type,
             signal,
           );
-      if (parsed.kind === "pdf") {
-        draft.file_type = "PDF";
-        draft.pdf_document = parsed.document;
-      } else {
-        draft.file_type = parsed.file_type;
-        draft.parsed_items = parsed.items;
-        if (parsed.image) draft.image = parsed.image;
-        if (parsed.game_engine !== undefined) draft.game_engine = parsed.game_engine;
-      }
+      draft.file_type = parsed.file_type;
+      draft.parsed_items = parsed.items;
+      if (parsed.image) draft.image = parsed.image;
+      if (parsed.game_engine !== undefined) draft.game_engine = parsed.game_engine;
       return {
         draft,
-        warnings: parsed.kind === "items" ? (parsed.warnings ?? []) : [],
+        warnings: parsed.warnings ?? [],
         failure: null,
       };
     } catch (error) {

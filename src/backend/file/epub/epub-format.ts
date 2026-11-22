@@ -42,7 +42,6 @@ export class EPUBFormat {
     items: Item[],
     paths: GeneratedFilePaths,
     asset_reader: (rel_path: string) => Buffer | null | Promise<Buffer | null>,
-    bilingual_files?: readonly string[],
   ): Promise<void> {
     for (const [rel_path, file_items] of group_file_items(items, "EPUB")) {
       const original_content = await asset_reader(rel_path);
@@ -55,13 +54,12 @@ export class EPUBFormat {
         path.join(paths.translated_path, rel_path),
         false,
       );
-      if (bilingual_files === undefined || bilingual_files.includes(rel_path))
-        await this.writer.build_epub(
-          original_content,
-          file_items,
-          path.join(paths.bilingual_path, rel_path),
-          true,
-        );
+      await this.writer.build_epub(
+        original_content,
+        file_items,
+        path.join(paths.bilingual_path, rel_path),
+        true,
+      );
     }
   }
 }

@@ -15,7 +15,6 @@ import {
   ruby_integer as n,
   ruby_command as c,
 } from "../../../test/rgss-fixture";
-import { create_pdf_execution } from "../pdf/test-support";
 import { FileFormatService } from "../file-format-service";
 import { decode, encode, field } from "./marshal";
 import { array, text, bytes } from "./value";
@@ -65,11 +64,7 @@ it.each([
     ),
   );
   fs.writeFileSync(path.join(data, "Broken" + extension), "broken");
-  const service = new FileFormatService(
-    new GameDirectoryOperations(),
-    { target_language: "ZH" },
-    create_pdf_execution(),
-  );
+  const service = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" });
   const entries = await service.collect_source_file_entries([
     source,
     path.join(source, "Game.exe"),
@@ -83,7 +78,6 @@ it.each([
   );
   fs.rmSync(source, { recursive: true });
   const result = await service.parse_asset("game.zip", prepared.content, "RPGMAKER_RGSS");
-  if (result.kind !== "items") throw Error("Expected items");
   expect(result.warnings).toMatchObject([
     { code: "internal_file_parse_failed", internal_file_path: "Data/Broken" + extension },
   ]);

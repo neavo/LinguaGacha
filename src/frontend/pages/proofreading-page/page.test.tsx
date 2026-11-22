@@ -330,9 +330,7 @@ describe("ProofreadingPage", () => {
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(320);
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(440);
     const state = proofreading_state_fixture.current!;
-    state.files = [
-      { file_path: "game/tl/chapter.rpy", internal_file_path: null, kind: "item", count: 1 },
-    ];
+    state.files = [{ file_path: "game/tl/chapter.rpy", internal_file_path: null, count: 1 }];
     await mount_page();
     // 从真实页面入口打开浮层，验证工程切换时组件身份与本地状态一起重建。
     const open_files = async () => {

@@ -51,18 +51,17 @@ it("规范行增量与修订使用提交快照，不受后续数据库变化影�
   }
 });
 
-it.each(["items", "files", "pdf"] as const)("提交快照只读取实际变化的 %s 分区", async (section) => {
+it.each(["items", "files"] as const)("提交快照只读取实际变化的 %s 分区", async (section) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-commit-sections-"));
   const project = path.join(temp.path, "project.lg");
   const database = new ProjectDatabase("1.0.0");
   try {
     await database.create_project(project);
     await database.transaction(project, (writer) =>
-      writer.add_asset(project, "script.txt", Buffer.from("original"), "TXT", null),
+      writer.add_asset(project, "script.txt", Buffer.from("original"), "TXT"),
     );
     await database.read(project, (reader) => {
       const assets = vi.spyOn(reader, "get_all_asset_records");
-      const pdf = vi.spyOn(reader, "read_pdf_summaries");
       const change = build_project_committed_change(
         reader,
         {
@@ -74,9 +73,7 @@ it.each(["items", "files", "pdf"] as const)("提交快照只读取实际变化�
         reader.get_all_meta(project),
       );
       expect(assets).toHaveBeenCalledTimes(section === "files" ? 1 : 0);
-      expect(pdf).toHaveBeenCalledTimes(section === "pdf" ? 1 : 0);
       expect(change.files === undefined).toBe(section !== "files");
-      expect(change.pdf === undefined).toBe(section !== "pdf");
       if (section === "items") {
         expect(change.items).toEqual({ mode: "full", records: [] });
         expect(change.qualityStatisticsScope).toBe("all");

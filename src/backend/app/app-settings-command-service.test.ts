@@ -1,5 +1,4 @@
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
-import { create_pdf_execution } from "../file/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -57,7 +56,6 @@ async function create_service() {
     gate,
     session,
     writes,
-    create_pdf_execution(),
     settings,
   );
   return {

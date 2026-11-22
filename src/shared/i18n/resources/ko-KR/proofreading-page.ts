@@ -1,15 +1,7 @@
 import type { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_proofreading_page = {
-  pages: {
-    view: "열어서 보기",
-    title: "미리보기",
-    source_page: "{PAGE} 페이지",
-    select_files: "파일 선택",
-    failed: "미리보기 실패",
-    previous: "이전 페이지",
-    next: "다음 페이지",
-  },
+  select_files: "파일 선택",
   title: "교정",
   action: {
     files: "파일",

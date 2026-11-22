@@ -241,18 +241,6 @@ function create_backend_services_dependency_rule() {
 
 /** 运行目录依赖只从独立工作区入口或显式配置的运行目录加载。 */
 export function create_workspace_runtime_package_boundary_rule() {
-  const pdf_document = "src/backend/file/pdf/pdf-document.ts";
-  const pdf_mupdf = "src/backend/file/pdf/mupdf.ts";
-  const pdf_sdk = "src/backend/agent/pdf/index.ts";
-  const pdf_worker_entry = "src/backend/file/pdf/pdf-worker-entry.ts";
-  const package_owners = new Set([pdf_document, pdf_mupdf]);
-  // 约束到入口为止，避免桌面经 SDK 间接到达工作区专用模块。
-  const workspace_importers = new Map([
-    [pdf_document, [pdf_sdk, pdf_worker_entry, "src/backend/file/pdf/pdf-worker.ts"]], // 同进程分支仅供测试。
-    [pdf_mupdf, []],
-    [pdf_sdk, []],
-    [pdf_worker_entry, []],
-  ]);
   return {
     name: "工作区运行目录依赖边界",
     /** 扫描所有产品源码，包含桌面与工作区共同消费的基础层。 */
@@ -261,7 +249,6 @@ export function create_workspace_runtime_package_boundary_rule() {
         context.read_file(path.join(context.project_root, "package.json")),
       );
       const packages = new Set(manifest.workspaceRuntimePackages.backend);
-      const source_by_module_path = index_source_module_paths(context.files);
       const errors = [];
       for (const file_path of context.files) {
         if (!is_typescript_source(file_path) || is_test_file(file_path)) continue;
@@ -270,26 +257,13 @@ export function create_workspace_runtime_package_boundary_rule() {
         for (const { line, specifier } of context.read_runtime_imports(file_path)) {
           const parts = specifier.split("/");
           const package_name = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
-          if (packages.has(package_name) && !package_owners.has(relative_path)) {
+          if (packages.has(package_name)) {
             errors.push({
               line,
               relative_path,
               message: `不得直接导入 ${specifier}，请从 workspaceRuntimeDirectory 加载或交由独立工作区入口执行`,
             });
           }
-
-          const target = context.resolve_import(file_path, specifier);
-          if (target === null) continue;
-          // TypeScript 允许以 .js 后缀引用源码，SDK 也允许以目录引用 index。
-          const source = source_by_module_path.get(target.replace(/\.jsx?$/u, ""));
-          if (source === undefined) continue;
-          const importers = workspace_importers.get(context.relative_path(source));
-          if (!importers || importers.includes(relative_path)) continue;
-          errors.push({
-            line,
-            relative_path,
-            message: `不得在此运行时导入工作区专用模块 ${specifier}`,
-          });
         }
       }
       return errors;

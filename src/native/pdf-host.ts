@@ -18,10 +18,9 @@ const PRINT_CSP =
 
 /** Electron 只拥有 HTML 打印。任务串行且独占窗口，回收完成后才释放队列。 */
 export function create_pdf_host(resources: {
-  stylesPath: string; // 构建生成的内嵌数学样式。
   fontsDirectory: string; // GUI 注入开发或发行资源中的共享字体目录。
 }): PDFHost & { dispose: () => Promise<void> } {
-  let print_styles: string | null = null; // 宿主生命周期内复用固定版本的字体与数学样式。
+  let print_styles: string | null = null; // 宿主生命周期内复用固定版本的字体。
   let tail: Promise<unknown> = Promise.resolve(); // 前一任务回收后才能创建下一窗口
   const lifetime = new AbortController(); // 关闭宿主时取消活动及排队任务
   let browser_session: Session | null = null; // GUI 组合根早于 app.ready，首次打印才创建原生资源。
@@ -58,13 +57,10 @@ export function create_pdf_host(resources: {
       current.webContents.on("will-navigate", (event) => event.preventDefault());
       return await run_window_task(current, combined, PDF_HOST_TIMEOUT_MS, async (step) => {
         // 只读取应用自带的固定字体，首次打印时编码并缓存，发行包与 UI 共用一份文件。
-        print_styles ??=
-          PRINT_FONTS.map(([family, file, weight, extra]) => {
-            const bytes = default_native_fs.read_file(path.join(resources.fontsDirectory, file));
-            return `@font-face{font-family:"${family}";src:url(data:font/ttf;base64,${bytes.toString("base64")}) format("truetype");font-weight:${weight};font-style:normal;${extra}}`;
-          }).join("\n") +
-          "\n" +
-          default_native_fs.read_text_file(resources.stylesPath);
+        print_styles ??= PRINT_FONTS.map(([family, file, weight, extra]) => {
+          const bytes = default_native_fs.read_file(path.join(resources.fontsDirectory, file));
+          return `@font-face{font-family:"${family}";src:url(data:font/ttf;base64,${bytes.toString("base64")}) format("truetype");font-weight:${weight};font-style:normal;${extra}}`;
+        }).join("\n");
         // 每次加载新文档，CSP 在调用方内容前生效，页面不能执行脚本或请求外部资源。
         const html = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">${operation.html}`;
         await step("load", () => current.loadURL("data:text/html;charset=utf-8,<html></html>"));

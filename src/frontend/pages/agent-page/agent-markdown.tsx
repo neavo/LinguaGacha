@@ -13,9 +13,11 @@ import {
   type PointerEvent,
   type KeyboardEvent,
 } from "react";
+import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
-import { MARKDOWN_CJK, MARKDOWN_MATH, MARKDOWN_ALERT } from "@shared/markdown-plugins";
+import { createMathPlugin } from "@streamdown/math";
 import { createMermaidPlugin, type MermaidConfig } from "@streamdown/mermaid";
+import { remarkAlert } from "remark-github-blockquote-alert";
 import {
   Streamdown,
   TableDownloadDropdown,
@@ -50,6 +52,9 @@ type AgentMarkdownProps = {
   document_path?: string;
 };
 
+const MARKDOWN_CJK = cjk;
+const MARKDOWN_MATH = createMathPlugin({ singleDollarTextMath: true });
+const MARKDOWN_ALERT = remarkAlert;
 const MARKDOWN_DIAGRAM_OPTIONS = { errorComponent: AgentMarkdownDiagramError };
 const MARKDOWN_CONTROLS = { mermaid: { fullscreen: false } };
 // 保留产品的原始 HTML 展示；URL 在唯一转换入口沿用既有协议边界。

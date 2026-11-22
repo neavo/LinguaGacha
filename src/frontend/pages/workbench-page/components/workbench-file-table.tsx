@@ -118,8 +118,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           return (
             <TranslationProgressBadge
               progress={payload.row.progress}
-              total={payload.row.progress.total_count}
-              unit={payload.row.progress.unit}
               tabIndex={payload.presentation === "body" ? 0 : -1}
             />
           );

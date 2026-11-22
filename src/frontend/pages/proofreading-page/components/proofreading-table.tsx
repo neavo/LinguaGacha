@@ -20,10 +20,9 @@ import {
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
 } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
-  is_proofreading_page_row_id,
   read_proofreading_warning_codes,
   type ProofreadingWarning,
-  type ProofreadingRow,
+  type ProofreadingClientItem,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { Card, CardContent } from "@frontend/shadcn/card";
@@ -50,7 +49,7 @@ import type {
 
 // 收口校对页状态 Hook 提供的只读展示和行操作入口。
 type ProofreadingTableProps = {
-  items: ProofreadingRow[];
+  items: ProofreadingClientItem[];
   visible_row_count: number;
   sort_state: AppTableSortState | null;
   selected_row_ids: string[];
@@ -58,7 +57,7 @@ type ProofreadingTableProps = {
   anchor_row_id: string | null;
   retranslating_row_ids: string[];
   readonly: boolean;
-  get_row_at_index: (index: number) => ProofreadingRow | undefined;
+  get_row_at_index: (index: number) => ProofreadingClientItem | undefined;
   get_row_id_at_index: (index: number) => string | undefined;
   resolve_row_index: (row_id: string) => number | undefined;
   resolve_row_index_async: (row_id: string) => Promise<number | undefined>;
@@ -123,7 +122,6 @@ function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
 function ProofreadingTextCell(props: {
   name: string | null;
   text: string;
-  full_text: string;
   label: string; // 复用列标题作为按钮名称，让辅助技术区分原文和译文。
 }): JSX.Element {
   return (
@@ -140,8 +138,10 @@ function ProofreadingTextCell(props: {
           <TooltipContent>{props.name}</TooltipContent>
         </Tooltip>
       )}
-      <span className="proofreading-page__table-text">{props.text}</span>
-      {props.full_text !== "" && (
+      <span className="proofreading-page__table-text">
+        {props.text.replace(/\r\n|\r|\n/gu, " ↵ ")}
+      </span>
+      {props.text !== "" && (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -158,7 +158,7 @@ function ProofreadingTextCell(props: {
             }
           />
           <TooltipContent className="proofreading-page__text-preview">
-            <div className="proofreading-page__text-preview-body">{props.full_text}</div>
+            <div className="proofreading-page__text-preview-body">{props.text}</div>
           </TooltipContent>
         </Tooltip>
       )}
@@ -192,7 +192,7 @@ function ProofreadingStatusIndicator(props: {
   );
 }
 
-/** 文本和页面按同一状态映射显示图标与提示。 */
+/** 按状态映射显示图标与提示。 */
 function ProofreadingStatusCell(props: {
   status: string;
   warnings: readonly ProofreadingWarning[];
@@ -265,7 +265,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     return new Set(props.retranslating_row_ids);
   }, [props.retranslating_row_ids]);
   // 表格通过行身份和位置读取远端窗口，查询视图身份由校对页维护。
-  const row_model = useMemo<AppTableRowModel<ProofreadingRow>>(() => {
+  const row_model = useMemo<AppTableRowModel<ProofreadingClientItem>>(() => {
     return {
       row_count: props.visible_row_count,
       loaded_row_ids: props.items.map((item) => item.row_id),
@@ -287,7 +287,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     props.visible_row_count,
   ]);
   // 校对页表格语义和菜单入口的唯一列配置。
-  const columns = useMemo<AppTableColumn<ProofreadingRow>[]>(() => {
+  const columns = useMemo<AppTableColumn<ProofreadingClientItem>[]>(() => {
     return [
       {
         kind: "drag",
@@ -306,19 +306,11 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-source-head",
         cell_class_name: "proofreading-page__table-source-cell",
         render_cell: (payload) => {
-          if (payload.row.kind === "page")
-            return (
-              <span className="proofreading-page__table-text">
-                {payload.row.page.file_path} ·{" "}
-                {t("proofreading_page.pages.source_page", { PAGE: String(payload.row.page.page) })}
-              </span>
-            );
           return (
             <ProofreadingTextCell
               label={t("proofreading_page.fields.source")}
-              name={payload.row.item.name_src || null}
-              text={payload.row.compressed_src}
-              full_text={payload.row.item.src}
+              name={payload.row.name_src || null}
+              text={payload.row.src}
             />
           );
         },
@@ -331,18 +323,11 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-translation-head",
         cell_class_name: "proofreading-page__table-translation-cell",
         render_cell: (payload) => {
-          if (payload.row.kind === "page")
-            return payload.row.page.status === "NONE" ? null : (
-              <span className="proofreading-page__table-text">
-                {t("proofreading_page.pages.view")}
-              </span>
-            );
           return (
             <ProofreadingTextCell
               label={t("proofreading_page.fields.translation")}
-              name={payload.row.item.name_dst || null}
-              text={payload.row.compressed_dst}
-              full_text={payload.row.item.dst}
+              name={payload.row.name_dst || null}
+              text={payload.row.dst}
             />
           );
         },
@@ -360,9 +345,9 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           const row = payload.row;
           return (
             <ProofreadingStatusCell
-              status={row.kind === "item" ? row.item.status : row.page.status}
-              warnings={row.kind === "item" ? row.item.warnings : []}
-              retranslating={row.kind === "item" && retranslating_row_id_set.has(row.row_id)}
+              status={row.status}
+              warnings={row.warnings}
+              retranslating={retranslating_row_id_set.has(row.row_id)}
             />
           );
         },
@@ -391,9 +376,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           on_row_activate={props.on_open_edit}
           render_row_context_menu_items={(payload) => {
             const target_row_ids = payload.target_row_ids;
-            // 批量写操作面向整个选区，混合选区只提供当前条目的查看入口。
-            const can_change_text =
-              !props.readonly && target_row_ids.every((id) => !is_proofreading_page_row_id(id));
 
             return (
               <AppContextMenuGroup>
@@ -406,14 +388,10 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   }}
                 >
                   <PencilLine />
-                  {t(
-                    is_proofreading_page_row_id(payload.row_id)
-                      ? "proofreading_page.pages.title"
-                      : "app.action.edit",
-                  )}
+                  {t("app.action.edit")}
                   <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
                 </AppContextMenuItem>
-                {can_change_text && (
+                {!props.readonly && (
                   <>
                     <AppContextMenuItem
                       onClick={() => {

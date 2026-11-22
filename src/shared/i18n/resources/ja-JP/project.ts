@@ -65,7 +65,6 @@ export const ja_jp_project = {
     lrc: "LRC 字幕",
     srt: "SubRip 字幕",
     vtt: "WebVTT 字幕",
-    pdf: "PDF 電子書籍",
     epub: "EPUB 電子書籍",
     json: "JSON ゲームテキスト",
     mtool: "MTool から出力したゲームテキスト",

@@ -6,7 +6,6 @@ import { deploy_workspace_tools } from "../builder/native-tools.mjs";
 import lockfile from "proper-lockfile";
 import { build_workspace_resources, deploy_workspace_dependencies } from "./workspace.mjs";
 import { build_node_resources } from "./node.mjs";
-import { build_pdf_print_resources } from "./pdf-print.mjs";
 import { remove_license_files } from "./license-files.mjs";
 import { prepare_development_resources, read_development_inputs } from "./development-cache.mjs";
 
@@ -58,7 +57,6 @@ export async function build_resources({ root = PROJECT_ROOT, development = false
         path.join(workspace, "python/tree-sitter-python.wasm"),
       );
       await build_node_resources({ root, output: workspace, manifest, lock, runNpm });
-      await build_pdf_print_resources(root, output);
       if (development)
         await deploy_workspace_tools({
           root,

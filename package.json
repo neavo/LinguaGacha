@@ -43,7 +43,6 @@
     "@streamdown/mermaid": "^1.0.4",
     "@tailwindcss/vite": "^4.3.5",
     "@tanstack/react-virtual": "^3.14.26",
-    "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
     "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.3.0",
@@ -74,7 +73,6 @@
     "jszip": "^3.10.2",
     "katex": "^0.19.1",
     "lucide-react": "^1.76.0",
-    "mupdf": "^1.28.6",
     "next-themes": "^0.4.6",
     "npm": "^12.2.3",
     "oxc-parser": "^0.159.0",
@@ -83,12 +81,10 @@
     "proper-lockfile": "^4.1.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "rehype-stringify": "^10.0.1",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "remark-github-blockquote-alert": "^2.1.0",
     "remark-parse": "^11.0.0",
-    "remark-rehype": "^11.1.2",
     "shadcn": "^4.23.0",
     "socks": "^2.8.10",
     "socks-proxy-agent": "^10.1.0",
@@ -129,7 +125,6 @@
     ],
     "backend": [
       "@ruby/prism",
-      "mupdf",
       "oxc-parser",
       "web-tree-sitter"
     ]

@@ -1,6 +1,5 @@
 import { GAME_ENGINES } from "../file/shared/game/engines";
 import { is_game_file_type } from "../../shared/project-source-formats";
-import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
@@ -64,27 +63,23 @@ export class ProofreadingCache {
   private readonly cache: CacheReadPort; // 完整条目与质量同步输入共用当前工程事实。
   private readonly worker_client: ComputeWorkerClient; // 质量评估在 worker 中执行
   private readonly reader: ReturnType<typeof createProofreadingReader>; // 持有校对索引与 GUI 列表视图运行态
-  private readonly read_pages: (projectPath: string) => Promise<PDFDocumentRecord[]>; // 只在页面身份未命中时补读数据库事实。
-  private session_key: string | null = null; // 工程或缓存世代变化同时撤销三个同步范围。
+  private session_key: string | null = null; // 工程或缓存世代变化同时撤销条目评估与文件顺序两个同步范围。
   private files_revision: number | null = null; // null 表示文件索引需要同步。
-  private pages_revision: number | null = null; // 页面正文只随独立修订补读。
-  private synced_key: ProofreadingCacheKey | null = null; // 已同步文本评估的身份，文件和页面独立推进。
+  private synced_key: ProofreadingCacheKey | null = null; // 已同步的条目评估身份，文件顺序独立推进。
   private synced_state: ProofreadingSyncState | null = null; // 最近一次成功同步的公开摘要
   private sync_promises = new Map<string, Promise<ProofreadingSyncState>>(); // 合并同身份并发同步
 
   /**
-   * 条目与页面事实由注入的只读入口提供。
+   * 条目和文件顺序由注入的缓存提供。
    */
   public constructor(options: {
     cache: CacheReadPort;
     workerClient: ComputeWorkerClient;
     reader: ReturnType<typeof createProofreadingReader>;
-    readPages: (projectPath: string) => Promise<PDFDocumentRecord[]>;
   }) {
     this.cache = options.cache;
     this.worker_client = options.workerClient;
     this.reader = options.reader;
-    this.read_pages = options.readPages;
   }
 
   /**
@@ -198,13 +193,12 @@ export class ProofreadingCache {
     if (this.synced_state !== null) this.reader.dispose_project(this.synced_state.projectId);
     this.session_key = null;
     this.files_revision = null;
-    this.pages_revision = null;
     this.synced_key = null;
     this.synced_state = null;
     this.sync_promises.clear();
   }
 
-  /** 文本依赖变化只撤销评估身份，独立的文件和页面事实可继续复用。 */
+  /** 文本依赖变化只撤销评估身份，文件顺序仍可复用。 */
   private invalidate_evaluation(): void {
     this.synced_key = null;
     this.sync_promises.clear();
@@ -326,37 +320,16 @@ export class ProofreadingCache {
     }
   }
 
-  /** 文件与页面独立同步，文本评估完成后读取最新排列，避免迟到结果恢复旧顺序。 */
-  private async sync_content(): Promise<ProofreadingSyncState> {
+  /** 文本评估完成后同步最新文件排列，避免迟到结果恢复旧顺序。 */
+  private sync_content(): ProofreadingSyncState {
     const revisions = this.cache.readSectionRevisions();
     const files_revision = Number(revisions.files ?? 0);
-    const pages_revision = Number(revisions.pdf ?? 0);
     if (this.files_revision !== files_revision) {
       this.synced_state = this.reader.sync_files(
         this.cache.files.readFileEntries(),
         files_revision,
       );
       this.files_revision = files_revision;
-    }
-    if (this.pages_revision !== pages_revision) {
-      const before = this.cache.snapshot();
-      const key = this.synced_key;
-      const pages = await this.read_pages(before.projectPath);
-      const after = this.cache.snapshot();
-      // 数据库排队期间工程或修订可能变化，迟到页面不能写回旧索引。
-      if (
-        key !== this.synced_key ||
-        before.epoch !== after.epoch ||
-        before.projectPath !== after.projectPath ||
-        Number(after.sectionRevisions.pdf ?? 0) !== pages_revision ||
-        Number(after.sectionRevisions.files ?? 0) !== files_revision
-      ) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "stale_proofreading_sync" },
-        });
-      }
-      this.synced_state = this.reader.sync_pages(pages, pages_revision);
-      this.pages_revision = pages_revision;
     }
     return this.synced_state!;
   }

@@ -98,19 +98,16 @@ export function useProofreadingReplaceActions(
           count: PROOFREADING_REPLACE_SCAN_CHUNK_ROWS,
         });
       const matched_index = target_window.rows.findIndex((row) => {
-        return (
-          row.kind === "item" &&
-          matches_translation_replace_target({
-            item: row.item,
-            search_pattern,
-            keyword: trimmed_keyword,
-          })
-        );
+        return matches_translation_replace_target({
+          item: row,
+          search_pattern,
+          keyword: trimmed_keyword,
+        });
       });
       if (matched_index >= 0) {
         target_index = target_window.start + matched_index;
         const row = target_window.rows[matched_index];
-        target_item = row?.kind === "item" ? row.item : null;
+        target_item = row ?? null;
         break;
       }
     }

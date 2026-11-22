@@ -21,13 +21,12 @@ import type {
   ProofreadingFilterPanelState,
   ProofreadingItem,
   ProofreadingSearchScope,
-  ProofreadingRow,
+  ProofreadingClientItem,
 } from "@shared/proofreading/proofreading-types";
 
 export const PROOFREADING_REQUIRED_SECTIONS: ProjectDataSection[] = [
   "project",
   "files",
-  "pdf",
   "items",
   "quality",
   "proofreading",
@@ -83,7 +82,7 @@ export type UseProofreadingPageStateResult = {
   filter_dialog_filters: ProofreadingContentFilters;
   filter_panel: ProofreadingFilterPanelState;
   filter_panel_loading: boolean;
-  visible_items: ProofreadingRow[];
+  visible_items: ProofreadingClientItem[];
   visible_row_count: number;
   sort_state: AppTableSortState | null;
   selected_row_ids: string[];
@@ -103,7 +102,7 @@ export type UseProofreadingPageStateResult = {
   update_regex: (next_is_regex: boolean) => void;
   apply_table_selection: (payload: AppTableSelectionChange) => void;
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void;
-  get_visible_row_at_index: (index: number) => ProofreadingRow | undefined;
+  get_visible_row_at_index: (index: number) => ProofreadingClientItem | undefined;
   get_visible_row_id_at_index: (index: number) => string | undefined;
   resolve_visible_row_index: (row_id: string) => number | undefined;
   resolve_visible_row_index_async: (row_id: string) => Promise<number | undefined>;

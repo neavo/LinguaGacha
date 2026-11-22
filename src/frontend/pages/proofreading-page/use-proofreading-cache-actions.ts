@@ -378,11 +378,9 @@ export function useProofreadingCacheActions(
       }
 
       const items_by_row_id = new Map(
-        options.list_snapshot_ref.current.view.window_rows
-          .filter((row) => row.kind === "item")
-          .map((visible_item) => {
-            return [visible_item.row_id, visible_item.item] as const;
-          }),
+        options.list_snapshot_ref.current.view.window_rows.map(
+          (item) => [item.row_id, item] as const,
+        ),
       );
       const missing_row_ids = row_ids.filter((row_id) => {
         return !items_by_row_id.has(row_id);

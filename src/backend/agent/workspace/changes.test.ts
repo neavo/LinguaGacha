@@ -156,35 +156,10 @@ describe("Agent workspace change parser", () => {
         JSON.stringify({ item_id: 2, fp: "ghij", dst: "乙" }),
       ].join("\n"),
     );
-    const page = {
-      file_path: "book.pdf",
-      page: 1,
-      fp: "abcd",
-      translation: null,
-      reviewed: false,
-      notes: "",
-    };
-    write(
-      workspace,
-      AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
-      [page, { ...page, page: 2, reviewed: "invalid" }]
-        .map((row) => JSON.stringify(row))
-        .join("\n"),
-    );
     const parsed = await prepare_agent_workspace_changes({
       nativeFs: new NativeFs(),
       workspacePath: workspace,
     });
-    expect(parsed.batch.pages).toEqual([{ ...page, line: 1 }]);
-    expect(parsed.rejected).toContainEqual(
-      expect.objectContaining({
-        scope: "pages",
-        file_path: "book.pdf",
-        page: 2,
-        line: 2,
-        reason: "invalid_change",
-      }),
-    );
     expect(parsed.batch.items.map((row) => row.item_id)).toEqual([1, 2]);
     expect(parsed.rejected).toContainEqual(
       expect.objectContaining({
@@ -333,7 +308,6 @@ function create_workspace(): string {
   workspaces.push(workspace);
   for (const relative of [
     AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
-    AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
     AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     ...QUALITY_RULE_KINDS.flatMap((kind) =>
       AGENT_WORKSPACE_CHANGE_OPERATIONS.map((op) => AGENT_WORKSPACE_CHANGE_PATHS[kind][op]),

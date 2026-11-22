@@ -11,7 +11,7 @@ export default {
     { from: "builtin", to: "builtin" }, // 业务按真实路径读取版本资源
     { from: "public/fonts", to: "fonts" }, // 界面与 PDF 共用同一份字体
     // builder 会过滤复制源直属的 node_modules；从 resources 映射整棵运行目录以保留标准依赖树。
-    { from: "build/resources", to: ".", filter: ["workspace/**/*", "pdf-print.css"] },
+    { from: "build/resources", to: ".", filter: ["workspace/**/*"] },
   ],
   productName: "LinguaGacha",
   electronLanguages: [...LOCALES], // 发行包原生资源与应用界面 locale 共用同一集合

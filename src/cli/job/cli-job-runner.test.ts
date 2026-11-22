@@ -33,10 +33,15 @@ describe("run_cli_job", () => {
     const harness = create_backend_services_harness();
     const source_operation = { saved_assets: 1, directory_changes: ["game"] };
     harness.create_project_commit.mockResolvedValueOnce({ source_operation });
-    vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
+    vi.spyOn(harness.backend_services.project.summary, "read_translation_stats").mockReturnValue({
       projectPath: "test.lg",
-      sectionRevisions: {},
-      snapshot: { entries: [] },
+      stats: {
+        total_items: 0,
+        completed_count: 0,
+        skipped_count: 0,
+        pending_count: 0,
+        completion_percent: 0,
+      },
     });
     await run_cli_job(
       harness.backend_services,
@@ -50,50 +55,36 @@ describe("run_cli_job", () => {
       source_operation,
     );
   });
-  it.each(["PDF", "GENERIC", "MEDIA", "IMAGE"])(
-    "零条目 %s 输入报告排除文件并跳过批量运行",
-    async (file_type) => {
-      const harness = create_backend_services_harness();
-      const paths = create_cli_paths();
-      vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
-        projectPath: "test.lg",
-        sectionRevisions: {},
-        snapshot: {
-          entries: [
-            {
-              rel_path: "book.pdf",
-              file_type,
-              sort_index: 0,
-              progress: {
-                unit: "page",
-                total_count: 3,
-                completed_count: 0,
-                skipped_count: 0,
-                pending_count: 3,
-                completion_percent: 0,
-              },
-            },
-          ],
-        },
-      });
-      harness.generate_files_to_directory.mockRejectedValueOnce(
-        new AppError("project.no_files", {
-          public_details: { reason: "no_generatable_files", excluded_files: ["book.pdf"] },
-        }),
-      );
-      await expect(
-        run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter),
-      ).rejects.toMatchObject({ code: "project.no_files" });
-      expect(harness.start_task).not.toHaveBeenCalled();
-      expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
-      expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
-        "error",
-        expect.objectContaining({ code: "project.no_files" }),
-        ["book.pdf"],
-        undefined,
-      );
-    },
-  );
+  it.each(["GENERIC", "MEDIA", "IMAGE"])("零条目 %s 输入报告排除文件并跳过批量运行", async () => {
+    const harness = create_backend_services_harness();
+    const paths = create_cli_paths();
+    vi.spyOn(harness.backend_services.project.summary, "read_translation_stats").mockReturnValue({
+      projectPath: "test.lg",
+      stats: {
+        total_items: 0,
+        completed_count: 0,
+        skipped_count: 0,
+        pending_count: 0,
+        completion_percent: 0,
+      },
+    });
+    harness.generate_files_to_directory.mockRejectedValueOnce(
+      new AppError("project.no_files", {
+        public_details: { reason: "no_generatable_files", excluded_files: ["document.generic"] },
+      }),
+    );
+    await expect(
+      run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter),
+    ).rejects.toMatchObject({ code: "project.no_files" });
+    expect(harness.start_task).not.toHaveBeenCalled();
+    expect(harness.generate_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+      "error",
+      expect.objectContaining({ code: "project.no_files" }),
+      ["document.generic"],
+      undefined,
+    );
+  });
 
   it("原生游戏输入只向 stderr 提示备份，stdout 不受影响", async () => {
     const harness = create_backend_services_harness();
@@ -102,10 +93,15 @@ describe("run_cli_job", () => {
       notify?.();
       return {};
     });
-    vi.spyOn(harness.backend_services.project.summary, "read").mockResolvedValue({
+    vi.spyOn(harness.backend_services.project.summary, "read_translation_stats").mockReturnValue({
       projectPath: "test.lg",
-      sectionRevisions: {},
-      snapshot: { entries: [] },
+      stats: {
+        total_items: 0,
+        completed_count: 0,
+        skipped_count: 0,
+        pending_count: 0,
+        completion_percent: 0,
+      },
     });
     const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
@@ -361,7 +357,6 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     events.push("translation_generation");
     return {
       accepted: true as const,
-      pdf_files: [],
       excluded_files: [],
       output_path: path.join(output_dir, "translated"),
       bilingual_output_path: path.join(output_dir, "bilingual"),
@@ -377,25 +372,14 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
       },
       project: {
         summary: {
-          read: () => ({
+          read_translation_stats: () => ({
             projectPath: "test.lg",
-            sectionRevisions: {},
-            snapshot: {
-              entries: [
-                {
-                  rel_path: "input.txt",
-                  file_type: "TXT",
-                  sort_index: 0,
-                  progress: {
-                    unit: "line",
-                    total_count: 4,
-                    completed_count: 0,
-                    skipped_count: 0,
-                    pending_count: 4,
-                    completion_percent: 0,
-                  },
-                },
-              ],
+            stats: {
+              total_items: 4,
+              completed_count: 0,
+              skipped_count: 0,
+              pending_count: 4,
+              completion_percent: 0,
             },
           }),
         },

@@ -22,7 +22,7 @@
 |数据库、迁移与 IO|[数据库](../src/backend/database/)、[迁移](../src/backend/migration/)、[平台 IO](../src/native/)|
 |翻译与计算|[批量翻译](../src/backend/batch-translation/)、[计算线程](../src/backend/worker/)|
 |模型与请求|[LLM](../src/backend/llm/)、[网络](../src/backend/network/)|
-|PDF 来源、页面与文件生成|[PDF](../src/backend/file/pdf/)、[页面写入](../src/backend/project/agent-workspace-page-write.ts)、[打印宿主](../src/native/pdf-host.ts)|
+|旧 PDF 迁移与宿主打印|[静态封存](../src/backend/migration/project/legacy-pdf-to-generic-migration.ts)、[打印宿主](../src/native/pdf-host.ts)|
 
 ### Agent 与前端
 
@@ -262,21 +262,14 @@ npm test -- --project integration src/backend/agent/media/visualize.test.ts
 
 ### PDF
 
-PDF 来源、页面写入、排版或译文生成变化时，按影响选择：
+旧工程兼容变化运行 [静态封存测试](../src/backend/migration/project/legacy-pdf-to-generic-migration.test.ts)。PDF 技能脚本变化通过工作区验证新包的提取与写回，以及旧包的译稿继承。
 
-- `src/backend/file/pdf/` 中的目标测试。
-- `agent-workspace-page-write` 与工作区 `service.test.ts`。
-- 数据库和 `ProjectWriteStore` 的来源、事务测试。
-
-[pdf-worker.test.ts](../src/backend/file/pdf/pdf-worker.test.ts) 验证独立部署线程的计算、打印回调、取消与重启。
-
-[pdf-host.test.ts](../src/native/pdf-host.test.ts) 验证真实 Electron 打印与取消。集成测试入口自动准备工作区依赖和打印资源：
+[pdf-host.test.ts](../src/native/pdf-host.test.ts) 验证真实 Electron 打印与取消。集成测试入口自动准备工作区与共享字体：
 
 ```powershell
 npm test -- --project integration src/native/pdf-host.test.ts
 ```
 
-- 验证发行资源时，通过 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定工作区目录。
 - `LINGUAGACHA_PDF_QA_DIR` 指定视觉检查产物目录。
 - 发行包打印资源见 [发行包运行验证](#发行包运行验证)。
 
@@ -298,9 +291,9 @@ Windows 启动器或更新器变化时，在对应的 `cli` 或 `berserker` Go m
 
 - 使用 `npm exec -- asar list <app.asar 路径>` 检查应用入口、前端资源及文件范围。用户数据、项目源码和原始应用依赖树应排除。
 - Electron 语言资源与 `LOCALES` 一致。
-- `builtin/`、`fonts/`、`workspace/` 和 `pdf-print.css` 位于发行 `resources/`。`app.asar` 不含 `builtin/` 和字体。
-- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。`runtime/python/` 包含 `lg-runtime` 的项目声明和包源码，不发布测试。应用包不导出 bootstrap、准备程序或 PDF worker。
-- `seed/` 只包含用户第三方依赖，清单、锁文件和安装树中均不包含 `@lg/*`、`mupdf` 或应用包归档。工作区只部署一份应用使用的 MuPDF 包与 WASM。
+- `builtin/`、`fonts/` 和 `workspace/` 位于发行 `resources/`。`app.asar` 不含 `builtin/` 和字体。
+- 工作区包含应用依赖清单、标准 `node_modules`、公开 `@lg/*`、共享 `chunks/` 和私有 `runtime/`。`runtime/python/` 包含 `lg-runtime` 的项目声明和包源码，不发布测试。bootstrap 与准备程序属于私有入口。
+- `seed/` 只包含用户第三方依赖，清单、锁文件和安装树均排除 `@lg/*` 与应用包归档。
 - `runAsNode` fuse 保持开启，供工作区启动 Electron Node 子进程。
 - Windows 启动器和更新器完成对应 Go module 的测试与构建。
 
@@ -346,7 +339,6 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 - npm SDK 与模型声明：`npm test -- src/backend/agent/npm`。
 - uv SDK 与模型声明：`npm test -- src/backend/agent/uv src/backend/agent/workspace/runtime/command.test.ts`。
 - SDK 加载、原生 IPC 与 uv 发布链：`npm test -- src/backend/agent/workspace/runtime/bootstrap.test.ts`。Python 验收自动准备并缓存解释器，首次运行需要联网。用例验证随附 `lg-runtime` 的 editable 来源、本地 wheel、环境搬移和后代进程取消。
-- MuPDF 实例与字节边界：`npm test -- src/backend/file/pdf/pdf-document.test.ts`。
 - 默认代理与连接关闭：`npm test -- src/backend/network/workspace-proxy.test.ts`。
 - 进程监管器 `supervisor`：在 `buildtools/builder/supervisor/` 执行 `go test ./...`，Windows 覆盖租约、正常退出后的后代回收和保留旧 Job 句柄的接管。
 - Windows Node 启动器：在 `buildtools/builder/node/` 执行 `go test ./...`，验证 Unicode、空参数、stdio 和退出码。

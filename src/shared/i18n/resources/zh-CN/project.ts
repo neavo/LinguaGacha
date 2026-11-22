@@ -81,7 +81,6 @@ export const zh_cn_project = {
     lrc: "LRC 字幕",
     srt: "SubRip 字幕",
     vtt: "WebVTT 字幕",
-    pdf: "PDF 电子书",
     epub: "EPUB 电子书",
     json: "JSON 游戏文本",
     mtool: "MTool 导出游戏文本",

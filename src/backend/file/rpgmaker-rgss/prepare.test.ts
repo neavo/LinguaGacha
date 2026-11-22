@@ -54,11 +54,7 @@ it.each(["xp", "vx", "ace"] as const)(
     fs.writeFileSync(path.join(temp.path, "Graphics/picture.png"), "old picture");
     const native = new NativeFs();
     expect(discover_rgss_source(temp.path, native)?.version).toBe(version);
-    const service = new FileFormatService(
-      new GameDirectoryOperations(),
-      { target_language: "ZH" },
-      async () => null,
-    );
+    const service = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" });
     const prepared = await service.prepare_source(
       (await service.collect_source_file_entries([temp.path]))[0]!,
     );

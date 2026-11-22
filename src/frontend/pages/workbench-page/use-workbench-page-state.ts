@@ -51,15 +51,8 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   entries: [],
 };
 
-// 页面缓存只有消费完这些 section revision 才能标记为 ready。
-const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "pdf"];
-// 工作台列表 query 的项目事实依赖范围。
-const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
-  "project",
-  "files",
-  "items",
-  "pdf",
-];
+// 快照就绪和重新查询使用同一组工程修订。
+const WORKBENCH_SECTIONS: ProjectDataSection[] = ["project", "files", "items"];
 // 工作台文件写入由工作台页拥有业务动作名，desktop committer 只消费 operation。
 const WORKBENCH_FILE_WRITE: ProjectWriteOperation = "workbench.file_write";
 
@@ -272,7 +265,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   const previous_workbench_change_seq_ref = useRef(0);
   const previous_project_loaded_ref = useRef(false);
   const workbench_change_seq = useMemo(() => {
-    return resolveProjectChangeSeqForSections(project_change_signal, WORKBENCH_REFRESH_SECTIONS);
+    return resolveProjectChangeSeqForSections(project_change_signal, WORKBENCH_SECTIONS);
   }, [project_change_signal]);
   const previous_project_path_ref = useRef("");
   const refresh_generation_ref = useRef(0);
@@ -328,7 +321,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     return {
       files: entries_ref.current.map((entry) => ({
         rel_path: entry.rel_path,
-        file_type: entry.file_type,
       })),
       section_revisions: consumed_revisions,
     };
@@ -763,7 +755,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     game_backup_confirm: import_files_flow.game_backup_confirm,
     cache_status,
     consumed_revisions,
-    required_sections: WORKBENCH_REQUIRED_SECTIONS,
+    required_sections: WORKBENCH_SECTIONS,
     settled_project_path,
     is_refreshing,
     file_op_running,

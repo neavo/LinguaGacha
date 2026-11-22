@@ -26,7 +26,7 @@ export async function preview_file_changes(args: {
     updates: parsed.files.updates.map((entry) => ({ ...entry })),
   };
   const other = [
-    ...(["knowledge", "items", "pages", "prompts"] as const).flatMap((scope) =>
+    ...(["knowledge", "items", "prompts"] as const).flatMap((scope) =>
       parsed.batch[scope].map((row) => ({ scope, op: "update" as const, line: row.line })),
     ),
     ...Object.values(parsed.batch.quality).flatMap((group) =>

@@ -104,9 +104,6 @@ export function build_refreshed_proofreading_list_view(args: {
       items: args.sync_state.revisions.items,
       quality: args.sync_state.revisions.quality,
       proofreading: args.sync_state.revisions.proofreading,
-      ...(args.sync_state.revisions.pdf === undefined
-        ? {}
-        : { pdf: args.sync_state.revisions.pdf }),
     },
     row_count: args.window.row_count,
     window_start: args.window.start,
@@ -153,7 +150,6 @@ export function build_filter_panel_signature(args: {
     items: number;
     quality: number;
     proofreading: number;
-    pdf?: number;
   };
   filters: ProofreadingFilterOptions;
 }): string {
@@ -194,7 +190,7 @@ export function resolve_requested_sync_mode(args: {
 }
 
 /**
- * 文件和页面同步复用读取器事实，旧视图失效时重查。文本接受精确行级增量。
+ * 文件同步复用读取器事实，旧视图失效时重查。条目变更接受精确行级增量。
  */
 export function resolve_proofreading_refresh_signal(signal: {
   seq: number;
@@ -213,7 +209,7 @@ export function resolve_proofreading_refresh_signal(signal: {
       itemIds: [],
     };
   }
-  if (signal.updated_sections.every((section) => ["files", "pdf"].includes(section))) {
+  if (signal.updated_sections.every((section) => section === "files")) {
     return { seq: signal.seq, mode: "delta", itemIds: [] };
   }
   if (
@@ -233,9 +229,6 @@ export function resolve_proofreading_refresh_signal(signal: {
       ),
     ),
   ];
-  if (signal.updated_sections.includes("pdf") && !signal.updated_sections.includes("items")) {
-    return { seq: signal.seq, mode: "delta", itemIds: [] };
-  }
   if (signal.updated_sections.includes("items")) {
     if (item_ids.length > 0) {
       return {

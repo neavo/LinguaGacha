@@ -30,7 +30,6 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const sources = [root, path.join(root, "GamePro.exe"), path.join(root, "Data")];
@@ -45,7 +44,6 @@ it("游戏根目录、EXE 和 Data 去重为一个资产，解包覆盖散装文
   const repeat = await service.collect_source_file_entries([root]);
   await expect(service.prepare_source(repeat[0]!)).resolves.toBeDefined();
   const parsed = await service.parse_asset("game.zip", asset.content, "WOLFRPG");
-  if (parsed.kind !== "items") throw new Error("Expected items");
   expect(parsed.warnings).toEqual([]);
   const common = parsed.items.find(
     (item) => read_wolf_metadata(item.extra_field).location.kind === "common_command",
@@ -109,11 +107,7 @@ it.each([
 });
 
 it("缺少核心配对保留独立成员条目，损坏地图报告局部失败", async () => {
-  const service = new FileFormatService(
-      new GameDirectoryOperations(),
-      { target_language: "ZH" },
-      async () => null,
-    ),
+  const service = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" }),
     zip = new JSZip();
   for (const [name, bytes] of wolf_files()) zip.file(name, bytes);
   zip.file("Data/MapData/Broken.mps", Buffer.from([1]));
@@ -122,7 +116,6 @@ it("缺少核心配对保留独立成员条目，损坏地图报告局部失败"
     await zip.generateAsync({ type: "uint8array" }),
     "WOLFRPG",
   );
-  if (parsed.kind !== "items") throw new Error("Expected items");
   expect(parsed.warnings).toMatchObject([{ internal_file_path: "Data/MapData/Broken.mps" }]);
   zip.remove("Data/BasicData/SysDatabase.project");
   await expect(

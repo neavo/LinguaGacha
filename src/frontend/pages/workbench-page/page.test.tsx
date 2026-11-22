@@ -5,7 +5,7 @@ import { WorkbenchPage } from "./page";
 
 const state = vi.hoisted(() => ({
   workbench: {
-    entries: [] as { file_type: string; progress: { total_count: number } }[],
+    entries: [] as { file_type: string; progress: { total_items: number } }[],
     cache_status: "ready",
     readonly: false,
     settled_project_path: "project.lg",
@@ -58,7 +58,7 @@ describe("WorkbenchPage translation entry", () => {
   let root: Root;
   let container: HTMLDivElement;
   beforeEach(() => {
-    state.workbench.entries = [{ file_type: "TXT", progress: { total_count: 1 } }];
+    state.workbench.entries = [{ file_type: "TXT", progress: { total_items: 1 } }];
     state.workbench.cache_status = "ready";
     state.workbench.readonly = false;
     state.workbench.settled_project_path = "project.lg";
@@ -97,10 +97,10 @@ describe("WorkbenchPage translation entry", () => {
     expect(state.task.request_start_or_continue_translation).toHaveBeenCalledOnce();
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });
-  it.each(["PDF", "GENERIC", "IMAGE"])(
+  it.each(["GENERIC", "IMAGE"])(
     "%s 无文本条目也能转交，混合工程同样禁止直接翻译",
     async (file_type) => {
-      state.workbench.entries = [{ file_type, progress: { total_count: 0 } }];
+      state.workbench.entries = [{ file_type, progress: { total_items: 0 } }];
       await render();
       await click("start");
 
@@ -110,7 +110,7 @@ describe("WorkbenchPage translation entry", () => {
         text: 'agent_page.empty.suggestions.translate_full_text @skill("translation")',
       });
       expect(state.task.request_start_or_continue_translation).not.toHaveBeenCalled();
-      state.workbench.entries.push({ file_type: "TXT", progress: { total_count: 5 } });
+      state.workbench.entries.push({ file_type: "TXT", progress: { total_items: 5 } });
       await render();
       await click("start");
       expect(document.body.textContent).not.toContain("translate_directly");
@@ -126,7 +126,7 @@ describe("WorkbenchPage translation entry", () => {
     state.workbench.entries = [];
     await render();
     expect(container.querySelector("button")!.disabled).toBe(true);
-    state.workbench.entries = [{ file_type: "TXT", progress: { total_count: 1 } }];
+    state.workbench.entries = [{ file_type: "TXT", progress: { total_items: 1 } }];
     state.workbench.readonly = true; // 文件写入也会禁用入口，独立于翻译运行占用。
     await render();
     expect(container.querySelector("button")!.disabled).toBe(true);

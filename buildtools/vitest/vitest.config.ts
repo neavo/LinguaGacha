@@ -12,7 +12,6 @@ const INTEGRATION_TESTS = [
   "src/backend/agent/npm/index.test.ts",
   "src/backend/agent/workspace/runtime/bootstrap.test.ts",
   "src/backend/agent/workspace/runtime/module-resolution.test.ts",
-  "src/backend/file/pdf/pdf-worker.test.ts",
   "src/backend/file/shared/javascript.test.ts",
   "src/backend/file/rpgmaker-rgss/ruby.test.ts",
   "src/backend/file/shared/game/prepare-worker.test.ts",

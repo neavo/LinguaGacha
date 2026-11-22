@@ -44,7 +44,7 @@ export function find_agent_reference_ranges(text: string): AgentReferenceRange[]
 
 /** 文件规模只属于候选展示，不进入正文引用。 */
 export type AgentFileCandidate =
-  | { kind: "workspace"; path: string; count: number; unit: "items" | "pages" }
+  | { kind: "workspace"; path: string; count: number }
   | { kind: "upload"; path: string; size: number };
 
 export type AgentFilesResponse = { chatId: string; files: AgentFileCandidate[] };

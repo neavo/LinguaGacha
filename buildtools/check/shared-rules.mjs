@@ -36,12 +36,7 @@ export function create_shared_boundary_rules() {
             const target = context.resolve_import(file, entry.specifier);
             const layer = target === null ? null : context.relative_path(target).split("/")[1];
             const package_name = entry.specifier.replace(/^node:/u, "").split("/")[0];
-            if (
-              APPLICATION_LAYERS.has(layer) ||
-              HOST_MODULES.has(package_name) ||
-              (relative_path === "src/shared/pdf-schema.ts" &&
-                entry.specifier.startsWith("@earendil-works/"))
-            ) {
+            if (APPLICATION_LAYERS.has(layer) || HOST_MODULES.has(package_name)) {
               errors.push({
                 relative_path,
                 line: entry.line,

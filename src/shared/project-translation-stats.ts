@@ -13,11 +13,7 @@ export type ProjectTranslationStatsResponse = {
 };
 
 /** 成功和跳过均计入完成；仍有未完成对象时取整最高为 99%。 */
-export function calculate_completion_percent(
-  total: number,
-  completed: number,
-  skipped: number,
-): number {
+function calculate_completion_percent(total: number, completed: number, skipped: number): number {
   if (total === 0) return 0;
   const finished = completed + skipped;
   return finished === total ? 100 : Math.min(99, Math.round((finished / total) * 100));

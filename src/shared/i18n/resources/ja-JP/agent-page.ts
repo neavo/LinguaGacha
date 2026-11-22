@@ -64,7 +64,6 @@ export const ja_jp_agent_page = {
       workspace: "ワークスペースファイル",
       upload: "アップロード",
       items: "{COUNT} 件",
-      pages: "{COUNT} ページ",
       loading: "ファイル一覧を読み込み中 …",
       error: "ファイル一覧の読み込みに失敗しました …",
     },
@@ -119,7 +118,6 @@ export const ja_jp_agent_page = {
     title: "プロジェクトデータを書き込み中",
     summary: {
       files: "ファイル {count} 件",
-      pages: "ページデータ {count} ページ",
       items: "項目データ {count} 件",
       glossary: "用語ルール {count} 件",
       text_preserve: "テキスト保護ルール {count} 件",

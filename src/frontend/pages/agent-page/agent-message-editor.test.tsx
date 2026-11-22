@@ -211,7 +211,7 @@ describe("AgentMessageEditor", () => {
         )?.textContent,
       ).toBe(`agent_page.mention.files.${status}`);
       mention_files.status = "ready";
-      mention_files.files = [{ kind: "workspace", path: "章节.txt", count: 1, unit: "items" }];
+      mention_files.files = [{ kind: "workspace", path: "章节.txt", count: 1 }];
       await render_editor(options);
       expect(
         view.querySelector('button[data-kind="instruction"]')?.getAttribute("aria-selected"),
@@ -240,7 +240,7 @@ describe("AgentMessageEditor", () => {
     async (query) => {
       mention_files.files = [
         { kind: "upload", path: "uploads/共同.txt", size: 10 },
-        { kind: "workspace", path: "共同.txt", count: 1, unit: "items" },
+        { kind: "workspace", path: "共同.txt", count: 1 },
       ];
       const view = await render_editor({
         skills: [{ ...skills[0]!, name: "共同技能" }],
@@ -895,7 +895,7 @@ describe("AgentMessageEditor", () => {
 
   it("文件候选展示完整路径，并只把引用写入正文", async () => {
     mention_files.files = [
-      { kind: "workspace", path: "资料/角色设定.xlsx", count: 320, unit: "items" },
+      { kind: "workspace", path: "资料/角色设定.xlsx", count: 320 },
       { kind: "upload", path: "uploads/角色设定.xlsx", size: 128 },
     ];
     const input = create_input_state();

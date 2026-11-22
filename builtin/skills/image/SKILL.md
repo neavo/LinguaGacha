@@ -132,7 +132,7 @@ console.log(packed);
 
 ## 写回成图
 
-提交变更后，在同一次 `workspace_run` 中调用 `generateFiles(bilingual_files)` 取得整册写回快照，再处理 `writeback.files` 中的图片资产。
+提交变更后，在同一次 `workspace_run` 中调用 `generateFiles()` 取得整册写回快照，再处理 `writeback.files` 中的图片资产。
 
 `image.render(options)` 调用参数：
 
@@ -152,7 +152,7 @@ console.log(packed);
 import path from "node:path";
 import { generateFiles } from "@lg/project";
 const image = await import(new URL("scripts/image.mjs", base_url).href);
-const generated = await generateFiles(bilingual_files);
+const generated = await generateFiles();
 
 // 首次 QA / 最终交付：生成整册
 for (const asset of generated.writeback?.files ?? []) {
