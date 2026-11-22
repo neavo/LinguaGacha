@@ -7,7 +7,6 @@ import { normalize_batch_translation_progress } from "../../domain/batch-transla
 import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
-import type { PDFExecution } from "../file/pdf/pdf-worker";
 import path from "node:path";
 
 import type { AppPathService } from "../app/app-path-service";
@@ -122,7 +121,6 @@ export class ProjectLifecycleService {
     log_manager: LogManager,
     cache: Pick<CacheManager, "installProject" | "clearProject" | "languages" | "files">,
     write_store: ProjectWriteStore,
-    private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
     private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
@@ -380,7 +378,6 @@ export class ProjectLifecycleService {
             file.rel_path,
             file.content,
             file.file_type,
-            file.pdf_document,
             file.sort_index,
           );
         }
@@ -570,7 +567,6 @@ export class ProjectLifecycleService {
       {
         target_language: languages.target_language,
       },
-      this.pdf_execution,
       this.native_fs,
       this.game_prepare_execution,
     );

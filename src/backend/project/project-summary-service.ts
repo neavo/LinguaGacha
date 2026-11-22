@@ -1,13 +1,8 @@
 import type { ProjectFileRecord } from "./project-file-records";
-import {
-  build_project_translation_stats,
-  calculate_completion_percent,
-} from "../../shared/project-translation-stats";
+import { build_project_translation_stats } from "../../shared/project-translation-stats";
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import type { PDFSummary } from "../../shared/pdf";
 import type {
   WorkbenchFileEntry,
-  WorkbenchFileProgress,
   WorkbenchQueryResponse,
 } from "../../shared/workbench/workbench-query";
 import type { ProjectTranslationStatsResponse } from "../../shared/project-translation-stats";
@@ -16,7 +11,7 @@ import type { CacheReadPort } from "../cache/cache-types";
 import type { ProjectSessionState } from "./project-session-state";
 
 /**
- * 后端查询服务从 cache 门面读取热数据，并返回页面级快照。
+ * 基于已提交的工程快照，生成工作台与跨页面的条目统计。
  */
 export class ProjectSummaryService {
   /**
@@ -34,12 +29,11 @@ export class ProjectSummaryService {
     const project_path = this.session_state.require_loaded_project_path();
     const items = this.cache.items.readItems();
     const cached_file_entries = this.cache.files.readFileEntries();
-    const pdf = this.cache.pdf.readBlock();
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions(),
       snapshot: {
-        entries: this.build_file_entries(items, cached_file_entries, pdf),
+        entries: this.build_file_entries(items, cached_file_entries),
       },
     };
   }
@@ -59,7 +53,6 @@ export class ProjectSummaryService {
   private build_file_entries(
     items: ProjectItemPublicRecord[],
     cached_file_entries: ProjectFileRecord[],
-    pdf_summaries: Record<string, PDFSummary>,
   ): WorkbenchFileEntry[] {
     const entries_by_path = new Map<string, ProjectItemPublicRecord[]>();
     for (const item of items) {
@@ -67,50 +60,15 @@ export class ProjectSummaryService {
       if (file_path === "") {
         continue;
       }
-      const bucket = entries_by_path.get(file_path) ?? [];
-      bucket.push(item);
-      entries_by_path.set(file_path, bucket);
+      const bucket = entries_by_path.get(file_path);
+      if (bucket) bucket.push(item);
+      else entries_by_path.set(file_path, [item]);
     }
-    return cached_file_entries.map((file_entry) => {
-      const file_items = entries_by_path.get(file_entry.rel_path) ?? [];
-      return this.build_project_file_entry(file_entry, file_items, pdf_summaries);
-    });
-  }
-
-  /**
-   * PDF 摘要按原页计数，核对标记独立于翻译完成率。
-   */
-  private build_project_file_entry(
-    file_entry: ProjectFileRecord,
-    file_items: ProjectItemPublicRecord[],
-    pdf_summaries: Record<string, PDFSummary>,
-  ): WorkbenchFileEntry {
-    let progress: WorkbenchFileProgress;
-    if (file_entry.file_type === "PDF") {
-      // ProjectDataReader 以页面摘要的键标记 PDF 文件，缓存与数据库写入同步更新。
-      const pdf = pdf_summaries[file_entry.rel_path]!;
-      const skipped_count = pdf.kept_pages + pdf.omitted_pages; // 两种处置均完成处理，导出时仍区分保留与省略。
-      progress = {
-        unit: "page",
-        total_count: pdf.pages,
-        completed_count: pdf.translated_pages,
-        skipped_count,
-        pending_count: pdf.pages - pdf.translated_pages - skipped_count,
-        completion_percent: calculate_completion_percent(
-          pdf.pages,
-          pdf.translated_pages,
-          skipped_count,
-        ),
-      };
-    } else {
-      const { total_items, ...stats } = build_project_translation_stats(file_items);
-      progress = { unit: "line", total_count: total_items, ...stats };
-    }
-    return {
-      rel_path: file_entry.rel_path,
-      file_type: file_entry.file_type,
-      sort_index: file_entry.sort_index,
-      progress,
-    };
+    return cached_file_entries.map(({ rel_path, file_type, sort_index }) => ({
+      rel_path,
+      file_type,
+      sort_index,
+      progress: build_project_translation_stats(entries_by_path.get(rel_path) ?? []),
+    }));
   }
 }

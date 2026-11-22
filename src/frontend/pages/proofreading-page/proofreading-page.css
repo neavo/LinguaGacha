@@ -46,7 +46,6 @@
 }
 
 .proofreading-page__table-text {
-  /* 独立页面条目用块盒居中，避免行内基线在文字下方留下额外空隙。 */
   display: block;
   min-width: 0;
   flex: 1 1 auto;
@@ -805,32 +804,4 @@ button.proofreading-page__file-body:hover > .app-badge {
   color: var(--muted-foreground);
   pointer-events: none;
   z-index: 1;
-}
-
-.proofreading-page__preview-pane {
-  position: relative;
-  display: flex;
-  min-height: 0;
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: var(--popover);
-}
-.proofreading-page__preview-pane[aria-disabled="true"] {
-  border-color: color-mix(in srgb, var(--border) 88%, white 12%);
-  background: color-mix(in srgb, var(--muted) 36%, var(--popover) 64%);
-}
-.proofreading-page__preview-feedback {
-  position: absolute;
-  inset: auto 8px 8px;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px;
-  border-radius: var(--ui-radius-card);
-  background: var(--popover);
 }

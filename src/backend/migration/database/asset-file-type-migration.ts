@@ -26,10 +26,12 @@ export function run_asset_file_type_migration(db: DatabaseSync): void {
       types.set(String(item.file_path ?? ""), type);
   }
   const pdf = new Set(
-    db
-      .prepare("SELECT file_path FROM pdf_documents")
-      .all()
-      .map((row) => String(row["file_path"])),
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'pdf_documents'").get()
+      ? db
+          .prepare("SELECT file_path FROM pdf_documents")
+          .all()
+          .map((row) => String(row["file_path"]))
+      : [],
   );
   const extensions: Record<string, string> = {
     // 固定历史格式口径，后续新增解析器不改变旧工程迁移。

@@ -16,7 +16,7 @@ describe("run_project_schema_migration", () => {
       { path: "note.md", text: "old note" },
     ]);
   });
-  it("新建工程提供默认资产类型，并按文件与原页唯一保存页面", () => {
+  it("新库提供默认资产类型，不创建旧 PDF 表", () => {
     using db = new DatabaseSync(":memory:");
 
     run_project_schema_migration(db);
@@ -29,10 +29,11 @@ describe("run_project_schema_migration", () => {
       "NOT NULL constraint failed",
     );
 
-    const insert = db.prepare("INSERT INTO pdf_pages(file_path, page, data) VALUES (?, ?, ?)");
-    insert.run("a.pdf", 1, "{}");
-    insert.run("b.pdf", 1, "{}");
-    expect(() => insert.run("a.pdf", 1, "{}")).toThrow("UNIQUE constraint failed");
+    expect(
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE name IN ('pdf_documents', 'pdf_pages')")
+        .all(),
+    ).toEqual([]);
   });
 
   it("旧 assets 缺少 sort_order 时按 id 顺序补齐稳定文件顺序", () => {

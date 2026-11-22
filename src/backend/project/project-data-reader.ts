@@ -1,4 +1,3 @@
-import type { PDFSummary } from "../../shared/pdf";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { read_json_record } from "../../domain/json";
 import {
@@ -31,7 +30,6 @@ export type { ProjectDataSection };
 /** 单次准备的基础事实在事务提交后交给缓存，不持有额外长期状态。 */
 export interface ProjectDataSnapshot {
   readonly meta: JsonRecord;
-  readonly pdf: Record<string, PDFSummary>;
   readonly items: readonly ProjectItemPublicRecord[];
   readonly files: Readonly<Record<string, ProjectFileRecord>>;
   readonly quality: QualityRuleBlock;
@@ -65,8 +63,7 @@ export function get_section_revision(meta: JsonRecord, section: string): number 
     section === "knowledge" ||
     section === "project" ||
     section === "files" ||
-    section === "items" ||
-    section === "pdf"
+    section === "items"
   ) {
     return read_project_revision(meta[`project_runtime_revision.${section}`]);
   }
@@ -109,7 +106,6 @@ export class ProjectDataReader {
     const meta = this.get_all_meta(project_path);
     return {
       meta,
-      pdf: this.database.read_pdf_summaries(project_path),
       items,
       files: this.build_files_record_block(project_path),
       quality: this.build_quality_block(project_path, meta),
@@ -143,11 +139,6 @@ export class ProjectDataReader {
       sectionRevisions: section_revisions as unknown as JsonValue,
       counts,
     };
-  }
-
-  /** 校对按 pdf revision 补读页面，正文只进入后端查询运行态。 */
-  public read_pdf_documents(project_path: string) {
-    return this.database.read_pdf_documents(project_path);
   }
 
   /** files section 以资产路径和顺序构建。 */

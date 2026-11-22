@@ -14,8 +14,6 @@ export default defineConfig(({ command }) => {
       build: {
         outDir: desktop_dist_dir,
         rolldownOptions: {
-          // PDFWorker 的同进程测试分支保留外部导入，由 npm run check 约束工作区依赖边界。
-          external: ["mupdf"],
           input: {
             index: project_path("src/index.ts"),
             "backend-runtime-worker-entry": project_path(

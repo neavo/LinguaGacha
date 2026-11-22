@@ -7,7 +7,6 @@ import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { ProjectDatabaseAccess } from "../database/database-operations";
-import { create_pdf_execution } from "../file/pdf/test-support";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSessionState } from "./project-session-state";
@@ -1035,7 +1034,6 @@ describe("ProjectLifecycleService", () => {
         () => undefined,
         (change) => adapt_project_change(session_state, change),
       ),
-      create_pdf_execution(),
       { read_app_language: () => "ZH" },
       undefined,
       create_log_manager(),
@@ -1317,7 +1315,6 @@ describe("ProjectLifecycleService", () => {
         files,
       },
       new ProjectWriteStore(options.database, () => undefined, null),
-      create_pdf_execution(),
     );
   }
 
@@ -1351,8 +1348,8 @@ describe("ProjectLifecycleService", () => {
       get_all_meta: vi.fn(() => options.meta ?? {}),
       get_all_items: vi.fn(() => options.items ?? []),
       get_rules: vi.fn(() => []),
-      read_pdf_summaries: vi.fn(() => ({})),
       get_all_asset_records: vi.fn(() => options.asset_records ?? []),
+      read_legacy_pdf: () => ({ has_tables: false, documents: [] }),
       get_rule_text: vi.fn(
         (_project_path: string, rule_type: string) => options.rule_text_by_type?.[rule_type] ?? "",
       ),

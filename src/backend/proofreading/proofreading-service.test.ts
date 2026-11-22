@@ -42,7 +42,7 @@ async function create_service(task_busy = false): Promise<{
   const lg_path = path.join(temp_dir, "proofreading.lg");
   await database.create_project(lg_path);
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT", null),
+    writer.add_asset(lg_path, "a.txt", Buffer.from("原文"), "TXT"),
   );
   session_state.mark_loaded(lg_path);
   const publisher = create_test_project_change_publisher(lg_path);

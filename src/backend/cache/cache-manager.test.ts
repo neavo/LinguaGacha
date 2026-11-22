@@ -10,7 +10,6 @@ import {
 } from "../../shared/proofreading/proofreading-reader";
 import { build_project_committed_change } from "../project/project-committed-change";
 import { CacheManager } from "./cache-manager";
-import { build_proofreading_page_row_id } from "../../shared/proofreading/proofreading-types";
 
 type MutableRecord = Record<string, unknown>;
 
@@ -64,8 +63,6 @@ function create_database(
   });
   const get_rule_text = vi.fn(() => null);
   const access = {
-    read_pdf_summaries: () => ({}),
-    read_pdf_documents: vi.fn(() => []),
     get_all_meta: vi.fn(() => options.meta ?? {}),
     get_all_items,
     get_items_by_ids,
@@ -214,105 +211,6 @@ describe("CacheManager", () => {
         sort_index: 0,
       },
     ]);
-  });
-
-  it("文件重排只更新文件索引，复用文本评估和页面内容并使旧排序窗口失效", async () => {
-    const database = create_database({
-      items: [
-        create_item({ id: 1, file_path: "b.txt", status: "PROCESSED", dst: "かな" }),
-        create_item({ id: 2, file_path: "a.txt" }),
-      ],
-    });
-    const assets = vi.spyOn(database, "get_all_asset_records").mockReturnValue([
-      { path: "b.txt", sort_order: 0, file_type: "TXT" },
-      { path: "a.txt", sort_order: 1, file_type: "TXT" },
-      { path: "book.pdf", sort_order: 2, file_type: "PDF" },
-    ]);
-    vi.spyOn(database, "read_pdf_summaries").mockReturnValue({
-      "book.pdf": { pages: 1, translated_pages: 0, kept_pages: 0, omitted_pages: 0 },
-    });
-    const pages = vi.spyOn(database, "read_pdf_documents").mockReturnValue([
-      {
-        file_path: "book.pdf",
-        document: {
-          digest: "test",
-          pages: [
-            {
-              page: 1,
-              width: 100,
-              height: 100,
-              rotation: 0,
-              label: null,
-              translation: null,
-              reviewed: false,
-              notes: "",
-            },
-          ],
-        },
-      },
-    ]);
-    const worker = create_worker();
-    const cache = create_cache({ database, worker });
-    await cache.warmProject("E:/Project/demo.lg");
-    const read_items = vi.spyOn(cache.items, "readItems");
-    const initial = await cache.proofreading.sync();
-    const query = {
-      filters: initial.data.defaultFilters,
-      keyword: "",
-      scope: "all" as const,
-      is_regex: false,
-      sort_state: null,
-    };
-    const old_view = await cache.proofreading.list(query);
-    const epoch = cache.snapshot().epoch;
-    expect(old_view.data.window_rows.map((row) => row.row_id)).toEqual([
-      "1",
-      "2",
-      build_proofreading_page_row_id("book.pdf", 1),
-    ]);
-    database.get_rules.mockClear();
-    database.get_rule_text.mockClear();
-    assets.mockReturnValue([
-      { path: "book.pdf", sort_order: 0, file_type: "PDF" },
-      { path: "a.txt", sort_order: 1, file_type: "TXT" },
-      { path: "b.txt", sort_order: 2, file_type: "TXT" },
-    ]);
-    await cache.applyCommittedChange({
-      ...build_project_committed_change(
-        database,
-        {
-          projectPath: "E:/Project/demo.lg",
-          source: "project_reorder_files",
-          qualityStatisticsScope: "none",
-          updatedSections: ["files"],
-        },
-        await database.get_all_meta("E:/Project/demo.lg"),
-      ),
-      sectionRevisions: { files: 1 },
-    });
-    const updated = await cache.proofreading.sync();
-    expect(updated.data.files.map((file) => file.file_path)).toEqual([
-      "book.pdf",
-      "a.txt",
-      "b.txt",
-    ]);
-    expect(
-      (await cache.proofreading.window({ view_id: old_view.data.view_id, start: 0, count: 10 }))
-        .data.rows,
-    ).toEqual([]);
-    const next_view = await cache.proofreading.list({
-      ...query,
-      window_anchor: { row_id: "1", offset: 0 },
-    });
-    expect(next_view.data.window_start).toBe(2);
-    expect(next_view.data.window_rows[0]?.row_id).toBe("1");
-    expect(cache.snapshot().epoch).toBe(epoch);
-    expect(database.get_all_items).toHaveBeenCalledTimes(1);
-    expect(read_items).toHaveBeenCalledTimes(1);
-    expect(database.get_rules).not.toHaveBeenCalled();
-    expect(database.get_rule_text).not.toHaveBeenCalled();
-    expect(pages).toHaveBeenCalledTimes(1);
-    expect(worker.run).toHaveBeenCalledTimes(1);
   });
 
   it("卸载清理当前工程缓存", async () => {

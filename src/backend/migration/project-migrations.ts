@@ -4,6 +4,7 @@ import type { ProjectDatabaseWrite } from "../database/database-operations";
 import type { ProjectOpenMigrationInput } from "./migration-types";
 import { EpubRubyBlockTextMigration } from "./project/epub-ruby-block-text-migration";
 import { MarkdownV2BlockMigration } from "./project/markdown-v2-block-migration";
+import { legacy_pdf_to_generic_migration } from "./project/legacy-pdf-to-generic-migration";
 
 /** 准备阶段共享打开瞬间事实，所有写入仍由项目生命周期在同一事务提交。 */
 export async function build_project_open_writes(
@@ -16,7 +17,11 @@ export async function build_project_open_writes(
     const items = assets.some((asset) => asset.file_type === "EPUB" || asset.file_type === "MD")
       ? reader.get_all_items(input.project_path)
       : [];
-    return { meta, assets, items };
+    const legacy_pdf = reader.read_legacy_pdf(
+      input.project_path,
+      assets.filter((asset) => asset.file_type === "PDF").map((asset) => asset.path),
+    );
+    return { meta, assets, items, legacy_pdf };
   });
   const { meta, assets, items } = snapshot;
   const writes: ProjectDatabaseWrite[] = [];
@@ -33,5 +38,8 @@ export async function build_project_open_writes(
   }
   writes.push(...(await empty_asset_file_type_migration({ ...input, meta, assets })));
   writes.push(...(await remove_additional_files_migration({ ...input, meta, assets })));
+  writes.push(
+    ...(await legacy_pdf_to_generic_migration({ ...input, meta, assets }, snapshot.legacy_pdf)),
+  );
   return writes;
 }

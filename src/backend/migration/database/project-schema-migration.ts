@@ -47,16 +47,6 @@ function ensure_current_schema(db: DatabaseSync): void {
         original_size INTEGER NOT NULL,
         compressed_size INTEGER NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS pdf_documents (
-        file_path TEXT PRIMARY KEY,
-        data TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS pdf_pages (
-        file_path TEXT NOT NULL,
-        page INTEGER NOT NULL,
-        data TEXT NOT NULL,
-        PRIMARY KEY (file_path, page)
-      );
       CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         data TEXT NOT NULL

@@ -4,11 +4,6 @@ import {
 } from "./project-knowledge";
 import type { AppliedFiles } from "../../shared/project-file-changes";
 import { insert_by_sort } from "./insert-by-sort";
-import type { PDFDocumentRecord, PDFPageRecord } from "../../shared/pdf";
-import {
-  resolve_agent_workspace_page_updates,
-  type AgentWorkspacePageUpdateIntent,
-} from "./agent-workspace-page-write";
 import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
@@ -49,7 +44,7 @@ export type AgentWorkspaceRejectionReason =
   | "source_failed";
 
 export type AgentWorkspaceRejectedChange = JsonRecord & {
-  scope: "knowledge" | "items" | "quality" | "prompts" | "pages" | "files";
+  scope: "knowledge" | "items" | "quality" | "prompts" | "files";
   op: "create" | "update" | "delete" | "replace";
   reason: AgentWorkspaceRejectionReason;
 };
@@ -105,7 +100,6 @@ export type AgentWorkspaceQualityIntents = Readonly<{
 
 export type AgentWorkspaceIntentBatch = Readonly<{
   knowledge: readonly AgentWorkspaceKnowledgeUpdateIntent[];
-  pages: readonly AgentWorkspacePageUpdateIntent[];
   items: readonly AgentWorkspaceItemUpdateIntent[];
   prompts: readonly AgentWorkspacePromptUpdateIntent[];
   quality: Readonly<Record<QualityRuleKind, AgentWorkspaceQualityIntents>>;
@@ -113,7 +107,6 @@ export type AgentWorkspaceIntentBatch = Readonly<{
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
   knowledge: string | null; // 已保存的知识正文，本批不涉及或尚未保存时为 null
-  pdfDocuments: readonly PDFDocumentRecord[];
   items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
   prompts: Partial<Record<PromptKind, string | null>>; // 本批涉及的提示词覆盖
@@ -129,7 +122,6 @@ export type AgentWorkspaceQualitySummary = Readonly<{
 export type AgentWorkspaceAppliedSummary = Readonly<{
   knowledge?: Readonly<{ updated: number }>;
   files?: AppliedFiles;
-  pages?: Readonly<{ updated: number }>;
   items?: Readonly<{ updated: number }>;
   quality?: Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
   prompts?: Readonly<{ updated: PromptKind[] }>;
@@ -147,7 +139,6 @@ export type AgentWorkspacePromptWrite = Readonly<{
 
 export type AgentWorkspaceWriteResolution = Readonly<{
   knowledgeChange: string | null;
-  pageChanges: PDFPageRecord[];
   itemChanges: ProjectItemWriteChange[];
   qualityChanges: AgentWorkspaceQualityWrite[];
   promptChanges: AgentWorkspacePromptWrite[];
@@ -167,7 +158,6 @@ const DUPLICATE_RULE_TYPE_BY_KIND = Object.freeze({
 export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceIntentBatch {
   return {
     knowledge: [],
-    pages: [],
     items: [],
     prompts: [],
     quality: Object.fromEntries(
@@ -249,7 +239,6 @@ export function resolve_agent_workspace_writes(args: {
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
   const knowledge = resolve_knowledge(args.batch.knowledge, args.current.knowledge);
-  const pages = resolve_agent_workspace_page_updates(args.batch.pages, args.current.pdfDocuments);
   const current_items = args.current.items
     .map(read_item_write_record)
     .filter((item) => item.item_id > 0);
@@ -281,27 +270,23 @@ export function resolve_agent_workspace_writes(args: {
   const prompt_kinds = prompt_result.changes.map((change) => change.kind);
   return {
     knowledgeChange: knowledge.change,
-    pageChanges: pages.changes,
     itemChanges: item_changes,
     qualityChanges: quality_changes,
     promptChanges: prompt_result.changes,
     applied: {
       ...(knowledge.change === null ? {} : { knowledge: { updated: 1 } }),
-      ...(pages.changes.length ? { pages: { updated: pages.changes.length } } : {}),
       ...(item_changes.length === 0 ? {} : { items: { updated: item_changes.length } }),
       ...(quality_changes.length === 0 ? {} : { quality: quality_summary }),
       ...(prompt_kinds.length === 0 ? {} : { prompts: { updated: prompt_kinds } }),
     },
     rejected: [
       ...knowledge.rejected,
-      ...pages.rejected,
       ...item_result.rejected,
       ...quality_results.flatMap((result) => result.rejected),
       ...prompt_result.rejected,
     ],
     candidates: {
       knowledge: knowledge.candidates,
-      pages: pages.candidates,
       items: item_result.candidates,
       prompts: prompt_result.candidates,
       quality: Object.fromEntries(

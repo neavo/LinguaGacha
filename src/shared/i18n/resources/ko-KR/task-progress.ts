@@ -6,5 +6,4 @@ export const ko_kr_task_progress = {
   translation_pending: "번역 대기",
   translation_skipped: "번역 불필요",
   line: "{status} - {count}행",
-  page: "{status} - {count}페이지",
 } satisfies LocaleMessageSchema<typeof zh_cn_task_progress>;

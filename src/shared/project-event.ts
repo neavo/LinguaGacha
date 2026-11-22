@@ -5,7 +5,6 @@ export const PROJECT_DATA_SECTIONS = [
   "project",
   "files",
   "items",
-  "pdf",
   "quality",
   "prompts",
   "knowledge",

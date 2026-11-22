@@ -139,7 +139,7 @@ export function sourceRef(item) {
   return { item_id: item.item_id, digest: sourceDigest(item) };
 }
 
-/** 按当前条目核对 canon 中的条目证据。页面和上传材料的证据没有摘要，由模型核对。 */
+/** 按当前条目核对 canon 中的条目证据。非条目的原稿和上传材料证据没有摘要，由模型核对。 */
 export async function checkCanon(items) {
   const canon = await loadCanon();
   const wanted = new Map(); // item_id → 引用该条目的证据

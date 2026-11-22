@@ -69,7 +69,6 @@ export const de_de_project = {
     lrc: "LRC-Untertitel",
     srt: "SubRip-Untertitel",
     vtt: "WebVTT-Untertitel",
-    pdf: "PDF-E-Book",
     epub: "EPUB-E-Book",
     json: "JSON-Spieltext",
     mtool: "MTool-Spieltext",

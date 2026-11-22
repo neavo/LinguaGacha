@@ -63,7 +63,6 @@ export const ko_kr_agent_page = {
       workspace: "작업 공간 파일",
       upload: "업로드",
       items: "{COUNT}개 항목",
-      pages: "{COUNT}페이지",
       loading: "파일 목록을 불러오는 중 …",
       error: "파일 목록을 불러오지 못했습니다 …",
     },
@@ -118,7 +117,6 @@ export const ko_kr_agent_page = {
     title: "프로젝트 데이터 쓰는 중",
     summary: {
       files: "파일 {count}개",
-      pages: "페이지 데이터 {count}페이지",
       items: "항목 데이터 {count}개",
       glossary: "용어 규칙 {count}개",
       text_preserve: "텍스트 보호 규칙 {count}개",

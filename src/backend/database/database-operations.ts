@@ -290,26 +290,6 @@ export class ProjectDatabase {
   ): Promise<ReturnType<ProjectDatabaseAccess["get_all_meta"]>> {
     return this.read(args[0], (reader) => reader.get_all_meta(...args));
   }
-  public read_pdf_document(
-    ...args: Parameters<ProjectDatabaseAccess["read_pdf_document"]>
-  ): Promise<ReturnType<ProjectDatabaseAccess["read_pdf_document"]>> {
-    return this.read(args[0], (reader) => reader.read_pdf_document(...args));
-  }
-  public read_pdf_documents(
-    ...args: Parameters<ProjectDatabaseAccess["read_pdf_documents"]>
-  ): Promise<ReturnType<ProjectDatabaseAccess["read_pdf_documents"]>> {
-    return this.read(args[0], (reader) => reader.read_pdf_documents(...args));
-  }
-  public read_file_counts(
-    ...args: Parameters<ProjectDatabaseAccess["read_file_counts"]>
-  ): Promise<ReturnType<ProjectDatabaseAccess["read_file_counts"]>> {
-    return this.read(args[0], (reader) => reader.read_file_counts(...args));
-  }
-  public read_pdf_summaries(
-    ...args: Parameters<ProjectDatabaseAccess["read_pdf_summaries"]>
-  ): Promise<ReturnType<ProjectDatabaseAccess["read_pdf_summaries"]>> {
-    return this.read(args[0], (reader) => reader.read_pdf_summaries(...args));
-  }
   public get_all_asset_records(
     ...args: Parameters<ProjectDatabaseAccess["get_all_asset_records"]>
   ): Promise<ReturnType<ProjectDatabaseAccess["get_all_asset_records"]>> {

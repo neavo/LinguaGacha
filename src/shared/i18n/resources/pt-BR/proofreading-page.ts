@@ -2,15 +2,7 @@ import { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const pt_br_proofreading_page = {
-  pages: {
-    view: "Abrir pré-visualização",
-    title: "Pré-visualização",
-    source_page: "Página {PAGE}",
-    select_files: "Selecionar arquivos",
-    failed: "Falha na pré-visualização",
-    previous: "Página anterior",
-    next: "Próxima página",
-  },
+  select_files: "Selecionar arquivos",
   title: "Revisão",
   action: {
     files: "Arquivos",

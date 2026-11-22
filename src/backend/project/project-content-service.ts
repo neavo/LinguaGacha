@@ -33,7 +33,6 @@ import {
 } from "../../domain/batch-translation";
 import { inherit_completed_translations } from "./project-translation-inheritance";
 import type { ProjectFileRecord } from "./project-file-records";
-import type { PDFExecution } from "../file/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase, type ProjectAssetRecord } from "../database/database-operations";
 import { FileFormatService, read_source_confirmations } from "../file/file-format-service";
@@ -79,7 +78,6 @@ type ProjectFileSection = Record<string, ProjectFileRecord>;
 
 type ProjectWriteSnapshot = {
   asset_records: ProjectAssetRecord[];
-  pdf_paths: string[]; // 与资产、条目来自同一目标工程，供文件组装和翻译重置共用
   public_items_by_id: Map<number, ProjectItemPublicRecord>;
   files: ProjectFileSection;
 };
@@ -125,7 +123,6 @@ export class ProjectContentService {
     runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
-    private readonly pdf_execution: PDFExecution,
     private readonly app_settings: Pick<AppSettingService, "read_app_language">,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
@@ -354,10 +351,6 @@ export class ProjectContentService {
               source_path: create.source_path,
               files: drafts.length,
               items: drafts.reduce((count, file) => count + file.parsed_items.length, 0),
-              pages: drafts.reduce(
-                (count, file) => count + (file.pdf_document?.pages.length ?? 0),
-                0,
-              ),
               inherited: [...paths].reduce(
                 (count, path) => count + (prepared.inherited.get(path) ?? 0),
                 0,
@@ -518,7 +511,6 @@ export class ProjectContentService {
         path: file.rel_path,
         fileType: file.file_type,
         content: file.content,
-        pdfDocument: file.pdf_document,
         items: by_file.get(file.rel_path) ?? [],
       };
       if (existing_paths.has(file.rel_path)) replacements.push({ kind: "update", ...fields });
@@ -707,14 +699,7 @@ export class ProjectContentService {
       const expected = require_project_expected_section_revisions(
         request["expected_section_revisions"],
       );
-      const revisionSections: Array<"files" | "items" | "pdf"> = ["files", "items"];
-      if (
-        records.some(
-          (record) => record.file_type === "PDF" || snapshot.pdf_paths.includes(record.path),
-        )
-      )
-        revisionSections.push("pdf");
-      await this.write_store.check_section_revisions(project_path, expected, revisionSections);
+      await this.write_store.check_section_revisions(project_path, expected, ["files", "items"]);
       return await this.rebuild_assets(
         project_path,
         snapshot,
@@ -722,7 +707,6 @@ export class ProjectContentService {
         {
           source: "project_reset_files",
           expectedSectionRevisions: expected,
-          revisionSections,
         },
         signal,
       );
@@ -743,7 +727,7 @@ export class ProjectContentService {
     });
   }
 
-  /** 改名迁移资产路径，条目、页面与译文随资产保留，名称规则由文件布局统一校验。 */
+  /** 改名迁移资产路径，条目与译文随资产保留，名称规则由文件布局统一校验。 */
   public async rename_file(request: JsonRecord): Promise<ProjectWriteResult> {
     const file_path = request["rel_path"];
     const new_file_path = request["new_rel_path"];
@@ -827,7 +811,7 @@ export class ProjectContentService {
         items: this.public_item_record(snapshot.public_items_by_id.values()),
         settings,
       });
-      return await this.write_store.replace_project_items_and_files({
+      return await this.write_store.replace_project_items({
         projectPath: project_path,
         requireExpectedSectionRevisions: false,
         revisionSections: ["project", "items"],
@@ -856,7 +840,7 @@ export class ProjectContentService {
       settings,
     });
     return () =>
-      this.write_store.replace_project_items_and_files({
+      this.write_store.replace_project_items({
         projectPath: project_path,
         requireExpectedSectionRevisions: false,
         revisionSections: ["items"],
@@ -1006,7 +990,6 @@ export class ProjectContentService {
       {
         target_language: languages.target_language,
       },
-      this.pdf_execution,
       this.native_fs,
       this.game_prepare_execution,
     );
@@ -1023,17 +1006,15 @@ export class ProjectContentService {
   }
 
   /**
-   * 按本次操作的目标路径读取 asset、item 和 PDF 身份。
+   * 按本次操作的目标路径读取资产与条目身份。
    */
   private async read_project_write_snapshot(project_path: string): Promise<ProjectWriteSnapshot> {
     return this.database.read(project_path, (reader) => {
       const asset_records = reader.get_all_asset_records(project_path);
       const item_records = reader.get_all_items(project_path);
-      const pdf_paths = Object.keys(reader.read_pdf_summaries(project_path));
       const public_items_by_id = this.to_public_items_by_id(item_records);
       return {
         asset_records,
-        pdf_paths,
         public_items_by_id,
         files: new ProjectDataReader(reader).build_files_record_block(project_path),
       };
@@ -1152,7 +1133,6 @@ export class ProjectContentService {
       | {
           source: "project_reset_files";
           expectedSectionRevisions: ProjectExpectedSectionRevisions;
-          revisionSections: Array<"files" | "items" | "pdf">;
         },
     signal?: AbortSignal,
   ): Promise<ProjectWriteResult> {
@@ -1181,16 +1161,15 @@ export class ProjectContentService {
       items: Object.values(write_output.items),
     });
     signal?.throwIfAborted(); // 重建与预过滤完成后，取消仍须阻止重置事务开始。
-    return await this.write_store.replace_project_items_and_files({
+    return await this.write_store.replace_project_items({
       projectPath: project_path,
       ...(command.source === "translation_reset"
         ? { requireExpectedSectionRevisions: false as const, revisionSections: ["items" as const] }
         : {
             expectedSectionRevisions: command.expectedSectionRevisions,
-            revisionSections: command.revisionSections,
+            revisionSections: ["files" as const, "items" as const],
           }),
       source: command.source,
-      resetPDFPaths: snapshot.pdf_paths.filter((file) => assets.has(file)),
       updatedSections: ["items"],
       items: build_project_item_persistent_records(write_output.items),
       meta: this.build_prefilter_reset_meta(settings, write_output),
@@ -1217,11 +1196,6 @@ export class ProjectContentService {
           throw new AppErrors.AppError("file.not_found", {
             diagnostic_context: { asset_path: record.path },
           });
-        }
-        // PDF 独立文档由 `resetPDFPaths` 重置，无需重新提取。
-        if ((await this.database.read_pdf_document(project_path, record.path)) !== null) {
-          assets.set(record.path, []);
-          continue;
         }
       } catch (error) {
         if (signal?.aborted) throw error; // 取消不能归为单个资产的读取失败。

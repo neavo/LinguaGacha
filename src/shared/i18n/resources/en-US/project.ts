@@ -88,7 +88,6 @@ export const en_us_project = {
     lrc: "LRC subtitles",
     srt: "SubRip subtitles",
     vtt: "WebVTT subtitles",
-    pdf: "PDF EBook",
     epub: "EPUB EBook",
     json: "JSON game text",
     mtool: "MTool game text",

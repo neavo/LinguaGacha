@@ -1,4 +1,3 @@
-import type { PDFDocument } from "../../shared/pdf";
 import type { Item, ItemFileType } from "../../domain/item";
 import type { SourceDiagnostic } from "./shared/game/preparation";
 
@@ -11,8 +10,7 @@ export type PreparedSource = Readonly<{
 }>;
 /** 准备阶段已对固化原稿完成的解析。失败对象只在当前后端调用链内传递。 */
 export type PreparedRead = Readonly<
-  | { ok: true; result: Extract<FileFormatReadResult, { kind: "items" }> }
-  | { ok: false; error: unknown }
+  { ok: true; result: FileFormatReadResult } | { ok: false; error: unknown }
 >;
 
 /** 解析器语法诊断供后端日志定位，位置按脚本内 UTF-16 列计数。 */
@@ -38,22 +36,17 @@ export type SourceFileParseWarning = Readonly<{
   diagnostics: readonly ScriptDiagnostic[];
 }>;
 
-/** 普通文件与条目共用类型值，PDF 通过独立文档参与导入。 */
-export type ProjectFileType = ItemFileType | "PDF";
 /** 文件级成功可以附带局部提取警告，由操作拥有者记录日志。 */
-export type FileFormatReadResult =
-  | {
-      kind: "items";
-      items: Item[];
-      image?: {
-        book: import("../../shared/image-package").ImageBook;
-        records: import("../../shared/image-package").ImageRecord[];
-      };
-      file_type: ItemFileType;
-      game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
-      warnings?: SourceFileParseWarning[];
-    }
-  | { kind: "pdf"; document: PDFDocument };
+export type FileFormatReadResult = {
+  items: Item[];
+  image?: {
+    book: import("../../shared/image-package").ImageBook;
+    records: import("../../shared/image-package").ImageRecord[];
+  };
+  file_type: ItemFileType;
+  game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
+  warnings?: SourceFileParseWarning[];
+};
 
 /** 文件格式处理器共享配置，使用项目目标语言。 */
 export interface FileFormatServiceConfig {

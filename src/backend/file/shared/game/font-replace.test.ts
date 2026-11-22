@@ -169,7 +169,6 @@ it.each(["mv", "mz", "wolfrpg"] as const)("%s 反复导入和替换字体", asyn
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;

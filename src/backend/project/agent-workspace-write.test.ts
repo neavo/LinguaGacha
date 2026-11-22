@@ -99,7 +99,6 @@ describe("Agent 工作区对象写入规则", () => {
     };
     const snapshot = {
       knowledge: null,
-      pdfDocuments: [],
       items: [current],
       quality: {},
       prompts: {},
@@ -137,7 +136,7 @@ describe("Agent 工作区对象写入规则", () => {
           { line: 2, item_id: 1, fp, update: { status: "EXCLUDED" } },
         ],
       }),
-      { knowledge: null, pdfDocuments: [], items: [current], quality: {}, prompts: {} },
+      { knowledge: null, items: [current], quality: {}, prompts: {} },
     );
     const conflict = resolve(
       batch({
@@ -146,7 +145,7 @@ describe("Agent 工作区对象写入规则", () => {
           { line: 2, item_id: 1, fp, update: { dst: "乙" } },
         ],
       }),
-      { knowledge: null, pdfDocuments: [], items: [current], quality: {}, prompts: {} },
+      { knowledge: null, items: [current], quality: {}, prompts: {} },
     );
 
     expect(merged.itemChanges).toHaveLength(1);
@@ -176,7 +175,6 @@ describe("Agent 工作区对象写入规则", () => {
       }),
       current: {
         knowledge: null,
-        pdfDocuments: [],
         items: [representative, duplicate],
         quality: {},
         prompts: {},
@@ -203,7 +201,6 @@ describe("Agent 工作区对象写入规则", () => {
       }),
       {
         knowledge: null,
-        pdfDocuments: [],
         items: [],
         quality: {},
         prompts: { translation: "旧翻译" },
@@ -220,7 +217,7 @@ describe("Agent 工作区对象写入规则", () => {
   });
 
   it("知识整篇替换：旧指纹、同批异值和超限拒绝，同值不写入", () => {
-    const current = { pdfDocuments: [], items: [], quality: {}, prompts: {} };
+    const current = { items: [], quality: {}, prompts: {} };
     const fp = project_knowledge_fingerprint("旧");
     const write = (rows: { fp: string; text: string }[], stored: string | null = "旧") =>
       resolve(batch({ knowledge: rows.map((row, index) => ({ ...row, line: index + 1 })) }), {
@@ -272,7 +269,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied.quality?.glossary).toEqual({ created: 1, updated: 0, deleted: 1 });
@@ -291,7 +288,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.qualityChanges[0]?.entries.map((entry) => entry["src"])).toEqual([
@@ -317,7 +314,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
     const sorted = resolve(
       batch({
@@ -329,7 +326,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(ordinary.qualityChanges[0]?.entries.map((entry) => entry["entry_id"])).toEqual([
@@ -349,11 +346,11 @@ describe("Agent 工作区对象写入规则", () => {
     const fp = quality_fp("glossary", current[0]!);
     const moved = resolve(
       batch({ quality: { glossary: quality_ops([quality_update(1, "A", fp, {}, -1)]) } }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
     const same = resolve(
       batch({ quality: { glossary: quality_ops([quality_update(1, "A", fp, {}, 0)]) } }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(moved.applied.quality?.glossary?.updated).toBe(1);
@@ -373,7 +370,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied.quality?.glossary?.created).toBe(1);
@@ -399,7 +396,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied).toEqual({});
@@ -429,7 +426,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { knowledge: null, pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
+      { knowledge: null, items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied.quality?.glossary).toEqual({ created: 0, updated: 0, deleted: 1 });

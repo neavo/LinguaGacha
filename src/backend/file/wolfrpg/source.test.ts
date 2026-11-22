@@ -64,7 +64,6 @@ it("名为 Data 的游戏根目录仍可识别，单独归档不能成为工程�
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const entries = await service.collect_source_file_entries([root, path.join(root, "Data")]);
@@ -81,7 +80,6 @@ it("坏游戏边界阻止普通文件递归导入，根归档与有效分包按�
     service = new FileFormatService(
       new GameDirectoryOperations(),
       { target_language: "ZH" },
-      async () => null,
       native,
     );
   native.write_file_sync(path.join(root, "Data/BasicData.wolf"), Buffer.alloc(64));

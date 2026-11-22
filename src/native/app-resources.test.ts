@@ -8,12 +8,14 @@ import { listPackage } from "@electron/asar";
 import { expect, it } from "vitest";
 import { resolve_app_resources } from "./app-resources";
 
-it.each([false, true])("宿主按运行模式定位工作区和 PDF 样式 packaged=%s", (packaged) => {
+it.each([false, true])("宿主按运行模式定位工作区和共享字体 packaged=%s", (packaged) => {
   const projectRoot = path.resolve("fixture-project");
   const resourcesPath = path.resolve("fixture-release/resources");
   const resources = packaged ? resourcesPath : path.join(projectRoot, "build/dev/resources");
   expect(resolve_app_resources({ packaged, resourcesPath, projectRoot })).toMatchObject({
-    stylesPath: path.join(resources, "pdf-print.css"),
+    fontsDirectory: packaged
+      ? path.join(resources, "fonts")
+      : path.join(projectRoot, "public/fonts"),
     workspaceRuntimeDirectory: path.join(resources, "workspace"),
   });
 });

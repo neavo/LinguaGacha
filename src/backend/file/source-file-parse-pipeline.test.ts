@@ -6,7 +6,6 @@ import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixtu
 import { read_game_container } from "./shared/game/format";
 import { NativeFs } from "../../native/native-fs";
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
-import { create_pdf_execution, create_pdf_fixture } from "./pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,13 +19,9 @@ import { create_item } from "../../domain/item";
 
 /** 固定解析配置，避免读取本机设置。 */
 function create_format_service(): FileFormatService {
-  return new FileFormatService(
-    new GameDirectoryOperations(),
-    {
-      target_language: "ZH",
-    },
-    create_pdf_execution(),
-  );
+  return new FileFormatService(new GameDirectoryOperations(), {
+    target_language: "ZH",
+  });
 }
 
 it("MV/MZ 配置解析失败仍保留原稿和其他有效条目", async () => {
@@ -38,7 +33,6 @@ it("MV/MZ 配置解析失败仍保留原稿和其他有效条目", async () => {
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   const result = await new SourceFileParsePipeline(service).parse_import_commands(
@@ -94,7 +88,6 @@ it.each(["RPGMAKER_MV_MZ", "RPGMAKER_RGSS", "WOLFRPG", "GODOT", "RENPY"])(
     const service = new FileFormatService(
       new GameDirectoryOperations(),
       { target_language: "ZH" },
-      create_pdf_execution(),
       native,
     );
     const entries = await service.collect_source_file_entries([root]);
@@ -125,7 +118,6 @@ describe("SourceFileParsePipeline", () => {
       ["object.json", "{}"],
       ["array.json", "[]"],
       ["text.txt", "正文"],
-      ["book.pdf", create_pdf_fixture()],
       ["empty.vtt", "WEBVTT\n\nNOTE structure\n"],
       ["empty.lrc", "[offset:50]\n[00:01]\n"],
       ["empty.ssa", "[Events]\n"],
@@ -136,17 +128,7 @@ describe("SourceFileParsePipeline", () => {
       fs.writeFileSync(source_path, content);
       return source_path;
     });
-    const expected_types = [
-      "TXT",
-      "KVJSON",
-      "MESSAGEJSON",
-      "TXT",
-      "PDF",
-      "VTT",
-      "LRC",
-      "ASS",
-      "VTT",
-    ];
+    const expected_types = ["TXT", "KVJSON", "MESSAGEJSON", "TXT", "VTT", "LRC", "ASS", "VTT"];
     const service = create_format_service();
     const pipeline = new SourceFileParsePipeline(service);
     const draft = await pipeline.build_project_draft(
@@ -166,7 +148,6 @@ describe("SourceFileParsePipeline", () => {
             file.rel_path,
             file.content,
             file.file_type,
-            file.pdf_document,
             file.sort_index,
           );
         }
@@ -226,13 +207,11 @@ describe("SourceFileParsePipeline", () => {
     expect(draft.files.map(({ content: _content, ...file }) => file)).toEqual([
       {
         rel_path: "script.txt",
-        pdf_document: null,
         file_type: "TXT",
         sort_index: 0,
       },
       {
         rel_path: "broken.json",
-        pdf_document: null,
         file_type: "NONE",
         sort_index: 1,
       },
@@ -301,11 +280,7 @@ it("多个带后缀同名游戏混合导入，入口去重并按原目录名导�
     fs.writeFileSync(path.join(root, "Game.exe"), "");
   }
   fs.writeFileSync(path.join(temp.path, "readme.txt"), "说明");
-  const service = new FileFormatService(
-    new GameDirectoryOperations(),
-    { target_language: "ZH" },
-    async () => null,
-  );
+  const service = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" });
   const inputs = [
     path.join(roots[0]!, "data/System.json"),
     temp.path,
@@ -395,7 +370,7 @@ it.each([true, false])("准备阶段已解析时直接消费结果，读取失�
       read: ok
         ? {
             ok: true,
-            result: { kind: "items", file_type: "RENPY", items: [item] },
+            result: { file_type: "RENPY", items: [item] },
           }
         : { ok: false, error },
     }),

@@ -1,7 +1,6 @@
 import type { ProjectDataSectionRevisions } from "../project-event";
 import type { ItemNameField } from "../../domain/item";
 import type { GlossaryApplication } from "../quality/glossary";
-import type { PDFPageTranslation } from "../pdf";
 
 // 筛选面板表示“无警告”的虚拟 warning。
 export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
@@ -48,7 +47,7 @@ export const PROOFREADING_TRANSLATED_OUTCOME_CODES = [
   ...PROOFREADING_WARNING_CODES,
 ] as const;
 
-// 文本与页面的筛选分组统一提供显示顺序、默认选择和组内结果词表。
+// 筛选分组统一提供显示顺序、默认选择和组内结果词表。
 export const PROOFREADING_OUTCOME_GROUPS = [
   {
     code: "translated",
@@ -70,7 +69,7 @@ export const PROOFREADING_OUTCOME_GROUPS = [
 // 运行时可能出现尚未进入内置词表的新检查结果，因此公开筛选值保留字符串扩展点。
 export type ProofreadingOutcomeCode = string;
 
-// 文本和页面共用列表状态与排序。
+// 列表状态排序顺序。
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSED",
@@ -128,31 +127,7 @@ export type ProofreadingContextItem = {
 
 export type ProofreadingClientItem = ProofreadingItem & {
   row_id: string;
-  compressed_src: string;
-  compressed_dst: string;
 };
-
-export type ProofreadingVisibleItem = {
-  kind: "item";
-  row_id: string;
-  item: ProofreadingClientItem;
-  compressed_src: string;
-  compressed_dst: string;
-};
-
-export type ProofreadingPageSummary = {
-  file_path: string;
-  page: number;
-  status: "NONE" | "PROCESSED" | "RULE_SKIPPED" | "EXCLUDED";
-};
-
-export type ProofreadingRow =
-  | ProofreadingVisibleItem
-  | {
-      kind: "page";
-      row_id: string;
-      page: ProofreadingPageSummary;
-    };
 
 /** 原始路径共同确定叶子身份，null 仅表示内容没有内部路径。 */
 export type ProofreadingFileRef = Readonly<{
@@ -164,7 +139,7 @@ export type ProofreadingFileSelection =
   | { mode: "default" }
   | { mode: "selected"; values: readonly ProofreadingFileRef[] };
 
-export type ProofreadingFile = ProofreadingFileRef & { kind: "item" | "page"; count: number };
+export type ProofreadingFile = ProofreadingFileRef & { count: number };
 
 /** 使用二元组隔离容器与内部路径，原始分隔符不参与身份归一。 */
 export function build_proofreading_file_key(file: ProofreadingFileRef): string {
@@ -186,25 +161,6 @@ export function clone_proofreading_file_selection(
       };
 }
 
-/** 页面身份按路径和原页编码，不能转换成文本写入 ID。 */
-export function build_proofreading_page_row_id(file_path: string, page: number): string {
-  return `page:${JSON.stringify([file_path, page])}`;
-}
-
-/** 用页面命名空间隔离文本写入入口，包含未加载的选区行。 */
-export function is_proofreading_page_row_id(row_id: string): boolean {
-  return row_id.startsWith("page:");
-}
-
-/** 校对展示直接映射原页处置，空正文沿用已翻译状态。 */
-export function proofreading_page_status(
-  translation: PDFPageTranslation,
-): ProofreadingPageSummary["status"] {
-  if (translation === null) return "NONE";
-  if (translation.kind === "translate") return "PROCESSED";
-  return translation.kind === "keep" ? "RULE_SKIPPED" : "EXCLUDED";
-}
-
 export type ProofreadingListView = {
   projectId: string;
   revisions: {
@@ -212,12 +168,11 @@ export type ProofreadingListView = {
     items: number;
     quality: number;
     proofreading: number;
-    pdf?: number;
   };
   view_id: string;
   row_count: number;
   window_start: number;
-  window_rows: ProofreadingRow[];
+  window_rows: ProofreadingClientItem[];
   invalid_regex_message: string | null;
 };
 
@@ -278,13 +233,6 @@ export function resolve_proofreading_status_sort_rank(status: string): number {
 }
 
 /**
- * 压缩多行文本，保证表格单元格不会被换行打散布局。
- */
-export function compress_proofreading_text(text: string): string {
-  return text.replace(/\r\n|\r|\n/gu, " ↵ ");
-}
-
-/**
  * 筛选项克隆会复制 entry id 数组，避免页面局部修改污染缓存状态。
  */
 export function clone_proofreading_filter_options(
@@ -341,12 +289,6 @@ export function create_empty_proofreading_filter_panel_state(): ProofreadingFilt
     without_glossary_miss_count: 0,
   };
 }
-
-export type ProofreadingPagePreviewResult = {
-  image?: string;
-  count?: number;
-  page?: number;
-};
 
 /** 生成前只消费警告总数，列表与分类仍由校对模块维护。 */
 export type ProofreadingWarningCountResponse = {

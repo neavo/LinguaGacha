@@ -1,5 +1,4 @@
 import type { ProofreadingProjectWriteRunner } from "./proofreading-page-state-contract";
-import { is_proofreading_page_row_id } from "@shared/proofreading/proofreading-types";
 import { useCallback, useState } from "react";
 
 import type { ItemManualStatus } from "@domain/item";
@@ -56,7 +55,7 @@ type UseProofreadingBatchActionsResult = {
   clear_pending_confirmation: () => void;
 };
 
-/** 文本快照拥有写入身份，列表 row_id 不参与数值转换。 */
+/** 条目快照拥有写入身份，列表 row_id 不参与数值转换。 */
 function read_item_ids(items: ProofreadingCommandItemSnapshot[]): number[] {
   return [...new Set(items.map((item) => Number(item.item_id)))];
 }
@@ -84,22 +83,16 @@ export function useProofreadingBatchActions(
   const [pending_confirmation, set_pending_confirmation] =
     useState<ProofreadingPendingConfirmation | null>(null);
 
-  /** 批量写入口同时检查文本身份、运行占用与刷新状态。 */
+  /** 批量写入口同时检查选中项、只读状态、运行占用与刷新状态。 */
   const can_request_action = useCallback(
     (row_ids: string[]): boolean => {
-      return (
-        row_ids.length > 0 &&
-        row_ids.every((id) => !is_proofreading_page_row_id(id)) &&
-        !readonly &&
-        !is_refreshing &&
-        !is_writing
-      );
+      return row_ids.length > 0 && !readonly && !is_refreshing && !is_writing;
     },
     [is_writing, is_refreshing, readonly],
   );
 
-  // 提交前回读文本身份，读取失败统一反馈并终止本次写入。
-  const read_text_items = useCallback(
+  // 提交前回读条目快照，读取失败统一反馈并终止本次写入。
+  const read_items = useCallback(
     async (row_ids: string[]): Promise<ProofreadingCommandItemSnapshot[]> => {
       try {
         return await read_items_by_row_ids(row_ids);
@@ -114,7 +107,7 @@ export function useProofreadingBatchActions(
   /** 受理重翻任务后同步运行态并结束当前编辑。 */
   const submit_retranslate_row_ids = useCallback(
     async (row_ids: string[], preferred_row_id: string | null): Promise<void> => {
-      const item_ids = read_item_ids(await read_text_items(row_ids));
+      const item_ids = read_item_ids(await read_items(row_ids));
       if (item_ids.length === 0) {
         return;
       }
@@ -137,7 +130,7 @@ export function useProofreadingBatchActions(
       }
     },
     [
-      read_text_items,
+      read_items,
       close_edit_dialog,
       dialog_open,
       handle_api_error,
@@ -156,7 +149,7 @@ export function useProofreadingBatchActions(
       preferred_row_id: string | null,
       reset_status: boolean,
     ): Promise<void> => {
-      const target_item_ids = read_item_ids(await read_text_items(row_ids));
+      const target_item_ids = read_item_ids(await read_items(row_ids));
       if (target_item_ids.length === 0) {
         return;
       }
@@ -179,7 +172,7 @@ export function useProofreadingBatchActions(
       });
       if (result && dialog_open) close_edit_dialog();
     },
-    [close_edit_dialog, dialog_open, list_revisions, read_text_items, run_project_write, t],
+    [close_edit_dialog, dialog_open, list_revisions, read_items, run_project_write, t],
   );
 
   /** 人工状态提交成功后结束当前编辑。 */
@@ -189,7 +182,7 @@ export function useProofreadingBatchActions(
       status: ItemManualStatus,
       preferred_row_id: string | null,
     ): Promise<void> => {
-      const items = await read_text_items(row_ids);
+      const items = await read_items(row_ids);
       const target_item_ids = read_item_ids(items);
       if (target_item_ids.length === 0) {
         return;
@@ -215,7 +208,7 @@ export function useProofreadingBatchActions(
       });
       if (result && dialog_open) close_edit_dialog();
     },
-    [close_edit_dialog, dialog_open, list_revisions, read_text_items, run_project_write, t],
+    [close_edit_dialog, dialog_open, list_revisions, read_items, run_project_write, t],
   );
 
   /** 重翻先登记待确认范围，确认后再受理任务。 */

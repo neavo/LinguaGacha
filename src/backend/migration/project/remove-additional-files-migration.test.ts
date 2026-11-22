@@ -32,9 +32,9 @@ it("打开事务只删除登记成员，保留字节与译文，异常资产不�
   const corrupt = Buffer.from("unreadable");
   try {
     await database.create_project(project, (writer) => {
-      writer.add_asset(project, "game.rpgmaker", mixed, "RPGMAKER_MV_MZ", null, 2);
-      writer.add_asset(project, "empty.rpgmaker", empty, "RPGMAKER_MV_MZ", null, 5);
-      writer.add_asset(project, "bad.rpgmaker", corrupt, "RPGMAKER_MV_MZ", null, 8);
+      writer.add_asset(project, "game.rpgmaker", mixed, "RPGMAKER_MV_MZ", 2);
+      writer.add_asset(project, "empty.rpgmaker", empty, "RPGMAKER_MV_MZ", 5);
+      writer.add_asset(project, "bad.rpgmaker", corrupt, "RPGMAKER_MV_MZ", 8);
       writer.set_meta(project, "additional_files", {
         "game.rpgmaker": ["custom/a.json", "already-missing.txt"],
         "empty.rpgmaker": ["note.txt"],
@@ -70,13 +70,8 @@ it("打开事务只删除登记成员，保留字节与译文，异常资产不�
     expect([...members.keys()]).not.toContain("custom/a.json");
     expect(members.get("data/Text.json")).toEqual(new Uint8Array(native));
     expect(members.get("custom/b.bin")).toEqual(new Uint8Array([255, 128, 0]));
-    const format = new FileFormatService(
-      new GameDirectoryOperations(),
-      { target_language: "ZH" },
-      async () => null,
-    );
+    const format = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" });
     const parsed = await format.parse_asset("game.rpgmaker", saved, "RPGMAKER_MV_MZ");
-    if (parsed.kind !== "items") throw new Error("Expected items");
     await format.write_items(
       parsed.items.map((item) => ({ ...item, status: "PROCESSED", dst: "译文" })),
       {

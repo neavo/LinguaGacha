@@ -1,10 +1,9 @@
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
-// 发布环境使用 Node 入口和原始 WASM，浏览器替代构建及 source map 不参与运行。
+// 发布环境使用 Node 入口，浏览器替代构建及 source map 不参与运行。
 const PACKAGE_EXCLUDED_PATH = {
   exceljs: "dist",
-  mupdf: "dist/mupdf-wasm.wasm.br",
 };
 
 /** 资源规则同时用于复制和安装树裁剪，避免两种产物保留不同文件。 */

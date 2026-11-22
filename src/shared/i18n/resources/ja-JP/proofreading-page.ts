@@ -1,15 +1,7 @@
 import type { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_proofreading_page = {
-  pages: {
-    view: "開いて表示",
-    title: "プレビュー",
-    source_page: "{PAGE} ページ",
-    select_files: "ファイルを選択",
-    failed: "プレビューに失敗しました",
-    previous: "前のページ",
-    next: "次のページ",
-  },
+  select_files: "ファイルを選択",
   title: "校正",
   action: {
     files: "ファイル",

@@ -8,7 +8,6 @@ import { resolve_project_file_layout, type ProjectFileUpdate } from "./project-f
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import { assert_source_file_paths } from "../../shared/project/project-asset-paths";
 import type { CacheManager } from "../cache/cache-manager";
-import type { PDFDocument } from "../../shared/pdf";
 import {
   ProjectDatabase,
   type ProjectDatabaseWrite,
@@ -72,7 +71,7 @@ import {
 import type { PromptKind } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 
-type RevisionBackedSection = "knowledge" | "project" | "files" | "items" | "proofreading" | "pdf";
+type RevisionBackedSection = "knowledge" | "project" | "files" | "items" | "proofreading";
 const PROJECT_ITEM_WRITE_VALIDATOR = Compile(Type.Array(PROJECT_ITEM_WRITE_SCHEMA)); // 全量写入复用编译结果，校验完成后再替换事实。
 type ProjectWriteRevisionContext = {
   database: ProjectDatabaseAccess;
@@ -90,7 +89,6 @@ export type ProjectAssetWrite =
       path: string;
       content: Uint8Array;
       fileType: string;
-      pdfDocument: PDFDocument | null;
       sortOrder: number;
     }
   | {
@@ -98,7 +96,6 @@ export type ProjectAssetWrite =
       path: string;
       content: Uint8Array;
       fileType: string;
-      pdfDocument: PDFDocument | null;
     };
 
 /** 单次项目事实提交的静态边界与事务内准备函数。 */
@@ -271,17 +268,14 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 工作台结构性写入集中提交 asset、items 与 meta。当前事实命令须显式关闭 revision guard。
+   * 集中全量替换工程条目与派生 meta。当前事实命令须显式关闭 revision guard。
    */
-  public async replace_project_items_and_files(
+  public async replace_project_items(
     request: {
       projectPath: string;
       revisionSections: ProjectDataSection[];
       source: string;
       updatedSections: ProjectDataSection[];
-      sourceRecord?: KnowledgeSourceRecord;
-      assetWrites?: ProjectAssetWrite[];
-      resetPDFPaths?: string[];
       items?: Item[];
       meta?: MutableJsonRecord;
     } & (
@@ -306,46 +300,11 @@ export class ProjectWriteStore {
       updatedSections: request.updatedSections,
       prepare: (revision_context) => {
         const item_records: ProjectItemPublicRecord[] = [];
-        if (request.assetWrites?.length) {
-          const files = new Map<string, { path: string; file_type: string }>(
-            revision_context.database
-              .get_all_asset_records(request.projectPath)
-              .map((asset) => [asset.path, asset]),
-          );
-          for (const write of request.assetWrites)
-            files.set(write.path, { path: write.path, file_type: write.fileType });
-          assert_source_file_paths(files.values()); // 事务内核对最终集合。
-        }
-        const pdf_changed =
-          (request.resetPDFPaths?.length ?? 0) > 0 ||
-          (request.assetWrites ?? []).some(
-            (write) =>
-              write.pdfDocument != null ||
-              revision_context.database.read_pdf_document(request.projectPath, write.path) !== null,
-          );
         const sections = new Set(request.updatedSections);
-        for (const [section, changed] of [
-          ["items", request.items !== undefined],
-          ["files", (request.assetWrites?.length ?? 0) > 0],
-          ["pdf", pdf_changed],
-        ] as const) {
-          if (changed) sections.add(section);
-          else sections.delete(section);
-        }
-        const writes = this.build_source_record_writes(
-          request.projectPath,
-          revision_context.database,
-          request.sourceRecord,
-        );
-        if (writes.length) sections.add("knowledge");
+        if (request.items !== undefined) sections.add("items");
+        else sections.delete("items");
         const updated_sections = [...sections];
-        if (request.resetPDFPaths?.length)
-          writes.push((db) =>
-            db.reset_pdf_translations(request.projectPath, request.resetPDFPaths!),
-          );
-        for (const write of request.assetWrites ?? []) {
-          writes.push(this.build_asset_write(request.projectPath, write));
-        }
+        const writes: ProjectDatabaseWrite[] = [];
         if (request.items !== undefined) {
           const items = request.items;
           // 全部条目通过完整结构校验后才替换，事务继续保护事实与修订的一致性。
@@ -447,12 +406,6 @@ export class ProjectWriteStore {
           context.pendingMeta["translation_extras"] = { ...progress, ...counters } as JsonRecord;
           const sections: ProjectDataSection[] = ["files"];
           if (removed_paths.length || renamed.length || imports.length) sections.push("items");
-          const touched = new Set([...removed_paths, ...renamed.map((file) => file.previous_path)]);
-          if (
-            current.some((file) => touched.has(file.path) && file.file_type === "PDF") ||
-            imports.some((file) => file.fileType === "PDF")
-          )
-            sections.push("pdf");
           const source_writes = this.build_source_record_writes(
             project,
             context.database,
@@ -856,12 +809,6 @@ export class ProjectWriteStore {
       batch: request.batch,
       current: {
         items,
-        pdfDocuments: [...new Set(request.batch.pages.map((intent) => intent.file_path))].flatMap(
-          (file_path) => {
-            const document = database.read_pdf_document(request.projectPath, file_path);
-            return document ? [{ file_path, document }] : [];
-          },
-        ),
         quality: Object.fromEntries(
           quality_kinds.map((kind) => [kind, Array.isArray(quality[kind]) ? quality[kind] : []]),
         ),
@@ -878,9 +825,7 @@ export class ProjectWriteStore {
   /** 只有包含实际变化的 section 才参与 revision、缓存与公开事件。 */
   private build_agent_updated_sections(outcome: AgentWorkspaceWriteOutcome): ProjectDataSection[] {
     const sections: ProjectDataSection[] = [];
-    // pages 是 Agent 对象类型，持久化后归 PDF 来源文档所在的数据分区。
     if (outcome.knowledgeChange !== null) sections.push("knowledge");
-    if (outcome.pageChanges.length > 0) sections.push("pdf");
     if (outcome.itemChanges.length > 0) sections.push("items", "proofreading");
     if (outcome.qualityChanges.length > 0) sections.push("quality");
     if (outcome.promptChanges.length > 0) sections.push("prompts");
@@ -895,8 +840,6 @@ export class ProjectWriteStore {
     updated_sections: ProjectDataSection[],
   ): ProjectDatabaseWrite[] {
     const writes = this.build_knowledge_writes(project_path, outcome.knowledgeChange);
-    for (const change of outcome.pageChanges)
-      writes.push((db) => db.write_pdf_page(project_path, change.file_path, change.page));
     if (outcome.itemChanges.length > 0) {
       writes.push((database) =>
         database.patch_item_translation_fields(project_path, outcome.itemChanges),
@@ -1152,8 +1095,7 @@ export class ProjectWriteStore {
         section === "project" ||
         section === "files" ||
         section === "items" ||
-        section === "proofreading" ||
-        section === "pdf",
+        section === "proofreading",
     );
   }
 
@@ -1188,18 +1130,11 @@ export class ProjectWriteStore {
           write.path,
           write.content,
           write.fileType,
-          write.pdfDocument,
           write.sortOrder,
         );
     }
     return (database) =>
-      database.update_asset(
-        project_path,
-        write.path,
-        write.content,
-        write.fileType,
-        write.pdfDocument,
-      );
+      database.update_asset(project_path, write.path, write.content, write.fileType);
   }
 
   /** 缓存缺失或落后时回读全表，事务内事实始终拥有最终解释权。 */

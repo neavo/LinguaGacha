@@ -29,20 +29,17 @@ const WORKSPACE_PACKAGES = [
     name: "@lg/pdf",
     entries: {
       index: "src/backend/agent/pdf/index.ts",
-      "page-updates": "src/backend/agent/workspace/page-updates.ts",
-      mupdf: "src/backend/file/pdf/mupdf.ts",
     },
   },
 ];
 
-/** 所有应用入口一次构建，共同依赖生成共享 chunk，MuPDF 保留单一外部安装。 */
+/** 所有应用入口一次构建，共同依赖生成共享 chunk。 */
 export async function build_workspace_resources({ root, output, manifest }) {
   for (const directory of WORKSPACE_CODE_DIRECTORIES)
     await rm(path.join(output, directory), { recursive: true, force: true });
   const entries = {
     "runtime/bootstrap": "src/backend/agent/workspace/runtime/bootstrap.ts",
     "runtime/prepare": "src/backend/agent/node/prepare.ts",
-    "runtime/pdf-worker": "src/backend/file/pdf/pdf-worker-entry.ts",
     "runtime/image-worker": "src/backend/agent/image/worker.ts",
     "runtime/media-worker": "src/backend/agent/media/worker.ts",
   };

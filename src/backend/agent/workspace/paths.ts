@@ -6,7 +6,6 @@ export const AGENT_WORKSPACE_PATHS = Object.freeze({
   knowledge: PROJECT_KNOWLEDGE_DOCUMENT,
   projectMeta: "project_meta.json",
   items: "items/entries.jsonl",
-  pages: "pages/entries.jsonl",
   warnings: "items/warnings.jsonl",
   prompts: "prompts.json",
   sourceIssues: "source_issues.jsonl", // 宿主维护的当前原稿准备问题，与 sources 同寿命。
@@ -57,7 +56,6 @@ export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
     updates: "changes/files/updates.jsonl",
     deletes: "changes/files/deletes.jsonl",
   }),
-  pages: Object.freeze({ updates: "changes/pages/updates.jsonl" }),
   items: Object.freeze({ updates: "changes/items/updates.jsonl" }),
   prompts: Object.freeze({ updates: "changes/prompts/updates.jsonl" }),
   ...AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,

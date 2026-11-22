@@ -81,7 +81,6 @@ describe("AgentDecisionCoordinator", () => {
     const result = coordinator.wait_for_write_approval(
       "write-1",
       {
-        pages: 0,
         items: 1,
         glossary: 0,
         textPreserve: 0,

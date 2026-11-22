@@ -4,10 +4,7 @@ import { adapt_project_change } from "./project-write-event-adapter";
 import { ProjectSessionState } from "./project-session-state";
 import { ItemCache } from "../cache/item-cache";
 import { ProjectDataReader } from "./project-data-reader";
-import { read_pdf_document } from "../file/pdf/pdf-document";
 import { create_item, type Item } from "../../domain/item";
-import { create_pdf_fixture } from "../file/pdf/test-support";
-import { agent_workspace_page_fingerprint } from "./agent-workspace-page-write";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,7 +14,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectChangePublisher } from "./project-write-event-adapter";
-import { get_section_revision } from "./project-data-reader";
 import type {
   ProjectCommittedChange,
   ProjectCommittedChangeHandler,
@@ -42,33 +38,34 @@ describe("ProjectWriteStore", () => {
     const request = {
       projectPath: project_path,
       source: "test",
-      requireExpectedSectionRevisions: false as const,
-      revisionSections: [],
-      updatedSections: [],
+      expectedSectionRevisions: { files: 0 },
+      revisionSections: ["files" as const],
       sourceRecord,
-      assetWrites: [
+      creates: [
         {
           kind: "add" as const,
           path: "a.txt",
           fileType: "TXT",
           content: Buffer.from("a"),
           sortOrder: 0,
-          pdfDocument: null,
+          items: [],
         },
       ],
+      updates: [],
+      deletes: [],
     };
     const fail = vi
       .spyOn(ProjectDatabaseAccess.prototype, "add_asset")
       .mockImplementationOnce(() => {
         throw new Error("asset failed");
       });
-    await expect(store.replace_project_items_and_files(request)).rejects.toThrow("asset failed");
+    await expect(store.apply_file_changes(request)).rejects.toThrow("asset failed");
     fail.mockRestore();
     expect(await database.read_knowledge(project_path)).toBe("preserve");
     expect((await database.get_all_meta(project_path))["project_runtime_revision.knowledge"]).toBe(
       1,
     );
-    await store.replace_project_items_and_files(request);
+    await store.apply_file_changes(request);
     expect(await database.read_knowledge(project_path)).toBe("preserve\n- E:/game\n");
     expect((await database.get_all_meta(project_path))["project_runtime_revision.knowledge"]).toBe(
       2,
@@ -88,7 +85,6 @@ describe("ProjectWriteStore", () => {
           fileType: "TXT",
           content: Buffer.from("b"),
           sortOrder: 0,
-          pdfDocument: null,
           items: [],
         },
       ],
@@ -120,13 +116,12 @@ describe("ProjectWriteStore", () => {
   });
   it("结构事务迁移全部路径归属，删除统计和失败回滚保持一致", async () => {
     const { database, project_path, store } = await create_store("file-layout");
-    const bytes = create_pdf_fixture();
-    const document = read_pdf_document(bytes);
+    const bytes = Buffer.from("source text");
     await database.transaction(project_path, (writer) => {
-      writer.add_asset(project_path, "book.pdf", bytes, "PDF", document);
-      writer.add_asset(project_path, "delete.txt", Buffer.from("old"), "TXT", null);
+      writer.add_asset(project_path, "book.txt", bytes, "TXT");
+      writer.add_asset(project_path, "delete.txt", Buffer.from("old"), "TXT");
       writer.set_items(project_path, [
-        create_item({ id: 7, file_path: "book.pdf", status: "PROCESSED" }),
+        create_item({ id: 7, file_path: "book.txt", status: "PROCESSED" }),
         create_item({ id: 8, file_path: "delete.txt", status: "NONE" }),
       ]);
     });
@@ -141,24 +136,23 @@ describe("ProjectWriteStore", () => {
     await expect(
       store.apply_file_changes({
         ...request,
-        updates: [{ file_path: "book.pdf", new_file_path: "../bad.pdf", line: 1 }],
+        updates: [{ file_path: "book.txt", new_file_path: "../bad.txt", line: 1 }],
       }),
     ).rejects.toMatchObject({ code: "request.validation_failed" });
     expect(await database.get_asset_count(project_path)).toBe(2);
     const result = await store.apply_file_changes({
       ...request,
-      updates: [{ file_path: "book.pdf", new_file_path: "folder/book.pdf", line: 1 }],
+      updates: [{ file_path: "book.txt", new_file_path: "folder/book.txt", line: 1 }],
     });
-    expect(result.sectionRevisions).toMatchObject({ files: 1, items: 1, pdf: 1 });
-    expect(await database.read_pdf_document(project_path, "book.pdf")).toBeNull();
-    expect(await database.read_pdf_document(project_path, "folder/book.pdf")).toEqual(document);
+    expect(result.sectionRevisions).toMatchObject({ files: 1, items: 1 });
+    expect(await database.read_asset_content(project_path, "book.txt")).toBeNull();
     expect(await database.get_all_items(project_path)).toMatchObject([
-      { id: 7, file_path: "folder/book.pdf" },
+      { id: 7, file_path: "folder/book.txt" },
     ]);
     expect(await database.get_all_meta(project_path)).toMatchObject({
       translation_extras: { total_line: 1, processed_line: 1 },
     });
-    expect(await database.read_asset_content(project_path, "folder/book.pdf")).toEqual(
+    expect(await database.read_asset_content(project_path, "folder/book.txt")).toEqual(
       Buffer.from(bytes),
     );
   });
@@ -170,20 +164,21 @@ describe("ProjectWriteStore", () => {
     const { database, project_path, store, published_changes } =
       await create_store("asset-path-conflict");
     await expect(
-      store.replace_project_items_and_files({
+      store.apply_file_changes({
         projectPath: project_path,
         expectedSectionRevisions: { files: 0 },
         revisionSections: ["files"],
-        updatedSections: ["files"],
         source: "project_import_files",
-        assetWrites: paths.map((path, sortOrder) => ({
+        creates: paths.map((path, sortOrder) => ({
           kind: "add" as const,
           path,
           sortOrder,
           content: Buffer.from("原稿"),
           fileType: "TXT",
-          pdfDocument: null,
+          items: [],
         })),
+        updates: [],
+        deletes: [],
       }),
     ).rejects.toMatchObject({ code: "request.validation_failed" });
     expect(await database.get_all_asset_records(project_path)).toEqual([]);
@@ -193,7 +188,7 @@ describe("ProjectWriteStore", () => {
   it("路径校验消费删除和新增后的最终集合", async () => {
     const { database, project_path, store } = await create_store("asset-path-final-set");
     await database.transaction(project_path, (writer) =>
-      writer.add_asset(project_path, "game", Buffer.from("旧文"), "TXT", null),
+      writer.add_asset(project_path, "game", Buffer.from("旧文"), "TXT"),
     );
     await store.apply_file_changes({
       projectPath: project_path,
@@ -210,7 +205,6 @@ describe("ProjectWriteStore", () => {
           sortOrder: 0,
           content: Buffer.from("新文"),
           fileType: "TXT",
-          pdfDocument: null,
         },
       ],
     });
@@ -292,7 +286,7 @@ describe("ProjectWriteStore", () => {
       projectEventHandler: committed,
     });
     const read_all = vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_items");
-    const result = await store.replace_project_items_and_files({
+    const result = await store.replace_project_items({
       projectPath: project_path,
       requireExpectedSectionRevisions: false,
       revisionSections: [],
@@ -359,50 +353,6 @@ describe("ProjectWriteStore", () => {
     expect((await database.get_items_by_ids(project_path, [3]))[0]).toMatchObject({
       status: "NONE",
     });
-  });
-
-  it("PDF 译稿与 revision 同事务回滚，失败不发布提交事件", async () => {
-    const { database, project_path, store, published_changes } = await create_store("pdf-rollback");
-    const bytes = create_pdf_fixture();
-    const document = read_pdf_document(bytes);
-    await database.transaction(project_path, (database) => {
-      database.add_asset(project_path, "book.pdf", bytes, "PDF", document, 0);
-    });
-    const original = ProjectDatabaseAccess.prototype.upsert_meta_entries;
-    const failure = vi
-      .spyOn(ProjectDatabaseAccess.prototype, "upsert_meta_entries")
-      .mockImplementation(function (this: ProjectDatabaseAccess, project, meta) {
-        if (Object.hasOwn(meta, "project_runtime_revision.pdf"))
-          throw new Error("revision write failed");
-        original.call(this, project, meta);
-      });
-    const batch = {
-      ...create_empty_agent_workspace_intent_batch(),
-      pages: document.pages.slice(0, 2).map((page) => ({
-        file_path: "book.pdf",
-        page: page.page,
-        fp: agent_workspace_page_fingerprint("book.pdf", document.digest, page),
-        line: page.page,
-        translation: { kind: "translate" as const, markdown: "草稿" },
-        reviewed: true,
-        notes: "继续第 3 页",
-      })),
-    };
-    await expect(
-      store.apply_agent_workspace_changes({
-        projectPath: project_path,
-        source: "agent_workspace_apply",
-        batch,
-      }),
-    ).rejects.toThrow(
-      expect.objectContaining({
-        cause: expect.objectContaining({ message: "revision write failed" }),
-      }),
-    );
-    failure.mockRestore();
-    expect(await database.read_pdf_document(project_path, "book.pdf")).toEqual(document);
-    expect(get_section_revision(await read_meta(database, project_path), "pdf")).toBe(0);
-    expect(published_changes).toEqual([]);
   });
 
   it("按 item_id 局部提交翻译 patch 并保留持久 item 事实", async () => {
@@ -656,7 +606,7 @@ describe("ProjectWriteStore", () => {
       { ...complete, name_dst: ["旧数组"] },
     ]) {
       await expect(
-        store.replace_project_items_and_files({
+        store.replace_project_items({
           projectPath: project_path,
           requireExpectedSectionRevisions: false,
           revisionSections: ["items"],
@@ -709,14 +659,14 @@ describe("ProjectWriteStore", () => {
       updatedSections: ["items"] as const,
       items: [create_item({ id: 1, src: "新原文" })],
     };
-    await store.replace_project_items_and_files({
+    await store.replace_project_items({
       ...request,
       revisionSections: [...request.revisionSections],
       updatedSections: [...request.updatedSections],
     });
     expect((await read_meta(database, project_path))["project_runtime_revision.items"]).toBe(2);
     await expect(
-      store.replace_project_items_and_files({
+      store.replace_project_items({
         ...request,
         revisionSections: [...request.revisionSections],
         updatedSections: [...request.updatedSections],
@@ -1273,7 +1223,7 @@ describe("ProjectWriteStore", () => {
   /** 准备完整条目事实，局部写入须保留其原文与定位字段。 */
   async function seed_items(database: ProjectDatabase, project_path: string): Promise<void> {
     await database.transaction(project_path, (writer) =>
-      writer.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT", null),
+      writer.add_asset(project_path, "demo.txt", Buffer.from("原文"), "TXT"),
     );
     await database.transaction(project_path, (writer) =>
       writer.set_items(
@@ -1355,7 +1305,7 @@ describe("ProjectWriteStore", () => {
     sort_order: number,
   ): Promise<void> {
     await database.transaction(project_path, (writer) =>
-      writer.add_asset(project_path, asset_path, Buffer.from(content), "TXT", null, sort_order),
+      writer.add_asset(project_path, asset_path, Buffer.from(content), "TXT", sort_order),
     );
   }
 
@@ -1368,7 +1318,6 @@ describe("ProjectWriteStore", () => {
     const empty = create_empty_agent_workspace_intent_batch();
     return {
       knowledge: [],
-      pages: [],
       items: args.items,
       prompts: args.prompts,
       quality: { ...empty.quality, ...args.quality },

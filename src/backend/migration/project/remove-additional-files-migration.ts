@@ -41,7 +41,7 @@ export async function remove_additional_files_migration(
             GAME_ENGINES[asset.file_type].create_adapter().has_metadata,
           );
           writes.push((database) =>
-            database.update_asset(context.project_path, asset.path, bytes, asset.file_type, null),
+            database.update_asset(context.project_path, asset.path, bytes, asset.file_type),
           );
         } catch (error) {
           if (!is_app_error(error) || error.diagnostic_context?.reason !== "empty_game_container")

@@ -1,10 +1,7 @@
 import { PROJECT_KNOWLEDGE_DOCUMENT } from "../../shared/project-knowledge";
 import { database_error } from "./database-error";
 import { read_project_revision } from "../../domain/project-revision";
-import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
-import { read_pdf_document } from "../../shared/pdf-schema";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 import { ZstdTool } from "./zstd-tool";
@@ -172,160 +169,34 @@ export class ProjectDatabaseAccess {
     );
   }
 
-  /** 资产和 PDF 元数据同属一次导入，由调用方事务保证一起提交。 */
+  /** 写入原稿，默认排序位排在当前资产之后。 */
   public add_asset(
     project_path: string,
     asset_path: string,
     source: Uint8Array,
     file_type: string,
-    document: PDFDocument | null,
     sort_order: number | null = null,
   ): void {
     this.with_project_connection(project_path, (db) => {
       this.insert_asset(db, asset_path, source, file_type, sort_order);
-      this.replace_pdf_source(db, asset_path, document);
     });
   }
 
-  /** 替换资产同时更新 PDF 来源。摘要不符时由外层事务回滚两者。 */
+  /** 替换原稿内容与格式，保留资产 ID 和排序位。 */
   public update_asset(
     project_path: string,
     asset_path: string,
     source: Uint8Array,
     file_type: string,
-    document: PDFDocument | null,
   ): void {
     this.with_project_connection(project_path, (db) => {
       this.replace_asset(db, asset_path, source, file_type);
-      this.replace_pdf_source(db, asset_path, document);
     });
   }
 
-  /** 导入准备与资产写入之间源文件可能变化。摘要校验与文档替换共用外层事务。 */
-  private replace_pdf_source(
-    db: DatabaseSync,
-    file_path: string,
-    document: PDFDocument | null,
-  ): void {
-    db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(file_path);
-    if (document === null) {
-      db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(file_path);
-      return;
-    }
-    read_pdf_document(document);
-    const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(file_path);
-    const bytes = row === undefined ? null : ZstdTool.decompress(bytes_from_blob(row["data"]));
-    if (bytes === null || createHash("sha256").update(bytes).digest("hex") !== document.digest)
-      throw new AppErrors.AppError("file.parse_failed", {
-        diagnostic_context: { reason: "source_changed_after_parse", file_path },
-      });
-    db.prepare(
-      "INSERT INTO pdf_documents(file_path, data) VALUES (?, ?) ON CONFLICT(file_path) DO UPDATE SET data = excluded.data",
-    ).run(file_path, JSON.stringify({ digest: document.digest }));
-    const insert = db.prepare("INSERT INTO pdf_pages(file_path, page, data) VALUES (?, ?, ?)");
-    for (const page of document.pages) insert.run(file_path, page.page, JSON.stringify(page));
-  }
-
-  /** 按工程相对路径读取并校验文档，缺失用 null 表达。 */
-  public read_pdf_document(project_path: string, file_path: string): PDFDocument | null {
-    return this.with_project_connection(project_path, (db) => {
-      const row = db.prepare("SELECT data FROM pdf_documents WHERE file_path = ?").get(file_path);
-      return row
-        ? read_pdf_document({
-            ...(json_parse(row["data"]) as JsonRecord),
-            pages: db
-              .prepare("SELECT data FROM pdf_pages WHERE file_path = ? ORDER BY page")
-              .all(file_path)
-              .map((page) => json_parse(page["data"])),
-          })
-        : null;
-    });
-  }
-
-  /** 快照按 asset 顺序组合文档，页面正文按原页顺序读取。 */
-  public read_pdf_documents(project_path: string): PDFDocumentRecord[] {
-    return this.with_project_connection(project_path, (db) =>
-      db
-        .prepare(
-          "SELECT p.file_path FROM pdf_documents p JOIN assets a ON a.path = p.file_path ORDER BY a.sort_order, a.id",
-        )
-        .all()
-        .map((row) => {
-          const file_path = row_text(row, "file_path");
-          return { file_path, document: this.read_pdf_document(project_path, file_path)! };
-        }),
-    );
-  }
-
-  /** 文件菜单只读取分组计数，避免加载正文和原始资产。 */
-  public read_file_counts(project_path: string): Map<string, number> {
-    return this.with_project_connection(
-      project_path,
-      (db) =>
-        new Map(
-          db
-            .prepare(
-              `SELECT json_extract(data, '$.file_path') AS path, COUNT(*) AS count FROM items GROUP BY path UNION ALL SELECT file_path AS path, COUNT(*) AS count FROM pdf_pages GROUP BY file_path`,
-            )
-            .all()
-            .map((row) => [String(row["path"]), Number(row["count"])]),
-        ),
-    );
-  }
-
-  /** 列表按页面处置统计，正文按单文档读取。 */
-  public read_pdf_summaries(project_path: string): Record<string, PDFSummary> {
-    return this.with_project_connection(project_path, (db) =>
-      Object.fromEntries(
-        db
-          .prepare(
-            `SELECT p.file_path, COUNT(*) AS pages,
-             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'translate' THEN 1 ELSE 0 END) AS translated_pages,
-             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'keep' THEN 1 ELSE 0 END) AS kept_pages,
-             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'omit' THEN 1 ELSE 0 END) AS omitted_pages
-           FROM pdf_pages p JOIN assets a ON a.path = p.file_path
-           GROUP BY p.file_path ORDER BY a.sort_order, a.id`,
-          )
-          .all()
-          .map((row) => [
-            row_text(row, "file_path"),
-            {
-              pages: Number(row["pages"]),
-              translated_pages: Number(row["translated_pages"]),
-              kept_pages: Number(row["kept_pages"]),
-              omitted_pages: Number(row["omitted_pages"]),
-            },
-          ]),
-      ),
-    );
-  }
-
-  /** 页级正式写入仅由 ProjectWriteStore 在复验后调用，事务负责整体回滚。 */
-  public write_pdf_page(project_path: string, file_path: string, page: PDFPage): void {
-    this.with_project_connection(project_path, (db) => {
-      db.prepare("UPDATE pdf_pages SET data = ? WHERE file_path = ? AND page = ?").run(
-        JSON.stringify(page),
-        file_path,
-        page.page,
-      );
-    });
-  }
-
-  /** 重置清空各页译稿、核对与续做记录，保留原稿身份与页面信息。 */
-  public reset_pdf_translations(project_path: string, file_paths: readonly string[]): void {
-    this.with_project_connection(project_path, (db) => {
-      const statement = db.prepare(
-        "UPDATE pdf_pages SET data = json_set(data, '$.translation', NULL, '$.reviewed', json('false'), '$.notes', '') WHERE file_path = ?",
-      );
-      for (const file_path of file_paths) statement.run(file_path);
-    });
-  }
-
-  /** 条目、PDF 与源资产一起删除，调用方持有工程事务。 */
+  /** 条目与源资产一起删除，调用方持有工程事务。 */
   public delete_asset(project_path: string, asset_path: string): void {
     this.with_project_connection(project_path, (db) => {
-      db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(asset_path);
-      db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(asset_path);
       db.prepare("DELETE FROM items WHERE json_extract(data, '$.file_path') = ?").run(asset_path);
       this.remove_asset(db, asset_path);
     });
@@ -335,8 +206,6 @@ export class ProjectDatabaseAccess {
   public rename_asset(project_path: string, from: string, to: string): void {
     this.with_project_connection(project_path, (db) => {
       db.prepare("UPDATE assets SET path = ? WHERE path = ?").run(to, from);
-      db.prepare("UPDATE pdf_documents SET file_path = ? WHERE file_path = ?").run(to, from);
-      db.prepare("UPDATE pdf_pages SET file_path = ? WHERE file_path = ?").run(to, from);
       db.prepare(
         "UPDATE items SET data = json_set(data, '$.file_path', ?) WHERE json_extract(data, '$.file_path') = ?",
       ).run(to, from);
@@ -442,6 +311,42 @@ export class ProjectDatabaseAccess {
       }
       return ZstdTool.decompress(bytes_from_blob(row["data"]));
     });
+  }
+
+  /** 只供打开期迁移读取已退场的 PDF 数据。 */
+  public read_legacy_pdf(project_path: string, paths: readonly string[]) {
+    return this.with_project_connection(project_path, (db) => {
+      const tables = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('pdf_documents', 'pdf_pages')",
+        )
+        .all()
+        .map((row) => row_text(row, "name"));
+      const read_document = tables.includes("pdf_documents")
+        ? db.prepare("SELECT data FROM pdf_documents WHERE file_path = ?")
+        : null;
+      const read_pages = tables.includes("pdf_pages")
+        ? db.prepare("SELECT page, data FROM pdf_pages WHERE file_path = ? ORDER BY page")
+        : null;
+      return {
+        has_tables: tables.length > 0,
+        documents: paths.map((file_path) => ({
+          file_path,
+          document: read_document?.get(file_path)?.["data"],
+          pages: (read_pages?.all(file_path) ?? []).map((row) => ({
+            page: row_number(row, "page"),
+            data: row_text(row, "data"),
+          })),
+        })),
+      };
+    });
+  }
+
+  /** 封存成功后，在同一事务移除旧表。 */
+  public drop_legacy_pdf_tables(project_path: string): void {
+    this.with_project_connection(project_path, (db) =>
+      db.exec("DROP TABLE IF EXISTS pdf_pages; DROP TABLE IF EXISTS pdf_documents;"),
+    );
   }
 
   /**

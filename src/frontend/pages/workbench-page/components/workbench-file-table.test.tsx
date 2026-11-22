@@ -38,8 +38,7 @@ function create_entry(rel_path: string, completion_percent = 33): WorkbenchFileE
     file_type: "TXT",
     sort_index: 0,
     progress: {
-      unit: "line",
-      total_count: 3,
+      total_items: 3,
       completed_count: 1,
       skipped_count: 0,
       pending_count: 2,
@@ -85,20 +84,6 @@ describe("WorkbenchFileTable", () => {
     );
   }
 
-  /** 键盘聚焦触发提示，避免通过 Tooltip 内部状态驱动测试。 */
-  async function focus_tooltip(target: HTMLElement): Promise<Element> {
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
-      target.focus();
-    });
-    await act(async () =>
-      vi.waitFor(() =>
-        expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull(),
-      ),
-    );
-    return document.querySelector('[role="tooltip"][data-open]')!;
-  }
-
   it.each(["rename", "reset"] as const)("右键多选中的文件时 %s 点击的文件", async (action) => {
     const actions = { rename: vi.fn(), reset: vi.fn() };
     await render([create_entry("a.txt"), create_entry("b.txt")], actions, ["a.txt", "b.txt"]);
@@ -117,34 +102,6 @@ describe("WorkbenchFileTable", () => {
     await act(async () => menu_item!.click());
     expect(actions[action]).toHaveBeenCalledExactlyOnceWith("b.txt");
     expect(actions[action === "rename" ? "reset" : "rename"]).not.toHaveBeenCalled();
-  });
-
-  it("PDF 文件传递后端完成率及页进度", async () => {
-    const entry: WorkbenchFileEntry = {
-      ...create_entry("books/book.pdf"),
-      file_type: "PDF",
-      progress: {
-        unit: "page",
-        total_count: 3,
-        completed_count: 2,
-        skipped_count: 1,
-        pending_count: 0,
-        completion_percent: 100,
-      },
-    };
-    await render([entry]);
-    const progress = container.querySelector<HTMLElement>(
-      ".workbench-page__table-progress-cell [data-tone]",
-    )!;
-    expect(Number.parseFloat(progress.textContent!)).toBe(entry.progress.completion_percent); // 完成率沿用后端快照，不能在表格按完成页数重新计算。
-    const tooltip = await focus_tooltip(progress);
-    expect(tooltip.textContent).toContain(
-      JSON.stringify({
-        key: "task_progress.page",
-        status: "task_progress.total_lines",
-        count: "3",
-      }),
-    );
   });
 
   it("按文件名自然排序，按进度排序时同值使用路径顺序并可恢复工程顺序", async () => {

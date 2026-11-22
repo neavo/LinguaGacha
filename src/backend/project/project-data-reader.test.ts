@@ -24,7 +24,6 @@ type ProjectDataDatabase = Pick<
 /** 仅提供本文件读取契约所需的数据库替身。 */
 function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): ProjectDatabaseAccess {
   return {
-    read_pdf_summaries: () => ({}),
     get_all_meta: () => ({}),
     get_all_items: () => [],
     get_all_asset_records: () => [],
@@ -74,7 +73,6 @@ describe("project section revision", () => {
     ).toEqual({
       knowledge: 0,
       project: 0,
-      pdf: 0,
       files: 3,
       items: 9,
       quality: 2,

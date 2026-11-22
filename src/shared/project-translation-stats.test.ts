@@ -1,8 +1,5 @@
 import { expect, it } from "vitest";
-import {
-  build_project_translation_stats,
-  calculate_completion_percent,
-} from "./project-translation-stats";
+import { build_project_translation_stats } from "./project-translation-stats";
 
 it("统一成功、跳过与待处理状态的计数和完成率取整", () => {
   const statuses = [
@@ -27,6 +24,14 @@ it("空工程的完成率为零", () => {
 });
 
 it("仍有待处理对象时最高为 99%，成功与跳过覆盖全部对象才为 100%", () => {
-  expect(calculate_completion_percent(201, 199, 1)).toBe(99);
-  expect(calculate_completion_percent(201, 199, 2)).toBe(100);
+  const nearly_done = [
+    ...Array.from({ length: 199 }, () => ({ status: "PROCESSED" })),
+    { status: "EXCLUDED" },
+    { status: "NONE" },
+  ];
+  expect(build_project_translation_stats(nearly_done).completion_percent).toBe(99);
+  expect(
+    build_project_translation_stats([...nearly_done.slice(0, -1), { status: "EXCLUDED" }])
+      .completion_percent,
+  ).toBe(100);
 });

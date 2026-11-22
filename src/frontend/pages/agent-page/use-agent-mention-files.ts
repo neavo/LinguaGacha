@@ -10,7 +10,7 @@ export function useAgentMentionFiles(open: boolean, upload_key: string) {
   const store = useContext(AgentChatStoreContext);
   if (store === null) throw new Error("Agent file mentions require AgentChatProvider.");
   const project_change = useProjectChangeSignal();
-  const change = useProjectChangeSeqForSections(project_change, ["files", "items", "pdf"]);
+  const change = useProjectChangeSeqForSections(project_change, ["files", "items"]);
   const chat_id = useSyncExternalStore(store.subscribe_input, store.get_chat_id);
   const [state, set_state] = useState<{
     files: AgentFileCandidate[];

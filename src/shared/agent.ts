@@ -46,7 +46,6 @@ export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
 /** 待审批写入的结构化变更摘要。按业务种类统计受影响对象数量。 */
 export const AGENT_PENDING_WRITE_SUMMARY_FIELDS = Object.freeze([
-  "pages",
   "items",
   "glossary",
   "textPreserve",

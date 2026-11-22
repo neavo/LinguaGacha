@@ -1,4 +1,3 @@
-import type { PDFSummary } from "../../shared/pdf";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { ProjectPrompts } from "../../domain/prompt";
@@ -37,7 +36,6 @@ export type ProjectCommittedChange = Readonly<{
   qualityStatisticsScope: QualityStatisticsTextChangeScope;
   items?: ProjectCommittedItems;
   files?: Record<string, ProjectFileRecord>;
-  pdf?: Record<string, PDFSummary>;
   quality?: QualityRuleBlock;
   prompts?: ProjectPrompts;
   languages?: ProjectLanguageSettings;
@@ -69,7 +67,6 @@ export function build_project_committed_change(
           mode: "delta",
           records: reader.build_item_records_by_ids(project, request.changedItemIds),
         };
-  const pdf = affected.has("pdf") ? database.read_pdf_summaries(project) : undefined;
   return {
     projectPath: project,
     source: request.source,
@@ -78,7 +75,6 @@ export function build_project_committed_change(
     qualityStatisticsScope:
       affected.has("quality") || items?.mode === "full" ? "all" : request.qualityStatisticsScope,
     ...(items === undefined ? {} : { items }),
-    ...(pdf === undefined ? {} : { pdf }),
     ...(affected.has("files")
       ? {
           files: reader.build_files_record_block(project),

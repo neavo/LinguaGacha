@@ -264,7 +264,6 @@ it.each(["root", "split"])("%s 归档移除后保留空目录及嵌套空目录"
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
@@ -295,7 +294,6 @@ it("归档中的数据提示前缀在暂存时移除，准备结果为引擎可�
   const service = new FileFormatService(
     new GameDirectoryOperations(),
     { target_language: "ZH" },
-    async () => null,
     native,
   );
   await service.prepare_source((await service.collect_source_file_entries([temp.path]))[0]!);
@@ -335,7 +333,6 @@ it.each(["unsupported", "core", "map-read", "companion-read"])(
     const service = new FileFormatService(
       new GameDirectoryOperations(),
       { target_language: "ZH" },
-      async () => null,
       native,
     );
     const entries = await service.collect_source_file_entries([root]);

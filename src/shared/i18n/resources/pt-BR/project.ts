@@ -87,7 +87,6 @@ export const pt_br_project = {
     lrc: "Legendas LRC",
     srt: "Legendas SubRip",
     vtt: "Legendas WebVTT",
-    pdf: "E-book PDF",
     epub: "E-book EPUB",
     json: "Texto de jogo JSON",
     mtool: "Texto de jogo MTool",

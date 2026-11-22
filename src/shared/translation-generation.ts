@@ -5,19 +5,6 @@ export function requires_agent_generation(file_type: string): boolean {
   return file_type === "GENERIC" || file_type === "MEDIA" || file_type === "IMAGE";
 }
 
-/** 每个 PDF 的覆盖按原页计数，与重排后的输出页数独立。 */
-const COUNT = Type.Integer({ minimum: 0 });
-export const PDF_FILE_GENERATION_RESULT_SCHEMA = Type.Object(
-  {
-    file_path: Type.String(),
-    written: Type.Boolean(), // 整份省略时正常完成且没有输出文件。
-    translated_pages: COUNT,
-    original_pages: COUNT, // 实际输出的原稿页，包含待处理与确认保留页
-    omitted_pages: COUNT,
-  },
-  { additionalProperties: false },
-);
-export type PDFFileGenerationResult = Static<typeof PDF_FILE_GENERATION_RESULT_SCHEMA>;
 export type TranslationFileGenerationRequest = {
   project_path: string; // 发起生成时的工程身份，后端校验后才读取工程。
   expected_section_revisions: { files: number }; // 用户确认的文件集合，译文采用执行时的保存值。
@@ -35,7 +22,6 @@ export const TRANSLATION_FILE_GENERATION_RESULT_SCHEMA = Type.Object(
         { additionalProperties: false },
       ),
     ), // 已提供输入，仍需 Agent 完成目标格式处理。
-    pdf_files: Type.Array(PDF_FILE_GENERATION_RESULT_SCHEMA),
   },
   { additionalProperties: false },
 );

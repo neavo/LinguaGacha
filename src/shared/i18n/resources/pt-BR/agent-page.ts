@@ -62,7 +62,6 @@ export const pt_br_agent_page = {
       workspace: "Arquivo do espaço de trabalho",
       upload: "Enviado",
       items: "{COUNT} entradas",
-      pages: "{COUNT} páginas",
       loading: "Carregando lista de arquivos …",
       error: "Falha ao carregar lista de arquivos …",
     },
@@ -119,7 +118,6 @@ export const pt_br_agent_page = {
     title: "Escrevendo dados do projeto",
     summary: {
       files: "{count} arquivos",
-      pages: "Dados de páginas: {count} páginas",
       items: "Dados de entradas: {count} entradas",
       glossary: "{count} regras de glossário",
       text_preserve: "{count} regras de preservação de texto",

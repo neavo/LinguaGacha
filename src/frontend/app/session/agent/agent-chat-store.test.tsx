@@ -722,8 +722,8 @@ describe("AgentChatStore", () => {
   });
 
   it.each([
-    { pages: 0, items: 2, glossary: 1 },
-    { pages: 2, items: 0, glossary: 0 },
+    { items: 2, glossary: 1 },
+    { items: 0, glossary: 2 },
   ])("写入决定保留完整数量并通过单一命令受理：%j", async (counts) => {
     const waiting = {
       kind: "write_approval" as const,
@@ -807,7 +807,6 @@ describe("AgentChatStore", () => {
         kind: "write_approval",
         id: "countdown-write",
         summary: {
-          pages: 0,
           items: 1,
           glossary: 0,
           textPreserve: 0,
@@ -929,7 +928,6 @@ describe("AgentChatStore", () => {
       kind: "write_approval" as const,
       id: "apply-1",
       summary: {
-        pages: 0,
         items: 1,
         glossary: 0,
         textPreserve: 0,
@@ -965,7 +963,7 @@ describe("AgentChatStore", () => {
         pendingDecision: {
           ...pending,
           id: "incomplete-summary",
-          summary: { ...pending.summary, pages: undefined },
+          summary: { ...pending.summary, items: undefined },
         },
       });
       event_source.change({

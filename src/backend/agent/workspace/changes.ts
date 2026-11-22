@@ -1,5 +1,4 @@
 import type { Static } from "typebox";
-import type { AgentWorkspacePageUpdateIntent } from "../../project/agent-workspace-page-write";
 import path from "node:path";
 
 import { Check } from "typebox/value";
@@ -31,7 +30,6 @@ import {
   AGENT_WORKSPACE_QUALITY_SCHEMAS,
 } from "./schema";
 import { describe_agent_workspace_schema_error } from "./validation";
-import { parsePageUpdate } from "./page-updates";
 
 export type ParsedAgentWorkspaceChanges = Readonly<{
   batch: AgentWorkspaceIntentBatch;
@@ -58,15 +56,6 @@ export async function prepare_agent_workspace_changes(args: {
     args.nativeFs,
     path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.items.updates),
   );
-  const pages: AgentWorkspacePageUpdateIntent[] = [];
-  for (const row of await read_change_rows(
-    args.nativeFs,
-    path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.pages.updates),
-  )) {
-    const parsed = parsePageUpdate(row);
-    if ("rejection" in parsed) rejected.push(parsed.rejection);
-    else pages.push(parsed.intent);
-  }
   const prompt_rows = await read_change_rows(
     args.nativeFs,
     path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates),
@@ -165,7 +154,7 @@ export async function prepare_agent_workspace_changes(args: {
         invalid_change(AGENT_WORKSPACE_KNOWLEDGE_UPDATE_SCHEMA, row, "knowledge", "update"),
       );
   }
-  return { batch: { items, prompts, quality, pages, knowledge }, files, rejected };
+  return { batch: { items, prompts, quality, knowledge }, files, rejected };
 }
 
 /** Schema 负责记录结构，解析器只把合法记录转换为领域意图。 */

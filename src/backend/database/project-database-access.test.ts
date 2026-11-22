@@ -5,8 +5,6 @@ import { DatabaseSync } from "node:sqlite";
 import { beforeEach, afterEach, it, expect } from "vitest";
 import { ProjectDatabase } from "./database-operations";
 import { ZstdTool } from "./zstd-tool";
-import { read_pdf_document } from "../file/pdf/pdf-document";
-import { create_pdf_fixture } from "../file/pdf/test-support";
 
 let temp_dir: string;
 let database: ProjectDatabase;
@@ -66,19 +64,19 @@ it("按排序快照维护 asset，并可更新和读取内容", async () => {
   const { database, lg_path } = await create_database_project("asset-list");
 
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset(lg_path, "chapter-b.txt", Buffer.from("beta"), "TXT", null, 10),
+    writer.add_asset(lg_path, "chapter-b.txt", Buffer.from("beta"), "TXT", 10),
   );
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset(lg_path, "chapter-a.txt", Buffer.from("alpha"), "TXT", null),
+    writer.add_asset(lg_path, "chapter-a.txt", Buffer.from("alpha"), "TXT"),
   );
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset(lg_path, "cover.bin", Buffer.from("cover"), "NONE", null, 0),
+    writer.add_asset(lg_path, "cover.bin", Buffer.from("cover"), "NONE", 0),
   );
   await database.transaction(lg_path, (writer) =>
     writer.update_asset_sort_orders(lg_path, ["chapter-a.txt", "cover.bin", "chapter-b.txt"]),
   );
   await database.transaction(lg_path, (writer) =>
-    writer.update_asset(lg_path, "chapter-b.txt", Buffer.from("updated-beta"), "TXT", null),
+    writer.update_asset(lg_path, "chapter-b.txt", Buffer.from("updated-beta"), "TXT"),
   );
 
   expect(await database.get_asset_count(lg_path)).toBe(3);
@@ -97,8 +95,8 @@ it("按排序快照维护 asset，并可更新和读取内容", async () => {
 it("批量替换 item 后保持回查顺序并支持字段补丁", async () => {
   const { database, lg_path } = await create_database_project("items");
   await database.transaction(lg_path, (writer) => {
-    writer.add_asset(lg_path, "script-a.txt", Buffer.from("おはよう"), "TXT", null);
-    writer.add_asset(lg_path, "script-b.txt", Buffer.from("こんばんは"), "TXT", null);
+    writer.add_asset(lg_path, "script-a.txt", Buffer.from("おはよう"), "TXT");
+    writer.add_asset(lg_path, "script-b.txt", Buffer.from("こんばんは"), "TXT");
   });
 
   expect(
@@ -140,7 +138,7 @@ it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事
   const { database, lg_path } = await create_database_project("summary");
 
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset(lg_path, "chapter.txt", Buffer.from("chapter"), "TXT", null, 0),
+    writer.add_asset(lg_path, "chapter.txt", Buffer.from("chapter"), "TXT", 0),
   );
   await database.transaction(lg_path, (writer) =>
     writer.set_items(lg_path, [
@@ -186,7 +184,7 @@ it("工程预览按稳定 id 返回文件集合，不依赖工作台重排", asy
   const { database, lg_path } = await create_database_project("preview-order");
   for (const file_path of ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]) {
     await database.transaction(lg_path, (writer) =>
-      writer.add_asset(lg_path, file_path, Buffer.from("source"), "TXT", null),
+      writer.add_asset(lg_path, file_path, Buffer.from("source"), "TXT"),
     );
   }
   await database.transaction(lg_path, (writer) =>
@@ -201,7 +199,7 @@ it("工程预览按稳定 id 返回文件集合，不依赖工作台重排", asy
 it("patchItemTranslationFields 只更新译文字段并保留条目持久事实", async () => {
   const { database, lg_path } = await create_database_project("translation-patch");
   await database.transaction(lg_path, (writer) =>
-    writer.add_asset(lg_path, "demo.txt", Buffer.from("原文"), "TXT", null),
+    writer.add_asset(lg_path, "demo.txt", Buffer.from("原文"), "TXT"),
   );
 
   await database.transaction(lg_path, (writer) =>
@@ -272,65 +270,4 @@ it("兼容读取旧压缩 asset bytes", async () => {
   expect(
     (await database.read_asset_content(lg_path, "legacy.txt"))!.equals(Buffer.from("legacy")),
   ).toBe(true);
-});
-
-it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", async () => {
-  const { database, lg_path } = await create_database_project("pdf-source-conflict");
-  const bytes = create_pdf_fixture();
-  const document = read_pdf_document(bytes);
-  await database.transaction(lg_path, (database) =>
-    database.add_asset(lg_path, "book.pdf", bytes, "PDF", document, 0),
-  );
-  await expect(
-    database.transaction(lg_path, (database) =>
-      database.update_asset(
-        lg_path,
-        "book.pdf",
-        create_pdf_fixture(["changed after parse"]),
-        "PDF",
-        document,
-      ),
-    ),
-  ).rejects.toThrow(expect.objectContaining({ code: "file.parse_failed" }));
-  expect((await database.read_asset_content(lg_path, "book.pdf"))!.equals(Buffer.from(bytes))).toBe(
-    true,
-  );
-  expect(await database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
-});
-
-it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于处置", async () => {
-  const { database, lg_path } = await create_database_project("pdf-summary");
-  const bytes = create_pdf_fixture(["Text", null, null, null, "Pending"]);
-  const document = read_pdf_document(bytes);
-  document.pages[0]!.translation = { kind: "translate", markdown: "正文" };
-  document.pages[1]!.translation = { kind: "omit", reason: "装饰页" };
-  document.pages[2]!.translation = { kind: "keep", reason: "纯图页无需翻译" };
-  document.pages[3]!.translation = { kind: "translate", markdown: "" };
-  for (const page of document.pages) page.reviewed = true;
-  await database.transaction(lg_path, (database) =>
-    database.add_asset(lg_path, "summary.pdf", bytes, "PDF", document, 0),
-  );
-  expect((await database.read_pdf_summaries(lg_path))["summary.pdf"]).toEqual({
-    pages: 5,
-    translated_pages: 2,
-    kept_pages: 1,
-    omitted_pages: 1,
-  });
-});
-
-it("文件候选按外层路径统计全部条目", async () => {
-  const { database, lg_path } = await create_database_project("file-counts");
-  await database.transaction(lg_path, (writer) =>
-    writer.set_items(lg_path, [
-      { file_path: "目录/书.epub", src: "一", status: "NONE" },
-      { file_path: "目录/书.epub", src: "二", status: "EXCLUDED" },
-      { file_path: "规则.xlsx", src: "三", status: "PROCESSED" },
-    ]),
-  );
-  expect(await database.read_file_counts(lg_path)).toEqual(
-    new Map([
-      ["目录/书.epub", 2],
-      ["规则.xlsx", 1],
-    ]),
-  );
 });

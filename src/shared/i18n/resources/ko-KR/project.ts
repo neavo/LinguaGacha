@@ -65,7 +65,6 @@ export const ko_kr_project = {
     lrc: "LRC 자막",
     srt: "SubRip 자막",
     vtt: "WebVTT 자막",
-    pdf: "PDF 전자책",
     epub: "EPUB 전자책",
     json: "JSON 게임 텍스트",
     mtool: "MTool에서 내보낸 게임 텍스트",

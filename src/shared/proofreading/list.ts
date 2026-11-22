@@ -1,24 +1,14 @@
 import {
   build_proofreading_row_id,
-  compress_proofreading_text,
   resolve_proofreading_status_sort_rank,
-  proofreading_page_status,
-  resolve_proofreading_outcomes,
   type ProofreadingEvaluatedItem,
   type ProofreadingClientItem,
-  type ProofreadingVisibleItem,
 } from "./proofreading-types";
-import type { PDFPageRecord } from "../pdf";
 
 export type ProofreadingSortState = {
   column_id: string;
   direction: "ascending" | "descending";
 };
-
-/** 查询只持有原始事实的引用，展示字段在窗口响应边界生成。 */
-export type ProofreadingRowRecord =
-  | { kind: "item"; row_id: string; item: ProofreadingEvaluatedItem }
-  | { kind: "page"; row_id: string; record: PDFPageRecord };
 
 const PROOFREADING_TEXT_SORTER = new Intl.Collator("zh-Hans-CN");
 
@@ -27,83 +17,42 @@ export function compare_proofreading_text(left: string, right: string): number {
   return PROOFREADING_TEXT_SORTER.compare(left, right);
 }
 
-/** 文本与页面使用各自记录中的文件归属。 */
-export function read_proofreading_row_file_path(row: ProofreadingRowRecord): string {
-  return row.kind === "item" ? row.item.file_path : row.record.file_path;
-}
-
-/** 页面处置映射为共享校对状态，文本沿用已保存状态。 */
-function read_proofreading_row_status(row: ProofreadingRowRecord): string {
-  return row.kind === "item"
-    ? row.item.status
-    : proofreading_page_status(row.record.page.translation);
-}
-
-/** 页面没有文本质量评估记录，已翻译页进入无警告集合。 */
-export function resolve_proofreading_row_outcomes(row: ProofreadingRowRecord): string[] {
-  return resolve_proofreading_outcomes(
-    row.kind === "item"
-      ? row.item
-      : {
-          status: read_proofreading_row_status(row),
-          warnings: [],
-        },
-  );
-}
-
-/** 自然顺序统一为工程文件顺序、行号或页码和数值身份。 */
+/** 自然顺序统一为工程文件顺序、行号和条目 ID。 */
 function compare_natural_rows(
-  left: ProofreadingRowRecord,
-  right: ProofreadingRowRecord,
+  left: ProofreadingEvaluatedItem,
+  right: ProofreadingEvaluatedItem,
   file_order: ReadonlyMap<string, number>,
 ): number {
-  const left_path = read_proofreading_row_file_path(left);
-  const right_path = read_proofreading_row_file_path(right);
+  const left_path = left.file_path;
+  const right_path = right.file_path;
   const file_result =
     (file_order.get(left_path) ?? Number.MAX_SAFE_INTEGER) -
     (file_order.get(right_path) ?? Number.MAX_SAFE_INTEGER);
   if (file_result !== 0) return file_result;
   const path_result = compare_proofreading_text(left_path, right_path);
   if (path_result !== 0) return path_result;
-  const position_result =
-    (left.kind === "item" ? left.item.row_number : left.record.page.page) -
-    (right.kind === "item" ? right.item.row_number : right.record.page.page);
-  if (position_result !== 0) return position_result;
-  if (left.kind === "item" && right.kind === "item") return left.item.item_id - right.item.item_id;
-  return compare_proofreading_text(left.row_id, right.row_id);
+  return left.row_number - right.row_number || left.item_id - right.item_id;
 }
 
-/** 页面原文列显示页码，译文列只提供预览入口。 */
-function read_row_column_text(row: ProofreadingRowRecord, column: "src" | "dst"): string {
-  if (row.kind === "item") return row.item[column];
-  return column === "src" ? String(row.record.page.page).padStart(12, "0") : "";
-}
-
-/** 临时行引用只排序一次，同列值始终沿自然顺序兜底。 */
-export function sort_proofreading_rows(
-  rows: ProofreadingRowRecord[],
+/** 按所选列排序，值相同的条目保持自然顺序。 */
+export function sort_proofreading_items(
+  rows: ProofreadingEvaluatedItem[],
   sort_state: ProofreadingSortState | null,
   file_order: ReadonlyMap<string, number>,
-): ProofreadingRowRecord[] {
+): ProofreadingEvaluatedItem[] {
   return rows.sort((left, right) => {
     let result = 0;
     if (sort_state?.column_id === "file") {
-      result = compare_proofreading_text(
-        read_proofreading_row_file_path(left),
-        read_proofreading_row_file_path(right),
-      );
+      result = compare_proofreading_text(left.file_path, right.file_path);
     } else if (sort_state?.column_id === "status") {
-      const left_status = read_proofreading_row_status(left);
-      const right_status = read_proofreading_row_status(right);
+      const left_status = left.status;
+      const right_status = right.status;
       result =
         resolve_proofreading_status_sort_rank(left_status) -
           resolve_proofreading_status_sort_rank(right_status) ||
         compare_proofreading_text(left_status, right_status);
     } else if (sort_state?.column_id === "src" || sort_state?.column_id === "dst") {
-      result = compare_proofreading_text(
-        read_row_column_text(left, sort_state.column_id),
-        read_row_column_text(right, sort_state.column_id),
-      );
+      result = compare_proofreading_text(left[sort_state.column_id], right[sort_state.column_id]);
     }
     if (result !== 0) return result * (sort_state?.direction === "descending" ? -1 : 1);
     return compare_natural_rows(left, right, file_order);
@@ -111,7 +60,7 @@ export function sort_proofreading_rows(
 }
 
 /**
- * 构建公开条目并压缩文本；复制姓名与证据数组以隔离窗口消费者。
+ * 公开条目复制姓名与证据数组，供独立的查询消费者使用。
  */
 export function create_proofreading_client_item(
   item: ProofreadingEvaluatedItem,
@@ -129,24 +78,5 @@ export function create_proofreading_client_item(
     warnings: item.warnings,
     glossary_applications: item.glossary_applications,
     row_id: build_proofreading_row_id(item.item_id),
-    compressed_src: compress_proofreading_text(item.src),
-    compressed_dst: compress_proofreading_text(item.dst),
-  });
-}
-
-/**
- * 列表窗口输出保留压缩文本字段，渲染层可直接复用虚拟表所需的轻量行模型。
- */
-export function build_proofreading_visible_items(
-  items: ProofreadingClientItem[],
-): ProofreadingVisibleItem[] {
-  return items.map((item) => {
-    return {
-      kind: "item",
-      row_id: item.row_id,
-      item,
-      compressed_src: item.compressed_src,
-      compressed_dst: item.compressed_dst,
-    };
   });
 }

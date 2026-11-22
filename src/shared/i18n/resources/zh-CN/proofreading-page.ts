@@ -1,13 +1,5 @@
 export const zh_cn_proofreading_page = {
-  pages: {
-    view: "进入查看",
-    title: "预览",
-    source_page: "第 {PAGE} 页",
-    select_files: "请选择文件",
-    failed: "预览加载失败",
-    previous: "上一页",
-    next: "下一页",
-  },
+  select_files: "请选择文件",
   title: "校对",
   action: {
     files: "文件",

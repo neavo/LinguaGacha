@@ -26,7 +26,7 @@ export function create_agent_workspace_apply_tool(options: {
     description: [
       "把工作区 `changes/` 中的全部变更清单作为一个批次提交到工程。批次分两种：",
       "",
-      "- 内容批次：条目、页面、提示词、质量规则和工程知识。先完成检查，再按审批模式请求审批，实际变化只有工程知识时不请求审批。通过检查的记录在同一事务中提交，被拒绝的记录列入 `rejected`。事务失败时全部回滚。",
+      "- 内容批次：条目、提示词、质量规则和工程知识。先完成检查，再按审批模式请求审批，实际变化只有工程知识时不请求审批。通过检查的记录在同一事务中提交，被拒绝的记录列入 `rejected`。事务失败时全部回滚。",
       "- 文件批次：`changes/files/` 中有任何记录时按文件批次处理，无法解析的行也算。文件批次不能包含其他变更。任一记录被拒绝时，整批都不提交。",
       "",
       "### 回执",
@@ -39,7 +39,7 @@ export function create_agent_workspace_apply_tool(options: {
       "|`unchanged`|内容批次无实际变化，无拒绝|",
       "",
       "`applied` 按对象类型汇总实际生效的变化：",
-      "- `applied.files.created`：按新增记录汇总 `files`、`items`、`pages` 和继承填充数 `inherited`，`renamed` 只列出名称与来源不同的资产，`parse_failed` 列出原稿已保存但文本解析失败的资产",
+      "- `applied.files.created`：按新增记录汇总 `files`、`items` 和继承填充数 `inherited`，`renamed` 只列出名称与来源不同的资产，`parse_failed` 列出原稿已保存但文本解析失败的资产",
       "- `applied.files.replaced`：按替换记录汇总 `file_path`、`source_path`、稳定身份保留数 `preserved`、普通继承填充数 `inherited` 和争议组 `contested`",
       "- 上述两者的 `contested: number[][]` 仅列出票选继承存在多种旧译文的条目组（组内条目的 `src` 与可见 `name_src` 相同），无争议时为空数组。回执不附候选译文，按组内 ID 读取最新条目与上下文判断，需要修正时通过条目更新另行提交",
       "",

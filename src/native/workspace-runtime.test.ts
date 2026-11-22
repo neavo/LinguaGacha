@@ -8,12 +8,10 @@ it("私有启动入口从独立运行目录定位，缺失时报告应用安装�
   const directory = await mkdtemp(path.join(os.tmpdir(), "lg-runtime-entries-"));
   try {
     await mkdir(path.join(directory, "runtime"));
-    for (const entry of ["bootstrap", "prepare", "pdf-worker"] as const) {
-      const file = path.join(directory, "runtime", `${entry}.mjs`);
-      await writeFile(file, "throw new Error('入口只能由执行进程加载');");
-      expect(resolve_workspace_runtime_entry(directory, entry)).toBe(file);
-    }
-    await rm(path.join(directory, "runtime/bootstrap.mjs"));
+    const file = path.join(directory, "runtime/bootstrap.mjs");
+    await writeFile(file, "throw new Error('入口只能由执行进程加载');");
+    expect(resolve_workspace_runtime_entry(directory, "bootstrap")).toBe(file);
+    await rm(file);
     expect(() => resolve_workspace_runtime_entry(directory, "bootstrap")).toThrowError(
       expect.objectContaining({ cause: expect.objectContaining({ code: "ENOENT" }) }),
     );

@@ -9,11 +9,6 @@ import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
 import { configure_javascript_parser } from "../file/shared/javascript";
 import type { SettingsUpdateResponse } from "../../shared/settings";
-import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
-import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
-import { pathToFileURL } from "node:url";
-import { PDFWorker } from "../file/pdf/pdf-worker";
-import type { PDFHost } from "../../shared/pdf";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingsCommandService } from "../app/app-settings-command-service";
@@ -66,8 +61,7 @@ import {
 const BATCH_TASK_SNAPSHOT_EVENT_TOPIC = "batch_task.snapshot_changed";
 
 export interface BackendServicesOptions {
-  pdfHost?: PDFHost | undefined;
-  workspaceRuntimeDirectory?: string; // 入口注入包含 MuPDF 与 PDF worker 的运行目录
+  workspaceRuntimeDirectory?: string; // 入口注入的工作区运行目录
 
   paths: AppPathService; // 启动阶段解析出的应用根与数据根权威
   metadata: AppMetadataService; // 只读应用版本和 User-Agent，不参与运行态写入
@@ -109,7 +103,6 @@ export interface BackendProjectServices {
 }
 
 export interface BackendProofreadingServices {
-  preview: ProofreadingPagePreview;
   query: ProofreadingQueryService;
   commands: ProofreadingService;
 }
@@ -136,7 +129,6 @@ export class BackendServices {
   private readonly app_setting_service: AppSettingService; // 引用 Bootstrap 提供的唯一设置服务
   private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
   private readonly game_prepare_worker: GamePrepareWorker;
-  private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
   private readonly request_rate_pool = new RequestRatePool(); // 业务入口共用速率时钟，切换批次不重新获得冷启动额度。
   public readonly batchTasks: BatchTaskRuntime;
@@ -186,16 +178,6 @@ export class BackendServices {
       catalog: this.modelCatalog,
       auth: this.modelAuth,
     });
-    if (options.workerExecution.kind === "worker_threads" && !options.workspaceRuntimeDirectory)
-      throw new Error("PDF runtime directory is required for worker execution.");
-    this.pdf_worker = new PDFWorker(
-      options.workerExecution.kind === "in_process"
-        ? null
-        : pathToFileURL(
-            resolve_workspace_runtime_entry(options.workspaceRuntimeDirectory!, "pdf-worker"),
-          ),
-      options.pdfHost,
-    );
     this.game_prepare_worker = new GamePrepareWorker(
       options.workerExecution.kind === "in_process"
         ? null
@@ -247,7 +229,6 @@ export class BackendServices {
       this.logManager,
       this.cache_manager,
       write_store,
-      this.pdf_worker.run,
       undefined,
       this.game_prepare_worker.run,
     );
@@ -307,7 +288,6 @@ export class BackendServices {
         this.runtime_gate,
         session_state,
         write_store,
-        this.pdf_worker.run,
         this.app_setting_service,
         undefined,
         this.logManager,
@@ -332,7 +312,6 @@ export class BackendServices {
       updateSettings: (request) => settings_commands.update(request),
     };
     this.proofreading = {
-      preview: new ProofreadingPagePreview(options.database, session_state, this.pdf_worker.run),
       query: new ProofreadingQueryService({
         sessionState: session_state,
         cache: this.cache_manager.proofreading,
@@ -371,7 +350,6 @@ export class BackendServices {
         this.app_setting_service,
         session_state,
         options.openOutputFolder,
-        this.pdf_worker.run,
         this.logManager,
       ),
       gameFont: new GameFontService(this.game_directory_operations, this.game_prepare_worker.run),
@@ -446,7 +424,6 @@ export class BackendServices {
     } catch (error) {
       errors.push(error);
     }
-    this.proofreading.preview.dispose();
     this.task_stream_unsubscribe?.();
     this.task_stream_unsubscribe = null;
     this.runtime_stream_unsubscribe?.();
@@ -466,7 +443,6 @@ export class BackendServices {
       this.work_unit_worker_pool.dispose(),
       this.planning_worker_pool.dispose(),
       this.compute_worker_client.dispose(),
-      this.pdf_worker.dispose(),
       this.game_prepare_worker.dispose(),
     ]);
     for (const result of worker_results) {

@@ -22,8 +22,8 @@ it("全选覆盖整个工程并跟随新增文件，空选择与装饰条随实�
   const root = createRoot(container);
   let selected: ProofreadingFileSelection = { mode: "default" };
   let files = [
-    { file_path: "chapter.txt", internal_file_path: null, kind: "item" as const, count: 3 },
-    { file_path: "appendix.pdf", internal_file_path: null, kind: "page" as const, count: 2 },
+    { file_path: "chapter.txt", internal_file_path: null, count: 3 },
+    { file_path: "appendix.pdf", internal_file_path: null, count: 2 },
   ];
   /** 受控选择随用户勾选更新，模拟页面拥有文件范围。 */
   function Probe() {
@@ -51,7 +51,7 @@ it("全选覆盖整个工程并跟随新增文件，空选择与装饰条随实�
     expect(trigger.hasAttribute("data-active")).toBe(false);
     await act(async () => all.click());
     expect(selected).toEqual({ mode: "default" });
-    files = [...files, { file_path: "new.txt", internal_file_path: null, kind: "item", count: 1 }];
+    files = [...files, { file_path: "new.txt", internal_file_path: null, count: 1 }];
     await act(async () => root.render(<Probe />));
     expect(all.checked).toBe(true);
     const pdf = document.querySelector<HTMLInputElement>('input[aria-label="appendix.pdf"]')!;
@@ -93,20 +93,19 @@ it("目录折叠仍可勾选全部后代，重开浮层保留展开状态，行�
   document.body.append(container);
   const root = createRoot(container);
   const files = [
-    { file_path: "game/intro.rpy", internal_file_path: null, kind: "item" as const, count: 3 },
+    { file_path: "game/intro.rpy", internal_file_path: null, count: 3 },
     {
       file_path: "game/tl/zh/options.rpy",
       internal_file_path: null,
-      kind: "item" as const,
       count: 0,
     },
     {
       file_path: "game/tl/zh/manual.pdf",
       internal_file_path: null,
-      kind: "page" as const,
+
       count: 2,
     },
-    { file_path: "outside.txt", internal_file_path: null, kind: "item" as const, count: 1 },
+    { file_path: "outside.txt", internal_file_path: null, count: 1 },
   ];
   const changed = vi.fn();
   let selected: ProofreadingFileSelection = {
@@ -219,14 +218,12 @@ it("容器默认折叠，子文件独立选择产生半选，同名内部目录�
     {
       file_path: "a.trans",
       internal_file_path: "data/Actors.json",
-      kind: "item" as const,
       count: 2,
     },
-    { file_path: "a.trans", internal_file_path: "data/Map.json", kind: "item" as const, count: 3 },
+    { file_path: "a.trans", internal_file_path: "data/Map.json", count: 3 },
     {
       file_path: "b.trans",
       internal_file_path: "data/Actors.json",
-      kind: "item" as const,
       count: 1,
     },
   ];
@@ -299,7 +296,6 @@ it("大目录只挂载视口附近行，滚动后选择仍覆盖未挂载的叶�
   const files = Array.from({ length: 200 }, (_, index) => ({
     file_path: "game.trans",
     internal_file_path: `Map${index}.json`,
-    kind: "item" as const,
     count: 1,
   }));
   const selected: { value: ProofreadingFileSelection } = { value: { mode: "default" } };

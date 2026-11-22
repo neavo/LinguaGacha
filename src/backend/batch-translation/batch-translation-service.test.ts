@@ -451,7 +451,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     writer.upsert_meta_entries(project_path, { source_language: "EN", target_language: "ZH" });
   });
   await database.transaction(project_path, (writer) =>
-    writer.add_asset(project_path, "text.txt", Buffer.from("Hello"), "TXT", null),
+    writer.add_asset(project_path, "text.txt", Buffer.from("Hello"), "TXT"),
   );
   await database.close();
   {

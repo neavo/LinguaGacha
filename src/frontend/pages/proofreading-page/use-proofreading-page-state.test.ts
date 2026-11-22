@@ -383,8 +383,6 @@ function create_client_item(
     status: "NONE",
     warnings: [],
     glossary_applications: [],
-    compressed_src: `foo-${item_id}`,
-    compressed_dst: `bar-${item_id}`,
     ...overrides,
   };
 }
@@ -402,15 +400,7 @@ function create_list_view(item: ProofreadingClientItem = create_client_item(1)) 
     view_id: "view-1",
     row_count: 1,
     window_start: 0,
-    window_rows: [
-      {
-        kind: "item" as const,
-        row_id: item.row_id,
-        item,
-        compressed_src: "foo",
-        compressed_dst: "bar",
-      },
-    ],
+    window_rows: [item],
   };
 }
 
@@ -488,7 +478,7 @@ function create_proofreading_client_fixture(): ProofreadingClientFixture {
     resolve_proofreading_row_index: vi.fn(async () => 0),
     read_proofreading_items_by_row_ids: vi.fn(async ({ row_ids }: { row_ids: string[] }) =>
       row_ids.map((id) =>
-        id === "1" ? create_list_view().window_rows[0]!.item : create_client_item(Number(id)),
+        id === "1" ? create_list_view().window_rows[0]! : create_client_item(Number(id)),
       ),
     ),
     read_proofreading_context: vi.fn(async () => []),
@@ -944,16 +934,7 @@ describe("useProofreadingPageState", () => {
     const synced_list_view = {
       ...create_list_view(),
       window_rows: [
-        {
-          kind: "item" as const,
-          row_id: "1",
-          item: {
-            ...create_client_item(1),
-            warnings: [{ code: "GLOSSARY", target_field: "dst" }],
-          },
-          compressed_src: "foo",
-          compressed_dst: "bar",
-        },
+        create_client_item(1, { warnings: [{ code: "GLOSSARY", target_field: "dst" }] }),
       ],
     };
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
@@ -982,9 +963,9 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.cache_status).toBe("ready");
-    expect(
-      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.item.warnings,
-    ).toEqual([{ code: "GLOSSARY", target_field: "dst" }]);
+    expect(latest_state?.visible_items[0]?.warnings).toEqual([
+      { code: "GLOSSARY", target_field: "dst" },
+    ]);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledWith(
       expect.any(Object),
     );
@@ -1065,22 +1046,7 @@ describe("useProofreadingPageState", () => {
     const searched_list_view = {
       ...create_list_view(),
       row_count: 2,
-      window_rows: [
-        {
-          kind: "item" as const,
-          row_id: "1",
-          item: create_client_item(1),
-          compressed_src: "foo-1",
-          compressed_dst: "bar-1",
-        },
-        {
-          kind: "item" as const,
-          row_id: "2",
-          item: create_client_item(2),
-          compressed_src: "foo-2",
-          compressed_dst: "bar-2",
-        },
-      ],
+      window_rows: [create_client_item(1), create_client_item(2)],
     };
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
@@ -1126,17 +1092,10 @@ describe("useProofreadingPageState", () => {
         view_id: "view-1",
         start: 0,
         row_count: 2,
-        rows: searched_list_view.window_rows.map((row) => {
-          return {
-            ...row,
-            item: {
-              ...row.item,
-              dst: "",
-              compressed_dst: "",
-            },
-            compressed_dst: "",
-          };
-        }),
+        rows: searched_list_view.window_rows.map((row) => ({
+          ...row,
+          dst: "",
+        })),
       };
     });
 
@@ -1155,9 +1114,7 @@ describe("useProofreadingPageState", () => {
       proofreading_client_fixture.current.read_proofreading_list_window,
     ).toHaveBeenLastCalledWith(expect.objectContaining({ view_id: "view-1" }));
     expect(latest_state?.visible_items.map((item) => item.row_id)).toEqual(["1", "2"]);
-    expect(
-      latest_state?.visible_items.filter((row) => row.kind === "item").map((item) => item.item.dst),
-    ).toEqual(["", ""]);
+    expect(latest_state?.visible_items.map((item) => item.dst)).toEqual(["", ""]);
     expect(latest_state?.selected_row_ids).toEqual(["1", "2"]);
     expect(latest_state?.active_row_id).toBe("2");
     expect(latest_state?.anchor_row_id).toBe("1");
@@ -1409,10 +1366,10 @@ describe("useProofreadingPageState", () => {
     await render_hook();
     const stale_query = create_deferred<ReturnType<typeof create_list_view>>();
     const current_query = create_deferred<ReturnType<typeof create_list_view>>();
-    const create_query_view = (view_id: string, compressed_src: string) => ({
+    const create_query_view = (view_id: string, src: string) => ({
       ...create_list_view(),
       view_id,
-      window_rows: [{ ...create_list_view().window_rows[0]!, compressed_src }],
+      window_rows: [{ ...create_list_view().window_rows[0]!, src }],
     });
     proofreading_client_fixture.current.build_proofreading_list_view = vi
       .fn()
@@ -1456,9 +1413,7 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.selected_row_ids).toEqual(["1"]);
-    expect(
-      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.compressed_src,
-    ).toBe("current-query-row");
+    expect(latest_state?.visible_items[0]?.src).toBe("current-query-row");
 
     await act(async () => {
       stale_query.resolve(create_query_view("stale-query-view", "stale-query-row"));
@@ -1466,9 +1421,7 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.selected_row_ids).toEqual(["1"]);
-    expect(
-      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.compressed_src,
-    ).toBe("current-query-row");
+    expect(latest_state?.visible_items[0]?.src).toBe("current-query-row");
   });
 
   it("用户查询失败时保留旧视图和旧选区", async () => {
@@ -1488,9 +1441,7 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
-    expect(
-      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.compressed_src,
-    ).toBe("foo");
+    expect(latest_state?.visible_items[0]?.src).toBe("foo-1");
   });
 
   it("筛选面板统计会跟随弹窗输入防抖后统一查询", async () => {
@@ -1726,15 +1677,7 @@ describe("useProofreadingPageState", () => {
           view_id: query.view_id,
           start: query.start,
           row_count: 1000,
-          rows: [
-            {
-              kind: "item" as const,
-              row_id: String(query.start),
-              item: create_client_item(query.start),
-              compressed_src: `foo-${query.start}`,
-              compressed_dst: `bar-${query.start}`,
-            },
-          ],
+          rows: [create_client_item(query.start)],
         };
       },
     );
@@ -1784,13 +1727,7 @@ describe("useProofreadingPageState", () => {
     proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => ({
       ...create_list_view(),
       row_count: 2,
-      window_rows: [1, 2].map((id) => ({
-        kind: "item" as const,
-        row_id: String(id),
-        item: create_client_item(id),
-        compressed_src: "foo",
-        compressed_dst: "bar",
-      })),
+      window_rows: [create_client_item(1), create_client_item(2)],
     }));
     await render_hook();
     await act(async () => {
@@ -1984,15 +1921,7 @@ describe("useProofreadingPageState", () => {
         ...create_list_view(),
         row_count: 3,
         window_start: 0,
-        window_rows: [
-          {
-            kind: "item" as const,
-            row_id: "1",
-            item: create_client_item(1),
-            compressed_src: "foo-1",
-            compressed_dst: "bar-1",
-          },
-        ],
+        window_rows: [create_client_item(1)],
       };
     });
     proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(async () => {
@@ -2000,15 +1929,7 @@ describe("useProofreadingPageState", () => {
         view_id: "view-1",
         start: 1,
         row_count: 3,
-        rows: [
-          {
-            kind: "item" as const,
-            row_id: "2",
-            item: create_client_item(2),
-            compressed_src: "foo-2",
-            compressed_dst: "bar-2",
-          },
-        ],
+        rows: [create_client_item(2)],
       };
     });
     proofreading_client_fixture.current.read_proofreading_row_ids_range = vi.fn(async () => [
@@ -2072,29 +1993,7 @@ describe("useProofreadingPageState", () => {
         ...create_list_view(),
         row_count: 3,
         window_start: 0,
-        window_rows: [
-          {
-            kind: "item" as const,
-            row_id: "1",
-            item: create_client_item(1),
-            compressed_src: "foo-1",
-            compressed_dst: "bar-1",
-          },
-          {
-            kind: "item" as const,
-            row_id: "2",
-            item: create_client_item(2),
-            compressed_src: "foo-2",
-            compressed_dst: "bar-2",
-          },
-          {
-            kind: "item" as const,
-            row_id: "3",
-            item: create_client_item(3),
-            compressed_src: "foo-3",
-            compressed_dst: "bar-3",
-          },
-        ],
+        window_rows: [create_client_item(1), create_client_item(2), create_client_item(3)],
       };
     });
     await render_hook();
@@ -2128,29 +2027,7 @@ describe("useProofreadingPageState", () => {
         ...create_list_view(),
         row_count: 3,
         window_start: 0,
-        window_rows: [
-          {
-            kind: "item" as const,
-            row_id: "1",
-            item: create_client_item(1),
-            compressed_src: "foo-1",
-            compressed_dst: "bar-1",
-          },
-          {
-            kind: "item" as const,
-            row_id: "2",
-            item: create_client_item(2),
-            compressed_src: "foo-2",
-            compressed_dst: "bar-2",
-          },
-          {
-            kind: "item" as const,
-            row_id: "3",
-            item: create_client_item(3),
-            compressed_src: "foo-3",
-            compressed_dst: "bar-3",
-          },
-        ],
+        window_rows: [create_client_item(1), create_client_item(2), create_client_item(3)],
       };
     });
     proofreading_client_fixture.current.read_proofreading_items_by_row_ids = vi.fn(
