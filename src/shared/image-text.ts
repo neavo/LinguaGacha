@@ -8,7 +8,7 @@ export const IMAGE_TEXT_RULES = Object.freeze({
   minimumFontSize: 4,
   minimumStroke: 1,
   maximumStroke: 2.5,
-  strokeRatio: 0.1,
+  strokeRatio: 0.125,
   antialiasingAllowance: 1,
   squareDistanceCorrection: Math.SQRT2,
   pageTimeoutMs: 600_000,
