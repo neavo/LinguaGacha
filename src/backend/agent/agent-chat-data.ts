@@ -25,12 +25,11 @@ export function read_agent_input(
   const data = entry.data;
   if (typeof data !== "object" || data === null || Array.isArray(data))
     throw new AppError("file.invalid_structure");
-  const { roundId, message, delivery, queuedId } = data;
+  const { roundId, message, delivery } = data;
   if (
     typeof roundId !== "string" ||
     roundId === "" ||
     (delivery !== "round" && delivery !== "steer" && delivery !== "hidden") ||
-    (queuedId !== null && (typeof queuedId !== "string" || queuedId === "")) ||
     normalize_agent_message_input(message) === null
   )
     throw new AppError("file.invalid_structure");
@@ -42,7 +41,6 @@ export type AgentInputRecord = {
   roundId: string;
   message: AgentMessageInput;
   delivery: "round" | "steer" | "hidden";
-  queuedId: string | null;
 };
 /** 一轮用户意图可跨多次 SDK 生成，统一保存终态与修订切点。 */
 export type AgentRoundRecord = {
@@ -57,8 +55,6 @@ export type AgentInputCommandRecord = {
   kind: AgentInputCommandKind;
   request: JsonRecord;
   status: AgentInputCommandStatus;
-  conversationId?: ConversationId | null; // 1.3.0 遗留 pending 命令的回执索引
-  requestId?: string | null; // 与旧 conversationId 配对，新受理随 SDK 一次提交
 };
 
 /** 产品事实跨分叉保留，输入关联按不可变身份筛选。 */

@@ -29,9 +29,9 @@
     "@dnd-kit/collision": "^0.5.3",
     "@dnd-kit/dom": "^0.5.3",
     "@dnd-kit/react": "^0.5.3",
-    "@earendil-works/chord": "1.5.2",
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-durable": "1.5.2",
+    "@earendil-works/chord": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
     "@electron/asar": "^4.3.2",
     "@floating-ui/react-dom": "^2.1.9",
     "@hono/node-server": "^2.1.9",
@@ -106,9 +106,6 @@
     "yaml": "^2.9.1"
   },
   "overrides": {
-    "@earendil-works/chord": {
-      "react": "$react"
-    },
     "exceljs": {
       "uuid": "^14.0.3"
     }

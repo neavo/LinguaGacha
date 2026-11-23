@@ -303,6 +303,26 @@ describe("AgentRuntimeLog", () => {
     expect(records()[0]).toMatchObject({ duration_ms: 321 });
     expect(records()[1]).not.toHaveProperty("duration_ms");
   });
+
+  it("终帧诊断保存输入转换元数据和其他供应商诊断的身份", () => {
+    const { log, records } = create_log();
+    const message = fauxAssistantMessage("完成");
+    log.handle_event({ type: "message_start", message });
+    const transformations = [
+      { type: "reasoning", id: "rs_1", action: "removed", reason: "prefix_mismatch" },
+    ];
+    message.diagnostics = [
+      { type: "openai_input_transformations", timestamp: 1, details: { transformations } },
+      { type: "provider_transport_failure", timestamp: 2, error: { message: "请求原文" } },
+    ];
+    log.handle_event({ type: "message_end", message });
+    log.flush();
+    expect(records()).toHaveLength(1);
+    expect(records()[0]).toHaveProperty("diagnostics", [
+      { type: "openai_input_transformations", timestamp: 1, details: { transformations } },
+      { type: "provider_transport_failure", timestamp: 2 },
+    ]);
+  });
 });
 
 /** 使用 SDK 消息形状验证回执投影，耗时由各场景显式提供。 */

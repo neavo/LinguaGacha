@@ -139,6 +139,7 @@ describe("PiModelCatalog", () => {
     { api: "openai-completions", compat: { thinkingFormat: "invalid" } },
     { api: "anthropic-messages", compat: { forceAdaptiveThinking: "yes" } },
     { api: "openai-responses", compat: { supportsStrictMode: "yes" } },
+    { api: "typesafe-system-one", compat: { imageInput: "unknown" } },
     { api: "openai-completions", thinkingLevelMap: { high: 3 } },
   ])("按协议拒绝损坏的 SDK 配置：%j", async (changes) => {
     const { catalog, warning } = await create_catalog();
@@ -153,6 +154,21 @@ describe("PiModelCatalog", () => {
     expect(apply).not.toHaveBeenCalled();
     expect(catalog.read_models()).toContainEqual(builtin.alpha);
     expect(warning).toHaveBeenCalledOnce();
+  });
+
+  it("未知协议保留 compat 供后续 SDK 消费", async () => {
+    const { catalog } = await create_catalog();
+    const changes = { api: "future-api", compat: { supportsStrictMode: "provider-defined" } };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/alpha") ? response("alpha", changes) : new Response(null, { status: 304 }),
+      ),
+    );
+    await catalog.check(async (_models, commit) => commit());
+    expect(catalog.read_models().find((model) => model.provider === "alpha")).toMatchObject(
+      changes,
+    );
   });
   it("已知供应商的空目录正常缓存，后续较新目录纳入新增聊天模型", async () => {
     const { catalog, paths, file_path, warning } = await create_catalog();

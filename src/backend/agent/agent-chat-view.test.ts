@@ -15,7 +15,7 @@ import { expect, it } from "vitest";
 import { AgentChatDoc } from "./agent-chat-data";
 import { AgentChatView } from "./agent-chat-view";
 
-it("压缩起始时间可随独立文档提交补入，任务终态与恢复沿用同一时间", () => {
+it("压缩起始时间可随独立文档提交补入，任务结算沿用该时间", () => {
   const conversationId = 1 as ConversationId;
   const state = AgentChatDoc.definition.initial(null);
   const task = {
@@ -36,9 +36,6 @@ it("压缩起始时间可随独立文档提交补入，任务终态与恢复沿�
   view.observe({ seq: 2 as Seq, changes: [{ type: "task", value: completed }] });
   view.refresh(conversationId, timed);
   expect(view.entries[0]).toMatchObject({ status: "success", createdAt: 100_000 });
-  const restored = new AgentChatView();
-  restored.reset([], new Map(), [completed], {}, timed);
-  expect(restored.entries).toEqual(view.entries);
 });
 
 it("已提交历史按用户、助手、工具和后续回答投影，隐藏继续输入不新增条目", () => {
@@ -48,13 +45,11 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
       roundId: "round",
       message: { text: "查询", attachments: [] },
       delivery: "round",
-      queuedId: null,
     },
     hidden: {
       roundId: "round",
       message: { text: "继续", attachments: [] },
       delivery: "hidden",
-      queuedId: null,
     },
   };
   state.rounds.round = {
@@ -87,34 +82,23 @@ it("已提交历史按用户、助手、工具和后续回答投影，隐藏继�
     kind: "test",
     model: [message],
   }));
-  const submissions = new Map<number, SubmissionRecord>([
-    [
-      1,
-      {
-        id: 1 as SubmissionId,
-        conversationId,
-        requestId: "input",
-        type: "input",
-        status: "done",
-        entry: 1 as EntryId,
-        answer: 5 as EntryId,
-      },
-    ],
-    [
-      2,
-      {
-        id: 2 as SubmissionId,
-        conversationId,
-        requestId: "hidden",
-        type: "input",
-        status: "done",
-        entry: 4 as EntryId,
-        answer: 5 as EntryId,
-      },
-    ],
-  ]);
   const view = new AgentChatView();
-  view.reset(records, submissions, [], {}, state);
+  for (const record of records) view.records.set(record.id, record);
+  for (const [id, requestId, entry] of [
+    [1, "input", 1],
+    [2, "hidden", 4],
+  ] as const) {
+    view.submissions.set(id, {
+      id: id as SubmissionId,
+      conversationId,
+      requestId,
+      type: "input",
+      status: "done",
+      entry: entry as EntryId,
+      answer: 5 as EntryId,
+    });
+  }
+  view.refresh(conversationId, state);
   expect(view.entries).toMatchObject([
     { kind: "user_message", id: "round", text: "查询", status: "success", endedAt: 10 },
     { kind: "assistant_message", parts: [{ kind: "text", text: "准备查询" }], status: "success" },
@@ -139,7 +123,6 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
     roundId: "round",
     message: { text: "问题", attachments: [] },
     delivery: "round",
-    queuedId: null,
   };
   state.rounds.round = {
     status: "running",
@@ -186,6 +169,9 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
     replace: false,
     entries: [{ id: "assistant:5000", status: "running" }],
   });
+  view.update_live(live);
+  view.refresh(conversationId, state);
+  expect(view.take_change().entries).toEqual([]);
   const failed: EntryRecord = {
     id: 5001 as EntryId,
     conversationId,
@@ -213,7 +199,7 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
     { id: "assistant:5000", status: "running", parts: [{ text: "重试正文" }] },
   ]);
   view.update_live(live);
-  view.refresh(conversationId, state, "stopping");
+  view.refresh(conversationId, state, true);
   expect(view.take_change().entries).toEqual([]);
   const completed: EntryRecord = {
     id: 5002 as EntryId,
@@ -224,14 +210,16 @@ it("流式变化只返回当前条目，终帧与提交变化顺序不影响恢�
   };
   view.update_live({});
   view.observe({ seq: 4 as Seq, changes: [{ type: "entry", value: completed }] });
-  view.refresh(conversationId, state, "stopping");
+  view.refresh(conversationId, state, true);
   expect(view.take_change()).toMatchObject({
     replace: false,
     entries: [{ id: "assistant:5000", status: "success", parts: [{ text: "完整回答" }] }],
   });
   expect(view.entries[1]).toBe(oldEntry);
   const restored = new AgentChatView();
-  restored.reset(view.branch_records(), view.submissions, [], {}, state);
+  for (const record of view.branch_records()) restored.records.set(record.id, record);
+  for (const [id, submission] of view.submissions) restored.submissions.set(id, submission);
+  restored.refresh(conversationId, state);
   expect(restored.entries).toEqual(view.entries);
 });
 
@@ -259,6 +247,7 @@ it("摘要回执更新已结束任务的时间线，恢复得到相同结果", (
   };
   const state = { ...AgentChatDoc.definition.initial(null), compactionStartedAt: { 2: 1000 } };
   const view = new AgentChatView();
+  view.refresh(task.conversationId, state);
   view.observe({
     seq: 1 as Seq,
     changes: [
@@ -273,22 +262,22 @@ it("摘要回执更新已结束任务的时间线，恢复得到相同结果", (
   view.refresh(task.conversationId, state);
   expect(view.entries[0]?.status).toBe("success");
   const restored = new AgentChatView();
-  restored.submissions.set(done.id, done);
-  restored.reset([], new Map(), [task], {}, state);
+  restored.compactions.set(task.id, task);
+  restored.submissions.set(queued.id, queued);
+  restored.refresh(task.conversationId, state);
+  expect(restored.entries[0]?.status).toBe("running");
+  restored.observe({ seq: 2 as Seq, changes: [{ type: "submission", value: done }] });
+  restored.refresh(task.conversationId, state);
   expect(restored.entries).toEqual(view.entries);
 });
 
-it("空结果始终隐藏压缩块，恢复也不公开空操作", () => {
+it("重开时不公开无切点的压缩", () => {
   const task = compaction_task({});
   const state = { ...AgentChatDoc.definition.initial(null), compactionStartedAt: { 2: 1000 } };
   const view = new AgentChatView();
-  view.observe({ seq: 1 as Seq, changes: [{ type: "task", value: task }] });
+  view.compactions.set(task.id, task);
   view.refresh(task.conversationId, state);
   expect(view.entries).toEqual([]);
-  expect(view.take_change().entries).toEqual([]);
-  const restored = new AgentChatView();
-  restored.reset([], new Map(), [task], {}, state);
-  expect(restored.entries).toEqual([]);
 });
 
 it("摘要阶段取消保留起点，选择阶段取消隐藏，失败保留诊断条目", () => {
@@ -298,9 +287,10 @@ it("摘要阶段取消保留起点，选择阶段取消隐藏，失败保留诊�
   } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
   const state = AgentChatDoc.definition.initial(null);
   const view = new AgentChatView();
-  view.reset([], new Map(), [task], {}, state);
+  view.compactions.set(task.id, task);
+  view.refresh(task.conversationId, state);
   expect(view.entries).toEqual([]);
-  view.reset([], new Map(), [task], {}, { ...state, compactionStartedAt: { 2: 1000 } });
+  view.refresh(task.conversationId, { ...state, compactionStartedAt: { 2: 1000 } });
   expect(view.entries[0]).toMatchObject({ status: "stopped", createdAt: 1000 });
   const failed = {
     ...task,
@@ -309,8 +299,10 @@ it("摘要阶段取消保留起点，选择阶段取消隐藏，失败保留诊�
       outcome: { status: "failed", error: { message: "model unavailable" } },
     },
   } satisfies TaskRecord<JsonValue, JsonValue, JsonValue>;
-  view.reset([], new Map(), [failed], {}, state);
-  expect(view.entries[0]).toMatchObject({ status: "error", createdAt: null });
+  const failed_view = new AgentChatView();
+  failed_view.compactions.set(failed.id, failed);
+  failed_view.refresh(failed.conversationId, state);
+  expect(failed_view.entries[0]).toMatchObject({ status: "error", createdAt: null });
 });
 
 it("按分支与条目索引工具结果图片，不泄露字节且随重置和切点清理", () => {
@@ -322,7 +314,6 @@ it("按分支与条目索引工具结果图片，不泄露字节且随重置和�
       roundId: "round",
       message: { text: "绘图", attachments: [] },
       delivery: "round",
-      queuedId: null,
     },
   };
   state.rounds.round = {

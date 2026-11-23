@@ -85,7 +85,7 @@ export function resolve_pi_model(
     // Responses 省略 `strict` 时服务端默认按严格模式补齐 `required`，补偿 Pi 默认关闭 `supportsStrictMode`。
     ...(api.api === "openai-responses" ? { supportsStrictMode: true } : {}),
     ...capability.compat,
-    // 产品 Chat Completions 指令使用 `system`；Responses 角色由最终载荷策略拥有。
+    // Pi 1.6 默认仅在 api.openai.com 启用 developer，产品对所有 Chat Completions 固定使用 system。
     ...(api.api === "openai-completions" ? { supportsDeveloperRole: false } : {}),
   };
   // `DEFAULT` 与 Responses 自定义 `reasoning` 由最终载荷决定思考，载荷阶段无法撤销历史中的 effort 标记。

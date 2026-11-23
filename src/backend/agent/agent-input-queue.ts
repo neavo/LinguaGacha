@@ -111,13 +111,12 @@ export class AgentInputQueue {
     return copy_queue_value(sending);
   }
 
-  /** 仅收到 SDK 入历史事实后按草稿身份消费；停止回滚后的迟到确认也不会重复发送。 */
-  public commit_send(id: string): AgentQueuedInput | null {
+  /** 受理输入后按草稿身份消费对应项。 */
+  public commit_send(id: string): void {
     const index = this.state.items.findIndex((item) => item.id === id);
-    if (index < 0) return null;
-    const item = this.state.items.splice(index, 1)[0]!;
+    if (index < 0) return;
+    this.state.items.splice(index, 1);
     this.normalize_pause();
-    return copy_queue_value(item);
   }
 
   /** 输入未提交即失败或停止时，把占用项恢复为 queued。 */

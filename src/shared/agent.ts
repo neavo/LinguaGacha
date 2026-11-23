@@ -141,7 +141,7 @@ export function agent_message_request(message: AgentMessageInput): JsonRecord {
   };
 }
 
-/** 队列随当前会话提交，重开时清空。`sending` 表示正在准备或等待 SDK 确认消费。 */
+/** 队列随会话持久化。`sending` 表示草稿已占用，等待输入受理。 */
 export type AgentQueuedInput = AgentMessageInput & {
   id: string;
   status: "queued" | "sending";
