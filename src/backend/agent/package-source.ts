@@ -1,14 +1,21 @@
+import type { TextResolver } from "../../shared/i18n";
 import { workspace_requests } from "./workspace/runtime/request-channel";
 
 /** npm 与 uv 自动默认源的选择，具体地址由各自入口持有。 */
 export type PackageSource = "official" | "mirror";
-type Region = "mainland" | "outside" | "unknown";
 
-const REGION_TIMEOUT_MS = 8_000; // 每路请求含响应体读取的上限，两路并发等待。
-const IPIP_URL = "https://myip.ipip.net/";
-const IPWHO_URL = "https://ipwho.is/";
+/** 对照两路检测时使用固定日志标签，`China` 指中国大陆。 */
+enum Region {
+  Mainland = "China",
+  Outside = "Global",
+  Unknown = "Unknown",
+}
+
+const REGION_TIMEOUT_MS = 8_000; // 两路并发查询共享时限，包含响应体读取。
+const IPIP_HOST = "myip.ipip.net";
+const IPWHO_HOST = "ipwho.is";
 const NON_MAINLAND_NAMES = new Set(["香港", "澳门", "台湾"]); // IPIP 在「中国」之后给出的港澳台名称。
-const REGION_CODE = /^[A-Z]{2}$/u;
+const REGION_CODE = /^[A-Z]{2}$/u; // ipwho 提供两位大写代码，Intl 还接受三位数字地区代码。
 let region_names: Readonly<{ display: Intl.DisplayNames; countries: Set<string> }> | undefined; // 首次判定时构建，根进程只引用请求函数
 
 /** CLDR 中文地区名（标准 Intl 数据），用于确认接口给出的是已知国家或地区，未识别文本归未知。 */
@@ -29,22 +36,23 @@ function read_region_names(): NonNullable<typeof region_names> {
 /** ipwho.is 只认业务成功且国家代码有效的结果。 */
 function read_ipwho_region(text: string): Region {
   const body: unknown = JSON.parse(text);
-  if (typeof body !== "object" || body === null) return "unknown";
+  if (typeof body !== "object" || body === null) return Region.Unknown;
   const { success, country_code: code } = body as Record<string, unknown>;
-  if (success !== true || typeof code !== "string" || !REGION_CODE.test(code)) return "unknown";
-  if (code === "ZZ" || read_region_names().display.of(code) === undefined) return "unknown";
-  return code === "CN" ? "mainland" : "outside";
+  if (success !== true || typeof code !== "string" || !REGION_CODE.test(code))
+    return Region.Unknown;
+  if (code === "ZZ" || read_region_names().display.of(code) === undefined) return Region.Unknown;
+  return code === "CN" ? Region.Mainland : Region.Outside;
 }
 
 /** IPIP 只接受「当前 IP：… 来自于：国家 …」结构，先区分港澳台再判断大陆。 */
 function read_ipip_region(text: string): Region {
   const location = /^当前 IP：\S+\s+来自于：(.+)$/u.exec(text.trim())?.[1];
   const [country, area] = location?.trim().split(/\s+/u) ?? [];
-  if (country === undefined) return "unknown";
-  if (NON_MAINLAND_NAMES.has(country)) return "outside";
+  if (country === undefined) return Region.Unknown;
+  if (NON_MAINLAND_NAMES.has(country)) return Region.Outside;
   if (country === "中国")
-    return area !== undefined && NON_MAINLAND_NAMES.has(area) ? "outside" : "mainland";
-  return read_region_names().countries.has(country) ? "outside" : "unknown";
+    return area !== undefined && NON_MAINLAND_NAMES.has(area) ? Region.Outside : Region.Mainland;
+  return read_region_names().countries.has(country) ? Region.Outside : Region.Unknown;
 }
 
 /** 宿主内按对话缓存默认源判定，应用重启后重新判断，不写入任何持久化位置。 */
@@ -56,6 +64,7 @@ export class AgentPackageSources {
   public constructor(
     private readonly options: {
       log: (message: string) => void;
+      t: TextResolver;
       fetch?: typeof globalThis.fetch;
     },
   ) {}
@@ -84,21 +93,33 @@ export class AgentPackageSources {
     this.entries.clear();
   }
 
-  /** 两路并发各自限时，普通失败归未知，只有执行取消向上传播。 */
+  /** 两路并发按同一个时限收尾，执行取消时直接传回原因。 */
   private async lookup(signal: AbortSignal): Promise<PackageSource> {
+    const lookup_signal = AbortSignal.any([signal, AbortSignal.timeout(REGION_TIMEOUT_MS)]);
     const regions = await Promise.all([
-      this.read_region(IPIP_URL, read_ipip_region, signal),
-      this.read_region(IPWHO_URL, read_ipwho_region, signal),
+      this.read_region(`https://${IPWHO_HOST}/`, read_ipwho_region, lookup_signal),
+      this.read_region(`https://${IPIP_HOST}/`, read_ipip_region, lookup_signal),
     ]);
+    signal.throwIfAborted(); // 区分执行取消与地区查询超时，后者仍允许采用另一路结果。
     // 至少一路有效且所有有效结果都在大陆以外时使用官方源。
     const source =
-      regions.includes("outside") && !regions.includes("mainland") ? "official" : "mirror";
-    const [ipip, ipwho] = regions;
-    this.options.log(`Agent 默认包源：${source}（myip.ipip.net=${ipip}，ipwho.is=${ipwho}）`);
+      regions.includes(Region.Outside) && !regions.includes(Region.Mainland)
+        ? "official"
+        : "mirror";
+    const [ipwho, ipip] = regions;
+    const { log, t } = this.options;
+    // 同一次判定共用一条日志，只写地区标签和结论。
+    log(
+      [
+        `${IPWHO_HOST} = ${ipwho}`,
+        `${IPIP_HOST} = ${ipip}`,
+        t(`app.log.package_source.${source}`),
+      ].join("\n"),
+    );
     return source;
   }
 
-  /** 响应体读取同受时限约束。HTTP、限流、解析和超时失败都不能证明地区。 */
+  /** HTTP、限流、解析和超时失败都不能证明地区。 */
   private async read_region(
     url: string,
     read: (text: string) => Region,
@@ -106,14 +127,11 @@ export class AgentPackageSources {
   ): Promise<Region> {
     const fetch = this.options.fetch ?? globalThis.fetch;
     try {
-      const response = await fetch(url, {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(REGION_TIMEOUT_MS)]),
-      });
+      const response = await fetch(url, { signal });
       const text = await response.text();
-      return response.ok ? read(text) : "unknown";
+      return response.ok ? read(text) : Region.Unknown;
     } catch {
-      if (signal.aborted) throw signal.reason;
-      return "unknown"; // 查询不可用只降级为镜像判定，不影响后续安装。
+      return Region.Unknown; // 该路查询失败时仍可采用另一路结果。
     }
   }
 }

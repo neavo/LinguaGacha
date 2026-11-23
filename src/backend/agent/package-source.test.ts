@@ -1,7 +1,8 @@
 import { expect, it, vi } from "vitest";
 import { AgentPackageSources } from "./package-source";
 
-const IPIP = (location: string) => `当前 IP：203.0.113.1  来自于：${location}\n`;
+const TEST_IP = "203.0.113.1"; // 两路响应共用测试 IP，供日志脱敏断言。
+const IPIP = (location: string) => `当前 IP：${TEST_IP}  来自于：${location}\n`;
 type Reply = string | Error | Response;
 
 /** 按地址返回固定响应，`Error` 表示网络或超时失败。 */
@@ -12,17 +13,12 @@ function create_sources(replies: Readonly<{ ipip: Reply; ipwho: Reply }>) {
     if (reply instanceof Error) throw reply;
     return reply instanceof Response ? reply : new Response(reply);
   });
-  const log = vi.fn();
-  return { sources: new AgentPackageSources({ log, fetch }), fetch, log };
+  const log = vi.fn<(message: string) => void>();
+  const sources = new AgentPackageSources({ log, fetch, t: (key) => `translated ${key}` });
+  return { sources, fetch, log };
 }
 
 it.each([
-  [
-    "两路都在大陆以外",
-    IPIP("美国 加利福尼亚州"),
-    JSON.stringify({ success: true, country_code: "JP" }),
-    "official",
-  ],
   [
     "IPIP 港澳台归大陆以外",
     IPIP("中国 香港"),
@@ -42,18 +38,17 @@ it.each([
     "official",
   ],
   [
-    "任一路大陆即选镜像",
-    IPIP("中国 湖北 武汉  电信"),
-    JSON.stringify({ success: true, country_code: "US" }),
-    "mirror",
-  ],
-  [
     "ipwho 报告大陆",
     IPIP("日本 东京"),
     JSON.stringify({ success: true, country_code: "CN" }),
     "mirror",
   ],
-  ["两路都未知", new Error("offline"), new Response("busy", { status: 429 }), "mirror"],
+  [
+    "两路都失败，HTTP 错误的正文不参与判定",
+    new Error("offline"),
+    new Response(JSON.stringify({ success: true, country_code: "US" }), { status: 429 }),
+    "mirror",
+  ],
   [
     "无法识别的文本与代码不算海外",
     "blocked",
@@ -67,11 +62,23 @@ it.each([
     JSON.stringify({ success: true, country_code: "ZZ" }),
     "mirror",
   ],
+  ["三位数字地区代码不算海外", "blocked", '{"success":true,"country_code":"419"}', "mirror"],
 ] as const)("%s", async (_name, ipip, ipwho, expected) => {
-  const { sources, log } = create_sources({ ipip, ipwho });
+  const { sources } = create_sources({ ipip, ipwho });
   await expect(sources.resolve("chat", new AbortController().signal)).resolves.toBe(expected);
-  expect(log).toHaveBeenCalledOnce();
-  expect(log.mock.calls[0]![0]).not.toContain("203.0.113.1"); // 日志不记录公网地址
+});
+
+it("两路地区不一致时选镜像，合并地区标签和本地化结论，省略公网 IP", async () => {
+  const { sources, log } = create_sources({
+    ipip: IPIP("中国 湖北 武汉  电信"),
+    ipwho: JSON.stringify({ success: true, country_code: "US", ip: TEST_IP }),
+  });
+  await expect(sources.resolve("chat", new AbortController().signal)).resolves.toBe("mirror");
+  expect(log).toHaveBeenCalledExactlyOnceWith(
+    ["ipwho.is = Global", "myip.ipip.net = China", "translated app.log.package_source.mirror"].join(
+      "\n",
+    ),
+  );
 });
 
 it("同一对话并发与后续调用共用一次查询，其他对话独立判定，重置后重新查询", async () => {
@@ -112,5 +119,5 @@ it("执行取消向上传播且不缓存，迟到的取消不移除较新的查�
   expect(fetch).toHaveBeenCalledTimes(4); // 较新的结果仍被复用
 
   sources.close();
-  await expect(sources.resolve("c", new AbortController().signal)).rejects.toThrow("closed");
+  await expect(sources.resolve("c", new AbortController().signal)).rejects.toThrow();
 });

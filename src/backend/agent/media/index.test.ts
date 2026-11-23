@@ -6,6 +6,7 @@ import { AgentExecutionRuntime } from "../execution/runtime";
 import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AgentPackageSources } from "../package-source";
+import { t_main_log } from "../../log/log-text";
 
 const ORT_VERSION = "1.30.0"; // 验收固定运行时版本，核对实际安装结果。
 
@@ -84,7 +85,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     console.log('completed', listened.asr.length, scanned.length, refined.length);
   `,
     );
-    const package_sources = new AgentPackageSources({ log: console.log }); // 同一验收对话共用判定
+    const package_sources = new AgentPackageSources({ log: console.log, t: t_main_log }); // 同一验收对话共用判定。
     try {
       const runner = new AgentWorkspaceRunner({
         paths: {

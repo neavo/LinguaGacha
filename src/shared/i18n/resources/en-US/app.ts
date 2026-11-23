@@ -263,6 +263,10 @@ export const en_us_app = {
   },
   log: {
     app_version: "LinguaGacha v{VERSION} …",
+    package_source: {
+      official: "Based on network detection, npm and uv use the official registry …",
+      mirror: "Based on network detection, npm and uv use a mirror in China …",
+    },
     default_preset_loaded: "Default presets loaded automatically: {NAMES} …",
     system_closed_dropped: "Log system is shut down; dropping new log: {MESSAGE}",
     provider: "Provider",
