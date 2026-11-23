@@ -14,11 +14,11 @@ const LEGACY_PDF_REVISION = "project_runtime_revision.pdf";
 const GENERIC_SUFFIX = ".generic";
 const ARCHIVE_README = `# 旧版原生 PDF 静态迁移包
 
-技能：\`pdf\`、\`generic-data\`
+技能：\`pdf\`、\`generic-package\`
 
 - \`source.pdf\` 保存原始 PDF。
 - \`legacy-pdf.json\` 保存历史页数据与译稿处置。
-- \`items.json\` 当前为空，尚未转换为通用数据条目。
+- \`items.json\` 当前为空，尚未转换为通用包条目。
 
 继续翻译、审校或导出前，请按 \`pdf\` 技能的 \`references/migration.md\` 完成迁移与旧译稿回填。
 `;

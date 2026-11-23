@@ -56,7 +56,7 @@ export const ja_jp_project = {
     deprecated_tooltip: "現在は最適な選択ではありません。上記の形式を優先してください",
     empty_project_hint:
       "ファイルを選ばずに「{ACTION}」をクリックし、AGENT の入力欄にファイルをドラッグするだけ …!",
-    generic: "汎用データ",
+    generic: "汎用パッケージ",
     title: "特に最適化された形式",
     txt: "プレーンテキスト",
     md: "Markdown",

@@ -3,7 +3,7 @@ name: kirikiri
 description: 翻译、审校、分析、修改吉里吉里（Kirikiri、KAG、TJS）游戏前必须加载。
 ---
 
-内置解析器不识别吉里吉里游戏，文本都经 `generic-data` 进入工程。本技能提供吉里吉里在各阶段的方法。
+内置解析器不识别吉里吉里游戏，文本都经 `generic-package` 封装为 `.generic` 通用包进入工程。本技能提供吉里吉里在各阶段的方法。
 
 # 来源调查
 

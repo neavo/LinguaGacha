@@ -79,7 +79,7 @@ export const en_us_project = {
     deprecated_tooltip: "No longer the best choice. Please use the formats above first",
     empty_project_hint:
       "No need to select files. Click “{ACTION}”, then drag files into the AGENT input box …!",
-    generic: "Generic data",
+    generic: "Generic package",
     title: "Specially optimized formats",
     txt: "Plain text",
     md: "Markdown",

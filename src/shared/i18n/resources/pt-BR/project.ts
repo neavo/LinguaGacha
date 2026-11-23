@@ -78,7 +78,7 @@ export const pt_br_project = {
     deprecated_tooltip: "Não é mais a melhor opção. Use preferencialmente os formatos acima",
     empty_project_hint:
       "Sem escolher arquivos, clique em “{ACTION}” e arraste-os para o campo de entrada do AGENT …!",
-    generic: "Dados genéricos",
+    generic: "Pacote genérico",
     title: "Formatos otimizados",
     txt: "Texto simples",
     md: "Markdown",
