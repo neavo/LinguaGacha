@@ -82,6 +82,8 @@ export function resolve_pi_model(
     capability.available_thinking_levels,
   );
   const compat = {
+    // Responses 省略 `strict` 时服务端默认按严格模式补齐 `required`，补偿 Pi 默认关闭 `supportsStrictMode`。
+    ...(api.api === "openai-responses" ? { supportsStrictMode: true } : {}),
     ...capability.compat,
     // 产品 Chat Completions 指令使用 `system`；Responses 角色由最终载荷策略拥有。
     ...(api.api === "openai-completions" ? { supportsDeveloperRole: false } : {}),

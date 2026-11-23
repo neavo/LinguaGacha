@@ -520,7 +520,7 @@ describe("pi-ai 请求适配", () => {
       baseUrl: "https://openai.example/v1",
       reasoning: false,
     });
-    expect(request.model).not.toHaveProperty("compat");
+    expect(request.model.compat).toEqual({ supportsStrictMode: true });
     expect(request.options).toMatchObject({ temperature: 0.2, maxTokens: 4096 });
     expect(request.options).not.toHaveProperty("reasoningEffort");
     expect(payload).toMatchObject({
@@ -558,23 +558,51 @@ describe("pi-ai 请求适配", () => {
     ]);
   });
 
-  it("Responses 原样发送工具 parameters 且默认 strict=false", async () => {
+  it("Responses 默认显式发送 strict=false 并原样保留可选参数，显式关闭时省略 strict", async () => {
+    const parameters = Type.Object(
+      {
+        value: Type.String(),
+        optional_ids: Type.Optional(Type.Array(Type.Number({ minimum: 1 }), { minItems: 1 })),
+      },
+      { additionalProperties: false },
+    );
     const request = resolve_request({
       api_format: "OpenAIResponses",
+      api_url: "https://relay.example/v1",
       model_id: "custom-model",
     });
-    request.model.compat = { supportsStrictMode: true };
-    const parameters = Type.Object({ value: Type.String() }, { additionalProperties: false });
     request.context.tools = [{ name: "probe", description: "探针工具", parameters }];
-    const payload = await capture_payload(request);
-
-    expect(payload["tools"]).toEqual([
+    expect((await capture_payload(request))["tools"]).toEqual([
       {
         type: "function",
         name: "probe",
         description: "探针工具",
         parameters,
         strict: false,
+      },
+    ]);
+
+    const configured = create_model({
+      api_format: "OpenAIResponses",
+      api_url: "https://relay.example/v1",
+      model_id: "custom-model",
+    });
+    const disabled = resolve_one_shot_pi_request(
+      read_model_request_snapshot(configured, TEST_REQUEST_IDENTITY),
+      [{ role: "user", content: "ping" }],
+      new AbortController().signal,
+      {
+        ...resolve_model_capability(ConfiguredModel.from_json(configured, "fixture"), []),
+        compat: { supportsStrictMode: false },
+      },
+    );
+    disabled.context.tools = [{ name: "probe", description: "探针工具", parameters }];
+    expect((await capture_payload(disabled))["tools"]).toEqual([
+      {
+        type: "function",
+        name: "probe",
+        description: "探针工具",
+        parameters,
       },
     ]);
   });
