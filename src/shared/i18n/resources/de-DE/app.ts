@@ -273,6 +273,12 @@ export const de_de_app = {
   },
   log: {
     app_version: "LinguaGacha v{VERSION} …",
+    package_source: {
+      official:
+        "Auf Basis der Netzwerkerkennung verwenden npm und uv das offizielle Paket-Repository …",
+      mirror:
+        "Auf Basis der Netzwerkerkennung verwenden npm und uv einen chinesischen Paketspiegel …",
+    },
     default_preset_loaded: "Standard-Voreinstellungen automatisch geladen: {NAMES} …",
     system_closed_dropped:
       "Protokollsystem ist heruntergefahren; neues Protokoll wird verworfen: {MESSAGE}",

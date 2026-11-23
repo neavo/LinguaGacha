@@ -132,6 +132,7 @@ export class GuiBackendBootstrap {
         proxyResolver: this.options.proxyResolver,
       });
       const package_sources = new AgentPackageSources({
+        t: t_main_log,
         log: (message) => resources.logManager.info(message, { source: "agent_package_source" }),
       });
       this.package_sources = package_sources;

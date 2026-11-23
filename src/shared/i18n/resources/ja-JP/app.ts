@@ -268,6 +268,10 @@ export const ja_jp_app = {
   },
   log: {
     app_version: "LinguaGacha v{VERSION} …",
+    package_source: {
+      official: "ネットワークの判定結果に基づき、npm と uv は公式レジストリを使用します …",
+      mirror: "ネットワークの判定結果に基づき、npm と uv は中国のミラーを使用します …",
+    },
     default_preset_loaded: "既定のプリセットを自動で読み込みました：{NAMES} …",
     system_closed_dropped: "ログシステムは終了しています。新しいログを破棄しました：{MESSAGE}",
     provider: "プロバイダー",

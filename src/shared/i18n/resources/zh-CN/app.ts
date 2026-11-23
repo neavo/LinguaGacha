@@ -257,6 +257,10 @@ export const zh_cn_app = {
   },
   log: {
     app_version: "LinguaGacha v{VERSION} …",
+    package_source: {
+      official: "根据网络检测结果，npm 和 uv 使用官方源 …",
+      mirror: "根据网络检测结果，npm 和 uv 使用中国镜像源 …",
+    },
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     system_closed_dropped: "日志系统已关闭，丢弃新日志：{MESSAGE}",
     provider: "供应商",

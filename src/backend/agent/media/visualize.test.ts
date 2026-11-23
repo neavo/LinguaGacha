@@ -6,6 +6,7 @@ import { AgentExecutionRuntime } from "../execution/runtime";
 import { AgentWorkspaceRunner } from "../workspace/runtime/runner";
 import { AGENT_WORKSPACE_RUN_ROOT } from "../workspace/runtime/policy";
 import { AgentPackageSources } from "../package-source";
+import { t_main_log } from "../../log/log-text";
 
 it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
   "deployed visualization preserves audio, output and cancellation boundaries without recognition models",
@@ -41,7 +42,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
         get_agent_builtin_skill_dir: () => path.join(root, "builtin"),
       },
     });
-    const package_sources = new AgentPackageSources({ log: console.log }); // 验收使用真实地区判定
+    const package_sources = new AgentPackageSources({ log: console.log, t: t_main_log }); // 验收使用真实地区判定。
     const visualize_script = JSON.stringify(
       new URL("../../../../builtin/skills/media/scripts/visualize.py", import.meta.url).href,
     );

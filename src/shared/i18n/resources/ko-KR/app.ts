@@ -260,6 +260,10 @@ export const ko_kr_app = {
   },
   log: {
     app_version: "LinguaGacha v{VERSION} …",
+    package_source: {
+      official: "네트워크 감지 결과에 따라 npm과 uv는 공식 저장소를 사용합니다 …",
+      mirror: "네트워크 감지 결과에 따라 npm과 uv는 중국 미러를 사용합니다 …",
+    },
     default_preset_loaded: "기본 프리셋을 자동으로 불러왔습니다: {NAMES} …",
     system_closed_dropped: "로그 시스템이 종료되어 새 로그를 버렸습니다: {MESSAGE}",
     provider: "공급자",

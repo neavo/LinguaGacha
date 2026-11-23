@@ -266,6 +266,10 @@ export const pt_br_app = {
   },
   log: {
     app_version: "LinguaGacha v{VERSION} …",
+    package_source: {
+      official: "Com base na detecção de rede, npm e uv usam o repositório oficial …",
+      mirror: "Com base na detecção de rede, npm e uv usam um espelho na China …",
+    },
     default_preset_loaded: "Predefinições padrão carregadas automaticamente: {NAMES} …",
     system_closed_dropped: "Sistema de logs desligado; descartando novo log: {MESSAGE}",
     provider: "Provedor",
