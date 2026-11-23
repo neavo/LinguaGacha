@@ -44,13 +44,13 @@ export class AgentChatView {
   private readonly bounds = new Map<number, number>(); // 各祖先分支可见条目的最大身份
   private readonly rows = new Map<string, Row>();
   private readonly inputSubmissions = new Map<number, SubmissionRecord>(); // 旧历史通过条目身份定位原提交回执
+  private readonly compactionSubmissions = new Map<number, number>(); // 写入回执身份到压缩任务身份。
   private readonly calls = new Map<string, string>(); // 工具调用身份到公开条目的查询索引
   private readonly toolImages = new Map<string, readonly Readonly<ImageContent>[]>(); // 已提交工具回执的可见图片索引
   private readonly userRecords = new Map<string, EntryRecord>(); // 轮次状态变化时定位原用户消息
   private readonly changed = new Map<string, AgentEntry>(); // 尚未发布的条目，同一身份只保留最新值
   private readonly pendingRecords = new Set<number>();
   private readonly pendingTasks = new Set<number>();
-  private readonly pendingSubmissions = new Set<number>();
   private readonly totals = new Map<number, AgentUsageSnapshot>(); // 各分支已计入的用量，历史修订继续保留累计消耗
   private order: string[] = [];
   private currentRound: string | undefined; // 按历史顺序推进的当前产品轮次
@@ -90,22 +90,12 @@ export class AgentChatView {
         this.conversations.set(change.value.id, change.value);
       else if (change.type === "submission") {
         this.submissions.set(change.value.id, change.value);
-        this.pendingSubmissions.add(change.value.id);
-        // ponytail: 压缩任务较少，回执扫描任务；长会话出现瓶颈时改为 submissionId 索引。
-        for (const task of this.compactions.values()) {
-          if (task.state.status !== "terminal" || task.state.outcome.status !== "completed")
-            continue;
-          const result = task.state.outcome.result;
-          if (
-            typeof result === "object" &&
-            result !== null &&
-            !Array.isArray(result) &&
-            result["submissionId"] === change.value.id
-          )
-            this.pendingTasks.add(task.id);
-        }
+        this.index_input_submission(change.value);
+        const taskId = this.compactionSubmissions.get(change.value.id);
+        if (taskId !== undefined) this.pendingTasks.add(taskId);
       } else if (change.type === "task" && change.value.kind === "pi.compaction") {
         this.compactions.set(change.value.id, change.value);
+        this.index_compaction_submission(change.value);
         this.pendingTasks.add(change.value.id);
       } else if (
         change.type === "document" &&
@@ -118,19 +108,43 @@ export class AgentChatView {
     }
   }
 
+  /** 旧用户条目通过输入回执查找产品轮次。 */
+  private index_input_submission(submission: SubmissionRecord): void {
+    if (
+      submission.type === "input" &&
+      submission.entry !== undefined &&
+      submission.requestId !== undefined
+    )
+      this.inputSubmissions.set(submission.entry, submission);
+  }
+
+  /** 摘要写入晚于任务完成时，按回执身份重投影压缩条目。 */
+  private index_compaction_submission(task: TaskRecordValue): void {
+    if (task.state.status !== "terminal" || task.state.outcome.status !== "completed") return;
+    const result = task.state.outcome.result;
+    if (
+      typeof result === "object" &&
+      result !== null &&
+      !Array.isArray(result) &&
+      typeof result["submissionId"] === "number"
+    )
+      this.compactionSubmissions.set(result["submissionId"], task.id);
+  }
+
   /** 标记流式条目，下一次刷新与正式回执一起发布。 */
   public update_live(live: Readonly<LiveState>): void {
     this.live = live;
     this.liveChanged = true;
   }
 
-  /** 分支切换或补读历史时重建索引，其余提交增量更新。 */
-  public refresh(
-    conversationId: number,
-    state: Readonly<AgentChatData>,
-    mode?: "restore" | "stopping",
-  ): void {
-    if (mode === "restore" || conversationId !== this.conversationId) {
+  /** 首次投影和分支切换重建时间线，其余提交增量更新。 */
+  public refresh(conversationId: number, state: Readonly<AgentChatData>, stopping = false): void {
+    if (conversationId !== this.conversationId) {
+      if (this.conversationId === undefined) {
+        // 历史从存储初始化，后续提交直接在 observe 更新跨分支的回执索引。
+        for (const submission of this.submissions.values()) this.index_input_submission(submission);
+        for (const task of this.compactions.values()) this.index_compaction_submission(task);
+      }
       this.conversationId = conversationId;
       this.bounds.clear();
       let record = this.conversations.get(conversationId);
@@ -141,26 +155,10 @@ export class AgentChatView {
         this.bounds.set(record.parent.conversationId, ceiling);
         record = this.conversations.get(record.parent.conversationId);
       }
-      this.reset(
-        this.branch_records(),
-        this.submissions,
-        [...this.compactions.values()].filter((task) => this.visible(task.conversationId, task.id)),
-        this.live,
-        state,
-      );
+      this.reset(state);
     } else {
       const previous = this.state;
       this.state = state;
-      for (const id of this.pendingSubmissions) {
-        const submission = this.submissions.get(id)!;
-        if (
-          submission.type !== "input" ||
-          submission.entry === undefined ||
-          submission.requestId === undefined
-        )
-          continue;
-        this.inputSubmissions.set(submission.entry, submission);
-      }
       for (const id of [...this.pendingRecords].sort((a, b) => a - b)) {
         const record = this.records.get(id)!;
         if (this.visible(record.conversationId, id)) this.read_record(record);
@@ -182,8 +180,7 @@ export class AgentChatView {
         const task = this.compactions.get(id)!;
         if (this.visible(task.conversationId, id)) this.read_task(task);
       }
-      if (this.liveChanged || previous.rounds !== state.rounds)
-        this.read_live(this.live, mode === "stopping");
+      if (this.liveChanged || previous.rounds !== state.rounds) this.read_live(this.live, stopping);
     }
     for (const [id, state] of this.pendingUsages) {
       const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -198,23 +195,15 @@ export class AgentChatView {
       this.totals.set(id, total);
     }
     this.pendingRecords.clear();
-    this.pendingSubmissions.clear();
     this.pendingTasks.clear();
     this.pendingUsages.clear();
     this.liveChanged = false;
   }
 
   /** 恢复和增量共用条目转换。分支替换只在这里清空公开索引。 */
-  public reset(
-    records: readonly EntryRecord[],
-    submissions: ReadonlyMap<number, SubmissionRecord>,
-    tasks: readonly TaskRecordValue[],
-    live: Readonly<LiveState>,
-    state: Readonly<AgentChatData>,
-  ): void {
+  private reset(state: Readonly<AgentChatData>): void {
     this.state = state;
     this.rows.clear();
-    this.inputSubmissions.clear();
     this.calls.clear();
     this.toolImages.clear();
     this.userRecords.clear();
@@ -223,21 +212,14 @@ export class AgentChatView {
     this.currentRound = undefined;
     this.liveId = undefined;
     this.replace = true;
-    for (const submission of submissions.values()) {
-      if (
-        submission.type !== "input" ||
-        submission.entry === undefined ||
-        submission.requestId === undefined
-      )
-        continue;
-      this.inputSubmissions.set(submission.entry, submission);
-    }
     // 恢复时统一排序一次，避免每个历史压缩条目都触发插入和重排。
     this.restoring = true;
     try {
-      for (const record of records) this.read_record(record);
-      for (const task of tasks) this.read_task(task);
-      this.read_live(live);
+      for (const record of this.branch_records()) this.read_record(record);
+      for (const task of this.compactions.values()) {
+        if (this.visible(task.conversationId, task.id)) this.read_task(task);
+      }
+      this.read_live(this.live);
     } finally {
       this.restoring = false;
     }

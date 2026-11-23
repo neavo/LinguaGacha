@@ -21,23 +21,26 @@ import {
   type FauxResponseFactory,
 } from "@earendil-works/pi-ai";
 import { ProjectDatabase } from "../database/database-operations";
+import type { LogAppendPayload } from "../../shared/log";
 import type { AgentChatStorage } from "../database/agent-chat-storage";
-import { AgentChat } from "./agent-chat";
-import { AgentChatDoc, AGENT_INPUT_ENTRY_KIND } from "./agent-chat-data";
-import { AgentRuntimeLog } from "./agent-runtime-log";
+import { AgentChat, type AgentSubmitOptions } from "./agent-chat";
+import { AgentChatDoc } from "./agent-chat-data";
+import { AgentRuntimeLog, type AgentLogContent } from "./agent-runtime-log";
 import { define_agent_tool, agent_tool_result, AgentToolError } from "./tool-definition";
 import { AgentChatView } from "./agent-chat-view";
 
 /** 隔离远程流，事务、提交订阅与历史投影使用真实 Harness。 */
 async function create_chat(
   onChange: () => void = () => {},
-  options: { tools?: ToolRegistration[]; storage?: Storage } = {},
+  options: { tools?: ToolRegistration[]; storage?: Storage; systemPrompt?: () => string } = {},
 ) {
   // 预留窗口，避免 fake 缓存计量差异提前触发自动压缩。
   const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
   const models = createModels();
   models.setProvider(provider.provider);
-  const append = vi.fn();
+  const append = vi.fn<(payload: LogAppendPayload) => void>();
+  const log = new AgentRuntimeLog({ append }, "chat-test");
+  const onModelEvent = vi.fn();
   const chat = await AgentChat.open({
     chatId: "chat-test",
     storage: options.storage ?? new MemoryStorage(),
@@ -48,18 +51,17 @@ async function create_chat(
       { role: "assistant", content: "种子回答" },
     ],
     tools: options.tools ?? [],
-    systemPrompt: () => "测试系统指令",
+    systemPrompt: options.systemPrompt ?? (() => "测试系统指令"),
     workspacePrompt: "<workspace_contract>测试工作区契约</workspace_contract>",
     skillsPrompt: () => "",
     continueText: () => "继续",
-    log: new AgentRuntimeLog({ append }, "chat-test"),
+    log,
     onChange,
-    onModelEvent: vi.fn(),
-    onReport: vi.fn(),
+    onModelEvent,
   });
   onTestFinished(() => chat.close());
   await chat.configure(provider.getModel(), "off");
-  return { chat, provider, append };
+  return { chat, provider, append, onModelEvent };
 }
 
 it.each(["text", "error", "image"] as const)(
@@ -172,6 +174,28 @@ it("异步投影失败保留错误并拒绝陈旧成功回执", async () => {
   await expect(chat.flush()).rejects.toBe(fault);
 });
 
+it("SDK 扩展报告记录任务身份和原始异常", async () => {
+  const { chat, provider, append } = await create_chat(undefined, {
+    systemPrompt: () => {
+      throw new Error("指令扩展异常");
+    },
+  });
+  provider.setResponses([fauxAssistantMessage("完成")]);
+  await talk(chat, "正文");
+  const failure = append.mock.calls.find(([payload]) => {
+    const content = payload.content as AgentLogContent;
+    return content.event === "operation_end" && content.operation === "sdk";
+  });
+  expect(failure?.[0].error).toMatchObject({
+    context: {
+      kind: "extension_error",
+      extension: "linguagacha",
+      task: { id: expect.any(Number), kind: "pi.generation", conversationId: expect.any(Number) },
+    },
+    cause_chain: [{ message: "指令扩展异常" }],
+  });
+});
+
 it("工具执行结束后等待 SDK 提交，日志不能提前结算", async () => {
   const storage = new MemoryStorage();
   const committing = Promise.withResolvers<void>(); // SDK 已进入工具回执提交。
@@ -208,7 +232,11 @@ it("工具执行结束后等待 SDK 提交，日志不能提前结算", async ()
   try {
     await Promise.race([committing.promise, running]);
     chat.log.flush();
-    expect(append.mock.calls.some(([payload]) => payload.content.event === "tool_end")).toBe(false);
+    expect(
+      append.mock.calls.some(
+        ([payload]) => (payload.content as AgentLogContent).event === "tool_end",
+      ),
+    ).toBe(false);
     release.resolve();
     await running;
     chat.log.finish_run("success");
@@ -216,7 +244,7 @@ it("工具执行结束后等待 SDK 提交，日志不能提前结算", async ()
     expect(
       append.mock.calls
         .map(([payload]) => payload)
-        .filter((payload) => payload.content.event === "tool_end"),
+        .filter((payload) => (payload.content as AgentLogContent).event === "tool_end"),
     ).toMatchObject([
       { level: "error", error: { message: "工具原始异常" }, content: { status: "error" } },
     ]);
@@ -246,26 +274,36 @@ it("种子进入模型历史，公开时间线从真实输入开始", async () =
   ]);
 });
 
-it("队列事务失败完整回滚，读出的副本无法修改已提交事实", async () => {
-  const { chat } = await create_chat();
-  const queued = await chat.change_queue((queue) =>
-    queue.enqueue({ text: "保留", attachments: [] }),
-  );
+it("排队输入与历史一并提交，受理失败时保留占用的草稿", async () => {
+  const { chat, provider } = await create_chat();
+  const message = { text: "排队输入", attachments: [] };
+  const queued = await chat.change_queue((queue) => queue.begin_send(queue.enqueue(message).id));
   const before = chat.queue.read_snapshot(false);
+  const execution = chat.begin_execution({ owner: "agent" });
+  const submit = (change?: AgentSubmitOptions["change"]) =>
+    chat.submit(message, { text: message.text, images: [] }, execution, "round", {
+      queuedId: queued.id,
+      change,
+    });
   await expect(
-    chat.change_queue((queue) => {
-      queue.delete(queued.id);
-      queue.enqueue({ text: "回滚", attachments: [] });
+    submit((state) => {
+      expect(state.queue.items.length).toBe(0);
       throw new Error("提交失败");
     }),
   ).rejects.toThrow("提交失败");
-  chat.queue.read_snapshot(false).items.pop();
-  queued.text = "外部改写";
   expect(chat.queue.read_snapshot(false)).toEqual(before);
+  expect(chat.entries).toEqual([]);
+
+  provider.setResponses([fauxAssistantMessage("回答")]);
+  await chat.run(await submit(), execution);
+  expect(chat.queue.has_items).toBe(false);
+  expect(chat.entries.filter((entry) => entry.kind === "user_message")).toMatchObject([
+    { text: message.text },
+  ]);
 });
 
 it("供应商身份在修订后改变，同一分支的生成和压缩共用身份", async () => {
-  const { chat, provider } = await create_chat();
+  const { chat, provider, append, onModelEvent } = await create_chat();
   const respond = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("完成"));
   provider.setResponses([respond, respond, respond]);
   // 两轮历史超过近期保留预算，使手动压缩实际请求模型。
@@ -273,7 +311,13 @@ it("供应商身份在修订后改变，同一分支的生成和压缩共用身�
   await talk(chat, history);
   await chat.revise_assistant(chat.entries.at(-1)!, "修订回答");
   const execution = await talk(chat, history);
+  onModelEvent.mockClear();
+  append.mockClear();
   expect(await chat.compact("manual", execution)).toEqual({ status: "success" });
+  expect(onModelEvent).not.toHaveBeenCalled();
+  expect(
+    append.mock.calls.map(([payload]) => (payload.content as AgentLogContent).event),
+  ).not.toContain("message");
   expect(respond).toHaveBeenCalledTimes(3);
   const ids = respond.mock.calls.map(([, options]) => options?.sessionId);
   expect(ids[0]).toEqual(expect.any(String));
@@ -364,9 +408,6 @@ async function open(store: AgentChatStorage, tools: ToolRegistration[] = []) {
     log: new AgentRuntimeLog({ append }, "chat-test"),
     onChange: vi.fn(),
     onModelEvent: vi.fn(),
-    onReport: (error) => {
-      throw error;
-    },
   });
   return { chat, provider, models, append };
 }
@@ -565,26 +606,16 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
       const state = await tx.doc(AgentChatDoc, "session1", null);
       state.activeConversationId = id;
       state.seeded = true;
-      state.commands.admitted = {
-        kind: "send",
-        request: {},
-        status: "pending",
-        conversationId: id,
-        requestId: "request",
-      };
       state.commands.unsubmitted = {
         kind: "send",
         request: {},
         status: "pending",
-        conversationId: id,
-        requestId: "missing",
       };
       const start = await tx.appendEntry(id, { kind: "test.start" });
       state.inputs.request = {
         roundId: "round",
         message: { text: "执行工具", attachments: [] },
         delivery: "round",
-        queuedId: null,
       };
       state.rounds.round = {
         checkpoint: start.id,
@@ -606,7 +637,6 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   expect(restored.append.mock.calls.some(([payload]) => payload.content.event === "tool_end")).toBe(
     false,
   );
-  expect(restored.chat.state.commands.admitted?.status).toBe("accepted");
   expect(restored.chat.state.commands.unsubmitted?.status).toBe("cancelled");
   expect(restored.provider.state.callCount).toBe(0);
   expect(restored.chat.entries).toContainEqual(
@@ -677,8 +707,6 @@ it("压缩后修订早期输入在受理时切换历史与旧意图，并采用�
       kind: "revise",
       request: {},
       status: "pending",
-      conversationId: null,
-      requestId: null,
     };
     state.doing = "旧任务";
   });
@@ -721,7 +749,7 @@ it("压缩后修订早期输入在受理时切换历史与旧意图，并采用�
   expect(chat.entries).toMatchObject([{ text: "新问" }, { parts: [{ text: "新答" }] }]);
 });
 
-it.each(["rollback", "accepted", "legacy"] as const)(
+it.each(["rollback", "accepted"] as const)(
   "SQLite 重开只激活已受理修订的分支：%s",
   async (mode) => {
     const admitted = mode !== "rollback";
@@ -739,8 +767,6 @@ it.each(["rollback", "accepted", "legacy"] as const)(
         kind: "revise",
         request: {},
         status: "pending",
-        conversationId: null,
-        requestId: null,
       };
       state.doing = "旧任务";
     });
@@ -750,45 +776,23 @@ it.each(["rollback", "accepted", "legacy"] as const)(
       first.provider.getModel(),
       "off",
     );
-    if (mode === "legacy") {
-      // 1.3.0 的 SDK 已受理，而切换产品分支的后续提交尚未发生。
-      await first.chat.change((state) => {
-        state.commands.revision!.conversationId = conversation.id;
-        state.commands.revision!.requestId = "old-attempt";
-      });
-      const message = { text: "新问", attachments: [] };
-      const submission = await conversation.submit(
-        {
-          type: "input",
-          content: message.text,
-          requestId: "old-attempt",
-          entry: {
-            kind: AGENT_INPUT_ENTRY_KIND,
-            data: { message, delivery: "round", roundId: "old-attempt", queuedId: null },
-          },
+    const execution = first.chat.begin_execution({ owner: "agent" }, "revision");
+    const input = first.chat.submit(
+      { text: "新问", attachments: [] },
+      { text: "新问", images: [] },
+      execution,
+      "round",
+      {
+        conversation,
+        change: () => {
+          if (!admitted) throw new Error("受理事务回滚");
         },
-        BACKGROUND_CONTEXT,
-      );
-      await submission.wait(BACKGROUND_CONTEXT);
-    } else {
-      const execution = first.chat.begin_execution({ owner: "agent" }, "revision");
-      const input = first.chat.submit(
-        { text: "新问", attachments: [] },
-        { text: "新问", images: [] },
-        execution,
-        "round",
-        {
-          conversation,
-          change: () => {
-            if (!admitted) throw new Error("受理事务回滚");
-          },
-        },
-      );
-      if (admitted) await input;
-      else {
-        await expect(input).rejects.toThrow("受理事务回滚");
-        expect(first.provider.state.callCount).toBe(1);
-      }
+      },
+    );
+    if (admitted) await input;
+    else {
+      await expect(input).rejects.toThrow("受理事务回滚");
+      expect(first.provider.state.callCount).toBe(1);
     }
     await first.chat.close();
     await store.close();

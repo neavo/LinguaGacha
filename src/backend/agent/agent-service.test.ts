@@ -1838,13 +1838,12 @@ describe("AgentService", () => {
     ]);
     expect(records.filter((record) => record.tool_call_id === "schema-invalid")).toEqual([
       expect.objectContaining({ event: "tool_start" }),
-      expect.objectContaining({ event: "tool_end", status: "error" }),
+      expect.objectContaining({
+        event: "tool_end",
+        status: "error",
+        duration_ms: expect.any(Number),
+      }),
     ]);
-    expect(
-      records.find(
-        (record) => record.tool_call_id === "schema-invalid" && record.event === "tool_end",
-      ),
-    ).not.toHaveProperty("duration_ms");
   });
 
   it("工具执行体在 running 事件获得发送轮次后才开始", async () => {
@@ -3775,11 +3774,12 @@ describe("AgentService", () => {
   });
 
   it("停止会保留并暂停队列", async () => {
-    const { service, runtime_gate } = await create_service();
+    const { service, runtime_gate, publish } = await create_service();
     fake_agent_state.mode = "pending";
     await service.send_message({ text: "第一轮", attachments: [] });
     await service.send_message({ text: "第二轮", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    publish.mockClear();
 
     await service.stop();
     await wait_for_idle(service);
@@ -3789,6 +3789,13 @@ describe("AgentService", () => {
     expect(snapshot.inputQueue).toMatchObject({ paused: true, items: [{ text: "第二轮" }] });
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().inputQueue.canSendNow).toBe(true);
+    expect(change_calls(publish)).toContainEqual([
+      "agent.chat_event",
+      expect.objectContaining({
+        type: "input_queue",
+        inputQueue: expect.objectContaining({ canSendNow: true, items: snapshot.inputQueue.items }),
+      }),
+    ]);
     const task_lease = runtime_gate.begin_runtime("batch_translation");
     await expect(service.continue_chat({})).rejects.toThrow(
       expect.objectContaining({ code: "runtime.busy" }),
@@ -4527,7 +4534,7 @@ describe("AgentService", () => {
         };
       });
     }
-    const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);
+    const publish = vi.fn<ConstructorParameters<typeof AgentService>[0]["publish"]>();
     const log_warning = vi.fn();
     const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
@@ -4724,8 +4731,9 @@ function fake_uploads(): AgentWorkspacePort["uploads"] {
 type PublishedChange = (AgentChatChange | Extract<AgentChatEvent, { type: "snapshot_seed" }>) & {
   revision: number;
 };
+type PublishedPayload = Parameters<ConstructorParameters<typeof AgentService>[0]["publish"]>[1];
 /** 展开一个传输批次，保留该批次共享的修订号。 */
-function unpack_event(payload: JsonRecord): PublishedChange[] {
+function unpack_event(payload: PublishedPayload): PublishedChange[] {
   const event = payload as AgentChatEvent;
   return event.type === "chat_update"
     ? event.changes.map((change) => ({ ...change, revision: event.revision }))
@@ -4734,7 +4742,7 @@ function unpack_event(payload: JsonRecord): PublishedChange[] {
 /** 按实际发布顺序读取业务变化，供行为断言使用。 */
 function change_calls(publish: { mock: { calls: unknown[][] } }): Array<[string, PublishedChange]> {
   return publish.mock.calls.flatMap(([topic, payload]) =>
-    unpack_event(payload as JsonRecord).map((event): [string, PublishedChange] => [
+    unpack_event(payload as PublishedPayload).map((event): [string, PublishedChange] => [
       String(topic),
       event,
     ]),

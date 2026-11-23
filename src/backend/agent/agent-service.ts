@@ -28,7 +28,7 @@ import { isDeepStrictEqual } from "node:util";
 import { AgentChat, type AgentExecution, type AgentSubmitOptions } from "./agent-chat";
 
 import { resolve_app_locale } from "../../domain/app-language";
-import { is_json_record, type JsonRecord } from "../../domain/json";
+import { is_json_record, type JsonRecord, type JsonSnapshot } from "../../domain/json";
 import {
   AGENT_CHAT_EVENT_TOPIC,
   AGENT_INACTIVE_CHAT_ID,
@@ -78,6 +78,8 @@ import { AgentRuntimeLog, type AgentStopReason, type AgentLogStatus } from "./ag
 const AGENT_TOKEN_SPEED_PUBLISH_INTERVAL_MS = 250;
 const AGENT_TOKEN_SPEED_DECIMAL_PLACES = 2;
 const AGENT_WORKSPACE_CONTRACT_PROMPT = format_agent_workspace_contract_prompt();
+const EMPTY_AGENT_CONTEXT = Object.freeze({ tokens: null, compactable: false, limits: null });
+const EMPTY_AGENT_USAGE = Object.freeze({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 
 type AgentServicePaths = Pick<
   AppPathService,
@@ -106,7 +108,7 @@ type AgentServiceOptions = {
   workspace: AgentWorkspacePort;
   images: Pick<AgentImageService, "prepare" | "clear">;
   logManager: Pick<LogManager, "append">;
-  publish: (topic: string, payload: JsonRecord) => void;
+  publish: (topic: string, payload: Readonly<Record<string, JsonSnapshot>>) => void; // SSE 同步序列化，只读消费该值。
 };
 
 type AgentChatFields = Pick<
@@ -184,6 +186,12 @@ export class AgentService {
   private revision = 0;
   private disposed = false;
   private publishedFields: AgentChatFields | null = null; // 上一批已发布的控制字段，用于抑制重复通知
+  private skill_snapshot: AgentChatFields["skills"]; // 随技能目录的变更通知更新。
+  private queueSnapshot?: {
+    source: AgentChat["state"]["queue"] | undefined;
+    canSendNow: boolean;
+    value: AgentChatFields["inputQueue"];
+  };
 
   private get execution(): AgentExecution | null {
     return this.run?.execution ?? null;
@@ -199,7 +207,9 @@ export class AgentService {
     this.paths = options.paths;
     this.settings = options.settings;
     this.skills = options.skills;
+    this.skill_snapshot = this.read_skill_snapshot();
     this.unsubscribe_skills = this.skills.subscribe(() => {
+      this.skill_snapshot = this.read_skill_snapshot();
       if (!this.disposed && this.resources !== null && this.chat_reset === null) {
         this.publish_snapshot();
       }
@@ -324,24 +334,34 @@ export class AgentService {
     return { chatId: this.chat_id, files: await this.workspace.list_files() };
   }
 
-  /** 完整快照和技能事件共用公开投影，隐藏技能仍可供模型读取。 */
-  private get_skill_snapshot(): AgentChatSnapshot["skills"] {
+  /** 只投影界面可见技能，模型请求直接读取技能目录。 */
+  private read_skill_snapshot(): AgentChatFields["skills"] {
     return this.skills
       .get_current()
       .filter(({ visible }) => visible)
-      .map(({ name, displayDescriptions }) => ({
-        name,
-        displayDescriptions: { ...displayDescriptions },
-      }));
+      .map(({ name, displayDescriptions }) => ({ name, displayDescriptions }));
+  }
+
+  /** 队列内容由提交快照替换，即时发送资格也可能随运行状态独立变化。 */
+  private get_queue_snapshot(): AgentChatFields["inputQueue"] {
+    const source = this.chat?.state.queue;
+    const canSendNow = this.can_send_now();
+    if (this.queueSnapshot?.source !== source || this.queueSnapshot?.canSendNow !== canSendNow)
+      this.queueSnapshot = {
+        source,
+        canSendNow,
+        value: new AgentInputQueue(source).read_snapshot(canSendNow),
+      };
+    return this.queueSnapshot.value;
   }
 
   /** 快照由相同的提交事实投影，调用者只能取得独立值。 */
   public get_snapshot(): AgentChatSnapshot {
-    return {
+    return structuredClone({
       ...this.read_fields(),
       revision: this.revision,
-      entries: structuredClone(this.chat?.entries ?? []),
-    };
+      entries: this.chat?.entries ?? [],
+    });
   }
   /** 读取会话控制字段，用于事件比较和完整快照组装。 */
   private read_fields(): AgentChatFields {
@@ -357,12 +377,12 @@ export class AgentService {
       chatId: this.chat_id,
       state,
       pendingDecision: this.decisions.read_pending(),
-      skills: this.get_skill_snapshot(),
-      inputQueue: (chat?.queue ?? new AgentInputQueue()).read_snapshot(this.can_send_now()),
+      skills: this.skill_snapshot,
+      inputQueue: this.get_queue_snapshot(),
       doing: chat?.state.doing ?? null,
-      context: structuredClone(chat?.context ?? { tokens: null, compactable: false, limits: null }),
-      usage: { ...(chat?.usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }) },
-      tokenSpeed: structuredClone(this.token_speed_snapshot),
+      context: chat?.context ?? EMPTY_AGENT_CONTEXT,
+      usage: chat?.usage ?? EMPTY_AGENT_USAGE,
+      tokenSpeed: this.token_speed_snapshot,
       runOutput: this.run_output,
     };
   }
@@ -1084,10 +1104,6 @@ export class AgentService {
       onClosing: (closing) => {
         if (this.chat === closing) this.decisions.reset();
       },
-      onReport: (error, operation = "cleanup") => {
-        log.report_failure(operation, error);
-        log.flush();
-      },
     });
     return chat;
   }
@@ -1256,15 +1272,10 @@ export class AgentService {
     const timeline = this.chat?.view.take_change();
     if (force || previous === null || previous.chatId !== fields.chatId || timeline?.replace) {
       this.revision++;
-      const snapshot = {
-        ...fields,
-        revision: this.revision,
-        entries: structuredClone(this.chat?.entries ?? []),
-      };
       this.publish(AGENT_CHAT_EVENT_TOPIC, {
         type: "snapshot_seed",
         revision: this.revision,
-        snapshot,
+        snapshot: { ...fields, revision: this.revision, entries: this.chat?.entries ?? [] },
       });
     } else {
       const changes: AgentChatChange[] = [];
@@ -1291,7 +1302,7 @@ export class AgentService {
         this.publish(AGENT_CHAT_EVENT_TOPIC, {
           type: "chat_update",
           revision: this.revision,
-          changes: structuredClone(changes),
+          changes,
         });
       }
     }

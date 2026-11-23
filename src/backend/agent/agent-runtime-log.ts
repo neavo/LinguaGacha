@@ -1,5 +1,5 @@
 import type { LogAppendPayload, LogLevel } from "../../shared/log";
-import { to_log_error } from "../../shared/error";
+import { to_log_error, type LogErrorContextInput } from "../../shared/error";
 import {
   uuidv7,
   type Message,
@@ -55,6 +55,7 @@ type AgentLogEvent =
       parts: AgentLogPart[];
       status: AgentLogStatus;
       duration_ms?: number; // SDK 请求耗时，包含首段等待。
+      diagnostics?: JsonValue;
     } & AgentLogTiming)
   | {
       event: "tool_start";
@@ -70,7 +71,7 @@ type AgentLogEvent =
       output: AgentToolLogOutput;
       status: AgentLogStatus;
       stop_reason?: AgentStopReason;
-      duration_ms?: number; // SDK 执行耗时，不含排队与提交。
+      duration_ms?: number; // SDK 工具任务从首次启动到结算的耗时，包含钩子、挂起、重跑与未执行失败。
     } & AgentLogTiming)
   | {
       event: "tool_diagnostic";
@@ -290,6 +291,7 @@ export class AgentRuntimeLog {
                 : "success",
             event.stop_reason,
             event.message.durationMs,
+            event.message.diagnostics,
           );
         }
         break;
@@ -337,15 +339,16 @@ export class AgentRuntimeLog {
     }
   }
 
-  /** 终帧与中断收尾共用出口，工具专用空消息不生成正文记录。 */
+  /** 终帧与中断收尾共用出口，仅在有正文或诊断时写入消息记录。 */
   private finish_assistant(
     status: AgentLogStatus,
     stop_reason?: AgentStopReason,
     duration_ms?: number,
+    diagnostics?: AssistantMessage["diagnostics"],
   ): void {
     const assistant = this.assistant;
     this.assistant = null;
-    if (assistant === null || assistant.parts.length === 0) return;
+    if (assistant === null || (assistant.parts.length === 0 && !diagnostics?.length)) return;
     this.append({
       event: "message",
       role: "assistant",
@@ -354,6 +357,18 @@ export class AgentRuntimeLog {
       ...(status === "stopped" && stop_reason !== undefined ? { stop_reason } : {}),
       ended_at: new Date().toISOString(),
       ...(duration_ms === undefined ? {} : { duration_ms }),
+      ...(diagnostics?.length
+        ? {
+            // 供应商错误与自由格式详情可能回显请求，只展开已知的输入转换元数据。
+            diagnostics: json_snapshot(
+              diagnostics.map(({ type, timestamp, details }) =>
+                type === "openai_input_transformations"
+                  ? { type, timestamp, details }
+                  : { type, timestamp },
+              ),
+            ),
+          }
+        : {}),
     });
   }
 
@@ -361,11 +376,13 @@ export class AgentRuntimeLog {
   public report_failure(
     operation: "input_prepare" | "compaction" | "cleanup" | "sdk",
     error: unknown,
+    context?: LogErrorContextInput,
   ): void {
     this.append(
       { event: "operation_end", operation, status: "error", ended_at: new Date().toISOString() },
       {
         error,
+        context,
         level: operation === "cleanup" ? "warning" : "error",
       },
     );
@@ -379,7 +396,11 @@ export class AgentRuntimeLog {
   /** 接收时固定会话身份与载荷，`flush()` 时统一写出。 */
   private append(
     event: AgentLogEvent,
-    diagnostic: { error?: unknown; level?: LogLevel } = {},
+    diagnostic: {
+      error?: unknown;
+      level?: LogLevel;
+      context?: LogErrorContextInput | undefined;
+    } = {},
   ): void {
     const content: AgentLogContent = {
       kind: "agent",
@@ -393,7 +414,9 @@ export class AgentRuntimeLog {
       diagnostic.level ?? ("status" in event && event.status === "error" ? "error" : "info");
     this.pending.push({
       level,
-      ...(diagnostic.error === undefined ? {} : { error: to_log_error(diagnostic.error) }),
+      ...(diagnostic.error === undefined
+        ? {}
+        : { error: to_log_error(diagnostic.error, diagnostic.context) }),
       source: "agent",
       content,
       targets: {

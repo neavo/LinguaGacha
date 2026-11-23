@@ -24,7 +24,6 @@ const input: AgentInputRecord = {
   roundId: "round",
   message: { text: " 原始输入 ", attachments: [] },
   delivery: "round",
-  queuedId: null,
 };
 const entry = {
   id: 2 as EntryId,
@@ -57,7 +56,6 @@ it.each([
   [],
   { ...input, roundId: "" },
   { ...input, delivery: "unknown" },
-  { ...input, queuedId: 1 },
   { ...input, message: { text: "损坏附件", attachments: [{}] } },
 ])("损坏的新输入元数据不能回退到旧资料：%j", (data) => {
   const state = AgentChatDoc.definition.initial(null);

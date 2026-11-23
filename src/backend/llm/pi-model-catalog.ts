@@ -1,13 +1,8 @@
 import crypto from "node:crypto";
-import { Value } from "typebox/value";
+import { isDeepStrictEqual } from "node:util";
+import { Compile } from "typebox/compile";
 import { ThinkingLevelMapSchema } from "@earendil-works/pi-ai/providers/model-schema";
-import {
-  OpenAICompletionsCompatSchema,
-  OpenAIResponsesCompatSchema,
-  AnthropicMessagesCompatSchema,
-  BedrockCompatSchema,
-  MistralConversationsCompatSchema,
-} from "@earendil-works/pi-ai/providers/compat-schema";
+import { CompatSchemasByApi } from "@earendil-works/pi-ai/providers/compat-schema";
 import type { TSchema } from "typebox";
 
 import type { PiCatalogModel } from "./model-capability";
@@ -22,16 +17,8 @@ import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { ModelCatalogSnapshot } from "../../shared/model-catalog";
 
-// 按协议校验，避免可选字段在其他协议的 Schema 中绕过检查。
-const COMPAT_SCHEMAS: Readonly<Record<string, TSchema>> = {
-  "openai-completions": OpenAICompletionsCompatSchema,
-  "openai-responses": OpenAIResponsesCompatSchema,
-  "azure-openai-responses": OpenAIResponsesCompatSchema,
-  "openai-codex-responses": OpenAIResponsesCompatSchema,
-  "anthropic-messages": AnthropicMessagesCompatSchema,
-  "bedrock-converse-stream": BedrockCompatSchema,
-  "mistral-conversations": MistralConversationsCompatSchema,
-};
+const THINKING_LEVEL_MAP_CHECK = Compile(ThinkingLevelMapSchema as TSchema);
+const COMPAT_CHECKS = new Map<TSchema, ReturnType<typeof Compile>>(); // 共用 Schema 的协议复用检查器。
 
 /** 消费方只能读取当前目录，更新由组合根编排。 */
 export type PiModelCatalogReader = Pick<PiModelCatalog, "read_models">;
@@ -113,6 +100,7 @@ export class PiModelCatalog {
       providers: { ...this.cache.providers },
     };
     let cursor = 0; // 并发下载共用游标，领取供应商时不跨 `await`。
+    let updated = false; // 成功接纳的远端条目一定有更新的修改时间。
     try {
       await Promise.all(
         Array.from({ length: Math.min(CHECK_CONCURRENCY, providers.length) }, async () => {
@@ -122,7 +110,10 @@ export class PiModelCatalog {
             try {
               const entry = await this.fetch_provider(provider, fetch_signal);
               // 整份替换供应商覆盖，空目录清除旧覆盖并恢复内置基线。
-              if (entry !== null) next.providers[provider] = entry;
+              if (entry !== null) {
+                next.providers[provider] = entry;
+                updated = true;
+              }
             } catch (error) {
               if (!fetch_signal.aborted)
                 this.log.warning("Pi 模型能力目录供应商检查失败。", {
@@ -140,11 +131,10 @@ export class PiModelCatalog {
         this.log.warning("Pi 模型能力目录检查超时，保留已完成的供应商结果。", {
           targets: CATALOG_DIAGNOSTIC_TARGETS,
         });
-      const candidate = this.merge(next);
-      const serialized = JSON.stringify(next);
+      if (!updated) return;
       // 缓存经原路径写入，保留用户设置的文件链接。
-      if (serialized !== JSON.stringify(this.cache))
-        this.native_fs.write_file_sync(this.file_path, serialized);
+      this.native_fs.write_file_sync(this.file_path, JSON.stringify(next));
+      const candidate = this.merge(next);
       if (same_models(candidate, this.models)) {
         this.cache = next;
         return;
@@ -254,9 +244,9 @@ export class PiModelCatalog {
 
   /** 同供应商同 ID 的远端条目覆盖基线，其余内置条目继续可用。 */
   private merge(cache: CatalogCache): readonly PiCatalogModel[] {
-    const models = new Map(this.builtin.map((model) => [`${model.provider}\0${model.id}`, model]));
+    const models = new Map(this.builtin.map((model) => [model_key(model), model]));
     for (const entry of Object.values(cache.providers)) {
-      for (const model of entry.models) models.set(`${model.provider}\0${model.id}`, model);
+      for (const model of entry.models) models.set(model_key(model), model);
     }
     return [...models.values()];
   }
@@ -286,7 +276,7 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
       (!Array.isArray(model.input) ||
         !model.input.every((input) => input === "text" || input === "image"))) ||
     (model.thinkingLevelMap !== undefined &&
-      !Value.Check(ThinkingLevelMapSchema, model.thinkingLevelMap)) ||
+      !THINKING_LEVEL_MAP_CHECK.Check(model.thinkingLevelMap)) ||
     (model.compat !== undefined && !valid_compat(model.api, model.compat))
   )
     throw new Error(`Invalid Pi model ${provider}/${id}`);
@@ -313,42 +303,42 @@ function read_catalog_model(provider: string, id: string, value: unknown): PiCat
   };
 }
 
-/** 比较能力与 Vertex 选择项，其他供应商展示元数据不影响应用能力。 */
-function same_models(left: readonly PiCatalogModel[], right: readonly PiCatalogModel[]): boolean {
-  const normalize = (models: readonly PiCatalogModel[]) =>
-    JSON.stringify(
-      models
-        .map((model) => ({
-          provider: model.provider,
-          id: model.id,
-          api: model.api,
-          baseUrl: model.baseUrl,
-          reasoning: model.reasoning,
-          contextWindow: model.contextWindow,
-          maxTokens: model.maxTokens,
-          ...(model.api === "google-vertex" ? { name: model.name, input: model.input } : {}),
-          thinkingLevelMap: stable(model.thinkingLevelMap),
-          compat: stable(model.compat),
-        }))
-        .sort((a, b) => `${a.provider}/${a.id}`.localeCompare(`${b.provider}/${b.id}`)),
-    );
-  return normalize(left) === normalize(right);
+/** 同一模型 ID 可由多个供应商独立定义。 */
+function model_key(model: PiCatalogModel): string {
+  return `${model.provider}\0${model.id}`;
 }
 
-/** 固定嵌套对象键序，使等价 JSON 得到相同表示。 */
-function stable(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stable);
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, stable(entry)]),
-  );
+/** 比较能力与 Vertex 选择项，其他供应商展示元数据不影响应用能力。 */
+function same_models(left: readonly PiCatalogModel[], right: readonly PiCatalogModel[]): boolean {
+  if (left.length !== right.length) return false;
+  const previous = new Map(right.map((model) => [model_key(model), model]));
+  return left.every((model) => {
+    const old = previous.get(model_key(model));
+    if (model === old) return true;
+    return (
+      old !== undefined &&
+      model.api === old.api &&
+      model.baseUrl === old.baseUrl &&
+      model.reasoning === old.reasoning &&
+      model.contextWindow === old.contextWindow &&
+      model.maxTokens === old.maxTokens &&
+      isDeepStrictEqual(model.thinkingLevelMap, old.thinkingLevelMap) &&
+      isDeepStrictEqual(model.compat, old.compat) &&
+      (model.api !== "google-vertex" ||
+        (model.name === old.name && isDeepStrictEqual(model.input, old.input)))
+    );
+  });
 }
 
 /** 只校验当前协议已知字段，保留未知字段和缺省值供新版 SDK 消费。 */
 function valid_compat(api: string, value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const schema = COMPAT_SCHEMAS[api];
-  return schema === undefined || Value.Check(schema, value);
+  if (!Object.hasOwn(CompatSchemasByApi, api)) return true;
+  const schema: TSchema = CompatSchemasByApi[api as keyof typeof CompatSchemasByApi];
+  let check = COMPAT_CHECKS.get(schema);
+  if (check === undefined) {
+    check = Compile(schema);
+    COMPAT_CHECKS.set(schema, check);
+  }
+  return check.Check(value);
 }

@@ -123,11 +123,13 @@ const MODEL_COMPAT_FIELDS = [
   "chatTemplateKwargs",
   "requiresThinkingAsText",
   "requiresReasoningContentOnAssistantMessages",
+  "requiresNonNullAssistantContent",
   "supportsDeveloperRole",
   "supportsTemperature",
   "forceAdaptiveThinking",
   "maxTokensField",
   "supportsMaxOutputTokens",
+  "supportsStrictMode",
 ] as const satisfies readonly (keyof (OpenAICompletionsCompat &
   OpenAIResponsesCompat &
   AnthropicMessagesCompat))[];
