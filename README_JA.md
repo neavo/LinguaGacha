@@ -1,6 +1,7 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>万能翻訳 AGENT Harness · 漫画 ゲーム 音声・動画 電子書籍 · ワンクリック · 高品質 · 全形式</p>
+<p align='center'>万能翻訳 AGENT Harness · ワンクリック · 高品質 · 全形式</p>
+<p align='center'>漫画 ゲーム 音声・動画 電子書籍 · PDF EPUB ASMR MANGA COMIC RPGGAME GALGAME</p>
 
 &ensp;
 &ensp;
@@ -10,18 +11,18 @@
 
 ## 概要 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)、翻訳に特化した次世代の `AGENT Harness`
-- `ワンクリック - ドラッグして開始を押せば、あとは翻訳の完成を待つだけ`
+- `ワンクリック`
   - 多言語間の全自動ワンクリック相互翻訳
-  - 技術的な背景知識も外国語の知識も不要
-- `高品質 - 制限なく自由に出力`
-  - 用語集を自動生成し、固有名詞の訳語を作品全体で統一
-  - 各種 `漫画` `ゲーム` `音声・動画` のレイアウトや演出を完全に保持
-  - セマンティックなスマート校正：問題点を伝えるだけで `AGENT` が自動で修正・推敲
-- `全形式 - 以下を含むあらゆる形式を翻訳可能`
-  - 画像・漫画 - `日本の漫画` `アメコミ` `白黒` `カラー` `横書き` `縦書き` に対応
+  - 人の手を介さずに全自動で翻訳
+- `高品質`
+  - 制限なく自由に出力
+  - コンテンツの種類ごとに細かく調整し、最適な翻訳品質を実現
+  - 用語管理と校正を支援し、簡単な対話で好みの文体や言い回しに調整
+- `全形式（以下は対応例の一部）`
   - 音声・動画 - `ASMR` `アニメ` `映画・ドラマ` `モーションコミック` など
+  - 画像・漫画 - `日本の漫画` `アメコミ` `白黒` `カラー` `横書き` `縦書き` に対応
   - 字幕・電子書籍 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` など
-  - ゲームエンジン・データファイル - `Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` など
+  - ゲームエンジン・データファイル - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` など
 
 > <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -31,14 +32,14 @@
 > - [LinguaGacha](https://github.com/neavo/LinguaGacha) で翻訳した作品を公開する際は、目立つ場所に必ず [LinguaGacha](https://github.com/neavo/LinguaGacha) を明記してください！
 > - 作者はすべての権利を留保します。ソースコードは閲覧用としてのみ公開しており、いかなる形での組み込み、改変、配布、転売、二次開発も禁止します！
 
-## 翻訳サンプル ✨
+## 翻訳サンプル（全自動翻訳、人の手を介さずに作成） ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ 漫画・画像 · 自動文字組み</b></summary><br><img width="1280" alt="画像" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎬 動画 · セリフごとの精密タイムライン同期</b></summary><br><img width="1280" alt="動画" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎧 音声 · 字幕＋スペクトラム可視化動画を同時出力</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎮 ゲーム · 技術知識不要の全自動ゲーム翻訳</b></summary><br><img width="1280" alt="ゲーム" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>📚 電子書籍 · PDF/EPUB/Markdown の各形式に対応</b></summary><br><img width="1280" alt="電子書籍" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ 漫画</b></summary><br><img width="1280" alt="画像" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 動画</b></summary><br><img width="1280" alt="動画" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 音声</b></summary><br><img width="1280" alt="音声" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 ゲーム</b></summary><br><img width="1280" alt="ゲーム" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 電子書籍</b></summary><br><img width="1280" alt="電子書籍" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -81,6 +82,10 @@
 - 各機能の詳しい説明は [Wiki](https://github.com/neavo/LinguaGacha/wiki) をご覧ください
 
 ## 最近の更新 📅
+- 20261123 v0.142.3
+  - `RP` と `執筆` の結果を改善
+  - 修正と改善 [#1123](../../issues/1123) [#1124](../../issues/1124)
+
 - 20261120 v0.142.2
   - 透明な `画像` の翻訳に対応 [#1120](../../pull/1120)
   - `画像（漫画）` 翻訳の文字組みを大幅に改善 [#1116](../../pull/1116)

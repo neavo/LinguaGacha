@@ -1,24 +1,25 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>올인원 번역 AGENT Harness · 만화 게임 오디오·동영상 전자책 · 원클릭 · 고품질 · 전 형식</p>
+<p align='center'>올인원 번역 AGENT Harness · 원클릭 · 고품질 · 전 형식</p>
+<p align='center'>만화 게임 오디오·동영상 전자책 · PDF EPUB ASMR MANGA COMIC RPGGAME GALGAME</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## 개요 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), 번역에 특화된 차세대 `AGENT Harness`
-- `원클릭 - 끌어다 놓고 시작을 누른 뒤 번역이 끝날 때까지 기다리면 끝`
+- `원클릭`
   - 다양한 언어 간 전자동 원클릭 상호 번역
-  - 기술적 배경이나 외국어 지식이 전혀 필요 없음
-- `고품질 - 제한 없이 자유롭게 출력`
-  - 용어집을 자동 생성하여 작품 전체에서 고유 명사를 일관되게 유지
-  - 다양한 `만화` `게임` `오디오·동영상`의 서식과 연출을 완벽하게 보존
-  - 시맨틱 스마트 검수: 문제점만 짚어 주면 `AGENT`가 알아서 수정하고 다듬기
-- `전 형식 - 다음을 비롯한 모든 콘텐츠 번역 가능`
-  - 이미지 및 만화 - `일본 만화` `미국 만화` `흑백` `컬러` `가로쓰기` `세로쓰기` 모두 지원
+  - 사람의 개입 없이 전자동으로 번역
+- `고품질`
+  - 제한 없이 자유롭게 출력
+  - 콘텐츠 유형별로 세밀하게 조정해 최상의 번역 품질 제공
+  - 스마트 용어 관리와 검수로 간단한 대화만으로 문체와 표현을 취향에 맞게 조정
+- `전 형식(아래는 지원 예시의 일부)`
   - 오디오 및 동영상 - `ASMR` `애니메이션` `영화 및 드라마` `모션 코믹스` 등
+  - 이미지 및 만화 - `일본 만화` `미국 만화` `흑백` `컬러` `가로쓰기` `세로쓰기` 모두 지원
   - 자막 및 전자책 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc` 등
-  - 게임 엔진 및 데이터 파일 - `Godot` `ACTION GAME MAKER` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` 등
+  - 게임 엔진 및 데이터 파일 - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON` 등
 
 > <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -28,14 +29,14 @@
 > - [LinguaGacha](https://github.com/neavo/LinguaGacha)로 번역한 작품을 공개할 때는 눈에 잘 띄는 곳에 [LinguaGacha](https://github.com/neavo/LinguaGacha)를 반드시 명시해야 합니다!
 > - 저자는 모든 권리를 보유합니다. 소스 코드는 열람용으로만 제공되며, 어떠한 형태의 통합, 수정, 배포, 재판매 또는 2차 개발도 금지됩니다!
 
-## 번역 결과 미리보기 ✨
+## 번역 결과 미리보기(사람의 개입 없는 전자동 번역) ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ 만화 및 이미지 · 자동 텍스트 배치</b></summary><br><img width="1280" alt="이미지" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎬 동영상 · 대사 단위 정밀 타임라인 동기화</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎧 오디오 · 자막/스펙트럼 시각화 이중 출력</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎮 게임 · 기술 지식 없이 전자동 게임 번역</b></summary><br><img width="1280" alt="게임" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>📚 전자책 · PDF/EPUB/Markdown 형식 지원</b></summary><br><img width="1280" alt="전자책" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ 만화</b></summary><br><img width="1280" alt="이미지" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 동영상</b></summary><br><img width="1280" alt="동영상" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 오디오</b></summary><br><img width="1280" alt="오디오" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 게임</b></summary><br><img width="1280" alt="게임" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 전자책</b></summary><br><img width="1280" alt="전자책" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -78,6 +79,10 @@
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
 
 ## 최근 업데이트 📅
+- 20261123 v0.142.3
+  - `RP` 및 `글쓰기` 결과 개선
+  - 수정 및 개선 [#1123](../../issues/1123) [#1124](../../issues/1124)
+
 - 20261120 v0.142.2
   - 투명 `이미지` 번역 지원 [#1120](../../pull/1120)
   - `이미지(만화)` 번역의 텍스트 배치를 크게 개선 [#1116](../../pull/1116)

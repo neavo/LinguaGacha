@@ -1,6 +1,7 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>All-in-One Translation AGENT Harness · Comics Games Audio & Video E-books · One-Click · High Quality · All Formats</p>
+<p align='center'>All-in-One Translation AGENT Harness · One-Click · High Quality · All Formats</p>
+<p align='center'>Comics Games Audio &amp; Video E-books · PDF EPUB ASMR MANGA COMIC RPGGAME GALGAME</p>
 
 &ensp;
 &ensp;
@@ -10,18 +11,18 @@
 
 ## Overview 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), a next-generation `AGENT Harness` specialized in translation
-- `One-Click - Drop it in, hit start, and wait for the finished translation`
+- `One-Click`
   - Fully automatic one-click translation across languages
-  - No technical background or foreign language knowledge required
-- `High Quality - Translate freely without restrictions`
-  - Automatically builds a glossary to keep proper nouns consistent throughout the work
-  - Fully preserves formatting and styles across `Comics`, `Games`, and `Audio & Video`
-  - Semantic smart proofreading: just point out the issue and `AGENT` automatically corrects and polishes the translation
-- `All Formats - Translate virtually anything`
-  - Images & Comics - `Manga`, `Western comics`, `Black and white`, `Color`, `Horizontal text`, and `Vertical text`
-  - Audio & Video - `ASMR`, `Anime`, `TV & Film`, `Dynamic Comics`, and more
+  - Fully automatic translation with no manual intervention
+- `High Quality`
+  - Export freely without restrictions
+  - Fine-tuned for each type of content to deliver the best quality
+  - Smart terminology management and review let you match the wording to your preferences with a simple conversation
+- `All Formats, including but not limited to the examples below`
+  - Audio & Video - `ASMR`, `Anime`, `TV & Film`, `Motion Comics`, and more
+  - Images & Comics - `Manga`, `American comics`, `Black and white`, `Color`, `Horizontal text`, `Vertical text`, and more
   - Subtitles & E-books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`, and more
-  - Game Engines & Data Files - `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
+  - Game Engines & Data Files - `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`, and more
 
 > <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -31,14 +32,14 @@
 > - When publishing a work translated with [LinguaGacha](https://github.com/neavo/LinguaGacha), you must credit [LinguaGacha](https://github.com/neavo/LinguaGacha) prominently!
 > - The author reserves all rights. The source code is provided for display purposes only. All forms of integration, modification, distribution, resale, and further development are prohibited!
 
-## Showcase ✨
+## Showcase (Fully automatic translation, zero manual intervention) ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ Comics and Images · Automatic Typesetting</b></summary><br><img width="1280" alt="Images" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎬 Video · Line-by-line timeline synchronization</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎧 Audio · Subtitles &amp; spectrum video dual output</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎮 Games · Fully automated game translation, no technical knowledge required</b></summary><br><img width="1280" alt="Games" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>📚 E-books · PDF/EPUB/Markdown format support</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ Comics</b></summary><br><img width="1280" alt="Images" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 Video</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 Audio</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 Games</b></summary><br><img width="1280" alt="Games" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 E-books</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -81,6 +82,10 @@
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Recent Updates 📅
+- 20261123 v0.142.3
+  - Improved `RP` and `Writing` results
+  - Fixes and improvements [#1123](../../issues/1123) [#1124](../../issues/1124)
+
 - 20261120 v0.142.2
   - Added translation support for transparent `images` [#1120](../../pull/1120)
   - Significantly improved typesetting for `image (comic)` translation [#1116](../../pull/1116)

@@ -1,6 +1,7 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>AGENT Harness Tudo-em-Um para Tradução · Quadrinhos Jogos Áudio e Vídeo E-books · Um Clique · Alta Qualidade · Todos os Formatos</p>
+<p align='center'>AGENT Harness Tudo-em-Um para Tradução · Um Clique · Alta Qualidade · Todos os Formatos</p>
+<p align='center'>Quadrinhos Jogos Áudio e Vídeo E-books · PDF EPUB ASMR MANGA COMIC RPGGAME GALGAME</p>
 
 &ensp;
 &ensp;
@@ -10,18 +11,18 @@
 
 ## Visão Geral 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), um `AGENT Harness` de nova geração especializado em tradução
-- `Um Clique - Arraste o arquivo, clique em iniciar e aguarde a tradução`
+- `Um Clique`
   - Tradução totalmente automática entre vários idiomas com apenas um clique
-  - Não exige conhecimento técnico nem domínio de outros idiomas
-- `Alta Qualidade - Saída livre, sem restrições`
-  - Gera glossários automaticamente para manter os nomes próprios consistentes em toda a obra
-  - Preserva integralmente os estilos e a formatação de `Quadrinhos`, `Jogos` e `Áudio e Vídeo`
-  - Revisão semântica inteligente: basta apontar o problema e o `AGENTE` corrige e aprimora a tradução automaticamente
-- `Todos os Formatos - Tudo pode ser traduzido, incluindo os exemplos abaixo`
-  - Imagens e Quadrinhos - `Mangás`, `Quadrinhos americanos`, `Preto e branco`, `Colorido`, `Texto horizontal` e `Texto vertical`
+  - Tradução totalmente automática, sem intervenção humana
+- `Alta Qualidade`
+  - Exportação livre, sem restrições
+  - Ajustes precisos para cada tipo de conteúdo, com foco na melhor qualidade de tradução
+  - O gerenciamento inteligente de termos e a revisão permitem ajustar o estilo e a escolha das palavras às suas preferências com uma conversa simples
+- `Todos os Formatos, incluindo os exemplos abaixo`
   - Áudio e Vídeo - `ASMR`, `Anime`, `Filmes e Séries`, `Motion Comics` e muito mais
+  - Imagens e Quadrinhos - `Mangás`, `Quadrinhos americanos`, `Preto e branco`, `Colorido`, `Texto horizontal` e `Texto vertical`
   - Legendas e E-books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` e outros formatos
-  - Engines de Jogos e Arquivos de Dados - `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` e muito mais
+  - Engines de Jogos e Arquivos de Dados - `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` e muito mais
 
 > <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -31,14 +32,14 @@
 > - Ao publicar uma obra traduzida com o [LinguaGacha](https://github.com/neavo/LinguaGacha), você deve dar crédito ao [LinguaGacha](https://github.com/neavo/LinguaGacha) em local de destaque!
 > - O autor reserva todos os direitos. O código-fonte é disponibilizado apenas para demonstração. É proibida qualquer forma de integração, modificação, distribuição, revenda ou desenvolvimento derivado!
 
-## Demonstração ✨
+## Demonstração (tradução totalmente automática, sem intervenção humana) ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ Quadrinhos e Imagens · Diagramação Automática</b></summary><br><img width="1280" alt="Imagens" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎬 Vídeo · Alinhamento preciso de linha do tempo por diálogo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎧 Áudio · Saída dupla em legendas e vídeo com espectro visual</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎮 Jogos · Tradução totalmente automática, sem necessidade de conhecimentos técnicos</b></summary><br><img width="1280" alt="Jogos" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>📚 E-books · Suporte aos formatos PDF/EPUB/Markdown</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ Quadrinhos</b></summary><br><img width="1280" alt="Imagens" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 Vídeo</b></summary><br><img width="1280" alt="Vídeo" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 Áudio</b></summary><br><img width="1280" alt="Áudio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 Jogos</b></summary><br><img width="1280" alt="Jogos" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 E-books</b></summary><br><img width="1280" alt="E-books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -81,6 +82,10 @@
 - Mais detalhes sobre cada recurso podem ser encontrados na [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Atualizações Recentes 📅
+- 20261123 v0.142.3
+  - Melhoria nos resultados de `RP` e `Escrita`
+  - Correções e melhorias [#1123](../../issues/1123) [#1124](../../issues/1124)
+
 - 20261120 v0.142.2
   - Adicionado suporte à tradução de `imagens` transparentes [#1120](../../pull/1120)
   - Melhoria significativa na diagramação do texto na tradução de `imagens (quadrinhos)` [#1116](../../pull/1116)

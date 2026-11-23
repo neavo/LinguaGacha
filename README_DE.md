@@ -1,24 +1,25 @@
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
-<p align='center'>All-in-One-Übersetzungs-AGENT Harness · Comics Spiele Audio & Video E-Books · Ein Klick · Hohe Qualität · Alle Formate</p>
+<p align='center'>All-in-One-Übersetzungs-AGENT Harness · Ein Klick · Hohe Qualität · Alle Formate</p>
+<p align='center'>Comics Spiele Audio &amp; Video E-Books · PDF EPUB ASMR MANGA COMIC RPGGAME GALGAME</p>
 
 ## README 🌍
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
 ## Überblick 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), ein auf Übersetzung spezialisiertes `AGENT Harness` der nächsten Generation
-- `Ein Klick - Datei hineinziehen, auf Start klicken und auf die fertige Übersetzung warten`
+- `Ein Klick`
   - Vollautomatische Übersetzung zwischen verschiedenen Sprachen per Knopfdruck
-  - Keine technischen Vorkenntnisse und keine Fremdsprachenkenntnisse nötig
-- `Hohe Qualität - Freie Ausgabe ohne Einschränkungen`
-  - Erstellt automatisch ein Glossar für durchgehend einheitliche Eigennamen
-  - Erhält Formatierung und Stile in `Comics`, `Spielen` und `Audio & Video` vollständig
-  - Semantisches Smart-Lektorat: Einfach das Problem benennen, und `AGENT` korrigiert die Übersetzung automatisch und verfeinert ihren Stil
-- `Alle Formate - Alles lässt sich übersetzen, zum Beispiel`
-  - Bilder & Comics - `Manga`, `US-Comics`, `Schwarz-Weiß`, `Farbe`, `horizontaler Text` und `vertikaler Text`
+  - Vollautomatische Übersetzung ohne manuelle Eingriffe
+- `Hohe Qualität`
+  - Freie Ausgabe ohne Einschränkungen
+  - Feinabstimmung für jede Art von Inhalt für bestmögliche Übersetzungsqualität
+  - Intelligente Terminologieverwaltung und Korrektur passen die Formulierungen in einem kurzen Dialog an Ihre Vorlieben an
+- `Alle Formate, darunter die folgenden Beispiele`
   - Audio & Video - `ASMR`, `Anime`, `Filme & Serien`, `Motion Comics` und mehr
+  - Bilder & Comics - `Manga`, `US-Comics`, `Schwarz-Weiß`, `Farbe`, `horizontaler Text` und `vertikaler Text`
   - Untertitel & E-Books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` und weitere Formate
-  - Game-Engines & Datendateien - `Godot`, `ACTION GAME MAKER`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` und mehr
+  - Game-Engines & Datendateien - `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` und mehr
 
 > <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
@@ -28,14 +29,14 @@
 > - Wenn Sie ein mit [LinguaGacha](https://github.com/neavo/LinguaGacha) übersetztes Werk veröffentlichen, müssen Sie [LinguaGacha](https://github.com/neavo/LinguaGacha) an gut sichtbarer Stelle nennen!
 > - Der Autor behält sich alle Rechte vor. Der Quellcode dient ausschließlich der Veranschaulichung. Integration, Änderung, Verbreitung, Weiterverkauf und Weiterentwicklung sind in jeder Form untersagt!
 
-## Ergebnis-Vorschau ✨
+## Ergebnisvorschau (vollautomatisch übersetzt, ohne manuelle Eingriffe) ✨
 <table>
   <tbody>
-    <tr><td><details open><summary><b>🗯️ Comics und Bilder · Automatischer Textsatz</b></summary><br><img width="1280" alt="Bilder" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎬 Video · Zeilengenaue Zeitachsen-Synchronisation</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎧 Audio · Untertitel- &amp; Spektrum-Video-Doppelausgabe</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>🎮 Spiele · Vollautomatische Spielübersetzung ohne technische Vorkenntnisse</b></summary><br><img width="1280" alt="Spiele" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
-    <tr><td><details open><summary><b>📚 E-Books · Unterstützung für PDF/EPUB/Markdown</b></summary><br><img width="1280" alt="E-Books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
+    <tr><td><details open><summary><b>🗯️ Comics</b></summary><br><img width="1280" alt="Bilder" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎬 Video</b></summary><br><img width="1280" alt="Video" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/video.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎧 Audio</b></summary><br><img width="1280" alt="Audio" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/audio.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>🎮 Spiele</b></summary><br><img width="1280" alt="Spiele" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/game.jpg" /></details></td></tr>
+    <tr><td><details open><summary><b>📚 E-Books</b></summary><br><img width="1280" alt="E-Books" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/book.png" /></details></td></tr>
   </tbody>
 </table>
 
@@ -78,6 +79,10 @@
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## Neueste Updates 📅
+- 20261123 v0.142.3
+  - Verbesserte Ergebnisse bei `RP` und `Schreiben`
+  - Korrekturen und Verbesserungen [#1123](../../issues/1123) [#1124](../../issues/1124)
+
 - 20261120 v0.142.2
   - Übersetzung transparenter `Bilder` hinzugefügt [#1120](../../pull/1120)
   - Textsatz bei der Übersetzung von `Bildern (Comics)` deutlich verbessert [#1116](../../pull/1116)
