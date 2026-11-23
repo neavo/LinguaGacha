@@ -3,7 +3,7 @@ name: escude
 description: 翻译、审校、分析、修改 Escude 游戏前必须加载。
 ---
 
-内置解析器不识别 Escude 游戏，文本都经 `generic-data` 进入工程。本技能提供 Escude 在各阶段的方法。
+内置解析器不识别 Escude 游戏，文本都经 `generic-package` 封装为 `.generic` 通用包进入工程。本技能提供 Escude 在各阶段的方法。
 
 # 来源调查
 

@@ -56,7 +56,7 @@ export const ko_kr_project = {
     deprecated_tooltip: "더 이상 최선의 선택이 아닙니다. 위의 형식을 우선 사용해 주세요",
     empty_project_hint:
       "파일을 선택하지 않고 「{ACTION}」을 클릭한 다음, AGENT 입력란에 파일을 끌어다 놓으세요 …!",
-    generic: "범용 데이터",
+    generic: "범용 패키지",
     title: "특별히 최적화된 형식",
     txt: "일반 텍스트",
     md: "Markdown",

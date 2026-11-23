@@ -72,7 +72,7 @@ export const zh_cn_project = {
     title_tooltip: "更快更好更稳定",
     deprecated_tooltip: "已不是最佳选择，请优先使用上述格式",
     empty_project_hint: "无需选择文件，直接点击「{ACTION}」，再将文件拖入 AGENT 输入框即可 …!",
-    generic: "通用数据",
+    generic: "通用包",
     title: "特别优化的格式",
     txt: "纯文本",
     md: "Markdown",

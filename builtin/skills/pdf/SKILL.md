@@ -1,23 +1,9 @@
 ---
 name: pdf
-description: 翻译、审校、分析、修改 PDF 文件（含 .media 文件）前必须加载。
+description: 翻译、审校、分析、修改 PDF 文件（含 `.generic` 通用包）前必须加载。
 ---
 
-# PDF 处理能力
-
-内置解析器不识别 PDF，原稿经 `generic-data` 封装为 `.generic` 资产进入工程。处理 PDF 通用包时同时加载 `generic-data`。
-
-阶段导航：
-
-|阶段入口|章节|
-|---|---|
-|来源调查|「来源调查」|
-|导入准备|「环境与依赖」「准备与封包」|
-|旧版静态迁移包|按需读取 [旧版 PDF 迁移指南](references/migration.md)|
-|原稿与条目|「条目结构与处置」「分组与视觉翻译」「阅读原页与裁剪」「Markdown 译稿与资源」|
-|翻译后检查|「翻译后检查」|
-|写回与验证|「写回 PDF」「视觉复核与常见问题」|
-|交付说明|「交付说明」|
+内置解析器不识别 PDF，原稿经 `generic-package` 封装为 `.generic` 资产进入工程。处理 PDF 通用包时同时加载 `generic-package`。
 
 阶段例外：PDF 翻译须结合原页版面、图表与图像判断，在当前对话中按每组约 `5` 页逐组翻译（走 `translation` 的当前对话分支，不调用 `batch_item_translation`）。
 

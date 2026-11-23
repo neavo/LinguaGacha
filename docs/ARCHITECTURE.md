@@ -10,7 +10,7 @@ LinguaGacha 让 GUI、CLI 与产品 Agent 共用后端业务能力，工程事�
 |---|---|
 |进程隔离、依赖方向、跨层不变量与资源生命周期|本文|
 |CLI 的临时工程、设置继承与机器输出|[CLI](CLI.md)|
-|工程一致性、任务恢复、文件存储、原生游戏、通用数据与网络策略|[BACKEND](BACKEND.md)|
+|工程一致性、任务恢复、文件存储、原生游戏、通用包与网络策略|[BACKEND](BACKEND.md)|
 |产品 Agent 的会话、工作材料、授权与运行环境|[AGENT_RUNTIME](AGENT_RUNTIME.md)|
 |前端状态寿命、交互恢复与宿主接入|[FRONTEND](FRONTEND.md)|
 |源码定位、开发命令与验证选择|[WORKFLOW](WORKFLOW.md)|

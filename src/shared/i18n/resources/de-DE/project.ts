@@ -60,7 +60,7 @@ export const de_de_project = {
       "Nicht mehr die beste Wahl. Bitte bevorzugt die oben genannten Formate verwenden",
     empty_project_hint:
       "Ohne Dateiauswahl auf „{ACTION}“ klicken, dann die Dateien ins AGENT-Eingabefeld ziehen …!",
-    generic: "Generische Daten",
+    generic: "Generisches Paket",
     title: "Besonders optimierte Formate",
     txt: "Nur Text",
     md: "Markdown",

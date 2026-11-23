@@ -5,13 +5,11 @@ description: 翻译、审校、分析、修改 Godot 或 ACTION GAME MAKER 游�
 
 内置解析器识别 Godot 游戏，每个游戏导入为一个工程资产。ACTION GAME MAKER 基于 Godot 二次开发，按本技能处理。本技能提供 Godot 在各阶段的方法。
 
-阶段导航：「来源调查」「原稿与条目」「可见文本补漏」「翻译后检查」「交付说明」按阶段执行，「默认状态」「写回粒度」「语言表」「依赖协调」「控制符与占位符」是各阶段共用的知识。用户要求修改字体时按「字体」执行。
-
 # 来源调查
 
 游戏提交后，按 `game_files.reference.txt` 调查原稿以外的材料，见「原稿与条目」。可参考的范围是游戏根目录，排除 `.godot/`。
 
-文本格式的 `.tscn`、`.tres` 和其他自定义数据文件不在原稿中，含待译文本的按 `generic-data` 封装为增补数据。C# 或 Mono 的 DLL、GDExtension 原生库不处理。
+文本格式的 `.tscn`、`.tres` 和其他自定义数据文件不在原稿中，含待译文本的按 `generic-package` 封装为增补通用包。C# 或 Mono 的 DLL、GDExtension 原生库不处理。
 
 # 原稿与条目
 
@@ -194,7 +192,7 @@ locale 精确比较，`en` 和 `en_US` 不算匹配。`project.binary.reference.
 |`source_issues.jsonl` 有本游戏的记录|涉及的成员，其中的文字可能仍显示原文|
 |有 `selected` 为 `false` 的语言表|系统语言或游戏内语言菜单选中这些 locale 时，游戏仍显示其中的原文|
 |`game_files.reference.txt` 列出 C# 或 Mono 的 DLL、GDExtension 原生库|其中的文字仍显示原文|
-|「来源调查」发现的文本文件未作为通用数据处理|其中的文字仍显示原文|
+|「来源调查」发现的文本文件未封装为通用包|其中的文字仍显示原文|
 
 每次交付都说明：
 

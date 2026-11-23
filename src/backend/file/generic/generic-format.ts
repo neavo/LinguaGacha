@@ -5,7 +5,7 @@ import { read_generic_items, type GenericItems } from "../../../shared/generic-p
 import { read_zip_members } from "../shared/zip-members";
 import { write_message_records } from "../shared/message-records";
 
-/** 通用资产只解释记录结构，底稿和私有定位由产品 Agent 维护。 */
+/** 通用包只解释记录结构，底稿和私有定位由产品 Agent 维护。 */
 export class GenericFormat {
   /** 完整验证后才建立条目，坏记录不能被过滤后改变后续坐标。 */
   private async read_records(content: Uint8Array, file: string): Promise<GenericItems> {

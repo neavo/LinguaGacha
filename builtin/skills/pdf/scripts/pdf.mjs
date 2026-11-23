@@ -87,7 +87,7 @@ async function pack_document(bytes, document, original_file_name, output, old_pa
     await writeFile(path.join(directory, "pdf.json"), JSON.stringify(metadata));
     await writeFile(
       path.join(directory, "README.md"),
-      "# PDF 通用数据包\n\n技能：`pdf`、`generic-data`\n\n写回入口：`writeback.mjs`\n\nnpm 依赖版本见 `pdf.json`。\n",
+      "# PDF 通用包\n\n技能：`pdf`、`generic-package`\n\n写回入口：`writeback.mjs`\n\nnpm 依赖版本见 `pdf.json`。\n",
     );
     for (const name of PACKAGE_SCRIPTS)
       await copyFile(new URL(name, import.meta.url), path.join(directory, name));
