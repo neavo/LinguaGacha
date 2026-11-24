@@ -14,7 +14,7 @@ export function format_agent_workspace_typescript_api(): string {
     "declare const ws: Readonly<{",
     ...[
       contract.member,
-      "/** 用户技能根目录的绝对路径，可读写，不同工程共用，工作区重置时保留。 */\nuserSkillDirectory: string;",
+      "/** 应用共用的用户技能根目录，使用绝对路径，可读写。 */\nuserSkillDirectory: string;",
       "/** 应用随附字体目录的绝对路径，只读。 */\nfontsDirectory: string;",
       describe_emit_image(),
       describe_doing(),

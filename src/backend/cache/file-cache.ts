@@ -7,7 +7,7 @@ export class FileCache {
   private file_entries: ProjectFileRecord[] = []; // 文件顺序由 sort_index 或原始 block 顺序决定。
 
   /**
-   * before_read 由 CacheManager 注入，用来在读取前尝试恢复缓存。
+   * before_read 由 ProjectCache 注入，用来在读取前尝试恢复缓存。
    */
   public constructor(private readonly before_read: () => void = () => undefined) {}
 
@@ -20,11 +20,10 @@ export class FileCache {
       .sort((left, right) => left.sort_index - right.sort_index);
   }
 
-  /**
-   * 清空当前项目文件索引。
-   */
-  public clear(): void {
-    this.file_entries = [];
+  /** 工程列表只读取数量，避免复制文件记录。 */
+  public size(): number {
+    this.before_read();
+    return this.file_entries.length;
   }
 
   /**

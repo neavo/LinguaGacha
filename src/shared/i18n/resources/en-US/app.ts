@@ -47,6 +47,7 @@ export const en_us_app = {
     cancel: "Cancel",
     confirm: "Confirm",
     close: "Close",
+    open: "Open",
     create: "Create",
     delete: "Delete",
     edit: "Edit",
@@ -89,7 +90,7 @@ export const en_us_app = {
     import_success: "Data imported",
     no_valid_data: "No valid data",
     update_failed: "Update failed …",
-    project_settings_aligned: "Project settings updated from current settings",
+    project_settings_saved: "Project settings saved",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -97,10 +98,16 @@ export const en_us_app = {
     description:
       "This window switched to the protected view, and the error details were written to logs …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool optimizer",
-      skip_duplicate_source_text_enable: "Skip duplicate source text",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool optimizer",
+      description:
+        "For MTool text, <emphasis>cuts translation time and tokens by up to 40%</emphasis>.\nEnabled by default.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "Skip duplicate source text",
+      description:
+        "Entries with identical text across the project share <emphasis>one translation</emphasis>.\nEnabled by default.",
     },
   },
   close_confirm: {
@@ -115,13 +122,14 @@ export const en_us_app = {
     launching: "Processing …",
   },
   drop: {
+    release: "Release to apply",
+    project_only: "Only .lg project files can be dropped here",
     select_multiple_unavailable: "Only one file or folder can be dropped at a time",
     select_unavailable:
       "The local path of the dropped file is unavailable right now. Please use the picker instead …",
     multiple_unavailable: "Only one file can be dropped at a time",
     unavailable:
       "The local path of the dropped file is unavailable right now. Please use the import picker instead …",
-    import_here: "Release to import the rule file",
   },
   toggle: {
     option: {
@@ -165,9 +173,23 @@ export const en_us_app = {
     ID: "Indonesian",
     VI: "Vietnamese",
   },
+  workspace: {
+    projects: "Projects",
+    projects_empty: "No projects",
+    skills: "Skills",
+    workbench: "Workbench",
+    quality: "Translation Quality",
+    more: "More",
+    close_chat: "Close conversation",
+    close_chat_confirm: "Confirm closing the conversation …?",
+    reveal_path: "Show in folder",
+    remove_recent: "Remove from list",
+    remove_confirm: "Confirm closing this project and removing it from the recent list …?",
+    close_busy: "A project operation is in progress",
+    files: "Files",
+  },
   navigation_action: {
-    expand_sidebar: "Expand sidebar",
-    collapse_sidebar: "Collapse sidebar",
+    resize_sidebar: "Resize sidebar",
     appearance: "Appearance",
     font: "Font",
     font_size: "Font size",
@@ -207,7 +229,7 @@ export const en_us_app = {
     confirmation: {
       agent_description:
         "This project contains assets that require AGENT writeback. Direct export will skip those assets …",
-      description: "Export the currently available translations?",
+      description: "Confirm exporting the currently available translations …?",
       checking: "Checking project files and proofreading warnings …",
       check_failed:
         "Could not check project files or proofreading warnings. Check again or let AGENT handle it …",

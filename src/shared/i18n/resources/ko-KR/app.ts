@@ -47,6 +47,7 @@ export const ko_kr_app = {
     cancel: "취소",
     confirm: "확인",
     close: "닫기",
+    open: "열기",
     create: "추가",
     delete: "삭제",
     edit: "편집",
@@ -89,17 +90,23 @@ export const ko_kr_app = {
     import_success: "데이터를 가져왔습니다",
     no_valid_data: "유효한 데이터가 없습니다",
     update_failed: "업데이트에 실패했습니다 …",
-    project_settings_aligned: "현재 설정에 맞춰 프로젝트 설정을 업데이트했습니다",
+    project_settings_saved: "프로젝트 설정을 저장했습니다",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
     title: "페이지 실행 중 오류가 발생했습니다",
     description: "현재 창을 보호 화면으로 전환했습니다. 오류 상세 내용은 로그에 기록되었습니다 …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool 최적화",
-      skip_duplicate_source_text_enable: "중복 원문 건너뛰기",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool 최적화",
+      description:
+        "MTool 텍스트 번역 시 <emphasis>번역 시간과 Token 사용량을 최대 40% 줄일 수 있습니다</emphasis>.\n기본적으로 사용합니다.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "중복 원문 건너뛰기",
+      description:
+        "프로젝트 전체에서 텍스트가 같은 항목은 한 번만 번역하고 <emphasis>번역문을 재사용</emphasis>합니다.\n기본적으로 사용합니다.",
     },
   },
   close_confirm: {
@@ -114,11 +121,12 @@ export const ko_kr_app = {
     launching: "처리 중 …",
   },
   drop: {
+    release: "놓으면 적용됩니다",
+    project_only: "여기에는 .lg 프로젝트 파일만 놓을 수 있습니다",
     select_multiple_unavailable: "한 번에 파일 또는 폴더 하나만 놓을 수 있습니다",
     select_unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 선택해 주세요 …",
     multiple_unavailable: "한 번에 파일 하나만 놓을 수 있습니다",
     unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 가져와 주세요 …",
-    import_here: "놓아서 규칙 파일 가져오기",
   },
   toggle: {
     option: {
@@ -162,9 +170,23 @@ export const ko_kr_app = {
     ID: "인도네시아어",
     VI: "베트남어",
   },
+  workspace: {
+    projects: "프로젝트",
+    projects_empty: "프로젝트 없음",
+    skills: "스킬",
+    workbench: "워크벤치",
+    quality: "번역 품질",
+    more: "더 보기",
+    close_chat: "대화 닫기",
+    close_chat_confirm: "대화를 닫을까요 …?",
+    reveal_path: "폴더에서 보기",
+    remove_recent: "목록에서 제거",
+    remove_confirm: "프로젝트를 닫고 최근 목록에서 제거할까요 …?",
+    close_busy: "프로젝트 작업이 진행 중입니다",
+    files: "파일",
+  },
   navigation_action: {
-    expand_sidebar: "사이드바 펼치기",
-    collapse_sidebar: "사이드바 접기",
+    resize_sidebar: "사이드바 너비 조절",
     appearance: "모양",
     font: "글꼴",
     font_size: "글꼴 크기",
@@ -204,7 +226,7 @@ export const ko_kr_app = {
     confirmation: {
       agent_description:
         "이 프로젝트에는 AGENT가 쓰기 작업을 완료해야 하는 에셋이 포함되어 있습니다. 직접 내보내기에서는 해당 에셋을 건너뜁니다 …",
-      description: "현재 사용 가능한 번역 결과물을 내보낼까요?",
+      description: "현재 사용 가능한 번역 결과물을 내보낼까요 …?",
       checking: "프로젝트 파일 및 교정 경고 확인 중 …",
       check_failed:
         "프로젝트 파일 또는 교정 경고를 확인하지 못했습니다. 다시 확인하거나 AGENT에 처리를 맡기세요 …",

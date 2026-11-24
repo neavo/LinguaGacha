@@ -5,8 +5,7 @@ import type { KnowledgeFile } from "../../shared/project-knowledge";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
-import type { ProjectSessionState } from "./project-session-state";
+import type { ProjectOperationGate } from "../runtime-operation-gate";
 import type { ProjectWriteStore } from "./project-write-store";
 import { project_knowledge_file } from "./project-knowledge";
 
@@ -15,14 +14,14 @@ export class ProjectKnowledgeService {
   /** 复用当前工程会话、写入管线和运行占用，界面语言只用于补位模板。 */
   public constructor(
     private readonly database: ProjectDatabase,
-    private readonly session: ProjectSessionState,
+    private readonly project_path: string,
     private readonly writes: ProjectWriteStore,
-    private readonly gate: RuntimeOperationGate,
+    private readonly gate: ProjectOperationGate,
     private readonly settings: Pick<AppSettingService, "read_app_language">,
   ) {}
 
   /** 页面与 AGENT 工作区共用的读取入口，旧工程尚未保存时返回模板。 */
-  public async read(project = this.session.require_loaded_project_path()): Promise<KnowledgeFile> {
+  public async read(project = this.project_path): Promise<KnowledgeFile> {
     const stored = await this.database.read_knowledge(project);
     return this.make_document(stored);
   }
@@ -34,7 +33,7 @@ export class ProjectKnowledgeService {
       if ((text !== null && typeof text !== "string") || typeof fp !== "string")
         throw new AppError("request.validation_failed");
       const write = await this.writes.save_knowledge({
-        projectPath: this.session.require_loaded_project_path(),
+        projectPath: this.project_path,
         fp,
         text,
       });

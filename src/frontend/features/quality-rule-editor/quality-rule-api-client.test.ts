@@ -8,7 +8,9 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_fetch: api_fetch_mock,
 }));
 
-import { import_quality_rule_entries, read_quality_rule_snapshot } from "./quality-rule-api-client";
+import { createQualityRuleApi } from "./quality-rule-api-client";
+import { api_fetch } from "@frontend/app/desktop/desktop-api";
+const { import_quality_rule_entries, read_quality_rule_snapshot } = createQualityRuleApi(api_fetch);
 
 describe("quality rule api client", () => {
   beforeEach(() => {

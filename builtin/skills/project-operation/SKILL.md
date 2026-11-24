@@ -85,9 +85,14 @@ console.log(JSON.stringify(result, null, 2));
 
 ## 回执与恢复
 
-- `inspectSources` 只识别来源，不能证明内容解析成功。新增回执 `parse_failed` 中的资产已经加入工程。告诉用户哪些文件解析失败，不说成新增失败。空条目资产（例如全书无待译文字的 `.image` 资产，或尚未转换的旧封存 `.generic` 包）不等于解析失败，按对应格式技能核对包内结构。
-- `invalid_change` 提示 Godot 包集合已变化时，重新识别来源，与用户确认新的完整顺序。
-- 错误 `data.committed_sync_failed` 时，先重读工程确认已生效的文件变更，避免重复提交。
+|回执或错误|含义与处理|
+|---|---|
+|`parse_failed`|资产原稿已入工程但文本解析失败。如实说明失败文件，不报成新增失败；空条目资产（如无字 `.image` 或未转换旧封存 `.generic`）不等于解析失败，按格式技能核对结构。|
+|`invalid_change`（Godot 包变化）|目标目录的外部包集合已变动。重新调用 `inspectSources`，与用户确认新的完整覆盖顺序后再提交。|
+|`fp_mismatch`|工程文件清单在快照后已变动。重读最新 `project_meta.json`，核对用户编辑或前序提交是否已完成同类新增、改名或删除，再按最新快照调整变更，避免重复新增产生 `_2` 副本。|
+|`runtime.busy`|当前工程正有其他写入或批量翻译进行。告知占用状态或待空闲后再提交，不反复盲目重试。|
+
+> `inspectSources` 仅识别来源，不保证内容解析成功，最终资产状态以提交回执为准。
 
 ## 导入收尾
 
@@ -108,7 +113,7 @@ console.log(JSON.stringify(result, null, 2));
 
 适用于单一、同扩展名新来源直接替换对应资产，例如 `.image` 调整区域或掩码、`.generic` 或 `.media` 重新封包，或无需并排对照旧资产的单文件升级。
 
-1. 写入 `changes/files/replaces.jsonl`，传入 `file_path`、`source_path` 与 `inheritance_mode: "inherit"`（放弃旧译文重译时才设为 `"none"`），按「准备与提交」提交。同一资产本批不能同时更新或删除。
+1. 写入 `changes/files/replaces.jsonl`，传入 `file_path`、`source_path` 与 `inheritance_mode: "inherit"`（放弃旧译文重译时才设为 `"none"`），按「准备与提交」提交。
 2. 核对回执 `applied.files.replaced` 中的 `preserved`、`inherited` 与 `contested`，并读取最新条目：
    - 大部分原有译文丢失且无合理结构变化时停止修正，说明实际继承与抽样情况请用户确认。
    - 否则按 `translation` 的审校修正处理 `contested` 与受结构或原文变动影响的差异项（这一步属于更新流程，不再询问翻译流程），并统计仍为 `NONE` 的新增待译条目数，按用户需要继续翻译或交付。

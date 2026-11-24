@@ -4,6 +4,7 @@ import {
   IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_REVEAL_PATH,
   IPC_CHANNEL_REQUEST_USER_ATTENTION,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
@@ -89,6 +90,7 @@ describe("preload desktop bridge", () => {
     await expect(bridge.requestUserAttention()).resolves.toBe(true);
     await bridge.quitApp();
     await bridge.openLogWindow();
+    await bridge.revealPath("E:/工程 文件.lg");
     bridge.reportRendererDiagnostics({ route: "workbench" });
     electron_mock.invoke.mockResolvedValueOnce({ status: "fallback_to_release_page" });
     await bridge.downloadUpdate(
@@ -109,6 +111,7 @@ describe("preload desktop bridge", () => {
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_REQUEST_USER_ATTENTION);
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_QUIT_APP);
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_OPEN_LOG_WINDOW);
+    expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_REVEAL_PATH, "E:/工程 文件.lg");
     expect(electron_mock.invoke).toHaveBeenCalledWith(
       IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
       expect.objectContaining({

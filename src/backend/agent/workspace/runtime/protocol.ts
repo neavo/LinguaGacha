@@ -21,11 +21,21 @@ import type { InferenceConfiguration } from "../../inference/runtime";
 import type { WorkspaceSearchRequest, SearchResponse } from "../../search/schema";
 import type { AppErrorCode, AppErrorPublicDetails } from "../../../../shared/error";
 
+export type WorkspaceResource = "npm" | "uv" | "gpu";
+
 export type WorkspaceOperations = {
+  acquire_resource: {
+    request: { kind: "acquire_resource"; resource: WorkspaceResource };
+    response: number;
+  };
+  release_resource: {
+    request: { kind: "release_resource"; lease: number };
+    response: null;
+  };
   search: { request: WorkspaceSearchRequest; response: SearchResponse };
   resolve_proxy: { request: { kind: "resolve_proxy"; url: string }; response: string };
   resolve_package_source: {
-    request: { kind: "resolve_package_source" }; // 对话身份由宿主绑定，子进程不携带
+    request: { kind: "resolve_package_source" };
     response: "official" | "mirror";
   };
   emit_image: { request: Static<typeof WORKSPACE_IMAGE_REQUEST_SCHEMA>; response: null };

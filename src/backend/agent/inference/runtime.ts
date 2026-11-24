@@ -1,3 +1,5 @@
+import { acquire_workspace_resource } from "../workspace/runtime/request-channel";
+
 export type InferenceConfiguration = Readonly<{
   modelsDirectory: string;
   cacheDirectory: string;
@@ -31,7 +33,16 @@ export function run_inference_operation<T>(
     return await action();
   };
   if (device === "cpu") return run();
-  const result = gpu_pending.then(run);
+  const result = gpu_pending.then(async () => {
+    if (shutdown_failure) throw shutdown_failure;
+    const release = await acquire_workspace_resource("gpu");
+    try {
+      return await run();
+    } finally {
+      // 回收未确认时继续占用，直至宿主结束整棵脚本进程树。
+      if (!shutdown_failure) await release();
+    }
+  });
   gpu_pending = result.catch(() => undefined); // 调用者接收错误，队尾只记录收尾顺序。
   return result;
 }

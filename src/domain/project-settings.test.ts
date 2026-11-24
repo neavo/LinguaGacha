@@ -3,26 +3,20 @@ import { describe, expect, it } from "vitest";
 import {
   build_project_execution_settings,
   parse_project_language_patch,
+  parse_project_settings_patch,
   read_project_language_settings,
-  read_project_prefilter_settings,
+  read_project_settings,
 } from "./project-settings";
 
 describe("项目设置", () => {
   it("历史项目逐字段兜底，已有语言保留", () => {
-    expect(read_project_language_settings({})).toEqual({
-      source_language: "JA",
-      target_language: "ZH",
-    });
-    expect(read_project_language_settings({ target_language: " ko " })).toEqual({
-      source_language: "JA",
-      target_language: "KO",
-    });
     expect(
       read_project_language_settings({
         source_language: "",
+        target_language: " ko ",
         prefilter_config: { source_language: "en" },
       }),
-    ).toEqual({ source_language: "EN", target_language: "ZH" });
+    ).toEqual({ source_language: "EN", target_language: "KO" });
     expect(
       read_project_language_settings({ source_language: "ALL", target_language: "XX" }),
     ).toEqual({ source_language: "ALL", target_language: "ZH" });
@@ -30,23 +24,33 @@ describe("项目设置", () => {
 
   it("预过滤开关优先读取 meta，再回退旧镜像", () => {
     expect(
-      read_project_prefilter_settings({
+      read_project_settings({
         mtool_optimizer_enable: false,
         prefilter_config: {
           mtool_optimizer_enable: true,
           skip_duplicate_source_text_enable: false,
         },
       }),
-    ).toEqual({ mtool_optimizer_enable: false, skip_duplicate_source_text_enable: false });
+    ).toEqual({
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: false,
+    });
   });
 
   it("请求边界拒绝未知字段与不支持的语言", () => {
     expect(parse_project_language_patch({ target_language: "zh-hant" })).toEqual({
       target_language: "ZH-HANT",
     });
-    expect(() => parse_project_language_patch({ target_language: "ALL" })).toThrow();
-    expect(() => parse_project_language_patch({ source_language: 1 })).toThrow();
-    expect(() => parse_project_language_patch({ app_language: "ZH" })).toThrow();
+    expect(() => parse_project_language_patch({ mtool_optimizer_enable: false })).toThrow();
+    expect(parse_project_settings_patch({ mtool_optimizer_enable: false })).toEqual({
+      mtool_optimizer_enable: false,
+    });
+    expect(() => parse_project_settings_patch({ target_language: "ALL" })).toThrow();
+    expect(() => parse_project_settings_patch({ source_language: 1 })).toThrow();
+    expect(() => parse_project_settings_patch({ app_language: "ZH" })).toThrow();
+    expect(() => parse_project_settings_patch({ skip_duplicate_source_text_enable: 0 })).toThrow();
   });
 
   it("执行快照组合应用设置与项目语言，应用设置不提供语言", () => {

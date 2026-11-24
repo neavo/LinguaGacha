@@ -1,0 +1,46 @@
+/* 行内与标签内的紧凑操作按钮：常态只露图标，悬停或展开菜单时浮出细描边与自适应对比底色。 */
+.inline-action-button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 0.5px solid transparent;
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.inline-action-button:hover:not(:disabled),
+.inline-action-button[aria-expanded="true"]:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.inline-action-button:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.inline-action-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.inline-action-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inline-action-button {
+    transition: none;
+  }
+}

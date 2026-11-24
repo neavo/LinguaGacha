@@ -18,13 +18,8 @@ import {
   create_empty_quality_rule_confirm_state,
   type QualityRuleConfirmState,
 } from "./quality-rule-confirm-state";
-import {
-  read_quality_rule_presets,
-  save_quality_rule_preset,
-  rename_quality_rule_preset,
-  delete_quality_rule_preset,
-  update_quality_rule_default_preset,
-} from "./quality-rule-api-client";
+import { createQualityRuleApi } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 
 /** 预设状态只驻页面；默认项由应用设置投影，文件与默认引用的变更由后端命令完成。 */
 export function useQualityRulePresets<K extends QualityRuleKind>(
@@ -32,6 +27,14 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
   entries: QualityRuleEntryByKind[K][],
   ready: boolean,
 ) {
+  const api_fetch = useProjectFetch();
+  const {
+    read_quality_rule_presets,
+    save_quality_rule_preset,
+    rename_quality_rule_preset,
+    delete_quality_rule_preset,
+    update_quality_rule_default_preset,
+  } = useMemo(() => createQualityRuleApi(api_fetch), [api_fetch]);
   const { t } = useI18n();
   const { settings_snapshot, apply_settings_snapshot, project_snapshot, refresh_settings } =
     useDesktopState();

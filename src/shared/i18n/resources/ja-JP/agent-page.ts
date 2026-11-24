@@ -1,7 +1,7 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_agent_page = {
-  project_required: "まずプロジェクトファイルを作成または開いてください …",
+  project_required: "まず左側のボタンをクリックして、プロジェクトを作成または開いてください …",
   document: {
     conversation: "会話",
     open: "開く",
@@ -53,11 +53,10 @@ export const ja_jp_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "翻訳対象のファイルやフォルダーをドラッグして、ワンクリックで翻訳 …!",
+    no_project_placeholder: "翻訳するファイルやフォルダーをドロップしてプロジェクトを作成 …",
     placeholder: "タスクを入力するか、@ でスキルや指示を選択 …",
     edit_assistant_placeholder: "モデルの返信を編集 …",
     newline: "改行",
-    drop_files: "ドロップしてファイルを追加",
   },
   mention: {
     files: {
@@ -149,7 +148,6 @@ export const ja_jp_agent_page = {
     send: "送信",
     stop: "停止",
     applying: "プロジェクトの変更を適用中です。完了するまで停止できません",
-    new_task: "新しいタスク",
     add_file: "ファイルを追加",
     common_instructions: "よく使う指示",
     continue: "続ける",
@@ -173,7 +171,6 @@ export const ja_jp_agent_page = {
   },
   confirm: {
     fork: "この返信から分岐して新しい会話を作成しますか？",
-    new_task: "新しい会話タスクを始めますか …?",
     thinking_off:
       "モデルの思考をオフにすると AGENT のタスク遂行能力が大きく低下します。続けますか …?",
   },
@@ -201,7 +198,6 @@ export const ja_jp_agent_page = {
     continue: "続行できませんでした。再試行してください …",
     queue_send: "メッセージを今すぐ送信できませんでした。キューに保持されています …",
     stop: "停止できませんでした。再試行してください …",
-    reset: "新しいタスクを作成できませんでした。再試行してください …",
     approval_mode: "書き込みの承認モードを更新できませんでした。再試行してください …",
     compact: "コンテキストを圧縮できませんでした。再試行してください …",
   },

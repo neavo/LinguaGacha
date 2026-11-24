@@ -1,0 +1,26 @@
+.file-drop-overlay {
+  position: absolute;
+  inset: 5px;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--primary);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 90%, transparent);
+  color: var(--foreground);
+  font-size: var(--ui-font-size-13);
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.file-drop-overlay[data-active="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-drop-overlay {
+    transition: none;
+  }
+}

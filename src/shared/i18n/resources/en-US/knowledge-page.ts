@@ -1,5 +1,4 @@
 export const en_us_knowledge_page = {
-  title: "Knowledge",
   builtin: "Built-in skills",
   user: "User skills",
   knowledge: "Project knowledge",
@@ -8,19 +7,11 @@ export const en_us_knowledge_page = {
   },
   readonly: "Read-only",
   personality_description: "Personality settings for your intelligent assistant",
-  knowledge_description: "Settings, conventions and progress saved with the project",
   install: {
     title: "Installation guide",
     description: "Send the skill link to AGENT and ask it to install the skill",
     placeholder: "[Enter the skill link here]",
     request: "Please install this skill for me: {PLACEHOLDER}",
-  },
-  knowledge_create: {
-    title: "Recording guide",
-    description:
-      "Tell AGENT the settings, conventions or conclusions to record, and it will organize them as project knowledge",
-    placeholder: "[Describe what to record here]",
-    request: "Please record this as project knowledge: {PLACEHOLDER}",
   },
   editor: {
     save_failed: "Save failed",

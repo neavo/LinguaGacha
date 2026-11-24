@@ -174,7 +174,7 @@ export class AppPathService {
   }
 
   /** 保留 node.lock 的物理身份，让不同应用版本继续共享同一租约与 Windows Job。 */
-  public get_agent_execution_lock_path(): string {
+  public get_agent_preparation_lock_path(): string {
     return this.get_user_data_path("node.lock");
   }
 

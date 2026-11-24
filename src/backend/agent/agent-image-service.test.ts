@@ -74,7 +74,7 @@ it("同一原图按单次尺寸隔离缓存，在途参数修改不会改变结�
   expect(host).toHaveBeenCalledTimes(2);
 });
 
-it("重置取消在途转换，迟到结果不能重新填入缓存", async () => {
+it("应用关闭取消在途转换，随后拒绝新的转换", async () => {
   let finish!: (result: AgentImageHostResult) => void;
   const host = vi.fn(
     () =>
@@ -89,15 +89,8 @@ it("重置取消在途转换，迟到结果不能重新填入缓存", async () =
   service.clear();
   finish({ bytes: source, width: 1, height: 1, originalWidth: 1, originalHeight: 1 });
   await rejected;
-  host.mockResolvedValue({
-    bytes: source,
-    width: 1,
-    height: 1,
-    originalWidth: 1,
-    originalHeight: 1,
-  });
-  await service.prepare(source);
-  expect(host).toHaveBeenCalledTimes(2);
+  await expect(service.prepare(source)).rejects.toMatchObject({ code: "runtime.cancelled" });
+  expect(host).toHaveBeenCalledOnce();
 });
 
 it("失败不进入缓存，输入格式在宿主调用前校验", async () => {

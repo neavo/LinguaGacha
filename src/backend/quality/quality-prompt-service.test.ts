@@ -13,8 +13,7 @@ import {
   type ProjectChangePublisher,
 } from "../project/project-write-event-adapter";
 import type { ProjectCommittedChange } from "../project/project-committed-change";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "../project/project-session-state";
+import { ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { QualityPromptService } from "./quality-prompt-service";
 import { build_translation_output_format } from "../../shared/text/translation-output-format";
@@ -23,10 +22,9 @@ describe("QualityPromptService", () => {
   it("覆盖正文经真实持久化往返，重置删除记录并导出当前默认正文", async () => {
     const database = new ProjectDatabase("1.0.0");
     cleanup_databases.push(database);
-    const { service, session_state, app_root } = create_service(database);
     const project_path = path.join(create_temp_dir(), "overrides.lg");
+    const { service, app_root } = create_service(database, null, project_path);
     await database.create_project(project_path);
-    session_state.mark_loaded(project_path);
     const default_path = write_template(app_root, "默认第一版");
     expect(await database.get_rule_text(project_path, "translation_prompt")).toBeNull();
     let revision = 0;
@@ -102,8 +100,7 @@ describe("QualityPromptService", () => {
   });
 
   it("读取当前任务类型提示词切片与 revision", () => {
-    const { service, session_state } = create_service();
-    session_state.mark_loaded("E:/Project/demo.lg");
+    const { service } = create_service();
 
     expect(service.read({ task_type: "translation" })).toMatchObject({
       projectPath: "E:/Project/demo.lg",
@@ -133,10 +130,9 @@ describe("QualityPromptService", () => {
   it("保存提示词时把 typed revision 请求交给 ProjectWriteStore", async () => {
     const database = new ProjectDatabase("1.0.0");
     cleanup_databases.push(database);
-    const { service, session_state, published } = create_service(database);
     const project_path = path.join(create_temp_dir(), "prompt.lg");
+    const { service, published } = create_service(database, null, project_path);
     await database.create_project(project_path);
-    session_state.mark_loaded(project_path);
 
     await service.save({
       text: "新的提示词",
@@ -190,10 +186,10 @@ describe("QualityPromptService", () => {
   function create_service(
     database: ProjectDatabase | null = null,
     runtime_owner: "batch_translation" | "agent" | null = null,
+    project_path = "E:/Project/demo.lg",
   ): {
     service: QualityPromptService;
     app_root: string;
-    session_state: ProjectSessionState;
     published: ReturnType<typeof vi.fn>;
   } {
     const app_root = create_temp_dir();
@@ -205,16 +201,15 @@ describe("QualityPromptService", () => {
     });
     const app_setting_service = new AppSettingService(paths);
     const project_database = database ?? (null as unknown as ProjectDatabase);
-    const session_state = new ProjectSessionState();
     const published = vi.fn((payload: ProjectCommittedChange) =>
-      adapt_project_change(session_state, payload),
+      adapt_project_change(project_path, payload),
     );
     const publisher = published as ProjectChangePublisher;
     const service = new QualityPromptService(
       paths,
       app_setting_service,
       project_database,
-      session_state,
+      project_path,
       new ProjectWriteStore(project_database, vi.fn(), publisher),
       create_runtime_gate(runtime_owner),
       {
@@ -226,7 +221,7 @@ describe("QualityPromptService", () => {
         },
       } as unknown as CacheReadPort,
     );
-    return { service, app_root, session_state, published };
+    return { service, app_root, published };
   }
 
   /** 将临时文件根登记到本用例的清理集合。 */
@@ -237,8 +232,8 @@ describe("QualityPromptService", () => {
   }
 
   /** 以真实运行租约模拟空闲或忙碌状态。 */
-  function create_runtime_gate(owner: "batch_translation" | "agent" | null): RuntimeOperationGate {
-    const gate = new RuntimeOperationGate();
+  function create_runtime_gate(owner: "batch_translation" | "agent" | null): ProjectOperationGate {
+    const gate = new ProjectOperationGate();
     if (owner !== null) gate.begin_runtime(owner);
     return gate;
   }

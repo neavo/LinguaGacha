@@ -27,7 +27,6 @@ vi.mock("../batch-translation/planning/planning-worker-pool", () => {
 
 import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
-import { BatchTranslationState } from "../batch-translation/batch-translation-state";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 
 const TEST_APP_ROOT = "E:/linguagacha-backend-test";
@@ -85,107 +84,6 @@ describe("BackendServices", () => {
     expect(compute_worker_dispose).toHaveBeenCalledTimes(1);
     check.mockRestore();
     compute_worker_dispose.mockRestore();
-  });
-
-  it("会话变化发布实际任务快照，关闭后解除订阅", async () => {
-    const options = create_backend_services_options();
-    const services = new BackendServices(options);
-    try {
-      await services.state.session.clear();
-      expect(options.publishEvent).toHaveBeenCalledWith("batch_task.snapshot_changed", {
-        batch_translation: await services.batchTranslation.snapshot(),
-        batch_task: services.batchTasks.build_snapshot(),
-      });
-    } finally {
-      await services.dispose();
-    }
-    vi.mocked(options.publishEvent).mockClear();
-    await services.state.session.clear();
-    expect(options.publishEvent).not.toHaveBeenCalled();
-  });
-
-  it("通用任务发布不读取翻译业务投影", async () => {
-    const options = create_backend_services_options();
-    const services = new BackendServices(options);
-    const read_translation = vi
-      .spyOn(services.batchTranslation, "snapshot")
-      .mockRejectedValue(new Error("unavailable translation projection"));
-    try {
-      const lease = services.state.runtimeGate.begin_runtime("agent");
-      const handle = services.batchTasks.begin_under_agent(
-        lease,
-        new AbortController().signal,
-        "request",
-      );
-      await services.batchTasks.execute(handle, async () => "done");
-      await expect(handle.completion).resolves.toMatchObject({ status: "done" });
-      expect(read_translation).not.toHaveBeenCalled();
-      expect(options.publishEvent).toHaveBeenCalledWith("batch_task.snapshot_changed", {
-        batch_task: expect.objectContaining({ kind: "request", status: "done" }),
-      });
-      services.state.runtimeGate.finish_runtime(lease);
-    } finally {
-      await services.dispose();
-    }
-  });
-
-  it("实际运行租约的取得与释放均发布快照，关闭后解除订阅", async () => {
-    const options = create_backend_services_options();
-    const services = new BackendServices(options);
-    try {
-      const lease = services.state.runtimeGate.begin_runtime("agent");
-      expect(options.publishEvent).toHaveBeenLastCalledWith("runtime.snapshot_changed", {
-        runtime: expect.objectContaining({ owner: "agent" }),
-      });
-      services.state.runtimeGate.finish_runtime(lease);
-      expect(options.publishEvent).toHaveBeenLastCalledWith("runtime.snapshot_changed", {
-        runtime: expect.objectContaining({ owner: null }),
-      });
-    } finally {
-      await services.dispose();
-    }
-    vi.mocked(options.publishEvent).mockClear();
-    const lease = services.state.runtimeGate.begin_runtime("agent");
-    services.state.runtimeGate.finish_runtime(lease);
-    expect(options.publishEvent).not.toHaveBeenCalled();
-  });
-
-  it("运行中允许保存纯应用设置", async () => {
-    const options = create_backend_services_options();
-    const services = new BackendServices(options);
-    const lease = services.state.runtimeGate.begin_runtime("agent");
-    await expect(services.app.updateSettings({ app_language: "ZH" })).resolves.toMatchObject({
-      settings: { app_language: "ZH" },
-    });
-    expect(options.appSettingService.update_app_settings).toHaveBeenCalledWith({
-      app_language: "ZH",
-    });
-    services.state.runtimeGate.finish_runtime(lease);
-    await services.dispose();
-  });
-
-  it("等待任务落稳后才释放执行池", async () => {
-    let release_task_runtime: () => void = () => undefined;
-    const task_runtime_dispose = new Promise<void>((resolve) => {
-      release_task_runtime = resolve;
-    });
-    const dispose_spy = vi
-      .spyOn(BatchTranslationState.prototype, "dispose")
-      .mockImplementation(async () => await task_runtime_dispose);
-    const services = new BackendServices(create_backend_services_options());
-
-    const disposing = services.dispose();
-    await Promise.resolve();
-
-    expect(work_unit_dispose_mock).not.toHaveBeenCalled();
-    expect(planning_dispose_mock).not.toHaveBeenCalled();
-
-    release_task_runtime();
-    await disposing;
-    dispose_spy.mockRestore();
-
-    expect(work_unit_dispose_mock).toHaveBeenCalledTimes(1);
-    expect(planning_dispose_mock).toHaveBeenCalledTimes(1);
   });
 
   it("一个执行池快速失败时仍等待其余执行池释放完毕再汇总异常", async () => {

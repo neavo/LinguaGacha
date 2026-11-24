@@ -40,7 +40,7 @@ import { format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { default_native_fs } from "../../native/native-fs";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { GlobalOperationGate } from "../runtime-operation-gate";
 import type { ModelSelectionSnapshot } from "../../shared/model-selection";
 import { resolve_model_endpoint } from "../../domain/model-endpoint";
 
@@ -77,7 +77,7 @@ export class ModelService {
   private readonly paths: AppPathService; // 提供模型内置预设目录
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
   private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
-  private readonly runtime_gate: RuntimeOperationGate; // 接口测试独占运行时，配置管理不占用
+  private readonly runtime_gate: GlobalOperationGate; // 接口测试独占运行时，配置管理不占用
   private readonly log_manager: Pick<LogManager, "info" | "warning"> | undefined; // 只记录模型探测诊断
   private readonly native_fs = default_native_fs; // 统一读取内置模型预设文件
   private readonly catalog: PiModelCatalogReader; // 配置归一化与公开快照共用当前能力事实。
@@ -89,7 +89,7 @@ export class ModelService {
     paths: AppPathService,
     app_setting_service: AppSettingService,
     llm_client: LLMClientPort,
-    runtime_gate: RuntimeOperationGate,
+    runtime_gate: GlobalOperationGate,
     catalog: PiModelCatalogReader,
     log_manager?: Pick<LogManager, "info" | "warning">,
     private readonly auth?: ChatGPTAuthService,
@@ -110,9 +110,9 @@ export class ModelService {
     publish: () => void,
   ): Promise<void> {
     while (!signal.aborted) {
-      await this.runtime_gate.wait_for_idle(signal);
+      signal.throwIfAborted();
       try {
-        await this.runtime_gate.run_project_write(() => {
+        await this.runtime_gate.run_lifecycle(() => {
           signal.throwIfAborted();
           const config = this.app_setting_service.read_setting();
           const previous = read_config_model_records(config);

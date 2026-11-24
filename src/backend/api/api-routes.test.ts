@@ -14,6 +14,7 @@ const GET_PATHS = new Set([
   "/api/agent/tool-image",
   "/api/agent/uploads/:id",
   "/api/health",
+  "/api/session/projects",
   "/api/events/stream",
   "/api/agent/snapshot",
   "/api/models/selection",
@@ -137,11 +138,17 @@ describe("register_api_routes", () => {
     expect(new Set(all_paths).size).toBe(all_paths.length);
   });
 
-  it("GET 路由返回 Agent、模型选择和目录快照", () => {
+  it("GET 路由返回指定对话、模型选择和目录快照", async () => {
     const fixture = create_route_fixture();
     const json = (value: unknown) => value; // 保留原始响应对象以验证公开载荷。
 
-    expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
+    const get_snapshot = read_get_handler(fixture.get, "/api/agent/snapshot") as unknown as (
+      request: Request,
+    ) => Promise<Response>;
+    const response = await get_snapshot(
+      new Request("http://127.0.0.1/api/agent/snapshot?projectId=project"),
+    );
+    expect(await response.json()).toEqual({
       ok: true,
       data: {
         revision: 0,
@@ -181,7 +188,7 @@ describe("register_api_routes", () => {
       ),
     );
 
-    expect(fixture.read_tool_image).toHaveBeenCalledExactlyOnceWith("chat-1", "tool:1:c1", "2");
+    expect(fixture.read_tool_image).toHaveBeenCalledExactlyOnceWith("tool:1:c1", "2");
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("image/png");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
@@ -247,10 +254,6 @@ describe("register_api_routes", () => {
     expect(fixture.input_command).toHaveBeenCalledWith("revise", revision);
     expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({ revision: 7 });
     expect(fixture.stop).toHaveBeenCalledWith();
-    await expect(read_post_handler(fixture.post_json, "/api/agent/reset")({})).resolves.toEqual({
-      revision: 7,
-    });
-    expect(fixture.reset).toHaveBeenCalledWith();
   });
 
   it("POST 路由从组合根读取统一运行时快照", () => {
@@ -275,12 +278,12 @@ describe("register_api_routes", () => {
     expect(fixture.get_default_project_name).toHaveBeenCalledWith(request);
   });
 
-  it("设置更新只调用组合根提供的受保护写入口", () => {
+  it("应用设置响应提供快照与空工程回执", () => {
     const fixture = create_route_fixture();
 
     expect(
       read_post_handler(fixture.post_json, "/api/settings/update")({ app_language: "ZH" }),
-    ).toEqual({ settings: { app_language: "ZH" } });
+    ).toEqual({ settings: { app_language: "ZH" }, accepted: true, changes: [] });
     expect(fixture.update_settings).toHaveBeenCalledWith({ app_language: "ZH" });
   });
 
@@ -336,7 +339,7 @@ function create_route_fixture() {
   const summarize_source_files = vi.fn(() => source_file_summary);
   const get_default_project_name = vi.fn(() => ({ project_name: "source" }));
   const agent = {
-    get_snapshot: vi.fn(() => ({
+    read_snapshot: vi.fn(async () => ({
       revision: 0,
       state: "idle",
       pendingDecision: null,
@@ -346,6 +349,7 @@ function create_route_fixture() {
       doing: null,
       context: { tokens: null, compactable: false, limits: null },
     })),
+    assert_chat_identity: vi.fn(),
     read_tool_image,
     input_command,
     input_command_status,
@@ -360,11 +364,14 @@ function create_route_fixture() {
   } as unknown as AgentService;
   const services = {
     modelCatalog: { get_snapshot: () => catalog_snapshot },
-    app: { metadata: {}, settings: {}, updateSettings: update_settings },
-    project: {
-      lifecycle: { summarize_source_files, get_default_project_name },
-      summary: {},
-      content: {},
+    app: { metadata: {}, settings: { update_app_settings: update_settings } },
+    lifecycle: { summarize_source_files, get_default_project_name },
+    projects: {
+      require: (_projectId: string) => ({
+        agent,
+        batchTranslation: { start: start_task },
+        generation: { generate_files },
+      }),
     },
     proofreading: { query: {}, commands: {} },
     quality: { statistics: {}, rules: {}, prompts: {} },
@@ -381,12 +388,11 @@ function create_route_fixture() {
     runtime: {
       getSnapshot: vi.fn(() => ({ runtime: { revision: 0, owner: null } })),
     },
-  } as unknown as BackendServices;
+  } as unknown as BackendServices<AgentService>;
 
   register_api_routes({
     app: { get } as unknown as Hono,
     services,
-    agent,
     personality: { read: vi.fn(), save: vi.fn() },
     skills: {
       delete: vi.fn(),

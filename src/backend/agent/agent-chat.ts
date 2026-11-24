@@ -19,6 +19,7 @@ import {
   type CommitPublication,
   type Conversation,
   type ConversationId,
+  type ConversationRecord,
   type EntryId,
   type Submission,
   type Tx,
@@ -58,7 +59,7 @@ import {
 } from "./agent-chat-data";
 import { read_agent_compaction_result, type AgentCompactionResult } from "./agent-compaction";
 import { AgentChatView, assistant_entry_id } from "./agent-chat-view";
-import { AgentContextBudget, read_agent_chat_context } from "./agent-chat-context";
+import { AGENT_KEEP_RECENT_TOKENS, read_agent_chat_context } from "./agent-chat-context";
 import { append_agent_chat_seed, type AgentChatSeed } from "./agent-chat-seed";
 import { AgentRuntimeLog, type AgentStopReason } from "./agent-runtime-log";
 import { read_agent_tool_calls } from "./agent-message";
@@ -145,7 +146,7 @@ export type AgentExecution = {
 };
 
 type ChatOptions = {
-  chatId: string;
+  documentKey: string;
   storage: Storage;
   readBatch?: <T>(callback: () => Promise<T>) => Promise<T>;
   cwd: string;
@@ -179,7 +180,6 @@ export class AgentChat {
     return this.view.usage;
   }
   public state: Readonly<AgentChatData> = AgentChatDoc.definition.initial(null); // 只读提交快照，写入由 `Harness` 事务生成
-  private readonly contextBudget = new AgentContextBudget(); // 每个会话独立校准近期保留预算
   private readonly taskExecutions = new Map<TaskId, AgentExecution>(); // 仅跟踪在途任务，Hook 沿用创建任务时的执行身份
   private readonly pendingCompactionLogs = new Map<number, string>(); // 开始时固定原因，摘要写入后结算日志
   private harness!: Harness;
@@ -276,15 +276,11 @@ export class AgentChat {
         ],
         hooks: [
           hook(GenerationTask, {
-            beforeRequest: (request, api) => {
-              chat.contextBudget.before_request(api.taskId, request.messages);
-            },
             onYield: (message, api) => {
               chat.register_recovery(chat.taskExecutions.get(api.taskId), message, api.taskId);
               return undefined;
             },
             afterResponse: async (message, api) => {
-              chat.contextBudget.after_response(api.taskId, message);
               if (
                 message.stopReason !== "length" &&
                 message.stopReason !== "error" &&
@@ -298,7 +294,7 @@ export class AgentChat {
               const execution = chat.taskExecutions.get(api.taskId);
               // `beforeCompact` 已确认摘要范围，此时持久化公开起点，恢复后沿用同一时间。
               await chat.harness.commit(async (tx) => {
-                const state = await tx.doc(AgentChatDoc, options.chatId, null);
+                const state = await tx.doc(AgentChatDoc, options.documentKey, null);
                 state.compactionStartedAt[api.taskId] ??= Date.now();
               }, BACKGROUND_CONTEXT);
               if (compaction.reason === "overflow") chat.consume_recovery(execution, "overflow");
@@ -318,7 +314,7 @@ export class AgentChat {
             enabled: true,
             reserveTokens: AGENT_COMPACTION_RESERVE_TOKENS,
             backgroundTokens: 0,
-            keepRecentTokens: chat.contextBudget.keepRecentTokens,
+            keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
           },
           retry: RETRY_SETTINGS,
         }),
@@ -328,32 +324,38 @@ export class AgentChat {
       },
       BACKGROUND_CONTEXT,
     );
-    chat.harness.subscribeClose(() => {
-      chat.sealed = true;
-      chat.failedRound = chat.execution?.roundId ?? null;
-      chat.failedAt = Date.now();
-      chat.execution?.controller.abort();
-      options.onClosing?.(chat); // 只通知外层取消交互，不在 SDK 回调内等待关闭。
-    });
+    chat.harness.subscribeClose(() => chat.seal());
     void chat.harness.closed.then((end) => {
       if (end.kind === "failed") chat.failure ??= end.error;
-      if (chat.failure !== undefined) {
-        chat.view.fail_round(chat.failedRound, chat.failedAt);
-      }
+      if (chat.failure !== undefined) chat.view.fail_round(chat.failedRound, chat.failedAt);
       options.onChange();
     });
-    chat.unsubscribe = chat.harness.observeCommits({
-      advance: (publication) => chat.observe_commit(publication),
-      end: (end) => {
-        if (end.kind === "listener_error") chat.fail_projection(end.error);
-      },
-    }).detach;
     try {
+      const inspection = await chat.harness.inspect(BACKGROUND_CONTEXT);
+      for (const submission of inspection.submissions)
+        if (submission.status === "queued")
+          await chat.harness.abortSubmission(submission.id, BACKGROUND_CONTEXT);
+      for (const task of inspection.tasks)
+        await chat.harness.abortTask(task.record.id, BACKGROUND_CONTEXT);
+      if (inspection.tasks.length > 0) {
+        chat.harness.resume();
+        await Promise.all(
+          inspection.tasks.map(({ record }) =>
+            chat.harness.waitForTask(record.id, BACKGROUND_CONTEXT),
+          ),
+        );
+      }
+      chat.unsubscribe = chat.harness.observeCommits({
+        advance: (publication) => chat.observe_commit(publication),
+        end: (end) => {
+          if (end.kind === "listener_error") chat.fail_projection(end.error);
+        },
+      }).detach;
       chat.conversation =
         (await chat.restore_records()) ??
         (await chat.harness.root(BACKGROUND_CONTEXT, {
           init: async (tx, id) => {
-            const state = await tx.doc(AgentChatDoc, options.chatId, null);
+            const state = await tx.doc(AgentChatDoc, options.documentKey, null);
             state.activeConversationId = id;
             await tx.appendEntry(id, { kind: "linguagacha.start" });
           },
@@ -420,33 +422,52 @@ export class AgentChat {
       } while (cursor !== undefined);
     };
     this.state =
-      (await this.harness.snapshot(AgentChatDoc, this.options.chatId, BACKGROUND_CONTEXT)) ??
+      (await this.harness.snapshot(AgentChatDoc, this.options.documentKey, BACKGROUND_CONTEXT)) ??
       AgentChatDoc.definition.initial(null);
     const active = this.state.activeConversationId;
-    const conversation =
-      active === null ? undefined : await this.harness.conversation(active, BACKGROUND_CONTEXT);
-    if (active !== null && conversation === undefined) throw new AppError("file.invalid_structure");
-    // 合并直接存储读取。Harness 的查询会进 SDK 队列，必须先于数据库队列取锁。
+    if (active === null) return undefined;
+    const conversation = await this.harness.conversation(active, BACKGROUND_CONTEXT);
+    if (conversation === undefined) throw new AppError("file.invalid_structure");
     await this.read_batch(async () => {
-      await restore(this.view.conversations, (cursor) =>
+      const candidates = new Map<ConversationId, ConversationRecord>();
+      await restore(candidates, (cursor) =>
         storage.scanConversations({}, RESTORE_SCAN_PAGE_SIZE, cursor, BACKGROUND_CONTEXT),
       );
-      if (conversation !== undefined) {
-        await restore(this.view.records, (cursor) =>
-          storage.scanEntries(
-            { conversationId: conversation.id },
+      let root = active;
+      for (
+        let parent = candidates.get(root)?.parent;
+        parent !== undefined;
+        parent = candidates.get(root)?.parent
+      )
+        root = parent.conversationId;
+      for (const record of candidates.values()) {
+        if (
+          record.id !== root &&
+          (record.parent === undefined ||
+            !this.view.conversations.has(record.parent.conversationId))
+        )
+          continue;
+        this.view.conversations.set(record.id, record);
+        await restore(this.view.submissions, (cursor) =>
+          storage.scanSubmissions(
+            { conversationId: record.id },
+            RESTORE_SCAN_PAGE_SIZE,
+            cursor,
+            BACKGROUND_CONTEXT,
+          ),
+        );
+        await restore(this.view.compactions, (cursor) =>
+          storage.scanTasks(
+            { kind: CompactionTask.definition.name, conversationId: record.id },
             RESTORE_SCAN_PAGE_SIZE,
             cursor,
             BACKGROUND_CONTEXT,
           ),
         );
       }
-      await restore(this.view.submissions, (cursor) =>
-        storage.scanSubmissions({}, RESTORE_SCAN_PAGE_SIZE, cursor, BACKGROUND_CONTEXT),
-      );
-      await restore(this.view.compactions, (cursor) =>
-        storage.scanTasks(
-          { kind: CompactionTask.definition.name },
+      await restore(this.view.records, (cursor) =>
+        storage.scanEntries(
+          { conversationId: active },
           RESTORE_SCAN_PAGE_SIZE,
           cursor,
           BACKGROUND_CONTEXT,
@@ -462,24 +483,8 @@ export class AgentChat {
 
   /** 先全部标记取消，再启动 SDK 收尾，防止打开历史时重新运行工具或模型。 */
   private async recover(): Promise<void> {
-    this.schedule_refresh();
-    await this.flush();
-    const inspection = await this.harness.inspect(BACKGROUND_CONTEXT);
-    for (const submission of inspection.submissions)
-      if (submission.status === "queued")
-        await this.harness.abortSubmission(submission.id, BACKGROUND_CONTEXT);
-    for (const task of inspection.tasks)
-      await this.harness.abortTask(task.record.id, BACKGROUND_CONTEXT);
-    if (inspection.tasks.length > 0) {
-      this.harness.resume();
-      await Promise.all(
-        inspection.tasks.map(({ record }) =>
-          this.harness.waitForTask(record.id, BACKGROUND_CONTEXT),
-        ),
-      );
-    }
     await this.harness.commit(async (tx) => {
-      const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+      const state = await tx.doc(AgentChatDoc, this.options.documentKey, null);
       for (const round of Object.values(state.rounds)) {
         if (round.status !== "running") continue;
         round.status = "stopped";
@@ -491,6 +496,7 @@ export class AgentChat {
       for (const command of Object.values(state.commands))
         if (command.status === "pending") command.status = "cancelled";
     }, BACKGROUND_CONTEXT);
+    this.schedule_refresh();
     await this.flush();
   }
 
@@ -508,7 +514,7 @@ export class AgentChat {
   public async change(change: (state: AgentChatData) => void): Promise<void> {
     this.assert_usable();
     await this.harness.commit(async (tx) => {
-      change(await tx.doc(AgentChatDoc, this.options.chatId, null));
+      change(await tx.doc(AgentChatDoc, this.options.documentKey, null));
     }, BACKGROUND_CONTEXT);
     await this.flush();
   }
@@ -527,7 +533,7 @@ export class AgentChat {
   ): Promise<T> {
     this.assert_usable();
     const result = await this.harness.commit(async (tx) => {
-      const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+      const state = await tx.doc(AgentChatDoc, this.options.documentKey, null);
       const value = change(new AgentInputQueue(state.queue));
       if (commandId !== undefined) state.commands[commandId]!.status = "accepted";
       return value;
@@ -548,7 +554,7 @@ export class AgentChat {
     if (!this.state.seeded) {
       await this.harness.commit(async (tx) => {
         await append_agent_chat_seed(tx, this.conversation.id, this.options.seed, model);
-        (await tx.doc(AgentChatDoc, this.options.chatId, null)).seeded = true;
+        (await tx.doc(AgentChatDoc, this.options.documentKey, null)).seeded = true;
       }, BACKGROUND_CONTEXT);
     }
     this.schedule_refresh();
@@ -565,7 +571,7 @@ export class AgentChat {
     const context = withAbortSignal(execution.controller.signal, BACKGROUND_CONTEXT);
     const id = await this.harness.commit(async (tx) => {
       execution.controller.signal.throwIfAborted();
-      const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+      const state = await tx.doc(AgentChatDoc, this.options.documentKey, null);
       // SDK 受理先读取回执与历史边界，必须在事务首次表写入之前调用。
       const id = await submit(tx, state);
       change?.(state);
@@ -860,7 +866,7 @@ export class AgentChat {
       {
         ownership: { kind: "ownerless" },
         init: async (tx, id) => {
-          const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+          const state = await tx.doc(AgentChatDoc, this.options.documentKey, null);
           switch_branch(state, id);
           if (commandId !== undefined) state.commands[commandId]!.status = "accepted";
         },
@@ -911,7 +917,7 @@ export class AgentChat {
       {
         ownership: { kind: "ownerless" },
         init: async (tx, id) => {
-          const state = await tx.doc(AgentChatDoc, this.options.chatId, null);
+          const state = await tx.doc(AgentChatDoc, this.options.documentKey, null);
           state.activeConversationId = id;
           if (commandId !== undefined) state.commands[commandId]!.status = "accepted";
           await tx.appendEntry(AssistantEntry, id, {
@@ -986,7 +992,7 @@ export class AgentChat {
         // kind 对应固定 token 的 JSON 契约，值为 SDK 提供的不可变提交快照。
         if (
           change.record.kind === AgentChatDoc.definition.kind &&
-          change.record.key === this.options.chatId
+          change.record.key === this.options.documentKey
         )
           this.state = change.value as AgentChatData;
       }
@@ -1102,9 +1108,8 @@ export class AgentChat {
               this.dirty = true;
               continue;
             }
-            this.contextBudget.restore(view, this.model, conversation.id);
             this.context = this.state.seeded
-              ? read_agent_chat_context(view, this.model, this.contextBudget.keepRecentTokens)
+              ? read_agent_chat_context(view, this.model)
               : { tokens: null, compactable: false, limits: null };
             this.contextDirty = false;
           }
@@ -1144,10 +1149,19 @@ export class AgentChat {
   }
 
   /** 投影失去可信修订时停止实例，异步关闭避开 SDK 的同步提交回调。 */
+  private seal(): void {
+    if (this.sealed) return;
+    this.sealed = true;
+    this.failedRound = this.execution?.roundId ?? null;
+    this.failedAt = Date.now();
+    this.execution?.controller.abort();
+    this.options.onClosing?.(this);
+  }
+
   private fail_projection(error: unknown): void {
     this.refreshFailure ??= error;
     this.failure ??= error;
-    this.sealed = true;
+    this.seal();
     this.report_failure("cleanup", error);
     void Promise.resolve()
       .then(() => this.close())

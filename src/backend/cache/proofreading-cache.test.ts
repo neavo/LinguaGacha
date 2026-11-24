@@ -10,6 +10,7 @@ import {
   type ProofreadingSyncInput,
 } from "../../shared/proofreading/proofreading-reader";
 import type { CacheReadPort } from "./cache-types";
+import { DEFAULT_PROJECT_SETTINGS } from "../../domain/project-settings";
 
 import { ProofreadingCache } from "./proofreading-cache";
 import { ItemCache } from "./item-cache";
@@ -38,7 +39,6 @@ function create_cache_item(
 
 // 提供 ProofreadingCache 所需的最小缓存读口，并允许覆盖 revisions 与 items。
 function create_cache_read_port(options: {
-  epoch?: number;
   revisions?: Record<string, number>;
   items?: ProjectItemPublicRecord[];
   languages?: { source_language: "JA" | "EN"; target_language: "ZH" | "EN" };
@@ -46,13 +46,7 @@ function create_cache_read_port(options: {
   const revisions = options.revisions ?? { files: 1, items: 1, quality: 1, proofreading: 0 };
   const items = options.items ?? [create_cache_item()];
   return {
-    snapshot: () => ({
-      projectPath: "E:/Project/demo.lg",
-      epoch: options.epoch ?? 1,
-      freshness: "fresh",
-      sectionRevisions: revisions,
-      itemCount: items.length,
-    }),
+    projectPath: "E:/Project/demo.lg",
     readSectionRevisions: () => revisions,
     items: {
       readItems: () => items,
@@ -78,10 +72,8 @@ function create_cache_read_port(options: {
     prompts: {
       readBlock: create_empty_project_prompts,
     },
-    languages: {
-      readBlock: () => ({
-        ...(options.languages ?? { source_language: "JA", target_language: "ZH" }),
-      }),
+    settings: {
+      readBlock: () => ({ ...DEFAULT_PROJECT_SETTINGS, ...options.languages }),
     },
   };
 }
@@ -113,7 +105,6 @@ function create_delta_change(
 ): Parameters<ProofreadingCache["applyChange"]>[0] {
   const updatedSections = overrides.updatedSections ?? ["items"];
   return {
-    projectPath: "E:/Project/demo.lg",
     updatedSections,
     sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
     ...(updatedSections.includes("items")
@@ -163,7 +154,7 @@ describe("ProofreadingCache", () => {
     items.replace([create_cache_item()]);
     const cache_port = create_cache_read_port({ revisions });
     const cache = new ProofreadingCache({
-      cache: { ...cache_port, items, snapshot: () => structuredClone(cache_port.snapshot()) },
+      cache: { ...cache_port, items },
       workerClient: create_worker(),
       reader: createProofreadingReader(),
     });
@@ -354,7 +345,7 @@ describe("ProofreadingCache", () => {
 
   it("文件修订复用文本评估，项目语言变化重新评估", async () => {
     const worker = create_worker();
-    const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
+    const revisions = { files: 1, items: 1, quality: 1, proofreading: 0, project: 1 };
     const languages: { source_language: "JA"; target_language: "ZH" | "EN" } = {
       source_language: "JA",
       target_language: "ZH",
@@ -369,6 +360,10 @@ describe("ProofreadingCache", () => {
     revisions.files = 2;
     await cache.sync();
     languages.target_language = "EN";
+    revisions.project++;
+    cache.applyChange(
+      create_delta_change({ updatedSections: ["project"], sectionRevisions: revisions }),
+    );
     await cache.sync();
 
     expect(worker.run).toHaveBeenCalledTimes(2);
@@ -381,25 +376,6 @@ describe("ProofreadingCache", () => {
       [1, "ZH"],
       [2, "EN"],
     ]);
-  });
-
-  it("只清理匹配工程或当前校对缓存", async () => {
-    const worker = create_worker();
-    const cache = new ProofreadingCache({
-      cache: create_cache_read_port({}),
-      workerClient: worker,
-      reader: createProofreadingReader(),
-    });
-    await cache.sync();
-
-    await cache.clearProject("E:/Project/other.lg");
-    await cache.sync();
-    await cache.clearProject("E:/Project/demo.lg");
-    await cache.sync();
-    await cache.clearProject();
-    await cache.sync();
-
-    expect(worker.run).toHaveBeenCalledTimes(3);
   });
 
   it("已同步后 item 增量会应用到本地校对列表运行态", async () => {
@@ -533,7 +509,7 @@ describe("ProofreadingCache", () => {
   });
 });
 
-it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () => {
+it("撤销同步后，迟到计算结果不能恢复旧校对索引", async () => {
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {
     release = resolve;
@@ -548,7 +524,7 @@ it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () =
   });
   const sync = service.sync();
   const rejected = expect(sync).rejects.toThrow();
-  await service.clearProject();
+  service.clear();
   release();
   await rejected;
   expect(reader.read_items_by_row_ids({ row_ids: ["1"] })).toEqual([]);

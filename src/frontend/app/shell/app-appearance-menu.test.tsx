@@ -3,7 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
-import { SidebarProvider } from "@frontend/shadcn/sidebar";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AppAppearanceMenu } from "./app-appearance-menu";
 
@@ -36,7 +35,7 @@ describe("AppAppearanceMenu", () => {
   });
 
   /** 挂载真实菜单，沿用户入口验证外观偏好的提交。 */
-  async function render_menu(open = true): Promise<HTMLButtonElement> {
+  async function render_menu(): Promise<HTMLButtonElement> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -45,9 +44,9 @@ describe("AppAppearanceMenu", () => {
       root?.render(
         <LocaleProvider locale="zh-CN">
           <TooltipProvider>
-            <SidebarProvider open={open}>
-              <AppAppearanceMenu is_collapsed={!open} />
-            </SidebarProvider>
+            <ul>
+              <AppAppearanceMenu />
+            </ul>
           </TooltipProvider>
         </LocaleProvider>,
       );
@@ -66,14 +65,8 @@ describe("AppAppearanceMenu", () => {
     return option;
   }
 
-  it("折叠时悬停显示外观提示，选择选项后提交字体和主题偏好", async () => {
-    const trigger = await render_menu(false);
-    await act(async () => {
-      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    });
-    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
-      trigger.getAttribute("aria-label"),
-    );
+  it("选择选项后提交字体和主题偏好", async () => {
+    const trigger = await render_menu();
     await act(async () => trigger.click());
     await act(async () => {
       find_option("系统字体").click();

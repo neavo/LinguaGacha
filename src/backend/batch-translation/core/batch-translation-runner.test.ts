@@ -1,7 +1,7 @@
 import { BatchTaskRuntime } from "../../batch-task/batch-task-runtime";
 import { RequestRatePool } from "../../batch-task/request-rate";
 import type { BatchTranslationRunCommand } from "./batch-translation-runner";
-import { CacheManager } from "../../cache/cache-manager";
+import { ProjectCache } from "../../cache/project-cache";
 import { ProjectDatabase } from "../../database/database-operations";
 import { ProjectWriteStore } from "../../project/project-write-store";
 import { BatchTranslationProjectStore } from "../batch-translation-project-store";
@@ -23,8 +23,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { get_section_revision } from "../../project/project-data-reader";
-import { ProjectSessionState } from "../../project/project-session-state";
-import { RuntimeOperationGate } from "../../runtime-operation-gate";
+import { ProjectOperationGate } from "../../runtime-operation-gate";
 import { BatchTranslationCompletionError, BatchTranslationState } from "../batch-translation-state";
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
 import type {
@@ -209,23 +208,22 @@ describe("BatchTranslationRunner", () => {
       }),
     );
     await database.transaction(project_path, (writer) => writer.set_items(project_path, originals));
-    const session = new ProjectSessionState();
-    session.mark_loaded(project_path);
-    const tasks = new BatchTaskRuntime(session, new RuntimeOperationGate());
-    const runtime = new BatchTranslationState(session, database, tasks);
+    const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
+    const runtime = new BatchTranslationState(project_path, database, tasks);
     const frames: BatchTranslationSnapshot[] = [];
     tasks.subscribe(async () => {
       const snapshot = await runtime.build_snapshot();
       frames.push(snapshot);
     });
-    const cache = new CacheManager({
+    const cache = new ProjectCache({
+      projectPath: project_path,
       database,
       logManager: null,
       workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
     });
     const publish = vi.fn(() => null);
     const store = new BatchTranslationProjectStore(
-      session,
+      project_path,
       cache,
       new ProjectWriteStore(database, vi.fn(), publish),
     );
@@ -241,7 +239,7 @@ describe("BatchTranslationRunner", () => {
       ),
     );
     try {
-      await cache.warmProject(project_path);
+      await cache.refresh();
       const runner = new BatchTranslationRunner({
         ratePool: new RequestRatePool(),
         builtinRoot: builtin_root,
@@ -365,25 +363,24 @@ describe("BatchTranslationRunner", () => {
         ]),
       );
       const original_items = await database.get_all_items(project_path);
-      const session = new ProjectSessionState();
-      session.mark_loaded(project_path);
       const reader = database;
-      const tasks = new BatchTaskRuntime(session, new RuntimeOperationGate());
-      const runtime = new BatchTranslationState(session, reader, tasks);
+      const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
+      const runtime = new BatchTranslationState(project_path, reader, tasks);
       const pending_snapshots: number[][] = [];
       tasks.subscribe(async () => {
         const snapshot = await runtime.build_snapshot();
         if (snapshot.status === "running" && snapshot.run_progress?.processed_line === 1)
           pending_snapshots.push([...snapshot.pending_item_ids]);
       });
-      const cache = new CacheManager({
+      const cache = new ProjectCache({
+        projectPath: project_path,
         database,
         logManager: null,
         workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
       });
       const publish_change = vi.fn(() => null);
       const writes = new ProjectWriteStore(database, vi.fn(), publish_change);
-      const store = new BatchTranslationProjectStore(session, cache, writes);
+      const store = new BatchTranslationProjectStore(project_path, cache, writes);
       const pool = new TranslationWorkerPool({
         builtinRoot: builtin_root,
         execution: { kind: "in_process" },
@@ -399,7 +396,7 @@ describe("BatchTranslationRunner", () => {
       });
       let attempts = 0;
       try {
-        await cache.warmProject(project_path);
+        await cache.refresh();
         vi.useFakeTimers();
         const runner = new BatchTranslationRunner({
           ratePool: new RequestRatePool(),
@@ -1132,13 +1129,10 @@ describe("BatchTranslationRunner", () => {
     listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void = () => undefined,
     read_meta: (() => JsonRecord) | null = null,
   ): { runtime: BatchTranslationState; tasks: BatchTaskRuntime } {
-    const session_state = new ProjectSessionState();
-    if (read_meta !== null) {
-      session_state.mark_loaded("E:/Project/batch-translation-state-test.lg");
-    }
-    const tasks = new BatchTaskRuntime(session_state, new RuntimeOperationGate());
+    const project_path = read_meta === null ? "" : "E:/Project/batch-translation-state-test.lg";
+    const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
     const runtime = new BatchTranslationState(
-      session_state,
+      project_path,
       {
         get_all_meta: () => read_meta?.() ?? {},
         get_section_revision: () => 0,

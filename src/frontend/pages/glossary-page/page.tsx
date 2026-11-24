@@ -84,7 +84,7 @@ export function GlossaryPage(): JSX.Element {
       />
       <div className="glossary-page__table-host">
         <FileDropZone
-          label={t("app.drop.import_here")}
+          label={t("app.drop.release")}
           disabled={glossary_page_state.readonly}
           on_path_drop={(path) => {
             void glossary_page_state.editing.import_entries_from_path(path);

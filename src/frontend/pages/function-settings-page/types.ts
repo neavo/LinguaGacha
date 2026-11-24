@@ -6,6 +6,10 @@ import type { ProjectSaveMode, TranslationSaveMode } from "@domain/setting";
 export const REQUEST_TIMEOUT_MIN = 0;
 export const REQUEST_TIMEOUT_MAX = 9_999_999;
 
+export type FunctionBooleanSettingField =
+  | "prompt_enhancement_enable"
+  | "output_folder_open_on_finish";
+
 export type FunctionSettingsSnapshot = Pick<
   SettingsSnapshot,
   | "preceding_lines_threshold"
@@ -14,7 +18,7 @@ export type FunctionSettingsSnapshot = Pick<
   | "project_fixed_path"
   | "translation_save_mode"
   | "translation_fixed_path"
-  | "output_folder_open_on_finish"
+  | FunctionBooleanSettingField
   | "request_timeout"
 >;
 
@@ -39,6 +43,7 @@ export function build_function_settings_snapshot(
   settings_snapshot: SettingsSnapshot,
 ): FunctionSettingsSnapshot {
   return {
+    prompt_enhancement_enable: settings_snapshot.prompt_enhancement_enable,
     project_save_mode: settings_snapshot.project_save_mode,
     project_fixed_path: settings_snapshot.project_fixed_path,
     translation_save_mode: settings_snapshot.translation_save_mode,

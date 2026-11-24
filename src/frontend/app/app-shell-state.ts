@@ -1,6 +1,4 @@
 import type { GithubReleaseUpdate } from "@frontend/app/desktop/desktop-api";
-import { DEFAULT_ROUTE_ID } from "@frontend/app/navigation/schema";
-import type { RouteId } from "@frontend/app/navigation/types";
 
 export type UpdateDialogState =
   | { phase: "idle" }
@@ -10,23 +8,9 @@ export type UpdateDialogState =
   | { phase: "ready_to_restart"; release: GithubReleaseUpdate; zip_path: string }
   | { phase: "launching"; release: GithubReleaseUpdate; zip_path: string };
 
-type ProjectSessionStatus = "idle" | "warming" | "ready";
 type AppTranslator = (
   key: "app.update.action" | "app.update.launching" | "app.update.restart_confirm",
 ) => string;
-
-// 依赖工程会话的页面只在工程就绪时开放导航。
-const PROJECT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  "proofreading",
-  "workbench",
-  "glossary",
-  "text-preserve",
-  "pre-translation-replacement",
-  "post-translation-replacement",
-  "knowledge",
-  "custom-prompt",
-  "laboratory",
-]);
 
 /** 从更新流程当前阶段读取发行信息。 */
 export function read_update_release(state: UpdateDialogState): GithubReleaseUpdate | null {
@@ -66,22 +50,4 @@ export function resolve_update_action_label(state: UpdateDialogState, t: AppTran
   }
 
   return t("app.update.action");
-}
-
-/** 按项目加载与准备状态计算可用入口。 */
-export function resolve_disabled_route_ids(args: {
-  project_loaded: boolean;
-  project_session_status: ProjectSessionStatus;
-}): ReadonlySet<RouteId> {
-  return args.project_loaded && args.project_session_status === "ready"
-    ? new Set()
-    : PROJECT_ROUTE_IDS;
-}
-
-/** 工程卸载时回到 AGENT，其余快照变化保持当前路由。 */
-export function resolve_route_after_project_snapshot(args: {
-  previous_project_loaded: boolean;
-  project_loaded: boolean;
-}): RouteId | null {
-  return args.previous_project_loaded && !args.project_loaded ? DEFAULT_ROUTE_ID : null;
 }

@@ -13,8 +13,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
 
-import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "../project/project-session-state";
+import { ProjectOperationGate } from "../runtime-operation-gate";
 import { AppPathService } from "../app/app-path-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import { QualityRuleService } from "./quality-rule-service";
@@ -445,7 +444,7 @@ describe("QualityRuleService", () => {
     const service = new QualityRuleService(
       paths,
       settings,
-      new ProjectSessionState(),
+      "fixture.lg",
       new ProjectWriteStore(database, vi.fn(), null),
       create_runtime_gate(runtime_owner),
       create_cache(),
@@ -464,7 +463,7 @@ describe("QualityRuleService", () => {
     service: QualityRuleService;
     lg_path: string;
     publisher: ReturnType<typeof create_test_project_change_publisher>;
-    runtime_gate: RuntimeOperationGate;
+    runtime_gate: ProjectOperationGate;
   }> {
     const { app_root } = create_service();
     const paths = new AppPathService({
@@ -473,18 +472,16 @@ describe("QualityRuleService", () => {
       env: {},
       platform: process.platform,
     });
-    const session_state = new ProjectSessionState();
     const project_event_bus = vi.fn();
     const lg_path = path.join(app_root, "quality.lg");
     const publisher = create_test_project_change_publisher(lg_path);
     await database.create_project(lg_path);
-    session_state.mark_loaded(lg_path);
     const runtime_gate = create_runtime_gate(runtime_owner);
     return {
       service: new QualityRuleService(
         paths,
         new AppSettingService(paths),
-        session_state,
+        lg_path,
         new ProjectWriteStore(database, project_event_bus, publisher.publish_project_change),
         runtime_gate,
         create_cache(),
@@ -501,16 +498,14 @@ describe("QualityRuleService", () => {
   function create_test_project_change_publisher(lg_path: string) {
     return {
       publish_project_change: vi.fn((payload: ProjectCommittedChange): ProjectChangeEvent => {
-        const session = new ProjectSessionState();
-        session.mark_loaded(lg_path);
-        return adapt_project_change(session, payload)!;
+        return adapt_project_change(lg_path, payload)!;
       }),
     };
   }
 
   /** 创建指定占用状态，验证写入口的互斥行为。 */
-  function create_runtime_gate(owner: "batch_translation" | "agent" | null): RuntimeOperationGate {
-    const gate = new RuntimeOperationGate();
+  function create_runtime_gate(owner: "batch_translation" | "agent" | null): ProjectOperationGate {
+    const gate = new ProjectOperationGate();
     if (owner !== null) gate.begin_runtime(owner);
     return gate;
   }

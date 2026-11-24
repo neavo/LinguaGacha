@@ -13,7 +13,7 @@ import { AppSettingService } from "../app/app-setting-service";
 import type { LLMClientPort } from "../llm/llm-types";
 import { read_builtin_pi_models } from "../llm/pi-model-catalog";
 import type { PiCatalogModel } from "../llm/model-capability";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GlobalOperationGate } from "../runtime-operation-gate";
 import { read_config_model_records } from "./model-config-resolver";
 import { ModelService } from "./model-service";
 
@@ -133,33 +133,6 @@ describe("ModelService 配置管理", () => {
       expect.objectContaining({ method: "GET" }),
     );
   });
-  it("目录候选在 Agent 空闲后统一修正配置、切换并发布", async () => {
-    const { service, runtime_gate, app_setting_service } = await create_model_service([
-      create_model({ thinking: { level: "HIGH" } }),
-    ]);
-    const candidate = read_builtin_pi_models().map((model) =>
-      model.id === "gpt-5-mini" ? { ...model, reasoning: false } : model,
-    );
-    const lease = runtime_gate.begin_runtime("agent");
-    const commit = vi.fn();
-    const publish = vi.fn();
-    const applying = service.apply_catalog(
-      candidate,
-      commit,
-      new AbortController().signal,
-      publish,
-    );
-    await Promise.resolve();
-    expect(commit).not.toHaveBeenCalled();
-    runtime_gate.finish_runtime(lease);
-    await applying;
-    expect(commit).toHaveBeenCalledOnce();
-    expect(publish).toHaveBeenCalledOnce();
-    expect(read_config_model_records(app_setting_service.read_setting())[0]?.["thinking"]).toEqual({
-      level: "DEFAULT",
-    });
-  });
-
   it("配置保存失败时不切换目录或发布成功", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({ thinking: { level: "HIGH" } }),
@@ -580,7 +553,7 @@ describe("ModelService 配置管理", () => {
       paths,
       app_setting_service,
       { request: vi.fn() },
-      new RuntimeOperationGate(),
+      new GlobalOperationGate(),
       catalog,
     );
     const snapshot = read_request_model_snapshot(second_service.get_snapshot());
@@ -1155,14 +1128,14 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "a", type: "CUSTOM_OPENAI" }),
       create_model({ id: "b", type: "CUSTOM_OPENAI" }),
     ]);
-    const lease = runtime_gate.begin_runtime("agent");
+    const lease = runtime_gate.begin_runtime("model_test");
     service.select_model({ target: "agent", model_id: "b" });
     service.select_model({ target: "agent", model_id: "b", thinking_level: "HIGH" });
     service.select_model({ target: "agent_batch_translation", model_id: "a" });
     const snapshot = service.get_selection_snapshot();
     expect(snapshot.model_selection).toMatchObject({ agent: "b", agent_batch_translation: "a" });
     expect(snapshot.models.find((model) => model.id === "b")?.thinking_level).toBe("HIGH");
-    expect(runtime_gate.get_snapshot().owner).toBe("agent");
+    expect(runtime_gate.modelTest).toBe(true);
     runtime_gate.finish_runtime(lease);
   });
 
@@ -1171,7 +1144,7 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "a", type: "CUSTOM_OPENAI" }),
       create_model({ id: "b", type: "CUSTOM_OPENAI" }),
     ]);
-    const lease = runtime_gate.begin_runtime("agent");
+    const lease = runtime_gate.begin_runtime("model_test");
     service.update_model({ model_id: "a", patch: { name: "新名称" } });
     const copy = service.copy_model({ model_id: "a" });
     const copied_id = String(copy.copied_model_id);
@@ -1228,11 +1201,8 @@ describe("ModelService 远端模型能力", () => {
       };
     });
     const test = service.test_model({ model_id: "a" });
-    expect(runtime_gate.get_snapshot().owner).toBe("model_test");
-    expect(() => runtime_gate.begin_runtime("agent")).toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    await expect(runtime_gate.run_project_write(() => undefined)).rejects.toThrow(
+    expect(runtime_gate.modelTest).toBe(true);
+    expect(() => runtime_gate.begin_runtime("model_test")).toThrow(
       expect.objectContaining({ code: "runtime.busy" }),
     );
     await expect(service.test_model({ model_id: "a" })).rejects.toThrow(
@@ -1245,22 +1215,7 @@ describe("ModelService 远端模型能力", () => {
     expect(
       llm_request.mock.calls.map(([request]) => (request.model as JsonRecord).api_key),
     ).toEqual(["first-key", "second-key"]);
-    expect(runtime_gate.get_snapshot().owner).toBeNull();
-  });
-
-  it("任务期间拒绝接口测试；请求失败后可以再次运行", async () => {
-    const { service, runtime_gate, llm_request } = await create_model_service([
-      create_model({ id: "a" }),
-    ]);
-    const lease = runtime_gate.begin_runtime("batch_translation");
-    await expect(service.test_model({ model_id: "a" })).rejects.toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    expect(llm_request).not.toHaveBeenCalled();
-    runtime_gate.finish_runtime(lease);
-    llm_request.mockRejectedValueOnce(new Error("request failure"));
-    await expect(service.test_model({ model_id: "a" })).rejects.toThrow("request failure");
-    expect(runtime_gate.get_snapshot().owner).toBeNull();
+    expect(runtime_gate.modelTest).toBe(false);
   });
 
   it("关闭取消在途接口测试并等待占用释放，不再发下一个 Key", async () => {
@@ -1283,7 +1238,7 @@ describe("ModelService 远端模型能力", () => {
     await service.dispose();
     expect((await result)[0]?.status).toBe("rejected");
     expect(llm_request).toHaveBeenCalledTimes(1);
-    expect(runtime_gate.get_snapshot().owner).toBeNull();
+    expect(runtime_gate.modelTest).toBe(false);
   });
 
   it("远端列表按 model_id 返回结果并拒绝缺失模型", async () => {
@@ -1433,7 +1388,7 @@ async function create_model_service(
             });
           },
         };
-  const runtime_gate = new RuntimeOperationGate();
+  const runtime_gate = new GlobalOperationGate();
   const llm_request = vi.fn<LLMClientPort["request"]>();
   const process_fetch = vi.fn<typeof globalThis.fetch>();
   vi.stubGlobal("fetch", process_fetch);

@@ -5,10 +5,9 @@ import { resolve_preset_file, type AppPathService } from "../app/app-path-servic
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { ProjectDatabase } from "../database/database-operations";
-import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectWriteStore } from "../project/project-write-store";
 import { require_project_expected_section_revisions } from "../project/project-write-request";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { ProjectOperationGate } from "../runtime-operation-gate";
 import { resolve_prompt_template_language } from "../../domain/app-language";
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import { normalize_setting_snapshot } from "../../domain/setting";
@@ -29,9 +28,9 @@ export class QualityPromptService {
     private readonly paths: AppPathService,
     private readonly app_setting_service: AppSettingService,
     private readonly database: ProjectDatabase,
-    private readonly session_state: ProjectSessionState,
+    private readonly project_path: string,
     private readonly write_store: ProjectWriteStore,
-    private readonly runtime_gate: RuntimeOperationGate,
+    private readonly runtime_gate: ProjectOperationGate,
     private readonly cache: CacheReadPort,
     private readonly native_fs: NativeFs = default_native_fs,
   ) {}
@@ -40,7 +39,7 @@ export class QualityPromptService {
    * 读取当前工程翻译提示词切片。
    */
   public read(_request: JsonRecord): JsonRecord {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const prompts_block = this.cache.prompts.readBlock();
     return {
       projectPath: project_path,
@@ -88,7 +87,7 @@ export class QualityPromptService {
         throw new AppErrors.AppError("request.validation_failed");
       }
       const prompt = TRANSLATION_PROMPT;
-      const project_path = this.session_state.require_loaded_project_path();
+      const project_path = this.project_path;
       return await this.write_store.save_prompt({
         projectPath: project_path,
         expectedSectionRevisions: require_project_expected_section_revisions(
@@ -119,7 +118,7 @@ export class QualityPromptService {
    */
   public async export(request: JsonRecord): Promise<JsonRecord> {
     const prompt = TRANSLATION_PROMPT;
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const output_path = this.ensure_txt_suffix(String(request["path"] ?? ""));
     const text =
       (await this.database.get_rule_text(project_path, prompt.database_type)) ??

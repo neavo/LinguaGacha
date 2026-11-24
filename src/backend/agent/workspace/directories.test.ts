@@ -37,11 +37,11 @@ it("按时间清理会话，失败下次重试并保留链接目标与其它目�
   vi.spyOn(native, "remove_async").mockImplementationOnce(async () => {
     throw new Error("busy");
   });
-  await directories.prune(ids[0]!);
+  await directories.prune(new Set([ids[0]!]));
   expect(report).toHaveBeenCalledOnce();
   expect(fs.existsSync(directories.path(ids[0]!))).toBe(true);
   vi.mocked(native.remove_async).mockImplementation(remove);
-  await directories.prune(ids[0]!);
+  await directories.prune(new Set([ids[0]!]));
   expect(fs.readdirSync(root)).toHaveLength(AGENT_WORKSPACE_LIMIT + 1);
   expect(fs.existsSync(unrelated)).toBe(true);
   expect(fs.existsSync(directories.path(ids[1]!))).toBe(false);

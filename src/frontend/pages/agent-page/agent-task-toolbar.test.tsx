@@ -26,7 +26,6 @@ describe("AgentTaskToolbar", () => {
 
   it("底栏末项在任务不可用时仍打开 Wiki 首页", async () => {
     const view = await render({
-      can_reset: false,
       disconnected: true,
       approval_disabled: true,
       open_instructions: <button type="button">instructions</button>,
@@ -38,55 +37,6 @@ describe("AgentTaskToolbar", () => {
     expect(mocks.open_external_url).toHaveBeenCalledExactlyOnceWith(
       "https://github.com/neavo/LinguaGacha/wiki",
     );
-  });
-
-  it("新任务按钮与输入中的快捷键共用可用性", async () => {
-    vi.useFakeTimers();
-    const on_reset = vi.fn();
-    const view = await render({ can_reset: true, on_reset });
-    const input = view.querySelector("input")!;
-    const trigger = async () => {
-      const event = new KeyboardEvent("keydown", {
-        key: "n",
-        ctrlKey: true,
-        bubbles: true,
-        cancelable: true,
-      });
-      await act(async () => {
-        input.focus();
-        input.dispatchEvent(event);
-      });
-      return event;
-    };
-    expect((await trigger()).defaultPrevented).toBe(true);
-    expect(on_reset).toHaveBeenCalledOnce();
-    await render({ can_reset: false, on_reset });
-    const reset = view.querySelector<HTMLButtonElement>(".agent-composer__reset")!;
-    expect(reset.getAttribute("aria-keyshortcuts")).toBe("Control+N");
-    await act(async () => {
-      reset.parentElement!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      reset.parentElement!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    const tooltip = document.querySelector('[role="tooltip"][data-open]');
-    expect(tooltip?.textContent).toContain("agent_page.action.new_task");
-    expect(tooltip?.querySelector("kbd")?.textContent).toBe("Ctrl+N");
-    expect((await trigger()).defaultPrevented).toBe(false);
-    await act(async () => view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.click());
-    expect(on_reset).toHaveBeenCalledOnce();
-  });
-
-  it("新任务不可用时仍可修改审批模式", async () => {
-    const on_approval_mode_change = vi.fn();
-    const view = await render({ can_reset: false, on_approval_mode_change });
-    await act(async () =>
-      view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger")?.click(),
-    );
-    const auto = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
-      (item) => item.textContent?.includes("agent_page.approval.auto"),
-    )!;
-    await act(async () => auto.click());
-    expect(on_approval_mode_change).toHaveBeenCalledWith("auto");
   });
 
   it("收起底部交互时关闭审批菜单，恢复后保持关闭", async () => {
@@ -119,7 +69,6 @@ describe("AgentTaskToolbar", () => {
             add_file={null}
             open_instructions={null}
             locked={false}
-            can_reset={false}
             context={{ tokens: null, compactable: false, limits: null }}
             usage={{ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }}
             model_selection={{
@@ -139,7 +88,6 @@ describe("AgentTaskToolbar", () => {
             approval_mode="manual"
             approval_disabled={false}
             disconnected={false}
-            on_reset={vi.fn()}
             on_agent_model_select={vi.fn()}
             on_approval_mode_change={vi.fn()}
             {...props}

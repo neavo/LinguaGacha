@@ -2,35 +2,16 @@ import {
   is_project_stage,
   type ProjectSectionRevisions,
 } from "@frontend/app/state/desktop-project-change-types";
-import { JsonTool } from "../../../shared/utils/json-tool";
-
-/**
- * SSE payload 解析失败时返回空对象，事件消费层再按缺字段语义做恢复。
- */
-export function parse_event_payload(event: MessageEvent<string>): Record<string, unknown> {
-  try {
-    return JsonTool.parseStrict<Record<string, unknown>>(event.data);
-  } catch {
-    return {};
-  }
-}
 
 /**
  * 事件数组字段统一去空白和空字符串，避免下游把脏 section 名当作刷新范围。
  */
-export function normalize_string_array(value: unknown): string[] {
+export function normalize_section_array(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return value.map((entry) => String(entry ?? "").trim()).filter((entry) => entry !== "");
-}
-
-/**
- * section 数组当前等同普通字符串数组，单独函数保留项目事件语义。
- */
-export function normalize_section_array(value: unknown): string[] {
-  return normalize_string_array(value);
 }
 
 /**

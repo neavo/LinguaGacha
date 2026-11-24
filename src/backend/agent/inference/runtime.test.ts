@@ -1,6 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-beforeEach(() => vi.resetModules());
+const acquire = vi.hoisted(() => vi.fn(async () => async () => {}));
+vi.mock("../workspace/runtime/request-channel", () => ({ acquire_workspace_resource: acquire }));
+beforeEach(() => {
+  acquire.mockClear();
+  vi.resetModules();
+});
 
 it("GPU 作业失败后按收尾顺序继续，CPU 操作可并行", async () => {
   const { run_inference_operation, close_inference } = await import("./runtime");

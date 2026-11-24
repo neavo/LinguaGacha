@@ -32,7 +32,7 @@ export async function stage_godot_source(
   const inputs: {
     file: string;
     handle: BinaryFileHandle;
-    original: Awaited<ReturnType<BinaryFileHandle["stat"]>>;
+    original: ReturnType<NativeFs["stat"]>;
     pack: GodotPack;
     key: Buffer | undefined; // 只留在准备 worker，来源快照和回包不携带密钥。
   }[] = [];

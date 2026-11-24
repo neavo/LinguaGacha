@@ -1,8 +1,8 @@
 import { PROJECT_KNOWLEDGE_DOCUMENT } from "../../shared/project-knowledge";
 import { database_error } from "./database-error";
 import { read_project_revision } from "../../domain/project-revision";
-import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { NativeFs } from "../../native/native-fs";
 
 import { ZstdTool } from "./zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -98,14 +98,18 @@ function bytes_from_blob(value: unknown): Buffer {
 /** 单次数据库批次的同步读写对象，结束后失效。 */
 export class ProjectDatabaseAccess {
   public active = true; // 由拥有连接的批次撤销，不能跨事务复用。
+  private readonly identity_path: string;
   /** 绑定本批工程路径与连接。 */
   public constructor(
-    private readonly project_path: string,
+    project_path: string,
     private readonly db: DatabaseSync,
-  ) {}
+    private readonly native_fs: NativeFs,
+  ) {
+    this.identity_path = native_fs.to_identity_path(project_path);
+  }
   /** 同步读写只接受仍有效且属于本工程的作用域。 */
   private with_project_connection<T>(project_path: string, callback: (db: DatabaseSync) => T): T {
-    if (!this.active || path.resolve(project_path) !== this.project_path)
+    if (!this.active || this.native_fs.to_identity_path(project_path) !== this.identity_path)
       throw new AppErrors.AppError("runtime.cancelled");
     try {
       return callback(this.db);

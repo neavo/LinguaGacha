@@ -31,6 +31,13 @@ export const zh_cn_function_settings_page = {
       title: "导出完成后打开输出文件夹",
       description: "启用此功能后，将在翻译成果导出成功时自动打开输出文件夹",
     },
+    prompt_enhancement_enable: {
+      title: "提示词增强",
+      description:
+        "通过模拟思维链强化 AI 对指令的遵循" +
+        "\n" +
+        "关闭此功能可以略微减少 Token 消耗，但是会显著降低 AI 的智能水平，默认启用",
+    },
   },
   feedback: {
     preceding_lines_threshold_invalid: "参考前文条目数必须填写为 0 至 9999999 的整数 …",

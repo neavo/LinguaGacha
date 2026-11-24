@@ -15,13 +15,7 @@ type AnalysisWorkerTask = Parameters<AnalysisWorker["run"]>[0];
 function create_cache_read_port(): AnalysisCacheReadPort {
   const port: AnalysisCacheReadPort = {
     items_value: [create_item()],
-    snapshot: vi.fn(() => ({
-      projectPath: "E:/Project/demo.lg",
-      epoch: 1,
-      freshness: "fresh" as const,
-      sectionRevisions: { items: 1, quality: 1 },
-      itemCount: port.items_value.length,
-    })),
+    projectPath: "E:/Project/demo.lg",
     readSectionRevisions: vi.fn(() => ({ items: 1, quality: 1 })),
     items: {
       readItems: vi.fn(() => port.items_value.map((item) => ({ ...item }))),

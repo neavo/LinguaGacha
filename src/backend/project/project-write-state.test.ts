@@ -1,12 +1,7 @@
-import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { describe, expect, it } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
-import {
-  build_translation_extras_from_items,
-  compute_project_prefilter_write,
-  type ProjectWriteState,
-} from "./project-write-state";
+import { compute_project_prefilter_items, type ProjectWriteState } from "./project-write-state";
 
 /** 构造完整公开条目，覆盖参数只表达当前场景需要的事实。 */
 function create_item(
@@ -45,8 +40,8 @@ function create_state(items: ProjectItemPublicRecord[]): ProjectWriteState {
   };
 }
 
-describe("compute_project_prefilter_write", () => {
-  it("预过滤与统计保留格式私有数据，条目状态修改与上游隔离", () => {
+describe("compute_project_prefilter_items", () => {
+  it("预过滤复用格式私有数据，条目状态修改与上游隔离", () => {
     let private_reads = 0;
     const extra_field = {
       get nested() {
@@ -59,39 +54,33 @@ describe("compute_project_prefilter_write", () => {
       extra_field,
     });
     const state = create_state([original]);
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state,
       source_language: "JA",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     });
-    const progress = build_translation_extras_from_items({
-      progress: normalize_batch_translation_progress(undefined),
-      items: Object.values(state.items),
-    });
     expect(private_reads).toBe(0);
-    expect(result.items["1"]!.extra_field).toBe(extra_field);
-    expect(progress.total_line).toBe(1);
-    result.items["1"]!.status = "PROCESSED";
+    expect(result["1"]!.extra_field).toBe(extra_field);
+    result["1"]!.status = "PROCESSED";
     expect(original.status).toBe("NONE");
   });
   it("稀疏身份与输入顺序不影响重复代表项，输出仍按身份索引", () => {
     const later = create_item(9001, { src: "同文" });
     const first = create_item(7, { src: "同文", status: "DUPLICATED" });
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: { files: create_state([]).files, items: { later, first } },
       source_language: "ZH",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
     });
-    expect(Object.keys(result.items)).toEqual(["7", "9001"]);
-    expect(result.items["7"]!.status).toBe("NONE");
-    expect(result.items["9001"]!.status).toBe("DUPLICATED");
-    expect(result.translation_extras.total_line).toBe(1);
+    expect(Object.keys(result)).toEqual(["7", "9001"]);
+    expect(result["7"]!.status).toBe("NONE");
+    expect(result["9001"]!.status).toBe("DUPLICATED");
     expect([later.status, first.status]).toEqual(["NONE", "DUPLICATED"]);
   });
   it("按正文与可见姓名判断翻译候选，正文特殊规则不作用于姓名", () => {
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: create_state([
         create_item(1, { src: "「…………」", name_src: "眼鏡の美少女" }),
         create_item(2, { src: "", name_src: "俊輔" }),
@@ -106,7 +95,7 @@ describe("compute_project_prefilter_write", () => {
       skip_duplicate_source_text_enable: false,
     });
 
-    expect(Object.values(result.items).map((item) => item.status)).toEqual([
+    expect(Object.values(result).map((item) => item.status)).toEqual([
       "NONE",
       "NONE",
       "LANGUAGE_SKIPPED",
@@ -118,7 +107,7 @@ describe("compute_project_prefilter_write", () => {
   });
 
   it("按规则和源语言生成跳过状态", () => {
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: create_state([
         create_item(1, { src: "hello" }),
         create_item(2, { src: "こんにちは" }),
@@ -129,13 +118,13 @@ describe("compute_project_prefilter_write", () => {
       skip_duplicate_source_text_enable: false,
     });
 
-    expect(result.items["1"]?.status).toBe("LANGUAGE_SKIPPED");
-    expect(result.items["2"]?.status).toBe("NONE");
-    expect(result.items["3"]?.status).toBe("RULE_SKIPPED");
+    expect(result["1"]?.status).toBe("LANGUAGE_SKIPPED");
+    expect(result["2"]?.status).toBe("NONE");
+    expect(result["3"]?.status).toBe("RULE_SKIPPED");
   });
 
   it("强制翻译条目绕过规则和语言过滤并保留运行态字段", () => {
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: create_state([
         create_item(1, {
           src: "",
@@ -149,7 +138,7 @@ describe("compute_project_prefilter_write", () => {
       skip_duplicate_source_text_enable: false,
     });
 
-    expect(result.items["1"]).toMatchObject({
+    expect(result["1"]).toMatchObject({
       dst: "保留",
       status: "PROCESSED",
       skip_internal_filter: true,
@@ -157,7 +146,7 @@ describe("compute_project_prefilter_write", () => {
   });
 
   it("保留格式解析器产生的规则跳过状态", () => {
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: create_state([
         create_item(1, {
           src: "格式内部字段",
@@ -171,23 +160,23 @@ describe("compute_project_prefilter_write", () => {
       skip_duplicate_source_text_enable: false,
     });
 
-    expect(result.items["1"]?.status).toBe("RULE_SKIPPED");
+    expect(result["1"]?.status).toBe("RULE_SKIPPED");
   });
 
   it("启用同文件重复过滤时只保留首个可翻译条目", () => {
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: create_state([create_item(1, { src: "同文" }), create_item(2, { src: "同文" })]),
       source_language: "ZH",
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
     });
 
-    expect(result.items["1"]?.status).toBe("NONE");
-    expect(result.items["2"]?.status).toBe("DUPLICATED");
+    expect(result["1"]?.status).toBe("NONE");
+    expect(result["2"]?.status).toBe("DUPLICATED");
   });
 
   it("不同角色分别保留可翻译条目", () => {
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: create_state([
         create_item(1, { src: "同文", name_src: "甲" }),
         create_item(2, { src: "同文", name_src: "乙" }),
@@ -198,7 +187,7 @@ describe("compute_project_prefilter_write", () => {
       skip_duplicate_source_text_enable: true,
     });
 
-    expect(Object.values(result.items).map((item) => item.status)).toEqual([
+    expect(Object.values(result).map((item) => item.status)).toEqual([
       "NONE",
       "NONE",
       "DUPLICATED",
@@ -206,7 +195,7 @@ describe("compute_project_prefilter_write", () => {
   });
 
   it("关闭重复过滤时旧 DUPLICATED 会回到可处理状态", () => {
-    const result = compute_project_prefilter_write({
+    const result = compute_project_prefilter_items({
       state: create_state([
         create_item(1, { src: "同文" }),
         create_item(2, { src: "同文", status: "DUPLICATED" }),
@@ -216,6 +205,6 @@ describe("compute_project_prefilter_write", () => {
       skip_duplicate_source_text_enable: false,
     });
 
-    expect(result.items["2"]?.status).toBe("NONE");
+    expect(result["2"]?.status).toBe("NONE");
   });
 });

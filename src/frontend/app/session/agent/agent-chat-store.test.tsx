@@ -1,4 +1,3 @@
-import { AGENT_INACTIVE_CHAT_ID } from "@shared/agent";
 import { AgentChatStore } from "./agent-chat-store";
 import { uploaded_file } from "../../../../test/agent-upload-fixture";
 const decision_toast = vi.hoisted(() => vi.fn());
@@ -9,7 +8,16 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_error_toast: decision_toast,
   push_toast: decision_toast,
 }));
-import { act, StrictMode, useEffect, useContext, useMemo, useSyncExternalStore } from "react";
+import {
+  act,
+  StrictMode,
+  useEffect,
+  useContext,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,7 +39,6 @@ const desktop_api_mocks = vi.hoisted(() => ({
 
 vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
-import { AgentChatProvider } from "@frontend/app/session/agent/agent-chat-provider";
 import {
   AgentChatStoreContext,
   useAgentControls,
@@ -41,6 +48,15 @@ import {
   useAgentSkills,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-chat-context";
+
+function AgentChatProvider({ children }: { children: ReactNode }) {
+  const [store] = useState(() => new AgentChatStore(window.localStorage, decision_toast));
+  useEffect(() => {
+    store.connect();
+    return () => store.disconnect();
+  }, [store]);
+  return <AgentChatStoreContext value={store}>{children}</AgentChatStoreContext>;
+}
 
 /** 测试探针聚合公开切片，统一观察会话与命令结果。 */
 function useAgentChat() {
@@ -192,6 +208,12 @@ describe("AgentChatStore", () => {
     await expect(first.actions.send(message)).rejects.toThrow("lost reply");
     expect(desktop_api_mocks.api_fetch.mock.calls.at(-1)![1]).not.toEqual(original);
     first.disconnect();
+    const scoped_key = `agent.pending_input_command:${original.chatId}`;
+    window.localStorage.setItem(
+      "agent.pending_input_command",
+      window.localStorage.getItem(scoped_key)!,
+    );
+    window.localStorage.removeItem(scoped_key);
     desktop_api_mocks.api_fetch
       .mockClear()
       .mockResolvedValue({ revision: event_source.current_revision, status: "accepted" });
@@ -202,6 +224,7 @@ describe("AgentChatStore", () => {
       expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
       expect(desktop_api_mocks.api_fetch.mock.calls[0]![0]).toBe("/api/agent/input-status");
       expect(reopened.get_input().read_history()).toContain(message.text);
+      expect(window.localStorage.getItem("agent.pending_input_command")).toBeNull();
     } finally {
       reopened.disconnect();
     }
@@ -228,7 +251,7 @@ describe("AgentChatStore", () => {
     }
   });
 
-  it("查询未确认命令期间切换对话，原发送不能进入新对话", async () => {
+  it("重置快照清空草稿和未确认命令，原发送不能进入新对话", async () => {
     const store = new AgentChatStore(window.localStorage, vi.fn());
     store.connect();
     try {
@@ -238,6 +261,8 @@ describe("AgentChatStore", () => {
       await expect(store.actions.send({ text: "待确认", attachments: [] })).rejects.toThrow(
         "offline",
       );
+      const previous_chat = store.get_chat_id();
+      store.get_input().draft.write({ text: "旧草稿", attachments: [] });
       const status = Promise.withResolvers<unknown>();
       desktop_api_mocks.api_fetch
         .mockClear()
@@ -252,6 +277,10 @@ describe("AgentChatStore", () => {
       status.resolve({ revision: event_source.current_revision, status: "unknown" });
       await expect(sending).rejects.toMatchObject({ code: "runtime.cancelled" });
       expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+      expect(store.get_input().draft.read()).toEqual({ text: "", attachments: [] });
+      expect(
+        window.localStorage.getItem(`agent.pending_input_command:${previous_chat}`),
+      ).toBeNull();
     } finally {
       store.disconnect();
     }
@@ -904,10 +933,7 @@ describe("AgentChatStore", () => {
       reject(new Error("connection failed"));
       await submission;
     });
-    expect(decision_toast).toHaveBeenCalledExactlyOnceWith(
-      "agent_page.error.decision",
-      expect.any(Error),
-    );
+    expect(decision_toast).toHaveBeenCalledExactlyOnceWith(expect.any(Error), "decision");
     expect(latest.pendingDecision?.id).toBe("countdown-question");
     await act(async () => latest.reconnect());
     await act(async () => {
@@ -1618,30 +1644,6 @@ describe("AgentChatStore", () => {
     expect(latest.input.revision).toBe(1);
   });
 
-  it("无工程正文延续到首个工程，关闭工程后清空", async () => {
-    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ chatId: AGENT_INACTIVE_CHAT_ID }));
-    let latest!: ReturnType<typeof useAgentChat>;
-    await render_probe(() => {
-      latest = useAgentChat();
-    });
-    await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.draft.write({ text: "待发送正文", attachments: [] });
-    await act(async () =>
-      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
-        type: "snapshot_seed",
-        snapshot: agent_snapshot({ revision: 1, chatId: "project-chat" }),
-      }),
-    );
-    expect(latest.input.draft.read()).toEqual({ text: "待发送正文", attachments: [] });
-    await act(async () =>
-      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
-        type: "snapshot_seed",
-        snapshot: agent_snapshot({ revision: 2, chatId: AGENT_INACTIVE_CHAT_ID }),
-      }),
-    );
-    expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
-  });
-
   it("技能增量只更新候选并保留历史与草稿，新会话身份清理旧文件引用", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({
@@ -2035,62 +2037,6 @@ describe("AgentChatStore", () => {
       commandId: expect.any(String),
     });
     expect(latest.entries).toEqual([{ ...failed_compaction, status: "running" }]);
-    expect(latest.command).toBeNull();
-  });
-
-  it("重置期间公开命令状态，并在成功后应用权威空快照", async () => {
-    let resolve_reset!: (value: unknown) => void;
-    desktop_api_mocks.api_fetch.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolve_reset = resolve;
-        }),
-    );
-    let latest!: ReturnType<typeof useAgentChat>;
-    await render_probe(() => {
-      latest = useAgentChat();
-    });
-    await wait_for(() => expect(latest.transport).toBe("ready"));
-    let result!: Promise<void>;
-    await act(async () => {
-      result = latest.reset();
-      await Promise.resolve();
-    });
-    expect(latest.command).toBe("reset");
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/reset");
-
-    await act(async () => {
-      event_source.emit(AGENT_CHAT_EVENT_TOPIC, {
-        type: "snapshot_seed",
-        revision: 1,
-        snapshot: agent_snapshot({ revision: 1, skills: TEST_SKILLS.slice(0, 1) }),
-      });
-      resolve_reset({ revision: 1 });
-      await result;
-    });
-    expect(latest).toMatchObject({
-      state: "idle",
-      entries: [],
-      skills: TEST_SKILLS.slice(0, 1),
-      command: null,
-    });
-  });
-
-  it("重置失败向页面回传错误并保留当前快照", async () => {
-    const offline = new Error("offline");
-    desktop_api_mocks.api_fetch.mockRejectedValue(offline);
-    let latest!: ReturnType<typeof useAgentChat>;
-    await render_probe(() => {
-      latest = useAgentChat();
-    });
-    await wait_for(() => expect(latest.transport).toBe("ready"));
-    const previous_entries = latest.entries;
-
-    await act(async () => {
-      await expect(latest.reset()).rejects.toBe(offline);
-    });
-
-    expect(latest.entries).toEqual(previous_entries);
     expect(latest.command).toBeNull();
   });
 

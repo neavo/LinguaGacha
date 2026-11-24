@@ -32,7 +32,12 @@ import { AgentChatView } from "./agent-chat-view";
 /** 隔离远程流，事务、提交订阅与历史投影使用真实 Harness。 */
 async function create_chat(
   onChange: () => void = () => {},
-  options: { tools?: ToolRegistration[]; storage?: Storage; systemPrompt?: () => string } = {},
+  options: {
+    tools?: ToolRegistration[];
+    storage?: Storage;
+    systemPrompt?: () => string;
+    chatId?: string;
+  } = {},
 ) {
   // 预留窗口，避免 fake 缓存计量差异提前触发自动压缩。
   const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
@@ -42,7 +47,7 @@ async function create_chat(
   const log = new AgentRuntimeLog({ append }, "chat-test");
   const onModelEvent = vi.fn();
   const chat = await AgentChat.open({
-    chatId: "chat-test",
+    documentKey: options.chatId ?? "chat-test",
     storage: options.storage ?? new MemoryStorage(),
     cwd: process.cwd(),
     models,
@@ -63,6 +68,36 @@ async function create_chat(
   await chat.configure(provider.getModel(), "off");
   return { chat, provider, append, onModelEvent };
 }
+
+it("两个工程的 Harness 并发，模型标识相同也各用自己的请求配置与历史", async () => {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const first = await create_chat(undefined, { chatId: "first" });
+  const second = await create_chat(undefined, { chatId: "second" });
+  first.provider.setResponses([
+    async () => {
+      started.resolve();
+      await release.promise;
+      return fauxAssistantMessage("answer one");
+    },
+  ]);
+  second.provider.setResponses([fauxAssistantMessage("answer two")]);
+  const pending = talk(first.chat, "question one");
+  try {
+    await started.promise;
+    await talk(second.chat, "question two");
+    expect(second.chat.entries.filter((entry) => entry.kind === "user_message")).toMatchObject([
+      { text: "question two" },
+    ]);
+  } finally {
+    release.resolve();
+    await pending;
+    await Promise.all([first.chat.close(), second.chat.close()]);
+  }
+  expect(first.chat.entries.filter((entry) => entry.kind === "user_message")).toMatchObject([
+    { text: "question one" },
+  ]);
+});
 
 it.each(["text", "error", "image"] as const)(
   "真实 Harness 把工具 %s 输出交给下一次模型请求",
@@ -393,8 +428,9 @@ async function open(store: AgentChatStorage, tools: ToolRegistration[] = []) {
   const provider = fauxProvider({ models: [{ id: "chat-model", contextWindow: 256_000 }] });
   const models = createModels();
   const append = vi.fn();
+  const { id, data } = (await store.read())!;
   const chat = await AgentChat.open({
-    chatId: (await store.read())!.id,
+    documentKey: data.documentKey ?? id,
     storage: await store.open_storage(),
     readBatch: (callback) => store.read_batch(callback),
     cwd: process.cwd(),
@@ -409,7 +445,13 @@ async function open(store: AgentChatStorage, tools: ToolRegistration[] = []) {
     onChange: vi.fn(),
     onModelEvent: vi.fn(),
   });
-  return { chat, provider, models, append };
+  return {
+    chat,
+    provider,
+    models,
+    append,
+    close: () => chat.close(),
+  };
 }
 /** 经产品轮次入口提交并结算，供内存与磁盘场景共用。 */
 async function talk(chat: AgentChat, text: string) {
@@ -441,7 +483,7 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
   await first.chat.change_queue((queue) => queue.enqueue({ text: "待发送", attachments: [] }));
   const expected = structuredClone(first.chat.entries);
   const usage = structuredClone(first.chat.usage);
-  await first.chat.close();
+  await first.close();
   await store.close();
   store = database.open_agent_store(file);
   const restored = await open(store);
@@ -472,7 +514,7 @@ it("既有身份重开恢复历史，无模型时可修订助手，后续请求�
       usage: expect.objectContaining({ totalTokens: 0 }),
     }),
   );
-  await restored.chat.close();
+  await restored.close();
   await store.close();
   await database.close();
 });
@@ -487,7 +529,7 @@ it("供应商身份随 SQLite 重开和模型重新配置保留", async () => {
   const before = vi.fn<FauxResponseFactory>(() => fauxAssistantMessage("第一次"));
   first.provider.setResponses([before]);
   await talk(first.chat, "开始");
-  await first.chat.close();
+  await first.close();
   await store.close();
   const reopenedStore = database.open_agent_store(file);
   const restored = await open(reopenedStore);
@@ -500,7 +542,7 @@ it("供应商身份随 SQLite 重开和模型重新配置保留", async () => {
     expect(after.mock.calls[0]![1]?.sessionId).toBe(before.mock.calls[0]![1]?.sessionId);
     expect(after.mock.calls[0]![1]?.sessionId).toEqual(expect.any(String));
   } finally {
-    await restored.chat.close();
+    await restored.close();
     await reopenedStore.close();
     await database.close();
   }
@@ -538,7 +580,7 @@ it("压缩状态依赖 SDK 任务，重开保留起始时间、身份顺序和�
     expect(compacted.at(-1)!.createdAt).toBeGreaterThanOrEqual(before_compaction);
     expect(compacted.at(-1)!.createdAt).toBeLessThanOrEqual(Date.now());
     first.chat.log.begin_run("closing-round", "prompt");
-    await first.chat.close();
+    await first.close();
     expect(first.append).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.objectContaining({ event: "run_start", round_id: "closing-round" }),
@@ -554,7 +596,7 @@ it("压缩状态依赖 SDK 任务，重开保留起始时间、身份顺序和�
     );
   } finally {
     await restored?.chat.close();
-    await first.chat.close();
+    await first.close();
     await store.close();
     await database.close();
   }
@@ -656,12 +698,12 @@ it("遗留工具任务只执行 SDK 取消收尾，恢复后保留公开工具�
   await restored.chat.revise_assistant(restored.chat.entries.at(-1)!, "混合历史修订");
   const mixed = structuredClone(restored.chat.entries);
   expect(mixed.slice(0, old.length)).toEqual(old);
-  await restored.chat.close();
+  await restored.close();
   const reopened = await open(store);
   expect(reopened.chat.entries).toEqual(mixed);
   expect(Object.keys(reopened.chat.state.inputs)).toEqual(["request"]);
   expect(reopened.provider.state.callCount).toBe(0);
-  await reopened.chat.close();
+  await reopened.close();
   await store.close();
   await database.close();
 });
@@ -794,7 +836,7 @@ it.each(["rollback", "accepted"] as const)(
       await expect(input).rejects.toThrow("受理事务回滚");
       expect(first.provider.state.callCount).toBe(1);
     }
-    await first.chat.close();
+    await first.close();
     await store.close();
     store = database.open_agent_store(file);
     const restored = await open(store);
@@ -809,7 +851,7 @@ it.each(["rollback", "accepted"] as const)(
       );
       expect(restored.provider.state.callCount).toBe(0);
     } finally {
-      await restored.chat.close();
+      await restored.close();
       await store.close();
       await database.close();
     }
@@ -872,7 +914,7 @@ it("工具图片经真实存储关闭重开后仍可读取", async () => {
     ]);
     await talk(current.chat, "渲染图片");
     const entry = current.chat.entries.find((candidate) => candidate.kind === "tool_call")!;
-    await current.chat.close();
+    await current.close();
     await store.close();
 
     store = database.open_agent_store(file);
@@ -882,7 +924,7 @@ it("工具图片经真实存储关闭重开后仍可读取", async () => {
     );
     expect(current.chat.view.read_tool_image(entry.id, 0)).toEqual(image);
   } finally {
-    await current.chat.close();
+    await current.close();
     await store.close();
     await database.close();
   }

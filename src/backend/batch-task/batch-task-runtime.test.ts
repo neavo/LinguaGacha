@@ -5,14 +5,12 @@ import {
   type BatchTaskRunHandle,
 } from "./batch-task-runtime";
 import { empty_batch_task_progress } from "../../domain/batch-task";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "../project/project-session-state";
+import { ProjectOperationGate } from "../runtime-operation-gate";
 
 /** 共享生命周期只依赖真实会话与门禁。 */
 function setup() {
-  const gate = new RuntimeOperationGate();
-  const session = new ProjectSessionState();
-  return { runtime: new BatchTaskRuntime(session, gate), gate, session };
+  const gate = new ProjectOperationGate();
+  return { runtime: new BatchTaskRuntime("project.lg", gate), gate };
 }
 /** 挂起真实收尾边界，由用例决定完成次序。 */
 function deferred<T>() {
@@ -22,10 +20,22 @@ const result = () => "done" as const;
 afterEach(() => vi.useRealTimers());
 
 describe("共享批次完成链", () => {
+  it("Agent 翻译占用工程写入，结束后父对话继续运行", async () => {
+    const { runtime, gate } = setup();
+    const agent = gate.begin_runtime("agent");
+    const task = runtime.begin_under_agent(agent, new AbortController().signal, "translation");
+    expect(gate.get_snapshot()).toMatchObject({ batchTranslation: true, agent: true });
+    await expect(gate.run_project_write(() => {})).rejects.toMatchObject({ code: "runtime.busy" });
+    await runtime.execute(task, async () => "done");
+    await task.completion;
+    expect(gate.get_snapshot()).toMatchObject({ batchTranslation: false, agent: true });
+    gate.finish_runtime(agent);
+    await runtime.dispose();
+  });
   it.each(["standalone", "agent"] as const)(
-    "%s 来源保留至终态，新任务和工程关闭重置展示",
+    "%s 来源保留至终态，新任务替换上一轮终态",
     async (source) => {
-      const { runtime, gate, session } = setup();
+      const { runtime, gate } = setup();
       const lease = source === "agent" ? gate.begin_runtime("agent") : null;
       const frames: Array<{ status: string; source: string | null }> = [];
       runtime.subscribe((snapshot) => {
@@ -54,10 +64,9 @@ describe("共享批次完成链", () => {
       });
       await runtime.execute(next, async () => result());
       await next.completion;
-      await session.clear();
       expect(await runtime.build_snapshot()).toMatchObject({
-        status: "idle",
-        source: null,
+        status: "done",
+        source: "standalone",
         request_recovery: null,
       });
       await runtime.dispose();
@@ -155,7 +164,7 @@ describe("共享批次完成链", () => {
       { status: "requested", count: 3 },
       { status: "done", count: 0 },
     ]);
-    expect(gate.get_snapshot().owner).toBeNull();
+    expect(gate.busy).toBe(false);
     const next = runtime.begin_standalone();
     await runtime.publish_progress(next, empty_batch_task_progress("item", 1));
     await runtime.publish_progress(handle, empty_batch_task_progress("item", 99));
@@ -263,7 +272,7 @@ describe("共享批次完成链", () => {
     await expect(runtime.execute(handle, run)).rejects.toBe(error);
     await expect(handle.completion).rejects.toBe(error);
     expect(run).not.toHaveBeenCalled();
-    expect(gate.get_snapshot().owner).toBeNull();
+    expect(gate.busy).toBe(false);
     expect(await runtime.build_snapshot()).toMatchObject({ status: "idle", source: null });
     unsubscribe();
     const next = runtime.begin_standalone();
@@ -282,18 +291,18 @@ describe("共享批次完成链", () => {
     await runtime.execute(handle, () => work.promise);
     const settled = vi.fn();
     void handle.completion.then(settled);
-    expect(gate.get_snapshot().owner).toBe("batch_translation");
+    expect(gate.get_snapshot().batchTranslation).toBe(true);
     const progress = { ...empty_batch_task_progress("item", 2), succeeded: 2 };
     await runtime.publish_progress(handle, progress);
     const output = result();
     work.resolve(output);
     await vi.waitFor(async () => expect((await runtime.build_snapshot()).status).toBe("done"));
     expect(settled).not.toHaveBeenCalled();
-    expect(gate.get_snapshot().owner).toBe("batch_translation");
+    expect(gate.get_snapshot().batchTranslation).toBe(true);
     expect(await runtime.request_stop(runtime.build_snapshot().run_id ?? "")).toBe(false);
     terminal.resolve();
     expect(await handle.completion).toMatchObject({ status: "done", progress: { succeeded: 2 } });
-    expect(gate.get_snapshot().owner).toBeNull();
+    expect(gate.busy).toBe(false);
     progress.succeeded = 20;
     expect((await handle.completion).progress?.succeeded).toBe(2);
     unsubscribe();
@@ -313,7 +322,7 @@ describe("共享批次完成链", () => {
     expect(() => runtime.begin_standalone()).toThrow();
     work.resolve(result());
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "parent" });
-    expect(gate.get_snapshot().owner).toBe("agent");
+    expect(gate.get_snapshot().agent).toBe(true);
     gate.finish_runtime(lease);
     await runtime.dispose();
   });
@@ -329,7 +338,7 @@ describe("共享批次完成链", () => {
       cause: error,
       result: { status: "error" },
     });
-    expect(gate.get_snapshot().owner).toBeNull();
+    expect(gate.busy).toBe(false);
     await runtime.dispose();
   });
   it("执行异常发布 error，rejection 携带终态统计与原始异常", async () => {
@@ -344,7 +353,7 @@ describe("共享批次完成链", () => {
       result: { status: "error" },
     });
     expect((await runtime.build_snapshot()).status).toBe("error");
-    expect(gate.get_snapshot().owner).toBeNull();
+    expect(gate.busy).toBe(false);
     await runtime.dispose();
   });
   it("预约后立即 dispose 也等待同一个 completion", async () => {
@@ -353,7 +362,7 @@ describe("共享批次完成链", () => {
     await runtime.dispose();
     expect(handle.signal.aborted).toBe(true);
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "shutdown" });
-    expect(gate.get_snapshot().owner).toBeNull();
+    expect(gate.busy).toBe(false);
   });
   it("终态发布期间的父取消不改写已结算结果", async () => {
     const { runtime, gate } = setup();
@@ -387,7 +396,7 @@ describe("共享批次完成链", () => {
     );
     await expect(handle.completion).rejects.toMatchObject({ result: { status: "error" } });
     expect(frames.at(-1)).toBe("error");
-    expect(gate.get_snapshot().owner).toBeNull();
+    expect(gate.busy).toBe(false);
     await runtime.dispose();
   });
 
@@ -400,7 +409,7 @@ describe("共享批次完成链", () => {
     });
     let next: BatchTaskRunHandle | undefined;
     const unsubscribe = gate.subscribe((snapshot) => {
-      if (snapshot.owner === null && next === undefined) next = runtime.begin_standalone();
+      if (!snapshot.batchTranslation && next === undefined) next = runtime.begin_standalone();
     });
     await runtime.execute(first, async () => "done");
     const completed = await first.completion;

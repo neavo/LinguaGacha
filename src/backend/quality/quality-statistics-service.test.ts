@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { QualityRuleStatisticsCache } from "../cache/quality-rule-statistics-cache";
-import { ProjectSessionState } from "../project/project-session-state";
 import { QualityStatisticsService } from "./quality-statistics-service";
 
 function create_cache(): Pick<QualityRuleStatisticsCache, "read"> {
@@ -21,10 +20,8 @@ function create_cache(): Pick<QualityRuleStatisticsCache, "read"> {
 
 describe("QualityStatisticsService", () => {
   it("收窄合法 rule key 后返回统计响应形状", async () => {
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded("E:/Project/demo.lg");
     const cache = create_cache();
-    const service = new QualityStatisticsService({ sessionState: session_state, cache });
+    const service = new QualityStatisticsService({ cache });
 
     const result = await service.read({ rule_key: "glossary" });
 
@@ -40,28 +37,12 @@ describe("QualityStatisticsService", () => {
   });
 
   it("非法 rule key 仍由 query service 抛请求校验错误", async () => {
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded("E:/Project/demo.lg");
     const service = new QualityStatisticsService({
-      sessionState: session_state,
       cache: create_cache(),
     });
 
     await expect(service.read({ rule_key: "unknown" })).rejects.toMatchObject({
       code: "request.validation_failed",
     });
-  });
-
-  it("未加载工程时不读取统计缓存", async () => {
-    const cache = create_cache();
-    const service = new QualityStatisticsService({
-      sessionState: new ProjectSessionState(),
-      cache,
-    });
-
-    await expect(service.read({ rule_key: "glossary" })).rejects.toMatchObject({
-      code: "project.not_loaded",
-    });
-    expect(cache.read).not.toHaveBeenCalled();
   });
 });

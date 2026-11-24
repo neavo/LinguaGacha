@@ -1,3 +1,5 @@
+import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import type { BatchTaskSnapshot } from "@domain/batch-task";
 import { batch_task_metrics, read_batch_task_snapshot } from "@shared/batch-task";
 import {
@@ -7,7 +9,6 @@ import {
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import {
   resolve_batch_translation_start_mode,
   is_active_batch_translation_status,
@@ -19,7 +20,6 @@ import type {
 } from "@frontend/app/state/desktop-project-write";
 import {
   useDesktopState,
-  useRuntimeSnapshot,
   useSyncBatchTranslationSnapshot,
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
@@ -69,15 +69,17 @@ export type BatchTask = {
  * 拥有翻译任务菜单、确认框和终态反馈的 renderer 会话状态。
  */
 export function useBatchTask(options: BatchTaskOptions): BatchTask {
+  const api_fetch = useProjectFetch();
   const { onRequestExport } = options;
   const { t } = useI18n();
 
-  const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
+  const { active_project, project_snapshot, commit_project_write, refresh_batch_translation } =
+    useDesktopState();
   const sync_task_snapshot = useSyncBatchTranslationSnapshot();
   const task_snapshot = useBatchTranslationSnapshot();
   const batch_task = useBatchTaskSnapshot();
   const sync_batch_task = useSyncBatchTaskSnapshot();
-  const runtime_snapshot = useRuntimeSnapshot();
+  const runtime_snapshot = useProjectRuntimeSnapshot();
   const [now_seconds, set_now_seconds] = useState(() => Date.now() / 1000);
   const [task_waveform_history, set_task_waveform_history] = useState<number[]>([]);
   const [task_detail_sheet_open, set_task_detail_sheet_open] = useState(false);
@@ -355,11 +357,20 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
 
     if (
       !translation_dialog_open &&
-      should_open_translation_export_followup(previous_status, task_snapshot)
+      (active_project
+        ? active_project.batch_translation.takeExportFollowup()
+        : should_open_translation_export_followup(previous_status, task_snapshot))
     ) {
       onRequestExport();
     }
-  }, [project_snapshot.loaded, t, translation_dialog_open, task_snapshot, onRequestExport]);
+  }, [
+    active_project,
+    project_snapshot.loaded,
+    t,
+    translation_dialog_open,
+    task_snapshot,
+    onRequestExport,
+  ]);
 
   useEffect(() => {
     if (!should_animate_translation_waveform) {

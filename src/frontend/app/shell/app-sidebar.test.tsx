@@ -1,83 +1,80 @@
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppLanguage } from "@domain/app-language";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
-import { SidebarProvider } from "@frontend/shadcn/sidebar";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { NAVIGATION_GROUPS } from "@frontend/app/navigation/schema";
 import { AppSidebar } from "./app-sidebar";
 
 vi.mock("./app-appearance-menu", () => ({ AppAppearanceMenu: () => null }));
 
-type RenderSidebarOptions = Partial<ComponentProps<typeof AppSidebar>>;
+// 工程列表单独测试，保留真实拖放目标以覆盖侧栏外壳的接线。
+vi.mock("./project-sidebar", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./project-sidebar")>()),
+  ProjectSidebar: () => null,
+}));
+const request_open = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/session/project-lifecycle/project-lifecycle-context", () => ({
+  useProjectLifecycle: () => ({ busy: false, request_open }),
+}));
 
 describe("AppSidebar", () => {
-  let root: Root | null = null;
-  let container: HTMLDivElement | null = null;
+  let root: Root;
+  let container: HTMLDivElement;
 
-  afterEach(async () => {
-    await act(async () => root?.unmount());
-
-    container?.remove();
-    root = null;
-    container = null;
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
   });
 
-  /** 复用同一挂载点，验证宿主更新侧栏与导航状态后的交互。 */
-  async function render_sidebar(options: RenderSidebarOptions = {}, open = true): Promise<void> {
-    if (container === null) {
-      container = document.createElement("div");
-      document.body.append(container);
-      root = createRoot(container);
-    }
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    container.remove();
+    window.localStorage.removeItem("lg-sidebar-width");
+  });
 
+  async function render_sidebar(
+    options: Partial<ComponentProps<typeof AppSidebar>> = {},
+  ): Promise<void> {
     await act(async () => {
-      root?.render(
+      root.render(
         <LocaleProvider locale="zh-CN">
           <TooltipProvider>
-            <SidebarProvider open={open}>
-              <AppSidebar
-                groups={[]}
-                selected_route="agent"
-                disabled_route_ids={new Set()}
-                app_language="ZH"
-                is_language_updating={false}
-                show_log_badge={false}
-                profile_label_key="app.profile.status"
-                profile_tooltip_key="app.profile.status_tooltip"
-                is_profile_update_available={false}
-                on_select_route={vi.fn()}
-                on_open_logs={vi.fn()}
-                on_select_app_language={vi.fn()}
-                on_profile_action={vi.fn()}
-                {...options}
-              />
-            </SidebarProvider>
+            <AppSidebar
+              groups={[]}
+              selected_route="agent"
+              app_language="ZH"
+              is_language_updating={false}
+              show_log_badge={false}
+              profile_label_key="app.profile.status"
+              profile_tooltip_key="app.profile.status_tooltip"
+              is_profile_update_available={false}
+              on_select_route={vi.fn()}
+              on_open_logs={vi.fn()}
+              on_select_app_language={vi.fn()}
+              on_profile_action={vi.fn()}
+              {...options}
+            />
           </TooltipProvider>
         </LocaleProvider>,
       );
     });
   }
 
-  it("折叠时悬停显示语言提示，选择语言后提交对应的持久化编码", async () => {
+  it("选择语言后提交对应的持久化编码", async () => {
     const selected_languages: AppLanguage[] = [];
-    await render_sidebar(
-      {
-        on_select_app_language: (language) => {
-          selected_languages.push(language);
-        },
+    await render_sidebar({
+      on_select_app_language: (language) => {
+        selected_languages.push(language);
       },
-      false,
-    );
-    const trigger = container!.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
-    await act(async () => {
-      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
     });
-    expect(document.querySelector('[role="tooltip"][data-open]')?.textContent).toBe(
-      trigger.getAttribute("aria-label"),
-    );
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
     await act(async () => trigger.click());
 
     const language_option = Array.from(
@@ -97,7 +94,7 @@ describe("AppSidebar", () => {
   it("语言设置更新期间禁用菜单按钮", async () => {
     await render_sidebar({ is_language_updating: true });
 
-    const trigger = container!.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
     expect(trigger?.disabled).toBe(true);
   });
 
@@ -113,45 +110,59 @@ describe("AppSidebar", () => {
     expect(on_open_logs).toHaveBeenCalledOnce();
   });
 
-  it("侧栏折叠时导航入口仍可直接选择并独立高亮", async () => {
-    const on_select_route = vi.fn();
-    await render_sidebar(
-      {
-        groups: NAVIGATION_GROUPS,
-        selected_route: "post-translation-replacement",
-        on_select_route,
-      },
-      false,
-    );
-    const pre = container!.querySelector<HTMLButtonElement>('button[aria-label="译前替换"]')!;
-    const post = container!.querySelector<HTMLButtonElement>('button[aria-label="译后替换"]')!;
-    expect(pre.getAttribute("data-active")).toBe("false");
-    expect(post.getAttribute("data-active")).toBe("true");
-    await act(async () => {
-      pre.click();
-      post.click();
-    });
-    expect(on_select_route.mock.calls).toEqual([
-      ["pre-translation-replacement"],
-      ["post-translation-replacement"],
-    ]);
-  });
-
-  it("禁用的替换入口不提交页面选择", async () => {
+  it("导航入口可直接选择并独立高亮", async () => {
     const on_select_route = vi.fn();
     await render_sidebar({
       groups: NAVIGATION_GROUPS,
-      disabled_route_ids: new Set(["pre-translation-replacement", "post-translation-replacement"]),
+      selected_route: "skills",
       on_select_route,
     });
-    const pre = container!.querySelector<HTMLButtonElement>('button[aria-label="译前替换"]')!;
-    const post = container!.querySelector<HTMLButtonElement>('button[aria-label="译后替换"]')!;
-    expect(pre.disabled).toBe(true);
-    expect(post.disabled).toBe(true);
+    const pre = container.querySelector<HTMLButtonElement>('button[aria-label="模型管理"]')!;
+    const post = container.querySelector<HTMLButtonElement>('button[aria-label="技能"]')!;
+    expect(Array.from(container.querySelectorAll('nav [aria-current="page"]'))).toEqual([post]);
     await act(async () => {
       pre.click();
       post.click();
     });
-    expect(on_select_route).not.toHaveBeenCalled();
+    expect(on_select_route.mock.calls).toEqual([["model"], ["skills"]]);
+  });
+
+  it("侧栏默认使用最小宽度，并恢复键盘调整后的宽度", async () => {
+    await render_sidebar();
+    const resize = container.querySelector('[role="separator"][tabindex="0"]')!;
+    const narrowest = resize.getAttribute("aria-valuemin");
+    expect(resize.getAttribute("aria-valuenow")).toBe(narrowest);
+    const widest = resize.getAttribute("aria-valuemax");
+    await act(async () =>
+      resize.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })),
+    );
+    expect(resize.getAttribute("aria-valuenow")).toBe(widest);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await render_sidebar();
+    const restored_resize = container.querySelector('[role="separator"][tabindex="0"]')!;
+    expect(restored_resize.getAttribute("aria-valuenow")).toBe(widest);
+    await act(async () =>
+      restored_resize.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })),
+    );
+    expect(restored_resize.getAttribute("aria-valuenow")).toBe(narrowest);
+  });
+
+  it("侧栏底部也接收单个工程文件", async () => {
+    vi.stubGlobal(
+      "desktopApp",
+      create_desktop_bridge_api_mock({
+        methods: { getPathForFile: (file) => `E:/${file.name}` },
+      }),
+    );
+    await render_sidebar({ projects: { project_view_active: false, select: vi.fn() } });
+    const footer = container.querySelector("footer")!;
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", {
+      value: { types: ["Files"], files: [new File([], "工程.LG")] },
+    });
+    await act(async () => footer.dispatchEvent(event));
+    expect(request_open).toHaveBeenCalledExactlyOnceWith("E:/工程.LG");
   });
 });

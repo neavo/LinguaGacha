@@ -1,4 +1,3 @@
-import type { DesktopRefreshSchedulerErrorContext } from "@frontend/app/state/desktop-refresh-scheduler";
 import { type BatchTranslationSnapshot } from "@domain/batch-translation";
 
 import {
@@ -98,15 +97,3 @@ export function summarize_project_change_payload_for_diagnostics(
 /**
  * scheduler 错误上下文保留批次形状和 task 摘要，具体恢复仍读取后端权威快照。
  */
-export function summarize_scheduler_error_context(
-  context: DesktopRefreshSchedulerErrorContext,
-): LogErrorContext {
-  return {
-    phase: context.phase,
-    projectChanges: context.projectChanges.map(summarize_project_change_for_diagnostics),
-    taskSnapshot:
-      context.taskSnapshot === null
-        ? null
-        : summarize_task_snapshot_for_diagnostics(context.taskSnapshot),
-  };
-}

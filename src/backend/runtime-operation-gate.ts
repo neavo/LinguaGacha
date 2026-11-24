@@ -1,178 +1,194 @@
-import type { RuntimeActivityOwner, RuntimeActivitySnapshot } from "../shared/runtime-activity";
-import * as AppErrors from "../shared/error";
+import { AppError } from "../shared/error";
+import type { ProjectActivity } from "../shared/runtime-activity";
 
-export type RuntimeLease = Readonly<{ owner: RuntimeActivityOwner }>;
-export type RuntimeActivityListener = (snapshot: Readonly<RuntimeActivitySnapshot>) => void;
+type ProjectRuntime = "batch_translation" | "agent" | "agent_reset";
+type ProjectOperation = "batch_translation" | "agent" | "write";
+export type RuntimeLease = Readonly<{ owner: ProjectRuntime | "model_test" }>;
 
-/**
- * 翻译、Agent、接口测试与工程写入的唯一互斥所有者。
- */
-export class RuntimeOperationGate {
-  private readonly project_write_lifetime = new AbortController();
-  private project_write_finished: Promise<void> | null = null; // 关闭须等到目录恢复与调用方收尾完成。
-  private active_runtime: RuntimeLease | null = null; // 对象身份同时承担迟到释放校验
-  private project_write_running = false; // 项目写不公开为模型 owner，只阻止并发运行与写入
-  private model_auth_write_running = false; // 账户提交与任务启动互斥，浏览器授权等待期间不占用。
-  private skill_write_running = false; // 技能保存到集合发布期间阻止 Agent 取得执行占用。
-  private revision = 0; // 仅在公开 owner 变化时推进
-  private readonly listeners = new Set<RuntimeActivityListener>(); // 组合根用它桥接 SSE
-  private readonly idle_waiters = new Set<() => void>(); // 目录应用等待运行与工程写入都释放
+/** 工程任务、写入和关闭共享同一个接纳边界。 */
+export class ProjectOperationGate {
+  private readonly lifetime = new AbortController();
+  private agent: RuntimeLease | null = null;
+  private translation: RuntimeLease | null = null;
+  private write: Promise<void> | null = null; // 工程关闭等待在途写入完成。
+  private readonly listeners = new Set<(snapshot: ProjectActivity) => void>();
 
-  /** 停止接收新写入，取消活动操作并等待不可取消的恢复与清理。 */
-  public async stop_project_writes(): Promise<void> {
-    this.project_write_lifetime.abort(new AppErrors.AppError("runtime.disposed"));
-    await this.project_write_finished;
-  }
+  constructor(private readonly check_global: (operation: ProjectOperation) => void = () => {}) {}
 
-  /** 返回不可变值形状，调用方不能取得内部 lease。 */
-  public get_snapshot(): RuntimeActivitySnapshot {
-    return { revision: this.revision, owner: this.active_runtime?.owner ?? null };
-  }
-
-  /** 订阅公开 owner 变化；取消函数只移除当前 listener。 */
-  public subscribe(listener: RuntimeActivityListener): () => void {
+  /** 只有占用变更需要广播运行快照。 */
+  public subscribe(listener: (snapshot: ProjectActivity) => void): () => void {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
-  /** 同步占用保证检查与首个异步阶段之间没有并发窗口。 */
-  public begin_runtime(owner: RuntimeActivityOwner): RuntimeLease {
+  private changed(): void {
+    if (this.listeners.size === 0) return;
+    const snapshot = this.get_snapshot();
+    for (const listener of this.listeners) listener(snapshot);
+  }
+
+  public get_snapshot(): ProjectActivity {
+    return {
+      batchTranslation: this.translation !== null,
+      agent: this.agent !== null,
+      projectWrite: this.write !== null,
+    };
+  }
+
+  public get busy(): boolean {
+    return this.agent !== null || this.translation !== null || this.write !== null;
+  }
+
+  /** 重置占用 Agent 槽位，并在旧对话收尾和清理期间独占工程。 */
+  public begin_runtime(owner: ProjectRuntime): RuntimeLease {
+    this.lifetime.signal.throwIfAborted();
+    this.check_global(owner === "agent_reset" ? "agent" : owner);
     if (
-      this.active_runtime !== null ||
-      this.project_write_running ||
-      this.model_auth_write_running ||
-      (owner === "agent" && this.skill_write_running)
-    ) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
+      this.agent?.owner === "agent_reset" ||
+      (owner === "agent_reset" && this.busy) ||
+      (owner === "agent" && this.agent !== null) ||
+      (owner === "batch_translation" && (this.translation !== null || this.write !== null))
+    )
+      throw new AppError("runtime.busy");
     const lease = Object.freeze({ owner });
-    this.active_runtime = lease;
-    try {
-      this.publish_snapshot();
-    } catch (error) {
-      this.active_runtime = null;
-      throw error;
-    }
+    if (owner === "batch_translation") this.translation = lease;
+    else this.agent = lease;
+    this.changed();
     return lease;
   }
 
-  /** Agent 内执行必须出自当前 round 的真实 lease 对象。 */
-  public assert_current_runtime(lease: RuntimeLease, owner: RuntimeActivityOwner): void {
-    if (this.active_runtime !== lease || lease.owner !== owner) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
+  /** Agent 批量任务由仍在运行的父对话发起。 */
+  public assert_agent_runtime(lease: RuntimeLease): void {
+    if (lease !== this.agent || lease.owner !== "agent") throw new AppError("runtime.busy");
   }
 
-  /** 迟到清理只允许释放自己取得的 lease，不能误伤后续运行。 */
+  /** 迟到的收尾只能释放自己的租约。 */
   public finish_runtime(lease: RuntimeLease): void {
-    if (this.active_runtime !== lease) return;
-    this.active_runtime = null;
-    this.publish_snapshot();
-    this.notify_idle();
+    if (lease === this.translation) this.translation = null;
+    else if (lease === this.agent) this.agent = null;
+    else return;
+    this.changed();
   }
 
-  /** 等待所有运行与工程写入口空闲；调用方随后仍须同步取得写租约。 */
-  public async wait_for_idle(signal: AbortSignal): Promise<void> {
-    signal.throwIfAborted();
-    if (this.active_runtime === null && !this.project_write_running) return;
-    await new Promise<void>((resolve, reject) => {
-      const settle = (): void => {
-        cleanup();
-        resolve();
-      };
-      const abort = (): void => {
-        cleanup();
-        reject(signal.reason);
-      };
-      const cleanup = (): void => {
-        this.idle_waiters.delete(settle);
-        signal.removeEventListener("abort", abort);
-      };
-      this.idle_waiters.add(settle);
-      signal.addEventListener("abort", abort, { once: true });
-    });
-  }
-
-  /** 账户凭据替换只锁提交阶段，防止任务在异步落盘期间取得旧连接。 */
-  public async run_model_auth_write<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.active_runtime !== null || this.model_auth_write_running)
-      throw new AppErrors.AppError("runtime.busy");
-    this.model_auth_write_running = true;
-    try {
-      return await operation();
-    } finally {
-      this.model_auth_write_running = false;
-      this.notify_idle();
-    }
-  }
-
-  /** 用户写入和工程生命周期操作要求整个模型运行时空闲。 */
+  /** GUI、CLI 和 Agent 使用同一个工程写入口。 */
   public async run_project_write<T>(
-    operation: (signal: AbortSignal) => Promise<T> | T,
-    signal?: AbortSignal,
-  ): Promise<T> {
-    if (this.active_runtime !== null || this.project_write_running) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    return await this.run_project_write_under_lease(operation, signal);
-  }
-
-  /** 技能修改只与 Agent 执行互斥；技能命令之间由技能服务串行处理。 */
-  public async run_skill_write<T>(operation: () => Promise<T> | T): Promise<T> {
-    if (this.active_runtime?.owner === "agent" || this.skill_write_running)
-      throw new AppErrors.AppError("runtime.busy");
-    this.skill_write_running = true;
-    try {
-      return await operation();
-    } finally {
-      this.skill_write_running = false;
-    }
-  }
-
-  /** Agent 写工具复用项目写串行 lease，但只能在自己的运行回合内调用。 */
-  public async run_agent_project_write<T>(
-    operation: (signal: AbortSignal) => Promise<T> | T,
-  ): Promise<T> {
-    if (this.active_runtime?.owner !== "agent" || this.project_write_running) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    return await this.run_project_write_under_lease(operation);
-  }
-
-  /** 普通写与 Agent 写最终都在这里持有同一串行标记。 */
-  private async run_project_write_under_lease<T>(
-    operation: (signal: AbortSignal) => Promise<T> | T,
+    operation: (signal: AbortSignal) => T | Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
     const combined = signal
-      ? AbortSignal.any([signal, this.project_write_lifetime.signal])
-      : this.project_write_lifetime.signal;
+      ? AbortSignal.any([signal, this.lifetime.signal])
+      : this.lifetime.signal;
     combined.throwIfAborted();
-    let finish!: () => void;
-    this.project_write_finished = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    this.project_write_running = true;
+    this.check_global("write");
+    if (this.write !== null || this.translation !== null || this.agent?.owner === "agent_reset")
+      throw new AppError("runtime.busy");
+    const finished = Promise.withResolvers<void>();
+    this.write = finished.promise;
+    this.changed();
     try {
       return await operation(combined);
     } finally {
-      this.project_write_running = false;
-      this.project_write_finished = null;
-      finish();
-      this.notify_idle();
+      this.write = null;
+      finished.resolve();
+      this.changed();
     }
   }
 
-  /** 运行和写入均释放后唤醒等待方，等待方取得占用前仍须复查。 */
-  private notify_idle(): void {
-    if (this.active_runtime !== null || this.project_write_running) return;
-    for (const waiter of this.idle_waiters) waiter();
+  /** Agent 暂存与提交必须由活动对话发起，并共用工程写入互斥。 */
+  public run_agent_project_write<T>(
+    operation: (signal: AbortSignal) => T | Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (this.agent?.owner !== "agent") throw new AppError("runtime.busy");
+    return this.run_project_write(operation, signal);
   }
 
-  /** owner 每次变化都发布完整快照，消费者只按 revision 排序。 */
-  private publish_snapshot(): void {
-    this.revision += 1;
-    const snapshot = this.get_snapshot();
-    for (const listener of this.listeners) listener(snapshot);
+  /** 停止受理，等已开始的写入结算后再关闭数据库。 */
+  public async stop_project_writes(): Promise<void> {
+    this.lifetime.abort(new AppError("runtime.disposed"));
+    await this.write;
+  }
+}
+
+/** 应用设置、认证、模型测试和文件打开协调独立于工程闸。 */
+export class GlobalOperationGate {
+  private readonly lifetime = new AbortController();
+  private model_test: RuntimeLease | null = null;
+  private auth_write = false;
+  private skill_write = false;
+  private lifecycle: Promise<unknown> = Promise.resolve();
+
+  constructor(
+    private readonly all_projects_idle: () => boolean = () => true,
+    private readonly agents_idle: () => boolean = () => true,
+    private readonly changed: () => void = () => {},
+  ) {}
+
+  public get can_change_auth(): boolean {
+    return !this.auth_write && this.model_test === null && this.all_projects_idle();
+  }
+
+  public get modelTest(): boolean {
+    return this.model_test !== null;
+  }
+
+  /** 应用级写入只阻止会消费相关事实的新工程操作。 */
+  public check_project(owner: ProjectOperation): void {
+    if ((owner !== "write" && this.auth_write) || (owner === "agent" && this.skill_write))
+      throw new AppError("runtime.busy");
+  }
+
+  public begin_runtime(owner: "model_test"): RuntimeLease {
+    if (this.model_test !== null || this.auth_write) throw new AppError("runtime.busy");
+    const lease = Object.freeze({ owner });
+    this.model_test = lease;
+    this.changed();
+    return lease;
+  }
+
+  public finish_runtime(lease: RuntimeLease): void {
+    if (lease !== this.model_test) return;
+    this.model_test = null;
+    this.changed();
+  }
+
+  /** 认证变更前等工程和模型测试空闲。 */
+  public async run_model_auth_write<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.auth_write || this.model_test !== null || !this.all_projects_idle())
+      throw new AppError("runtime.busy");
+    this.auth_write = true;
+    try {
+      return await operation();
+    } finally {
+      this.auth_write = false;
+    }
+  }
+
+  /** 技能编辑与对话执行互斥。 */
+  public async run_skill_write<T>(operation: () => T | Promise<T>): Promise<T> {
+    if (this.skill_write || !this.agents_idle()) throw new AppError("runtime.busy");
+    this.skill_write = true;
+    try {
+      return await operation();
+    } finally {
+      this.skill_write = false;
+    }
+  }
+
+  /** 串行处理磁盘工程的生命周期操作。 */
+  public async run_lifecycle<T>(operation: (signal: AbortSignal) => T | Promise<T>): Promise<T> {
+    const next = this.lifecycle.then(async () => {
+      this.lifetime.signal.throwIfAborted();
+      return await operation(this.lifetime.signal);
+    });
+    this.lifecycle = next.catch(() => {});
+    return await next;
+  }
+
+  public async stop(): Promise<void> {
+    this.lifetime.abort(new AppError("runtime.disposed"));
+    await this.lifecycle;
   }
 }

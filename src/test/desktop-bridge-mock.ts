@@ -37,6 +37,7 @@ export function create_desktop_bridge_api_mock(
       return () => {};
     },
     reportRendererDiagnostics: () => {},
+    revealPath: async () => {},
     openExternalUrl: async () => {},
     downloadUpdate: async () => ({
       status: "fallback_to_release_page",

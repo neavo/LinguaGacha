@@ -20,7 +20,6 @@ import {
   type BatchTaskRunHandle,
 } from "../batch-task/batch-task-runtime";
 import type { ProjectDatabase } from "../database/database-operations";
-import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease } from "../runtime-operation-gate";
 import { AppError } from "../../shared/error";
 
@@ -51,18 +50,14 @@ export class BatchTranslationState {
   private readonly runs = new WeakMap<BatchTranslationRunHandle, TranslationRun>(); // 旧句柄只引用自己的累计结果，不能读取下一轮记录。
   /** 组合工程事实与共享任务拥有者。 */
   public constructor(
-    private readonly session_state: ProjectSessionState,
+    private readonly project_path: string,
     private readonly database: ProjectDatabase,
     private readonly tasks: BatchTaskRuntime,
   ) {}
   /** 累计统计读取已提交的工程元数据。 */
   public async read_progress(): Promise<BatchTranslationProgress> {
-    const state = this.session_state.snapshot();
-    return normalize_batch_translation_progress(
-      state.loaded && state.projectPath !== ""
-        ? (await this.database.get_all_meta(state.projectPath))["translation_extras"]
-        : {},
-    );
+    const meta = await this.database.get_all_meta(this.project_path);
+    return normalize_batch_translation_progress(meta["translation_extras"]);
   }
   /** 把当前翻译批次计数投影为翻译业务字段。 */
   public read_run_progress(): BatchTranslationRunProgress | undefined {

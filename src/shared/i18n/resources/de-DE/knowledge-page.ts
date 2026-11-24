@@ -1,5 +1,4 @@
 export const de_de_knowledge_page = {
-  title: "Wissen",
   builtin: "Integrierte Skills",
   user: "Benutzer-Skills",
   knowledge: "Projektwissen",
@@ -8,20 +7,11 @@ export const de_de_knowledge_page = {
   },
   readonly: "Schreibgeschützt",
   personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
-  knowledge_description:
-    "Mit dem Projekt gespeicherte Einstellungen, Konventionen und Fortschritte",
   install: {
     title: "Installationsanleitung",
     description: "Skill-Link an AGENT senden und um die Installation des Skills bitten",
     placeholder: "[Skill-Link hier eingeben]",
     request: "Bitte installiere diesen Skill für mich: {PLACEHOLDER}",
-  },
-  knowledge_create: {
-    title: "Erfassungsanleitung",
-    description:
-      "AGENT die festzuhaltenden Einstellungen, Vereinbarungen oder Erkenntnisse mitteilen, daraus wird Projektwissen angelegt",
-    placeholder: "[Hier beschreiben, was festgehalten werden soll]",
-    request: "Bitte halte dies als Projektwissen fest: {PLACEHOLDER}",
   },
   editor: {
     save_failed: "Speichern fehlgeschlagen",

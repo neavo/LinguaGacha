@@ -2,12 +2,13 @@ import { act } from "react";
 import { normalize_setting_snapshot } from "@domain/setting";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import { createEmptyQualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
 import { useProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import { useTextReplacementPageState } from "./use-text-replacement-page-state";
 import type { TextReplacementEntry } from "./types";
 import type { ProjectWriteResult } from "@shared/project-event";
+
+const page_ui = new Map<string, unknown>();
 
 const api = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
@@ -41,6 +42,7 @@ const writes = {
 };
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({
+    active_project: { pageUi: page_ui },
     project_snapshot: project,
     settings_snapshot: settings,
     commit_project_write: useProjectWriteCommitter(writes),
@@ -89,6 +91,7 @@ it.each(["pre", "post"] as const)(
             accepted: true,
             changes: [
               {
+                projectId: "fixture",
                 eventId: `quality-${revision}`,
                 type: "project.changed",
                 source: "quality_rule_update",
@@ -112,14 +115,9 @@ it.each(["pre", "post"] as const)(
       return null;
     }
     const root = createRoot(document.createElement("div"));
+    page_ui.clear();
     try {
-      await act(async () =>
-        root.render(
-          <ProjectSessionUiStateProvider>
-            <Probe />
-          </ProjectSessionUiStateProvider>,
-        ),
-      );
+      await act(async () => root.render(<Probe />));
       expect(state.entries).toEqual([original]);
       await act(async () => state.editing.apply_preset("builtin:fixture.json"));
       expect(api).toHaveBeenCalledWith("/api/quality/rules/update", {
@@ -159,14 +157,8 @@ it("保留命中排序意图，按替换文本筛选并按规则组合排序", a
     return null;
   }
   const root = createRoot(document.createElement("div"));
-  const render = () =>
-    act(async () =>
-      root.render(
-        <ProjectSessionUiStateProvider>
-          <Probe />
-        </ProjectSessionUiStateProvider>,
-      ),
-    );
+  page_ui.clear();
+  const render = () => act(async () => root.render(<Probe />));
   try {
     await render();
     await act(async () =>

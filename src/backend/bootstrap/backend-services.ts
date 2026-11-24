@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { default_native_fs } from "../../native/native-fs";
+import { AppError } from "../../shared/error";
+import type { ProjectTaskInput } from "../project/project-task-input";
+import { ProjectRegistry } from "../project/project-registry";
 import { BatchRequestService } from "../batch-request/batch-request-service";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
 import { RequestRatePool } from "../batch-task/request-rate";
@@ -8,12 +14,10 @@ import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
 import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
 import { configure_javascript_parser } from "../file/shared/javascript";
-import type { SettingsUpdateResponse } from "../../shared/settings";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
-import { AppSettingsCommandService } from "../app/app-settings-command-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { CacheManager } from "../cache/cache-manager";
+import { ProjectCache } from "../cache/project-cache";
 import { ProjectDatabase } from "../database/database-operations";
 import { BatchTranslationRunner } from "../batch-translation/core/batch-translation-runner";
 import { PlanningWorkerPool } from "../batch-translation/planning/planning-worker-pool";
@@ -36,10 +40,10 @@ import { adapt_project_change } from "../project/project-write-event-adapter";
 import {
   ProjectDataReader,
   build_section_revisions_from_meta,
+  type ProjectDataSnapshot,
 } from "../project/project-data-reader";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GlobalOperationGate, ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
-import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectSummaryService } from "../project/project-summary-service";
 import { ProjectTranslationTransferService } from "../project/project-translation-transfer-service";
 import { ProjectWriteStore } from "../project/project-write-store";
@@ -73,325 +77,428 @@ export interface BackendServicesOptions {
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
 }
 
-/** GUI 扩展与共享业务服务必须引用同一组状态拥有者。 */
-export interface BackendServiceState {
-  session: ProjectSessionState;
-  runtimeGate: RuntimeOperationGate;
-  cache: CacheManager;
-  writes: ProjectWriteStore;
-}
-
 export interface BackendAppServices {
   paths: AppPathService;
   metadata: AppMetadataService;
   settings: AppSettingService;
-  updateSettings: (request: JsonRecord) => Promise<SettingsUpdateResponse>; // 设置命令统一编排工程同步与补偿
 }
 
 export interface BackendRuntimeServices {
   getSnapshot: () => { runtime: RuntimeActivitySnapshot }; // API 不接触 gate lease
 }
 
-export interface BackendProjectServices {
-  lifecycle: ProjectLifecycleService;
-  readManifest: () => Promise<JsonRecord>;
-
+type ProjectAgentLifecycle = {
+  cancel_uploads(): void;
+  dispose(): Promise<void>;
+};
+export type OpenProject<Agent extends ProjectAgentLifecycle = ProjectAgentLifecycle> = {
+  id: string;
+  path: string;
+  gate: ProjectOperationGate;
+  cache: ProjectCache;
+  writes: ProjectWriteStore;
   knowledge: ProjectKnowledgeService;
   summary: ProjectSummaryService;
   content: ProjectContentService;
-  translationTransfer: ProjectTranslationTransferService;
-}
-
-export interface BackendProofreadingServices {
-  query: ProofreadingQueryService;
-  commands: ProofreadingService;
-}
-
-export interface BackendQualityServices {
-  rules: QualityRuleService;
-  prompts: QualityPromptService;
-  statistics: QualityStatisticsService;
-}
-
-export interface BackendFileServices {
-  translationGeneration: TranslationFileGenerationService;
-  gameFont: GameFontService;
-}
+  proofreading: { query: ProofreadingQueryService; commands: ProofreadingService };
+  quality: {
+    rules: QualityRuleService;
+    prompts: QualityPromptService;
+    statistics: QualityStatisticsService;
+  };
+  generation: TranslationFileGenerationService;
+  batchTasks: BatchTaskRuntime;
+  batchRequests: BatchRequestService;
+  batchTranslation: BatchTranslationService;
+  agent?: Agent;
+  unsubscribe: () => void;
+};
 
 /**
  * GUI 与 CLI 共用此组合根装配业务服务及其状态拥有者。
  */
-export class BackendServices {
+export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentLifecycle> {
   public readonly modelAuth: ChatGPTAuthService; // GUI、CLI 和 Agent 共用账户生命周期。
   public readonly modelCatalog: PiModelCatalog; // GUI 与 CLI 共用的模型能力事实。
   private catalog_check: Promise<void> | null = null; // 唯一启动守卫，关闭时等待已取消的检查收束。
   private readonly publish_event: BackendServicesOptions["publishEvent"]; // 目录应用完成后才通知消费方。
-  private readonly app_setting_service: AppSettingService; // 引用 Bootstrap 提供的唯一设置服务
-  private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
   private readonly game_prepare_worker: GamePrepareWorker;
-  private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
-  private readonly request_rate_pool = new RequestRatePool(); // 业务入口共用速率时钟，切换批次不重新获得冷启动额度。
-  public readonly batchTasks: BatchTaskRuntime;
-  private readonly task_runtime: BatchTranslationState; // 关闭时先等待任务收束，再释放执行池
-  private readonly game_directory_operations: GameDirectoryOperations; // 所有文件服务共用目录占用，独立于模型运行。
-  private readonly runtime_gate = new RuntimeOperationGate(); // 执行占用与工程写入共享的唯一门禁
+  private readonly compute_worker_client: ComputeWorkerClient;
+  private readonly request_rate_pool = new RequestRatePool();
+  private readonly game_directory_operations: GameDirectoryOperations;
   private readonly work_unit_worker_pool: TranslationWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
-  private task_stream_unsubscribe: (() => void) | null; // dispose 时先切断任务事件发布
-  private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止发布已关闭业务根的事件
+  private readonly llm_client: LLMClient;
+  private runtime_revision = 0;
 
+  public readonly projects = new ProjectRegistry<OpenProject<Agent>>();
+  public readonly globalGate = new GlobalOperationGate(
+    () => [...this.projects.values()].every((project) => !project.gate.busy),
+    () => [...this.projects.values()].every((project) => !project.gate.get_snapshot().agent),
+    () => this.publish_runtime(),
+  );
   public readonly app: BackendAppServices;
   public readonly runtime: BackendRuntimeServices;
-  public readonly project: BackendProjectServices;
-  public readonly proofreading: BackendProofreadingServices;
-  public readonly quality: BackendQualityServices;
-  public readonly files: BackendFileServices;
+  public readonly lifecycle: ProjectLifecycleService;
+  public readonly translationTransfer: ProjectTranslationTransferService;
+  public readonly gameFont: GameFontService;
   public readonly model: ModelService;
-  public readonly batchRequests: BatchRequestService;
-  public readonly batchTranslation: BatchTranslationService;
   public readonly logManager: LogManager;
-  public readonly state: BackendServiceState;
+  public openAgent?: (project: OpenProject<Agent>) => Promise<Agent>;
 
-  /**
-   * 只在这里装配状态拥有者与服务依赖，调用方不得二次 new 同类服务。
-   */
-  public constructor(options: BackendServicesOptions) {
+  public constructor(private readonly options: BackendServicesOptions) {
     if (options.workspaceRuntimeDirectory) {
       configure_javascript_parser(options.workspaceRuntimeDirectory);
       configure_rgss_parser(options.workspaceRuntimeDirectory);
       configure_python_parser(options.workspaceRuntimeDirectory);
     }
     this.publish_event = options.publishEvent;
-    const paths = options.paths;
-    const metadata = options.metadata;
-    const user_agent = metadata.build_linguagacha_user_agent();
-    const session_state = new ProjectSessionState();
-    const database = options.database;
-
-    this.app_setting_service = options.appSettingService;
+    const { paths, metadata, database, appSettingService, workerExecution } = options;
     this.logManager = options.logManager;
     this.game_directory_operations = new GameDirectoryOperations(undefined, this.logManager);
     this.modelCatalog = new PiModelCatalog(paths, this.logManager);
-    this.modelAuth = new ChatGPTAuthService(paths, this.runtime_gate, options.publishEvent);
-    const llm_client = new LLMClient({
-      userAgent: user_agent,
+    this.modelAuth = new ChatGPTAuthService(paths, this.globalGate, options.publishEvent);
+    this.llm_client = new LLMClient({
+      userAgent: metadata.build_linguagacha_user_agent(),
       catalog: this.modelCatalog,
       auth: this.modelAuth,
     });
     this.game_prepare_worker = new GamePrepareWorker(
-      options.workerExecution.kind === "in_process"
-        ? null
-        : options.workerExecution.gamePrepareWorkerEntryUrl,
+      workerExecution.kind === "in_process" ? null : workerExecution.gamePrepareWorkerEntryUrl,
       undefined,
       this.logManager,
       options.workspaceRuntimeDirectory,
     );
-    this.compute_worker_client = new ComputeWorkerClient({
-      execution: options.workerExecution,
+    this.compute_worker_client = new ComputeWorkerClient({ execution: workerExecution });
+    this.work_unit_worker_pool = new TranslationWorkerPool({
+      builtinRoot: paths.get_builtin_root(),
+      execution: workerExecution,
     });
-    this.cache_manager = new CacheManager({
-      database: options.database,
-      logManager: this.logManager,
-      workerClient: this.compute_worker_client,
-    });
-    const apply_committed_change = this.cache_manager.applyCommittedChange.bind(this.cache_manager);
-    /** 缓存提交后生成公开工程事件，空变更结束本次发布。 */
-    const publish_project_change = (request: Parameters<typeof adapt_project_change>[1]) => {
-      const event = adapt_project_change(session_state, request);
-      if (event !== null) {
-        options.publishEvent(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
-      }
-      return event;
-    };
-    const write_store = new ProjectWriteStore(
-      options.database,
-      apply_committed_change,
-      publish_project_change,
-      this.cache_manager,
-    );
-
-    this.batchTasks = new BatchTaskRuntime(session_state, this.runtime_gate);
-    this.task_runtime = new BatchTranslationState(session_state, database, this.batchTasks);
-    this.batchRequests = new BatchRequestService(
-      this.batchTasks,
-      this.request_rate_pool,
-      llm_client,
-      this.modelAuth,
-      this.logManager,
-    );
-    const lifecycle = new ProjectLifecycleService(
+    this.planning_worker_pool = new PlanningWorkerPool({ execution: workerExecution });
+    this.lifecycle = new ProjectLifecycleService(
       this.game_directory_operations,
-      options.database,
-      this.runtime_gate,
-      session_state,
-      this.app_setting_service,
+      database,
+      appSettingService,
       paths,
       this.logManager,
-      this.cache_manager,
-      write_store,
       undefined,
       this.game_prepare_worker.run,
     );
-    this.work_unit_worker_pool = new TranslationWorkerPool({
-      builtinRoot: paths.get_builtin_root(),
-      execution: options.workerExecution,
-    });
-    this.planning_worker_pool = new PlanningWorkerPool({
-      execution: options.workerExecution,
-    });
-    const task_engine = new BatchTranslationRunner({
-      ratePool: this.request_rate_pool,
-      auth: this.modelAuth,
-      llmClient: llm_client,
-      builtinRoot: paths.get_builtin_root(),
-      taskStore: new BatchTranslationProjectStore(session_state, this.cache_manager, write_store),
-      taskRuntime: this.task_runtime,
-      executorClient: this.work_unit_worker_pool,
-      taskPlanner: new TranslationPlanner({
-        planningWorkerPool: this.planning_worker_pool,
-      }),
-      logManager: this.logManager,
-    });
-
-    this.runtime = {
-      // 只暴露公开快照，不把 gate 或 lease 交给 API 层。
-      getSnapshot: () => ({ runtime: this.runtime_gate.get_snapshot() }),
-    };
-    this.project = {
-      lifecycle,
-      readManifest: () => {
-        const state = session_state.snapshot();
-        return state.loaded
-          ? database.read(state.projectPath, (reader) =>
-              new ProjectDataReader(reader).build_manifest(state),
-            )
-          : Promise.resolve({
-              projectPath: "",
-              project: { path: state.projectPath, loaded: state.loaded },
-              projectRevision: 0,
-              sectionRevisions: build_section_revisions_from_meta({}),
-              counts: { files: 0, items: 0 },
-            });
-      },
-
-      knowledge: new ProjectKnowledgeService(
-        database,
-        session_state,
-        write_store,
-        this.runtime_gate,
-        this.app_setting_service,
-      ),
-      summary: new ProjectSummaryService(session_state, this.cache_manager),
-      content: new ProjectContentService(
-        this.game_directory_operations,
-        options.database,
-        this.runtime_gate,
-        session_state,
-        write_store,
-        this.app_setting_service,
-        undefined,
-        this.logManager,
-        this.game_prepare_worker.run,
-      ),
-      translationTransfer: new ProjectTranslationTransferService(
-        options.database,
-        this.runtime_gate,
-        session_state,
-      ),
-    };
-    const settings_commands = new AppSettingsCommandService(
-      this.app_setting_service,
-      this.runtime_gate,
-      session_state,
-      this.project.content,
+    this.translationTransfer = new ProjectTranslationTransferService(
+      database,
+      this.globalGate,
+      () => [...this.projects.values()].map((project) => project.path),
     );
-    this.app = {
-      paths,
-      metadata,
-      settings: this.app_setting_service,
-      updateSettings: (request) => settings_commands.update(request),
-    };
-    this.proofreading = {
-      query: new ProofreadingQueryService({
-        sessionState: session_state,
-        cache: this.cache_manager.proofreading,
-      }),
-      commands: new ProofreadingService(this.runtime_gate, session_state, write_store),
-    };
-    this.quality = {
-      rules: new QualityRuleService(
-        paths,
-        this.app_setting_service,
-        session_state,
-        write_store,
-        this.runtime_gate,
-        this.cache_manager,
-      ),
-      prompts: new QualityPromptService(
-        paths,
-        this.app_setting_service,
-        options.database,
-        session_state,
-        write_store,
-        this.runtime_gate,
-        this.cache_manager,
-      ),
-      statistics: new QualityStatisticsService({
-        sessionState: session_state,
-        cache: this.cache_manager.qualityStatistics,
-      }),
-    };
-    this.files = {
-      translationGeneration: new TranslationFileGenerationService(
-        this.runtime_gate,
-        write_store,
-        this.game_directory_operations,
-        options.database,
-        this.app_setting_service,
-        session_state,
-        options.openOutputFolder,
-        this.logManager,
-      ),
-      gameFont: new GameFontService(this.game_directory_operations, this.game_prepare_worker.run),
-    };
+    this.gameFont = new GameFontService(
+      this.game_directory_operations,
+      this.game_prepare_worker.run,
+    );
     this.model = new ModelService(
       paths,
-      this.app_setting_service,
-      llm_client,
-      this.runtime_gate,
+      appSettingService,
+      this.llm_client,
+      this.globalGate,
       this.modelCatalog,
       this.logManager,
       this.modelAuth,
     );
-    this.batchTranslation = new BatchTranslationService(
-      task_engine,
-      this.task_runtime,
-      session_state,
-      this.app_setting_service,
-      this.cache_manager.languages,
+    this.app = {
+      paths,
+      metadata,
+      settings: appSettingService,
+    };
+    this.runtime = { getSnapshot: () => ({ runtime: this.read_runtime() }) };
+  }
+
+  /** 复用同一磁盘工程，只有首次打开才迁移并安装运行态。 */
+  public async open_project(body: JsonRecord): Promise<JsonRecord> {
+    return this.globalGate.run_lifecycle(async () => {
+      if (typeof body.path !== "string" || body.path.trim() === "")
+        throw new AppError("request.validation_failed", { public_details: { field: "path" } });
+      if (!default_native_fs.exists(body.path))
+        throw new AppError("project.not_found", {
+          public_details: { filename: path.basename(body.path) },
+        });
+      const project_path = default_native_fs.real_path(body.path);
+      const opened = this.projects.find(project_path);
+      if (opened !== undefined) {
+        await opened.cache.recover();
+        return this.project_snapshot(opened);
+      }
+      const snapshot = await this.lifecycle.load_project(
+        project_path,
+        body.confirmed_target_app_version,
+      );
+      const project = await this.install_project(project_path, snapshot);
+      return this.project_snapshot(project);
+    });
+  }
+
+  /** 创建提交和运行态安装共用同一生命周期闸。 */
+  public async create_project(
+    body: JsonRecord,
+    on_game_sources_detected?: () => void,
+  ): Promise<JsonRecord> {
+    return this.globalGate.run_lifecycle(async (signal) => {
+      const created = await this.lifecycle.create_project_commit(
+        body,
+        signal,
+        on_game_sources_detected,
+      );
+      const project = await this.install_project(
+        default_native_fs.real_path(created.path),
+        created.snapshot,
+      );
+      return { ...this.project_snapshot(project), source_operation: created.source_operation };
+    });
+  }
+
+  public list_projects(): JsonRecord {
+    return {
+      projects: [...this.projects.values()].map((project) => this.project_snapshot(project)),
+    };
+  }
+
+  public project_snapshot(project: OpenProject<Agent>): JsonRecord {
+    const quality = project.cache.quality.readBlock();
+    return {
+      project: {
+        projectId: project.id,
+        path: project.path,
+        loaded: true,
+        name: path.basename(project.path),
+        file_count: project.cache.files.size(),
+        quality_rule_counts: {
+          glossary: quality.glossary.entries.length,
+          text_preserve: quality.text_preserve.entries.length,
+          pre_replacement: quality.pre_replacement.entries.length,
+          post_replacement: quality.post_replacement.entries.length,
+        },
+        settings: project.cache.settings.readBlock(),
+      },
+    };
+  }
+
+  /** 重连按权威修订恢复页面查询，及早带回工程和对话身份。 */
+  public async read_manifest(project: OpenProject<Agent>): Promise<JsonRecord> {
+    return this.options.database.read(project.path, (reader) => {
+      const manifest = new ProjectDataReader(reader).build_manifest(project.path);
+      return { ...manifest, ...this.project_snapshot(project), projectId: project.id };
+    });
+  }
+
+  public apply_task_input(project: OpenProject<Agent>, input: ProjectTaskInput) {
+    return project.gate.run_project_write(async () => {
+      const revisions = build_section_revisions_from_meta(
+        await this.options.database.get_all_meta(project.path),
+      );
+      return project.writes.apply_task_input({
+        projectPath: project.path,
+        expectedSectionRevisions: {
+          quality: revisions.quality ?? 0,
+          prompts: revisions.prompts ?? 0,
+        },
+        input,
+      });
+    });
+  }
+
+  /** 普通关闭只接纳空闲工程，应用退出走统一取消流程。 */
+  public async close_project(id: unknown): Promise<JsonRecord> {
+    return this.globalGate.run_lifecycle(async () => {
+      const project = this.projects.require(id);
+      if (project.gate.busy) throw new AppError("runtime.busy");
+      await this.dispose_project(project);
+      return this.list_projects();
+    });
+  }
+
+  /** 先完成工程持有的服务装配，再对外登记新的打开周期。 */
+  private async install_project(
+    project_path: string,
+    snapshot: ProjectDataSnapshot,
+  ): Promise<OpenProject<Agent>> {
+    const id = randomUUID();
+    const { database, paths, appSettingService: settings, openOutputFolder } = this.options;
+    const gate = new ProjectOperationGate((owner) => this.globalGate.check_project(owner));
+    const dispose_activity = gate.subscribe(() => this.publish_runtime());
+    const cache = new ProjectCache({
+      projectPath: project_path,
+      snapshot,
+      database,
+      logManager: this.logManager,
+      workerClient: this.compute_worker_client,
+    });
+    const writes = new ProjectWriteStore(
+      database,
+      (event) => cache.applyCommittedChange(event),
+      (change) => {
+        const event = adapt_project_change(id, change);
+        this.publish_event(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
+        return event;
+      },
+      cache,
+    );
+    const tasks = new BatchTaskRuntime(project_path, gate);
+    const translation_runtime = new BatchTranslationState(project_path, database, tasks);
+    const runner = new BatchTranslationRunner({
+      ratePool: this.request_rate_pool,
+      auth: this.modelAuth,
+      llmClient: this.llm_client,
+      builtinRoot: paths.get_builtin_root(),
+      taskStore: new BatchTranslationProjectStore(project_path, cache, writes),
+      taskRuntime: translation_runtime,
+      executorClient: this.work_unit_worker_pool,
+      taskPlanner: new TranslationPlanner({ planningWorkerPool: this.planning_worker_pool }),
+      logManager: this.logManager,
+    });
+    const batchTranslation = new BatchTranslationService(
+      runner,
+      translation_runtime,
+      settings,
+      cache.settings,
       this.logManager,
     );
-    this.state = {
-      session: session_state,
-      runtimeGate: this.runtime_gate,
-      cache: this.cache_manager,
-      writes: write_store,
+    const project: OpenProject<Agent> = {
+      id,
+      path: project_path,
+      gate,
+      cache,
+      writes,
+      knowledge: new ProjectKnowledgeService(database, project_path, writes, gate, settings),
+      summary: new ProjectSummaryService(project_path, cache),
+      content: new ProjectContentService(
+        this.game_directory_operations,
+        database,
+        gate,
+        project_path,
+        writes,
+        settings,
+        undefined,
+        this.logManager,
+        this.game_prepare_worker.run,
+      ),
+      proofreading: {
+        query: new ProofreadingQueryService({
+          projectPath: project_path,
+          cache: cache.proofreading,
+        }),
+        commands: new ProofreadingService(gate, project_path, writes),
+      },
+      quality: {
+        rules: new QualityRuleService(paths, settings, project_path, writes, gate, cache),
+        prompts: new QualityPromptService(
+          paths,
+          settings,
+          database,
+          project_path,
+          writes,
+          gate,
+          cache,
+        ),
+        statistics: new QualityStatisticsService({ cache: cache.qualityStatistics }),
+      },
+      generation: new TranslationFileGenerationService(
+        gate,
+        writes,
+        this.game_directory_operations,
+        database,
+        settings,
+        project_path,
+        openOutputFolder,
+        this.logManager,
+      ),
+      batchTasks: tasks,
+      batchRequests: new BatchRequestService(
+        tasks,
+        this.request_rate_pool,
+        this.llm_client,
+        this.modelAuth,
+        this.logManager,
+      ),
+      batchTranslation,
+      unsubscribe: () => {
+        dispose_activity();
+        dispose_task();
+      },
     };
-    this.task_stream_unsubscribe = this.batchTasks.subscribe(async (snapshot) => {
-      options.publishEvent(BATCH_TASK_SNAPSHOT_EVENT_TOPIC, {
-        batch_task: snapshot as unknown as JsonRecord,
-        ...(snapshot.kind === "request"
+    const dispose_task = tasks.subscribe(async (task) => {
+      this.publish_event(BATCH_TASK_SNAPSHOT_EVENT_TOPIC, {
+        projectId: id,
+        batch_task: task as unknown as JsonRecord,
+        ...(task.kind === "request"
           ? {}
           : {
-              batch_translation: (await this.batchTranslation.snapshot()) as unknown as JsonRecord,
+              batch_translation: (await batchTranslation.snapshot()) as unknown as JsonRecord,
             }),
       });
     });
-    this.runtime_stream_unsubscribe = this.runtime_gate.subscribe((snapshot) => {
-      options.publishEvent(RUNTIME_ACTIVITY_EVENT_TOPIC, {
-        runtime: snapshot,
+    try {
+      if (this.openAgent !== undefined) project.agent = await this.openAgent(project);
+    } catch (cause) {
+      project.unsubscribe();
+      await tasks.dispose();
+      throw new AppError("data.committed_sync_failed", {
+        cause,
+        public_details: { committed: true, action: "reload_project" },
       });
-    });
+    }
+    this.projects.add(project);
+    this.publish_runtime();
+    return project;
+  }
+
+  private read_runtime(): RuntimeActivitySnapshot {
+    const projects = Object.fromEntries(
+      [...this.projects.values()].map((project) => [project.id, project.gate.get_snapshot()]),
+    );
+    const modelTest = this.globalGate.modelTest;
+    const states = Object.values(projects);
+    const owner = states.some((state) => state.batchTranslation)
+      ? "batch_translation"
+      : states.some((state) => state.agent)
+        ? "agent"
+        : modelTest
+          ? "model_test"
+          : states.some((state) => state.projectWrite)
+            ? "project_write"
+            : null;
+    return { revision: this.runtime_revision, owner, global: { modelTest }, projects };
+  }
+
+  private publish_runtime(): void {
+    this.runtime_revision++;
+    this.publish_event(RUNTIME_ACTIVITY_EVENT_TOPIC, { runtime: this.read_runtime() });
+  }
+
+  /** 先封住写入，再收尾任务并释放连接和路由身份。 */
+  private async dispose_project(project: OpenProject<Agent>): Promise<void> {
+    await project.gate.stop_project_writes();
+    const results = await Promise.allSettled([
+      project.agent?.dispose(),
+      project.batchTasks.dispose(),
+    ]);
+    project.unsubscribe();
+    try {
+      await this.options.database.close_project(project.path);
+    } finally {
+      this.projects.remove(project);
+      this.publish_runtime();
+    }
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length > 0) throw new AggregateError(errors, "Project cleanup failed.");
+  }
+
+  public async close_projects(): Promise<void> {
+    const results = await Promise.allSettled(
+      [...this.projects.values()].map((project) => this.dispose_project(project)),
+    );
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length > 0) throw new AggregateError(errors, "Open project cleanup failed.");
   }
 
   /** GUI 启动后检查一次。CLI 使用已加载缓存。 */
@@ -407,8 +514,9 @@ export class BackendServices {
   /** Gateway 排空请求前，取消并等待工程写入与游戏目录操作收尾。 */
   public async stop_file_operations(): Promise<void> {
     await Promise.all([
-      this.runtime_gate.stop_project_writes(),
+      this.globalGate.stop(),
       this.game_directory_operations.stop(),
+      ...[...this.projects.values()].map((project) => project.gate.stop_project_writes()),
     ]);
   }
 
@@ -424,12 +532,8 @@ export class BackendServices {
     } catch (error) {
       errors.push(error);
     }
-    this.task_stream_unsubscribe?.();
-    this.task_stream_unsubscribe = null;
-    this.runtime_stream_unsubscribe?.();
-    this.runtime_stream_unsubscribe = null;
     try {
-      await this.task_runtime.dispose();
+      await this.close_projects();
     } catch (error) {
       errors.push(error);
     }

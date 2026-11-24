@@ -442,7 +442,7 @@ it.skipIf(process.platform !== "win32")(
           #floating { position:fixed; width:200px; height:30px }
         </style>
         <header class="shell-topbar"><div></div><div class="topbar__content">
-          <button class="topbar__menu-button">Menu</button><span>App</span>
+          <span class="topbar__brand">App</span>
         </div><div></div></header>
         <section class="probe-scroll"><div class="probe-spacer"></div>
           <button id="scroll-control">Content</button>
@@ -515,16 +515,15 @@ ConvertTo-Json -Compress -InputObject @($results)
         // 采样点跟随实际布局，按钮尺寸与标题栏高度可以自由调整。
         const points = await evaluate(\`(() => {
           const bar = document.querySelector('.shell-topbar').getBoundingClientRect();
-          const button = document.querySelector('.topbar__menu-button').getBoundingClientRect();
           const content = document.querySelector('.probe-scroll').getBoundingClientRect();
           const y = bar.y + bar.height / 2;
           return window.probePoints = [
-            {x:button.x + button.width / 2, y},
-            {x:(button.right + content.left) / 2, y},
+            {x:bar.x + content.left / 4, y},
+            {x:bar.x + content.left / 2, y},
             {x:content.x + content.width / 2, y}
           ];
         })()\`);
-        // 同时核对按钮、标题栏左侧与内容上方三个原生命中区域。
+        // 同时核对标题栏左侧与滚动内容上方的原生命中区域。
         async function check(label, expected) {
           // 原生区域通过异步消息更新，等待有界的最终命中结果。
           const deadline = Date.now() + 5000;
@@ -539,8 +538,8 @@ ConvertTo-Json -Compress -InputObject @($results)
           } while (Date.now() < deadline);
           assert.deepEqual(actual, expected, label);
         }
-        const normal = [HTCLIENT, HTCAPTION, HTCAPTION];
-        await check('initial titlebar and button', normal);
+        const normal = [HTCAPTION, HTCAPTION, HTCAPTION];
+        await check('initial titlebar', normal);
         // 将普通按钮完整滚出视口，并让其未裁剪矩形覆盖标题栏采样点。
         await evaluate(\`(() => {
           const scroll = document.querySelector('.probe-scroll');
@@ -558,7 +557,7 @@ ConvertTo-Json -Compress -InputObject @($results)
           floating.style.left = (window.probePoints[2].x - floating.offsetWidth / 2) + 'px';
           floating.style.top = (window.probePoints[2].y - floating.offsetHeight / 2) + 'px';
         \`);
-        await check('menu over titlebar', [HTCLIENT, HTCAPTION, HTCLIENT]);
+        await check('menu over titlebar', [HTCAPTION, HTCAPTION, HTCLIENT]);
         await evaluate('document.getElementById("floating").remove()');
         await check('menu closed', normal);
         await evaluate('const backdrop=document.createElement("div"); backdrop.className="cn-progress-toast-modal-layer"; document.body.append(backdrop)');

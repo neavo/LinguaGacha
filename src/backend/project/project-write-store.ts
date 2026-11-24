@@ -7,7 +7,7 @@ import {
 import { resolve_project_file_layout, type ProjectFileUpdate } from "./project-file-layout";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import { assert_source_file_paths } from "../../shared/project/project-asset-paths";
-import type { CacheManager } from "../cache/cache-manager";
+import type { ProjectCache } from "../cache/project-cache";
 import {
   ProjectDatabase,
   type ProjectDatabaseWrite,
@@ -32,7 +32,7 @@ import {
   is_task_progress_status,
   normalize_batch_translation_progress,
 } from "../../domain/batch-translation";
-import { read_project_prefilter_settings } from "../../domain/project-settings";
+import { read_project_settings } from "../../domain/project-settings";
 
 import type {
   ProjectDataSection,
@@ -156,7 +156,7 @@ export class ProjectWriteStore {
     database: ProjectDatabase,
     apply_committed_change: ProjectCommittedChangeHandler,
     project_change_publisher: ProjectChangePublisher | null,
-    private readonly cache?: Pick<CacheManager, "readItemWriteScope">,
+    private readonly cache?: Pick<ProjectCache, "readItemWriteScope">,
   ) {
     this.database = database;
     this.apply_committed_change = apply_committed_change;
@@ -782,7 +782,7 @@ export class ProjectWriteStore {
     const items =
       request.batch.items.length === 0
         ? []
-        : this.read_item_scope_records(
+        : this.read_item_write_records(
             database,
             request.projectPath,
             meta,
@@ -1137,27 +1137,18 @@ export class ProjectWriteStore {
       database.update_asset(project_path, write.path, write.content, write.fileType);
   }
 
-  /** 缓存缺失或落后时回读全表，事务内事实始终拥有最终解释权。 */
-  private read_item_scope_records(
-    database: ProjectDatabaseAccess,
-    project: string,
-    meta: JsonRecord,
-    ids: readonly number[],
-  ): JsonRecord[] {
-    const scope = this.cache?.readItemWriteScope(project, ids);
-    return scope != null && scope.revision === get_section_revision(meta, "items")
-      ? database.get_items_by_ids(project, scope.ids)
-      : database.get_all_items(project);
-  }
-
-  /** 事务内读取并归一候选 Item，供局部意图和重复组协调共同使用。 */
+  /** 从事务读取目标条目及同组候选。只在缓存与事务修订一致时采用缓存范围。 */
   private read_item_write_records(
     database: ProjectDatabaseAccess,
     project_path: string,
     meta: JsonRecord,
     ids: readonly number[],
-  ): ProjectItemWriteRecord[] {
-    const raw_items = this.read_item_scope_records(database, project_path, meta, ids);
+  ): ProjectItemPublicRecord[] {
+    const scope = this.cache?.readItemWriteScope(project_path, ids);
+    const raw_items =
+      scope != null && scope.revision === get_section_revision(meta, "items")
+        ? database.get_items_by_ids(project_path, scope.ids)
+        : database.get_all_items(project_path);
     return raw_items.flatMap((value) => {
       const item = create_item(value);
       if (item.id === undefined || item.id <= 0) return [];
@@ -1199,9 +1190,9 @@ export class ProjectWriteStore {
     });
   }
 
-  /** 项目 meta 优先于旧 prefilter 镜像，读取当前重复过滤设置。 */
+  /** 事务内读取重复过滤开关，与同次条目更新共用工程事实。 */
   private is_duplicate_filter_enabled(meta: JsonRecord): boolean {
-    return read_project_prefilter_settings(meta).skip_duplicate_source_text_enable;
+    return read_project_settings(meta).skip_duplicate_source_text_enable;
   }
 
   /** 状态和译名不参与质量文本统计，正文实际变化只影响译后规则。 */

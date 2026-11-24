@@ -222,7 +222,7 @@ func TestControlLossAndSupervisorExit(t *testing.T) {
 			lock := filepath.Join(directory, "node.lock")
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			command := exec.CommandContext(ctx, os.Args[0], lock)
+			command := exec.CommandContext(ctx, os.Args[0], "--lock", lock)
 			command.Env = append(fixtureEnvironment(), "LG_PROCESS_FIXTURE=supervisor")
 			input, err := command.StdinPipe()
 			if err != nil {

@@ -44,7 +44,7 @@ export function ModelPage(): JSX.Element {
         onConfirm={model_page_state.confirm_dialog}
         onClose={model_page_state.close_confirm}
         confirmDisabled={
-          model_page_state.confirm_state.kind === "logout" && model_page_state.test_disabled
+          model_page_state.confirm_state.kind === "logout" && model_page_state.auth_disabled
         }
       />
 
@@ -126,7 +126,7 @@ export function ModelPage(): JSX.Element {
                   <ModelItemMenu
                     model={model}
                     readonly={model_page_state.readonly}
-                    auth_disabled={model_page_state.test_disabled || chatgpt_login.busy}
+                    auth_disabled={model_page_state.auth_disabled || chatgpt_login.busy}
                     on_login={() => {
                       void chatgpt_login.start();
                     }}

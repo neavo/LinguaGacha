@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "./project-session-state";
+import { ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
 import { ProjectKnowledgeService } from "./project-knowledge-service";
 import { project_knowledge_file } from "./project-knowledge";
@@ -17,17 +16,15 @@ it("工程知识按指纹保存和重置，并仅在实际写入时推进修订"
   const db = new ProjectDatabase("1.0.0");
   try {
     await db.create_project(project);
-    const session = new ProjectSessionState();
-    await session.mark_loaded(project);
-    const gate = new RuntimeOperationGate();
+    const gate = new ProjectOperationGate();
     const writes = new ProjectWriteStore(
       db,
       () => undefined,
-      (change) => adapt_project_change(session, change),
+      (change) => adapt_project_change(project, change),
     );
     let language: AppLanguage = "EN";
     const settings = { read_app_language: () => language };
-    const service = new ProjectKnowledgeService(db, session, writes, gate, settings);
+    const service = new ProjectKnowledgeService(db, project, writes, gate, settings);
     const template = await service.read();
     expect(template).toEqual(project_knowledge_file(null, "en-US"));
     expect(await db.read_knowledge(project)).toBeNull();
@@ -42,7 +39,7 @@ it("工程知识按指纹保存和重置，并仅在实际写入时推进修订"
     await expect(service.save({ text: "missing fp" })).rejects.toMatchObject({
       code: "request.validation_failed",
     });
-    const lease = gate.begin_runtime("agent");
+    const lease = gate.begin_runtime("batch_translation");
     await expect(service.save({ fp: updated.document.fp, text: "busy" })).rejects.toMatchObject({
       code: "runtime.busy",
     });

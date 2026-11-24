@@ -7,18 +7,28 @@ import { useProjectCloseFlow } from "@frontend/features/project-lifecycle/use-pr
 import { ProjectCreateDialog } from "@frontend/features/project-lifecycle/project-create-dialog";
 import { ProjectOpenConfirmations } from "@frontend/features/project-lifecycle/project-open-confirmations";
 import { ProjectLifecycleContext } from "./project-lifecycle-context";
+import type { BeforePageLeave } from "@frontend/app/navigation/page-leave-context";
+import type { ProjectStore } from "@frontend/app/state/project-store-registry";
 
 /** 工程切换会卸载入口页面，生命周期流程与全部确认由常驻会话拥有。 */
-export function ProjectLifecycleProvider(props: { children: ReactNode }): JSX.Element {
-  const run_project_load = useProjectLoad();
+export function ProjectLifecycleProvider(props: {
+  children: ReactNode;
+  attention: number;
+  notify_project_required: () => void;
+  before_open: BeforePageLeave;
+  on_open: (project: ProjectStore) => void;
+}): JSX.Element {
+  const run_project_load = useProjectLoad(props.before_open, props.on_open);
   const create = useProjectCreateFlow(run_project_load);
   const open = useProjectOpenFlow(run_project_load);
-  const close = useProjectCloseFlow();
+  const close = useProjectCloseFlow(open.handle_recent_project_remove);
   const busy = create.source_selection_disabled || open.is_opening_project || close.closing;
   return (
     <ProjectLifecycleContext.Provider
       value={{
         busy,
+        attention: props.attention,
+        notify_project_required: props.notify_project_required,
         show_create_dialog: () => {
           if (!busy) create.show();
         },
@@ -34,9 +44,8 @@ export function ProjectLifecycleProvider(props: { children: ReactNode }): JSX.El
         remove_recent_project: (path) => {
           if (!busy) void open.handle_recent_project_remove(path);
         },
-        can_close: close.can_close && !busy,
-        request_close: () => {
-          if (!busy) close.request_close();
+        request_close: (id, remove_path) => {
+          if (!busy) close.request_close(id, remove_path);
         },
       }}
     >

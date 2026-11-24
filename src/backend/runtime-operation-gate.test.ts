@@ -1,165 +1,67 @@
-import { describe, expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
+import { GlobalOperationGate, ProjectOperationGate } from "./runtime-operation-gate";
 
-import { RuntimeOperationGate } from "./runtime-operation-gate";
+it("同一工程只接受一个 Agent 租约，不同工程可并行运行", async () => {
+  const first = new ProjectOperationGate();
+  const second = new ProjectOperationGate();
+  const agent = first.begin_runtime("agent");
+  expect(() => first.begin_runtime("agent")).toThrow(
+    expect.objectContaining({ code: "runtime.busy" }),
+  );
+  const other = second.begin_runtime("agent");
+  await expect(first.run_agent_project_write(() => "applied")).resolves.toBe("applied");
+  const task = first.begin_runtime("batch_translation");
+  await expect(first.run_project_write(() => {})).rejects.toMatchObject({ code: "runtime.busy" });
+  first.finish_runtime(task);
+  first.finish_runtime(agent);
+  expect(first.get_snapshot().agent).toBe(false);
+  expect(second.get_snapshot().agent).toBe(true);
+  second.finish_runtime(other);
+});
 
-describe("RuntimeOperationGate", () => {
-  it("Agent 文件写入接收应用关闭信号，关闭等待写入收尾", async () => {
-    const gate = new RuntimeOperationGate();
-    const lease = gate.begin_runtime("agent");
-    let observed: AbortSignal | undefined;
-    let finish!: () => void;
-    const writing = gate.run_agent_project_write((signal) => {
-      observed = signal;
-      return new Promise<void>((resolve) => {
-        finish = resolve;
-      });
-    });
-    const stopped = vi.fn();
-    const closing = gate.stop_project_writes().then(stopped);
-    expect(observed?.aborted).toBe(true);
-    expect(stopped).not.toHaveBeenCalled();
-    finish();
-    await writing;
-    await closing;
-    expect(stopped).toHaveBeenCalledOnce();
-    gate.finish_runtime(lease);
+it("对话重置期间独占工程，租约释放后允许启动翻译和写入", async () => {
+  const gate = new ProjectOperationGate();
+  const reset = gate.begin_runtime("agent_reset");
+  expect(gate.get_snapshot().agent).toBe(true);
+  expect(() => gate.begin_runtime("batch_translation")).toThrow(
+    expect.objectContaining({ code: "runtime.busy" }),
+  );
+  await expect(gate.run_project_write(() => {})).rejects.toMatchObject({ code: "runtime.busy" });
+  gate.finish_runtime(reset);
+  const batch = gate.begin_runtime("batch_translation");
+  expect(() => gate.begin_runtime("agent_reset")).toThrow(
+    expect.objectContaining({ code: "runtime.busy" }),
+  );
+  gate.finish_runtime(batch);
+  await expect(gate.run_project_write(() => "applied")).resolves.toBe("applied");
+});
+
+it("关闭取消在途工程写入，并等真实写入收尾", async () => {
+  const gate = new ProjectOperationGate();
+  const finished = Promise.withResolvers<void>();
+  const cancelled = Promise.withResolvers<void>();
+  const write = gate.run_project_write(async (signal) => {
+    signal.addEventListener("abort", () => cancelled.resolve());
+    await finished.promise;
   });
-  it("技能写入与 Agent 双向互斥，失败后释放占用且不限制其它模型任务", async () => {
-    const gate = new RuntimeOperationGate();
-    const lease = gate.begin_runtime("agent");
-    await expect(gate.run_skill_write(() => undefined)).rejects.toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    gate.finish_runtime(lease);
-    let release!: () => void;
-    const writing = gate.run_skill_write(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
-    expect(() => gate.begin_runtime("agent")).toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    const batch = gate.begin_runtime("batch_translation");
-    release();
-    await writing;
-    await expect(gate.run_skill_write(() => "saved")).resolves.toBe("saved");
-    gate.finish_runtime(batch);
-    await expect(
-      gate.run_skill_write(() => {
-        throw new Error("failed");
-      }),
-    ).rejects.toThrow("failed");
-    const next = gate.begin_runtime("agent");
-    gate.finish_runtime(next);
+  const closing = gate.stop_project_writes();
+  await cancelled.promise;
+  expect(gate.get_snapshot().projectWrite).toBe(true);
+  finished.resolve();
+  await Promise.all([write, closing]);
+  expect(gate.busy).toBe(false);
+  await expect(gate.run_project_write(() => {})).rejects.toMatchObject({
+    code: "runtime.disposed",
   });
-  it("等待运行与工程写入释放，并可取消等待", async () => {
-    const gate = new RuntimeOperationGate();
-    const lease = gate.begin_runtime("agent");
-    const ready = vi.fn();
-    const pending = gate.wait_for_idle(new AbortController().signal).then(ready);
-    await Promise.resolve();
-    expect(ready).not.toHaveBeenCalled();
-    gate.finish_runtime(lease);
-    await pending;
-    expect(ready).toHaveBeenCalledOnce();
+});
 
-    let release!: () => void;
-    const writing = gate.run_project_write(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
-    const controller = new AbortController();
-    const cancelled = gate.wait_for_idle(controller.signal);
-    controller.abort();
-    await expect(cancelled).rejects.toBe(controller.signal.reason);
-    const after_write = vi.fn();
-    const waiting_for_write = gate.wait_for_idle(new AbortController().signal).then(after_write);
-    release();
-    await writing;
-    expect(after_write).toHaveBeenCalledOnce();
-    await waiting_for_write;
-  });
-  it("普通任务与 Agent 共享单一运行租约并发布单调快照", () => {
-    const gate = new RuntimeOperationGate();
-    const snapshots: unknown[] = [];
-    gate.subscribe((snapshot) => snapshots.push(snapshot));
-
-    const lease = gate.begin_runtime("agent");
-    expect(gate.get_snapshot()).toEqual({ revision: 1, owner: "agent" });
-    expect(() => gate.begin_runtime("batch_translation")).toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    gate.finish_runtime(lease);
-
-    expect(gate.get_snapshot()).toEqual({ revision: 2, owner: null });
-    expect(snapshots).toEqual([
-      { revision: 1, owner: "agent" },
-      { revision: 2, owner: null },
-    ]);
-  });
-
-  it("项目写入与模型运行互斥", async () => {
-    const gate = new RuntimeOperationGate();
-    let release_write = (): void => undefined;
-    const running_write = gate.run_project_write(
-      async () =>
-        new Promise<void>((resolve) => {
-          release_write = resolve;
-        }),
-    );
-
-    expect(() => gate.begin_runtime("batch_translation")).toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    await expect(gate.run_project_write(() => undefined)).rejects.toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    release_write();
-    await running_write;
-
-    const runtime_lease = gate.begin_runtime("batch_translation");
-    await expect(gate.run_project_write(() => undefined)).rejects.toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    gate.finish_runtime(runtime_lease);
-  });
-
-  it("项目写失败后释放写租约", async () => {
-    const gate = new RuntimeOperationGate();
-
-    await expect(
-      gate.run_project_write(() => {
-        throw new Error("write failed");
-      }),
-    ).rejects.toThrow("write failed");
-
-    await expect(gate.run_project_write(() => "next")).resolves.toBe("next");
-  });
-
-  it("Agent 项目写只在 Agent 运行租约内放行", async () => {
-    const gate = new RuntimeOperationGate();
-
-    await expect(gate.run_agent_project_write(() => undefined)).rejects.toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    const lease = gate.begin_runtime("agent");
-    await expect(gate.run_agent_project_write(() => "ok")).resolves.toBe("ok");
-    gate.finish_runtime(lease);
-  });
-
-  it("迟到清理不能释放后续运行租约", () => {
-    const gate = new RuntimeOperationGate();
-    const stale_lease = gate.begin_runtime("batch_translation");
-    gate.finish_runtime(stale_lease);
-    const current_lease = gate.begin_runtime("agent");
-
-    gate.finish_runtime(stale_lease);
-
-    expect(gate.get_snapshot()).toEqual({ revision: 3, owner: "agent" });
-    gate.finish_runtime(current_lease);
-  });
+it("全局模型测试和工程运行可以同时占用各自槽位", async () => {
+  const global = new GlobalOperationGate(() => !project.busy);
+  const project = new ProjectOperationGate((owner) => global.check_project(owner));
+  const agent = project.begin_runtime("agent");
+  const test = global.begin_runtime("model_test");
+  expect(global.modelTest).toBe(true);
+  await expect(project.run_agent_project_write(() => "saved")).resolves.toBe("saved");
+  project.finish_runtime(agent);
+  global.finish_runtime(test);
 });

@@ -1,7 +1,6 @@
 import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "../domain/app-language";
-export const AGENT_INACTIVE_CHAT_ID = "inactive"; // 无工程时的快照身份。
 
 /** 工程知识和工作区预览共用 UTF-8 文档字节上限。 */
 export const AGENT_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;

@@ -244,7 +244,7 @@ describe("useModelPageState", () => {
     );
   });
 
-  it("运行中可复制配置，测试接口保持禁用", async () => {
+  it("运行中允许复制配置和测试接口", async () => {
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await render_hook();
     api_fetch_mock.mockClear();
@@ -254,9 +254,8 @@ describe("useModelPageState", () => {
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/models/copy", { model_id: "custom" });
     api_fetch_mock.mockClear();
     expect(latest_state!.readonly).toBe(false);
-    expect(latest_state!.test_disabled).toBe(true);
-    await act(async () => latest_state!.request_test_model("custom"));
-    expect(api_fetch_mock).not.toHaveBeenCalled();
+    expect(latest_state!.test_disabled).toBe(false);
+    expect(latest_state!.auth_disabled).toBe(true);
   });
 
   it("首次加载失败可重试，刷新失败保留已读取模型", async () => {

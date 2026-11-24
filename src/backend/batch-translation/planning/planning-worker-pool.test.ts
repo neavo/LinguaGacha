@@ -117,27 +117,31 @@ describe("PlanningWorkerPool", () => {
     expect(FakeWorker.instances).toHaveLength(2);
   });
 
-  it("取消等待所有活动批次结束，期间不接受新请求", async () => {
+  it("取消等待所有活动批次结束，后续规划按提交顺序复用线程", async () => {
     const pool = create_pool();
     const controller = new AbortController();
     const result = pool.count_items(["a".repeat(10000), "b".repeat(10000)], controller.signal);
     const rejected = expect(result).rejects.toMatchObject({ code: "runtime.cancelled" });
     await flush();
     controller.abort();
-    await expect(pool.count_items([], new AbortController().signal)).rejects.toMatchObject({
-      code: "runtime.busy",
-    });
     const first = FakeWorker.instances[0]!;
     const second = FakeWorker.instances[1]!;
+    const next = pool.count_items(["follow-up"], new AbortController().signal);
+    const last = pool.count_items(["last"], new AbortController().signal);
     first.reply({ id: first.messages[0]!.id, status: "cancelled" });
     await flush();
-    await expect(pool.count_items([], new AbortController().signal)).rejects.toMatchObject({
-      code: "runtime.busy",
-    });
+    expect(first.messages.map((message) => message.type)).toEqual(["count_tokens", "cancel"]);
     expect(second.messages.at(-1)?.type).toBe("cancel");
     second.reply({ id: second.messages[0]!.id, status: "done", counts: [10000] });
     await rejected;
-    await expect(pool.count_items([], new AbortController().signal)).resolves.toEqual([]);
+    await flush();
+    expect(first.messages.at(-1)).toMatchObject({ texts: ["follow-up"] });
+    first.reply({ id: first.messages.at(-1)!.id, status: "done", counts: [9] });
+    await expect(next).resolves.toEqual([9]);
+    await flush();
+    expect(first.messages.at(-1)).toMatchObject({ texts: ["last"] });
+    first.reply({ id: first.messages.at(-1)!.id, status: "done", counts: [4] });
+    await expect(last).resolves.toEqual([4]);
   });
 
   it("派发失败释放批次引用，下一次请求可继续使用线程", async () => {

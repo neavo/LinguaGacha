@@ -42,6 +42,13 @@ export const en_us_function_settings_page = {
       description:
         "Automatically open the output folder after translations are successfully exported",
     },
+    prompt_enhancement_enable: {
+      title: "Prompt enhancement",
+      description:
+        "Strengthens the AI's instruction following by simulating chain-of-thought reasoning." +
+        "\n" +
+        "Disabling slightly reduces token usage but significantly reduces AI intelligence. Enabled by default.",
+    },
   },
   feedback: {
     preceding_lines_threshold_invalid:

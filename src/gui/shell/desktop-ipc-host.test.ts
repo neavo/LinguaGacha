@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
+  IPC_CHANNEL_REVEAL_PATH,
   IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
@@ -33,6 +34,7 @@ const electron_mock = vi.hoisted(() => {
     show_open_dialog: vi.fn(),
     show_save_dialog: vi.fn(),
     open_external: vi.fn(),
+    show_item_in_folder: vi.fn(),
     reset: () => {
       send_handlers.clear();
       invoke_handlers.clear();
@@ -72,6 +74,7 @@ vi.mock("electron", () => {
     },
     shell: {
       openExternal: electron_mock.open_external,
+      showItemInFolder: electron_mock.show_item_in_folder,
     },
   };
 });
@@ -84,6 +87,26 @@ describe("桌面 IPC 宿主", () => {
   afterEach(() => {
     electron_mock.reset();
     vi.resetModules();
+  });
+
+  it("只在文件存在时请求系统文件管理器选中该路径", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "lg-native-reveal-"));
+    try {
+      const project = path.join(directory, "翻译 工程.lg");
+      writeFileSync(project, "");
+      await register_handlers({});
+      electron_mock.show_item_in_folder.mockClear();
+      await expect(
+        invoke(IPC_CHANNEL_REVEAL_PATH, path.join(directory, "missing.lg")),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(electron_mock.show_item_in_folder).not.toHaveBeenCalled();
+      await invoke(IPC_CHANNEL_REVEAL_PATH, project);
+      expect(electron_mock.show_item_in_folder).toHaveBeenCalledExactlyOnceWith(project);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("标题栏主题、退出和日志窗口 IPC 会执行对应宿主能力", async () => {

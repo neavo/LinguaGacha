@@ -68,8 +68,6 @@ describe("ItemCache", () => {
     expect(cache.readWriteScope([1])).toEqual([1]);
     cache.replace([first, create_item(4, { src: "同文" })]);
     expect(cache.readWriteScope([1])).toEqual([1, 4]);
-    cache.clear();
-    expect(cache.readWriteScope([1])).toEqual([1]);
   });
 
   it("按 item id 和插入顺序维护克隆后的条目索引", () => {

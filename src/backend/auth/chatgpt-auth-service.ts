@@ -10,7 +10,7 @@ import {
 } from "../../shared/model-auth";
 import type { JsonRecord } from "../../domain/json";
 import type { AppPathService } from "../app/app-path-service";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { GlobalOperationGate } from "../runtime-operation-gate";
 import { without_http_response_info } from "../network/http-response-info";
 import { create_provider_error } from "../network/provider-error";
 import { ChatGPTCredentialStore } from "./chatgpt-credential-store";
@@ -45,7 +45,7 @@ export class ChatGPTAuthService {
   /** 装配单账户认证与存储，OAuth 失败保持显式错误语义。 */
   public constructor(
     paths: AppPathService,
-    private readonly gate: RuntimeOperationGate,
+    private readonly gate: GlobalOperationGate,
     private readonly publish: (topic: string, payload: JsonRecord) => void,
   ) {
     this.store = new ChatGPTCredentialStore(paths.get_user_data_path("auth", "chatgpt.json"));
@@ -142,8 +142,7 @@ export class ChatGPTAuthService {
   public async login(): Promise<ChatGPTLoginResponse> {
     if (this.pending?.controller.signal.aborted) await this.pending.completion;
     this.lifetime.signal.throwIfAborted();
-    if (this.logging_out || this.gate.get_snapshot().owner !== null)
-      throw new AppError("runtime.busy");
+    if (this.logging_out || !this.gate.can_change_auth) throw new AppError("runtime.busy");
     let attempt = this.pending;
     if (attempt === null) {
       attempt = {

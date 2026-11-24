@@ -77,7 +77,7 @@ export class RequestRate {
 
 /** 同一模型配置跨任务保留 RPM 与默认 RPS 节奏。 */
 export class RequestRatePool {
-  private shared_rate: { key: string; rate: RequestRate } | null = null; // 当前模型资源池的唯一缓存
+  private readonly rates = new Map<string, RequestRate>();
 
   /** 同一资源和容量复用时钟，配置变化才重新建立启动节奏。 */
   public resolve(model: RequestModelRecord): RequestRate {
@@ -88,12 +88,13 @@ export class RequestRatePool {
       model_id: String(model["model_id"] ?? ""),
       ...limits,
     });
-    if (this.shared_rate?.key === key) return this.shared_rate.rate;
+    const shared = this.rates.get(key);
+    if (shared !== undefined) return shared;
     const rate = new RequestRate({
       rps_limit: limits.concurrency_limit,
       rpm_limit: limits.rpm_limit,
     });
-    this.shared_rate = { key, rate };
+    this.rates.set(key, rate);
     return rate;
   }
 }

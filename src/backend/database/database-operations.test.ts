@@ -637,23 +637,25 @@ describe("ProjectDatabase", () => {
 
   it("作用域结束后旧访问对象失效，排队读取等待事务提交", async () => {
     const { database, lg_path } = await create_database_project("queued");
+    const read_path =
+      process.platform === "win32" ? path.join(path.dirname(lg_path), "QUEUED.lg") : lg_path;
     const entered = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
     let saved: ProjectDatabaseAccess | undefined;
     const transaction = database.transaction(lg_path, async (writer) => {
       saved = writer;
-      writer.set_meta(lg_path, "value", 42);
+      writer.set_meta(read_path, "value", 42);
       entered.resolve();
       await finish.promise;
     });
     await entered.promise;
     let read_finished = false;
-    const read = database.get_all_meta(lg_path).then((meta) => {
+    const read = database.get_all_meta(read_path).then((meta) => {
       read_finished = true;
       return meta;
     });
     let preview_finished = false;
-    const preview = database.read_project_preview(lg_path).then((value) => {
+    const preview = database.read_project_preview(read_path).then((value) => {
       preview_finished = true;
       return value;
     });

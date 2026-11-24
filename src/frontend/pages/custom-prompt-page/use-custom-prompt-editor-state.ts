@@ -1,7 +1,9 @@
+import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
 import { push_error_toast, push_toast, dismiss_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
+import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type {
@@ -9,7 +11,7 @@ import type {
   ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import type { CustomPromptTemplate } from "@frontend/pages/custom-prompt-page/types";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { AppError } from "@shared/error";
@@ -89,10 +91,11 @@ function read_prompts_revision(value: unknown): number {
 
 /** 管理当前项目的提示词草稿、串行保存与恢复状态。 */
 export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
+  const api_fetch = useProjectFetch();
   const { t } = useI18n();
 
   const { project_snapshot, settings_snapshot, commit_project_write } = useDesktopState();
-  const runtime_snapshot = useRuntimeSnapshot();
+  const runtime_snapshot = useProjectRuntimeSnapshot();
   const [load_status, set_load_status] = useState<"loading" | "ready" | "error">("loading");
   const readonly = is_runtime_busy(runtime_snapshot) || load_status !== "ready";
 
@@ -123,7 +126,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
   const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
     const payload = await api_fetch<PromptTemplatePayload>("/api/quality/prompts/template", {});
     return normalize_prompt_template(payload.template);
-  }, []);
+  }, [api_fetch]);
 
   /** 正文与 revision 来自同一次权威查询。 */
   const fetch_prompt_snapshot = useCallback(async (): Promise<{
@@ -138,7 +141,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       },
       prompts_revision: read_prompts_revision(payload.sectionRevisions?.prompts),
     };
-  }, []);
+  }, [api_fetch]);
 
   // 回调在防抖触发时读取本轮保存入口，声明顺序不参与执行顺序。
   const debounced_prompt_save = useDebouncedCallback(() => {
@@ -217,7 +220,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
         return false;
       }
     },
-    [commit_project_write, fetch_prompt_snapshot, notify_save_error],
+    [api_fetch, commit_project_write, fetch_prompt_snapshot, notify_save_error],
   );
 
   /** 串行提交最新草稿，在途请求结束后再处理后续编辑。 */

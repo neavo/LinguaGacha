@@ -1,7 +1,6 @@
 import { act, useCallback } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import { useQualityRuleTable } from "./use-quality-rule-table";
 import { build_quality_rule_filter_result } from "./quality-rule-filtering";
@@ -11,8 +10,12 @@ import {
   type QualityRuleStatisticsCacheSnapshot,
 } from "@frontend/app/session/quality-rule-statistics-store";
 
+const page_ui = new Map<string, unknown>();
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ project_snapshot: { loaded: true, path: "project.lg" } }),
+  useDesktopState: () => ({
+    active_project: { pageUi: page_ui },
+    project_snapshot: { loaded: true, path: "project.lg" },
+  }),
 }));
 const entries = [{ entry_id: "apple" }, { entry_id: "pear" }];
 const EMPTY_ENTRIES: typeof entries = [];
@@ -35,6 +38,7 @@ let root: Root | null = null;
 afterEach(() => {
   if (root) act(() => root!.unmount());
   root = null;
+  page_ui.clear();
   vi.useRealTimers();
 });
 
@@ -58,13 +62,7 @@ it("筛选时冻结旧结果，显式排序立即应用当前条件并取消待�
     return null;
   }
   root = createRoot(document.createElement("div"));
-  act(() =>
-    root!.render(
-      <ProjectSessionUiStateProvider>
-        <Probe />
-      </ProjectSessionUiStateProvider>,
-    ),
-  );
+  act(() => root!.render(<Probe />));
   act(() => table.update_filter_keyword("pear"));
   expect(table.filter_state.keyword).toBe("pear");
   expect(table.filtered_entries.map((row) => row.entry_id)).toEqual(["apple"]);
@@ -109,12 +107,7 @@ it("读取期间修改筛选不会把临时空列表冻结成正式结果", () =
   }
   root = createRoot(document.createElement("div"));
   /** 保留页面实例，仅推进读取状态。 */
-  const render = (loaded: boolean) =>
-    root!.render(
-      <ProjectSessionUiStateProvider>
-        <Probe loaded={loaded} />
-      </ProjectSessionUiStateProvider>,
-    );
+  const render = (loaded: boolean) => root!.render(<Probe loaded={loaded} />);
   act(() => render(false));
   act(() =>
     table.session.set_selection_state({
@@ -182,13 +175,7 @@ it("统计到达与失效自动重排，保留排序意图和已有筛选成员"
   }
   root = createRoot(document.createElement("div"));
   const render = (statistics: QualityRuleStatisticsCacheSnapshot) =>
-    act(() =>
-      root!.render(
-        <ProjectSessionUiStateProvider>
-          <Probe statistics={statistics} />
-        </ProjectSessionUiStateProvider>,
-      ),
-    );
+    act(() => root!.render(<Probe statistics={statistics} />));
   const ids = () => table.filtered_entries.map((row) => row.entry_id);
   render(empty_statistics);
   act(() => table.apply_table_sort_state({ column_id: "hit", direction: "descending" }));

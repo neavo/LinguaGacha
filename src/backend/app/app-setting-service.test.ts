@@ -82,8 +82,11 @@ describe("AppSettingService", () => {
         },
       },
     ]);
-    restored.update_app_settings({ agent_approval_mode: "manual" });
-    expect(new AppSettingService(paths).read_setting()["agent_approval_mode"]).toBe("manual");
+    expect(() => service.update_app_settings({ agent_approval_mode: "unknown" })).toThrow(
+      expect.objectContaining({ code: "request.validation_failed" }),
+    );
+    expect(new AppSettingService(paths).read_setting()["agent_approval_mode"]).toBe("auto");
+    expect(events).toHaveLength(1);
   });
 
   it("审批偏好保存失败保留原配置与缓存，且不发布成功事件", () => {
@@ -140,7 +143,8 @@ describe("AppSettingService", () => {
       check_kana_residue: false,
       check_hangeul_residue: false,
       check_similarity: false,
-      unknown_key: "不应保留",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: false,
     });
 
     const result = await service.update_app_settings({
@@ -151,7 +155,8 @@ describe("AppSettingService", () => {
       check_kana_residue: true,
       check_hangeul_residue: true,
       check_similarity: true,
-      unknown_key: "忽略",
+      mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: true,
     });
     const saved = read_config(config_path);
 
@@ -169,7 +174,10 @@ describe("AppSettingService", () => {
       model_selection: { translation: "model-1", agent: "model-3" },
       models: [{ id: "model-1" }],
     });
-    expect(saved).not.toHaveProperty("unknown_key");
+    for (const key of ["mtool_optimizer_enable", "skip_duplicate_source_text_enable"]) {
+      expect(result.settings).not.toHaveProperty(key);
+      expect(saved).not.toHaveProperty(key);
+    }
     expect(saved).not.toHaveProperty("check_kana_residue");
     expect(saved).not.toHaveProperty("check_hangeul_residue");
     expect(saved).not.toHaveProperty("check_similarity");

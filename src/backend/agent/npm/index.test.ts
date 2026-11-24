@@ -95,7 +95,7 @@ async function create_fixture(
       get_agent_models_dir: () => path.join(root, "models"),
       get_agent_media_cache_dir: () => path.join(root, "cache/media"),
       get_agent_python_root_dir: () => path.join(root, "python"),
-      get_agent_execution_lock_path: () => path.join(root, name, "node.lock"),
+      get_agent_preparation_lock_path: () => path.join(root, name, "node.lock"),
       get_user_data_path: (...parts) => path.join(root, name, ...parts),
     },
     proxyResolver: { resolveProxy },

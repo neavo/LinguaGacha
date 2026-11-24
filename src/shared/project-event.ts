@@ -30,7 +30,8 @@ export type ProjectChangeEvent = {
   type: "project.changed";
   eventId: string;
   source: string;
-  projectPath: string; // 后端会话确认后的项目身份，renderer 必须用它拦截旧工程事件
+  projectId: string;
+  projectPath: string;
   projectRevision: number;
   sectionRevisions: ProjectDataSectionRevisions;
   updatedSections: ProjectDataSection[];

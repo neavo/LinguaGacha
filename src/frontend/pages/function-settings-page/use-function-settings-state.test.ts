@@ -14,6 +14,7 @@ import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-moc
 type SettingsFixture = {
   settings_snapshot: SettingsSnapshot;
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
+  commit_project_write: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
 };
 
@@ -77,6 +78,7 @@ function create_settings_fixture(): SettingsFixture {
       };
       return next_settings_snapshot;
     }),
+    commit_project_write: vi.fn(),
     refresh_settings: vi.fn(async () => settings_fixture.current.settings_snapshot),
   };
 }
@@ -121,6 +123,21 @@ describe("useFunctionSettingsState", () => {
       root?.render(createElement(FunctionSettingsProbe));
     });
   }
+
+  it("提示词增强作为应用设置保存", async () => {
+    vi.mocked(api_fetch).mockResolvedValue({
+      settings: create_settings_snapshot({ prompt_enhancement_enable: false }),
+    } as never);
+    await render_hook();
+    await act(async () => {
+      await latest_state?.update_boolean_setting("prompt_enhancement_enable", false);
+    });
+    expect(api_fetch).toHaveBeenCalledExactlyOnceWith("/api/settings/update", {
+      prompt_enhancement_enable: false,
+    });
+    expect(latest_state?.snapshot.prompt_enhancement_enable).toBe(false);
+    expect(settings_fixture.current.commit_project_write).not.toHaveBeenCalled();
+  });
 
   it("超时设置经应用设置入口保存", async () => {
     vi.mocked(api_fetch).mockResolvedValue({

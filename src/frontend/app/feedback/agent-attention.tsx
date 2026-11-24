@@ -1,12 +1,28 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type JSX } from "react";
 import type { AgentPendingDecision } from "@shared/agent";
 import {
+  AgentChatStoreContext,
   useAgentChatId,
   useAgentControls,
   useAgentEntry,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-chat-context";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { request_user_attention } from "./desktop-attention";
+
+/** 后台工程也保留提醒订阅，直到工程的打开周期结束。 */
+export function OpenProjectAttention(): JSX.Element {
+  const { open_projects } = useDesktopState();
+  return (
+    <>
+      {open_projects.map(({ snapshot, agentChat }) => (
+        <AgentChatStoreContext key={snapshot.projectId} value={agentChat}>
+          <AgentAttention />
+        </AgentChatStoreContext>
+      ))}
+    </>
+  );
+}
 
 /** 已请求提醒的会话与待决事项身份。 */
 type RequestedDecisionIdentity = {

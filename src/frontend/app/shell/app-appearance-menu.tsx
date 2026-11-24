@@ -8,8 +8,6 @@ import {
   useAppearance,
 } from "@frontend/app/appearance/appearance-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { cn } from "@frontend/shadcn/classnames";
-import { SidebarMenuButton, SidebarMenuItem } from "@frontend/shadcn/sidebar";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -19,10 +17,6 @@ import {
   AppDropdownMenuRadioItem,
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
-
-type AppAppearanceMenuProps = {
-  is_collapsed: boolean;
-};
 
 /** 将菜单载荷收窄为字体设置允许的值。 */
 function is_font_preference(value: string): value is FontPreference {
@@ -35,7 +29,7 @@ function is_theme_preference(value: string): value is ThemePreference {
 }
 
 /** 以显式单选项呈现完整外观偏好，避免切换按钮隐藏当前状态和可选目标。 */
-export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
+export function AppAppearanceMenu(): JSX.Element {
   const { t } = useI18n();
   const {
     font_size_preference,
@@ -50,26 +44,22 @@ export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
   const theme_label = t("app.navigation_action.theme");
 
   return (
-    <SidebarMenuItem>
+    <li>
       <AppDropdownMenu>
         <AppDropdownMenuTrigger
           render={
-            <SidebarMenuButton
-              className="sidebar-row"
-              tooltip={appearance_label}
-              aria-label={appearance_label}
-            >
+            <button className="sidebar-row" type="button">
               <Palette className="sidebar-row__icon" />
               <span className="sidebar-row__label">{appearance_label}</span>
-            </SidebarMenuButton>
+            </button>
           }
         />
         <AppDropdownMenuContent
-          side={props.is_collapsed ? "right" : "top"}
+          side="top"
           align="center"
-          sideOffset={props.is_collapsed ? 8 : 4}
-          matchTriggerWidth={!props.is_collapsed}
-          className={cn(!props.is_collapsed && "w-(--anchor-width)")}
+          sideOffset={4}
+          matchTriggerWidth
+          className="w-(--anchor-width)"
         >
           <AppDropdownMenuGroup>
             <AppDropdownMenuLabel>{font_label}</AppDropdownMenuLabel>
@@ -132,6 +122,6 @@ export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
           </AppDropdownMenuGroup>
         </AppDropdownMenuContent>
       </AppDropdownMenu>
-    </SidebarMenuItem>
+    </li>
   );
 }

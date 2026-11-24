@@ -85,7 +85,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
       />
       <div className="text-replacement-page__table-host">
         <FileDropZone
-          label={t("app.drop.import_here")}
+          label={t("app.drop.release")}
           disabled={page_state.readonly}
           on_path_drop={(path) => {
             void page_state.editing.import_entries_from_path(path);

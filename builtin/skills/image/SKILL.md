@@ -49,7 +49,10 @@ await image.prepare_models();
 
 ### 设备降级策略
 
-默认使用 GPU。捕获 `image.DeviceFailure` 时，告知用户切换至 CPU，重试失败步骤且后续统一使用 CPU：
+默认使用 GPU，按以下规则区分排队等待与设备故障：
+
+- **租约排队**：多个工程并发使用 GPU 时会排队等待共享 GPU 租约，期间可能较久无输出。排队等待或超时不属于脚本卡死，也不属于 `DeviceFailure`，不要因此切到 CPU。
+- **故障降级**：仅真实捕获 `image.DeviceFailure` 时，告知用户切换至 CPU，改用 CPU 重试失败步骤，且本次任务后续统一使用 CPU（其他异常原样抛出）：
 
 |入口|CPU 调用参数写法|说明|
 |---|---|---|
@@ -57,8 +60,6 @@ await image.prepare_models();
 |`prepareAndPack`|`image.prepareAndPack(scanDir, selected, prepDir, archivePath, { device: 'cpu' })`|末参数传 `{ device: 'cpu' }`|
 |`prepareAndPack`（补做消字）|`image.prepareAndPack(scanDir, targets, outDir, archivePath, { update: prepDir, device: 'cpu' })`|末参数同时传 `update` 与 `device`|
 |`repartitionAndPack`|`image.repartitionAndPack(scanDir, correction, prepDir, outDir, archivePath, { device: 'cpu' })`|末参数传 `{ device: 'cpu' }`|
-
-其他异常按原样抛出。
 
 ## 扫描与封包流水线
 
@@ -112,7 +113,7 @@ console.log(packed);
 - **句末标点**：原文句末无句号或逗号时译文也应如此，不得自行添加。
 - **连体气泡**：依照阅读流向通读上下文，保证语意连贯。
 
-维护已有 `.image` 资产（跨会话修改原文、解包切泡/调字号、重建无框外框）或迁移缺少 `patch.mask` 的旧包时，先读取 [旧包维护与迁移](references/migration.md)。
+需要维护工程中已有的 `.image` 资产（如修改原文、调整版式或字号、重建无框外框，或在重置对话、换机及 `work/` 缺少原准备目录时继续 QA），或迁移缺少 `patch.mask` 的旧包时，先读取 [旧包维护与迁移](references/migration.md)。
 
 # 写回与验证
 

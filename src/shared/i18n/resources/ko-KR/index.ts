@@ -10,7 +10,6 @@ import { ko_kr_function_settings_page } from "./function-settings-page";
 import { ko_kr_batch_translation } from "./batch-translation";
 import { ko_kr_custom_prompt_page } from "./custom-prompt-page";
 import { ko_kr_glossary_page } from "./glossary-page";
-import { ko_kr_laboratory_page } from "./laboratory-page";
 import { ko_kr_log_window_page } from "./log-window-page";
 import { ko_kr_model_page } from "./model-page";
 import { ko_kr_post_translation_replacement_page } from "./post-translation-replacement-page";
@@ -36,7 +35,6 @@ export const ko_kr_messages = {
   batch_translation: ko_kr_batch_translation,
   custom_prompt_page: ko_kr_custom_prompt_page,
   glossary_page: ko_kr_glossary_page,
-  laboratory_page: ko_kr_laboratory_page,
   toolbox_page: ko_kr_toolbox_page,
   game_font_page: ko_kr_game_font_page,
   translation_transfer_page: ko_kr_translation_transfer_page,

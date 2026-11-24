@@ -1,5 +1,5 @@
 export const en_us_agent_page = {
-  project_required: "Please create or open a project file first …",
+  project_required: "Please click the button on the left to create or open a project first …",
   document: {
     conversation: "Conversation",
     open: "Open",
@@ -51,11 +51,10 @@ export const en_us_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Drag in files or folders and translate with one click …!",
+    no_project_placeholder: "Drop files or folders to create a translation project …",
     placeholder: "Describe a task, or type @ to select a skill or instruction …",
     edit_assistant_placeholder: "Edit the model response …",
     newline: "New line",
-    drop_files: "Release to add files",
   },
   mention: {
     files: {
@@ -147,7 +146,6 @@ export const en_us_agent_page = {
     send: "Send",
     stop: "Stop",
     applying: "Applying project changes; this cannot be stopped until completion",
-    new_task: "New task",
     add_file: "Files",
     common_instructions: "Instructions",
     continue: "Continue",
@@ -171,7 +169,6 @@ export const en_us_agent_page = {
   },
   confirm: {
     fork: "Create a new conversation by forking from this response?",
-    new_task: "Confirm starting a new conversation task …?",
     thinking_off:
       "AGENT task intelligence will be significantly reduced when model thinking is disabled. Confirm continuing …?",
   },
@@ -204,7 +201,6 @@ export const en_us_agent_page = {
     continue: "The task could not continue. Try again …",
     queue_send: "The message could not be sent now. It remains queued …",
     stop: "The task could not be stopped. Try again …",
-    reset: "A new task could not be created. Try again …",
     approval_mode: "The write request approval mode could not be updated. Try again …",
     compact: "The context could not be compacted. Try again …",
   },

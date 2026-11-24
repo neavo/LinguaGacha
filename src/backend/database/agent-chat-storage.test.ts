@@ -40,7 +40,7 @@ it("读取批次中的写入已提交后关闭失败，保留已提交错误", a
   expect(fs.existsSync(file + "-wal")).toBe(false);
 });
 
-it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即可恢复登记和历史", async () => {
+it("SDK 与工程并发提交，复制 lg 能恢复对话，重置只清除对话数据", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-agent-db-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
@@ -56,11 +56,8 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
     checkpointWhen: () => false,
     initial: () => ({ count: 0 }),
   });
-  const harness = await Harness.open(
-    await store.open_storage(),
-    { models: createModels(), registry: createRegistry() },
-    BACKGROUND_CONTEXT,
-  );
+  const sdk_options = { models: createModels(), registry: createRegistry() };
+  const harness = await Harness.open(await store.open_storage(), sdk_options, BACKGROUND_CONTEXT);
   const conversation = await harness.root(BACKGROUND_CONTEXT);
   try {
     const entered = Promise.withResolvers<void>();
@@ -139,16 +136,20 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
   }
   const reopened = new ProjectDatabase("1.0.0");
   const restored = reopened.open_agent_store(copy);
-  const sdk = await Harness.open(
-    await restored.open_storage(),
-    { models: createModels(), registry: createRegistry() },
-    BACKGROUND_CONTEXT,
-  );
+  const sdk = await Harness.open(await restored.open_storage(), sdk_options, BACKGROUND_CONTEXT);
   expect((await restored.read())?.id).toBe("-t75szF5");
   expect(await sdk.snapshot(state, BACKGROUND_CONTEXT)).toEqual({ count: 10 });
   await sdk.close(BACKGROUND_CONTEXT);
   await restored.reset();
   expect(await restored.read()).toBeNull();
+  const empty_storage = await restored.open_storage();
+  expect(await empty_storage.conversation(conversation.id, BACKGROUND_CONTEXT)).toBeUndefined();
+  const reset_sdk = await Harness.open(empty_storage, sdk_options, BACKGROUND_CONTEXT);
+  try {
+    expect(await reset_sdk.snapshot(state, BACKGROUND_CONTEXT)).toBeUndefined();
+  } finally {
+    await reset_sdk.close(BACKGROUND_CONTEXT);
+  }
   expect(await reopened.get_all_meta(copy)).toMatchObject({ probe: "测试" });
   await restored.close();
   await reopened.close();

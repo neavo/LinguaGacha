@@ -3,7 +3,6 @@ import type { BatchTranslationProgress } from "../../domain/batch-translation";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import type { CacheReadPort } from "../cache/cache-types";
 import { ProjectWriteStore, type ProjectWriteSectionAck } from "../project/project-write-store";
-import { ProjectSessionState } from "../project/project-session-state";
 import { normalize_translation_item_patches } from "../project/project-write-request";
 import {
   read_text_quality_snapshot,
@@ -17,7 +16,7 @@ import {
 export class BatchTranslationProjectStore {
   /** 组合工程身份、事实缓存与统一写入口。 */
   public constructor(
-    private readonly session_state: ProjectSessionState, // 当前 loaded 工程是唯一读写目标。
+    private readonly project_path: string, // 当前 loaded 工程是唯一读写目标。
     private readonly cache: CacheReadPort, // 热读 items、quality 与 prompts。
     private readonly write_store: ProjectWriteStore, // 统一提交事务与项目变更事件。
   ) {}
@@ -51,7 +50,7 @@ export class BatchTranslationProjectStore {
     affects_proofreading: boolean,
   ): Promise<ProjectWriteSectionAck> {
     const request = {
-      projectPath: this.session_state.require_loaded_project_path(),
+      projectPath: this.project_path,
       items: normalize_translation_item_patches(items),
       translationExtras: { ...progress_snapshot }, // 隔离调用方引用，工程字段由唯一写入口收窄。
     };
@@ -65,14 +64,13 @@ export class BatchTranslationProjectStore {
    */
   public async update_translation_progress(progress: BatchTranslationProgress): Promise<void> {
     await this.write_store.update_task_progress_meta({
-      projectPath: this.session_state.require_loaded_project_path(),
+      projectPath: this.project_path,
       meta: { translation_extras: normalize_batch_translation_progress(progress) },
     });
   }
 
   /** 读取隔离的完整工程事实；目标准备由规划层负责。 */
   public get_translation_items(): TextTaskItemRecord[] {
-    this.session_state.require_loaded_project_path();
     return structuredClone(this.cache.items.readItems());
   }
 }

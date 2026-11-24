@@ -49,6 +49,7 @@ export const pt_br_app = {
     cancel: "Cancelar",
     confirm: "Confirmar",
     close: "Fechar",
+    open: "Abrir",
     create: "Criar",
     delete: "Excluir",
     edit: "Editar",
@@ -91,7 +92,7 @@ export const pt_br_app = {
     import_success: "Dados importados com sucesso",
     no_valid_data: "Nenhum dado válido",
     update_failed: "Falha na atualização …",
-    project_settings_aligned: "Configurações do projeto sincronizadas com as configurações atuais",
+    project_settings_saved: "Configurações do projeto salvas",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -99,10 +100,16 @@ export const pt_br_app = {
     description:
       "Esta janela alternou para a visualização protegida e os detalhes do erro foram gravados nos logs …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "Otimizador MTool",
-      skip_duplicate_source_text_enable: "Ignorar texto original duplicado",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "Otimizador MTool",
+      description:
+        "Para textos do MTool, <emphasis>reduz o tempo de tradução e os tokens em até 40%</emphasis>.\nAtivado por padrão.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "Ignorar texto original duplicado",
+      description:
+        "Entradas com texto idêntico em todo o projeto compartilham <emphasis>uma única tradução</emphasis>.\nAtivado por padrão.",
     },
   },
   close_confirm: {
@@ -117,13 +124,14 @@ export const pt_br_app = {
     launching: "Processando …",
   },
   drop: {
+    release: "Solte para aplicar",
+    project_only: "Solte apenas arquivos de projeto .lg",
     select_multiple_unavailable: "Apenas um arquivo ou pasta pode ser solto por vez",
     select_unavailable:
       "O caminho local do arquivo solto está indisponível no momento. Use o seletor de arquivos …",
     multiple_unavailable: "Apenas um arquivo pode ser solto por vez",
     unavailable:
       "O caminho local do arquivo solto está indisponível no momento. Use o seletor de importação …",
-    import_here: "Solte para importar o arquivo de regras",
   },
   toggle: {
     option: {
@@ -167,9 +175,23 @@ export const pt_br_app = {
     ID: "Indonésio",
     VI: "Vietnamita",
   },
+  workspace: {
+    projects: "Projetos",
+    projects_empty: "Nenhum projeto",
+    skills: "Habilidades",
+    workbench: "Bancada",
+    quality: "Qualidade da tradução",
+    more: "Mais",
+    close_chat: "Fechar conversa",
+    close_chat_confirm: "Confirma fechar a conversa …?",
+    reveal_path: "Mostrar na pasta",
+    remove_recent: "Remover da lista",
+    remove_confirm: "Confirma fechar o projeto e removê-lo da lista de recentes …?",
+    close_busy: "Uma operação do projeto está em andamento",
+    files: "Arquivos",
+  },
   navigation_action: {
-    expand_sidebar: "Expandir barra lateral",
-    collapse_sidebar: "Recolher barra lateral",
+    resize_sidebar: "Ajustar largura da barra lateral",
     appearance: "Aparência",
     font: "Fonte",
     font_size: "Tamanho da fonte",
@@ -209,7 +231,7 @@ export const pt_br_app = {
     confirmation: {
       agent_description:
         "Este projeto contém recursos que precisam ser finalizados pelo AGENT. A exportação direta ignorará esses recursos …",
-      description: "Exportar as traduções disponíveis no momento?",
+      description: "Confirma exportar as traduções disponíveis no momento …?",
       checking: "Verificando arquivos do projeto e avisos de revisão …",
       check_failed:
         "Não foi possível verificar os arquivos do projeto ou avisos de revisão. Verifique novamente ou deixe o AGENT cuidar disso …",

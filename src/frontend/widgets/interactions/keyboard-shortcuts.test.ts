@@ -43,11 +43,9 @@ describe("keyboard shortcuts", () => {
   it.each([
     ["default", "save", { key: "s", ctrlKey: true }, true],
     ["default", "follow_latest", { key: "e", ctrlKey: true }, true],
-    ["default", "toggle_sidebar", { key: "b", ctrlKey: true }, true],
     ["default", "delete", { key: "Delete" }, true],
     ["default", "save", { key: "s", metaKey: true }, false],
     ["mac", "follow_latest", { key: "e", metaKey: true }, true],
-    ["mac", "toggle_sidebar", { key: "b", metaKey: true }, true],
     ["mac", "save", { key: "s", metaKey: true }, true],
     ["mac", "delete", { key: "Backspace", metaKey: true }, true],
     ["default", "save", { key: "s", ctrlKey: true, isComposing: true }, false],

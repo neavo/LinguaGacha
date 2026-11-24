@@ -1,11 +1,5 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
+import { useCallback, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 
 // session UI 状态的命名空间，避免不同页面互相覆盖轻量状态。
 export type ProjectSessionUiStateKey =
@@ -128,20 +122,32 @@ export type ProjectSessionUiStateContextValue = {
   clear_page_ui_state: (key: ProjectSessionUiStateKey) => void;
 };
 
-// 不给默认假实现，缺少 Provider 时必须立即暴露接入错误。
-export const ProjectSessionUiStateContext = createContext<ProjectSessionUiStateContextValue | null>(
-  null,
-);
-
-// 页面访问 session UI 状态的唯一入口，避免直接接触内部 Map。
+// 页面直接读写当前 ProjectStore 持有的轻量 UI 状态，无需外层 Provider 转发。
 export function useProjectSessionUiState(): ProjectSessionUiStateContextValue {
-  const context_value = useContext(ProjectSessionUiStateContext);
-
-  if (context_value === null) {
-    throw new Error("useProjectSessionUiState must be used inside ProjectSessionUiStateProvider.");
-  }
-
-  return context_value;
+  const { active_project } = useDesktopState();
+  const ui_state = active_project?.pageUi;
+  return useMemo<ProjectSessionUiStateContextValue>(
+    () => ({
+      get_page_ui_state: <UiState>(key: ProjectSessionUiStateKey): UiState | null =>
+        (ui_state?.get(key) as UiState | undefined) ?? null,
+      set_page_ui_state: <UiState>(key: ProjectSessionUiStateKey, value: UiState): void => {
+        ui_state?.set(key, value);
+      },
+      update_page_ui_state: <UiState>(
+        key: ProjectSessionUiStateKey,
+        updater: (previous_ui_state: UiState | null) => UiState | null,
+      ): void => {
+        const previous_ui_state = (ui_state?.get(key) as UiState | undefined) ?? null;
+        const next_ui_state = updater(previous_ui_state);
+        if (next_ui_state === null) ui_state?.delete(key);
+        else ui_state?.set(key, next_ui_state);
+      },
+      clear_page_ui_state: (key: ProjectSessionUiStateKey): void => {
+        ui_state?.delete(key);
+      },
+    }),
+    [ui_state],
+  );
 }
 
 // 封装表格状态恢复、持久化和项目切换重置的共享规则。

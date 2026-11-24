@@ -65,7 +65,7 @@ it.each([
   ["三位数字地区代码不算海外", "blocked", '{"success":true,"country_code":"419"}', "mirror"],
 ] as const)("%s", async (_name, ipip, ipwho, expected) => {
   const { sources } = create_sources({ ipip, ipwho });
-  await expect(sources.resolve("chat", new AbortController().signal)).resolves.toBe(expected);
+  await expect(sources.resolve(new AbortController().signal)).resolves.toBe(expected);
 });
 
 it("两路地区不一致时选镜像，合并地区标签和本地化结论，省略公网 IP", async () => {
@@ -73,7 +73,7 @@ it("两路地区不一致时选镜像，合并地区标签和本地化结论，�
     ipip: IPIP("中国 湖北 武汉  电信"),
     ipwho: JSON.stringify({ success: true, country_code: "US", ip: TEST_IP }),
   });
-  await expect(sources.resolve("chat", new AbortController().signal)).resolves.toBe("mirror");
+  await expect(sources.resolve(new AbortController().signal)).resolves.toBe("mirror");
   expect(log).toHaveBeenCalledExactlyOnceWith(
     ["ipwho.is = Global", "myip.ipip.net = China", "translated app.log.package_source.mirror"].join(
       "\n",
@@ -81,43 +81,35 @@ it("两路地区不一致时选镜像，合并地区标签和本地化结论，�
   );
 });
 
-it("同一对话并发与后续调用共用一次查询，其他对话独立判定，重置后重新查询", async () => {
+it("应用中并发脚本与后续调用共用一次查询", async () => {
   const { sources, fetch } = create_sources({
     ipip: IPIP("中国 北京"),
     ipwho: JSON.stringify({ success: true, country_code: "CN" }),
   });
   const signal = new AbortController().signal;
-  await Promise.all([sources.resolve("a", signal), sources.resolve("a", signal)]);
-  await sources.resolve("a", signal);
+  await Promise.all([sources.resolve(signal), sources.resolve(signal)]);
+  await sources.resolve(signal);
   expect(fetch).toHaveBeenCalledTimes(2);
-  await sources.resolve("b", signal);
-  expect(fetch).toHaveBeenCalledTimes(4);
-  sources.forget("a");
-  await sources.resolve("a", signal);
-  expect(fetch).toHaveBeenCalledTimes(6);
 });
 
-it("执行取消向上传播且不缓存，迟到的取消不移除较新的查询；关闭后拒绝查询", async () => {
+it("取消一个脚本的查询不会影响其他脚本，应用关闭后拒绝查询", async () => {
   const { sources, fetch } = create_sources({
     ipip: IPIP("美国"),
     ipwho: JSON.stringify({ success: true, country_code: "US" }),
   });
   const pending = Promise.withResolvers<Response>();
-  fetch.mockImplementationOnce(async (_url, init) => {
-    init?.signal?.addEventListener("abort", () => pending.reject(init.signal?.reason));
-    return await pending.promise;
-  });
+  fetch.mockImplementationOnce(() => pending.promise);
   const controller = new AbortController();
   const stopped = new Error("stop");
-  const cancelled = sources.resolve("a", controller.signal);
-  sources.forget("a"); // 重置期间旧查询仍在途
-  const newer = sources.resolve("a", new AbortController().signal);
+  const cancelled = sources.resolve(controller.signal);
+  const other = sources.resolve(new AbortController().signal);
   controller.abort(stopped);
   await expect(cancelled).rejects.toBe(stopped);
-  await expect(newer).resolves.toBe("official");
-  await expect(sources.resolve("a", new AbortController().signal)).resolves.toBe("official");
-  expect(fetch).toHaveBeenCalledTimes(4); // 较新的结果仍被复用
+  pending.resolve(new Response(JSON.stringify({ success: true, country_code: "US" })));
+  await expect(other).resolves.toBe("official");
+  await expect(sources.resolve(new AbortController().signal)).resolves.toBe("official");
+  expect(fetch).toHaveBeenCalledTimes(2);
 
   sources.close();
-  await expect(sources.resolve("c", new AbortController().signal)).rejects.toThrow();
+  await expect(sources.resolve(new AbortController().signal)).rejects.toThrow();
 });

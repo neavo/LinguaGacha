@@ -1,18 +1,19 @@
+import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import { useState, type JSX } from "react";
 import { Globe2 } from "lucide-react";
 import type { ProjectLanguageKey } from "@domain/project-settings";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import {
   push_error_toast,
   push_toast,
   run_modal_progress_toast,
 } from "@frontend/app/feedback/desktop-toast";
-import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
+import { format_project_settings_saved_toast } from "@frontend/app/feedback/project-settings-feedback";
 import { get_language_label_key } from "@frontend/app/locale/language-label";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { ProjectLanguageDialog } from "@frontend/features/project-language/project-language-dialog";
 import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -22,10 +23,11 @@ export function AgentLanguageControl(props: {
   locked: boolean;
   disconnected: boolean;
 }): JSX.Element | null {
+  const api_fetch = useProjectFetch();
   const { t } = useI18n();
   const { project_snapshot, commit_project_write, initial_state_status } = useDesktopState();
-  const runtime = useRuntimeSnapshot();
-  const languages = project_snapshot.loaded ? project_snapshot.languages : null;
+  const runtime = useProjectRuntimeSnapshot();
+  const languages = project_snapshot.loaded ? project_snapshot.settings : null;
   const [draft, set_draft] = useState<Record<ProjectLanguageKey, string> | null>(null); // 关闭弹窗即释放草稿。
   const [submitting, set_submitting] = useState(false); // 提交期间锁定选择、确认和关闭。
   const disabled =
@@ -58,7 +60,13 @@ export function AgentLanguageControl(props: {
         });
         push_toast(
           "info",
-          format_project_settings_aligned_toast({ settings: draft, changed_fields, t }),
+          format_project_settings_saved_toast(
+            {
+              ...(changed_fields.source_language ? { source_language: draft.source_language } : {}),
+              ...(changed_fields.target_language ? { target_language: draft.target_language } : {}),
+            },
+            t,
+          ),
         );
         set_draft(null);
       } catch (error) {
@@ -90,7 +98,10 @@ export function AgentLanguageControl(props: {
                 aria-label={t("project.language.title")}
                 aria-haspopup="dialog"
                 onClick={() => {
-                  set_draft({ ...languages });
+                  set_draft({
+                    source_language: languages.source_language,
+                    target_language: languages.target_language,
+                  });
                 }}
               >
                 <Globe2 aria-hidden="true" />

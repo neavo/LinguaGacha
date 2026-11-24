@@ -9,6 +9,7 @@ import {
 } from "../../shared/agent-image";
 import { AppError } from "../../shared/error";
 import type { SupportedRasterImageMime } from "../../shared/image-formats";
+import { wait_for_operation } from "./wait-for-operation";
 
 export const AGENT_IMAGE_INPUT_MAX_BYTES = 20 * 1024 * 1024;
 export const AGENT_IMAGE_POLICY = Object.freeze({
@@ -23,10 +24,10 @@ const IMAGE_CACHE_BYTES = 32 * 1024 * 1024;
 export class AgentImageService {
   private readonly cache = new Map<string, AgentImage>(); // 插入顺序就是最近使用顺序
   private cache_bytes = 0; // 按摘要条目累计 base64 的 UTF-16 内存上界
-  private lifetime = new AbortController(); // reset 取消旧转换，迟到结果不能重新填充缓存
+  private readonly lifetime = new AbortController(); // 应用关闭取消转换，迟到结果不能重新填充缓存
   private readonly pending = new Map<string, Promise<AgentImage>>(); // 同内容和尺寸的消费者共用在途转换
 
-  /** 宿主执行编解码，服务独占图片策略与会话缓存。 */
+  /** 宿主执行编解码，服务持有图片策略与应用级缓存。 */
   public constructor(private readonly host: AgentImageHost) {}
 
   /** 工作区选项由父进程校验。这里捕获单次策略，使宿主处理和缓存使用同一尺寸。 */
@@ -52,27 +53,18 @@ export class AgentImageService {
     }
     let operation = this.pending.get(key);
     if (operation === undefined) {
-      // 转换归会话拥有，单个调用者取消只结束自身等待，不中断其它消费者。
-      operation = this.convert(bytes, key, policy, this.lifetime.signal);
+      // 转换归应用拥有，单个调用者取消只结束自身等待，不中断其它消费者。
+      operation = this.convert(bytes, key, policy, this.lifetime.signal).finally(() => {
+        this.pending.delete(key);
+      });
       this.pending.set(key, operation);
-      // 此分支只清理登记，转换失败由返回给调用者的原 `Promise` 传递。
-      void operation
-        .finally(() => {
-          if (this.pending.get(key) === operation) this.pending.delete(key);
-        })
-        .catch(() => undefined);
     }
-    if (signal === undefined) return operation;
-    return await new Promise<AgentImage>((resolve, reject) => {
-      const cancel = (): void => reject(effective_signal.reason);
-      effective_signal.addEventListener("abort", cancel, { once: true });
-      void operation
-        .then(resolve, reject)
-        .finally(() => effective_signal.removeEventListener("abort", cancel));
-    });
+    return await (signal === undefined
+      ? operation
+      : wait_for_operation(operation, effective_signal));
   }
 
-  /** 宿主结果通过校验且仍属于当前会话时，才写入成功缓存。 */
+  /** 宿主结果通过校验且应用仍在运行时，才写入成功缓存。 */
   private async convert(
     bytes: Uint8Array,
     key: string,
@@ -114,10 +106,9 @@ export class AgentImageService {
     return image;
   }
 
-  /** 先取消旧转换，再清空缓存并为新会话建立取消边界。 */
+  /** 应用关闭时先取消在途转换，再清空缓存。 */
   public clear(): void {
     this.lifetime.abort(new AppError("runtime.cancelled"));
-    this.lifetime = new AbortController();
     this.cache.clear();
     this.pending.clear();
     this.cache_bytes = 0;

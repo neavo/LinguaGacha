@@ -3,7 +3,7 @@ import { random_id } from "../../../shared/utils/identifier";
 import { AppError } from "../../../shared/error";
 import type { NativeFs } from "../../../native/native-fs";
 
-export const AGENT_WORKSPACE_LIMIT = 20;
+export const AGENT_WORKSPACE_LIMIT = 64;
 // 回收覆盖历史 Base64url、Base62 与新生成的 Base36 目录，独立于身份读取约束。
 const CHAT_DIRECTORY_PATTERN = /^[A-Za-z0-9_-]{8}$/u;
 
@@ -38,6 +38,30 @@ export class AgentWorkspaceDirectories {
     }
   }
 
+  /** 工程副本先获得新的材料目录，登记由工程事务提交。 */
+  public async claim(id: string, projectPath: string, inUse: boolean): Promise<string> {
+    const source = this.path(id);
+    const ownerFile = ".project-path";
+    const marker = path.join(source, ownerFile);
+    const owner = this.fs.exists(marker) ? this.fs.read_text_file(marker) : undefined;
+    const different =
+      owner !== undefined &&
+      this.fs.to_identity_path(owner) !== this.fs.to_identity_path(projectPath);
+    if (!inUse && (!different || !this.fs.exists(owner!))) {
+      if (owner !== projectPath) await this.fs.write_file(marker, projectPath);
+      return id;
+    }
+    const copy = await this.create();
+    try {
+      if (this.fs.exists(source)) this.fs.copy_entry(source, this.path(copy));
+      await this.fs.write_file(path.join(this.path(copy), ownerFile), projectPath);
+      return copy;
+    } catch (error) {
+      await this.remove(copy);
+      throw error;
+    }
+  }
+
   /** 记录最近使用时间，供数量清理排序。 */
   public async touch(id: string): Promise<void> {
     try {
@@ -56,8 +80,8 @@ export class AgentWorkspaceDirectories {
     }
   }
 
-  /** 当前目录优先保留。其余只读取根目录时间，不扫描文件内容。 */
-  public async prune(active: string): Promise<void> {
+  /** 保留所有打开工程的对话目录。回收按其余目录的最后使用时间排序。 */
+  public async prune(protectedIds: ReadonlySet<string>): Promise<void> {
     try {
       const candidates = this.fs
         .read_dirents(this.root)
@@ -66,11 +90,12 @@ export class AgentWorkspaceDirectories {
             entry.isDirectory() &&
             !entry.isSymbolicLink() &&
             CHAT_DIRECTORY_PATTERN.test(entry.name) &&
-            entry.name !== active,
+            !protectedIds.has(entry.name),
         )
         .map((entry) => ({ id: entry.name, modified: this.fs.stat(this.path(entry.name)).mtimeMs }))
         .sort((left, right) => right.modified - left.modified || left.id.localeCompare(right.id));
-      for (const entry of candidates.slice(AGENT_WORKSPACE_LIMIT - 1)) await this.remove(entry.id);
+      for (const entry of candidates.slice(Math.max(0, AGENT_WORKSPACE_LIMIT - protectedIds.size)))
+        await this.remove(entry.id);
     } catch (error) {
       this.report(error);
     }
