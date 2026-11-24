@@ -1,9 +1,10 @@
 .agent-page {
   /* 工作区拥有外边界；页面根节点只管理尺寸、滚动和页内节奏。 */
-  /* 输入区是宽度基准；信息流在其内侧固定收窄 24px/侧。 */
+  /* 输入区是宽度基准；信息流在其内侧固定收窄 24px/侧，滚动条落在右缘内侧与输入框对齐。 */
   --agent-composer-max-width: 1120px;
   --agent-decision-max-width: 720px;
   --agent-stream-width-offset: 48px;
+  --agent-scrollbar-width: 9px;
   --agent-operation-surface-border-width: 1px;
   --agent-composer-padding-inline-end: 6px;
   --agent-stream-max-width: calc(
@@ -11,6 +12,7 @@
   );
 
   position: relative;
+  box-sizing: border-box;
   display: flex;
   width: 100%;
   min-height: 0;
@@ -18,11 +20,21 @@
   flex: 1;
   flex-direction: column;
   gap: 0;
+  /* 宽态展开右侧功能卡片时，仅用超过输入区满宽后的富余空间补齐左侧对称留白，使对话与输入器保持工作区居中。 */
+  padding-right: var(--workspace-tools-inset, 0px);
+  padding-left: clamp(
+    0px,
+    calc(100% - var(--agent-composer-max-width) - 32px - var(--workspace-tools-inset, 0px)),
+    var(--workspace-tools-inset, 0px)
+  );
+  transition: var(--workspace-tools-inset-transition, none);
   overflow: hidden;
 }
 
 .agent-page__conversation {
   display: flex;
+  width: min(calc(100% - 32px), var(--agent-composer-max-width));
+  margin: 0 auto;
   min-height: 0;
   flex: 1;
   flex-direction: column;
@@ -163,11 +175,13 @@
 }
 
 .agent-page__messages {
+  box-sizing: border-box;
   display: flex;
-  width: min(calc(100% - 32px - var(--agent-stream-width-offset)), var(--agent-stream-max-width));
-  margin: 0 auto;
+  width: 100%;
   flex-direction: column;
-  padding: 24px 0 16px;
+  /* 右侧扣除 9px 滚动条槽，使正文两侧相对 1120px 输入区严格各缩进 24px。 */
+  padding: 24px calc(var(--agent-stream-width-offset) / 2 - var(--agent-scrollbar-width)) 16px
+    calc(var(--agent-stream-width-offset) / 2);
 }
 
 .agent-page__messages > * + * {
@@ -1746,6 +1760,7 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-mark-color) 35%, transparent);
   }
 
+  .agent-page,
   .agent-thinking-entry__toggle::before,
   .agent-thinking-entry__toggle,
   .agent-thinking-entry__content,

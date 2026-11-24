@@ -15,6 +15,42 @@ const mocks = vi.hoisted(() => ({
   leave: vi.fn<() => Promise<boolean>>(async () => true),
 }));
 
+class TestResizeObserver implements ResizeObserver {
+  static instances: TestResizeObserver[] = [];
+
+  private readonly callback: ResizeObserverCallback;
+  private targets = new Set<Element>();
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    TestResizeObserver.instances.push(this);
+  }
+
+  observe(target: Element): void {
+    this.targets.add(target);
+  }
+
+  unobserve(target: Element): void {
+    this.targets.delete(target);
+  }
+
+  disconnect(): void {
+    this.targets.clear();
+  }
+
+  static emit(target: Element, width: number): void {
+    const entry = {
+      target,
+      contentRect: new DOMRect(0, 0, width, 800),
+    } as ResizeObserverEntry;
+    for (const instance of TestResizeObserver.instances) {
+      if (instance.targets.has(target)) {
+        instance.callback([entry], instance);
+      }
+    }
+  }
+}
+
 vi.mock("@frontend/pages/agent-page/page", () => ({
   AgentPage: ({ tabHost }: { tabHost?: HTMLElement | null }) => {
     const { navigate_to_route } = useAppNavigation();
@@ -118,12 +154,13 @@ function WorkspaceHarness({ project }: { project: ProjectStore }): JSX.Element {
   );
 }
 
-describe("ProjectWorkspace 翻译功能菜单", () => {
+describe("ProjectWorkspace 翻译功能面板", () => {
   let host: HTMLDivElement | null = null;
   let root: Root | null = null;
 
   afterEach(async () => {
     vi.useRealTimers();
+    TestResizeObserver.instances = [];
     await act(async () => root?.unmount());
     host?.remove();
     host = null;
@@ -156,16 +193,32 @@ describe("ProjectWorkspace 翻译功能菜单", () => {
     return host;
   }
 
+  function find_tool_item(container: HTMLElement, label: string): HTMLButtonElement {
+    return [...container.querySelectorAll<HTMLButtonElement>(".project-workspace__tool-item")].find(
+      (item) => item.querySelector(".project-workspace__tool-label")?.textContent === label,
+    )!;
+  }
+
   it("按指定顺序展示 8 个翻译功能，只为文件与 4 类规则表渲染含 0 的数值胶囊", async () => {
     const container = await mount(create_project());
+    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
+    const drawer = container.querySelector<HTMLDivElement>(".project-workspace__tools-drawer")!;
     const trigger = container.querySelector<HTMLButtonElement>(
       ".project-workspace__tools-trigger",
     )!;
+
     expect(trigger.textContent).toBe("翻译功能");
     expect(trigger.dataset.active).toBe("false");
+    expect(panel.dataset.expanded).toBe("false");
+    expect(drawer.hasAttribute("inert")).toBe(true);
 
     await act(async () => trigger.click());
-    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((item) => ({
+    expect(panel.dataset.expanded).toBe("true");
+    expect(drawer.hasAttribute("inert")).toBe(false);
+
+    const items = [
+      ...container.querySelectorAll<HTMLButtonElement>(".project-workspace__tool-item"),
+    ].map((item) => ({
       label: item.querySelector(".project-workspace__tool-label")?.textContent,
       count: item.querySelector(".project-workspace__tool-count")?.textContent ?? null,
     }));
@@ -182,9 +235,10 @@ describe("ProjectWorkspace 翻译功能菜单", () => {
     ]);
   });
 
-  it("悬停不展开菜单，仅点击触发器展开与收缩", async () => {
+  it("窄态悬停不展开，支持点击、外部点击、Esc 与窗口失焦收起菜单", async () => {
     vi.useFakeTimers();
     const container = await mount(create_project());
+    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
     const trigger = container.querySelector<HTMLButtonElement>(
       ".project-workspace__tools-trigger",
     )!;
@@ -199,47 +253,64 @@ describe("ProjectWorkspace 翻译功能菜单", () => {
       );
       vi.advanceTimersByTime(500);
     });
-    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(panel.dataset.expanded).toBe("false");
 
+    // 点击展开并再次点击收起。
     await act(async () => trigger.click());
-    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+    expect(panel.dataset.expanded).toBe("true");
+    await act(async () => trigger.click());
+    expect(panel.dataset.expanded).toBe("false");
 
+    // 外部点击收起。
     await act(async () => trigger.click());
-    expect(document.querySelector('[role="menu"]')).toBeNull();
+    await act(async () => {
+      document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    });
+    expect(panel.dataset.expanded).toBe("false");
+
+    // Esc 收起并把焦点归还触发按钮。
+    await act(async () => trigger.click());
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(panel.dataset.expanded).toBe("false");
+    expect(document.activeElement).toBe(trigger);
+
+    // 窗口失焦收起。
+    await act(async () => trigger.click());
+    await act(async () => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    expect(panel.dataset.expanded).toBe("false");
   });
 
-  it("展开功能页后可再次点击标签切换其它功能，点击普通标签则经离页保存后关闭功能页", async () => {
+  it("展开功能页后可再次点击标签切换其它功能，点击关闭或普通标签均经离页保存关闭", async () => {
     const container = await mount(create_project());
+    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
     const trigger = container.querySelector<HTMLButtonElement>(
       ".project-workspace__tools-trigger",
     )!;
 
-    // 首次选择术语表。
+    // 首次选择术语表后菜单自动收起，头部切换为当前功能名与关闭按钮。
     await act(async () => trigger.click());
-    const glossary_item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (item) => item.textContent?.includes("术语表"),
-    )!;
-    await act(async () => glossary_item.click());
+    await act(async () => find_tool_item(container, "术语表").click());
 
+    expect(panel.dataset.expanded).toBe("false");
     expect(trigger.dataset.active).toBe("true");
     expect(trigger.textContent).toBe("术语表");
     expect(container.querySelector(".project-workspace__tools-close")).not.toBeNull();
     expect(container.querySelector('[data-testid="page-glossary"]')).not.toBeNull();
 
-    // 再次点击功能标签本体展开菜单并直接切换至校对页，当前项标记激活态。
+    // 再次点击标签展开并切换至校对页，当前项标记激活态。
     await act(async () => trigger.click());
-    const menu_items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(
-      menu_items.find((item) => item.textContent?.includes("术语表"))?.hasAttribute("data-active"),
-    ).toBe(true);
-    const proofreading_item = menu_items.find((item) => item.textContent?.includes("校对"))!;
-    await act(async () => proofreading_item.click());
+    expect(find_tool_item(container, "术语表").hasAttribute("data-active")).toBe(true);
+    await act(async () => find_tool_item(container, "校对").click());
 
     expect(trigger.textContent).toBe("校对");
     expect(container.querySelector('[data-testid="page-glossary"]')).toBeNull();
     expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
 
-    // 点击关闭按钮：离页保存失败时保留功能页，成功后关闭并恢复菜单默认标题。
+    // 点击关闭按钮：离页保存失败时保留功能页，成功后关闭并恢复默认标题。
     const close_button = container.querySelector<HTMLButtonElement>(
       ".project-workspace__tools-close",
     )!;
@@ -256,10 +327,7 @@ describe("ProjectWorkspace 翻译功能菜单", () => {
 
     // 再次打开功能页后，点击左侧普通对话标签同样经离页保存关闭功能页。
     await act(async () => trigger.click());
-    const files_item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (item) => item.textContent?.includes("文件"),
-    )!;
-    await act(async () => files_item.click());
+    await act(async () => find_tool_item(container, "文件").click());
     expect(container.querySelector('[data-testid="page-files"]')).not.toBeNull();
 
     const chat_tab = container.querySelector<HTMLButtonElement>('[data-testid="agent-chat-tab"]')!;
@@ -267,5 +335,63 @@ describe("ProjectWorkspace 翻译功能菜单", () => {
     expect(container.querySelector('[data-testid="page-files"]')).toBeNull();
     expect(trigger.dataset.active).toBe("false");
     expect(trigger.textContent).toBe("翻译功能");
+  });
+
+  it("工作区宽度跨越 1280px 时原地常驻展开，缩窄回窄态后一并收起且不保留临时展开态", async () => {
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    const container = await mount(create_project());
+    const workspace = container.querySelector<HTMLDivElement>(".project-workspace")!;
+    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
+    const drawer = container.querySelector<HTMLDivElement>(".project-workspace__tools-drawer")!;
+
+    await act(async () => TestResizeObserver.emit(workspace, 1279));
+    expect(workspace.dataset.toolsDocked).toBe("false");
+    expect(panel.dataset.expanded).toBe("false");
+    expect(drawer.hasAttribute("inert")).toBe(true);
+
+    // 窄态先点开浮层菜单，再拉宽跨越 1280px：同一面板保持展开落地为常驻卡片。
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>(".project-workspace__tools-trigger")!.click(),
+    );
+    expect(panel.dataset.expanded).toBe("true");
+
+    await act(async () => TestResizeObserver.emit(workspace, 1280));
+    expect(workspace.dataset.toolsDocked).toBe("true");
+    expect(panel.dataset.docked).toBe("true");
+    expect(panel.dataset.expanded).toBe("true");
+    expect(drawer.hasAttribute("inert")).toBe(false);
+    // 宽态下外部点击与窗口失焦不会收起常驻卡片。
+    await act(async () => {
+      document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      window.dispatchEvent(new Event("blur"));
+    });
+    expect(panel.dataset.expanded).toBe("true");
+
+    // 宽态切换功能页时面板保持常驻展开，上方标签继续保留当前功能名与关闭按钮并受离页保存保护。
+    await act(async () => find_tool_item(container, "术语表").click());
+    expect(container.querySelector('[data-testid="page-glossary"]')).not.toBeNull();
+    expect(panel.dataset.expanded).toBe("true");
+    expect(find_tool_item(container, "术语表").getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector(".project-workspace__tools-label")?.textContent).toBe("术语表");
+
+    const close_button = container.querySelector<HTMLButtonElement>(
+      ".project-workspace__tools-close",
+    )!;
+    mocks.leave.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await act(async () => close_button.click());
+    expect(container.querySelector('[data-testid="page-glossary"]')).not.toBeNull();
+
+    await act(async () => close_button.click());
+    expect(container.querySelector('[data-testid="page-glossary"]')).toBeNull();
+    expect(container.querySelector(".project-workspace__tools-close")).toBeNull();
+    expect(container.querySelector(".project-workspace__tools-label")?.textContent).toBe(
+      "翻译功能",
+    );
+
+    // 缩窄回临界值以下：菜单一并向上收起，不会恢复此前窄态的临时展开态。
+    await act(async () => TestResizeObserver.emit(workspace, 1279));
+    expect(workspace.dataset.toolsDocked).toBe("false");
+    expect(panel.dataset.expanded).toBe("false");
+    expect(drawer.hasAttribute("inert")).toBe(true);
   });
 });
