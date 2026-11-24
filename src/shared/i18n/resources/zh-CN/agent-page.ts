@@ -144,7 +144,6 @@ export const zh_cn_agent_page = {
     send: "发送",
     stop: "停止",
     applying: "正在应用工程修改，完成前不可停止",
-    new_task: "新任务",
     add_file: "添加文件",
     common_instructions: "指令",
     continue: "继续",
@@ -164,7 +163,6 @@ export const zh_cn_agent_page = {
   },
   confirm: {
     fork: "是否确认从此回复处分叉创建新对话？",
-    new_task: "是否确认开始新的对话任务 …?",
     thinking_off: "模型思考关闭时 AGENT 任务智能会显著下降，是否确认继续执行 …?",
   },
   status: { running: "正在处理", success: "已完成", error: "失败", stopped: "已停止" },
@@ -191,7 +189,6 @@ export const zh_cn_agent_page = {
     continue: "继续失败 …",
     queue_send: "立即发送消息失败 …",
     stop: "停止失败 …",
-    reset: "新任务创建失败 …",
     approval_mode: "写入请求审批模式更新失败 …",
     compact: "上下文压缩失败 …",
   },

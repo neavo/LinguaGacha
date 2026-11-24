@@ -17,7 +17,7 @@ function create_cache_read_port(): AnalysisCacheReadPort {
     items_value: [create_item()],
     snapshot: vi.fn(() => ({
       projectPath: "E:/Project/demo.lg",
-      epoch: 1,
+      projectId: "fixture",
       freshness: "fresh" as const,
       sectionRevisions: { items: 1, quality: 1 },
       itemCount: port.items_value.length,

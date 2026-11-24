@@ -28,13 +28,14 @@ type WorkerSlot = {
   error: unknown; // error 先于 exit 到达，保留原始原因到退出结算。
 };
 
-/** 单 run 互斥下只接受一次规划计数；多个执行循环按需领取批次，无逐批队列或取消监听。 */
+/** 多工程按提交顺序复用线程；一个规划内的多个执行循环按需领取批次。 */
 export class PlanningWorkerPool {
   private readonly execution: BackendWorkerExecution; // 入口决定执行环境和发布资产位置。
   private readonly worker_count: number; // CPU 并行上限，与模型请求并发独立。
   private readonly slots: WorkerSlot[] = []; // 按需创建的线程，跨规划复用词表。
   private next_batch_id = 0; // 跨请求递增，取消后不复用消息身份。
-  private active: { controller: AbortController; completion: Promise<number[]> } | null = null; // 请求取消与完成共用一个所有者。
+  private pending: Promise<void> = Promise.resolve();
+  private readonly lifetime = new AbortController();
   private closing: Promise<void> | null = null; // 同时表达停止受理和可重复等待的关闭过程。
 
   /** 只确定执行容量，实际线程由首次缺失计数启动。 */
@@ -49,21 +50,28 @@ export class PlanningWorkerPool {
   /** 同序返回全部结果，失败或取消等待活动批次收束后才释放本次请求。 */
   public async count_items(texts: readonly string[], signal: AbortSignal): Promise<number[]> {
     if (this.closing !== null) throw this.disposed_error();
-    if (this.active !== null) throw new AppError("runtime.busy");
     if (signal.aborted) throw this.cancelled_error();
     if (texts.length === 0) return [];
     const controller = new AbortController();
-    const abort = () => controller.abort(this.cancelled_error());
-    signal.addEventListener("abort", abort, { once: true });
-    // 先登记 active 再进入异步执行，dispose 和同步取消均能观察同一完成链。
-    const completion = Promise.resolve().then(() => this.count_request(texts, controller));
-    this.active = { controller, completion };
-    try {
-      return await completion;
-    } finally {
-      signal.removeEventListener("abort", abort);
-      this.active = null;
-    }
+    const combined = AbortSignal.any([signal, this.lifetime.signal]);
+    const completion = this.pending.then(async () => {
+      const abort = () =>
+        controller.abort(
+          this.lifetime.signal.aborted ? this.disposed_error() : this.cancelled_error(),
+        );
+      combined.addEventListener("abort", abort, { once: true });
+      if (combined.aborted) abort();
+      try {
+        return await this.count_request(texts, controller);
+      } finally {
+        combined.removeEventListener("abort", abort);
+      }
+    });
+    this.pending = completion.then(
+      () => {},
+      () => {},
+    );
+    return await completion;
   }
 
   /** 同步停止受理并取消活动请求，重复关闭复用同一完成链。 */
@@ -71,19 +79,18 @@ export class PlanningWorkerPool {
     if (this.closing === null) {
       // 先关闭受理入口，再同步取消；abort 回调中的重入也必须看到关闭状态。
       this.closing = Promise.resolve().then(() => this.close());
-      this.active?.controller.abort(this.disposed_error());
+      this.lifetime.abort(this.disposed_error());
     }
     return this.closing;
   }
 
   /** 终止线程后等待活动执行收束，关闭失败保留每个终止原因。 */
   private async close(): Promise<void> {
-    const active = this.active;
     const terminations = await Promise.allSettled(
       this.slots.map((slot) => slot.worker.terminate()),
     );
     // 活动请求的失败由调用者消费；关闭仍必须等待同进程执行或线程回包完成。
-    if (active !== null) await Promise.allSettled([active.completion]);
+    await this.pending;
     this.slots.length = 0;
     const errors = terminations
       .filter((result) => result.status === "rejected")

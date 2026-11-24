@@ -1,5 +1,6 @@
 import type { TextResolver } from "../../shared/i18n";
 import { workspace_requests } from "./workspace/runtime/request-channel";
+import { wait_for_operation } from "./wait-for-operation";
 
 /** npm 与 uv 自动默认源的选择，具体地址由各自入口持有。 */
 export type PackageSource = "official" | "mirror";
@@ -55,9 +56,9 @@ function read_ipip_region(text: string): Region {
   return read_region_names().countries.has(country) ? Region.Outside : Region.Unknown;
 }
 
-/** 宿主内按对话缓存默认源判定，应用重启后重新判断，不写入任何持久化位置。 */
+/** 宿主缓存默认源判定，应用重启后重新查询。 */
 export class AgentPackageSources {
-  private readonly entries = new Map<string, Promise<PackageSource>>(); // 同步登记，npm 与 uv 并发首查共用一次请求
+  private entry: Promise<PackageSource> | undefined;
   private readonly closing = new AbortController(); // 应用关闭时中止未完成查询
 
   /** `fetch` 默认使用应用安装的全局代理客户端，测试注入替身。 */
@@ -69,28 +70,21 @@ export class AgentPackageSources {
     },
   ) {}
 
-  /** 复用该对话的判定。取消不形成结果，下次调用重新查询。 */
-  public resolve(chat_id: string, signal: AbortSignal): Promise<PackageSource> {
-    const cached = this.entries.get(chat_id);
-    if (cached !== undefined) return cached;
-    const entry = this.lookup(AbortSignal.any([signal, this.closing.signal]));
-    this.entries.set(chat_id, entry);
-    entry.catch(() => {
-      // 只移除自己的记录，重置后较新的查询不受迟到的取消影响。
-      if (this.entries.get(chat_id) === entry) this.entries.delete(chat_id);
+  /** 并发脚本共用一次查询，取消其中一条只结束它自己的等待。 */
+  public async resolve(signal: AbortSignal): Promise<PackageSource> {
+    const waiting = AbortSignal.any([signal, this.closing.signal]);
+    waiting.throwIfAborted();
+    this.entry ??= this.lookup(this.closing.signal).catch((error: unknown) => {
+      this.entry = undefined;
+      throw error;
     });
-    return entry;
-  }
-
-  /** 删除或重置对话时丢弃旧判定。 */
-  public forget(chat_id: string): void {
-    this.entries.delete(chat_id);
+    return await wait_for_operation(this.entry, waiting);
   }
 
   /** 中止未完成查询并释放全部判定。 */
   public close(): void {
     this.closing.abort(new Error("Agent package sources closed."));
-    this.entries.clear();
+    this.entry = undefined;
   }
 
   /** 两路并发按同一个时限收尾，执行取消时直接传回原因。 */
@@ -136,7 +130,7 @@ export class AgentPackageSources {
   }
 }
 
-/** 根进程经 IPC 取得当前对话的默认源，对话身份由宿主在受理执行时绑定。 */
+/** 根进程经 IPC 取得应用默认源。 */
 export async function request_package_source(): Promise<PackageSource> {
   return workspace_requests().call({ kind: "resolve_package_source" });
 }

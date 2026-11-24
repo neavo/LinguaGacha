@@ -1,4 +1,4 @@
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import type { api_fetch as backend_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
   ProofreadingContextQuery,
   ProofreadingFilterPanelQuery,
@@ -56,7 +56,9 @@ export type ProofreadingApiClient = {
 /**
  * 创建校对页 API client；页面通过后端 query reader/state 获取校对列表和窗口数据。
  */
-export function createProofreadingApiClient(): ProofreadingApiClient {
+export function createProofreadingApiClient(
+  api_fetch: typeof backend_fetch,
+): ProofreadingApiClient {
   return {
     /** 按需读取已保存的完整条目，缺失响应报错。 */
     async read_proofreading_raw_item(input) {

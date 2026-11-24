@@ -10,12 +10,12 @@ import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fix
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BackendResources } from "./backend-resources";
 import { BackendServices } from "./backend-services";
-import { AgentService } from "../agent/agent-service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 
 import { GuiBackendBootstrap } from "./gui-backend-bootstrap";
@@ -29,6 +29,74 @@ describe("GuiBackendBootstrap 集成", () => {
     check_catalog = vi.spyOn(PiModelCatalog.prototype, "check").mockResolvedValue(undefined);
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it("重复打开聚焦原工程，工程副本隔离工作区，删除末条补建，关闭后仍能恢复", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-multi-project-"));
+    const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+    try {
+      const { apiBaseUrl } = await bootstrap.start();
+      const post = async (route: string, body: object) => {
+        const response = await fetch(apiBaseUrl + route, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json();
+        expect(payload).toMatchObject({ ok: true });
+        return payload.data;
+      };
+      const first = await post("/api/session/project/create", {
+        path: path.join(temp.path, "first.lg"),
+        source_paths: [],
+      });
+      const second = await post("/api/session/project/create", {
+        path: path.join(temp.path, "second.lg"),
+        source_paths: [],
+      });
+      const projectId = first.project.projectId;
+      expect(second.project.projectId).not.toBe(projectId);
+      expect(await post("/api/session/project/open", { path: first.project.path })).toMatchObject({
+        project: { projectId },
+      });
+      const secondChat = await post("/api/agent/chats/create", { projectId });
+      const chatId = secondChat.activeChatId;
+      const root = new AppPathService({
+        appRoot: temp.path,
+        builtinRoot: path.join(temp.path, "builtin"),
+      }).get_agent_workspace_root_dir();
+      fs.writeFileSync(path.join(root, chatId, "work", "proof.md"), "isolated");
+      const copyPath = path.join(temp.path, "copy.lg");
+      fs.copyFileSync(first.project.path, copyPath);
+      const copy = await post("/api/session/project/open", { path: copyPath });
+      expect(copy.chats).toHaveLength(2);
+      expect(copy.activeChatId).not.toBe(chatId);
+      expect(fs.readFileSync(path.join(root, copy.activeChatId, "work", "proof.md"), "utf8")).toBe(
+        "isolated",
+      );
+      const wrong = new URL("/api/agent/snapshot", apiBaseUrl);
+      wrong.searchParams.set("projectId", second.project.projectId);
+      wrong.searchParams.set("chatId", chatId);
+      expect((await fetch(wrong)).status).toBe(400);
+      await post("/api/agent/chats/delete", { projectId, chatId: first.activeChatId });
+      const replacement = await post("/api/agent/chats/delete", { projectId, chatId });
+      expect(replacement.chats).toHaveLength(1);
+      expect(replacement.activeChatId).not.toBe(chatId);
+      expect(fs.existsSync(path.join(root, chatId))).toBe(false);
+      expect(fs.existsSync(path.join(root, copy.activeChatId, "work", "proof.md"))).toBe(true);
+      await post("/api/session/project/close", { projectId });
+      using database = new DatabaseSync(first.project.path, { readOnly: true });
+      const live_chat = database
+        .prepare("SELECT data FROM agent_chats WHERE id = ?")
+        .get(replacement.activeChatId);
+      const live_root = JSON.parse(String(live_chat?.data)).rootConversationId;
+      expect(database.prepare("SELECT id FROM conversations").all()).toEqual([{ id: live_root }]);
+      const reopened = await post("/api/session/project/open", { path: first.project.path });
+      expect(reopened.project.projectId).not.toBe(projectId);
+      expect(reopened.activeChatId).toBe(replacement.activeChatId);
+    } finally {
+      await bootstrap.stop();
+    }
+  });
 
   it.each(["create", "import"])(
     "%s 固化原稿期间阻止同目录字体、预览与输出，结束后可重试",
@@ -45,14 +113,15 @@ describe("GuiBackendBootstrap 集成", () => {
       let pending: Promise<unknown> | undefined;
       try {
         const { backendServices: services, apiBaseUrl } = await bootstrap.start();
-        await services.project.lifecycle.create_project_commit({
+        const created = await services.create_project({
           path: path.join(temp.path, "first.lg"),
           source_paths: [game],
         });
-        const preview = await services.project.content.preview_import_files({
+        const project = services.projects.require(read_json_record(created.project).projectId);
+        const preview = await project.content.preview_import_files({
           source_paths: [game],
         });
-        const manifest = await services.project.readManifest();
+        const manifest = await services.read_manifest(project);
         const create = GameFormat.prototype.create_container;
         vi.spyOn(GameFormat.prototype, "create_container").mockImplementationOnce(async function (
           this: GameFormat,
@@ -64,11 +133,11 @@ describe("GuiBackendBootstrap 集成", () => {
         });
         pending =
           operation === "create"
-            ? services.project.lifecycle.create_project_commit({
+            ? services.create_project({
                 path: path.join(temp.path, "next.lg"),
                 source_paths: [game],
               })
-            : services.project.content.import_files({
+            : project.content.import_files({
                 files: preview.files.map(({ source_path, target_rel_path }) => ({
                   source_path,
                   target_rel_path,
@@ -91,18 +160,18 @@ describe("GuiBackendBootstrap 集成", () => {
           expect(await response.json()).toMatchObject({ error: { code: "file.busy" } });
         }
         await expect(
-          services.project.content.preview_import_files({ source_paths: [game] }),
+          project.content.preview_import_files({ source_paths: [game] }),
         ).rejects.toMatchObject({ code: "file.busy" });
         await expect(
-          services.files.translationGeneration.generate_files_to_directory(temp.path),
-        ).rejects.toMatchObject({ code: "runtime.busy" });
+          project.generation.generate_files_to_directory(temp.path),
+        ).rejects.toMatchObject({ code: operation === "create" ? "file.busy" : "runtime.busy" });
         release.resolve();
         await pending;
         await expect(
-          services.files.gameFont.inspect({ game_path: game, font_path }),
+          services.gameFont.inspect({ game_path: game, font_path }),
         ).resolves.toBeDefined();
         await expect(
-          services.files.translationGeneration.generate_files_to_directory(temp.path),
+          project.generation.generate_files_to_directory(temp.path),
         ).resolves.toMatchObject({ accepted: true });
       } finally {
         release.resolve();
@@ -159,8 +228,6 @@ describe("GuiBackendBootstrap 集成", () => {
       const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
       try {
         const started = await bootstrap.start();
-        const gate = started.backendServices.state.runtimeGate;
-        const lease = operation === "font" ? gate.begin_runtime("agent") : null;
         const request = fetch(
           started.apiBaseUrl +
             (operation === "font" ? "/api/toolbox/game-font/apply" : "/api/session/project/create"),
@@ -176,14 +243,6 @@ describe("GuiBackendBootstrap 集成", () => {
         );
         const settled = Promise.allSettled([request]);
         await committed.promise;
-        if (lease) {
-          gate.finish_runtime(lease);
-          const next = gate.begin_runtime("agent");
-          await expect(gate.run_agent_project_write(async () => "committed")).resolves.toBe(
-            "committed",
-          );
-          gate.finish_runtime(next);
-        }
         let stopped = false;
         const closing = bootstrap.stop().then(() => {
           stopped = true;
@@ -233,9 +292,20 @@ describe("GuiBackendBootstrap 集成", () => {
         expect(response.ok).toBe(true);
         return response.json();
       };
+      await expect(post("/api/skills/snapshot")).resolves.toMatchObject({
+        data: { skills: expect.any(Array) },
+      });
+      const { data: created } = await post("/api/session/project/create", {
+        path: path.join(app_root, "skills.lg"),
+        source_paths: [],
+      });
+      const projectId = created.project.projectId;
+      let chatId = created.activeChatId;
       /** 从会话公开快照观察生效时机。 */
       const names = async (): Promise<string[]> => {
-        const response = await fetch(`${apiBaseUrl}/api/agent/snapshot`);
+        const response = await fetch(
+          `${apiBaseUrl}/api/agent/snapshot?projectId=${projectId}&chatId=${chatId}`,
+        );
         const payload = (await response.json()) as { data: { skills: { name: string }[] } };
         return payload.data.skills.map((skill) => skill.name);
       };
@@ -252,7 +322,7 @@ describe("GuiBackendBootstrap 集成", () => {
           ],
         },
       });
-      await post("/api/agent/reset");
+      chatId = (await post("/api/agent/chats/create", { projectId })).data.activeChatId;
       expect(await names()).toEqual(["first"]);
       await post("/api/skills/enabled", { source: "user", name: "second", enabled: true });
       expect(await names()).toEqual(["second", "first"]);
@@ -324,20 +394,18 @@ describe("GuiBackendBootstrap 集成", () => {
           languages: { source_language: "EN", target_language: "ZH" },
         }),
       });
-      expect(await created.json()).toMatchObject({ ok: true });
+      const created_payload = await created.json();
+      expect(created_payload).toMatchObject({ ok: true });
+      const projectId = created_payload.data.project.projectId;
+      const chatId = created_payload.data.activeChatId;
       const paths = new AppPathService({
         appRoot: app_root,
         builtinRoot: path.join(app_root, "builtin"),
       });
-      const snapshot = await (await fetch(apiBaseUrl + "/api/agent/snapshot")).json();
-      const uploads = path.join(
-        paths.get_agent_workspace_root_dir(),
-        snapshot.data.chatId,
-        "uploads",
-      );
+      const uploads = path.join(paths.get_agent_workspace_root_dir(), chatId, "uploads");
       const pending = new Promise<void>((resolve) => {
         const request = http.request(
-          `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin`,
+          `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin&projectId=${projectId}&chatId=${chatId}`,
           { method: "POST", headers: { "Content-Type": "application/octet-stream" } },
           (response) => {
             response.resume();
@@ -440,12 +508,12 @@ describe("GuiBackendBootstrap 集成", () => {
       const started = await bootstrap.start();
       expect(check_catalog).toHaveBeenCalledOnce();
       const health = await fetch(`${started.apiBaseUrl}/api/health`);
-      const agent = await fetch(`${started.apiBaseUrl}/api/agent/snapshot`);
+      const agent = await fetch(started.apiBaseUrl + "/api/session/projects");
 
       await expect(health.json()).resolves.toMatchObject({ ok: true });
       await expect(agent.json()).resolves.toMatchObject({
         ok: true,
-        data: { state: "idle", entries: [] },
+        data: { projects: [] },
       });
       const paths = new AppPathService({
         appRoot: app_root,
@@ -462,11 +530,15 @@ describe("GuiBackendBootstrap 集成", () => {
           languages: { source_language: "EN", target_language: "ZH" },
         }),
       });
-      expect(await project.json()).toMatchObject({ ok: true });
-      const current = await (await fetch(started.apiBaseUrl + "/api/agent/snapshot")).json();
+      const created = await project.json();
+      expect(created).toMatchObject({ ok: true });
+      const scope = {
+        projectId: created.data.project.projectId,
+        chatId: created.data.activeChatId,
+      };
       const directory = path.join(
         paths.get_agent_workspace_root_dir(),
-        current.data.chatId,
+        scope.chatId,
         "work",
         "报告",
       );
@@ -476,7 +548,7 @@ describe("GuiBackendBootstrap 集成", () => {
       const open = await fetch(`${started.apiBaseUrl}/api/agent/workspace/activate-path`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: "work/报告/结果%20%23%201.md" }),
+        body: JSON.stringify({ ...scope, path: "work/报告/结果%20%23%201.md" }),
       });
       await expect(open.json()).resolves.toEqual({ ok: true, data: { status: "saved" } });
       expect(fs.readFileSync(destination).equals(fs.readFileSync(file))).toBe(true);
@@ -484,14 +556,14 @@ describe("GuiBackendBootstrap 集成", () => {
       const folder = await fetch(started.apiBaseUrl + "/api/agent/workspace/activate-path", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: "work/报告/" }),
+        body: JSON.stringify({ ...scope, path: "work/报告/" }),
       });
       await expect(folder.json()).resolves.toEqual({ ok: true, data: { status: "opened" } });
       expect(open_directory).toHaveBeenCalledWith(directory);
       const missing = await fetch(`${started.apiBaseUrl}/api/agent/workspace/activate-path`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: "work/missing.md" }),
+        body: JSON.stringify({ ...scope, path: "work/missing.md" }),
       });
       expect(missing.status).toBe(404);
       await expect(missing.json()).resolves.toMatchObject({
@@ -571,11 +643,7 @@ describe("GuiBackendBootstrap 集成", () => {
       await stop_gateway.call(this);
       throw failures[0];
     });
-    for (const prototype of [
-      AgentService.prototype,
-      BackendServices.prototype,
-      BackendResources.prototype,
-    ]) {
+    for (const prototype of [BackendServices.prototype, BackendResources.prototype]) {
       const failure = new Error(`${prototype.constructor.name} cleanup`);
       failures.push(failure);
       fail_after_dispose(prototype, failure);

@@ -9,7 +9,7 @@ import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixtu
 import { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProjectSessionState } from "./project-session-state";
+import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { FileCache } from "../cache/file-cache";
 import fs from "node:fs";
 import os from "node:os";
@@ -26,7 +26,7 @@ import { AppPathService } from "../app/app-path-service";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
 import { ProjectContentService } from "./project-content-service";
 import { adapt_project_change } from "./project-write-event-adapter";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
 import { create_item } from "../../domain/item";
 import {
@@ -293,61 +293,31 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("新建提交后缓存失败保留工程，重开能恢复当前事实", async () => {
-    const project_path = path.join(create_temp_dir(), "committed.lg");
-    const database = new ProjectDatabase("1.0.0");
-    const session_state = create_session_state();
-    const publish = vi.fn().mockImplementationOnce(() => {
-      throw new Error("install failed");
-    });
-    const service = create_service({ database, session_state, project_event_handler: publish });
-    try {
-      await expect(
-        service.create_project_commit({ path: project_path, source_paths: [] }),
-      ).rejects.toMatchObject({
-        code: "data.committed_sync_failed",
-        public_details: { committed: true, action: "reload_project" },
-      });
-      expect(fs.existsSync(project_path)).toBe(true);
-      expect(session_state.snapshot().loaded).toBe(false);
-      await service.load_project({ path: project_path });
-      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
-    } finally {
-      await database.close();
-    }
-  });
-
   afterEach(() => {
     while (cleanup_paths.length > 0) {
       fs.rmSync(cleanup_paths.pop() ?? "", { force: true, recursive: true });
     }
   });
 
-  it.each(["close", "cache"])("加载提交后 %s 失败保留事实与恢复信息", async (phase) => {
+  it("加载提交后关闭数据库失败保留事实与恢复信息", async () => {
     const project_path = path.join(create_temp_dir(), "scope.lg");
     const database = new ProjectDatabase("1.0.0");
     await database.create_project(project_path);
     await database.transaction(project_path, (writer) =>
       writer.set_meta(project_path, "updated_at", "before"),
     );
-    const failure = new Error(phase + " failed");
-    const service = create_service({
-      database,
-      project_event_handler: () => {
-        if (phase === "cache") throw failure;
-      },
-    });
+    const failure = new Error("close failed");
+    const service = create_service({ database });
     const transaction = database.transaction.bind(database);
-    if (phase === "close")
-      vi.spyOn(database, "transaction").mockImplementation((project, callback) =>
-        transaction(project, (writer) => {
-          const result = callback(writer);
-          vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
-            throw failure;
-          });
-          return result;
-        }),
-      );
+    vi.spyOn(database, "transaction").mockImplementation((project, callback) =>
+      transaction(project, (writer) => {
+        const result = callback(writer);
+        vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
+          throw failure;
+        });
+        return result;
+      }),
+    );
     try {
       await expect(service.load_project({ path: project_path })).rejects.toMatchObject({
         code: "data.committed_sync_failed",
@@ -359,68 +329,6 @@ describe("ProjectLifecycleService", () => {
       vi.restoreAllMocks();
       await database.close();
     }
-  });
-
-  it("snapshot 暴露会话身份和当前资产数量", async () => {
-    const service = create_service({
-      database: create_database(),
-      session_state: create_session_state({
-        loaded: true,
-        projectPath: "E:/Project/demo.lg",
-      }),
-    });
-
-    await expect(service.get_project_snapshot()).resolves.toEqual({
-      project: {
-        path: "E:/Project/demo.lg",
-        loaded: true,
-        languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS,
-        file_count: 0,
-      },
-    });
-  });
-
-  it("任务 busy 时拒绝全部生命周期写且不改变会话或数据库", async () => {
-    const temp_dir = create_temp_dir();
-    const current_project_path = write_file(path.join(temp_dir, "current.lg"));
-    const next_project_path = write_file(path.join(temp_dir, "next.lg"));
-    const database = create_database();
-    const session_state = create_session_state({
-      loaded: true,
-      projectPath: current_project_path,
-    });
-    const service = create_service({
-      database,
-      session_state,
-      task_busy: true,
-    });
-
-    await expect(service.load_project({ path: next_project_path })).rejects.toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-    await expect(
-      service.create_project_commit({
-        path: path.join(temp_dir, "created.lg"),
-        source_paths: [],
-      }),
-    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
-    await expect(
-      service.apply_task_input({
-        quality_rules: [],
-        translation_prompt: null,
-      }),
-    ).rejects.toThrow(expect.objectContaining({ code: "runtime.busy" }));
-    await expect(service.unload_project()).rejects.toThrow(
-      expect.objectContaining({ code: "runtime.busy" }),
-    );
-
-    expect(session_state.snapshot()).toEqual({
-      loaded: true,
-      projectPath: current_project_path,
-    });
-    expect(database.transaction).not.toHaveBeenCalled();
-    expect(database.create_project).not.toHaveBeenCalled();
-    expect(database.close_project).not.toHaveBeenCalled();
   });
 
   it("load 发布缓存热机事件并标记会话", async () => {
@@ -509,25 +417,6 @@ describe("ProjectLifecycleService", () => {
     } finally {
       await database.close();
     }
-  });
-
-  it("load 在内部缓存热机失败时阻断 loaded", async () => {
-    const project_path = write_file(path.join(create_temp_dir(), "broken-cache.lg"));
-    const session_state = create_session_state();
-    const service = create_service({
-      database: create_database(),
-      session_state,
-      project_event_handler: () => {
-        throw new Error("热机失败");
-      },
-    });
-
-    await expect(service.load_project({ path: project_path })).rejects.toThrow("热机失败");
-
-    expect(session_state.snapshot()).toEqual({
-      loaded: false,
-      projectPath: "",
-    });
   });
 
   it("打开工程保留项目语言，只在打开事务内对齐应用预过滤开关", async () => {
@@ -1022,24 +911,23 @@ describe("ProjectLifecycleService", () => {
     );
     const broken = write_file(path.join(root, "broken.json"), "{");
     const database = new ProjectDatabase("1.0.0");
-    const session_state = new ProjectSessionState();
-    const lifecycle = create_service({ database, session_state });
+    const lifecycle = create_service({ database });
+    const created = path.join(root, "created.lg");
+    const imported = path.join(root, "imported.lg");
     const content = new ProjectContentService(
       new GameDirectoryOperations(),
       database,
-      new RuntimeOperationGate(),
-      session_state,
+      new ProjectOperationGate(),
+      imported,
       new ProjectWriteStore(
         database,
         () => undefined,
-        (change) => adapt_project_change(session_state, change),
+        (change) => adapt_project_change("fixture", change),
       ),
       { read_app_language: () => "ZH" },
       undefined,
       create_log_manager(),
     );
-    const created = path.join(root, "created.lg");
-    const imported = path.join(root, "imported.lg");
     // 身份由各次写入分配。其余持久化字段必须与新建结果一致。
     const read_items = async (project: string) =>
       (await database.get_all_items(project)).map(({ id: _id, ...item }) => item);
@@ -1219,46 +1107,6 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("unload 先发布内部卸载事件，再清理会话和 database 缓存", async () => {
-    const calls: string[] = [];
-    const project_path = "E:/Project/demo.lg";
-    const database = create_database({ calls });
-    const service = create_service({
-      database,
-      project_event_handler: () => {
-        calls.push("cache");
-      },
-      session_state: create_session_state({
-        loaded: true,
-        projectPath: project_path,
-      }),
-    });
-
-    await expect(service.unload_project()).resolves.toEqual({
-      project: {
-        path: "",
-        loaded: false,
-        file_count: 0,
-        languages: null,
-      },
-    });
-
-    expect(calls).toEqual(["cache", "closeProject"]);
-    expect(database.close_project).toHaveBeenCalledWith(project_path);
-  });
-
-  it("unload 未加载时不释放 database 缓存", async () => {
-    const database = create_database();
-    const service = create_service({
-      database,
-      session_state: create_session_state({ loaded: false, projectPath: "" }),
-    });
-
-    await service.unload_project();
-
-    expect(database.close_project).not.toHaveBeenCalled();
-  });
-
   // 每个用例独占临时目录，隔离工程和来源文件。
   function create_temp_dir(): string {
     const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-project-lifecycle-"));
@@ -1277,7 +1125,7 @@ describe("ProjectLifecycleService", () => {
   function create_service(options: {
     app_root?: string;
     database: ProjectDatabase;
-    session_state?: ProjectSessionState;
+    session_state?: ProjectSessionFixture;
     config?: MutableJsonRecord;
     log_manager?: LogManager & {
       info: ReturnType<typeof vi.fn>;
@@ -1285,44 +1133,65 @@ describe("ProjectLifecycleService", () => {
     };
     project_event_handler?: CacheLifecycleHandler;
     task_busy?: boolean;
-  }): ProjectLifecycleService {
+  }) {
     const app_root = options.app_root ?? create_temp_dir();
     const project_event_handler = options.project_event_handler ?? vi.fn();
     let languages: ProjectLanguageSettings = DEFAULT_PROJECT_LANGUAGE_SETTINGS;
     const files = new FileCache();
-    return new ProjectLifecycleService(
+    const session = options.session_state ?? create_session_state();
+    const service = new ProjectLifecycleService(
       new GameDirectoryOperations(),
       options.database,
-      create_runtime_gate(options.task_busy ?? false),
-      options.session_state ?? create_session_state(),
       create_setting_service(options.config ?? {}),
-      new AppPathService({
-        appRoot: app_root,
-        builtinRoot: path.join(app_root, "builtin"),
-      }),
+      new AppPathService({ appRoot: app_root, builtinRoot: path.join(app_root, "builtin") }),
       options.log_manager ?? create_log_manager(),
-      {
-        installProject: (projectPath, snapshot) => {
-          languages = snapshot.languages;
-          files.replace(snapshot.files);
-          return project_event_handler({ projectPath, snapshot });
-        },
-        clearProject: (projectPath) => {
-          files.clear();
-          return project_event_handler({ projectPath: projectPath ?? "" });
-        },
-        languages: { readBlock: () => languages } as never,
-        files,
-      },
-      new ProjectWriteStore(options.database, () => undefined, null),
     );
-  }
-
-  /** 用真实占用门禁验证生命周期命令的忙碌边界。 */
-  function create_runtime_gate(busy: boolean): RuntimeOperationGate {
-    const gate = new RuntimeOperationGate();
-    if (busy) gate.begin_runtime("batch_translation");
-    return gate;
+    const install = async (projectPath: string, snapshot: ProjectDataSnapshot) => {
+      files.replace(snapshot.files);
+      languages = snapshot.languages;
+      project_event_handler({ projectPath, snapshot });
+      await session.mark_loaded(projectPath);
+      return {
+        project: {
+          path: projectPath,
+          loaded: true,
+          file_count: files.readFileEntries().length,
+          languages,
+        },
+      };
+    };
+    return {
+      get_project_preview: service.get_project_preview.bind(service),
+      get_default_project_name: service.get_default_project_name.bind(service),
+      summarize_source_files: service.summarize_source_files.bind(service),
+      get_project_snapshot: async () => ({
+        project: {
+          path: session.snapshot().projectPath,
+          loaded: session.snapshot().loaded,
+          file_count: files.readFileEntries().length,
+          languages,
+        },
+      }),
+      load_project: async (body: MutableJsonRecord) => {
+        const projectPath = String(body.path);
+        const result = await service.load_project(projectPath, body.confirmed_target_app_version);
+        const installed = await install(projectPath, result.snapshot);
+        return result.alignment === null
+          ? installed
+          : { ...installed, settings_alignment: result.alignment };
+      },
+      create_project_commit: async (body: MutableJsonRecord, before_game?: () => void) => {
+        const result = await service.create_project_commit(
+          body,
+          new AbortController().signal,
+          before_game,
+        );
+        return {
+          ...(await install(result.path, result.snapshot)),
+          source_operation: result.source_operation,
+        };
+      },
+    };
   }
 
   // 数据库 fake 只提供无需真实持久化的生命周期场景所需读取面。
@@ -1380,8 +1249,8 @@ describe("ProjectLifecycleService", () => {
       loaded: false,
       projectPath: "",
     },
-  ): ProjectSessionState {
-    const session_state = new ProjectSessionState();
+  ): ProjectSessionFixture {
+    const session_state = new ProjectSessionFixture();
     if (state.loaded) {
       session_state.mark_loaded(state.projectPath);
     }

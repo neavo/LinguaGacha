@@ -1,4 +1,4 @@
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { GlobalOperationGate } from "../runtime-operation-gate";
 import { AGENT_SKILL_MAIN_FILE } from "../../shared/agent-skills";
 import { normalize_agent_skill_settings } from "../../domain/agent-skill-settings";
 import path from "node:path";
@@ -45,7 +45,7 @@ export class AgentSkillsService {
       "read_setting" | "save_setting" | "publish_settings_changed"
     >, // 应用配置的唯一写入者。
     private readonly log: AgentSkillLog, // 扫描诊断出口。
-    private readonly runtime_gate: Pick<RuntimeOperationGate, "run_skill_write">, // 技能保存与 Agent 执行共用互斥入口。
+    private readonly runtime_gate: Pick<GlobalOperationGate, "run_skill_write">, // 技能保存与 Agent 执行共用互斥入口。
   ) {}
 
   private pending: Promise<unknown> = Promise.resolve(); // 技能修改、查询共用顺序，改名期间不暴露半成品。

@@ -7,7 +7,7 @@ import {
 import { resolve_project_file_layout, type ProjectFileUpdate } from "./project-file-layout";
 import type { QualityStatisticsTextChangeScope } from "../../shared/project-event";
 import { assert_source_file_paths } from "../../shared/project/project-asset-paths";
-import type { CacheManager } from "../cache/cache-manager";
+import type { ProjectCache } from "../cache/project-cache";
 import {
   ProjectDatabase,
   type ProjectDatabaseWrite,
@@ -156,7 +156,7 @@ export class ProjectWriteStore {
     database: ProjectDatabase,
     apply_committed_change: ProjectCommittedChangeHandler,
     project_change_publisher: ProjectChangePublisher | null,
-    private readonly cache?: Pick<CacheManager, "readItemWriteScope">,
+    private readonly cache?: Pick<ProjectCache, "readItemWriteScope">,
   ) {
     this.database = database;
     this.apply_committed_change = apply_committed_change;

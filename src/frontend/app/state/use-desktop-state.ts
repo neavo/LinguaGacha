@@ -30,7 +30,6 @@ export function useBatchTranslationSnapshot() {
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
-/** 只订阅全局运行占用快照。 */
 export function useRuntimeSnapshot() {
   const store = useDesktopStateStores().runtime;
   return useSyncExternalStore(store.subscribe, store.getSnapshot);

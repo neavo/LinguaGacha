@@ -1,5 +1,4 @@
 export const de_de_knowledge_page = {
-  title: "Wissen",
   builtin: "Integrierte Skills",
   user: "Benutzer-Skills",
   knowledge: "Projektwissen",
@@ -8,8 +7,6 @@ export const de_de_knowledge_page = {
   },
   readonly: "Schreibgeschützt",
   personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
-  knowledge_description:
-    "Mit dem Projekt gespeicherte Einstellungen, Konventionen und Fortschritte",
   install: {
     title: "Installationsanleitung",
     description: "Skill-Link an AGENT senden und um die Installation des Skills bitten",

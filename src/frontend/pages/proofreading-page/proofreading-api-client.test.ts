@@ -1,3 +1,4 @@
+import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api_fetch_mock = vi.hoisted(() => vi.fn());
@@ -18,7 +19,7 @@ describe("proofreading-api-client", () => {
   });
 
   it("原始数据请求绑定工程并返回完整条目，缺失条目视为失败", async () => {
-    const client = createProofreadingApiClient();
+    const client = createProofreadingApiClient(api_fetch);
     const item = {
       ...build_project_item_public_record(create_item({ id: 1, row: 2 })),
       extra_field: null,
@@ -38,7 +39,7 @@ describe("proofreading-api-client", () => {
   });
 
   it("创建 API 列表 client 并把 sync、列表与窗口读取委托给 Backend query reader/state", async () => {
-    const client = createProofreadingApiClient();
+    const client = createProofreadingApiClient(api_fetch);
     api_fetch_mock.mockImplementation(async (_url: string, body: Record<string, unknown>) => {
       if (body.action === "sync") {
         return {
@@ -150,7 +151,7 @@ describe("proofreading-api-client", () => {
   });
 
   it("按 row id 读取窄上下文载荷", async () => {
-    const client = createProofreadingApiClient();
+    const client = createProofreadingApiClient(api_fetch);
     const context: ProofreadingContextItem[] = [
       {
         row_id: "1",

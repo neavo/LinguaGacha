@@ -1,0 +1,120 @@
+.project-sidebar {
+  padding: 8px var(--sidebar-inset);
+  border-top: 1px solid var(--sidebar-border);
+  font-size: var(--ui-font-size-13);
+}
+
+.project-sidebar__heading,
+.project-sidebar__row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+}
+
+.project-sidebar__heading {
+  padding-inline: 6px;
+  color: var(--muted-foreground);
+}
+
+.project-sidebar__heading > span {
+  flex: 1;
+}
+
+.project-sidebar__row {
+  border-radius: var(--ui-radius-button);
+}
+
+.project-sidebar__row:hover,
+.project-sidebar__row[data-active="true"] {
+  background: var(--sidebar-accent);
+}
+
+.project-sidebar__label,
+.project-sidebar__icon {
+  display: flex;
+  min-width: 0;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--ui-radius-button);
+  padding-inline: 6px;
+}
+
+.project-sidebar__label {
+  flex: 1;
+}
+
+.project-sidebar__label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-sidebar__icon {
+  color: var(--muted-foreground);
+}
+
+.project-sidebar__icon:hover:not(:disabled) {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.project-sidebar__icon:disabled {
+  opacity: 0.45;
+}
+
+.project-sidebar svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.project-sidebar__chats {
+  padding-inline-start: 16px;
+}
+
+.project-sidebar__state {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: var(--ui-radius-pill);
+}
+
+.project-sidebar__state[data-state="running"] {
+  background: var(--primary);
+}
+.project-sidebar__state[data-state="pending"] {
+  background: var(--ui-warning);
+}
+.project-sidebar__state[data-state="error"] {
+  background: var(--ui-failure);
+}
+
+.project-sidebar__preview {
+  display: flex;
+  max-width: 440px;
+  flex-direction: column;
+  align-items: stretch;
+  --project-lifecycle-subtitle: currentColor;
+}
+
+.project-welcome {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-page-gap);
+}
+
+.project-welcome h1 {
+  font-size: var(--ui-font-size-16);
+  font-weight: 600;
+}
+
+.project-welcome__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

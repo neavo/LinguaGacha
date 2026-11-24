@@ -1,3 +1,4 @@
+import { useAgentScope } from "@frontend/app/desktop/scoped-api";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -40,10 +41,11 @@ const EMPTY_INPUT_HISTORY: readonly string[] = [];
  * 历史与队列编辑共用输入能力，但拥有独立草稿；普通 Composer 永远不会被改写。
  */
 export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
+  const scope = useAgentScope();
   const { t } = useI18n();
 
   const composer_ref = useRef<AgentMessageEditorHandle | null>(null);
-  const [draft] = useState(() => new AgentInputDraft(props.target.message));
+  const [draft] = useState(() => new AgentInputDraft(props.target.message, scope));
   // 保存只锁定当前编辑器，普通 Composer 和 Agent Chat 不参与这段瞬时状态。
   const [status, set_status] = useState<"idle" | "saving">("idle");
 

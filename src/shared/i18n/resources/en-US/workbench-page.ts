@@ -2,7 +2,6 @@ import { zh_cn_workbench_page } from "../zh-CN/workbench-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_workbench_page = {
-  title: "Workbench",
   unit: {
     item: "Items",
   },

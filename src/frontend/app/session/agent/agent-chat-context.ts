@@ -1,3 +1,4 @@
+import type { AgentChatStoreRegistry } from "./agent-chat-store-registry";
 import type { AgentEntry, AgentRunOutputSnapshot, AgentTokenSpeedSnapshot } from "@shared/agent";
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { AgentDecisionCountdownSnapshot } from "./agent-decision-countdown";
@@ -112,4 +113,11 @@ function use_agent_store(): AgentChatStore {
     throw new Error("Agent chat hooks must be used inside AgentChatProvider.");
   }
   return store;
+}
+
+export const AgentChatRegistryContext = createContext<AgentChatStoreRegistry | null>(null);
+export function useAgentChatRegistry() {
+  const registry = useContext(AgentChatRegistryContext);
+  if (!registry) throw new Error("AgentChatRegistryProvider is missing.");
+  return registry;
 }

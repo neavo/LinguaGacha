@@ -48,7 +48,7 @@ function create_cache_read_port(options: {
   return {
     snapshot: () => ({
       projectPath: "E:/Project/demo.lg",
-      epoch: options.epoch ?? 1,
+      projectId: String(options.epoch ?? 1),
       freshness: "fresh",
       sectionRevisions: revisions,
       itemCount: items.length,

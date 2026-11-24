@@ -1,34 +1,66 @@
+import { ChatTransportContext } from "@frontend/app/desktop/scoped-api";
+import { useEffect, useRef, useState, type JSX, type ReactNode } from "react";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import { type JSX, useEffect, useRef, type ReactNode } from "react";
+import { AgentAttention } from "@frontend/app/feedback/agent-attention";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { AgentChatStore } from "./agent-chat-store";
-import { AgentChatStoreContext } from "./agent-chat-context";
+import { AgentChatStoreContext, AgentChatRegistryContext } from "./agent-chat-context";
+import { AgentChatStoreRegistry } from "./agent-chat-store-registry";
 
-/** 常驻 Store 跨路由拥有 Agent 镜像和输入会话；Provider 只负责生命周期装配。 */
-export function AgentChatProvider(props: { children: ReactNode }): JSX.Element {
+/** 全部打开对话的事件镜像和草稿与页面挂载独立。 */
+export function AgentChatRegistryProvider({ children }: { children: ReactNode }): JSX.Element {
   const { t } = useI18n();
-
-  // Store 跨路由常驻，异步失败时读取最新语言。
   const text = useRef(t);
   text.current = t;
-  const store_ref = useRef<AgentChatStore | null>(null);
-  if (store_ref.current === null) {
-    store_ref.current = new AgentChatStore(window.localStorage, (error, context) => {
-      const t = text.current;
-      push_error_toast(
-        t(context === "restore" ? "agent_page.error.restore" : "agent_page.error.decision"),
-        error,
-      );
-    });
-  }
-  const store = store_ref.current;
-
+  const { open_projects } = useDesktopState();
+  const [registry] = useState(
+    () =>
+      new AgentChatStoreRegistry((error, kind) =>
+        push_error_toast(
+          text.current(
+            kind === "restore" ? "agent_page.error.restore" : "agent_page.error.decision",
+          ),
+          error,
+        ),
+      ),
+  );
+  const scopes = open_projects.flatMap((project) =>
+    project.chats.map(({ id }) => ({
+      projectId: project.snapshot.projectId,
+      chatId: id,
+    })),
+  );
+  const stores = scopes.map((scope) => registry.get(scope));
+  useEffect(() => () => registry.disconnect(), [registry]);
   useEffect(() => {
-    store.connect();
-    return () => store.disconnect();
-  }, [store]);
-
+    registry.retain(stores);
+  }, [registry, stores]);
   return (
-    <AgentChatStoreContext.Provider value={store}>{props.children}</AgentChatStoreContext.Provider>
+    <AgentChatRegistryContext value={registry}>
+      {stores.map((store) => (
+        <AgentChatStoreContext
+          key={`${store.scope!.projectId}:${store.scope!.chatId}`}
+          value={store}
+        >
+          <AgentAttention />
+        </AgentChatStoreContext>
+      ))}
+      {children}
+    </AgentChatRegistryContext>
+  );
+}
+
+export function AgentChatProvider({
+  children,
+  store,
+}: {
+  children: ReactNode;
+  store: AgentChatStore;
+}): JSX.Element {
+  return (
+    <AgentChatStoreContext value={store}>
+      <ChatTransportContext value={store}>{children}</ChatTransportContext>
+    </AgentChatStoreContext>
   );
 }

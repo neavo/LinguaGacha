@@ -4,12 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { UV_INDEXES } from "./runtime";
+import type { WorkspaceRequest } from "../workspace/runtime/protocol";
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn }));
 
 let root = "";
-const call = vi.fn(async () => "mirror"); // 宿主返回的对话默认源
+let package_source: "mirror" | "official";
+const call = vi.fn(async (request: WorkspaceRequest) => {
+  if (request.kind === "acquire_resource") return 1;
+  if (request.kind === "release_resource") return null;
+  return package_source;
+});
 
 /** 每个用例重新加载模块，绑定独立的 uv 配置与宿主请求通道。 */
 async function load_uv() {
@@ -28,6 +34,7 @@ async function load_uv() {
 beforeEach(() => {
   vi.resetModules();
   call.mockClear();
+  package_source = "mirror";
   root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-uv-"));
   spawn.mockReset().mockImplementation(() => {
     const child = new EventEmitter();
@@ -146,8 +153,8 @@ it("只给取包命令补默认索引，显式来源、本地操作与程序参�
     ["--directory", "project", "run", "--no-sync", "python"],
   ])
     expect(await index(args), args.join(" ")).toBeUndefined();
-  expect(call).not.toHaveBeenCalled();
-  call.mockResolvedValueOnce("official");
+  expect(call.mock.calls).not.toContainEqual([{ kind: "resolve_package_source" }]);
+  package_source = "official";
   expect(await index(["sync"])).toBe(UV_INDEXES.official);
   expect(call).toHaveBeenCalledWith({ kind: "resolve_package_source" });
 });

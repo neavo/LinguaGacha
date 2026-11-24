@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "../project/project-session-state";
+import { ProjectOperationGate } from "../runtime-operation-gate";
+import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { ProofreadingService } from "./proofreading-service";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 
@@ -31,14 +31,14 @@ async function read_meta(
 async function create_service(task_busy = false): Promise<{
   database: ProjectDatabase;
   service: ProofreadingService;
-  session_state: ProjectSessionState;
+  session_state: ProjectSessionFixture;
   lg_path: string;
   publisher: ReturnType<typeof create_test_project_change_publisher>;
-  runtime_gate: RuntimeOperationGate;
+  runtime_gate: ProjectOperationGate;
 }> {
   const database = new ProjectDatabase("1.0.0");
   cleanup_databases.push(database);
-  const session_state = new ProjectSessionState();
+  const session_state = new ProjectSessionFixture();
   const lg_path = path.join(temp_dir, "proofreading.lg");
   await database.create_project(lg_path);
   await database.transaction(lg_path, (writer) =>
@@ -52,11 +52,15 @@ async function create_service(task_busy = false): Promise<{
     project_event_bus,
     publisher.publish_project_change,
   );
-  const runtime_gate = new RuntimeOperationGate();
+  const runtime_gate = new ProjectOperationGate();
   if (task_busy) runtime_gate.begin_runtime("batch_translation");
   return {
     database,
-    service: new ProofreadingService(runtime_gate, session_state, write_store),
+    service: new ProofreadingService(
+      runtime_gate,
+      session_state.snapshot().projectPath,
+      write_store,
+    ),
     session_state,
     lg_path,
     publisher,
@@ -68,9 +72,9 @@ async function create_service(task_busy = false): Promise<{
 function create_test_project_change_publisher(lg_path: string) {
   return {
     publish_project_change: vi.fn((payload: ProjectCommittedChange): ProjectChangeEvent => {
-      const session = new ProjectSessionState();
+      const session = new ProjectSessionFixture();
       session.mark_loaded(lg_path);
-      return adapt_project_change(session, payload)!;
+      return adapt_project_change(session.snapshot().projectPath, payload)!;
     }),
   };
 }
@@ -796,17 +800,5 @@ describe("ProofreadingService", () => {
     expect(await database.get_all_items(lg_path)).toEqual([
       create_project_item({ id: 1, src: "a", dst: "", status: "PROCESSED" }),
     ]);
-  });
-
-  it("project.not_loaded时拒绝校对保存", async () => {
-    const { service, session_state } = await create_service();
-    session_state.clear();
-
-    await expect(
-      service.apply_item_changes({
-        changes: [{ item_id: 1, dst: "译文" }],
-        expected_section_revisions: { items: 0, proofreading: 0 },
-      }),
-    ).rejects.toThrow(expect.objectContaining({ code: "project.not_loaded" }));
   });
 });

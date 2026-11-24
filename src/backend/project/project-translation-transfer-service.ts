@@ -13,9 +13,8 @@ import {
   type TranslationInheritanceMode,
 } from "../../shared/translation-inheritance";
 import type { ProjectDatabase, ProjectItemTranslationWrite } from "../database/database-operations";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { GlobalOperationGate } from "../runtime-operation-gate";
 import { ProjectDataReader } from "./project-data-reader";
-import type { ProjectSessionState } from "./project-session-state";
 import { inherit_completed_translations } from "./project-translation-inheritance";
 import { compute_project_prefilter_write } from "./project-write-state";
 
@@ -34,15 +33,15 @@ export class ProjectTranslationTransferService {
   /** 数据库拥有工程文件操作，服务共享运行门禁和当前会话。 */
   public constructor(
     private readonly database: ProjectDatabase,
-    private readonly runtime_gate: RuntimeOperationGate,
-    private readonly session_state: ProjectSessionState,
+    private readonly runtime_gate: GlobalOperationGate,
+    private readonly open_project_paths: () => readonly string[],
     private readonly native_fs: NativeFs = default_native_fs,
   ) {}
 
   /** 返回填充、替换与生成后仍待翻译的条目数。 */
   public async apply(body: JsonRecord): Promise<JsonRecord> {
     const request = this.read_request(body);
-    return this.runtime_gate.run_project_write(async (signal) => {
+    return this.runtime_gate.run_lifecycle(async (signal) => {
       this.assert_output_path(request);
       const directory = path.dirname(request.output_path);
       const output_snapshot = path.join(directory, `.${randomUUID()}.tmp`); // 迁入工程快照，最终改名为输出工程。
@@ -139,10 +138,8 @@ export class ProjectTranslationTransferService {
 
   /** 在门禁内读取已加载工程，避免与工程打开、新建交错。 */
   private assert_output_path(request: TranslationTransferRequest): void {
-    const session = this.session_state.snapshot();
     const output = this.native_fs.to_identity_path(request.output_path);
-    const reserved = [request.source_path, request.base_path];
-    if (session.loaded) reserved.push(session.projectPath);
+    const reserved = [request.source_path, request.base_path, ...this.open_project_paths()];
     if (reserved.some((file) => this.native_fs.to_identity_path(file) === output))
       throw new AppError("project.path_conflict");
   }

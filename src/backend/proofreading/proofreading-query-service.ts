@@ -1,7 +1,6 @@
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import { read_json_record } from "../../domain/json";
 import type { ProofreadingCache, ProofreadingCacheResult } from "../cache/proofreading-cache";
-import type { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import type {
   ProofreadingFilterOptions,
@@ -21,14 +20,14 @@ import type { ProjectDataSectionRevisions } from "../../shared/project-event";
  * 提供校对页 JSON 查询适配与后端内部类型化只读查询。
  */
 export class ProofreadingQueryService {
-  private readonly session_state: ProjectSessionState; // 查询必须绑定当前 loaded 工程
+  private readonly project_path: string; // 查询必须绑定当前 loaded 工程
   private readonly cache: ProofreadingCache; // 完整条目读取、列表计算和窗口身份由校对缓存拥有。
 
   /**
    * 注入会话守卫和校对缓存。
    */
-  public constructor(options: { sessionState: ProjectSessionState; cache: ProofreadingCache }) {
-    this.session_state = options.sessionState;
+  public constructor(options: { projectPath: string; cache: ProofreadingCache }) {
+    this.project_path = options.projectPath;
     this.cache = options.cache;
   }
 
@@ -36,7 +35,6 @@ export class ProofreadingQueryService {
   public query_warnings(
     query: ProofreadingWarningQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingWarningPage>> {
-    this.session_state.require_loaded_project_path();
     return this.cache.warnings(query);
   }
 
@@ -44,7 +42,7 @@ export class ProofreadingQueryService {
    * 分发校对页唯一查询入口，未知 action 在协议边界直接拒绝。
    */
   public async query(request: JsonRecord): Promise<MutableJsonRecord> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const action = String(request["action"] ?? "sync");
     if (action === "raw_item") {
       const row_id = request["row_id"];

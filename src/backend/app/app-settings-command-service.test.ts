@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppPathService } from "./app-path-service";
 import { AppSettingService } from "./app-setting-service";
 import { AppSettingsCommandService } from "./app-settings-command-service";
-import { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
-import { ProjectSessionState } from "../project/project-session-state";
+import { ProjectDatabase } from "../database/database-operations";
+import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data-reader";
 import { ProjectContentService } from "../project/project-content-service";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GlobalOperationGate, ProjectOperationGate } from "../runtime-operation-gate";
 import type { JsonRecord } from "../../domain/json";
 
 const cleanup: Array<() => void> = [];
@@ -32,7 +32,7 @@ async function create_service() {
     new AppPathService({ appRoot: root, builtinRoot: path.join(root, "builtin") }),
   );
   settings.save_setting({ mtool_optimizer_enable: true, skip_duplicate_source_text_enable: true });
-  const session = new ProjectSessionState();
+  const session = new ProjectSessionFixture();
   const project_path = path.join(root, "test.lg");
   await database.create_project(project_path);
   // 项目语言属于工程事实，应用开关同步时必须原样保留。
@@ -45,7 +45,8 @@ async function create_service() {
     }),
   );
   session.mark_loaded(project_path);
-  const gate = new RuntimeOperationGate();
+  const global_gate = new GlobalOperationGate(() => !session.snapshot().loaded || !gate.busy);
+  const gate = new ProjectOperationGate((owner) => global_gate.check_project(owner));
   const publish = vi.fn();
   settings.set_stream_publisher({ publish });
   const on_commit = vi.fn();
@@ -54,12 +55,14 @@ async function create_service() {
     new GameDirectoryOperations(),
     database,
     gate,
-    session,
+    project_path,
     writes,
     settings,
   );
   return {
-    service: new AppSettingsCommandService(settings, gate, session, content),
+    service: new AppSettingsCommandService(settings, global_gate, () =>
+      session.snapshot().loaded ? [{ id: "project", path: project_path, content }] : [],
+    ),
     settings,
     session,
     gate,
@@ -110,7 +113,7 @@ describe("AppSettingsCommandService", () => {
   it("没有工程时预过滤开关只保存为应用设置", async () => {
     const f = await create_service();
     f.session.clear();
-    const lease = f.gate.begin_runtime("model_test");
+    const lease = f.gate.begin_runtime("agent");
     await f.service.update({ mtool_optimizer_enable: false });
     expect(f.settings.read_setting()).toMatchObject({ mtool_optimizer_enable: false });
     expect(f.on_commit).not.toHaveBeenCalled();
@@ -166,24 +169,6 @@ describe("AppSettingsCommandService", () => {
     });
     expect(get_section_revision(after, "items")).toBe(get_section_revision(before, "items") + 1);
     expect(f.settings.read_setting()).toMatchObject({ skip_duplicate_source_text_enable: false });
-  });
-
-  it("数据库提交失败补偿配置，释放租约且不发布成功事件", async () => {
-    const f = await create_service();
-    const failure = new Error("disk failure");
-    vi.spyOn(ProjectDatabaseAccess.prototype, "upsert_meta_entries").mockImplementationOnce(() => {
-      throw failure;
-    });
-    await expect(f.service.update({ mtool_optimizer_enable: false })).rejects.toMatchObject({
-      code: "runtime.internal_invariant",
-      cause: failure,
-    });
-    expect(f.settings.read_setting()).toMatchObject({ mtool_optimizer_enable: true });
-    expect(await f.database.get_all_meta(f.project_path)).toMatchObject({
-      mtool_optimizer_enable: true,
-    });
-    expect(f.publish).not.toHaveBeenCalled();
-    await f.service.update({ mtool_optimizer_enable: false });
   });
 
   it.each(["project", "settings"] as const)(

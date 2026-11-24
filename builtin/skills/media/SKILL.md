@@ -58,7 +58,7 @@ await uv.run(['add', ...media.PIP_DEPENDENCIES]);
 
 任务开始时令 `device = 'gpu'`。`prepare`、`scan`、`refine` 必须显式传入 `device`，SDK 不自行换设备：
 
-- **GPU 降级**：首次捕获 `media.DeviceFailure` 时，告知用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」，改为 `device = 'cpu'` 用相同工作目录和参数重跑失败步骤（`prepare` 已完成的一支自动复用），本次任务后续统一使用 CPU 且不再提醒。
+- **GPU 降级**：应用内多对话并发使用 GPU 时会排队等待共享 GPU 租约，等待期间可能较久无输出；此类排队或超时不属于脚本卡死或 `DeviceFailure`。仅首次真实捕获 `media.DeviceFailure` 时，告知用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」，改为 `device = 'cpu'` 用相同工作目录和参数重跑失败步骤（`prepare` 已完成的一支自动复用），本次任务后续统一使用 CPU 且不再提醒。
 - **并行双败**：`prepare` 两支同时失败抛出 `AggregateError`，仅当 `errors` 全为 `DeviceFailure` 时降级重跑。
 - **其他错误**：模型、输入、环境和资源关闭错误按原错误处理；CPU 失败时报告原因，不切回 GPU。
 
@@ -179,7 +179,6 @@ await uv.run(['add', ...media.PIP_DEPENDENCIES]);
 
 恢复与继承：
 
-- 回执 `parse_failed` 时资产已在工程中，按 `project-operation` 处理，不重复新增。
 - 译文提交失败或 `fp` 失效时保留资产与 `translations.json`，重读快照续做未写入行；原文已变的行重新判断对应关系，不按旧行号覆盖。
 - `translations.json` 丢失时从原稿和原文件重建证据，不覆盖已有译文；「更新文件」继承及用户修订的译文不批量覆盖，仅补齐缺失条目。
 

@@ -1,8 +1,8 @@
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import type { ProofreadingProjectWriteRunner } from "./proofreading-page-state-contract";
 import { useCallback, useState } from "react";
 
 import type { ItemManualStatus } from "@domain/item";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 
@@ -64,6 +64,7 @@ function read_item_ids(items: ProofreadingCommandItemSnapshot[]): number[] {
 export function useProofreadingBatchActions(
   options: UseProofreadingBatchActionsOptions,
 ): UseProofreadingBatchActionsResult {
+  const api_fetch = useProjectFetch();
   const {
     readonly,
     is_refreshing,

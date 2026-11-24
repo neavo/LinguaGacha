@@ -265,10 +265,11 @@ function create_desktop_runtime_snapshot_write_rule() {
 
         if (
           relative_path !== DESKTOP_STATE_PROVIDER_RELATIVE_PATH &&
-          relative_path !== TASK_SNAPSHOT_STORE_RELATIVE_PATH
+          relative_path !== TASK_SNAPSHOT_STORE_RELATIVE_PATH &&
+          relative_path !== "src/frontend/app/state/project-store-registry.ts"
         ) {
           const matches = find_pattern_errors(content, /\.applySnapshot\s*\(/g, () => {
-            return "TaskSnapshotStore.applySnapshot 只能由 DesktopStateProvider 同步后端 task 载荷";
+            return "工程快照只能由主窗口或工程 Store 同步后端载荷";
           });
           for (const match of matches) {
             errors.push({

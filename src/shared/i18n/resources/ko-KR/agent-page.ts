@@ -148,7 +148,6 @@ export const ko_kr_agent_page = {
     send: "전송",
     stop: "중지",
     applying: "프로젝트 변경 사항을 적용 중입니다. 완료될 때까지 중지할 수 없습니다",
-    new_task: "새 작업",
     add_file: "파일 추가",
     common_instructions: "자주 쓰는 명령",
     continue: "계속",
@@ -172,7 +171,6 @@ export const ko_kr_agent_page = {
   },
   confirm: {
     fork: "이 응답에서 분기하여 새 대화를 만드시겠습니까?",
-    new_task: "새 대화 작업을 시작할까요 …?",
     thinking_off: "모델의 생각 기능을 끄면 AGENT의 작업 수행 능력이 크게 저하됩니다. 계속할까요 …?",
   },
   status: { running: "처리 중", success: "완료", error: "실패", stopped: "중지됨" },
@@ -199,7 +197,6 @@ export const ko_kr_agent_page = {
     continue: "계속하지 못했습니다. 다시 시도해 주세요 …",
     queue_send: "메시지를 즉시 전송하지 못했습니다. 대기열에 보관되어 있습니다 …",
     stop: "중지하지 못했습니다. 다시 시도해 주세요 …",
-    reset: "새 작업을 만들지 못했습니다. 다시 시도해 주세요 …",
     approval_mode: "쓰기 승인 모드를 변경하지 못했습니다. 다시 시도해 주세요 …",
     compact: "컨텍스트를 압축하지 못했습니다. 다시 시도해 주세요 …",
   },

@@ -1,7 +1,7 @@
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import { create_agent_read_skill_tool } from "./tools/read-skill";
 import { agent_tool_call } from "../../test/agent-tool-fixture";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GlobalOperationGate, ProjectOperationGate } from "../runtime-operation-gate";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,8 +24,12 @@ function fixture() {
   const publish = vi.fn();
   const settings = new AppSettingService(paths, "ZH", { publish });
   const log = { warning: vi.fn() };
-  const gate = new RuntimeOperationGate();
-  const service = new AgentSkillsService(paths, settings, log, gate);
+  const global_gate = new GlobalOperationGate(
+    undefined,
+    () => gate.get_snapshot().activeChatCount === 0,
+  );
+  const gate = new ProjectOperationGate((owner) => global_gate.check_project(owner));
+  const service = new AgentSkillsService(paths, settings, log, global_gate);
   return {
     [Symbol.dispose]: () => root[Symbol.dispose](),
     paths,

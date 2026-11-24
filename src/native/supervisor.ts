@@ -22,7 +22,7 @@ type SupervisorEvent = SupervisedProcessResult & {
   message?: string;
 };
 
-/** 一次操作持有租约，准备程序、npm 与原生 fork 在租约内顺序执行。 */
+/** 一次操作监管自己的进程树，共享资源可额外使用系统锁。 */
 export class Supervisor {
   private readonly events: SupervisorEvent[] = []; // 同批到达的回执按各阶段分别消费。
   private changed: (() => void) | undefined; // 控制协议顺序执行，同一时刻只有一个等待点。
@@ -36,10 +36,10 @@ export class Supervisor {
   /** 控制管道和目标标准流分开，原生程序退出后才结算连接。 */
   private constructor(
     executable: string,
-    lock: string,
+    lock: string | undefined,
     private readonly lock_handle?: Awaited<ReturnType<typeof default_native_fs.open_file>>,
   ) {
-    this.child = spawn(executable, [lock], {
+    this.child = spawn(executable, lock === undefined ? [] : ["--lock", lock], {
       windowsHide: true,
       detached: process.platform === "win32",
       stdio: ["pipe", "pipe", "pipe", ...(lock_handle === undefined ? [] : [lock_handle.fd])],
@@ -89,13 +89,15 @@ export class Supervisor {
   /** POSIX 两端持有同一锁描述，单端退出不会提前释放租约。 */
   public static async acquire(
     runtime: string,
-    lock: string,
+    lock?: string,
     signal?: AbortSignal,
   ): Promise<Supervisor> {
     signal?.throwIfAborted();
-    default_native_fs.make_dir(path.dirname(lock));
+    if (lock !== undefined) default_native_fs.make_dir(path.dirname(lock));
     const handle =
-      process.platform === "win32" ? undefined : await default_native_fs.open_file(lock, "a+");
+      lock === undefined || process.platform === "win32"
+        ? undefined
+        : await default_native_fs.open_file(lock, "a+");
     const executable = path.join(
       runtime,
       "bin",
@@ -213,7 +215,7 @@ export class Supervisor {
     await this.completion;
     try {
       if (process.platform !== "win32" && this.group !== undefined) {
-        // 监管程序消失后，宿主持有的同一锁描述继续阻挡其他实例。
+        // 监管程序消失后由宿主接管进程组；带锁操作继续持锁直至回收。
         const group = this.group;
         try {
           process.kill(-group, "SIGKILL");

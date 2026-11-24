@@ -5,7 +5,6 @@ import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/des
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 
@@ -36,7 +35,8 @@ function build_laboratory_snapshot(settings: SettingsSnapshot): LaboratorySnapsh
 
 /** 组合设置编辑器与工程预过滤的运行锁和完成反馈。 */
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
-  const { project_snapshot } = useDesktopState();
+  const { open_projects } = useDesktopState();
+  const has_open_projects = open_projects.length > 0;
   const runtime_snapshot = useRuntimeSnapshot();
 
   const { t } = useI18n();
@@ -44,7 +44,9 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     select_snapshot: build_laboratory_snapshot,
     pending_fields: LABORATORY_PENDING_FIELDS,
   });
-  const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
+  const runtime_locked = Object.values(runtime_snapshot.projects ?? {}).some(
+    (project) => project.activeChatCount > 0 || project.batchTranslation || project.projectWrite,
+  );
 
   // 工程字段受运行锁约束，应用偏好可供后续调用立即读取。
   const update_setting = useCallback(
@@ -53,7 +55,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       if ((affects_project && runtime_locked) || snapshot[field] === next_checked) return;
       const save = async (): Promise<void> => {
         const settings = await commit_update(field, { [field]: next_checked });
-        if (settings !== null && affects_project && project_snapshot.loaded) {
+        if (settings !== null && affects_project && has_open_projects) {
           push_toast(
             "info",
             format_project_settings_aligned_toast({
@@ -64,7 +66,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
           );
         }
       };
-      if (affects_project && project_snapshot.loaded) {
+      if (affects_project && has_open_projects) {
         await run_modal_progress_toast({
           message: t("app.feedback.operation_running"),
           task: save,
@@ -73,7 +75,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         await save();
       }
     },
-    [commit_update, project_snapshot.loaded, runtime_locked, snapshot, t],
+    [commit_update, has_open_projects, runtime_locked, snapshot, t],
   );
 
   return {

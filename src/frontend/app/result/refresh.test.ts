@@ -13,6 +13,7 @@ describe("project section result refresh", () => {
       accepted: true,
       changes: [
         {
+          projectId: "fixture",
           eventId: "event-1",
           source: "test",
           projectPath: "E:/demo/sample.lg",

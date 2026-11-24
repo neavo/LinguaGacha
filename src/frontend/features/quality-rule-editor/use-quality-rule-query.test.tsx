@@ -13,7 +13,10 @@ vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async 
     >();
   return {
     ...actual,
-    read_quality_rule_snapshot: read_quality_rule_snapshot_mock,
+    createQualityRuleApi: (request: Parameters<typeof actual.createQualityRuleApi>[0]) => ({
+      ...actual.createQualityRuleApi(request),
+      read_quality_rule_snapshot: read_quality_rule_snapshot_mock,
+    }),
   };
 });
 

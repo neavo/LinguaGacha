@@ -1,5 +1,4 @@
 export const en_us_knowledge_page = {
-  title: "Knowledge",
   builtin: "Built-in skills",
   user: "User skills",
   knowledge: "Project knowledge",
@@ -8,7 +7,6 @@ export const en_us_knowledge_page = {
   },
   readonly: "Read-only",
   personality_description: "Personality settings for your intelligent assistant",
-  knowledge_description: "Settings, conventions and progress saved with the project",
   install: {
     title: "Installation guide",
     description: "Send the skill link to AGENT and ask it to install the skill",

@@ -36,7 +36,7 @@ import {
 
 type ProofreadingCacheKey = {
   projectPath: string;
-  sessionEpoch: number;
+  projectId: string;
   revisions: {
     items: number;
     quality: number;
@@ -267,7 +267,7 @@ export class ProofreadingCache {
    * 同一身份复用进行中的 `Promise`。新身份经 worker 和列表读取器重建。
    */
   private async ensure_synced(identity: ProofreadingCacheIdentity): Promise<ProofreadingSyncState> {
-    const session_key = JSON.stringify([identity.key.projectPath, identity.key.sessionEpoch]);
+    const session_key = JSON.stringify([identity.key.projectPath, identity.key.projectId]);
     if (this.session_key !== session_key) {
       this.clearProject();
       this.session_key = session_key;
@@ -296,7 +296,7 @@ export class ProofreadingCache {
         if (
           this.sync_promises.get(identity.keyString) !== promise ||
           current.projectPath !== identity.key.projectPath ||
-          current.epoch !== identity.key.sessionEpoch ||
+          current.projectId !== identity.key.projectId ||
           this.build_identity().keyString !== identity.keyString
         ) {
           throw new AppErrors.AppError("request.validation_failed", {
@@ -353,7 +353,7 @@ export class ProofreadingCache {
     };
     const key: ProofreadingCacheKey = {
       projectPath: snapshot.projectPath,
-      sessionEpoch: snapshot.epoch,
+      projectId: snapshot.projectId,
       revisions,
       processingConfig,
     };
@@ -398,9 +398,7 @@ export class ProofreadingCache {
     data: TData,
     revisions: ProofreadingSyncState["revisions"],
   ): ProofreadingCacheResult<TData> {
-    if (
-      this.session_key !== JSON.stringify([identity.key.projectPath, identity.key.sessionEpoch])
-    ) {
+    if (this.session_key !== JSON.stringify([identity.key.projectPath, identity.key.projectId])) {
       throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "stale_proofreading_sync" },
       });

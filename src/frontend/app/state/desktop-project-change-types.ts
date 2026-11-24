@@ -13,7 +13,7 @@ export type ProjectChangeEventForState = Omit<ProjectChangeEvent, "type">;
 /** 页面消费通知身份、变化范围和事务确定的统计失效范围。 */
 export type ProjectChangeApplyResult = Omit<
   ProjectChangeEventForState,
-  "projectPath" | "eventId"
+  "projectPath" | "projectId" | "eventId"
 > & {
   applied: boolean;
   eventId?: string;

@@ -149,7 +149,6 @@ export const de_de_agent_page = {
     send: "Senden",
     stop: "Stoppen",
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
-    new_task: "Neue Aufgabe",
     add_file: "Dateien",
     common_instructions: "Befehle",
     continue: "Fortsetzen",
@@ -173,7 +172,6 @@ export const de_de_agent_page = {
   },
   confirm: {
     fork: "Von dieser Antwort abzweigen und eine neue Unterhaltung erstellen?",
-    new_task: "Wirklich eine neue Unterhaltung starten …?",
     thinking_off:
       "Die Intelligenz von AGENT-Aufgaben nimmt deutlich ab, wenn das Modell-Denken deaktiviert ist. Wirklich fortfahren …?",
   },
@@ -209,7 +207,6 @@ export const de_de_agent_page = {
     continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen …",
     queue_send: "Die Nachricht konnte nicht sofort gesendet werden. Sie bleibt vorgemerkt …",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen …",
-    reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen …",
     approval_mode:
       "Der Genehmigungsmodus für Schreibanfragen konnte nicht aktualisiert werden. Bitte erneut versuchen …",
     compact: "Der Kontext konnte nicht komprimiert werden. Bitte erneut versuchen …",

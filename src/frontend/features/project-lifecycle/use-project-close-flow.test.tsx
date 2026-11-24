@@ -5,11 +5,11 @@ import { useProjectCloseFlow } from "./use-project-close-flow";
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   error: vi.fn(),
-  runtime: { owner: null as null | "agent" },
+  runtime: { projects: { project: { activeChatCount: 0 } } },
+  prepare: vi.fn(async () => true),
   state: {
-    project_snapshot: { loaded: true },
-    refresh_project_snapshot: vi.fn(),
-    refresh_batch_translation: vi.fn(),
+    project_snapshot: { loaded: true, projectId: "project" },
+    refresh_projects: vi.fn(),
   },
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: mocks.api }));
@@ -21,6 +21,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => mocks.state,
   useRuntimeSnapshot: () => mocks.runtime,
 }));
+vi.mock("@frontend/app/navigation/page-leave-context", () => ({
+  usePageLeave: () => ({ prepare_page_leave: mocks.prepare }),
+}));
 let flow: ReturnType<typeof useProjectCloseFlow>;
 let root: Root;
 /** 公开确认状态承接关闭交互。 */
@@ -31,7 +34,7 @@ function Probe() {
 beforeEach(async () => {
   vi.clearAllMocks();
   mocks.api.mockReset().mockResolvedValue({});
-  mocks.runtime.owner = null;
+  mocks.runtime.projects.project.activeChatCount = 0;
   root = createRoot(document.createElement("div"));
   await act(async () => root.render(<Probe />));
 });
@@ -40,7 +43,7 @@ afterEach(async () => {
 });
 it("确认期间出现运行占用时禁止关闭", async () => {
   act(() => flow.request_close());
-  mocks.runtime.owner = "agent";
+  mocks.runtime.projects.project.activeChatCount = 1;
   await act(async () => root.render(<Probe />));
   expect(flow.can_close).toBe(false);
   await act(async () => flow.dialog_props.onConfirm());
@@ -54,7 +57,10 @@ it("关闭失败保留确认，重试成功后刷新并关闭", async () => {
   expect(mocks.error).toHaveBeenCalledWith("project.close.failed", error);
   expect(flow.dialog_props.open).toBe(true);
   await act(async () => flow.dialog_props.onConfirm());
-  expect(mocks.state.refresh_project_snapshot).toHaveBeenCalledOnce();
-  expect(mocks.state.refresh_batch_translation).toHaveBeenCalledOnce();
+  expect(mocks.prepare).toHaveBeenLastCalledWith({ kind: "project", projectId: "project" });
+  expect(mocks.api).toHaveBeenLastCalledWith("/api/session/project/close", {
+    projectId: "project",
+  });
+  expect(mocks.state.refresh_projects).toHaveBeenCalledOnce();
   expect(flow.dialog_props.open).toBe(false);
 });

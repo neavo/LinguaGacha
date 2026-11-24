@@ -1,781 +1,340 @@
-import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
-import { read_batch_task_snapshot } from "@shared/batch-task";
-import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
+import {
+  type JSX,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
+import { subscribe_desktop_events } from "@frontend/app/desktop/desktop-events";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { create_text_resolver } from "@shared/i18n";
-import { resolve_app_locale, resolve_system_app_language } from "@domain/app-language";
-import { type JSX, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import type {
-  ProjectChangeApplyResult,
-  ProjectChangeEventForState,
-  ProjectStage,
-} from "@frontend/app/state/desktop-project-change-types";
-import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
-import type { BatchTranslationSnapshot } from "@domain/batch-translation";
-import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import {
-  createRuntimeActivityStore,
-  normalize_runtime_activity_snapshot,
-  type RuntimeActivityPayload,
-} from "@frontend/app/state/runtime-activity-store";
-import type { DesktopRefreshScheduler } from "@frontend/app/state/desktop-refresh-scheduler";
-import { useDesktopRecovery } from "@frontend/app/state/desktop-recovery";
-import { useDesktopEventStream } from "@frontend/app/state/desktop-event-stream";
-import {
-  useProjectWriteCommitter,
-  type ProjectWriteResult,
-} from "@frontend/app/state/desktop-project-write";
-import { useProjectEventPipeline } from "@frontend/app/state/project-event-pipeline";
-import { normalize_project_change_event } from "@frontend/app/state/desktop-project-change-normalizer";
-import { normalize_setting_snapshot } from "@domain/setting";
-import { read_project_language_settings } from "@domain/project-settings";
+  resolve_app_locale,
+  resolve_system_app_language,
+  type AppLanguage,
+} from "@domain/app-language";
 import { is_json_record } from "@domain/json";
-import type { AppLanguage } from "@domain/app-language";
-import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
-import { AppError } from "@shared/error";
-import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
-import { createProjectChangeSignalStore } from "@frontend/app/state/project-change-signal-store";
+import { normalize_setting_snapshot } from "@domain/setting";
+import type { BatchTranslationSnapshot } from "@domain/batch-translation";
+import { MODEL_AUTH_CHANGED_EVENT_TOPIC, type ChatGPTAuthSnapshot } from "@shared/model-auth";
+import { MODEL_CATALOG_UPDATED_EVENT_TOPIC } from "@shared/model-catalog";
+import { PROJECT_DATA_SECTIONS, PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project-event";
+import { RUNTIME_ACTIVITY_EVENT_TOPIC } from "@shared/runtime-activity";
+import { apply_model_catalog_revision } from "./model-catalog-store";
+import { apply_model_auth_snapshot } from "./model-auth-store";
+import { normalize_project_change_event } from "./desktop-project-change-normalizer";
+import { normalize_section_revisions } from "./desktop-event-payload";
+import { useDesktopRecovery } from "./desktop-recovery";
+import { useProjectWriteCommitter, type ProjectWriteResult } from "./desktop-project-write";
+import { createRuntimeActivityStore } from "./runtime-activity-store";
+import { ProjectStore, ProjectStoreRegistry } from "./project-store-registry";
 import {
-  type SettingsSnapshot,
+  DesktopStateContext,
+  DesktopStateStoresContext,
   type ProjectSnapshot,
   type SettingsSnapshotPayload,
-  DesktopStateContext,
-  type DesktopStateStores,
-  DesktopStateStoresContext,
-} from "@frontend/app/state/desktop-state-context";
-import type { ProjectSessionStatus, DesktopStateContextValue } from "./desktop-state-context";
+} from "./desktop-state-context";
 
-const APPLIED_PROJECT_EVENT_ID_LIMIT = 256; // 去重窗口只覆盖近期 HTTP/SSE 同源事件，避免长期保存事件历史
+const EMPTY_PROJECT: ProjectSnapshot = { path: "", loaded: false, file_count: 0, languages: null };
 
-type ProjectStateIdentity = {
-  path: string; // 后端会话确认的当前项目路径，独立于可能滞后的页面 query
-  epoch: number; // 每次项目切换或完整 session 初始化递增，用于丢弃迟到补读和旧快照
-  phase: ProjectSessionStatus; // 只表示当前项目 query 刷新阶段，不等同于页面局部状态
-};
-
-// EMPTY PROJECT STATE IDENTITY 是默认快照事实，调用方只读取副本不临时拼装。
-const EMPTY_PROJECT_STATE_IDENTITY: ProjectStateIdentity = {
-  path: "",
-  epoch: 0,
-  phase: "idle",
-};
-
-type ProjectSnapshotPayload = {
-  project?: Partial<ProjectSnapshot>;
-};
-
-type TaskSnapshotPayload = {
-  batch_translation?: Partial<BatchTranslationSnapshot>;
-};
-
-type ProjectManifestPayload = {
-  projectPath?: unknown;
-  project?: Partial<ProjectSnapshot>;
-  projectRevision?: unknown;
-  sectionRevisions?: unknown;
-};
-
-// DEFAULT PROJECT SNAPSHOT 是默认快照事实，调用方只读取副本不临时拼装。
-const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
-  path: "",
-  loaded: false,
-  file_count: 0,
-  languages: null,
-};
-
-/** 将后端项目载荷收口为主窗口项目快照。 */
-function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
-  const snapshot = payload.project ?? {};
-  const loaded = Boolean(snapshot.loaded);
-  return {
-    path: String(snapshot.path ?? ""),
-    loaded,
-    file_count:
-      loaded && Number.isInteger(snapshot.file_count) ? Math.max(0, snapshot.file_count!) : 0,
-    languages:
-      loaded && is_json_record(snapshot.languages)
-        ? read_project_language_settings(snapshot.languages)
-        : null,
-  };
-}
-
-/** 工程设置和文件集合共同决定公开工程快照。 */
-function has_project_snapshot_change(
-  events: readonly Pick<ProjectChangeEventForState, "updatedSections">[],
-): boolean {
-  return events.some((event) =>
-    event.updatedSections.some((section) => section === "project" || section === "files"),
-  );
-}
-
-/** 汇总写入回流涉及的 section，用于页面刷新信号。 */
-function collect_project_apply_result_sections(
-  results: readonly ProjectChangeApplyResult[],
-): ProjectStage[] {
-  return [...new Set(results.flatMap((result) => result.updatedSections))];
-}
-
-/** 为合并写入选择统一刷新原因。 */
-function resolve_project_apply_result_reason(results: readonly ProjectChangeApplyResult[]): string {
-  const reasons = [...new Set(results.map((result) => result.source || "project_change"))];
-  return reasons.length === 1 ? (reasons[0] ?? "project_change") : "project_change_batch";
-}
-
-/** 页面沿用已校验的轻量通知，避免重新解释条目变化。 */
-function create_project_change_apply_result(
-  event: ProjectChangeEventForState,
-): ProjectChangeApplyResult {
-  return {
-    applied: true,
-    eventId: event.eventId,
-    source: event.source,
-    projectRevision: event.projectRevision,
-    updatedSections: [...event.updatedSections],
-    sectionRevisions: { ...event.sectionRevisions },
-    qualityStatisticsScope: event.qualityStatisticsScope,
-    ...(event.items === undefined ? {} : { items: event.items }),
-  };
-}
-
-/** 拥有主窗口初始化、权威快照同步和项目写入回流。 */
-export function DesktopStateProvider(props: { children: ReactNode }): JSX.Element {
-  const [initial_state_status, set_initial_state_status] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
-  const initial_request_ref = useRef(0); // 重试或卸载后，仅当前初始化请求可以应用快照。
-  const [settings_snapshot, write_settings_snapshot] = useState<SettingsSnapshot>(() =>
+/** 全局状态和工程注册表共用一次连接，工程事件永远发给原工程。 */
+export function DesktopStateProvider({ children }: { children: ReactNode }): JSX.Element {
+  const [registry] = useState(() => new ProjectStoreRegistry());
+  const [empty] = useState(() => new ProjectStore({ ...EMPTY_PROJECT, projectId: "", name: "" }));
+  const [runtime] = useState(createRuntimeActivityStore);
+  const [status, set_status] = useState<"loading" | "ready" | "error">("loading");
+  const [settings, set_settings] = useState(() =>
     normalize_setting_snapshot({
       app_language: resolve_system_app_language(window.navigator.languages),
     }),
   );
-  const [project_snapshot, write_project_snapshot] =
-    useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
-  const batch_task_store = useRef(createBatchTaskSnapshotStore()).current;
-  const task_snapshot_store_ref = useRef(createBatchTranslationSnapshotStore());
-  const sync_task_snapshot = useCallback((snapshot: BatchTranslationSnapshot): void => {
-    task_snapshot_store_ref.current.applySnapshot(snapshot);
-  }, []);
-  const runtime_snapshot_store_ref = useRef(createRuntimeActivityStore()); // Provider 生命周期内唯一镜像
-  const sync_runtime_snapshot = useCallback((snapshot: RuntimeActivitySnapshot): void => {
-    runtime_snapshot_store_ref.current.applySnapshot(snapshot);
-  }, []);
-  const project_change_store_ref = useRef(createProjectChangeSignalStore());
-  const state_stores_ref = useRef<DesktopStateStores>({
-    batch_translation: task_snapshot_store_ref.current,
-    batch_task: batch_task_store,
-    runtime: runtime_snapshot_store_ref.current,
-    projectChange: project_change_store_ref.current,
-  });
-  const [project_session_status, set_project_session_status] =
-    useState<ProjectSessionStatus>("idle");
-  const [is_app_language_updating, set_is_app_language_updating] = useState(false);
-  const refresh_scheduler_ref = useRef<DesktopRefreshScheduler | null>(null); // 本地操作和项目刷新通过 ref 先冲刷 SSE pending 队列
-  const applied_project_event_ids_ref = useRef<Set<string>>(new Set());
-  const applied_project_event_id_order_ref = useRef<string[]>([]);
-  const project_state_identity_ref = useRef<ProjectStateIdentity>({
-    ...EMPTY_PROJECT_STATE_IDENTITY,
-  });
-  const pending_session_project_changes_ref = useRef<ProjectChangeEventForState[]>([]); // 当前项目 query 首刷完成前暂存事件，避免 session 初始化窗口漏同步
-  const project_snapshot_request_ref = useRef(0); // 同一工程的并发补读只应用最新请求。
+  const [active_id, set_active_id] = useState<string>();
+  const [, set_version] = useState(0);
+  const [language_updating, set_language_updating] = useState(false);
+  const initial_request = useRef(0);
+  const projects_request = useRef(0);
+  const notify = useCallback(() => set_version((version) => version + 1), []);
+  const store = active_id === undefined ? undefined : registry.get(active_id);
+  const project_snapshot = store?.snapshot ?? EMPTY_PROJECT;
 
-  const settings_language = useRef(settings_snapshot.app_language); // LocaleProvider 位于内层，初始化失败从这里读取最新语言。
-  settings_language.current = settings_snapshot.app_language;
+  const apply_settings_snapshot = useCallback((payload: SettingsSnapshotPayload) => {
+    const next = normalize_setting_snapshot(payload.settings);
+    set_settings(next);
+    return next;
+  }, []);
 
-  const apply_settings_snapshot = useCallback(
-    (payload: SettingsSnapshotPayload): SettingsSnapshot => {
-      const next_snapshot = normalize_setting_snapshot(payload.settings);
-      write_settings_snapshot(next_snapshot);
-      return next_snapshot;
+  const refresh_settings = useCallback(
+    async () =>
+      apply_settings_snapshot(await api_fetch<SettingsSnapshotPayload>("/api/settings/app", {})),
+    [apply_settings_snapshot],
+  );
+
+  const refresh_runtime = useCallback(async () => {
+    const payload = await api_fetch<{ runtime?: unknown }>("/api/runtime/snapshot", {});
+    runtime.applySnapshot(payload.runtime);
+    return runtime.getSnapshot();
+  }, [runtime]);
+
+  const refresh_tasks = useCallback(
+    async (project: ProjectStore): Promise<BatchTranslationSnapshot> => {
+      const payload = await api_fetch<Record<string, unknown>>("/api/batch-task/snapshot", {
+        projectId: project.snapshot.projectId,
+      });
+      project.update_task(payload);
+      return project.batch_translation.getSnapshot();
     },
     [],
   );
 
-  const refresh_settings = useCallback(async (): Promise<SettingsSnapshot> => {
-    const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/app", {});
-    return apply_settings_snapshot(payload);
-  }, [apply_settings_snapshot]);
-
-  const flush_refresh_scheduler = useCallback((): void => {
-    refresh_scheduler_ref.current?.flush();
-  }, []);
-
-  const has_applied_project_event = useCallback((event_id: string | undefined): boolean => {
-    return (
-      event_id !== undefined &&
-      event_id !== "" &&
-      applied_project_event_ids_ref.current.has(event_id)
+  const refresh_projects = useCallback(async () => {
+    const token = ++projects_request.current;
+    const payload = await api_get<unknown>("/api/session/projects");
+    if (token !== projects_request.current) return registry.values();
+    registry.replace(payload);
+    const projects = registry.values();
+    set_active_id((current) =>
+      current && registry.get(current) ? current : projects[0]?.snapshot.projectId,
     );
-  }, []);
+    notify();
+    await Promise.all(projects.map(refresh_tasks));
+    return projects;
+  }, [registry, notify, refresh_tasks]);
 
-  const mark_project_event_applied = useCallback((event_id: string | undefined): void => {
-    if (event_id === undefined || event_id === "") {
-      return;
-    }
-    const applied_event_ids = applied_project_event_ids_ref.current;
-    if (applied_event_ids.has(event_id)) {
-      return;
-    }
-    applied_event_ids.add(event_id);
-    const event_id_order = applied_project_event_id_order_ref.current;
-    event_id_order.push(event_id);
-    while (event_id_order.length > APPLIED_PROJECT_EVENT_ID_LIMIT) {
-      const expired_event_id = event_id_order.shift();
-      if (expired_event_id !== undefined) {
-        applied_event_ids.delete(expired_event_id);
-      }
-    }
-  }, []);
-
-  const clear_applied_project_events = useCallback((): void => {
-    applied_project_event_ids_ref.current.clear();
-    applied_project_event_id_order_ref.current = [];
-  }, []);
-
-  const read_project_state_identity = useCallback((): ProjectStateIdentity => {
-    return project_state_identity_ref.current;
-  }, []);
-
-  const is_current_project_state_identity = useCallback(
-    (identity: Pick<ProjectStateIdentity, "path" | "epoch">): boolean => {
-      const current_identity = read_project_state_identity();
-      return (
-        identity.path !== "" &&
-        current_identity.path === identity.path &&
-        current_identity.epoch === identity.epoch
-      );
+  const select_project = useCallback(
+    (projectId: string) => {
+      if (registry.get(projectId)) set_active_id(projectId);
     },
-    [read_project_state_identity],
+    [registry],
   );
 
-  const is_current_project_session_warming = useCallback(
-    (identity: Pick<ProjectStateIdentity, "path" | "epoch">): boolean => {
-      const current_identity = read_project_state_identity();
-      return is_current_project_state_identity(identity) && current_identity.phase === "warming";
+  const apply_chat_list = useCallback(
+    (projectId: string, payload: unknown) => {
+      const project = registry.get(projectId);
+      if (!project) return;
+      project.update_chats(payload);
+      notify();
     },
-    [is_current_project_state_identity, read_project_state_identity],
+    [registry, notify],
   );
 
-  const clear_project_state_identity = useCallback((): void => {
-    project_state_identity_ref.current = {
-      path: "",
-      epoch: project_state_identity_ref.current.epoch + 1,
-      phase: "idle",
-    };
-    pending_session_project_changes_ref.current = [];
-    clear_applied_project_events();
-  }, [clear_applied_project_events]);
-
-  const begin_project_state_session = useCallback(
-    (project_path: string): ProjectStateIdentity => {
-      const current_identity = project_state_identity_ref.current;
-      if (current_identity.path === project_path && current_identity.phase === "warming") {
-        return current_identity;
+  const refresh_snapshot = useCallback(
+    async (project: ProjectStore) => {
+      const { projectId } = project.snapshot;
+      const payload = await api_fetch("/api/session/project/snapshot", { projectId });
+      if (registry.get(projectId) === project) {
+        registry.update(payload);
+        notify();
       }
-
-      const next_identity: ProjectStateIdentity = {
-        path: project_path,
-        epoch: current_identity.epoch + 1,
-        phase: "warming",
-      };
-      project_state_identity_ref.current = next_identity;
-      pending_session_project_changes_ref.current = [];
-      if (current_identity.path !== project_path) {
-        clear_applied_project_events();
-      }
-      return next_identity;
+      return project.snapshot;
     },
-    [clear_applied_project_events],
+    [registry, notify],
   );
 
-  const complete_project_state_session = useCallback(
-    (identity: ProjectStateIdentity): ProjectChangeEventForState[] => {
-      if (!is_current_project_state_identity(identity)) {
-        return [];
-      }
-
-      project_state_identity_ref.current = {
-        ...identity,
-        phase: "ready",
-      };
-      const queued_changes = pending_session_project_changes_ref.current;
-      pending_session_project_changes_ref.current = [];
-      return queued_changes;
-    },
-    [is_current_project_state_identity],
+  const refresh_project_snapshot = useCallback(
+    async () => (store ? refresh_snapshot(store) : EMPTY_PROJECT),
+    [store, refresh_snapshot],
+  );
+  const refresh_batch_translation = useCallback(
+    async () => (store ? refresh_tasks(store) : empty.batch_translation.getSnapshot()),
+    [store, empty, refresh_tasks],
   );
 
-  const queue_project_state_change_during_session_warming = useCallback(
-    (change_event: ProjectChangeEventForState): boolean => {
-      if (has_applied_project_event(change_event.eventId)) {
-        return true;
-      }
-
-      const current_identity = read_project_state_identity();
-      if (
-        current_identity.phase !== "warming" ||
-        current_identity.path === "" ||
-        change_event.projectPath !== current_identity.path
-      ) {
-        return false;
-      }
-
-      pending_session_project_changes_ref.current.push(change_event);
-      return true;
-    },
-    [has_applied_project_event, read_project_state_identity],
-  );
-
-  const sync_project_snapshot = useCallback(
-    (snapshot: ProjectSnapshot): void => {
-      write_project_snapshot(snapshot);
-      const project_path = snapshot.loaded ? snapshot.path.trim() : "";
-      if (project_path === "") {
-        clear_project_state_identity();
-        return;
-      }
-
-      const current_identity = project_state_identity_ref.current;
-      if (current_identity.path !== project_path || current_identity.phase === "idle") {
-        begin_project_state_session(project_path);
-      }
-    },
-    [begin_project_state_session, clear_project_state_identity],
-  );
-
-  // HTTP 回流和 SSE 都可补读，按请求顺序与会话身份隔离迟到响应。
-  const refresh_project_snapshot = useCallback(async (): Promise<ProjectSnapshot> => {
-    const request_id = ++project_snapshot_request_ref.current;
-    const identity = read_project_state_identity();
-    const payload = await api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {});
-    const next_snapshot = normalize_project_snapshot(payload);
-    const current = read_project_state_identity();
-    if (
-      request_id === project_snapshot_request_ref.current &&
-      current.path === identity.path &&
-      current.epoch === identity.epoch
-    ) {
-      sync_project_snapshot(next_snapshot);
-    }
-    return next_snapshot;
-  }, [read_project_state_identity, sync_project_snapshot]);
-
-  // 主动刷新与初始化共用批量翻译快照，并由 Store 裁决 revision
-  const refresh_batch_translation = useCallback(async (): Promise<BatchTranslationSnapshot> => {
-    const payload = await api_fetch<TaskSnapshotPayload>("/api/batch-task/snapshot", {});
-    batch_task_store.applySnapshot(read_batch_task_snapshot(payload));
-    const next_snapshot = normalize_batch_translation_snapshot(payload);
-    sync_task_snapshot(next_snapshot);
-    return next_snapshot;
-  }, [sync_task_snapshot, batch_task_store]);
-
-  /** SSE 解析失败时从同一公开快照入口恢复，不借 task 状态推导 owner。 */
-  const refresh_runtime = useCallback(async (): Promise<RuntimeActivitySnapshot> => {
-    const payload = await api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {});
-    const next_snapshot = normalize_runtime_activity_snapshot(payload);
-    sync_runtime_snapshot(next_snapshot);
-    return next_snapshot;
-  }, [sync_runtime_snapshot]);
-
-  const update_app_language = useCallback(
-    async (language: AppLanguage): Promise<SettingsSnapshot> => {
-      if (is_app_language_updating || settings_snapshot.app_language === language) {
-        return settings_snapshot;
-      }
-
-      set_is_app_language_updating(true);
-      try {
-        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
-          app_language: language,
-        });
-        return apply_settings_snapshot(payload);
-      } finally {
-        set_is_app_language_updating(false);
-      }
-    },
-    [apply_settings_snapshot, is_app_language_updating, settings_snapshot],
-  );
-
-  // 页面只消费轻量项目变更信号，具体事实由各页面后端 query 读取。
-  const publish_project_change_results = useCallback(
-    (results: readonly ProjectChangeApplyResult[]): void => {
-      const applied_results = results.filter((result) => result.applied);
-      if (applied_results.length === 0) {
-        return;
-      }
-
-      const previous_signal = project_change_store_ref.current.getSnapshot();
-      project_change_store_ref.current.applySnapshot({
-        seq: previous_signal.seq + 1,
-        reason: resolve_project_apply_result_reason(applied_results),
-        updated_sections: collect_project_apply_result_sections(applied_results),
-        results: applied_results.map((result) => ({
-          ...result,
-          updatedSections: [...result.updatedSections],
-          sectionRevisions: { ...result.sectionRevisions },
-          ...(result.items === undefined
-            ? {}
-            : {
-                items:
-                  result.items.mode === "full"
-                    ? { mode: "full" as const }
-                    : {
-                        mode: "delta" as const,
-                        changedIds: [...result.items.changedIds],
-                      },
-              }),
-        })),
+  const refresh_manifest = useCallback(
+    async (project: ProjectStore) => {
+      const { projectId } = project.snapshot;
+      const payload = await api_fetch<Record<string, unknown>>("/api/session/project/manifest", {
+        projectId,
       });
-    },
-    [],
-  );
-
-  const apply_project_state_change = useCallback(
-    (change_event: ProjectChangeEventForState): void => {
-      const apply_result = create_project_change_apply_result(change_event);
-      mark_project_event_applied(change_event.eventId);
-      publish_project_change_results([apply_result]);
-    },
-    [mark_project_event_applied, publish_project_change_results],
-  );
-
-  const apply_project_state_change_batch = useCallback(
-    (change_events: readonly ProjectChangeEventForState[]): void => {
-      if (change_events.length === 0) {
-        return;
-      }
-
-      const apply_results = change_events.map(create_project_change_apply_result);
-      for (const change_event of change_events) {
-        mark_project_event_applied(change_event.eventId);
-      }
-      publish_project_change_results(apply_results);
-    },
-    [mark_project_event_applied, publish_project_change_results],
-  );
-
-  const should_apply_project_state_change = useCallback(
-    (change_event: ProjectChangeEventForState): boolean => {
-      if (has_applied_project_event(change_event.eventId)) {
-        return false;
-      }
-
-      const current_identity = read_project_state_identity();
-      if (
-        current_identity.phase !== "ready" ||
-        current_identity.path === "" ||
-        change_event.projectPath !== current_identity.path
-      ) {
-        return false;
-      }
-
-      return true;
-    },
-    [has_applied_project_event, read_project_state_identity],
-  );
-
-  // 返回事件是否在本次调用中应用；排队或去重的事件由其它入口负责后续刷新。
-  const apply_project_change_event_immediately = useCallback(
-    async (change_event: ProjectChangeEventForState): Promise<boolean> => {
-      if (queue_project_state_change_during_session_warming(change_event)) {
-        return false;
-      }
-      if (!should_apply_project_state_change(change_event)) {
-        return false;
-      }
-
-      flush_refresh_scheduler();
-      if (!should_apply_project_state_change(change_event)) return false;
-      apply_project_state_change(change_event);
-      return true;
-    },
-    [
-      apply_project_state_change,
-      flush_refresh_scheduler,
-      queue_project_state_change_during_session_warming,
-      should_apply_project_state_change,
-    ],
-  );
-
-  const refresh_project_state = useCallback(async (): Promise<void> => {
-    flush_refresh_scheduler();
-
-    if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
-      clear_project_state_identity();
-      set_project_session_status("idle");
-      return;
-    }
-
-    const chat_identity = begin_project_state_session(project_snapshot.path.trim());
-    set_project_session_status("warming");
-    const manifest = await api_fetch<ProjectManifestPayload>("/api/session/project/manifest", {});
-    if (!is_current_project_session_warming(chat_identity)) {
-      return;
-    }
-
-    const next_project_snapshot = normalize_project_snapshot(manifest);
-    const manifest_project_path = String(manifest.projectPath ?? "").trim();
-    if (!next_project_snapshot.loaded || manifest_project_path === "") {
-      sync_project_snapshot(next_project_snapshot);
-      set_project_session_status("idle");
-      return;
-    }
-    if (
-      manifest_project_path !== next_project_snapshot.path ||
-      manifest_project_path !== chat_identity.path
-    ) {
-      throw new AppError("runtime.internal_invariant", {
-        diagnostic_context: {
-          reason: "project_state_manifest_identity_mismatch",
-          manifest_project_path,
-          snapshot_project_path: next_project_snapshot.path,
-          current_project_path: chat_identity.path,
-        },
-      });
-    }
-    const queued_project_changes = complete_project_state_session(chat_identity);
-    sync_project_snapshot(next_project_snapshot);
-    publish_project_change_results([
-      {
+      if (registry.get(projectId) !== project) return;
+      registry.update(payload);
+      project.publish_change({
         applied: true,
-        source: "project_loaded",
-        qualityStatisticsScope: "all",
-        projectRevision: Number(manifest.projectRevision ?? 0),
+        source: "refresh_project_state",
+        projectRevision: typeof payload.projectRevision === "number" ? payload.projectRevision : 0,
+        sectionRevisions: normalize_section_revisions(payload.sectionRevisions) ?? {},
         updatedSections: [...PROJECT_DATA_SECTIONS],
-        sectionRevisions:
-          typeof manifest.sectionRevisions === "object" &&
-          manifest.sectionRevisions !== null &&
-          !Array.isArray(manifest.sectionRevisions)
-            ? (manifest.sectionRevisions as ProjectChangeApplyResult["sectionRevisions"])
-            : {},
-      },
-    ]);
-    for (const queued_change of queued_project_changes) {
-      const applied = await apply_project_change_event_immediately(queued_change);
-      if (applied && has_project_snapshot_change([queued_change])) await refresh_project_snapshot();
-    }
-    set_project_session_status("ready");
-  }, [
-    apply_project_change_event_immediately,
-    begin_project_state_session,
-    clear_project_state_identity,
-    complete_project_state_session,
-    flush_refresh_scheduler,
-    is_current_project_session_warming,
-    project_snapshot.loaded,
-    project_snapshot.path,
-    publish_project_change_results,
-    refresh_project_snapshot,
-    set_project_session_status,
-    sync_project_snapshot,
-  ]);
-
-  const { report_state_error, refresh_task_after_state_error, refresh_project_state_after_error } =
-    useDesktopRecovery({
-      project_loaded: project_snapshot.loaded,
-      project_path: project_snapshot.path,
-      refresh_project_state,
-      refresh_batch_translation,
-    });
-
-  // HTTP 写入结果与 SSE 共用同一项目事件入口，保持事件顺序和去重语义一致。
-  // 写入方等待项目快照补读完成，失败交给写入恢复流程。
-  const apply_project_write_changes = useCallback(
-    async (result: ProjectWriteResult): Promise<void> => {
-      for (const change_event of result.changes) {
-        await apply_project_change_event_immediately(change_event);
-        if (
-          has_project_snapshot_change([change_event]) &&
-          change_event.projectPath === read_project_state_identity().path
-        ) {
-          // 事件可以去重，写入方仍须确认已提交快照后再撤下草稿。
-          await refresh_project_snapshot();
-        }
-      }
-    },
-    [apply_project_change_event_immediately, read_project_state_identity, refresh_project_snapshot],
-  );
-
-  // SSE 批量事件由调度器同步应用，项目快照补读在后台完成并报告失败。
-  const apply_project_change_batch_with_snapshot = useCallback(
-    (change_events: readonly ProjectChangeEventForState[]): void => {
-      apply_project_state_change_batch(change_events);
-      if (!has_project_snapshot_change(change_events)) return;
-      void refresh_project_snapshot().catch((error: unknown) => {
-        report_state_error(error, {
-          source: "sse",
-          context: { stage: "refresh_project_snapshot" },
-        });
+        qualityStatisticsScope: "all",
       });
+      notify();
     },
-    [apply_project_state_change_batch, refresh_project_snapshot, report_state_error],
+    [registry, notify],
   );
 
-  const commit_project_write = useProjectWriteCommitter({
-    applyProjectWriteChanges: apply_project_write_changes,
-    recovery: {
-      report_state_error,
-      refresh_project_state_after_error,
+  const refresh_project_state = useCallback(async () => {
+    if (store) await refresh_manifest(store);
+  }, [store, refresh_manifest]);
+
+  const recovery = useDesktopRecovery({
+    project_loaded: project_snapshot.loaded,
+    project_path: project_snapshot.path,
+    refresh_project_state,
+    refresh_batch_translation,
+  });
+  const { report_state_error } = recovery;
+
+  const apply_changes = useCallback(
+    async (result: ProjectWriteResult) => {
+      const changed = new Set<ProjectStore>();
+      for (const event of result.changes) {
+        const project = registry.get(event.projectId);
+        if (
+          project?.apply_event(event) &&
+          event.updatedSections.some((section) => section === "project" || section === "files")
+        )
+          changed.add(project);
+      }
+      await Promise.all([...changed].map(refresh_snapshot));
     },
+    [refresh_snapshot, registry],
+  );
+  const commit_project_write = useProjectWriteCommitter({
+    applyProjectWriteChanges: apply_changes,
+    recovery,
   });
 
-  /** 初始化与重试共用权威快照读取和应用入口。 */
-  const load_initial_state = useCallback(async (): Promise<void> => {
-    const token = ++initial_request_ref.current;
-    set_initial_state_status("loading");
+  const load_initial_state = useCallback(async () => {
+    const token = ++initial_request.current;
+    set_status("loading");
     try {
-      const [next_settings, next_project, next_task, next_runtime] = await Promise.all([
-        api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
-        api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {}),
-        api_fetch<TaskSnapshotPayload>("/api/batch-task/snapshot", {}),
-        api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {}),
-      ]);
-      if (token !== initial_request_ref.current) return;
-      // 四份载荷先完成归一，再通过各状态拥有者一起应用。
-      const project = normalize_project_snapshot(next_project);
-      batch_task_store.applySnapshot(read_batch_task_snapshot(next_task));
-      const task = normalize_batch_translation_snapshot(next_task);
-      const runtime = normalize_runtime_activity_snapshot(next_runtime);
-      apply_settings_snapshot(next_settings);
-      sync_project_snapshot(project);
-      sync_task_snapshot(task);
-      sync_runtime_snapshot(runtime);
-      set_initial_state_status("ready");
+      await Promise.all([refresh_projects(), refresh_runtime(), refresh_settings()]);
+      if (token === initial_request.current) set_status("ready");
     } catch (error) {
-      if (token !== initial_request_ref.current) return;
+      if (token !== initial_request.current) return;
       report_state_error(error, {
         source: "state-recovery",
         context: { stage: "load_initial_state" },
       });
-      push_error_toast(
-        create_text_resolver(resolve_app_locale(settings_language.current))(
-          "app.feedback.initial_load_failed",
-        ),
-        error,
-      );
-      set_initial_state_status("error");
+      set_status("error");
     }
-  }, [
-    apply_settings_snapshot,
-    batch_task_store,
-    report_state_error,
-    sync_project_snapshot,
-    sync_task_snapshot,
-    sync_runtime_snapshot,
-  ]);
+  }, [refresh_projects, refresh_runtime, refresh_settings, report_state_error]);
 
   useEffect(() => {
     void load_initial_state();
     return () => {
-      initial_request_ref.current += 1;
+      initial_request.current++;
     };
   }, [load_initial_state]);
 
+  const report_stream_error = useEffectEvent((error: unknown) =>
+    report_state_error(error, { source: "sse" }),
+  );
+  const catalog = useEffectEvent((payload: unknown) => {
+    if (apply_model_catalog_revision(payload))
+      push_toast(
+        "success",
+        create_text_resolver(resolve_app_locale(settings.app_language))(
+          "app.model.catalog_updated",
+        ),
+      );
+  });
+
   useEffect(() => {
-    if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
-      clear_project_state_identity();
-      return;
-    }
-
-    let cancelled = false;
-
-    /** 当前工程身份进入加载链路，完成后回流页面刷新信号。 */
-    async function refresh_loaded_project_state(): Promise<void> {
-      try {
-        await refresh_project_state();
-      } catch (error) {
-        report_state_error(error, {
-          source: "state-recovery",
-          context: { stage: "refresh_loaded_project_state" },
-        });
-        return;
-      }
-
-      if (cancelled) {
-        return;
-      }
-    }
-
-    void refresh_loaded_project_state();
-
-    return () => {
-      cancelled = true;
-    };
+    let opened = false;
+    const dispatch =
+      (apply: (payload: Record<string, unknown>) => void | Promise<void>) =>
+      (payload: Record<string, unknown>) => {
+        void Promise.resolve()
+          .then(() => apply(payload))
+          .catch(report_stream_error);
+      };
+    const unsubscribe = subscribe_desktop_events({
+      onOpen: () => {
+        void api_get("/api/models/catalog/snapshot")
+          .then((payload) => catalog(payload))
+          .catch(report_stream_error);
+        void api_fetch<{ snapshot: ChatGPTAuthSnapshot }>("/api/models/auth/snapshot", {})
+          .then(({ snapshot }) => apply_model_auth_snapshot(snapshot))
+          .catch(report_stream_error);
+        if (opened)
+          void Promise.all([refresh_projects(), refresh_runtime(), refresh_settings()])
+            .then(([projects]) => Promise.all(projects.map(refresh_manifest)))
+            .catch(report_stream_error);
+        opened = true;
+      },
+      events: {
+        [PROJECT_CHANGE_EVENT_TOPIC]: dispatch(async (payload) => {
+          const event = normalize_project_change_event(payload);
+          if (event) await apply_changes({ accepted: true, changes: [event] });
+          else if (typeof payload.projectId === "string") {
+            const project = registry.get(payload.projectId);
+            if (project) await refresh_manifest(project);
+          }
+        }),
+        "agent.chats_changed": dispatch((payload) => {
+          if (typeof payload.projectId === "string") apply_chat_list(payload.projectId, payload);
+        }),
+        "batch_task.snapshot_changed": dispatch((payload) => {
+          if (typeof payload.projectId === "string")
+            registry.get(payload.projectId)?.update_task(payload);
+        }),
+        "settings.changed": dispatch((payload) => {
+          if (is_json_record(payload.settings))
+            apply_settings_snapshot(payload as SettingsSnapshotPayload);
+          else return refresh_settings().then(() => {});
+        }),
+        [RUNTIME_ACTIVITY_EVENT_TOPIC]: dispatch((payload) =>
+          runtime.applySnapshot(payload.runtime),
+        ),
+        [MODEL_AUTH_CHANGED_EVENT_TOPIC]: dispatch((payload) => {
+          apply_model_auth_snapshot(payload.snapshot as ChatGPTAuthSnapshot);
+        }),
+        [MODEL_CATALOG_UPDATED_EVENT_TOPIC]: dispatch((payload) => catalog(payload)),
+      },
+    });
+    return unsubscribe;
   }, [
-    clear_project_state_identity,
-    project_snapshot.loaded,
-    project_snapshot.path,
-    refresh_project_state,
-    report_state_error,
-  ]);
-
-  const project_event_pipeline = useProjectEventPipeline({
-    projectSnapshot: project_snapshot,
-    applyProjectChangeBatch: apply_project_change_batch_with_snapshot,
-    shouldApplyProjectChange: should_apply_project_state_change,
-    queueProjectChangeDuringSessionWarming: queue_project_state_change_during_session_warming,
-    normalizeProjectChangeEvent: normalize_project_change_event,
-    recovery: {
-      report_state_error,
-      refresh_project_state_after_error,
-    },
-  });
-
-  useDesktopEventStream({
-    appLanguage: settings_snapshot.app_language,
-    schedulerRef: refresh_scheduler_ref,
-    applySettingsSnapshot: apply_settings_snapshot,
-    applyTaskSnapshot: sync_task_snapshot,
-    applyBatchTaskSnapshot: batch_task_store.applySnapshot,
-    applyRuntimeSnapshot: sync_runtime_snapshot,
-    refreshSettings: refresh_settings,
-    refreshRuntime: refresh_runtime,
-    projectEvents: project_event_pipeline,
-    recovery: {
-      report_state_error,
-      refresh_project_state_after_error,
-      refresh_task_after_state_error,
-    },
-  });
-
-  const context_value = useMemo<DesktopStateContextValue>(() => {
-    return {
-      initial_state_status,
-      load_initial_state,
-      settings_snapshot,
-      project_snapshot,
-      project_session_status,
-      is_app_language_updating,
-      set_project_session_status,
-      apply_settings_snapshot,
-      refresh_project_snapshot,
-      refresh_project_state,
-      commit_project_write,
-      update_app_language,
-      refresh_settings,
-      refresh_batch_translation,
-      refresh_runtime,
-    };
-  }, [
-    initial_state_status,
-    load_initial_state,
-    settings_snapshot,
-    project_snapshot,
-    project_session_status,
-    is_app_language_updating,
+    apply_changes,
+    apply_chat_list,
     apply_settings_snapshot,
-    commit_project_write,
-    refresh_project_snapshot,
-    refresh_project_state,
-    refresh_settings,
-    refresh_batch_translation,
+    refresh_manifest,
+    refresh_projects,
     refresh_runtime,
-    update_app_language,
+    refresh_settings,
+    registry,
+    runtime,
   ]);
+
+  async function update_app_language(language: AppLanguage) {
+    set_language_updating(true);
+    try {
+      const result = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
+        app_language: language,
+      });
+      return apply_settings_snapshot(result);
+    } finally {
+      set_language_updating(false);
+    }
+  }
 
   return (
-    <DesktopStateStoresContext.Provider value={state_stores_ref.current}>
-      <DesktopStateContext.Provider value={context_value}>
-        {props.children}
+    <DesktopStateStoresContext.Provider value={{ ...(store ?? empty), runtime }}>
+      <DesktopStateContext.Provider
+        value={{
+          initial_state_status: status,
+          load_initial_state,
+          settings_snapshot: settings,
+          project_snapshot,
+          project_session_status: store ? "ready" : "idle",
+          is_app_language_updating: language_updating,
+          apply_settings_snapshot,
+          refresh_project_snapshot,
+          refresh_project_state,
+          commit_project_write,
+          update_app_language,
+          refresh_settings,
+          refresh_batch_translation,
+          refresh_runtime,
+          open_projects: registry.values(),
+          active_project: store,
+          select_project,
+          refresh_projects,
+          apply_chat_list,
+        }}
+      >
+        {children}
       </DesktopStateContext.Provider>
     </DesktopStateStoresContext.Provider>
   );

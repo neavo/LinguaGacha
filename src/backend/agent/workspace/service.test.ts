@@ -628,7 +628,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.pick_save_path).not.toHaveBeenCalled();
   });
 
-  it("跟随 work 内链接交付文件，重置使入口失效并保留外部目标", async () => {
+  it("跟随 work 内链接交付文件，关闭后旧入口失效", async () => {
     const fixture = await create_file_fixture(temp_dir);
     await expect(fixture.service.activate_path("work/missing.md")).rejects.toMatchObject({
       code: "file.not_found",
@@ -649,14 +649,11 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(fixture.destination, "utf8")).toBe("外部译文");
     fixture.pick_save_path.mockImplementationOnce(async () => {
       await fixture.service.close();
-      await fixture.service.delete_chat("test0001");
-      await fixture.service.activate_chat("test0001", [], async () => {});
       return fixture.destination;
     });
     await expect(fixture.service.activate_path("work/output/report.md")).rejects.toMatchObject({
       code: "file.not_found",
     });
-    expect(fs.existsSync(linked)).toBe(false);
     expect(fs.readFileSync(report, "utf8")).toBe("外部译文");
   });
 
@@ -692,24 +689,20 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(path.join(temp_dir, "saved.md"), "utf8")).toBe("定稿");
   });
 
-  it.each(["reset", "project"] as const)(
-    "等待保存时 %s 使旧链接失效，同名新文件不能被保存",
-    async (action) => {
-      const fixture = await create_file_fixture(temp_dir);
-      fixture.pick_save_path.mockImplementationOnce(async () => {
-        await fixture.service.close();
-        if (action === "reset") await fixture.service.delete_chat("test0001");
-        await fixture.service.activate_chat("test0001", [], async () => {});
-        fs.mkdirSync(path.dirname(fixture.file), { recursive: true });
-        fs.writeFileSync(fixture.file, "新会话文件");
-        return fixture.destination;
-      });
-      await expect(fixture.service.activate_path(fixture.href)).rejects.toMatchObject({
-        code: "file.not_found",
-      });
-      expect(fs.existsSync(fixture.destination)).toBe(false);
-    },
-  );
+  it("等待保存时关闭工作区使旧链接失效，同名新文件不能被保存", async () => {
+    const fixture = await create_file_fixture(temp_dir);
+    fixture.pick_save_path.mockImplementationOnce(async () => {
+      await fixture.service.close();
+      await fixture.service.activate_chat("test0001", [], async () => {});
+      fs.mkdirSync(path.dirname(fixture.file), { recursive: true });
+      fs.writeFileSync(fixture.file, "新会话文件");
+      return fixture.destination;
+    });
+    await expect(fixture.service.activate_path(fixture.href)).rejects.toMatchObject({
+      code: "file.not_found",
+    });
+    expect(fs.existsSync(fixture.destination)).toBe(false);
+  });
 
   it("脚本运行期间确认保存返回忙碌，目录仍可打开", async () => {
     const fixture = await create_fixture(temp_dir);
@@ -999,17 +992,9 @@ describe("AgentWorkspaceService", () => {
 
     await fixture.service.close();
     await fixture.service.activate_chat("other001", [], async () => {});
-    // 默认包源按受理时的对话归属，执行结束后切换对话不改变已绑定的身份。
     const signal = new AbortController().signal;
     await fixture.run.mock.calls.at(-1)?.[0].packageSource?.(signal);
-    expect(fixture.package_sources.resolve).toHaveBeenCalledWith("test0001", signal);
-    await fixture.service.close();
-    await fixture.service.delete_chat("test0001");
-    expect(fixture.package_sources.forget).toHaveBeenCalledWith("test0001");
-    await fixture.service.activate_chat("test0001", [], async () => {});
-    expect(fs.readdirSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT))).toEqual(
-      [],
-    );
+    expect(fixture.package_sources.resolve).toHaveBeenCalledWith(signal);
   });
 
   it("搜索端口随本次脚本传给 runner", async () => {
@@ -1492,13 +1477,12 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(change_file, "utf-8")).toBe("");
   });
 
-  it.each(["epoch", "language"] as const)("%s 变化刷新快照并保留已有 work", async (field) => {
+  it("语言变化刷新快照并保留已有 work", async () => {
     const fixture = await create_fixture(temp_dir);
     await run_workspace(fixture);
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
-    if (field === "epoch") fixture.snapshot.epoch += 1;
-    else fixture.languages.target_language = "EN";
+    fixture.languages.target_language = "EN";
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
     await expect(run_workspace(fixture)).rejects.toMatchObject({
@@ -1530,7 +1514,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   ) as ProjectDataSectionRevisions;
   const snapshot = {
     projectPath: "test.lg",
-    epoch: 1,
+    projectId: "1",
     freshness: "fresh" as const,
     sectionRevisions: { ...revisions },
     itemCount: 2,
@@ -1575,7 +1559,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const run = vi.fn<AgentWorkspaceRunPort>(async () => workspace_execution());
   const package_sources = {
     resolve: vi.fn(async (): Promise<PackageSource> => "mirror"),
-    forget: vi.fn(),
   };
   const knowledge: { stored: string | null } = { stored: null }; // 已保存的知识正文
   const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(async (request) => {
@@ -1700,7 +1683,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     paths: {
       get_agent_workspace_root_dir: () => workspace_parent,
     },
-    sessionState: { require_loaded_project_path: () => snapshot.projectPath },
+    projectPath: snapshot.projectPath,
     cache,
     proofreading: { query_warnings },
     database: {

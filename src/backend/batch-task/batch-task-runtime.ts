@@ -9,8 +9,7 @@ import type {
   BatchTaskSnapshotListener,
   BatchTaskStopSource,
 } from "../../domain/batch-task";
-import type { ProjectSessionState } from "../project/project-session-state";
-import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
+import type { RuntimeLease, ProjectOperationGate } from "../runtime-operation-gate";
 import { AppError } from "../../shared/error";
 
 export const BATCH_TASK_REQUEST_STATE_PUBLISH_INTERVAL_MS = 500;
@@ -64,30 +63,11 @@ export class BatchTaskRuntime {
   private request_state_timer: ReturnType<typeof setTimeout> | null = null;
   private request_state_flush: Promise<void> = Promise.resolve();
   private readonly publication_errors: unknown[] = [];
-  private readonly unsubscribe_session: () => void;
-  /** 绑定工程切换，确保旧工程的任务展示随会话失效。 */
   public constructor(
-    private readonly session: ProjectSessionState,
-    private readonly gate: RuntimeOperationGate,
+    private readonly project_path: string,
+    private readonly gate: ProjectOperationGate,
   ) {
-    this.unsubscribe_session = session.subscribe_change(async () => {
-      if (this.disposed) return;
-      if (this.active_run !== null) throw new AppError("runtime.internal_invariant");
-      this.snapshot = {
-        ...this.snapshot,
-        run_id: null,
-        project_path: session.snapshot().projectPath,
-        kind: null,
-        source: null,
-        status: "idle",
-        stop_source: null,
-        config: null,
-        progress: null,
-        request_in_flight_count: 0,
-        request_recovery: null,
-      };
-      await this.publish_snapshot();
-    });
+    this.snapshot = { ...this.snapshot, project_path };
   }
   /** 订阅者的异步工作属于终态发布屏障。 */
   public subscribe(listener: BatchTaskSnapshotListener): () => void {
@@ -100,20 +80,22 @@ export class BatchTaskRuntime {
   public build_snapshot(): BatchTaskSnapshot {
     return structuredClone(this.snapshot);
   }
-  /** 独立翻译取得全局租约后预约批次。 */
+  /** 独立翻译取得工程翻译租约后预约批次。 */
   public begin_standalone(): BatchTaskRunHandle {
     this.assert_available();
     return this.reserve("standalone", "translation", this.gate.begin_runtime("batch_translation"));
   }
-  /** 借用当前 Agent 租约，父回合保留释放责任。 */
+  /** Agent 翻译与独立翻译争用同一工程租约，通用请求只占批次槽位。 */
   public begin_under_agent(
     lease: RuntimeLease,
     signal: AbortSignal,
     kind: BatchTaskKind,
   ): BatchTaskRunHandle {
     this.assert_available();
-    this.gate.assert_current_runtime(lease, "agent");
-    return this.reserve("agent", kind, null, signal);
+    this.gate.assert_agent_runtime(lease);
+    const translation =
+      kind === "translation" ? this.gate.begin_runtime("batch_translation") : null;
+    return this.reserve("agent", kind, translation, signal);
   }
   /** 预约前检查关闭状态与单批次互斥。 */
   private assert_available(): void {
@@ -155,7 +137,7 @@ export class BatchTaskRuntime {
     this.snapshot = {
       ...this.snapshot,
       run_id: handle.run_id,
-      project_path: this.session.snapshot().projectPath,
+      project_path: this.project_path,
       kind,
       source,
       status: "requested",
@@ -403,7 +385,6 @@ export class BatchTaskRuntime {
   /** 停止受理，取消当前批次并等待已登记的完成链。 */
   public async dispose(): Promise<void> {
     this.disposed = true;
-    this.unsubscribe_session();
     const run = this.active_run;
     if (run !== null) {
       this.cancel_run(run, "shutdown");

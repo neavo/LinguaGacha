@@ -23,7 +23,7 @@ describe("renderer error reporter", () => {
 
   it("只在实际捕获异常时上报当前 renderer 诊断上下文", () => {
     update_renderer_diagnostics_context({
-      route: "workbench",
+      route: "files",
       project: {
         loaded: true,
         path: "E:/demo/demo.lg",
@@ -48,7 +48,7 @@ describe("renderer error reporter", () => {
         error: expect.objectContaining({
           message: "批量应用失败",
         }),
-        route: "workbench",
+        route: "files",
         project: {
           loaded: true,
           path: {
@@ -132,14 +132,14 @@ describe("renderer error reporter", () => {
     });
 
     update_renderer_diagnostics_context({
-      route: "workbench",
+      route: "files",
       task: {
         status: "running",
       },
     });
 
     expect(report_renderer_diagnostics).toHaveBeenCalledWith({
-      route: "workbench",
+      route: "files",
       project: undefined,
       task: {
         status: "running",

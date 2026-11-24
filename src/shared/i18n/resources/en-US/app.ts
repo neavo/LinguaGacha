@@ -165,9 +165,16 @@ export const en_us_app = {
     ID: "Indonesian",
     VI: "Vietnamese",
   },
+  workspace: {
+    skills: "Skills",
+    quality_rules: "Quality rules",
+    new_chat: "New chat",
+    delete_chat: "Delete chat",
+    close_busy: "A project operation is in progress",
+    files: "Files",
+  },
   navigation_action: {
-    expand_sidebar: "Expand sidebar",
-    collapse_sidebar: "Collapse sidebar",
+    resize_sidebar: "Resize sidebar",
     appearance: "Appearance",
     font: "Font",
     font_size: "Font size",

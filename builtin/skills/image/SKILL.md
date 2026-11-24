@@ -49,7 +49,7 @@ await image.prepare_models();
 
 ### 设备降级策略
 
-默认使用 GPU。捕获 `image.DeviceFailure` 时，告知用户切换至 CPU，重试失败步骤且后续统一使用 CPU：
+默认使用 GPU。应用内多对话并发使用 GPU 时会排队等待共享 GPU 租约，等待期间可能较久无输出；此类排队或超时不属于脚本卡死或 `DeviceFailure`。仅真实捕获 `image.DeviceFailure` 时，告知用户切换至 CPU，重试失败步骤且后续统一使用 CPU：
 
 |入口|CPU 调用参数写法|说明|
 |---|---|---|
@@ -112,7 +112,7 @@ console.log(packed);
 - **句末标点**：原文句末无句号或逗号时译文也应如此，不得自行添加。
 - **连体气泡**：依照阅读流向通读上下文，保证语意连贯。
 
-维护已有 `.image` 资产（跨会话修改原文、解包切泡/调字号、重建无框外框）或迁移缺少 `patch.mask` 的旧包时，先读取 [旧包维护与迁移](references/migration.md)。
+维护已有 `.image` 资产（含跨对话继续 QA、修改原文、解包切泡/调字号、重建无框外框，或本对话 `work/` 无原准备目录）及迁移缺少 `patch.mask` 的旧包时，先读取 [旧包维护与迁移](references/migration.md)。
 
 # 写回与验证
 

@@ -1,4 +1,5 @@
-import { KnowledgePage } from "@frontend/pages/knowledge-page/page";
+import { SkillsPage } from "@frontend/pages/skills-page/page";
+import { ProjectKnowledgeEditor } from "@frontend/pages/project-knowledge-page/page";
 import { createElement } from "react";
 
 import { FunctionSettingsPage } from "@frontend/pages/function-settings-page/page";
@@ -13,7 +14,7 @@ import { TextPreservePage } from "@frontend/pages/text-preserve-page/page";
 import { TextReplacementPage } from "@frontend/pages/text-replacement-page/page";
 import { ToolboxPage } from "@frontend/pages/toolbox-page/page";
 import { TranslationTransferPage } from "@frontend/pages/translation-transfer-page/page";
-import { WorkbenchPage } from "@frontend/pages/workbench-page/page";
+import { FilesPage } from "@frontend/pages/files-page/page";
 import type { ScreenRegistry } from "@frontend/app/navigation/types";
 
 // 将通用替换页面固定为译前替换入口，供路由表直接消费。
@@ -28,7 +29,8 @@ function PostTranslationReplacementScreen(): ReturnType<typeof createElement> {
 
 // 导航 route 到页面组件与标题 key 的唯一映射。
 export const SCREEN_REGISTRY: ScreenRegistry = {
-  knowledge: { component: KnowledgePage, title_key: "knowledge_page.title" },
+  skills: { component: SkillsPage, title_key: "app.workspace.skills" },
+  "project-knowledge": { component: ProjectKnowledgeEditor, title_key: "knowledge_page.knowledge" },
   model: {
     component: ModelPage,
     title_key: "model_page.title",
@@ -42,9 +44,9 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     component: ProofreadingPage,
     title_key: "proofreading_page.title",
   },
-  workbench: {
-    component: WorkbenchPage,
-    title_key: "workbench_page.title",
+  files: {
+    component: FilesPage,
+    title_key: "app.workspace.files",
   },
   "function-settings": {
     component: FunctionSettingsPage,

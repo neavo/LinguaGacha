@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useMemo, useRef, type JSX } from "react";
 import { FileText, Image, MessageSquareText, X } from "lucide-react";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
@@ -14,42 +15,115 @@ import "./agent-documents.css";
 const CONVERSATION_TAB = "conversation";
 
 /** 对话身份决定全部页内资源的生命周期。 */
-export function AgentPage(): JSX.Element {
+export function AgentPage({
+  tabHost,
+  active = true,
+}: { tabHost?: HTMLElement | null; active?: boolean } = {}): JSX.Element {
   const chat_id = useAgentChatId();
-  return <AgentPages key={chat_id ?? "restoring"} chat_id={chat_id ?? ""} />;
+  return (
+    <AgentPages
+      key={chat_id ?? "restoring"}
+      chat_id={chat_id ?? ""}
+      tabHost={tabHost ?? null}
+      active={active}
+    />
+  );
 }
 
 /** 页内标签保留组件实例，会话身份变化才整体释放旧页面。 */
-function AgentPages({ chat_id }: { chat_id: string }): JSX.Element {
+function AgentPages({
+  chat_id,
+  tabHost,
+  active,
+}: {
+  chat_id: string;
+  tabHost: HTMLElement | null;
+  active: boolean;
+}): JSX.Element {
   const { t } = useI18n();
   const root = useRef<HTMLDivElement>(null);
   const { pendingDecision } = useAgentControls();
-  const { agent_input_request } = useAppNavigation();
+  const { agent_input_request, navigate_to_route } = useAppNavigation();
   const state = useAgentPreviews(chat_id);
   const { select } = state;
-  const conversation_active = state.selected === null;
+  const conversation_active = active && state.selected === null;
   const context = useMemo(
-    () => ({ open_file: state.open_file, chat_id, active: true }),
-    [state.open_file, chat_id],
+    () => ({ open_file: state.open_file, chat_id, active }),
+    [state.open_file, chat_id, active],
   );
   const inactive_context = useMemo(() => ({ ...context, active: false }), [context]);
   useEffect(() => {
     if (agent_input_request) select(null);
   }, [agent_input_request, select]);
   /** 关闭后从已提交的 DOM 恢复焦点，最后一个标签关闭时回到对话面板。 */
+  const find_selected_tab = () =>
+    (tabHost ?? root.current)?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
   const focus_current = (): void => {
-    const target = !root.current?.querySelector<HTMLElement>('[role="tablist"]')?.hidden
-      ? root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
-      : root.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
+    const target =
+      find_selected_tab() ??
+      root.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
     target?.focus({ preventScroll: true });
   };
   const previous_selected = useRef(state.selected);
   useLayoutEffect(() => {
     if (previous_selected.current === state.selected) return;
     previous_selected.current = state.selected;
-    const target = root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    const target = (tabHost ?? root.current)?.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
     if (state.documents.length > 0) target?.focus({ preventScroll: true });
-  }, [state.selected, state.documents.length]);
+  }, [state.selected, state.documents.length, tabHost]);
+  const tabs = (
+    <TabsList
+      className="agent-pages__tabs"
+      hidden={tabHost === null && state.documents.length === 0}
+      activateOnFocus={false}
+    >
+      <TabsTrigger
+        className="agent-pages__tab"
+        value={CONVERSATION_TAB}
+        onClick={tabHost === null ? undefined : () => navigate_to_route("agent")}
+        data-needs-response={pendingDecision && !conversation_active ? "" : undefined}
+      >
+        <MessageSquareText aria-hidden="true" />
+        <span className="agent-pages__filename">{t("agent_page.document.conversation")}</span>
+      </TabsTrigger>
+      {state.documents.map((document) => (
+        <span className="agent-pages__tab-group" key={document.path}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <TabsTrigger
+                  className="agent-pages__tab"
+                  value={document.path}
+                  onClick={tabHost === null ? undefined : () => navigate_to_route("agent")}
+                />
+              }
+            >
+              {document.preview === "image" ? (
+                <Image aria-hidden="true" />
+              ) : (
+                <FileText aria-hidden="true" />
+              )}
+              <span className="agent-pages__filename">{document.name}</span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{decodeURIComponent(document.path)}</TooltipContent>
+          </Tooltip>
+          <button
+            type="button"
+            className="agent-pages__close"
+            aria-label={t("app.action.close")}
+            onClick={() => {
+              state.close(document.path);
+              requestAnimationFrame(focus_current);
+            }}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </span>
+      ))}
+    </TabsList>
+  );
   return (
     <Tabs
       ref={root}
@@ -57,48 +131,7 @@ function AgentPages({ chat_id }: { chat_id: string }): JSX.Element {
       value={state.selected ?? CONVERSATION_TAB}
       onValueChange={(value) => select(value === CONVERSATION_TAB ? null : String(value))}
     >
-      <TabsList
-        className="agent-pages__tabs"
-        hidden={state.documents.length === 0}
-        activateOnFocus={false}
-      >
-        <TabsTrigger
-          className="agent-pages__tab"
-          value={CONVERSATION_TAB}
-          data-needs-response={pendingDecision && !conversation_active ? "" : undefined}
-        >
-          <MessageSquareText aria-hidden="true" />
-          <span className="agent-pages__filename">{t("agent_page.document.conversation")}</span>
-        </TabsTrigger>
-        {state.documents.map((document) => (
-          <span className="agent-pages__tab-group" key={document.path}>
-            <Tooltip>
-              <TooltipTrigger
-                render={<TabsTrigger className="agent-pages__tab" value={document.path} />}
-              >
-                {document.preview === "image" ? (
-                  <Image aria-hidden="true" />
-                ) : (
-                  <FileText aria-hidden="true" />
-                )}
-                <span className="agent-pages__filename">{document.name}</span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{decodeURIComponent(document.path)}</TooltipContent>
-            </Tooltip>
-            <button
-              type="button"
-              className="agent-pages__close"
-              aria-label={t("app.action.close")}
-              onClick={() => {
-                state.close(document.path);
-                requestAnimationFrame(focus_current);
-              }}
-            >
-              <X aria-hidden="true" />
-            </button>
-          </span>
-        ))}
-      </TabsList>
+      {tabHost === null ? tabs : createPortal(tabs, tabHost)}
       <TabsContent className="agent-pages__panel" value={CONVERSATION_TAB} keepMounted>
         <AgentFileContext value={conversation_active ? context : inactive_context}>
           <AgentConversation active={conversation_active} />
@@ -114,7 +147,7 @@ function AgentPages({ chat_id }: { chat_id: string }): JSX.Element {
           <AgentFileContext value={state.selected === document.path ? context : inactive_context}>
             <AgentPreviewPage
               document={document}
-              active={state.selected === document.path}
+              active={active && state.selected === document.path}
               scroll={state.scroll.current}
             />
           </AgentFileContext>

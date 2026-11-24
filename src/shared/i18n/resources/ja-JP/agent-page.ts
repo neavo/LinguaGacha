@@ -149,7 +149,6 @@ export const ja_jp_agent_page = {
     send: "送信",
     stop: "停止",
     applying: "プロジェクトの変更を適用中です。完了するまで停止できません",
-    new_task: "新しいタスク",
     add_file: "ファイルを追加",
     common_instructions: "よく使う指示",
     continue: "続ける",
@@ -173,7 +172,6 @@ export const ja_jp_agent_page = {
   },
   confirm: {
     fork: "この返信から分岐して新しい会話を作成しますか？",
-    new_task: "新しい会話タスクを始めますか …?",
     thinking_off:
       "モデルの思考をオフにすると AGENT のタスク遂行能力が大きく低下します。続けますか …?",
   },
@@ -201,7 +199,6 @@ export const ja_jp_agent_page = {
     continue: "続行できませんでした。再試行してください …",
     queue_send: "メッセージを今すぐ送信できませんでした。キューに保持されています …",
     stop: "停止できませんでした。再試行してください …",
-    reset: "新しいタスクを作成できませんでした。再試行してください …",
     approval_mode: "書き込みの承認モードを更新できませんでした。再試行してください …",
     compact: "コンテキストを圧縮できませんでした。再試行してください …",
   },

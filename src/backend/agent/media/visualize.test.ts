@@ -29,7 +29,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
         get_agent_models_dir: () => path.join(root, "models"),
         get_agent_media_cache_dir: () => path.join(root, "cache/media"),
         get_agent_python_root_dir: () => path.join(root, "python"),
-        get_agent_execution_lock_path: () => path.join(root, "node.lock"),
+        get_agent_preparation_lock_path: () => path.join(root, "node.lock"),
         get_user_data_path: (...parts) => path.join(root, "userdata", ...parts),
       },
       proxyResolver: { resolveProxy: async () => "DIRECT" },
@@ -69,7 +69,7 @@ it.runIf(process.env.LINGUAGACHA_VISUALIZE_REPORT)(
           stdoutPath: `${scriptPath}.stdout.log`,
           stderrPath: `${scriptPath}.stderr.log`,
           timeoutMs: 900_000,
-          packageSource: (source_signal) => package_sources.resolve("acceptance", source_signal),
+          packageSource: (source_signal) => package_sources.resolve(source_signal),
         },
         signal,
       );

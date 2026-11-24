@@ -1,5 +1,5 @@
+import { useAgentApi } from "@frontend/app/desktop/scoped-api";
 import { useContext, useEffect, useState, useSyncExternalStore } from "react";
-import { api_get } from "@frontend/app/desktop/desktop-api";
 import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
 import { useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
@@ -7,6 +7,7 @@ import type { AgentFileCandidate, AgentFilesResponse } from "@shared/agent-refer
 
 /** 菜单查询只持有展示数据；会话、草稿上传与项目变更继续由各自拥有者管理。 */
 export function useAgentMentionFiles(open: boolean, upload_key: string) {
+  const { get: api_get } = useAgentApi();
   const store = useContext(AgentChatStoreContext);
   if (store === null) throw new Error("Agent file mentions require AgentChatProvider.");
   const project_change = useProjectChangeSignal();

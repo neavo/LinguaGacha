@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BatchRequestService } from "./batch-request-service";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
 import { RequestRatePool } from "../batch-task/request-rate";
-import { ProjectSessionState } from "../project/project-session-state";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { ProjectSessionFixture } from "../../test/project-session-fixture";
+import { ProjectOperationGate } from "../runtime-operation-gate";
 import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
 import { default_native_fs } from "../../native/native-fs";
 const directories: string[] = [];
@@ -33,9 +33,9 @@ const response = (): LLMRequestResult => ({
 async function setup(request: LLMClientPort["request"] = async () => response()) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "batch-request-"));
   directories.push(root);
-  const session = new ProjectSessionState();
-  const gate = new RuntimeOperationGate();
-  const tasks = new BatchTaskRuntime(session, gate);
+  const session = new ProjectSessionFixture();
+  const gate = new ProjectOperationGate();
+  const tasks = new BatchTaskRuntime(session.snapshot().projectPath, gate);
   const lease = gate.begin_runtime("agent");
   const settings = {
     models: [
@@ -161,7 +161,7 @@ describe("batch request", () => {
       source: "batch-request",
       content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
     });
-    expect(f.gate.get_snapshot().owner).toBe("agent");
+    expect(f.gate.get_snapshot().activeChatCount).toBe(1);
     await f.tasks.dispose();
   });
   it("媒体通过统一客户端发送，确定性拒绝只失败该项", async () => {

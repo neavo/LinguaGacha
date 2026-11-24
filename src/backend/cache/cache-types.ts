@@ -15,7 +15,7 @@ export type CacheFreshness = "empty" | "fresh" | "recoverable_error";
  */
 export type CacheSnapshot = {
   projectPath: string;
-  epoch: number;
+  projectId: string;
   freshness: CacheFreshness;
   sectionRevisions: ProjectDataSectionRevisions;
   itemCount: number;

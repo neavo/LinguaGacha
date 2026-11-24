@@ -161,9 +161,16 @@ export const zh_cn_app = {
     ID: "印尼文",
     VI: "越南文",
   } satisfies Record<LanguageCode, string>,
+  workspace: {
+    skills: "技能",
+    quality_rules: "质量规则",
+    new_chat: "新对话",
+    delete_chat: "删除对话",
+    close_busy: "工程有任务正在收尾或运行",
+    files: "文件",
+  },
   navigation_action: {
-    expand_sidebar: "展开导航栏",
-    collapse_sidebar: "折叠导航栏",
+    resize_sidebar: "调整侧栏宽度",
     appearance: "变换自如",
     font: "字体",
     font_size: "字体大小",

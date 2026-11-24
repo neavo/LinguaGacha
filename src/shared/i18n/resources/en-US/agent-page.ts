@@ -147,7 +147,6 @@ export const en_us_agent_page = {
     send: "Send",
     stop: "Stop",
     applying: "Applying project changes; this cannot be stopped until completion",
-    new_task: "New task",
     add_file: "Files",
     common_instructions: "Instructions",
     continue: "Continue",
@@ -171,7 +170,6 @@ export const en_us_agent_page = {
   },
   confirm: {
     fork: "Create a new conversation by forking from this response?",
-    new_task: "Confirm starting a new conversation task …?",
     thinking_off:
       "AGENT task intelligence will be significantly reduced when model thinking is disabled. Confirm continuing …?",
   },
@@ -204,7 +202,6 @@ export const en_us_agent_page = {
     continue: "The task could not continue. Try again …",
     queue_send: "The message could not be sent now. It remains queued …",
     stop: "The task could not be stopped. Try again …",
-    reset: "A new task could not be created. Try again …",
     approval_mode: "The write request approval mode could not be updated. Try again …",
     compact: "The context could not be compacted. Try again …",
   },

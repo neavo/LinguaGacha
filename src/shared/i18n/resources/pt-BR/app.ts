@@ -167,9 +167,16 @@ export const pt_br_app = {
     ID: "Indonésio",
     VI: "Vietnamita",
   },
+  workspace: {
+    skills: "Habilidades",
+    quality_rules: "Regras de qualidade",
+    new_chat: "Nova conversa",
+    delete_chat: "Excluir conversa",
+    close_busy: "Uma operação do projeto está em andamento",
+    files: "Arquivos",
+  },
   navigation_action: {
-    expand_sidebar: "Expandir barra lateral",
-    collapse_sidebar: "Recolher barra lateral",
+    resize_sidebar: "Ajustar largura da barra lateral",
     appearance: "Aparência",
     font: "Fonte",
     font_size: "Tamanho da fonte",

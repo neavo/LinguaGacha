@@ -21,8 +21,7 @@ import {
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { require_project_expected_section_revisions } from "../project/project-write-request";
-import { ProjectSessionState } from "../project/project-session-state";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { ProjectOperationGate } from "../runtime-operation-gate";
 import type { ProjectWriteResult } from "../../shared/project-event";
 
 import { QualityRule, type QualityRuleKind, type QualityRuleEntry } from "../../domain/quality";
@@ -49,9 +48,9 @@ export class QualityRuleService {
   public constructor(
     private readonly paths: AppPathService, // 预设目录和路径身份
     private readonly settings: AppSettingService, // 默认预设引用的唯一持久化入口
-    private readonly session_state: ProjectSessionState, // 当前工程身份
+    private readonly project_path: string, // 当前工程身份
     private readonly write_store: ProjectWriteStore, // 工程事实提交
-    private readonly runtime_gate: RuntimeOperationGate, // 用户与 Agent 共用写入互斥
+    private readonly runtime_gate: ProjectOperationGate, // 用户与 Agent 共用写入互斥
     private readonly cache: CacheReadPort, // 工程规则热读快照
     private readonly native_fs: NativeFs = default_native_fs, // 预设与导入导出的磁盘操作
   ) {}
@@ -60,7 +59,7 @@ export class QualityRuleService {
    * 读取单个质量规则切片。
    */
   public query(request: JsonRecord): QualityRuleQueryResponse {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const rule_type = QualityRule.from_json(request["rule_type"]).kind;
     const quality_block = this.cache.quality.readBlock();
     return {
@@ -83,7 +82,7 @@ export class QualityRuleService {
   private async update_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = QualityRule.from_json(request["rule_type"]).kind;
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const has_entries = Object.hasOwn(request, "entries");
     const entries = has_entries
       ? this.normalize_rule_entries(rule_type, request["entries"])

@@ -6,7 +6,9 @@ import type { PDFHost } from "../../shared/pdf";
 import type { ImageTextHost } from "../../shared/image-text";
 import type { AgentImageHost } from "../../shared/agent-image";
 import { AgentImageService } from "../agent/agent-image-service";
-import { AgentService } from "../agent/agent-service";
+import { AgentService, load_agent_resources } from "../agent/agent-service";
+import { AgentWorkspaceDirectories } from "../agent/workspace/directories";
+import { default_native_fs } from "../../native/native-fs";
 import { AgentWorkspaceService } from "../agent/workspace/service";
 import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { AgentPackageSources } from "../agent/package-source";
@@ -41,7 +43,7 @@ export interface GuiBackendBootstrapOptions {
 
 export interface GuiBackendBootstrapStartResult {
   apiBaseUrl: string;
-  backendServices: BackendServices;
+  backendServices: BackendServices<AgentService>;
   readAppLanguage: () => unknown;
 }
 
@@ -49,9 +51,8 @@ export interface GuiBackendBootstrapStartResult {
 export class GuiBackendBootstrap {
   private state: GuiBackendBootstrapState = "idle";
   private resources: BackendResources | null = null;
-  private services: BackendServices | null = null;
+  private services: BackendServices<AgentService> | null = null;
   private event_stream: ApiStreamHub | null = null;
-  private agent: AgentService | null = null;
   private execution: AgentExecutionRuntime | null = null; // Agent 停止后统一释放共享执行资源。
   private package_sources: AgentPackageSources | null = null; // 跨工程切换保留，应用关闭时释放。
   private images: AgentImageService | null = null; // 关闭 Gateway 前取消模型图片准备，排空正在受理的发送请求
@@ -104,7 +105,7 @@ export class GuiBackendBootstrap {
       this.resources = resources;
       const event_stream = new ApiStreamHub();
       this.event_stream = event_stream;
-      const services = new BackendServices({
+      const services = new BackendServices<AgentService>({
         paths: resources.paths,
         metadata: resources.metadata,
         appSettingService: resources.settings,
@@ -136,61 +137,73 @@ export class GuiBackendBootstrap {
         log: (message) => resources.logManager.info(message, { source: "agent_package_source" }),
       });
       this.package_sources = package_sources;
-      const workspace = new AgentWorkspaceService({
-        images,
-        paths: resources.paths,
-        sessionState: services.state.session,
-        cache: services.state.cache,
-        proofreading: services.proofreading.query,
-        database: resources.database,
-        knowledge: services.project.knowledge,
-        runtimeGate: services.state.runtimeGate,
-        writeStore: services.state.writes,
-        files: services.project.content,
-        generation: services.files.translationGeneration,
-        logManager: resources.logManager,
-        run: runner.run.bind(runner),
-        packageSources: package_sources,
-        imageTextHost: this.options.imageTextHost,
-        pdfHost: this.options.pdfHost,
-        openDirectory: this.options.openDirectory,
-        pickSavePath: this.options.pickSavePath,
-      });
-      // 管理 API 和 Agent 共用技能队列，让当前对话接收设置变更。
+      const protectedChatIds = new Set<string>();
+      const directories = new AgentWorkspaceDirectories(
+        resources.paths.get_agent_workspace_root_dir(),
+        default_native_fs,
+        (error) =>
+          resources.logManager.warning("Agent 工作区目录操作失败。", {
+            source: "agent_workspace",
+            error,
+          }),
+      );
       const skills = new AgentSkillsService(
         resources.paths,
         resources.settings,
         resources.logManager,
-        services.state.runtimeGate,
+        services.globalGate,
       );
-      const agent = new AgentService({
-        database: resources.database,
-        auth: services.modelAuth,
-        skills,
-        catalog: services.modelCatalog,
-        images,
-        batchTranslation: services.batchTranslation,
-        batchRequests: services.batchRequests,
-        paths: resources.paths,
-        settings: resources.settings,
-        userAgent: resources.metadata.build_linguagacha_user_agent(),
-        sessionState: services.state.session,
-        runtimeGate: services.state.runtimeGate,
-        workspace,
-        logManager: resources.logManager,
-        publish: (topic, payload) => event_stream.publish(topic, payload),
-      });
-      this.agent = agent;
-      await agent.load_resources();
+      const agent_resources = load_agent_resources(resources.paths);
+      await skills.refresh();
+      services.openAgent = (project) =>
+        AgentService.open({
+          projectId: project.id,
+          projectPath: project.path,
+          database: resources.database,
+          auth: services.modelAuth,
+          skills,
+          catalog: services.modelCatalog,
+          images,
+          batchTranslation: project.batchTranslation,
+          batchRequests: project.batchRequests,
+          resources: agent_resources,
+          settings: resources.settings,
+          userAgent: resources.metadata.build_linguagacha_user_agent(),
+          runtimeGate: project.gate,
+          directories,
+          protectedChatIds,
+          createWorkspace: () =>
+            new AgentWorkspaceService({
+              images,
+              paths: resources.paths,
+              projectPath: project.path,
+              cache: project.cache,
+              proofreading: project.proofreading.query,
+              database: resources.database,
+              knowledge: project.knowledge,
+              runtimeGate: project.gate,
+              writeStore: project.writes,
+              files: project.content,
+              generation: project.generation,
+              logManager: resources.logManager,
+              run: runner.run.bind(runner),
+              packageSources: package_sources,
+              imageTextHost: this.options.imageTextHost,
+              pdfHost: this.options.pdfHost,
+              openDirectory: this.options.openDirectory,
+              pickSavePath: this.options.pickSavePath,
+            }),
+          logManager: resources.logManager,
+          publish: (topic, payload) => event_stream.publish(topic, payload),
+        });
       resources.settings.set_stream_publisher(event_stream);
       const gateway = new ApiGatewayServer({
         backendServices: services,
-        agentService: agent,
         skillsService: skills,
         personalityService: new AgentPersonalityService(
           resources.paths,
           resources.settings,
-          services.state.runtimeGate,
+          services.globalGate,
         ),
         eventStream: event_stream,
       });
@@ -253,7 +266,7 @@ export class GuiBackendBootstrap {
   private async dispose_runtime(failures: unknown[]): Promise<void> {
     if (this.state === "stopped" && this.resources === null) return;
     this.state = "stopping";
-    this.agent?.cancel_uploads();
+    for (const project of this.services?.projects.values() ?? []) project.agent?.cancel_uploads();
     this.images?.clear();
     this.images = null;
     const gateway = this.gateway;
@@ -266,9 +279,7 @@ export class GuiBackendBootstrap {
     ]);
 
     this.resources?.settings.set_stream_publisher(null);
-    const agent = this.agent;
-    this.agent = null;
-    await collect_failure(failures, async () => await agent?.dispose());
+    await collect_failure(failures, async () => await this.services?.close_projects());
 
     const execution = this.execution;
     this.execution = null;

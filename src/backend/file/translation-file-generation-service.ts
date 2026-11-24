@@ -1,7 +1,7 @@
 import { GameDirectoryOperations } from "./shared/game/game-directory-operations";
 import { AppError, is_app_error } from "../../shared/error";
 import { requires_agent_generation } from "../../shared/translation-generation";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { ProjectOperationGate } from "../runtime-operation-gate";
 import type { ProjectWriteStore } from "../project/project-write-store";
 import { is_json_record } from "../../domain/json";
 import type {
@@ -14,7 +14,6 @@ import type { JsonRecord } from "../../domain/json";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import { AppSettingService } from "../app/app-setting-service";
-import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import { type Item, create_item } from "../../domain/item";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
@@ -51,14 +50,14 @@ export class TranslationFileGenerationService {
    */
   public constructor(
     private readonly runtime_gate: Pick<
-      RuntimeOperationGate,
+      ProjectOperationGate,
       "run_project_write" | "run_agent_project_write"
     >,
     private readonly write_store: Pick<ProjectWriteStore, "check_section_revisions">,
     private readonly game_directory_operations: GameDirectoryOperations,
     private readonly database: ProjectDatabase, // 译文生成读取工程事实和原稿资产的入口
     private readonly app_setting_service: AppSettingService, // 译文生成格式和完成后动作
-    private readonly session_state: ProjectSessionState, // 当前 .lg 工程身份
+    private readonly project_path: string, // 当前 .lg 工程身份
     private readonly output_folder_opener: OutputFolderOpener, // 宿主打开目录的副作用
     private readonly log_manager?: FileGenerationLogManager, // 译文生成诊断
     private readonly native_fs: NativeFs = default_native_fs, // 目录检查与文件写盘
@@ -139,7 +138,7 @@ export class TranslationFileGenerationService {
   /** 只查询交付位置，目录创建留给实际写入者。 */
   public read_output_paths(directory?: string): TranslationOutputPaths {
     return this.resolve_output_paths(
-      this.session_state.require_loaded_project_path(),
+      this.project_path,
       this.app_setting_service.read_setting(),
       directory,
     );
@@ -178,7 +177,7 @@ export class TranslationFileGenerationService {
       console_group_end: false,
     });
     try {
-      const project_path = this.session_state.require_loaded_project_path();
+      const project_path = this.project_path;
       const result = await write(project_path, setting);
       this.log_manager?.info(
         `${this.generation_log_text(config, "app.translation_export.log.succeeded")}\n${result.output_path}`,

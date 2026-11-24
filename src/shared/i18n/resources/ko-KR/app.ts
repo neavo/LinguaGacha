@@ -162,9 +162,16 @@ export const ko_kr_app = {
     ID: "인도네시아어",
     VI: "베트남어",
   },
+  workspace: {
+    skills: "스킬",
+    quality_rules: "품질 규칙",
+    new_chat: "새 대화",
+    delete_chat: "대화 삭제",
+    close_busy: "프로젝트 작업이 진행 중입니다",
+    files: "파일",
+  },
   navigation_action: {
-    expand_sidebar: "사이드바 펼치기",
-    collapse_sidebar: "사이드바 접기",
+    resize_sidebar: "사이드바 너비 조절",
     appearance: "모양",
     font: "글꼴",
     font_size: "글꼴 크기",

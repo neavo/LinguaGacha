@@ -3,28 +3,29 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
+import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 
-/** 所有页面共用关闭确认，路由由工程快照驱动。 */
 export function useProjectCloseFlow() {
   const { t } = useI18n();
-  const { project_snapshot, refresh_project_snapshot, refresh_batch_translation } =
-    useDesktopState();
-  const runtime_snapshot = useRuntimeSnapshot();
-  const [open, set_open] = useState(false);
+  const { project_snapshot, refresh_projects } = useDesktopState();
+  const runtime = useRuntimeSnapshot();
+  const { prepare_page_leave } = usePageLeave();
+  const [target, set_target] = useState<string | null>(null);
   const [closing, set_closing] = useState(false);
-  const submitting = useRef(false); // 同一帧的重复确认不能发出两次关闭请求。
-  const can_close = project_snapshot.loaded && !is_runtime_busy(runtime_snapshot) && !closing;
-  /** 提交前重查运行占用，失败保留确认以便重试。 */
+  const submitting = useRef(false);
+  const can_close = (id: string): boolean => {
+    const state = runtime.projects?.[id];
+    return !closing && !state?.projectWrite && !state?.batchTranslation && !state?.activeChatCount;
+  };
   async function confirm(): Promise<void> {
-    if (!can_close || submitting.current) return;
+    if (target === null || !can_close(target) || submitting.current) return;
     submitting.current = true;
     set_closing(true);
     try {
-      await api_fetch("/api/session/project/close", {});
-      await refresh_project_snapshot();
-      await refresh_batch_translation();
-      set_open(false);
+      if (!(await prepare_page_leave({ kind: "project", projectId: target }))) return;
+      await api_fetch("/api/session/project/close", { projectId: target });
+      set_target(null);
+      await refresh_projects();
     } catch (error) {
       push_error_toast(t("project.close.failed"), error);
     } finally {
@@ -34,17 +35,17 @@ export function useProjectCloseFlow() {
   }
   return {
     closing,
-    can_close,
-    request_close: () => {
-      if (can_close) set_open(true);
+    can_close: project_snapshot.projectId !== undefined && can_close(project_snapshot.projectId),
+    request_close: (id = project_snapshot.projectId) => {
+      if (id && can_close(id)) set_target(id);
     },
     dialog_props: {
-      open,
+      open: target !== null,
       description: t("project.close.confirm"),
       submitting: closing,
-      confirmDisabled: !can_close,
+      confirmDisabled: target === null || !can_close(target),
       onConfirm: confirm,
-      onClose: () => set_open(false),
+      onClose: () => set_target(null),
     },
   };
 }

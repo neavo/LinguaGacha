@@ -1,7 +1,7 @@
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../shared/agent";
 import { project_knowledge_fingerprint } from "./project-knowledge";
 import { adapt_project_change } from "./project-write-event-adapter";
-import { ProjectSessionState } from "./project-session-state";
+import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { ItemCache } from "../cache/item-cache";
 import { ProjectDataReader } from "./project-data-reader";
 import { create_item, type Item } from "../../domain/item";
@@ -1211,12 +1211,12 @@ describe("ProjectWriteStore", () => {
     published_changes: ProjectCommittedChange[],
     on_publish?: () => void,
   ): ProjectChangePublisher {
-    const session = new ProjectSessionState();
+    const session = new ProjectSessionFixture();
     void session.mark_loaded(project_path);
     return vi.fn((payload: ProjectCommittedChange) => {
       on_publish?.();
       published_changes.push(payload);
-      return adapt_project_change(session, payload);
+      return adapt_project_change(session.snapshot().projectPath, payload);
     });
   }
 

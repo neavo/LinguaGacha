@@ -1,4 +1,4 @@
-import { api_upload } from "@frontend/app/desktop/desktop-api";
+import { createAgentApi, type ChatScope } from "@frontend/app/desktop/scoped-api";
 import type { AgentFileAttachment, AgentMessageAttachment, AgentMessageInput } from "@shared/agent";
 
 export type AgentPendingUpload = {
@@ -20,7 +20,10 @@ export class AgentInputDraft {
   private tail = Promise.resolve(); // 同一草稿按选择顺序串行传输
 
   /** 编辑历史消息时复制初始内容，隔离公开历史。 */
-  constructor(initial: AgentMessageInput = { text: "", attachments: [] }) {
+  private readonly upload: ReturnType<typeof createAgentApi>["upload"];
+
+  constructor(initial: AgentMessageInput = { text: "", attachments: [] }, scope?: ChatScope) {
+    this.upload = createAgentApi(scope).upload;
     this.value = structuredClone(initial);
   }
 
@@ -88,7 +91,7 @@ export class AgentInputDraft {
       const task = this.tasks.get(id);
       if (task === undefined) return;
       try {
-        const file = await api_upload<AgentFileAttachment>(
+        const file = await this.upload<AgentFileAttachment>(
           `/api/agent/uploads?name=${encodeURIComponent(task.file.name)}`,
           task.file,
           task.controller.signal,

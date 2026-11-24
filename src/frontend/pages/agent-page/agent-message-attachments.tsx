@@ -1,5 +1,5 @@
+import { useAgentApi } from "@frontend/app/desktop/scoped-api";
 import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-input-draft";
-import { api_blob } from "@frontend/app/desktop/desktop-api";
 import { type JSX, useEffect, useState } from "react";
 import { File, LoaderCircle, MessageSquareQuote, CircleAlert, X } from "lucide-react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
@@ -224,6 +224,7 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
 }
 /** 后端字节通过 API 读取，页面只渲染 CSP 已允许的 Blob URL。 */
 function AgentUploadImage({ file }: { file: AgentFileAttachment }): JSX.Element {
+  const { blob: api_blob } = useAgentApi();
   const [source, set_source] = useState<{ id: string; url: string } | null>(null);
   useEffect(() => {
     const controller = new AbortController();

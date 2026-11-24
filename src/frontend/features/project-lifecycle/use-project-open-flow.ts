@@ -14,6 +14,7 @@ import { read_project_version_confirmation, type ProjectOpenRequest } from "@sha
 type SelectedProject = { path: string; from_recent: boolean }; // 最近记录缺失时提供移除入口。
 type PendingConfirmation = SelectedProject & { target_app_version: string };
 type ProjectOpenPayload = {
+  project?: { path?: string };
   settings_alignment?: {
     settings?: ProjectSettingsAlignmentSettings;
     changed?: ProjectSettingsAlignmentChangedFields;
@@ -68,7 +69,7 @@ export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
             request,
           );
           alignment = response.settings_alignment;
-          return selected_project.path;
+          return response.project?.path ?? selected_project.path;
         },
       });
       if (alignment)

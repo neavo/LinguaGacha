@@ -12,10 +12,12 @@ import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-labo
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
-  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
-  project_snapshot: {
-    loaded: boolean;
+  runtime_snapshot: {
+    revision: number;
+    owner: "batch_translation" | "agent" | null;
+    projects?: { project: { activeChatCount: number } };
   };
+  open_projects: unknown[];
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   commit_project_write: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
@@ -87,9 +89,7 @@ function create_runtime_fixture(): RuntimeFixture {
   return {
     settings_snapshot,
     runtime_snapshot: { revision: 0, owner: null },
-    project_snapshot: {
-      loaded: true,
-    },
+    open_projects: [{}],
     apply_settings_snapshot: vi.fn((payload: SettingsSnapshotPayload) => {
       const next_settings_snapshot = normalize_setting_snapshot(payload.settings);
       runtime_fixture.current = {
@@ -164,7 +164,11 @@ describe("useLaboratoryPageState", () => {
 
   it("Agent 运行中可保存提示词增强，预过滤受运行锁约束", async () => {
     const field = "prompt_enhancement_enable";
-    runtime_fixture.current.runtime_snapshot = { revision: 1, owner: "agent" };
+    runtime_fixture.current.runtime_snapshot = {
+      revision: 1,
+      owner: "agent",
+      projects: { project: { activeChatCount: 1 } },
+    };
     vi.mocked(api_fetch).mockResolvedValue({
       settings: create_settings_snapshot({ [field]: false }),
     } as never);

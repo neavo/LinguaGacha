@@ -6,9 +6,16 @@ import { AppError } from "../../shared/error";
 
 export const ACTIVE_AGENT_CHAT_KEY = "active_chat";
 
-export type AgentChatRecord = { id: string; data: { uploads: AgentFileAttachment[] } };
+export type AgentChatRecord = {
+  id: string;
+  data: {
+    documentKey: string;
+    rootConversationId: number | null;
+    title: string;
+    uploads: AgentFileAttachment[];
+  };
+};
 
-// ponytail: 首版每个工程只保留一个产品对话。多对话删除上线时改为按会话树回收 SDK 记录。
 const SDK_TABLES = [
   "document_revisions",
   "documents",
@@ -30,24 +37,29 @@ export class AgentChatStorage {
     return this.database.read_batch(callback);
   }
 
-  /** 从激活指针恢复登记，并校验工程文件携带的上传路径。 */
-  public read(): Promise<AgentChatRecord | null> {
-    return this.read_batch(() => this.read_record());
+  public async list(): Promise<{ chats: AgentChatRecord[]; activeChatId: string | null }> {
+    return this.read_batch(async () => {
+      const rows = await this.database.all<{ id: string; data: string }>(
+        "SELECT id, data FROM agent_chats ORDER BY rowid",
+      );
+      const active = await this.database.get<{ value: string }>(
+        "SELECT value FROM meta WHERE key = ?",
+        ACTIVE_AGENT_CHAT_KEY,
+      );
+      const activeChatId: unknown = active === undefined ? null : JSON.parse(active.value);
+      if (
+        active !== undefined &&
+        (typeof activeChatId !== "string" || !rows.some((row) => row.id === activeChatId))
+      )
+        throw new AppError("file.invalid_structure");
+      return {
+        chats: rows.map((row) => this.read_record(row)),
+        activeChatId: typeof activeChatId === "string" ? activeChatId : null,
+      };
+    });
   }
 
-  private async read_record(): Promise<AgentChatRecord | null> {
-    const active = await this.database.get<{ value: string }>(
-      "SELECT value FROM meta WHERE key = ?",
-      ACTIVE_AGENT_CHAT_KEY,
-    );
-    if (active === undefined) return null;
-    const id: unknown = JSON.parse(active.value);
-    if (typeof id !== "string" || id === "") throw new AppError("file.invalid_structure");
-    const row = await this.database.get<{ data: string }>(
-      "SELECT data FROM agent_chats WHERE id = ?",
-      id,
-    );
-    if (row === undefined) throw new AppError("file.invalid_structure");
+  private read_record(row: { id: string; data: string }): AgentChatRecord {
     const data: unknown = JSON.parse(row.data);
     if (typeof data !== "object" || data === null || Array.isArray(data))
       throw new AppError("file.invalid_structure");
@@ -64,21 +76,112 @@ export class AgentChatStorage {
       )
     )
       throw new AppError("file.invalid_structure");
-    return { id, data: { uploads: message.attachments as AgentFileAttachment[] } };
+    const values = data as Partial<AgentChatRecord["data"]>;
+    return {
+      id: row.id,
+      data: {
+        documentKey: values.documentKey ?? row.id,
+        rootConversationId: values.rootConversationId ?? null,
+        title: values.title ?? "",
+        uploads: message.attachments as AgentFileAttachment[],
+      },
+    };
   }
 
-  /** 登记工作区已生成的身份，与激活指针一起提交，上传可先于第一条模型消息发生。 */
-  public async create(id: string): Promise<AgentChatRecord> {
-    const data: AgentChatRecord["data"] = { uploads: [] };
+  public new_record(id: string): AgentChatRecord {
+    return {
+      id,
+      data: {
+        documentKey: id,
+        rootConversationId: null,
+        title: "",
+        uploads: [],
+      },
+    };
+  }
+
+  /** 登记、替换或移除记录与活跃指针在同一事务提交。 */
+  public async update_records(change: {
+    put?: AgentChatRecord;
+    remove?: string;
+    active?: string;
+  }): Promise<void> {
     await this.database.transaction(async (tx) => {
-      await tx.run("INSERT INTO agent_chats (id, data) VALUES (?, ?)", id, JSON.stringify(data));
-      await tx.run(
-        "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ACTIVE_AGENT_CHAT_KEY,
-        JSON.stringify(id),
-      );
+      if (change.put)
+        await tx.run(
+          "INSERT INTO agent_chats (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+          change.put.id,
+          JSON.stringify(change.put.data),
+        );
+      if (change.remove) await tx.run("DELETE FROM agent_chats WHERE id = ?", change.remove);
+      if (change.active)
+        await tx.run(
+          "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          ACTIVE_AGENT_CHAT_KEY,
+          JSON.stringify(change.active),
+        );
     });
-    return { id, data };
+  }
+
+  /** 标题更新保留并发上传已经登记的事实。 */
+  public async update_title(id: string, title: string): Promise<void> {
+    await this.database.run(
+      "UPDATE agent_chats SET data = json_set(data, '$.title', ?) WHERE id = ?",
+      title,
+      id,
+    );
+  }
+
+  /** 仅在 SDK 缓存关闭以后使用，保留全库的身份计数器；无孤立记录时不开启写事务。 */
+  public async collect_deleted_chats(records: readonly AgentChatRecord[]): Promise<void> {
+    const roots = JSON.stringify(
+      records.map((record) => record.data.rootConversationId).filter((id) => id !== null),
+    );
+    const keys = JSON.stringify(records.map((record) => record.data.documentKey));
+    const live = `WITH RECURSIVE live(id) AS (
+      SELECT value FROM json_each(?)
+      UNION SELECT c.id FROM conversations c JOIN live p
+      ON json_extract(c.record, '$.parent.conversationId') = p.id OR c.owner_conversation_id = p.id
+    )`;
+    const has_orphan = await this.read_batch(async () => {
+      const conversation = await this.database.get<{ found: number }>(
+        `${live} SELECT 1 AS found FROM conversations WHERE id NOT IN (SELECT id FROM live) LIMIT 1`,
+        roots,
+      );
+      if (conversation !== undefined) return true;
+      const doc = await this.database.get<{ found: number }>(
+        "SELECT 1 AS found FROM documents WHERE json_extract(kind, '$') = 'linguagacha.chat' AND json_extract(key_value, '$') NOT IN (SELECT value FROM json_each(?)) LIMIT 1",
+        keys,
+      );
+      return doc !== undefined;
+    });
+    if (!has_orphan) return;
+    await this.database.transaction(async (tx) => {
+      await tx.run(
+        `${live} DELETE FROM documents WHERE
+        (scope_kind = 'conversation' AND owner_id NOT IN (SELECT id FROM live)) OR
+        (scope_kind = 'task' AND owner_id IN (SELECT id FROM tasks WHERE conversation_id NOT IN (SELECT id FROM live))) OR
+        (json_extract(kind, '$') = 'linguagacha.chat' AND json_extract(key_value, '$') NOT IN (SELECT value FROM json_each(?)))`,
+        roots,
+        keys,
+      );
+      await tx.exec(
+        "DELETE FROM document_revisions WHERE document_id NOT IN (SELECT id FROM documents)",
+      );
+      for (const table of ["entries", "submissions", "tasks"])
+        await tx.run(
+          `${live} DELETE FROM ${table} WHERE conversation_id NOT IN (SELECT id FROM live)`,
+          roots,
+        );
+      await tx.run(
+        `${live} DELETE FROM conversations WHERE id NOT IN (SELECT id FROM live)`,
+        roots,
+      );
+      await tx.exec(`DELETE FROM record_ids WHERE id NOT IN (
+        SELECT id FROM conversations UNION ALL SELECT id FROM entries UNION ALL SELECT id FROM tasks
+        UNION ALL SELECT id FROM submissions UNION ALL SELECT id FROM documents
+      )`);
+    });
   }
 
   /** 上传登记在同一事务内读改写，并发上传不会覆盖彼此。 */

@@ -9,6 +9,6 @@ export const ProjectTranslationStatsContext = createContext<
 export function useProjectTranslationStats(): ProjectTranslationStats | null {
   const stats = useContext(ProjectTranslationStatsContext);
   if (stats === undefined)
-    throw new Error("useProjectTranslationStats requires ProjectTranslationStatsProvider.");
+    throw new Error("useProjectTranslationStats requires ProjectSessionProvider.");
   return stats;
 }

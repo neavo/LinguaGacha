@@ -2,12 +2,14 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { request_package_source } from "../package-source";
 import { command_arguments, create_command_queue, run_command } from "../workspace/runtime/command";
+import { acquire_workspace_resource } from "../workspace/runtime/request-channel";
 import { NPM_REGISTRIES, npm_configuration } from "./runtime";
 import type { NpmApi } from "./types";
 
 const enqueue = create_command_queue();
 // 可能解析或下载包的命令，别名由随附 npm 自身展开。
 const PACKAGE_COMMANDS = new Set(["install", "ci", "update", "search", "view", "exec"]);
+const READ_ONLY_COMMANDS = new Set(["help", "list", "view", "search", "explain", "whoami"]);
 
 /** 随附 npm 的配置加载器，未提供类型声明，只描述这里读取的部分。 */
 type NpmConfig = {
@@ -22,11 +24,11 @@ type NpmConfigModule = new (options: Record<string, unknown>) => NpmConfig;
  * 用随附 npm 自身的参数解析与配置加载判断：本次调用会取包，且 `registry` 仍是内建默认值。
  * CLI、环境、项目、用户和全局配置的优先级与 `exec --` 边界因此与实际执行一致。
  */
-async function needs_default_registry(
+async function inspect_command(
   npm_path: string,
   argv: readonly string[],
   cwd: string,
-): Promise<boolean> {
+): Promise<{ defaultRegistry: boolean; writes: boolean }> {
   const load = createRequire(path.join(npm_path, "package.json"));
   const Config = load("@npmcli/config") as NpmConfigModule;
   const { deref } = load("./lib/utils/cmd-list.js") as {
@@ -47,11 +49,16 @@ async function needs_default_registry(
     warn: false,
   });
   await config.load();
-  if (config.get("usage") || config.get("version") || config.get("offline")) return false;
-  return (
-    PACKAGE_COMMANDS.has(deref(config.parsedArgv.remain[0]) ?? "") &&
-    config.find("registry") === "default"
-  );
+  const command = deref(config.parsedArgv.remain[0]) ?? "";
+  const help = config.get("usage") || config.get("version");
+  return {
+    defaultRegistry:
+      !help &&
+      !config.get("offline") &&
+      PACKAGE_COMMANDS.has(command) &&
+      config.find("registry") === "default",
+    writes: !help && !READ_ONLY_COMMANDS.has(command),
+  };
 }
 
 /** `@lg/npm` 的公开入口，只在完成绑定的根进程中可用。 */
@@ -60,20 +67,31 @@ export const npm: NpmApi = Object.freeze({
   get directory() {
     return npm_configuration().nodeRoot;
   },
-  /** 入队前固定参数，命令继承宿主准备的代理与 npm 配置，缺省 registry 由对话默认源补齐。 */
+  /** 入队前固定参数，取包命令缺省 `registry` 时使用应用默认源。 */
   async run(args: readonly string[]): Promise<void> {
     const argv = command_arguments(args, "npm");
     const { runtimeDirectory, nodeRoot } = npm_configuration();
     const npm_path = path.join(runtimeDirectory, "npm");
     await enqueue(async () => {
       // 只在没有任何配置层设置 registry 时注入，环境变量因此不会压过用户声明。
-      const env = (await needs_default_registry(npm_path, argv, nodeRoot))
+      const { defaultRegistry, writes } = await inspect_command(npm_path, argv, nodeRoot);
+      const env = defaultRegistry
         ? { ...process.env, npm_config_registry: NPM_REGISTRIES[await request_package_source()] }
         : undefined;
-      await run_command("npm", process.execPath, [path.join(npm_path, "bin/npm-cli.js"), ...argv], {
-        cwd: nodeRoot,
-        ...(env === undefined ? {} : { env }),
-      });
+      const release = writes ? await acquire_workspace_resource("npm") : undefined;
+      try {
+        await run_command(
+          "npm",
+          process.execPath,
+          [path.join(npm_path, "bin/npm-cli.js"), ...argv],
+          {
+            cwd: nodeRoot,
+            ...(env === undefined ? {} : { env }),
+          },
+        );
+      } finally {
+        await release?.();
+      }
     });
   },
 });

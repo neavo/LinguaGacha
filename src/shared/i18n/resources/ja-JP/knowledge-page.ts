@@ -1,5 +1,4 @@
 export const ja_jp_knowledge_page = {
-  title: "ナレッジ",
   builtin: "内蔵スキル",
   user: "ユーザースキル",
   knowledge: "プロジェクトナレッジ",
@@ -8,7 +7,6 @@ export const ja_jp_knowledge_page = {
   },
   readonly: "読み取り専用",
   personality_description: "アシスタントのキャラクター設定",
-  knowledge_description: "プロジェクトと一緒に保存される設定・取り決め・進捗",
   install: {
     title: "インストールガイド",
     description: "スキルのリンクを AGENT に送り、「このスキルをインストールして」と伝えてください",

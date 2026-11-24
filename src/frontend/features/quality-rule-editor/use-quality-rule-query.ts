@@ -1,7 +1,10 @@
+import { useMemo } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useProjectTabActive } from "@frontend/app/navigation/project-scope-context";
 import { useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
-import { read_quality_rule_snapshot } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import { createQualityRuleApi } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import type { QualityRuleKind } from "@domain/quality";
 import type { QualityRuleSlice } from "@shared/quality/quality-rule-state";
 
@@ -28,6 +31,12 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
   reload_quality_rule_snapshot: () => void;
   refresh_quality_rule_snapshot: () => Promise<TSlice>;
 } {
+  const active = useProjectTabActive();
+  const api_fetch = useProjectFetch();
+  const { read_quality_rule_snapshot } = useMemo(
+    () => createQualityRuleApi(api_fetch),
+    [api_fetch],
+  );
   const { rule_type, project_path, session_ready, default_slice, normalize_slice, on_load_error } =
     args;
   const project_change_signal = useProjectChangeSignal();
@@ -38,6 +47,7 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
   const [state, set_state] = useState<QueryState<TSlice>>({ status: "idle" });
   const state_ref = useRef(state); // 异步重试读取当前成功快照，保持刷新入口稳定。
   const request_token_ref = useRef(0); // 请求、项目切换与卸载共用失效世代。
+  const loaded_seq_ref = useRef<number | null>(null); // 记录上次已刷新信号，后台保活时延后到切回再补刷。
   const query_enabled = project_path !== "" && session_ready;
   /** 同步 React 展示与异步入口读取的当前状态。 */
   const apply_state = useCallback((next: QueryState<TSlice>): void => {
@@ -47,6 +57,7 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
 
   useLayoutEffect(() => {
     request_token_ref.current += 1;
+    loaded_seq_ref.current = null;
     apply_state({ status: "idle" });
   }, [apply_state, project_path, rule_type, session_ready, default_slice]);
 
@@ -74,7 +85,15 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
       // 已失效请求的失败随其项目或查询世代一起结束。
     }
     return state_ref.current.status === "ready" ? state_ref.current.slice : default_slice;
-  }, [apply_state, default_slice, normalize_slice, project_path, query_enabled, rule_type]);
+  }, [
+    apply_state,
+    default_slice,
+    normalize_slice,
+    project_path,
+    query_enabled,
+    read_quality_rule_snapshot,
+    rule_type,
+  ]);
 
   /** 页面重试和事件重查共用通知策略。 */
   const reload_quality_rule_snapshot = useCallback((): void => {
@@ -87,11 +106,17 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
   }, [on_load_error, refresh_quality_rule_snapshot]);
 
   useEffect(() => {
-    if (query_enabled) reload_quality_rule_snapshot();
+    if (!active || !query_enabled) return;
+    if (loaded_seq_ref.current === change_seq && state_ref.current.status !== "idle") return;
+    loaded_seq_ref.current = change_seq;
+    reload_quality_rule_snapshot();
+  }, [active, query_enabled, reload_quality_rule_snapshot, change_seq]);
+
+  useEffect(() => {
     return () => {
       request_token_ref.current += 1;
     };
-  }, [query_enabled, reload_quality_rule_snapshot, change_seq]);
+  }, []);
 
   return {
     quality_slice: state.status === "ready" ? state.slice : default_slice,

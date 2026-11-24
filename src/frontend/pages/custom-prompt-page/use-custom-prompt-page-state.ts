@@ -1,8 +1,9 @@
+import { api_fetch as global_fetch } from "@frontend/app/desktop/desktop-api";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { TRANSLATION_PROMPT } from "@domain/prompt";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 
@@ -39,6 +40,7 @@ const CLOSED_CONFIRM_STATE = Object.freeze({ kind: null } as const);
  * 拥有自定义提示词的预设菜单、确认流程与导入导出状态。
  */
 export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
+  const api_fetch = useProjectFetch();
   const {
     template,
     prompt_text,
@@ -273,7 +275,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
   const set_default_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
       try {
-        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
+        const payload = await global_fetch<SettingsSnapshotPayload>("/api/settings/update", {
           [TRANSLATION_PROMPT.default_preset_setting_key]: virtual_id,
         });
         apply_settings_snapshot(payload);

@@ -49,30 +49,20 @@ import {
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
-import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   compute_project_prefilter_write,
   build_translation_extras_from_items,
   type ProjectPrefilterWriteInput,
   type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
-import {
-  ProjectDataReader,
-  type ProjectDataSnapshot,
-  build_section_revisions_from_meta,
-} from "./project-data-reader";
-import type { CacheManager } from "../cache/cache-manager";
+import { ProjectDataReader, type ProjectDataSnapshot } from "./project-data-reader";
 import {
   ProjectDefaultPresetReader,
   type ProjectDefaultPresetInput,
 } from "./project-default-preset-reader";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "./project-session-state";
-import type { ProjectWriteStore } from "./project-write-store";
 import {
   resolve_project_prompt_storage,
   resolve_project_quality_rule_storage,
-  type ProjectTaskInput,
 } from "./project-task-input";
 
 const INITIAL_PRESET_REVISION = 1;
@@ -87,51 +77,17 @@ type ProjectSettingsAlignment = {
  * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
  */
 export class ProjectLifecycleService {
-  private readonly database: ProjectDatabase; // .lg 物理事实唯一写入口，项目域只拼受限 operation
+  private readonly default_preset_reader: ProjectDefaultPresetReader;
 
-  private readonly runtime_gate: RuntimeOperationGate; // 工程生命周期与模型运行共享同一互斥事实
-
-  private readonly session_state: ProjectSessionState; // 渲染进程可见 loaded/path 的唯一权威
-
-  private readonly app_setting_service: AppSettingService; // 提供当前应用设置，用于打开预演与默认预设选择
-
-  private readonly log_manager: LogManager; // 记录生命周期解析失败和诊断，响应体不扩大公开协议
-
-  private readonly cache: Pick<
-    CacheManager,
-    "installProject" | "clearProject" | "languages" | "files"
-  >; // 安装已提交事实，失败会阻断 loaded。
-
-  private readonly write_store: ProjectWriteStore; // loaded 工程任务输入统一交给运行期唯一写入口
-
-  private readonly native_fs: NativeFs; // 项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
-
-  private readonly default_preset_reader: ProjectDefaultPresetReader; // 隔离默认预设文件读取和非阻断日志
-
-  /**
-   * 初始化项目生命周期依赖，保持公开路由层只负责装配
-   */
   public constructor(
     private readonly game_directory_operations: GameDirectoryOperations,
-    database: ProjectDatabase,
-    runtime_gate: RuntimeOperationGate,
-    session_state: ProjectSessionState,
-    app_setting_service: AppSettingService,
+    private readonly database: ProjectDatabase,
+    private readonly app_setting_service: AppSettingService,
     paths: AppPathService,
-    log_manager: LogManager,
-    cache: Pick<CacheManager, "installProject" | "clearProject" | "languages" | "files">,
-    write_store: ProjectWriteStore,
-    native_fs: NativeFs = default_native_fs,
+    private readonly log_manager: LogManager,
+    private readonly native_fs: NativeFs = default_native_fs,
     private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
-    this.database = database;
-    this.runtime_gate = runtime_gate;
-    this.session_state = session_state;
-    this.app_setting_service = app_setting_service;
-    this.log_manager = log_manager;
-    this.cache = cache;
-    this.write_store = write_store;
-    this.native_fs = native_fs;
     this.default_preset_reader = new ProjectDefaultPresetReader(
       app_setting_service,
       paths,
@@ -140,69 +96,32 @@ export class ProjectLifecycleService {
     );
   }
 
-  /**
-   * 会话提供工程身份，缓存提供已提交的文件数量和语言。
-   */
-  public async get_project_snapshot(): Promise<JsonRecord> {
-    const state = this.session_state.snapshot();
-    return {
-      project: {
-        path: state.projectPath,
-        loaded: state.loaded,
-        file_count: state.loaded ? this.cache.files.readFileEntries().length : 0,
-        languages: state.loaded ? this.cache.languages.readBlock() : null,
-      },
-    };
-  }
+  /** 迁移和设置对齐完成后返回可安装的工程事实。 */
+  public async load_project(
+    project_path: string,
+    confirmed_target_app_version: unknown,
+  ): Promise<{
+    snapshot: ProjectDataSnapshot;
+    alignment: ProjectSettingsAlignment | null;
+  }> {
+    await this.database.prepare(project_path, confirmed_target_app_version);
+    // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
+    const migration_writes = await build_project_open_writes({
+      project_path,
+      database: this.database,
+    });
 
-  /**
-   * 加载既有 .lg，并在标记会话 loaded 前完成打开期 operation 迁移
-   */
-  public async load_project(body: JsonRecord): Promise<JsonRecord> {
-    return await this.runtime_gate.run_project_write(
-      async () => await this.load_project_under_lease(body),
-    );
-  }
-
-  /**
-   * 在生命周期租约内准备旧工程事实，事务成功后激活会话。
-   */
-  private async load_project_under_lease(body: JsonRecord): Promise<JsonRecord> {
-    const project_path = this.require_body_string(body, "path");
-    let committed = false; // 包含连接释放在内的提交后步骤都只能要求恢复。
-    try {
-      await this.database.prepare(project_path, body["confirmed_target_app_version"]);
-      // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-      const migration_writes = await build_project_open_writes({
+    return this.database.transaction(project_path, (writer) => {
+      writer.set_meta(project_path, "updated_at", this.build_timestamp());
+      for (const write of migration_writes) {
+        write(writer);
+      }
+      return this.align_open_project_settings(
+        writer,
         project_path,
-        database: this.database,
-      });
-
-      const opened = await this.database.transaction(project_path, (writer) => {
-        writer.set_meta(project_path, "updated_at", this.build_timestamp());
-        for (const write of migration_writes) {
-          write(writer);
-        }
-        return this.align_open_project_settings(
-          writer,
-          project_path,
-          new ProjectDataReader(writer).read_snapshot(project_path),
-        );
-      });
-      committed = true;
-      const response = await this.activate_project(project_path, opened.snapshot);
-      return opened.alignment === null
-        ? response
-        : { ...response, settings_alignment: opened.alignment as unknown as JsonValue };
-    } catch (cause) {
-      if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
-      if (!committed) throw cause;
-      throw new AppErrors.AppError("data.committed_sync_failed", {
-        cause,
-        public_details: { committed: true, action: "reload_project" },
-        diagnostic_context: { operation: "load_project_after_commit" },
-      });
-    }
+        new ProjectDataReader(writer).read_snapshot(project_path),
+      );
+    });
   }
 
   /**
@@ -286,46 +205,12 @@ export class ProjectLifecycleService {
     return { ...snapshot, items: next_items, meta: { ...meta, translation_extras } };
   }
 
-  /** 新建与加载共用提交后激活和恢复错误协议。 */
-  private async activate_project(
-    project_path: string,
-    snapshot: ProjectDataSnapshot,
-  ): Promise<JsonRecord> {
-    try {
-      this.cache.installProject(project_path, snapshot);
-      await this.session_state.mark_loaded(project_path);
-      return await this.get_project_snapshot();
-    } catch (cause) {
-      if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
-      throw new AppErrors.AppError("data.committed_sync_failed", {
-        cause,
-        public_details: { committed: true, action: "reload_project" },
-        diagnostic_context: { operation: "activate_project_after_commit" },
-      });
-    }
-  }
-
-  /**
-   * 后端按用户源路径生成当前格式工程事实，提交后直接激活。
-   */
+  /** 先建立文件，再由组合根装配打开周期。 */
   public async create_project_commit(
-    body: JsonRecord,
-    on_game_sources_detected?: () => void,
-  ): Promise<JsonRecord> {
-    return await this.runtime_gate.run_project_write(
-      async (signal) =>
-        await this.create_project_commit_under_lease(body, signal, on_game_sources_detected),
-    );
-  }
-
-  /**
-   * 新建工程的慢解析、数据库提交与 loaded 切换必须处于同一生命周期租约。
-   */
-  private async create_project_commit_under_lease(
     body: JsonRecord,
     signal: AbortSignal,
     on_game_sources_detected?: () => void,
-  ): Promise<JsonRecord> {
+  ) {
     const requested_project_path = this.require_body_string(body, "path");
     const project_path = this.resolve_create_project_path(requested_project_path);
     this.assert_no_legacy_create_commit_fields(body);
@@ -403,10 +288,10 @@ export class ProjectLifecycleService {
       });
 
       saved_assets = parsed_draft.files.length; // 激活失败仍由外层回执保留已经提交的资产数量。
-      const response = await this.activate_project(project_path, snapshot);
       this.default_preset_reader.log_loaded_names(default_preset_input.loaded_names);
       return {
-        ...response,
+        path: project_path,
+        snapshot,
         source_operation: {
           saved_assets: parsed_draft.files.length,
           directory_changes: parsed_draft.directory_changes,
@@ -416,26 +301,6 @@ export class ProjectLifecycleService {
       if (signal.aborted) throw error;
       throw source_operation_error(error, parsed_draft.directory_changes, saved_assets);
     }
-  }
-
-  /**
-   * 为当前 loaded 工程一次性应用领域任务输入，CLI 无需理解 Store 或物理 meta。
-   */
-  public async apply_task_input(input: ProjectTaskInput): Promise<ProjectWriteResult> {
-    return await this.runtime_gate.run_project_write(async () => {
-      const project_path = this.session_state.require_loaded_project_path();
-      const section_revisions = build_section_revisions_from_meta(
-        await this.database.get_all_meta(project_path),
-      );
-      return await this.write_store.apply_task_input({
-        projectPath: project_path,
-        expectedSectionRevisions: {
-          quality: section_revisions.quality ?? 0,
-          prompts: section_revisions.prompts ?? 0,
-        },
-        input,
-      });
-    });
   }
 
   /**
@@ -586,23 +451,6 @@ export class ProjectLifecycleService {
       });
     }
     return public_item;
-  }
-
-  /**
-   * 卸载公开工程会话，并释放 database 缓存句柄
-   */
-  public async unload_project(): Promise<JsonRecord> {
-    return await this.runtime_gate.run_project_write(async () => {
-      const state = this.session_state.snapshot();
-      if (state.loaded && state.projectPath !== "") {
-        this.cache.clearProject(state.projectPath);
-        await this.session_state.clear();
-        await this.database.close_project(state.projectPath);
-      } else {
-        await this.session_state.clear();
-      }
-      return await this.get_project_snapshot();
-    });
   }
 
   /**

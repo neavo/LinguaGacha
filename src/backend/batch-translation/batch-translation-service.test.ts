@@ -10,27 +10,27 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { CacheManager } from "../cache/cache-manager";
+import { ProjectCache } from "../cache/project-cache";
 import { BatchTranslationProjectStore } from "./batch-translation-project-store";
 import { TranslationPlanner } from "./planning/translation-planner";
 import { PlanningWorkerPool } from "./planning/planning-worker-pool";
 import { describe, expect, it, vi } from "vitest";
 import { BatchTranslationService } from "./batch-translation-service";
 import { BatchTranslationState } from "./batch-translation-state";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "../project/project-session-state";
+import { ProjectOperationGate } from "../runtime-operation-gate";
+import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { DEFAULT_PROJECT_LANGUAGE_SETTINGS } from "../../domain/project-settings";
 
 /** 组合真实任务服务与可控协作者，观察启动和停止命令。 */
 function setup(loaded = true, line = 0) {
-  const session = new ProjectSessionState();
+  const session = new ProjectSessionFixture();
   if (loaded) session.mark_loaded("E:/Project/test.lg");
-  const gate = new RuntimeOperationGate();
-  const tasks = new BatchTaskRuntime(session, gate);
+  const gate = new ProjectOperationGate();
+  const tasks = new BatchTaskRuntime(session.snapshot().projectPath, gate);
   const runtime = new BatchTranslationState(
-    session,
+    session.snapshot().projectPath,
     {
       get_all_meta: () => ({ translation_extras: { processed_line: line } }),
     } as unknown as ProjectDatabase,
@@ -44,7 +44,6 @@ function setup(loaded = true, line = 0) {
   const service = new BatchTranslationService(
     { run } as unknown as BatchTranslationRunner,
     runtime,
-    session,
     {
       read_setting: () => ({
         models: [{ id: "translation" }],
@@ -136,16 +135,6 @@ describe("批量翻译服务", () => {
     expect(run).not.toHaveBeenCalled();
     await runtime.dispose();
   });
-  it("工程未加载时不预约运行", async () => {
-    const { service, runtime, gate } = setup(false);
-    await expect(
-      service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
-    ).rejects.toMatchObject({
-      code: "project.not_loaded",
-    });
-    expect(gate.get_snapshot().owner).toBeNull();
-    await runtime.dispose();
-  });
   it.each([0, 3])("Agent 按当前累计进度 %i 选择模式并等待 completion", async (line) => {
     const { service, runtime, gate, run } = setup(true, line);
     let finish!: () => void;
@@ -193,7 +182,7 @@ describe("批量翻译服务", () => {
     ).rejects.toMatchObject({ code: "runtime.busy" });
     finish();
     expect((await result).progress.processed_line).toBe(line);
-    expect(gate.get_snapshot().owner).toBe("agent");
+    expect(gate.get_snapshot().activeChatCount).toBe(1);
     gate.finish_runtime(lease);
     await runtime.dispose();
   });
@@ -281,13 +270,15 @@ it.each([
     writer.set_items(project_path, original);
     writer.upsert_meta_entries(project_path, { source_language: "EN", target_language: "ZH" });
   });
-  const session = new ProjectSessionState();
+  const session = new ProjectSessionFixture();
   session.mark_loaded(project_path);
-  const gate = new RuntimeOperationGate();
-  const tasks = new BatchTaskRuntime(session, gate);
-  const runtime = new BatchTranslationState(session, database, tasks);
+  const gate = new ProjectOperationGate();
+  const tasks = new BatchTaskRuntime(session.snapshot().projectPath, gate);
+  const runtime = new BatchTranslationState(session.snapshot().projectPath, database, tasks);
   const settings = { read_setting: () => ({}) };
-  const cache = new CacheManager({
+  const cache = new ProjectCache({
+    projectPath: project_path,
+    projectId: "fixture",
     database,
     logManager: null,
     workerClient: { run: vi.fn() } as never,
@@ -310,7 +301,7 @@ it.each([
   const runner = new BatchTranslationRunner({
     ratePool: new RequestRatePool(),
     builtinRoot: path.join(process.cwd(), "builtin"),
-    taskStore: new BatchTranslationProjectStore(session, cache, writes),
+    taskStore: new BatchTranslationProjectStore(session.snapshot().projectPath, cache, writes),
     taskRuntime: runtime,
     taskPlanner: new TranslationPlanner({ planningWorkerPool: planning }),
     executorClient: { execute_unit },
@@ -321,13 +312,13 @@ it.each([
       },
     },
   });
-  const service = new BatchTranslationService(runner, runtime, session, settings, cache.languages, {
+  const service = new BatchTranslationService(runner, runtime, settings, cache.languages, {
     append: vi.fn(),
   });
   const lease = gate.begin_runtime("agent");
   const model = Model.from_json({ id: "fake", threshold: { concurrency_limit: 1 } }, "fake");
   try {
-    await cache.warmProject(project_path);
+    await cache.refresh();
     const frames: import("../../domain/batch-translation").BatchTranslationSnapshot[] = [];
     tasks.subscribe(async () => {
       const snapshot = await runtime.build_snapshot();
@@ -378,7 +369,7 @@ it.each([
     expect(meta["translation_extras"]).toMatchObject({
       total_tokens: result.progress.total_tokens,
     });
-    await cache.warmProject(project_path);
+    await cache.refresh();
     execute_unit.mockClear();
     frames.length = 0;
     expect(
@@ -479,22 +470,24 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         .run(key, JSON.stringify(value));
   }
   const before = read_history(project_path);
-  const session = new ProjectSessionState();
+  const session = new ProjectSessionFixture();
   await session.mark_loaded(project_path);
-  const cache = new CacheManager({
+  const cache = new ProjectCache({
+    projectPath: project_path,
+    projectId: "fixture",
     database,
     logManager: { warning: vi.fn(), error: vi.fn() } as never,
     workerClient: { run: async () => ({}) } as never,
   });
   const writes = new ProjectWriteStore(database, vi.fn(), () => null);
   const runtime = new BatchTranslationState(
-    session,
+    session.snapshot().projectPath,
     database,
-    new BatchTaskRuntime(session, new RuntimeOperationGate()),
+    new BatchTaskRuntime(session.snapshot().projectPath, new ProjectOperationGate()),
   );
   const planning = new PlanningWorkerPool({ execution: { kind: "in_process" } });
   try {
-    await cache.warmProject(project_path);
+    await cache.refresh();
 
     expect(
       await database.read(project_path, (access) =>
@@ -514,7 +507,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         },
       },
       builtinRoot: path.join(process.cwd(), "builtin"),
-      taskStore: new BatchTranslationProjectStore(session, cache, writes),
+      taskStore: new BatchTranslationProjectStore(session.snapshot().projectPath, cache, writes),
       taskRuntime: runtime,
       taskPlanner: new TranslationPlanner({ planningWorkerPool: planning }),
       executorClient: {
@@ -539,7 +532,6 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     const service = new BatchTranslationService(
       runner,
       runtime,
-      session,
       {
         read_setting: () => ({
           model_selection: { translation: "fake" },

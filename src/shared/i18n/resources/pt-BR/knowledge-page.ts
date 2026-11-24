@@ -1,5 +1,4 @@
 export const pt_br_knowledge_page = {
-  title: "Conhecimento",
   builtin: "Habilidades integradas",
   user: "Habilidades do usuário",
   knowledge: "Conhecimento do projeto",
@@ -8,7 +7,6 @@ export const pt_br_knowledge_page = {
   },
   readonly: "Somente leitura",
   personality_description: "Configurações de personalidade do assistente inteligente",
-  knowledge_description: "Configurações, convenções e progresso salvos com o projeto",
   install: {
     title: "Guia de instalação",
     description: "Envie o link da habilidade para o AGENT e peça que ele a instale",

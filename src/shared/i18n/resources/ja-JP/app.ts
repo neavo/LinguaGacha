@@ -166,9 +166,16 @@ export const ja_jp_app = {
     ID: "インドネシア語",
     VI: "ベトナム語",
   },
+  workspace: {
+    skills: "スキル",
+    quality_rules: "品質ルール",
+    new_chat: "新規チャット",
+    delete_chat: "チャットを削除",
+    close_busy: "プロジェクトの処理中です",
+    files: "ファイル",
+  },
   navigation_action: {
-    expand_sidebar: "サイドバーを展開",
-    collapse_sidebar: "サイドバーを折りたたむ",
+    resize_sidebar: "サイドバーの幅を調整",
     appearance: "外観",
     font: "フォント",
     font_size: "フォントサイズ",

@@ -8,7 +8,7 @@ export type ProjectLifecycle = Readonly<{
   open_recent_project: (path: string) => void;
   remove_recent_project: (path: string) => void;
   can_close: boolean;
-  request_close: () => void;
+  request_close: (projectId?: string) => void;
 }>;
 
 export const ProjectLifecycleContext = createContext<ProjectLifecycle | null>(null);

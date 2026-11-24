@@ -61,7 +61,7 @@ describe("desktop state hooks", () => {
     });
 
     expect(observed.batch_translation).toMatchObject({ revision: 1, status: "running" });
-    expect(observed.runtime).toEqual({ revision: 2, owner: "agent" });
+    expect(observed.runtime).toMatchObject({ revision: 2, owner: "agent" });
     expect(observed.projectChange).toMatchObject({ seq: 3, updated_sections: ["items"] });
     expect(observed.changeSource).toBe(change_source);
 

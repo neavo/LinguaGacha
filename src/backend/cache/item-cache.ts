@@ -10,7 +10,7 @@ export class ItemCache {
   private duplicate_groups: Map<string, number[]> | null = null; // 只保留真实重复组，结构变化后按需重建。
 
   /**
-   * before_read 由 CacheManager 注入，用来在读取前恢复缓存。
+   * before_read 由 ProjectCache 注入，用来在读取前恢复缓存。
    */
   public constructor(private readonly before_read: () => void = () => undefined) {}
 
@@ -23,14 +23,6 @@ export class ItemCache {
       next_items_by_id.set(item.item_id, { ...item });
     }
     this.items_by_id = next_items_by_id;
-    this.duplicate_groups = null;
-  }
-
-  /**
-   * 清空全部 item 索引。
-   */
-  public clear(): void {
-    this.items_by_id.clear();
     this.duplicate_groups = null;
   }
 

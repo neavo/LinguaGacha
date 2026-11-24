@@ -6,8 +6,6 @@ import {
   is_update_dialog_open,
   is_update_dialog_submitting,
   read_update_release,
-  resolve_disabled_route_ids,
-  resolve_route_after_project_snapshot,
   resolve_update_action_label,
   type UpdateDialogState,
 } from "@frontend/app/app-shell-state";
@@ -68,39 +66,5 @@ describe("App 更新弹窗状态", () => {
   it("下载进度限制在 0..100", () => {
     expect(format_update_progress_label(-1)).toBe("0.00%");
     expect(format_update_progress_label(101)).toBe("100.00%");
-  });
-});
-
-describe("App 工程导航状态", () => {
-  it.each([
-    { project_loaded: false, project_session_status: "idle", disabled: true },
-    { project_loaded: true, project_session_status: "warming", disabled: true },
-    { project_loaded: true, project_session_status: "ready", disabled: false },
-  ] as const)("工程可用性 $project_loaded/$project_session_status", (args) => {
-    const routes = resolve_disabled_route_ids(args);
-    for (const route of [
-      "proofreading",
-      "workbench",
-      "glossary",
-      "text-preserve",
-      "pre-translation-replacement",
-      "post-translation-replacement",
-      "knowledge",
-      "custom-prompt",
-      "laboratory",
-    ] as const)
-      expect(routes.has(route)).toBe(args.disabled);
-    expect(routes.has("agent")).toBe(false);
-    expect(routes.has("model")).toBe(false);
-  });
-  it.each([
-    [true, false, "agent"],
-    [false, true, null],
-    [true, true, null],
-    [false, false, null],
-  ] as const)("工程快照 %s → %s", (previous_project_loaded, project_loaded, expected) => {
-    expect(resolve_route_after_project_snapshot({ previous_project_loaded, project_loaded })).toBe(
-      expected,
-    );
   });
 });

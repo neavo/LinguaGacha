@@ -73,7 +73,6 @@ it("真实 Chromium 转换、缩小、透明度、规范字节复用与取消释
           verifier.destroy();
           assert.equal(decoded.width, image.width);
           assert.equal(decoded.rgba[3], 0);
-          images.clear();
           const reused = await images.prepare(Buffer.from(image.data, "base64"));
           assert.equal(reused.data, image.data);
           assert.equal(reused.originalWidth, image.width);
@@ -86,6 +85,8 @@ it("真实 Chromium 转换、缩小、透明度、规范字节复用与取消释
           controller.abort();
           await assert.rejects(pending);
           assert.equal(BrowserWindow.getAllWindows().length, 0);
+          images.clear();
+          await assert.rejects(images.prepare(bytes), { code: 'runtime.cancelled' });
           process.stdout.write('IMAGE_HOST_OK');
           app.exit(0);
         } catch (error) { console.error(error); app.exit(1); }

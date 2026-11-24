@@ -2,7 +2,6 @@ import { zh_cn_workbench_page } from "../zh-CN/workbench-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_workbench_page = {
-  title: "Werkbank",
   unit: {
     item: "Einträge",
   },

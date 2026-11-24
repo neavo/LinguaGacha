@@ -170,9 +170,16 @@ export const de_de_app = {
     ID: "Indonesisch",
     VI: "Vietnamesisch",
   },
+  workspace: {
+    skills: "Skills",
+    quality_rules: "Qualitätsregeln",
+    new_chat: "Neuer Chat",
+    delete_chat: "Chat löschen",
+    close_busy: "Ein Projektvorgang läuft",
+    files: "Dateien",
+  },
   navigation_action: {
-    expand_sidebar: "Seitenleiste ausklappen",
-    collapse_sidebar: "Seitenleiste einklappen",
+    resize_sidebar: "Breite der Seitenleiste ändern",
     appearance: "Darstellung",
     font: "Schriftart",
     font_size: "Schriftgröße",

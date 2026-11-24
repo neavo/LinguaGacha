@@ -19,7 +19,7 @@ import { wolf_files } from "../../test/wolf-fixture";
 import { wolf_archive_fixture } from "../../test/wolf-archive-fixture";
 import { evb_fixture } from "../../test/evb-fixture";
 import { rgss_archive_fixture } from "../../test/rgss-archive-fixture";
-import { CacheManager } from "../cache/cache-manager";
+import { ProjectCache } from "../cache/project-cache";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
 import { read_zip_fixture, write_zip, zip_text } from "../../test/zip-fixture";
@@ -43,12 +43,12 @@ import { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-ope
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { FileFormatService } from "../file/file-format-service";
 import type { LogManager } from "../log/log-manager";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectContentService } from "./project-content-service";
 import { adapt_project_change, type ProjectChangePublisher } from "./project-write-event-adapter";
 import { ProjectWriteStore } from "./project-write-store";
 
-import { ProjectSessionState } from "./project-session-state";
+import { ProjectSessionFixture } from "../../test/project-session-fixture";
 
 let temp_dir = "";
 
@@ -78,12 +78,12 @@ async function create_service(
 ): Promise<{
   database: ProjectDatabase;
   service: ProjectContentService;
-  runtime_gate: RuntimeOperationGate;
-  session_state: ProjectSessionState;
+  runtime_gate: ProjectOperationGate;
+  session_state: ProjectSessionFixture;
   lg_path: string;
 }> {
   const database = new ProjectDatabase("1.0.0");
-  const session_state = new ProjectSessionState();
+  const session_state = new ProjectSessionFixture();
   const lg_path = project_path("demo.lg");
   await database.create_project(lg_path);
   session_state.mark_loaded(lg_path);
@@ -91,7 +91,7 @@ async function create_service(
     project_change_publisher === undefined
       ? create_test_project_change_publisher().publish_project_change
       : project_change_publisher;
-  const runtime_gate = new RuntimeOperationGate();
+  const runtime_gate = new ProjectOperationGate();
   const project_event_bus = vi.fn();
   const write_store = new ProjectWriteStore(database, project_event_bus, publisher);
   return {
@@ -100,7 +100,7 @@ async function create_service(
       new GameDirectoryOperations(),
       database,
       runtime_gate,
-      session_state,
+      session_state.snapshot().projectPath,
       write_store,
       { read_app_language: () => "ZH" },
       undefined,
@@ -121,11 +121,11 @@ function create_log_manager(): Pick<LogManager, "warning"> {
 
 /** 使用真实事件适配器，修订与载荷取自本次提交。 */
 function create_test_project_change_publisher() {
-  const session = new ProjectSessionState();
+  const session = new ProjectSessionFixture();
   void session.mark_loaded(project_path("demo.lg"));
   return {
     publish_project_change: vi.fn((payload: Parameters<typeof adapt_project_change>[1]) =>
-      adapt_project_change(session, payload),
+      adapt_project_change(session.snapshot().projectPath, payload),
     ),
   };
 }
@@ -2431,12 +2431,14 @@ describe("ProjectContentService", () => {
       skip_duplicate_source_text_enable: false,
     };
     await database.transaction(lg_path, (writer) => writer.upsert_meta_entries(lg_path, settings));
-    const cache = new CacheManager({
+    const cache = new ProjectCache({
+      projectPath: lg_path,
+      projectId: "fixture",
       database,
       logManager: null,
       workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
     });
-    const summary = new ProjectSummaryService(session_state, cache);
+    const summary = new ProjectSummaryService(session_state.snapshot().projectPath, cache);
     const source_paths = [" a.json", "a.json", " blank.txt"].map(project_path);
     fs.writeFileSync(source_paths[0]!, JSON.stringify({ "line\nother": "", line: "" }));
     fs.writeFileSync(source_paths[1]!, JSON.stringify({ plain: "" }));
@@ -2471,7 +2473,7 @@ describe("ProjectContentService", () => {
       );
       /** 从真实缓存查询获取命令路径与修订，覆盖持久化后的消费链。 */
       async function read_planning_state() {
-        await cache.warmProject(lg_path);
+        await cache.refresh();
         const result = await summary.read();
         return { files: result.snapshot.entries, section_revisions: result.sectionRevisions };
       }

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppPathService } from "../app/app-path-service";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GlobalOperationGate } from "../runtime-operation-gate";
 import { AppError } from "../../shared/error";
 import { create_provider_error } from "../network/provider-error";
 import { default_native_fs } from "../../native/native-fs";
@@ -42,7 +42,7 @@ afterEach(async () => {
 });
 /** 每个实例加入统一清理，多个实例通过真实文件共享凭据。 */
 function service(): ChatGPTAuthService {
-  const result = new ChatGPTAuthService(paths, new RuntimeOperationGate(), vi.fn());
+  const result = new ChatGPTAuthService(paths, new GlobalOperationGate(), vi.fn());
   services.push(result);
   return result;
 }
@@ -246,7 +246,7 @@ describe("ChatGPT 账户共享凭据", () => {
     const publish = vi.fn((_topic, payload) => {
       if (payload.snapshot.login?.status === "cancelled") finished.resolve();
     });
-    const auth = new ChatGPTAuthService(paths, new RuntimeOperationGate(), publish);
+    const auth = new ChatGPTAuthService(paths, new GlobalOperationGate(), publish);
     services.push(auth);
     const [first, second] = await Promise.all([auth.login(), auth.login()]);
     expect(first.id).toBe(second.id);
@@ -269,7 +269,7 @@ describe("ChatGPT 账户共享凭据", () => {
     const publish = vi.fn((_topic, payload) => {
       if (payload.snapshot.login?.status === "failed") finished.resolve();
     });
-    const auth = new ChatGPTAuthService(paths, new RuntimeOperationGate(), publish);
+    const auth = new ChatGPTAuthService(paths, new GlobalOperationGate(), publish);
     services.push(auth);
     const started = await auth.login();
     expect(started.url).toBe("https://auth.openai.com/authorize");
@@ -327,7 +327,7 @@ describe("ChatGPT 账户共享凭据", () => {
         };
       });
       const revoke = vi.spyOn(oauth_protocol, "revoke_chatgpt_session").mockResolvedValue();
-      const gate = new RuntimeOperationGate();
+      const gate = new GlobalOperationGate();
       const auth = new ChatGPTAuthService(paths, gate, vi.fn());
       services.push(auth);
       const resolving = auth.resolve(auth.bind());

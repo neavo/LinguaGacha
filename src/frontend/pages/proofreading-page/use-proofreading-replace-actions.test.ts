@@ -44,7 +44,7 @@ it("姓名替换更新当前姓名并完成条目", async () => {
     is_regex: false,
     is_writing: false,
     list_view: { ...create_empty_proofreading_list_view(), view_id: "view-1", row_count: 1 },
-    proofreading_runtime_client_ref: { current: createProofreadingApiClient() },
+    proofreading_runtime_client_ref: { current: createProofreadingApiClient(api_fetch) },
     readonly: false,
     replace_cursor_ref: { current: 0 },
     replace_text: "新名",

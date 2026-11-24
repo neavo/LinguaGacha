@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   summarize_project_change_for_diagnostics,
-  summarize_project_change_payload_for_diagnostics,
   summarize_project_state_for_diagnostics,
-  summarize_scheduler_error_context,
   summarize_task_snapshot_for_diagnostics,
 } from "./desktop-diagnostics";
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
@@ -39,6 +37,7 @@ function create_task_snapshot(): BatchTranslationSnapshot {
  */
 function create_project_change(): ProjectChangeEventForState {
   return {
+    projectId: "fixture",
     eventId: "evt-1",
     source: "write",
     projectPath: "E:/secret/project/demo.lg",
@@ -90,39 +89,6 @@ describe("desktop state diagnostics", () => {
       updatedSections: ["items"],
       sectionRevisions: { items: 9 },
       qualityStatisticsScope: "all",
-    });
-  });
-
-  it("异常恢复上下文只保留可定位批次形状", () => {
-    expect(
-      summarize_project_change_payload_for_diagnostics({
-        eventId: "evt-2",
-        source: "sse",
-        projectPath: "E:/secret/project/demo.lg",
-        projectRevision: 13,
-        updatedSections: ["items", "bad"],
-        sectionRevisions: { items: 10 },
-      }),
-    ).toMatchObject({
-      eventId: "evt-2",
-      source: "sse",
-      updatedSections: ["items", "bad"],
-      sectionRevisions: { items: 10 },
-    });
-
-    expect(
-      summarize_scheduler_error_context({
-        phase: "project_change_batch",
-        projectChanges: [create_project_change()],
-        taskSnapshot: create_task_snapshot(),
-      }),
-    ).toMatchObject({
-      phase: "project_change_batch",
-      projectChanges: [{ eventId: "evt-1" }],
-      taskSnapshot: {
-        runRevision: 7,
-        progress: {},
-      },
     });
   });
 });

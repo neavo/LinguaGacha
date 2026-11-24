@@ -1,23 +1,49 @@
 .shell-sidebar {
   --sidebar-row-height: 36px;
   --sidebar-inset: 8px;
-  /* 图标列占满折叠后的按钮，两态共用同一中心线。 */
-  --sidebar-icon-column: calc(var(--sidebar-width-icon) - 2 * var(--sidebar-inset));
-  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 0 0 var(--sidebar-width);
+  flex-direction: column;
+  min-height: 0;
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
 }
 
 .shell-sidebar__scroll {
+  flex: 1;
+  overflow-y: auto;
   padding: 4px 0 10px;
 }
 
 .shell-sidebar__bottom {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   padding: 8px var(--sidebar-inset) 10px;
 }
 
+.shell-sidebar__resize {
+  position: absolute;
+  inset: 0 -4px 0 auto;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.shell-sidebar__resize:is(:hover, :focus-visible, :active)::after {
+  position: absolute;
+  inset: 0 3px;
+  background: var(--sidebar-ring);
+  content: "";
+}
+
 .sidebar-group-separator {
   width: calc(100% - 48px);
+  height: 1px;
   margin: 0 auto 8px;
+  border: 0;
   background: linear-gradient(
     90deg,
     transparent,
@@ -38,7 +64,7 @@
 .sidebar-row {
   position: relative;
   display: grid;
-  grid-template-columns: var(--sidebar-icon-column) minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr);
   align-items: center;
   width: 100%;
   height: var(--sidebar-row-height);
@@ -86,8 +112,17 @@
   z-index: 2;
 }
 
-.sidebar-row:hover::after {
+.sidebar-row:enabled:hover::after {
   opacity: 1;
+}
+
+.sidebar-row:focus-visible {
+  outline: 1px solid var(--sidebar-ring);
+  outline-offset: -1px;
+}
+
+.sidebar-row:disabled {
+  opacity: 0.5;
 }
 
 .sidebar-row[data-active="true"] {
@@ -121,7 +156,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity 180ms ease;
 }
 
 .sidebar-profile--update {
@@ -159,16 +193,9 @@
   right: -1px;
 }
 
-[data-slot="sidebar"][data-collapsible="icon"] .sidebar-row__label {
-  padding-right: 0;
-  opacity: 0;
-  visibility: hidden;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sidebar-row::before,
-  .sidebar-row::after,
-  .sidebar-row__label {
+  .sidebar-row::after {
     transition: none;
   }
 }

@@ -1,8 +1,5 @@
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { AgentFileDropTarget } from "./agent-file-drop-target";
-import { read_file_paths } from "@frontend/app/desktop/source-paths";
-import { AgentProjectOpenDialog } from "./agent-project-open-dialog";
-import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
-import { AgentProjectEntry } from "./agent-project-entry";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import type { AgentApprovalMode } from "@domain/setting";
@@ -18,7 +15,6 @@ import {
   FileDiff,
   FileOutput,
   Shrink,
-  SquarePower,
   Sparkles,
   Type,
 } from "lucide-react";
@@ -35,7 +31,6 @@ import {
   read_selected_model,
   useModelSelection,
 } from "@frontend/features/model-selection/use-model-selection";
-import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
@@ -108,17 +103,12 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const consumed_input_request = useRef<typeof agent_input_request>(null); // `StrictMode` 重放副作用时跳过已消费请求。
   const agent_actions = useAgentChatActions();
   const model_selection = useModelSelection();
-  const runtime_snapshot = useRuntimeSnapshot();
   const { project_snapshot, settings_snapshot, apply_settings_snapshot, initial_state_status } =
     useDesktopState();
-  const project_lifecycle = useProjectLifecycle();
-  const [dropped_project, set_dropped_project] = useState<string | null>(null);
-  const [project_attention, set_project_attention] = useState(0);
   // 发送与附件共用入口，草稿仍由常驻 Store 持有。
   const require_project = useCallback((): boolean => {
     if (project_snapshot.loaded) return true;
     push_toast("warning", t("agent_page.project_required"));
-    set_project_attention((value) => value + 1);
     return false;
   }, [project_snapshot.loaded, t]);
   const [approval_updating, set_approval_updating] = useState(false); // 保存期间禁用模式选择。
@@ -136,7 +126,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   } = useAgentFollowLatest(true);
   const [follow_reset_revision, set_follow_reset_revision] = useState(0);
   const [fork_round_id, set_fork_round_id] = useState<string | null>(null); // 弹窗绑定轮次身份，提交时由后端重新校验
-  const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const [pending_thinking_off_action, set_pending_thinking_off_action] =
     useState<PendingThinkingOffAction | null>(null);
   /** 页面只允许一个历史或队列目标进入原位编辑，普通 Composer 始终保持独立草稿。 */
@@ -144,7 +133,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
 
   useEffect(() => {
     if (!active) {
-      set_reset_dialog_open(false);
       set_fork_round_id(null);
       set_pending_thinking_off_action(null);
     }
@@ -172,10 +160,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const compacting = timeline.compacting;
   // 宿主指令只在会话已恢复、命令已收束且共享运行时空闲时开放。可压缩性直接采用后端事实。
   const instruction_ready =
-    controls.transport === "ready" &&
-    controls.state === "idle" &&
-    controls.command === null &&
-    runtime_snapshot.owner === null;
+    controls.transport === "ready" && controls.state === "idle" && controls.command === null;
   const compact_available = instruction_ready && controls.context.compactable;
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
@@ -184,14 +169,12 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
       ? "disconnected"
       : agent_restoring || controls.transport === "restore_failed"
         ? "restoring"
-        : runtime_snapshot.owner !== null && runtime_snapshot.owner !== "agent"
-          ? "runtime_busy"
-          : null;
+        : null;
 
   const edit_entry = useAgentEntry(
     active_inline_edit?.kind === "entry" ? active_inline_edit.entryId : null,
   );
-  // 会话被 reset、换工程或其它入口替换后，原位编辑目标失去事实即自动退出。
+  // 换对话、换工程或其它入口替换历史后，原位编辑目标失去事实即自动退出。
   useEffect(() => {
     if (active_inline_edit === null) return;
     const target_exists =
@@ -316,14 +299,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   }, [agent_actions, show_command_error]);
   /** 主 Composer 的宿主指令目录。动作不进入消息正文或原位编辑器。 */
   const instructions: readonly AgentMentionInstruction[] = [
-    {
-      id: "close_project",
-      icon: SquarePower,
-      title: t("project.close.action"),
-      description: "",
-      disabled: !project_lifecycle.can_close,
-      execute: project_lifecycle.request_close,
-    },
     {
       // 翻译成果导出属于工程级动作，可用性由工程加载状态和文件数量判定，不受 Agent 会话空闲约束。
       id: "export_translation",
@@ -614,25 +589,9 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     active_inline_edit === null &&
     !input_transition.locked &&
     controls.command === null &&
-    !project_lifecycle.busy &&
-    dropped_project === null;
-  /** 无工程时整批路径进入打开或创建流程，任一路径不可用则整批放弃。 */
+    project_snapshot.loaded;
   function handle_file_drop(files: readonly File[]): void {
-    if (!file_drop_enabled || files.length === 0) return; // 正文编辑器直接调用此入口，仍须检查页面权限。
-    if (project_snapshot.loaded) {
-      composer_ref.current?.drop_files(files);
-      return;
-    }
-    const { paths, skipped } = read_file_paths(files);
-    if (skipped.length > 0) {
-      push_toast("warning", t("agent_page.error.invalid_file_path"), {
-        description: skipped.join("\n"),
-      });
-      return;
-    }
-    const first = paths[0]!;
-    if (paths.length === 1 && first.toLowerCase().endsWith(".lg")) set_dropped_project(first);
-    else project_lifecycle.create_from_paths(paths);
+    if (file_drop_enabled && files.length > 0) composer_ref.current?.drop_files(files);
   }
 
   return (
@@ -642,9 +601,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
         enabled={file_drop_enabled}
         on_files={handle_file_drop}
       />
-      {dropped_project !== null ? (
-        <AgentProjectOpenDialog path={dropped_project} on_close={() => set_dropped_project(null)} />
-      ) : null}
       <section
         ref={conversation_ref}
         className="agent-page__conversation"
@@ -738,7 +694,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
             className="agent-page__status-zone"
             inert={input_transition.locked || undefined}
           >
-            <AgentProjectEntry key={project_attention} attention={project_attention} />
             <AgentTaskStatus doing={controls.doing} running={is_running} />
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
@@ -821,7 +776,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 command={controls.command}
                 can_continue_queue={can_continue_queue}
                 queue_full={queue_full}
-                can_reset={!agent_restoring && timeline.entryIds.length > 0}
                 context={controls.context}
                 usage={controls.usage}
                 approval_mode={settings_snapshot.agent_approval_mode}
@@ -832,7 +786,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 on_agent_model_select={change_agent_model_selection}
                 on_approval_mode_change={change_approval_mode}
                 on_stop={stop}
-                on_reset={() => set_reset_dialog_open(true)}
               />
             </div>
           </div>
@@ -864,21 +817,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
           }
         }}
         onClose={() => set_fork_round_id(null)}
-      />
-      <AppConfirmDialog
-        open={reset_dialog_open}
-        description={t("agent_page.confirm.new_task")}
-        submitting={controls.command === "reset"}
-        onConfirm={async () => {
-          try {
-            await agent_actions.reset();
-            set_reset_dialog_open(false);
-            set_fork_round_id(null);
-          } catch (error) {
-            show_command_error(error, "agent_page.error.reset");
-          }
-        }}
-        onClose={() => set_reset_dialog_open(false)}
       />
     </div>
   );

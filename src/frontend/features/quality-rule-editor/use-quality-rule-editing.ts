@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { QualityRuleUpdateRequest } from "@shared/quality/quality-rule-api";
@@ -18,13 +19,8 @@ import {
   type ResultRefreshPolicy,
 } from "@frontend/app/result/snapshot";
 import { create_project_section_result_refresh } from "@frontend/app/result/refresh";
-import {
-  update_quality_rule,
-  import_quality_rule_entries,
-  read_quality_rule_preset,
-  pick_quality_rule_import_path,
-  export_quality_rule_entries,
-} from "./quality-rule-api-client";
+import { createQualityRuleApi } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import {
   useQualityRuleDuplicateConfirmation,
   type QualityRuleDuplicateResolutionPlan,
@@ -82,6 +78,14 @@ export function useQualityRuleEditing<K extends QualityRuleKind>(options: {
   close_preset_menu: () => void;
   export_file_name: string;
 }) {
+  const api_fetch = useProjectFetch();
+  const {
+    update_quality_rule,
+    import_quality_rule_entries,
+    read_quality_rule_preset,
+    pick_quality_rule_import_path,
+    export_quality_rule_entries,
+  } = useMemo(() => createQualityRuleApi(api_fetch), [api_fetch]);
   type Entry = QualityRuleEntryByKind[K];
   const readonly = !options.ready || options.readonly; // 未就绪与工程占用均阻止编辑，导出只依赖就绪。
   const { t } = useI18n();

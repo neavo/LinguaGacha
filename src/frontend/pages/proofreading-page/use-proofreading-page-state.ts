@@ -1,3 +1,4 @@
+import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
 import {
   push_error_toast,
   dismiss_toast,
@@ -16,7 +17,7 @@ import {
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import type {
   ProjectWriteOperation,
   ProjectWriteResultPayload,
@@ -29,7 +30,6 @@ import {
 import {
   useDesktopState,
   useProjectChangeSignal,
-  useRuntimeSnapshot,
   useSyncBatchTranslationSnapshot,
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
@@ -93,13 +93,14 @@ type ListQueryChange = {
  * 聚合校对页 session 状态、后端 query、写入动作与生命周期，向页面暴露单一公开状态。
  */
 export function useProofreadingPageState(): UseProofreadingPageStateResult {
+  const api_fetch = useProjectFetch();
   const { t } = useI18n();
 
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
   const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
   const project_languages = project_snapshot.languages ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS;
   const task_snapshot = useBatchTranslationSnapshot();
-  const runtime_snapshot = useRuntimeSnapshot();
+  const runtime_snapshot = useProjectRuntimeSnapshot();
   const sync_task_snapshot = useSyncBatchTranslationSnapshot();
   const project_change_signal = useProjectChangeSignal();
   const table_ui_state = useProjectSessionTableUiState<
@@ -172,7 +173,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const filter_panel_request_id_ref = useRef(0);
   const filter_dialog_filters_ref = useRef(filter_dialog_filters);
   const sync_state_ref = useRef<ProofreadingSyncState | null>(null);
-  const proofreading_runtime_client_ref = useRef(createProofreadingApiClient());
+  const proofreading_runtime_client_ref = useRef(createProofreadingApiClient(api_fetch));
   // 记录 AppTable 最新可见范围，delta 刷新优先复用这个窗口。
   const visible_range_ref = useRef<ProofreadingListWindowBounds | null>(null);
   // 保存当前已预取窗口，首屏刷新时没有可见范围也能复用。
@@ -422,7 +423,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         set_is_writing(false);
       }
     },
-    [commit_project_write, handle_api_error, refresh_batch_translation, t],
+    [api_fetch, commit_project_write, handle_api_error, refresh_batch_translation, t],
   );
 
   const resolve_preferred_row_id = useCallback(

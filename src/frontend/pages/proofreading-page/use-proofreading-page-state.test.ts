@@ -7,7 +7,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import {
   normalize_project_write_result,
   type ProjectWriteCommitRequest,
@@ -24,6 +23,8 @@ import {
 } from "@shared/proofreading/proofreading-types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
 import { resolve_prefetched_list_window_bounds } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
+
+const page_ui = new Map<string, unknown>();
 
 // 模拟 Hook 依赖的桌面运行态、项目变更信号和写入回调。
 type RuntimeFixture = {
@@ -172,7 +173,7 @@ const toast_fixture: { current: ToastFixture } = {
 
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
-    useDesktopState: () => runtime_fixture.current,
+    useDesktopState: () => ({ ...runtime_fixture.current, active_project: { pageUi: page_ui } }),
     useProjectChangeSignal: () => runtime_fixture.current.project_change_signal,
     useBatchTranslationSnapshot: () => runtime_fixture.current.task_snapshot,
     useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
@@ -504,6 +505,7 @@ describe("useProofreadingPageState", () => {
   let render_page = true;
 
   beforeEach(() => {
+    page_ui.clear();
     install_api_fetch_default_mock();
   });
 
@@ -533,13 +535,9 @@ describe("useProofreadingPageState", () => {
     return null;
   }
 
-  // 保持项目 session provider 常驻，用显隐 Probe 模拟路由切换。
-  function ProofreadingShell(): JSX.Element {
-    return createElement(
-      ProjectSessionUiStateProvider,
-      null,
-      render_page ? createElement(ProofreadingProbe) : null,
-    );
+  // 保持工程 pageUi 映射常驻，用显隐 Probe 模拟路由切换。
+  function ProofreadingShell(): JSX.Element | null {
+    return render_page ? createElement(ProofreadingProbe) : null;
   }
 
   // 统一冲刷页面 Promise，避免每个用例重复铺设等待细节。
@@ -2082,6 +2080,7 @@ describe("useProofreadingPageState", () => {
             : [
                 {
                   type: "project.changed",
+                  projectId: "project",
                   eventId: "clear-write-1",
                   source: "proofreading_apply_item_changes",
                   projectPath: "E:/demo/sample.lg",
@@ -2120,6 +2119,7 @@ describe("useProofreadingPageState", () => {
       changes: [
         {
           type: "project.changed",
+          projectId: "project",
           eventId: "clear-write-1",
           source: "proofreading_apply_item_changes",
           projectPath: "E:/demo/sample.lg",

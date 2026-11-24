@@ -1,3 +1,4 @@
+import { useProjectTabActive } from "@frontend/app/navigation/project-scope-context";
 import {
   type ProofreadingContentFilters,
   type ProofreadingViewFilterState,
@@ -73,6 +74,7 @@ type UseProofreadingPageEffectsOptions = {
  * 绑定校对页的项目生命周期、外部变更、导航意图和一次性 UI 恢复副作用。
  */
 export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOptions): void {
+  const active = useProjectTabActive();
   const {
     navigation_pending,
     current_query_intent_key,
@@ -140,7 +142,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
 
   useEffect(() => {
     // 校对页首刷可能较久，刷新态用模态进度提示阻止用户误以为页面卡死。
-    if (!project_loaded || !loading_toast_visible) {
+    if (!active || !project_loaded || !loading_toast_visible) {
       const toast_id = loading_toast_id_ref.current;
       if (toast_id !== null) {
         loading_toast_id_ref.current = null;
@@ -162,6 +164,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     dismiss_toast,
     loading_toast_id_ref,
     loading_toast_visible,
+    active,
     project_loaded,
     push_progress_toast,
     t,
@@ -229,7 +232,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
   useEffect(() => {
     const previous_seq = previous_proofreading_change_seq_ref.current;
 
-    if (!project_loaded || proofreading_change_signal === null || navigation_pending) {
+    if (!active || !project_loaded || proofreading_change_signal === null || navigation_pending) {
       return;
     }
 
@@ -238,6 +241,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
       void refresh_snapshot();
     }
   }, [
+    active,
     navigation_pending,
     previous_proofreading_change_seq_ref,
     project_loaded,
@@ -247,7 +251,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
 
   // 导航查找意图先写入共享表格状态，再由统一 list query 读取最新 ref。
   useEffect(() => {
-    if (proofreading_lookup_intent === null) {
+    if (!active || proofreading_lookup_intent === null) {
       return;
     }
 
@@ -260,6 +264,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     void run_list_query_change({ target_row_id: null });
     clear_proofreading_lookup_intent();
   }, [
+    active,
     clear_proofreading_lookup_intent,
     proofreading_lookup_intent,
     run_list_query_change,

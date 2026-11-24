@@ -1,5 +1,4 @@
 export const zh_cn_knowledge_page = {
-  title: "知识",
   builtin: "内置技能",
   user: "用户技能",
   knowledge: "工程知识",
@@ -8,7 +7,6 @@ export const zh_cn_knowledge_page = {
   },
   readonly: "只读",
   personality_description: "智能助手的角色设定",
-  knowledge_description: "随工程保存的设定、约定与进度",
   install: {
     title: "安装指南",
     description: "将技能链接发送给 AGENT，并告诉它「请帮我安装这个技能」",

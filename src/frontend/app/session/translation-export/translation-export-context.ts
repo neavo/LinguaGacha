@@ -7,7 +7,7 @@ export const TranslationExportContext = createContext<TranslationExportFlow | nu
 export function useTranslationExport(): TranslationExportFlow {
   const flow = useContext(TranslationExportContext);
   if (flow === null) {
-    throw new Error("useTranslationExport must be used inside TranslationExportProvider");
+    throw new Error("useTranslationExport must be used inside ProjectSessionProvider");
   }
   return flow;
 }

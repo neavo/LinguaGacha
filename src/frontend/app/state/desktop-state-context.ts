@@ -16,6 +16,7 @@ export type SettingsSnapshot = SettingSnapshot;
 
 export type ProjectSnapshot = {
   path: string;
+  projectId?: string;
   loaded: boolean;
   file_count: number; // 统计工程资产，包含零条目资产。
   languages: ProjectLanguageSettings | null; // 已加载项目的语言事实，未加载时为 null
@@ -30,8 +31,12 @@ export type DesktopStateContextValue = {
   project_snapshot: ProjectSnapshot;
   project_session_status: ProjectSessionStatus;
   is_app_language_updating: boolean;
-  set_project_session_status: (status: ProjectSessionStatus) => void;
   apply_settings_snapshot: (payload: SettingsSnapshotPayload) => SettingsSnapshot;
+  open_projects: readonly import("./project-store-registry").ProjectStore[];
+  active_project: import("./project-store-registry").ProjectStore | undefined;
+  select_project: (projectId: string) => void;
+  refresh_projects: () => Promise<readonly import("./project-store-registry").ProjectStore[]>;
+  apply_chat_list: (projectId: string, payload: unknown) => void;
   refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_state: () => Promise<void>;
   commit_project_write: ProjectWriteCommitter;

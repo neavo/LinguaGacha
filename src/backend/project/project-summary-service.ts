@@ -8,8 +8,6 @@ import type {
 import type { ProjectTranslationStatsResponse } from "../../shared/project-translation-stats";
 import type { CacheReadPort } from "../cache/cache-types";
 
-import type { ProjectSessionState } from "./project-session-state";
-
 /**
  * 基于已提交的工程快照，生成工作台与跨页面的条目统计。
  */
@@ -18,7 +16,7 @@ export class ProjectSummaryService {
    * session_state 提供工程身份，cache 提供当前项目热读事实。
    */
   public constructor(
-    private readonly session_state: ProjectSessionState,
+    private readonly project_path: string,
     private readonly cache: CacheReadPort,
   ) {}
 
@@ -26,7 +24,7 @@ export class ProjectSummaryService {
    * 工作台快照承接文件列表，跨页面翻译统计由独立查询提供。
    */
   public read(): WorkbenchQueryResponse {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const items = this.cache.items.readItems();
     const cached_file_entries = this.cache.files.readFileEntries();
     return {
@@ -40,7 +38,7 @@ export class ProjectSummaryService {
 
   /** 工程身份随统计返回，供共享缓存隔离切换期间的响应。 */
   public read_translation_stats(): ProjectTranslationStatsResponse {
-    const projectPath = this.session_state.require_loaded_project_path();
+    const projectPath = this.project_path;
     return {
       projectPath,
       stats: build_project_translation_stats(this.cache.items.readItems()),

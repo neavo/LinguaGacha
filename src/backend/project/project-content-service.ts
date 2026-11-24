@@ -48,8 +48,7 @@ import {
   require_project_expected_section_revisions,
   type ProjectExpectedSectionRevisions,
 } from "./project-write-request";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "./project-session-state";
+import type { ProjectOperationGate } from "../runtime-operation-gate";
 import {
   build_project_item_persistent_records,
   collect_project_item_missing_public_fields,
@@ -104,9 +103,9 @@ type ImportProjectFileCommand = {
 export class ProjectContentService {
   private readonly database: ProjectDatabase; // 所有 .lg 写入必须经由 ProjectDatabase workflow，避免项目域直接碰 SQL
 
-  private readonly runtime_gate: RuntimeOperationGate; // 用户写入与模型运行共享唯一互斥门闩
+  private readonly runtime_gate: ProjectOperationGate; // 用户写入与模型运行共享唯一互斥门闩
 
-  private readonly session_state: ProjectSessionState; // 当前公开工程路径由 API Gateway 会话状态提供，避免同步写入回读旧缓存
+  private readonly project_path: string; // 当前公开工程路径由 API Gateway 会话状态提供，避免同步写入回读旧缓存
 
   private readonly write_store: ProjectWriteStore; // 工作台只提交结构性业务意图，事务和事件交给 ProjectWriteStore
 
@@ -120,8 +119,8 @@ export class ProjectContentService {
   public constructor(
     private readonly game_directory_operations: GameDirectoryOperations,
     database: ProjectDatabase,
-    runtime_gate: RuntimeOperationGate,
-    session_state: ProjectSessionState,
+    runtime_gate: ProjectOperationGate,
+    project_path: string,
     write_store: ProjectWriteStore,
     private readonly app_settings: Pick<AppSettingService, "read_app_language">,
     native_fs: NativeFs = default_native_fs,
@@ -130,7 +129,7 @@ export class ProjectContentService {
   ) {
     this.database = database;
     this.runtime_gate = runtime_gate;
-    this.session_state = session_state;
+    this.project_path = project_path;
     this.write_store = write_store;
     this.native_fs = native_fs;
     this.log_manager = log_manager;
@@ -142,9 +141,7 @@ export class ProjectContentService {
     orders?: readonly GodotPackOrder[],
     signal?: AbortSignal,
   ): Promise<SourceInspection[]> {
-    const service = await this.create_format_service(
-      this.session_state.require_loaded_project_path(),
-    );
+    const service = await this.create_format_service(this.project_path);
     return service.with_source_directories(
       source_paths,
       async (source_signal) => {
@@ -526,7 +523,7 @@ export class ProjectContentService {
 
   /** 预览只发现来源并分配目标名称，内容准备由正式导入持有。 */
   public async preview_import_files(request: JsonRecord): Promise<WorkbenchImportFilesPreview> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const format_service = await this.create_format_service(project_path);
     const source_paths = this.normalize_string_list(request["source_paths"]);
     const sources = await format_service.with_source_directories(source_paths, (signal) =>
@@ -568,7 +565,7 @@ export class ProjectContentService {
 
   /** 导入工作台文件，并按同名策略同步新增或替换文件事实。 */
   public async import_files(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, PROJECT_DERIVED_FIELDS);
       const source_paths = this.read_source_paths(request["source_paths"]);
@@ -685,7 +682,7 @@ export class ProjectContentService {
    * 重置指定工作台文件的条目事实，并重建翻译进度
    */
   public async reset_files(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, PROJECT_DERIVED_FIELDS);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
@@ -746,7 +743,7 @@ export class ProjectContentService {
     source: string,
     changes: { updates: ProjectFileUpdate[]; deletes: string[] },
   ): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     return this.runtime_gate.run_project_write(async (signal) => {
       this.assert_no_legacy_fields(request, PROJECT_DERIVED_FIELDS);
       const result = await this.apply_file_changes({
@@ -769,7 +766,7 @@ export class ProjectContentService {
    * 持久化完整文件顺序，确保拖拽重排只影响 files section
    */
   public async reorder_files(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     return this.runtime_gate.run_project_write(async () => {
       const ordered_paths = this.normalize_string_list(request["ordered_rel_paths"]);
       const current_paths = (await this.database.get_all_asset_records(project_path)).map(
@@ -792,7 +789,7 @@ export class ProjectContentService {
   public async update_project_settings(request: JsonRecord): Promise<ProjectWriteResult> {
     const patch = parse_project_language_patch(request);
     return this.runtime_gate.run_project_write(async () => {
-      const project_path = this.session_state.require_loaded_project_path();
+      const project_path = this.project_path;
       const current = await this.read_project_write_settings(project_path);
       const settings: ProjectSettingsSnapshot = { ...current, ...patch };
       if (settings.source_language === current.source_language) {
@@ -855,7 +852,7 @@ export class ProjectContentService {
    * 提交翻译重置结果；命令表达当前事实操作，进入项目写 lease 后才读取工程数据
    */
   public async reset_translation(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const mode = String(request["mode"] ?? "").toLowerCase();
     this.assert_no_legacy_fields(request, [
       ...PROJECT_DERIVED_FIELDS,
