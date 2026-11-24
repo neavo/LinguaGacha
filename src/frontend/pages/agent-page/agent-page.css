@@ -1725,7 +1725,7 @@
 
 /* 状态点、决定按钮和后台待回复标签共享扩散节奏。 */
 .agent-round-footer[data-running="true"] .agent-round-footer__activity,
-.agent-pages__tab[data-needs-response]::before,
+.agent-pages__tab-group:has([data-needs-response])::before,
 .agent-decision-action__icon--deadline::before {
   animation: status-mark-pulse 1s ease-out infinite;
 }
@@ -1740,7 +1740,7 @@
     transition: none;
   }
 
-  .agent-pages__tab[data-needs-response]::before,
+  .agent-pages__tab-group:has([data-needs-response])::before,
   .agent-round-footer[data-running="true"] .agent-round-footer__activity {
     animation: none;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-mark-color) 35%, transparent);

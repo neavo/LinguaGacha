@@ -1,11 +1,11 @@
-import { useState, useSyncExternalStore, type JSX, type ReactNode, type RefObject } from "react";
+import { useState, type JSX, type ReactNode, type RefObject } from "react";
 import {
-  BrushCleaning,
   Ellipsis,
   FileInput,
   FilePlus,
   FolderOpen,
   ListX,
+  PackageOpen,
   SquarePower,
 } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -13,7 +13,6 @@ import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-des
 import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
 import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import { ProjectOpenPreviewDialog } from "@frontend/features/project-lifecycle/project-open-preview-dialog";
-import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -34,7 +33,7 @@ function path_key(file: string): string {
   return navigator.platform.toLowerCase().includes("win") ? normalized.toLowerCase() : normalized;
 }
 
-/** 打开工程与最近工程共用列表，重置与打开确认绑定发起操作时的目标。 */
+/** 打开工程与最近工程共用列表，打开确认绑定发起操作时的目标。 */
 export function ProjectSidebar({
   project_view_active,
   select,
@@ -47,40 +46,14 @@ export function ProjectSidebar({
   const { projects } = useRuntimeSnapshot();
   const lifecycle = useProjectLifecycle();
   const paths = new Set(open_projects.map(({ snapshot }) => path_key(snapshot.path)));
-  const [resetting, set_resetting] = useState<ProjectStore | null>(null);
   const [opening_path, set_opening_path] = useState<string | null>(null);
-  const [submitting, set_submitting] = useState(false);
   const recent = settings_snapshot.recent_projects.filter(({ path }) => {
     const key = path_key(path);
     if (paths.has(key)) return false;
     paths.add(key);
     return true;
   });
-
-  const can_confirm_reset = useSyncExternalStore(
-    resetting?.agentChat.subscribe_reset ?? subscribe_empty,
-    resetting?.agentChat.can_reset ?? no_reset,
-  );
-  const reset_disabled =
-    resetting === null ||
-    !can_confirm_reset ||
-    lifecycle.busy ||
-    is_project_busy(projects?.[resetting.snapshot.projectId]) ||
-    !open_projects.includes(resetting);
-
-  /** 失败时保留目标，重试仍使用同一个工程 Store。 */
-  async function reset(): Promise<void> {
-    if (resetting === null || reset_disabled || submitting) return;
-    set_submitting(true);
-    try {
-      await resetting.agentChat.reset();
-      set_resetting(null);
-    } catch (error) {
-      push_error_toast(t("app.feedback.update_failed"), error);
-    } finally {
-      set_submitting(false);
-    }
-  }
+  const has_projects = open_projects.length > 0 || recent.length > 0;
 
   return (
     <section className="shell-sidebar__projects">
@@ -131,41 +104,39 @@ export function ProjectSidebar({
         </div>
       </div>
       <div className="shell-sidebar__project-scroll">
-        <ul className="sidebar-group">
-          {open_projects.map((project) => (
-            <ProjectRow
-              key={path_key(project.snapshot.path)}
-              name={project.snapshot.name}
-              path={project.snapshot.path}
-              project={project}
-              busy={is_project_busy(projects?.[project.snapshot.projectId])}
-              selected={project_view_active && active_project === project}
-              on_select={() => {
-                void select(project).catch((error: unknown) =>
-                  push_error_toast(t("app.feedback.save_failed"), error),
-                );
-              }}
-              on_reset={() => set_resetting(project)}
-            />
-          ))}
-          {recent.map(({ path, name }) => (
-            <ProjectRow
-              key={path_key(path)}
-              name={name}
-              path={path}
-              on_select={() => set_opening_path(path)}
-            />
-          ))}
-        </ul>
+        {has_projects ? (
+          <ul className="sidebar-group">
+            {open_projects.map((project) => (
+              <ProjectRow
+                key={path_key(project.snapshot.path)}
+                name={project.snapshot.name}
+                path={project.snapshot.path}
+                project={project}
+                busy={is_project_busy(projects?.[project.snapshot.projectId])}
+                selected={project_view_active && active_project === project}
+                on_select={() => {
+                  void select(project).catch((error: unknown) =>
+                    push_error_toast(t("app.feedback.save_failed"), error),
+                  );
+                }}
+              />
+            ))}
+            {recent.map(({ path, name }) => (
+              <ProjectRow
+                key={path_key(path)}
+                name={name}
+                path={path}
+                on_select={() => set_opening_path(path)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <div className="sidebar-projects__empty">
+            <PackageOpen className="sidebar-projects__empty-icon" aria-hidden="true" />
+            <p className="sidebar-projects__empty-label">{t("app.workspace.projects_empty")}</p>
+          </div>
+        )}
       </div>
-      <AppConfirmDialog
-        open={resetting !== null}
-        submitting={submitting}
-        confirmDisabled={reset_disabled}
-        description={t("app.workspace.reset_confirm")}
-        onConfirm={reset}
-        onClose={() => set_resetting(null)}
-      />
       {opening_path !== null && (
         <ProjectOpenPreviewDialog
           path={opening_path}
@@ -177,9 +148,6 @@ export function ProjectSidebar({
   );
 }
 
-const subscribe_empty = () => () => {};
-const no_reset = () => false;
-
 /** 同一条目在打开前后保留路径身份与操作布局。 */
 function ProjectRow({
   name,
@@ -188,7 +156,6 @@ function ProjectRow({
   selected = false,
   busy = false,
   on_select,
-  on_reset,
 }: {
   name: string;
   path: string;
@@ -196,19 +163,13 @@ function ProjectRow({
   selected?: boolean;
   busy?: boolean;
   on_select: () => void;
-  on_reset?: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const lifecycle = useProjectLifecycle();
   const [menu_open, set_menu_open] = useState(false);
-  const can_reset = useSyncExternalStore(
-    project?.agentChat.subscribe_reset ?? subscribe_empty,
-    project?.agentChat.can_reset ?? no_reset,
-  );
   const status = project === undefined ? "closed" : busy ? "busy" : "open";
   const projectId = project?.snapshot.projectId;
   const disabled = busy || lifecycle.busy;
-  const reset_label = t("app.workspace.reset_chat");
   const close_label = t("project.close.action");
   const remove_label = t("app.workspace.remove_recent");
   const reveal_label = t("app.workspace.reveal_path");
@@ -266,26 +227,6 @@ function ProjectRow({
         <TooltipContent side="right">{path}</TooltipContent>
       </Tooltip>
       <div className="sidebar-project-item__actions">
-        {project !== undefined && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <TooltipTarget>
-                  <button
-                    type="button"
-                    className="inline-action-button"
-                    aria-label={reset_label}
-                    onClick={on_reset}
-                    disabled={disabled || !can_reset}
-                  >
-                    <BrushCleaning aria-hidden="true" />
-                  </button>
-                </TooltipTarget>
-              }
-            />
-            <TooltipContent>{busy ? t("app.workspace.close_busy") : reset_label}</TooltipContent>
-          </Tooltip>
-        )}
         <AppDropdownMenu open={menu_open} onOpenChange={set_menu_open}>
           <Tooltip>
             <TooltipTrigger
@@ -305,7 +246,7 @@ function ProjectRow({
             />
             <TooltipContent>{t("app.workspace.more")}</TooltipContent>
           </Tooltip>
-          <AppDropdownMenuContent align="end" matchTriggerWidth={false}>
+          <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
             {projectId !== undefined &&
               project_action(<SquarePower aria-hidden="true" />, close_label, () =>
                 lifecycle.request_close(projectId),

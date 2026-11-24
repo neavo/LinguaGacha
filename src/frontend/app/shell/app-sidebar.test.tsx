@@ -359,4 +359,18 @@ describe("AppSidebar", () => {
     await act(async () => footer.dispatchEvent(event));
     expect(lifecycle.request_open).toHaveBeenCalledExactlyOnceWith("E:/工程.LG");
   });
+
+  it("没有已打开或最近工程时显示空态占位，出现工程后切换为列表", async () => {
+    const projects = { project_view_active: false, select: vi.fn(async () => {}) };
+    await render_sidebar({ projects });
+    expect(container!.querySelector(".sidebar-projects__empty")?.textContent).toBe("暂无工程");
+    expect(container!.querySelector(".shell-sidebar__project-scroll > ul")).toBeNull();
+
+    project_state.settings_snapshot = normalize_setting_snapshot({
+      recent_projects: [{ path: "E:/最近.lg" }],
+    });
+    await render_sidebar({ projects });
+    expect(container!.querySelector(".sidebar-projects__empty")).toBeNull();
+    expect(container!.querySelectorAll(".sidebar-project-item")).toHaveLength(1);
+  });
 });

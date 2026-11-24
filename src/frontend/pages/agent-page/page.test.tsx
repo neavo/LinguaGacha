@@ -1,6 +1,7 @@
 import { act, StrictMode, useEffect, useState, type JSX } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ProjectScopeContext } from "@frontend/app/navigation/project-scope-context";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AgentMarkdown } from "./agent-markdown";
 import { EditorView } from "@codemirror/view";
@@ -11,7 +12,11 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   mounts: vi.fn(),
   unmounts: vi.fn(),
+  reset: vi.fn(async () => undefined),
   session: "session-1",
+  can_reset: false,
+  project_busy: false,
+  lifecycle_busy: false,
   needs_response: false,
   draft_attachment: false,
   saved: null as unknown,
@@ -40,7 +45,19 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
 vi.mock("@frontend/app/session/agent/agent-chat-context", async (original) => ({
   ...(await original<typeof import("@frontend/app/session/agent/agent-chat-context")>()),
   useAgentChatId: () => mocks.session,
+  useAgentCanReset: () => mocks.can_reset,
+  useAgentChatActions: () => ({ reset: mocks.reset }),
   useAgentControls: () => ({ pendingDecision: mocks.needs_response ? { kind: "question" } : null }),
+}));
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useRuntimeSnapshot: () => ({
+    projects: mocks.project_busy
+      ? { "project-1": { agent: true, batchTranslation: false, projectWrite: false } }
+      : {},
+  }),
+}));
+vi.mock("@frontend/app/session/project-lifecycle/project-lifecycle-context", () => ({
+  useProjectLifecycle: () => ({ busy: mocks.lifecycle_busy }),
 }));
 vi.mock("@frontend/app/session/project-session-ui-state-context", () => ({
   useProjectSessionUiState: () => ({ get_page_ui_state: mocks.get, set_page_ui_state: mocks.set }),
@@ -96,11 +113,16 @@ describe("Agent 文档标签", () => {
     mocks.blob.mockReset();
     mocks.blob.mockResolvedValue(new Blob([new Uint8Array([0, 255])], { type: "image/png" }));
     mocks.session = "session-1";
+    mocks.can_reset = false;
+    mocks.project_busy = false;
+    mocks.lifecycle_busy = false;
     mocks.needs_response = false;
     mocks.draft_attachment = false;
     mocks.saved = null;
     mocks.mounts.mockClear();
     mocks.unmounts.mockClear();
+    mocks.reset.mockReset();
+    mocks.reset.mockResolvedValue(undefined);
     mocks.toast.mockClear();
     mocks.api.mockReset();
     mocks.api.mockImplementation(async (_route: string, body: { path: string }) => ({
@@ -299,5 +321,48 @@ describe("Agent 文档标签", () => {
     );
     expect(container.querySelector(selector)?.scrollTop).toBe(80);
     expect(tab(path)?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("对话标签右侧关闭当前对话按钮遵循可重置与工程繁忙态，确认后提交重置并关闭弹窗", async () => {
+    const tab_host = document.createElement("div");
+    document.body.append(tab_host);
+    async function render_in_project(): Promise<void> {
+      await act(async () =>
+        root.render(
+          <ProjectScopeContext value={{ projectId: "project-1", tabId: "agent", active: true }}>
+            <AgentPage tabHost={tab_host} />
+          </ProjectScopeContext>,
+        ),
+      );
+    }
+
+    try {
+      await render_in_project();
+      const close_button = tab_host.querySelector<HTMLButtonElement>(
+        'button[aria-label="app.workspace.close_chat"]',
+      )!;
+      expect(close_button.disabled).toBe(true);
+
+      mocks.can_reset = true;
+      mocks.project_busy = true;
+      await render_in_project();
+      expect(close_button.disabled).toBe(true);
+
+      mocks.project_busy = false;
+      await render_in_project();
+      expect(close_button.disabled).toBe(false);
+
+      await click(close_button);
+      const confirm_button = document.querySelector<HTMLButtonElement>(
+        '[data-slot="alert-dialog-primary-action"]',
+      )!;
+      expect(confirm_button).not.toBeNull();
+
+      await click(confirm_button);
+      expect(mocks.reset).toHaveBeenCalledOnce();
+      expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+    } finally {
+      tab_host.remove();
+    }
   });
 });

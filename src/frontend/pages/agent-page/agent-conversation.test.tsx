@@ -1466,6 +1466,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     sendQueuedMessage: vi.fn(async () => undefined),
     continue: vi.fn(async () => undefined),
     compactContext: vi.fn(async () => undefined),
+    reset: vi.fn(async () => undefined),
     stop: vi.fn(),
     resolveQuestion: vi.fn(async () => undefined),
     resolveWriteApproval: vi.fn(async () => undefined),

@@ -104,6 +104,7 @@ export type AgentChatActions = Readonly<{
   sendQueuedMessage: (id: string) => Promise<void>;
   continue: (message?: AgentMessageInput) => Promise<void>;
   compactContext: () => Promise<void>;
+  reset: () => Promise<void>;
   stop: () => Promise<void>;
   resolveQuestion: (response: AgentQuestionResponse) => Promise<void>;
   resolveWriteApproval: (decision: AgentWriteApprovalDecision) => Promise<void>;
@@ -214,6 +215,7 @@ export class AgentChatStore {
       sendQueuedMessage: this.send_queued_message,
       continue: this.continue_chat,
       compactContext: this.compact_context,
+      reset: () => this.reset(),
       stop: this.stop,
       resolveQuestion: this.resolve_question,
       resolveWriteApproval: this.resolve_write_approval,

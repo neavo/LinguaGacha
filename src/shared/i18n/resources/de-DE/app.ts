@@ -174,11 +174,12 @@ export const de_de_app = {
   },
   workspace: {
     projects: "Projekte",
+    projects_empty: "Keine Projekte",
     skills: "Skills",
     quality_rules: "Qualitätsregeln",
     more: "Mehr",
-    reset_chat: "Unterhaltung zurücksetzen",
-    reset_confirm: "Laufende Unterhaltung in diesem Projekt wirklich zurücksetzen …?",
+    close_chat: "Unterhaltung schließen",
+    close_chat_confirm: "Unterhaltung wirklich schließen …?",
     reveal_path: "Im Ordner anzeigen",
     remove_recent: "Aus Liste entfernen",
     remove_confirm:

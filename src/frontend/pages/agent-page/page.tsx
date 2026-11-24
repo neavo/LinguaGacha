@@ -1,11 +1,22 @@
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useMemo, useRef, type JSX } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import { FileText, Image, MessageSquareText, X } from "lucide-react";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
-import { useAgentControls, useAgentChatId } from "@frontend/app/session/agent/agent-chat-context";
+import { ProjectScopeContext } from "@frontend/app/navigation/project-scope-context";
+import {
+  useAgentCanReset,
+  useAgentChatActions,
+  useAgentChatId,
+  useAgentControls,
+} from "@frontend/app/session/agent/agent-chat-context";
+import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
+import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@frontend/shadcn/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AgentConversation } from "./agent-conversation";
 import { AgentPreviewPage } from "./agent-preview";
 import { AgentFileContext } from "./agent-file-context";
@@ -21,13 +32,18 @@ export function AgentPage({
   active = true,
 }: { tabHost?: HTMLElement | null; active?: boolean } = {}): JSX.Element {
   const chat_id = useAgentChatId();
+  const [reset_open, set_reset_open] = useState(false);
   return (
-    <AgentPages
-      key={chat_id ?? "restoring"}
-      chat_id={chat_id ?? ""}
-      tabHost={tabHost ?? null}
-      active={active}
-    />
+    <>
+      <AgentPages
+        key={chat_id ?? "restoring"}
+        chat_id={chat_id ?? ""}
+        tabHost={tabHost ?? null}
+        active={active}
+        on_request_reset={() => set_reset_open(true)}
+      />
+      {reset_open && <ConversationResetDialog on_close={() => set_reset_open(false)} />}
+    </>
   );
 }
 
@@ -36,10 +52,12 @@ function AgentPages({
   chat_id,
   tabHost,
   active,
+  on_request_reset,
 }: {
   chat_id: string;
   tabHost: HTMLElement | null;
   active: boolean;
+  on_request_reset: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const root = useRef<HTMLDivElement>(null);
@@ -80,15 +98,18 @@ function AgentPages({
       hidden={tabHost === null && state.documents.length === 0}
       activateOnFocus={false}
     >
-      <TabsTrigger
-        className="agent-pages__tab"
-        value={CONVERSATION_TAB}
-        onClick={tabHost === null ? undefined : () => navigate_to_route("agent")}
-        data-needs-response={pendingDecision && !conversation_active ? "" : undefined}
-      >
-        <MessageSquareText aria-hidden="true" />
-        <span className="agent-pages__filename">{t("agent_page.document.conversation")}</span>
-      </TabsTrigger>
+      <span className="agent-pages__tab-group">
+        <TabsTrigger
+          className="agent-pages__tab"
+          value={CONVERSATION_TAB}
+          onClick={tabHost === null ? undefined : () => navigate_to_route("agent")}
+          data-needs-response={pendingDecision && !conversation_active ? "" : undefined}
+        >
+          <MessageSquareText aria-hidden="true" />
+          <span className="agent-pages__filename">{t("agent_page.document.conversation")}</span>
+        </TabsTrigger>
+        <ConversationResetButton on_click={on_request_reset} />
+      </span>
       {state.documents.map((document) => (
         <span className="agent-pages__tab-group" key={document.path}>
           <Tooltip>
@@ -155,5 +176,76 @@ function AgentPages({
         </TabsContent>
       ))}
     </Tabs>
+  );
+}
+
+/** 汇总当前工程会话的重置可用性与繁忙态，避免按钮和确认弹窗各自维护判断。 */
+function use_conversation_reset_state(): { busy: boolean; disabled: boolean } {
+  const can_reset = useAgentCanReset();
+  const scope = useContext(ProjectScopeContext);
+  const { projects } = useRuntimeSnapshot();
+  const lifecycle = useProjectLifecycle();
+  const busy = scope !== null && is_project_busy(projects?.[scope.projectId]);
+  return { busy, disabled: busy || lifecycle.busy || !can_reset };
+}
+
+/** 独立订阅重置可用性，避免草稿和任务状态变化刷新整个对话标签栏。 */
+function ConversationResetButton({ on_click }: { on_click: () => void }): JSX.Element {
+  const { t } = useI18n();
+  const { busy, disabled } = use_conversation_reset_state();
+  const close_label = t("app.workspace.close_chat");
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <TooltipTarget className="agent-pages__tab-action">
+            <button
+              type="button"
+              className="inline-action-button"
+              aria-label={close_label}
+              disabled={disabled}
+              onClick={on_click}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </TooltipTarget>
+        }
+      />
+      <TooltipContent side="bottom">
+        {busy ? t("app.workspace.close_busy") : close_label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** 挂在 AgentPages 外层，避免重置拿到新 chat_id 重建页面时打断提交收尾。 */
+function ConversationResetDialog({ on_close }: { on_close: () => void }): JSX.Element {
+  const { t } = useI18n();
+  const { reset } = useAgentChatActions();
+  const { disabled } = use_conversation_reset_state();
+  const [submitting, set_submitting] = useState(false);
+
+  async function confirm(): Promise<void> {
+    if (disabled || submitting) return;
+    set_submitting(true);
+    try {
+      await reset();
+      on_close();
+    } catch (error) {
+      push_error_toast(t("app.feedback.update_failed"), error);
+    } finally {
+      set_submitting(false);
+    }
+  }
+
+  return (
+    <AppConfirmDialog
+      open
+      submitting={submitting}
+      confirmDisabled={disabled}
+      description={t("app.workspace.close_chat_confirm")}
+      onConfirm={confirm}
+      onClose={on_close}
+    />
   );
 }

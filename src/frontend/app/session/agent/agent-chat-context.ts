@@ -107,6 +107,12 @@ export function useAgentDecisionCountdown(): AgentDecisionCountdownSnapshot {
   return useSyncExternalStore(store.subscribe_countdown, store.get_countdown, store.get_countdown);
 }
 
+/** 订阅会话重置可用性，仅在可重置边界变化时触发更新。 */
+export function useAgentCanReset(): boolean {
+  const store = use_agent_store();
+  return useSyncExternalStore(store.subscribe_reset, store.can_reset, store.can_reset);
+}
+
 /** actions 在 Store 生命周期内保持同一对象和函数身份，不订阅任何业务切片。 */
 export function useAgentChatActions(): AgentChatActions {
   return use_agent_store().actions;

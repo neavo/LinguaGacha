@@ -34,15 +34,8 @@
   padding: 0;
 }
 
-.project-workspace__chat-tabs .agent-pages__tab {
-  min-width: 0;
-}
-
-.project-workspace__chat-tabs .agent-pages__tab[data-active] {
-  flex-shrink: 0;
-}
-
-.project-workspace__chat-tabs[data-active="false"] .agent-pages__tab[data-active]::after {
+.project-workspace__chat-tabs[data-active="false"]
+  .agent-pages__tab-group:has([data-active])::after {
   opacity: 0;
 }
 

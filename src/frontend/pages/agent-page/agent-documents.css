@@ -35,12 +35,12 @@
   overflow: hidden;
 }
 
-.agent-pages__tab-group,
-.agent-pages__tabs > .agent-pages__tab,
-.agent-pages__tabs > .agent-pages__tab[data-active] {
+/* 两个操作区直接分列，右侧动作区域全高且与标题区域互不重叠。 */
+.agent-pages__tab-group {
   position: relative;
   display: grid;
   flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
   height: 30px;
   min-width: 128px;
@@ -49,23 +49,11 @@
   background: color-mix(in srgb, var(--muted) 70%, var(--background));
 }
 
-/* 两个操作区直接分列，关闭区域全高且与文件名区域互不重叠。 */
-.agent-pages__tab-group {
-  grid-template-columns: minmax(0, 1fr) 32px;
-}
-
-.agent-pages__tabs > .agent-pages__tab {
-  padding-right: 32px;
-}
-
-.agent-pages__tab-group:hover,
-.agent-pages__tabs > .agent-pages__tab:hover,
-.agent-pages__tabs > .agent-pages__tab[data-active]:hover {
+.agent-pages__tab-group:hover {
   background: var(--accent);
 }
 
-.agent-pages__tab-group:has([data-active])::after,
-.agent-pages__tabs > .agent-pages__tab[data-active]::after {
+.agent-pages__tab-group:has([data-active])::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -119,11 +107,12 @@
   white-space: nowrap;
 }
 
-.agent-pages__close {
+.agent-pages__close,
+.agent-pages__tab-action {
   justify-self: center;
 }
 
-.agent-pages__tab[data-needs-response]::before {
+.agent-pages__tab-group:has([data-needs-response])::before {
   --status-mark-color: var(--primary);
   content: "";
   position: absolute;
