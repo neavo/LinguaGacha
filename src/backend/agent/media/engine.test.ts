@@ -3,6 +3,9 @@ import path from "node:path";
 import { MEDIA_MODELS } from "./models";
 
 const fake = vi.hoisted(() => ({ close: vi.fn(), created: vi.fn() }));
+vi.mock("../workspace/runtime/request-channel", () => ({
+  acquire_workspace_resource: async () => async () => {},
+}));
 vi.mock("./inference-engine", () => ({
   Engine: class {
     constructor(config: import("./worker-protocol").MediaWorkerConfig) {

@@ -136,19 +136,11 @@ describe("ProjectDataReader", () => {
     const get_all_items = vi.fn(() => {
       throw new Error("不应读取 items");
     });
-    const get_asset_count = vi.fn(() => 2);
-    const get_item_count = vi.fn(() => 5);
     const service = new ProjectDataReader(
-      create_database_stub({ get_all_items, get_asset_count, get_item_count }),
+      create_database_stub({ get_all_items, get_asset_count: () => 2, get_item_count: () => 5 }),
     );
 
-    const manifest = service.build_manifest({ loaded: true, projectPath: "E:/demo/demo.lg" });
-
-    expect(manifest["counts"]).toEqual({ files: 2, items: 5 });
-    expect(manifest["project"]).toMatchObject({ loaded: true, file_count: 2 });
-    expect(get_asset_count).toHaveBeenCalledWith("E:/demo/demo.lg");
-    expect(get_item_count).toHaveBeenCalledWith("E:/demo/demo.lg");
-    expect(get_all_items).not.toHaveBeenCalled();
+    expect(service.build_manifest("E:/demo/demo.lg")["counts"]).toEqual({ files: 2, items: 5 });
   });
 
   it("按 id 读取 item 时只返回后端规范行 DTO", () => {

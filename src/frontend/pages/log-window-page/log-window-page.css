@@ -29,6 +29,8 @@
 }
 
 .log-window-page__titlebar-left {
+  display: flex;
+  align-items: center;
   gap: 8px;
   min-width: 0;
   color: var(--foreground);

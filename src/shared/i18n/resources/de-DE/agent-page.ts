@@ -1,5 +1,6 @@
 export const de_de_agent_page = {
-  project_required: "Bitte zuerst eine Projektdatei erstellen oder öffnen …",
+  project_required:
+    "Bitte klicke zuerst auf die Schaltfläche links, um ein Projekt zu erstellen oder zu öffnen …",
   document: {
     conversation: "Unterhaltung",
     open: "Öffnen",
@@ -51,11 +52,11 @@ export const de_de_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Dateien oder Ordner hierher ziehen und mit einem Klick übersetzen …!",
+    no_project_placeholder:
+      "Dateien oder Ordner ablegen, um ein Übersetzungsprojekt zu erstellen …",
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Befehl wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
     newline: "Neue Zeile",
-    drop_files: "Loslassen, um Dateien hinzuzufügen",
   },
   mention: {
     files: {
@@ -149,7 +150,6 @@ export const de_de_agent_page = {
     send: "Senden",
     stop: "Stoppen",
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
-    new_task: "Neue Aufgabe",
     add_file: "Dateien",
     common_instructions: "Befehle",
     continue: "Fortsetzen",
@@ -173,7 +173,6 @@ export const de_de_agent_page = {
   },
   confirm: {
     fork: "Von dieser Antwort abzweigen und eine neue Unterhaltung erstellen?",
-    new_task: "Wirklich eine neue Unterhaltung starten …?",
     thinking_off:
       "Die Intelligenz von AGENT-Aufgaben nimmt deutlich ab, wenn das Modell-Denken deaktiviert ist. Wirklich fortfahren …?",
   },
@@ -209,7 +208,6 @@ export const de_de_agent_page = {
     continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen …",
     queue_send: "Die Nachricht konnte nicht sofort gesendet werden. Sie bleibt vorgemerkt …",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen …",
-    reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen …",
     approval_mode:
       "Der Genehmigungsmodus für Schreibanfragen konnte nicht aktualisiert werden. Bitte erneut versuchen …",
     compact: "Der Kontext konnte nicht komprimiert werden. Bitte erneut versuchen …",

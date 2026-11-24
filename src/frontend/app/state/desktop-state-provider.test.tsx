@@ -1,1663 +1,183 @@
-import { type JSX, StrictMode, act, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { expect, it, vi } from "vitest";
+import { DesktopStateProvider } from "./desktop-state-provider";
+import { useDesktopState, useProjectChangeSignal, useBatchTaskSnapshot } from "./use-desktop-state";
+import { empty_batch_task_snapshot } from "@shared/batch-task";
+import { AGENT_CHAT_EVENT_TOPIC, type AgentChatSnapshot } from "@shared/agent";
 
-import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider";
-import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
-import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@frontend/app/state/desktop-refresh-scheduler";
-import {
-  useDesktopState,
-  useProjectChangeSignal,
-  useRuntimeSnapshot,
-  useBatchTranslationSnapshot,
-} from "@frontend/app/state/use-desktop-state";
+const desktop = vi.hoisted(() => ({
+  api_get: vi.fn(),
+  api_fetch: vi.fn(),
+  open_event_stream: vi.fn(),
+}));
+vi.mock("@frontend/app/desktop/desktop-api", () => desktop);
 
-const { api_fetch_mock, open_event_stream_mock, report_renderer_error_mock } = vi.hoisted(() => {
-  return {
-    api_fetch_mock: vi.fn(),
-    open_event_stream_mock: vi.fn(),
-    report_renderer_error_mock: vi.fn(async () => undefined),
+it("按打开周期接收后台工程事件，切换时恢复原工程的任务和变更", async () => {
+  const listeners = new Map<string, EventListener>();
+  const close = vi.fn();
+  let project_ids = ["first", "second"];
+  desktop.open_event_stream.mockReturnValue({
+    addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
+    close,
+  });
+  const agent_snapshot: AgentChatSnapshot = {
+    chatId: "second-chat",
+    revision: 1,
+    state: "idle",
+    pendingDecision: null,
+    entries: [],
+    skills: [],
+    inputQueue: { paused: false, canSendNow: false, items: [] },
+    doing: null,
+    context: { tokens: null, compactable: false, limits: null },
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    tokenSpeed: null,
+    runOutput: null,
   };
-});
-
-vi.mock("@frontend/app/desktop/desktop-api", () => {
-  return {
-    api_fetch: api_fetch_mock,
-    open_event_stream: open_event_stream_mock,
-    report_renderer_error: report_renderer_error_mock,
-  };
-});
-
-type RuntimeSnapshot = {
-  workbenchSeq: number;
-  workbenchReason: string;
-  workbenchFileFullReplace: boolean;
-  proofreadingSeq: number;
-  proofreadingReason: string;
-  proofreadingMode: "full" | "delta" | "noop";
-  proofreadingUpdatedSections: string[];
-  proofreadingItemIds: Array<number | string>;
-  projectPath: string;
-  taskStatus: string;
-  taskProcessedLine: number;
-  taskOutputTokens: number;
-  taskRequestInFlightCount: number;
-  runtimeOwner: "batch_translation" | "agent" | "model_test" | null;
-  requestTimeout: number;
-  projectTargetLanguage: string | null;
-  projectFileCount: number;
-};
-
-type StateHandle = Pick<
-  ReturnType<typeof useDesktopState>,
-  | "refresh_project_snapshot"
-  | "refresh_project_state"
-  | "refresh_batch_translation"
-  | "commit_project_write"
->;
-
-type StateHandleRef = StateHandle | null;
-
-type EventSourceStub = {
-  addEventListener: ReturnType<typeof vi.fn<(event_name: string, listener: EventListener) => void>>;
-  close: ReturnType<typeof vi.fn<() => void>>;
-  onerror: null;
-};
-
-type ProofreadingSignalSnapshot = {
-  seq: number;
-  reason: string;
-  mode: "full" | "delta" | "noop";
-  updated_sections: string[];
-  item_ids: Array<number | string>;
-};
-
-/** 将公开变更信号投影为校对消费者可观察的刷新范围。 */
-function resolve_proofreading_project_change_signal(
-  signal: ProjectChangeSignal,
-): ProofreadingSignalSnapshot | null {
-  if (signal.updated_sections.length === 0) {
+  desktop.api_get.mockImplementation(async (route: string) => {
+    const { pathname, searchParams } = new URL(route, "http://localhost");
+    if (pathname === "/api/session/projects")
+      return {
+        projects: project_ids.map((projectId) => ({
+          project: {
+            projectId,
+            path: projectId + ".lg",
+            name: projectId,
+            loaded: true,
+            file_count: 0,
+          },
+        })),
+      };
+    return { ...agent_snapshot, chatId: searchParams.get("projectId") + "-chat" };
+  });
+  desktop.api_fetch.mockImplementation(async (route: string, body?: Record<string, unknown>) => {
+    if (route === "/api/settings/app") return { settings: { app_language: "EN" } };
+    if (route === "/api/runtime/snapshot")
+      return { runtime: { revision: 1, owner: null, projects: {} } };
+    if (route === "/api/session/project/snapshot") {
+      const projectId = String(body?.projectId ?? "first");
+      return {
+        project: {
+          projectId,
+          path: projectId + ".lg",
+          name: projectId,
+          loaded: true,
+          file_count: 2,
+          quality_rule_counts: {
+            glossary: 5,
+            text_preserve: 1,
+            pre_replacement: 0,
+            post_replacement: 3,
+          },
+          settings: {
+            source_language: "EN",
+            target_language: "ZH",
+            mtool_optimizer_enable: false,
+            skip_duplicate_source_text_enable: true,
+          },
+        },
+      };
+    }
+    return { batch_task: empty_batch_task_snapshot() };
+  });
+  let state!: ReturnType<typeof useDesktopState>;
+  let signal!: ReturnType<typeof useProjectChangeSignal>;
+  let task!: ReturnType<typeof useBatchTaskSnapshot>;
+  function Probe(): null {
+    state = useDesktopState();
+    signal = useProjectChangeSignal();
+    task = useBatchTaskSnapshot();
     return null;
   }
-  if (signal.updated_sections.every((section) => section === "proofreading")) {
-    return {
-      seq: signal.seq,
-      reason: signal.reason,
-      mode: "noop",
-      updated_sections: [...signal.updated_sections],
-      item_ids: [],
-    };
-  }
-  if (
-    signal.updated_sections.includes("project") ||
-    signal.updated_sections.includes("quality") ||
-    signal.results.some((result) => result.items?.mode === "full")
-  ) {
-    return {
-      seq: signal.seq,
-      reason: signal.reason,
-      mode: "full",
-      updated_sections: [...signal.updated_sections],
-      item_ids: [],
-    };
-  }
-  const item_ids = [
-    ...new Set(
-      signal.results
-        .flatMap((result) => (result.items?.mode === "delta" ? result.items.changedIds : []))
-        .map((item_id) => Number(item_id))
-        .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
-    ),
-  ];
-  if (signal.updated_sections.includes("items") && item_ids.length > 0) {
-    return {
-      seq: signal.seq,
-      reason: signal.reason,
-      mode: "delta",
-      updated_sections: [...signal.updated_sections],
-      item_ids,
-    };
-  }
-  return {
-    seq: signal.seq,
-    reason: signal.reason,
-    mode: "full",
-    updated_sections: [...signal.updated_sections],
-    item_ids: [],
-  };
-}
-
-/** 提取工作台依赖的工程变化和文件全量替换标志。 */
-function resolve_state_workbench_change_signal(signal: {
-  seq: number;
-  reason: string;
-  updated_sections: string[];
-  results: ProjectChangeSignal["results"];
-}): { seq: number; reason: string; file_full_replace: boolean } | null {
-  return signal.updated_sections.some((section) => ["project", "files", "items"].includes(section))
-    ? {
-        seq: signal.seq,
-        reason: signal.reason,
-        file_full_replace: signal.results.some((result) =>
-          result.updatedSections.includes("files"),
-        ),
-      }
-    : null;
-}
-
-/** 汇总公开订阅结果，验证同一事件向各消费者传播。 */
-function RuntimeProbe(props: {
-  onSnapshot: (snapshot: RuntimeSnapshot) => void;
-}): JSX.Element | null {
-  const state = useDesktopState();
-  const project_change_signal = useProjectChangeSignal();
-  const task_snapshot = useBatchTranslationSnapshot();
-  const runtime_snapshot = useRuntimeSnapshot();
-  const workbench_signal = useMemo(
-    () => resolve_state_workbench_change_signal(project_change_signal),
-    [project_change_signal],
-  );
-  const proofreading_signal = useMemo(
-    () => resolve_proofreading_project_change_signal(project_change_signal),
-    [project_change_signal],
-  );
-  const last_workbench_signal_ref = useRef(workbench_signal);
-  const last_proofreading_signal_ref = useRef(proofreading_signal);
-  if (workbench_signal !== null) {
-    last_workbench_signal_ref.current = workbench_signal;
-  }
-  if (proofreading_signal !== null) {
-    last_proofreading_signal_ref.current = proofreading_signal;
-  }
-
-  useEffect(() => {
-    const current_workbench_signal = last_workbench_signal_ref.current;
-    const current_proofreading_signal = last_proofreading_signal_ref.current;
-    props.onSnapshot({
-      workbenchSeq: current_workbench_signal?.seq ?? 0,
-      workbenchReason: current_workbench_signal?.reason ?? "",
-      workbenchFileFullReplace: current_workbench_signal?.file_full_replace ?? false,
-      proofreadingSeq: current_proofreading_signal?.seq ?? 0,
-      proofreadingReason: current_proofreading_signal?.reason ?? "",
-      proofreadingMode: current_proofreading_signal?.mode ?? "full",
-      proofreadingUpdatedSections: current_proofreading_signal?.updated_sections ?? [],
-      proofreadingItemIds: current_proofreading_signal?.item_ids ?? [],
-      projectPath: state.project_snapshot.path,
-      taskStatus: task_snapshot.status,
-      taskProcessedLine: task_snapshot.progress.processed_line,
-      taskOutputTokens: task_snapshot.progress.total_output_tokens,
-      taskRequestInFlightCount: task_snapshot.request_in_flight_count,
-      runtimeOwner: runtime_snapshot.owner,
-      requestTimeout: state.settings_snapshot.request_timeout,
-      projectTargetLanguage: state.project_snapshot.languages?.target_language ?? null,
-      projectFileCount: state.project_snapshot.file_count,
-    });
-  }, [
-    props,
-    proofreading_signal,
-    state.settings_snapshot.request_timeout,
-    state.project_snapshot.languages,
-    task_snapshot.progress.processed_line,
-    task_snapshot.request_in_flight_count,
-    runtime_snapshot.owner,
-    task_snapshot.status,
-    task_snapshot.progress.total_output_tokens,
-    state.project_snapshot.path,
-    workbench_signal,
-  ]);
-
-  return null;
-}
-
-/** 暴露当前状态入口，供测试发起重读和写入。 */
-function StateHandleProbe(props: {
-  onState: (runtime: StateHandleRef) => void;
-}): JSX.Element | null {
-  const state = useDesktopState();
-
-  useEffect(() => {
-    props.onState(state);
-  }, [props, state]);
-
-  return null;
-}
-
-/** 有界等待 React 提交状态，条件始终未满足时报告失败。 */
-async function wait_for_condition(predicate: () => boolean, attempts = 20): Promise<void> {
-  for (let index = 0; index < attempts; index += 1) {
-    if (predicate()) {
-      return;
-    }
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-
-  throw new Error("等待运行时状态收敛失败。");
-}
-
-/** 推进刷新计时器并等待异步读取结果进入 React 状态。 */
-async function flush_state_refresh_window(): Promise<void> {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
-    await Promise.resolve();
-  });
-}
-
-/** 通过注册的 SSE 监听器发送序列化载荷，关闭连接时清除监听器。 */
-function create_event_source_stub(): {
-  event_source: EventSourceStub;
-  emit: (event_name: string, payload: Record<string, unknown>) => void;
-} {
-  const listener_map = new Map<string, EventListener>();
-
-  return {
-    event_source: {
-      addEventListener: vi.fn((event_name: string, listener: EventListener) => {
-        listener_map.set(event_name, listener);
-      }),
-      close: vi.fn(() => {
-        listener_map.clear();
-      }),
-      onerror: null,
-    },
-    emit: (event_name: string, payload: Record<string, unknown>) => {
-      const listener = listener_map.get(event_name);
-      if (listener === undefined) {
-        throw new Error(`缺少事件监听器：${event_name}`);
-      }
-
-      listener({
-        data: JSON.stringify(payload),
-      } as MessageEvent<string>);
-    },
-  };
-}
-
-/** 确认事件订阅已安装后再发送测试事件。 */
-function has_event_stream_listener(event_source: EventSourceStub, event_name: string): boolean {
-  return event_source.addEventListener.mock.calls.some((call) => call[0] === event_name);
-}
-
-/** 构造完整条目载荷，调用方只覆盖场景相关字段。 */
-function create_project_item(overrides: Record<string, unknown>): Record<string, unknown> {
-  return {
-    item_id: 1,
-    src: "",
-    dst: "",
-    name_src: null,
-    name_dst: null,
-    extra_field: "",
-    tag: "",
-    row_number: 0,
-    file_type: "TXT",
-    file_path: "",
-    status: "NONE",
-    skip_internal_filter: false,
-    ...overrides,
-  };
-}
-
-/** 提供同一工程的分区快照，供初始化和事件重读复用。 */
-function create_default_project_sections(
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    project: {
-      path: "E:/demo/demo.lg",
-      loaded: true,
-    },
-    files: {
-      "chapter01.txt": {
-        rel_path: "chapter01.txt",
-        file_type: "TXT",
-      },
-    },
-    items: {
-      "1": create_project_item({
-        item_id: 1,
-        file_path: "chapter01.txt",
-        status: "PROCESSED",
-      }),
-    },
-    quality: {
-      glossary: {
-        entries: [],
-        enabled: true,
-        mode: "off",
-        revision: 1,
-      },
-      pre_replacement: {
-        entries: [],
-        enabled: false,
-        mode: "off",
-        revision: 0,
-      },
-      post_replacement: {
-        entries: [],
-        enabled: false,
-        mode: "off",
-        revision: 0,
-      },
-      text_preserve: {
-        entries: [],
-        enabled: false,
-        mode: "off",
-        revision: 0,
-      },
-    },
-    prompts: {
-      translation: {
-        text: "",
-        enabled: false,
-        revision: 0,
-      },
-    },
-
-    proofreading: {
-      revision: 0,
-    },
-    ...overrides,
-  };
-}
-
-// 构造 manifest 响应夹具，避免每个用例重复铺设环境。
-function create_project_read_response(
-  path: string,
-  options: {
-    projectRevision?: number;
-    sectionRevisions?: Record<string, number>;
-    sections?: Record<string, unknown>;
-  } = {},
-): Record<string, unknown> | null {
-  const project_revision = options.projectRevision ?? 1;
-  const section_revisions = options.sectionRevisions ?? {};
-  const project_section = options.sections?.project;
-  const response_project_path =
-    typeof project_section === "object" && project_section !== null && "path" in project_section
-      ? String((project_section as { path?: unknown }).path ?? "E:/demo/demo.lg")
-      : "E:/demo/demo.lg";
-  if (path === "/api/session/project/manifest") {
-    return {
-      projectPath: response_project_path,
-      project: {
-        path: response_project_path,
-        loaded: true,
-        languages: { source_language: "JA", target_language: "ZH" },
-      },
-      projectRevision: project_revision,
-      sectionRevisions: section_revisions,
-    };
-  }
-
-  return null;
-}
-
-type RuntimeApiMockOptions = {
-  project_file_count?: number;
-  settings?: Record<string, unknown>;
-  project_languages?: Record<string, unknown>;
-  project_path?: string;
-  batch_translation?: Record<string, unknown>;
-  runtime_owner?: "batch_translation" | "agent" | "model_test" | null;
-  project_read?: {
-    projectRevision?: number;
-    sectionRevisions?: Record<string, number>;
-    sections?: Record<string, unknown>;
-  };
-};
-
-/** 按读取路由返回工程夹具，未声明的请求立即失败。 */
-function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
-  const project_path = options.project_path ?? "E:/demo/demo.lg";
-  api_fetch_mock.mockImplementation(async (path: string): Promise<Record<string, unknown>> => {
-    if (path === "/api/settings/app") {
-      return { settings: { app_language: "ZH", ...options.settings } };
-    }
-    if (path === "/api/session/project/snapshot") {
-      return {
-        project: {
-          path: project_path,
-          loaded: true,
-          file_count: options.project_file_count ?? 0,
-          languages: options.project_languages ?? { source_language: "JA", target_language: "ZH" },
-        },
-      };
-    }
-    if (path === "/api/batch-task/snapshot") {
-      return {
-        batch_translation: options.batch_translation ?? {
-          status: "idle",
-        },
-      };
-    }
-    if (path === "/api/runtime/snapshot") {
-      return { runtime: { revision: 0, owner: options.runtime_owner ?? null } };
-    }
-
-    const project_read_response = create_project_read_response(path, options.project_read);
-    if (project_read_response !== null) {
-      return project_read_response;
-    }
-    throw new Error(`未预期的请求：${path}`);
-  });
-}
-
-describe("DesktopStateProvider", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-
-  afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
-
-    container?.remove();
-    root = null;
-    container = null;
-    api_fetch_mock.mockReset();
-    open_event_stream_mock.mockReset();
-    report_renderer_error_mock.mockReset();
-    vi.useRealTimers();
-  });
-
-  /** 挂载真实 Provider，并允许验证严格模式下的订阅生命周期。 */
-  async function mount_runtime(
-    event_source: EventSourceStub,
-    children: ReactNode,
-    strict = false,
-  ): Promise<void> {
-    open_event_stream_mock.mockReturnValue(event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-    const provider = <DesktopStateProvider>{children}</DesktopStateProvider>;
-
-    await act(async () => {
-      root?.render(strict ? <StrictMode>{provider}</StrictMode> : provider);
-    });
-  }
-
-  it("首帧采用系统偏好，初始化完成后采用已保存的语言", async () => {
-    vi.spyOn(window.navigator, "languages", "get").mockReturnValue(["fr-FR", "ja-JP"]);
-    const languages: string[] = [];
-    /** 记录首帧和后端快照接管后的语言。 */
-    function LanguageProbe(): null {
-      languages.push(useDesktopState().settings_snapshot.app_language);
-      return null;
-    }
-    install_runtime_api_mock({ settings: { app_language: "DE" } });
-    await mount_runtime(create_event_source_stub().event_source, <LanguageProbe />);
-    expect(languages[0]).toBe("JA");
-    expect(languages.at(-1)).toBe("DE");
-  });
-
-  it("初始化失败保留失败状态，重试后应用完整快照", async () => {
-    let state: ReturnType<typeof useDesktopState> | null = null;
-    /** 读取初始化状态，验证失败后可从公开入口重试。 */
-    function InitialProbe(): null {
-      state = useDesktopState();
-      return null;
-    }
-    install_runtime_api_mock();
-    api_fetch_mock.mockRejectedValueOnce(new Error("offline"));
-    await mount_runtime(create_event_source_stub().event_source, <InitialProbe />);
-    expect((state as ReturnType<typeof useDesktopState> | null)?.initial_state_status).toBe(
-      "error",
+  const root = createRoot(document.createElement("div"));
+  const emit = (topic: string, payload: object) =>
+    listeners.get(topic)?.(new MessageEvent(topic, { data: JSON.stringify(payload) }));
+  try {
+    await act(async () =>
+      root.render(
+        <DesktopStateProvider>
+          <Probe />
+        </DesktopStateProvider>,
+      ),
     );
-    await act(async () => {
-      await (state as ReturnType<typeof useDesktopState> | null)?.load_initial_state();
-    });
-    expect((state as ReturnType<typeof useDesktopState> | null)?.initial_state_status).toBe(
-      "ready",
-    );
-  });
+    expect(state.initial_state_status).toBe("ready");
+    expect(state.settings_snapshot.app_language).toBe("EN");
+    expect(state.project_snapshot.projectId).toBe("first");
+    expect(desktop.open_event_stream).toHaveBeenCalledOnce();
+    const agent = state.open_projects[1]!.agentChat;
 
-  it("初始状态直接采用后端运行时 owner，不从任务快照推导", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    install_runtime_api_mock({
-      runtime_owner: "agent",
-      batch_translation: { status: "idle" },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-    await wait_for_condition(() => snapshots.at(-1)?.runtimeOwner === "agent");
-
-    expect(snapshots.at(-1)).toMatchObject({ runtimeOwner: "agent", taskStatus: "idle" });
-  });
-
-  it("完成项目数据读取后补发工作台与校对页刷新信号", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.workbenchSeq === 1 && latest_snapshot.proofreadingSeq === 1;
-    });
-
-    const latest_snapshot = snapshots.at(-1);
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/manifest", {});
-    expect(latest_snapshot).toMatchObject({
-      workbenchSeq: 1,
-      workbenchReason: "project_loaded",
-      proofreadingSeq: 1,
-      proofreadingReason: "project_loaded",
-      proofreadingMode: "full",
-      proofreadingUpdatedSections: [
-        "project",
-        "files",
-        "items",
-        "quality",
-        "prompts",
-        "knowledge",
-        "proofreading",
-      ],
-      proofreadingItemIds: [],
-    });
-  });
-
-  it("页面恢复入口会把业务上下文交给运行态统一上报", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    let state_handle: StateHandleRef = null;
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-
-    await wait_for_condition(() => {
-      return state_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1;
-    });
-
-    api_fetch_mock.mockClear();
-    report_renderer_error_mock.mockClear();
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/project/manifest") {
-        throw new Error("manifest boom");
-      }
-
-      throw new Error(`未预期的恢复请求：${path}`);
-    });
-
-    await act(async () => {
-      await expect(
-        state_handle?.commit_project_write({
-          operation: "glossary.entries_save",
-          run: async () => {
-            throw new Error("write boom");
-          },
-        }),
-      ).rejects.toThrow("write boom");
-      await Promise.resolve();
-    });
-
-    await wait_for_condition(() => report_renderer_error_mock.mock.calls.length >= 2);
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/manifest", {});
-    expect(report_renderer_error_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "project-write",
-        triggeringEvent: {
-          operation: "glossary.entries_save",
-        },
-        context: expect.objectContaining({
-          stage: "commit_project_write",
-          operation: "glossary.entries_save",
-          phase: "request",
-        }),
-      }),
-    );
-    expect(report_renderer_error_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "state-recovery",
-        triggeringEvent: {
-          operation: "glossary.entries_save",
-        },
-        context: expect.objectContaining({
-          reason: "project_write_failed",
-          recovery: "project_state",
-          operation: "glossary.entries_save",
-          phase: "request",
-        }),
-      }),
-    );
-  });
-
-  it("显式刷新任务快照时会把任务类型传给 Backend", async () => {
-    let state_handle: StateHandleRef = null;
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <StateHandleProbe onState={(state) => (state_handle = state)} />,
-    );
-
-    await wait_for_condition(() => state_handle !== null);
-
-    await act(async () => {
-      if (state_handle === null) {
-        throw new Error("运行时句柄未准备好。");
-      }
-      await state_handle.refresh_batch_translation();
-    });
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-task/snapshot", {});
-  });
-
-  it("应用设置变更会更新设置快照且不额外触发项目缓存刷新信号", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock({ settings: { request_timeout: 60 } });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.workbenchSeq === 1 && latest_snapshot?.proofreadingSeq === 1;
-    });
-
-    await act(async () => {
-      event_stream.emit("settings.changed", {
-        keys: ["request_timeout"],
-        settings: {
-          request_timeout: 90,
-        },
-      });
-      await Promise.resolve();
-    });
-
-    await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.requestTimeout === 90;
-    });
-
-    const latest_snapshot = snapshots.at(-1);
-
-    expect(latest_snapshot).toMatchObject({
-      requestTimeout: 90,
-      workbenchSeq: 1,
-      workbenchReason: "project_loaded",
-      proofreadingSeq: 1,
-      proofreadingReason: "project_loaded",
-    });
-  });
-
-  it("project 分区变更补读项目快照语言，重复 eventId 不再补读", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    const languages = { source_language: "JA", target_language: "ZH" };
-    install_runtime_api_mock({ project_languages: languages });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("ZH");
-    const snapshot_reads = () =>
-      api_fetch_mock.mock.calls.filter(([path]) => path === "/api/session/project/snapshot").length;
-    const reads_before = snapshot_reads();
-
-    languages.target_language = "EN";
-    const event = {
-      source: "project_settings_update",
-      projectPath: "E:/demo/demo.lg",
-      projectRevision: 2,
-      updatedSections: ["project"],
-      sectionRevisions: { project: 1 },
-      qualityStatisticsScope: "none",
-      eventId: "language-1",
-    };
-    await act(async () => {
-      event_stream.emit("project.data_changed", event);
-      event_stream.emit("project.data_changed", event);
-      await Promise.resolve();
-    });
-    await flush_state_refresh_window();
-    await wait_for_condition(() => snapshots.at(-1)?.projectTargetLanguage === "EN");
-
-    expect(snapshot_reads()).toBe(reads_before + 1);
-  });
-
-  it("SSE 语言补读失败后，HTTP 成功回流仍会同步已提交的项目语言", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    const languages = { source_language: "JA", target_language: "ZH" };
-    let state_handle: StateHandleRef = null;
-    install_runtime_api_mock({ project_languages: languages });
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    languages.target_language = "EN";
-    api_fetch_mock.mockRejectedValueOnce(new Error("snapshot failed"));
-    const event = {
-      eventId: "language-save-after-failed-read",
-      source: "project_settings_update",
-      projectPath: "E:/demo/demo.lg",
-      projectRevision: 2,
-      updatedSections: ["project"],
-      sectionRevisions: { project: 1 },
+    const change = {
+      projectId: "second",
+      projectPath: "second.lg",
+      eventId: "only-second",
+      source: "test",
+      projectRevision: 1,
+      updatedSections: ["knowledge"],
+      sectionRevisions: { knowledge: 1 },
       qualityStatisticsScope: "none",
     };
     await act(async () => {
-      event_stream.emit("project.data_changed", event);
-    });
-    await flush_state_refresh_window();
-    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("ZH");
-
-    await act(async () => {
-      await state_handle?.commit_project_write({
-        operation: "project.settings.update",
-        run: async () => ({ accepted: true, changes: [event] }),
+      emit("project.data_changed", change);
+      emit("project.data_changed", change);
+      emit("batch_task.snapshot_changed", {
+        projectId: "second",
+        batch_task: { ...empty_batch_task_snapshot(), revision: 2 },
+      });
+      emit(AGENT_CHAT_EVENT_TOPIC, {
+        projectId: "second",
+        type: "snapshot_seed",
+        revision: 2,
+        snapshot: { ...agent_snapshot, revision: 2, chatId: "second-reset" },
       });
     });
-
-    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("EN");
-  });
-
-  it.each(["同一工程", "切换工程"])("语言补读迟到时不能覆盖最新快照：%s", async (scenario) => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    let state_handle: StateHandleRef = null;
-    install_runtime_api_mock();
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    let finish_old_read!: (value: unknown) => void;
-    api_fetch_mock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish_old_read = resolve;
-        }),
-    );
+    expect(signal.seq).toBe(0);
+    expect(task.revision).toBe(0);
+    await act(async () => state.select_project("second"));
+    expect(signal.seq).toBe(1);
+    expect(signal.results[0]?.eventId).toBe("only-second");
+    expect(task.revision).toBe(2);
+    expect(state.active_project?.agentChat).toBe(agent);
+    expect(agent.get_chat_id()).toBe("second-reset");
+    await act(async () => state.select_project("first"));
+    expect(signal.seq).toBe(0);
     await act(async () => {
-      event_stream.emit("project.data_changed", {
-        eventId: "old-project-language",
-        source: "project_settings_update",
-        projectPath: "E:/demo/demo.lg",
+      emit("project.data_changed", {
+        projectId: "first",
+        projectPath: "first.lg",
+        eventId: "quality-first",
+        source: "test",
         projectRevision: 2,
-        updatedSections: ["project"],
-        sectionRevisions: { project: 1 },
-        qualityStatisticsScope: "none",
-      });
-    });
-    await flush_state_refresh_window();
-
-    const project_path = scenario === "同一工程" ? "E:/demo/demo.lg" : "E:/demo/next.lg";
-    const next_target_language = scenario === "同一工程" ? "KO" : "ZH";
-    install_runtime_api_mock({
-      project_path,
-      project_languages: { source_language: "EN", target_language: next_target_language },
-      project_read: {
-        sections: create_default_project_sections({
-          project: { path: project_path, loaded: true },
-        }),
-      },
-    });
-    await act(async () => {
-      await state_handle?.refresh_project_snapshot();
-    });
-    await wait_for_condition(() => snapshots.at(-1)?.projectPath === project_path);
-    await act(async () => {
-      finish_old_read({
-        project: {
-          path: "E:/demo/demo.lg",
-          loaded: true,
-          languages: { source_language: "JA", target_language: "EN" },
-        },
-      });
-    });
-    expect(snapshots.at(-1)).toMatchObject({
-      projectPath: project_path,
-      projectTargetLanguage: next_target_language,
-    });
-  });
-
-  it("初始化期间的语言事件在 manifest 返回后补读已提交语言", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    const languages = { source_language: "JA", target_language: "ZH" };
-    let state_handle: StateHandleRef = null;
-    install_runtime_api_mock({ project_languages: languages });
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-    let finish_manifest!: (value: unknown) => void;
-    api_fetch_mock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish_manifest = resolve;
-        }),
-    );
-    let refresh: Promise<void> | undefined;
-    await act(async () => {
-      refresh = state_handle?.refresh_project_state();
-    });
-    languages.target_language = "EN";
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        eventId: "warming-language",
-        source: "project_settings_update",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 2,
-        updatedSections: ["project"],
-        sectionRevisions: { project: 1 },
-        qualityStatisticsScope: "none",
-      });
-      finish_manifest(create_project_read_response("/api/session/project/manifest", {})!);
-      await refresh;
-    });
-    expect(snapshots.at(-1)?.projectTargetLanguage).toBe("EN");
-  });
-
-  it("StrictMode 双 effect 后完整任务快照仍会按刷新窗口持续刷新", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock({
-      batch_translation: {
-        status: "running",
-
-        progress: { processed_line: 0, total_line: 5 },
-        scope: { kind: "all" },
-      },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-      true,
-    );
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.taskStatus === "running";
-    });
-    await wait_for_condition(() => {
-      return event_stream.event_source.addEventListener.mock.calls.some(
-        (call) => call[0] === "batch_task.snapshot_changed",
-      );
-    });
-
-    await act(async () => {
-      event_stream.emit("batch_task.snapshot_changed", {
-        batch_translation: {
-          status: "running",
-
-          progress: {
-            total_line: 5,
-            processed_line: 2,
-          },
-          scope: { kind: "all" },
-        },
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.taskProcessedLine === 2;
-    });
-
-    await act(async () => {
-      event_stream.emit("batch_task.snapshot_changed", {
-        batch_translation: {
-          status: "running",
-
-          progress: {
-            total_line: 5,
-            processed_line: 4,
-            total_output_tokens: 12,
-          },
-          request_in_flight_count: 3,
-          scope: { kind: "all" },
-        },
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-
-    await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1);
-      return (
-        latest_snapshot?.taskProcessedLine === 4 && latest_snapshot.taskRequestInFlightCount === 3
-      );
-    });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      taskStatus: "running",
-      taskProcessedLine: 4,
-      taskOutputTokens: 12,
-      taskRequestInFlightCount: 3,
-    });
-  });
-
-  it("项目 write 结果会立即触发校对页刷新信号", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    let state_handle: StateHandleRef = null;
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-
-    await wait_for_condition(() => {
-      return state_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1;
-    });
-
-    await act(async () => {
-      if (state_handle === null) {
-        throw new Error("运行时句柄未准备好。");
-      }
-
-      await state_handle.commit_project_write({
-        operation: "glossary.entries_save",
-        run: async () => ({
-          accepted: true,
-          changes: [
-            {
-              eventId: "quality-write-1",
-              source: "quality_rule_update",
-              projectPath: "E:/demo/demo.lg",
-              projectRevision: 2,
-              updatedSections: ["quality"],
-              sectionRevisions: {
-                quality: 2,
-              },
-              qualityStatisticsScope: "all",
-            },
-          ],
-        }),
-      });
-      await Promise.resolve();
-    });
-
-    await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.proofreadingSeq === 2;
-    });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      workbenchSeq: 1,
-      proofreadingSeq: 2,
-      proofreadingReason: "quality_rule_update",
-      proofreadingMode: "full",
-      taskStatus: "idle",
-    });
-  });
-
-  it("items delta 会合帧刷新校对页 delta 信号并合并 item_ids", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 1;
-    });
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "proofreading_apply_item_changes",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 2,
-        updatedSections: ["items", "proofreading"],
-        sectionRevisions: { items: 2, proofreading: 2 },
-        items: { mode: "delta", changedIds: [1] },
+        updatedSections: ["quality"],
+        sectionRevisions: { quality: 2 },
         qualityStatisticsScope: "all",
-        eventId: "test-2",
       });
-      event_stream.emit("project.data_changed", {
-        source: "proofreading_apply_item_changes",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 3,
-        updatedSections: ["items", "proofreading"],
-        sectionRevisions: { items: 3, proofreading: 3 },
-        items: { mode: "delta", changedIds: [2] },
-        qualityStatisticsScope: "all",
-        eventId: "test-3",
-      });
-      await Promise.resolve();
     });
-
-    await flush_state_refresh_window();
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 2;
+    expect(state.active_project?.snapshot.quality_rule_counts).toEqual({
+      glossary: 5,
+      text_preserve: 1,
+      pre_replacement: 0,
+      post_replacement: 3,
     });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 2,
-      proofreadingReason: "proofreading_apply_item_changes",
-      proofreadingMode: "delta",
-      proofreadingUpdatedSections: ["items", "proofreading"],
-      proofreadingItemIds: [1, 2],
+    expect(state.active_project?.snapshot.settings).toEqual({
+      source_language: "EN",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
     });
-
+    project_ids = ["first"];
     await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "proofreading_set_status",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 4,
-        updatedSections: ["items", "proofreading"],
-        sectionRevisions: { items: 4, proofreading: 4 },
-        items: { mode: "delta", changedIds: [1] },
-        qualityStatisticsScope: "all",
-        eventId: "test-4",
+      await state.refresh_projects();
+      emit(AGENT_CHAT_EVENT_TOPIC, {
+        projectId: "second",
+        type: "snapshot_seed",
+        revision: 3,
+        snapshot: { ...agent_snapshot, revision: 3, chatId: "closed" },
       });
-      await Promise.resolve();
     });
-
-    await flush_state_refresh_window();
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 3;
-    });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 3,
-      proofreadingReason: "proofreading_set_status",
-      proofreadingMode: "delta",
-      proofreadingItemIds: [1],
-    });
-  });
-
-  it("items delta 的项目身份不匹配时不会发布项目信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_commit",
-        projectPath: "E:/demo/other.lg",
-        projectRevision: 2,
-        updatedSections: ["items"],
-        sectionRevisions: { items: 2 },
-        items: { mode: "delta", changedIds: [9] },
-        qualityStatisticsScope: "all",
-        eventId: "test-2",
-      });
-      await Promise.resolve();
-    });
-    await flush_state_refresh_window();
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 1,
-    });
-  });
-
-  it("items delta 会在刷新窗口内发布合帧变更信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_commit",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 4,
-        updatedSections: ["items"],
-        sectionRevisions: { items: 4 },
-        items: { mode: "delta", changedIds: [3] },
-        qualityStatisticsScope: "all",
-        eventId: "test-4",
-      });
-      event_stream.emit("project.data_changed", {
-        source: "translation_commit",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 5,
-        updatedSections: ["items"],
-        sectionRevisions: { items: 5 },
-        items: { mode: "delta", changedIds: [4] },
-        qualityStatisticsScope: "all",
-        eventId: "test-5",
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingReason: "translation_commit",
-      proofreadingMode: "delta",
-      proofreadingItemIds: [3, 4],
-    });
-  });
-
-  it("刷新窗口内项目批次只发布轻量变更信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock({
-      project_read: { projectRevision: 6, sectionRevisions: { items: 6 } },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_commit",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 7,
-        updatedSections: ["items"],
-        sectionRevisions: { items: 7 },
-        items: { mode: "delta", changedIds: [3] },
-        qualityStatisticsScope: "all",
-        eventId: "test-7",
-      });
-      event_stream.emit("project.data_changed", {
-        source: "translation_commit",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 8,
-        updatedSections: ["items"],
-        sectionRevisions: { items: 8 },
-        items: { mode: "delta", changedIds: [4] },
-        qualityStatisticsScope: "all",
-        eventId: "test-8",
-      });
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
-
-    expect(report_renderer_error_mock).not.toHaveBeenCalled();
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingReason: "translation_commit",
-      proofreadingItemIds: [3, 4],
-    });
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/manifest", {});
-  });
-
-  it("items delta 旧 revision 不会回退当前项目信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock({
-      project_read: { projectRevision: 5, sectionRevisions: { items: 5 } },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_commit",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 5,
-        updatedSections: ["items"],
-        sectionRevisions: { items: 5 },
-        items: { mode: "delta", changedIds: [2] },
-        qualityStatisticsScope: "all",
-        eventId: "test-5",
-      });
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_commit",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 4,
-        updatedSections: ["items"],
-        sectionRevisions: { items: 4 },
-        items: { mode: "delta", changedIds: [3] },
-        qualityStatisticsScope: "all",
-        eventId: "test-4",
-      });
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingReason: "translation_commit",
-    });
-  });
-
-  it("items full 会直接发布全量刷新信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_reset",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 2,
-        updatedSections: ["items"],
-        items: { mode: "full" },
-        sectionRevisions: { items: 2 },
-        qualityStatisticsScope: "all",
-        eventId: "test-2",
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingReason: "translation_reset",
-      proofreadingMode: "full",
-    });
-  });
-
-  it("文件增删通过 SSE 刷新共享工程文件数量", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    const options: RuntimeApiMockOptions = { project_file_count: 0 };
-    install_runtime_api_mock(options);
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-    await wait_for_condition(() => snapshots.at(-1)?.workbenchSeq === 1);
-    expect(snapshots.at(-1)?.projectFileCount).toBe(0);
-    for (const [revision, count] of [
-      [2, 1],
-      [3, 0],
-    ] as const) {
-      options.project_file_count = count;
-      await act(async () => {
-        event_stream.emit("project.data_changed", {
-          source: "workbench_files",
-          projectPath: "E:/demo/demo.lg",
-          projectRevision: revision,
-          updatedSections: ["files"],
-          sectionRevisions: { files: revision },
-          qualityStatisticsScope: "all",
-          eventId: `files-${revision}`,
-        });
-      });
-      await flush_state_refresh_window();
-      await wait_for_condition(() => snapshots.at(-1)?.projectFileCount === count);
-    }
-  });
-
-  it("files full 会直接发布文件全量刷新信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.workbenchSeq === 1);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "workbench_reorder_files",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 2,
-        updatedSections: ["files"],
-        sectionRevisions: { files: 2 },
-        qualityStatisticsScope: "all",
-        eventId: "test-2",
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-    await wait_for_condition(() => snapshots.at(-1)?.workbenchSeq === 2);
-
-    expect(snapshots.at(-1)).toMatchObject({
-      workbenchReason: "workbench_reorder_files",
-      workbenchFileFullReplace: true,
-    });
-  });
-
-  it("items full 的旧项目事件不会回退当前项目信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock({
-      project_read: { projectRevision: 5, sectionRevisions: { items: 5 } },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_reset",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 6,
-        updatedSections: ["items"],
-        items: { mode: "full" },
-        sectionRevisions: { items: 6 },
-        qualityStatisticsScope: "all",
-        eventId: "test-6",
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await flush_state_refresh_window();
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 2,
-      proofreadingReason: "translation_reset",
-      proofreadingMode: "full",
-    });
-  });
-
-  it("项目切换后迟到的旧项目失效事件不会写入新项目信号", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    let state_handle: StateHandleRef = null;
-    let project_path = "E:/demo/old.lg";
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: project_path, loaded: true } };
-      }
-      if (path === "/api/batch-task/snapshot") {
-        return { batch_translation: { status: "idle" } };
-      }
-      if (path === "/api/runtime/snapshot") {
-        return { runtime: { revision: 0, owner: null } };
-      }
-      if (project_path === "E:/demo/next.lg") {
-        const project_read_response = create_project_read_response(path, {
-          projectRevision: 10,
-          sectionRevisions: { project: 10, files: 10, items: 10 },
-          sections: create_default_project_sections({
-            project: { path: "E:/demo/next.lg", loaded: true },
-            files: {
-              "next.txt": { rel_path: "next.txt", file_type: "TXT" },
-            },
-            items: {
-              "9": create_project_item({
-                item_id: 9,
-                file_path: "next.txt",
-                src: "next",
-                status: "NONE",
-              }),
-            },
-          }),
-        });
-        if (project_read_response !== null) {
-          return project_read_response;
-        }
-      }
-
-      const project_read_response = create_project_read_response(path, {
-        projectRevision: 1,
-        sectionRevisions: { project: 1, files: 1, items: 1 },
-        sections: create_default_project_sections({
-          project: { path: "E:/demo/old.lg", loaded: true },
-        }),
-      });
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-
-    await wait_for_condition(() => snapshots.at(-1)?.projectPath === "E:/demo/old.lg");
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "translation_reset",
-        projectPath: "E:/demo/old.lg",
-        projectRevision: 2,
-        updatedSections: ["items"],
-        items: { mode: "full" },
-        sectionRevisions: { items: 2 },
-        qualityStatisticsScope: "all",
-        eventId: "test-2",
-      });
-      await Promise.resolve();
-    });
-
-    project_path = "E:/demo/next.lg";
-    await act(async () => {
-      await state_handle?.refresh_project_snapshot();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await wait_for_condition(() => snapshots.at(-1)?.projectPath === "E:/demo/next.lg");
-
-    expect(snapshots.at(-1)).toMatchObject({
-      projectPath: "E:/demo/next.lg",
-    });
-  });
-
-  it("项目 session 初始化期间的写入结果与同源 SSE 会在快照后只重放一次", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    let state_handle: StateHandleRef = null;
-
-    install_runtime_api_mock({
-      project_read: {
-        projectRevision: 1,
-        sectionRevisions: { project: 1, files: 1, items: 1 },
-      },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-
-    await wait_for_condition(() => state_handle !== null);
-    await wait_for_condition(() =>
-      has_event_stream_listener(event_stream.event_source, "project.data_changed"),
-    );
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
-
-    const session_initializing_change = {
-      eventId: "session-initializing-write-1",
-      source: "translation_commit",
-      projectPath: "E:/demo/demo.lg",
-      projectRevision: 2,
-      updatedSections: ["items"],
-      sectionRevisions: { items: 2 },
-      items: { mode: "delta", changedIds: [2] },
-      qualityStatisticsScope: "all",
-    };
-    const session_initializing_write_payload = {
-      accepted: true,
-      changes: [session_initializing_change],
-    };
-
-    await act(async () => {
-      await state_handle?.commit_project_write({
-        operation: "workbench.file_write",
-        run: async () => session_initializing_write_payload,
-      });
-      event_stream.emit("project.data_changed", session_initializing_change);
-      await Promise.resolve();
-    });
-
-    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 2,
-      proofreadingReason: "translation_commit",
-    });
-  });
-
-  it("只改 proofreading/task 且没有 item 载荷时会发 noop 信号", async () => {
-    vi.useFakeTimers();
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock();
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 1;
-    });
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "task_status_refresh",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 2,
-        updatedSections: ["proofreading"],
-        sectionRevisions: { proofreading: 2 },
-        qualityStatisticsScope: "all",
-        eventId: "test-2",
-      });
-      event_stream.emit("batch_task.snapshot_changed", {
-        batch_translation: {
-          status: "running",
-        },
-      });
-      await Promise.resolve();
-    });
-
-    await flush_state_refresh_window();
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 2;
-    });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 2,
-      proofreadingReason: "task_status_refresh",
-      proofreadingMode: "noop",
-      proofreadingUpdatedSections: ["proofreading"],
-      proofreadingItemIds: [],
-      taskStatus: "running",
-    });
-  });
+    expect(agent.get_chat_id()).toBe("second-reset");
+  } finally {
+    await act(async () => root.unmount());
+  }
+  expect(close).toHaveBeenCalledOnce();
 });

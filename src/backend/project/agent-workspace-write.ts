@@ -7,11 +7,7 @@ import { insert_by_sort } from "./insert-by-sort";
 import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
-import {
-  create_item,
-  build_project_item_public_record,
-  type ProjectItemPublicRecord,
-} from "../../domain/item";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import { type JsonRecord, type JsonValue } from "../../domain/json";
 import { PROMPT_KINDS, type PromptKind } from "../../domain/prompt";
 import {
@@ -107,7 +103,7 @@ export type AgentWorkspaceIntentBatch = Readonly<{
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
   knowledge: string | null; // 已保存的知识正文，本批不涉及或尚未保存时为 null
-  items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
+  items: readonly ProjectItemPublicRecord[]; // 含目标条目及重复协调所需的同组成员。
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
   prompts: Partial<Record<PromptKind, string | null>>; // 本批涉及的提示词覆盖
   duplicateFilterEnabled: boolean; // 项目持久设置中的重复过滤口径
@@ -166,20 +162,8 @@ export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceInten
   };
 }
 
-/** 把数据库 item 归一为工作区公开字段，并绑定对象事实指纹。 */
-export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
-  return workspace_item_facts(read_item_write_record(item));
-}
-
-/** 存储与公开字段在工作区读取边界转换一次，内部意图只消费已收窄事实。 */
-function read_item_write_record(item: JsonRecord): ProjectItemPublicRecord {
-  return build_project_item_public_record(
-    create_item({ ...item, id: item["item_id"] ?? item["id"] }),
-  );
-}
-
-/** 工作区展示与提交校验共用同一份条目事实。 */
-function workspace_item_facts(item: ProjectItemPublicRecord) {
+/** 已收窄的公共条目直接投影，工作区展示与写入共用同一指纹。 */
+export function project_agent_workspace_item(item: ProjectItemPublicRecord) {
   const row = {
     item_id: item.item_id,
     src: item.src,
@@ -222,7 +206,7 @@ export function project_agent_workspace_quality_entry(
   };
   return {
     ...row,
-    fp: workspace_fingerprint(quality_fingerprint_tuple(kind, row)),
+    fp: quality_fingerprint(kind, entry),
     sort,
   };
 }
@@ -239,26 +223,31 @@ export function resolve_agent_workspace_writes(args: {
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
   const knowledge = resolve_knowledge(args.batch.knowledge, args.current.knowledge);
-  const current_items = args.current.items
-    .map(read_item_write_record)
-    .filter((item) => item.item_id > 0);
+  const current_items = args.current.items;
   const item_result = resolve_items(args.batch.items, current_items);
-  const item_changes = plan_project_item_changes({
-    items: current_items,
-    explicit_changes: item_result.changes,
-    duplicate_filter_enabled: args.current.duplicateFilterEnabled,
-  });
+  const item_changes =
+    item_result.changes.length === 0
+      ? []
+      : plan_project_item_changes({
+          items: current_items,
+          explicit_changes: item_result.changes,
+          duplicate_filter_enabled: args.current.duplicateFilterEnabled,
+        });
   const prompt_result = resolve_prompts(args.batch.prompts, args.current.prompts);
-  const quality_results = QUALITY_RULE_KINDS.map((kind) =>
-    resolve_quality_kind({
-      kind,
-      intents: args.batch.quality[kind],
-      current: args.current.quality[kind] ?? [],
-      ...(args.createQualityEntryId === undefined
-        ? {}
-        : { createEntryId: args.createQualityEntryId }),
-    }),
-  );
+  const quality_results = QUALITY_RULE_KINDS.flatMap((kind) => {
+    const intents = args.batch.quality[kind];
+    if (intents.creates.length + intents.updates.length + intents.deletes.length === 0) return [];
+    return [
+      resolve_quality_kind({
+        kind,
+        intents,
+        current: args.current.quality[kind] ?? [],
+        ...(args.createQualityEntryId === undefined
+          ? {}
+          : { createEntryId: args.createQualityEntryId }),
+      }),
+    ];
+  });
   const quality_changes = quality_results.flatMap((result) =>
     result.summary === null ? [] : [{ kind: result.kind, entries: result.entries }],
   );
@@ -289,9 +278,10 @@ export function resolve_agent_workspace_writes(args: {
       knowledge: knowledge.candidates,
       items: item_result.candidates,
       prompts: prompt_result.candidates,
-      quality: Object.fromEntries(
-        quality_results.map((result) => [result.kind, result.candidates]),
-      ) as Record<QualityRuleKind, AgentWorkspaceQualityIntents>,
+      quality: {
+        ...args.batch.quality,
+        ...Object.fromEntries(quality_results.map((result) => [result.kind, result.candidates])),
+      },
     },
   };
 }
@@ -320,15 +310,16 @@ function workspace_fingerprint(tuple: JsonValue[]): string {
 }
 
 /** quality fp 绑定 kind、稳定身份与业务字段，排序由独立 sort 意图表达。 */
-function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): JsonValue[] {
-  return [
+function quality_fingerprint(kind: QualityRuleKind, entry: QualityRuleEntry): string {
+  const fields: JsonRecord = entry;
+  return workspace_fingerprint([
     "quality",
     kind,
-    row["id"] ?? "",
+    entry.entry_id,
     ...Object.keys(QUALITY_RULE_BUSINESS_SCHEMAS[kind].properties).map(
-      (field) => row[field] ?? null,
+      (field) => fields[field] ?? null,
     ),
-  ];
+  ]);
 }
 
 /** 同一 item 的互补字段可合并，异值字段与对象漂移按 item 整体拒绝。 */
@@ -351,7 +342,7 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "target_missing"));
       continue;
     }
-    const { fp: current_fp } = workspace_item_facts(current);
+    const { fp: current_fp } = project_agent_workspace_item(current);
     if (group.some((intent) => intent.fp !== current_fp)) {
       rejected.push(item_rejection(item_id, "fp_mismatch"));
       continue;
@@ -476,17 +467,21 @@ function resolve_quality_kind(args: {
 } {
   const current = normalize_quality_rule_entries(QualityRule.from_json(args.kind), args.current);
   const current_by_id = new Map(current.map((entry) => [read_entry_id(entry), entry]));
+  // 新建和未涉及的规则无需计算指纹。
+  const target_ids = new Set(
+    [...args.intents.updates, ...args.intents.deletes].map(({ id }) => id),
+  );
   const current_fp = new Map(
-    current.map((entry, sort) => [
-      read_entry_id(entry),
-      String(project_agent_workspace_quality_entry(args.kind, entry, sort)["fp"]),
-    ]),
+    [...target_ids].flatMap((id) => {
+      const entry = current_by_id.get(id);
+      return entry ? [[id, quality_fingerprint(args.kind, entry)] as const] : [];
+    }),
   );
   const rejected: AgentWorkspaceRejectedChange[] = [];
   const rejected_delete_ids = new Set<string>();
   const deletes = new Map<string, AgentWorkspaceQualityDeleteIntent>();
   for (const [id, group] of group_by(args.intents.deletes, (intent) => intent.id)) {
-    const reason = existing_target_rejection(group, current_by_id, current_fp);
+    const reason = existing_target_rejection(group, current_fp.get(id));
     if (reason !== null) {
       rejected.push(quality_rejection(args.kind, "delete", id, reason));
       rejected_delete_ids.add(id);
@@ -503,7 +498,8 @@ function resolve_quality_kind(args: {
       rejected.push(quality_rejection(args.kind, "update", id, "merge_conflict"));
       continue;
     }
-    const reason = existing_target_rejection(group, current_by_id, current_fp);
+    const fingerprint = current_fp.get(id);
+    const reason = existing_target_rejection(group, fingerprint);
     if (reason !== null) {
       rejected.push(quality_rejection(args.kind, "update", id, reason));
       continue;
@@ -520,7 +516,7 @@ function resolve_quality_kind(args: {
       line: Math.min(...group.map((intent) => intent.line)),
       kind: args.kind,
       id,
-      fp: current_fp.get(id) ?? "",
+      fp: fingerprint!,
       fields,
       ...(sorts[0] === undefined ? {} : { sort: sorts[0] }),
     };
@@ -623,21 +619,24 @@ function resolve_quality_kind(args: {
     });
   }
 
-  const summary = summarize_quality(
-    current,
-    replay.entries,
-    accepted_updates,
-    accepted_creates.length,
-    deletes.size,
+  // 候选和回执共用一次实际变化判断。只有显式排序才比较位置。
+  const before_positions = new Map(current.map((entry, index) => [entry.entry_id, index]));
+  const after_positions = new Map(
+    replay.entries.map((entry, index) => [read_entry_id(entry), index]),
   );
-  const real_update_ids = new Set(
-    [...accepted_updates.values()]
-      .filter((intent) => quality_target_changed(current, replay.entries, intent))
-      .map((intent) => intent.id),
-  );
-  const real_updates = [...accepted_updates.values()].filter((intent) =>
-    real_update_ids.has(intent.id),
-  );
+  const real_updates = [...accepted_updates.values()].filter((intent) => {
+    const before = before_positions.get(intent.id)!;
+    const after = after_positions.get(intent.id)!;
+    return (
+      !isDeepStrictEqual(current[before], replay.entries[after]) ||
+      (intent.sort !== undefined && before !== after)
+    );
+  });
+  const summary = {
+    created: accepted_creates.length,
+    updated: real_updates.length,
+    deleted: deletes.size,
+  };
   const real_summary =
     summary.created === 0 && summary.updated === 0 && summary.deleted === 0 ? null : summary;
   return {
@@ -712,34 +711,6 @@ function replay_quality(args: {
   };
 }
 
-/** 汇总实际新增、删除与发生变化的更新对象。 */
-function summarize_quality(
-  current: JsonRecord[],
-  next: JsonRecord[],
-  updates: ReadonlyMap<string, AgentWorkspaceQualityUpdateIntent>,
-  created: number,
-  deleted: number,
-): AgentWorkspaceQualitySummary {
-  const updated = [...updates.values()].filter((intent) =>
-    quality_target_changed(current, next, intent),
-  ).length;
-  return { created, updated, deleted };
-}
-
-/** 字段变化或显式排序造成的位置变化均计入实际更新。 */
-function quality_target_changed(
-  current: JsonRecord[],
-  next: JsonRecord[],
-  intent: AgentWorkspaceQualityUpdateIntent,
-): boolean {
-  const before_index = current.findIndex((entry) => read_entry_id(entry) === intent.id);
-  const after_index = next.findIndex((entry) => read_entry_id(entry) === intent.id);
-  return (
-    !isDeepStrictEqual(current[before_index], next[after_index]) ||
-    (intent.sort !== undefined && before_index !== after_index)
-  );
-}
-
 /** 只返回新增或扩大的重复组，既有重复事实本身不阻塞无关修改。 */
 function expanded_duplicate_groups(
   kind: QualityRuleKind,
@@ -762,14 +733,12 @@ function expanded_duplicate_groups(
 }
 
 /** 同一目标的所有意图都必须命中当前对象及其指纹。 */
-function existing_target_rejection<T extends { id: string; fp: string }>(
-  group: readonly T[],
-  current: ReadonlyMap<string, JsonRecord>,
-  fingerprints: ReadonlyMap<string, string>,
+function existing_target_rejection(
+  group: readonly { fp: string }[],
+  fingerprint: string | undefined,
 ): "target_missing" | "fp_mismatch" | null {
-  const id = group[0]?.id ?? "";
-  if (!current.has(id)) return "target_missing";
-  return group.some((intent) => intent.fp !== fingerprints.get(id)) ? "fp_mismatch" : null;
+  if (fingerprint === undefined) return "target_missing";
+  return group.some((intent) => intent.fp !== fingerprint) ? "fp_mismatch" : null;
 }
 
 /** 合并互补字段。同字段出现不同值时，返回 `null` 表示对象冲突。 */

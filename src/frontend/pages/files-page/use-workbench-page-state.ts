@@ -1,0 +1,777 @@
+import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
+import {
+  push_error_toast,
+  push_toast,
+  run_modal_progress_toast,
+} from "@frontend/app/feedback/desktop-toast";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
+import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
+
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
+
+import {
+  create_workbench_delete_files_plan,
+  create_workbench_rename_file_plan,
+  create_workbench_reorder_plan,
+  create_workbench_reset_file_plan,
+  type WorkbenchCommandPlanningState,
+  type WorkbenchCommandPlan,
+} from "@shared/workbench/workbench-command-planner";
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
+} from "@frontend/app/state/desktop-project-write";
+import { useI18n } from "@frontend/app/locale/locale-context";
+import {
+  close_dialog_state,
+  useWorkbenchImportFilesFlow,
+} from "@frontend/pages/files-page/use-workbench-import-files-flow";
+import type { RendererErrorContextInput } from "@shared/error";
+import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
+
+import type { AppTableSelectionChange } from "@frontend/widgets/app-table/app-table-types";
+import { resolveProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
+import type { WorkbenchDialogState } from "@frontend/pages/files-page/types";
+import type {
+  WorkbenchFileEntry,
+  WorkbenchSnapshot,
+  WorkbenchQueryResponse,
+} from "@shared/workbench/workbench-query";
+
+type WorkbenchCacheErrorContext = Pick<RendererErrorContextInput, "stage" | "signalSeq">; // 工作台缓存异常只上报白名单诊断字段，不透传页面快照
+
+const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
+  entries: [],
+};
+
+// 快照就绪和重新查询使用同一组工程修订。
+const WORKBENCH_SECTIONS: ProjectDataSection[] = ["project", "files", "items"];
+// 工作台文件写入由工作台页拥有业务动作名，desktop committer 只消费 operation。
+const WORKBENCH_FILE_WRITE: ProjectWriteOperation = "workbench.file_write";
+
+type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
+
+type WorkbenchSelectionState = {
+  selected_entry_ids: string[];
+  active_entry_id: string | null;
+  anchor_entry_id: string | null;
+};
+
+/** 同时清空多选、活动行和范围选择锚点。 */
+function create_empty_selection_state(): WorkbenchSelectionState {
+  return {
+    selected_entry_ids: [],
+    active_entry_id: null,
+    anchor_entry_id: null,
+  };
+}
+
+/** 去重时保留首次出现顺序，避免改变表格范围选择语义。 */
+function dedupe_workbench_entry_ids(entry_ids: string[]): string[] {
+  return Array.from(new Set(entry_ids));
+}
+
+/** 有序选择相同才复用原状态，保留范围选择顺序。 */
+function are_workbench_entry_ids_equal(
+  left_entry_ids: string[],
+  right_entry_ids: string[],
+): boolean {
+  if (left_entry_ids.length !== right_entry_ids.length) {
+    return false;
+  }
+
+  return left_entry_ids.every((entry_id, index) => {
+    return entry_id === right_entry_ids[index];
+  });
+}
+
+/**
+ * 快照变化后优先保留同一路径；文件被删时选中原索引附近的幸存项。
+ */
+function select_after_snapshot(
+  previous_entries: WorkbenchFileEntry[],
+  next_entries: WorkbenchFileEntry[],
+  selected_rel_path: string | null,
+): string | null {
+  if (next_entries.length === 0) {
+    return null;
+  }
+
+  if (
+    selected_rel_path !== null &&
+    next_entries.some((entry) => entry.rel_path === selected_rel_path)
+  ) {
+    return selected_rel_path;
+  }
+
+  if (selected_rel_path !== null) {
+    const previous_index = previous_entries.findIndex(
+      (entry) => entry.rel_path === selected_rel_path,
+    );
+    if (previous_index >= 0) {
+      const safe_index = Math.min(previous_index, next_entries.length - 1);
+      return next_entries[safe_index]?.rel_path ?? null;
+    }
+  }
+
+  return next_entries[0]?.rel_path ?? null;
+}
+
+/**
+ * 按当前快照裁掉已删除文件，并收窄活动行与范围选择锚点。
+ */
+function normalize_workbench_selection_state(
+  selection_state: WorkbenchSelectionState,
+  entries: WorkbenchFileEntry[],
+): WorkbenchSelectionState {
+  const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path));
+  const selected_entry_ids = dedupe_workbench_entry_ids(selection_state.selected_entry_ids).filter(
+    (entry_id) => {
+      return visible_entry_id_set.has(entry_id);
+    },
+  );
+  const active_entry_id =
+    selection_state.active_entry_id !== null &&
+    visible_entry_id_set.has(selection_state.active_entry_id)
+      ? selection_state.active_entry_id
+      : null;
+  const anchor_entry_id =
+    selection_state.anchor_entry_id !== null &&
+    visible_entry_id_set.has(selection_state.anchor_entry_id)
+      ? selection_state.anchor_entry_id
+      : null;
+
+  return {
+    selected_entry_ids,
+    active_entry_id,
+    anchor_entry_id,
+  };
+}
+
+/**
+ * 刷新后保留有效多选；全部失效时按旧活动位置恢复一个稳定单选。
+ */
+function resolve_workbench_selection_after_snapshot(args: {
+  previous_entries: WorkbenchFileEntry[];
+  next_entries: WorkbenchFileEntry[];
+  previous_selection_state: WorkbenchSelectionState;
+  preferred_active_entry_id: string | null;
+}): WorkbenchSelectionState {
+  const normalized_selection_state = normalize_workbench_selection_state(
+    args.previous_selection_state,
+    args.next_entries,
+  );
+
+  if (normalized_selection_state.selected_entry_ids.length > 0) {
+    const active_entry_id =
+      normalized_selection_state.active_entry_id ??
+      normalized_selection_state.selected_entry_ids.at(-1) ??
+      null;
+    const anchor_entry_id =
+      normalized_selection_state.anchor_entry_id ??
+      normalized_selection_state.selected_entry_ids[0] ??
+      active_entry_id;
+
+    return {
+      selected_entry_ids: normalized_selection_state.selected_entry_ids,
+      active_entry_id,
+      anchor_entry_id,
+    };
+  }
+
+  const fallback_entry_id = select_after_snapshot(
+    args.previous_entries,
+    args.next_entries,
+    args.preferred_active_entry_id ??
+      args.previous_selection_state.active_entry_id ??
+      args.previous_selection_state.selected_entry_ids.at(-1) ??
+      null,
+  );
+
+  if (fallback_entry_id === null) {
+    return create_empty_selection_state();
+  }
+
+  return {
+    selected_entry_ids: [fallback_entry_id],
+    active_entry_id: fallback_entry_id,
+    anchor_entry_id: fallback_entry_id,
+  };
+}
+
+export type UseWorkbenchPageStateResult = {
+  godot_pack_order: ReturnType<typeof useWorkbenchImportFilesFlow>["godot_pack_order"];
+  game_backup_confirm: ReturnType<typeof useWorkbenchImportFilesFlow>["game_backup_confirm"];
+  cache_status: "idle" | "refreshing" | "ready" | "error";
+  consumed_revisions: ProjectDataSectionRevisions;
+  required_sections: ProjectDataSection[];
+  settled_project_path: string;
+  is_refreshing: boolean;
+  file_op_running: boolean;
+  entries: WorkbenchFileEntry[];
+  selected_entry_ids: string[];
+  active_entry_id: string | null;
+  anchor_entry_id: string | null;
+  readonly: boolean;
+  can_edit_files: boolean;
+  can_delete_selected_files: boolean;
+  dialog_state: WorkbenchDialogState;
+  refresh_snapshot: () => Promise<WorkbenchSnapshot>;
+  apply_table_selection: (payload: AppTableSelectionChange) => void;
+  request_add_file: () => Promise<void>;
+  request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
+  notify_add_file_drop_issue: (issue: WorkbenchAddFileDropIssue) => void;
+  request_rename_file: (entry_id: string) => void;
+  request_reset_file: (entry_id: string) => void;
+  request_delete_selected_files: () => void;
+  request_reorder_entries: (ordered_entry_ids: string[]) => Promise<void>;
+  confirm_dialog: () => Promise<void>;
+  confirm_rename_file: (new_rel_path: string) => Promise<void>;
+  secondary_dialog: () => Promise<void>;
+  close_dialog: () => void;
+};
+
+/** 文件页拥有项目文件查询、选择状态和文件写入交互。 */
+export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
+  const api_fetch = useProjectFetch();
+  const { t } = useI18n();
+
+  const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
+  const project_change_signal = useProjectChangeSignal();
+  const runtime_snapshot = useProjectRuntimeSnapshot();
+  const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
+  const entries = snapshot.entries; // 文件列表直接消费页面快照，选择状态单独维护
+  const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(
+    "idle",
+  );
+  const [consumed_revisions, set_consumed_revisions] = useState<ProjectDataSectionRevisions>({});
+  const [settled_project_path, set_settled_project_path] = useState("");
+  const [is_refreshing, set_is_refreshing] = useState(false);
+  const [file_op_running, set_file_op_running] = useState(false);
+  const [selected_entry_ids, set_selected_entry_ids] = useState<string[]>([]);
+  const [active_entry_id, set_active_entry_id] = useState<string | null>(null);
+  const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null);
+  const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
+  const [is_write_running, set_is_write_running] = useState(false);
+  const previous_workbench_change_seq_ref = useRef(0);
+  const previous_project_loaded_ref = useRef(false);
+  const workbench_change_seq = useMemo(() => {
+    return resolveProjectChangeSeqForSections(project_change_signal, WORKBENCH_SECTIONS);
+  }, [project_change_signal]);
+  const previous_project_path_ref = useRef("");
+  const refresh_generation_ref = useRef(0);
+  const snapshot_ref = useRef(snapshot);
+  const entries_ref = useRef<WorkbenchFileEntry[]>(entries);
+  const selection_state_ref = useRef<WorkbenchSelectionState>(create_empty_selection_state());
+
+  const current_selection_state = useMemo<WorkbenchSelectionState>(() => {
+    return {
+      selected_entry_ids,
+      active_entry_id,
+      anchor_entry_id,
+    };
+  }, [active_entry_id, anchor_entry_id, selected_entry_ids]);
+
+  const apply_selection_state = useCallback(
+    (next_selection_state: WorkbenchSelectionState): void => {
+      set_selected_entry_ids((previous_entry_ids) => {
+        return are_workbench_entry_ids_equal(
+          previous_entry_ids,
+          next_selection_state.selected_entry_ids,
+        )
+          ? previous_entry_ids
+          : next_selection_state.selected_entry_ids;
+      });
+      set_active_entry_id((previous_entry_id) => {
+        return previous_entry_id === next_selection_state.active_entry_id
+          ? previous_entry_id
+          : next_selection_state.active_entry_id;
+      });
+      set_anchor_entry_id((previous_entry_id) => {
+        return previous_entry_id === next_selection_state.anchor_entry_id
+          ? previous_entry_id
+          : next_selection_state.anchor_entry_id;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    snapshot_ref.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(() => {
+    entries_ref.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    selection_state_ref.current = current_selection_state;
+  }, [current_selection_state]);
+
+  const get_workbench_planning_state = useCallback((): WorkbenchCommandPlanningState => {
+    return {
+      files: entries_ref.current.map((entry) => ({
+        rel_path: entry.rel_path,
+      })),
+      section_revisions: consumed_revisions,
+    };
+  }, [consumed_revisions]);
+
+  const clear_workbench_snapshot_state = useCallback((): void => {
+    refresh_generation_ref.current += 1;
+    snapshot_ref.current = EMPTY_SNAPSHOT;
+    set_snapshot(EMPTY_SNAPSHOT);
+    set_file_op_running(false);
+    apply_selection_state(create_empty_selection_state());
+    set_dialog_state(close_dialog_state());
+    set_is_refreshing(false);
+    set_consumed_revisions({});
+    set_settled_project_path("");
+  }, [apply_selection_state]);
+
+  /** 刷新文件事实后按旧相邻行位置恢复选择。 */
+  const apply_refreshed_selection = useCallback(
+    (next_snapshot: WorkbenchSnapshot, preferred_active_entry_id: string | null): void => {
+      const previous_entries = entries_ref.current;
+      const previous_selection_state = selection_state_ref.current;
+      apply_selection_state(
+        resolve_workbench_selection_after_snapshot({
+          previous_entries,
+          next_entries: next_snapshot.entries,
+          previous_selection_state,
+          preferred_active_entry_id,
+        }),
+      );
+    },
+    [apply_selection_state],
+  );
+
+  const refresh_snapshot = useCallback(
+    async (preferred_active_entry_id: string | null = null): Promise<WorkbenchSnapshot> => {
+      if (!project_snapshot.loaded) {
+        clear_workbench_snapshot_state();
+        set_cache_status("idle");
+        return EMPTY_SNAPSHOT;
+      }
+
+      const request_id = refresh_generation_ref.current + 1;
+      refresh_generation_ref.current = request_id;
+      set_is_refreshing(true);
+      set_cache_status("refreshing");
+
+      try {
+        const response = await api_fetch<WorkbenchQueryResponse>("/api/workbench/snapshot", {});
+        const next_snapshot = response.snapshot;
+
+        if (request_id !== refresh_generation_ref.current) {
+          return next_snapshot;
+        }
+
+        snapshot_ref.current = next_snapshot;
+        set_snapshot(next_snapshot);
+        apply_refreshed_selection(next_snapshot, preferred_active_entry_id);
+        set_file_op_running(false);
+        set_cache_status("ready");
+        set_consumed_revisions(response.sectionRevisions);
+        set_settled_project_path(response.projectPath);
+        return next_snapshot;
+      } catch (error) {
+        if (request_id !== refresh_generation_ref.current) {
+          return EMPTY_SNAPSHOT;
+        }
+
+        set_cache_status("error");
+        set_file_op_running(false);
+        set_settled_project_path(project_snapshot.path);
+        push_error_toast(t("app.feedback.refresh_failed"), error);
+        return snapshot_ref.current;
+      } finally {
+        if (request_id === refresh_generation_ref.current) {
+          set_is_refreshing(false);
+        }
+      }
+    },
+    [
+      apply_refreshed_selection,
+      clear_workbench_snapshot_state,
+      project_snapshot.loaded,
+      project_snapshot.path,
+      t,
+    ],
+  );
+
+  // 工作台缓存是可重建计算状态，增量更新失败只记录异常并回退到全量重建。
+  const report_workbench_cache_error = useCallback(
+    (error: unknown, context: WorkbenchCacheErrorContext): void => {
+      capture_renderer_error(error, {
+        source: "page-cache",
+        context: {
+          page: "files",
+          ...context,
+        },
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const previous_project_loaded = previous_project_loaded_ref.current;
+    const previous_project_path = previous_project_path_ref.current;
+
+    previous_project_loaded_ref.current = project_snapshot.loaded;
+    previous_project_path_ref.current = project_snapshot.path;
+
+    if (!project_snapshot.loaded) {
+      if (previous_project_loaded || previous_project_path !== "") {
+        clear_workbench_snapshot_state();
+        set_cache_status("idle");
+      }
+      return;
+    }
+
+    if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
+      clear_workbench_snapshot_state();
+      set_cache_status("refreshing");
+      previous_workbench_change_seq_ref.current =
+        workbench_change_seq ?? previous_workbench_change_seq_ref.current;
+      void refresh_snapshot();
+    }
+  }, [
+    clear_workbench_snapshot_state,
+    project_snapshot.loaded,
+    project_snapshot.path,
+    refresh_snapshot,
+    workbench_change_seq,
+  ]);
+
+  useEffect(() => {
+    const previous_seq = previous_workbench_change_seq_ref.current;
+
+    if (!project_snapshot.loaded || workbench_change_seq === null) {
+      return;
+    }
+
+    if (previous_seq !== workbench_change_seq) {
+      previous_workbench_change_seq_ref.current = workbench_change_seq;
+      void refresh_snapshot().catch((error) => {
+        report_workbench_cache_error(error, {
+          stage: "refresh_snapshot_after_workbench_signal",
+          signalSeq: workbench_change_seq,
+        });
+      });
+    }
+  }, [
+    project_snapshot.loaded,
+    refresh_snapshot,
+    report_workbench_cache_error,
+    workbench_change_seq,
+  ]);
+
+  const readonly =
+    !project_snapshot.loaded ||
+    is_runtime_busy(runtime_snapshot) ||
+    file_op_running ||
+    is_write_running;
+  const can_edit_files = !readonly;
+  const can_delete_selected_files =
+    can_edit_files &&
+    selected_entry_ids.some((entry_id) => entries.some((entry) => entry.rel_path === entry_id));
+
+  const set_dialog_submitting = useCallback((next_submitting: boolean): void => {
+    set_dialog_state((previous_state) => {
+      if (previous_state.kind === null) {
+        return previous_state;
+      }
+
+      return {
+        ...previous_state,
+        submitting: next_submitting,
+      };
+    });
+  }, []);
+
+  const run_project_file_write = useCallback(
+    async (
+      plan: WorkbenchCommandPlan,
+      request: (body: Record<string, unknown>) => Promise<ProjectWriteResultPayload>,
+    ): Promise<ProjectWriteResultPayload> => {
+      set_is_write_running(true);
+      set_file_op_running(true);
+
+      try {
+        const { payload } = await commit_project_write({
+          operation: WORKBENCH_FILE_WRITE,
+          run: async () => {
+            return await request(plan.requestBody);
+          },
+        });
+        await refresh_batch_translation();
+        await refresh_snapshot();
+        return payload;
+      } catch (error) {
+        set_file_op_running(false);
+        throw error;
+      } finally {
+        set_is_write_running(false);
+      }
+    },
+    [commit_project_write, refresh_snapshot, refresh_batch_translation],
+  );
+
+  const import_files_flow = useWorkbenchImportFilesFlow({
+    readonly,
+    project_identity: project_snapshot.loaded ? project_snapshot.path : "",
+    dialog_state,
+    get_planning_state: get_workbench_planning_state,
+    run_modal_progress_toast,
+    run_project_file_write,
+    set_dialog_state: set_dialog_state,
+    set_dialog_submitting,
+    push_toast,
+    t,
+  });
+
+  const apply_table_selection = useCallback(
+    (payload: AppTableSelectionChange): void => {
+      apply_selection_state({
+        selected_entry_ids: payload.selected_row_ids,
+        active_entry_id: payload.active_row_id,
+        anchor_entry_id: payload.anchor_row_id,
+      });
+    },
+    [apply_selection_state],
+  );
+
+  const request_delete_entries = useCallback(
+    (entry_ids: string[]): void => {
+      if (!can_edit_files) {
+        return;
+      }
+
+      const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path));
+      const target_rel_paths = dedupe_workbench_entry_ids(entry_ids).filter((entry_id) => {
+        return visible_entry_id_set.has(entry_id);
+      });
+
+      if (target_rel_paths.length === 0) {
+        return;
+      }
+
+      set_dialog_state({
+        kind: "delete-file",
+        target_rel_paths,
+        pending_path: null,
+        submitting: false,
+      });
+    },
+    [can_edit_files, entries],
+  );
+
+  const request_add_files_from_paths = import_files_flow.request_add_files_from_paths;
+
+  /** 文件选择与拖入共用导入流程。 */
+  async function request_add_file(): Promise<void> {
+    if (readonly) {
+      return;
+    }
+
+    const result = await window.desktopApp.pickSourceFilePaths();
+    if (result.canceled || result.paths.length === 0) {
+      return;
+    }
+    await request_add_files_from_paths(result.paths);
+  }
+
+  /** 将拖入文件的问题映射为可见提示。 */
+  function notify_add_file_drop_issue(issue: WorkbenchAddFileDropIssue): void {
+    push_toast(
+      "warning",
+      issue === "multiple" ? t("app.drop.multiple_unavailable") : t("app.drop.unavailable"),
+    );
+  }
+
+  /** 冻结待改名文件，新名称由改名弹窗校验后提交。 */
+  function request_rename_file(entry_id: string): void {
+    set_dialog_state({
+      kind: "rename-file",
+      target_rel_paths: [entry_id],
+      pending_path: null,
+      submitting: false,
+    });
+  }
+
+  /** 提交改名，失败保留弹窗供修改或重试。 */
+  async function confirm_rename_file(new_rel_path: string): Promise<void> {
+    const rel_path = dialog_state.target_rel_paths[0];
+    if (dialog_state.kind !== "rename-file" || dialog_state.submitting || rel_path === undefined) {
+      return;
+    }
+
+    set_dialog_submitting(true);
+    try {
+      const rename_plan = create_workbench_rename_file_plan({
+        state: get_workbench_planning_state(),
+        rel_path,
+        new_rel_path,
+      });
+      await run_project_file_write(rename_plan, async (body) => {
+        return await api_fetch<ProjectWriteResultPayload>("/api/workbench/file/rename", body);
+      });
+      set_dialog_state(close_dialog_state());
+    } catch (error) {
+      push_error_toast(t("app.feedback.operation_failed"), error);
+      set_dialog_submitting(false);
+    }
+  }
+
+  /** 冻结待重置文件，交由确认入口提交。 */
+  function request_reset_file(entry_id: string): void {
+    set_dialog_state({
+      kind: "reset-file",
+      target_rel_paths: [entry_id],
+      pending_path: null,
+      submitting: false,
+    });
+  }
+
+  /** 删除动作读取最新选择，只提交仍可见的文件。 */
+  function request_delete_selected_files(): void {
+    request_delete_entries(selection_state_ref.current.selected_entry_ids);
+  }
+
+  const request_reorder_entries = useCallback(
+    async (ordered_entry_ids: string[]): Promise<void> => {
+      if (readonly) {
+        return;
+      }
+
+      if (ordered_entry_ids.length !== entries.length) {
+        return;
+      }
+      if (new Set(ordered_entry_ids).size !== ordered_entry_ids.length) {
+        return;
+      }
+
+      try {
+        const reorder_plan = create_workbench_reorder_plan({
+          state: get_workbench_planning_state(),
+          ordered_rel_paths: ordered_entry_ids,
+        });
+        await run_project_file_write(reorder_plan, async (body) => {
+          return await api_fetch<ProjectWriteResultPayload>("/api/workbench/files/reorder", body);
+        });
+      } catch (error) {
+        push_error_toast(t("app.feedback.save_failed"), error);
+      }
+    },
+    [entries.length, get_workbench_planning_state, readonly, run_project_file_write, t],
+  );
+
+  /** 统一提交当前确认动作，失败保留弹窗供重试。 */
+  async function confirm_dialog(): Promise<void> {
+    const current_dialog_state = dialog_state;
+    if (current_dialog_state.kind === null || current_dialog_state.submitting) {
+      return;
+    }
+
+    if (await import_files_flow.confirm_dialog()) {
+      return;
+    }
+
+    const target_rel_path = current_dialog_state.target_rel_paths[0] ?? null;
+    set_dialog_submitting(true);
+    try {
+      if (current_dialog_state.kind === "reset-file") {
+        if (target_rel_path === null) {
+          set_dialog_submitting(false);
+          return;
+        }
+
+        const reset_plan = create_workbench_reset_file_plan({
+          state: get_workbench_planning_state(),
+          rel_path: target_rel_path,
+        });
+        await run_project_file_write(reset_plan, async (body) => {
+          return await api_fetch<ProjectWriteResultPayload>("/api/workbench/file/reset", body);
+        });
+        push_toast("success", t("app.feedback.operation_success"));
+        set_dialog_state(close_dialog_state());
+        return;
+      }
+
+      if (current_dialog_state.kind === "delete-file") {
+        if (current_dialog_state.target_rel_paths.length === 0) {
+          set_dialog_submitting(false);
+          return;
+        }
+
+        const delete_plan = create_workbench_delete_files_plan({
+          state: get_workbench_planning_state(),
+          rel_paths: current_dialog_state.target_rel_paths,
+        });
+        await run_project_file_write(delete_plan, async (body) => {
+          return await api_fetch<ProjectWriteResultPayload>("/api/workbench/file/delete", body);
+        });
+
+        set_dialog_state(close_dialog_state());
+        return;
+      }
+    } catch (error) {
+      push_error_toast(t("app.feedback.operation_failed"), error);
+      set_dialog_submitting(false);
+    }
+  }
+
+  /** 页面确认回调只表达完成，导入流程自行消费其布尔处理结果。 */
+  async function secondary_dialog(): Promise<void> {
+    await import_files_flow.secondary_dialog();
+  }
+
+  /** 导入流程优先消费关闭动作，提交期间保留弹窗。 */
+  function close_dialog(): void {
+    if (import_files_flow.close_dialog()) {
+      return;
+    }
+
+    if (dialog_state.submitting) {
+      return;
+    }
+
+    set_dialog_state(close_dialog_state());
+  }
+
+  return {
+    godot_pack_order: import_files_flow.godot_pack_order,
+    game_backup_confirm: import_files_flow.game_backup_confirm,
+    cache_status,
+    consumed_revisions,
+    required_sections: WORKBENCH_SECTIONS,
+    settled_project_path,
+    is_refreshing,
+    file_op_running,
+    entries,
+    selected_entry_ids,
+    active_entry_id,
+    anchor_entry_id,
+    readonly,
+    can_edit_files,
+    can_delete_selected_files,
+    dialog_state,
+    refresh_snapshot,
+    apply_table_selection,
+    request_add_file,
+    request_add_files_from_paths,
+    notify_add_file_drop_issue,
+    request_rename_file,
+    request_reset_file,
+    request_delete_selected_files,
+    request_reorder_entries,
+    confirm_dialog,
+    confirm_rename_file,
+    secondary_dialog,
+    close_dialog,
+  };
+}

@@ -5,6 +5,38 @@ import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider"
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 
 describe("当前页面离开前保存", () => {
+  it("切工程与切全局视图只保存相应作用域", async () => {
+    const root = createRoot(document.createElement("div"));
+    let api!: ReturnType<typeof usePageLeave>;
+    function Probe(): null {
+      api = usePageLeave();
+      return null;
+    }
+    const save_first = vi.fn(async () => true);
+    const save_second = vi.fn(async () => true);
+    const save_global = vi.fn(async () => true);
+    const first_scope = { kind: "project", projectId: "first" } as const;
+    try {
+      await act(async () =>
+        root.render(
+          <PageLeaveProvider>
+            <Probe />
+          </PageLeaveProvider>,
+        ),
+      );
+      api.register_before_leave(save_first, first_scope);
+      api.register_before_leave(save_second, { kind: "project", projectId: "second" });
+      api.register_before_leave(save_global);
+      await act(async () => {
+        expect(await api.prepare_page_leave(first_scope)).toBe(true);
+      });
+      expect(save_first).toHaveBeenCalledOnce();
+      expect(save_second).not.toHaveBeenCalled();
+      expect(save_global).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
   it("等待保存结果，失败保留当前页面，再次保存成功后允许离开", async () => {
     const container = document.createElement("div");
     const root = createRoot(container);
@@ -16,10 +48,12 @@ describe("当前页面离开前保存", () => {
           finish = resolve;
         }),
     );
+    const save_other = vi.fn(async () => true);
     function Probe(): null {
       api = usePageLeave();
       const { register_before_leave } = api;
       useEffect(() => register_before_leave(save), [register_before_leave]);
+      useEffect(() => register_before_leave(save_other), [register_before_leave]);
       return null;
     }
     try {
@@ -41,6 +75,7 @@ describe("当前页面离开前保存", () => {
         finish(false);
         expect(await leaving).toBe(false);
       });
+      expect(save_other).toHaveBeenCalledOnce();
       expect(api!.leaving).toBe(false);
       await act(async () => {
         leaving = api!.prepare_page_leave();

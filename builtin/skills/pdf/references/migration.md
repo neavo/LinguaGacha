@@ -10,7 +10,7 @@
 - `items.json` 为空数组 `[]`。
 - 存在 `source.pdf`。
 
-执行迁移前，先按主技能「环境与依赖」检查 `pdf.missingDependencies()` 并补齐缺失的 npm 依赖（安装后在下一次 `workspace_run` 调用中执行迁移脚本）。
+执行迁移前，先按主技能「环境与依赖」检查 `pdf.missingDependencies()` 并补齐缺失的 npm 依赖。
 
 ## 2. 生成正式通用包与恢复文件
 

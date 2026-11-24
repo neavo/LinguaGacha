@@ -7,9 +7,8 @@ import path from "node:path";
 import { build_project_committed_change } from "./project-committed-change";
 import type { ProjectDataSection } from "../../shared/project-event";
 
-import { CacheManager } from "../cache/cache-manager";
+import { ProjectCache } from "../cache/project-cache";
 import { ProjectDatabase } from "../database/database-operations";
-import { ProjectSessionState } from "./project-session-state";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
 
@@ -17,8 +16,8 @@ it("工作台同步读取提交缓存，文本提交及空文件删除与修订�
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-summary-cache-"));
   const project = path.join(root, "test.lg");
   const database = new ProjectDatabase("1.0.0");
-  const session = new ProjectSessionState();
-  const cache = new CacheManager({
+  const cache = new ProjectCache({
+    projectPath: project,
     database,
     logManager: null,
     workerClient: {} as ComputeWorkerClient,
@@ -29,9 +28,8 @@ it("工作台同步读取提交缓存，文本提交及空文件删除与修订�
       writer.add_asset(project, "script.txt", Buffer.from("こんにちは"), "TXT");
       writer.set_items(project, [create_item({})]);
     });
-    await cache.warmProject(project);
-    await session.mark_loaded(project);
-    const service = new ProjectSummaryService(session, cache);
+    await cache.refresh();
+    const service = new ProjectSummaryService(project, cache);
     expect(service.read()).toMatchObject({
       projectPath: project,
       snapshot: {
@@ -171,7 +169,7 @@ describe("ProjectSummaryService", () => {
     ]);
   });
 
-  // 通过 CacheManager 热机后再构造 query service，覆盖首次页面 query 依赖的真实缓存路径。
+  // 通过 ProjectCache 热机后再构造 query service，覆盖首次页面 query 依赖的真实缓存路径。
   async function create_service(
     items: Record<string, unknown>[],
     asset_records: Array<{ path: string; sort_order: number; file_type: string }> = [
@@ -192,7 +190,8 @@ describe("ProjectSummaryService", () => {
       get_rules: () => [],
       get_rule_text: () => "",
     } as unknown as ProjectDatabase;
-    const cache = new CacheManager({
+    const cache = new ProjectCache({
+      projectPath: "E:/Project/demo.lg",
       database,
       logManager: null,
       workerClient: {
@@ -200,11 +199,9 @@ describe("ProjectSummaryService", () => {
         dispose: async () => undefined,
       } as unknown as ComputeWorkerClient,
     });
-    await cache.warmProject("E:/Project/demo.lg");
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded("E:/Project/demo.lg");
+    await cache.refresh();
     return {
-      service: new ProjectSummaryService(session_state, cache),
+      service: new ProjectSummaryService("E:/Project/demo.lg", cache),
     };
   }
 });

@@ -11,8 +11,7 @@
 }
 
 .topbar__safe-area,
-.topbar__content,
-.topbar__left {
+.topbar__content {
   display: flex;
   align-items: center;
   min-width: 0;
@@ -35,48 +34,7 @@
   padding: 0 14px;
 }
 
-.topbar__left {
-  gap: 4px;
-}
-
-.topbar__menu-button {
-  -webkit-app-region: no-drag;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: -4px;
-  width: 32px;
-  height: 32px;
-  border: 0;
-  border-radius: var(--ui-radius-button);
-  background: transparent;
-  color: var(--foreground);
-  transition:
-    background-color 120ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.topbar__menu-button:hover {
-  background: var(--muted);
-}
-
-.topbar__menu-button:active {
-  background: var(--sidebar-accent);
-  transform: scale(0.96);
-}
-
-.topbar__menu-button:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .topbar__brand {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.topbar__brand strong {
   font-size: var(--ui-font-size-14);
   color: var(--foreground);
 }

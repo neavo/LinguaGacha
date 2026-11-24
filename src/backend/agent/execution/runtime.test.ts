@@ -15,7 +15,7 @@ vi.mock("../../../native/supervisor", () => ({
   },
 }));
 
-it("环境准备与脚本共用唯一截止信号，超时回执保留日志与无输出秒数", async () => {
+it("独立脚本共享一次环境准备，取消一条执行不影响另一条", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-execution-deadline-"));
   await mkdir(path.join(root.path, "runtime"));
   await writeFile(path.join(root.path, "runtime/prepare.mjs"), "");
@@ -36,13 +36,20 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志与�
       get_agent_models_dir: () => path.join(root.path, "models"),
       get_agent_media_cache_dir: () => path.join(root.path, "cache/media"),
       get_agent_python_root_dir: () => path.join(root.path, "python"),
-      get_agent_execution_lock_path: () => path.join(root.path, "node.lock"),
+      get_agent_preparation_lock_path: () => path.join(root.path, "node.lock"),
       get_user_data_path: (...parts) => path.join(root.path, "userdata", ...parts),
     },
     proxyResolver: { resolveProxy: async () => "DIRECT" },
   });
+  vi.mocked(Supervisor.acquire).mockClear();
   const deadline = new AbortController();
-  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+  const other_deadline = new AbortController();
+  const timeout = vi
+    .spyOn(AbortSignal, "timeout")
+    .mockReturnValueOnce(deadline.signal)
+    .mockReturnValueOnce(other_deadline.signal);
+  const first_started = Promise.withResolvers<void>();
+  const other_completed = Promise.withResolvers<void>();
   try {
     const pending = execution.with_environment(
       {
@@ -53,25 +60,54 @@ it("环境准备与脚本共用唯一截止信号，超时回执保留日志与�
       },
       new AbortController().signal,
       async (owner, _env, signal) => {
-        expect(owner.launch).toHaveBeenCalledWith(expect.any(Object), signal);
+        expect(owner.launch).not.toHaveBeenCalled();
         await writeFile(path.join(workspace, "deadline.out"), "before deadline");
         const silent_since = new Date(Date.now() - 120_000); // 两路日志最后一次写入在 120 秒前
         for (const log of ["deadline.out", "deadline.err"])
           await utimes(path.join(workspace, log), silent_since, silent_since);
+        first_started.resolve();
+        await other_completed.promise;
         deadline.abort(new DOMException("test deadline", "TimeoutError"));
         signal.throwIfAborted();
       },
     );
-    const error: unknown = await pending.catch((error: unknown) => error);
+    const result = pending.catch((error: unknown) => error);
+    await Promise.race([
+      first_started.promise,
+      result.then((error) => {
+        throw error;
+      }),
+    ]);
+    const second = await execution.with_environment(
+      {
+        workspacePath: workspace,
+        stdoutPath: "other.out",
+        stderrPath: "other.err",
+        timeoutMs: 45_000,
+      },
+      new AbortController().signal,
+      async () => "finished",
+    );
+    expect(second).toBe("finished");
+    other_completed.resolve();
+    const error = await result;
     expect(error).toMatchObject({
       message: "Workspace execution timed out after 45 seconds. No output in the last 120 seconds.",
       execution: { stdout: { content: "before deadline" }, exitCode: null },
       cause: deadline.signal.reason,
     });
-    expect(timeout).toHaveBeenCalledExactlyOnceWith(45_000);
-    const owner = await vi.mocked(Supervisor.acquire).mock.results[0]!.value;
-    expect(owner.close).toHaveBeenCalledOnce();
+    expect(timeout).toHaveBeenCalledTimes(2);
+    const acquired = vi.mocked(Supervisor.acquire);
+    expect(acquired.mock.calls.map(([, lock]) => lock)).toEqual([
+      path.join(root.path, "node.lock"),
+      undefined,
+      undefined,
+    ]);
+    const owners = await Promise.all(acquired.mock.results.map(({ value }) => value));
+    expect(owners[0]!.launch).toHaveBeenCalledOnce();
+    expect(owners.every((owner) => vi.mocked(owner.close).mock.calls.length === 1)).toBe(true);
   } finally {
+    other_completed.resolve();
     timeout.mockRestore();
     await execution.close();
   }

@@ -7,11 +7,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonValue } from "../../domain/json";
-import { CacheManager } from "../cache/cache-manager";
+import { ProjectCache } from "../cache/project-cache";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectCommittedChangeHandler } from "../project/project-committed-change";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { ProjectSessionState } from "../project/project-session-state";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { MutableJsonRecord } from "../../domain/json";
 import { BatchTranslationProjectStore } from "./batch-translation-project-store";
@@ -176,7 +175,7 @@ describe("BatchTranslationProjectStore", () => {
         "quality_prompt_revision.translation": 2,
       }),
     );
-    await cache_manager.warmProject(project_path);
+    await cache_manager.refresh();
 
     const snapshot = store.build_quality_snapshot();
 
@@ -191,7 +190,7 @@ describe("BatchTranslationProjectStore", () => {
     await database.transaction(project_path, (writer) =>
       writer.set_rules(project_path, "glossary", [{ entry_id: "hp", src: "HP", dst: "生命值" }]),
     );
-    await cache_manager.warmProject(project_path);
+    await cache_manager.refresh();
 
     const snapshot = store.build_quality_snapshot();
 
@@ -237,15 +236,15 @@ describe("BatchTranslationProjectStore", () => {
   ): Promise<{
     database: ProjectDatabase;
     project_path: string;
-    cache_manager: CacheManager;
+    cache_manager: ProjectCache;
     store: BatchTranslationProjectStore;
     published_changes: ProjectCommittedChange[];
   }> {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-task-project-store-"));
     const project_path = path.join(directory, "task.lg");
     const database = new ProjectDatabase("1.0.0");
-    const session_state = new ProjectSessionState();
-    const cache_manager = new CacheManager({
+    const cache_manager = new ProjectCache({
+      projectPath: project_path,
       database,
       logManager: null,
       workerClient: {
@@ -255,7 +254,6 @@ describe("BatchTranslationProjectStore", () => {
     });
     const published_changes: ProjectCommittedChange[] = [];
     await database.create_project(project_path);
-    session_state.mark_loaded(project_path);
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     cleanup_callbacks.push(async () => await database.close());
     const write_store = new ProjectWriteStore(
@@ -271,7 +269,7 @@ describe("BatchTranslationProjectStore", () => {
       database,
       project_path,
       cache_manager,
-      store: new BatchTranslationProjectStore(session_state, cache_manager, write_store),
+      store: new BatchTranslationProjectStore(project_path, cache_manager, write_store),
       published_changes,
     };
   }

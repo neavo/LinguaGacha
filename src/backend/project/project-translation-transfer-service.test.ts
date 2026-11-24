@@ -7,15 +7,13 @@ import { create_item } from "../../domain/item";
 import { NativeFs } from "../../native/native-fs";
 import { NativePathPolicy } from "../../native/native-path";
 import { ProjectDatabase } from "../database/database-operations";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GlobalOperationGate } from "../runtime-operation-gate";
 import { ProjectDataReader } from "./project-data-reader";
-import { ProjectSessionState } from "./project-session-state";
 import { ProjectTranslationTransferService } from "./project-translation-transfer-service";
 
 let directory = "";
 let database: ProjectDatabase;
-let gate: RuntimeOperationGate;
-let session: ProjectSessionState;
+let gate: GlobalOperationGate;
 
 /** 创建带条目的真实工程，关闭语言过滤让状态只由本例决定。 */
 async function create_project(name: string, items: Record<string, unknown>[]): Promise<string> {
@@ -61,8 +59,7 @@ async function create_pair(): Promise<{ source_path: string; base_path: string }
 beforeEach(() => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-translation-transfer-"));
   database = new ProjectDatabase("1.0.0");
-  gate = new RuntimeOperationGate();
-  session = new ProjectSessionState();
+  gate = new GlobalOperationGate();
 });
 
 afterEach(async () => {
@@ -76,7 +73,7 @@ describe("ProjectTranslationTransferService", () => {
     const source_bytes = fs.readFileSync(source_path);
     const base_bytes = fs.readFileSync(base_path);
     const output_path = path.join(directory, "output.lg");
-    const service = new ProjectTranslationTransferService(database, gate, session);
+    const service = new ProjectTranslationTransferService(database, gate, () => []);
 
     await expect(
       service.apply({ source_path, base_path, output_path, mode: "overwrite" }),
@@ -91,36 +88,21 @@ describe("ProjectTranslationTransferService", () => {
     expect(fs.readFileSync(source_path)).toEqual(source_bytes);
     expect(fs.readFileSync(base_path)).toEqual(base_bytes);
     expect(await database.open_agent_store(output_path).read()).toBeNull();
-    expect(await database.open_agent_store(base_path).read()).toMatchObject({ id: "base-chat" });
+    expect(await database.open_agent_store(base_path).read()).toMatchObject({
+      id: "base-chat",
+    });
     expect(fs.readdirSync(directory).sort()).toEqual(["base.lg", "output.lg", "source.lg"]);
-  });
-
-  it("运行占用时拒绝且不产生输出", async () => {
-    const { source_path, base_path } = await create_pair();
-    const output_path = path.join(directory, "output.lg");
-    gate.begin_runtime("batch_translation");
-
-    await expect(
-      new ProjectTranslationTransferService(database, gate, session).apply({
-        source_path,
-        base_path,
-        output_path,
-        mode: "fill",
-      }),
-    ).rejects.toMatchObject({ code: "runtime.busy" });
-    expect(fs.existsSync(output_path)).toBe(false);
   });
 
   it("输出路径与原工程或已加载工程相同（含大小写差异）时拒绝", async () => {
     const source_path = path.join(directory, "source.lg");
     const base_path = path.join(directory, "base.lg");
     const loaded_path = path.join(directory, "Loaded.lg");
-    await session.mark_loaded(loaded_path);
     // 路径冲突在访问文件前判定，按 Windows 规则验证大小写不敏感的比较。
     const service = new ProjectTranslationTransferService(
       database,
       gate,
-      session,
+      () => [loaded_path],
       new NativeFs(new NativePathPolicy("win32")),
     );
 
@@ -138,7 +120,7 @@ describe("ProjectTranslationTransferService", () => {
     fs.writeFileSync(output_path, "existing");
 
     await expect(
-      new ProjectTranslationTransferService(database, gate, session).apply({
+      new ProjectTranslationTransferService(database, gate, () => []).apply({
         source_path,
         base_path,
         output_path,

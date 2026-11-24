@@ -2,11 +2,12 @@ import { act } from "react";
 import { normalize_setting_snapshot } from "@domain/setting";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import { createEmptyQualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
 import { useProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
 import type { ProjectWriteResult } from "@shared/project-event";
+
+const page_ui = new Map<string, unknown>();
 
 const api = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
@@ -42,6 +43,7 @@ const writes = {
 };
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({
+    active_project: { pageUi: page_ui },
     project_snapshot: project,
     settings_snapshot: settings,
     commit_project_write: useProjectWriteCommitter(writes),
@@ -61,6 +63,7 @@ function Probe() {
   return null;
 }
 beforeEach(async () => {
+  page_ui.clear();
   statistics = createEmptyQualityRuleStatisticsCacheSnapshot();
   let mode = "custom";
   let revision = 1;
@@ -85,6 +88,7 @@ beforeEach(async () => {
         accepted: true,
         changes: [
           {
+            projectId: "fixture",
             eventId: `quality-${revision}`,
             type: "project.changed",
             source: "quality_rule_update",
@@ -100,13 +104,7 @@ beforeEach(async () => {
     throw new Error("Unexpected route: " + route);
   });
   root = createRoot(document.createElement("div"));
-  await act(async () =>
-    root.render(
-      <ProjectSessionUiStateProvider>
-        <Probe />
-      </ProjectSessionUiStateProvider>,
-    ),
-  );
+  await act(async () => root.render(<Probe />));
 });
 afterEach(async () => {
   // 即使断言失败也先释放在途请求，再卸载组件。
@@ -182,13 +180,7 @@ it("按备注筛选，统计未到达和失败时保留命中排序选择", asyn
     entry_ids: ["a", "b", "c"],
     hits_by_entry_id: { a: 1, b: 3, c: 10 },
   };
-  await act(async () =>
-    root.render(
-      <ProjectSessionUiStateProvider>
-        <Probe />
-      </ProjectSessionUiStateProvider>,
-    ),
-  );
+  await act(async () => root.render(<Probe />));
   expect(state.hit_sort_available).toBe(true);
   expect(state.table.filtered_entries.map((row) => row.entry_id)).toEqual(["b", "a"]);
 });

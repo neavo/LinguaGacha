@@ -4,7 +4,8 @@ import type { SettingSnapshot } from "../../domain/setting";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { AppPathService } from "./app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { Setting } from "../../domain/setting";
+import { is_agent_approval_mode, Setting } from "../../domain/setting";
+import { AppError } from "../../shared/error";
 import { default_native_fs } from "../../native/native-fs";
 
 interface AppSettingsStreamPublisher {
@@ -56,9 +57,17 @@ export class AppSettingService {
   }
 
   /**
-   * 保存白名单字段。跨工程命令在两个存储完成后发布设置。
+   * 校验审批模式后保存白名单字段。预设修改可以在相关文件写入完成后统一广播。
    */
   public update_app_settings(request: JsonRecord, publish = true): SettingsSnapshotResponse {
+    if (
+      Object.hasOwn(request, "agent_approval_mode") &&
+      !is_agent_approval_mode(request["agent_approval_mode"])
+    ) {
+      throw new AppError("request.validation_failed", {
+        public_details: { field: "agent_approval_mode" },
+      });
+    }
     let setting = this.read_setting_entity();
     const changed_keys: string[] = [];
     for (const [key, value] of Object.entries(request)) {
@@ -68,8 +77,9 @@ export class AppSettingService {
       changed_keys.push(key);
     }
     if (changed_keys.length > 0) {
-      this.save_setting(setting.to_json());
-      if (publish) this.publish_settings_changed(changed_keys, setting.to_json());
+      const config = setting.to_json();
+      this.save_setting(config);
+      if (publish) this.publish_settings_changed(changed_keys, config);
     }
     return { settings: setting.to_snapshot() };
   }

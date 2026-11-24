@@ -41,6 +41,13 @@ export const pt_br_function_settings_page = {
       title: "Abrir a pasta de saída após a exportação",
       description: "Abrir automaticamente a pasta de saída após exportar as traduções com sucesso",
     },
+    prompt_enhancement_enable: {
+      title: "Aprimoramento de prompt",
+      description:
+        "Reforça o seguimento de instruções da IA simulando uma cadeia de raciocínio." +
+        "\n" +
+        "Desativar reduz ligeiramente o consumo de tokens, mas reduz significativamente a inteligência da IA. Ativado por padrão.",
+    },
   },
   feedback: {
     preceding_lines_threshold_invalid:

@@ -40,7 +40,7 @@ func emit(value any) {
 	}
 }
 
-// 启动门属于 POSIX 内部协议，其余入口负责持有系统租约。
+// 启动门属于 POSIX 内部协议。普通入口可选系统租约。
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--gate" {
 		runGate()
@@ -58,12 +58,17 @@ func main() {
 
 var errBusy = errors.New("shared Node environment is busy")
 
-// 一条控制管道拥有租约和多个顺序目标；目标收尾后仍等宿主释放租约。
+// 一条控制管道拥有多个顺序目标。仅共享环境准备需要持有文件锁。
 func run() (failure error) {
-	if len(os.Args) != 2 {
-		return errors.New("expected lock path")
+	var lock string
+	switch {
+	case len(os.Args) == 1:
+	case len(os.Args) == 3 && os.Args[1] == "--lock" && os.Args[2] != "":
+		lock = os.Args[2]
+	default:
+		return errors.New("expected no arguments or --lock <path>")
 	}
-	owner, err := acquire(os.Args[1])
+	owner, err := acquire(lock)
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { GlobalOperationGate, ProjectOperationGate } from "../runtime-operation-gate";
 import { AgentPersonalityService } from "./agent-personality-service";
 
 /** 使用临时应用配置与自有默认正文，验证真实持久化边界。 */
@@ -22,8 +22,9 @@ function fixture() {
   fs.mkdirSync(path.dirname(default_path), { recursive: true });
   fs.writeFileSync(default_path, "Default role");
   const settings = new AppSettingService(paths);
-  const gate = new RuntimeOperationGate();
-  const service = new AgentPersonalityService(paths, settings, gate);
+  const global_gate = new GlobalOperationGate(undefined, () => !gate.get_snapshot().agent);
+  const gate = new ProjectOperationGate((owner) => global_gate.check_project(owner));
+  const service = new AgentPersonalityService(paths, settings, global_gate);
   return {
     [Symbol.dispose]: () => root[Symbol.dispose](),
     paths,

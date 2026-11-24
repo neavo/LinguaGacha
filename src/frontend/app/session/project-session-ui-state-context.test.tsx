@@ -2,7 +2,6 @@ import { type JSX, act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import {
   resolve_project_session_table_restore_scroll_row_id,
   useProjectSessionTableUiState,
@@ -21,8 +20,13 @@ type TestTableUiStateController = ProjectSessionTableUiStateController<
   TestTableSortState
 >;
 
+const projects = vi.hoisted(() => ({
+  active: "first" as "first" | "second",
+  first: { pageUi: new Map() },
+  second: { pageUi: new Map() },
+}));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ project_snapshot: { loaded: true, path: "sample.lg" } }),
+  useDesktopState: () => ({ active_project: projects[projects.active] }),
 }));
 
 describe("useProjectSessionTableUiState", () => {
@@ -39,6 +43,9 @@ describe("useProjectSessionTableUiState", () => {
       });
     }
 
+    projects.active = "first";
+    projects.first.pageUi.clear();
+    projects.second.pageUi.clear();
     container?.remove();
     container = null;
     root = null;
@@ -75,8 +82,8 @@ describe("useProjectSessionTableUiState", () => {
     return null;
   }
 
-  // render_provider 统一 React 根渲染步骤，确保每次断言前 effect 都已刷新。
-  async function render_provider(): Promise<void> {
+  // 统一 React 根渲染步骤，确保每次断言前 effect 都已刷新。
+  async function render_probes(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
@@ -85,16 +92,31 @@ describe("useProjectSessionTableUiState", () => {
 
     await act(async () => {
       root?.render(
-        <ProjectSessionUiStateProvider>
+        <>
           <Probe />
           {render_table_probe ? <TableProbe /> : null}
-        </ProjectSessionUiStateProvider>,
+        </>,
       );
     });
   }
 
+  it("切换工程隔离页面状态，切回时恢复", async () => {
+    await render_probes();
+    latest_ui_state_api?.set_page_ui_state("quality:glossary", "苹果");
+    expect(latest_ui_state_api?.get_page_ui_state<string>("quality:glossary")).toBe("苹果");
+
+    projects.active = "second";
+    await render_probes();
+    expect(latest_ui_state_api?.get_page_ui_state<string>("quality:glossary")).toBeNull();
+    latest_ui_state_api?.set_page_ui_state("quality:glossary", "梨");
+
+    projects.active = "first";
+    await render_probes();
+    expect(latest_ui_state_api?.get_page_ui_state<string>("quality:glossary")).toBe("苹果");
+  });
+
   it("恢复表格状态并将后续筛选、排序和选区写回", async () => {
-    await render_provider();
+    await render_probes();
     latest_ui_state_api?.set_page_ui_state<TestTableUiState>("quality:text_preserve", {
       filter_state: { keyword: "苹果" },
       sort_state: { column_id: "src" },
@@ -104,7 +126,7 @@ describe("useProjectSessionTableUiState", () => {
     });
 
     render_table_probe = true;
-    await render_provider();
+    await render_probes();
 
     expect(latest_table_ui_state?.filter_state).toEqual({ keyword: "苹果" });
     expect(latest_table_ui_state?.sort_state).toEqual({ column_id: "src" });

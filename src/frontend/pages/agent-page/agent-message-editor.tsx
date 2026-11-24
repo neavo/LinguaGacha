@@ -57,7 +57,7 @@ import {
 } from "./agent-mention";
 import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-input-draft";
 import { AgentMessageAttachments } from "./agent-message-attachments";
-import { AgentFileDropTarget } from "./agent-file-drop-target";
+import { FileDropTarget } from "@frontend/widgets/interactions/file-drop-target";
 
 /** 编辑器按扩展名选择上传附件。 */
 const AGENT_UPLOAD_EXTENSIONS: readonly string[] = Object.freeze([
@@ -674,7 +674,8 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       }}
     >
       {props.on_drop_files === undefined ? (
-        <AgentFileDropTarget
+        <FileDropTarget
+          label={t("app.drop.release")}
           target_ref={form_ref}
           enabled={can_append_files}
           on_files={(files) => drop_files_ref.current(files)}

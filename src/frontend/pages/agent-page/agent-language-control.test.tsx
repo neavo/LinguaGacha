@@ -2,6 +2,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Locale } from "@domain/app-language";
+import { DEFAULT_PROJECT_SETTINGS } from "@domain/project-settings";
 import type { ProjectSnapshot } from "@frontend/app/state/desktop-state-context";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 import { create_text_resolver } from "@shared/i18n";
@@ -19,7 +20,12 @@ const mocks = vi.hoisted(() => ({
     loaded: true,
     file_count: 1,
     path: "sample.lg",
-    languages: { source_language: "JA", target_language: "ZH" },
+    settings: {
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    },
   } as ProjectSnapshot,
   runtime: { revision: 0, owner: null } as RuntimeActivitySnapshot,
 }));
@@ -48,7 +54,12 @@ describe("AgentLanguageControl", () => {
       loaded: true,
       file_count: 1,
       path: "sample.lg",
-      languages: { source_language: "JA", target_language: "ZH" },
+      settings: {
+        ...DEFAULT_PROJECT_SETTINGS,
+        source_language: "JA",
+        target_language: "ZH",
+        mtool_optimizer_enable: false,
+      },
     };
     mocks.runtime = { revision: 0, owner: null };
     container = document.createElement("div");
@@ -109,7 +120,12 @@ describe("AgentLanguageControl", () => {
     await select("原文语言", "英文");
     await select("译文语言", "中文（繁体）");
     mocks.api.mockImplementation(async () => {
-      mocks.project.languages = { source_language: "EN", target_language: "ZH-HANT" };
+      mocks.project.settings = {
+        ...DEFAULT_PROJECT_SETTINGS,
+        source_language: "EN",
+        target_language: "ZH-HANT",
+        mtool_optimizer_enable: false,
+      };
       return { accepted: true, changes: [] };
     });
     await act(async () => button("确认").click());
@@ -157,14 +173,19 @@ describe("AgentLanguageControl", () => {
   });
 
   it("未加载工程时隐藏入口，运行占用和断线时禁用，工程关闭后释放弹窗", async () => {
-    mocks.project = { loaded: false, file_count: 0, path: "", languages: null };
+    mocks.project = { loaded: false, file_count: 0, path: "", settings: null };
     await render();
     expect(container.querySelector("button")).toBeNull();
     mocks.project = {
       loaded: true,
       file_count: 1,
       path: "sample.lg",
-      languages: { source_language: "JA", target_language: "ZH" },
+      settings: {
+        ...DEFAULT_PROJECT_SETTINGS,
+        source_language: "JA",
+        target_language: "ZH",
+        mtool_optimizer_enable: false,
+      },
     };
     await render("zh-CN", { disconnected: true });
     expect(trigger().disabled).toBe(true);
@@ -182,19 +203,27 @@ describe("AgentLanguageControl", () => {
     await render();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => trigger().click());
-    mocks.project = { loaded: false, file_count: 0, path: "", languages: null };
+    mocks.project = { loaded: false, file_count: 0, path: "", settings: null };
     await render();
     expect(container.querySelector("button")).toBeNull();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("切换界面语言后刷新简称，工程快照更新后刷新语言对", async () => {
-    mocks.project.languages = { source_language: "ALL", target_language: "ZH-HANT" };
+    mocks.project.settings = {
+      ...DEFAULT_PROJECT_SETTINGS,
+      source_language: "ALL",
+      target_language: "ZH-HANT",
+    };
     await render();
     expect(trigger().textContent).toBe("任意->繁");
     await render("de-DE");
     expect(trigger().textContent).toBe("ALL->ZH-HANT");
-    mocks.project.languages = { source_language: "JA", target_language: "EN" };
+    mocks.project.settings = {
+      ...DEFAULT_PROJECT_SETTINGS,
+      source_language: "JA",
+      target_language: "EN",
+    };
     await render("de-DE");
     expect(trigger().textContent).toBe("JA->EN");
   });

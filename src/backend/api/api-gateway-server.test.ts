@@ -1,10 +1,9 @@
-import { AgentUploadStore } from "../agent/workspace/uploads";
-import { NativeFs } from "../../native/native-fs";
 import type { AgentFileAttachment } from "../../shared/agent";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -40,7 +39,7 @@ describe("ApiGatewayServer", () => {
       log_manager,
     );
     const warning = vi.spyOn(log_manager, "warning");
-    vi.spyOn(backend_services.project.lifecycle, "create_project_commit").mockRejectedValueOnce(
+    vi.spyOn(backend_services, "create_project").mockRejectedValueOnce(
       new AppError("database.busy", {
         cause: new Error("database is locked"),
         diagnostic_context: { operation: "journal_mode", sqlite_code: 5 },
@@ -88,9 +87,10 @@ describe("ApiGatewayServer", () => {
   });
 
   it("文档与配图通过真实 HTTP 返回正文和原始字节，响应不缓存", async () => {
-    const { baseUrl } = await create_gateway().start();
+    const { baseUrl, projectId } = await start_agent_gateway();
     const response = await post_json(baseUrl, "/api/agent/workspace/document", {
       chatId: "session",
+      projectId,
       path: "work/report.md",
     });
     expect(await response.json()).toEqual({
@@ -98,7 +98,7 @@ describe("ApiGatewayServer", () => {
       data: { chatId: "session", path: "work/report.md", content: "# 报告\n检查通过" },
     });
     const image = await fetch(
-      `${baseUrl}/api/agent/workspace/image?chatId=session&path=work%2Fchart.svg`,
+      `${baseUrl}/api/agent/workspace/image?projectId=${projectId}&chatId=session&path=work%2Fchart.svg`,
     );
     expect(image.headers.get("Content-Type")).toBe("image/svg+xml");
     expect(image.headers.get("Cache-Control")).toBe("no-store");
@@ -109,11 +109,11 @@ describe("ApiGatewayServer", () => {
   });
 
   it("二进制上传与下载通过真实 HTTP 原样往返，未知身份复用公开错误壳", async () => {
-    const gateway = create_gateway();
-    const { baseUrl } = await gateway.start();
+    const { baseUrl, projectId } = await start_agent_gateway();
+    const scope = `projectId=${projectId}`;
     const original = Uint8Array.from([0, 255, 1, 128, 13, 10]);
     const response = await fetch(
-      `${baseUrl}/api/agent/uploads?name=${encodeURIComponent("数据 文件.zip")}`,
+      `${baseUrl}/api/agent/uploads?${scope}&name=${encodeURIComponent("数据 文件.zip")}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
@@ -123,15 +123,17 @@ describe("ApiGatewayServer", () => {
     const payload = (await response.json()) as { ok: boolean; data: AgentFileAttachment };
     expect(payload.ok).toBe(true);
     expect(payload.data).toMatchObject({ name: "数据 文件.zip", size: 6, imageMimeType: null });
-    const downloaded = await fetch(`${baseUrl}/api/agent/uploads/${payload.data.uploadId}`);
+    const downloaded = await fetch(
+      `${baseUrl}/api/agent/uploads/${payload.data.uploadId}?${scope}`,
+    );
     expect(Buffer.from(await downloaded.arrayBuffer()).equals(original)).toBe(true);
     expect(downloaded.headers.get("Content-Disposition")).toContain("attachment;");
-    const empty = await fetch(`${baseUrl}/api/agent/uploads?name=empty.bin`, {
+    const empty = await fetch(`${baseUrl}/api/agent/uploads?${scope}&name=empty.bin`, {
       method: "POST",
       body: new Uint8Array(),
     });
     expect(await empty.json()).toMatchObject({ ok: true, data: { size: 0 } });
-    const missing = await fetch(`${baseUrl}/api/agent/uploads/missing`);
+    const missing = await fetch(`${baseUrl}/api/agent/uploads/missing?${scope}`);
     expect(await missing.json()).toMatchObject({ ok: false, error: { code: "file.not_found" } });
   });
 
@@ -318,8 +320,7 @@ describe("ApiGatewayServer", () => {
   it("stop 只释放公开监听器，不越界释放 BackendServices", async () => {
     const dispose = vi.fn(async () => undefined);
     const gateway = new ApiGatewayServer({
-      backendServices: { dispose } as unknown as BackendServices,
-      agentService: create_agent_service_stub(),
+      backendServices: { dispose } as unknown as BackendServices<AgentService>,
       personalityService: { read: vi.fn(), save: vi.fn() },
       skillsService: {
         delete: vi.fn(),
@@ -358,12 +359,12 @@ describe("ApiGatewayServer", () => {
     app_root: string,
     database: ProjectDatabase,
     log_manager: LogManager = create_log_manager(app_root),
-  ): { gateway: ApiGatewayServer; backend_services: BackendServices } {
+  ): { gateway: ApiGatewayServer; backend_services: BackendServices<AgentService> } {
     const paths = new AppPathService({
       appRoot: app_root,
       builtinRoot: path.join(app_root, "builtin"),
     });
-    const backend_services = new BackendServices({
+    const backend_services = new BackendServices<AgentService>({
       paths,
       metadata: new AppMetadataService(paths),
       appSettingService: new AppSettingService(paths),
@@ -375,7 +376,6 @@ describe("ApiGatewayServer", () => {
     });
     const gateway = new ApiGatewayServer({
       backendServices: backend_services,
-      agentService: create_agent_service_stub(),
       personalityService: { read: vi.fn(), save: vi.fn() },
       skillsService: {
         delete: vi.fn(),
@@ -397,43 +397,56 @@ describe("ApiGatewayServer", () => {
     return { gateway, backend_services };
   }
 
-  /** 网关测试只模拟公开 Agent 协议。 */
-  function create_agent_service_stub(): AgentService {
-    const uploads = new AgentUploadStore(create_app_root(), new NativeFs());
-    cleanup_callbacks.push(() => uploads.close());
-    return {
-      upload_file: (name: string, body: ReadableStream<Uint8Array>, signal: AbortSignal) =>
-        uploads.upload(name, body, signal),
-      read_upload: (id: string) => uploads.open(id),
-      read_workspace_document: async (request: { chatId: string; path: string }) => ({
-        ...request,
+  /** 通过真实工程注册与 HTTP 路由验证传输，文件由测试端提供已知字节。 */
+  async function start_agent_gateway() {
+    const root = create_app_root();
+    const { gateway, backend_services } = create_gateway_fixture(
+      root,
+      new ProjectDatabase("1.0.0"),
+    );
+    const created = await backend_services.create_project({
+      path: path.join(root, "agent.lg"),
+      source_paths: [],
+    });
+    const projectId = (created.project as { projectId: string }).projectId;
+    const files = new Map<string, { file: AgentFileAttachment; bytes: Uint8Array }>();
+    const chat = {
+      read_workspace_document: () => ({
+        chatId: "session",
+        path: "work/report.md",
         content: "# 报告\n检查通过",
       }),
-      read_workspace_image: async () => ({
+      read_workspace_image: () => ({
         mime: "image/svg+xml",
         bytes: Uint8Array.from([0, 255, 1, 128, 13, 10]),
       }),
-      get_snapshot: vi.fn(() => ({
-        revision: 0,
-        state: "idle",
-        pendingDecision: null,
-        entries: [],
-        skills: [],
-        inputQueue: { paused: false, canSendNow: false, items: [] },
-        doing: null,
-        context: { tokens: null, compactable: false, limits: null },
-      })),
-      input_command: vi.fn(),
-      input_command_status: vi.fn(),
-      resolve_question: vi.fn(),
-      resolve_write_approval: vi.fn(),
-      update_queued_message: vi.fn(),
-      delete_queued_message: vi.fn(),
-      reorder_queued_messages: vi.fn(),
-      compact_context: vi.fn(),
-      stop: vi.fn(),
-      reset: vi.fn(),
+      async upload_file(name: string, data: ReadableStream<Uint8Array>) {
+        const bytes = new Uint8Array(await new Response(data).arrayBuffer());
+        const file: AgentFileAttachment = {
+          kind: "file",
+          name,
+          size: bytes.length,
+          uploadId: String(files.size),
+          path: "uploads/" + name,
+          imageMimeType: null,
+        };
+        files.set(file.uploadId, { file, bytes });
+        return file;
+      },
+      read_upload(id: string) {
+        const upload = files.get(id);
+        if (!upload) throw new AppError("file.not_found");
+        return { file: upload.file, stream: Readable.from([upload.bytes]) };
+      },
+    };
+    backend_services.projects.require(projectId).agent = {
+      ...chat,
+      assert_chat_identity: (id: unknown) => {
+        if (id !== "session") throw new AppError("runtime.cancelled");
+      },
+      dispose: async () => {},
     } as unknown as AgentService;
+    return { ...(await gateway.start()), projectId };
   }
 
   /** 每个网关使用独立临时根目录。 */

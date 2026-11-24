@@ -1,5 +1,4 @@
 export const ko_kr_knowledge_page = {
-  title: "지식",
   builtin: "기본 스킬",
   user: "사용자 스킬",
   knowledge: "프로젝트 지식",
@@ -8,18 +7,11 @@ export const ko_kr_knowledge_page = {
   },
   readonly: "읽기 전용",
   personality_description: "지능형 어시스턴트의 역할 설정",
-  knowledge_description: "프로젝트와 함께 저장되는 설정, 규칙, 진행 상황",
   install: {
     title: "설치 안내",
     description: "스킬 링크를 AGENT에 보내고 이 스킬을 설치해 달라고 요청하세요",
     placeholder: "[여기에 스킬 링크 입력]",
     request: "이 스킬을 설치해 주세요: {PLACEHOLDER}",
-  },
-  knowledge_create: {
-    title: "기록 안내",
-    description: "기록할 설정, 규칙, 결론을 AGENT에 알려 주면 프로젝트 지식으로 정리합니다",
-    placeholder: "[여기에 기록할 내용 입력]",
-    request: "프로젝트 지식으로 기록해 주세요: {PLACEHOLDER}",
   },
   editor: {
     save_failed: "저장 실패",

@@ -235,7 +235,7 @@ describe("desktop-api", () => {
       error: {
         message: "批量应用失败",
       },
-      route: "workbench",
+      route: "files",
       triggeringEvent: {
         topic: "project.data_changed",
       },
@@ -249,7 +249,7 @@ describe("desktop-api", () => {
           error: {
             message: "批量应用失败",
           },
-          route: "workbench",
+          route: "files",
           triggeringEvent: {
             topic: "project.data_changed",
           },

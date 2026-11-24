@@ -1,50 +1,56 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
+import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
+import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
 
-/** 所有页面共用关闭确认，路由由工程快照驱动。 */
-export function useProjectCloseFlow() {
+/** 已打开工程先完成离页保存与关闭，成功后才移除最近记录。 */
+export function useProjectCloseFlow(remove_recent_project: (path: string) => Promise<void>) {
   const { t } = useI18n();
-  const { project_snapshot, refresh_project_snapshot, refresh_batch_translation } =
-    useDesktopState();
-  const runtime_snapshot = useRuntimeSnapshot();
-  const [open, set_open] = useState(false);
+  const { refresh_projects } = useDesktopState();
+  const runtime = useRuntimeSnapshot();
+  const { prepare_page_leave } = usePageLeave();
+  const [target, set_target] = useState<{
+    projectId: string;
+    remove_path: string | undefined;
+  } | null>(null);
   const [closing, set_closing] = useState(false);
-  const submitting = useRef(false); // 同一帧的重复确认不能发出两次关闭请求。
-  const can_close = project_snapshot.loaded && !is_runtime_busy(runtime_snapshot) && !closing;
-  /** 提交前重查运行占用，失败保留确认以便重试。 */
+  const can_close = (id: string): boolean => !closing && !is_project_busy(runtime.projects?.[id]);
+
+  /** 关闭失败保留原确认目标，用户可以在同一弹窗重试。 */
   async function confirm(): Promise<void> {
-    if (!can_close || submitting.current) return;
-    submitting.current = true;
+    if (target === null || !can_close(target.projectId)) return;
     set_closing(true);
     try {
-      await api_fetch("/api/session/project/close", {});
-      await refresh_project_snapshot();
-      await refresh_batch_translation();
-      set_open(false);
+      if (!(await prepare_page_leave({ kind: "project", projectId: target.projectId }))) return;
+      await api_fetch("/api/session/project/close", { projectId: target.projectId });
+      set_target(null);
+      if (target.remove_path !== undefined) await remove_recent_project(target.remove_path);
+      await refresh_projects();
     } catch (error) {
       push_error_toast(t("project.close.failed"), error);
     } finally {
-      submitting.current = false;
       set_closing(false);
     }
   }
   return {
     closing,
-    can_close,
-    request_close: () => {
-      if (can_close) set_open(true);
+    request_close: (id: string, remove_path?: string) => {
+      if (can_close(id)) set_target({ projectId: id, remove_path });
     },
     dialog_props: {
-      open,
-      description: t("project.close.confirm"),
+      open: target !== null,
+      description: t(
+        target?.remove_path === undefined
+          ? "project.close.confirm"
+          : "app.workspace.remove_confirm",
+      ),
       submitting: closing,
-      confirmDisabled: !can_close,
+      confirmDisabled: target === null || !can_close(target.projectId),
       onConfirm: confirm,
-      onClose: () => set_open(false),
+      onClose: () => set_target(null),
     },
   };
 }

@@ -42,7 +42,7 @@ import {
   type QualityRuleEntry,
   type QualityRuleKind,
 } from "../../../domain/quality";
-import { read_project_prefilter_settings } from "../../../domain/project-settings";
+import { type ProjectLanguageSettings } from "../../../domain/project-settings";
 import * as AppErrors from "../../../shared/error";
 import type { AgentPendingWriteSummary, AgentWorkspaceLinkResult } from "../../../shared/agent";
 import {
@@ -53,11 +53,11 @@ import { PROOFREADING_WARNING_CODES } from "../../../shared/proofreading/proofre
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../../native/native-fs";
 import type { AppPathService } from "../../app/app-path-service";
-import type { CacheReadPort, CacheSnapshot } from "../../cache/cache-types";
+import type { CacheReadPort } from "../../cache/cache-types";
+import type { ProjectOperationGate } from "../../runtime-operation-gate";
 import type { LogManager } from "../../log/log-manager";
 import type { ProjectDatabase } from "../../database/database-operations";
 import type { ProofreadingQueryService } from "../../proofreading/proofreading-query-service";
-import type { ProjectSessionState } from "../../project/project-session-state";
 import type { ProjectWriteStore } from "../../project/project-write-store";
 import {
   project_agent_workspace_item,
@@ -122,16 +122,12 @@ export type AgentWorkspaceRunInput = Readonly<{
 }>;
 
 type ActiveAgentWorkspace = {
-  projectPath: string; // snapshot 建立时绑定的工程身份
-  projectEpoch: number; // 隔离同路径重新加载后的旧快照
   revisions: ProjectDataSectionRevisions; // 全部数据分区快照
-  languageKey: string; // 只包含解释工作区数据所需的语言
+  language: ProjectLanguageSettings; // 语言改变后必须重做变更清单。
 };
 
-/** `sources` 成功生成时的工程身份和文件修订。 */
+/** `sources` 只跟随本工作区所属工程的文件修订。 */
 type AgentWorkspaceSourceCache = {
-  projectPath: string; // 关联的当前工程身份
-  projectEpoch: number; // 隔离同路径重新加载后的旧投影
   filesRevision: number; // 只在源资产集合变化时重新生成
   assets: Map<string, WorkspaceSourceResult>;
 };
@@ -179,7 +175,7 @@ export class AgentWorkspaceService {
       })),
     ];
   }
-  private active: ActiveAgentWorkspace | null = null; // 当前磁盘快照的工程身份、语言和版本基线
+  private active: ActiveAgentWorkspace | null = null; // 当前磁盘快照的语言和修订基线
   private source_cache: AgentWorkspaceSourceCache | null = null; // 当前激活目录内的源文件投影
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
   private readonly link_versions = { work: 0, sources: 0, snapshot: 0, uploads: 0 }; // 原生对话框等待期间的来源有效期
@@ -189,19 +185,17 @@ export class AgentWorkspaceService {
     private readonly options: {
       images: Pick<AgentImageService, "prepare">;
       paths: Pick<AppPathService, "get_agent_workspace_root_dir">;
-      sessionState: Pick<ProjectSessionState, "require_loaded_project_path">;
+      projectPath: string;
       cache: CacheReadPort;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
-      database: Pick<ProjectDatabase, "get_all_meta" | "read_asset_content" | "read_knowledge">;
+      database: Pick<ProjectDatabase, "read_asset_content" | "read_knowledge">;
       knowledge: Pick<ProjectKnowledgeService, "read">; // 投影与知识页共用补位模板
-      runtimeGate: {
-        run_agent_project_write<T>(operation: (signal: AbortSignal) => Promise<T> | T): Promise<T>;
-      };
+      runtimeGate: Pick<ProjectOperationGate, "run_agent_project_write">;
       files: Pick<ProjectContentService, "inspect_sources" | "apply_file_changes">;
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
-      packageSources: Pick<AgentPackageSources, "resolve" | "forget">; // 应用级缓存，按对话身份隔离
+      packageSources: Pick<AgentPackageSources, "resolve">;
       generation: Pick<
         TranslationFileGenerationService,
         "generate_staging_files" | "read_output_paths"
@@ -406,11 +400,6 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** 为新产品对话占用独立目录。 */
-  public create_chat(): Promise<string> {
-    return this.directories.create();
-  }
-
   /** 旧执行必须已经收尾。相对路径、上传与预览共用当前会话目录。 */
   public async activate_chat(
     id: string,
@@ -444,7 +433,6 @@ export class AgentWorkspaceService {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     await this.directories.touch(id);
-    await this.directories.prune(id);
   }
 
   /** 立即中断请求体读取，关闭流程随后等待句柄释放。 */
@@ -462,12 +450,6 @@ export class AgentWorkspaceService {
     this.chat_id = null;
   }
 
-  /** 显式重置在旧执行关闭后删除其材料与默认包源判定。 */
-  public delete_chat(id: string): Promise<void> {
-    this.options.packageSources.forget(id);
-    return this.directories.remove(id);
-  }
-
   /** 工具完成、失败或取消后记录本次使用。 */
   private async touch(): Promise<void> {
     if (this.chat_id !== null) await this.directories.touch(this.chat_id);
@@ -475,24 +457,16 @@ export class AgentWorkspaceService {
 
   /** 工作区工具按需建立完整只读快照和空 change 文件。 */
   private async create_snapshot_locked(): Promise<void> {
-    const project_path = this.options.sessionState.require_loaded_project_path();
-    const start_snapshot = this.options.cache.snapshot();
-    assert_snapshot_project(
-      start_snapshot,
-      project_path,
-      "agent_workspace_snapshot_project_changed",
-    );
-    const revisions = pick_workspace_revisions(start_snapshot.sectionRevisions);
-    const language = this.options.cache.languages.readBlock();
-    const language_key = JsonTool.stringifyStrict(language);
-    const current_items = [...this.options.cache.items.readItems()];
-    const snapshot_files = this.options.cache.files
-      .readFileEntries()
-      .sort((a, b) => a.sort_index - b.sort_index)
-      .map((entry) => ({
-        file_path: entry.rel_path,
-        file_type: entry.file_type,
-      }));
+    const project_path = this.options.projectPath;
+    const revisions = this.options.cache.readSectionRevisions();
+    const { source_language, target_language } = this.options.cache.settings.readBlock();
+    const language = { source_language, target_language };
+    const baseline = { revisions, language };
+    const current_items = this.options.cache.items.readItems();
+    const snapshot_files = this.options.cache.files.readFileEntries().map((entry) => ({
+      file_path: entry.rel_path,
+      file_type: entry.file_type,
+    }));
     const file_order = new Map(snapshot_files.map((file, i) => [file.file_path, i]));
     current_items.sort(
       (a, b) =>
@@ -512,14 +486,14 @@ export class AgentWorkspaceService {
       offset: 0,
       limit: Number.MAX_SAFE_INTEGER,
     });
-    assert_snapshot_dependencies_fresh({
-      projectPath: project_path,
-      snapshot: start_snapshot,
-      current: this.options.cache.snapshot(),
-      warnings: warning_result,
-      languageKey: language_key,
-      currentLanguageKey: JsonTool.stringifyStrict(this.options.cache.languages.readBlock()),
-    });
+    // 校对可能在工程更新前开始计算，单独核对它采用的事实版本。
+    if (
+      !this.is_snapshot_fresh(baseline) ||
+      !(["items", "quality", "proofreading"] as const).every(
+        (section) => (warning_result.sectionRevisions[section] ?? 0) === (revisions[section] ?? 0),
+      )
+    )
+      throw workspace_validation_error("agent_workspace_snapshot_dependencies_changed");
 
     const knowledge = await this.options.knowledge.read(project_path);
     const project_meta: JsonRecord = {
@@ -591,13 +565,8 @@ export class AgentWorkspaceService {
       throw error;
     }
 
-    this.active = {
-      projectPath: project_path,
-      projectEpoch: start_snapshot.epoch,
-      revisions,
-      languageKey: language_key,
-    };
-    if (!this.read_freshness(this.active).snapshotFresh) {
+    this.active = baseline;
+    if (!this.is_snapshot_fresh(baseline)) {
       await this.clear_snapshot();
       throw workspace_validation_error("agent_workspace_snapshot_project_changed");
     }
@@ -608,7 +577,6 @@ export class AgentWorkspaceService {
     request: AgentWorkspaceRunInput,
     signal: AbortSignal,
   ): Promise<{ execution: AgentWorkspaceExecution; images: AgentWorkspaceImage[] }> {
-    const chat_id = this.chat_id; // 受理时固定，脚本中途的查询不随之后的对话切换改变归属
     return await this.exclusive(async () => {
       const image_output = create_image_output(async (image_path, image_signal, options) => {
         // 图片按本机文件路径读取，与脚本读取范围一致。聊天链接由 resolve_path 约束。
@@ -627,16 +595,14 @@ export class AgentWorkspaceService {
       try {
         signal.throwIfAborted();
         const active = this.active;
-        if (active === null || !this.read_freshness(active).snapshotFresh) {
+        if (active === null || !this.is_snapshot_fresh(active)) {
           await this.create_snapshot_locked();
         }
         phase = WorkspaceRunPhase.PREPARE_WORKSPACE;
         const snapshot = this.require_active();
         await this.ensure_sources({
           signal,
-          projectPath: snapshot.projectPath,
-          projectEpoch: snapshot.projectEpoch,
-          filesRevision: read_json_integer(snapshot.revisions.files, 0),
+          filesRevision: snapshot.revisions.files ?? 0,
           files: this.options.cache.files
             .readFileEntries()
             .map((entry) => ({ file_path: entry.rel_path, file_type: entry.file_type })),
@@ -655,7 +621,7 @@ export class AgentWorkspaceService {
         const script_path = `${run_path}.mjs`;
         await this.native_fs.write_file(path.join(this.root_path, script_path), request.script);
         signal.throwIfAborted();
-        if (!this.read_freshness(snapshot).snapshotFresh) {
+        if (!this.is_snapshot_fresh(snapshot)) {
           await this.clear_sources();
           throw workspace_validation_error("agent_workspace_snapshot_project_changed");
         }
@@ -688,12 +654,7 @@ export class AgentWorkspaceService {
               emitImage: image_output.emitImage,
               ...(request.search === undefined ? {} : { search: request.search }),
               ...(request.doing === undefined ? {} : { doing: request.doing }),
-              ...(chat_id === null
-                ? {}
-                : {
-                    packageSource: (source_signal: AbortSignal) =>
-                      this.options.packageSources.resolve(chat_id, source_signal),
-                  }),
+              packageSource: (source_signal) => this.options.packageSources.resolve(source_signal),
               inspectSources: async (sources, signal) => {
                 const resolved = sources.map((source) => this.resolve_source_path(source));
                 const result = await this.options.files.inspect_sources(
@@ -759,8 +720,8 @@ export class AgentWorkspaceService {
   ): Promise<JsonRecord> {
     return await this.exclusive(async () => {
       const active = this.require_active();
-      const freshness = this.read_freshness(active);
-      if (!freshness.projectCompatible) {
+      const projectPath = this.options.projectPath;
+      if (!this.has_same_language(active)) {
         await this.clear_snapshot();
         throw workspace_validation_error("agent_workspace_stale");
       }
@@ -791,14 +752,18 @@ export class AgentWorkspaceService {
         const quality = this.options.cache.quality.readBlock(); // 读取边界已校验规则，预演只借用当前事实。
         const current: AgentWorkspaceCurrentFacts = {
           knowledge: parsed.batch.knowledge.length
-            ? await this.options.database.read_knowledge(active.projectPath)
+            ? await this.options.database.read_knowledge(projectPath)
             : null,
-          items: this.options.cache.items.readItems() as unknown as JsonRecord[],
+          items: parsed.batch.items.length > 0 ? this.options.cache.items.readItems() : [],
           quality: Object.fromEntries(
             QUALITY_RULE_KINDS.map((kind) => [kind, quality[kind].entries]),
           ),
-          prompts: project_workspace_prompts(this.options.cache.prompts.readBlock()),
-          duplicateFilterEnabled: await this.read_duplicate_filter_enabled(active.projectPath),
+          prompts: parsed.batch.prompts.length
+            ? project_workspace_prompts(this.options.cache.prompts.readBlock())
+            : {},
+          duplicateFilterEnabled:
+            parsed.batch.items.length > 0 &&
+            this.options.cache.settings.readBlock().skip_duplicate_source_text_enable,
         };
         preview = resolve_agent_workspace_writes({ batch: parsed.batch, current });
         all_rejected = normalize_workspace_rejections(
@@ -827,7 +792,7 @@ export class AgentWorkspaceService {
           applied: {},
           rejected: all_rejected,
           destroyed,
-          revisions: pick_apply_revisions(this.options.cache.snapshot().sectionRevisions),
+          revisions: pick_apply_revisions(this.options.cache.readSectionRevisions()),
         };
       }
       // 只按预演后的实际变化决定审批，拒绝或未变化的内容不参与判断。
@@ -839,7 +804,7 @@ export class AgentWorkspaceService {
         write_ack = await this.options.runtimeGate.run_agent_project_write(
           async () =>
             await this.options.writeStore.apply_agent_workspace_changes({
-              projectPath: active.projectPath,
+              projectPath,
               source: "agent_workspace_apply",
               batch: preview.candidates,
             }),
@@ -887,8 +852,7 @@ export class AgentWorkspaceService {
         .readFileEntries()
         .map((file) => ({ path: file.rel_path, file_type: file.file_type })),
       stale:
-        (active.revisions.files ?? 0) !==
-        (this.options.cache.snapshot().sectionRevisions.files ?? 0),
+        (active.revisions.files ?? 0) !== (this.options.cache.readSectionRevisions().files ?? 0),
       resolve: (source) => this.resolve_source_path(source),
       inspect: this.options.files.inspect_sources.bind(this.options.files),
     });
@@ -906,7 +870,7 @@ export class AgentWorkspaceService {
         applied: {},
         rejected,
         destroyed,
-        revisions: pick_apply_revisions(this.options.cache.snapshot().sectionRevisions),
+        revisions: pick_apply_revisions(this.options.cache.readSectionRevisions()),
         ...(directory_changes.length ? { directory_changes } : {}),
       };
     };
@@ -922,7 +886,7 @@ export class AgentWorkspaceService {
     try {
       const result = await this.options.runtimeGate.run_agent_project_write((signal) =>
         this.options.files.apply_file_changes({
-          projectPath: active.projectPath,
+          projectPath: this.options.projectPath,
           source: "agent_workspace_apply",
           expectedSectionRevisions: { files: active.revisions.files ?? 0 },
           revisionSections: ["files"],
@@ -979,31 +943,21 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** 工程身份或语言变化使提交基线失效，分区修订变化只要求下次运行刷新快照。 */
-  private read_freshness(active: ActiveAgentWorkspace): {
-    snapshotFresh: boolean;
-    projectCompatible: boolean;
-  } {
-    const snapshot = this.options.cache.snapshot();
-    const language_key = JsonTool.stringifyStrict(this.options.cache.languages.readBlock());
-    const project_compatible =
-      snapshot.projectPath === active.projectPath &&
-      snapshot.epoch === active.projectEpoch &&
-      language_key === active.languageKey;
-    const snapshot_fresh =
-      project_compatible &&
-      PROJECT_DATA_SECTIONS.every(
-        (section) =>
-          read_json_integer(snapshot.sectionRevisions[section], 0) ===
-          read_json_integer(active.revisions[section], 0),
-      );
-    return { snapshotFresh: snapshot_fresh, projectCompatible: project_compatible };
+  /** 对象指纹可处理内容漂移，翻译方向变化需要重新准备整批变更。 */
+  private has_same_language(active: ActiveAgentWorkspace): boolean {
+    const language = this.options.cache.settings.readBlock();
+    return (
+      language.source_language === active.language.source_language &&
+      language.target_language === active.language.target_language
+    );
   }
 
-  /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
-  private async read_duplicate_filter_enabled(project_path: string): Promise<boolean> {
-    const meta = await this.options.database.get_all_meta(project_path);
-    return read_project_prefilter_settings(meta).skip_duplicate_source_text_enable;
+  /** 工程修订涵盖设置变更，异步准备后按修订验收整份快照。 */
+  private is_snapshot_fresh(active: ActiveAgentWorkspace): boolean {
+    const revisions = this.options.cache.readSectionRevisions();
+    return PROJECT_DATA_SECTIONS.every(
+      (section) => (revisions[section] ?? 0) === (active.revisions[section] ?? 0),
+    );
   }
 
   /** apply 仍要求已有脚本准备出的活动快照。 */
@@ -1016,26 +970,18 @@ export class AgentWorkspaceService {
 
   /**
    * 同修订复用已尝试资产，只重试 IO 失败。先发布完整问题记录，再发布缓存。
-   * 记录无法写入时阻止脚本执行，避免 Agent 读到与原稿不符的说明。工程身份由 `run` 在执行前复核。
+   * 记录无法写入时阻止脚本执行，避免 Agent 读到与原稿不符的说明。
    */
   private async ensure_sources(args: {
     signal: AbortSignal;
-    projectPath: string;
-    projectEpoch: number;
     filesRevision: number;
     files: ReadonlyArray<{ file_path: string; file_type: string }>;
   }): Promise<void> {
     let cache = this.source_cache;
-    if (
-      cache?.projectPath !== args.projectPath ||
-      cache.projectEpoch !== args.projectEpoch ||
-      cache.filesRevision !== args.filesRevision
-    ) {
+    if (cache?.filesRevision !== args.filesRevision) {
       // exclusive 串行准备与脚本执行，旧修订必须清理完成后才能发布新原稿。
       await this.clear_sources();
       cache = {
-        projectPath: args.projectPath,
-        projectEpoch: args.projectEpoch,
         filesRevision: args.filesRevision,
         assets: new Map(),
       };
@@ -1046,7 +992,7 @@ export class AgentWorkspaceService {
       signal: args.signal,
       files: args.files.filter((file) => cache.assets.get(file.file_path)?.retry ?? true),
       readAsset: (file_path) =>
-        this.options.database.read_asset_content(args.projectPath, file_path),
+        this.options.database.read_asset_content(this.options.projectPath, file_path),
       report: (asset, diagnostic) =>
         this.options.logManager.warning("Agent 原稿准备未完成。", {
           source: "agent_workspace",
@@ -1129,10 +1075,8 @@ export type AgentWorkspacePort = Pick<
   | "list_files"
   | "run"
   | "apply_workspace"
-  | "create_chat"
   | "activate_chat"
   | "close"
-  | "delete_chat"
   | "cancel_uploads"
   | "activate_path"
   | "read_document"
@@ -1341,21 +1285,12 @@ function all_change_paths(): string[] {
   );
 }
 
-/** 建立 snapshot 时复制全部数据分区修订，隔离 cache 返回的可变引用。 */
-function pick_workspace_revisions(
-  revisions: ProjectDataSectionRevisions,
-): ProjectDataSectionRevisions {
-  return Object.fromEntries(
-    PROJECT_DATA_SECTIONS.map((section) => [section, read_json_integer(revisions[section], 0)]),
-  );
-}
-
 /** apply 回执只暴露本工具可能改变的 section。 */
 function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecord {
   return Object.fromEntries(
     (["items", "proofreading", "quality", "prompts", "knowledge"] as const).map((section) => [
       section,
-      read_json_integer(revisions[section], 0),
+      revisions[section] ?? 0,
     ]),
   );
 }
@@ -1365,46 +1300,6 @@ function project_workspace_prompts(block: ProjectPrompts): Record<PromptKind, st
   return {
     [TRANSLATION_PROMPT.store_key]: block[TRANSLATION_PROMPT.store_key].text,
   };
-}
-
-/** sessionState 与 cache 必须指向同一当前工程。 */
-function assert_snapshot_project(
-  snapshot: CacheSnapshot,
-  project_path: string,
-  reason: string,
-): void {
-  if (snapshot.projectPath !== project_path) {
-    throw workspace_validation_error(reason);
-  }
-}
-
-/** 异步派生数据全部完成后复核依赖，禁止落盘混合时点快照。 */
-function assert_snapshot_dependencies_fresh(args: {
-  projectPath: string;
-  snapshot: CacheSnapshot;
-  current: CacheSnapshot;
-  warnings: { projectPath: string; sectionRevisions: ProjectDataSectionRevisions };
-  languageKey: string;
-  currentLanguageKey: string;
-}): void {
-  const same_snapshot =
-    args.current.projectPath === args.snapshot.projectPath &&
-    args.current.epoch === args.snapshot.epoch &&
-    PROJECT_DATA_SECTIONS.every(
-      (section) =>
-        read_json_integer(args.current.sectionRevisions[section], 0) ===
-        read_json_integer(args.snapshot.sectionRevisions[section], 0),
-    );
-  const warnings_fresh =
-    args.warnings.projectPath === args.projectPath &&
-    (["items", "quality", "proofreading"] as const).every(
-      (section) =>
-        read_json_integer(args.warnings.sectionRevisions[section], 0) ===
-        read_json_integer(args.snapshot.sectionRevisions[section], 0),
-    );
-  if (!same_snapshot || !warnings_fresh || args.languageKey !== args.currentLanguageKey) {
-    throw workspace_validation_error("agent_workspace_snapshot_dependencies_changed");
-  }
 }
 
 /** JSON 固定使用严格序列化、两空格缩进和结尾换行。 */

@@ -14,12 +14,11 @@ type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
-  commit_project_write: ReturnType<typeof vi.fn>;
 };
 
-type EditorSnapshot = Pick<SettingsSnapshot, "mtool_optimizer_enable" | "request_timeout">;
+type EditorSnapshot = Pick<SettingsSnapshot, "prompt_enhancement_enable" | "request_timeout">;
 
-const PENDING_FIELDS = ["mtool_optimizer_enable", "request_timeout"] as const;
+const PENDING_FIELDS = ["prompt_enhancement_enable", "request_timeout"] as const;
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
@@ -52,13 +51,12 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
   return normalize_setting_snapshot({
     app_language: "ZH",
     request_timeout: 300,
-    mtool_optimizer_enable: false,
-    skip_duplicate_source_text_enable: true,
+    prompt_enhancement_enable: false,
     ...overrides,
   });
 }
 
-/** 模拟设置回流与补读，供并发保存和失败恢复用例共享。 */
+/** 模拟设置回流与补读，供并发保存和失败回滚用例共享。 */
 function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
@@ -71,9 +69,6 @@ function create_runtime_fixture(): RuntimeFixture {
       };
       return next_settings_snapshot;
     }),
-    commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => ({
-      payload: await run(),
-    })),
     refresh_settings: vi.fn(async () => runtime_fixture.current.settings_snapshot),
   };
 }
@@ -81,7 +76,7 @@ function create_runtime_fixture(): RuntimeFixture {
 /** 固定选择器身份，避免重新渲染时额外触发同步 effect。 */
 function select_snapshot(settings_snapshot: SettingsSnapshot): EditorSnapshot {
   return {
-    mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+    prompt_enhancement_enable: settings_snapshot.prompt_enhancement_enable,
     request_timeout: settings_snapshot.request_timeout,
   };
 }
@@ -109,7 +104,7 @@ describe("useSettingsEditor", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let latest_state: ReturnType<
-    typeof useSettingsEditor<EditorSnapshot, "mtool_optimizer_enable" | "request_timeout">
+    typeof useSettingsEditor<EditorSnapshot, "prompt_enhancement_enable" | "request_timeout">
   > | null = null;
 
   afterEach(async () => {
@@ -157,104 +152,96 @@ describe("useSettingsEditor", () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
       settings_snapshot: create_settings_snapshot({
-        mtool_optimizer_enable: true,
+        prompt_enhancement_enable: true,
         request_timeout: 900,
       }),
     };
     await render_hook();
 
     expect(latest_state?.snapshot).toEqual({
-      mtool_optimizer_enable: true,
+      prompt_enhancement_enable: true,
       request_timeout: 900,
     });
   });
 
-  it.each([false, true])(
-    "提交失败后恢复本次字段的后端事实（已提交：%s），保留其它在途编辑",
-    async (committed) => {
-      const prefilter_request = create_deferred<SettingsSnapshotPayload>();
-      const timeout_request = create_deferred<SettingsSnapshotPayload>();
-      vi.mocked(api_fetch).mockImplementation(async (_path, body) => {
-        if ("mtool_optimizer_enable" in (body ?? {})) {
-          return await prefilter_request.promise;
-        }
-        return await timeout_request.promise;
-      });
-      await render_hook();
-      if (latest_state === null) {
-        throw new Error("设置编辑器测试状态尚未初始化。");
+  it("提交失败只回滚本次字段，保留其它在途并发编辑", async () => {
+    const boolean_request = create_deferred<SettingsSnapshotPayload>();
+    const timeout_request = create_deferred<SettingsSnapshotPayload>();
+    vi.mocked(api_fetch).mockImplementation(async (_path, body) => {
+      if ("prompt_enhancement_enable" in (body ?? {})) {
+        return await boolean_request.promise;
       }
+      return await timeout_request.promise;
+    });
+    await render_hook();
+    if (latest_state === null) {
+      throw new Error("设置编辑器测试状态尚未初始化。");
+    }
 
-      let prefilter_update: Promise<SettingsSnapshot | null> | null = null;
-      await act(async () => {
-        prefilter_update =
-          latest_state?.commit_update("mtool_optimizer_enable", {
-            mtool_optimizer_enable: true,
-          }) ?? null;
-        await Promise.resolve();
-      });
-      let timeout_update: Promise<SettingsSnapshot | null> | null = null;
-      await act(async () => {
-        timeout_update =
-          latest_state?.commit_update("request_timeout", {
-            request_timeout: 600,
-          }) ?? null;
-        await Promise.resolve();
-      });
+    let boolean_update: Promise<SettingsSnapshot | null> | null = null;
+    await act(async () => {
+      boolean_update =
+        latest_state?.commit_update("prompt_enhancement_enable", {
+          prompt_enhancement_enable: true,
+        }) ?? null;
+      await Promise.resolve();
+    });
+    let timeout_update: Promise<SettingsSnapshot | null> | null = null;
+    await act(async () => {
+      timeout_update =
+        latest_state?.commit_update("request_timeout", {
+          request_timeout: 600,
+        }) ?? null;
+      await Promise.resolve();
+    });
 
-      expect(latest_state?.snapshot).toEqual({
-        mtool_optimizer_enable: true,
-        request_timeout: 600,
-      });
-      expect(latest_state?.pending_state).toEqual({
-        mtool_optimizer_enable: true,
-        request_timeout: true,
-      });
+    expect(latest_state?.snapshot).toEqual({
+      prompt_enhancement_enable: true,
+      request_timeout: 600,
+    });
+    expect(latest_state?.pending_state).toEqual({
+      prompt_enhancement_enable: true,
+      request_timeout: true,
+    });
 
-      runtime_fixture.current.refresh_settings.mockResolvedValue(
-        create_settings_snapshot({
-          mtool_optimizer_enable: committed,
-        }),
-      );
-      prefilter_request.reject(new Error("update_failed"));
-      await act(async () => {
-        await prefilter_update;
-      });
+    boolean_request.reject(new Error("update_failed"));
+    await act(async () => {
+      await boolean_update;
+    });
 
-      expect(latest_state?.snapshot).toEqual({
-        mtool_optimizer_enable: committed,
-        request_timeout: 600,
-      });
-      expect(latest_state?.pending_state).toEqual({
-        mtool_optimizer_enable: false,
-        request_timeout: true,
-      });
-      expect(push_toast).toHaveBeenCalledWith("app.feedback.save_failed", expect.any(Error));
+    expect(latest_state?.snapshot).toEqual({
+      prompt_enhancement_enable: false,
+      request_timeout: 600,
+    });
+    expect(latest_state?.pending_state).toEqual({
+      prompt_enhancement_enable: false,
+      request_timeout: true,
+    });
+    expect(push_toast).toHaveBeenCalledWith("app.feedback.save_failed", expect.any(Error));
 
-      timeout_request.resolve({
-        settings: create_settings_snapshot({
-          mtool_optimizer_enable: committed,
-          request_timeout: 601,
-        }),
-      });
-      await act(async () => {
-        await timeout_update;
-      });
-
-      expect(latest_state?.snapshot).toEqual({
-        mtool_optimizer_enable: committed,
+    timeout_request.resolve({
+      settings: create_settings_snapshot({
+        prompt_enhancement_enable: false,
         request_timeout: 601,
-      });
-      expect(latest_state?.pending_state).toEqual({
-        mtool_optimizer_enable: false,
-        request_timeout: false,
-      });
-      expect(vi.mocked(api_fetch).mock.calls).toEqual([
-        ["/api/settings/update", { mtool_optimizer_enable: true }],
-        ["/api/settings/update", { request_timeout: 600 }],
-      ]);
-    },
-  );
+      }),
+    });
+    await act(async () => {
+      await timeout_update;
+    });
+
+    expect(latest_state?.snapshot).toEqual({
+      prompt_enhancement_enable: false,
+      request_timeout: 601,
+    });
+    expect(latest_state?.pending_state).toEqual({
+      prompt_enhancement_enable: false,
+      request_timeout: false,
+    });
+    expect(vi.mocked(api_fetch).mock.calls).toEqual([
+      ["/api/settings/update", { prompt_enhancement_enable: true }],
+      ["/api/settings/update", { request_timeout: 600 }],
+    ]);
+  });
 
   it("刷新失败时保留当前投影并显示通用刷新标题", async () => {
     runtime_fixture.current.refresh_settings = vi.fn(async () => {
@@ -264,7 +251,7 @@ describe("useSettingsEditor", () => {
     await render_hook();
 
     expect(latest_state?.snapshot).toEqual({
-      mtool_optimizer_enable: false,
+      prompt_enhancement_enable: false,
       request_timeout: 300,
     });
     expect(push_toast).toHaveBeenCalledWith("app.feedback.refresh_failed", expect.any(Error));

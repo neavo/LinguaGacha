@@ -1,3 +1,4 @@
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useDevicePixelRatio } from "@frontend/widgets/interactions/use-device-pixel-ratio";
 import {
@@ -31,7 +32,6 @@ import {
 } from "streamdown";
 
 import { useAppearance } from "@frontend/app/appearance/appearance-context";
-import { api_blob } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { is_agent_file_href, resolve_agent_file_href } from "@shared/agent-workspace-file";
 import { MARKDOWN_BASE_COMPONENTS } from "@frontend/widgets/app-markdown";
@@ -302,6 +302,7 @@ function AgentMarkdownImage({
   title,
   ...props
 }: ComponentProps<"img"> & ExtraProps): JSX.Element | null {
+  const { blob: api_blob } = useAgentApi();
   const { t } = useI18n();
   const pixel_ratio = useDevicePixelRatio();
   const [intrinsic, set_intrinsic] = useState({ source: "", width: 0 });
@@ -332,7 +333,7 @@ function AgentMarkdownImage({
       controller.abort();
       if (url !== null) URL.revokeObjectURL(url);
     };
-  }, [base_path, local, chat_id, src, t]);
+  }, [api_blob, base_path, local, chat_id, src, t]);
   if (!src) return null;
   const source =
     local && chat_id ? (local_source?.source === src ? local_source.url : undefined) : src;

@@ -37,7 +37,6 @@ type AgentComposerProps = {
   command: AgentCommand;
   can_continue_queue: boolean;
   queue_full: boolean;
-  can_reset: boolean;
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
   approval_mode: AgentApprovalMode;
@@ -49,7 +48,6 @@ type AgentComposerProps = {
   on_agent_model_select: (change: ModelSelectionInput) => boolean;
   on_approval_mode_change: (approval_mode: AgentApprovalMode) => void;
   on_stop: () => Promise<void>;
-  on_reset: () => void;
 };
 
 /** 命令不可用原因同时驱动禁用态和提示，禁止平行布尔量产生矛盾组合。 */
@@ -69,7 +67,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const stopping = props.state === "stopping";
   const unavailable_reason = stopping ? "settling" : props.unavailable_reason;
   const editor_read_only =
-    locked || ["send", "continue", "revise", "queue_update", "reset"].includes(props.command ?? "");
+    locked || ["send", "continue", "revise", "queue_update"].includes(props.command ?? "");
   const submit_command_active = ["send", "continue", "revise", "queue_update", "stop"].includes(
     props.command ?? "",
   );
@@ -122,20 +120,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               add_file={add_file}
               open_instructions={open_instructions}
               locked={locked}
-              can_reset={
-                props.can_reset &&
-                !locked &&
-                !running &&
-                unavailable_reason === null &&
-                props.command === null
-              }
               context={props.context}
               usage={props.usage}
               model_selection={props.model_selection}
               approval_mode={props.approval_mode}
               approval_disabled={props.approval_disabled}
               disconnected={unavailable_reason === "disconnected"}
-              on_reset={props.on_reset}
               on_agent_model_select={props.on_agent_model_select}
               on_approval_mode_change={props.on_approval_mode_change}
             />

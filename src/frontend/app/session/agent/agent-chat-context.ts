@@ -1,4 +1,5 @@
 import type { AgentEntry, AgentRunOutputSnapshot, AgentTokenSpeedSnapshot } from "@shared/agent";
+import { createAgentApi } from "@frontend/app/desktop/scoped-api";
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { AgentDecisionCountdownSnapshot } from "./agent-decision-countdown";
 import type {
@@ -15,6 +16,12 @@ export type { AgentCommand, AgentTransportState } from "./agent-chat-store";
 export type { AgentInputState } from "./agent-chat-store";
 
 export const AgentChatStoreContext = createContext<AgentChatStore | null>(null);
+const unscoped_agent_api = createAgentApi();
+
+/** 工作区的预览和上传沿用对话 Store 绑定的工程。 */
+export function useAgentApi(): ReturnType<typeof createAgentApi> {
+  return useContext(AgentChatStoreContext)?.api ?? unscoped_agent_api;
+}
 
 /** 对话身份随权威快照变化。页面资源以此隔离生命周期。 */
 export function useAgentChatId(): string | null {
@@ -100,6 +107,12 @@ export function useAgentDecisionCountdown(): AgentDecisionCountdownSnapshot {
   return useSyncExternalStore(store.subscribe_countdown, store.get_countdown, store.get_countdown);
 }
 
+/** 订阅会话重置可用性，仅在可重置边界变化时触发更新。 */
+export function useAgentCanReset(): boolean {
+  const store = use_agent_store();
+  return useSyncExternalStore(store.subscribe_reset, store.can_reset, store.can_reset);
+}
+
 /** actions 在 Store 生命周期内保持同一对象和函数身份，不订阅任何业务切片。 */
 export function useAgentChatActions(): AgentChatActions {
   return use_agent_store().actions;
@@ -109,7 +122,7 @@ export function useAgentChatActions(): AgentChatActions {
 function use_agent_store(): AgentChatStore {
   const store = useContext(AgentChatStoreContext);
   if (store === null) {
-    throw new Error("Agent chat hooks must be used inside AgentChatProvider.");
+    throw new Error("Agent chat hooks must be used inside AgentChatStoreContext.");
   }
   return store;
 }

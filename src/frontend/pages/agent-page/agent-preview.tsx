@@ -1,9 +1,9 @@
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import type { AgentDocument } from "@shared/agent-workspace-file";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type { AppViewerRange } from "@frontend/widgets/app-editor/app-editor-code-mirror";
-import { api_fetch, api_blob } from "@frontend/app/desktop/desktop-api";
 import { MediaViewport } from "@frontend/features/media-preview/media-viewport";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AgentFileContext } from "./agent-file-context";
@@ -28,6 +28,7 @@ export function AgentPreviewPage({
   active: boolean;
   scroll: Record<string, number>;
 }): JSX.Element {
+  const { post: api_fetch, blob: api_blob } = useAgentApi();
   const { t } = useI18n();
   const chat_id = useContext(AgentFileContext)?.chat_id;
   // 内容与读取意图一起发布，旧正文不能消费新锚点，图片 MIME 与 URL 保持同批次。
@@ -75,7 +76,7 @@ export function AgentPreviewPage({
       controller.abort();
       if (url) URL.revokeObjectURL(url);
     };
-  }, [document.path, document.preview, document.activation, chat_id]);
+  }, [api_fetch, api_blob, document.path, document.preview, document.activation, chat_id]);
   if (failed) return <AppContentState status="error" />;
   if (content === null)
     return (

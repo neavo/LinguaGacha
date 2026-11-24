@@ -1,19 +1,31 @@
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BatchTranslationState } from "./batch-translation-state";
-import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "../project/project-session-state";
+import { ProjectOperationGate } from "../runtime-operation-gate";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ProjectDatabase } from "../database/database-operations";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 
 /** 组合真实运行态，验证翻译目标与工程统计的投影。 */
-function setup() {
+const cleanup: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const dispose of cleanup.splice(0).reverse()) await dispose();
+});
+async function setup() {
   const database = new ProjectDatabase("1.0.0");
-  const gate = new RuntimeOperationGate();
-  const session = new ProjectSessionState();
-  const tasks = new BatchTaskRuntime(session, gate);
-  const runtime = new BatchTranslationState(session, database, tasks);
-  return { runtime, gate, database, session, tasks };
+  const gate = new ProjectOperationGate();
+  const directory = await mkdtemp(join(tmpdir(), "lg-batch-state-"));
+  const project = join(directory, "fixture.lg");
+  cleanup.push(async () => {
+    await database.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  await database.create_project(project);
+  const tasks = new BatchTaskRuntime(project, gate);
+  const runtime = new BatchTranslationState(project, database, tasks);
+  return { runtime, gate, database, tasks };
 }
 /** 显式控制执行和发布的收尾时机。 */
 function deferred<T>() {
@@ -27,7 +39,7 @@ const result = () => ({
 
 describe("翻译目标与工程统计投影", () => {
   it("异步读取期间目标与本轮进度保持同一版本", async () => {
-    const { runtime, database } = setup();
+    const { runtime, database } = await setup();
     const handle = runtime.begin_standalone();
     await runtime.execute(handle, async () => {
       const pending = deferred<ReturnType<typeof normalize_batch_translation_progress>>();
@@ -49,7 +61,7 @@ describe("翻译目标与工程统计投影", () => {
   it.each(["done", "stopped", "error"] as const)(
     "实际目标和总量一起发布，提交移除 ID，%s 终态清空 ID",
     async (status) => {
-      const { runtime, database, tasks } = setup();
+      const { runtime, database, tasks } = await setup();
       const item_ids = new Set([1, 2, 3]);
       const frames: import("../../domain/batch-translation").BatchTranslationSnapshot[] = [];
       tasks.subscribe(async () => {
@@ -86,7 +98,7 @@ describe("翻译目标与工程统计投影", () => {
     },
   );
   it("异常收尾读取失败仍发布错误终态并清空目标", async () => {
-    const { runtime, database, tasks } = setup();
+    const { runtime, database, tasks } = await setup();
     const pending_frames: Array<readonly number[]> = [];
     tasks.subscribe(async () => {
       const snapshot = await runtime.build_snapshot();

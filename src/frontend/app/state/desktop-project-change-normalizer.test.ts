@@ -3,6 +3,7 @@ import { normalize_project_change_event } from "./desktop-project-change-normali
 
 const base = {
   eventId: "event",
+  projectId: "project",
   source: "write",
   projectPath: "project.lg",
   projectRevision: 2,

@@ -1,3 +1,4 @@
+import type { AgentService } from "../agent/agent-service";
 import type { AgentPersonalityService } from "../agent/agent-personality-service";
 import type { AgentSkillsApi } from "../agent/agent-skills-service";
 import type { Hono } from "hono";
@@ -6,7 +7,7 @@ import { AppError } from "../../shared/error";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
-import type { AgentService } from "../agent/agent-service";
+import type { SettingsUpdateResponse } from "../../shared/settings";
 import type { ApiPostJsonRoute, ApiRequestRoute } from "./api-request";
 import { ok } from "./api-types";
 
@@ -15,8 +16,7 @@ import { ok } from "./api-types";
  */
 export interface ApiRouteContext {
   app: Hono;
-  services: BackendServices;
-  agent: AgentService;
+  services: BackendServices<AgentService>;
   skills: AgentSkillsApi;
   personality: Pick<AgentPersonalityService, "read" | "save">;
   postJson: ApiPostJsonRoute;
@@ -33,7 +33,22 @@ export interface ApiRouteContext {
  */
 export function register_api_routes(context: ApiRouteContext): void {
   const services = context.services;
-  const agent = context.agent;
+  const request_data = ({ projectId: _projectId, ...data }: JsonRecord): JsonRecord => data;
+  const scope = (id: unknown) => services.projects.require(id);
+  const project = (body: JsonRecord) => scope(body.projectId);
+  const require_agent = (projectId: unknown) => {
+    const agent = scope(projectId).agent;
+    if (agent === undefined) throw new AppError("runtime.disposed");
+    return agent;
+  };
+  const chat = (body: JsonRecord) => require_agent(body.projectId);
+  const query_chat = (params: URLSearchParams) => require_agent(params.get("projectId"));
+  // 工程内相同的预览路径在重置后可以指向其他文件。
+  const preview_agent = (projectId: unknown, chatId: unknown) => {
+    const agent = require_agent(projectId);
+    agent.assert_chat_identity(chatId);
+    return agent;
+  };
 
   context.postJson("/api/agent/personality/read", () => context.personality.read());
   context.postJson("/api/agent/personality/save", (body) => context.personality.save(body));
@@ -60,13 +75,18 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/logs/detail", (body) => context.readLogDetail(body));
   context.postJson("/api/diagnostics/renderer-error", (body) => context.recordRendererError(body));
 
-  const knowledge = services.project.knowledge;
-  context.postJson("/api/project/knowledge/read", () => knowledge.read());
-  context.postJson("/api/project/knowledge/save", (body) => knowledge.save(body));
-  const lifecycle = services.project.lifecycle;
-  context.postJson("/api/session/project/manifest", () => services.project.readManifest());
-  context.postJson("/api/session/project/snapshot", () => lifecycle.get_project_snapshot());
-  context.postJson("/api/session/project/close", () => lifecycle.unload_project());
+  context.postJson("/api/project/knowledge/read", (body) => project(body).knowledge.read());
+  context.postJson("/api/project/knowledge/save", (body) =>
+    project(body).knowledge.save(request_data(body)),
+  );
+  const lifecycle = services.lifecycle;
+  context.postJson("/api/session/project/manifest", (body) =>
+    services.read_manifest(project(body)),
+  );
+  context.postJson("/api/session/project/snapshot", (body) =>
+    services.project_snapshot(project(body)),
+  );
+  context.postJson("/api/session/project/close", (body) => services.close_project(body.projectId));
   context.postJson("/api/session/project/preview", (body) => lifecycle.get_project_preview(body));
   context.postJson("/api/session/project/default-name", (body) =>
     lifecycle.get_default_project_name(body),
@@ -74,28 +94,35 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/session/source-files/summary", (body) =>
     lifecycle.summarize_source_files(body),
   );
-  context.postJson("/api/session/project/open", (body) => lifecycle.load_project(body));
-  context.postJson("/api/session/project/create", (body) => lifecycle.create_project_commit(body));
+  context.postJson("/api/session/project/open", (body) => services.open_project(body));
+  context.postJson("/api/session/project/create", (body) => services.create_project(body));
 
+  context.app.get("/api/session/projects", (request) => request.json(ok(services.list_projects())));
+  context.postJson("/api/agent/reset", (body) => chat(body).reset());
   context.app.get("/api/events/stream", () => context.createEventStreamResponse());
   context.postJson("/api/runtime/snapshot", () => services.runtime.getSnapshot());
   context.app.get("/api/models/catalog/snapshot", (hono_context) =>
     hono_context.json(ok(services.modelCatalog.get_snapshot())),
   );
-  context.app.get("/api/agent/files", async (context) =>
-    context.json(ok(await agent.list_files())),
+  context.request("GET", "/api/agent/files", async (request) =>
+    Response.json(ok(await query_chat(new URL(request.url).searchParams).list_files())),
   );
-  context.app.get("/api/agent/snapshot", (hono_context) =>
-    hono_context.json(ok(agent.get_snapshot())),
+  context.request("GET", "/api/agent/snapshot", async (request) =>
+    Response.json(ok(await query_chat(new URL(request.url).searchParams).read_snapshot())),
   );
-  context.postJson("/api/agent/message", (body) => agent.input_command("send", body));
-  context.postJson("/api/agent/input-status", (body) => agent.input_command_status(body));
+  context.postJson("/api/agent/message", (body) =>
+    chat(body).input_command("send", request_data(body)),
+  );
+  context.postJson("/api/agent/input-status", (body) =>
+    chat(body).input_command_status(request_data(body)),
+  );
   context.request("POST", "/api/agent/uploads", async (request) => {
-    const name = new URL(request.url).searchParams.get("name");
+    const query = new URL(request.url).searchParams;
+    const name = query.get("name");
     if (name === null || name === "") throw new AppError("request.validation_failed");
     return Response.json(
       ok(
-        await agent.upload_file(
+        await query_chat(query).upload_file(
           name,
           request.body ??
             new ReadableStream<Uint8Array>({
@@ -110,7 +137,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   });
   context.request("GET", "/api/agent/uploads/:id", (request) => {
     const id = new URL(request.url).pathname.split("/").at(-1)!;
-    const { file, stream } = agent.read_upload(id);
+    const { file, stream } = query_chat(new URL(request.url).searchParams).read_upload(id);
     return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
       headers: {
         "Content-Type": file.imageMimeType ?? "application/octet-stream",
@@ -121,116 +148,175 @@ export function register_api_routes(context: ApiRouteContext): void {
       },
     });
   });
-  context.postJson("/api/agent/workspace/file", (body) => agent.describe_workspace_file(body));
-  context.postJson("/api/agent/workspace/document", (body) => agent.read_workspace_document(body));
+  context.postJson("/api/agent/workspace/file", (body) =>
+    preview_agent(body.projectId, body.chatId).describe_workspace_file(body.path),
+  );
+  context.postJson("/api/agent/workspace/document", (body) =>
+    preview_agent(body.projectId, body.chatId).read_workspace_document(body.path),
+  );
   context.request("GET", "/api/agent/workspace/image", async (request) => {
     const query = new URL(request.url).searchParams;
-    return create_image_response(
-      await agent.read_workspace_image(query.get("path"), query.get("chatId")),
-    );
+    const agent = preview_agent(query.get("projectId"), query.get("chatId"));
+    return create_image_response(await agent.read_workspace_image(query.get("path")));
   });
   context.request("GET", "/api/agent/tool-image", (request) => {
     const query = new URL(request.url).searchParams;
-    return create_image_response(
-      agent.read_tool_image(query.get("chatId"), query.get("entryId"), query.get("index")),
-    );
+    const agent = preview_agent(query.get("projectId"), query.get("chatId"));
+    return create_image_response(agent.read_tool_image(query.get("entryId"), query.get("index")));
   });
   context.postJson("/api/agent/workspace/activate-path", (body) =>
-    agent.activate_workspace_path(body),
+    preview_agent(body.projectId, body.chatId).activate_workspace_path(request_data(body)),
   );
-  context.postJson("/api/agent/question/resolve", (body) => agent.resolve_question(body));
+  context.postJson("/api/agent/question/resolve", (body) =>
+    chat(body).resolve_question(request_data(body)),
+  );
   context.postJson("/api/agent/write-approval/resolve", (body) =>
-    agent.resolve_write_approval(body),
+    chat(body).resolve_write_approval(request_data(body)),
   );
-  context.postJson("/api/agent/queue/update", (body) => agent.update_queued_message(body));
-  context.postJson("/api/agent/queue/delete", (body) => agent.delete_queued_message(body));
-  context.postJson("/api/agent/queue/reorder", (body) => agent.reorder_queued_messages(body));
-  context.postJson("/api/agent/queue/send", (body) => agent.input_command("queue_send", body));
-  context.postJson("/api/agent/round/fork", (body) => agent.input_command("fork", body));
-  context.postJson("/api/agent/round/revise", (body) => agent.input_command("revise", body));
-  context.postJson("/api/agent/continue", (body) => agent.input_command("continue", body));
-  context.postJson("/api/agent/context/compact", () => agent.compact_context());
-  context.postJson("/api/agent/stop", () => agent.stop());
-  context.postJson("/api/agent/reset", () => agent.reset());
+  context.postJson("/api/agent/queue/update", (body) =>
+    chat(body).update_queued_message(request_data(body)),
+  );
+  context.postJson("/api/agent/queue/delete", (body) =>
+    chat(body).delete_queued_message(request_data(body)),
+  );
+  context.postJson("/api/agent/queue/reorder", (body) =>
+    chat(body).reorder_queued_messages(request_data(body)),
+  );
+  context.postJson("/api/agent/queue/send", (body) =>
+    chat(body).input_command("queue_send", request_data(body)),
+  );
+  context.postJson("/api/agent/round/fork", (body) =>
+    chat(body).input_command("fork", request_data(body)),
+  );
+  context.postJson("/api/agent/round/revise", (body) =>
+    chat(body).input_command("revise", request_data(body)),
+  );
+  context.postJson("/api/agent/continue", (body) =>
+    chat(body).input_command("continue", request_data(body)),
+  );
+  context.postJson("/api/agent/context/compact", (body) => chat(body).compact_context());
+  context.postJson("/api/agent/stop", (body) => chat(body).stop());
 
-  const project_content = services.project.content;
-  context.postJson("/api/workbench/snapshot", () => services.project.summary.read());
-  context.postJson("/api/project/translation-stats", () =>
-    services.project.summary.read_translation_stats(),
+  context.postJson("/api/workbench/snapshot", (body) => project(body).summary.read());
+  context.postJson("/api/project/translation-stats", (body) =>
+    project(body).summary.read_translation_stats(),
   );
-  context.postJson("/api/workbench/files/import", (body) => project_content.import_files(body));
-  context.postJson("/api/workbench/file/reset", (body) => project_content.reset_files(body));
-  context.postJson("/api/workbench/file/delete", (body) => project_content.delete_files(body));
-  context.postJson("/api/workbench/file/rename", (body) => project_content.rename_file(body));
-  context.postJson("/api/workbench/files/reorder", (body) => project_content.reorder_files(body));
+  context.postJson("/api/workbench/files/import", (body) =>
+    project(body).content.import_files(request_data(body)),
+  );
+  context.postJson("/api/workbench/file/reset", (body) =>
+    project(body).content.reset_files(request_data(body)),
+  );
+  context.postJson("/api/workbench/file/delete", (body) =>
+    project(body).content.delete_files(request_data(body)),
+  );
+  context.postJson("/api/workbench/file/rename", (body) =>
+    project(body).content.rename_file(request_data(body)),
+  );
+  context.postJson("/api/workbench/files/reorder", (body) =>
+    project(body).content.reorder_files(request_data(body)),
+  );
   context.postJson("/api/workbench/files/preview", (body) =>
-    project_content.preview_import_files(body),
+    project(body).content.preview_import_files(request_data(body)),
   );
   context.postJson("/api/project/settings/update", (body) =>
-    project_content.update_project_settings(body),
+    project(body).content.update_project_settings(request_data(body)),
   );
   context.postJson("/api/workbench/translation/reset", (body) =>
-    project_content.reset_translation(body),
+    project(body).content.reset_translation(request_data(body)),
   );
 
-  const proofreading_query = services.proofreading.query;
-  const proofreading = services.proofreading.commands;
-  context.postJson("/api/proofreading/query", (body) => proofreading_query.query(body));
+  context.postJson("/api/proofreading/query", (body) =>
+    project(body).proofreading.query.query(request_data(body)),
+  );
   context.postJson("/api/proofreading/items/update", (body) =>
-    proofreading.apply_item_changes(body),
+    project(body).proofreading.commands.apply_item_changes(request_data(body)),
   );
   context.postJson("/api/proofreading/translations/clear", (body) =>
-    proofreading.clear_translations(body),
+    project(body).proofreading.commands.clear_translations(request_data(body)),
   );
-  context.postJson("/api/proofreading/items/replace-all", (body) => proofreading.replace_all(body));
+  context.postJson("/api/proofreading/items/replace-all", (body) =>
+    project(body).proofreading.commands.replace_all(request_data(body)),
+  );
 
-  const quality_statistics = services.quality.statistics;
-  const quality_rules = services.quality.rules;
-  const prompts = services.quality.prompts;
-  context.postJson("/api/quality/statistics/view", (body) => quality_statistics.read(body));
-  context.postJson("/api/quality/rules/query", (body) => quality_rules.query(body));
-  context.postJson("/api/quality/prompts/view", (body) => prompts.read(body));
-  context.postJson("/api/quality/rules/update", (body) => quality_rules.update(body));
-  context.postJson("/api/quality/rules/import", (body) => quality_rules.import_rules(body));
-  context.postJson("/api/quality/rules/export", (body) => quality_rules.export_rules(body));
-  context.postJson("/api/quality/rules/presets", (body) => quality_rules.list_rule_presets(body));
+  context.postJson("/api/quality/statistics/view", (body) =>
+    project(body).quality.statistics.read(request_data(body)),
+  );
+  context.postJson("/api/quality/rules/query", (body) =>
+    project(body).quality.rules.query(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/view", (body) =>
+    project(body).quality.prompts.read(request_data(body)),
+  );
+  context.postJson("/api/quality/rules/update", (body) =>
+    project(body).quality.rules.update(request_data(body)),
+  );
+  context.postJson("/api/quality/rules/import", (body) =>
+    project(body).quality.rules.import_rules(request_data(body)),
+  );
+  context.postJson("/api/quality/rules/export", (body) =>
+    project(body).quality.rules.export_rules(request_data(body)),
+  );
+  context.postJson("/api/quality/rules/presets", (body) =>
+    project(body).quality.rules.list_rule_presets(request_data(body)),
+  );
   context.postJson("/api/quality/rules/presets/read", (body) =>
-    quality_rules.read_rule_preset(body),
+    project(body).quality.rules.read_rule_preset(request_data(body)),
   );
   context.postJson("/api/quality/rules/presets/save", (body) =>
-    quality_rules.save_rule_preset(body),
+    project(body).quality.rules.save_rule_preset(request_data(body)),
   );
   context.postJson("/api/quality/rules/presets/rename", (body) =>
-    quality_rules.rename_rule_preset(body),
+    project(body).quality.rules.rename_rule_preset(request_data(body)),
   );
   context.postJson("/api/quality/rules/presets/delete", (body) =>
-    quality_rules.delete_rule_preset(body),
+    project(body).quality.rules.delete_rule_preset(request_data(body)),
   );
-  context.postJson("/api/quality/prompts/template", (body) => prompts.get_template(body));
-  context.postJson("/api/quality/prompts/save", (body) => prompts.save(body));
-  context.postJson("/api/quality/prompts/import", (body) => prompts.read_import_text(body));
-  context.postJson("/api/quality/prompts/export", (body) => prompts.export(body));
-  context.postJson("/api/quality/prompts/presets", (body) => prompts.list_presets(body));
-  context.postJson("/api/quality/prompts/presets/read", (body) => prompts.read_preset(body));
-  context.postJson("/api/quality/prompts/presets/save", (body) => prompts.save_preset(body));
-  context.postJson("/api/quality/prompts/presets/rename", (body) => prompts.rename_preset(body));
-  context.postJson("/api/quality/prompts/presets/delete", (body) => prompts.delete_preset(body));
+  context.postJson("/api/quality/prompts/template", (body) =>
+    project(body).quality.prompts.get_template(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/save", (body) =>
+    project(body).quality.prompts.save(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/import", (body) =>
+    project(body).quality.prompts.read_import_text(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/export", (body) =>
+    project(body).quality.prompts.export(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/presets", (body) =>
+    project(body).quality.prompts.list_presets(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/presets/read", (body) =>
+    project(body).quality.prompts.read_preset(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/presets/save", (body) =>
+    project(body).quality.prompts.save_preset(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/presets/rename", (body) =>
+    project(body).quality.prompts.rename_preset(request_data(body)),
+  );
+  context.postJson("/api/quality/prompts/presets/delete", (body) =>
+    project(body).quality.prompts.delete_preset(request_data(body)),
+  );
 
   context.postJson("/api/translation/files/generate", (body) =>
-    services.files.translationGeneration.generate_files(body),
+    project(body).generation.generate_files(request_data(body)),
   );
 
-  context.postJson("/api/toolbox/game-font/inspect", (body) =>
-    services.files.gameFont.inspect(body),
-  );
-  context.postJson("/api/toolbox/game-font/apply", (body) => services.files.gameFont.apply(body));
+  context.postJson("/api/toolbox/game-font/inspect", (body) => services.gameFont.inspect(body));
+  context.postJson("/api/toolbox/game-font/apply", (body) => services.gameFont.apply(body));
   context.postJson("/api/toolbox/translation-transfer/apply", (body) =>
-    services.project.translationTransfer.apply(body),
+    services.translationTransfer.apply(body),
   );
 
   const settings = services.app.settings;
   context.postJson("/api/settings/app", () => settings.get_app_settings());
-  context.postJson("/api/settings/update", (body) => services.app.updateSettings(body));
+  context.postJson("/api/settings/update", (body): SettingsUpdateResponse => ({
+    ...services.app.settings.update_app_settings(body),
+    accepted: true,
+    changes: [],
+  }));
   context.postJson("/api/settings/recent-projects/add", (body) =>
     settings.add_recent_project(body),
   );
@@ -261,14 +347,17 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/models/list-available", (body) => models.list_available_models(body));
   context.postJson("/api/models/test", (body) => models.test_model(body));
 
-  const batch_translation = services.batchTranslation;
-  context.postJson("/api/batch-translation/start", (body) => batch_translation.start(body));
+  context.postJson("/api/batch-translation/start", (body) =>
+    project(body).batchTranslation.start(request_data(body)),
+  );
   context.postJson("/api/batch-task/stop", async (body) => {
     if (typeof body["run_id"] !== "string") throw new AppError("request.validation_failed");
-    const accepted = await services.batchTasks.request_stop(body["run_id"]);
-    return { accepted, ...(await batch_translation.get_snapshot()) };
+    const accepted = await project(body).batchTasks.request_stop(body["run_id"]);
+    return { accepted, ...(await project(body).batchTranslation.get_snapshot()) };
   });
-  context.postJson("/api/batch-task/snapshot", () => batch_translation.get_snapshot());
+  context.postJson("/api/batch-task/snapshot", (body) =>
+    project(body).batchTranslation.get_snapshot(),
+  );
 }
 
 /** 图片响应禁止嗅探和缓存。直接打开 SVG 时隔离活动内容。 */

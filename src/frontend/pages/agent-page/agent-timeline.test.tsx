@@ -2,7 +2,6 @@ import { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
 import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_blob: async () => new Blob([], { type: "image/png" }),
-  api_file_url: (path: string) => `http://localhost${path}`,
 }));
 import { uploaded_file } from "../../../test/agent-upload-fixture";
 import { act } from "react";

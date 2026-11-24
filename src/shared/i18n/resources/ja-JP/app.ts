@@ -48,6 +48,7 @@ export const ja_jp_app = {
     cancel: "キャンセル",
     confirm: "確認",
     close: "閉じる",
+    open: "開く",
     create: "追加",
     delete: "削除",
     edit: "編集",
@@ -90,7 +91,7 @@ export const ja_jp_app = {
     import_success: "データをインポートしました",
     no_valid_data: "有効なデータがありません",
     update_failed: "更新できませんでした …",
-    project_settings_aligned: "現在の設定に合わせてプロジェクト設定を更新しました",
+    project_settings_saved: "プロジェクト設定を保存しました",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -98,10 +99,16 @@ export const ja_jp_app = {
     description:
       "このウィンドウは保護画面に切り替わりました。エラーの詳細はログに記録されています …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool オプティマイザー",
-      skip_duplicate_source_text_enable: "重複する原文をスキップ",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool オプティマイザー",
+      description:
+        "MTool のテキスト翻訳で、<emphasis>翻訳時間と Token 消費を最大 40% 削減できます</emphasis>。\n既定で有効です。",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "重複する原文をスキップ",
+      description:
+        "プロジェクト全体でテキストが同じ項目は一度だけ翻訳し、<emphasis>訳文を再利用</emphasis>します。\n既定で有効です。",
     },
   },
   close_confirm: {
@@ -116,13 +123,14 @@ export const ja_jp_app = {
     launching: "処理中 …",
   },
   drop: {
+    release: "離して適用",
+    project_only: "ここにドロップできるのは .lg プロジェクトファイルのみです",
     select_multiple_unavailable: "一度にドロップできるファイルまたはフォルダーは 1 個です",
     select_unavailable:
       "ドロップしたファイルのローカルパスを取得できません。クリックして選択してください …",
     multiple_unavailable: "一度にドロップできるファイルは 1 個です",
     unavailable:
       "ドロップしたファイルのローカルパスを取得できません。クリックしてインポートしてください …",
-    import_here: "ドロップしてルールファイルをインポート",
   },
   toggle: {
     option: {
@@ -166,9 +174,23 @@ export const ja_jp_app = {
     ID: "インドネシア語",
     VI: "ベトナム語",
   },
+  workspace: {
+    projects: "プロジェクト",
+    projects_empty: "プロジェクトはありません",
+    skills: "スキル",
+    workbench: "ワークベンチ",
+    quality: "翻訳品質",
+    more: "その他",
+    close_chat: "会話を閉じる",
+    close_chat_confirm: "会話を閉じますか …?",
+    reveal_path: "フォルダー内に表示",
+    remove_recent: "一覧から削除",
+    remove_confirm: "プロジェクトを閉じて最近の一覧から削除しますか …?",
+    close_busy: "プロジェクトの処理中です",
+    files: "ファイル",
+  },
   navigation_action: {
-    expand_sidebar: "サイドバーを展開",
-    collapse_sidebar: "サイドバーを折りたたむ",
+    resize_sidebar: "サイドバーの幅を調整",
     appearance: "外観",
     font: "フォント",
     font_size: "フォントサイズ",
@@ -212,7 +234,7 @@ export const ja_jp_app = {
     confirmation: {
       agent_description:
         "このプロジェクトには AGENT による書き戻しが必要なアセットがあります。直接エクスポートでは対象外になります …",
-      description: "現在利用可能な翻訳成果物をエクスポートしますか？",
+      description: "現在利用可能な翻訳成果物をエクスポートしますか …?",
       checking: "プロジェクトのファイルと校正警告を確認中 …",
       check_failed:
         "ファイルまたは校正警告の確認に失敗しました。再確認するか、AGENT に処理を任せてください …",

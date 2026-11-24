@@ -5,6 +5,7 @@ import { pick_save_path } from "./path-dialog";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
+  IPC_CHANNEL_REVEAL_PATH,
   IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
@@ -85,6 +86,14 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
   // 外链统一交给系统外部处理程序；URL 语义与可用性由宿主和系统处理
   ipcMain.handle(IPC_CHANNEL_OPEN_EXTERNAL_URL, async (_event, url: string) => {
     await shell.openExternal(url);
+  });
+
+  // Windows 可能为已删除路径打开无关目录，先让文件系统返回真实失败。
+  ipcMain.handle(IPC_CHANNEL_REVEAL_PATH, async (_event, targetPath: unknown) => {
+    if (typeof targetPath !== "string" || targetPath.trim() === "")
+      throw new TypeError("A file path is required.");
+    await stat(targetPath);
+    shell.showItemInFolder(targetPath);
   });
 
   // 更新包下载和进度只在 main 执行，renderer 通过 request_id 消费自身那一次进度。

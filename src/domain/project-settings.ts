@@ -6,7 +6,7 @@ import {
   type ConfiguredSourceLanguageCode,
   type TargetLanguageCode,
 } from "./language";
-import { DEFAULT_SETTING, normalize_setting_snapshot, type SettingSnapshot } from "./setting";
+import { normalize_setting_snapshot, type SettingSnapshot } from "./setting";
 
 /** 项目语言保存在 `.lg` meta 中，项目是这两个字段的唯一事实来源。 */
 export type ProjectLanguageSettings = Readonly<{
@@ -20,22 +20,33 @@ export const DEFAULT_PROJECT_LANGUAGE_SETTINGS: ProjectLanguageSettings = Object
   target_language: "ZH",
 });
 
-/** 两个开关属于应用设置；项目 meta 只记录最近一次预过滤采用的值。 */
-export const APP_PREFILTER_SETTING_KEYS = [
+export const PROJECT_PREFILTER_SETTING_KEYS = [
   "mtool_optimizer_enable",
   "skip_duplicate_source_text_enable",
 ] as const;
-export type AppPrefilterSettingKey = (typeof APP_PREFILTER_SETTING_KEYS)[number];
-export type AppPrefilterSettings = Readonly<Pick<SettingSnapshot, AppPrefilterSettingKey>>;
+export type ProjectPrefilterSettingKey = (typeof PROJECT_PREFILTER_SETTING_KEYS)[number];
+export type ProjectPrefilterSettings = Readonly<Record<ProjectPrefilterSettingKey, boolean>>;
 
-/** 预过滤计算输入，由项目语言和应用开关组合而成。 */
-export type ProjectSettingsSnapshot = ProjectLanguageSettings & AppPrefilterSettings;
+/** 工程语言与预过滤开关共同保存在 `.lg` meta。 */
+export type ProjectSettings = ProjectLanguageSettings & ProjectPrefilterSettings;
+
+export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = Object.freeze({
+  ...DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  mtool_optimizer_enable: true,
+  skip_duplicate_source_text_enable: true,
+});
 
 /** 单次执行使用的设置快照，组合值只属于本次执行。 */
 export type ProjectExecutionSettings = SettingSnapshot & ProjectLanguageSettings;
 
-/** 历史项目逐字段兜底：meta 优先，源语言再读旧 `prefilter_config`，最后使用默认值。 */
+/** 执行快照和语言界面只消费设置中的两项语言。 */
 export function read_project_language_settings(meta: unknown): ProjectLanguageSettings {
+  const { source_language, target_language } = read_project_settings(meta);
+  return { source_language, target_language };
+}
+
+/** 顶层 meta 是工程事实，旧 `prefilter_config` 只用于补齐历史文件缺失的字段。 */
+export function read_project_settings(meta: unknown): ProjectSettings {
   const record = read_json_record(meta);
   const prefilter_config = read_json_record(record["prefilter_config"]);
   return {
@@ -46,45 +57,45 @@ export function read_project_language_settings(meta: unknown): ProjectLanguageSe
     target_language:
       normalize_target_language_code(read_text(record["target_language"])) ??
       DEFAULT_PROJECT_LANGUAGE_SETTINGS.target_language,
-  };
-}
-
-/** 读取项目记录的预过滤开关，meta 优先，缺失时回退旧 `prefilter_config` 与应用默认值。 */
-export function read_project_prefilter_settings(meta: unknown): AppPrefilterSettings {
-  const record = read_json_record(meta);
-  const prefilter_config = read_json_record(record["prefilter_config"]);
-  return {
     mtool_optimizer_enable: read_json_boolean(
       record["mtool_optimizer_enable"],
       read_json_boolean(
         prefilter_config["mtool_optimizer_enable"],
-        DEFAULT_SETTING.mtool_optimizer_enable,
+        DEFAULT_PROJECT_SETTINGS.mtool_optimizer_enable,
       ),
     ),
     skip_duplicate_source_text_enable: read_json_boolean(
       record["skip_duplicate_source_text_enable"],
       read_json_boolean(
         prefilter_config["skip_duplicate_source_text_enable"],
-        DEFAULT_SETTING.skip_duplicate_source_text_enable,
+        DEFAULT_PROJECT_SETTINGS.skip_duplicate_source_text_enable,
       ),
     ),
   };
 }
 
-/** 从应用设置读取当前预过滤开关。 */
-export function read_app_prefilter_settings(setting: unknown): AppPrefilterSettings {
-  const snapshot = normalize_setting_snapshot(setting);
-  return {
-    mtool_optimizer_enable: snapshot.mtool_optimizer_enable,
-    skip_duplicate_source_text_enable: snapshot.skip_duplicate_source_text_enable,
-  };
+/** 新建工程只允许指定初始语言。 */
+export function parse_project_language_patch(value: unknown): Partial<ProjectLanguageSettings> {
+  return parse_settings_patch(value, false);
 }
 
-/** 请求边界的语言部分更新：未知字段、非字符串或不支持的语言直接拒绝。 */
-export function parse_project_language_patch(value: unknown): Partial<ProjectLanguageSettings> {
+/** 工程设置更新接受语言和严格的布尔开关，拒绝未知字段。 */
+export function parse_project_settings_patch(value: unknown): Partial<ProjectSettings> {
+  return parse_settings_patch(value, true);
+}
+
+function parse_settings_patch(value: unknown, allow_prefilter: boolean): Partial<ProjectSettings> {
   if (!is_json_record(value)) throw new AppError("request.validation_failed");
-  const patch: { -readonly [K in ProjectLanguageKey]?: ProjectLanguageSettings[K] } = {};
+  const patch: Partial<ProjectSettings> = {};
   for (const [key, raw] of Object.entries(value)) {
+    if (
+      allow_prefilter &&
+      typeof raw === "boolean" &&
+      PROJECT_PREFILTER_SETTING_KEYS.some((field) => field === key)
+    ) {
+      Object.assign(patch, { [key]: raw });
+      continue;
+    }
     const code =
       typeof raw !== "string"
         ? null

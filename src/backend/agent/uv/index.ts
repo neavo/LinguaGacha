@@ -2,6 +2,7 @@ import path from "node:path";
 import { default_native_fs as fs } from "../../../native/native-fs";
 import { request_package_source } from "../package-source";
 import { command_arguments, create_command_queue, run_command } from "../workspace/runtime/command";
+import { acquire_workspace_resource } from "../workspace/runtime/request-channel";
 import { DEFAULT_PYTHON_VERSION, UV_INDEXES, uv_configuration } from "./runtime";
 import type { UvApi } from "./types";
 
@@ -17,6 +18,17 @@ const INDEX_OPTIONS = new Set([
   "--no-index",
 ]);
 const LOCAL_OPTIONS = new Set(["--offline", "--help", "-h", "--version", "-V"]); // 不访问包索引的调用
+const HELP_OPTIONS = new Set(["--help", "-h", "--version", "-V"]);
+const READ_ONLY_COMMANDS = new Set([
+  "help",
+  "pip list",
+  "pip show",
+  "pip freeze",
+  "pip check",
+  "tool list",
+  "python list",
+  "python find",
+]);
 // 只记录取值选项以跳过其值，参数合法性仍由 uv 校验。随附 uv 升级时核对 run/tool run --help。
 const VALUE_OPTIONS = new Set([
   "--extra",
@@ -113,9 +125,12 @@ function environment(pythonRoot: string, directory: string): NodeJS.ProcessEnv {
 /**
  * 只看 uv 自己的参数，`--` 与 `run`／`tool run` 的程序名之后属于被执行程序。
  */
-function needs_default_index(argv: readonly string[]): boolean {
+function inspect_command(argv: readonly string[]): { defaultIndex: boolean; writes: boolean } {
   const words: string[] = [];
   let sync = true;
+  let default_index = true;
+  let help = false;
+  let extra_dependencies = false;
   let skip_value = false; // 取值选项后的一个参数不参与命令和程序边界判断。
   for (const arg of argv) {
     if (skip_value) {
@@ -140,13 +155,28 @@ function needs_default_index(argv: readonly string[]): boolean {
       LOCAL_OPTIONS.has(name) ||
       (arg.startsWith("-i") && !arg.startsWith("--"))
     )
-      return false;
+      default_index = false;
+    if (HELP_OPTIONS.has(name)) help = true;
+    if (
+      name === "--with" ||
+      name === "-w" ||
+      name === "--with-editable" ||
+      name === "--with-requirements"
+    )
+      extra_dependencies = true;
     if (name === "--no-sync") sync = false;
     skip_value = VALUE_OPTIONS.has(name) && !arg.includes("=");
   }
   const [command = "", subcommand = ""] = words;
-  const name = command === "pip" || command === "tool" ? `${command} ${subcommand}` : command;
-  return PACKAGE_COMMANDS.has(name) && (command !== "run" || sync);
+  const name =
+    command === "pip" || command === "tool" || command === "python"
+      ? `${command} ${subcommand}`
+      : command;
+  return {
+    defaultIndex: default_index && PACKAGE_COMMANDS.has(name) && (command !== "run" || sync),
+    writes:
+      !help && !READ_ONLY_COMMANDS.has(name) && (command !== "run" || sync || extra_dependencies),
+  };
 }
 
 /** uv 要求 `UV_PROJECT` 目录存在。种子只在目录缺失时写入，暂存后改名，中断不会留下无声明的工程。 */
@@ -195,14 +225,27 @@ export const uv: UvApi = Object.freeze({
     const { pythonRoot, runtimeDirectory, uvExecutable } = uv_configuration();
     const directory = uv.directory;
     await enqueue(async () => {
-      await initialize(directory);
       const env = environment(pythonRoot, directory);
-      await prepare_runtime(uvExecutable, runtimeDirectory, env);
-      // 清理宿主配置之后注入，显式 CLI 索引参数仍优先于该环境变量。
-      if (needs_default_index(argv))
-        env["UV_DEFAULT_INDEX"] = UV_INDEXES[await request_package_source()];
-      // 程序以工作区为 cwd，相对路径与 Node 脚本一致。工程由 `UV_PROJECT` 定位。
-      await run_command("uv", uvExecutable, ["--no-config", ...argv], { cwd: process.cwd(), env });
+      const { defaultIndex, writes } = inspect_command(argv);
+      if (!fs.exists(directory)) runtime_ready = false;
+      let release = writes || !runtime_ready ? await acquire_workspace_resource("uv") : undefined;
+      try {
+        await initialize(directory);
+        await prepare_runtime(uvExecutable, runtimeDirectory, env);
+        if (!writes && release) {
+          await release();
+          release = undefined;
+        }
+        // 清理宿主配置之后注入，显式 CLI 索引参数仍优先于该环境变量。
+        if (defaultIndex) env["UV_DEFAULT_INDEX"] = UV_INDEXES[await request_package_source()];
+        // 程序以工作区为 cwd，相对路径与 Node 脚本一致。工程由 `UV_PROJECT` 定位。
+        await run_command("uv", uvExecutable, ["--no-config", ...argv], {
+          cwd: process.cwd(),
+          env,
+        });
+      } finally {
+        await release?.();
+      }
     });
   },
 });

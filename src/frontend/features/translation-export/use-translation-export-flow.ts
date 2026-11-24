@@ -4,35 +4,24 @@ import type {
   TranslationFileGenerationRequest,
   TranslationFileGenerationResult,
 } from "@shared/translation-generation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { format_agent_reference } from "@shared/agent-reference";
 import type { ProofreadingWarningCountResponse } from "@shared/proofreading/proofreading-types";
 import { requires_agent_generation } from "@shared/translation-generation";
 import { format_agent_input_steps } from "@frontend/app/navigation/agent-input-steps";
-import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
+import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
+import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import {
+  createTranslationExportStore,
+  type TranslationExportReadyState,
+  type TranslationExportState,
+} from "@frontend/app/session/translation-export/translation-export-store";
 
-type TranslationExportReadyState = {
-  phase: "ready";
-  step: "warnings" | "files"; // 进入文件确认后，本次跳过审校的选择也随此阶段保留。
-  warning_count: number;
-  has_agent_files: boolean;
-  has_supported_files: boolean;
-  files_revision: number;
-};
-
-export type TranslationExportState =
-  | { phase: "closed" }
-  | { phase: "checking" }
-  | TranslationExportReadyState
-  | { phase: "check-failed" }
-  | {
-      phase: "exporting";
-      previous: TranslationExportReadyState; // 失败后恢复确认前的可操作界面
-    };
+export type { TranslationExportState };
 
 export type TranslationExportFlow = {
   state: TranslationExportState;
@@ -47,25 +36,21 @@ export type TranslationExportFlow = {
 
 /** 统一承接手动与任务完成后的翻译成果导出预检、确认和跳转。 */
 export function useTranslationExportFlow(): TranslationExportFlow {
+  const api_fetch = useProjectFetch();
   const { t } = useI18n();
 
   const { navigate_to_agent } = useAppNavigation();
-  const { project_snapshot, settings_snapshot } = useDesktopState();
-  const [state, set_state] = useState<TranslationExportState>({ phase: "closed" });
-  const state_ref = useRef(state); // 稳定动作读取即时 phase，阻止同一帧重复提交
+  const { project_snapshot, settings_snapshot, active_project } = useDesktopState();
+  const [local_store] = useState(createTranslationExportStore);
+  const store = active_project?.translationExport ?? local_store;
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const apply_state = store.applySnapshot;
   const project_ref = useRef(project_snapshot); // 稳定动作在开始时读取当前工程
   // loaded 状态变化也属于身份变化，关闭工程时必须失效旧流程。
   const project_identity = `${project_snapshot.loaded ? "loaded" : "empty"}:${project_snapshot.path}`;
   const previous_project_identity_ref = useRef(project_identity); // 只响应真正的项目身份切换
-  const request_id_ref = useRef(0); // 关闭、重试和项目切换都会淘汰迟到查询
 
   project_ref.current = project_snapshot;
-
-  /** 同步 React state 与动作读取的即时镜像。 */
-  const apply_state = useCallback((next_state: TranslationExportState): void => {
-    state_ref.current = next_state;
-    set_state(next_state);
-  }, []);
 
   /** 文件范围与警告由各自的查询入口提供，旧工程和旧请求不参与确认。 */
   const load_export_check = useCallback((): void => {
@@ -73,7 +58,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     if (!project.loaded || project.file_count === 0) {
       return;
     }
-    const request_id = ++request_id_ref.current;
+    const request_id = store.nextRequest();
     apply_state({ phase: "checking" });
     void Promise.all([
       api_fetch<WorkbenchQueryResponse>("/api/workbench/snapshot", {}),
@@ -83,7 +68,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     ])
       .then(([workbench, warnings]) => {
         if (
-          request_id !== request_id_ref.current ||
+          !store.isCurrent(request_id) ||
           workbench.projectPath !== project.path ||
           warnings.projectPath !== project.path
         ) {
@@ -112,39 +97,39 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       })
       .catch(() => {
         // 查询失败由弹窗提供重试与转交 Agent，不额外叠加 Toast。
-        if (request_id === request_id_ref.current) {
+        if (store.isCurrent(request_id)) {
           apply_state({ phase: "check-failed" });
         }
       });
-  }, [apply_state]);
+  }, [api_fetch, apply_state, store]);
 
   /** 从关闭态发起唯一一次翻译成果导出预检。 */
   const request_export = useCallback((): void => {
-    if (state_ref.current.phase !== "closed") {
+    if (store.getSnapshot().phase !== "closed") {
       return;
     }
     load_export_check();
-  }, [load_export_check]);
+  }, [load_export_check, store]);
 
   /** 失败态沿用同一查询入口重新检查。 */
   const retry_check = useCallback((): void => {
-    if (state_ref.current.phase !== "check-failed") {
+    if (store.getSnapshot().phase !== "check-failed") {
       return;
     }
     load_export_check();
-  }, [load_export_check]);
+  }, [load_export_check, store]);
 
   /** 下一步只确认跳过审校，目录选择和文件写出留给最终确认。 */
   const next_step = useCallback((): void => {
-    const current = state_ref.current;
+    const current = store.getSnapshot();
     if (current.phase !== "ready" || current.step !== "warnings" || !current.has_agent_files)
       return;
     apply_state({ ...current, step: "files" });
-  }, [apply_state]);
+  }, [apply_state, store]);
 
   /** 翻译成果导出期间锁定流程，失败后恢复用户确认前的状态。 */
   const confirm_export = useCallback(async (): Promise<void> => {
-    const current_state = state_ref.current;
+    const current_state = store.getSnapshot();
     if (
       current_state.phase !== "ready" ||
       !current_state.has_supported_files ||
@@ -153,7 +138,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       return;
     }
     const confirmed_state: TranslationExportReadyState = { ...current_state, step: "files" };
-    const request_id = request_id_ref.current;
+    const request_id = store.nextRequest();
     const project = project_ref.current;
     const mode = settings_snapshot.translation_save_mode; // 只有手动模式由前端提供目录。
     apply_state({ phase: "exporting", previous: current_state });
@@ -161,7 +146,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       let output_directory: string | undefined;
       if (mode === "MANUAL") {
         const result = await window.desktopApp.pickDirectory();
-        if (request_id !== request_id_ref.current) return;
+        if (!store.isCurrent(request_id)) return;
         if (result.canceled || !result.paths[0]) {
           apply_state({ phase: "closed" });
           return;
@@ -174,20 +159,27 @@ export function useTranslationExportFlow(): TranslationExportFlow {
         ...(output_directory === undefined ? {} : { output_directory }),
       };
       await api_fetch<TranslationFileGenerationResult>("/api/translation/files/generate", request);
-      if (request_id !== request_id_ref.current) return;
+      if (!store.isCurrent(request_id)) return;
       apply_state({ phase: "closed" });
     } catch (error) {
-      if (request_id !== request_id_ref.current) return;
+      if (!store.isCurrent(request_id)) return;
       push_error_toast(t("app.translation_export.log.failed"), error);
       if (error instanceof DesktopApiError && error.code === "data.revision_conflict")
         load_export_check();
       else apply_state(confirmed_state);
     }
-  }, [apply_state, load_export_check, settings_snapshot.translation_save_mode, t]);
+  }, [
+    api_fetch,
+    apply_state,
+    load_export_check,
+    settings_snapshot.translation_save_mode,
+    store,
+    t,
+  ]);
 
   /** 进入 Agent 时追加当前任务的预置指令。 */
   const jump_to_agent = useCallback((): void => {
-    const current_state = state_ref.current;
+    const current_state = store.getSnapshot();
     if (current_state.phase !== "ready" && current_state.phase !== "check-failed") return;
     let text: string;
     if (current_state.phase === "ready" && current_state.step === "warnings") {
@@ -198,21 +190,21 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     } else {
       text = `${t("app.translation_export.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`;
     }
-    request_id_ref.current += 1;
+    store.nextRequest();
     apply_state({ phase: "closed" });
     navigate_to_agent({
       text,
     });
-  }, [apply_state, navigate_to_agent, t]);
+  }, [apply_state, navigate_to_agent, store, t]);
 
   /** 非翻译成果导出态关闭弹窗，并淘汰仍在途的预检结果。 */
   const close = useCallback((): void => {
-    if (state_ref.current.phase === "exporting") {
+    if (store.getSnapshot().phase === "exporting") {
       return;
     }
-    request_id_ref.current += 1;
+    store.nextRequest();
     apply_state({ phase: "closed" });
-  }, [apply_state]);
+  }, [apply_state, store]);
 
   // 工程切换、关闭或删除最后一个文件时，淘汰确认状态和仍在途的请求。
   useEffect(() => {
@@ -223,9 +215,9 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       return;
     }
     previous_project_identity_ref.current = project_identity;
-    request_id_ref.current += 1;
+    store.nextRequest();
     apply_state({ phase: "closed" });
-  }, [apply_state, project_identity, project_snapshot.file_count]);
+  }, [apply_state, project_identity, project_snapshot.file_count, store]);
 
   return useMemo(
     () => ({

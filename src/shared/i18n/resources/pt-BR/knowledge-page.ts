@@ -1,5 +1,4 @@
 export const pt_br_knowledge_page = {
-  title: "Conhecimento",
   builtin: "Habilidades integradas",
   user: "Habilidades do usuário",
   knowledge: "Conhecimento do projeto",
@@ -8,19 +7,11 @@ export const pt_br_knowledge_page = {
   },
   readonly: "Somente leitura",
   personality_description: "Configurações de personalidade do assistente inteligente",
-  knowledge_description: "Configurações, convenções e progresso salvos com o projeto",
   install: {
     title: "Guia de instalação",
     description: "Envie o link da habilidade para o AGENT e peça que ele a instale",
     placeholder: "[Insira o link da habilidade aqui]",
     request: "Por favor, instale esta habilidade para mim: {PLACEHOLDER}",
-  },
-  knowledge_create: {
-    title: "Guia de registro",
-    description:
-      "Informe ao AGENT as configurações, convenções ou conclusões a registrar, e ele as organizará como conhecimento do projeto",
-    placeholder: "[Descreva aqui o que deve ser registrado]",
-    request: "Por favor, registre isso como conhecimento do projeto: {PLACEHOLDER}",
   },
   editor: {
     save_failed: "Falha ao salvar",

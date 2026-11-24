@@ -4,7 +4,7 @@ import type { AgentPersonality } from "../../shared/agent-personality";
 import { AppError } from "../../shared/error";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { GlobalOperationGate } from "../runtime-operation-gate";
 import { load_agent_personality } from "./agent-system-prompt";
 
 /** 管理应用级角色覆盖值；正文仍由模型请求入口拼接进系统上下文。 */
@@ -16,7 +16,7 @@ export class AgentPersonalityService {
       AppSettingService,
       "read_setting" | "save_setting" | "publish_settings_changed"
     >,
-    private readonly gate: Pick<RuntimeOperationGate, "run_skill_write">,
+    private readonly gate: Pick<GlobalOperationGate, "run_skill_write">,
   ) {}
 
   /** 返回有效正文，版本同时标识正文与是否存在用户覆盖。 */

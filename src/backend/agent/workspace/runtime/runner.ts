@@ -54,7 +54,7 @@ export type AgentWorkspaceRunRequest = AgentExecutionRequest &
     inspectSources?: WorkspaceInspectSourcesPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
     emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
     doing?: (text: string | null) => Promise<void>; // 本次执行借用会话写入口，不持有状态副本
-    packageSource?: (signal: AbortSignal) => Promise<PackageSource>; // 已绑定受理时的对话
+    packageSource?: (signal: AbortSignal) => Promise<PackageSource>; // 应用共用的默认源查询
   }>;
 
 type WorkspaceProcessResult = {
@@ -169,7 +169,7 @@ export class AgentWorkspaceRunner {
       cwd: workspace_path,
       // 启动参数由 runner 拥有，禁止继承父进程的 Node 注入选项。入口标记只交给根进程。
       env: { ...env, [AGENT_WORKSPACE_ENTRY_ENV]: "1" },
-      // Windows 跳过 libuv 的隐式 Job，让所有目标共用监管程序持有的具名 Job。
+      // Windows 跳过 libuv 的隐式 Job，由本次监管程序登记目标。
       detached: true,
       windowsHide: true,
       stdio: ["ignore", stdout.fd, stderr.fd, "ipc"],
@@ -212,6 +212,7 @@ export class AgentWorkspaceRunner {
     return new Promise((resolve, reject) => {
       const child = fork(script_path, [], launch_options);
       const requests = new Map<number, AbortController>();
+      const leases = new Map<number, () => void>();
       const operations = new Set<Promise<void>>(); // 回收前等待宿主资源实际结算
       let closed = false;
       let terminal_error: unknown; // 首个终止原因拥有结果，close 只负责回收与结算
@@ -243,6 +244,27 @@ export class AgentWorkspaceRunner {
         requests.set(id, controller);
         // 生命周期归 runner，参数校验与业务执行归具体工具。
         const execute = async () => {
+          if (request.kind === "acquire_resource") {
+            const { resource } = request;
+            if (resource !== "npm" && resource !== "uv" && resource !== "gpu")
+              throw new Error("Invalid workspace resource.");
+            const release = await this.execution.acquire_resource(
+              owner,
+              resource,
+              controller.signal,
+            );
+            if (controller.signal.aborted) {
+              release();
+              throw controller.signal.reason;
+            }
+            leases.set(id, release);
+            return id;
+          }
+          if (request.kind === "release_resource") {
+            leases.get(request.lease)?.();
+            leases.delete(request.lease);
+            return null;
+          }
           if (request.kind === "search")
             return execute_search_request(request, controller.signal, run_request.search);
           if (request.kind === "doing")

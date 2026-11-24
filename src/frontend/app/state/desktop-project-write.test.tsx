@@ -290,6 +290,7 @@ describe("normalize_project_write_result", () => {
         {
           eventId: "write-quality-1",
           source: "quality_rule_update",
+          projectId: "project",
           projectPath: "E:/demo/demo.lg",
           projectRevision: 2,
           updatedSections: ["quality"],
@@ -307,6 +308,7 @@ describe("normalize_project_write_result", () => {
         {
           eventId: "write-quality-1",
           source: "quality_rule_update",
+          projectId: "project",
           projectPath: "E:/demo/demo.lg",
           projectRevision: 2,
           updatedSections: ["quality"],
@@ -338,6 +340,7 @@ describe("normalize_project_write_result", () => {
           {
             eventId: "write-invalid-1",
             source: "invalid",
+            projectId: "project",
             projectPath: "E:/demo/demo.lg",
             projectRevision: 2,
             updatedSections: [],

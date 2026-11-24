@@ -6,9 +6,11 @@ import { AppError } from "../../shared/error";
 
 export const ACTIVE_AGENT_CHAT_KEY = "active_chat";
 
-export type AgentChatRecord = { id: string; data: { uploads: AgentFileAttachment[] } };
+export type AgentChatRecord = {
+  id: string;
+  data: { documentKey?: string; uploads: AgentFileAttachment[] };
+};
 
-// ponytail: 首版每个工程只保留一个产品对话。多对话删除上线时改为按会话树回收 SDK 记录。
 const SDK_TABLES = [
   "document_revisions",
   "documents",
@@ -64,7 +66,16 @@ export class AgentChatStorage {
       )
     )
       throw new AppError("file.invalid_structure");
-    return { id, data: { uploads: message.attachments as AgentFileAttachment[] } };
+    const documentKey = "documentKey" in data ? data.documentKey : undefined;
+    if (documentKey !== undefined && (typeof documentKey !== "string" || documentKey === ""))
+      throw new AppError("file.invalid_structure");
+    return {
+      id,
+      data: {
+        ...(documentKey === undefined ? {} : { documentKey }),
+        uploads: message.attachments as AgentFileAttachment[],
+      },
+    };
   }
 
   /** 登记工作区已生成的身份，与激活指针一起提交，上传可先于第一条模型消息发生。 */
@@ -76,6 +87,25 @@ export class AgentChatStorage {
         "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         ACTIVE_AGENT_CHAT_KEY,
         JSON.stringify(id),
+      );
+    });
+    return { id, data };
+  }
+
+  /** 工程副本获得独立本机目录，已提交的 SDK 文档继续使用原键。 */
+  public async replace_id(record: AgentChatRecord, id: string): Promise<AgentChatRecord> {
+    const data = { ...record.data, documentKey: record.data.documentKey ?? record.id };
+    await this.database.transaction(async (tx) => {
+      await tx.run(
+        "UPDATE agent_chats SET id = ?, data = ? WHERE id = ?",
+        id,
+        JSON.stringify(data),
+        record.id,
+      );
+      await tx.run(
+        "UPDATE meta SET value = ? WHERE key = ?",
+        JSON.stringify(id),
+        ACTIVE_AGENT_CHAT_KEY,
       );
     });
     return { id, data };

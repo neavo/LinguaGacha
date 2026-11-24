@@ -1,71 +1,22 @@
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { type JSX, startTransition } from "react";
-
-import { useI18n } from "@frontend/app/locale/locale-context";
-import { useSidebar } from "@frontend/shadcn/sidebar-context";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
-import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
-import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
+import type { JSX } from "react";
 import "@frontend/app/shell/app-titlebar.css";
 
 type AppTitlebarProps = {
   title: string;
 };
 
-/** 标题栏共享侧栏切换入口。启动时展示操作提示，后续开关由 `Tooltip` 管理。 */
+/** 标题栏使用宿主提供的安全区与版本。 */
 export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
-  const { t } = useI18n();
-  const { state, toggleSidebar } = useSidebar();
   const version = window.desktopApp.appVersion;
   const version_label = /^v/iu.test(version) ? version : `v${version}`;
   const shell_info = window.desktopApp.shell; // 标题栏安全区统一来自 preload 暴露的桌面壳层信息，避免渲染层再猜平台细节
-  const SidebarToggleIcon = state === "expanded" ? PanelLeftClose : PanelLeftOpen;
-  const toggle_label = t(
-    state === "expanded"
-      ? "app.navigation_action.collapse_sidebar"
-      : "app.navigation_action.expand_sidebar",
-  );
-  /** 点击与快捷键共用低优先级布局更新，避免阻塞正在处理的输入。 */
-  function handle_toggle_sidebar(): void {
-    startTransition(toggleSidebar);
-  }
-  useActionShortcut({
-    action: "toggle_sidebar",
-    enabled: true,
-    on_trigger: handle_toggle_sidebar,
-  });
-
   return (
     <header className="shell-topbar" data-titlebar-control-side={shell_info.titleBarControlSide}>
       <div className="topbar__safe-area topbar__safe-area--start" aria-hidden="true" />
       <div className="topbar__content">
-        <div className="topbar__left">
-          <Tooltip defaultOpen>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  className="topbar__menu-button"
-                  aria-label={toggle_label}
-                  aria-expanded={state === "expanded"}
-                  aria-keyshortcuts={get_shortcut_aria_keys("toggle_sidebar")}
-                  onClick={handle_toggle_sidebar}
-                >
-                  <SidebarToggleIcon size={18} aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent side="bottom" align="start">
-              <ShortcutTooltipRow label={toggle_label} shortcut="toggle_sidebar" />
-            </TooltipContent>
-          </Tooltip>
-          <div className="topbar__brand">
-            <strong className="font-medium">
-              {props.title} {version_label}
-            </strong>
-          </div>
-        </div>
+        <strong className="topbar__brand font-medium">
+          {props.title} {version_label}
+        </strong>
       </div>
       <div className="topbar__safe-area topbar__safe-area--end" aria-hidden="true" />
     </header>

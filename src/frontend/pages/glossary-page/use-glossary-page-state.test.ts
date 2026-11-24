@@ -1,4 +1,3 @@
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +6,8 @@ import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debo
 import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
 import { useGlossaryPageState } from "./use-glossary-page-state";
 import type { GlossaryEntry } from "./types";
+
+const page_ui = new Map<string, unknown>();
 
 const {
   api_fetch_mock,
@@ -208,7 +209,10 @@ vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async 
     >();
   return {
     ...actual,
-    read_quality_rule_snapshot: read_quality_rule_snapshot_mock,
+    createQualityRuleApi: (request: Parameters<typeof actual.createQualityRuleApi>[0]) => ({
+      ...actual.createQualityRuleApi(request),
+      read_quality_rule_snapshot: read_quality_rule_snapshot_mock,
+    }),
   };
 });
 
@@ -224,6 +228,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => {
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => ({
+      active_project: { pageUi: page_ui },
       project_snapshot: run_state.project,
       project_change_signal: {
         seq: project_change_seq,
@@ -300,6 +305,7 @@ describe("useGlossaryPageState", () => {
   let render_version = 0;
 
   beforeEach(() => {
+    page_ui.clear();
     project_store_listeners.clear();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
@@ -353,16 +359,12 @@ describe("useGlossaryPageState", () => {
     project_change_seq += 1;
     await act(async () => {
       root?.render(
-        createElement(
-          ProjectSessionUiStateProvider,
-          null,
-          createElement(Probe, {
-            render_version,
-            on_ready: (state) => {
-              latest_state = state;
-            },
-          }),
-        ),
+        createElement(Probe, {
+          render_version,
+          on_ready: (state) => {
+            latest_state = state;
+          },
+        }),
       );
     });
     await act(async () => {
@@ -1481,9 +1483,9 @@ describe("useGlossaryPageState", () => {
       });
     });
 
-    // 页面卸载时会话 Provider 继续存活，按真实路由生命周期恢复状态。
+    // 页面卸载时工程 pageUi 容器继续存活，按真实路由生命周期恢复状态。
     await act(async () => {
-      root?.render(createElement(ProjectSessionUiStateProvider, { children: null }));
+      root?.render(null);
     });
     await rerender_probe();
 

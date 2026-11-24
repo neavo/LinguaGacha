@@ -60,7 +60,6 @@ vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
   ...chat_mocks,
   api_blob: async () => new Blob([], { type: "image/png" }),
-  api_file_url: (path: string) => `http://localhost${path}`,
   api_upload: image_mocks.upload,
 }));
 vi.mock("@frontend/app/appearance/appearance-context", () => ({

@@ -50,6 +50,7 @@ export const de_de_app = {
     cancel: "Abbrechen",
     confirm: "Bestätigen",
     close: "Schließen",
+    open: "Öffnen",
     create: "Erstellen",
     delete: "Löschen",
     edit: "Bearbeiten",
@@ -93,7 +94,7 @@ export const de_de_app = {
     import_success: "Daten importiert",
     no_valid_data: "Keine gültigen Daten",
     update_failed: "Aktualisierung fehlgeschlagen …",
-    project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen",
+    project_settings_saved: "Projekteinstellungen gespeichert",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -101,10 +102,16 @@ export const de_de_app = {
     description:
       "Dieses Fenster wurde in die geschützte Ansicht gewechselt, und die Fehlerdetails wurden in die Protokolle geschrieben …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool-Optimierer",
-      skip_duplicate_source_text_enable: "Doppelten Ausgangstext überspringen",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool-Optimierer",
+      description:
+        "Für MTool-Text <emphasis>reduziert dies die Übersetzungszeit und Token um bis zu 40%</emphasis>.\nStandardmäßig aktiviert.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "Doppelten Ausgangstext überspringen",
+      description:
+        "Einträge mit identischem Text im gesamten Projekt teilen <emphasis>eine Übersetzung</emphasis>.\nStandardmäßig aktiviert.",
     },
   },
   close_confirm: {
@@ -119,6 +126,8 @@ export const de_de_app = {
     launching: "Wird verarbeitet …",
   },
   drop: {
+    release: "Zum Anwenden loslassen",
+    project_only: "Hier können nur .lg-Projektdateien abgelegt werden",
     select_multiple_unavailable:
       "Es kann nur eine Datei oder ein Ordner gleichzeitig abgelegt werden",
     select_unavailable:
@@ -126,7 +135,6 @@ export const de_de_app = {
     multiple_unavailable: "Es kann nur eine Datei gleichzeitig abgelegt werden",
     unavailable:
       "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte stattdessen per Klick importieren …",
-    import_here: "Zum Importieren der Regeldatei loslassen",
   },
   toggle: {
     option: {
@@ -170,9 +178,24 @@ export const de_de_app = {
     ID: "Indonesisch",
     VI: "Vietnamesisch",
   },
+  workspace: {
+    projects: "Projekte",
+    projects_empty: "Keine Projekte",
+    skills: "Skills",
+    workbench: "Arbeitsbereich",
+    quality: "Übersetzungsqualität",
+    more: "Mehr",
+    close_chat: "Unterhaltung schließen",
+    close_chat_confirm: "Unterhaltung wirklich schließen …?",
+    reveal_path: "Im Ordner anzeigen",
+    remove_recent: "Aus Liste entfernen",
+    remove_confirm:
+      "Projekt wirklich schließen und aus der Liste zuletzt geöffneter Projekte entfernen …?",
+    close_busy: "Ein Projektvorgang läuft",
+    files: "Dateien",
+  },
   navigation_action: {
-    expand_sidebar: "Seitenleiste ausklappen",
-    collapse_sidebar: "Seitenleiste einklappen",
+    resize_sidebar: "Breite der Seitenleiste ändern",
     appearance: "Darstellung",
     font: "Schriftart",
     font_size: "Schriftgröße",
@@ -216,7 +239,7 @@ export const de_de_app = {
     confirmation: {
       agent_description:
         "Dieses Projekt enthält Assets, die AGENT zurückschreiben muss. Der direkte Export überspringt diese Assets …",
-      description: "Die derzeit verfügbaren Übersetzungen exportieren?",
+      description: "Die derzeit verfügbaren Übersetzungen wirklich exportieren …?",
       checking: "Projektdateien und Korrekturwarnungen werden geprüft …",
       check_failed:
         "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Erneut prüfen oder von AGENT bearbeiten lassen …",

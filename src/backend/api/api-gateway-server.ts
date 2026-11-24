@@ -1,3 +1,4 @@
+import type { AgentService } from "../agent/agent-service";
 import type { AgentPersonalityService } from "../agent/agent-personality-service";
 import type { AgentSkillsApi } from "../agent/agent-skills-service";
 import type { Server } from "node:http";
@@ -10,7 +11,6 @@ import { record_app_error } from "../log/app-error-reporter";
 import { renderer_error_report_to_log_payload } from "../log/renderer-error-log-adapter";
 import type { LogPageRequest } from "../../shared/log";
 import type { BackendServices } from "../bootstrap/backend-services";
-import type { AgentService } from "../agent/agent-service";
 import type { ApiStreamHub } from "./api-stream-hub";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -31,8 +31,7 @@ const CORS_ALLOWED_HEADERS = "Content-Type"; // 上传与 JSON 请求共用标�
  * Gateway 启动参数由 GUI Backend 组合根注入，路由层只消费已组装的服务与传输端口。
  */
 export interface ApiGatewayServerOptions {
-  backendServices: BackendServices;
-  agentService: AgentService;
+  backendServices: BackendServices<AgentService>;
   skillsService: AgentSkillsApi;
   personalityService: Pick<AgentPersonalityService, "read" | "save">;
   eventStream: ApiStreamHub;
@@ -159,7 +158,6 @@ export class ApiGatewayServer {
     const route_context: ApiRouteContext = {
       app,
       services,
-      agent: this.options.agentService,
       skills: this.options.skillsService,
       personality: this.options.personalityService,
       postJson: (path_name, handler) =>

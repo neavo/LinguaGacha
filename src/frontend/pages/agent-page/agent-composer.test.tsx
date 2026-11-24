@@ -198,7 +198,6 @@ describe("AgentComposer", () => {
             command={null}
             can_continue_queue={false}
             queue_full={false}
-            can_reset={true}
             context={{ tokens: null, compactable: false, limits: null }}
             usage={{ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }}
             model_selection={{
@@ -227,7 +226,6 @@ describe("AgentComposer", () => {
             approval_disabled={false}
             on_approval_mode_change={vi.fn()}
             on_stop={async () => {}}
-            on_reset={vi.fn()}
             {...options}
           />
         </TooltipProvider>,

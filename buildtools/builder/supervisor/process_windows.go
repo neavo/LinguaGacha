@@ -26,8 +26,15 @@ type supervisor struct {
 	thread windows.Handle // 暂停创建的线程登记后才恢复，恢复时关闭句柄。
 }
 
-// 同一真实锁文件采用稳定 Job 身份，新租约先回收旧目标。
+// 普通脚本持有独立 Job。带锁操作采用稳定 Job 身份，接管同一锁的残留目标。
 func acquire(path string) (*supervisor, error) {
+	if path == "" {
+		owner := &supervisor{}
+		if err := owner.openJob(nil); err != nil {
+			return nil, errors.Join(err, owner.close())
+		}
+		return owner, nil
+	}
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
@@ -50,7 +57,15 @@ func acquire(path string) (*supervisor, error) {
 	identity := strings.ToLower(windows.UTF16ToString(buffer[:count]))
 	// Job 身份跨可执行文件重命名保持稳定，供新版本回收旧实例的残留进程。
 	jobName, _ := windows.UTF16PtrFromString(fmt.Sprintf("Global\\LinguaGacha-Agent-%x", sha256.Sum256([]byte(identity))))
-	owner.job, err = windows.CreateJobObject(nil, jobName)
+	if err := owner.openJob(jobName); err != nil {
+		return nil, errors.Join(err, owner.close())
+	}
+	return owner, nil
+}
+
+func (owner *supervisor) openJob(name *uint16) error {
+	var err error
+	owner.job, err = windows.CreateJobObject(nil, name)
 	if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
 		err = nil
 	}
@@ -62,10 +77,7 @@ func acquire(path string) (*supervisor, error) {
 		limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
 		_, err = windows.SetInformationJobObject(owner.job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits)))
 	}
-	if err != nil {
-		return nil, errors.Join(err, owner.close())
-	}
-	return owner, nil
+	return err
 }
 
 // 新进程暂停创建，原生 fork 则依靠 bootstrap 屏障等待登记。

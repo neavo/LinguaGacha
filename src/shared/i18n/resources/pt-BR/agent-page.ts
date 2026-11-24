@@ -1,5 +1,5 @@
 export const pt_br_agent_page = {
-  project_required: "Crie ou abra um arquivo de projeto primeiro …",
+  project_required: "Clique primeiro no botão à esquerda para criar ou abrir um projeto …",
   document: {
     conversation: "Conversa",
     open: "Abrir",
@@ -51,11 +51,10 @@ export const pt_br_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Arraste arquivos ou pastas e traduza com um clique …!",
+    no_project_placeholder: "Solte arquivos ou pastas para criar um projeto de tradução …",
     placeholder: "Descreva uma tarefa ou digite @ para selecionar uma habilidade ou instrução …",
     edit_assistant_placeholder: "Editar a resposta do modelo …",
     newline: "Nova linha",
-    drop_files: "Solte para adicionar arquivos",
   },
   mention: {
     files: {
@@ -149,7 +148,6 @@ export const pt_br_agent_page = {
     send: "Enviar",
     stop: "Parar",
     applying: "Aplicando alterações do projeto; isso não pode ser interrompido até a conclusão",
-    new_task: "Nova tarefa",
     add_file: "Arquivos",
     common_instructions: "Instruções",
     continue: "Continuar",
@@ -173,7 +171,6 @@ export const pt_br_agent_page = {
   },
   confirm: {
     fork: "Criar uma nova conversa bifurcando a partir desta resposta?",
-    new_task: "Confirma o início de uma nova tarefa de conversa …?",
     thinking_off:
       "A inteligência do AGENT nas tarefas cai significativamente com o raciocínio do modelo desativado. Confirma continuar …?",
   },
@@ -206,7 +203,6 @@ export const pt_br_agent_page = {
     continue: "A tarefa não pôde continuar. Tente novamente …",
     queue_send: "A mensagem não pôde ser enviada agora. Permanece na fila …",
     stop: "A tarefa não pôde ser interrompida. Tente novamente …",
-    reset: "Uma nova tarefa não pôde ser criada. Tente novamente …",
     approval_mode: "Não foi possível atualizar o modo de aprovação de escrita. Tente novamente …",
     compact: "O contexto não pôde ser compactado. Tente novamente …",
   },

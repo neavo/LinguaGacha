@@ -3,7 +3,6 @@ import { project_knowledge_template, record_source_paths } from "./project-knowl
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { read_godot_pack_orders } from "../file/godot/source";
 import type { GamePrepareExecution } from "../file/shared/game/prepare-worker";
-import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
 import type { ProjectDatabaseAccess } from "../database/database-operations";
 import type { ProjectPreviewResponse } from "../../shared/project-preview";
@@ -29,109 +28,47 @@ import {
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import {
-  read_json_record,
-  type JsonRecord,
-  type JsonValue,
-  type MutableJsonRecord,
-} from "../../domain/json";
-import {
-  APP_PREFILTER_SETTING_KEYS,
   DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+  DEFAULT_PROJECT_SETTINGS,
   parse_project_language_patch,
-  read_app_prefilter_settings,
-  read_project_prefilter_settings,
-  type AppPrefilterSettingKey,
-  type AppPrefilterSettings,
   type ProjectLanguageSettings,
-  type ProjectSettingsSnapshot,
+  type ProjectSettings,
 } from "../../domain/project-settings";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
-import type { ProjectWriteResult } from "../../shared/project-event";
 import {
-  compute_project_prefilter_write,
+  compute_project_prefilter_items,
   build_translation_extras_from_items,
-  type ProjectPrefilterWriteInput,
-  type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
-import {
-  ProjectDataReader,
-  type ProjectDataSnapshot,
-  build_section_revisions_from_meta,
-} from "./project-data-reader";
-import type { CacheManager } from "../cache/cache-manager";
+import { ProjectDataReader, type ProjectDataSnapshot } from "./project-data-reader";
 import {
   ProjectDefaultPresetReader,
   type ProjectDefaultPresetInput,
 } from "./project-default-preset-reader";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "./project-session-state";
-import type { ProjectWriteStore } from "./project-write-store";
 import {
   resolve_project_prompt_storage,
   resolve_project_quality_rule_storage,
-  type ProjectTaskInput,
 } from "./project-task-input";
 
 const INITIAL_PRESET_REVISION = 1;
 
-/** 打开时应用级预过滤开关的对齐摘要，前端据此展示既有对齐提示。 */
-type ProjectSettingsAlignment = {
-  settings: AppPrefilterSettings;
-  changed: Record<AppPrefilterSettingKey, boolean>;
-};
-
-/**
- * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
- */
+/** 负责磁盘工程的预览、创建和迁移，由组合根管理打开的工程。 */
 export class ProjectLifecycleService {
-  private readonly database: ProjectDatabase; // .lg 物理事实唯一写入口，项目域只拼受限 operation
+  private readonly default_preset_reader: ProjectDefaultPresetReader;
 
-  private readonly runtime_gate: RuntimeOperationGate; // 工程生命周期与模型运行共享同一互斥事实
-
-  private readonly session_state: ProjectSessionState; // 渲染进程可见 loaded/path 的唯一权威
-
-  private readonly app_setting_service: AppSettingService; // 提供当前应用设置，用于打开预演与默认预设选择
-
-  private readonly log_manager: LogManager; // 记录生命周期解析失败和诊断，响应体不扩大公开协议
-
-  private readonly cache: Pick<
-    CacheManager,
-    "installProject" | "clearProject" | "languages" | "files"
-  >; // 安装已提交事实，失败会阻断 loaded。
-
-  private readonly write_store: ProjectWriteStore; // loaded 工程任务输入统一交给运行期唯一写入口
-
-  private readonly native_fs: NativeFs; // 项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
-
-  private readonly default_preset_reader: ProjectDefaultPresetReader; // 隔离默认预设文件读取和非阻断日志
-
-  /**
-   * 初始化项目生命周期依赖，保持公开路由层只负责装配
-   */
+  /** 创建时通过同一入口加载当前应用的默认预设。 */
   public constructor(
     private readonly game_directory_operations: GameDirectoryOperations,
-    database: ProjectDatabase,
-    runtime_gate: RuntimeOperationGate,
-    session_state: ProjectSessionState,
-    app_setting_service: AppSettingService,
+    private readonly database: ProjectDatabase,
+    private readonly app_setting_service: AppSettingService,
     paths: AppPathService,
-    log_manager: LogManager,
-    cache: Pick<CacheManager, "installProject" | "clearProject" | "languages" | "files">,
-    write_store: ProjectWriteStore,
-    native_fs: NativeFs = default_native_fs,
+    private readonly log_manager: LogManager,
+    private readonly native_fs: NativeFs = default_native_fs,
     private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
-    this.database = database;
-    this.runtime_gate = runtime_gate;
-    this.session_state = session_state;
-    this.app_setting_service = app_setting_service;
-    this.log_manager = log_manager;
-    this.cache = cache;
-    this.write_store = write_store;
-    this.native_fs = native_fs;
     this.default_preset_reader = new ProjectDefaultPresetReader(
       app_setting_service,
       paths,
@@ -140,121 +77,29 @@ export class ProjectLifecycleService {
     );
   }
 
-  /**
-   * 会话提供工程身份，缓存提供已提交的文件数量和语言。
-   */
-  public async get_project_snapshot(): Promise<JsonRecord> {
-    const state = this.session_state.snapshot();
-    return {
-      project: {
-        path: state.projectPath,
-        loaded: state.loaded,
-        file_count: state.loaded ? this.cache.files.readFileEntries().length : 0,
-        languages: state.loaded ? this.cache.languages.readBlock() : null,
-      },
-    };
-  }
-
-  /**
-   * 加载既有 .lg，并在标记会话 loaded 前完成打开期 operation 迁移
-   */
-  public async load_project(body: JsonRecord): Promise<JsonRecord> {
-    return await this.runtime_gate.run_project_write(
-      async () => await this.load_project_under_lease(body),
-    );
-  }
-
-  /**
-   * 在生命周期租约内准备旧工程事实，事务成功后激活会话。
-   */
-  private async load_project_under_lease(body: JsonRecord): Promise<JsonRecord> {
-    const project_path = this.require_body_string(body, "path");
-    let committed = false; // 包含连接释放在内的提交后步骤都只能要求恢复。
-    try {
-      await this.database.prepare(project_path, body["confirmed_target_app_version"]);
-      // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-      const migration_writes = await build_project_open_writes({
-        project_path,
-        database: this.database,
-      });
-
-      const opened = await this.database.transaction(project_path, (writer) => {
-        writer.set_meta(project_path, "updated_at", this.build_timestamp());
-        for (const write of migration_writes) {
-          write(writer);
-        }
-        return this.align_open_project_settings(
-          writer,
-          project_path,
-          new ProjectDataReader(writer).read_snapshot(project_path),
-        );
-      });
-      committed = true;
-      const response = await this.activate_project(project_path, opened.snapshot);
-      return opened.alignment === null
-        ? response
-        : { ...response, settings_alignment: opened.alignment as unknown as JsonValue };
-    } catch (cause) {
-      if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
-      if (!committed) throw cause;
-      throw new AppErrors.AppError("data.committed_sync_failed", {
-        cause,
-        public_details: { committed: true, action: "reload_project" },
-        diagnostic_context: { operation: "load_project_after_commit" },
-      });
-    }
-  }
-
-  /**
-   * 打开事务内对齐应用级预过滤开关，开关一致时只协调迁移后的重复条目。
-   */
-  private align_open_project_settings(
-    writer: ProjectDatabaseAccess,
+  /** 迁移和重复条目协调完成后返回可安装的工程事实。 */
+  public async load_project(
     project_path: string,
-    snapshot: ProjectDataSnapshot,
-  ): { snapshot: ProjectDataSnapshot; alignment: ProjectSettingsAlignment | null } {
-    const { meta, items } = snapshot;
-    const app_settings = read_app_prefilter_settings(this.app_setting_service.read_setting());
-    const stored_settings = read_project_prefilter_settings(meta);
-    const changed = Object.fromEntries(
-      APP_PREFILTER_SETTING_KEYS.map((key) => [
-        key,
-        this.is_setting_mirror_missing(meta, key) || stored_settings[key] !== app_settings[key],
-      ]),
-    ) as Record<AppPrefilterSettingKey, boolean>;
-    if (!Object.values(changed).some(Boolean)) {
-      return {
-        snapshot: this.coordinate_open_project_duplicates(writer, project_path, snapshot),
-        alignment: null,
-      };
-    }
-    // 预过滤同时完成重复条目协调，只回写状态变化的条目。
-    const output = compute_project_prefilter_write({
-      state: {
-        files: { ...snapshot.files },
-        items: Object.fromEntries(items.map((item) => [String(item.item_id), item])),
-      },
-      progress: normalize_batch_translation_progress(meta["translation_extras"]),
-      ...this.build_prefilter_input({ ...snapshot.languages, ...app_settings }),
-    });
-    const next_items = items.map((item) => output.items[String(item.item_id)] ?? item);
-    writer.patch_item_translation_fields(
+    confirmed_target_app_version: unknown,
+  ): Promise<ProjectDataSnapshot> {
+    await this.database.prepare(project_path, confirmed_target_app_version);
+    // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
+    const migration_writes = await build_project_open_writes({
       project_path,
-      next_items
-        .filter((item, index) => item.status !== items[index]!.status)
-        .map((item) => ({ item_id: item.item_id, next: item })),
-    );
-    const meta_entries: MutableJsonRecord = {
-      mtool_optimizer_enable: app_settings.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable: app_settings.skip_duplicate_source_text_enable,
-      prefilter_config: output.prefilter_config as unknown as JsonValue,
-      translation_extras: output.translation_extras as unknown as JsonValue,
-    };
-    writer.upsert_meta_entries(project_path, meta_entries);
-    return {
-      snapshot: { ...snapshot, items: next_items, meta: { ...meta, ...meta_entries } },
-      alignment: { settings: app_settings, changed },
-    };
+      database: this.database,
+    });
+
+    return this.database.transaction(project_path, (writer) => {
+      writer.set_meta(project_path, "updated_at", this.build_timestamp());
+      for (const write of migration_writes) {
+        write(writer);
+      }
+      return this.coordinate_open_project_duplicates(
+        writer,
+        project_path,
+        new ProjectDataReader(writer).read_snapshot(project_path),
+      );
+    });
   }
 
   /** 格式迁移可能改写原文。在同一打开事务内协调最终条目，再让缓存和会话消费。 */
@@ -266,7 +111,7 @@ export class ProjectLifecycleService {
     const { meta, items } = snapshot;
     const changes = coordinate_project_duplicate_statuses(
       items,
-      read_project_prefilter_settings(meta).skip_duplicate_source_text_enable,
+      snapshot.settings.skip_duplicate_source_text_enable,
     );
     if (changes.length === 0) return snapshot;
     const statuses = new Map(changes.map(({ item_id, status }) => [item_id, status]));
@@ -279,53 +124,19 @@ export class ProjectLifecycleService {
       .map((item) => ({ item_id: item.item_id, next: item }));
     writer.patch_item_translation_fields(project_path, writes);
     const translation_extras = build_translation_extras_from_items({
-      progress: normalize_batch_translation_progress(meta["translation_extras"]),
+      progress: meta["translation_extras"],
       items: next_items,
-    }) as unknown as JsonValue;
+    });
     writer.set_meta(project_path, "translation_extras", translation_extras);
     return { ...snapshot, items: next_items, meta: { ...meta, translation_extras } };
   }
 
-  /** 新建与加载共用提交后激活和恢复错误协议。 */
-  private async activate_project(
-    project_path: string,
-    snapshot: ProjectDataSnapshot,
-  ): Promise<JsonRecord> {
-    try {
-      this.cache.installProject(project_path, snapshot);
-      await this.session_state.mark_loaded(project_path);
-      return await this.get_project_snapshot();
-    } catch (cause) {
-      if (AppErrors.is_app_error(cause) && cause.code === "data.committed_sync_failed") throw cause;
-      throw new AppErrors.AppError("data.committed_sync_failed", {
-        cause,
-        public_details: { committed: true, action: "reload_project" },
-        diagnostic_context: { operation: "activate_project_after_commit" },
-      });
-    }
-  }
-
-  /**
-   * 后端按用户源路径生成当前格式工程事实，提交后直接激活。
-   */
+  /** 先建立文件，再由组合根装配打开周期。 */
   public async create_project_commit(
-    body: JsonRecord,
-    on_game_sources_detected?: () => void,
-  ): Promise<JsonRecord> {
-    return await this.runtime_gate.run_project_write(
-      async (signal) =>
-        await this.create_project_commit_under_lease(body, signal, on_game_sources_detected),
-    );
-  }
-
-  /**
-   * 新建工程的慢解析、数据库提交与 loaded 切换必须处于同一生命周期租约。
-   */
-  private async create_project_commit_under_lease(
     body: JsonRecord,
     signal: AbortSignal,
     on_game_sources_detected?: () => void,
-  ): Promise<JsonRecord> {
+  ) {
     const requested_project_path = this.require_body_string(body, "path");
     const project_path = this.resolve_create_project_path(requested_project_path);
     this.assert_no_legacy_create_commit_fields(body);
@@ -355,10 +166,7 @@ export class ProjectLifecycleService {
       signal.throwIfAborted();
       this.assert_create_commit_has_importable_files(parsed_draft);
       // 将可信草稿转成持久项目事实的唯一计算结果。
-      const prefilter_output = this.compute_create_project_prefilter_output({
-        draft: parsed_draft,
-        settings: project_settings,
-      });
+      const items = this.prefilter_create_project_items(parsed_draft, project_settings);
       const default_preset_input = this.default_preset_reader.read();
       let snapshot!: ProjectDataSnapshot; // 初始化事务同步产出，失败时数据库入口抛错并清理新文件。
 
@@ -383,30 +191,25 @@ export class ProjectLifecycleService {
         }
         writer.set_items(
           project_path,
-          build_project_item_persistent_records(prefilter_output.items) as unknown as JsonValue[],
-        );
-        writer.upsert_meta_entries(
-          project_path,
-          this.build_project_settings_meta({
-            project_settings,
-            prefilter_output,
-          }) as unknown as JsonRecord,
+          build_project_item_persistent_records(items) as unknown as JsonValue[],
         );
         writer.upsert_meta_entries(project_path, {
+          ...project_settings,
+          translation_extras: build_translation_extras_from_items({ items: Object.values(items) }),
           "migration.asset_file_type_complete": true,
         });
         // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。
         snapshot = new ProjectDataReader(writer).read_snapshot(
           project_path,
-          Object.values(prefilter_output.items).sort((left, right) => left.item_id - right.item_id),
+          Object.values(items).sort((left, right) => left.item_id - right.item_id),
         );
       });
 
       saved_assets = parsed_draft.files.length; // 激活失败仍由外层回执保留已经提交的资产数量。
-      const response = await this.activate_project(project_path, snapshot);
       this.default_preset_reader.log_loaded_names(default_preset_input.loaded_names);
       return {
-        ...response,
+        path: project_path,
+        snapshot,
         source_operation: {
           saved_assets: parsed_draft.files.length,
           directory_changes: parsed_draft.directory_changes,
@@ -416,26 +219,6 @@ export class ProjectLifecycleService {
       if (signal.aborted) throw error;
       throw source_operation_error(error, parsed_draft.directory_changes, saved_assets);
     }
-  }
-
-  /**
-   * 为当前 loaded 工程一次性应用领域任务输入，CLI 无需理解 Store 或物理 meta。
-   */
-  public async apply_task_input(input: ProjectTaskInput): Promise<ProjectWriteResult> {
-    return await this.runtime_gate.run_project_write(async () => {
-      const project_path = this.session_state.require_loaded_project_path();
-      const section_revisions = build_section_revisions_from_meta(
-        await this.database.get_all_meta(project_path),
-      );
-      return await this.write_store.apply_task_input({
-        projectPath: project_path,
-        expectedSectionRevisions: {
-          quality: section_revisions.quality ?? 0,
-          prompts: section_revisions.prompts ?? 0,
-        },
-        input,
-      });
-    });
   }
 
   /**
@@ -491,13 +274,12 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 新建项目使用请求中的初始语言，预过滤开关读取当前应用设置。
+   * 新建工程允许指定初始语言，预过滤开关使用工程默认值。
    */
-  private read_create_project_settings(value: JsonValue | undefined): ProjectSettingsSnapshot {
+  private read_create_project_settings(value: JsonValue | undefined): ProjectSettings {
     return {
-      ...DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+      ...DEFAULT_PROJECT_SETTINGS,
       ...parse_project_language_patch(value ?? {}),
-      ...read_app_prefilter_settings(this.app_setting_service.read_setting()),
     };
   }
 
@@ -526,36 +308,22 @@ export class ProjectLifecycleService {
   /**
    * 新建预过滤直接消费解析草稿，在此校验并转换条目字段。
    */
-  private compute_create_project_prefilter_output(args: {
-    draft: SourceFileProjectDraft;
-    settings: ProjectSettingsSnapshot;
-  }): ProjectPrefilterWriteOutput {
-    return compute_project_prefilter_write({
+  private prefilter_create_project_items(
+    draft: SourceFileProjectDraft,
+    settings: ProjectSettings,
+  ): Record<string, ProjectItemPublicRecord> {
+    return compute_project_prefilter_items({
       state: {
-        files: Object.fromEntries(args.draft.files.map((file) => [file.rel_path, file])),
+        files: Object.fromEntries(draft.files.map((file) => [file.rel_path, file])),
         items: Object.fromEntries(
-          args.draft.items.map((item) => {
+          draft.items.map((item) => {
             const record = this.normalize_public_item(item);
             return [String(record.item_id), record];
           }),
         ),
       },
-      ...this.build_prefilter_input(args.settings),
+      ...settings,
     });
-  }
-
-  /** 预过滤计算只消费源语言与两个应用开关。 */
-  private build_prefilter_input(
-    settings: ProjectSettingsSnapshot,
-  ): Pick<
-    ProjectPrefilterWriteInput,
-    "source_language" | "mtool_optimizer_enable" | "skip_duplicate_source_text_enable"
-  > {
-    return {
-      source_language: settings.source_language,
-      mtool_optimizer_enable: settings.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
-    };
   }
 
   /**
@@ -589,23 +357,6 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 卸载公开工程会话，并释放 database 缓存句柄
-   */
-  public async unload_project(): Promise<JsonRecord> {
-    return await this.runtime_gate.run_project_write(async () => {
-      const state = this.session_state.snapshot();
-      if (state.loaded && state.projectPath !== "") {
-        this.cache.clearProject(state.projectPath);
-        await this.session_state.clear();
-        await this.database.close_project(state.projectPath);
-      } else {
-        await this.session_state.clear();
-      }
-      return await this.get_project_snapshot();
-    });
-  }
-
-  /**
    * 读取 .lg 摘要预览，不加载工程会话
    */
   public async get_project_preview(body: JsonRecord): Promise<ProjectPreviewResponse> {
@@ -632,30 +383,6 @@ export class ProjectLifecycleService {
       DEFAULT_PROJECT_LANGUAGE_SETTINGS,
     ).summarize_source_files(source_paths);
     return { ...summary, project_name: this.build_default_project_name(source_paths) };
-  }
-
-  /**
-   * 构建项目语言、预过滤处理记录与进度 meta
-   */
-  private build_project_settings_meta(args: {
-    project_settings: ProjectSettingsSnapshot;
-    prefilter_output: ProjectPrefilterWriteOutput;
-  }): MutableJsonRecord {
-    return {
-      source_language: args.project_settings.source_language,
-      target_language: args.project_settings.target_language,
-      mtool_optimizer_enable: args.project_settings.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable: args.project_settings.skip_duplicate_source_text_enable,
-      prefilter_config: args.prefilter_output.prefilter_config as unknown as JsonValue,
-      translation_extras: args.prefilter_output.translation_extras as unknown as JsonValue,
-    };
-  }
-
-  /**
-   * 判断项目是否缺少开关处理记录，缺字段时必须触发预过滤对齐
-   */
-  private is_setting_mirror_missing(meta: JsonRecord, key: AppPrefilterSettingKey): boolean {
-    return !(key in meta) && !(key in read_json_record(meta["prefilter_config"]));
   }
 
   /** 默认名由能判断文件类型的后端生成，落盘后只以 `.lg` 文件名为工程名。 */

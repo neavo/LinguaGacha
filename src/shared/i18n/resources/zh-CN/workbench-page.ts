@@ -1,5 +1,4 @@
 export const zh_cn_workbench_page = {
-  title: "工作台",
   unit: {
     item: "Items",
   },

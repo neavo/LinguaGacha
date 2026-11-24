@@ -31,7 +31,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
         get_agent_models_dir: () => path.join(root, "models"),
         get_agent_media_cache_dir: () => path.join(root, "cache/media"),
         get_agent_python_root_dir: () => path.join(root, "python"),
-        get_agent_execution_lock_path: () => path.join(root, "node.lock"),
+        get_agent_preparation_lock_path: () => path.join(root, "node.lock"),
         get_user_data_path: (...parts) => path.join(root, "userdata", ...parts),
       },
       proxyResolver: { resolveProxy: async () => "DIRECT" },
@@ -85,7 +85,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     console.log('completed', listened.asr.length, scanned.length, refined.length);
   `,
     );
-    const package_sources = new AgentPackageSources({ log: console.log, t: t_main_log }); // 同一验收对话共用判定。
+    const package_sources = new AgentPackageSources({ log: console.log, t: t_main_log });
     try {
       const runner = new AgentWorkspaceRunner({
         paths: {
@@ -102,7 +102,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
           stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/stdout.log`,
           stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/stderr.log`,
           timeoutMs: 900_000,
-          packageSource: (signal) => package_sources.resolve("acceptance", signal),
+          packageSource: (signal) => package_sources.resolve(signal),
         },
         AbortSignal.timeout(900_000),
       );

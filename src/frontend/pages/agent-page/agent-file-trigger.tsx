@@ -1,3 +1,4 @@
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import {
   useContext,
@@ -10,7 +11,6 @@ import {
 } from "react";
 import type { AgentFile } from "@shared/agent-workspace-file";
 import type { AgentWorkspaceLinkResult } from "@shared/agent";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppContextMenuItem } from "@frontend/widgets/app-context-menu";
 import { AgentFileContext } from "./agent-file-context";
@@ -28,6 +28,7 @@ export function AgentFileTrigger({
   render: ReactElement;
   children?: ReactNode;
 }): JSX.Element {
+  const { post: api_fetch } = useAgentApi();
   const context = useContext(AgentFileContext);
   const { t } = useI18n();
   const [pending, set_pending] = useState(false);
@@ -62,7 +63,7 @@ export function AgentFileTrigger({
       }
       const result = await api_fetch<AgentWorkspaceLinkResult>(
         "/api/agent/workspace/activate-path",
-        { path },
+        { path, chatId: context.chat_id },
       );
       if (result.status === "saved") push_toast("success", t("agent_page.file_saved"));
     } catch (error) {

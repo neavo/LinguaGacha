@@ -7,6 +7,7 @@ import type { ProjectItemsChange } from "@shared/project-event";
 export type ProjectChangeEventPayload = {
   eventId?: unknown;
   source?: unknown;
+  projectId?: unknown;
   projectPath?: unknown;
   projectRevision?: unknown;
   updatedSections?: unknown;
@@ -26,6 +27,8 @@ export function normalize_project_change_event(
   const scope = payload.qualityStatisticsScope;
   if (
     project_path === "" ||
+    typeof payload.projectId !== "string" ||
+    payload.projectId === "" ||
     updated_sections.length === 0 ||
     typeof payload.eventId !== "string" ||
     payload.eventId === "" ||
@@ -40,6 +43,7 @@ export function normalize_project_change_event(
   return {
     eventId: payload.eventId,
     source: payload.source,
+    projectId: payload.projectId,
     projectPath: project_path,
     projectRevision: payload.projectRevision,
     updatedSections: updated_sections,

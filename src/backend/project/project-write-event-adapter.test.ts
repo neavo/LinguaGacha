@@ -1,10 +1,8 @@
 import { expect, it } from "vitest";
 import { adapt_project_change } from "./project-write-event-adapter";
-import { ProjectSessionState } from "./project-session-state";
 import type { ProjectCommittedChange } from "./project-committed-change";
 
-it("当前会话发布提交快照，只投影变化分区并保留工程最高修订", async () => {
-  const session = new ProjectSessionState();
+it("按工程身份发布提交快照，只投影变化分区并保留工程最高修订", async () => {
   const change: ProjectCommittedChange = {
     projectPath: "project.lg",
     source: "test",
@@ -13,15 +11,12 @@ it("当前会话发布提交快照，只投影变化分区并保留工程最高�
     items: { mode: "full", records: [] },
     qualityStatisticsScope: "all",
   };
-  expect(adapt_project_change(session, change)).toBeNull();
-  await session.mark_loaded("project.lg");
-  expect(adapt_project_change(session, change)).toMatchObject({
+  expect(adapt_project_change("fixture", change)).toMatchObject({
     type: "project.changed",
+    projectId: "fixture",
     projectRevision: 9,
     sectionRevisions: { items: 2 },
     items: { mode: "full" },
   });
-  expect(adapt_project_change(session, change)).not.toHaveProperty("sections");
-  await session.mark_loaded("another.lg");
-  expect(adapt_project_change(session, change)).toBeNull();
+  expect(adapt_project_change("fixture", change)).not.toHaveProperty("sections");
 });

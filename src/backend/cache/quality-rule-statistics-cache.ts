@@ -7,7 +7,6 @@ import type {
 } from "../worker/tasks/quality-rule-statistics-worker-task";
 import type { ProjectCommittedChange } from "../project/project-committed-change";
 import type { CacheReadPort } from "./cache-types";
-import * as AppErrors from "../../shared/error";
 
 export type QualityRuleStatistics = Omit<
   QualityRuleStatisticsWorkerTaskResult,
@@ -29,7 +28,7 @@ type QualityRuleStatisticsCacheEntry = {
 
 type QualityRuleStatisticsCacheReadPort = Pick<
   CacheReadPort,
-  "items" | "quality" | "readSectionRevisions" | "snapshot"
+  "items" | "quality" | "projectPath" | "readSectionRevisions"
 >;
 
 type QualityRuleStatisticsWorkerClient = {
@@ -58,13 +57,11 @@ export class QualityRuleStatisticsCache {
   /** 读取当前规则统计；只有 miss 才捕获规则和 item 快照并启动 worker。 */
   public async read(rule_key: QualityRuleKind): Promise<QualityRuleStatisticsCacheResult> {
     const section_revisions = this.cache_reader.readSectionRevisions();
-    const snapshot = this.cache_reader.snapshot();
-    if (snapshot.projectPath === "") throw new AppErrors.AppError("project.not_loaded");
 
     const entry = this.read_entry(rule_key);
     const statistics = await (entry.statistics ?? this.compute(rule_key, entry));
     return {
-      projectPath: snapshot.projectPath,
+      projectPath: this.cache_reader.projectPath,
       sectionRevisions: section_revisions,
       statistics,
     };

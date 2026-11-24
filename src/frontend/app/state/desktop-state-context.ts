@@ -6,19 +6,23 @@ import type { createRuntimeActivityStore } from "@frontend/app/state/runtime-act
 import type { ProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import type { RecentProjectSetting, SettingSnapshot } from "@domain/setting";
 import type { AppLanguage } from "@domain/app-language";
-import type { ProjectLanguageSettings } from "@domain/project-settings";
+import type { ProjectSettings } from "@domain/project-settings";
+import type { QualityRuleKind } from "@domain/quality";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 import type { ProjectChangeSignalSource } from "@frontend/app/state/project-change-signal-store";
 
 type RecentProjectEntry = RecentProjectSetting;
 
 export type SettingsSnapshot = SettingSnapshot;
+export type QualityRuleCounts = Readonly<Record<QualityRuleKind, number>>;
 
 export type ProjectSnapshot = {
   path: string;
+  projectId?: string;
   loaded: boolean;
   file_count: number; // 统计工程资产，包含零条目资产。
-  languages: ProjectLanguageSettings | null; // 已加载项目的语言事实，未加载时为 null
+  quality_rule_counts?: QualityRuleCounts; // 列表型质量规则条数，供工作区功能菜单直接展示。
+  settings: ProjectSettings | null; // 已加载工程的语言与预过滤设置，未加载时为 null
 };
 
 export type ProjectSessionStatus = "idle" | "warming" | "ready";
@@ -30,8 +34,11 @@ export type DesktopStateContextValue = {
   project_snapshot: ProjectSnapshot;
   project_session_status: ProjectSessionStatus;
   is_app_language_updating: boolean;
-  set_project_session_status: (status: ProjectSessionStatus) => void;
   apply_settings_snapshot: (payload: SettingsSnapshotPayload) => SettingsSnapshot;
+  open_projects: readonly import("./project-store-registry").ProjectStore[];
+  active_project: import("./project-store-registry").ProjectStore | undefined;
+  select_project: (projectId: string) => void;
+  refresh_projects: () => Promise<readonly import("./project-store-registry").ProjectStore[]>;
   refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_state: () => Promise<void>;
   commit_project_write: ProjectWriteCommitter;

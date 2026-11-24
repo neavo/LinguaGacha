@@ -64,6 +64,56 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
+it("一个工作区的脚本等待期间，另一个工作区先完成；取消只回收自己的进程树", async () => {
+  const runner = new AgentWorkspaceRunner({
+    paths: skill_paths,
+    execution: create_execution_runtime(),
+    proxyResolver: { resolveProxy: async () => "DIRECT" },
+  });
+  const started = Promise.withResolvers<void>();
+  const abort = new AbortController();
+  const deadline = AbortSignal.timeout(RUN_TIMEOUT_MS);
+  const execute = async (name: string, script: string, signal: AbortSignal) => {
+    const workspacePath = path.join(root, name);
+    await mkdir(workspacePath);
+    await writeFile(path.join(workspacePath, "run.mjs"), script);
+    return await runner.run(
+      {
+        workspacePath,
+        scriptPath: "run.mjs",
+        stdoutPath: "run.stdout.log",
+        stderrPath: "run.stderr.log",
+        timeoutMs: RUN_TIMEOUT_MS,
+        doing: async () => {
+          started.resolve();
+        },
+      },
+      signal,
+    );
+  };
+  const first = execute(
+    "waiting",
+    'await ws.setDoing("waiting"); setInterval(() => {}, 1000);',
+    AbortSignal.any([abort.signal, deadline]),
+  );
+  // 首个脚本启动失败时立即交付错误，不等待测试超时。
+  const failed = first.catch((error: unknown) => error);
+  try {
+    await Promise.race([
+      started.promise,
+      failed.then((error) => {
+        throw error;
+      }),
+    ]);
+    const second = await execute("finishing", 'console.log("completed")', deadline);
+    expect(second.exitCode).toBe(0);
+    expect(output_content(second.stdout)).toBe("completed\n");
+  } finally {
+    abort.abort(new Error("stop first workspace"));
+    await expect(failed).resolves.toBe(abort.signal.reason);
+  }
+});
+
 it("媒体 SDK 使用宿主指定的模型目录", async () => {
   const { file } = MEDIA_MODELS.vad;
   await run(`
@@ -1095,7 +1145,7 @@ function create_execution_runtime(
       get_agent_models_dir: () => path.join(root, "media storage/models"),
       get_agent_media_cache_dir: () => path.join(root, "cache/media"),
       get_agent_python_root_dir: () => python_root,
-      get_agent_execution_lock_path: () => path.join(root, "node.lock"),
+      get_agent_preparation_lock_path: () => path.join(root, "node.lock"),
       get_user_data_path: (...parts) => path.join(root, "userdata", ...parts),
     },
     proxyResolver: { resolveProxy },

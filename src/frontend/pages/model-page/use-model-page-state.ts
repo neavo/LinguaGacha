@@ -6,7 +6,6 @@ import type { ChatGPTAuthSnapshot } from "@shared/model-auth";
 import { apply_model_auth_snapshot } from "@frontend/app/state/model-auth-store";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useModelCatalogRevision } from "@frontend/app/state/model-catalog-store";
-import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type {
@@ -50,6 +49,7 @@ type UseModelPageStateResult = {
   grouped_categories: ModelCategorySnapshot[];
   readonly: boolean;
   test_disabled: boolean;
+  auth_disabled: boolean;
   dialog_state: ModelDialogState;
   confirm_state: ModelConfirmState;
   active_dialog_model: ModelEntrySnapshot | null;
@@ -471,7 +471,9 @@ export function useModelPageState(): UseModelPageStateResult {
   }, [dialog_state.model_id, snapshot]);
 
   const readonly = load_status !== "ready" || is_action_running; // 首次快照到达前，配置写入口与页面控件共用锁。
-  const test_disabled = is_runtime_busy(runtime_snapshot) || is_testing || is_action_running;
+  const test_disabled =
+    runtime_snapshot.global?.modelTest === true || is_testing || is_action_running;
+  const auth_disabled = test_disabled || runtime_snapshot.owner !== null;
 
   /**
    * 提交模型字段修改并同步后端快照。
@@ -608,8 +610,8 @@ export function useModelPageState(): UseModelPageStateResult {
 
   /** 账户退出由页面持有确认状态，菜单关闭后确认框继续存在。 */
   const request_logout = useCallback((): void => {
-    if (!test_disabled) set_confirm_state({ kind: "logout", model_id: null });
-  }, [test_disabled]);
+    if (!auth_disabled) set_confirm_state({ kind: "logout", model_id: null });
+  }, [auth_disabled]);
 
   /** 提交模型顺序并同步列表结果。 */
   const request_reorder_models = useCallback(
@@ -695,7 +697,7 @@ export function useModelPageState(): UseModelPageStateResult {
     if (current_confirm_state.kind === null) {
       return;
     }
-    if (readonly || (current_confirm_state.kind === "logout" && test_disabled)) {
+    if (readonly || (current_confirm_state.kind === "logout" && auth_disabled)) {
       return;
     }
 
@@ -733,7 +735,7 @@ export function useModelPageState(): UseModelPageStateResult {
     } finally {
       set_is_action_running(false);
     }
-  }, [confirm_state, dialog_state.model_id, readonly, test_disabled, t]);
+  }, [auth_disabled, confirm_state, dialog_state.model_id, readonly, t]);
 
   /** 取消当前模型确认流程。 */
   function close_confirm(): void {
@@ -747,6 +749,7 @@ export function useModelPageState(): UseModelPageStateResult {
     grouped_categories,
     readonly,
     test_disabled,
+    auth_disabled,
     dialog_state,
     confirm_state,
     active_dialog_model,

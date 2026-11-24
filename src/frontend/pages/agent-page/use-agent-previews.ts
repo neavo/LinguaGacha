@@ -1,7 +1,7 @@
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentFile } from "@shared/agent-workspace-file";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useProjectSessionUiState } from "@frontend/app/session/project-session-ui-state-context";
 
@@ -16,6 +16,7 @@ type PreviewState = { documents: OpenAgentPreview[]; selected: string | null };
 
 /** 页面只拥有标签描述和阅读位置，正文与图片由内容面板读取。 */
 export function useAgentPreviews(chat_id: string) {
+  const { post: api_fetch } = useAgentApi();
   const { t } = useI18n();
   const text = useRef(t); // 请求在语言切换后完成时使用当前文案，文件读取不随语言重启。
   text.current = t;
@@ -121,7 +122,7 @@ export function useAgentPreviews(chat_id: string) {
       for (const controller of pending.values()) controller.abort();
       pending.clear();
     };
-  }, [saved, chat_id]);
+  }, [api_fetch, saved, chat_id]);
 
   // 各预览更新同一份阅读位置记录，保存无需逐次触发 React 渲染。
   useEffect(() => {

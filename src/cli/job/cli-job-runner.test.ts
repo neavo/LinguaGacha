@@ -7,7 +7,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BackendServices } from "../../backend/bootstrap/backend-services";
 import type { BatchTaskSnapshot } from "../../domain/batch-task";
 import type { CLICommandName, CLICommandOptions, CLICommandResources } from "../cli-parser";
 import { run_cli_job } from "./cli-job-runner";
@@ -33,7 +32,7 @@ describe("run_cli_job", () => {
     const harness = create_backend_services_harness();
     const source_operation = { saved_assets: 1, directory_changes: ["game"] };
     harness.create_project_commit.mockResolvedValueOnce({ source_operation });
-    vi.spyOn(harness.backend_services.project.summary, "read_translation_stats").mockReturnValue({
+    vi.spyOn(harness.project.summary, "read_translation_stats").mockReturnValue({
       projectPath: "test.lg",
       stats: {
         total_items: 0,
@@ -58,7 +57,7 @@ describe("run_cli_job", () => {
   it.each(["GENERIC", "MEDIA", "IMAGE"])("零条目 %s 输入报告排除文件并跳过批量运行", async () => {
     const harness = create_backend_services_harness();
     const paths = create_cli_paths();
-    vi.spyOn(harness.backend_services.project.summary, "read_translation_stats").mockReturnValue({
+    vi.spyOn(harness.project.summary, "read_translation_stats").mockReturnValue({
       projectPath: "test.lg",
       stats: {
         total_items: 0,
@@ -93,7 +92,7 @@ describe("run_cli_job", () => {
       notify?.();
       return {};
     });
-    vi.spyOn(harness.backend_services.project.summary, "read_translation_stats").mockReturnValue({
+    vi.spyOn(harness.project.summary, "read_translation_stats").mockReturnValue({
       projectPath: "test.lg",
       stats: {
         total_items: 0,
@@ -337,7 +336,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     fs.writeFileSync(request.path, "临时工程哨兵", "utf-8");
     return {};
   });
-  const apply_task_input = vi.fn(async () => {
+  const apply_task_input = vi.fn(async (_input: unknown) => {
     events.push("apply");
     return { accepted: true, changes: [] };
   });
@@ -363,47 +362,46 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     };
   });
 
+  const project = {
+    summary: {
+      read_translation_stats: () => ({
+        projectPath: "test.lg",
+        stats: {
+          total_items: 4,
+          completed_count: 0,
+          skipped_count: 0,
+          pending_count: 4,
+          completion_percent: 0,
+        },
+      }),
+    },
+    generation: { generate_files_to_directory },
+    batchTasks: {
+      subscribe: (listener: (snapshot: Readonly<BatchTaskSnapshot>) => void | Promise<void>) => {
+        events.push("subscribe");
+        task_listeners.add(listener);
+        return () => {
+          events.push("unsubscribe");
+          task_listeners.delete(listener);
+        };
+      },
+    },
+    batchTranslation: {
+      start_current_project: start_task,
+    },
+  };
   return {
+    project,
     backend_services: {
-      app: {
-        settings: {
-          set_transient_overrides,
-        },
-      },
-      project: {
-        summary: {
-          read_translation_stats: () => ({
-            projectPath: "test.lg",
-            stats: {
-              total_items: 4,
-              completed_count: 0,
-              skipped_count: 0,
-              pending_count: 4,
-              completion_percent: 0,
-            },
-          }),
-        },
-        lifecycle: {
-          apply_task_input,
-          create_project_commit,
-          unload_project,
-        },
-      },
-      files: { translationGeneration: { generate_files_to_directory } },
-      batchTasks: {
-        subscribe: (listener: (snapshot: Readonly<BatchTaskSnapshot>) => void | Promise<void>) => {
-          events.push("subscribe");
-          task_listeners.add(listener);
-          return () => {
-            events.push("unsubscribe");
-            task_listeners.delete(listener);
-          };
-        },
-      },
-      batchTranslation: {
-        start_current_project: start_task,
-      },
-    } as unknown as BackendServices,
+      app: { settings: { set_transient_overrides } },
+      projects: { require: () => project },
+      create_project: async (request: { path: string }, notify?: () => void) => ({
+        ...(await create_project_commit(request, notify)),
+        project: { projectId: "fixture" },
+      }),
+      apply_task_input: (_project: typeof project, input: unknown) => apply_task_input(input),
+      close_project: unload_project,
+    } as unknown as import("./cli-job-runner").CLIJobServices,
     apply_task_input,
     created_project_paths,
     create_project_commit,

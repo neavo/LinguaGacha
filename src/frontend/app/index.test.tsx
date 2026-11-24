@@ -40,10 +40,6 @@ vi.mock("./appearance/appearance-context", () => ({
 }));
 vi.mock("./shell/app-sidebar", () => ({ AppSidebar: () => null }));
 vi.mock("./shell/app-titlebar", () => ({ AppTitlebar: () => null }));
-vi.mock("@frontend/shadcn/sidebar", () => ({
-  SidebarProvider: ({ children }: PropsWithChildren) => children,
-  SidebarInset: ({ children }: PropsWithChildren) => children,
-}));
 vi.mock("@frontend/widgets/app-content-state", () => ({
   /** 页面夹具注册真实离页保存动作。 */
   AppContentState: function SavingPage() {

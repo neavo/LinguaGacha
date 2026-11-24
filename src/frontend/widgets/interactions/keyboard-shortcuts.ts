@@ -1,4 +1,4 @@
-export type ShortcutAction = "save" | "create" | "delete" | "follow_latest" | "toggle_sidebar";
+export type ShortcutAction = "save" | "create" | "delete" | "follow_latest";
 export type ShortcutLabel = ShortcutAction | "cancel" | "submit" | "newline";
 
 export type ShortcutPlatform = "mac" | "default";
@@ -25,7 +25,6 @@ const SHORTCUT_LABELS = {
     create: "⌘N",
     delete: "⌘⌫",
     follow_latest: "⌘E",
-    toggle_sidebar: "⌘B",
     cancel: "Esc",
     submit: "Enter",
     newline: "Shift+Enter",
@@ -35,7 +34,6 @@ const SHORTCUT_LABELS = {
     create: "Ctrl+N",
     delete: "Del",
     follow_latest: "Ctrl+E",
-    toggle_sidebar: "Ctrl+B",
     cancel: "Esc",
     submit: "Enter",
     newline: "Shift+Enter",
@@ -49,7 +47,6 @@ const SHORTCUT_ARIA_KEYS = {
     create: "Meta+N",
     delete: "Meta+Backspace",
     follow_latest: "Meta+E",
-    toggle_sidebar: "Meta+B",
     cancel: "Escape",
     submit: "Enter",
     newline: "Shift+Enter",
@@ -59,7 +56,6 @@ const SHORTCUT_ARIA_KEYS = {
     create: "Control+N",
     delete: "Delete",
     follow_latest: "Control+E",
-    toggle_sidebar: "Control+B",
     cancel: "Escape",
     submit: "Enter",
     newline: "Shift+Enter",
@@ -71,7 +67,6 @@ const PRIMARY_SHORTCUT_KEYS = {
   save: "s",
   create: "n",
   follow_latest: "e",
-  toggle_sidebar: "b",
 } satisfies Record<PrimaryShortcutAction, string>;
 
 /** 为快捷键平台识别提供浏览器环境信息。 */

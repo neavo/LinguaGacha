@@ -253,11 +253,6 @@ export async function api_upload<data_type>(
   });
 }
 
-/** 文件下载链接只消费宿主注入的后端地址。 */
-export function api_file_url(path: string): string {
-  return build_api_url(read_backend_api_base_url(), path);
-}
-
 /**
  * 通过同一错误映射读取 Backend GET query。
  */

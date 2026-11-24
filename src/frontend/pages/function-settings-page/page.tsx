@@ -17,6 +17,7 @@ import {
   TRANSLATION_SAVE_MODE_LABEL_KEYS,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
+  type FunctionBooleanSettingField,
 } from "@frontend/pages/function-settings-page/types";
 import { useFunctionSettingsState } from "@frontend/pages/function-settings-page/use-function-settings-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
@@ -35,6 +36,27 @@ export function FunctionSettingsPage(): JSX.Element {
     value: mode,
     label: t(TRANSLATION_SAVE_MODE_LABEL_KEYS[mode]),
   }));
+
+  function render_boolean_setting(field: FunctionBooleanSettingField): JSX.Element {
+    const title = t(`function_settings_page.fields.${field}.title`);
+    return (
+      <SettingCardRow
+        title={title}
+        description={t(`function_settings_page.fields.${field}.description`)}
+        action={
+          <BooleanSegmentedToggle
+            aria_label={title}
+            value={function_settings_state.snapshot[field]}
+            stretch
+            disabled={function_settings_state.pending_state[field]}
+            on_value_change={(value) => {
+              void function_settings_state.update_boolean_setting(field, value);
+            }}
+          />
+        }
+      />
+    );
+  }
 
   return (
     <div className="function-settings-page page-shell page-shell--full">
@@ -109,21 +131,8 @@ export function FunctionSettingsPage(): JSX.Element {
           }}
         />
 
-        <SettingCardRow
-          title={t("function_settings_page.fields.output_folder_open_on_finish.title")}
-          description={t("function_settings_page.fields.output_folder_open_on_finish.description")}
-          action={
-            <BooleanSegmentedToggle
-              aria_label={t("function_settings_page.fields.output_folder_open_on_finish.title")}
-              value={function_settings_state.snapshot.output_folder_open_on_finish}
-              stretch
-              disabled={function_settings_state.pending_state.output_folder_open_on_finish}
-              on_value_change={(next_value) => {
-                void function_settings_state.update_output_folder_open_on_finish(next_value);
-              }}
-            />
-          }
-        />
+        {render_boolean_setting("output_folder_open_on_finish")}
+        {render_boolean_setting("prompt_enhancement_enable")}
       </section>
     </div>
   );

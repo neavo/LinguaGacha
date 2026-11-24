@@ -1,7 +1,6 @@
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionState } from "../project/project-session-state";
+import type { ProjectOperationGate } from "../runtime-operation-gate";
 import {
   require_project_expected_section_revisions,
   type ProjectExpectedSectionRevisions,
@@ -29,9 +28,9 @@ const DEFAULT_PROOFREADING_UPDATE_SOURCE = "proofreading_apply_item_changes";
  * 承载校对同步写入口，把客户端命令转换为后端项目事实。
  */
 export class ProofreadingService {
-  private readonly runtime_gate: RuntimeOperationGate; // 用户与 Agent 写入口共享串行门禁
+  private readonly runtime_gate: ProjectOperationGate; // 用户与 Agent 写入口共享串行门禁
 
-  private readonly session_state: ProjectSessionState; // 校对同步写入口只以公开会话状态定位当前工程
+  private readonly project_path: string; // 校对同步写入口只以公开会话状态定位当前工程
 
   private readonly write_store: ProjectWriteStore; // 校对只提交业务补丁，事务和事件统一由 ProjectWriteStore 完成
 
@@ -39,12 +38,12 @@ export class ProofreadingService {
    * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换
    */
   public constructor(
-    runtime_gate: RuntimeOperationGate,
-    session_state: ProjectSessionState,
+    runtime_gate: ProjectOperationGate,
+    project_path: string,
     write_store: ProjectWriteStore,
   ) {
     this.runtime_gate = runtime_gate;
-    this.session_state = session_state;
+    this.project_path = project_path;
     this.write_store = write_store;
   }
 
@@ -63,7 +62,7 @@ export class ProofreadingService {
     request: JsonRecord,
     source: string,
   ): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const expected_section_revisions = this.prepare_write_context(request);
     const updates = this.normalize_item_updates(request["changes"]);
     return await this.write_store.apply_project_item_changes({
@@ -99,7 +98,7 @@ export class ProofreadingService {
 
   /** 在项目写租约内按后端当前事实执行批量替换。 */
   private async replace_all_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
     const pattern = compile_text_pattern({
@@ -158,7 +157,7 @@ export class ProofreadingService {
 
   /** 在项目写租约内按统一字段补丁筛出实际变化并原子提交。 */
   private async clear_translations_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
+    const project_path = this.project_path;
     const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
     const reset_status = request["reset_status"];

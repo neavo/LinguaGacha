@@ -33,7 +33,7 @@ import { read_profile } from "./profile";
 type ArchiveInput = {
   name: string;
   handle: BinaryFileHandle;
-  stat: Awaited<ReturnType<BinaryFileHandle["stat"]>>;
+  stat: ReturnType<NativeFs["stat"]>;
   members: Map<string, ArchiveMember>;
 };
 type PackedMember = { input: ArchiveInput; member: ArchiveMember };

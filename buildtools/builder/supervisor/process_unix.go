@@ -22,7 +22,10 @@ type supervisor struct {
 }
 
 // fd 3 与宿主共享同一打开文件描述，任意一方存活都继续持锁。
-func acquire(_ string) (*supervisor, error) {
+func acquire(path string) (*supervisor, error) {
+	if path == "" {
+		return &supervisor{}, nil
+	}
 	lock := os.NewFile(3, "node.lock")
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		lock.Close()
@@ -136,7 +139,11 @@ func (owner *supervisor) drain() error {
 
 // 监管程序仅关闭自己的锁描述，宿主仍可继续持锁收尾。
 func (owner *supervisor) close() error {
-	return errors.Join(owner.drain(), owner.lock.Close())
+	err := owner.drain()
+	if owner.lock != nil {
+		err = errors.Join(err, owner.lock.Close())
+	}
+	return err
 }
 
 // 启动门在监管管道关闭时直接退出，宿主登记进程组后才允许真正执行。

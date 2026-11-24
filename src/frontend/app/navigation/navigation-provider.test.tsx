@@ -14,7 +14,7 @@ function NavigationProbe(): JSX.Element {
         {navigation.selected_route}:{navigation.proofreading_lookup_intent?.keyword ?? "none"}:
         {navigation.proofreading_lookup_intent?.scope ?? "none"}
       </output>
-      <button onClick={() => navigation.navigate_to_route("workbench")}>导航</button>
+      <button onClick={() => navigation.navigate_to_route("files")}>导航</button>
       <button
         onClick={() =>
           navigation.push_proofreading_lookup_intent({
@@ -55,7 +55,7 @@ describe("AppNavigationProvider", () => {
 
     const buttons = container.querySelectorAll("button");
     await act(async () => buttons[0]?.click());
-    expect(navigate_to_route).toHaveBeenCalledWith("workbench");
+    expect(navigate_to_route).toHaveBeenCalledWith("files");
 
     await act(async () => buttons[1]?.click());
     expect(container.querySelector("output")?.textContent).toBe("agent:角色名:src");

@@ -1,5 +1,10 @@
 import { AppError } from "../../../../shared/error";
-import type { WorkspaceRequest, WorkspaceResponse, WorkspaceResponseFor } from "./protocol";
+import type {
+  WorkspaceRequest,
+  WorkspaceResource,
+  WorkspaceResponse,
+  WorkspaceResponseFor,
+} from "./protocol";
 import type {
   AgentWorkspaceRuntimeChildMessage,
   AgentWorkspaceRuntimeParentMessage,
@@ -99,4 +104,15 @@ export function bind_workspace_requests(channel: Pick<AgentWorkspaceRequestChann
 export function workspace_requests(): Pick<AgentWorkspaceRequestChannel, "call"> {
   if (!requests) throw new Error("Current process is not bound to the workspace runtime.");
   return requests;
+}
+
+/** 根脚本经过宿主取得同一共享资源的独占占用。 */
+export async function acquire_workspace_resource(
+  resource: WorkspaceResource,
+): Promise<() => Promise<void>> {
+  const channel = workspace_requests();
+  const lease = await channel.call({ kind: "acquire_resource", resource });
+  return async () => {
+    await channel.call({ kind: "release_resource", lease });
+  };
 }

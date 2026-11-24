@@ -1,12 +1,5 @@
 import { type JSX, type ReactNode, useState } from "react";
-import {
-  BadgeHelp,
-  ChevronDown,
-  MessageSquarePlus,
-  ShieldCheck,
-  ShieldQuestionMark,
-  WifiOff,
-} from "lucide-react";
+import { BadgeHelp, ChevronDown, ShieldCheck, ShieldQuestionMark, WifiOff } from "lucide-react";
 import type { ModelSelectionInput } from "@shared/model-selection";
 import type { AgentApprovalMode } from "@domain/setting";
 import type { AgentContextSnapshot, AgentUsageSnapshot } from "@shared/agent";
@@ -22,9 +15,6 @@ import {
   AppDropdownMenuRadioItem,
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
-import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
-import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
-import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { AgentComposerModelControls } from "./agent-composer-model-controls";
 
 const AGENT_HELP_URL = "https://github.com/neavo/LinguaGacha/wiki";
@@ -35,14 +25,12 @@ export function AgentTaskToolbar(props: {
   add_file: ReactNode;
   open_instructions: ReactNode;
   locked: boolean;
-  can_reset: boolean;
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
   model_selection: ModelSelectionController;
   approval_mode: AgentApprovalMode;
   approval_disabled: boolean;
   disconnected: boolean;
-  on_reset: () => void;
   on_agent_model_select: (change: ModelSelectionInput) => boolean;
   on_approval_mode_change: (mode: AgentApprovalMode) => void;
 }): JSX.Element {
@@ -51,41 +39,12 @@ export function AgentTaskToolbar(props: {
   const [approval_open, set_approval_open] = useState(false); // 当前审批菜单的展开状态
   // 在提交菜单前清除展开状态，交互区恢复时菜单保持关闭。
   if (props.locked && approval_open) set_approval_open(false);
-  useActionShortcut({
-    action: "create",
-    enabled: props.can_reset,
-    allow_in_text_editing: true,
-    on_trigger: props.on_reset,
-  });
   const approval_mode_label = t(
     props.approval_mode === "auto" ? "agent_page.approval.auto" : "agent_page.approval.manual",
   );
   const ApprovalModeIcon = props.approval_mode === "auto" ? ShieldCheck : ShieldQuestionMark;
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <TooltipTarget>
-              <AppButton
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="agent-composer__reset"
-                disabled={!props.can_reset}
-                aria-keyshortcuts={get_shortcut_aria_keys("create")}
-                onClick={props.on_reset}
-              >
-                <MessageSquarePlus aria-hidden="true" />
-                <span>{t("agent_page.action.new_task")}</span>
-              </AppButton>
-            </TooltipTarget>
-          }
-        />
-        <TooltipContent>
-          <ShortcutTooltipRow label={t("agent_page.action.new_task")} shortcut="create" />
-        </TooltipContent>
-      </Tooltip>
       {props.add_file}
       {props.disconnected ? (
         <Tooltip>

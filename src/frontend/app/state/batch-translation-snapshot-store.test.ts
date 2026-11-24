@@ -33,6 +33,25 @@ describe("createBatchTranslationSnapshotStore", () => {
     });
   });
 
+  it("工程后台完成独立翻译后只交接一次导出", () => {
+    const store = createBatchTranslationSnapshotStore();
+    store.applySnapshot({
+      ...create_task_snapshot(1, "running"),
+      run_id: "run",
+      operation: "translate",
+    });
+    const done = {
+      ...create_task_snapshot(2, "done"),
+      run_id: "run",
+      operation: "translate" as const,
+    };
+    store.applySnapshot(done);
+    store.applySnapshot(done);
+    expect(store.takeExportFollowup()).toBe(true);
+    store.applySnapshot(done);
+    expect(store.takeExportFollowup()).toBe(false);
+  });
+
   it("工程 B 的 idle 快照会拒绝随后到达的工程 A 终态帧", () => {
     const store = createBatchTranslationSnapshotStore();
     const delayed_a_terminal = create_task_snapshot(7, "done", 4);

@@ -430,11 +430,9 @@ export function LogWindowPage(): JSX.Element {
       >
         <div className="topbar__safe-area topbar__safe-area--start" aria-hidden="true" />
         <div className="topbar__content log-window-page__titlebar-content">
-          <div className="topbar__left log-window-page__titlebar-left">
+          <div className="log-window-page__titlebar-left">
             <ScrollText size={16} aria-hidden="true" />
-            <div className="topbar__brand">
-              <strong>{t("log_window_page.title")}</strong>
-            </div>
+            <strong className="topbar__brand">{t("log_window_page.title")}</strong>
           </div>
         </div>
         <div className="topbar__safe-area topbar__safe-area--end" aria-hidden="true" />

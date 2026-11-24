@@ -12,7 +12,7 @@ export const BatchTaskSessionContext = createContext<BatchTaskSessionContextValu
 export function useBatchTaskSession(): BatchTaskSessionContextValue {
   const context_value = useContext(BatchTaskSessionContext);
   if (context_value === null) {
-    throw new Error("useBatchTaskSession must be used inside BatchTaskSessionProvider.");
+    throw new Error("useBatchTaskSession must be used inside ProjectSessionProvider.");
   }
 
   return context_value;

@@ -1,5 +1,5 @@
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import { api_blob } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { MediaViewport } from "@frontend/features/media-preview/media-viewport";
 import type { MediaImage } from "@frontend/features/media-preview/media-geometry";
@@ -13,6 +13,7 @@ export function AgentToolImage(props: {
   index: number;
   label: string;
 }): JSX.Element {
+  const { blob: api_blob } = useAgentApi();
   const { t } = useI18n();
   const [image, set_image] = useState<MediaImage | "loading" | "error">("loading");
   const text = useRef(t); // 在途请求反馈使用当前界面语言。
@@ -41,7 +42,7 @@ export function AgentToolImage(props: {
       controller.abort();
       if (object_url !== null) URL.revokeObjectURL(object_url);
     };
-  }, [props.chat_id, props.entry_id, props.index]);
+  }, [api_blob, props.chat_id, props.entry_id, props.index]);
 
   /** HTTP 成功仍可能解码失败，内容区与读取失败使用同一恢复路径。 */
   const handle_image_error = (): void => {

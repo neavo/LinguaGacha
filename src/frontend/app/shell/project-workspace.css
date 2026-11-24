@@ -1,0 +1,432 @@
+.project-workspace {
+  --workspace-tools-card-width: 240px;
+  /* 右侧避让轨仅含卡片与页边距，16px 视觉间隙由各子面板自身的右内边距或安全距自然承接。 */
+  --workspace-tools-rail-width: calc(var(--workspace-tools-card-width) + var(--ui-page-pad-x));
+  --workspace-tools-inset: 0px;
+  --workspace-tools-inset-transition: none;
+  --workspace-tools-motion-duration: 240ms;
+  --workspace-tools-motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.project-workspace[data-tools-docked="true"] {
+  --workspace-tools-inset: var(--workspace-tools-rail-width);
+}
+
+.project-workspace[data-tools-animated="true"] {
+  --workspace-tools-inset-transition:
+    padding-left var(--workspace-tools-motion-duration) var(--workspace-tools-motion-easing),
+    padding-right var(--workspace-tools-motion-duration) var(--workspace-tools-motion-easing);
+}
+
+.project-workspace,
+.project-workspace__content,
+.project-workspace__panel {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.project-workspace__toolbar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  /* 上下各留 8px 承接对话待回复 6px 扩散光环，配合内容区 4px 顶距与页面保持 12px 间距。 */
+  padding: 8px var(--ui-page-pad-x);
+}
+
+.project-workspace__chat-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-right: var(--workspace-tools-inset);
+  transition: var(--workspace-tools-inset-transition);
+}
+
+.project-workspace__chat-tabs > .agent-pages__tabs {
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+}
+
+.project-workspace__chat-tabs[data-active="false"]
+  .agent-pages__tab-group:has([data-active])::after {
+  opacity: 0;
+}
+
+/* 窄态在顶栏右侧横排双组下拉标签；宽态绝对定位为右侧 240px 纵排常驻双块。 */
+.project-workspace__tools-anchor {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+}
+
+.project-workspace[data-tools-docked="true"] .project-workspace__tools-anchor {
+  position: absolute;
+  top: 8px;
+  /* 左右外扩 8px 与底部 16px 承接常驻卡片阴影，避免极端高度滚动时被裁切。 */
+  right: calc(var(--ui-page-pad-x) - 8px);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  box-sizing: border-box;
+  width: calc(var(--workspace-tools-card-width) + 16px);
+  height: auto;
+  max-height: calc(100vh - var(--titlebar-height, 40px) - 16px);
+  padding: 0 8px 16px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.project-workspace__tools-panel {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/* 头部始终保持与左侧普通标签一致的 30px 灰底标签与 128px 最小宽度；宽态占满 240px 与下方卡片左右齐边。 */
+.project-workspace__tools-header {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  height: 30px;
+  min-width: 128px;
+  max-width: var(--workspace-tools-card-width);
+  border-radius: var(--ui-radius-button);
+  background: color-mix(in srgb, var(--muted) 70%, var(--background));
+  color: var(--foreground);
+  transition: background-color 140ms ease;
+}
+
+.project-workspace__tools-header[data-active="true"] {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-header {
+  width: 100%;
+  min-width: var(--workspace-tools-card-width);
+  max-width: var(--workspace-tools-card-width);
+}
+
+.project-workspace__tools-panel[data-docked="false"] .project-workspace__tools-header:hover,
+.project-workspace__tools-header[data-open] {
+  background: var(--accent);
+}
+
+.project-workspace__tools-header[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 16px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: var(--ui-radius-pill);
+  background: color-mix(in srgb, var(--primary) 84%, white 16%);
+  pointer-events: none;
+}
+
+.project-workspace__tools-trigger {
+  display: grid;
+  min-width: 0;
+  height: 30px;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  color: inherit;
+  font-size: var(--ui-font-size-13);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.project-workspace__tools-trigger[data-active="true"] {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.project-workspace__tools-trigger--static {
+  cursor: default;
+}
+
+.project-workspace__tools-trigger:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.project-workspace__tools-icon,
+.project-workspace__tools-chevron {
+  width: 14px;
+  height: 14px;
+  justify-self: center;
+  flex-shrink: 0;
+}
+
+.project-workspace__tools-label {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-workspace__tools-chevron {
+  color: var(--muted-foreground);
+}
+
+.project-workspace__tools-chevron--hidden {
+  opacity: 0;
+}
+
+.project-workspace__tools-trigger[data-open] .project-workspace__tools-chevron {
+  transform: rotate(180deg);
+}
+
+.project-workspace__tools-close {
+  justify-self: center;
+}
+
+/* 窄态菜单右对齐锚定在各自标签正下方，以 0fr ↔ 1fr 向下展开；四周留出不拦截指针的阴影缓冲带。 */
+.project-workspace__tools-drawer {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  display: grid;
+  width: calc(var(--workspace-tools-card-width) + 32px);
+  margin: 0 -16px -24px;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-workspace__tools-panel[data-expanded="true"] .project-workspace__tools-drawer {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* 宽态抽屉回归文档流，使工作台与翻译质量两块以 16px 垂直间距依次排布。 */
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-drawer {
+  position: static;
+  width: 100%;
+  margin: 0;
+  pointer-events: auto;
+}
+
+/* 0fr 折叠容器保持零内边距以确保严格收合至 0px；内层统一 12px 顶距与左侧子页顶边齐平并承接阴影缓冲。 */
+.project-workspace__tools-drawer-inner {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-drawer-inner {
+  overflow: visible;
+}
+
+.project-workspace__tools-card-frame {
+  box-sizing: border-box;
+  padding: 12px 16px 24px;
+}
+
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-card-frame {
+  padding: 12px 0 0;
+}
+
+/* 独立菜单卡片：窄态为浮层表面与覆盖阴影，宽态沉降为常驻桌面卡片表面。 */
+.project-workspace__tools-card {
+  position: relative;
+  border-radius: var(--ui-radius-card);
+  background: var(--popover);
+  color: var(--foreground);
+  box-shadow: var(--ui-shadow-overlay);
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.project-workspace__tools-panel[data-expanded="true"] .project-workspace__tools-card {
+  pointer-events: auto;
+}
+
+.project-workspace__tools-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--border);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-card {
+  background: var(--ui-card-default-surface);
+  box-shadow: var(--ui-card-default-shadow);
+}
+
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-card::after {
+  border-color: var(--ui-card-default-border);
+}
+
+.project-workspace__tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100vh - var(--titlebar-height, 40px) - 66px);
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-list {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.project-workspace__tools-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.project-workspace__tool-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--ui-font-size-13);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: background-color 140ms ease;
+}
+
+.project-workspace__tool-item::before {
+  content: "";
+  position: absolute;
+  inset: 6px auto 6px 0;
+  width: var(--ui-selection-rail-width);
+  border-radius: var(--ui-radius-pill);
+  background: var(--primary);
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition:
+    opacity 160ms ease,
+    transform 200ms var(--workspace-tools-motion-easing);
+}
+
+.project-workspace__tool-item:hover {
+  background: var(--accent);
+}
+
+.project-workspace__tool-item:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.project-workspace__tool-item[data-active] {
+  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  font-weight: 500;
+}
+
+.project-workspace__tool-item[data-active]::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.project-workspace__tool-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  transition: color 140ms ease;
+}
+
+.project-workspace__tool-item:hover .project-workspace__tool-icon,
+.project-workspace__tool-item[data-active] .project-workspace__tool-icon {
+  color: var(--foreground);
+}
+
+.project-workspace__tool-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-workspace__tool-count,
+.project-workspace__tool-badge {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.project-prefilter-dialog__emphasis {
+  color: var(--primary);
+}
+
+/* 内容区隔离在独立低层级内，由各视图按滚动与满幅职责消费右侧卡片占位。 */
+.project-workspace__content {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.project-workspace__panel[hidden] {
+  display: none;
+}
+
+.project-workspace__panel--inset {
+  padding: 4px calc(var(--ui-page-pad-x) + var(--workspace-tools-inset)) var(--ui-page-pad-bottom)
+    var(--ui-page-pad-x);
+  transition: var(--workspace-tools-inset-transition);
+}
+
+/* 仅对窄态浮层抽屉收展与箭头旋转启用过渡，避免跨越 1280px 时产生跨轴位移抖动。 */
+.project-workspace[data-tools-animated="true"] .project-workspace__tools-chevron {
+  transition:
+    transform 180ms var(--workspace-tools-motion-easing),
+    opacity 140ms ease;
+}
+
+.project-workspace[data-tools-animated="true"]
+  .project-workspace__tools-panel[data-docked="false"]
+  .project-workspace__tools-drawer {
+  transition:
+    grid-template-rows var(--workspace-tools-motion-duration) var(--workspace-tools-motion-easing),
+    opacity 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-workspace[data-tools-animated="true"] {
+    --workspace-tools-inset-transition: none;
+  }
+
+  .project-workspace__tools-header,
+  .project-workspace__tool-item,
+  .project-workspace__tool-item::before,
+  .project-workspace__tool-icon,
+  .project-workspace[data-tools-animated="true"] .project-workspace__tools-chevron,
+  .project-workspace[data-tools-animated="true"]
+    .project-workspace__tools-panel[data-docked="false"]
+    .project-workspace__tools-drawer {
+    transition: none;
+  }
+}

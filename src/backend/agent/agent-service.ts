@@ -7,7 +7,7 @@ import {
 import { AgentCompactionError } from "./agent-compaction";
 import { randomUUID } from "node:crypto";
 import type { ProjectDatabase } from "../database/database-operations";
-import type { AgentChatStorage } from "../database/agent-chat-storage";
+import type { AgentChatStorage, AgentChatRecord } from "../database/agent-chat-storage";
 import {
   create_agent_workspace_apply_tool,
   type AgentWorkspaceApprovalPort,
@@ -31,7 +31,6 @@ import { resolve_app_locale } from "../../domain/app-language";
 import { is_json_record, type JsonRecord, type JsonSnapshot } from "../../domain/json";
 import {
   AGENT_CHAT_EVENT_TOPIC,
-  AGENT_INACTIVE_CHAT_ID,
   AGENT_INPUT_COMMAND_ID_LIMIT,
   normalize_agent_message_input,
   normalize_agent_revision_request,
@@ -51,8 +50,8 @@ import { format_i18n_message } from "../../shared/i18n";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { LogManager } from "../log/log-manager";
-import type { ProjectSessionState } from "../project/project-session-state";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { AgentWorkspaceDirectories } from "./workspace/directories";
+import type { ProjectOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
 import { register_agent_model, resolve_agent_batch_model } from "./agent-model";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
@@ -91,7 +90,12 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
+  projectId: string;
+  projectPath: string;
   database: Pick<ProjectDatabase, "open_agent_store">;
+  directories: AgentWorkspaceDirectories;
+  protectedChatIds: Set<string>;
+  resources: LoadedAgentResources;
   auth?: ChatGPTAuthService;
   skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
   catalog: PiModelCatalogReader;
@@ -100,13 +104,11 @@ type AgentServiceOptions = {
     import("../batch-translation/batch-translation-service").BatchTranslationService,
     "run_under_agent"
   >;
-  paths: AgentServicePaths;
   settings: Pick<AppSettingService, "read_setting">;
   userAgent: string;
-  sessionState: ProjectSessionState;
-  runtimeGate: RuntimeOperationGate;
+  runtimeGate: ProjectOperationGate;
   workspace: AgentWorkspacePort;
-  images: Pick<AgentImageService, "prepare" | "clear">;
+  images: Pick<AgentImageService, "prepare">;
   logManager: Pick<LogManager, "append">;
   publish: (topic: string, payload: Readonly<Record<string, JsonSnapshot>>) => void; // SSE 同步序列化，只读消费该值。
 };
@@ -148,32 +150,44 @@ type LoadedAgentResources = Readonly<{
   chatSeed: AgentChatSeed;
 }>;
 
+/** 应用启动时读取必需资源，打开工程直接复用该快照。 */
+export function load_agent_resources(paths: AgentServicePaths): LoadedAgentResources {
+  return {
+    baseSystemPrompt: load_agent_system_prompt(paths),
+    defaultPersonality: load_agent_personality(paths),
+    chatSeed: load_agent_chat_seed(paths),
+  };
+}
+
 /** 产品命令协调唯一会话与运行租约。历史和公开条目来自 durable 提交。 */
 export class AgentService {
   private readonly auth: ChatGPTAuthService | undefined;
   private readonly catalog: PiModelCatalogReader;
   private readonly batch_requests: AgentServiceOptions["batchRequests"];
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
-  private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
   private readonly skills: AgentServiceOptions["skills"];
   private readonly user_agent: string;
-  private readonly session_state: ProjectSessionState;
-  private readonly runtime_gate: RuntimeOperationGate;
+  private readonly runtime_gate: ProjectOperationGate;
   private readonly workspace: AgentWorkspacePort;
   private readonly images: AgentServiceOptions["images"];
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_skills: () => void;
-  private readonly unsubscribe_project_session: () => void;
   private readonly decisions: AgentDecisionCoordinator;
   private readonly token_speed = new AgentTokenSpeed();
   private token_speed_snapshot: AgentTokenSpeedSnapshot = null;
   private token_speed_updated_at: number | null = null;
   private run_output: AgentRunOutputSnapshot = null; // 冻结值，只在执行期间存在，不进入条目
-  private chat_id = AGENT_INACTIVE_CHAT_ID; // 无工程时的快照身份，激活后采用持久化身份
-  private readonly database: AgentServiceOptions["database"];
-  private store: AgentChatStorage | null = null; // 工程连接的使用权覆盖 SDK 与上传收尾
+  private readonly store: AgentChatStorage;
+  private record: AgentChatRecord | null = null;
+  private resetting: Promise<void> | null = null; // 快照和关闭等待新旧对话交接。
+  private recovering: Promise<void> | null = null; // 封闭的 Harness 只重接一次。
+
+  private get chat_id(): string {
+    if (this.record === null) throw new AppErrors.AppError("runtime.disposed");
+    return this.record.id;
+  }
   private chat: AgentChat | null = null;
   private model_config: Model | null = null; // 当前主模型配置供批量翻译跟随解析
   private run: AgentRun | null = null;
@@ -181,8 +195,7 @@ export class AgentService {
     string,
     { kind: AgentInputCommandKind; request: JsonRecord; work: Promise<AgentInputCommandAck> }
   >(); // 同一命令的并发回包共用受理过程
-  private chat_reset: Promise<void> | null = null; // 关闭与重置共用串行屏障，资源切换等待旧会话收尾
-  private resources: LoadedAgentResources | null = null;
+  private readonly resources: LoadedAgentResources;
   private revision = 0;
   private disposed = false;
   private publishedFields: AgentChatFields | null = null; // 上一批已发布的控制字段，用于抑制重复通知
@@ -198,95 +211,78 @@ export class AgentService {
   }
 
   /** 连接工程生命周期、技能变更与决定协调器，会话事实统一提交后发布。 */
-  public constructor(options: AgentServiceOptions) {
-    this.database = options.database;
+  private constructor(private readonly options: AgentServiceOptions) {
+    this.store = options.database.open_agent_store(options.projectPath);
+    this.resources = options.resources;
     this.auth = options.auth;
     this.catalog = options.catalog;
     this.batch_translation = options.batchTranslation;
     this.batch_requests = options.batchRequests;
-    this.paths = options.paths;
     this.settings = options.settings;
     this.skills = options.skills;
     this.skill_snapshot = this.read_skill_snapshot();
     this.unsubscribe_skills = this.skills.subscribe(() => {
       this.skill_snapshot = this.read_skill_snapshot();
-      if (!this.disposed && this.resources !== null && this.chat_reset === null) {
+      if (!this.disposed && this.chat !== null) {
         this.publish_snapshot();
       }
     });
     this.user_agent = options.userAgent;
-    this.session_state = options.sessionState;
     this.runtime_gate = options.runtimeGate;
     this.workspace = options.workspace;
     this.images = options.images;
     this.log_manager = options.logManager;
-    this.publish = options.publish;
+    this.publish = (topic, payload) =>
+      options.publish(topic, { ...payload, projectId: options.projectId });
     // 决定随当前工具等待存活，直接发布协调器事实，重开时由 SDK 取消遗留任务。
     this.decisions = new AgentDecisionCoordinator(() => this.publish_snapshot());
-    this.unsubscribe_project_session = this.session_state.subscribe_change((change) =>
-      this.activate_project(change.loaded ? change.projectPath : null),
-    );
   }
 
   /** 会话清理期间拒绝激活工作区链接。 */
   public async activate_workspace_path(request: JsonRecord): Promise<AgentWorkspaceLinkResult> {
-    this.assert_not_disposed();
-    if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
+    this.assert_available();
     return this.workspace.activate_path(is_json_record(request) ? request["path"] : undefined);
   }
 
   /** 文件描述绑定当前会话，旧标签不能打开新会话的同名文件。 */
-  public describe_workspace_file(request: JsonRecord): AgentFile {
-    this.assert_preview_chat(request["chatId"]);
-    return this.workspace.describe_file(request["path"]);
+  public describe_workspace_file(path: unknown): AgentFile {
+    this.assert_available();
+    return this.workspace.describe_file(path);
   }
 
   /** 请求和响应都绑定对话身份，防止旧页面读取重建后的同名文件。 */
-  public async read_workspace_document(request: JsonRecord): Promise<AgentDocument> {
-    this.assert_preview_chat(request["chatId"]);
-    const document = await this.workspace.read_document(request["path"]);
-    this.assert_preview_chat(request["chatId"]);
-    return { chatId: this.chat_id, ...document };
+  public async read_workspace_document(path: unknown): Promise<AgentDocument> {
+    this.assert_available();
+    const chatId = this.chat_id;
+    const document = await this.workspace.read_document(path);
+    this.assert_chat_identity(chatId);
+    return { chatId, ...document };
   }
 
   /** 配图与正文共用会话边界，旧会话的图片响应同样失效。 */
   public async read_workspace_image(
     href: string | null,
-    chat_id: string | null,
   ): Promise<{ bytes: Uint8Array; mime: string }> {
-    this.assert_preview_chat(chat_id);
+    this.assert_available();
+    const chatId = this.chat_id;
     const image = await this.workspace.read_document_image(href);
-    this.assert_preview_chat(chat_id);
+    this.assert_chat_identity(chatId);
     return image;
   }
 
   /** 在公开读取入口校验序号，并从当前会话分支解码历史图片。 */
   public read_tool_image(
-    chat_id: string | null,
     entry_id: string | null,
     raw_index: string | null,
   ): { bytes: Uint8Array; mime: string } {
     const index = Number(raw_index);
-    if (
-      !chat_id ||
-      !entry_id ||
-      !raw_index ||
-      !/^\d+$/.test(raw_index) ||
-      !Number.isSafeInteger(index)
-    ) {
+    if (!entry_id || !raw_index || !/^\d+$/.test(raw_index) || !Number.isSafeInteger(index)) {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    this.assert_preview_chat(chat_id);
+    this.assert_available();
     const image = this.chat?.view.read_tool_image(entry_id, index);
     if (image === undefined) throw new AppErrors.AppError("file.not_found");
     return { bytes: Buffer.from(image.data, "base64"), mime: image.mimeType };
-  }
-
-  /** 清理期间拒绝读取，清理后按对话身份拒绝迟到请求。 */
-  private assert_preview_chat(chat_id: unknown): void {
-    this.assert_not_disposed();
-    if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
-    if (chat_id !== this.chat_id) throw new AppErrors.AppError("file.not_found");
   }
 
   /** 上传不占用模型或脚本互斥，文件身份仍属于当前工程会话。 */
@@ -295,9 +291,7 @@ export class AgentService {
     body: ReadableStream<Uint8Array>,
     signal: AbortSignal,
   ): Promise<AgentFileAttachment> {
-    this.assert_not_disposed();
-    if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
-    this.session_state.require_loaded_project_path();
+    this.assert_available();
     return this.workspace.uploads.upload(name, body, signal);
   }
 
@@ -308,8 +302,7 @@ export class AgentService {
 
   /** 文件下载遵守会话关闭屏障，存储层拥有定位与流的创建。 */
   public read_upload(id: string): ReturnType<AgentWorkspacePort["uploads"]["open"]> {
-    this.assert_not_disposed();
-    if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
+    this.assert_available();
     return this.workspace.uploads.open(id);
   }
 
@@ -329,9 +322,11 @@ export class AgentService {
 
   /** 菜单读取当前会话可用的轻量文件事实。 */
   public async list_files(): Promise<AgentFilesResponse> {
-    this.assert_not_disposed();
-    if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
-    return { chatId: this.chat_id, files: await this.workspace.list_files() };
+    this.assert_available();
+    const chatId = this.chat_id;
+    const files = await this.workspace.list_files();
+    this.assert_chat_identity(chatId);
+    return { chatId, files };
   }
 
   /** 只投影界面可见技能，模型请求直接读取技能目录。 */
@@ -355,27 +350,34 @@ export class AgentService {
     return this.queueSnapshot.value;
   }
 
+  /** 重连可能恰逢重置，等新快照完成再向 HTTP 调用者交付。 */
+  public async read_snapshot(): Promise<AgentChatSnapshot> {
+    while (this.resetting !== null) await this.resetting;
+    return this.get_snapshot();
+  }
+
   /** 快照由相同的提交事实投影，调用者只能取得独立值。 */
   public get_snapshot(): AgentChatSnapshot {
+    this.assert_available();
     return structuredClone({
       ...this.read_fields(),
       revision: this.revision,
       entries: this.chat?.entries ?? [],
     });
   }
+
+  /** 运行在完成取消与收尾前仍占用工程。 */
+  private get state(): AgentChatSnapshot["state"] {
+    const execution = this.execution;
+    if (execution === null || this.chat === null) return "idle";
+    return execution.controller.signal.aborted ? "stopping" : "running";
+  }
   /** 读取会话控制字段，用于事件比较和完整快照组装。 */
   private read_fields(): AgentChatFields {
     const chat = this.chat;
-    const execution = this.execution;
-    const state =
-      execution === null || chat === null
-        ? "idle"
-        : execution.controller.signal.aborted
-          ? "stopping"
-          : "running";
     return {
       chatId: this.chat_id,
-      state,
+      state: this.state,
       pendingDecision: this.decisions.read_pending(),
       skills: this.skill_snapshot,
       inputQueue: this.get_queue_snapshot(),
@@ -399,20 +401,115 @@ export class AgentService {
     return this.ack();
   }
 
-  /** 启动期加载必需基础资源，并通过技能服务准备空白对话的候选。 */
-  public async load_resources(): Promise<void> {
-    const base_system_prompt = load_agent_system_prompt(this.paths);
-    const default_personality = load_agent_personality(this.paths);
-    const chat_seed = load_agent_chat_seed(this.paths);
-    await this.skills.refresh();
-    this.resources = {
-      baseSystemPrompt: base_system_prompt,
-      defaultPersonality: default_personality,
-      chatSeed: chat_seed,
-    };
-    this.publishedFields = this.read_fields();
-    const project = this.session_state.snapshot();
-    if (project.loaded) await this.activate_project(project.projectPath);
+  /** 先恢复唯一登记和历史，再由工程注册表公布打开周期。 */
+  public static async open(options: AgentServiceOptions): Promise<AgentService> {
+    const service = new AgentService(options);
+    try {
+      await service.restore();
+      return service;
+    } catch (error) {
+      try {
+        await service.dispose();
+      } catch (cleanup) {
+        throw new AggregateError([error, cleanup], "Agent open and cleanup failed", {
+          cause: error,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /** 工程副本换用本机材料身份，继续读取工程内原有历史。 */
+  private async restore(): Promise<void> {
+    const { directories, protectedChatIds, projectPath } = this.options;
+    const saved = await this.store.read();
+    const id =
+      saved === null
+        ? await directories.create()
+        : await directories.claim(saved.id, projectPath, protectedChatIds.has(saved.id));
+    protectedChatIds.add(id);
+    try {
+      if (saved === null) {
+        await directories.claim(id, projectPath, false);
+        this.record = await this.store.create(id);
+      } else {
+        this.record = id === saved.id ? saved : await this.store.replace_id(saved, id);
+      }
+    } catch (error) {
+      protectedChatIds.delete(id);
+      if (id !== saved?.id) await directories.remove(id);
+      throw error;
+    }
+    await this.activate_record(this.record);
+    await directories.prune(protectedChatIds);
+  }
+
+  /** 上传登记和 SDK 历史分别绑定工作区身份与文档键。 */
+  private async activate_record({ id, data }: AgentChatRecord): Promise<void> {
+    await this.workspace.activate_chat(id, data.uploads, (file) =>
+      this.store.save_upload(id, file),
+    );
+    this.chat = await this.create_chat(data.documentKey ?? id);
+    this.publish_snapshot(true);
+  }
+
+  /** chatId 只校验旧命令或预览的归属，工程路由始终使用 projectId。 */
+  public assert_chat_identity(expected: unknown): void {
+    this.assert_available();
+    if (expected !== this.chat_id) throw new AppErrors.AppError("runtime.cancelled");
+  }
+
+  /** 旧对话与上传收尾之后才清理登记，重置租约保护整个交接过程。 */
+  public async reset(): Promise<AgentCommandAck> {
+    this.assert_available();
+    const lease = this.runtime_gate.begin_runtime("agent_reset");
+    const resetting = this.reset_chat();
+    this.resetting = resetting;
+    try {
+      await resetting;
+      this.assert_not_disposed();
+      return this.ack();
+    } finally {
+      this.resetting = null;
+      this.runtime_gate.finish_runtime(lease);
+    }
+  }
+
+  /** 先等在途重接与命令结算，再清理持久化数据。 */
+  private async reset_chat(): Promise<void> {
+    await this.recovering;
+    await Promise.allSettled([...this.input_commands.values()].map(({ work }) => work));
+    const old = this.record; // 清空登记之后仍需要旧身份来清理本机材料。
+    this.chat?.log.reset("workspace");
+    try {
+      await this.close_chat("reset");
+      await this.store.reset();
+    } catch (error) {
+      if (!this.disposed && old !== null) {
+        try {
+          const saved = await this.store.read();
+          // 数据库关闭失败也可能发生在清空已提交之后，按重新读到的事实交接。
+          if (saved === null) await this.open_reset_chat(old);
+          else await this.activate_record(saved);
+        } catch (recovery) {
+          throw new AggregateError([error, recovery], "Agent reset and recovery failed", {
+            cause: error,
+          });
+        }
+      }
+      throw error;
+    }
+    await this.open_reset_chat(old);
+  }
+
+  /** 只有 SDK 历史已清空，才释放旧材料目录并创建空对话。 */
+  private async open_reset_chat(old: AgentChatRecord | null): Promise<void> {
+    this.record = null;
+    if (old !== null) {
+      this.options.protectedChatIds.delete(old.id);
+      await this.options.directories.remove(old.id);
+    }
+    if (!this.disposed) await this.restore();
   }
 
   /** 所有公开输入命令先按产品身份去重，再进入原有租约与队列规则。 */
@@ -422,17 +519,15 @@ export class AgentService {
   ): Promise<AgentInputCommandAck> {
     const chat = await this.command_chat(request["chatId"]);
     this.assert_available();
-    const { chatId, commandId, ...body } = request;
+    const { chatId: _chatId, commandId, ...body } = request;
     if (
-      chatId !== this.chat_id ||
       typeof commandId !== "string" ||
       commandId.length === 0 ||
       commandId.length > AGENT_INPUT_COMMAND_ID_LIMIT
     )
       throw agent_queue_validation_error("agent_input_command_invalid");
     const saved = chat.state.commands[commandId];
-    const key = `${this.chat_id}:${commandId}`;
-    const running = this.input_commands.get(key);
+    const running = this.input_commands.get(commandId);
     const previous = saved ?? running;
     if (
       previous !== undefined &&
@@ -444,10 +539,10 @@ export class AgentService {
     // 持久化期间的重复命令共用 Promise，并在内存边界核对冻结参数。
     const requestBody = structuredClone(body); // 受理过程和并发查重共用固定的参数副本
     const work = this.accept_input_command(chat, kind, commandId, requestBody);
-    this.input_commands.set(key, { kind, request: requestBody, work });
+    this.input_commands.set(commandId, { kind, request: requestBody, work });
     void work
       .finally(() => {
-        if (this.input_commands.get(key)?.work === work) this.input_commands.delete(key);
+        this.input_commands.delete(commandId);
       })
       .catch(() => undefined); // 原始 Promise 将受理错误返回命令调用方。
     return work;
@@ -457,10 +552,10 @@ export class AgentService {
   public async input_command_status(request: JsonRecord): Promise<AgentInputCommandAck> {
     const chat = await this.command_chat(request["chatId"]);
     this.assert_available();
-    if (request["chatId"] !== this.chat_id || typeof request["commandId"] !== "string")
+    if (typeof request["commandId"] !== "string")
       throw agent_queue_validation_error("agent_input_command_invalid");
     const commandId = request["commandId"];
-    const running = this.input_commands.has(this.chat_id + ":" + commandId);
+    const running = this.input_commands.has(commandId);
     await chat.flush();
     chat.assert_usable();
     this.assert_available();
@@ -522,7 +617,6 @@ export class AgentService {
   public async send_message(request: JsonRecord): Promise<AgentCommandAck> {
     const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
-    this.session_state.require_loaded_project_path();
     const message = this.read_message(request);
     const execution = this.execution;
     if (
@@ -535,7 +629,6 @@ export class AgentService {
       return this.ack();
     }
     if (chat.queue.is_paused) throw agent_queue_validation_error("agent_continue_required");
-    this.require_resources();
     const run = this.begin_run(read_input_command_id(request));
     return this.accept(run, () => this.prepare_run(chat, run, message));
   }
@@ -568,7 +661,6 @@ export class AgentService {
   public async send_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
     const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
-    this.session_state.require_loaded_project_path();
     const id = read_queue_id(request);
     const commandId = read_input_command_id(request);
     const run = this.run;
@@ -614,7 +706,6 @@ export class AgentService {
   public async continue_chat(request: JsonRecord): Promise<AgentCommandAck> {
     const chat = await this.command_chat(request["chatId"] ?? this.chat_id);
     this.assert_queue_available();
-    this.session_state.require_loaded_project_path();
     const round = chat.entries.findLast(
       (entry) => entry.kind === "user_message" && entry.delivery === "round",
     );
@@ -713,7 +804,6 @@ export class AgentService {
           );
     if (!valid || target === undefined || round === undefined)
       throw agent_queue_validation_error("agent_revision_unavailable");
-    this.session_state.require_loaded_project_path();
     const run = this.begin_run(read_input_command_id(request));
     const execution = run.execution;
     return this.accept(run, async () => {
@@ -739,12 +829,11 @@ export class AgentService {
   }
   /** 手动压缩返回受理回执，摘要结算由后台持有租约。 */
   public async compact_context(): Promise<AgentCommandAck> {
-    const chat = await this.command_chat();
+    const chat = await this.command_chat(this.chat_id);
     this.assert_queue_available();
     if (this.execution !== null) throw new AppErrors.AppError("runtime.busy");
     if (!chat.context.compactable)
       throw agent_queue_validation_error("agent_context_not_compactable");
-    this.session_state.require_loaded_project_path();
     const run = this.begin_run();
     const execution = run.execution;
     return this.accept(run, async () => {
@@ -768,7 +857,7 @@ export class AgentService {
   }
   /** 工程提交保持原子边界，其余执行公开停止请求并等待 SDK 结算。 */
   public async stop(): Promise<AgentCommandAck> {
-    this.assert_not_disposed();
+    this.assert_available();
     const chat = this.chat;
     const execution = this.execution;
     if (chat?.can_stop === false) throw new AppErrors.AppError("runtime.busy");
@@ -776,46 +865,25 @@ export class AgentService {
     this.cancel_execution(chat, execution, "user");
     return this.ack();
   }
-  /** 空闲重置也占用 Agent 租约，防止清理与其他运行重叠。 */
-  public async reset(): Promise<AgentCommandAck> {
-    this.assert_not_disposed();
-    const resetLease = this.execution === null ? this.runtime_gate.begin_runtime("agent") : null;
-    try {
-      const project = this.session_state.snapshot();
-      if (project.loaded) {
-        await this.transition(async () => {
-          const id = this.store === null ? null : this.chat_id;
-          this.chat?.log.reset("workspace");
-          await this.close_chat("reset");
-          const store = this.database.open_agent_store(project.projectPath);
-          try {
-            await store.reset();
-          } finally {
-            await store.close();
-          }
-          if (id !== null) await this.workspace.delete_chat(id);
-          await this.open_project(project.projectPath);
-        });
-      } else {
-        await this.skills.refresh();
-      }
-    } finally {
-      if (resetLease !== null) this.runtime_gate.finish_runtime(resetLease);
-    }
-    return this.ack();
-  }
-  /** 先解除外部订阅，再等待当前清理与执行退出。 */
+  /** 停止接收命令，等对话交接与收尾完成后释放数据库入口。 */
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    this.unsubscribe_project_session();
     this.unsubscribe_skills();
-    if (this.chat_reset !== null) await this.chat_reset;
-    await this.transition(() => this.close_chat("shutdown"));
+    this.cancel_uploads();
+    try {
+      // 在途重置和重接各自由原请求报告失败，关闭仍须完成资源清理。
+      await Promise.allSettled([this.resetting, this.recovering]);
+      await this.close_chat("shutdown");
+    } finally {
+      if (this.record !== null) this.options.protectedChatIds.delete(this.record.id);
+      await this.store.close();
+    }
   }
 
-  /** 一次运行持有全局租约，队列接续只替换轮次执行身份。 */
+  /** 一次运行持有工程租约，队列接续只替换轮次执行身份。 */
   private begin_run(commandId?: string): AgentRun {
+    if (this.run !== null) throw new AppErrors.AppError("runtime.busy");
     const chat = this.require_chat();
     chat.assert_usable();
     const lease = this.runtime_gate.begin_runtime("agent");
@@ -937,7 +1005,6 @@ export class AgentService {
     message: AgentMessageInput,
     options?: AgentSubmitOptions,
   ): ReturnType<AgentChat["submit"]> {
-    this.require_resources();
     await this.skills.refresh();
     const prepared = await this.prepare_message(message);
     this.assert_execution(execution);
@@ -1076,15 +1143,15 @@ export class AgentService {
     return resolved;
   }
   /** 会话创建时绑定宿主能力，动态提示在真实请求准备完成后读取。 */
-  private async create_chat(store: AgentChatStorage): Promise<AgentChat> {
-    const resources = this.require_resources();
+  private async create_chat(documentKey: string): Promise<AgentChat> {
+    const resources = this.resources;
     const models = createModels();
     const log = new AgentRuntimeLog(this.log_manager, this.chat_id);
     const chat = await AgentChat.open({
-      chatId: this.chat_id,
-      storage: await store.open_storage(),
-      readBatch: (callback) => store.read_batch(callback),
-      cwd: this.paths.get_app_root(),
+      documentKey,
+      storage: await this.store.open_storage(),
+      readBatch: (read) => this.store.read_batch(read),
+      cwd: this.workspace.root_path,
       models,
       seed: resources.chatSeed,
       tools: this.create_tools(),
@@ -1114,7 +1181,7 @@ export class AgentService {
         const execution = this.require_execution();
         if (execution.batchStopped)
           throw new AgentToolError({ code: "batch_task.stopped", stop_source: "user" });
-        this.runtime_gate.assert_current_runtime(execution.lease, "agent");
+        this.runtime_gate.assert_agent_runtime(execution.lease);
         signal.throwIfAborted();
         const config_snapshot = structuredClone(this.settings.read_setting());
         const model = resolve_agent_batch_model(
@@ -1150,9 +1217,8 @@ export class AgentService {
         // 用户停止后本轮不再启动翻译，明确拒绝以免把上次运行的事实当作本次结果。
         if (execution.batchStopped)
           throw new AgentToolError({ code: "batch_translation.stopped", stop_source: "user" });
-        this.session_state.require_loaded_project_path();
         signal.throwIfAborted();
-        this.runtime_gate.assert_current_runtime(execution.lease, "agent");
+        this.runtime_gate.assert_agent_runtime(execution.lease);
         const model = resolve_agent_batch_model(
           this.settings.read_setting(),
           this.model_config!,
@@ -1266,7 +1332,7 @@ export class AgentService {
   }
   /** 投影直接提供条目变化。这里只比较会话控制字段。 */
   private publish_snapshot(force = false): void {
-    if (this.disposed || (this.chat_reset !== null && !force)) return;
+    if (this.disposed || this.chat === null) return;
     const fields = this.read_fields();
     const previous = this.publishedFields;
     const timeline = this.chat?.view.take_change();
@@ -1318,7 +1384,7 @@ export class AgentService {
     const chat = this.chat;
     if (chat === null || chat.sealed || this.decisions.has_pending) return false;
     const run = this.run;
-    if (run === null) return this.runtime_gate.get_snapshot().owner === null;
+    if (run === null) return true;
     const execution = run.execution;
     return (
       chat.can_stop &&
@@ -1338,84 +1404,29 @@ export class AgentService {
     this.runtime_gate.finish_runtime(run.execution.lease);
     this.publish_snapshot();
   }
-  /** 命令和工程生命周期共用关闭屏障。所有权切换只在旧使用者收尾后发生。 */
-  private transition(operation: () => Promise<void>): Promise<void> {
-    if (this.chat_reset !== null)
-      return this.chat_reset.then(
-        () => this.transition(operation),
-        () => this.transition(operation),
-      ); // 前一次失败由原调用方接收，后续生命周期仍须执行。
-    const pending = operation();
-    this.chat_reset = pending;
-    return pending.finally(() => {
-      if (this.chat_reset === pending) this.chat_reset = null;
-      this.publish_snapshot(true);
-    });
-  }
-
-  /** 查询与提交共用恢复屏障，等待期间仍绑定原请求的工程和产品会话。 */
-  private async command_chat(chatId: unknown = this.chat_id): Promise<AgentChat> {
-    this.assert_not_disposed();
-    this.require_resources();
-    const project = this.session_state.snapshot();
-    const current = (): AgentChat => {
-      this.assert_not_disposed();
-      const active = this.session_state.snapshot();
-      if (
-        !project.loaded ||
-        !active.loaded ||
-        active.projectPath !== project.projectPath ||
-        chatId !== this.chat_id
-      )
-        throw agent_queue_validation_error("agent_input_command_invalid");
-      return this.require_chat();
-    };
-    while (this.chat_reset !== null) await this.chat_reset;
-    let chat = current();
-    if (chat.sealed) {
-      await this.transition(async () => {
-        const previous = current();
-        if (!previous.sealed) return; // 并发命令排入屏障后可能已由前一个命令完成恢复。
-        await this.run?.settlement?.catch(() => undefined); // 后台结算已记录诊断。
-        current();
-        await previous.close();
-        current();
-        if (this.store === null) throw new AppErrors.AppError("runtime.internal_invariant");
-        this.chat = await this.create_chat(this.store);
+  /** SDK 封闭后只重接当前会话，旧命令身份在等待前后均须有效。 */
+  private async command_chat(chatId: unknown): Promise<AgentChat> {
+    this.assert_chat_identity(chatId);
+    if (this.chat === null || this.chat.sealed) {
+      this.recovering ??= this.reopen_chat().finally(() => {
+        this.recovering = null;
       });
-      while (this.chat_reset !== null) await this.chat_reset;
-      chat = current();
+      await this.recovering;
     }
+    this.assert_chat_identity(chatId);
+    const chat = this.require_chat();
     chat.assert_usable();
     return chat;
   }
 
-  /** 串行关闭旧工程执行，再恢复目标工程的持久化对话。 */
-  private activate_project(project: string | null): Promise<void> {
-    return this.transition(async () => {
-      this.chat?.log.reset("project");
-      await this.close_chat("project_change");
-      if (project !== null) await this.open_project(project);
-    });
-  }
-
-  /** 产品身份与上传先于模型请求可用，首次打开空工程也不需要模型配置。 */
-  private async open_project(project: string): Promise<void> {
-    this.require_resources();
-    const store = this.database.open_agent_store(project);
-    this.store = store;
-    try {
-      const record =
-        (await store.read()) ?? (await store.create(await this.workspace.create_chat()));
-      this.chat_id = record.id;
-      await this.workspace.activate_chat(record.id, record.data.uploads, (file) =>
-        store.save_upload(record.id, file),
-      );
-      this.chat = await this.create_chat(store);
-    } catch (error) {
-      await this.close_chat("project_change");
-      throw error;
-    }
+  /** 重接沿用已登记的文档键，工作区保持当前对话的身份。 */
+  private async reopen_chat(): Promise<void> {
+    await this.run?.settlement?.catch(() => {}); // 本轮故障已由执行结算记录。
+    await this.chat?.close();
+    this.assert_not_disposed();
+    const record = this.record!;
+    this.chat = await this.create_chat(record.data.documentKey ?? record.id);
+    this.publish_snapshot(true);
   }
 
   /** 关闭保存事实并释放资源。目录删除只由显式重置和数量清理负责。 */
@@ -1423,29 +1434,22 @@ export class AgentService {
     const chat = this.chat;
     const run = this.run;
     const execution = run?.execution;
-    const store = this.store;
     if (execution !== undefined) this.cancel_execution(chat, execution, reason);
     this.chat = null;
-    this.images.clear();
     this.workspace.cancel_uploads();
     this.workspace.invalidate_links();
     this.decisions.reset();
     this.token_speed.reset();
     this.token_speed_snapshot = null;
+    this.run_output = null;
     try {
-      try {
-        await run?.settlement;
-      } finally {
-        try {
-          await chat?.close();
-        } finally {
-          await this.workspace.close();
-        }
-      }
+      await run?.settlement;
     } finally {
-      this.store = null;
-      this.chat_id = AGENT_INACTIVE_CHAT_ID;
-      await store?.close();
+      try {
+        await chat?.close();
+      } finally {
+        await this.workspace.close();
+      }
     }
   }
 
@@ -1464,15 +1468,10 @@ export class AgentService {
     this.assert_execution(execution);
     return execution;
   }
-  /** 需要历史的命令在空白会话中按请求错误拒绝。 */
+  /** SDK 会话未就绪时拒绝需要历史的命令。 */
   private require_chat(): AgentChat {
     if (this.chat === null) throw new AppErrors.AppError("request.validation_failed");
     return this.chat;
-  }
-  /** 启动资源属于组合根前置条件，缺失表示内部生命周期错误。 */
-  private require_resources(): LoadedAgentResources {
-    if (this.resources === null) throw new AppErrors.AppError("runtime.internal_invariant");
-    return this.resources;
   }
   /** 统一解析用户消息与附件引用，非法输入在入队前拒绝。 */
   private read_message(value: unknown): AgentMessageInput {
@@ -1487,7 +1486,7 @@ export class AgentService {
   /** 会话清理期间阻止命令进入即将失效的状态。 */
   private assert_available(): void {
     this.assert_not_disposed();
-    if (this.chat_reset !== null) throw new AppErrors.AppError("runtime.busy");
+    if (this.resetting !== null) throw new AppErrors.AppError("runtime.busy");
   }
   /** 等待用户决定时暂停队列命令，保留当前审批上下文。 */
   private assert_queue_available(): void {

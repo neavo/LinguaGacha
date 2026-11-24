@@ -1,7 +1,6 @@
 import type { LogManager } from "../log/log-manager";
 import { create_text_resolver } from "../../shared/i18n";
 import { resolve_app_locale } from "../../domain/app-language";
-import type { ProjectSessionState } from "../project/project-session-state";
 import type {
   BatchTranslationRunner,
   BatchTranslationRunContext,
@@ -37,9 +36,8 @@ export class BatchTranslationService {
   public constructor(
     private readonly runner: BatchTranslationRunner,
     private readonly runtime: BatchTranslationState,
-    private readonly session: ProjectSessionState,
     private readonly settings: Pick<AppSettingService, "read_setting">,
-    private readonly languages: CacheReadPort["languages"], // 已提交的项目语言
+    private readonly project_settings: CacheReadPort["settings"], // 已提交的工程设置
     private readonly log: Pick<LogManager, "append">,
   ) {}
   /** 读取当前工程的完整翻译快照。 */
@@ -55,7 +53,6 @@ export class BatchTranslationService {
   public async start_current_project(
     command: BatchTranslationStartCommand,
   ): Promise<BatchTranslationRunHandle> {
-    this.session.require_loaded_project_path();
     // Runner 在异步生命周期内使用独立命令，调用方后续修改不改变已预约范围。
     const run_command: BatchTranslationRunCommand = {
       operation: command.operation,
@@ -75,7 +72,6 @@ export class BatchTranslationService {
     model: Model,
     request: AgentBatchTranslationRequest,
   ): Promise<BatchTranslationResult> {
-    this.session.require_loaded_project_path();
     const { item_ids: ids, item_statuses: statuses } = request;
     if (
       Object.keys(request).some((key) => key !== "item_ids" && key !== "item_statuses") ||
@@ -145,7 +141,10 @@ export class BatchTranslationService {
     const raw_model = model?.to_json() ?? resolve_model_for_usage(settings, "translation");
     if (raw_model === null) throw new AppError("model.not_found");
     return {
-      config_snapshot: build_project_execution_settings(settings, this.languages.readBlock()),
+      config_snapshot: build_project_execution_settings(
+        settings,
+        this.project_settings.readBlock(),
+      ),
       model: { ...Model.from_json(raw_model, "") },
     };
   }

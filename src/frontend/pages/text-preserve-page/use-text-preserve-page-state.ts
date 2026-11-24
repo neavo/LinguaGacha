@@ -1,3 +1,4 @@
+import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
 import {
   build_quality_rule_filter_result,
   compare_quality_rule_text_value,
@@ -26,7 +27,7 @@ import {
 } from "@frontend/app/session/quality-rule-statistics-store";
 
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
-import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
@@ -137,7 +138,7 @@ export function useTextPreservePageState() {
 
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
   const { project_snapshot, project_session_status = "ready" } = useDesktopState();
-  const runtime_snapshot = useRuntimeSnapshot();
+  const runtime_snapshot = useProjectRuntimeSnapshot();
   /** 将查询失败交给页面反馈入口。 */
   const handle_quality_rule_load_error = useCallback(
     (error: unknown): void => {

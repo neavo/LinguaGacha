@@ -7,7 +7,8 @@ import path from "node:path";
 import type { AppSettingService } from "../../backend/app/app-setting-service";
 import type { BatchTranslationService } from "../../backend/batch-translation/batch-translation-service";
 import type { TranslationFileGenerationService } from "../../backend/file/translation-file-generation-service";
-import type { ProjectLifecycleService } from "../../backend/project/project-lifecycle-service";
+import type { ProjectTaskInput } from "../../backend/project/project-task-input";
+import { read_json_record } from "../../domain/json";
 import type { JsonRecord } from "../../domain/json";
 import type { CLICommandOptions } from "../cli-parser";
 import type { CLIJsonStatusReporter } from "../cli-status-reporter";
@@ -25,35 +26,33 @@ type CLIJobStatusReporter = Pick<
   "emit_started" | "emit_progress" | "emit_finished"
 >;
 
-/** CLI job 只消费当前命令所需的共享业务能力。 */
-export interface CLIJobServices {
-  app: {
-    settings: Pick<AppSettingService, "set_transient_overrides">;
-  };
-  project: {
-    summary: Pick<ProjectSummaryService, "read_translation_stats">;
-    lifecycle: Pick<
-      ProjectLifecycleService,
-      "create_project_commit" | "apply_task_input" | "unload_project"
-    >;
-  };
+type CLIProject = {
+  summary: Pick<ProjectSummaryService, "read_translation_stats">;
   batchTasks: Pick<BatchTaskRuntime, "subscribe">;
   batchTranslation: Pick<BatchTranslationService, "start_current_project">;
-  files: {
-    translationGeneration: Pick<TranslationFileGenerationService, "generate_files_to_directory">;
-  };
+  generation: Pick<TranslationFileGenerationService, "generate_files_to_directory">;
+};
+
+/** CLI 显式持有本次临时工程。 */
+export interface CLIJobServices<Project extends CLIProject = CLIProject> {
+  app: { settings: Pick<AppSettingService, "set_transient_overrides"> };
+  create_project: (request: JsonRecord, onGameSources?: () => void) => Promise<JsonRecord>;
+  close_project: (id: string) => Promise<unknown>;
+  projects: { require(id: string): Project };
+  apply_task_input: (project: Project, input: ProjectTaskInput) => Promise<unknown>;
 }
 
 /**
  * 执行文件进出型 CLI job，并隐藏内部临时 .lg 工程。
  */
-export async function run_cli_job(
-  backend_services: CLIJobServices,
+export async function run_cli_job<Project extends CLIProject>(
+  backend_services: CLIJobServices<Project>,
   command: CLICommandOptions,
   status_reporter: CLIJobStatusReporter,
 ): Promise<void> {
   status_reporter.emit_started();
   let temp_root: string | null = null; // 只有成功创建后才需要卸载工程和删目录
+  let project_id: string | null = null;
   let transient_overrides_active = false; // 防止输入校验失败时写入多余撤销调用
   let excluded_files: string[] = [];
   const failures: unknown[] = []; // 按发生顺序保留业务与收尾错误，同时继续后续清理
@@ -68,7 +67,7 @@ export async function run_cli_job(
       output_folder_open_on_finish: false,
     });
     transient_overrides_active = true;
-    const created = await backend_services.project.lifecycle.create_project_commit(
+    const created = await backend_services.create_project(
       {
         path: project_path,
         source_paths: command.inputPaths,
@@ -86,14 +85,13 @@ export async function run_cli_job(
       },
     );
     source_operation = read_source_operation_result(created.source_operation);
-    await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
+    project_id = String(read_json_record(created.project).projectId);
+    const project = backend_services.projects.require(project_id);
+    await backend_services.apply_task_input(project, await build_cli_task_input(command));
 
-    if (backend_services.project.summary.read_translation_stats().stats.total_items > 0)
-      await start_and_wait_for_translation(backend_services, status_reporter);
-    const generated =
-      await backend_services.files.translationGeneration.generate_files_to_directory(
-        command.outputDir,
-      );
+    if (project.summary.read_translation_stats().stats.total_items > 0)
+      await start_and_wait_for_translation(project, status_reporter);
+    const generated = await project.generation.generate_files_to_directory(command.outputDir);
     excluded_files = generated.excluded_files;
   } catch (error) {
     if (is_app_error(error)) {
@@ -115,7 +113,7 @@ export async function run_cli_job(
   }
   if (temp_root !== null) {
     try {
-      await backend_services.project.lifecycle.unload_project();
+      if (project_id !== null) await backend_services.close_project(project_id);
     } catch (error) {
       failures.push(error);
     }
@@ -182,7 +180,7 @@ function collect_resource_paths(command: CLICommandOptions): string[] {
 
 /** 快照仅负责展示，本轮 completion 覆盖运行和全部资源收尾。 */
 async function start_and_wait_for_translation(
-  services: CLIJobServices,
+  services: CLIProject,
   reporter: CLIJobStatusReporter,
 ): Promise<void> {
   const unsubscribe = services.batchTasks.subscribe((snapshot) => reporter.emit_progress(snapshot));

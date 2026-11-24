@@ -40,6 +40,13 @@ export const ja_jp_function_settings_page = {
       title: "エクスポート完了後に出力フォルダーを開く",
       description: "翻訳成果物のエクスポート成功後に出力フォルダーを自動で開きます",
     },
+    prompt_enhancement_enable: {
+      title: "プロンプト強化",
+      description:
+        "思考の連鎖を模擬し、AI が指示に従う能力を高めます。" +
+        "\n" +
+        "オフにすると Token 消費がわずかに減りますが、AI のタスク遂行能力が大きく低下します。既定で有効です。",
+    },
   },
   feedback: {
     preceding_lines_threshold_invalid:

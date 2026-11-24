@@ -31,6 +31,7 @@ const PROJECT_FILE_SUFFIXES = ["", SQLITE_WAL_SUFFIX, "-shm"] as const; // 替�
 type ProjectConnectionMode = "write" | "query" | "read_only";
 /** 关闭失败的连接仍由数据库层持有，以便再次回收。 */
 interface ProjectDatabaseConnectionRecord {
+  readonly identity_path: string;
   readonly normalized_path: string;
   readonly db: DatabaseSync;
   readonly access: NodeSqliteDatabase;
@@ -49,18 +50,18 @@ export class ProjectDatabase {
   }
   /** 失败交给调用者，队列保留完成屏障，让后续批次仍可执行。 */
   private async schedule<T>(project_path: string, operation: () => Promise<T>): Promise<T> {
-    const normalized = path.resolve(project_path);
-    const previous = this.queues.get(normalized) ?? Promise.resolve();
+    const identity = this.native_fs.to_identity_path(project_path);
+    const previous = this.queues.get(identity) ?? Promise.resolve();
     const result = previous.then(operation);
     const tail = result.then(
       () => {},
       () => {},
     );
-    this.queues.set(normalized, tail);
+    this.queues.set(identity, tail);
     try {
       return await result;
     } finally {
-      if (this.queues.get(normalized) === tail) this.queues.delete(normalized);
+      if (this.queues.get(identity) === tail) this.queues.delete(identity);
     }
   }
   /** 等待已受理批次后，重试回收关闭失败留下的连接。 */
@@ -81,7 +82,7 @@ export class ProjectDatabase {
   /** 排在工程在途操作之后关闭，避免卸载截断事务。 */
   public async close_project(project_path: string): Promise<void> {
     await this.schedule(project_path, async () => {
-      const record = this.connection_records.get(path.resolve(project_path));
+      const record = this.connection_records.get(this.native_fs.to_identity_path(project_path));
       if (record) this.close_connection_record(record);
     });
   }
@@ -204,6 +205,7 @@ export class ProjectDatabase {
   ): Promise<void> {
     await this.schedule(project_path, async () => {
       const normalized = path.resolve(project_path);
+      const identity = this.native_fs.to_identity_path(normalized);
       try {
         this.native_fs.create_file_exclusive(normalized);
       } catch (error) {
@@ -211,7 +213,7 @@ export class ProjectDatabase {
           throw new AppErrors.AppError("project.already_exists", { cause: error });
         throw database_error(error, normalized, "create_file");
       }
-      this.storage_maintenance_deferred_paths.delete(normalized);
+      this.storage_maintenance_deferred_paths.delete(identity);
       try {
         await this.execute_connection(
           normalized,
@@ -231,7 +233,7 @@ export class ProjectDatabase {
         if (AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed")
           throw error;
         try {
-          const record = this.connection_records.get(normalized);
+          const record = this.connection_records.get(identity);
           if (record) this.close_connection_record(record);
           this.native_fs.unlink(normalized, { force: true });
         } catch (cleanup) {
@@ -247,7 +249,7 @@ export class ProjectDatabase {
   /** 批次结束撤销句柄，阻止异步延续跨批次访问。 */
   public read<T>(project_path: string, callback: (reader: ProjectDatabaseAccess) => T): Promise<T> {
     return this.use_connection(project_path, async (record) => {
-      const reader = new ProjectDatabaseAccess(record.normalized_path, record.db);
+      const reader = new ProjectDatabaseAccess(record.normalized_path, record.db, this.native_fs);
       try {
         return await callback(reader);
       } finally {
@@ -271,7 +273,7 @@ export class ProjectDatabase {
     record: ProjectDatabaseConnectionRecord,
     callback: (writer: ProjectDatabaseAccess) => T,
   ): Promise<T> {
-    const writer = new ProjectDatabaseAccess(record.normalized_path, record.db);
+    const writer = new ProjectDatabaseAccess(record.normalized_path, record.db, this.native_fs);
     try {
       return await record.access.transaction(async () => callback(writer));
     } catch (error) {
@@ -404,7 +406,8 @@ export class ProjectDatabase {
     normalized_path: string,
     read_only = false,
   ): ProjectDatabaseConnectionRecord {
-    const cached = this.connection_records.get(normalized_path);
+    const identity_path = this.native_fs.to_identity_path(normalized_path);
+    const cached = this.connection_records.get(identity_path);
     if (cached !== undefined) this.close_connection_record(cached);
     let record: ProjectDatabaseConnectionRecord | undefined;
     try {
@@ -414,12 +417,13 @@ export class ProjectDatabase {
         readOnly: read_only,
       });
       record = {
+        identity_path,
         normalized_path,
         db,
         access: new NodeSqliteDatabase(db),
       };
       // 登记后再初始化，关闭失败仍由本实例持有并回收。
-      this.connection_records.set(normalized_path, record);
+      this.connection_records.set(identity_path, record);
       return record;
     } catch (error) {
       const failure = database_error(error, normalized_path, "open");
@@ -452,7 +456,8 @@ export class ProjectDatabase {
    * 将 .lg 物理回收模式统一为 FULL。整理暂缓不影响数据库事实读取，由后续实例重新尝试。
    */
   private apply_project_storage_mode(normalized_path: string, db: DatabaseSync): void {
-    if (this.storage_maintenance_deferred_paths.has(normalized_path)) {
+    const identity = this.native_fs.to_identity_path(normalized_path);
+    if (this.storage_maintenance_deferred_paths.has(identity)) {
       return;
     }
     try {
@@ -464,7 +469,7 @@ export class ProjectDatabase {
       db.exec("VACUUM");
     } catch {
       // 物理回收不改变业务数据语义。当前实例暂缓后续整理，已提交的迁移事实继续有效。
-      this.storage_maintenance_deferred_paths.add(normalized_path);
+      this.storage_maintenance_deferred_paths.add(identity);
     }
   }
 
@@ -477,7 +482,7 @@ export class ProjectDatabase {
       throw database_error(error, record.normalized_path, "close");
     } finally {
       if (!record.db.isOpen) {
-        this.connection_records.delete(record.normalized_path);
+        this.connection_records.delete(record.identity_path);
       }
     }
   }

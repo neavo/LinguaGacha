@@ -7,6 +7,12 @@ import { godot_encrypted_block_fixture } from "../../../test/godot-fixture";
 import { BINARY_IO_CHUNK_BYTES } from "../shared/binary";
 import { decrypt_block, read_encrypted_block } from "./crypt";
 
+async function read_plaintext(chunks: AsyncIterable<Buffer>): Promise<Buffer> {
+  const bytes: Buffer[] = [];
+  for await (const chunk of chunks) bytes.push(chunk);
+  return Buffer.concat(bytes);
+}
+
 it("加密块跨读取边界解密，按明文长度去除补齐", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-crypt-"));
   const key = Buffer.alloc(32, 37),
@@ -18,9 +24,7 @@ it("加密块跨读取边界解密，按明文长度去除补齐", async () => {
   try {
     const block = await read_encrypted_block(input, 0, encrypted.length);
     expect(block.stored_size).toBe(encrypted.length);
-    expect(
-      Buffer.concat(await Array.fromAsync(decrypt_block(input, block, key))).equals(plain),
-    ).toBe(true);
+    expect((await read_plaintext(decrypt_block(input, block, key))).equals(plain)).toBe(true);
   } finally {
     await input.close();
   }
@@ -40,7 +44,7 @@ it.each(["key", "payload", "length"])("加密块拒绝错误或损坏：%s", asy
     else {
       const block = await read_encrypted_block(input, 0, encrypted.length);
       await expect(
-        Array.fromAsync(decrypt_block(input, block, kind === "key" ? Buffer.alloc(32, 1) : key)),
+        read_plaintext(decrypt_block(input, block, kind === "key" ? Buffer.alloc(32, 1) : key)),
       ).rejects.toThrow("MD5");
     }
   } finally {
