@@ -45,8 +45,8 @@ export function ProjectSidebar({
   const { settings_snapshot, open_projects, active_project } = useDesktopState();
   const { projects } = useRuntimeSnapshot();
   const lifecycle = useProjectLifecycle();
-  const paths = new Set(open_projects.map(({ snapshot }) => path_key(snapshot.path)));
   const [opening_path, set_opening_path] = useState<string | null>(null);
+  const paths = new Set(open_projects.map(({ snapshot }) => path_key(snapshot.path))); // 重复路径保留已打开项。
   const recent = settings_snapshot.recent_projects.filter(({ path }) => {
     const key = path_key(path);
     if (paths.has(key)) return false;
@@ -60,6 +60,7 @@ export function ProjectSidebar({
       <hr className="sidebar-group-separator" />
       <div className="sidebar-projects__header">
         <span className="sidebar-projects__title">{t("app.workspace.projects")}</span>
+        {/* 每次引导都重建按钮容器，重新播放提示动画。 */}
         <div
           key={lifecycle.attention}
           className="sidebar-projects__header-actions"

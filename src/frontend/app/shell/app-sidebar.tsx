@@ -17,7 +17,7 @@ import {
 } from "@frontend/widgets/app-dropdown-menu";
 import "@frontend/app/shell/app-sidebar.css";
 
-const SIDEBAR_WIDTH = { initial: 256, min: 220, max: 420, step: 20 } as const;
+const SIDEBAR_WIDTH = { min: 220, max: 480, step: 20 } as const;
 const SIDEBAR_WIDTH_STORAGE_KEY = "lg-sidebar-width";
 const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).toString();
 
@@ -36,18 +36,20 @@ type AppSidebarProps = {
   on_select_app_language: (language: AppLanguage) => void;
   on_profile_action: () => void;
 };
-/** 导航与语言选择由宿主状态驱动，侧栏只提交用户操作。 */
+/** 侧栏管理本机宽度偏好，导航与语言选择由宿主处理。 */
 export function AppSidebar(props: AppSidebarProps): JSX.Element {
   const { t } = useI18n();
   const [width, set_width] = useState(() => {
     const saved = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-    const value = saved === null ? SIDEBAR_WIDTH.initial : Number.parseInt(saved, 10);
-    return clamp_width(Number.isFinite(value) ? value : SIDEBAR_WIDTH.initial);
+    const value = Number.parseInt(saved ?? "", 10);
+    return Number.isFinite(value) ? clamp_width(value) : SIDEBAR_WIDTH.min;
   });
   const sidebar_ref = useRef<HTMLElement>(null);
-  const drag = useRef<{ x: number; width: number } | null>(null);
-  const resize_label = t("app.navigation_action.resize_sidebar");
-  function save_width(next: number): void {
+  const drag = useRef<{ x: number; width: number } | null>(null); // 取消拖动时恢复起点宽度。
+
+  /** 提交时才写入本机偏好，拖动预览只更新界面。 */
+  function save_width(value: number): void {
+    const next = clamp_width(value);
     window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(next));
     set_width(next);
   }
@@ -188,7 +190,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
         className="shell-sidebar__resize"
         role="separator"
         tabIndex={0}
-        aria-label={resize_label}
+        aria-label={t("app.navigation_action.resize_sidebar")}
         aria-controls="shell-navigation"
         aria-orientation="vertical"
         aria-valuemin={SIDEBAR_WIDTH.min}
@@ -206,7 +208,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
         onPointerUp={(event) => {
           if (drag.current === null || !event.currentTarget.hasPointerCapture(event.pointerId))
             return;
-          save_width(clamp_width(drag.current.width + event.clientX - drag.current.x));
+          save_width(drag.current.width + event.clientX - drag.current.x);
         }}
         onPointerCancel={() => {
           if (drag.current !== null) set_width(drag.current.width);
@@ -233,13 +235,14 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
               return;
           }
           event.preventDefault();
-          save_width(clamp_width(next));
+          save_width(next);
         }}
       />
     </aside>
   );
 }
 
+/** 恢复偏好、拖动预览和提交宽度共用同一组边界。 */
 function clamp_width(value: number): number {
   return Math.max(SIDEBAR_WIDTH.min, Math.min(SIDEBAR_WIDTH.max, value));
 }
