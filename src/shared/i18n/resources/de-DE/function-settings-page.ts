@@ -43,6 +43,13 @@ export const de_de_function_settings_page = {
       description:
         "Öffnet den Ausgabeordner automatisch nach erfolgreichem Export der Übersetzungen",
     },
+    prompt_enhancement_enable: {
+      title: "Prompt-Verbesserung",
+      description:
+        "Verbessert die Befolgung von Anweisungen durch die KI, indem eine Gedankenkette simuliert wird." +
+        "\n" +
+        "Deaktivieren senkt den Token-Verbrauch leicht, aber die KI-Intelligenz deutlich. Standardmäßig aktiviert.",
+    },
   },
   feedback: {
     preceding_lines_threshold_invalid:

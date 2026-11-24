@@ -41,12 +41,6 @@ vi.mock("@frontend/widgets/setting-card-row/setting-card-row", () => {
   };
 });
 
-vi.mock("@frontend/widgets/boolean-segmented-toggle", () => {
-  return {
-    BooleanSegmentedToggle: () => <button type="button" />,
-  };
-});
-
 vi.mock("@frontend/shadcn/select", () => {
   return {
     Select: (props: {
@@ -83,6 +77,7 @@ vi.mock("@frontend/shadcn/select", () => {
 function create_function_settings_state_fixture() {
   return {
     snapshot: {
+      prompt_enhancement_enable: true,
       project_save_mode: "MANUAL",
       project_fixed_path: "",
       translation_save_mode: "PROJECT",
@@ -93,6 +88,7 @@ function create_function_settings_state_fixture() {
       following_lines_threshold: 0,
     },
     pending_state: {
+      prompt_enhancement_enable: false,
       project_save_mode: false,
       translation_save_mode: false,
       output_folder_open_on_finish: false,
@@ -103,7 +99,7 @@ function create_function_settings_state_fixture() {
     choosing_directory: { project_save_mode: false, translation_save_mode: false },
     update_translation_save_mode: vi.fn(),
     update_project_save_mode: vi.fn(async (_next_mode: "MANUAL" | "FIXED" | "SOURCE") => {}),
-    update_output_folder_open_on_finish: vi.fn(async (_next_checked: boolean) => {}),
+    update_boolean_setting: vi.fn(),
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_following_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_request_timeout: vi.fn(async (_next_value: number) => {}),
@@ -154,7 +150,7 @@ describe("FunctionSettingsPage", () => {
     push_toast_mock.mockReset();
   });
 
-  /** 挂载真实页面以验证输入、失焦与键盘提交。 */
+  /** 挂载页面以验证设置项的用户操作。 */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -164,6 +160,21 @@ describe("FunctionSettingsPage", () => {
       root?.render(<FunctionSettingsPage />);
     });
   }
+
+  it("提示词增强位于最后一项，点击禁用提交新值", async () => {
+    await mount_page();
+    const last_setting = container!.querySelector(
+      '[aria-label="function_settings_page.title"]',
+    )!.lastElementChild!;
+    const toggle = last_setting.querySelector<HTMLButtonElement>(
+      '[aria-label="function_settings_page.fields.prompt_enhancement_enable.title"] button[aria-pressed="false"]',
+    )!;
+    expect(toggle.textContent).toBe("app.toggle.option.disabled");
+    await act(async () => toggle.click());
+    expect(
+      get_current_function_settings_state().update_boolean_setting,
+    ).toHaveBeenCalledExactlyOnceWith("prompt_enhancement_enable", false);
+  });
 
   it.each(["project_save_mode", "translation_save_mode"] as const)(
     "%s 只提交对应保存位置",

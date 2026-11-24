@@ -1,22 +1,17 @@
 import type { JSX, ReactNode } from "react";
-import { APP_PREFILTER_SETTING_KEYS } from "@domain/project-settings";
+import type { AppPrefilterSettingKey } from "@domain/project-settings";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
-import {
-  useLaboratoryPageState,
-  type LaboratoryField,
-} from "@frontend/pages/laboratory-page/use-laboratory-page-state";
+import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-laboratory-page-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
-/** 实验选项通过页面状态入口保存，仅工程预过滤操作消费运行锁。 */
 export function LaboratoryPage(): JSX.Element {
   const { locale, t } = useI18n();
   const { snapshot, pending_state, runtime_locked, update_setting } = useLaboratoryPageState();
 
-  /** 用同一字段关联文案、值、禁用状态和保存命令。 */
-  function render_setting(field: LaboratoryField, title_suffix?: ReactNode): JSX.Element {
+  function render_setting(field: AppPrefilterSettingKey, title_suffix?: ReactNode): JSX.Element {
     const title = t(`laboratory_page.fields.${field}.title`);
     return (
       <SettingCardRow
@@ -28,10 +23,7 @@ export function LaboratoryPage(): JSX.Element {
             aria_label={title}
             value={snapshot[field]}
             stretch
-            disabled={
-              pending_state[field] ||
-              (runtime_locked && APP_PREFILTER_SETTING_KEYS.some((key) => key === field))
-            }
+            disabled={pending_state[field] || runtime_locked}
             on_value_change={(value) => {
               void update_setting(field, value);
             }}
@@ -53,7 +45,6 @@ export function LaboratoryPage(): JSX.Element {
           />,
         )}
         {render_setting("skip_duplicate_source_text_enable")}
-        {render_setting("prompt_enhancement_enable")}
       </section>
     </div>
   );

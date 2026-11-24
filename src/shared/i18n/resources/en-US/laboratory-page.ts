@@ -4,13 +4,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_laboratory_page = {
   title: "Laboratory",
   fields: {
-    prompt_enhancement_enable: {
-      title: "Prompt enhancement",
-      description:
-        "Strengthens the AI's instruction following by simulating chain-of-thought reasoning." +
-        "\n" +
-        "Disabling slightly reduces token usage but significantly reduces AI intelligence. Enabled by default.",
-    },
     mtool_optimizer_enable: {
       title: "MTool optimizer",
       description:

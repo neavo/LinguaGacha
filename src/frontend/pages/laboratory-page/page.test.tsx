@@ -45,12 +45,10 @@ vi.mock("@frontend/widgets/boolean-segmented-toggle", () => ({
 function create_laboratory_state_fixture() {
   return {
     snapshot: {
-      prompt_enhancement_enable: true,
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     },
     pending_state: {
-      prompt_enhancement_enable: false,
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     },
@@ -87,19 +85,7 @@ describe("LaboratoryPage", () => {
     });
   }
 
-  it("点击提示词增强开关提交新值", async () => {
-    const field = "prompt_enhancement_enable";
-    await mount_page();
-    const toggle = container?.querySelector<HTMLButtonElement>(
-      `button[aria-label="laboratory_page.fields.${field}.title"]`,
-    );
-    await act(async () => {
-      toggle?.click();
-    });
-    expect(laboratory_state_fixture.current?.update_setting).toHaveBeenCalledWith(field, false);
-  });
-
-  it("运行时占用只禁用会同步工程的开关", async () => {
+  it("工程运行时禁用两个预过滤开关", async () => {
     laboratory_state_fixture.current = {
       ...create_laboratory_state_fixture(),
       runtime_locked: true,
@@ -108,9 +94,9 @@ describe("LaboratoryPage", () => {
 
     expect(
       container?.querySelector<HTMLButtonElement>(
-        'button[aria-label="laboratory_page.fields.prompt_enhancement_enable.title"]',
+        'button[aria-label="laboratory_page.fields.skip_duplicate_source_text_enable.title"]',
       )?.disabled,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       container?.querySelector<HTMLButtonElement>(
         'button[aria-label="laboratory_page.fields.mtool_optimizer_enable.title"]',

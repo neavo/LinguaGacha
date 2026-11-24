@@ -12,10 +12,12 @@ import {
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
   build_function_settings_snapshot,
+  type FunctionBooleanSettingField,
   type FunctionSettingsSnapshot,
 } from "@frontend/pages/function-settings-page/types";
 
 const FUNCTION_SETTINGS_PENDING_FIELDS = [
+  "prompt_enhancement_enable",
   "preceding_lines_threshold",
   "following_lines_threshold",
   "project_save_mode",
@@ -30,7 +32,7 @@ type UseFunctionSettingsStateResult = {
   update_project_save_mode: (next_mode: ProjectSaveMode) => Promise<void>;
   update_translation_save_mode: (next_mode: TranslationSaveMode) => Promise<void>;
   choosing_directory: Record<"project_save_mode" | "translation_save_mode", boolean>;
-  update_output_folder_open_on_finish: (next_checked: boolean) => Promise<void>;
+  update_boolean_setting: (field: FunctionBooleanSettingField, value: boolean) => Promise<void>;
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
   update_following_lines_threshold: (next_value: number) => Promise<void>;
   update_request_timeout: (next_value: number) => Promise<void>;
@@ -87,18 +89,12 @@ export function useFunctionSettingsState(): UseFunctionSettingsStateResult {
     [commit_update, snapshot, t],
   );
 
-  /** 开关值变化后交给共享编辑器保存。 */
-  const update_output_folder_open_on_finish = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      if (snapshot.output_folder_open_on_finish === next_checked) {
-        return;
-      }
-
-      await commit_update("output_folder_open_on_finish", {
-        output_folder_open_on_finish: next_checked,
-      });
+  const update_boolean_setting = useCallback(
+    async (field: FunctionBooleanSettingField, value: boolean): Promise<void> => {
+      if (snapshot[field] === value) return;
+      await commit_update(field, { [field]: value });
     },
-    [commit_update, snapshot.output_folder_open_on_finish],
+    [commit_update, snapshot],
   );
 
   /** 收敛超时输入并跳过无效值与重复提交。 */
@@ -135,7 +131,7 @@ export function useFunctionSettingsState(): UseFunctionSettingsStateResult {
     choosing_directory,
     update_project_save_mode: (mode) => update_save_mode("project_save_mode", mode),
     update_translation_save_mode: (mode) => update_save_mode("translation_save_mode", mode),
-    update_output_folder_open_on_finish,
+    update_boolean_setting,
     update_request_timeout,
     update_preceding_lines_threshold: (value) =>
       update_context_threshold("preceding_lines_threshold", value),

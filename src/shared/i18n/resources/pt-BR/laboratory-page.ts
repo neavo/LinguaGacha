@@ -4,13 +4,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const pt_br_laboratory_page = {
   title: "Laboratório",
   fields: {
-    prompt_enhancement_enable: {
-      title: "Aprimoramento de prompt",
-      description:
-        "Reforça o seguimento de instruções da IA simulando uma cadeia de raciocínio." +
-        "\n" +
-        "Desativar reduz ligeiramente o consumo de tokens, mas reduz significativamente a inteligência da IA. Ativado por padrão.",
-    },
     mtool_optimizer_enable: {
       title: "Otimizador MTool",
       description:

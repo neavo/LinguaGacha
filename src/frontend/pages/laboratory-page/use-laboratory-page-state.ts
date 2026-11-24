@@ -1,5 +1,9 @@
 import { useCallback } from "react";
-import { APP_PREFILTER_SETTING_KEYS } from "@domain/project-settings";
+import {
+  APP_PREFILTER_SETTING_KEYS,
+  type AppPrefilterSettingKey,
+  type AppPrefilterSettings,
+} from "@domain/project-settings";
 
 import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/desktop-toast";
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
@@ -9,26 +13,16 @@ import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 
-const LABORATORY_PENDING_FIELDS = [
-  "prompt_enhancement_enable",
-  "mtool_optimizer_enable",
-  "skip_duplicate_source_text_enable",
-] as const;
-
-export type LaboratoryField = (typeof LABORATORY_PENDING_FIELDS)[number];
-type LaboratorySnapshot = Pick<SettingsSnapshot, LaboratoryField>;
-
 type UseLaboratoryPageStateResult = {
-  snapshot: LaboratorySnapshot;
-  pending_state: Record<LaboratoryField, boolean>;
+  snapshot: AppPrefilterSettings;
+  pending_state: Record<AppPrefilterSettingKey, boolean>;
   runtime_locked: boolean;
-  update_setting: (field: LaboratoryField, next_checked: boolean) => Promise<void>;
+  update_setting: (field: AppPrefilterSettingKey, next_checked: boolean) => Promise<void>;
 };
 
 /** 页面只持有实验字段的乐观快照，保存与回滚交由通用设置编辑器。 */
-function build_laboratory_snapshot(settings: SettingsSnapshot): LaboratorySnapshot {
+function build_laboratory_snapshot(settings: SettingsSnapshot): AppPrefilterSettings {
   return {
-    prompt_enhancement_enable: settings.prompt_enhancement_enable,
     mtool_optimizer_enable: settings.mtool_optimizer_enable,
     skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
   };
@@ -43,18 +37,16 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   const { t } = useI18n();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_laboratory_snapshot,
-    pending_fields: LABORATORY_PENDING_FIELDS,
+    pending_fields: APP_PREFILTER_SETTING_KEYS,
   });
   const runtime_locked = Object.values(runtime_snapshot.projects ?? {}).some(is_project_busy);
 
-  // 工程字段受运行锁约束，应用偏好可供后续调用立即读取。
   const update_setting = useCallback(
-    async (field: LaboratoryField, next_checked: boolean): Promise<void> => {
-      const affects_project = APP_PREFILTER_SETTING_KEYS.some((key) => key === field);
-      if ((affects_project && runtime_locked) || snapshot[field] === next_checked) return;
+    async (field: AppPrefilterSettingKey, next_checked: boolean): Promise<void> => {
+      if (runtime_locked || snapshot[field] === next_checked) return;
       const save = async (): Promise<void> => {
         const settings = await commit_update(field, { [field]: next_checked });
-        if (settings !== null && affects_project && has_open_projects) {
+        if (settings !== null && has_open_projects) {
           push_toast(
             "info",
             format_project_settings_aligned_toast({
@@ -65,7 +57,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
           );
         }
       };
-      if (affects_project && has_open_projects) {
+      if (has_open_projects) {
         await run_modal_progress_toast({
           message: t("app.feedback.operation_running"),
           task: save,

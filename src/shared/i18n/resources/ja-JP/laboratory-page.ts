@@ -3,13 +3,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_laboratory_page = {
   title: "実験室",
   fields: {
-    prompt_enhancement_enable: {
-      title: "プロンプト強化",
-      description:
-        "思考の連鎖を模擬し、AI が指示に従う能力を高めます。" +
-        "\n" +
-        "オフにすると Token 消費がわずかに減りますが、AI のタスク遂行能力が大きく低下します。既定で有効です。",
-    },
     mtool_optimizer_enable: {
       title: "MTool オプティマイザー",
       description:

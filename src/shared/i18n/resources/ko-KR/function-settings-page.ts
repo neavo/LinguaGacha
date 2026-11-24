@@ -40,6 +40,13 @@ export const ko_kr_function_settings_page = {
       title: "내보내기 완료 후 출력 폴더 열기",
       description: "번역 결과물을 성공적으로 내보낸 후 출력 폴더를 자동으로 엽니다",
     },
+    prompt_enhancement_enable: {
+      title: "프롬프트 강화",
+      description:
+        "사고의 연쇄를 모방하여 AI의 지시 준수 능력을 높입니다." +
+        "\n" +
+        "이 기능을 끄면 Token 사용량은 조금 줄지만 AI의 작업 수행 능력이 크게 저하됩니다. 기본적으로 사용합니다.",
+    },
   },
   feedback: {
     preceding_lines_threshold_invalid:

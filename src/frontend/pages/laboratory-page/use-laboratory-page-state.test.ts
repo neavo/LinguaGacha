@@ -162,23 +162,18 @@ describe("useLaboratoryPageState", () => {
     });
   }
 
-  it("Agent 运行中可保存提示词增强，预过滤受运行锁约束", async () => {
-    const field = "prompt_enhancement_enable";
+  it("Agent 运行时不提交预过滤设置", async () => {
     runtime_fixture.current.runtime_snapshot = {
       revision: 1,
       owner: "agent",
       projects: { project: { agent: true } },
     };
-    vi.mocked(api_fetch).mockResolvedValue({
-      settings: create_settings_snapshot({ [field]: false }),
-    } as never);
     await render_hook();
     await act(async () => {
-      await latest_state?.update_setting(field, false);
       await latest_state?.update_setting("mtool_optimizer_enable", true);
     });
-    expect(vi.mocked(api_fetch).mock.calls).toEqual([["/api/settings/update", { [field]: false }]]);
-    expect(latest_state?.snapshot[field]).toBe(false);
+    expect(api_fetch).not.toHaveBeenCalled();
+    expect(latest_state?.snapshot.mtool_optimizer_enable).toBe(false);
     expect(runtime_fixture.current.commit_project_write).not.toHaveBeenCalled();
     expect(toast_fixture.current.run_modal_progress_toast).not.toHaveBeenCalled();
   });
