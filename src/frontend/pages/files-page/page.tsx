@@ -53,7 +53,7 @@ export function FilesPage(): JSX.Element {
     <div className="workbench-page page-shell page-shell--full">
       <WorkbenchStatsSection stats={translation_stats} />
       <FileDropZone
-        label={t("app.drop.import_here")}
+        label={t("app.drop.release")}
         disabled={!workbench_state.can_edit_files}
         on_paths_drop={(paths) => {
           void workbench_state.request_add_files_from_paths(paths);

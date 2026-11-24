@@ -1,7 +1,7 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_agent_page = {
-  project_required: "먼저 프로젝트 파일을 만들거나 열어 주세요 …",
+  project_required: "먼저 왼쪽 버튼을 클릭하여 프로젝트를 만들거나 열어 주세요 …",
   document: {
     conversation: "대화",
     open: "열기",
@@ -52,11 +52,10 @@ export const ko_kr_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "번역할 파일이나 폴더를 끌어다 놓고 클릭 한 번으로 번역하세요 …!",
+    no_project_placeholder: "번역할 파일이나 폴더를 놓아 프로젝트 만들기 …",
     placeholder: "작업을 설명하거나 @를 입력해 스킬 또는 명령을 선택하세요 …",
     edit_assistant_placeholder: "모델 응답 수정 …",
     newline: "줄 바꿈",
-    drop_files: "놓아서 파일 추가",
   },
   mention: {
     files: {

@@ -1,335 +1,356 @@
-import { useState, type JSX, type DragEvent } from "react";
+import { useState, useSyncExternalStore, type JSX, type ReactNode, type RefObject } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
-  FileClock,
+  BrushCleaning,
+  Ellipsis,
   FileInput,
   FilePlus,
-  Plus,
+  FolderOpen,
+  ListX,
   SquarePower,
-  X,
 } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
 import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
-import { useProjectPreview } from "@frontend/features/project-lifecycle/use-project-preview";
-import { ProjectPreviewSummary } from "@frontend/features/project-lifecycle/project-preview";
+import { ProjectOpenPreviewDialog } from "@frontend/features/project-lifecycle/project-open-preview-dialog";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import {
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuItem,
+  AppDropdownMenuTrigger,
+} from "@frontend/widgets/app-dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import type { ProjectStore } from "@frontend/app/state/project-store-registry";
-import { AppButton } from "@frontend/widgets/app-button";
 import { read_file_paths } from "@frontend/app/desktop/source-paths";
-import "./project-sidebar.css";
+import { FileDropTarget } from "@frontend/widgets/interactions/file-drop-target";
+import "@frontend/widgets/inline-action-button.css";
+import "@frontend/widgets/status-mark.css";
 
-const RECENT_LIMIT = 5;
-const path_key = (file: string): string => {
+/** 最近记录与打开列表来自不同入口，Windows 路径按大小写不敏感的方式比较。 */
+function path_key(file: string): string {
   const normalized = file.replaceAll("\\", "/");
   return navigator.platform.toLowerCase().includes("win") ? normalized.toLowerCase() : normalized;
-};
+}
 
+/** 打开工程与最近工程共用列表，重置与打开确认绑定发起操作时的目标。 */
 export function ProjectSidebar({
-  before_select,
+  project_view_active,
   select,
 }: {
-  before_select: (project: ProjectStore) => Promise<boolean>;
-  select: (project: ProjectStore, chatId?: string) => Promise<boolean>;
+  project_view_active: boolean;
+  select: (project: ProjectStore) => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
-  const { settings_snapshot, open_projects, active_project, apply_chat_list } = useDesktopState();
-  const runtime = useRuntimeSnapshot();
+  const { settings_snapshot, open_projects, active_project } = useDesktopState();
+  const { projects } = useRuntimeSnapshot();
   const lifecycle = useProjectLifecycle();
-  const [collapsed, set_collapsed] = useState(new Set<string>());
-  const [removing, set_removing] = useState<{ projectId: string; chatId: string } | null>(null);
-  const [pending, set_pending] = useState(false);
   const paths = new Set(open_projects.map(({ snapshot }) => path_key(snapshot.path)));
-  const recent = settings_snapshot.recent_projects
-    .filter((project) => {
-      const key = path_key(project.path);
-      if (paths.has(key)) return false;
-      paths.add(key);
-      return true;
-    })
-    .slice(0, RECENT_LIMIT);
+  const [resetting, set_resetting] = useState<ProjectStore | null>(null);
+  const [opening_path, set_opening_path] = useState<string | null>(null);
+  const [submitting, set_submitting] = useState(false);
+  const recent = settings_snapshot.recent_projects.filter(({ path }) => {
+    const key = path_key(path);
+    if (paths.has(key)) return false;
+    paths.add(key);
+    return true;
+  });
 
-  function show_error(error: unknown): void {
-    push_error_toast(t("app.feedback.update_failed"), error);
-  }
+  const can_confirm_reset = useSyncExternalStore(
+    resetting?.agentChat.subscribe_reset ?? subscribe_empty,
+    resetting?.agentChat.can_reset ?? no_reset,
+  );
+  const reset_disabled =
+    resetting === null ||
+    !can_confirm_reset ||
+    lifecycle.busy ||
+    is_project_busy(projects?.[resetting.snapshot.projectId]) ||
+    !open_projects.includes(resetting);
 
-  async function create(project: ProjectStore): Promise<void> {
-    // 切换工程或离开全局页时先保存脏编辑器，离页被阻断时不创建孤立对话。
-    if (!(await before_select(project))) return;
-    const projectId = project.snapshot.projectId;
-    const result = await api_fetch("/api/agent/chats/create", { projectId });
-    apply_chat_list(projectId, result);
-    set_collapsed((before) => {
-      const next = new Set(before);
-      next.delete(projectId);
-      return next;
-    });
-    await select(project, project.activeChatId);
-  }
-
-  async function delete_chat(): Promise<void> {
-    if (!removing || pending) return;
-    set_pending(true);
+  /** 失败时保留目标，重试仍使用同一个工程 Store。 */
+  async function reset(): Promise<void> {
+    if (resetting === null || reset_disabled || submitting) return;
+    set_submitting(true);
     try {
-      const result = await api_fetch("/api/agent/chats/delete", removing);
-      apply_chat_list(removing.projectId, result);
-      set_removing(null);
+      await resetting.agentChat.reset();
+      set_resetting(null);
     } catch (error) {
-      show_error(error);
+      push_error_toast(t("app.feedback.update_failed"), error);
     } finally {
-      set_pending(false);
+      set_submitting(false);
     }
   }
 
   return (
-    <section
-      className="project-sidebar"
-      onDragOver={accept_project_drop}
-      onDrop={(event) =>
-        route_project_drop(event, lifecycle, open_projects.length === 0, () =>
-          push_toast("warning", t("agent_page.error.invalid_file_path")),
-        )
-      }
-    >
-      <div className="project-sidebar__heading">
-        <span>{t("agent_page.document.conversation")}</span>
-        <button
-          type="button"
-          className="project-sidebar__icon"
-          title={t("project.create.title")}
-          aria-label={t("project.create.title")}
-          disabled={lifecycle.busy}
-          onClick={lifecycle.show_create_dialog}
+    <section className="shell-sidebar__projects">
+      <hr className="sidebar-group-separator" />
+      <div className="sidebar-projects__header">
+        <span className="sidebar-projects__title">{t("app.workspace.projects")}</span>
+        <div
+          key={lifecycle.attention}
+          className="sidebar-projects__header-actions"
+          data-attention={lifecycle.attention > 0 || undefined}
         >
-          <FilePlus aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="project-sidebar__icon"
-          title={t("project.open.title")}
-          aria-label={t("project.open.title")}
-          disabled={lifecycle.busy}
-          onClick={() => lifecycle.request_open()}
-        >
-          <FileInput aria-hidden="true" />
-        </button>
-      </div>
-      <ul>
-        {open_projects.map((project) => {
-          const { projectId, name, path } = project.snapshot;
-          const activity = runtime.projects?.[projectId];
-          const busy = Boolean(
-            activity?.projectWrite || activity?.batchTranslation || activity?.activeChatCount,
-          );
-          const expanded = !collapsed.has(projectId);
-          const close_label = t(busy ? "app.workspace.close_busy" : "project.close.action");
-          return (
-            <li key={projectId}>
-              <div className="project-sidebar__row" data-active={active_project === project}>
-                <button
-                  type="button"
-                  className="project-sidebar__icon"
-                  aria-expanded={expanded}
-                  aria-label={name}
-                  onClick={() =>
-                    set_collapsed((before) => {
-                      const next = new Set(before);
-                      if (expanded) next.add(projectId);
-                      else next.delete(projectId);
-                      return next;
-                    })
-                  }
-                >
-                  {expanded ? (
-                    <ChevronDown aria-hidden="true" />
-                  ) : (
-                    <ChevronRight aria-hidden="true" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="project-sidebar__label"
-                  title={path}
-                  onClick={() => void select(project).catch(show_error)}
-                >
-                  <span>{name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="project-sidebar__icon"
-                  title={t("app.workspace.new_chat")}
-                  aria-label={t("app.workspace.new_chat")}
-                  onClick={() => void create(project).catch(show_error)}
-                >
-                  <Plus aria-hidden="true" />
-                </button>
-                <span title={close_label}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <TooltipTarget>
                   <button
                     type="button"
-                    className="project-sidebar__icon"
-                    aria-label={close_label}
-                    disabled={busy || lifecycle.busy}
-                    onClick={() => lifecycle.request_close(projectId)}
+                    className="inline-action-button"
+                    aria-label={t("project.create.title")}
+                    disabled={lifecycle.busy}
+                    onClick={lifecycle.show_create_dialog}
                   >
-                    <SquarePower aria-hidden="true" />
+                    <FilePlus aria-hidden="true" />
                   </button>
-                </span>
-              </div>
-              {expanded && (
-                <ul className="project-sidebar__chats">
-                  {project.chats.map((chat) => (
-                    <li
-                      className="project-sidebar__row"
-                      key={chat.id}
-                      data-active={active_project === project && project.activeChatId === chat.id}
-                    >
-                      <button
-                        type="button"
-                        className="project-sidebar__label"
-                        onClick={() => void select(project, chat.id).catch(show_error)}
-                      >
-                        <span
-                          className="project-sidebar__state"
-                          aria-hidden="true"
-                          data-state={
-                            chat.hasPendingDecision
-                              ? "pending"
-                              : chat.status !== "idle"
-                                ? "running"
-                                : chat.stoppedOnError
-                                  ? "error"
-                                  : undefined
-                          }
-                        />
-                        <span>{chat.title || t("app.workspace.new_chat")}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="project-sidebar__icon"
-                        title={t("app.workspace.delete_chat")}
-                        aria-label={t("app.workspace.delete_chat")}
-                        disabled={chat.status !== "idle"}
-                        onClick={() => set_removing({ projectId, chatId: chat.id })}
-                      >
-                        <X aria-hidden="true" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-        {recent.map((project) => (
-          <RecentProject key={project.path} {...project} />
-        ))}
-      </ul>
+                </TooltipTarget>
+              }
+            />
+            <TooltipContent>{t("project.create.title")}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <TooltipTarget>
+                  <button
+                    type="button"
+                    className="inline-action-button"
+                    aria-label={t("project.open.title")}
+                    disabled={lifecycle.busy}
+                    onClick={() => lifecycle.request_open()}
+                  >
+                    <FileInput aria-hidden="true" />
+                  </button>
+                </TooltipTarget>
+              }
+            />
+            <TooltipContent>{t("project.open.title")}</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+      <div className="shell-sidebar__project-scroll">
+        <ul className="sidebar-group">
+          {open_projects.map((project) => (
+            <ProjectRow
+              key={path_key(project.snapshot.path)}
+              name={project.snapshot.name}
+              path={project.snapshot.path}
+              project={project}
+              busy={is_project_busy(projects?.[project.snapshot.projectId])}
+              selected={project_view_active && active_project === project}
+              on_select={() => {
+                void select(project).catch((error: unknown) =>
+                  push_error_toast(t("app.feedback.save_failed"), error),
+                );
+              }}
+              on_reset={() => set_resetting(project)}
+            />
+          ))}
+          {recent.map(({ path, name }) => (
+            <ProjectRow
+              key={path_key(path)}
+              name={name}
+              path={path}
+              on_select={() => set_opening_path(path)}
+            />
+          ))}
+        </ul>
+      </div>
       <AppConfirmDialog
-        open={removing !== null}
-        submitting={pending}
-        description={t("app.workspace.delete_chat")}
-        onConfirm={delete_chat}
-        onClose={() => set_removing(null)}
+        open={resetting !== null}
+        submitting={submitting}
+        confirmDisabled={reset_disabled}
+        description={t("app.workspace.reset_confirm")}
+        onConfirm={reset}
+        onClose={() => set_resetting(null)}
       />
+      {opening_path !== null && (
+        <ProjectOpenPreviewDialog
+          path={opening_path}
+          from_recent
+          on_close={() => set_opening_path(null)}
+        />
+      )}
     </section>
   );
 }
 
-function RecentProject({ name, path }: { name: string; path: string }): JSX.Element {
+const subscribe_empty = () => () => {};
+const no_reset = () => false;
+
+/** 同一条目在打开前后保留路径身份与操作布局。 */
+function ProjectRow({
+  name,
+  path,
+  project,
+  selected = false,
+  busy = false,
+  on_select,
+  on_reset,
+}: {
+  name: string;
+  path: string;
+  project?: ProjectStore;
+  selected?: boolean;
+  busy?: boolean;
+  on_select: () => void;
+  on_reset?: () => void;
+}): JSX.Element {
   const { t } = useI18n();
   const lifecycle = useProjectLifecycle();
-  const [open, set_open] = useState(false);
-  const preview = useProjectPreview(open ? path : null);
+  const [menu_open, set_menu_open] = useState(false);
+  const can_reset = useSyncExternalStore(
+    project?.agentChat.subscribe_reset ?? subscribe_empty,
+    project?.agentChat.can_reset ?? no_reset,
+  );
+  const status = project === undefined ? "closed" : busy ? "busy" : "open";
+  const projectId = project?.snapshot.projectId;
+  const disabled = busy || lifecycle.busy;
+  const reset_label = t("app.workspace.reset_chat");
+  const close_label = t("project.close.action");
+  const remove_label = t("app.workspace.remove_recent");
+  const reveal_label = t("app.workspace.reveal_path");
+
+  /** 未打开的最近工程也可直接定位磁盘文件。 */
+  function reveal(): void {
+    void window.desktopApp.revealPath(path).catch((error: unknown) => {
+      push_error_toast(t("app.feedback.activate_link"), error);
+    });
+  }
+
+  /** 空闲菜单项文字自解释，仅在繁忙禁用时通过 Tooltip 说明原因。 */
+  function project_action(icon: ReactNode, label: string, on_click: () => void): JSX.Element {
+    const item = (
+      <AppDropdownMenuItem
+        disabled={disabled}
+        className={busy ? "sidebar-project-item__menu-action" : undefined}
+        onClick={on_click}
+      >
+        {icon}
+        {label}
+      </AppDropdownMenuItem>
+    );
+    if (!busy) return item;
+    return (
+      <Tooltip>
+        <TooltipTrigger render={item} />
+        <TooltipContent>{t("app.workspace.close_busy")}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
-    <li className="project-sidebar__row">
-      <Tooltip open={open} onOpenChange={set_open}>
+    <li className="sidebar-project-item" data-menu-open={menu_open || undefined}>
+      <Tooltip disabled={menu_open}>
         <TooltipTrigger
           render={
             <button
               type="button"
-              className="project-sidebar__label"
+              className="sidebar-row"
+              aria-current={selected ? "page" : undefined}
+              data-active={selected}
               disabled={lifecycle.busy}
-              onClick={() => lifecycle.open_recent_project(path)}
+              onClick={on_select}
             />
           }
         >
-          <FileClock aria-hidden="true" />
-          <span>{name}</span>
+          <span
+            className={busy ? "status-mark status-mark--pulse" : "status-mark"}
+            data-status={status}
+            aria-hidden="true"
+          />
+          <span className="sidebar-row__label">{name}</span>
         </TooltipTrigger>
-        <TooltipContent side="right" className="project-sidebar__preview project-lifecycle">
-          <p className="break-all">{path}</p>
-          {(preview.status === "loading" || preview.status === "ready") && (
-            <ProjectPreviewSummary preview={preview.status === "ready" ? preview.preview : null} />
-          )}
-        </TooltipContent>
+        <TooltipContent side="right">{path}</TooltipContent>
       </Tooltip>
-      <button
-        type="button"
-        className="project-sidebar__icon"
-        title={t("app.action.delete")}
-        aria-label={t("app.action.delete")}
-        disabled={lifecycle.busy}
-        onClick={() => lifecycle.remove_recent_project(path)}
-      >
-        <X aria-hidden="true" />
-      </button>
+      <div className="sidebar-project-item__actions">
+        {project !== undefined && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <TooltipTarget>
+                  <button
+                    type="button"
+                    className="inline-action-button"
+                    aria-label={reset_label}
+                    onClick={on_reset}
+                    disabled={disabled || !can_reset}
+                  >
+                    <BrushCleaning aria-hidden="true" />
+                  </button>
+                </TooltipTarget>
+              }
+            />
+            <TooltipContent>{busy ? t("app.workspace.close_busy") : reset_label}</TooltipContent>
+          </Tooltip>
+        )}
+        <AppDropdownMenu open={menu_open} onOpenChange={set_menu_open}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <AppDropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="inline-action-button"
+                      aria-label={t("app.workspace.more")}
+                    >
+                      <Ellipsis aria-hidden="true" />
+                    </button>
+                  }
+                />
+              }
+            />
+            <TooltipContent>{t("app.workspace.more")}</TooltipContent>
+          </Tooltip>
+          <AppDropdownMenuContent align="end" matchTriggerWidth={false}>
+            {projectId !== undefined &&
+              project_action(<SquarePower aria-hidden="true" />, close_label, () =>
+                lifecycle.request_close(projectId),
+              )}
+            {project_action(<ListX aria-hidden="true" />, remove_label, () =>
+              projectId === undefined
+                ? lifecycle.remove_recent_project(path)
+                : lifecycle.request_close(projectId, path),
+            )}
+            <AppDropdownMenuItem onClick={reveal}>
+              <FolderOpen aria-hidden="true" />
+              {reveal_label}
+            </AppDropdownMenuItem>
+          </AppDropdownMenuContent>
+        </AppDropdownMenu>
+      </div>
     </li>
   );
 }
 
-function accept_project_drop(event: DragEvent<HTMLElement>): void {
-  if (event.dataTransfer.types.includes("Files")) event.preventDefault();
-}
-
-function route_project_drop(
-  event: DragEvent<HTMLElement>,
-  lifecycle: ReturnType<typeof useProjectLifecycle>,
-  accept_sources: boolean,
-  on_invalid: () => void,
-): void {
-  if (!event.dataTransfer.types.includes("Files")) return;
-  event.preventDefault();
-  if (lifecycle.busy) return;
-  const { paths, skipped } = read_file_paths(Array.from(event.dataTransfer.files));
-  if (skipped.length > 0) {
-    on_invalid();
-    return;
-  }
-  if (paths.length === 1 && paths[0]!.toLowerCase().endsWith(".lg"))
-    lifecycle.request_open(paths[0]);
-  else if (accept_sources && paths.length > 0) lifecycle.create_from_paths(paths);
-}
-
-export function ProjectWelcome(): JSX.Element {
+/** 左栏接入工程文件，侧栏中的固定区与滚动区共享同一拖放目标。 */
+export function ProjectSidebarDrop({ target_ref }: { target_ref: RefObject<HTMLElement | null> }) {
   const { t } = useI18n();
   const lifecycle = useProjectLifecycle();
+
+  /** 只接受单个工程文件，打开流程统一处理版本确认和失败反馈。 */
+  function open_project(files: readonly File[]): void {
+    const { paths, skipped } = read_file_paths(files);
+    if (skipped.length > 0) {
+      push_toast("warning", t("agent_page.error.invalid_file_path"));
+    } else if (paths.length > 1) {
+      push_toast("warning", t("app.drop.multiple_unavailable"));
+    } else if (paths[0]?.toLowerCase().endsWith(".lg")) {
+      lifecycle.request_open(paths[0]);
+    } else if (paths.length > 0) {
+      push_toast("warning", t("app.drop.project_only"));
+    }
+  }
+
   return (
-    <section
-      className="project-welcome"
-      onDragOver={accept_project_drop}
-      onDrop={(event) =>
-        route_project_drop(event, lifecycle, true, () =>
-          push_toast("warning", t("agent_page.error.invalid_file_path")),
-        )
-      }
-    >
-      <h1>{t("agent_page.empty.message")}</h1>
-      <div className="project-welcome__actions">
-        <AppButton onClick={() => lifecycle.request_open()} disabled={lifecycle.busy}>
-          {t("project.open.title")}
-        </AppButton>
-        <AppButton
-          variant="outline"
-          onClick={lifecycle.show_create_dialog}
-          disabled={lifecycle.busy}
-        >
-          {t("project.create.title")}
-        </AppButton>
-      </div>
-    </section>
+    <FileDropTarget
+      target_ref={target_ref}
+      enabled={!lifecycle.busy}
+      on_files={open_project}
+      label={t("app.drop.release")}
+    />
   );
 }

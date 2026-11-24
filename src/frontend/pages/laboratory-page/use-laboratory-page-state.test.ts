@@ -15,7 +15,7 @@ type RuntimeFixture = {
   runtime_snapshot: {
     revision: number;
     owner: "batch_translation" | "agent" | null;
-    projects?: { project: { activeChatCount: number } };
+    projects?: { project: { agent: boolean } };
   };
   open_projects: unknown[];
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
@@ -167,7 +167,7 @@ describe("useLaboratoryPageState", () => {
     runtime_fixture.current.runtime_snapshot = {
       revision: 1,
       owner: "agent",
-      projects: { project: { activeChatCount: 1 } },
+      projects: { project: { agent: true } },
     };
     vi.mocked(api_fetch).mockResolvedValue({
       settings: create_settings_snapshot({ [field]: false }),

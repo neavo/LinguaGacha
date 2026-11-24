@@ -50,6 +50,7 @@ export const de_de_app = {
     cancel: "Abbrechen",
     confirm: "Bestätigen",
     close: "Schließen",
+    open: "Öffnen",
     create: "Erstellen",
     delete: "Löschen",
     edit: "Bearbeiten",
@@ -119,6 +120,8 @@ export const de_de_app = {
     launching: "Wird verarbeitet …",
   },
   drop: {
+    release: "Zum Anwenden loslassen",
+    project_only: "Hier können nur .lg-Projektdateien abgelegt werden",
     select_multiple_unavailable:
       "Es kann nur eine Datei oder ein Ordner gleichzeitig abgelegt werden",
     select_unavailable:
@@ -126,7 +129,6 @@ export const de_de_app = {
     multiple_unavailable: "Es kann nur eine Datei gleichzeitig abgelegt werden",
     unavailable:
       "Der lokale Pfad der abgelegten Datei ist derzeit nicht verfügbar. Bitte stattdessen per Klick importieren …",
-    import_here: "Zum Importieren der Regeldatei loslassen",
   },
   toggle: {
     option: {
@@ -171,10 +173,16 @@ export const de_de_app = {
     VI: "Vietnamesisch",
   },
   workspace: {
+    projects: "Projekte",
     skills: "Skills",
     quality_rules: "Qualitätsregeln",
-    new_chat: "Neuer Chat",
-    delete_chat: "Chat löschen",
+    more: "Mehr",
+    reset_chat: "Unterhaltung zurücksetzen",
+    reset_confirm: "Laufende Unterhaltung in diesem Projekt wirklich zurücksetzen …?",
+    reveal_path: "Im Ordner anzeigen",
+    remove_recent: "Aus Liste entfernen",
+    remove_confirm:
+      "Projekt wirklich schließen und aus der Liste zuletzt geöffneter Projekte entfernen …?",
     close_busy: "Ein Projektvorgang läuft",
     files: "Dateien",
   },
@@ -223,7 +231,7 @@ export const de_de_app = {
     confirmation: {
       agent_description:
         "Dieses Projekt enthält Assets, die AGENT zurückschreiben muss. Der direkte Export überspringt diese Assets …",
-      description: "Die derzeit verfügbaren Übersetzungen exportieren?",
+      description: "Die derzeit verfügbaren Übersetzungen wirklich exportieren …?",
       checking: "Projektdateien und Korrekturwarnungen werden geprüft …",
       check_failed:
         "Projektdateien oder Korrekturwarnungen konnten nicht geprüft werden. Erneut prüfen oder von AGENT bearbeiten lassen …",

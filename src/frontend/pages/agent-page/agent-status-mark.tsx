@@ -1,3 +1,4 @@
+import "@frontend/widgets/status-mark.css";
 import type { JSX } from "react";
 import type { AgentEntryStatus } from "@shared/agent";
 
@@ -5,7 +6,7 @@ import type { AgentEntryStatus } from "@shared/agent";
 export function AgentStatusMark(props: { status: AgentEntryStatus; label: string }): JSX.Element {
   return (
     <span
-      className={`agent-status-mark agent-status-mark--${props.status}`}
+      className={`status-mark agent-status-mark agent-status-mark--${props.status}${props.status === "running" ? " status-mark--pulse" : ""}`}
       role="img"
       aria-label={props.label}
     />

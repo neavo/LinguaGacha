@@ -49,6 +49,7 @@ export const pt_br_app = {
     cancel: "Cancelar",
     confirm: "Confirmar",
     close: "Fechar",
+    open: "Abrir",
     create: "Criar",
     delete: "Excluir",
     edit: "Editar",
@@ -117,13 +118,14 @@ export const pt_br_app = {
     launching: "Processando …",
   },
   drop: {
+    release: "Solte para aplicar",
+    project_only: "Solte apenas arquivos de projeto .lg",
     select_multiple_unavailable: "Apenas um arquivo ou pasta pode ser solto por vez",
     select_unavailable:
       "O caminho local do arquivo solto está indisponível no momento. Use o seletor de arquivos …",
     multiple_unavailable: "Apenas um arquivo pode ser solto por vez",
     unavailable:
       "O caminho local do arquivo solto está indisponível no momento. Use o seletor de importação …",
-    import_here: "Solte para importar o arquivo de regras",
   },
   toggle: {
     option: {
@@ -168,10 +170,15 @@ export const pt_br_app = {
     VI: "Vietnamita",
   },
   workspace: {
+    projects: "Projetos",
     skills: "Habilidades",
     quality_rules: "Regras de qualidade",
-    new_chat: "Nova conversa",
-    delete_chat: "Excluir conversa",
+    more: "Mais",
+    reset_chat: "Redefinir conversa",
+    reset_confirm: "Confirma redefinir a conversa em andamento neste projeto …?",
+    reveal_path: "Mostrar na pasta",
+    remove_recent: "Remover da lista",
+    remove_confirm: "Confirma fechar o projeto e removê-lo da lista de recentes …?",
     close_busy: "Uma operação do projeto está em andamento",
     files: "Arquivos",
   },
@@ -216,7 +223,7 @@ export const pt_br_app = {
     confirmation: {
       agent_description:
         "Este projeto contém recursos que precisam ser finalizados pelo AGENT. A exportação direta ignorará esses recursos …",
-      description: "Exportar as traduções disponíveis no momento?",
+      description: "Confirma exportar as traduções disponíveis no momento …?",
       checking: "Verificando arquivos do projeto e avisos de revisão …",
       check_failed:
         "Não foi possível verificar os arquivos do projeto ou avisos de revisão. Verifique novamente ou deixe o AGENT cuidar disso …",

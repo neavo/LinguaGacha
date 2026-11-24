@@ -1,14 +1,14 @@
 import { AppError } from "../shared/error";
 import type { ProjectActivity } from "../shared/runtime-activity";
 
-type Owner = "batch_translation" | "agent" | "model_test";
+type ProjectRuntime = "batch_translation" | "agent" | "agent_reset";
 type ProjectOperation = "batch_translation" | "agent" | "write";
-export type RuntimeLease = Readonly<{ owner: Owner }>;
+export type RuntimeLease = Readonly<{ owner: ProjectRuntime | "model_test" }>;
 
 /** 工程任务、写入和关闭共享同一个接纳边界。 */
 export class ProjectOperationGate {
   private readonly lifetime = new AbortController();
-  private readonly agents = new Set<RuntimeLease>(); // 每条对话单独占用，释放时按租约身份定位。
+  private agent: RuntimeLease | null = null;
   private translation: RuntimeLease | null = null;
   private write: Promise<void> | null = null; // 工程关闭等待在途写入完成。
   private readonly listeners = new Set<(snapshot: ProjectActivity) => void>();
@@ -32,37 +32,43 @@ export class ProjectOperationGate {
   public get_snapshot(): ProjectActivity {
     return {
       batchTranslation: this.translation !== null,
-      activeChatCount: this.agents.size,
+      agent: this.agent !== null,
       projectWrite: this.write !== null,
     };
   }
 
   public get busy(): boolean {
-    return this.agents.size > 0 || this.translation !== null || this.write !== null;
+    return this.agent !== null || this.translation !== null || this.write !== null;
   }
 
-  /** 同工程允许多条对话执行，翻译与写入各自独占。 */
-  public begin_runtime(owner: "batch_translation" | "agent"): RuntimeLease {
+  /** 重置占用 Agent 槽位，并在旧对话收尾和清理期间独占工程。 */
+  public begin_runtime(owner: ProjectRuntime): RuntimeLease {
     this.lifetime.signal.throwIfAborted();
-    this.check_global(owner);
-    if (owner === "batch_translation" && (this.translation !== null || this.write !== null))
+    this.check_global(owner === "agent_reset" ? "agent" : owner);
+    if (
+      this.agent?.owner === "agent_reset" ||
+      (owner === "agent_reset" && this.busy) ||
+      (owner === "agent" && this.agent !== null) ||
+      (owner === "batch_translation" && (this.translation !== null || this.write !== null))
+    )
       throw new AppError("runtime.busy");
     const lease = Object.freeze({ owner });
-    if (owner === "agent") this.agents.add(lease);
-    else this.translation = lease;
+    if (owner === "batch_translation") this.translation = lease;
+    else this.agent = lease;
     this.changed();
     return lease;
   }
 
   /** Agent 批量任务由仍在运行的父对话发起。 */
   public assert_agent_runtime(lease: RuntimeLease): void {
-    if (!this.agents.has(lease)) throw new AppError("runtime.busy");
+    if (lease !== this.agent || lease.owner !== "agent") throw new AppError("runtime.busy");
   }
 
   /** 迟到的收尾只能释放自己的租约。 */
   public finish_runtime(lease: RuntimeLease): void {
     if (lease === this.translation) this.translation = null;
-    else if (!this.agents.delete(lease)) return;
+    else if (lease === this.agent) this.agent = null;
+    else return;
     this.changed();
   }
 
@@ -76,7 +82,8 @@ export class ProjectOperationGate {
       : this.lifetime.signal;
     combined.throwIfAborted();
     this.check_global("write");
-    if (this.write !== null || this.translation !== null) throw new AppError("runtime.busy");
+    if (this.write !== null || this.translation !== null || this.agent?.owner === "agent_reset")
+      throw new AppError("runtime.busy");
     const finished = Promise.withResolvers<void>();
     this.write = finished.promise;
     this.changed();
@@ -94,7 +101,7 @@ export class ProjectOperationGate {
     operation: (signal: AbortSignal) => T | Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
-    if (this.agents.size === 0) throw new AppError("runtime.busy");
+    if (this.agent?.owner !== "agent") throw new AppError("runtime.busy");
     return this.run_project_write(operation, signal);
   }
 

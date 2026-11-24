@@ -1,5 +1,5 @@
+import { EmptyAgentConversation } from "@frontend/pages/agent-page/agent-conversation";
 import { ProjectWorkspace } from "./shell/project-workspace";
-import { ProjectSidebar, ProjectWelcome } from "./shell/project-sidebar";
 import type { ProjectStore } from "./state/project-store-registry";
 import { push_toast } from "./feedback/desktop-toast";
 import { ProjectLifecycleProvider } from "@frontend/app/session/project-lifecycle/project-lifecycle-provider";
@@ -24,7 +24,7 @@ import { useAppearance } from "@frontend/app/appearance/appearance-context";
 import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-provider";
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider";
-import { AgentChatRegistryProvider } from "@frontend/app/session/agent/agent-chat-provider";
+import { OpenProjectAttention } from "@frontend/app/feedback/agent-attention";
 import { ProjectSessionProvider } from "@frontend/app/session/project-session-provider";
 import {
   api_fetch,
@@ -95,7 +95,6 @@ function AppContent(): JSX.Element {
     update_app_language,
     active_project,
     select_project,
-    apply_chat_list,
   } = useDesktopState();
 
   const { t } = useI18n();
@@ -109,6 +108,7 @@ function AppContent(): JSX.Element {
   const selected_route = global_route ?? project_tabs.activeTab;
   // 请求与实际导航共同提交，离开目标流程时清除。
   const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
+  const [project_attention, set_project_attention] = useState(0);
   const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
     phase: "idle",
@@ -150,9 +150,15 @@ function AppContent(): JSX.Element {
     });
   }, []);
 
+  /** 统一提示需先打开工程，并触发侧栏新建/打开按钮的视觉提醒。 */
+  function notify_project_required(): void {
+    push_toast("warning", t("agent_page.project_required"));
+    set_project_attention((count) => count + 1);
+  }
+
   function handle_select_route(route_id: RouteId, request?: AgentInputRequest): void {
     if (!GLOBAL_ROUTE_IDS.has(route_id) && !active_project) {
-      if (request) push_toast("warning", t("agent_page.project_required"));
+      if (request) notify_project_required();
       else set_global_route(null);
       return;
     }
@@ -180,17 +186,8 @@ function AppContent(): JSX.Element {
     return true;
   }
 
-  async function select_chat(project: ProjectStore, chatId?: string): Promise<boolean> {
-    if (!(await before_switch_to_project(project))) return false;
-    const projectId = project.snapshot.projectId;
-    if (chatId !== undefined && chatId !== project.activeChatId)
-      apply_chat_list(
-        projectId,
-        await api_fetch("/api/agent/chats/activate", { projectId, chatId }),
-      );
-    if (chatId !== undefined) project.select_tab("agent");
-    show_project(project);
-    return true;
+  async function select_open_project(project: ProjectStore): Promise<void> {
+    if (await before_switch_to_project(project)) show_project(project);
   }
 
   function show_project(project: ProjectStore): void {
@@ -457,19 +454,16 @@ function AppContent(): JSX.Element {
             on_open_logs={handle_open_logs}
             on_select_app_language={handle_select_app_language}
             on_profile_action={handle_profile_action}
-          >
-            {initial_state_status === "ready" && (
-              <ProjectSidebar before_select={before_switch_to_project} select={select_chat} />
-            )}
-          </AppSidebar>
+            projects={
+              initial_state_status === "ready"
+                ? { project_view_active: global_route === null, select: select_open_project }
+                : undefined
+            }
+          />
 
           <main
             className="workspace-frame"
-            data-layout={
-              active_project && global_route === null
-                ? "edge-to-edge"
-                : active_screen.workspace_layout
-            }
+            data-layout={global_route === null ? "edge-to-edge" : active_screen.workspace_layout}
             aria-label={t(active_screen.title_key)}
           >
             {initial_state_status === "ready" ? (
@@ -489,12 +483,11 @@ function AppContent(): JSX.Element {
                   </ProjectSessionProvider>
                 </ProjectScopeContext>
               ) : (
-                <ProjectWelcome />
+                <EmptyAgentConversation />
               )
             ) : initial_state_status === "error" ? (
               <AppContentState
                 status="error"
-
                 on_retry={() => {
                   void load_initial_state();
                 }}
@@ -533,10 +526,13 @@ function AppContent(): JSX.Element {
       clear_agent_input_request={() => set_agent_input_request(null)}
     >
       <ProjectLifecycleProvider
+        attention={project_attention}
+        notify_project_required={notify_project_required}
         before_open={() => prepare_page_leave(view_scope())}
         on_open={show_project}
       >
-        <AgentChatRegistryProvider>{shell}</AgentChatRegistryProvider>
+        <OpenProjectAttention />
+        {shell}
       </ProjectLifecycleProvider>
     </AppNavigationProvider>
   );

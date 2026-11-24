@@ -1,6 +1,7 @@
 .shell-sidebar {
   --sidebar-row-height: 36px;
   --sidebar-inset: 8px;
+  --sidebar-row-background: color-mix(in srgb, var(--sidebar-accent) 88%, var(--sidebar));
   position: relative;
   z-index: 1;
   display: flex;
@@ -11,13 +12,14 @@
   color: var(--sidebar-foreground);
 }
 
-.shell-sidebar__scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0 10px;
+.shell-sidebar__navigation {
+  flex: none;
+  padding-top: 8px;
 }
 
 .shell-sidebar__bottom {
+  flex: none;
+  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -30,17 +32,16 @@
   width: 8px;
   cursor: col-resize;
   touch-action: none;
+  z-index: 4;
 }
 
-.shell-sidebar__resize:is(:hover, :focus-visible, :active)::after {
-  position: absolute;
-  inset: 0 3px;
-  background: var(--sidebar-ring);
-  content: "";
+.shell-sidebar__resize:focus-visible {
+  outline: 1px solid var(--sidebar-border);
+  outline-offset: -3px;
 }
 
 .sidebar-group-separator {
-  width: calc(100% - 48px);
+  width: calc(100% - 24px);
   height: 1px;
   margin: 0 auto 8px;
   border: 0;
@@ -57,18 +58,15 @@
   padding: 0 var(--sidebar-inset) 8px;
 }
 
-.shell-sidebar__scroll > :first-child .sidebar-group {
-  padding-top: 4px;
-}
-
 .sidebar-row {
   position: relative;
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 8px;
   align-items: center;
   width: 100%;
   height: var(--sidebar-row-height);
-  padding: 0;
+  padding: 0 0 0 10px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -97,9 +95,9 @@
 .sidebar-row::after {
   content: "";
   position: absolute;
-  inset: 1px 0;
+  inset: 2px 0;
   z-index: 0;
-  background: color-mix(in srgb, var(--sidebar-accent) 88%, transparent);
+  background: var(--sidebar-row-background);
   opacity: 0;
   pointer-events: none;
   transition:
@@ -135,7 +133,6 @@
 }
 
 .sidebar-row[data-active="true"]::after {
-  background: color-mix(in srgb, var(--sidebar-accent) 82%, transparent);
   opacity: 1;
 }
 
@@ -193,9 +190,189 @@
   right: -1px;
 }
 
+.shell-sidebar__projects {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar-projects__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 calc(var(--sidebar-inset) + 4px) 4px calc(var(--sidebar-inset) + 12px);
+}
+
+.sidebar-projects__title {
+  color: var(--muted-foreground);
+  font-size: var(--ui-font-size-12);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.sidebar-projects__header-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 统一聚焦框外扩在双按钮外侧，避免两个按钮各自缩放挤压。 */
+.sidebar-projects__header-actions::before {
+  content: "";
+  position: absolute;
+  inset: -3px -4px;
+  border: 1px solid color-mix(in srgb, var(--primary) 65%, var(--border));
+  border-radius: calc(var(--ui-radius-button) + 2px);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-projects__header-actions[data-attention] {
+  animation: sidebar-project-actions-shake 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar-projects__header-actions[data-attention]::before {
+  animation: sidebar-project-actions-focus 850ms ease-out;
+}
+
+.sidebar-projects__header-actions[data-attention] .inline-action-button {
+  animation: sidebar-project-actions-icon 850ms ease-out;
+}
+
+@keyframes sidebar-project-actions-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  20% {
+    transform: translateX(-3px);
+  }
+
+  45% {
+    transform: translateX(3px);
+  }
+
+  70% {
+    transform: translateX(-1.5px);
+  }
+
+  88% {
+    transform: translateX(0.75px);
+  }
+}
+
+@keyframes sidebar-project-actions-focus {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  16%,
+  62% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+@keyframes sidebar-project-actions-icon {
+  0%,
+  100% {
+    color: var(--muted-foreground);
+  }
+
+  16%,
+  62% {
+    color: var(--primary);
+  }
+}
+
+.shell-sidebar__project-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar-project-item {
+  position: relative;
+}
+
+.sidebar-project-item .sidebar-row {
+  font-size: var(--ui-font-size-13);
+}
+
+.sidebar-project-item .status-mark {
+  justify-self: center;
+}
+
+.sidebar-project-item .status-mark[data-status="closed"] {
+  --status-mark-color: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+}
+
+.sidebar-project-item .status-mark[data-status="open"] {
+  --status-mark-color: var(--ui-success);
+}
+
+.sidebar-project-item .status-mark[data-status="busy"] {
+  --status-mark-color: var(--primary);
+}
+
+.sidebar-project-item__actions {
+  position: absolute;
+  inset: 2px 4px 2px auto;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 16px;
+  background: linear-gradient(90deg, transparent, var(--sidebar-row-background) 16px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-project-item:is(:hover, :focus-within, [data-menu-open="true"])
+  .sidebar-project-item__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebar-project-item:is(:hover, :focus-within, [data-menu-open="true"]) .sidebar-row::after {
+  opacity: 1;
+}
+
+.sidebar-project-item__menu-action[data-disabled] {
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .sidebar-project-item .sidebar-row::after,
+  .sidebar-project-item__actions {
+    opacity: 1;
+  }
+
+  .sidebar-project-item__actions {
+    pointer-events: auto;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sidebar-row::before,
   .sidebar-row::after {
     transition: none;
+  }
+
+  .sidebar-projects__header-actions[data-attention] {
+    animation: none;
   }
 }

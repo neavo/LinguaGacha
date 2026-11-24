@@ -2,7 +2,7 @@ import { DOCUMENT_AUTOSAVE_DELAY_MS } from "@frontend/features/document-editor/u
 const runtime_state = vi.hoisted(() => ({ owner: null as "agent" | null }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => ({
-    projects: { project: { activeChatCount: Number(runtime_state.owner === "agent") } },
+    projects: { project: { agent: runtime_state.owner === "agent" } },
   }),
 }));
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";

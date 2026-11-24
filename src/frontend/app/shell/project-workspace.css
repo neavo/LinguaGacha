@@ -87,7 +87,6 @@
 }
 
 .project-workspace__action-open,
-.project-workspace__action-close > button,
 .project-workspace__rules {
   display: flex;
   min-width: 0;
@@ -99,18 +98,21 @@
 }
 
 .project-workspace__action-open:hover,
-.project-workspace__action-close > button:hover,
 .project-workspace__rules:hover {
   background: var(--accent);
   color: var(--foreground);
 }
 
 .project-workspace__action-open svg,
-.project-workspace__action-close svg,
 .project-workspace__rules svg {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+}
+
+.project-workspace__action-close {
+  display: flex;
+  align-items: center;
 }
 
 .project-workspace__quality-tabs .project-workspace__action {

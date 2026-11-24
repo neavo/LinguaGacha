@@ -1,9 +1,14 @@
+import { read_file_paths } from "@frontend/app/desktop/source-paths";
+import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
+import { ProjectOpenPreviewDialog } from "@frontend/features/project-lifecycle/project-open-preview-dialog";
+import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
-import { AgentFileDropTarget } from "./agent-file-drop-target";
+import { FileDropTarget } from "@frontend/widgets/interactions/file-drop-target";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import type { AgentApprovalMode } from "@domain/setting";
 import { format_agent_reference } from "@shared/agent-reference";
+import type { AgentSkillsSnapshot } from "@shared/agent-skills";
 import { type JSX, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
@@ -22,9 +27,12 @@ import {
 import type { ModelSelectionInput } from "@shared/model-selection";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
+  type AgentContextSnapshot,
   type AgentEntry,
   type AgentMessageInput,
   type AgentQueuedInput,
+  type AgentSkillSnapshot,
+  type AgentUsageSnapshot,
 } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
@@ -90,6 +98,308 @@ type PendingThinkingOffAction =
   | { kind: "send"; message: AgentMessageInput }
   | { kind: "select_model"; change: ModelSelectionInput };
 
+const EMPTY_CONTEXT: AgentContextSnapshot = Object.freeze({
+  tokens: null,
+  limits: null,
+  compactable: false,
+});
+const EMPTY_USAGE: AgentUsageSnapshot = Object.freeze({
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+});
+const NOOP_STOP = async (): Promise<void> => {};
+
+/** 审批偏好属于应用设置，空态与已打开工程共用同一条写入链路。 */
+function useAgentApprovalMode() {
+  const { t } = useI18n();
+  const { settings_snapshot, apply_settings_snapshot } = useDesktopState();
+  const [updating, set_updating] = useState(false);
+
+  const change = useCallback(
+    async (approval_mode: AgentApprovalMode): Promise<void> => {
+      if (approval_mode === settings_snapshot.agent_approval_mode) return;
+      set_updating(true);
+      try {
+        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
+          agent_approval_mode: approval_mode,
+        });
+        apply_settings_snapshot(payload);
+      } catch (error) {
+        push_error_toast(t("agent_page.error.approval_mode"), error);
+      } finally {
+        set_updating(false);
+      }
+    },
+    [apply_settings_snapshot, settings_snapshot.agent_approval_mode, t],
+  );
+
+  return {
+    mode: settings_snapshot.agent_approval_mode,
+    updating,
+    change,
+  };
+}
+
+/** 主 Composer 的宿主指令目录，空态与会话态共用同一结构与文案。 */
+function build_agent_instructions(options: {
+  t: ReturnType<typeof useI18n>["t"];
+  loaded: boolean;
+  file_count: number;
+  compact_available: boolean;
+  compact_unnecessary: boolean;
+  append_draft: (text: string, selection?: { from: number; to: number }) => void;
+  on_compact: () => void;
+}): readonly AgentMentionInstruction[] {
+  const { t, loaded } = options;
+  return [
+    {
+      // 翻译成果导出只要求工程中有文件。
+      id: "export_translation",
+      icon: FileOutput,
+      title: t("app.translation_export.action"),
+      description: t("agent_page.mention.instructions.export_translation.description"),
+      disabled: !loaded || options.file_count === 0,
+      execute: () =>
+        options.append_draft(
+          `${t("app.translation_export.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
+        ),
+    },
+    {
+      id: "compact_context",
+      icon: Shrink,
+      title: t("agent_page.mention.instructions.compact_context.title"),
+      description: t(
+        options.compact_unnecessary
+          ? "agent_page.mention.instructions.compact_context.unnecessary"
+          : "agent_page.mention.instructions.compact_context.description",
+      ),
+      disabled: !loaded || !options.compact_available,
+      execute: options.on_compact,
+    },
+    {
+      // 只预置草稿，流程由技能决定，不受会话空闲约束。
+      id: "update_file",
+      icon: FileDiff,
+      title: t("agent_page.mention.instructions.update_file.title"),
+      description: t("agent_page.mention.instructions.update_file.description"),
+      disabled: !loaded,
+      execute: () => {
+        const request = format_agent_path_request(
+          t,
+          `${format_agent_reference({ kind: "skill", name: "project-operation" })}\n${t("agent_page.mention.instructions.update_file.request")}`,
+          [],
+        );
+        options.append_draft(request.text, request.selection);
+      },
+    },
+    {
+      // 只预置草稿，流程由引擎技能决定，不受会话空闲约束。
+      id: "change_game_font",
+      icon: Type,
+      title: t("game_font_page.title"),
+      description: t("agent_page.mention.instructions.change_game_font.description"),
+      disabled: !loaded,
+      execute: () => {
+        const request = format_agent_path_request(
+          t,
+          t("agent_page.mention.instructions.change_game_font.font_file"),
+          [],
+          format_agent_path_request(
+            t,
+            t("agent_page.mention.instructions.change_game_font.game_path"),
+            [],
+            t("agent_page.mention.instructions.change_game_font.request"),
+          ).text,
+        );
+        options.append_draft(request.text, request.selection);
+      },
+    },
+  ];
+}
+
+/** 无工程时复用完整输入底栏、应用级配置与 `@` 技能目录，草稿随页面结束。 */
+export function EmptyAgentConversation(): JSX.Element {
+  const { t } = useI18n();
+  const lifecycle = useProjectLifecycle();
+  const model_selection = useModelSelection();
+  const approval = useAgentApprovalMode();
+  const page_ref = useRef<HTMLDivElement>(null);
+  const composer_ref = useRef<AgentComposerHandle>(null);
+  const [dropped_project, set_dropped_project] = useState<string | null>(null);
+  const [skills, set_skills] = useState<readonly AgentSkillSnapshot[]>([]);
+  const [input_state] = useState(() => ({
+    revision: 0,
+    draft: new AgentInputDraft(),
+    read_history: (): readonly string[] => [],
+    replace_history: () => {},
+  }));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void api_fetch<AgentSkillsSnapshot>("/api/skills/snapshot", {}, controller.signal)
+      .then((snapshot) => {
+        if (controller.signal.aborted) return;
+        const seen = new Set<string>();
+        const enabled: AgentSkillSnapshot[] = [];
+        for (const skill of snapshot.skills) {
+          if (!skill.enabled || seen.has(skill.name)) continue;
+          seen.add(skill.name);
+          enabled.push({ name: skill.name, displayDescriptions: skill.displayDescriptions });
+        }
+        set_skills(enabled);
+      })
+      .catch(() => {
+        // 空态技能列表属于输入补全增强，加载失败静默降级为空菜单。
+      });
+    return () => controller.abort();
+  }, []);
+
+  /** 空态保留用户输入，通过唯一生命周期提醒入口同步 Toast 与侧栏按钮动效。 */
+  function require_project(): false {
+    lifecycle.notify_project_required();
+    return false;
+  }
+
+  const file_drop_enabled = !lifecycle.busy && dropped_project === null;
+  /** 单个工程文件进入预览确认，其余素材进入创建工程流程。 */
+  function handle_file_drop(files: readonly File[]): void {
+    if (!file_drop_enabled || files.length === 0) return;
+    const { paths, skipped } = read_file_paths(files);
+    if (skipped.length > 0) {
+      push_toast("warning", t("agent_page.error.invalid_file_path"), {
+        description: skipped.join("\n"),
+      });
+      return;
+    }
+    const first = paths[0];
+    if (first === undefined) return;
+    if (paths.length === 1 && first.toLowerCase().endsWith(".lg")) set_dropped_project(first);
+    else lifecycle.create_from_paths(paths);
+  }
+
+  const instructions = build_agent_instructions({
+    t,
+    loaded: false,
+    file_count: 0,
+    compact_available: false,
+    compact_unnecessary: false,
+    append_draft: (text, selection) => composer_ref.current?.append_draft(text, selection),
+    on_compact: () => {},
+  });
+
+  return (
+    <div ref={page_ref} className="agent-page">
+      <FileDropTarget
+        target_ref={page_ref}
+        enabled={file_drop_enabled}
+        label={t("app.drop.release")}
+        on_files={handle_file_drop}
+      />
+      {dropped_project !== null ? (
+        <ProjectOpenPreviewDialog
+          path={dropped_project}
+          on_close={() => set_dropped_project(null)}
+        />
+      ) : null}
+      <section className="agent-page__conversation" aria-label={t("agent_page.title")}>
+        <div className="agent-page__conversation-content">
+          <AgentEmptySuggestions
+            append_draft={(text) => composer_ref.current?.append_draft(text)}
+          />
+        </div>
+      </section>
+      <div className="agent-page__bottom-region">
+        <div className="agent-page__input-area">
+          <div className="agent-page__operation-zone">
+            <div className="agent-page__composer-slot">
+              <AgentComposer
+                ref={composer_ref}
+                placeholder={t("agent_page.input.no_project_placeholder")}
+                language_control={null}
+                before_attach={require_project}
+                on_drop_files={handle_file_drop}
+                skills={skills}
+                instructions={instructions}
+                state="idle"
+                stop_disabled={false}
+                compacting={false}
+                unavailable_reason={null}
+                command={null}
+                can_continue_queue={false}
+                queue_full={false}
+                context={EMPTY_CONTEXT}
+                usage={EMPTY_USAGE}
+                approval_mode={approval.mode}
+                approval_disabled={approval.updating}
+                model_selection={model_selection}
+                input_state={input_state}
+                on_send={require_project}
+                on_agent_model_select={(change) => {
+                  void model_selection.select_model({ target: "agent", ...change });
+                  return false;
+                }}
+                on_approval_mode_change={(mode) => void approval.change(mode)}
+                on_stop={NOOP_STOP}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 空白对话和未打开工程时使用同一份建议。 */
+function AgentEmptySuggestions({
+  append_draft,
+}: {
+  append_draft: (text: string) => void;
+}): JSX.Element {
+  const { t } = useI18n();
+  return (
+    <div className="agent-page__empty">
+      <div className="agent-page__empty-intro">
+        <Bot className="agent-page__empty-icon" aria-hidden="true" />
+        <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
+      </div>
+      <div className="agent-page__suggestions">
+        <button
+          type="button"
+          className="agent-page__suggestion"
+          onClick={() => append_draft(t("agent_page.empty.suggestions.capabilities"))}
+        >
+          <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
+          <span className="agent-page__suggestion-label">
+            {t("agent_page.empty.suggestions.capabilities")}
+          </span>
+        </button>
+        {AGENT_TASK_SUGGESTIONS.map(({ skillName, suggestionKey, Icon }) => (
+          <button
+            key={suggestionKey}
+            type="button"
+            className="agent-page__suggestion"
+            onClick={() =>
+              append_draft(
+                `${t(suggestionKey)} ${format_agent_reference({ kind: "skill", name: skillName })}`,
+              )
+            }
+          >
+            <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
+            <span className="agent-page__suggestion-label">
+              {t(suggestionKey)}{" "}
+              <span className="agent-mention-token">
+                <span>{format_agent_reference({ kind: "skill", name: skillName })}</span>
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** 会话事实由跨路由 Chat Store 提供，页面组合交互入口并持有原位编辑状态。 */
 export function AgentConversation({ active = true }: { active?: boolean }): JSX.Element {
   const { t } = useI18n();
@@ -103,15 +413,8 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const consumed_input_request = useRef<typeof agent_input_request>(null); // `StrictMode` 重放副作用时跳过已消费请求。
   const agent_actions = useAgentChatActions();
   const model_selection = useModelSelection();
-  const { project_snapshot, settings_snapshot, apply_settings_snapshot, initial_state_status } =
-    useDesktopState();
-  // 发送与附件共用入口，草稿仍由常驻 Store 持有。
-  const require_project = useCallback((): boolean => {
-    if (project_snapshot.loaded) return true;
-    push_toast("warning", t("agent_page.project_required"));
-    return false;
-  }, [project_snapshot.loaded, t]);
-  const [approval_updating, set_approval_updating] = useState(false); // 保存期间禁用模式选择。
+  const { project_snapshot } = useDesktopState();
+  const approval = useAgentApprovalMode();
   const page_ref = useRef<HTMLDivElement | null>(null);
   const conversation_ref = useRef<HTMLElement | null>(null);
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
@@ -150,7 +453,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
 
   useActionShortcut({
     action: "follow_latest",
-    enabled: active && project_snapshot.loaded,
+    enabled: active,
     allow_in_text_editing: true,
     on_trigger: toggle_follow_latest,
   });
@@ -245,7 +548,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   /** 普通发送继续使用底部 Composer。历史修订已由消息原位编辑器独立承接。 */
   const submit_message = (message: AgentMessageInput): void => {
     if (active_inline_edit !== null) return;
-    if (!require_project()) return;
     if (thinking_off_confirmation_required) {
       set_pending_thinking_off_action({ kind: "send", message });
       return;
@@ -272,96 +574,22 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     return false;
   };
 
-  /** 审批偏好使用应用设置链路，保存成功前展示已确认的模式。 */
-  const change_approval_mode = useCallback(
-    async (approval_mode: AgentApprovalMode): Promise<void> => {
-      if (approval_mode === settings_snapshot.agent_approval_mode) return;
-      set_approval_updating(true);
-      try {
-        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
-          agent_approval_mode: approval_mode,
-        });
-        apply_settings_snapshot(payload);
-      } catch (error) {
-        show_command_error(error, "agent_page.error.approval_mode");
-      } finally {
-        set_approval_updating(false);
-      }
-    },
-    [apply_settings_snapshot, settings_snapshot.agent_approval_mode, show_command_error],
-  );
-
   /** 菜单与失败块共用宿主压缩入口及错误反馈，菜单筛选文本由 Composer 移除。 */
   const compact_context = useCallback((): void => {
     void agent_actions.compactContext().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.compact");
     });
   }, [agent_actions, show_command_error]);
-  /** 主 Composer 的宿主指令目录。动作不进入消息正文或原位编辑器。 */
-  const instructions: readonly AgentMentionInstruction[] = [
-    {
-      // 翻译成果导出属于工程级动作，可用性由工程加载状态和文件数量判定，不受 Agent 会话空闲约束。
-      id: "export_translation",
-      icon: FileOutput,
-      title: t("app.translation_export.action"),
-      description: t("agent_page.mention.instructions.export_translation.description"),
-      disabled: !project_snapshot.loaded || project_snapshot.file_count === 0,
-      execute: () =>
-        composer_ref.current?.append_draft(
-          `${t("app.translation_export.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
-        ),
-    },
-    {
-      id: "compact_context",
-      icon: Shrink,
-      title: t("agent_page.mention.instructions.compact_context.title"),
-      description: t(
-        instruction_ready && !controls.context.compactable // 会话忙碌时禁用原因不在可压缩性，沿用功能说明
-          ? "agent_page.mention.instructions.compact_context.unnecessary"
-          : "agent_page.mention.instructions.compact_context.description",
-      ),
-      disabled: !compact_available,
-      execute: compact_context,
-    },
-    {
-      // 只预置草稿，流程由技能决定，不受会话空闲约束。
-      id: "update_file",
-      icon: FileDiff,
-      title: t("agent_page.mention.instructions.update_file.title"),
-      description: t("agent_page.mention.instructions.update_file.description"),
-      disabled: !project_snapshot.loaded,
-      execute: () => {
-        const request = format_agent_path_request(
-          t,
-          `${format_agent_reference({ kind: "skill", name: "project-operation" })}\n${t("agent_page.mention.instructions.update_file.request")}`,
-          [],
-        );
-        composer_ref.current?.append_draft(request.text, request.selection);
-      },
-    },
-    {
-      // 只预置草稿，流程由引擎技能决定，不受会话空闲约束。
-      id: "change_game_font",
-      icon: Type,
-      title: t("game_font_page.title"),
-      description: t("agent_page.mention.instructions.change_game_font.description"),
-      disabled: !project_snapshot.loaded,
-      execute: () => {
-        const request = format_agent_path_request(
-          t,
-          t("agent_page.mention.instructions.change_game_font.font_file"),
-          [],
-          format_agent_path_request(
-            t,
-            t("agent_page.mention.instructions.change_game_font.game_path"),
-            [],
-            t("agent_page.mention.instructions.change_game_font.request"),
-          ).text,
-        );
-        composer_ref.current?.append_draft(request.text, request.selection);
-      },
-    },
-  ];
+  const instructions = build_agent_instructions({
+    t,
+    loaded: true,
+    file_count: project_snapshot.file_count,
+    compact_available,
+    // 会话忙碌时禁用原因不在可压缩性，沿用功能说明。
+    compact_unnecessary: instruction_ready && !controls.context.compactable,
+    append_draft: (text, selection) => composer_ref.current?.append_draft(text, selection),
+    on_compact: compact_context,
+  });
 
   /** 发送失败保留确认框。模型更新沿用通用控制器自身的错误提示与恢复。 */
   const confirm_pending_thinking_off_action = async (): Promise<void> => {
@@ -585,18 +813,16 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     active_inline_edit !== null;
 
   const file_drop_enabled =
-    active &&
-    active_inline_edit === null &&
-    !input_transition.locked &&
-    controls.command === null &&
-    project_snapshot.loaded;
+    active && active_inline_edit === null && !input_transition.locked && controls.command === null;
+  /** 页面和编辑器都可接入文件，编辑器入口也遵循会话输入状态。 */
   function handle_file_drop(files: readonly File[]): void {
     if (file_drop_enabled && files.length > 0) composer_ref.current?.drop_files(files);
   }
 
   return (
     <div ref={page_ref} className="agent-page">
-      <AgentFileDropTarget
+      <FileDropTarget
+        label={t("app.drop.release")}
         target_ref={page_ref}
         enabled={file_drop_enabled}
         on_files={handle_file_drop}
@@ -621,48 +847,9 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               </div>
             </div>
           ) : timeline.entryIds.length === 0 ? (
-            <div className="agent-page__empty">
-              <div className="agent-page__empty-intro">
-                <Bot className="agent-page__empty-icon" aria-hidden="true" />
-                <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
-              </div>
-              <div className="agent-page__suggestions">
-                <button
-                  type="button"
-                  className="agent-page__suggestion"
-                  onClick={() =>
-                    composer_ref.current?.append_draft(
-                      t("agent_page.empty.suggestions.capabilities"),
-                    )
-                  }
-                >
-                  <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
-                  <span className="agent-page__suggestion-label">
-                    {t("agent_page.empty.suggestions.capabilities")}
-                  </span>
-                </button>
-                {AGENT_TASK_SUGGESTIONS.map(({ skillName, suggestionKey, Icon }) => (
-                  <button
-                    key={suggestionKey}
-                    type="button"
-                    className="agent-page__suggestion"
-                    onClick={() =>
-                      composer_ref.current?.append_draft(
-                        `${t(suggestionKey)} ${format_agent_reference({ kind: "skill", name: skillName })}`,
-                      )
-                    }
-                  >
-                    <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
-                    <span className="agent-page__suggestion-label">
-                      {t(suggestionKey)}{" "}
-                      <span className="agent-mention-token">
-                        <span>{format_agent_reference({ kind: "skill", name: skillName })}</span>
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <AgentEmptySuggestions
+              append_draft={(text) => composer_ref.current?.append_draft(text)}
+            />
           ) : (
             <AgentTimeline
               active={active}
@@ -730,7 +917,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 />
               </div>
             ) : null}
-            {project_snapshot.loaded && follow_latest_control}
+            {follow_latest_control}
           </div>
 
           <div className="agent-page__operation-zone">
@@ -752,18 +939,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               inert={input_transition.locked || undefined}
             >
               <AgentComposer
-                placeholder={t(
-                  project_snapshot.loaded
-                    ? "agent_page.input.placeholder"
-                    : "agent_page.input.no_project_placeholder",
-                )}
+                placeholder={t("agent_page.input.placeholder")}
                 language_control={
                   <AgentLanguageControl
                     locked={!active || active_inline_edit !== null || input_transition.locked}
                     disconnected={unavailable_reason === "disconnected"}
                   />
                 }
-                before_attach={require_project}
                 ref={composer_ref}
                 on_drop_files={handle_file_drop}
                 locked={!active || active_inline_edit !== null || input_transition.locked}
@@ -778,13 +960,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 queue_full={queue_full}
                 context={controls.context}
                 usage={controls.usage}
-                approval_mode={settings_snapshot.agent_approval_mode}
-                approval_disabled={initial_state_status !== "ready" || approval_updating}
+                approval_mode={approval.mode}
+                approval_disabled={approval.updating}
                 model_selection={model_selection}
                 input_state={input}
                 on_send={submit_message}
                 on_agent_model_select={change_agent_model_selection}
-                on_approval_mode_change={change_approval_mode}
+                on_approval_mode_change={(mode) => void approval.change(mode)}
                 on_stop={stop}
               />
             </div>

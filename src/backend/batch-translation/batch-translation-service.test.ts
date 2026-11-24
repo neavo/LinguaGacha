@@ -182,7 +182,7 @@ describe("批量翻译服务", () => {
     ).rejects.toMatchObject({ code: "runtime.busy" });
     finish();
     expect((await result).progress.processed_line).toBe(line);
-    expect(gate.get_snapshot().activeChatCount).toBe(1);
+    expect(gate.get_snapshot().agent).toBe(true);
     gate.finish_runtime(lease);
     await runtime.dispose();
   });

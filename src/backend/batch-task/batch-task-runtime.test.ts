@@ -24,14 +24,14 @@ describe("共享批次完成链", () => {
     const { runtime, gate } = setup();
     const agent = gate.begin_runtime("agent");
     const task = runtime.begin_under_agent(agent, new AbortController().signal, "translation");
-    expect(gate.get_snapshot()).toMatchObject({ batchTranslation: true, activeChatCount: 1 });
+    expect(gate.get_snapshot()).toMatchObject({ batchTranslation: true, agent: true });
     await expect(gate.run_project_write(() => {})).rejects.toMatchObject({ code: "runtime.busy" });
     await expect(new ProjectOperationGate().run_project_write(() => "other project")).resolves.toBe(
       "other project",
     );
     await runtime.execute(task, async () => "done");
     await task.completion;
-    expect(gate.get_snapshot()).toMatchObject({ batchTranslation: false, activeChatCount: 1 });
+    expect(gate.get_snapshot()).toMatchObject({ batchTranslation: false, agent: true });
     gate.finish_runtime(agent);
     await runtime.dispose();
   });
@@ -325,7 +325,7 @@ describe("共享批次完成链", () => {
     expect(() => runtime.begin_standalone()).toThrow();
     work.resolve(result());
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "parent" });
-    expect(gate.get_snapshot().activeChatCount).toBe(1);
+    expect(gate.get_snapshot().agent).toBe(true);
     gate.finish_runtime(lease);
     await runtime.dispose();
   });

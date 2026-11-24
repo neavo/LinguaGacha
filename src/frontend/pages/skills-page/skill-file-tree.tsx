@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { SkillEntryNameDialog } from "./skill-entry-name-dialog";
 import type { AgentSkillFileChange, AgentSkillFileEntry } from "@shared/agent-skills";
+import "@frontend/widgets/inline-action-button.css";
 
 type Props = {
   entries: AgentSkillFileEntry[];
@@ -237,7 +238,7 @@ export function SkillFileTree(props: Props): JSX.Element {
                   render={
                     <button
                       type="button"
-                      className="skill-tree__action"
+                      className="inline-action-button skill-tree__action"
                       aria-label={t(`knowledge_page.editor.${operation}`)}
                       disabled={props.busy}
                       onClick={() => start(operation, entry)}

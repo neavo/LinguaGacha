@@ -1,6 +1,9 @@
+import {
+  ProjectLifecycleContext,
+  type ProjectLifecycle,
+} from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 const project_state = vi.hoisted(() => ({
-  loaded: true,
   languages: { source_language: "JA", target_language: "ZH" },
 }));
 import { AgentTimelineStore } from "@frontend/app/session/agent/agent-timeline-store";
@@ -21,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
+import { build_project_translation_stats } from "@shared/project-translation-stats";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { ModelThinkingLevel } from "@domain/model";
 import type { AgentApprovalMode } from "@domain/setting";
@@ -69,7 +73,6 @@ vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
   api_fetch: settings_state.save,
   api_blob: async () => new Blob([], { type: "image/png" }),
-  api_file_url: (path: string) => `http://localhost${path}`,
   api_upload: async (_path: string, file: File) => uploaded_file(`webp-${file.name}`),
 }));
 const model_thinking_state = vi.hoisted(() => ({
@@ -147,7 +150,8 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
   });
 }
 
-vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
+vi.mock("@frontend/app/session/agent/agent-chat-context", async (original) => ({
+  ...(await original<typeof import("@frontend/app/session/agent/agent-chat-context")>()),
   useAgentTokenSpeed: () => null,
   useAgentRunOutput: () => null,
   useAgentTimeline: () => read_test_timeline().read(),
@@ -174,7 +178,6 @@ vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state.current,
   useDesktopState: () => ({
-    initial_state_status: "ready",
     project_snapshot: project_state,
     settings_snapshot: { ...settings_state.snapshot, recent_projects: [] },
     apply_settings_snapshot: settings_state.apply_snapshot,
@@ -224,14 +227,28 @@ vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 
-import { AgentConversation } from "./agent-conversation";
+import { AgentConversation, EmptyAgentConversation } from "./agent-conversation";
+
+const lifecycle: ProjectLifecycle = {
+  busy: false,
+  attention: 0,
+  notify_project_required: vi.fn(),
+  show_create_dialog: vi.fn(),
+  create_from_paths: vi.fn(),
+  request_open: vi.fn(),
+  open_recent_project: vi.fn(),
+  remove_recent_project: vi.fn(),
+  request_close: vi.fn(),
+};
 
 describe("AgentConversation", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
   beforeEach(() => {
-    project_state.loaded = true;
+    vi.mocked(lifecycle.notify_project_required).mockClear();
+    vi.mocked(lifecycle.create_from_paths).mockClear();
+    vi.mocked(lifecycle.request_open).mockClear();
     vi.stubGlobal(
       "desktopApp",
       create_desktop_bridge_api_mock({
@@ -244,6 +261,9 @@ describe("AgentConversation", () => {
     push_toast.mockReset();
     settings_state.snapshot = { agent_approval_mode: "manual" };
     settings_state.save.mockReset();
+    settings_state.save.mockImplementation(async (path) =>
+      path === "/api/skills/snapshot" ? ({ skills: [] } as never) : {},
+    );
     navigation.agent_input_request = null;
     navigation.clear_agent_input_request.mockReset();
     model_thinking_state.thinking_level = "OFF";
@@ -264,6 +284,7 @@ describe("AgentConversation", () => {
   async function render_page(
     overrides: Partial<AgentPageState> = {},
     active = true,
+    Conversation = AgentConversation,
   ): Promise<HTMLDivElement> {
     // 真实 Store 在草稿 `revision` 变化前保留输入端口。普通运行态更新继续消费同一份草稿。
     const previous_input = root === null ? undefined : page_state.current.input;
@@ -278,7 +299,9 @@ describe("AgentConversation", () => {
       root?.render(
         <StrictMode>
           <TooltipProvider>
-            <AgentConversation active={active} />
+            <ProjectLifecycleContext value={lifecycle}>
+              <Conversation active={active} />
+            </ProjectLifecycleContext>
           </TooltipProvider>
         </StrictMode>,
       ),
@@ -286,28 +309,100 @@ describe("AgentConversation", () => {
     return container;
   }
 
-  it("工程打开和关闭时同步切换主输入占位文本与无障碍标签", async () => {
-    for (const loaded of [false, true, false]) {
-      project_state.loaded = loaded;
-      const view = await render_page();
-      const expected = loaded
-        ? "agent_page.input.placeholder"
-        : "agent_page.input.no_project_placeholder";
-      expect(view.querySelector(".cm-placeholder")?.textContent).toBe(expected);
-      expect(view.querySelector(".cm-content")?.getAttribute("aria-label")).toBe(expected);
+  it("无工程时素材拖入创建工程，单个工程文件弹出预览确认框", async () => {
+    settings_state.save.mockImplementation(async (path) => {
+      if (path === "/api/skills/snapshot") return { skills: [] } as never;
+      if (path === "/api/session/project/preview") {
+        return {
+          preview: {
+            file_paths: ["a.txt"],
+            created_at: "2026-11-24T17:23:15",
+            updated_at: "2026-11-24T17:53:28",
+            translation_stats: build_project_translation_stats([]),
+          },
+        } as never;
+      }
+      return {};
+    });
+    const view = await render_page({}, true, EmptyAgentConversation);
+    const editor = view.querySelector(".cm-content")!;
+    const page = view.querySelector(".agent-page")!;
+    function drop(target: Element, files: File[]): void {
+      const event = new Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files } });
+      target.dispatchEvent(event);
     }
+    await act(async () =>
+      drop(editor, [new File(["正文"], "小说.txt"), new File([], "素材文件夹")]),
+    );
+    expect(lifecycle.create_from_paths).toHaveBeenCalledExactlyOnceWith([
+      "E:/資料/小说.txt",
+      "E:/資料/素材文件夹",
+    ]);
+    await act(async () => drop(page, [new File([], "已有工程.LG")]));
+    expect(lifecycle.create_from_paths).toHaveBeenCalledOnce();
+    expect(lifecycle.request_open).not.toHaveBeenCalled();
+
+    const dialog = document.querySelector('[data-slot="alert-dialog-content"]')!;
+    expect(dialog.textContent).toContain("E:/資料/已有工程.LG");
+    const open_button = dialog.querySelector<HTMLButtonElement>(
+      '[data-slot="alert-dialog-primary-action"]',
+    )!;
+    expect(open_button.textContent).toContain("app.action.open");
+    await act(async () => open_button.click());
+    expect(lifecycle.request_open).toHaveBeenCalledExactlyOnceWith("E:/資料/已有工程.LG");
+  });
+
+  it("无工程时保留应用级底栏工具、技能补全和禁用态宿主指令", async () => {
+    settings_state.save.mockImplementation(async (path) => {
+      if (path === "/api/skills/snapshot") {
+        return {
+          skills: [
+            {
+              name: "translation",
+              source: "builtin",
+              displayDescriptions: { "zh-CN": "翻译技能" },
+              enabled: true,
+            },
+            {
+              name: "disabled-skill",
+              source: "user",
+              displayDescriptions: { "zh-CN": "已停用" },
+              enabled: false,
+            },
+          ],
+        } as never;
+      }
+      return { settings: { agent_approval_mode: "auto" } };
+    });
+    const view = await render_page({}, true, EmptyAgentConversation);
+    expect(view.querySelector(".agent-composer__model-trigger")).not.toBeNull();
+    expect(view.querySelector(".agent-composer__approval-trigger")).not.toBeNull();
+    expect(view.querySelector(".agent-composer__help")).not.toBeNull();
+
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__instructions-trigger")!.click(),
+    );
+    const options = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+    const skills = options.filter((item) => item.dataset.kind === "skill");
+    const instructions = options.filter((item) => item.dataset.kind === "instruction");
+    expect(skills.map((item) => item.querySelector("strong")?.textContent)).toEqual([
+      "translation",
+    ]);
+    expect(instructions.length).toBeGreaterThan(0);
+    expect(instructions.every((item) => item.disabled)).toBe(true);
   });
 
   it("无工程发送和附件共用拦截，草稿保留", async () => {
-    project_state.loaded = false;
-    const send = vi.fn();
-    const input = build_state({}).input;
-    input.draft.write({ text: "待发送草稿", attachments: [] });
-    const view = await render_page({ send, input });
+    const view = await render_page({}, true, EmptyAgentConversation);
+    const suggestion = view.querySelector<HTMLButtonElement>(".agent-page__suggestion")!;
+    await act(async () => suggestion.click());
+    const draft = view.querySelector(".cm-content")!;
+    const text = draft.textContent;
+    expect(text).toBeTruthy();
     await act(async () => get_button_by_label(view, "agent_page.action.send").click());
-    expect(send).not.toHaveBeenCalled();
-    expect(input.draft.read()).toEqual({ text: "待发送草稿", attachments: [] });
-    expect(push_toast).toHaveBeenCalledWith("warning", "agent_page.project_required");
+    expect(draft.textContent).toBe(text);
+    expect(lifecycle.notify_project_required).toHaveBeenCalledOnce();
     const picker = vi.spyOn(view.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
     await act(async () =>
       view.querySelector<HTMLButtonElement>(".agent-composer__file-trigger")!.click(),
@@ -318,8 +413,8 @@ describe("AgentConversation", () => {
     const paste = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(paste, "clipboardData", { value: { files: [file], getData: () => "" } });
     await act(async () => view.querySelector(".cm-content")!.dispatchEvent(paste));
-    expect(input.draft.read()).toEqual({ text: "待发送草稿", attachments: [] });
-    expect(push_toast).toHaveBeenCalledTimes(3);
+    expect(draft.textContent).toBe(text);
+    expect(lifecycle.notify_project_required).toHaveBeenCalledTimes(3);
   });
   it.each(["success", "failure"] as const)(
     "运行中保存审批偏好，%s 后展示已确认设置",
@@ -771,25 +866,6 @@ describe("AgentConversation", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(button.getAttribute("aria-keyshortcuts")).toBe("Control+E");
-  });
-
-  it("工程打开和关闭时同步切换跟随按钮与快捷键入口", async () => {
-    for (const loaded of [false, true, false]) {
-      project_state.loaded = loaded;
-      const view = await render_page();
-      const button = view.querySelector('[aria-label="agent_page.action.follow_latest"]');
-      expect(button !== null).toBe(loaded);
-      const editor = view.querySelector<HTMLElement>(".cm-content");
-      if (editor === null) throw new Error("缺少消息编辑器");
-      const event = new KeyboardEvent("keydown", {
-        key: "e",
-        ctrlKey: true,
-        bubbles: true,
-        cancelable: true,
-      });
-      await act(async () => editor.dispatchEvent(event));
-      expect(event.defaultPrevented).toBe(loaded);
-    }
   });
 
   it("离开底部自动取消跟随，按钮显式恢复并归底", async () => {

@@ -1,4 +1,4 @@
-import { useAgentApi } from "@frontend/app/desktop/scoped-api";
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import {
   useContext,
@@ -63,7 +63,7 @@ export function AgentFileTrigger({
       }
       const result = await api_fetch<AgentWorkspaceLinkResult>(
         "/api/agent/workspace/activate-path",
-        { path },
+        { path, chatId: context.chat_id },
       );
       if (result.status === "saved") push_toast("success", t("agent_page.file_saved"));
     } catch (error) {

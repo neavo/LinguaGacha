@@ -37,7 +37,8 @@ vi.mock("@frontend/app/appearance/appearance-context", () => ({
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({ agent_input_request: null }),
 }));
-vi.mock("@frontend/app/session/agent/agent-chat-context", () => ({
+vi.mock("@frontend/app/session/agent/agent-chat-context", async (original) => ({
+  ...(await original<typeof import("@frontend/app/session/agent/agent-chat-context")>()),
   useAgentChatId: () => mocks.session,
   useAgentControls: () => ({ pendingDecision: mocks.needs_response ? { kind: "question" } : null }),
 }));

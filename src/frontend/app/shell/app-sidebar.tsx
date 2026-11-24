@@ -1,4 +1,5 @@
-import { useRef, useState, type CSSProperties, type JSX, type ReactNode } from "react";
+import { ProjectSidebar, ProjectSidebarDrop } from "./project-sidebar";
+import { useRef, useState, type CSSProperties, type JSX, type ComponentProps } from "react";
 import { Languages, ScrollText } from "lucide-react";
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
@@ -22,7 +23,7 @@ const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).t
 
 type AppSidebarProps = {
   groups: NavigationGroup[];
-  children?: ReactNode;
+  projects?: ComponentProps<typeof ProjectSidebar> | undefined;
   selected_route: RouteId;
   app_language: AppLanguage;
   is_language_updating: boolean;
@@ -43,6 +44,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
     const value = saved === null ? SIDEBAR_WIDTH.initial : Number.parseInt(saved, 10);
     return clamp_width(Number.isFinite(value) ? value : SIDEBAR_WIDTH.initial);
   });
+  const sidebar_ref = useRef<HTMLElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
   const resize_label = t("app.navigation_action.resize_sidebar");
   function save_width(next: number): void {
@@ -51,8 +53,13 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
   }
 
   return (
-    <aside className="shell-sidebar" style={{ "--sidebar-width": `${width}px` } as CSSProperties}>
-      <nav className="shell-sidebar__scroll" id="shell-navigation">
+    <aside
+      ref={sidebar_ref}
+      id="shell-navigation"
+      className="shell-sidebar"
+      style={{ "--sidebar-width": `${width}px` } as CSSProperties}
+    >
+      <nav className="shell-sidebar__navigation">
         {props.groups.map((group, group_index) => (
           <div key={group.id}>
             {group_index > 0 ? <hr className="sidebar-group-separator" /> : null}
@@ -79,8 +86,13 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
             </ul>
           </div>
         ))}
-        {props.children}
       </nav>
+      {props.projects && (
+        <>
+          <ProjectSidebar {...props.projects} />
+          <ProjectSidebarDrop target_ref={sidebar_ref} />
+        </>
+      )}
 
       <footer className="shell-sidebar__bottom">
         <ul>
@@ -176,7 +188,6 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
         className="shell-sidebar__resize"
         role="separator"
         tabIndex={0}
-        title={resize_label}
         aria-label={resize_label}
         aria-controls="shell-navigation"
         aria-orientation="vertical"
@@ -230,9 +241,5 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
 }
 
 function clamp_width(value: number): number {
-  const viewport_limit =
-    typeof window !== "undefined" && window.innerWidth > 0
-      ? Math.max(SIDEBAR_WIDTH.min, window.innerWidth - 480)
-      : SIDEBAR_WIDTH.max;
-  return Math.max(SIDEBAR_WIDTH.min, Math.min(SIDEBAR_WIDTH.max, viewport_limit, value));
+  return Math.max(SIDEBAR_WIDTH.min, Math.min(SIDEBAR_WIDTH.max, value));
 }

@@ -36,7 +36,6 @@ export type DesktopStateContextValue = {
   active_project: import("./project-store-registry").ProjectStore | undefined;
   select_project: (projectId: string) => void;
   refresh_projects: () => Promise<readonly import("./project-store-registry").ProjectStore[]>;
-  apply_chat_list: (projectId: string, payload: unknown) => void;
   refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_state: () => Promise<void>;
   commit_project_write: ProjectWriteCommitter;

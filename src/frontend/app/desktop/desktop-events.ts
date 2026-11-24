@@ -1,12 +1,11 @@
 import { is_json_record, type JsonRecord } from "@domain/json";
 import { open_event_stream } from "./desktop-api";
-import type { ChatScope } from "./scoped-api";
 
 const EVENT_SOURCE_CLOSED = 2;
 
 type DesktopEventSubscription = {
   events: Record<string, (payload: Record<string, unknown>) => void>;
-  scope?: ChatScope | undefined;
+  projectId?: string | undefined;
   onMalformed?: () => void;
   onOpen?: () => void;
   onError?: () => void;
@@ -80,18 +79,17 @@ function observe_topics(active: DesktopEvents, subscription: DesktopEventSubscri
         const decoded: unknown = JSON.parse(event.data);
         if (is_json_record(decoded)) payload = decoded;
       } catch {
-        // 不完整的帧无法归属对话，由此主题的订阅者恢复快照。
+        // 不完整的帧无法归属工程，由此主题的订阅者恢复快照。
       }
-      for (const { events, scope, onMalformed } of active.subscribers) {
+      for (const { events, projectId, onMalformed } of active.subscribers) {
         const receive = events[topic];
         if (receive === undefined) continue;
         if (payload === undefined) {
           if (onMalformed) onMalformed();
-          else if (scope === undefined) receive({});
+          else if (projectId === undefined) receive({});
           continue;
         }
-        if (scope && (scope.projectId !== payload.projectId || scope.chatId !== payload.chatId))
-          continue;
+        if (projectId !== undefined && projectId !== payload.projectId) continue;
         receive(payload);
       }
     }) as EventListener);

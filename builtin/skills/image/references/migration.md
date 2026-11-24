@@ -2,7 +2,7 @@
 
 ## 1. 准备可编辑目录
 
-维护或迁移已有 `.image` 资产前，先加载图片技能的 `image` 模块，将包成员准备到 `work/` 下的**全新**目录 `<dir>/package`：
+重置对话、换机、`work/` 缺少原准备目录，或需要直接维护、迁移已有 `.image` 资产时，先加载图片技能的 `image` 模块，将包成员准备到 `work/` 下的**全新**目录 `<dir>/package`：
 
 - **工程内已有资产**：`sources/<asset>` 已按 ZIP 成员展开为只读目录，直接复制到 `<dir>/package`。
 - **外部 `.image` 归档文件**：调用 `image.unpack(source, directory)` 安全展开到 `<dir>/package`。
@@ -26,7 +26,7 @@ if ((await stat(source)).isDirectory()) {
 准备好 `directory` 后，通过 `const { book, records } = image.read(directory)` 读取清单，并按需执行维护：
 
 - **修正原文**：编辑 `${directory}/package/items.json` 中的 `message`，调用 `image.pack(directory, output)` 重新封包，再按 `files.replaces` 提交替换。
-- **跨对话调整版式或字号**：直接对该 `directory` 调用主技能中的 `splitBubble`、`mergeBubble` 或 `setFontSizes`，封包后按 `files.replaces` 提交。
+- **调整版式或字号**：直接对展开后的 `directory` 调用主技能中的 `splitBubble`、`mergeBubble` 或 `setFontSizes`，封包后按 `files.replaces` 提交。
 - **补识别漏字**：原图确有漏识别文字且包内无对应条目时，从原图重新扫描与准备。
 - **重建无框外框**：需要采用新的无框文字外框几何时，基于原图重新准备（不传 `update`）并按 `files.replaces` 替换；带 `{ update, device }` 的 `prepareAndPack` 会沿用包内已有掩码，仅用于补做消字。
 

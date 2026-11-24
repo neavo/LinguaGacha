@@ -1,4 +1,4 @@
-import { createAgentApi, type ChatScope } from "@frontend/app/desktop/scoped-api";
+import { api_upload } from "@frontend/app/desktop/desktop-api";
 import type { AgentFileAttachment, AgentMessageAttachment, AgentMessageInput } from "@shared/agent";
 
 export type AgentPendingUpload = {
@@ -19,11 +19,14 @@ export class AgentInputDraft {
   private readonly tasks = new Map<string, UploadTask>(); // 原始 File 只保留到成功、移除或清理
   private tail = Promise.resolve(); // 同一草稿按选择顺序串行传输
 
-  /** 编辑历史消息时复制初始内容，隔离公开历史。 */
-  private readonly upload: ReturnType<typeof createAgentApi>["upload"];
+  private readonly upload: typeof api_upload; // 工程草稿上传由所属对话绑定请求。
 
-  constructor(initial: AgentMessageInput = { text: "", attachments: [] }, scope?: ChatScope) {
-    this.upload = createAgentApi(scope).upload;
+  /** 编辑历史消息时复制初始内容，隔离公开历史。 */
+  constructor(
+    initial: AgentMessageInput = { text: "", attachments: [] },
+    upload?: typeof api_upload,
+  ) {
+    this.upload = upload ?? ((...args) => api_upload(...args));
     this.value = structuredClone(initial);
   }
 

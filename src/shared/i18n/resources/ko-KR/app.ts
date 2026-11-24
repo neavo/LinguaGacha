@@ -47,6 +47,7 @@ export const ko_kr_app = {
     cancel: "취소",
     confirm: "확인",
     close: "닫기",
+    open: "열기",
     create: "추가",
     delete: "삭제",
     edit: "편집",
@@ -114,11 +115,12 @@ export const ko_kr_app = {
     launching: "처리 중 …",
   },
   drop: {
+    release: "놓으면 적용됩니다",
+    project_only: "여기에는 .lg 프로젝트 파일만 놓을 수 있습니다",
     select_multiple_unavailable: "한 번에 파일 또는 폴더 하나만 놓을 수 있습니다",
     select_unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 선택해 주세요 …",
     multiple_unavailable: "한 번에 파일 하나만 놓을 수 있습니다",
     unavailable: "놓은 파일의 로컬 경로를 읽을 수 없습니다. 클릭하여 가져와 주세요 …",
-    import_here: "놓아서 규칙 파일 가져오기",
   },
   toggle: {
     option: {
@@ -163,10 +165,15 @@ export const ko_kr_app = {
     VI: "베트남어",
   },
   workspace: {
+    projects: "프로젝트",
     skills: "스킬",
     quality_rules: "품질 규칙",
-    new_chat: "새 대화",
-    delete_chat: "대화 삭제",
+    more: "더 보기",
+    reset_chat: "대화 초기화",
+    reset_confirm: "현재 프로젝트에서 진행 중인 대화를 초기화할까요 …?",
+    reveal_path: "폴더에서 보기",
+    remove_recent: "목록에서 제거",
+    remove_confirm: "프로젝트를 닫고 최근 목록에서 제거할까요 …?",
     close_busy: "프로젝트 작업이 진행 중입니다",
     files: "파일",
   },
@@ -211,7 +218,7 @@ export const ko_kr_app = {
     confirmation: {
       agent_description:
         "이 프로젝트에는 AGENT가 쓰기 작업을 완료해야 하는 에셋이 포함되어 있습니다. 직접 내보내기에서는 해당 에셋을 건너뜁니다 …",
-      description: "현재 사용 가능한 번역 결과물을 내보낼까요?",
+      description: "현재 사용 가능한 번역 결과물을 내보낼까요 …?",
       checking: "프로젝트 파일 및 교정 경고 확인 중 …",
       check_failed:
         "프로젝트 파일 또는 교정 경고를 확인하지 못했습니다. 다시 확인하거나 AGENT에 처리를 맡기세요 …",

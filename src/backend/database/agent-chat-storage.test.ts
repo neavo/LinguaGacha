@@ -1,4 +1,3 @@
-import type { AgentChatStorage } from "./agent-chat-storage";
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { SqliteExecutor } from "@earendil-works/pi-durable/storage/sqlite";
 import { ProjectWriteStore } from "../project/project-write-store";
@@ -31,17 +30,17 @@ it("读取批次中的写入已提交后关闭失败，保留已提交错误", a
   vi.spyOn(DatabaseSync.prototype, "close").mockImplementationOnce(() => {
     throw failure;
   });
-  await expect(store.read_batch(() => register(store, "test0001"))).rejects.toMatchObject({
+  await expect(store.read_batch(() => store.create("test0001"))).rejects.toMatchObject({
     code: "data.committed_sync_failed",
     public_details: { committed: true },
   });
-  expect((await active_record(store))?.id).toBe("test0001");
+  expect((await store.read())?.id).toBe("test0001");
   await store.close();
   await database.close();
   expect(fs.existsSync(file + "-wal")).toBe(false);
 });
 
-it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即可恢复登记和历史", async () => {
+it("SDK 与工程并发提交，复制 lg 能恢复对话，重置只清除对话数据", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-agent-db-"));
   roots.push(root);
   const file = path.join(root, "project.lg");
@@ -49,7 +48,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
   const database = new ProjectDatabase("1.0.0");
   await database.create_project(file, (writer) => writer.set_meta(file, "probe", "测试"));
   const store = database.open_agent_store(file);
-  await register(store, "-t75szF5");
+  await store.create("-t75szF5");
   const state = defineDoc({
     kind: "test.counter",
     version: 1,
@@ -57,11 +56,8 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
     checkpointWhen: () => false,
     initial: () => ({ count: 0 }),
   });
-  const harness = await Harness.open(
-    await store.open_storage(),
-    { models: createModels(), registry: createRegistry() },
-    BACKGROUND_CONTEXT,
-  );
+  const sdk_options = { models: createModels(), registry: createRegistry() };
+  const harness = await Harness.open(await store.open_storage(), sdk_options, BACKGROUND_CONTEXT);
   const conversation = await harness.root(BACKGROUND_CONTEXT);
   try {
     const entered = Promise.withResolvers<void>();
@@ -108,7 +104,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
     expect(await database.get_all_meta(file)).toHaveProperty("translation_extras", {
       processed_line: 123,
     });
-    expect((await active_record(store))?.data.uploads).toEqual([]);
+    expect((await store.read())?.data.uploads).toEqual([]);
     await Promise.all(
       Array.from({ length: 10 }, async (_, i) =>
         Promise.all([
@@ -128,7 +124,7 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
       }),
     ).rejects.toThrow();
     expect(await database.get_all_meta(file)).not.toHaveProperty("rolled_back");
-    expect((await active_record(store))?.data.uploads).toHaveLength(10);
+    expect((await store.read())?.data.uploads).toHaveLength(10);
     expect(await harness.snapshot(state, BACKGROUND_CONTEXT)).toEqual({ count: 10 });
     expect(fs.existsSync(file + "-wal")).toBe(false);
     expect(fs.existsSync(file + "-shm")).toBe(false);
@@ -140,16 +136,20 @@ it("SDK 与工程并发提交、失败回滚，会话空闲时只复制 lg 即�
   }
   const reopened = new ProjectDatabase("1.0.0");
   const restored = reopened.open_agent_store(copy);
-  const sdk = await Harness.open(
-    await restored.open_storage(),
-    { models: createModels(), registry: createRegistry() },
-    BACKGROUND_CONTEXT,
-  );
-  expect((await active_record(restored))?.id).toBe("-t75szF5");
+  const sdk = await Harness.open(await restored.open_storage(), sdk_options, BACKGROUND_CONTEXT);
+  expect((await restored.read())?.id).toBe("-t75szF5");
   expect(await sdk.snapshot(state, BACKGROUND_CONTEXT)).toEqual({ count: 10 });
   await sdk.close(BACKGROUND_CONTEXT);
   await restored.reset();
-  expect(await active_record(restored)).toBeNull();
+  expect(await restored.read()).toBeNull();
+  const empty_storage = await restored.open_storage();
+  expect(await empty_storage.conversation(conversation.id, BACKGROUND_CONTEXT)).toBeUndefined();
+  const reset_sdk = await Harness.open(empty_storage, sdk_options, BACKGROUND_CONTEXT);
+  try {
+    expect(await reset_sdk.snapshot(state, BACKGROUND_CONTEXT)).toBeUndefined();
+  } finally {
+    await reset_sdk.close(BACKGROUND_CONTEXT);
+  }
   expect(await reopened.get_all_meta(copy)).toMatchObject({ probe: "测试" });
   await restored.close();
   await reopened.close();
@@ -163,25 +163,15 @@ it("读取工程时拒绝无效激活指针和缺失登记", async () => {
   await database.create_project(file);
   const store = database.open_agent_store(file);
   try {
-    await register(store, "-t75szF5");
+    await store.create("-t75szF5");
     for (const id of [null, 1, "", "missing"]) {
       await database.transaction(file, (writer) =>
         writer.set_meta(file, ACTIVE_AGENT_CHAT_KEY, id),
       );
-      await expect(active_record(store)).rejects.toMatchObject({ code: "file.invalid_structure" });
+      await expect(store.read()).rejects.toMatchObject({ code: "file.invalid_structure" });
     }
   } finally {
     await store.close();
     await database.close();
   }
 });
-
-async function register(store: AgentChatStorage, id: string) {
-  const record = store.new_record(id);
-  await store.update_records({ put: record, active: id });
-  return record;
-}
-async function active_record(store: AgentChatStorage) {
-  const { chats, activeChatId } = await store.list();
-  return chats.find((chat) => chat.id === activeChatId) ?? null;
-}

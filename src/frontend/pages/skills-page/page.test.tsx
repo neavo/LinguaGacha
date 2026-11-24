@@ -24,7 +24,7 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => ({
-    projects: { project: { activeChatCount: Number(mocks.owner === "agent") } },
+    projects: { project: { agent: mocks.owner === "agent" } },
   }),
   useDesktopState: () => ({ settings_snapshot: mocks.settings }),
 }));

@@ -1,3 +1,4 @@
+import { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
 import { createProjectFetch } from "@frontend/app/desktop/scoped-api";
 import { createTranslationExportStore } from "@frontend/app/session/translation-export/translation-export-store";
 import {
@@ -20,14 +21,6 @@ import type {
 import type { ProjectSnapshot } from "./desktop-state-context";
 import type { ProjectSessionUiStateKey } from "@frontend/app/session/project-session-ui-state-context";
 
-export type ProjectChatSummary = Readonly<{
-  id: string;
-  title: string;
-  status: "idle" | "running" | "stopping";
-  hasPendingDecision: boolean;
-  stoppedOnError: boolean;
-}>;
-
 export type OpenProjectSnapshot = ProjectSnapshot & { projectId: string; name: string };
 export type ProjectTabsSnapshot = Readonly<{
   tabs: readonly RouteId[];
@@ -35,6 +28,7 @@ export type ProjectTabsSnapshot = Readonly<{
 }>;
 
 const RECENT_EVENTS = 256;
+type AgentErrorHandler = ConstructorParameters<typeof AgentChatStore>[1];
 
 /** 一个打开周期的任务镜像、缓存失效和页面状态。 */
 export class ProjectStore {
@@ -47,14 +41,13 @@ export class ProjectStore {
   readonly pageUi = new Map<ProjectSessionUiStateKey, unknown>(); // 卸载工作区时保留轻量页面状态。
   private tabs_snapshot: ProjectTabsSnapshot = Object.freeze({ tabs: [], activeTab: "agent" });
   private readonly tab_listeners = new Set<() => void>();
-  activeChatId = "";
-  chats: readonly ProjectChatSummary[] = [];
+  readonly agentChat: AgentChatStore; // 前台卸载后仍接收事件，直到工程关闭。
   private readonly applied = new Set<string>(); // HTTP 写回与 SSE 可能报告同一次提交。
-  private chatsRevision = -1; // 请求回包可以晚于同一列表的 SSE。
 
   public snapshot: OpenProjectSnapshot;
-  constructor(snapshot: OpenProjectSnapshot) {
+  constructor(snapshot: OpenProjectSnapshot, on_agent_error: AgentErrorHandler = () => {}) {
     this.snapshot = snapshot;
+    this.agentChat = new AgentChatStore(window.localStorage, on_agent_error, snapshot.projectId);
     const request = createProjectFetch(snapshot.projectId);
     this.qualityStatistics = createQualityRuleStatisticsStore((rule_key) =>
       request("/api/quality/statistics/view", { rule_key }),
@@ -87,33 +80,6 @@ export class ProjectStore {
     const activeTab = this.tabs_snapshot.activeTab === tab ? "agent" : this.tabs_snapshot.activeTab;
     this.tabs_snapshot = Object.freeze({ tabs, activeTab });
     for (const listener of this.tab_listeners) listener();
-  }
-
-  /** 采用较新的对话列表与活跃指针。 */
-  public update_chats(payload: unknown): void {
-    if (!is_json_record(payload) || !Array.isArray(payload.chats)) return;
-    if (typeof payload.chatsRevision === "number") {
-      if (payload.chatsRevision < this.chatsRevision) return;
-      this.chatsRevision = payload.chatsRevision;
-    }
-    const chats = payload.chats.flatMap((value): ProjectChatSummary[] => {
-      if (!is_json_record(value) || typeof value.id !== "string") return [];
-      return [
-        {
-          id: value.id,
-          title: typeof value.title === "string" ? value.title : "",
-          status: value.status === "running" || value.status === "stopping" ? value.status : "idle",
-          hasPendingDecision: value.hasPendingDecision === true,
-          stoppedOnError: value.stoppedOnError === true,
-        },
-      ];
-    });
-    this.chats = chats;
-    this.activeChatId =
-      typeof payload.activeChatId === "string" &&
-      chats.some((chat) => chat.id === payload.activeChatId)
-        ? payload.activeChatId
-        : (chats[0]?.id ?? "");
   }
 
   /** 任务回执可只含公共批次，独立翻译镜像只消费明确携带的快照。 */
@@ -150,6 +116,18 @@ export class ProjectStore {
 /** 工程列表刷新时保留仍处于同一打开周期的 Store。 */
 export class ProjectStoreRegistry {
   private readonly stores = new Map<string, ProjectStore>();
+  private readonly on_agent_error: AgentErrorHandler;
+
+  constructor(on_agent_error: AgentErrorHandler) {
+    this.on_agent_error = on_agent_error;
+  }
+
+  /** 应用卸载时释放全部工程的 Agent 订阅和上传。 */
+  public dispose(): void {
+    for (const store of this.stores.values()) store.agentChat.dispose();
+    this.stores.clear();
+  }
+
   public get(projectId: string): ProjectStore | undefined {
     return this.stores.get(projectId);
   }
@@ -158,6 +136,7 @@ export class ProjectStoreRegistry {
   }
 
   /** 以服务端完整列表为准，关闭的工程退出登记。 */
+  /** 只有完整工程列表能决定哪些打开周期已经结束。 */
   public replace(payload: unknown): void {
     if (!is_json_record(payload) || !Array.isArray(payload.projects)) return;
     const loaded = new Set<string>();
@@ -165,7 +144,11 @@ export class ProjectStoreRegistry {
       const store = this.update(value);
       if (store) loaded.add(store.snapshot.projectId);
     }
-    for (const id of this.stores.keys()) if (!loaded.has(id)) this.stores.delete(id);
+    for (const [id, store] of this.stores) {
+      if (loaded.has(id)) continue;
+      store.agentChat.dispose();
+      this.stores.delete(id);
+    }
   }
 
   /** 单工程补读只更新公共快照，页面和高频 Store 继续使用原实例。 */
@@ -183,10 +166,14 @@ export class ProjectStoreRegistry {
         ? read_project_language_settings(project.languages)
         : null,
     };
-    const store = this.stores.get(snapshot.projectId) ?? new ProjectStore(snapshot);
-    store.snapshot = snapshot;
-    store.update_chats(payload);
+    const previous = this.stores.get(snapshot.projectId);
+    if (previous !== undefined) {
+      previous.snapshot = snapshot;
+      return previous;
+    }
+    const store = new ProjectStore(snapshot, this.on_agent_error);
     this.stores.set(snapshot.projectId, store);
+    store.agentChat.connect();
     return store;
   }
 }

@@ -1,5 +1,6 @@
 export const de_de_agent_page = {
-  project_required: "Bitte zuerst eine Projektdatei erstellen oder öffnen …",
+  project_required:
+    "Bitte klicke zuerst auf die Schaltfläche links, um ein Projekt zu erstellen oder zu öffnen …",
   document: {
     conversation: "Unterhaltung",
     open: "Öffnen",
@@ -51,11 +52,11 @@ export const de_de_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Dateien oder Ordner hierher ziehen und mit einem Klick übersetzen …!",
+    no_project_placeholder:
+      "Dateien oder Ordner ablegen, um ein Übersetzungsprojekt zu erstellen …",
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Befehl wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
     newline: "Neue Zeile",
-    drop_files: "Loslassen, um Dateien hinzuzufügen",
   },
   mention: {
     files: {

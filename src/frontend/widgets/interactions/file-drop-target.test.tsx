@@ -1,13 +1,9 @@
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentFileDropTarget } from "./agent-file-drop-target";
+import { FileDropTarget } from "./file-drop-target";
 
-vi.mock("@frontend/app/locale/locale-context", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
-}));
-
-describe("AgentFileDropTarget", () => {
+describe("FileDropTarget", () => {
   let root: Root | null = null;
   let target: HTMLDivElement;
   const target_ref = createRef<HTMLElement>();
@@ -25,15 +21,21 @@ describe("AgentFileDropTarget", () => {
   async function render_target(enabled = true): Promise<void> {
     if (root === null) {
       target = document.createElement("div");
-      const content = document.createElement("div");
-      target.append(content);
       document.body.append(target);
       target_ref.current = target;
-      root = createRoot(content);
+      root = createRoot(target);
     }
     await act(async () =>
       root?.render(
-        <AgentFileDropTarget target_ref={target_ref} enabled={enabled} on_files={on_files} />,
+        <>
+          <div />
+          <FileDropTarget
+            label="Drop files"
+            target_ref={target_ref}
+            enabled={enabled}
+            on_files={on_files}
+          />
+        </>,
       ),
     );
   }

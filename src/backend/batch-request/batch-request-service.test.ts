@@ -161,7 +161,7 @@ describe("batch request", () => {
       source: "batch-request",
       content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
     });
-    expect(f.gate.get_snapshot().activeChatCount).toBe(1);
+    expect(f.gate.get_snapshot().agent).toBe(true);
     await f.tasks.dispose();
   });
   it("媒体通过统一客户端发送，确定性拒绝只失败该项", async () => {

@@ -35,14 +35,19 @@ export function register_api_routes(context: ApiRouteContext): void {
   const request_data = ({ projectId: _projectId, ...data }: JsonRecord): JsonRecord => data;
   const scope = (id: unknown) => services.projects.require(id);
   const project = (body: JsonRecord) => scope(body.projectId);
-  const host = (projectId: unknown) => {
+  const require_agent = (projectId: unknown) => {
     const agent = scope(projectId).agent;
     if (agent === undefined) throw new AppError("runtime.disposed");
     return agent;
   };
-  const chat = (body: JsonRecord) => host(body.projectId).require(body.chatId);
-  const query_chat = (params: URLSearchParams) =>
-    host(params.get("projectId")).require(params.get("chatId"));
+  const chat = (body: JsonRecord) => require_agent(body.projectId);
+  const query_chat = (params: URLSearchParams) => require_agent(params.get("projectId"));
+  // 工程内相同的预览路径在重置后可以指向其他文件。
+  const preview_agent = (projectId: unknown, chatId: unknown) => {
+    const agent = require_agent(projectId);
+    agent.assert_chat_identity(chatId);
+    return agent;
+  };
 
   context.postJson("/api/agent/personality/read", () => context.personality.read());
   context.postJson("/api/agent/personality/save", (body) => context.personality.save(body));
@@ -92,13 +97,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/session/project/create", (body) => services.create_project(body));
 
   context.app.get("/api/session/projects", (request) => request.json(ok(services.list_projects())));
-  context.postJson("/api/agent/chats/create", (body) => host(body.projectId).create_chat());
-  context.postJson("/api/agent/chats/delete", (body) =>
-    host(body.projectId).delete_chat(body.chatId),
-  );
-  context.postJson("/api/agent/chats/activate", (body) =>
-    host(body.projectId).activate_chat(body.chatId),
-  );
+  context.postJson("/api/agent/reset", (body) => chat(body).reset());
   context.app.get("/api/events/stream", () => context.createEventStreamResponse());
   context.postJson("/api/runtime/snapshot", () => services.runtime.getSnapshot());
   context.app.get("/api/models/catalog/snapshot", (hono_context) =>
@@ -107,8 +106,8 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.request("GET", "/api/agent/files", async (request) =>
     Response.json(ok(await query_chat(new URL(request.url).searchParams).list_files())),
   );
-  context.request("GET", "/api/agent/snapshot", (request) =>
-    Response.json(ok(query_chat(new URL(request.url).searchParams).get_snapshot())),
+  context.request("GET", "/api/agent/snapshot", async (request) =>
+    Response.json(ok(await query_chat(new URL(request.url).searchParams).read_snapshot())),
   );
   context.postJson("/api/agent/message", (body) =>
     chat(body).input_command("send", request_data(body)),
@@ -149,23 +148,23 @@ export function register_api_routes(context: ApiRouteContext): void {
     });
   });
   context.postJson("/api/agent/workspace/file", (body) =>
-    chat(body).describe_workspace_file(body.path),
+    preview_agent(body.projectId, body.chatId).describe_workspace_file(body.path),
   );
   context.postJson("/api/agent/workspace/document", (body) =>
-    chat(body).read_workspace_document(body.path),
+    preview_agent(body.projectId, body.chatId).read_workspace_document(body.path),
   );
   context.request("GET", "/api/agent/workspace/image", async (request) => {
     const query = new URL(request.url).searchParams;
-    return create_image_response(await query_chat(query).read_workspace_image(query.get("path")));
+    const agent = preview_agent(query.get("projectId"), query.get("chatId"));
+    return create_image_response(await agent.read_workspace_image(query.get("path")));
   });
   context.request("GET", "/api/agent/tool-image", (request) => {
     const query = new URL(request.url).searchParams;
-    return create_image_response(
-      query_chat(query).read_tool_image(query.get("entryId"), query.get("index")),
-    );
+    const agent = preview_agent(query.get("projectId"), query.get("chatId"));
+    return create_image_response(agent.read_tool_image(query.get("entryId"), query.get("index")));
   });
   context.postJson("/api/agent/workspace/activate-path", (body) =>
-    chat(body).activate_workspace_path(request_data(body)),
+    preview_agent(body.projectId, body.chatId).activate_workspace_path(request_data(body)),
   );
   context.postJson("/api/agent/question/resolve", (body) =>
     chat(body).resolve_question(request_data(body)),

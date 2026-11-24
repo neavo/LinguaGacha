@@ -1,3 +1,4 @@
+import "@frontend/widgets/status-mark.css";
 import type { JSX } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTaskSession } from "@frontend/app/session/batch-task/batch-task-session-context";
@@ -27,7 +28,7 @@ export function AgentTaskStatus(props: {
       <div className="agent-doing" role="status">
         <span className="agent-doing__lead">
           <span
-            className={`agent-status-mark${props.running ? " agent-status-mark--pending agent-status-mark--running" : ""}`}
+            className={`status-mark agent-status-mark${props.running ? " agent-status-mark--pending agent-status-mark--running status-mark--pulse" : ""}`}
             aria-hidden="true"
           />
           <span className="agent-doing__label">{t("agent_page.doing.current")}</span>

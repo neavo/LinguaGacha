@@ -1,4 +1,4 @@
-import { useAgentApi } from "@frontend/app/desktop/scoped-api";
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-input-draft";
 import { type JSX, useEffect, useState } from "react";
 import { File, LoaderCircle, MessageSquareQuote, CircleAlert, X } from "lucide-react";
@@ -243,7 +243,7 @@ function AgentUploadImage({ file }: { file: AgentFileAttachment }): JSX.Element 
       controller.abort();
       if (url !== null) URL.revokeObjectURL(url);
     };
-  }, [file.uploadId]);
+  }, [api_blob, file.uploadId]);
   return (
     <img src={source?.id === file.uploadId ? source.url : undefined} alt="" decoding="async" />
   );

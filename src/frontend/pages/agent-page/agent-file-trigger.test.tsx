@@ -64,6 +64,7 @@ it.each(["markdown", null] as const)("执行时的预览能力 %s 决定打开�
   else
     expect(mocks.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
       path: file.path,
+      chatId: "session",
     });
   mocks.open.mockClear();
   mocks.api.mockClear();
@@ -80,6 +81,7 @@ it.each(["markdown", null] as const)("执行时的预览能力 %s 决定打开�
   else
     expect(mocks.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
       path: file.path,
+      chatId: "session",
     });
 });
 it("缺失文件仍能打开菜单并复制地址，执行打开时才报告错误", async () => {

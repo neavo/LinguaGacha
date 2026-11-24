@@ -1,4 +1,4 @@
-import { useAgentApi } from "@frontend/app/desktop/scoped-api";
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { MediaViewport } from "@frontend/features/media-preview/media-viewport";
@@ -42,7 +42,7 @@ export function AgentToolImage(props: {
       controller.abort();
       if (object_url !== null) URL.revokeObjectURL(object_url);
     };
-  }, [props.chat_id, props.entry_id, props.index]);
+  }, [api_blob, props.chat_id, props.entry_id, props.index]);
 
   /** HTTP 成功仍可能解码失败，内容区与读取失败使用同一恢复路径。 */
   const handle_image_error = (): void => {

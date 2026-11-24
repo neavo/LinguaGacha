@@ -1,22 +1,21 @@
 import { type JSX, useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
-import { createPortal } from "react-dom";
-import { useI18n } from "@frontend/app/locale/locale-context";
+import "./file-drop-target.css";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 
-type AgentFileDropTargetProps = {
-  target_ref: RefObject<HTMLElement | null>;
+type FileDropTargetProps = {
+  target_ref: RefObject<HTMLElement | null>; // 遮罩与拖放事件都属于包含本组件的区域。
   enabled: boolean;
+  label: string;
   on_files: (files: readonly File[]) => void;
 };
 
 /** 接收区域只负责文件事件与反馈，消费方决定工程打开或编辑器输入。 */
-export function AgentFileDropTarget({
+export function FileDropTarget({
   target_ref,
   enabled,
   on_files,
-}: AgentFileDropTargetProps): JSX.Element | null {
-  const { t } = useI18n();
-  const [target, set_target] = useState<HTMLElement | null>(null);
+  label,
+}: FileDropTargetProps): JSX.Element {
   const [active, set_active] = useState(false);
   const depth_ref = useRef(0); // 子元素间移动也会产生 enter / leave，归零才代表离开区域
 
@@ -51,7 +50,6 @@ export function AgentFileDropTarget({
         if (depth_ref.current === 0) set_active(false);
         break;
       case "drop":
-        reset();
         if (enabled) on_files(Array.from(transfer.files));
         break;
     }
@@ -60,7 +58,6 @@ export function AgentFileDropTarget({
   useEffect(() => {
     const element = target_ref.current;
     if (element === null) return;
-    set_target(element);
     // 绑定真实区域的冒泡阶段：局部编辑器先消费文件，页面不会重复添加或覆盖 dropEffect。
     const events = ["dragenter", "dragover", "dragleave", "drop"] as const;
     for (const type of events) element.addEventListener(type, handle_drag);
@@ -72,16 +69,14 @@ export function AgentFileDropTarget({
     };
   }, [target_ref]);
 
-  return target === null
-    ? null
-    : createPortal(
-        <div
-          className="agent-file-drop-overlay"
-          data-active={active && enabled ? "true" : undefined}
-          aria-hidden={!active || !enabled}
-        >
-          {t("agent_page.input.drop_files")}
-        </div>,
-        target,
-      );
+  const visible = active && enabled;
+  return (
+    <div
+      className="file-drop-overlay"
+      data-active={visible ? "true" : undefined}
+      aria-hidden={!visible}
+    >
+      {label}
+    </div>
+  );
 }

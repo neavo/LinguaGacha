@@ -53,7 +53,7 @@ async function create_pair(): Promise<{ source_path: string; base_path: string }
     { src: "丁", file_path: "b.txt" },
   ]);
   const store = database.open_agent_store(base_path);
-  await store.update_records({ put: store.new_record("base-chat"), active: "base-chat" });
+  await store.create("base-chat");
   await store.close();
   return { source_path, base_path };
 }
@@ -92,9 +92,9 @@ describe("ProjectTranslationTransferService", () => {
     ]);
     expect(fs.readFileSync(source_path)).toEqual(source_bytes);
     expect(fs.readFileSync(base_path)).toEqual(base_bytes);
-    expect(await database.open_agent_store(output_path).list()).toMatchObject({ chats: [] });
-    expect(await database.open_agent_store(base_path).list()).toMatchObject({
-      chats: [{ id: "base-chat" }],
+    expect(await database.open_agent_store(output_path).read()).toBeNull();
+    expect(await database.open_agent_store(base_path).read()).toMatchObject({
+      id: "base-chat",
     });
     expect(fs.readdirSync(directory).sort()).toEqual(["base.lg", "output.lg", "source.lg"]);
   });

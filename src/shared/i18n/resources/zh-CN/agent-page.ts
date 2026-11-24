@@ -1,5 +1,5 @@
 export const zh_cn_agent_page = {
-  project_required: "请首先创建或者打开工程文件 …",
+  project_required: "请首先点击左侧按钮创建或打开工程 …",
   document: {
     conversation: "对话",
     open: "打开",
@@ -50,11 +50,10 @@ export const zh_cn_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "请拖入作为翻译目标的文件或文件夹，一键翻译 …!",
+    no_project_placeholder: "拖入要翻译的文件或文件夹即可创建工程 …",
     placeholder: "描述任务，或输入 @ 选择技能或指令 …",
     edit_assistant_placeholder: "修改模型回复 …",
     newline: "换行",
-    drop_files: "松开以添加文件",
   },
   mention: {
     files: {

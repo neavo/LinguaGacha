@@ -5,7 +5,7 @@ import { subscribe_desktop_events } from "./desktop-events";
 
 vi.mock("./desktop-api", () => ({ open_event_stream: vi.fn() }));
 
-it("共享连接按工程和对话分发，并在显式重试时重接已有订阅", () => {
+it("共享连接按工程分发，并在显式重试时重接已有订阅", () => {
   const event_source = () => Object.assign(new EventTarget(), { readyState: 1, close: vi.fn() });
   const first = event_source();
   const second = event_source();
@@ -17,9 +17,12 @@ it("共享连接按工程和对话分发，并在显式重试时重接已有订�
   const old_project = vi.fn();
   const mirror = vi.fn();
   const cleanups = [
-    subscribe_desktop_events({ scope: payload, events: { [AGENT_CHAT_EVENT_TOPIC]: current } }),
     subscribe_desktop_events({
-      scope: { ...payload, projectId: "closed" },
+      projectId: payload.projectId,
+      events: { [AGENT_CHAT_EVENT_TOPIC]: current },
+    }),
+    subscribe_desktop_events({
+      projectId: "closed",
       events: { [AGENT_CHAT_EVENT_TOPIC]: old_project },
     }),
   ];

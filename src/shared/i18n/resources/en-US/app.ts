@@ -47,6 +47,7 @@ export const en_us_app = {
     cancel: "Cancel",
     confirm: "Confirm",
     close: "Close",
+    open: "Open",
     create: "Create",
     delete: "Delete",
     edit: "Edit",
@@ -115,13 +116,14 @@ export const en_us_app = {
     launching: "Processing …",
   },
   drop: {
+    release: "Release to apply",
+    project_only: "Only .lg project files can be dropped here",
     select_multiple_unavailable: "Only one file or folder can be dropped at a time",
     select_unavailable:
       "The local path of the dropped file is unavailable right now. Please use the picker instead …",
     multiple_unavailable: "Only one file can be dropped at a time",
     unavailable:
       "The local path of the dropped file is unavailable right now. Please use the import picker instead …",
-    import_here: "Release to import the rule file",
   },
   toggle: {
     option: {
@@ -166,10 +168,15 @@ export const en_us_app = {
     VI: "Vietnamese",
   },
   workspace: {
+    projects: "Projects",
     skills: "Skills",
     quality_rules: "Quality rules",
-    new_chat: "New chat",
-    delete_chat: "Delete chat",
+    more: "More",
+    reset_chat: "Reset conversation",
+    reset_confirm: "Confirm resetting the ongoing conversation in this project …?",
+    reveal_path: "Show in folder",
+    remove_recent: "Remove from list",
+    remove_confirm: "Confirm closing this project and removing it from the recent list …?",
     close_busy: "A project operation is in progress",
     files: "Files",
   },
@@ -214,7 +221,7 @@ export const en_us_app = {
     confirmation: {
       agent_description:
         "This project contains assets that require AGENT writeback. Direct export will skip those assets …",
-      description: "Export the currently available translations?",
+      description: "Confirm exporting the currently available translations …?",
       checking: "Checking project files and proofreading warnings …",
       check_failed:
         "Could not check project files or proofreading warnings. Check again or let AGENT handle it …",

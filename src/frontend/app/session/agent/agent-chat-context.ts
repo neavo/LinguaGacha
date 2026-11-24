@@ -1,5 +1,5 @@
-import type { AgentChatStoreRegistry } from "./agent-chat-store-registry";
 import type { AgentEntry, AgentRunOutputSnapshot, AgentTokenSpeedSnapshot } from "@shared/agent";
+import { createAgentApi } from "@frontend/app/desktop/scoped-api";
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { AgentDecisionCountdownSnapshot } from "./agent-decision-countdown";
 import type {
@@ -16,6 +16,12 @@ export type { AgentCommand, AgentTransportState } from "./agent-chat-store";
 export type { AgentInputState } from "./agent-chat-store";
 
 export const AgentChatStoreContext = createContext<AgentChatStore | null>(null);
+const unscoped_agent_api = createAgentApi();
+
+/** 工作区的预览和上传沿用对话 Store 绑定的工程。 */
+export function useAgentApi(): ReturnType<typeof createAgentApi> {
+  return useContext(AgentChatStoreContext)?.api ?? unscoped_agent_api;
+}
 
 /** 对话身份随权威快照变化。页面资源以此隔离生命周期。 */
 export function useAgentChatId(): string | null {
@@ -110,14 +116,7 @@ export function useAgentChatActions(): AgentChatActions {
 function use_agent_store(): AgentChatStore {
   const store = useContext(AgentChatStoreContext);
   if (store === null) {
-    throw new Error("Agent chat hooks must be used inside AgentChatProvider.");
+    throw new Error("Agent chat hooks must be used inside AgentChatStoreContext.");
   }
   return store;
-}
-
-export const AgentChatRegistryContext = createContext<AgentChatStoreRegistry | null>(null);
-export function useAgentChatRegistry() {
-  const registry = useContext(AgentChatRegistryContext);
-  if (!registry) throw new Error("AgentChatRegistryProvider is missing.");
-  return registry;
 }

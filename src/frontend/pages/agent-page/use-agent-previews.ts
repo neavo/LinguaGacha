@@ -1,4 +1,4 @@
-import { useAgentApi } from "@frontend/app/desktop/scoped-api";
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentFile } from "@shared/agent-workspace-file";
@@ -21,11 +21,7 @@ export function useAgentPreviews(chat_id: string) {
   const text = useRef(t); // 请求在语言切换后完成时使用当前文案，文件读取不随语言重启。
   text.current = t;
   const { get_page_ui_state, set_page_ui_state } = useProjectSessionUiState();
-  const [saved] = useState(() =>
-    get_page_ui_state<PreviewUiState>(
-      ("agent-documents:" + chat_id) as `agent-documents:${string}`,
-    ),
-  );
+  const [saved] = useState(() => get_page_ui_state<PreviewUiState>("agent-documents"));
   const restoring = useRef(true); // 恢复完成前保留原记录，避免空列表覆盖跨路由快照。
   const [state, set_state] = useState<PreviewState>({ documents: [], selected: null });
   const requests = useRef(new Map<string, AbortController>());
@@ -131,15 +127,12 @@ export function useAgentPreviews(chat_id: string) {
   // 各预览更新同一份阅读位置记录，保存无需逐次触发 React 渲染。
   useEffect(() => {
     if (!chat_id || restoring.current) return;
-    set_page_ui_state<PreviewUiState>(
-      ("agent-documents:" + chat_id) as `agent-documents:${string}`,
-      {
-        chat_id,
-        paths: state.documents.map((document) => document.path),
-        selected: state.selected,
-        scroll: scroll.current,
-      },
-    );
+    set_page_ui_state<PreviewUiState>("agent-documents", {
+      chat_id,
+      paths: state.documents.map((document) => document.path),
+      selected: state.selected,
+      scroll: scroll.current,
+    });
   }, [state, chat_id, set_page_ui_state]);
 
   return { ...state, select, close, open_file, scroll };

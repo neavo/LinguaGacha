@@ -20,7 +20,7 @@ vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => ({
-    projects: { project: { activeChatCount: Number(mocks.owner === "agent") } },
+    projects: { project: { agent: mocks.owner === "agent" } },
   }),
 }));
 

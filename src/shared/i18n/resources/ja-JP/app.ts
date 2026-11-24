@@ -48,6 +48,7 @@ export const ja_jp_app = {
     cancel: "キャンセル",
     confirm: "確認",
     close: "閉じる",
+    open: "開く",
     create: "追加",
     delete: "削除",
     edit: "編集",
@@ -116,13 +117,14 @@ export const ja_jp_app = {
     launching: "処理中 …",
   },
   drop: {
+    release: "離して適用",
+    project_only: "ここにドロップできるのは .lg プロジェクトファイルのみです",
     select_multiple_unavailable: "一度にドロップできるファイルまたはフォルダーは 1 個です",
     select_unavailable:
       "ドロップしたファイルのローカルパスを取得できません。クリックして選択してください …",
     multiple_unavailable: "一度にドロップできるファイルは 1 個です",
     unavailable:
       "ドロップしたファイルのローカルパスを取得できません。クリックしてインポートしてください …",
-    import_here: "ドロップしてルールファイルをインポート",
   },
   toggle: {
     option: {
@@ -167,10 +169,15 @@ export const ja_jp_app = {
     VI: "ベトナム語",
   },
   workspace: {
+    projects: "プロジェクト",
     skills: "スキル",
     quality_rules: "品質ルール",
-    new_chat: "新規チャット",
-    delete_chat: "チャットを削除",
+    more: "その他",
+    reset_chat: "会話をリセット",
+    reset_confirm: "現在のプロジェクトで進行中の会話をリセットしますか …?",
+    reveal_path: "フォルダー内に表示",
+    remove_recent: "一覧から削除",
+    remove_confirm: "プロジェクトを閉じて最近の一覧から削除しますか …?",
     close_busy: "プロジェクトの処理中です",
     files: "ファイル",
   },
@@ -219,7 +226,7 @@ export const ja_jp_app = {
     confirmation: {
       agent_description:
         "このプロジェクトには AGENT による書き戻しが必要なアセットがあります。直接エクスポートでは対象外になります …",
-      description: "現在利用可能な翻訳成果物をエクスポートしますか？",
+      description: "現在利用可能な翻訳成果物をエクスポートしますか …?",
       checking: "プロジェクトのファイルと校正警告を確認中 …",
       check_failed:
         "ファイルまたは校正警告の確認に失敗しました。再確認するか、AGENT に処理を任せてください …",

@@ -613,34 +613,24 @@
   outline-offset: -1px;
 }
 
-.agent-status-mark {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: var(--ui-radius-pill);
-  --agent-status-color: var(--muted-foreground);
-  background: var(--agent-status-color);
-}
-
 .agent-status-mark--pending {
-  --agent-status-color: var(--primary);
+  --status-mark-color: var(--primary);
 }
 
 .agent-status-mark--running {
-  --agent-status-color: var(--primary);
+  --status-mark-color: var(--primary);
 }
 
 .agent-status-mark--success {
-  --agent-status-color: var(--ui-success);
+  --status-mark-color: var(--ui-success);
 }
 
 .agent-status-mark--warning {
-  --agent-status-color: var(--ui-warning);
+  --status-mark-color: var(--ui-warning);
 }
 
 .agent-status-mark--error {
-  --agent-status-color: var(--ui-failure);
+  --status-mark-color: var(--ui-failure);
 }
 
 .agent-thinking-entry__content {
@@ -781,8 +771,8 @@
   flex: 0 0 auto;
   margin-right: 10px;
   border-radius: var(--ui-radius-pill);
-  --agent-status-color: var(--primary);
-  background: var(--agent-status-color);
+  --status-mark-color: var(--primary);
+  background: var(--status-mark-color);
 }
 
 .agent-round-footer__line {
@@ -1173,27 +1163,6 @@
   display: none;
 }
 
-.agent-file-drop-overlay {
-  position: absolute;
-  inset: 5px;
-  z-index: 12;
-  display: grid;
-  place-items: center;
-  border: 1px dashed var(--primary);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--popover) 90%, transparent);
-  color: var(--foreground);
-  font-size: var(--ui-font-size-13);
-  font-weight: 600;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease-out;
-}
-
-.agent-file-drop-overlay[data-active="true"] {
-  opacity: 1;
-}
-
 .agent-composer__editor {
   min-width: 0;
 }
@@ -1459,7 +1428,7 @@
 }
 
 .agent-decision-action__icon--deadline::before {
-  --agent-status-color: var(--agent-decision-deadline-color);
+  --status-mark-color: var(--agent-decision-deadline-color);
 
   position: absolute;
   z-index: 0;
@@ -1755,23 +1724,10 @@
 }
 
 /* 状态点、决定按钮和后台待回复标签共享扩散节奏。 */
-.agent-status-mark--running,
 .agent-round-footer[data-running="true"] .agent-round-footer__activity,
 .agent-pages__tab[data-needs-response]::before,
 .agent-decision-action__icon--deadline::before {
-  animation: agent-status-mark-pulse 1s ease-out infinite;
-}
-
-/* 直接读取状态色令牌，让 Chromium 连续插值阴影颜色与扩散半径。 */
-@keyframes agent-status-mark-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--agent-status-color) 55%, transparent);
-  }
-
-  70%,
-  100% {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--agent-status-color) 0%, transparent);
-  }
+  animation: status-mark-pulse 1s ease-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1784,11 +1740,10 @@
     transition: none;
   }
 
-  .agent-status-mark--running,
   .agent-pages__tab[data-needs-response]::before,
   .agent-round-footer[data-running="true"] .agent-round-footer__activity {
     animation: none;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-status-color) 35%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-mark-color) 35%, transparent);
   }
 
   .agent-thinking-entry__toggle::before,
@@ -1796,7 +1751,6 @@
   .agent-thinking-entry__content,
   .agent-process-entry,
   .agent-decision-action,
-  .agent-file-drop-overlay,
   .agent-page__suggestion,
   .agent-page__suggestion-icon,
   .agent-composer {

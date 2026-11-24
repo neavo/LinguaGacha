@@ -5,7 +5,7 @@ export type RuntimeActivityOwner = "batch_translation" | "agent" | "model_test" 
 
 export type ProjectActivity = Readonly<{
   batchTranslation: boolean;
-  activeChatCount: number;
+  agent: boolean;
   projectWrite: boolean;
 }>;
 

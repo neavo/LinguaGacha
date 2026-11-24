@@ -105,8 +105,7 @@
   color: var(--foreground);
 }
 
-.agent-pages__tab svg,
-.agent-pages__close svg {
+.agent-pages__tab svg {
   width: 14px;
   height: 14px;
   flex: 0 0 auto;
@@ -121,31 +120,11 @@
 }
 
 .agent-pages__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
-  padding: 0;
-  border: 0;
-  border-radius: 0 var(--ui-radius-button) var(--ui-radius-button) 0;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-
-.agent-pages__close:hover {
-  color: var(--foreground);
-}
-
-.agent-pages__close:focus-visible {
-  outline: 1px solid var(--ring);
-  outline-offset: -1px;
+  justify-self: center;
 }
 
 .agent-pages__tab[data-needs-response]::before {
-  --agent-status-color: var(--primary);
+  --status-mark-color: var(--primary);
   content: "";
   position: absolute;
   inset: 0;

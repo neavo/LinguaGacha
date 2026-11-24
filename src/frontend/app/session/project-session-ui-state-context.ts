@@ -3,7 +3,7 @@ import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 
 // session UI 状态的命名空间，避免不同页面互相覆盖轻量状态。
 export type ProjectSessionUiStateKey =
-  | `agent-documents:${string}`
+  | "agent-documents"
   | "proofreading"
   | "quality:glossary"
   | "quality:text_preserve"

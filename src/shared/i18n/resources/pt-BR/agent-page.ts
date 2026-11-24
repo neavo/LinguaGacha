@@ -1,5 +1,5 @@
 export const pt_br_agent_page = {
-  project_required: "Crie ou abra um arquivo de projeto primeiro …",
+  project_required: "Clique primeiro no botão à esquerda para criar ou abrir um projeto …",
   document: {
     conversation: "Conversa",
     open: "Abrir",
@@ -51,11 +51,10 @@ export const pt_br_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Arraste arquivos ou pastas e traduza com um clique …!",
+    no_project_placeholder: "Solte arquivos ou pastas para criar um projeto de tradução …",
     placeholder: "Descreva uma tarefa ou digite @ para selecionar uma habilidade ou instrução …",
     edit_assistant_placeholder: "Editar a resposta do modelo …",
     newline: "Nova linha",
-    drop_files: "Solte para adicionar arquivos",
   },
   mention: {
     files: {

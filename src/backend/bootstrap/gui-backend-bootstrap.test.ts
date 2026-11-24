@@ -10,7 +10,6 @@ import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fix
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +29,7 @@ describe("GuiBackendBootstrap 集成", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("重复打开聚焦原工程，工程副本隔离工作区，删除末条补建，关闭后仍能恢复", async () => {
+  it("工程副本隔离工作区，重置更换对话身份，关闭重开保留新对话", async () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-multi-project-"));
     const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
     try {
@@ -58,8 +57,13 @@ describe("GuiBackendBootstrap 集成", () => {
       expect(await post("/api/session/project/open", { path: first.project.path })).toMatchObject({
         project: { projectId },
       });
-      const secondChat = await post("/api/agent/chats/create", { projectId });
-      const chatId = secondChat.activeChatId;
+      const snapshot = async (id: string) => {
+        const response = await fetch(`${apiBaseUrl}/api/agent/snapshot?projectId=${id}`);
+        expect(response.ok).toBe(true);
+        return (await response.json()).data;
+      };
+      const { chatId } = await snapshot(projectId);
+      const other = await snapshot(second.project.projectId);
       const root = new AppPathService({
         appRoot: temp.path,
         builtinRoot: path.join(temp.path, "builtin"),
@@ -68,31 +72,29 @@ describe("GuiBackendBootstrap 集成", () => {
       const copyPath = path.join(temp.path, "copy.lg");
       fs.copyFileSync(first.project.path, copyPath);
       const copy = await post("/api/session/project/open", { path: copyPath });
-      expect(copy.chats).toHaveLength(2);
-      expect(copy.activeChatId).not.toBe(chatId);
-      expect(fs.readFileSync(path.join(root, copy.activeChatId, "work", "proof.md"), "utf8")).toBe(
+      const copyChat = await snapshot(copy.project.projectId);
+      expect(copyChat.chatId).not.toBe(chatId);
+      expect(fs.readFileSync(path.join(root, copyChat.chatId, "work", "proof.md"), "utf8")).toBe(
         "isolated",
       );
-      const wrong = new URL("/api/agent/snapshot", apiBaseUrl);
-      wrong.searchParams.set("projectId", second.project.projectId);
-      wrong.searchParams.set("chatId", chatId);
-      expect((await fetch(wrong)).status).toBe(400);
-      await post("/api/agent/chats/delete", { projectId, chatId: first.activeChatId });
-      const replacement = await post("/api/agent/chats/delete", { projectId, chatId });
-      expect(replacement.chats).toHaveLength(1);
-      expect(replacement.activeChatId).not.toBe(chatId);
+      const ack = await post("/api/agent/reset", { projectId });
+      const replacement = await snapshot(projectId);
+      expect(replacement).toMatchObject({ revision: ack.revision, entries: [] });
+      expect(replacement.chatId).not.toBe(chatId);
+      fs.writeFileSync(path.join(root, replacement.chatId, "work", "proof.md"), "new chat");
+      const stale_preview = await fetch(apiBaseUrl + "/api/agent/workspace/document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, chatId, path: "work/proof.md" }),
+      });
+      expect(await stale_preview.json()).toMatchObject({ error: { code: "runtime.cancelled" } });
+      expect(await snapshot(second.project.projectId)).toEqual(other);
       expect(fs.existsSync(path.join(root, chatId))).toBe(false);
-      expect(fs.existsSync(path.join(root, copy.activeChatId, "work", "proof.md"))).toBe(true);
+      expect(fs.existsSync(path.join(root, copyChat.chatId, "work", "proof.md"))).toBe(true);
       await post("/api/session/project/close", { projectId });
-      using database = new DatabaseSync(first.project.path, { readOnly: true });
-      const live_chat = database
-        .prepare("SELECT data FROM agent_chats WHERE id = ?")
-        .get(replacement.activeChatId);
-      const live_root = JSON.parse(String(live_chat?.data)).rootConversationId;
-      expect(database.prepare("SELECT id FROM conversations").all()).toEqual([{ id: live_root }]);
       const reopened = await post("/api/session/project/open", { path: first.project.path });
       expect(reopened.project.projectId).not.toBe(projectId);
-      expect(reopened.activeChatId).toBe(replacement.activeChatId);
+      expect((await snapshot(reopened.project.projectId)).chatId).toBe(replacement.chatId);
     } finally {
       await bootstrap.stop();
     }
@@ -300,12 +302,9 @@ describe("GuiBackendBootstrap 集成", () => {
         source_paths: [],
       });
       const projectId = created.project.projectId;
-      let chatId = created.activeChatId;
       /** 从会话公开快照观察生效时机。 */
       const names = async (): Promise<string[]> => {
-        const response = await fetch(
-          `${apiBaseUrl}/api/agent/snapshot?projectId=${projectId}&chatId=${chatId}`,
-        );
+        const response = await fetch(`${apiBaseUrl}/api/agent/snapshot?projectId=${projectId}`);
         const payload = (await response.json()) as { data: { skills: { name: string }[] } };
         return payload.data.skills.map((skill) => skill.name);
       };
@@ -322,7 +321,7 @@ describe("GuiBackendBootstrap 集成", () => {
           ],
         },
       });
-      chatId = (await post("/api/agent/chats/create", { projectId })).data.activeChatId;
+      await post("/api/agent/reset", { projectId });
       expect(await names()).toEqual(["first"]);
       await post("/api/skills/enabled", { source: "user", name: "second", enabled: true });
       expect(await names()).toEqual(["second", "first"]);
@@ -397,7 +396,8 @@ describe("GuiBackendBootstrap 集成", () => {
       const created_payload = await created.json();
       expect(created_payload).toMatchObject({ ok: true });
       const projectId = created_payload.data.project.projectId;
-      const chatId = created_payload.data.activeChatId;
+      const agent_snapshot = await fetch(`${apiBaseUrl}/api/agent/snapshot?projectId=${projectId}`);
+      const { chatId } = (await agent_snapshot.json()).data;
       const paths = new AppPathService({
         appRoot: app_root,
         builtinRoot: path.join(app_root, "builtin"),
@@ -405,7 +405,7 @@ describe("GuiBackendBootstrap 集成", () => {
       const uploads = path.join(paths.get_agent_workspace_root_dir(), chatId, "uploads");
       const pending = new Promise<void>((resolve) => {
         const request = http.request(
-          `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin&projectId=${projectId}&chatId=${chatId}`,
+          `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin&projectId=${projectId}`,
           { method: "POST", headers: { "Content-Type": "application/octet-stream" } },
           (response) => {
             response.resume();
@@ -532,10 +532,11 @@ describe("GuiBackendBootstrap 集成", () => {
       });
       const created = await project.json();
       expect(created).toMatchObject({ ok: true });
-      const scope = {
-        projectId: created.data.project.projectId,
-        chatId: created.data.activeChatId,
-      };
+      const projectId = created.data.project.projectId;
+      const snapshot = await fetch(
+        `${started.apiBaseUrl}/api/agent/snapshot?projectId=${projectId}`,
+      );
+      const scope = { projectId, chatId: (await snapshot.json()).data.chatId };
       const directory = path.join(
         paths.get_agent_workspace_root_dir(),
         scope.chatId,

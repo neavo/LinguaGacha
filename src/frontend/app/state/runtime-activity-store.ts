@@ -17,7 +17,7 @@ function normalize_runtime_activity_snapshot(value: unknown): RuntimeActivitySna
       if (!is_json_record(project)) continue;
       projects[id] = {
         batchTranslation: project.batchTranslation === true,
-        activeChatCount: typeof project.activeChatCount === "number" ? project.activeChatCount : 0,
+        agent: project.agent === true,
         projectWrite: project.projectWrite === true,
       };
     }
@@ -69,4 +69,9 @@ export function createRuntimeActivityStore(): {
 /** 工程写入与额外执行受运行占用约束，纯配置和查询不消费此限制。 */
 export function is_runtime_busy(snapshot: Pick<RuntimeActivitySnapshot, "owner">): boolean {
   return snapshot.owner !== null;
+}
+
+/** 工程操作只受当前工程的任务和写入占用约束。 */
+export function is_project_busy(activity: ProjectActivity | undefined): boolean {
+  return Boolean(activity?.agent || activity?.batchTranslation || activity?.projectWrite);
 }

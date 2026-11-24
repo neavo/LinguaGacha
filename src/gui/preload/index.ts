@@ -4,6 +4,7 @@ import { resolve_app_version_from_argv } from "../bridge/app-version";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
+  IPC_CHANNEL_REVEAL_PATH,
   IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
@@ -101,6 +102,9 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   /**
    * 委托主进程打开外链，避免页面直接调用 shell
    */
+  async revealPath(targetPath: string): Promise<void> {
+    await ipcRenderer.invoke(IPC_CHANNEL_REVEAL_PATH, targetPath);
+  },
   async openExternalUrl(url: string): Promise<void> {
     await ipcRenderer.invoke(IPC_CHANNEL_OPEN_EXTERNAL_URL, url);
   },

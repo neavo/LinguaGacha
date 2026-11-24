@@ -91,7 +91,6 @@ export interface BackendRuntimeServices {
 }
 
 type ProjectAgentLifecycle = {
-  read_chats(): JsonRecord;
   cancel_uploads(): void;
   dispose(): Promise<void>;
 };
@@ -138,10 +137,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
   public readonly projects = new ProjectRegistry<OpenProject<Agent>>();
   public readonly globalGate = new GlobalOperationGate(
     () => [...this.projects.values()].every((project) => !project.gate.busy),
-    () =>
-      [...this.projects.values()].every(
-        (project) => project.gate.get_snapshot().activeChatCount === 0,
-      ),
+    () => [...this.projects.values()].every((project) => !project.gate.get_snapshot().agent),
     () => this.publish_runtime(),
   );
   public readonly app: BackendAppServices;
@@ -279,11 +275,10 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         projectId: project.id,
         path: project.path,
         loaded: true,
-        name: path.basename(project.path, path.extname(project.path)),
+        name: path.basename(project.path),
         file_count: project.cache.files.size(),
         languages: project.cache.languages.readBlock(),
       },
-      ...project.agent?.read_chats(),
     };
   }
 
@@ -468,7 +463,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
     const states = Object.values(projects);
     const owner = states.some((state) => state.batchTranslation)
       ? "batch_translation"
-      : states.some((state) => state.activeChatCount > 0)
+      : states.some((state) => state.agent)
         ? "agent"
         : modelTest
           ? "model_test"

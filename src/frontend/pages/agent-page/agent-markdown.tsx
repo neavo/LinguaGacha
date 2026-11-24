@@ -1,4 +1,4 @@
-import { useAgentApi } from "@frontend/app/desktop/scoped-api";
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useDevicePixelRatio } from "@frontend/widgets/interactions/use-device-pixel-ratio";
 import {
@@ -333,7 +333,7 @@ function AgentMarkdownImage({
       controller.abort();
       if (url !== null) URL.revokeObjectURL(url);
     };
-  }, [base_path, local, chat_id, src, t]);
+  }, [api_blob, base_path, local, chat_id, src, t]);
   if (!src) return null;
   const source =
     local && chat_id ? (local_source?.source === src ? local_source.url : undefined) : src;

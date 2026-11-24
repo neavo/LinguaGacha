@@ -116,6 +116,7 @@ describe("AgentMessageAttachments", () => {
     await act(async () => items[0]!.click());
     expect(files.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
       path: file.path,
+      chatId: "session",
     });
     expect(files.open).not.toHaveBeenCalled();
     files.api.mockClear();

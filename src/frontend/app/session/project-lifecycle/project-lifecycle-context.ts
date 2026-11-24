@@ -2,13 +2,14 @@ import { createContext, useContext } from "react";
 
 export type ProjectLifecycle = Readonly<{
   busy: boolean;
+  attention: number;
+  notify_project_required: () => void;
   show_create_dialog: () => void;
   create_from_paths: (paths: readonly string[]) => void;
   request_open: (path?: string) => void;
   open_recent_project: (path: string) => void;
   remove_recent_project: (path: string) => void;
-  can_close: boolean;
-  request_close: (projectId?: string) => void;
+  request_close: (projectId: string, remove_path?: string) => void;
 }>;
 
 export const ProjectLifecycleContext = createContext<ProjectLifecycle | null>(null);

@@ -61,7 +61,7 @@ function SkillsList({
   const { navigate_to_agent } = useAppNavigation();
   const [guide_open, set_guide_open] = useState(false);
   const locked = Object.values(useRuntimeSnapshot().projects ?? {}).some(
-    (project) => project.activeChatCount > 0,
+    (project) => project.agent,
   ); // 技能存于应用目录，只与 AGENT 互斥。
   const builtin = state.snapshot.skills.filter((skill) => skill.source === "builtin");
   const user = state.snapshot.skills.filter((skill) => skill.source === "user");

@@ -5,6 +5,7 @@ import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/des
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 
@@ -44,9 +45,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     select_snapshot: build_laboratory_snapshot,
     pending_fields: LABORATORY_PENDING_FIELDS,
   });
-  const runtime_locked = Object.values(runtime_snapshot.projects ?? {}).some(
-    (project) => project.activeChatCount > 0 || project.batchTranslation || project.projectWrite,
-  );
+  const runtime_locked = Object.values(runtime_snapshot.projects ?? {}).some(is_project_busy);
 
   // 工程字段受运行锁约束，应用偏好可供后续调用立即读取。
   const update_setting = useCallback(

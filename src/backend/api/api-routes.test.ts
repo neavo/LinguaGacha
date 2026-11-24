@@ -58,9 +58,7 @@ const POST_PATHS = new Set([
   "/api/agent/continue",
   "/api/agent/context/compact",
   "/api/agent/stop",
-  "/api/agent/chats/create",
-  "/api/agent/chats/activate",
-  "/api/agent/chats/delete",
+  "/api/agent/reset",
   "/api/session/project/manifest",
   "/api/session/project/snapshot",
   "/api/session/project/close",
@@ -146,9 +144,9 @@ describe("register_api_routes", () => {
 
     const get_snapshot = read_get_handler(fixture.get, "/api/agent/snapshot") as unknown as (
       request: Request,
-    ) => Response;
-    const response = get_snapshot(
-      new Request("http://127.0.0.1/api/agent/snapshot?projectId=project&chatId=chat-1"),
+    ) => Promise<Response>;
+    const response = await get_snapshot(
+      new Request("http://127.0.0.1/api/agent/snapshot?projectId=project"),
     );
     expect(await response.json()).toEqual({
       ok: true,
@@ -341,7 +339,7 @@ function create_route_fixture() {
   const summarize_source_files = vi.fn(() => source_file_summary);
   const get_default_project_name = vi.fn(() => ({ project_name: "source" }));
   const agent = {
-    get_snapshot: vi.fn(() => ({
+    read_snapshot: vi.fn(async () => ({
       revision: 0,
       state: "idle",
       pendingDecision: null,
@@ -351,6 +349,7 @@ function create_route_fixture() {
       doing: null,
       context: { tokens: null, compactable: false, limits: null },
     })),
+    assert_chat_identity: vi.fn(),
     read_tool_image,
     input_command,
     input_command_status,
@@ -369,7 +368,7 @@ function create_route_fixture() {
     lifecycle: { summarize_source_files, get_default_project_name },
     projects: {
       require: (_projectId: string) => ({
-        agent: { require: (_chatId: string) => agent },
+        agent,
         batchTranslation: { start: start_task },
         generation: { generate_files },
       }),

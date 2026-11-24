@@ -1,4 +1,4 @@
-import { useAgentApi } from "@frontend/app/desktop/scoped-api";
+import { useAgentApi } from "@frontend/app/session/agent/agent-chat-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import type { AgentDocument } from "@shared/agent-workspace-file";
@@ -76,7 +76,7 @@ export function AgentPreviewPage({
       controller.abort();
       if (url) URL.revokeObjectURL(url);
     };
-  }, [document.path, document.preview, document.activation, chat_id]);
+  }, [api_fetch, api_blob, document.path, document.preview, document.activation, chat_id]);
   if (failed) return <AppContentState status="error" />;
   if (content === null)
     return (

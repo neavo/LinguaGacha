@@ -10,6 +10,7 @@ import { AgentConversation } from "./agent-conversation";
 import { AgentPreviewPage } from "./agent-preview";
 import { AgentFileContext } from "./agent-file-context";
 import { useAgentPreviews } from "./use-agent-previews";
+import "@frontend/widgets/inline-action-button.css";
 import "./agent-documents.css";
 
 const CONVERSATION_TAB = "conversation";
@@ -111,7 +112,7 @@ function AgentPages({
           </Tooltip>
           <button
             type="button"
-            className="agent-pages__close"
+            className="inline-action-button agent-pages__close"
             aria-label={t("app.action.close")}
             onClick={() => {
               state.close(document.path);

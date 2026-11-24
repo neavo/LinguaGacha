@@ -5,6 +5,7 @@ export const IPC_CHANNEL_RENDERER_DIAGNOSTICS = "renderer:diagnostics";
 export const IPC_CHANNEL_QUIT_APP = "window:quit-app";
 export const IPC_CHANNEL_WINDOW_CLOSE_REQUEST = "window:close-request";
 export const IPC_CHANNEL_OPEN_LOG_WINDOW = "window:open-log-window";
+export const IPC_CHANNEL_REVEAL_PATH = "window:reveal-path";
 export const IPC_CHANNEL_OPEN_EXTERNAL_URL = "window:open-external-url";
 export const IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE = "update:download-release";
 export const IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS = "update:download-progress";

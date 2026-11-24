@@ -43,7 +43,7 @@ import type {
 import { normalize_agent_doing } from "@shared/agent-doing";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { LOCALES } from "@domain/app-language";
-import { createAgentApi, type ChatScope } from "@frontend/app/desktop/scoped-api";
+import { createAgentApi } from "@frontend/app/desktop/scoped-api";
 import { subscribe_desktop_events } from "@frontend/app/desktop/desktop-events";
 import {
   read_agent_input_history,
@@ -62,6 +62,7 @@ export type AgentCommand =
   | "fork"
   | "revise"
   | "continue"
+  | "reset"
   | "compact"
   | "stop"
   | "queue_update"
@@ -156,7 +157,7 @@ export class AgentChatStore {
   private pending_events: AgentChatEvent[] = []; // `snapshot` 期间暂存，成功后按 `revision` 重放
   private readonly draft: AgentInputDraft;
   public readonly api: ReturnType<typeof createAgentApi>;
-  public readonly scope: ChatScope | undefined;
+  public readonly projectId: string | undefined;
   private input_history: string[];
   private pending_input: PendingInputCommand | null = null;
   private readonly listeners: Record<StoreSlice, Set<Listener>> = {
@@ -178,12 +179,12 @@ export class AgentChatStore {
   public constructor(
     storage: Storage,
     on_error: (error: unknown, context: "decision" | "restore") => void,
-    scope?: ChatScope,
+    projectId?: string,
   ) {
     this.storage = storage;
-    this.scope = scope;
-    this.api = createAgentApi(scope);
-    this.draft = new AgentInputDraft(undefined, scope);
+    this.projectId = projectId;
+    this.api = createAgentApi(projectId);
+    this.draft = new AgentInputDraft(undefined, this.api.upload);
     this.on_error = on_error;
     this.countdown = new AgentDecisionCountdown(
       () => this.emit("countdown"),
@@ -287,6 +288,42 @@ export class AgentChatStore {
     this.sync_countdown();
   }
 
+  /** 工程关闭后释放订阅和未完成的上传。 */
+  public dispose(): void {
+    this.disconnect();
+    this.draft.cancel_uploads();
+  }
+
+  /** 重置可用性同时取决于会话事实和本地草稿。 */
+  public readonly subscribe_reset = (listener: Listener): (() => void) => {
+    const unsubscribe = [
+      this.subscribe_controls(listener),
+      this.subscribe_timeline(listener),
+      this.subscribe_queue(listener),
+      this.draft.subscribe(listener),
+    ];
+    return () => unsubscribe.forEach((dispose) => dispose());
+  };
+
+  /** 草稿和待发队列也是重置可清理的内容。 */
+  public readonly can_reset = (): boolean => {
+    const draft = this.draft.read();
+    return (
+      this.controls.transport === "ready" &&
+      this.controls.state === "idle" &&
+      this.controls.command === null &&
+      (this.get_timeline().entryIds.length > 0 ||
+        this.queue.inputQueue.items.length > 0 ||
+        draft.text.trim() !== "" ||
+        draft.attachments.length > 0)
+    );
+  };
+
+  /** 重置完成仍通过权威快照切换身份，命令回执只提供修订号。 */
+  public async reset(): Promise<void> {
+    await this.execute_command("reset", () => this.api.post<AgentCommandAck>("/api/agent/reset"));
+  }
+
   /** 连接世代阻止断开或重连前的迟到响应覆盖当前会话。 */
   private is_current(generation: number): boolean {
     return generation === this.connection_generation;
@@ -297,7 +334,7 @@ export class AgentChatStore {
     try {
       let opened_once = false;
       this.unsubscribe_events = subscribe_desktop_events({
-        scope: this.scope,
+        projectId: this.projectId,
         events: {
           [AGENT_CHAT_EVENT_TOPIC]: (payload) => this.receive_event(payload, generation),
         },
@@ -441,11 +478,11 @@ export class AgentChatStore {
 
   /** 旧快照不得覆盖已确认的新投影。合法恢复一次性替换完整业务切片。 */
   private apply_snapshot(snapshot: AgentChatSnapshot): void {
-    if (snapshot.revision < this.revision || (this.scope && snapshot.chatId !== this.scope.chatId))
-      return;
+    if (snapshot.revision < this.revision) return;
     this.batching = true;
     try {
       if (this.chat_id !== null && snapshot.chatId !== this.chat_id) {
+        this.storage.removeItem(pending_input_key(this.chat_id));
         this.draft.clear();
         this.input = this.create_input_state(this.input.revision + 1);
         this.emit("input");

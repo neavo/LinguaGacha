@@ -46,6 +46,7 @@ export const zh_cn_app = {
     cancel: "取消",
     confirm: "确认",
     close: "关闭",
+    open: "打开",
     create: "新增",
     delete: "删除",
     edit: "编辑",
@@ -113,11 +114,12 @@ export const zh_cn_app = {
     launching: "处理中 …",
   },
   drop: {
+    release: "松手即生效",
+    project_only: "侧栏仅支持拖入 .lg 工程文件",
     select_multiple_unavailable: "一次只能拖拽一个文件或文件夹",
     select_unavailable: "当前无法读取拖拽文件的本地路径，请换用点击选择 …",
     multiple_unavailable: "一次只能拖拽一个文件",
     unavailable: "当前无法读取拖拽文件的本地路径，请换用点击导入 …",
-    import_here: "松手即可导入规则文件",
   },
   toggle: {
     option: {
@@ -162,10 +164,15 @@ export const zh_cn_app = {
     VI: "越南文",
   } satisfies Record<LanguageCode, string>,
   workspace: {
+    projects: "工程",
     skills: "技能",
     quality_rules: "质量规则",
-    new_chat: "新对话",
-    delete_chat: "删除对话",
+    more: "更多",
+    reset_chat: "重置对话",
+    reset_confirm: "是否确认重置当前工程正在进行的对话 …?",
+    reveal_path: "打开文件目录",
+    remove_recent: "从列表移除",
+    remove_confirm: "是否确认关闭工程并从最近列表移除 …?",
     close_busy: "工程有任务正在收尾或运行",
     files: "文件",
   },
@@ -209,7 +216,7 @@ export const zh_cn_app = {
     action: "导出翻译成果",
     confirmation: {
       agent_description: "工程包含需要 AGENT 写回的资产，直接导出将跳过这些资产 …",
-      description: "是否导出当前可用的翻译成果？",
+      description: "是否确认导出当前可用的翻译成果 …?",
       checking: "正在检查工程文件和校对警告 …",
       check_failed: "检查工程文件或校对警告失败，请重新检查或由 AGENT 处理 …",
       warning_description:

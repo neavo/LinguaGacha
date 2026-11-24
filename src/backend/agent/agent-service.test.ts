@@ -198,7 +198,7 @@ vi.mock("./agent-model", async (original) => ({
   register_agent_model: agent_model_registrar,
 }));
 
-import { AgentService, ProjectChatRuntime, load_agent_resources } from "./agent-service";
+import { AgentService, load_agent_resources } from "./agent-service";
 import { AgentWorkspaceDirectories } from "./workspace/directories";
 import { default_native_fs } from "../../native/native-fs";
 import { AgentSkillsService } from "./agent-skills-service";
@@ -649,7 +649,7 @@ describe("AgentService", () => {
     });
     await expect(service.input_command("send", request)).rejects.toThrow();
     spy.mockRestore();
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(0);
+    expect(runtime_gate.get_snapshot().agent).toBe(false);
     expect(fake_agent_state.prompts).toEqual([]);
     const unavailable = vi
       .spyOn(SqliteStorage.prototype, "scanConversations")
@@ -750,10 +750,10 @@ describe("AgentService", () => {
     await expect(service.send_message({ text: "未提交", attachments: [] })).rejects.toThrow();
     spy.mockRestore();
     await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(1);
+    expect(runtime_gate.get_snapshot().agent).toBe(true);
     fake_agent_state.release_tool_execution?.();
     await wait_for_idle(service);
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(0);
+    expect(runtime_gate.get_snapshot().agent).toBe(false);
     expect(service.get_snapshot().entries[0]).toMatchObject({ text: "执行工具", status: "error" });
     fake_agent_state.mode = "success";
     await service.send_message({ text: "重开", attachments: [] });
@@ -1090,7 +1090,7 @@ describe("AgentService", () => {
       if (outcome !== "stop") {
         expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>installed-skill</name>");
       }
-      expect(fixture.runtime_gate.get_snapshot().activeChatCount).toBe(0);
+      expect(fixture.runtime_gate.get_snapshot().agent).toBe(false);
     },
   );
 
@@ -1775,7 +1775,7 @@ describe("AgentService", () => {
       expect.objectContaining({ type: "doing", doing: "基础扫描" }),
     ]);
     await service.stop();
-    await vi.waitFor(() => expect(runtime_gate.get_snapshot().activeChatCount).toBe(0));
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().agent).toBe(false));
     expect(service.get_snapshot().doing).toBe("基础扫描");
 
     const before = count_published_events(publish, "doing");
@@ -1910,7 +1910,7 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     await service.stop();
     await wait_for_idle(service);
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(0);
+    expect(runtime_gate.get_snapshot().agent).toBe(false);
     expect(
       log_append.mock.calls
         .map(([payload]) => payload)
@@ -1997,11 +1997,11 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
     await service.stop();
     expect(service.get_snapshot().state).toBe("stopping");
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(1);
+    expect(runtime_gate.get_snapshot().agent).toBe(true);
     await service.stop();
     fake_agent_state.release_tool_execution?.();
     await wait_for_idle(service);
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(0);
+    expect(runtime_gate.get_snapshot().agent).toBe(false);
     expect(service.get_snapshot().entries).toContainEqual(
       expect.objectContaining({
         kind: "user_message",
@@ -2048,7 +2048,7 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toMatchObject({ state: "running" });
 
     fake_agent_state.release_tool_execution?.();
-    await vi.waitFor(() => expect(runtime_gate.get_snapshot().activeChatCount).toBe(0));
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().agent).toBe(false));
     expect(service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2418,7 +2418,7 @@ describe("AgentService", () => {
         status: "running",
       }),
     );
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(1);
+    expect(runtime_gate.get_snapshot().agent).toBe(true);
 
     await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
     fake_agent_state.release_summary?.();
@@ -2428,7 +2428,7 @@ describe("AgentService", () => {
         status: "success",
       }),
     );
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(0);
+    expect(runtime_gate.get_snapshot().agent).toBe(false);
   });
 
   it("手动压缩可停止，取消后保留历史和用量并释放占用", async () => {
@@ -2440,10 +2440,10 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
     await service.stop();
     expect(service.get_snapshot().state).toBe("stopping");
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(1);
+    expect(runtime_gate.get_snapshot().agent).toBe(true);
     fake_agent_state.release_summary?.();
     await wait_for_idle(service);
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(0);
+    expect(runtime_gate.get_snapshot().agent).toBe(false);
     expect(
       service.get_snapshot().entries.filter((entry) => entry.kind !== "context_compaction"),
     ).toEqual(before.entries.filter((entry) => entry.kind !== "context_compaction"));
@@ -2496,7 +2496,7 @@ describe("AgentService", () => {
     ]);
     const failed = service.get_snapshot();
     expect(failed.context).toEqual(before.context);
-    expect(runtime_gate.get_snapshot().activeChatCount).toBe(0);
+    expect(runtime_gate.get_snapshot().agent).toBe(false);
 
     fake_agent_state.summary_failures_remaining = 0;
     await expect(service.compact_context()).resolves.toEqual({ revision: expect.any(Number) });
@@ -2774,7 +2774,7 @@ describe("AgentService", () => {
         originalHeight: 1,
       });
       await stopping;
-      await vi.waitFor(() => expect(runtime_gate.get_snapshot().activeChatCount).toBe(0));
+      await vi.waitFor(() => expect(runtime_gate.get_snapshot().agent).toBe(false));
       expect(diagnostics()).toEqual([]);
       if (action === "stop") {
         expect(service.get_snapshot().entries[0]).toMatchObject({
@@ -2826,7 +2826,7 @@ describe("AgentService", () => {
 
     expect(snapshot.state).toBe("idle");
     expect(snapshot.inputQueue).toMatchObject({ paused: true, items: [{ text: "第二轮" }] });
-    await vi.waitFor(() => expect(runtime_gate.get_snapshot().activeChatCount).toBe(0));
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().agent).toBe(false));
     expect(service.get_snapshot().inputQueue.canSendNow).toBe(true);
     expect(change_calls(publish)).toContainEqual([
       "agent.chat_event",
@@ -2855,7 +2855,7 @@ describe("AgentService", () => {
     await service.send_message({ text: "第二轮", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     await service.stop();
-    await vi.waitFor(() => expect(runtime_gate.get_snapshot().activeChatCount).toBe(0));
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().agent).toBe(false));
 
     fake_agent_state.mode = "success";
     await service.continue_chat({});
@@ -2929,9 +2929,7 @@ describe("AgentService", () => {
     await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
 
     const owners: (string | null)[] = [];
-    runtime_gate.subscribe(({ activeChatCount }) =>
-      owners.push(activeChatCount > 0 ? "agent" : null),
-    );
+    runtime_gate.subscribe(({ agent }) => owners.push(agent ? "agent" : null));
     const command = {
       chatId: service.get_snapshot().chatId,
       commandId: "interrupt-selected",
@@ -2942,7 +2940,7 @@ describe("AgentService", () => {
     try {
       await vi.waitFor(() => expect(service.get_snapshot().state).toBe("stopping"));
       await stopped.promise;
-      expect(runtime_gate.get_snapshot().activeChatCount).toBe(1);
+      expect(runtime_gate.get_snapshot().agent).toBe(true);
       expect(fake_agent_state.prompts).toEqual(["第一轮"]);
       expect(service.get_snapshot().inputQueue.items[1]?.status).toBe("sending");
       await expect(service.input_command_status(command)).resolves.toMatchObject({
@@ -3224,13 +3222,13 @@ describe("AgentService", () => {
     },
     catalog = { read_models: read_builtin_pi_models },
   }: {
-    batch_requests?: ConstructorParameters<typeof ProjectChatRuntime>[0]["batchRequests"];
-    batch_translation?: ConstructorParameters<typeof ProjectChatRuntime>[0]["batchTranslation"];
-    images?: ConstructorParameters<typeof ProjectChatRuntime>[0]["images"];
+    batch_requests?: Parameters<typeof AgentService.open>[0]["batchRequests"];
+    batch_translation?: Parameters<typeof AgentService.open>[0]["batchTranslation"];
+    images?: Parameters<typeof AgentService.open>[0]["images"];
     catalog?: PiModelCatalogReader;
   } = {}): Promise<{
     workspace: AgentWorkspacePort;
-    service: ProjectChatRuntime;
+    service: AgentService;
     skills: AgentSkillsService;
     publish: ReturnType<typeof vi.fn>;
     read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>;
@@ -3339,7 +3337,7 @@ describe("AgentService", () => {
         };
       });
     }
-    const publish = vi.fn<ConstructorParameters<typeof ProjectChatRuntime>[0]["publish"]>();
+    const publish = vi.fn<Parameters<typeof AgentService.open>[0]["publish"]>();
     const log_warning = vi.fn();
     const log_append = vi.fn();
     const runtime_gate = new ProjectOperationGate();
@@ -3350,7 +3348,7 @@ describe("AgentService", () => {
       },
       { ...settings, save_setting: vi.fn(), publish_settings_changed: vi.fn() },
       { warning: log_warning },
-      new GlobalOperationGate(undefined, () => runtime_gate.get_snapshot().activeChatCount === 0),
+      new GlobalOperationGate(undefined, () => !runtime_gate.get_snapshot().agent),
     );
     await skills.refresh();
     const connections = new Map<string, NodeSqliteDatabase>();
@@ -3369,7 +3367,7 @@ describe("AgentService", () => {
         return new AgentChatStorage(new AgentDatabaseAccess((callback) => callback(connection!)));
       },
     };
-    const host = await AgentService.open({
+    const service = await AgentService.open({
       projectId: "test-project",
       projectPath: "test.lg",
       directories: new AgentWorkspaceDirectories(
@@ -3378,7 +3376,7 @@ describe("AgentService", () => {
         () => {},
       ),
       protectedChatIds: new Set(),
-      createWorkspace: () => workspace,
+      workspace,
       batchRequests: batch_requests ?? {
         run: async () => {
           throw new Error("Unexpected batch request");
@@ -3409,10 +3407,9 @@ describe("AgentService", () => {
         if (topic === "agent.chat_event") publish(topic, payload);
       },
     });
-    const service = host.require(host.read_chats().activeChatId);
     publish.mockClear();
     workspace.invalidate_links.mockClear();
-    services.push(host);
+    services.push(service);
     return {
       set_approval_mode: (value) => {
         approval_mode = value;
@@ -3449,7 +3446,7 @@ describe("AgentService", () => {
 
 /** 先建立可压缩旧历史，再用单个大工具结果跨过下一请求阈值。 */
 async function prepare_long_tool_history(
-  service: ProjectChatRuntime,
+  service: AgentService,
   read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>,
 ): Promise<void> {
   read_items.mockReturnValue([
@@ -3473,7 +3470,7 @@ async function prepare_long_tool_history(
 }
 
 /** 建立超过固定保留量、但尚未达到默认自动压缩阈值的空闲历史。 */
-async function prepare_manual_compaction_history(service: ProjectChatRuntime): Promise<void> {
+async function prepare_manual_compaction_history(service: AgentService): Promise<void> {
   for (const round of [1, 2, 3, 4]) {
     await service.send_message({
       text: `第${round.toString()}轮${"x".repeat(40_000)}`,
@@ -3484,12 +3481,12 @@ async function prepare_manual_compaction_history(service: ProjectChatRuntime): P
 }
 
 /** 等待公开会话终态，不依赖 SDK 内部 idle 时序。 */
-async function wait_for_idle(service: ProjectChatRuntime): Promise<void> {
+async function wait_for_idle(service: AgentService): Promise<void> {
   await vi.waitFor(() => expect(service.get_snapshot().state).toBe("idle"));
 }
 
 /** 从公开时间线读取模型实际收到的工具 JSON，验证跨回合生命周期。 */
-function read_tool_output(service: ProjectChatRuntime, id: string): JsonRecord {
+function read_tool_output(service: AgentService, id: string): JsonRecord {
   const entry = service
     .get_snapshot()
     .entries.find((candidate) => candidate.kind === "tool_call" && candidate.id.endsWith(`:${id}`));
@@ -3545,9 +3542,7 @@ function fake_uploads(): AgentWorkspacePort["uploads"] {
 type PublishedChange = (AgentChatChange | Extract<AgentChatEvent, { type: "snapshot_seed" }>) & {
   revision: number;
 };
-type PublishedPayload = Parameters<
-  ConstructorParameters<typeof ProjectChatRuntime>[0]["publish"]
->[1];
+type PublishedPayload = Parameters<Parameters<typeof AgentService.open>[0]["publish"]>[1];
 /** 展开一个传输批次，保留该批次共享的修订号。 */
 function unpack_event(payload: PublishedPayload): PublishedChange[] {
   const event = payload as AgentChatEvent;

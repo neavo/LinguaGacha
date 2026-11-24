@@ -39,7 +39,6 @@ const desktop_api_mocks = vi.hoisted(() => ({
 
 vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
-import { AgentChatProvider as BoundAgentChatProvider } from "@frontend/app/session/agent/agent-chat-provider";
 import {
   AgentChatStoreContext,
   useAgentControls,
@@ -56,7 +55,7 @@ function AgentChatProvider({ children }: { children: ReactNode }) {
     store.connect();
     return () => store.disconnect();
   }, [store]);
-  return <BoundAgentChatProvider store={store}>{children}</BoundAgentChatProvider>;
+  return <AgentChatStoreContext value={store}>{children}</AgentChatStoreContext>;
 }
 
 /** 测试探针聚合公开切片，统一观察会话与命令结果。 */
@@ -252,7 +251,7 @@ describe("AgentChatStore", () => {
     }
   });
 
-  it("查询未确认命令期间切换对话，原发送不能进入新对话", async () => {
+  it("重置快照清空草稿和未确认命令，原发送不能进入新对话", async () => {
     const store = new AgentChatStore(window.localStorage, vi.fn());
     store.connect();
     try {
@@ -263,7 +262,7 @@ describe("AgentChatStore", () => {
         "offline",
       );
       const previous_chat = store.get_chat_id();
-      const original = desktop_api_mocks.api_fetch.mock.calls.at(-1)![1];
+      store.get_input().draft.write({ text: "旧草稿", attachments: [] });
       const status = Promise.withResolvers<unknown>();
       desktop_api_mocks.api_fetch
         .mockClear()
@@ -278,18 +277,10 @@ describe("AgentChatStore", () => {
       status.resolve({ revision: event_source.current_revision, status: "unknown" });
       await expect(sending).rejects.toMatchObject({ code: "runtime.cancelled" });
       expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
-      desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ chatId: previous_chat! }));
-      desktop_api_mocks.api_fetch.mockClear().mockResolvedValue({
-        revision: event_source.current_revision,
-        status: "accepted",
-      });
-      event_source.emit_open();
-      await vi.waitFor(() =>
-        expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/input-status", {
-          chatId: previous_chat,
-          commandId: original.commandId,
-        }),
-      );
+      expect(store.get_input().draft.read()).toEqual({ text: "", attachments: [] });
+      expect(
+        window.localStorage.getItem(`agent.pending_input_command:${previous_chat}`),
+      ).toBeNull();
     } finally {
       store.disconnect();
     }

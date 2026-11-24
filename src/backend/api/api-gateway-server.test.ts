@@ -110,7 +110,7 @@ describe("ApiGatewayServer", () => {
 
   it("二进制上传与下载通过真实 HTTP 原样往返，未知身份复用公开错误壳", async () => {
     const { baseUrl, projectId } = await start_agent_gateway();
-    const scope = `projectId=${projectId}&chatId=session`;
+    const scope = `projectId=${projectId}`;
     const original = Uint8Array.from([0, 255, 1, 128, 13, 10]);
     const response = await fetch(
       `${baseUrl}/api/agent/uploads?${scope}&name=${encodeURIComponent("数据 文件.zip")}`,
@@ -440,9 +440,9 @@ describe("ApiGatewayServer", () => {
       },
     };
     backend_services.projects.require(projectId).agent = {
-      require: (id: unknown) => {
-        if (id !== "session") throw new AppError("request.validation_failed");
-        return chat;
+      ...chat,
+      assert_chat_identity: (id: unknown) => {
+        if (id !== "session") throw new AppError("runtime.cancelled");
       },
       dispose: async () => {},
     } as unknown as AgentService;

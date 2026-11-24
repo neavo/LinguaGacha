@@ -135,13 +135,11 @@
   height: 14px;
   flex-shrink: 0;
 }
-.skill-tree__select:focus-visible,
-.skill-tree__action:focus-visible {
+.skill-tree__select:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
-.skill-tree__select:disabled,
-.skill-tree__action:disabled {
+.skill-tree__select:disabled {
   cursor: default;
   color: var(--muted-foreground);
 }
@@ -151,7 +149,8 @@
   inset: 3px 3px 3px auto;
   z-index: 3;
   display: flex;
-  gap: 3px;
+  align-items: center;
+  gap: 2px;
   background: var(--skill-tree-row-surface);
   box-shadow: -4px 0 0 var(--skill-tree-row-surface);
   visibility: hidden;
@@ -162,23 +161,6 @@
 .skill-tree__row:hover .skill-tree__actions,
 .skill-tree__row:has(:focus-visible) .skill-tree__actions {
   visibility: visible;
-}
-.skill-tree__action {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  border: 0.5px solid var(--border);
-  border-radius: var(--ui-radius-button);
-  background: var(--skill-tree-row-surface);
-  cursor: pointer;
-}
-.skill-tree__action:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
-  background: var(--muted);
-}
-.skill-tree__action svg {
-  width: 14px;
-  height: 14px;
 }
 .skill-tree__row[data-cut] {
   opacity: 0.5;

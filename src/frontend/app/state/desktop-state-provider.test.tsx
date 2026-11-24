@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import { DesktopStateProvider } from "./desktop-state-provider";
 import { useDesktopState, useProjectChangeSignal, useBatchTaskSnapshot } from "./use-desktop-state";
 import { empty_batch_task_snapshot } from "@shared/batch-task";
+import { AGENT_CHAT_EVENT_TOPIC, type AgentChatSnapshot } from "@shared/agent";
 
 const desktop = vi.hoisted(() => ({
   api_get: vi.fn(),
@@ -15,27 +16,41 @@ vi.mock("@frontend/app/desktop/desktop-api", () => desktop);
 it("按打开周期接收后台工程事件，切换时恢复原工程的任务和变更", async () => {
   const listeners = new Map<string, EventListener>();
   const close = vi.fn();
+  let project_ids = ["first", "second"];
   desktop.open_event_stream.mockReturnValue({
     addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
     close,
   });
-  desktop.api_get.mockImplementation(async (route: string) =>
-    route === "/api/session/projects"
-      ? {
-          projects: ["first", "second"].map((projectId) => ({
-            project: {
-              projectId,
-              path: projectId + ".lg",
-              name: projectId,
-              loaded: true,
-              file_count: 0,
-            },
-            chats: [],
-            activeChatId: "",
-          })),
-        }
-      : {},
-  );
+  const agent_snapshot: AgentChatSnapshot = {
+    chatId: "second-chat",
+    revision: 1,
+    state: "idle",
+    pendingDecision: null,
+    entries: [],
+    skills: [],
+    inputQueue: { paused: false, canSendNow: false, items: [] },
+    doing: null,
+    context: { tokens: null, compactable: false, limits: null },
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    tokenSpeed: null,
+    runOutput: null,
+  };
+  desktop.api_get.mockImplementation(async (route: string) => {
+    const { pathname, searchParams } = new URL(route, "http://localhost");
+    if (pathname === "/api/session/projects")
+      return {
+        projects: project_ids.map((projectId) => ({
+          project: {
+            projectId,
+            path: projectId + ".lg",
+            name: projectId,
+            loaded: true,
+            file_count: 0,
+          },
+        })),
+      };
+    return { ...agent_snapshot, chatId: searchParams.get("projectId") + "-chat" };
+  });
   desktop.api_fetch.mockImplementation(async (route: string) => {
     if (route === "/api/settings/app") return { settings: { app_language: "EN" } };
     if (route === "/api/runtime/snapshot")
@@ -66,6 +81,7 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     expect(state.settings_snapshot.app_language).toBe("EN");
     expect(state.project_snapshot.projectId).toBe("first");
     expect(desktop.open_event_stream).toHaveBeenCalledOnce();
+    const agent = state.open_projects[1]!.agentChat;
 
     const change = {
       projectId: "second",
@@ -84,6 +100,12 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
         projectId: "second",
         batch_task: { ...empty_batch_task_snapshot(), revision: 2 },
       });
+      emit(AGENT_CHAT_EVENT_TOPIC, {
+        projectId: "second",
+        type: "snapshot_seed",
+        revision: 2,
+        snapshot: { ...agent_snapshot, revision: 2, chatId: "second-reset" },
+      });
     });
     expect(signal.seq).toBe(0);
     expect(task.revision).toBe(0);
@@ -91,8 +113,21 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     expect(signal.seq).toBe(1);
     expect(signal.results[0]?.eventId).toBe("only-second");
     expect(task.revision).toBe(2);
+    expect(state.active_project?.agentChat).toBe(agent);
+    expect(agent.get_chat_id()).toBe("second-reset");
     await act(async () => state.select_project("first"));
     expect(signal.seq).toBe(0);
+    project_ids = ["first"];
+    await act(async () => {
+      await state.refresh_projects();
+      emit(AGENT_CHAT_EVENT_TOPIC, {
+        projectId: "second",
+        type: "snapshot_seed",
+        revision: 3,
+        snapshot: { ...agent_snapshot, revision: 3, chatId: "closed" },
+      });
+    });
+    expect(agent.get_chat_id()).toBe("second-reset");
   } finally {
     await act(async () => root.unmount());
   }

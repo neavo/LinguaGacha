@@ -56,11 +56,15 @@ await uv.run(['add', ...media.PIP_DEPENDENCIES]);
 
 ### 设备降级与重跑
 
-任务开始时令 `device = 'gpu'`。`prepare`、`scan`、`refine` 必须显式传入 `device`，SDK 不自行换设备：
+任务开始时令 `device = 'gpu'`。`prepare`、`scan`、`refine` 必须显式传入 `device`，SDK 不自行切换设备：
 
-- **GPU 降级**：应用内多对话并发使用 GPU 时会排队等待共享 GPU 租约，等待期间可能较久无输出；此类排队或超时不属于脚本卡死或 `DeviceFailure`。仅首次真实捕获 `media.DeviceFailure` 时，告知用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」，改为 `device = 'cpu'` 用相同工作目录和参数重跑失败步骤（`prepare` 已完成的一支自动复用），本次任务后续统一使用 CPU 且不再提醒。
-- **并行双败**：`prepare` 两支同时失败抛出 `AggregateError`，仅当 `errors` 全为 `DeviceFailure` 时降级重跑。
-- **其他错误**：模型、输入、环境和资源关闭错误按原错误处理；CPU 失败时报告原因，不切回 GPU。
+- **租约排队**：多个工程并发使用 GPU 时会排队等待共享 GPU 租约，期间可能较久无输出。排队等待或超时不属于脚本卡死，也不属于 `DeviceFailure`，不要因此降级。
+- **GPU 降级**：仅首次真实捕获 `media.DeviceFailure` 时执行降级：
+  1. 告知用户「GPU 加速不可用，本次任务已切换至 CPU 模式，处理速度会比较慢」。
+  2. 改令 `device = 'cpu'`，用相同工作目录与参数重跑失败步骤（`prepare` 已完成的一支会自动复用）。
+  3. 本次任务后续统一使用 CPU，不再重复提醒。
+- **并行双败**：`prepare` 两支同时失败会抛出 `AggregateError`，仅当 `errors` 全为 `DeviceFailure` 时才降级重跑。
+- **其他错误**：模型、输入、环境和资源关闭错误按原错误处理；CPU 失败时直接报告原因，不切回 GPU。
 
 |重跑场景|调用方式|说明|
 |---|---|---|

@@ -1,3 +1,6 @@
+import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
+import { createBatchTranslationSnapshotStore } from "./batch-translation-snapshot-store";
+import { createProjectChangeSignalStore } from "./project-change-signal-store";
 import {
   type JSX,
   useCallback,
@@ -9,7 +12,7 @@ import {
 } from "react";
 import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
 import { subscribe_desktop_events } from "@frontend/app/desktop/desktop-events";
-import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { create_text_resolver } from "@shared/i18n";
 import {
   resolve_app_locale,
@@ -30,7 +33,7 @@ import { normalize_section_revisions } from "./desktop-event-payload";
 import { useDesktopRecovery } from "./desktop-recovery";
 import { useProjectWriteCommitter, type ProjectWriteResult } from "./desktop-project-write";
 import { createRuntimeActivityStore } from "./runtime-activity-store";
-import { ProjectStore, ProjectStoreRegistry } from "./project-store-registry";
+import { type ProjectStore, ProjectStoreRegistry } from "./project-store-registry";
 import {
   DesktopStateContext,
   DesktopStateStoresContext,
@@ -42,8 +45,11 @@ const EMPTY_PROJECT: ProjectSnapshot = { path: "", loaded: false, file_count: 0,
 
 /** 全局状态和工程注册表共用一次连接，工程事件永远发给原工程。 */
 export function DesktopStateProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [registry] = useState(() => new ProjectStoreRegistry());
-  const [empty] = useState(() => new ProjectStore({ ...EMPTY_PROJECT, projectId: "", name: "" }));
+  const [empty] = useState(() => ({
+    batch_task: createBatchTaskSnapshotStore(),
+    batch_translation: createBatchTranslationSnapshotStore(),
+    projectChange: createProjectChangeSignalStore(),
+  }));
   const [runtime] = useState(createRuntimeActivityStore);
   const [status, set_status] = useState<"loading" | "ready" | "error">("loading");
   const [settings, set_settings] = useState(() =>
@@ -51,11 +57,30 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
       app_language: resolve_system_app_language(window.navigator.languages),
     }),
   );
+  const app_language = useRef(settings.app_language);
+  app_language.current = settings.app_language;
+  const [registry] = useState(
+    () =>
+      new ProjectStoreRegistry((error, kind) => {
+        const t = create_text_resolver(resolve_app_locale(app_language.current));
+        push_error_toast(
+          t(kind === "restore" ? "agent_page.error.restore" : "agent_page.error.decision"),
+          error,
+        );
+      }),
+  );
   const [active_id, set_active_id] = useState<string>();
   const [, set_version] = useState(0);
   const [language_updating, set_language_updating] = useState(false);
   const initial_request = useRef(0);
   const projects_request = useRef(0);
+  useEffect(
+    () => () => {
+      projects_request.current++;
+      registry.dispose();
+    },
+    [registry],
+  );
   const notify = useCallback(() => set_version((version) => version + 1), []);
   const store = active_id === undefined ? undefined : registry.get(active_id);
   const project_snapshot = store?.snapshot ?? EMPTY_PROJECT;
@@ -108,16 +133,6 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
       if (registry.get(projectId)) set_active_id(projectId);
     },
     [registry],
-  );
-
-  const apply_chat_list = useCallback(
-    (projectId: string, payload: unknown) => {
-      const project = registry.get(projectId);
-      if (!project) return;
-      project.update_chats(payload);
-      notify();
-    },
-    [registry, notify],
   );
 
   const refresh_snapshot = useCallback(
@@ -263,9 +278,6 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
             if (project) await refresh_manifest(project);
           }
         }),
-        "agent.chats_changed": dispatch((payload) => {
-          if (typeof payload.projectId === "string") apply_chat_list(payload.projectId, payload);
-        }),
         "batch_task.snapshot_changed": dispatch((payload) => {
           if (typeof payload.projectId === "string")
             registry.get(payload.projectId)?.update_task(payload);
@@ -287,7 +299,6 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
     return unsubscribe;
   }, [
     apply_changes,
-    apply_chat_list,
     apply_settings_snapshot,
     refresh_manifest,
     refresh_projects,
@@ -331,7 +342,6 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
           active_project: store,
           select_project,
           refresh_projects,
-          apply_chat_list,
         }}
       >
         {children}

@@ -22,10 +22,7 @@ function fixture() {
   fs.mkdirSync(path.dirname(default_path), { recursive: true });
   fs.writeFileSync(default_path, "Default role");
   const settings = new AppSettingService(paths);
-  const global_gate = new GlobalOperationGate(
-    undefined,
-    () => gate.get_snapshot().activeChatCount === 0,
-  );
+  const global_gate = new GlobalOperationGate(undefined, () => !gate.get_snapshot().agent);
   const gate = new ProjectOperationGate((owner) => global_gate.check_project(owner));
   const service = new AgentPersonalityService(paths, settings, global_gate);
   return {

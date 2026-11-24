@@ -27,7 +27,7 @@ function file_draft(file: AgentSkillFile): string {
 export function useSkillEditor(identity: AgentSkillIdentity) {
   const { t } = useI18n();
   const locked = Object.values(useRuntimeSnapshot().projects ?? {}).some(
-    (project) => project.activeChatCount > 0,
+    (project) => project.agent,
   );
   const environment = useRef({ locked, t }); // 异步回调读取当前占用与语言，语言切换保留草稿。
   environment.current = { locked, t };

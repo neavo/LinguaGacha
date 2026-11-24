@@ -95,7 +95,7 @@ export function PersonalityEditor({ on_back }: { on_back: () => void }): JSX.Ele
 /** 重置等待在途保存再接管草稿，自动保存与技能、知识共用同一循环。 */
 function usePersonalityEditor() {
   const locked = Object.values(useRuntimeSnapshot().projects ?? {}).some(
-    (project) => project.activeChatCount > 0,
+    (project) => project.agent,
   );
   const environment = useRef({ locked });
   environment.current = { locked };
