@@ -12,7 +12,6 @@ type SettingCardRowProps = {
   action: ReactNode;
   action_width?: "fixed" | "content";
   className?: string;
-  title_suffix?: ReactNode;
 };
 
 const DESCRIPTION_COMPONENT_MAP: RichTextComponentMap = {
@@ -39,12 +38,7 @@ export function SettingCardRow(props: SettingCardRowProps): JSX.Element {
     >
       <CardContent className="setting-card-row__content">
         <div className="setting-card-row__copy">
-          <div className="setting-card-row__heading">
-            <h2 className="setting-card-row__title font-medium">{props.title}</h2>
-            {props.title_suffix !== undefined ? (
-              <div className="setting-card-row__title-suffix">{props.title_suffix}</div>
-            ) : null}
-          </div>
+          <h2 className="setting-card-row__title font-medium">{props.title}</h2>
           <p className="setting-card-row__description">{description_content}</p>
         </div>
 

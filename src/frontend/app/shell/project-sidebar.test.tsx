@@ -82,7 +82,7 @@ describe("ProjectSidebar", () => {
       path: "E:/翻译.lg",
       loaded: true,
       file_count: 0,
-      languages: null,
+      settings: null,
     });
     const second = new ProjectStore({
       ...first.snapshot,

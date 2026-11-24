@@ -10,7 +10,6 @@ import { en_us_app } from "./app";
 import { en_us_function_settings_page } from "./function-settings-page";
 import { en_us_custom_prompt_page } from "./custom-prompt-page";
 import { en_us_glossary_page } from "./glossary-page";
-import { en_us_laboratory_page } from "./laboratory-page";
 import { en_us_log_window_page } from "./log-window-page";
 import { en_us_model_page } from "./model-page";
 import { en_us_post_translation_replacement_page } from "./post-translation-replacement-page";
@@ -35,7 +34,6 @@ export const en_us_messages = {
   function_settings_page: en_us_function_settings_page,
   custom_prompt_page: en_us_custom_prompt_page,
   glossary_page: en_us_glossary_page,
-  laboratory_page: en_us_laboratory_page,
   toolbox_page: en_us_toolbox_page,
   game_font_page: en_us_game_font_page,
   translation_transfer_page: en_us_translation_transfer_page,

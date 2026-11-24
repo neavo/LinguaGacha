@@ -66,7 +66,7 @@ export function format_project_settings_aligned_toast(args: {
       : args.t("app.state.disabled");
     rows.push(
       args.t("app.tooltip.value", {
-        TITLE: args.t("app.project_settings_alignment.field.mtool_optimizer_enable"),
+        TITLE: args.t("app.project_prefilter.mtool_optimizer_enable.title"),
         VALUE: mtool_label,
       }),
     );
@@ -78,7 +78,7 @@ export function format_project_settings_aligned_toast(args: {
       : args.t("app.state.disabled");
     rows.push(
       args.t("app.tooltip.value", {
-        TITLE: args.t("app.project_settings_alignment.field.skip_duplicate_source_text_enable"),
+        TITLE: args.t("app.project_prefilter.skip_duplicate_source_text_enable.title"),
         VALUE: skip_duplicate_source_text_label,
       }),
     );

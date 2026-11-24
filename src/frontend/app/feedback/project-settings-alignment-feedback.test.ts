@@ -22,11 +22,11 @@ describe("format_project_settings_aligned_toast", () => {
 
     expect(result).toContain(t("app.language_role.source"));
     expect(result).toContain(t("app.language.EN"));
-    expect(result).toContain(t("app.project_settings_alignment.field.mtool_optimizer_enable"));
+    expect(result).toContain(t("app.project_prefilter.mtool_optimizer_enable.title"));
     expect(result).toContain(t("app.state.enabled"));
     expect(result).not.toContain(t("app.language_role.target"));
     expect(result).not.toContain(
-      t("app.project_settings_alignment.field.skip_duplicate_source_text_enable"),
+      t("app.project_prefilter.skip_duplicate_source_text_enable.title"),
     );
   });
 

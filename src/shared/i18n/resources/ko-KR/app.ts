@@ -97,10 +97,16 @@ export const ko_kr_app = {
     title: "페이지 실행 중 오류가 발생했습니다",
     description: "현재 창을 보호 화면으로 전환했습니다. 오류 상세 내용은 로그에 기록되었습니다 …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool 최적화",
-      skip_duplicate_source_text_enable: "중복 원문 건너뛰기",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool 최적화",
+      description:
+        "MTool 텍스트 번역 시 <emphasis>번역 시간과 Token 사용량을 최대 40% 줄일 수 있습니다</emphasis>.\n기본적으로 사용합니다.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "중복 원문 건너뛰기",
+      description:
+        "프로젝트 전체에서 텍스트가 같은 항목은 한 번만 번역하고 <emphasis>번역문을 재사용</emphasis>합니다.\n기본적으로 사용합니다.",
     },
   },
   close_confirm: {
@@ -168,7 +174,8 @@ export const ko_kr_app = {
     projects: "프로젝트",
     projects_empty: "프로젝트 없음",
     skills: "스킬",
-    translation_tools: "번역 기능",
+    workbench: "워크벤치",
+    quality: "번역 품질",
     more: "더 보기",
     close_chat: "대화 닫기",
     close_chat_confirm: "대화를 닫을까요 …?",

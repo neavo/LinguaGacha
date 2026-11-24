@@ -14,10 +14,8 @@ import { GamePrepareWorker } from "../file/shared/game/prepare-worker";
 import { GameFontService } from "../file/game-font-service";
 import { configure_rgss_parser } from "../file/rpgmaker-rgss/ruby";
 import { configure_javascript_parser } from "../file/shared/javascript";
-import type { SettingsUpdateResponse } from "../../shared/settings";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
-import { AppSettingsCommandService } from "../app/app-settings-command-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectCache } from "../cache/project-cache";
 import { ProjectDatabase } from "../database/database-operations";
@@ -56,7 +54,7 @@ import { QualityRuleService } from "../quality/quality-rule-service";
 import { QualityStatisticsService } from "../quality/quality-statistics-service";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonRecord } from "../../domain/json";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-event";
 import { MODEL_CATALOG_UPDATED_EVENT_TOPIC } from "../../shared/model-catalog";
 import {
@@ -83,7 +81,6 @@ export interface BackendAppServices {
   paths: AppPathService;
   metadata: AppMetadataService;
   settings: AppSettingService;
-  updateSettings: (request: JsonRecord) => Promise<SettingsUpdateResponse>; // 设置命令统一编排工程同步与补偿
 }
 
 export interface BackendRuntimeServices {
@@ -205,14 +202,10 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       this.logManager,
       this.modelAuth,
     );
-    const settings = new AppSettingsCommandService(appSettingService, this.globalGate, () =>
-      this.projects.values(),
-    );
     this.app = {
       paths,
       metadata,
       settings: appSettingService,
-      updateSettings: (body) => settings.update(body),
     };
     this.runtime = { getSnapshot: () => ({ runtime: this.read_runtime() }) };
   }
@@ -232,15 +225,12 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         if (opened.cache.snapshot().freshness === "recoverable_error") await opened.cache.refresh();
         return this.project_snapshot(opened);
       }
-      const { snapshot, alignment } = await this.lifecycle.load_project(
+      const snapshot = await this.lifecycle.load_project(
         project_path,
         body.confirmed_target_app_version,
       );
       const project = await this.install_project(project_path, snapshot);
-      return {
-        ...this.project_snapshot(project),
-        ...(alignment === null ? {} : { settings_alignment: alignment as unknown as JsonValue }),
-      };
+      return this.project_snapshot(project);
     });
   }
 
@@ -284,7 +274,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
           pre_replacement: quality.pre_replacement.entries.length,
           post_replacement: quality.post_replacement.entries.length,
         },
-        languages: project.cache.languages.readBlock(),
+        settings: project.cache.settings.readBlock(),
       },
     };
   }
@@ -292,10 +282,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
   /** 重连按权威修订恢复页面查询，及早带回工程和对话身份。 */
   public async read_manifest(project: OpenProject<Agent>): Promise<JsonRecord> {
     return this.options.database.read(project.path, (reader) => {
-      const manifest = new ProjectDataReader(reader).build_manifest({
-        loaded: true,
-        projectPath: project.path,
-      });
+      const manifest = new ProjectDataReader(reader).build_manifest(project.path);
       return { ...manifest, ...this.project_snapshot(project), projectId: project.id };
     });
   }
@@ -370,7 +357,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       runner,
       translation_runtime,
       settings,
-      cache.languages,
+      cache.settings,
       this.logManager,
     );
     const project: OpenProject<Agent> = {

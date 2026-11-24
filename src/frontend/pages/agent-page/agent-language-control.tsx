@@ -27,7 +27,7 @@ export function AgentLanguageControl(props: {
   const { t } = useI18n();
   const { project_snapshot, commit_project_write, initial_state_status } = useDesktopState();
   const runtime = useProjectRuntimeSnapshot();
-  const languages = project_snapshot.loaded ? project_snapshot.languages : null;
+  const languages = project_snapshot.loaded ? project_snapshot.settings : null;
   const [draft, set_draft] = useState<Record<ProjectLanguageKey, string> | null>(null); // 关闭弹窗即释放草稿。
   const [submitting, set_submitting] = useState(false); // 提交期间锁定选择、确认和关闭。
   const disabled =
@@ -92,7 +92,10 @@ export function AgentLanguageControl(props: {
                 aria-label={t("project.language.title")}
                 aria-haspopup="dialog"
                 onClick={() => {
-                  set_draft({ ...languages });
+                  set_draft({
+                    source_language: languages.source_language,
+                    target_language: languages.target_language,
+                  });
                 }}
               >
                 <Globe2 aria-hidden="true" />

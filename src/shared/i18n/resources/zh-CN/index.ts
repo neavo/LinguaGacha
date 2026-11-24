@@ -10,7 +10,6 @@ import { zh_cn_app } from "./app";
 import { zh_cn_function_settings_page } from "./function-settings-page";
 import { zh_cn_custom_prompt_page } from "./custom-prompt-page";
 import { zh_cn_glossary_page } from "./glossary-page";
-import { zh_cn_laboratory_page } from "./laboratory-page";
 import { zh_cn_log_window_page } from "./log-window-page";
 import { zh_cn_model_page } from "./model-page";
 import { zh_cn_post_translation_replacement_page } from "./post-translation-replacement-page";
@@ -33,7 +32,6 @@ export const zh_cn_messages = {
   function_settings_page: zh_cn_function_settings_page,
   custom_prompt_page: zh_cn_custom_prompt_page,
   glossary_page: zh_cn_glossary_page,
-  laboratory_page: zh_cn_laboratory_page,
   toolbox_page: zh_cn_toolbox_page,
   game_font_page: zh_cn_game_font_page,
   translation_transfer_page: zh_cn_translation_transfer_page,

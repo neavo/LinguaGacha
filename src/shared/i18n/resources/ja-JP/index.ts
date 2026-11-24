@@ -10,7 +10,6 @@ import { ja_jp_function_settings_page } from "./function-settings-page";
 import { ja_jp_batch_translation } from "./batch-translation";
 import { ja_jp_custom_prompt_page } from "./custom-prompt-page";
 import { ja_jp_glossary_page } from "./glossary-page";
-import { ja_jp_laboratory_page } from "./laboratory-page";
 import { ja_jp_log_window_page } from "./log-window-page";
 import { ja_jp_model_page } from "./model-page";
 import { ja_jp_post_translation_replacement_page } from "./post-translation-replacement-page";
@@ -36,7 +35,6 @@ export const ja_jp_messages = {
   batch_translation: ja_jp_batch_translation,
   custom_prompt_page: ja_jp_custom_prompt_page,
   glossary_page: ja_jp_glossary_page,
-  laboratory_page: ja_jp_laboratory_page,
   toolbox_page: ja_jp_toolbox_page,
   game_font_page: ja_jp_game_font_page,
   translation_transfer_page: ja_jp_translation_transfer_page,

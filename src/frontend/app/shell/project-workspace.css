@@ -6,6 +6,7 @@
   --workspace-tools-inset-transition: none;
   --workspace-tools-motion-duration: 240ms;
   --workspace-tools-motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 
 .project-workspace[data-tools-docked="true"] {
@@ -46,6 +47,8 @@
   align-items: center;
   overflow-x: auto;
   scrollbar-width: none;
+  padding-right: var(--workspace-tools-inset);
+  transition: var(--workspace-tools-inset-transition);
 }
 
 .project-workspace__chat-tabs > .agent-pages__tabs {
@@ -59,17 +62,39 @@
   opacity: 0;
 }
 
+/* 窄态在顶栏右侧横排双组下拉标签；宽态绝对定位为右侧 240px 纵排常驻双块。 */
 .project-workspace__tools-anchor {
   position: relative;
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
   height: 30px;
+}
+
+.project-workspace[data-tools-docked="true"] .project-workspace__tools-anchor {
+  position: absolute;
+  top: 8px;
+  /* 左右外扩 8px 与底部 16px 承接常驻卡片阴影，避免极端高度滚动时被裁切。 */
+  right: calc(var(--ui-page-pad-x) - 8px);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  box-sizing: border-box;
+  width: calc(var(--workspace-tools-card-width) + 16px);
+  height: auto;
+  max-height: calc(100vh - var(--titlebar-height, 40px) - 16px);
+  padding: 0 8px 16px;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
 
 .project-workspace__tools-panel {
   position: relative;
+  flex: 0 0 auto;
 }
 
-/* 头部始终保持与左侧普通标签一致的 30px 灰底标签样式；宽态舒展至 240px 与下方卡片左右齐边。 */
+/* 头部始终保持与左侧普通标签一致的 30px 灰底标签与 128px 最小宽度；宽态占满 240px 与下方卡片左右齐边。 */
 .project-workspace__tools-header {
   position: relative;
   display: grid;
@@ -90,7 +115,9 @@
 }
 
 .project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-header {
+  width: 100%;
   min-width: var(--workspace-tools-card-width);
+  max-width: var(--workspace-tools-card-width);
 }
 
 .project-workspace__tools-panel[data-docked="false"] .project-workspace__tools-header:hover,
@@ -172,7 +199,7 @@
   justify-self: center;
 }
 
-/* 菜单部分右对齐锚定在标签正下方，以 0fr ↔ 1fr 向下展开；四周留出不拦截指针的阴影缓冲带。 */
+/* 窄态菜单右对齐锚定在各自标签正下方，以 0fr ↔ 1fr 向下展开；四周留出不拦截指针的阴影缓冲带。 */
 .project-workspace__tools-drawer {
   position: absolute;
   top: 100%;
@@ -190,6 +217,14 @@
   opacity: 1;
 }
 
+/* 宽态抽屉回归文档流，使工作台与翻译质量两块以 16px 垂直间距依次排布。 */
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-drawer {
+  position: static;
+  width: 100%;
+  margin: 0;
+  pointer-events: auto;
+}
+
 /* 0fr 折叠容器保持零内边距以确保严格收合至 0px；内层统一 12px 顶距与左侧子页顶边齐平并承接阴影缓冲。 */
 .project-workspace__tools-drawer-inner {
   min-height: 0;
@@ -197,12 +232,20 @@
   overflow: hidden;
 }
 
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-drawer-inner {
+  overflow: visible;
+}
+
 .project-workspace__tools-card-frame {
   box-sizing: border-box;
   padding: 12px 16px 24px;
 }
 
-/* 独立菜单卡片：窄态为浮层表面与覆盖阴影，宽态平滑沉降为常驻桌面卡片表面。 */
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-card-frame {
+  padding: 12px 0 0;
+}
+
+/* 独立菜单卡片：窄态为浮层表面与覆盖阴影，宽态沉降为常驻桌面卡片表面。 */
 .project-workspace__tools-card {
   position: relative;
   border-radius: var(--ui-radius-card);
@@ -242,6 +285,17 @@
   max-height: calc(100vh - var(--titlebar-height, 40px) - 66px);
   padding: 6px;
   overflow-y: auto;
+}
+
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-list {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.project-workspace__tools-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
 }
 
 .project-workspace__tool-item {
@@ -318,8 +372,14 @@
   white-space: nowrap;
 }
 
-.project-workspace__tool-count {
-  margin-left: 12px;
+.project-workspace__tool-count,
+.project-workspace__tool-badge {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.project-prefilter-dialog__emphasis {
+  color: var(--primary);
 }
 
 /* 内容区隔离在独立低层级内，由各视图按滚动与满幅职责消费右侧卡片占位。 */
@@ -339,33 +399,19 @@
   transition: var(--workspace-tools-inset-transition);
 }
 
-/* 首帧布局稳定后启用跨阈值与展开收起过渡，避免切换工程挂载时重放展开动画。 */
-.project-workspace[data-tools-animated="true"] .project-workspace__tools-header {
-  transition:
-    min-width var(--workspace-tools-motion-duration) var(--workspace-tools-motion-easing),
-    background-color 140ms ease;
-}
-
+/* 仅对窄态浮层抽屉收展与箭头旋转启用过渡，避免跨越 1280px 时产生跨轴位移抖动。 */
 .project-workspace[data-tools-animated="true"] .project-workspace__tools-chevron {
   transition:
     transform 180ms var(--workspace-tools-motion-easing),
     opacity 140ms ease;
 }
 
-.project-workspace[data-tools-animated="true"] .project-workspace__tools-drawer {
+.project-workspace[data-tools-animated="true"]
+  .project-workspace__tools-panel[data-docked="false"]
+  .project-workspace__tools-drawer {
   transition:
     grid-template-rows var(--workspace-tools-motion-duration) var(--workspace-tools-motion-easing),
     opacity 180ms ease;
-}
-
-.project-workspace[data-tools-animated="true"] .project-workspace__tools-card {
-  transition:
-    background-color 180ms ease,
-    box-shadow 200ms ease;
-}
-
-.project-workspace[data-tools-animated="true"] .project-workspace__tools-card::after {
-  transition: border-color 180ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -377,11 +423,10 @@
   .project-workspace__tool-item,
   .project-workspace__tool-item::before,
   .project-workspace__tool-icon,
-  .project-workspace[data-tools-animated="true"] .project-workspace__tools-header,
   .project-workspace[data-tools-animated="true"] .project-workspace__tools-chevron,
-  .project-workspace[data-tools-animated="true"] .project-workspace__tools-drawer,
-  .project-workspace[data-tools-animated="true"] .project-workspace__tools-card,
-  .project-workspace[data-tools-animated="true"] .project-workspace__tools-card::after {
+  .project-workspace[data-tools-animated="true"]
+    .project-workspace__tools-panel[data-docked="false"]
+    .project-workspace__tools-drawer {
     transition: none;
   }
 }

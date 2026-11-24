@@ -1,11 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import {
-  read_project_language_settings,
-  read_project_prefilter_settings,
-} from "../../domain/project-settings";
+import { read_project_settings } from "../../domain/project-settings";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import { AppError } from "../../shared/error";
 import {
@@ -16,7 +12,10 @@ import type { ProjectDatabase, ProjectItemTranslationWrite } from "../database/d
 import type { GlobalOperationGate } from "../runtime-operation-gate";
 import { ProjectDataReader } from "./project-data-reader";
 import { inherit_completed_translations } from "./project-translation-inheritance";
-import { compute_project_prefilter_write } from "./project-write-state";
+import {
+  build_translation_extras_from_items,
+  compute_project_prefilter_items,
+} from "./project-write-state";
 
 type TranslationTransferRequest = Readonly<{
   source_path: string; // 迁出工程，提供已完成译文。
@@ -72,17 +71,15 @@ export class ProjectTranslationTransferService {
           next_items,
           request.mode,
         );
-        const output = compute_project_prefilter_write({
+        const items = compute_project_prefilter_items({
           state: {
             files: base.files,
             items: Object.fromEntries(next_items.map((item) => [String(item.item_id), item])),
           },
-          progress: normalize_batch_translation_progress(base.meta["translation_extras"]),
-          source_language: read_project_language_settings(base.meta).source_language,
-          ...read_project_prefilter_settings(base.meta),
+          ...read_project_settings(base.meta),
         });
         const patches: ProjectItemTranslationWrite[] = base.items.flatMap((before) => {
-          const after = output.items[String(before.item_id)]!;
+          const after = items[String(before.item_id)]!;
           return after.status === before.status &&
             after.dst === before.dst &&
             after.name_dst === before.name_dst
@@ -96,10 +93,14 @@ export class ProjectTranslationTransferService {
         });
         await this.database.transaction(output_snapshot, (writer) => {
           writer.patch_item_translation_fields(output_snapshot, patches);
-          writer.upsert_meta_entries(output_snapshot, {
-            prefilter_config: output.prefilter_config,
-            translation_extras: output.translation_extras as unknown as JsonValue,
-          });
+          writer.set_meta(
+            output_snapshot,
+            "translation_extras",
+            build_translation_extras_from_items({
+              progress: base.meta["translation_extras"],
+              items: Object.values(items),
+            }),
+          );
         });
         const agent_store = this.database.open_agent_store(output_snapshot);
         try {
@@ -114,7 +115,7 @@ export class ProjectTranslationTransferService {
         return {
           filled,
           replaced,
-          unmatched: Object.values(output.items).filter((item) => item.status === "NONE").length,
+          unmatched: Object.values(items).filter((item) => item.status === "NONE").length,
         };
       } finally {
         await this.database.remove_project_file(output_snapshot);

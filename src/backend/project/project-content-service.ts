@@ -27,10 +27,6 @@ import {
 import type { SourceFileParseWarning } from "../file/file-format-types";
 import type { WorkbenchImportFilesPreview } from "../../shared/workbench/workbench-command-planner";
 import { get_section_revision, ProjectDataReader } from "./project-data-reader";
-import {
-  normalize_batch_translation_progress,
-  type BatchTranslationProgress,
-} from "../../domain/batch-translation";
 import { inherit_completed_translations } from "./project-translation-inheritance";
 import type { ProjectFileRecord } from "./project-file-records";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
@@ -58,17 +54,14 @@ import {
 } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import {
-  parse_project_language_patch,
+  parse_project_settings_patch,
   read_project_language_settings,
-  read_project_prefilter_settings,
-  type AppPrefilterSettings,
-  type ProjectSettingsSnapshot,
+  read_project_settings,
 } from "../../domain/project-settings";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   build_translation_extras_from_items,
-  compute_project_prefilter_write,
-  type ProjectPrefilterWriteOutput,
+  compute_project_prefilter_items,
 } from "./project-write-state";
 
 import * as AppErrors from "../../shared/error";
@@ -410,10 +403,8 @@ export class ProjectContentService {
     const contested = new Map<string, number[][]>(); // 文件内条目索引，提交后才映射为数据库 ID。
     let prepared_items = items;
     if (drafts.length) {
-      const settings = await this.read_project_write_settings(project_path);
-      prepared_items = (
-        await this.compute_prefilter_output({ project_path, files, items, settings })
-      ).items;
+      const settings = read_project_settings(await this.database.get_all_meta(project_path));
+      prepared_items = compute_project_prefilter_items({ state: { files, items }, ...settings });
       if (inherit_paths.size) {
         const old_items = [
           ...this.to_public_items_by_id(await this.database.get_all_items(project_path)).values(),
@@ -784,15 +775,20 @@ export class ProjectContentService {
   }
 
   /**
-   * 修改当前项目语言；源语言变化时在同一提交内重算预过滤，目标语言只更新项目设置。
+   * 在工程写租约内读取当前设置并合并补丁。预过滤输入变化时随重算后的条目一起提交。
    */
   public async update_project_settings(request: JsonRecord): Promise<ProjectWriteResult> {
-    const patch = parse_project_language_patch(request);
+    const patch = parse_project_settings_patch(request);
     return this.runtime_gate.run_project_write(async () => {
       const project_path = this.project_path;
-      const current = await this.read_project_write_settings(project_path);
-      const settings: ProjectSettingsSnapshot = { ...current, ...patch };
-      if (settings.source_language === current.source_language) {
+      const meta = await this.database.get_all_meta(project_path);
+      const current = read_project_settings(meta);
+      const settings = { ...current, ...patch };
+      const prefilter_changed =
+        settings.source_language !== current.source_language ||
+        settings.mtool_optimizer_enable !== current.mtool_optimizer_enable ||
+        settings.skip_duplicate_source_text_enable !== current.skip_duplicate_source_text_enable;
+      if (!prefilter_changed) {
         return settings.target_language === current.target_language
           ? { accepted: true, changes: [] }
           : await this.write_store.apply_project_settings_meta({
@@ -802,11 +798,12 @@ export class ProjectContentService {
             });
       }
       const snapshot = await this.read_project_write_snapshot(project_path);
-      const write_output = await this.compute_prefilter_output({
-        project_path,
-        files: snapshot.files,
-        items: this.public_item_record(snapshot.public_items_by_id.values()),
-        settings,
+      const items = compute_project_prefilter_items({
+        state: {
+          files: snapshot.files,
+          items: this.public_item_record(snapshot.public_items_by_id.values()),
+        },
+        ...settings,
       });
       return await this.write_store.replace_project_items({
         projectPath: project_path,
@@ -814,38 +811,16 @@ export class ProjectContentService {
         revisionSections: ["project", "items"],
         source: PROJECT_SETTINGS_UPDATE_SOURCE,
         updatedSections: ["project", "items"],
-        items: build_project_item_persistent_records(write_output.items),
-        meta: this.build_prefilter_reset_meta(settings, write_output),
+        items: build_project_item_persistent_records(items),
+        meta: {
+          ...settings,
+          translation_extras: build_translation_extras_from_items({
+            progress: meta["translation_extras"],
+            items: Object.values(items),
+          }),
+        },
       });
     });
-  }
-
-  /** 调用方持有工程写 lease；完成准备后才允许保存配置，使预过滤错误先于外部写入暴露。 */
-  public async prepare_prefilter_settings(
-    project_path: string,
-    prefilter_settings: AppPrefilterSettings,
-  ): Promise<() => Promise<ProjectWriteResult>> {
-    const settings: ProjectSettingsSnapshot = {
-      ...(await this.read_project_write_settings(project_path)),
-      ...prefilter_settings,
-    };
-    const snapshot = await this.read_project_write_snapshot(project_path);
-    const write_output = await this.compute_prefilter_output({
-      project_path,
-      files: snapshot.files,
-      items: this.public_item_record(snapshot.public_items_by_id.values()),
-      settings,
-    });
-    return () =>
-      this.write_store.replace_project_items({
-        projectPath: project_path,
-        requireExpectedSectionRevisions: false,
-        revisionSections: ["items"],
-        source: "settings_alignment",
-        updatedSections: ["items"],
-        items: build_project_item_persistent_records(write_output.items),
-        meta: this.build_prefilter_reset_meta(settings, write_output),
-      });
   }
 
   /**
@@ -993,16 +968,6 @@ export class ProjectContentService {
   }
 
   /**
-   * 写入计算只读取项目事实：项目语言，以及项目记录的应用预过滤开关
-   */
-  private async read_project_write_settings(
-    project_path: string,
-  ): Promise<ProjectSettingsSnapshot> {
-    const meta = await this.database.get_all_meta(project_path);
-    return { ...read_project_language_settings(meta), ...read_project_prefilter_settings(meta) };
-  }
-
-  /**
    * 按本次操作的目标路径读取资产与条目身份。
    */
   private async read_project_write_snapshot(project_path: string): Promise<ProjectWriteSnapshot> {
@@ -1062,54 +1027,6 @@ export class ProjectContentService {
   }
 
   /**
-   * 预过滤输出由后端基于当前数据库事实计算，渲染进程不再提交最终 items 或 meta
-   */
-  private async compute_prefilter_output(args: {
-    project_path: string;
-    files: ProjectFileSection;
-    items: Record<string, ProjectItemPublicRecord>;
-    settings: ProjectSettingsSnapshot;
-    progress?: BatchTranslationProgress;
-  }): Promise<ProjectPrefilterWriteOutput> {
-    return compute_project_prefilter_write({
-      state: {
-        files: args.files,
-        items: args.items,
-      },
-      progress: args.progress ?? (await this.read_translation_progress(args.project_path)),
-      source_language: args.settings.source_language,
-      mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
-    });
-  }
-
-  /**
-   * 预过滤类写入同时保存项目语言、开关处理记录与翻译进度
-   */
-  private build_prefilter_reset_meta(
-    settings: ProjectSettingsSnapshot,
-    output: ProjectPrefilterWriteOutput,
-  ): MutableJsonRecord {
-    return {
-      source_language: settings.source_language,
-      target_language: settings.target_language,
-      mtool_optimizer_enable: settings.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
-      prefilter_config: output.prefilter_config as unknown as JsonValue,
-      translation_extras: output.translation_extras as unknown as JsonValue,
-    };
-  }
-
-  /**
-   * 从数据库 translation_extras 恢复任务进度基底，后续统计会覆盖行数
-   */
-  private async read_translation_progress(project_path: string): Promise<BatchTranslationProgress> {
-    return normalize_batch_translation_progress(
-      (await this.database.get_all_meta(project_path))["translation_extras"],
-    );
-  }
-
-  /**
    * 新增 item id 从当前最大公开 id 之后递增，避免与既有数据库事实冲突
    */
   private next_item_id_seed(items: Map<number, ProjectItemPublicRecord>): number {
@@ -1134,28 +1051,22 @@ export class ProjectContentService {
     signal?: AbortSignal,
   ): Promise<ProjectWriteResult> {
     const assets = await this.reparse_assets(project_path, records, signal);
-    const settings = await this.read_project_write_settings(project_path);
-    const progress =
-      command.source === "translation_reset"
-        ? normalize_batch_translation_progress(undefined)
-        : await this.read_translation_progress(project_path);
+    const meta = await this.database.get_all_meta(project_path);
+    const settings = read_project_settings(meta);
     let next_item_id = this.next_item_id_seed(snapshot.public_items_by_id); // 新身份不沿用旧解析结果的行号。
     const reset_items = [...assets.values()]
       .flat()
       .map((item) => this.normalize_public_item({ ...item, id: ++next_item_id }));
-    const write_output = await this.compute_prefilter_output({
-      project_path,
-      files: snapshot.files,
-      items: this.public_item_record(reset_items),
-      settings,
-      progress,
+    const items = compute_project_prefilter_items({
+      state: { files: snapshot.files, items: this.public_item_record(reset_items) },
+      ...settings,
     });
-    // 重复协调与 MTool 优化以文件为界，未重建文件无需重新预过滤。
+    // 预过滤以文件为界，合并未重建条目后再统计整个工程的进度。
     for (const item of snapshot.public_items_by_id.values())
-      if (!assets.has(item.file_path)) write_output.items[String(item.item_id)] = item;
-    write_output.translation_extras = build_translation_extras_from_items({
-      progress,
-      items: Object.values(write_output.items),
+      if (!assets.has(item.file_path)) items[String(item.item_id)] = item;
+    const translation_extras = build_translation_extras_from_items({
+      progress: command.source === "translation_reset" ? undefined : meta["translation_extras"],
+      items: Object.values(items),
     });
     signal?.throwIfAborted(); // 重建与预过滤完成后，取消仍须阻止重置事务开始。
     return await this.write_store.replace_project_items({
@@ -1168,8 +1079,8 @@ export class ProjectContentService {
           }),
       source: command.source,
       updatedSections: ["items"],
-      items: build_project_item_persistent_records(write_output.items),
-      meta: this.build_prefilter_reset_meta(settings, write_output),
+      items: build_project_item_persistent_records(items),
+      meta: { translation_extras },
     });
   }
 

@@ -98,10 +98,16 @@ export const en_us_app = {
     description:
       "This window switched to the protected view, and the error details were written to logs …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool optimizer",
-      skip_duplicate_source_text_enable: "Skip duplicate source text",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool optimizer",
+      description:
+        "For MTool text, <emphasis>cuts translation time and tokens by up to 40%</emphasis>.\nEnabled by default.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "Skip duplicate source text",
+      description:
+        "Entries with identical text across the project share <emphasis>one translation</emphasis>.\nEnabled by default.",
     },
   },
   close_confirm: {
@@ -171,7 +177,8 @@ export const en_us_app = {
     projects: "Projects",
     projects_empty: "No projects",
     skills: "Skills",
-    translation_tools: "Translation tools",
+    workbench: "Workbench",
+    quality: "Translation Quality",
     more: "More",
     close_chat: "Close conversation",
     close_chat_confirm: "Confirm closing the conversation …?",

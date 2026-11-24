@@ -4,7 +4,8 @@ import {
   type BatchTranslationProgress,
   TASK_PROGRESS_STATUSES,
 } from "../../domain/batch-translation";
-import { type ProjectItemPublicRecord } from "../../domain/item";
+import type { ProjectItemPublicRecord } from "../../domain/item";
+import type { ProjectPrefilterSettings } from "../../domain/project-settings";
 
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { read_item_translation_candidates } from "../../shared/prefilter/item-prefilter";
@@ -15,29 +16,16 @@ export type ProjectWriteState = {
   items: Record<string, ProjectItemPublicRecord>; // 读取或解析边界已收窄的完整公开条目
 };
 
-export type ProjectPrefilterWriteOutput = {
-  items: Record<string, ProjectItemPublicRecord>; // 预过滤后的完整公开 item 集合
-  translation_extras: BatchTranslationProgress; // 按最终 item 状态重建的翻译进度 meta
-  prefilter_config: {
-    source_language: string; // 旧项目读取仍需要的预过滤源语言镜像
-    mtool_optimizer_enable: boolean; // 旧项目读取仍需要的 MTool 镜像
-    skip_duplicate_source_text_enable: boolean; // 旧项目读取仍需要的重复过滤镜像
-  };
-};
-
-export type ProjectPrefilterWriteInput = {
-  state: ProjectWriteState; // 当前项目事实快照，调用方负责提供后端权威事实
-  progress?: BatchTranslationProgress; // 缺省时从空翻译进度开始
-  source_language: string; // 源语言预过滤口径
-  mtool_optimizer_enable: boolean; // 是否启用 KVJSON 优化预过滤
-  skip_duplicate_source_text_enable: boolean; // 是否启用重复项过滤
+type ProjectPrefilterInput = ProjectPrefilterSettings & {
+  state: ProjectWriteState;
+  source_language: string;
 };
 
 /**
  * 按最终 item 状态重建翻译进度 meta。任务生命周期由 BatchTranslationSnapshot 管理。
  */
 export function build_translation_extras_from_items(args: {
-  progress: BatchTranslationProgress;
+  progress?: unknown; // 旧工程进度只在生成最终统计时归一。
   items: Iterable<Pick<ProjectItemPublicRecord, "status">>;
 }): BatchTranslationProgress {
   let processed_line = 0;
@@ -75,9 +63,9 @@ function copy_public_items(
 /**
  * 预过滤核心只接收后端权威项目快照，输出完整可写的计算事实。
  */
-export function compute_project_prefilter_write(
-  input: ProjectPrefilterWriteInput,
-): ProjectPrefilterWriteOutput {
+export function compute_project_prefilter_items(
+  input: ProjectPrefilterInput,
+): Record<string, ProjectItemPublicRecord> {
   const item_index = copy_public_items(input.state.items);
   const items = Object.values(item_index);
 
@@ -153,19 +141,5 @@ export function compute_project_prefilter_write(
     if (item !== undefined) item.status = change.status;
   }
 
-  const translation_extras = build_translation_extras_from_items({
-    progress: input.progress ?? normalize_batch_translation_progress(undefined),
-    items,
-  });
-
-  return {
-    items: item_index,
-
-    translation_extras,
-    prefilter_config: {
-      source_language: input.source_language,
-      mtool_optimizer_enable: input.mtool_optimizer_enable,
-      skip_duplicate_source_text_enable: input.skip_duplicate_source_text_enable,
-    },
-  };
+  return item_index;
 }

@@ -1,10 +1,6 @@
-import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import { read_error_message } from "@shared/error";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-import { APP_PREFILTER_SETTING_KEYS } from "@domain/project-settings";
-import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type {
   SettingsSnapshot,
@@ -30,7 +26,7 @@ function create_pending_state<PendingField extends string>(
 }
 
 /**
- * 统一拥有设置页的刷新、乐观更新、字段级 pending 与失败回滚。
+ * 统一拥有应用设置页的刷新、乐观更新、字段级 pending 与失败回滚。
  */
 export function useSettingsEditor<
   Snapshot extends object,
@@ -45,8 +41,7 @@ export function useSettingsEditor<
     patch: Partial<Snapshot>,
   ) => Promise<SettingsSnapshot | null>;
 } {
-  const { settings_snapshot, apply_settings_snapshot, refresh_settings, commit_project_write } =
-    useDesktopState();
+  const { settings_snapshot, apply_settings_snapshot, refresh_settings } = useDesktopState();
 
   const { t } = useI18n();
   const [snapshot, set_snapshot] = useState(() => options.select_snapshot(settings_snapshot));
@@ -93,39 +88,21 @@ export function useSettingsEditor<
         [field]: true,
       }));
 
-      const affects_project = APP_PREFILTER_SETTING_KEYS.some((key) => Object.hasOwn(patch, key));
       try {
-        const run = () =>
-          api_fetch<SettingsSnapshotPayload & ProjectWriteResultPayload>(
-            "/api/settings/update",
-            patch as Record<string, unknown>,
-          );
-        const payload = affects_project
-          ? (await commit_project_write({ operation: "settings.update", run })).payload
-          : await run();
+        const payload = await api_fetch<SettingsSnapshotPayload>(
+          "/api/settings/update",
+          patch as Record<string, unknown>,
+        );
         const next_settings_snapshot = apply_settings_snapshot(payload);
         sync_snapshot(next_settings_snapshot);
         return next_settings_snapshot;
       } catch (error) {
-        // 工程可能已提交；优先恢复权威值，查询失败时使用提交前值，始终只替换本次字段。
-        let restored = previous_snapshot;
-        let failure = error;
-        if (affects_project) {
-          try {
-            restored = options.select_snapshot(await refresh_settings());
-          } catch (refresh_error) {
-            failure = new Error(
-              `${read_error_message(error)}\n${read_error_message(refresh_error)}`,
-              { cause: refresh_error },
-            );
-          }
-        }
         const restored_patch = Object.fromEntries(
-          Object.keys(patch).map((key) => [key, restored[key as keyof Snapshot]]),
+          Object.keys(patch).map((key) => [key, previous_snapshot[key as keyof Snapshot]]),
         );
         snapshot_ref.current = { ...snapshot_ref.current, ...restored_patch };
         set_snapshot(snapshot_ref.current);
-        push_error_toast(t("app.feedback.save_failed"), failure);
+        push_error_toast(t("app.feedback.save_failed"), error);
         return null;
       } finally {
         set_pending_state((previous_state) => ({
@@ -134,14 +111,7 @@ export function useSettingsEditor<
         }));
       }
     },
-    [
-      apply_settings_snapshot,
-      commit_project_write,
-      options.select_snapshot,
-      refresh_settings,
-      sync_snapshot,
-      t,
-    ],
+    [apply_settings_snapshot, sync_snapshot, t],
   );
 
   return {

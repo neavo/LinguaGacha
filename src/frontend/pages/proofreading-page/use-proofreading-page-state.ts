@@ -98,7 +98,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
   const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
-  const project_languages = project_snapshot.languages ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS;
+  const project_languages = project_snapshot.settings ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS;
   const task_snapshot = useBatchTranslationSnapshot();
   const runtime_snapshot = useProjectRuntimeSnapshot();
   const sync_task_snapshot = useSyncBatchTranslationSnapshot();

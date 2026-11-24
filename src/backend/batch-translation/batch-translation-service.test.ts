@@ -21,7 +21,7 @@ import { ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
-import { DEFAULT_PROJECT_LANGUAGE_SETTINGS } from "../../domain/project-settings";
+import { DEFAULT_PROJECT_SETTINGS } from "../../domain/project-settings";
 
 /** 组合真实任务服务与可控协作者，观察启动和停止命令。 */
 function setup(loaded = true, line = 0) {
@@ -50,7 +50,7 @@ function setup(loaded = true, line = 0) {
         model_selection: { translation: "translation" },
       }),
     },
-    { readBlock: () => DEFAULT_PROJECT_LANGUAGE_SETTINGS },
+    { readBlock: () => DEFAULT_PROJECT_SETTINGS },
     { append },
   );
   return { service, runtime, gate, run, append, tasks };
@@ -312,7 +312,7 @@ it.each([
       },
     },
   });
-  const service = new BatchTranslationService(runner, runtime, settings, cache.languages, {
+  const service = new BatchTranslationService(runner, runtime, settings, cache.settings, {
     append: vi.fn(),
   });
   const lease = gate.begin_runtime("agent");
@@ -491,7 +491,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
 
     expect(
       await database.read(project_path, (access) =>
-        new ProjectDataReader(access).build_manifest(session.snapshot()),
+        new ProjectDataReader(access).build_manifest(project_path),
       ),
     ).not.toHaveProperty("sectionRevisions.analysis");
     expect(cache.prompts.readBlock()).toHaveProperty(
@@ -538,7 +538,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
           models: [{ id: "fake", threshold: { concurrency_limit: 1 } }],
         }),
       },
-      cache.languages,
+      cache.settings,
       { append: vi.fn() },
     );
     const handle = await service.start_current_project({

@@ -2,12 +2,7 @@ import { useRef, useState } from "react";
 import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
-import {
-  format_project_settings_aligned_toast,
-  type ProjectSettingsAlignmentSettings,
-  type ProjectSettingsAlignmentChangedFields,
-} from "@frontend/app/feedback/project-settings-alignment-feedback";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import type { RunProjectLoad } from "./use-project-load";
 import { read_project_version_confirmation, type ProjectOpenRequest } from "@shared/project-open";
 
@@ -15,10 +10,6 @@ type SelectedProject = { path: string; from_recent: boolean }; // 最近记录�
 type PendingConfirmation = SelectedProject & { target_app_version: string };
 type ProjectOpenPayload = {
   project?: { path?: string };
-  settings_alignment?: {
-    settings?: ProjectSettingsAlignmentSettings;
-    changed?: ProjectSettingsAlignmentChangedFields;
-  };
 };
 
 /** 工程打开随应用会话常驻，版本确认绑定本次路径。 */
@@ -56,7 +47,6 @@ export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
         target = { path: selected_path, from_recent: false };
       }
       const selected_project = target; // 加载闭包与失败确认使用同一次文件选择。
-      let alignment: ProjectOpenPayload["settings_alignment"];
       await run_project_load({
         message: t("project.open.loading_toast"),
         request: async () => {
@@ -68,19 +58,9 @@ export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
             "/api/session/project/open",
             request,
           );
-          alignment = response.settings_alignment;
           return response.project?.path ?? selected_project.path;
         },
       });
-      if (alignment)
-        push_toast(
-          "info",
-          format_project_settings_aligned_toast({
-            settings: alignment.settings ?? {},
-            changed_fields: alignment.changed ?? {},
-            t,
-          }),
-        );
     } catch (error) {
       if (target !== null && error instanceof DesktopApiError) {
         if (error.code === "project.newer_app_version") {

@@ -25,12 +25,10 @@ import type { ProjectItemPublicRecord } from "../../../domain/item";
 import { read_json_record, type JsonRecord } from "../../../domain/json";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import * as AppErrors from "../../../shared/error";
-import {
-  PROJECT_DATA_SECTIONS,
-  type ProjectDataSectionRevisions,
-} from "../../../shared/project-event";
+import { type ProjectDataSectionRevisions } from "../../../shared/project-event";
 import { NativeFs } from "../../../native/native-fs";
 import type { CacheReadPort } from "../../cache/cache-types";
+import { DEFAULT_PROJECT_SETTINGS } from "../../../domain/project-settings";
 import type { ProjectWriteStore } from "../../project/project-write-store";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import {
@@ -1463,7 +1461,7 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readdirSync(fixture.workspace_root)).toEqual(environment_files);
   });
 
-  it.each(PROJECT_DATA_SECTIONS)("%s revision 变化会替换旧快照", async (section) => {
+  it("条目修订变化时刷新快照并清空旧变更清单", async () => {
     const fixture = await create_fixture(temp_dir);
     await run_workspace(fixture);
     const change_file = path.join(
@@ -1471,7 +1469,7 @@ describe("AgentWorkspaceService", () => {
       AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
     );
     fs.writeFileSync(change_file, "pending");
-    fixture.snapshot.sectionRevisions[section] = 2;
+    fixture.snapshot.sectionRevisions.items = 2;
 
     await fixture.service.run(VALID_WORKSPACE_RUN, new AbortController().signal);
     expect(fs.readFileSync(change_file, "utf-8")).toBe("");
@@ -1483,6 +1481,7 @@ describe("AgentWorkspaceService", () => {
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     fixture.languages.target_language = "EN";
+    fixture.snapshot.sectionRevisions.project = 2;
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
     await expect(run_workspace(fixture)).rejects.toMatchObject({
@@ -1552,7 +1551,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       }),
     },
 
-    languages: { readBlock: () => ({ ...languages }) },
+    settings: { readBlock: () => ({ ...DEFAULT_PROJECT_SETTINGS, ...languages }) },
     readSectionRevisions: () => ({ ...snapshot.sectionRevisions }),
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
@@ -1635,7 +1634,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     originalWidth: 1,
     originalHeight: 1,
   }));
-  const read_meta = vi.fn(async () => ({}) as JsonRecord);
   const inspect_sources = vi.fn<ProjectContentService["inspect_sources"]>(async (sources) =>
     sources.map((source_path) => ({
       source_path,
@@ -1687,7 +1685,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     cache,
     proofreading: { query_warnings },
     database: {
-      get_all_meta: read_meta,
       read_asset_content,
       read_knowledge: async () => knowledge.stored,
     },
@@ -1723,7 +1720,6 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     knowledge,
     items,
     read_asset_content,
-    read_meta,
     inspect_sources,
     apply_file_changes,
     active_path: () =>

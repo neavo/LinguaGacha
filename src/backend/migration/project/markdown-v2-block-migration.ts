@@ -6,7 +6,6 @@ import {
 } from "../../file/markdown/md-v2-document";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
 import { build_translation_extras_from_items } from "../../project/project-write-state";
-import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
 import { replace_project_file_items } from "./project-file-item-replacement";
 
 const LEGACY_MARKDOWN_FILE_TYPE = "MD";
@@ -53,7 +52,7 @@ export class MarkdownV2BlockMigration {
         const meta = database.get_all_meta(project_path);
         database.upsert_meta_entries(project_path, {
           translation_extras: build_translation_extras_from_items({
-            progress: normalize_batch_translation_progress(meta["translation_extras"]),
+            progress: meta["translation_extras"],
             items: next_items.map((item) => create_item(item)),
           }) as JsonValue,
         });

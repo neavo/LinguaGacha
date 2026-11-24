@@ -1,7 +1,8 @@
 import { act, useEffect, useSyncExternalStore, type JSX } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_PROJECT_SETTINGS, type ProjectSettings } from "@domain/project-settings";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-provider";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
@@ -10,9 +11,16 @@ import { ProjectScopeContext } from "@frontend/app/navigation/project-scope-cont
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { ProjectStore } from "@frontend/app/state/project-store-registry";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 
 const mocks = vi.hoisted(() => ({
   leave: vi.fn<() => Promise<boolean>>(async () => true),
+  api: vi.fn(),
+  commit: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => ({ payload: await run() })),
+  toast: vi.fn(),
+  error_toast: vi.fn(),
+  runtime: { revision: 0, owner: null, projects: {} } as RuntimeActivitySnapshot,
 }));
 
 class TestResizeObserver implements ResizeObserver {
@@ -50,6 +58,20 @@ class TestResizeObserver implements ResizeObserver {
     }
   }
 }
+
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_fetch: mocks.api,
+}));
+
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_toast: mocks.toast,
+  push_error_toast: mocks.error_toast,
+}));
+
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useDesktopState: () => ({ commit_project_write: mocks.commit }),
+  useRuntimeSnapshot: () => mocks.runtime,
+}));
 
 vi.mock("@frontend/pages/agent-page/page", () => ({
   AgentPage: ({ tabHost }: { tabHost?: HTMLElement | null }) => {
@@ -147,16 +169,25 @@ function WorkspaceHarnessInner({ project }: { project: ProjectStore }): JSX.Elem
 function WorkspaceHarness({ project }: { project: ProjectStore }): JSX.Element {
   return (
     <LocaleProvider locale="zh-CN">
-      <PageLeaveProvider>
-        <WorkspaceHarnessInner project={project} />
-      </PageLeaveProvider>
+      <TooltipProvider delay={0}>
+        <PageLeaveProvider>
+          <WorkspaceHarnessInner project={project} />
+        </PageLeaveProvider>
+      </TooltipProvider>
     </LocaleProvider>
   );
 }
 
-describe("ProjectWorkspace 翻译功能面板", () => {
+describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
   let host: HTMLDivElement | null = null;
   let root: Root | null = null;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.leave.mockResolvedValue(true);
+    mocks.api.mockResolvedValue({ accepted: true, changes: [] });
+    mocks.runtime = { revision: 0, owner: null, projects: {} };
+  });
 
   afterEach(async () => {
     vi.useRealTimers();
@@ -165,15 +196,13 @@ describe("ProjectWorkspace 翻译功能面板", () => {
     host?.remove();
     host = null;
     root = null;
-    mocks.leave.mockReset();
-    mocks.leave.mockResolvedValue(true);
   });
 
-  function create_project(): ProjectStore {
+  function create_project(id = "project-1", settings: Partial<ProjectSettings> = {}): ProjectStore {
     return new ProjectStore({
-      projectId: "project-1",
-      path: "E:/demo.lg",
-      name: "demo.lg",
+      projectId: id,
+      path: `E:/${id}.lg`,
+      name: `${id}.lg`,
       loaded: true,
       file_count: 3,
       quality_rule_counts: {
@@ -182,15 +211,34 @@ describe("ProjectWorkspace 翻译功能面板", () => {
         pre_replacement: 4,
         post_replacement: 0,
       },
-      languages: null,
+      settings: {
+        ...DEFAULT_PROJECT_SETTINGS,
+        mtool_optimizer_enable: true,
+        skip_duplicate_source_text_enable: false,
+        ...settings,
+      },
     });
   }
 
   async function mount(project: ProjectStore): Promise<HTMLDivElement> {
-    host = document.body.appendChild(document.createElement("div"));
-    root = createRoot(host);
+    if (host === null) {
+      host = document.body.appendChild(document.createElement("div"));
+      root = createRoot(host);
+    }
     await act(async () => root?.render(<WorkspaceHarness project={project} />));
     return host;
+  }
+
+  function group_panel(container: HTMLElement, id: "workbench" | "quality"): HTMLElement {
+    return container.querySelector<HTMLElement>(
+      `.project-workspace__tools-panel[data-group="${id}"]`,
+    )!;
+  }
+
+  function group_trigger(container: HTMLElement, id: "workbench" | "quality"): HTMLButtonElement {
+    return group_panel(container, id).querySelector<HTMLButtonElement>(
+      ".project-workspace__tools-trigger",
+    )!;
   }
 
   function find_tool_item(container: HTMLElement, label: string): HTMLButtonElement {
@@ -199,199 +247,256 @@ describe("ProjectWorkspace 翻译功能面板", () => {
     )!;
   }
 
-  it("按指定顺序展示 8 个翻译功能，只为文件与 4 类规则表渲染含 0 的数值胶囊", async () => {
+  function dialog_button(
+    slot: "cancel" | "secondary-action" | "primary-action",
+  ): HTMLButtonElement {
+    return document.querySelector<HTMLButtonElement>(`[data-slot="alert-dialog-${slot}"]`)!;
+  }
+
+  it("按「工作台」与「翻译质量」分组呈现条目、计数胶囊、分割线和预过滤状态徽标", async () => {
     const container = await mount(create_project());
-    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
-    const drawer = container.querySelector<HTMLDivElement>(".project-workspace__tools-drawer")!;
-    const trigger = container.querySelector<HTMLButtonElement>(
-      ".project-workspace__tools-trigger",
-    )!;
+    const workbench = group_panel(container, "workbench");
+    const quality = group_panel(container, "quality");
 
-    expect(trigger.textContent).toBe("翻译功能");
-    expect(trigger.dataset.active).toBe("false");
-    expect(panel.dataset.expanded).toBe("false");
-    expect(drawer.hasAttribute("inert")).toBe(true);
+    expect(group_trigger(container, "workbench").textContent).toBe("工作台");
+    expect(group_trigger(container, "quality").textContent).toBe("翻译质量");
+    expect(workbench.querySelector(".project-workspace__tools-divider")).toBeNull();
+    expect(quality.querySelector(".project-workspace__tools-divider")).not.toBeNull();
 
-    await act(async () => trigger.click());
-    expect(panel.dataset.expanded).toBe("true");
-    expect(drawer.hasAttribute("inert")).toBe(false);
+    const read_items = (panel: HTMLElement) =>
+      [...panel.querySelectorAll<HTMLButtonElement>(".project-workspace__tool-item")].map(
+        (item) => {
+          const badge = item.querySelector<HTMLElement>('[data-slot="badge"]');
+          return {
+            label: item.querySelector(".project-workspace__tool-label")?.textContent,
+            badge: badge?.textContent ?? null,
+            tone: badge?.dataset.tone ?? null,
+          };
+        },
+      );
 
-    const items = [
-      ...container.querySelectorAll<HTMLButtonElement>(".project-workspace__tool-item"),
-    ].map((item) => ({
-      label: item.querySelector(".project-workspace__tool-label")?.textContent,
-      count: item.querySelector(".project-workspace__tool-count")?.textContent ?? null,
-    }));
-
-    expect(items).toEqual([
-      { label: "校对", count: null },
-      { label: "文件", count: "3" },
-      { label: "术语表", count: "12" },
-      { label: "文本保护", count: "0" },
-      { label: "译前替换", count: "4" },
-      { label: "译后替换", count: "0" },
-      { label: "工程知识", count: null },
-      { label: "自定义提示词", count: null },
+    expect(read_items(workbench)).toEqual([
+      { label: "校对", badge: null, tone: null },
+      { label: "文件", badge: "3", tone: "neutral" },
+    ]);
+    expect(read_items(quality)).toEqual([
+      { label: "术语表", badge: "12", tone: "neutral" },
+      { label: "文本保护", badge: "0", tone: "neutral" },
+      { label: "译前替换", badge: "4", tone: "neutral" },
+      { label: "译后替换", badge: "0", tone: "neutral" },
+      { label: "工程知识", badge: null, tone: null },
+      { label: "自定义提示词", badge: null, tone: null },
+      { label: "跳过重复原文", badge: "已禁用", tone: "neutral" },
+      { label: "MTool 优化器", badge: "已启用", tone: "brand" },
     ]);
   });
 
-  it("窄态悬停不展开，支持点击、外部点击、Esc 与窗口失焦收起菜单", async () => {
-    vi.useFakeTimers();
+  it("窄态双 Tab 互斥展开并支持外部点击、Esc 与失焦收起，激活态与关闭按钮只归属对应组", async () => {
     const container = await mount(create_project());
-    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
-    const trigger = container.querySelector<HTMLButtonElement>(
-      ".project-workspace__tools-trigger",
-    )!;
+    const workbench = group_panel(container, "workbench");
+    const quality = group_panel(container, "quality");
+    const workbench_trigger = group_trigger(container, "workbench");
+    const quality_trigger = group_trigger(container, "quality");
 
-    await act(async () => {
-      trigger.dispatchEvent(
-        new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }),
-      );
-      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
-      trigger.dispatchEvent(
-        new MouseEvent("mousemove", { bubbles: true, clientX: 12, clientY: 12 }),
-      );
-      vi.advanceTimersByTime(500);
-    });
-    expect(panel.dataset.expanded).toBe("false");
+    // 互斥展开。
+    await act(async () => workbench_trigger.click());
+    expect(workbench.dataset.expanded).toBe("true");
+    expect(quality.dataset.expanded).toBe("false");
 
-    // 点击展开并再次点击收起。
-    await act(async () => trigger.click());
-    expect(panel.dataset.expanded).toBe("true");
-    await act(async () => trigger.click());
-    expect(panel.dataset.expanded).toBe("false");
+    await act(async () => quality_trigger.click());
+    expect(workbench.dataset.expanded).toBe("false");
+    expect(quality.dataset.expanded).toBe("true");
 
     // 外部点击收起。
-    await act(async () => trigger.click());
     await act(async () => {
       document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     });
-    expect(panel.dataset.expanded).toBe("false");
+    expect(quality.dataset.expanded).toBe("false");
 
-    // Esc 收起并把焦点归还触发按钮。
-    await act(async () => trigger.click());
+    // Esc 收起并将焦点归还当前打开组的触发按钮。
+    await act(async () => quality_trigger.click());
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
-    expect(panel.dataset.expanded).toBe("false");
-    expect(document.activeElement).toBe(trigger);
+    expect(quality.dataset.expanded).toBe("false");
+    expect(document.activeElement).toBe(quality_trigger);
 
     // 窗口失焦收起。
-    await act(async () => trigger.click());
+    await act(async () => workbench_trigger.click());
     await act(async () => {
       window.dispatchEvent(new Event("blur"));
     });
-    expect(panel.dataset.expanded).toBe("false");
-  });
+    expect(workbench.dataset.expanded).toBe("false");
 
-  it("展开功能页后可再次点击标签切换其它功能，点击关闭或普通标签均经离页保存关闭", async () => {
-    const container = await mount(create_project());
-    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
-    const trigger = container.querySelector<HTMLButtonElement>(
-      ".project-workspace__tools-trigger",
-    )!;
-
-    // 首次选择术语表后菜单自动收起，头部切换为当前功能名与关闭按钮。
-    await act(async () => trigger.click());
+    // 选中翻译质量子页：仅翻译质量头显示当前子页与关闭按钮，工作台保持组名。
+    await act(async () => quality_trigger.click());
     await act(async () => find_tool_item(container, "术语表").click());
-
-    expect(panel.dataset.expanded).toBe("false");
-    expect(trigger.dataset.active).toBe("true");
-    expect(trigger.textContent).toBe("术语表");
-    expect(container.querySelector(".project-workspace__tools-close")).not.toBeNull();
+    expect(quality.dataset.expanded).toBe("false");
+    expect(quality_trigger.textContent).toBe("术语表");
+    expect(quality.querySelector(".project-workspace__tools-close")).not.toBeNull();
+    expect(workbench_trigger.textContent).toBe("工作台");
+    expect(workbench.querySelector(".project-workspace__tools-close")).toBeNull();
     expect(container.querySelector('[data-testid="page-glossary"]')).not.toBeNull();
 
-    // 再次点击标签展开并切换至校对页，当前项标记激活态。
-    await act(async () => trigger.click());
-    expect(find_tool_item(container, "术语表").hasAttribute("data-active")).toBe(true);
+    // 切换到工作台子页：工作台头接管激活态与关闭按钮，翻译质量恢复组名。
+    await act(async () => workbench_trigger.click());
     await act(async () => find_tool_item(container, "校对").click());
-
-    expect(trigger.textContent).toBe("校对");
-    expect(container.querySelector('[data-testid="page-glossary"]')).toBeNull();
+    expect(workbench_trigger.textContent).toBe("校对");
+    expect(workbench.querySelector(".project-workspace__tools-close")).not.toBeNull();
+    expect(quality_trigger.textContent).toBe("翻译质量");
+    expect(quality.querySelector(".project-workspace__tools-close")).toBeNull();
     expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
 
-    // 点击关闭按钮：离页保存失败时保留功能页，成功后关闭并恢复默认标题。
-    const close_button = container.querySelector<HTMLButtonElement>(
+    // 关闭按钮经离页保存生效。
+    const close_button = workbench.querySelector<HTMLButtonElement>(
       ".project-workspace__tools-close",
     )!;
     mocks.leave.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     await act(async () => close_button.click());
     expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
-    expect(trigger.textContent).toBe("校对");
 
     await act(async () => close_button.click());
     expect(container.querySelector('[data-testid="page-proofreading"]')).toBeNull();
-    expect(container.querySelector(".project-workspace__tools-close")).toBeNull();
-    expect(trigger.dataset.active).toBe("false");
-    expect(trigger.textContent).toBe("翻译功能");
-
-    // 再次打开功能页后，点击左侧普通对话标签同样经离页保存关闭功能页。
-    await act(async () => trigger.click());
-    await act(async () => find_tool_item(container, "文件").click());
-    expect(container.querySelector('[data-testid="page-files"]')).not.toBeNull();
-
-    const chat_tab = container.querySelector<HTMLButtonElement>('[data-testid="agent-chat-tab"]')!;
-    await act(async () => chat_tab.click());
-    expect(container.querySelector('[data-testid="page-files"]')).toBeNull();
-    expect(trigger.dataset.active).toBe("false");
-    expect(trigger.textContent).toBe("翻译功能");
+    expect(workbench_trigger.textContent).toBe("工作台");
   });
 
-  it("工作区宽度跨越 1280px 时原地常驻展开，缩窄回窄态后一并收起且不保留临时展开态", async () => {
+  it("工作区宽度跨越 1280px 时纵排双块常驻展开，缩窄回临界值以下时统一收起", async () => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     const container = await mount(create_project());
     const workspace = container.querySelector<HTMLDivElement>(".project-workspace")!;
-    const panel = container.querySelector<HTMLElement>(".project-workspace__tools-panel")!;
-    const drawer = container.querySelector<HTMLDivElement>(".project-workspace__tools-drawer")!;
+    const workbench = group_panel(container, "workbench");
+    const quality = group_panel(container, "quality");
 
     await act(async () => TestResizeObserver.emit(workspace, 1279));
     expect(workspace.dataset.toolsDocked).toBe("false");
-    expect(panel.dataset.expanded).toBe("false");
-    expect(drawer.hasAttribute("inert")).toBe(true);
-
-    // 窄态先点开浮层菜单，再拉宽跨越 1280px：同一面板保持展开落地为常驻卡片。
-    await act(async () =>
-      container.querySelector<HTMLButtonElement>(".project-workspace__tools-trigger")!.click(),
-    );
-    expect(panel.dataset.expanded).toBe("true");
+    expect(workbench.dataset.expanded).toBe("false");
+    expect(quality.dataset.expanded).toBe("false");
 
     await act(async () => TestResizeObserver.emit(workspace, 1280));
     expect(workspace.dataset.toolsDocked).toBe("true");
-    expect(panel.dataset.docked).toBe("true");
-    expect(panel.dataset.expanded).toBe("true");
-    expect(drawer.hasAttribute("inert")).toBe(false);
-    // 宽态下外部点击与窗口失焦不会收起常驻卡片。
+    expect(workbench.dataset.expanded).toBe("true");
+    expect(quality.dataset.expanded).toBe("true");
+
+    // 宽态下外部点击与失焦不收起常驻卡片。
     await act(async () => {
       document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       window.dispatchEvent(new Event("blur"));
     });
-    expect(panel.dataset.expanded).toBe("true");
+    expect(workbench.dataset.expanded).toBe("true");
+    expect(quality.dataset.expanded).toBe("true");
 
-    // 宽态切换功能页时面板保持常驻展开，上方标签继续保留当前功能名与关闭按钮并受离页保存保护。
+    // 宽态点击子页保持双块展开，仅所属组头显示当前子页与关闭按钮。
     await act(async () => find_tool_item(container, "术语表").click());
     expect(container.querySelector('[data-testid="page-glossary"]')).not.toBeNull();
-    expect(panel.dataset.expanded).toBe("true");
     expect(find_tool_item(container, "术语表").getAttribute("aria-current")).toBe("page");
-    expect(container.querySelector(".project-workspace__tools-label")?.textContent).toBe("术语表");
+    expect(quality.querySelector(".project-workspace__tools-label")?.textContent).toBe("术语表");
+    expect(workbench.querySelector(".project-workspace__tools-label")?.textContent).toBe("工作台");
 
-    const close_button = container.querySelector<HTMLButtonElement>(
-      ".project-workspace__tools-close",
-    )!;
-    mocks.leave.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    await act(async () => close_button.click());
-    expect(container.querySelector('[data-testid="page-glossary"]')).not.toBeNull();
-
-    await act(async () => close_button.click());
-    expect(container.querySelector('[data-testid="page-glossary"]')).toBeNull();
-    expect(container.querySelector(".project-workspace__tools-close")).toBeNull();
-    expect(container.querySelector(".project-workspace__tools-label")?.textContent).toBe(
-      "翻译功能",
-    );
-
-    // 缩窄回临界值以下：菜单一并向上收起，不会恢复此前窄态的临时展开态。
     await act(async () => TestResizeObserver.emit(workspace, 1279));
     expect(workspace.dataset.toolsDocked).toBe("false");
-    expect(panel.dataset.expanded).toBe("false");
-    expect(drawer.hasAttribute("inert")).toBe(true);
+    expect(workbench.dataset.expanded).toBe("false");
+    expect(quality.dataset.expanded).toBe("false");
+  });
+
+  it("预过滤设置弹出三按钮确认框：受当前工程运行占用约束、提交单字段并刷新徽标", async () => {
+    const project = create_project("project-1", {
+      mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: false,
+    });
+    const container = await mount(project);
+
+    // 先打开校对页，确认点击预过滤设置不会改变当前页面。
+    await act(async () => group_trigger(container, "workbench").click());
+    await act(async () => find_tool_item(container, "校对").click());
+    expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
+
+    // 打开 MTool 优化器确认框：禁用与启用按钮均可用（不按当前值禁用），点击当前同态直接关闭且不发起请求。
+    await act(async () => group_trigger(container, "quality").click());
+    await act(async () => find_tool_item(container, "MTool 优化器").click());
+    expect(group_panel(container, "quality").dataset.expanded).toBe("false");
+    expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
+
+    const dialog = document.querySelector('[data-slot="alert-dialog-content"]')!;
+    expect(dialog.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe("确认");
+    expect(dialog.querySelector(".project-prefilter-dialog__emphasis")?.textContent).toContain(
+      "40%",
+    );
+    expect(dialog.querySelector('[data-slot="alert-dialog-description"] br')).not.toBeNull();
+    expect(dialog_button("primary-action").disabled).toBe(false);
+    expect(dialog_button("secondary-action").disabled).toBe(false);
+
+    await act(async () => dialog_button("primary-action").click());
+    expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+    expect(mocks.api).not.toHaveBeenCalled();
+
+    // 重新打开后，当前工程 Agent 忙碌时双动作按钮同时禁用（不受其他工程状态影响）。
+    await act(async () => group_trigger(container, "quality").click());
+    await act(async () => find_tool_item(container, "MTool 优化器").click());
+    mocks.runtime = {
+      revision: 1,
+      owner: "agent",
+      projects: {
+        "project-1": { agent: true, batchTranslation: false, projectWrite: false },
+      },
+    };
+    await mount(project);
+    expect(dialog_button("primary-action").disabled).toBe(true);
+    expect(dialog_button("secondary-action").disabled).toBe(true);
+
+    // 恢复空闲后点击「禁用」，仅提交单字段并回读更新徽标。
+    mocks.runtime = {
+      revision: 2,
+      owner: null,
+      projects: {
+        "project-1": { agent: false, batchTranslation: false, projectWrite: false },
+      },
+    };
+    await mount(project);
+
+    let resolve_request!: (value: unknown) => void;
+    mocks.api.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolve_request = resolve;
+        }),
+    );
+    await act(async () => dialog_button("secondary-action").click());
+    expect(dialog_button("secondary-action").disabled).toBe(true);
+    expect(dialog_button("cancel").disabled).toBe(true);
+    expect(mocks.api).toHaveBeenCalledExactlyOnceWith("/api/project/settings/update", {
+      projectId: "project-1",
+      mtool_optimizer_enable: false,
+    });
+
+    project.snapshot = {
+      ...project.snapshot,
+      settings: {
+        ...project.snapshot.settings!,
+        mtool_optimizer_enable: false,
+      },
+    };
+    await act(async () => resolve_request({ accepted: true, changes: [] }));
+    await mount(project);
+
+    expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+    expect(mocks.toast).toHaveBeenCalledWith("info", expect.stringContaining("MTool 优化器"));
+    expect(
+      find_tool_item(container, "MTool 优化器").querySelector('[data-slot="badge"]')?.textContent,
+    ).toBe("已禁用");
+
+    // 跳过重复原文（已禁用）：提交失败时反馈错误并保留弹窗供重试。
+    await act(async () => group_trigger(container, "quality").click());
+    await act(async () => find_tool_item(container, "跳过重复原文").click());
+    expect(dialog_button("secondary-action").disabled).toBe(false);
+    expect(dialog_button("primary-action").disabled).toBe(false);
+
+    mocks.api.mockRejectedValueOnce(new Error("write failed"));
+    await act(async () => dialog_button("primary-action").click());
+    expect(mocks.error_toast).toHaveBeenCalledWith("保存失败 …", expect.any(Error));
+    expect(document.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
+
+    // 切换工程时自动关闭弹窗。
+    await mount(create_project("project-2"));
+    expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 });

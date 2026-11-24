@@ -29,10 +29,7 @@ import { adapt_project_change } from "./project-write-event-adapter";
 import { ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
 import { create_item } from "../../domain/item";
-import {
-  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
-  type ProjectLanguageSettings,
-} from "../../domain/project-settings";
+import { DEFAULT_PROJECT_SETTINGS, type ProjectSettings } from "../../domain/project-settings";
 
 type TestProjectDatabase = ProjectDatabase & {
   upsert_meta_entries: ReturnType<typeof vi.fn>;
@@ -350,7 +347,7 @@ describe("ProjectLifecycleService", () => {
         path: project_path,
         loaded: true,
         file_count: 0,
-        languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+        settings: DEFAULT_PROJECT_SETTINGS,
       },
     });
 
@@ -394,7 +391,6 @@ describe("ProjectLifecycleService", () => {
       });
       const service = create_service({
         database,
-        config: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: enabled },
         project_event_handler: ({ snapshot }) => {
           expect(snapshot?.items.map((item) => item.status)).toEqual([
             "NONE",
@@ -419,76 +415,43 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("打开工程保留项目语言，只在打开事务内对齐应用预过滤开关", async () => {
-    const project_path = write_file(path.join(create_temp_dir(), "aligned.lg"));
+  it("打开工程以 meta 和旧预过滤记录为准，不改写设置或重跑语言预过滤", async () => {
+    const project_path = write_file(path.join(create_temp_dir(), "existing.lg"));
     const database = create_database({
       meta: {
-        source_language: "EN",
         target_language: "DE",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: true,
+        mtool_optimizer_enable: false,
+        prefilter_config: {
+          source_language: "EN",
+          mtool_optimizer_enable: true,
+          skip_duplicate_source_text_enable: false,
+        },
       },
       asset_records: [{ path: "script.txt", sort_order: 0, file_type: "TXT" }],
       items: [
         create_item({ id: 1, file_path: "script.txt", file_type: "TXT", src: "こんにちは" }),
       ] as unknown as MutableJsonRecord[],
     });
-    const service = create_service({ database, config: { mtool_optimizer_enable: false } });
+    const service = create_service({
+      database,
+      config: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: true },
+    });
 
     await expect(service.load_project({ path: project_path })).resolves.toEqual({
       project: {
         path: project_path,
         loaded: true,
-        languages: { source_language: "EN", target_language: "DE" },
-        file_count: 1,
-      },
-      settings_alignment: {
-        settings: { mtool_optimizer_enable: false, skip_duplicate_source_text_enable: true },
-        changed: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: false },
-      },
-    });
-    await expect(service.get_project_snapshot()).resolves.toMatchObject({
-      project: { file_count: 1 },
-    });
-    const meta_writes = vi.mocked(database.upsert_meta_entries).mock.calls.at(-1)?.[1];
-    expect(meta_writes).toMatchObject({
-      mtool_optimizer_enable: false,
-      prefilter_config: { source_language: "EN", mtool_optimizer_enable: false },
-    });
-    expect(meta_writes).not.toHaveProperty("source_language");
-    expect(meta_writes).not.toHaveProperty("target_language");
-    // 英文源语言下日文原文被预过滤，打开事务只回写状态变化的条目。
-    expect(database.patch_item_translation_fields).toHaveBeenCalledWith(project_path, [
-      expect.objectContaining({
-        item_id: 1,
-        next: expect.objectContaining({ status: "LANGUAGE_SKIPPED" }),
-      }),
-    ]);
-  });
-
-  it("预过滤开关一致时打开工程不对齐也不改写设置", async () => {
-    const project_path = write_file(path.join(create_temp_dir(), "same.lg"));
-    const database = create_database({
-      meta: {
-        target_language: "KO",
-        prefilter_config: {
+        settings: {
           source_language: "EN",
-          mtool_optimizer_enable: true,
-          skip_duplicate_source_text_enable: true,
+          target_language: "DE",
+          mtool_optimizer_enable: false,
+          skip_duplicate_source_text_enable: false,
         },
-      },
-    });
-    const service = create_service({ database });
-
-    await expect(service.load_project({ path: project_path })).resolves.toEqual({
-      project: {
-        path: project_path,
-        loaded: true,
-        languages: { source_language: "EN", target_language: "KO" },
-        file_count: 0,
+        file_count: 1,
       },
     });
     expect(database.upsert_meta_entries).not.toHaveBeenCalled();
+    expect(database.patch_item_translation_fields).not.toHaveBeenCalled();
   });
 
   it("连续打开语言不同的工程时各自保留项目语言", async () => {
@@ -515,10 +478,10 @@ describe("ProjectLifecycleService", () => {
         [project_a, { source_language: "JA", target_language: "EN" }],
       ] as const) {
         await expect(service.load_project({ path: project_path })).resolves.toMatchObject({
-          project: { languages },
+          project: { settings: languages },
         });
         await expect(service.get_project_snapshot()).resolves.toMatchObject({
-          project: { path: project_path, languages },
+          project: { path: project_path, settings: languages },
         });
       }
     } finally {
@@ -548,10 +511,8 @@ describe("ProjectLifecycleService", () => {
       app_root,
       database,
       config: {
-        source_language: "JA",
-        target_language: "ZH",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: true,
+        mtool_optimizer_enable: false,
+        skip_duplicate_source_text_enable: false,
       },
     });
 
@@ -563,7 +524,7 @@ describe("ProjectLifecycleService", () => {
           languages: { source_language: "JA", target_language: "ZH" },
         }),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
+        project: { path: project_path, loaded: true },
       });
 
       expect(await database.get_all_asset_records(project_path)).toEqual([
@@ -580,11 +541,8 @@ describe("ProjectLifecycleService", () => {
       expect(await database.get_all_meta(project_path)).toMatchObject({
         source_language: "JA",
         target_language: "ZH",
-        prefilter_config: {
-          source_language: "JA",
-          mtool_optimizer_enable: true,
-          skip_duplicate_source_text_enable: true,
-        },
+        mtool_optimizer_enable: true,
+        skip_duplicate_source_text_enable: true,
       });
     } finally {
       await database.close();
@@ -614,7 +572,6 @@ describe("ProjectLifecycleService", () => {
         project: {
           path: resolved_project_path,
           loaded: true,
-          languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS,
         },
       });
 
@@ -653,7 +610,6 @@ describe("ProjectLifecycleService", () => {
         project: {
           path: resolved_project_path,
           loaded: true,
-          languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS,
         },
       });
 
@@ -699,7 +655,7 @@ describe("ProjectLifecycleService", () => {
           path: project_path,
         }),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
+        project: { path: project_path, loaded: true },
       });
 
       expect(await database.get_rules(project_path, "glossary")).toEqual([
@@ -753,7 +709,7 @@ describe("ProjectLifecycleService", () => {
           path: project_path,
         }),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
+        project: { path: project_path, loaded: true },
       });
 
       expect(await database.get_all_meta(project_path)).toMatchObject({
@@ -818,7 +774,7 @@ describe("ProjectLifecycleService", () => {
           path: project_path,
         }),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true, languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS },
+        project: { path: project_path, loaded: true },
         source_operation: { saved_assets: kind === "json" ? 2 : 1, directory_changes: [] },
       });
 
@@ -1136,7 +1092,7 @@ describe("ProjectLifecycleService", () => {
   }) {
     const app_root = options.app_root ?? create_temp_dir();
     const project_event_handler = options.project_event_handler ?? vi.fn();
-    let languages: ProjectLanguageSettings = DEFAULT_PROJECT_LANGUAGE_SETTINGS;
+    let settings: ProjectSettings = DEFAULT_PROJECT_SETTINGS;
     const files = new FileCache();
     const session = options.session_state ?? create_session_state();
     const service = new ProjectLifecycleService(
@@ -1148,7 +1104,7 @@ describe("ProjectLifecycleService", () => {
     );
     const install = async (projectPath: string, snapshot: ProjectDataSnapshot) => {
       files.replace(snapshot.files);
-      languages = snapshot.languages;
+      settings = snapshot.settings;
       project_event_handler({ projectPath, snapshot });
       await session.mark_loaded(projectPath);
       return {
@@ -1156,7 +1112,7 @@ describe("ProjectLifecycleService", () => {
           path: projectPath,
           loaded: true,
           file_count: files.readFileEntries().length,
-          languages,
+          settings,
         },
       };
     };
@@ -1169,16 +1125,13 @@ describe("ProjectLifecycleService", () => {
           path: session.snapshot().projectPath,
           loaded: session.snapshot().loaded,
           file_count: files.readFileEntries().length,
-          languages,
+          settings,
         },
       }),
       load_project: async (body: MutableJsonRecord) => {
         const projectPath = String(body.path);
-        const result = await service.load_project(projectPath, body.confirmed_target_app_version);
-        const installed = await install(projectPath, result.snapshot);
-        return result.alignment === null
-          ? installed
-          : { ...installed, settings_alignment: result.alignment };
+        const snapshot = await service.load_project(projectPath, body.confirmed_target_app_version);
+        return await install(projectPath, snapshot);
       },
       create_project_commit: async (body: MutableJsonRecord, before_game?: () => void) => {
         const result = await service.create_project_commit(
@@ -1263,8 +1216,6 @@ describe("ProjectLifecycleService", () => {
       read_app_language: () => config["app_language"] ?? "ZH",
       read_setting: vi.fn(() => ({
         app_language: "ZH",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: true,
         ...config,
       })),
     } as unknown as AppSettingService;

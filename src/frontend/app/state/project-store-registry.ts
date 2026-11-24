@@ -8,7 +8,7 @@ import {
 import type { ProjectTranslationStats } from "@shared/project-translation-stats";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { is_json_record } from "@domain/json";
-import { read_project_language_settings } from "@domain/project-settings";
+import { read_project_settings } from "@domain/project-settings";
 import { read_batch_task_snapshot } from "@shared/batch-task";
 import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
@@ -173,9 +173,7 @@ export class ProjectStoreRegistry {
       loaded: true,
       file_count: typeof project.file_count === "number" ? project.file_count : 0,
       quality_rule_counts: read_quality_rule_counts(project.quality_rule_counts),
-      languages: is_json_record(project.languages)
-        ? read_project_language_settings(project.languages)
-        : null,
+      settings: is_json_record(project.settings) ? read_project_settings(project.settings) : null,
     };
     const previous = this.stores.get(snapshot.projectId);
     if (previous !== undefined) {

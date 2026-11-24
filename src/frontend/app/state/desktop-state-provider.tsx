@@ -41,7 +41,7 @@ import {
   type SettingsSnapshotPayload,
 } from "./desktop-state-context";
 
-const EMPTY_PROJECT: ProjectSnapshot = { path: "", loaded: false, file_count: 0, languages: null };
+const EMPTY_PROJECT: ProjectSnapshot = { path: "", loaded: false, file_count: 0, settings: null };
 
 /** 全局状态和工程注册表共用一次连接，工程事件永远发给原工程。 */
 export function DesktopStateProvider({ children }: { children: ReactNode }): JSX.Element {

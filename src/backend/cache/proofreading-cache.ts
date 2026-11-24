@@ -341,7 +341,7 @@ export class ProofreadingCache {
     if (snapshot.projectPath === "") {
       throw new AppErrors.AppError("project.not_loaded");
     }
-    const languages = this.cache.languages.readBlock();
+    const languages = this.cache.settings.readBlock();
     const processingConfig = normalize_text_processing_config({
       source_language: languages.source_language,
       target_language: languages.target_language,

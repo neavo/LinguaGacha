@@ -55,16 +55,13 @@ it("关闭取消在途工程写入，并等真实写入收尾", async () => {
   });
 });
 
-it("全局模型测试不占用工程，实验室同步要求所有工程空闲", async () => {
+it("全局模型测试和工程运行可以同时占用各自槽位", async () => {
   const global = new GlobalOperationGate(() => !project.busy);
   const project = new ProjectOperationGate((owner) => global.check_project(owner));
   const agent = project.begin_runtime("agent");
   const test = global.begin_runtime("model_test");
   expect(global.modelTest).toBe(true);
-  await expect(global.run_laboratory(async () => {})).rejects.toMatchObject({
-    code: "runtime.busy",
-  });
+  await expect(project.run_agent_project_write(() => "saved")).resolves.toBe("saved");
   project.finish_runtime(agent);
-  await expect(global.run_laboratory(async () => "saved")).resolves.toBe("saved");
   global.finish_runtime(test);
 });

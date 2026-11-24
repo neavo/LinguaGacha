@@ -7,7 +7,6 @@ import { AgentPage } from "@frontend/pages/agent-page/page";
 import { CustomPromptPage } from "@frontend/pages/custom-prompt-page/page";
 import { GameFontPage } from "@frontend/pages/game-font-page/page";
 import { GlossaryPage } from "@frontend/pages/glossary-page/page";
-import { LaboratoryPage } from "@frontend/pages/laboratory-page/page";
 import { ModelPage } from "@frontend/pages/model-page/page";
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
 import { TextPreservePage } from "@frontend/pages/text-preserve-page/page";
@@ -71,11 +70,6 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
   "custom-prompt": {
     component: CustomPromptPage,
     title_key: "custom_prompt_page.title",
-  },
-
-  laboratory: {
-    component: LaboratoryPage,
-    title_key: "laboratory_page.title",
   },
   toolbox: {
     component: ToolboxPage,

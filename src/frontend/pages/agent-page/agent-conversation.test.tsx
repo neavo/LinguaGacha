@@ -4,7 +4,12 @@ import {
 } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 const project_state = vi.hoisted(() => ({
-  languages: { source_language: "JA", target_language: "ZH" },
+  settings: {
+    source_language: "JA",
+    target_language: "ZH",
+    mtool_optimizer_enable: true,
+    skip_duplicate_source_text_enable: true,
+  },
 }));
 import { AgentTimelineStore } from "@frontend/app/session/agent/agent-timeline-store";
 vi.mock("./use-agent-mention-files", () => ({

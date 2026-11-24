@@ -118,7 +118,6 @@ export class GlobalOperationGate {
   private model_test: RuntimeLease | null = null;
   private auth_write = false;
   private skill_write = false;
-  private settings_write = false;
   private lifecycle: Promise<unknown> = Promise.resolve();
 
   constructor(
@@ -137,11 +136,7 @@ export class GlobalOperationGate {
 
   /** 应用级写入只阻止会消费相关事实的新工程操作。 */
   public check_project(owner: ProjectOperation): void {
-    if (
-      this.settings_write ||
-      (owner !== "write" && this.auth_write) ||
-      (owner === "agent" && this.skill_write)
-    )
+    if ((owner !== "write" && this.auth_write) || (owner === "agent" && this.skill_write))
       throw new AppError("runtime.busy");
   }
 
@@ -182,7 +177,7 @@ export class GlobalOperationGate {
     }
   }
 
-  /** 只有磁盘工程生命周期和实验室同步在此串行，工程日常操作不经过它。 */
+  /** 串行处理磁盘工程的生命周期操作。 */
   public async run_lifecycle<T>(operation: (signal: AbortSignal) => T | Promise<T>): Promise<T> {
     const next = this.lifecycle.then(async () => {
       this.lifetime.signal.throwIfAborted();
@@ -190,19 +185,6 @@ export class GlobalOperationGate {
     });
     this.lifecycle = next.catch(() => {});
     return await next;
-  }
-
-  /** 同步多个工程设置期间封住新工程操作。 */
-  public run_laboratory<T>(operation: () => Promise<T>): Promise<T> {
-    return this.run_lifecycle(async () => {
-      if (!this.all_projects_idle()) throw new AppError("runtime.busy");
-      this.settings_write = true;
-      try {
-        return await operation();
-      } finally {
-        this.settings_write = false;
-      }
-    });
   }
 
   public async stop(): Promise<void> {

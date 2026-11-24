@@ -10,7 +10,6 @@ import { pt_br_app } from "./app";
 import { pt_br_function_settings_page } from "./function-settings-page";
 import { pt_br_custom_prompt_page } from "./custom-prompt-page";
 import { pt_br_glossary_page } from "./glossary-page";
-import { pt_br_laboratory_page } from "./laboratory-page";
 import { pt_br_log_window_page } from "./log-window-page";
 import { pt_br_model_page } from "./model-page";
 import { pt_br_post_translation_replacement_page } from "./post-translation-replacement-page";
@@ -35,7 +34,6 @@ export const pt_br_messages = {
   function_settings_page: pt_br_function_settings_page,
   custom_prompt_page: pt_br_custom_prompt_page,
   glossary_page: pt_br_glossary_page,
-  laboratory_page: pt_br_laboratory_page,
   toolbox_page: pt_br_toolbox_page,
   game_font_page: pt_br_game_font_page,
   translation_transfer_page: pt_br_translation_transfer_page,

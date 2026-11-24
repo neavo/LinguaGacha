@@ -32,7 +32,7 @@ import {
   is_task_progress_status,
   normalize_batch_translation_progress,
 } from "../../domain/batch-translation";
-import { read_project_prefilter_settings } from "../../domain/project-settings";
+import { read_project_settings } from "../../domain/project-settings";
 
 import type {
   ProjectDataSection,
@@ -1199,9 +1199,9 @@ export class ProjectWriteStore {
     });
   }
 
-  /** 项目 meta 优先于旧 prefilter 镜像，读取当前重复过滤设置。 */
+  /** 事务内读取重复过滤开关，与同次条目更新共用工程事实。 */
   private is_duplicate_filter_enabled(meta: JsonRecord): boolean {
-    return read_project_prefilter_settings(meta).skip_duplicate_source_text_enable;
+    return read_project_settings(meta).skip_duplicate_source_text_enable;
   }
 
   /** 状态和译名不参与质量文本统计，正文实际变化只影响译后规则。 */

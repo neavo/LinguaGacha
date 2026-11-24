@@ -42,10 +42,7 @@ import {
   type QualityRuleEntry,
   type QualityRuleKind,
 } from "../../../domain/quality";
-import {
-  read_project_prefilter_settings,
-  type ProjectLanguageSettings,
-} from "../../../domain/project-settings";
+import { type ProjectLanguageSettings } from "../../../domain/project-settings";
 import * as AppErrors from "../../../shared/error";
 import type { AgentPendingWriteSummary, AgentWorkspaceLinkResult } from "../../../shared/agent";
 import {
@@ -191,7 +188,7 @@ export class AgentWorkspaceService {
       projectPath: string;
       cache: CacheReadPort;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
-      database: Pick<ProjectDatabase, "get_all_meta" | "read_asset_content" | "read_knowledge">;
+      database: Pick<ProjectDatabase, "read_asset_content" | "read_knowledge">;
       knowledge: Pick<ProjectKnowledgeService, "read">; // 投影与知识页共用补位模板
       runtimeGate: Pick<ProjectOperationGate, "run_agent_project_write">;
       files: Pick<ProjectContentService, "inspect_sources" | "apply_file_changes">;
@@ -461,8 +458,9 @@ export class AgentWorkspaceService {
   /** 工作区工具按需建立完整只读快照和空 change 文件。 */
   private async create_snapshot_locked(): Promise<void> {
     const project_path = this.options.projectPath;
-    const revisions = pick_workspace_revisions(this.options.cache.readSectionRevisions());
-    const language = this.options.cache.languages.readBlock();
+    const revisions = this.options.cache.readSectionRevisions();
+    const { source_language, target_language } = this.options.cache.settings.readBlock();
+    const language = { source_language, target_language };
     const baseline = { revisions, language };
     const current_items = [...this.options.cache.items.readItems()];
     const snapshot_files = this.options.cache.files
@@ -607,7 +605,7 @@ export class AgentWorkspaceService {
         const snapshot = this.require_active();
         await this.ensure_sources({
           signal,
-          filesRevision: read_json_integer(snapshot.revisions.files, 0),
+          filesRevision: snapshot.revisions.files ?? 0,
           files: this.options.cache.files
             .readFileEntries()
             .map((entry) => ({ file_path: entry.rel_path, file_type: entry.file_type })),
@@ -770,7 +768,7 @@ export class AgentWorkspaceService {
             : {},
           duplicateFilterEnabled:
             parsed.batch.items.length > 0 &&
-            (await this.read_duplicate_filter_enabled(projectPath)),
+            this.options.cache.settings.readBlock().skip_duplicate_source_text_enable,
         };
         preview = resolve_agent_workspace_writes({ batch: parsed.batch, current });
         all_rejected = normalize_workspace_rejections(
@@ -952,28 +950,19 @@ export class AgentWorkspaceService {
 
   /** 对象指纹可处理内容漂移，翻译方向变化需要重新准备整批变更。 */
   private has_same_language(active: ActiveAgentWorkspace): boolean {
-    const language = this.options.cache.languages.readBlock();
+    const language = this.options.cache.settings.readBlock();
     return (
       language.source_language === active.language.source_language &&
       language.target_language === active.language.target_language
     );
   }
 
-  /** 异步准备后核对修订，确保磁盘快照来自同一批工程事实。 */
+  /** 工程修订涵盖设置变更，异步准备后按修订验收整份快照。 */
   private is_snapshot_fresh(active: ActiveAgentWorkspace): boolean {
     const revisions = this.options.cache.readSectionRevisions();
-    return (
-      this.has_same_language(active) &&
-      PROJECT_DATA_SECTIONS.every(
-        (section) => (revisions[section] ?? 0) === (active.revisions[section] ?? 0),
-      )
+    return PROJECT_DATA_SECTIONS.every(
+      (section) => (revisions[section] ?? 0) === (active.revisions[section] ?? 0),
     );
-  }
-
-  /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
-  private async read_duplicate_filter_enabled(project_path: string): Promise<boolean> {
-    const meta = await this.options.database.get_all_meta(project_path);
-    return read_project_prefilter_settings(meta).skip_duplicate_source_text_enable;
   }
 
   /** apply 仍要求已有脚本准备出的活动快照。 */
@@ -1301,21 +1290,12 @@ function all_change_paths(): string[] {
   );
 }
 
-/** 建立 snapshot 时复制全部数据分区修订，隔离 cache 返回的可变引用。 */
-function pick_workspace_revisions(
-  revisions: ProjectDataSectionRevisions,
-): ProjectDataSectionRevisions {
-  return Object.fromEntries(
-    PROJECT_DATA_SECTIONS.map((section) => [section, read_json_integer(revisions[section], 0)]),
-  );
-}
-
 /** apply 回执只暴露本工具可能改变的 section。 */
 function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecord {
   return Object.fromEntries(
     (["items", "proofreading", "quality", "prompts", "knowledge"] as const).map((section) => [
       section,
-      read_json_integer(revisions[section], 0),
+      revisions[section] ?? 0,
     ]),
   );
 }

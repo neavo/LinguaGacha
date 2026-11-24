@@ -278,12 +278,12 @@ describe("register_api_routes", () => {
     expect(fixture.get_default_project_name).toHaveBeenCalledWith(request);
   });
 
-  it("设置更新只调用组合根提供的受保护写入口", () => {
+  it("应用设置响应提供快照与空工程回执", () => {
     const fixture = create_route_fixture();
 
     expect(
       read_post_handler(fixture.post_json, "/api/settings/update")({ app_language: "ZH" }),
-    ).toEqual({ settings: { app_language: "ZH" } });
+    ).toEqual({ settings: { app_language: "ZH" }, accepted: true, changes: [] });
     expect(fixture.update_settings).toHaveBeenCalledWith({ app_language: "ZH" });
   });
 
@@ -364,7 +364,7 @@ function create_route_fixture() {
   } as unknown as AgentService;
   const services = {
     modelCatalog: { get_snapshot: () => catalog_snapshot },
-    app: { metadata: {}, settings: {}, updateSettings: update_settings },
+    app: { metadata: {}, settings: { update_app_settings: update_settings } },
     lifecycle: { summarize_source_files, get_default_project_name },
     projects: {
       require: (_projectId: string) => ({

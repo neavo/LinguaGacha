@@ -15,7 +15,6 @@ export type RouteId =
   | "skills"
   | "project-knowledge"
   | "custom-prompt"
-  | "laboratory"
   | "toolbox"
   | "game-font"
   | "translation-transfer";

@@ -61,8 +61,6 @@ export const SETTING_SNAPSHOT_SCHEMA = Type.Object(
       maximum: CONTEXT_LINES_THRESHOLD_MAX,
     }), // 参考后文按文本条目计数。
     prompt_enhancement_enable: Type.Boolean(), // 翻译提示词增强开关。
-    mtool_optimizer_enable: Type.Boolean(), // MTool 文本预过滤优化开关。
-    skip_duplicate_source_text_enable: Type.Boolean(), // 重复来源条目的过滤开关。
     glossary_default_preset: Type.String(), // 术语表默认预设标识。
     text_preserve_default_preset: Type.String(), // 文本保护默认预设标识。
     pre_translation_replacement_default_preset: Type.String(), // 翻译前替换默认预设标识。
@@ -91,8 +89,6 @@ export const DEFAULT_SETTING: SettingSnapshot & JsonRecord = {
   preceding_lines_threshold: 0,
   following_lines_threshold: 0,
   prompt_enhancement_enable: true,
-  mtool_optimizer_enable: true,
-  skip_duplicate_source_text_enable: true,
   glossary_default_preset: "",
   text_preserve_default_preset: "",
   pre_translation_replacement_default_preset: "",

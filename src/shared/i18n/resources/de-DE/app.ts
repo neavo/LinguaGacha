@@ -102,10 +102,16 @@ export const de_de_app = {
     description:
       "Dieses Fenster wurde in die geschützte Ansicht gewechselt, und die Fehlerdetails wurden in die Protokolle geschrieben …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool-Optimierer",
-      skip_duplicate_source_text_enable: "Doppelten Ausgangstext überspringen",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool-Optimierer",
+      description:
+        "Für MTool-Text <emphasis>reduziert dies die Übersetzungszeit und Token um bis zu 40%</emphasis>.\nStandardmäßig aktiviert.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "Doppelten Ausgangstext überspringen",
+      description:
+        "Einträge mit identischem Text im gesamten Projekt teilen <emphasis>eine Übersetzung</emphasis>.\nStandardmäßig aktiviert.",
     },
   },
   close_confirm: {
@@ -176,7 +182,8 @@ export const de_de_app = {
     projects: "Projekte",
     projects_empty: "Keine Projekte",
     skills: "Skills",
-    translation_tools: "Übersetzungsfunktionen",
+    workbench: "Arbeitsbereich",
+    quality: "Übersetzungsqualität",
     more: "Mehr",
     close_chat: "Unterhaltung schließen",
     close_chat_confirm: "Unterhaltung wirklich schließen …?",

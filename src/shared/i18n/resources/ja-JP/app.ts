@@ -99,10 +99,16 @@ export const ja_jp_app = {
     description:
       "このウィンドウは保護画面に切り替わりました。エラーの詳細はログに記録されています …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "MTool オプティマイザー",
-      skip_duplicate_source_text_enable: "重複する原文をスキップ",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "MTool オプティマイザー",
+      description:
+        "MTool のテキスト翻訳で、<emphasis>翻訳時間と Token 消費を最大 40% 削減できます</emphasis>。\n既定で有効です。",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "重複する原文をスキップ",
+      description:
+        "プロジェクト全体でテキストが同じ項目は一度だけ翻訳し、<emphasis>訳文を再利用</emphasis>します。\n既定で有効です。",
     },
   },
   close_confirm: {
@@ -172,7 +178,8 @@ export const ja_jp_app = {
     projects: "プロジェクト",
     projects_empty: "プロジェクトはありません",
     skills: "スキル",
-    translation_tools: "翻訳機能",
+    workbench: "ワークベンチ",
+    quality: "翻訳品質",
     more: "その他",
     close_chat: "会話を閉じる",
     close_chat_confirm: "会話を閉じますか …?",

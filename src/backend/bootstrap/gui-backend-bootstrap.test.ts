@@ -29,6 +29,54 @@ describe("GuiBackendBootstrap 集成", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it("工程设置写入只更新目标工程，快照、manifest 和重新打开都返回已保存设置", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-project-settings-"));
+    const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+    try {
+      const { apiBaseUrl } = await bootstrap.start();
+      const post = async (route: string, body: object) => {
+        const response = await fetch(apiBaseUrl + route, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json();
+        expect(payload).toMatchObject({ ok: true });
+        return payload.data;
+      };
+      const first_path = path.join(temp.path, "first.lg");
+      const { project: first } = await post("/api/session/project/create", {
+        path: first_path,
+        source_paths: [],
+        languages: { target_language: "EN" },
+      });
+      const { project: second } = await post("/api/session/project/create", {
+        path: path.join(temp.path, "second.lg"),
+        source_paths: [],
+      });
+      const scope = { projectId: first.projectId };
+      const patch = { mtool_optimizer_enable: false };
+      const ack = await post("/api/project/settings/update", { ...scope, ...patch });
+      expect(ack).toMatchObject({
+        accepted: true,
+        changes: [{ ...scope, updatedSections: ["project", "items"] }],
+      });
+      const settings = { ...first.settings, ...patch };
+      for (const route of ["/api/session/project/snapshot", "/api/session/project/manifest"]) {
+        expect(await post(route, scope)).toMatchObject({ project: { settings } });
+      }
+      expect(
+        await post("/api/session/project/snapshot", { projectId: second.projectId }),
+      ).toMatchObject({ project: { settings: { mtool_optimizer_enable: true } } });
+      await post("/api/session/project/close", scope);
+      const reopened = await post("/api/session/project/open", { path: first_path });
+      expect(reopened).toMatchObject({ project: { settings } });
+      expect(reopened).not.toHaveProperty("settings_alignment");
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+
   it("工程副本隔离工作区，重置更换对话身份，关闭重开保留新对话", async () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-multi-project-"));
     const bootstrap = new GuiBackendBootstrap(create_options(temp.path));

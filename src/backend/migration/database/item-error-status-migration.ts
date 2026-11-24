@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
 import { is_item_status } from "../../../domain/item";
-import { read_project_prefilter_settings } from "../../../domain/project-settings";
+import { read_project_settings } from "../../../domain/project-settings";
 import {
   coordinate_project_duplicate_statuses,
   type ProjectDuplicateItem,
@@ -42,7 +42,7 @@ export function run_item_error_status_migration(db: DatabaseSync): void {
   if (items.length === 0 && meta["translation_extras"] === undefined) return;
   const changes = coordinate_project_duplicate_statuses(
     items,
-    read_project_prefilter_settings(meta).skip_duplicate_source_text_enable,
+    read_project_settings(meta).skip_duplicate_source_text_enable,
   );
   const statuses = new Map(changes.map(({ item_id, status }) => [item_id, status]));
   const update = db.prepare("UPDATE items SET data = json_set(data, '$.status', ?) WHERE id = ?");

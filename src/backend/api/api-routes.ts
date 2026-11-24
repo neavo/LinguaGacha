@@ -7,6 +7,7 @@ import { AppError } from "../../shared/error";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
+import type { SettingsUpdateResponse } from "../../shared/settings";
 import type { ApiPostJsonRoute, ApiRequestRoute } from "./api-request";
 import { ok } from "./api-types";
 
@@ -311,7 +312,11 @@ export function register_api_routes(context: ApiRouteContext): void {
 
   const settings = services.app.settings;
   context.postJson("/api/settings/app", () => settings.get_app_settings());
-  context.postJson("/api/settings/update", (body) => services.app.updateSettings(body));
+  context.postJson("/api/settings/update", (body): SettingsUpdateResponse => ({
+    ...services.app.settings.update_app_settings(body),
+    accepted: true,
+    changes: [],
+  }));
   context.postJson("/api/settings/recent-projects/add", (body) =>
     settings.add_recent_project(body),
   );

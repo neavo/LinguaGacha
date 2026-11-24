@@ -1,67 +1,107 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type RefObject } from "react";
 import {
+  BadgeCheck,
   BetweenVerticalEnd,
   BetweenVerticalStart,
   BookA,
   BookOpenCheck,
   Brain,
   ChevronDown,
+  CopyMinus,
   FilePenLine,
   LayoutDashboard,
   LayoutGrid,
   ShieldCheck,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
-import { useI18n } from "@frontend/app/locale/locale-context";
+import {
+  DEFAULT_PROJECT_SETTINGS,
+  type ProjectPrefilterSettingKey,
+  type ProjectSettings,
+} from "@domain/project-settings";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
-import type { RouteId } from "@frontend/app/navigation/types";
 import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
+import type { RouteId } from "@frontend/app/navigation/types";
 import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
-import { AgentPage } from "@frontend/pages/agent-page/page";
 import type { OpenProjectSnapshot, ProjectStore } from "@frontend/app/state/project-store-registry";
+import { AgentPage } from "@frontend/pages/agent-page/page";
 import { Badge } from "@frontend/shadcn/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
+import { ProjectPrefilterSettingDialog } from "./project-prefilter-setting-dialog";
 import "@frontend/widgets/inline-action-button.css";
 import "./project-workspace.css";
 
-// 工作区宽于该阈值时将右侧菜单常驻展开为 240px 功能卡片，同时保留不少于 1024px 的主内容基线宽度。
+// 工作区宽于该阈值时将右侧双功能块常驻纵排为 240px 卡片，同时保留不少于 1024px 的主内容基线宽度。
 const TOOLS_DOCK_MIN_WIDTH = 1280;
 
-type TranslationToolDefinition = Readonly<{
+type WorkspaceToolGroupId = "workbench" | "quality";
+
+type WorkspaceToolRouteItem = Readonly<{
   id: RouteId;
   icon: LucideIcon;
   count?: (snapshot: OpenProjectSnapshot) => number;
 }>;
 
-const TRANSLATION_TOOLS: readonly TranslationToolDefinition[] = [
-  { id: "proofreading", icon: BookOpenCheck },
-  { id: "files", icon: LayoutDashboard, count: (snapshot) => snapshot.file_count },
-  { id: "glossary", icon: BookA, count: (snapshot) => snapshot.quality_rule_counts.glossary },
+type WorkspaceToolSettingItem = Readonly<{
+  field: ProjectPrefilterSettingKey;
+  icon: LucideIcon;
+}>;
+
+type WorkspaceToolGroupDefinition = Readonly<{
+  id: WorkspaceToolGroupId;
+  title_key: LocaleKey;
+  icon: LucideIcon;
+  routeItems: readonly WorkspaceToolRouteItem[];
+  settingItems: readonly WorkspaceToolSettingItem[];
+}>;
+
+const WORKSPACE_TOOL_GROUPS: readonly WorkspaceToolGroupDefinition[] = [
   {
-    id: "text-preserve",
-    icon: ShieldCheck,
-    count: (snapshot) => snapshot.quality_rule_counts.text_preserve,
+    id: "workbench",
+    title_key: "app.workspace.workbench",
+    icon: LayoutGrid,
+    routeItems: [
+      { id: "proofreading", icon: BookOpenCheck },
+      { id: "files", icon: LayoutDashboard, count: (snapshot) => snapshot.file_count },
+    ],
+    settingItems: [],
   },
   {
-    id: "pre-translation-replacement",
-    icon: BetweenVerticalStart,
-    count: (snapshot) => snapshot.quality_rule_counts.pre_replacement,
+    id: "quality",
+    title_key: "app.workspace.quality",
+    icon: BadgeCheck,
+    routeItems: [
+      { id: "glossary", icon: BookA, count: (snapshot) => snapshot.quality_rule_counts.glossary },
+      {
+        id: "text-preserve",
+        icon: ShieldCheck,
+        count: (snapshot) => snapshot.quality_rule_counts.text_preserve,
+      },
+      {
+        id: "pre-translation-replacement",
+        icon: BetweenVerticalStart,
+        count: (snapshot) => snapshot.quality_rule_counts.pre_replacement,
+      },
+      {
+        id: "post-translation-replacement",
+        icon: BetweenVerticalEnd,
+        count: (snapshot) => snapshot.quality_rule_counts.post_replacement,
+      },
+      { id: "project-knowledge", icon: Brain },
+      { id: "custom-prompt", icon: FilePenLine },
+    ],
+    settingItems: [
+      { field: "skip_duplicate_source_text_enable", icon: CopyMinus },
+      { field: "mtool_optimizer_enable", icon: Zap },
+    ],
   },
-  {
-    id: "post-translation-replacement",
-    icon: BetweenVerticalEnd,
-    count: (snapshot) => snapshot.quality_rule_counts.post_replacement,
-  },
-  { id: "project-knowledge", icon: Brain },
-  { id: "custom-prompt", icon: FilePenLine },
 ];
 
-const TRANSLATION_TOOL_BY_ID = new Map<RouteId, TranslationToolDefinition>(
-  TRANSLATION_TOOLS.map((tool) => [tool.id, tool]),
-);
-
-/** 按工作区自身宽度决定翻译功能菜单是否常驻展开；首帧同步定态，避免切换工程时重放过渡动画。 */
+/** 按工作区自身宽度决定功能块是否常驻展开；首帧同步定态，避免切换工程时重放过渡动画。 */
 function use_tools_docked(workspace_ref: RefObject<HTMLDivElement | null>): {
   docked: boolean;
   animated: boolean;
@@ -97,7 +137,7 @@ function use_tools_docked(workspace_ref: RefObject<HTMLDivElement | null>): {
   return { docked, animated };
 }
 
-/** 工程工作区：左侧承载对话与预览标签，右侧标签在窄态点击展开菜单、宽态原地常驻展开下方功能卡片。 */
+/** 工程工作区：左侧承载对话与预览标签，右侧双功能块在窄态互斥下拉、宽态纵排常驻。 */
 export function ProjectWorkspace({
   project,
   selected,
@@ -107,9 +147,58 @@ export function ProjectWorkspace({
 }): JSX.Element {
   const { navigate_to_route } = useAppNavigation();
   const workspace_ref = useRef<HTMLDivElement>(null);
+  const tools_anchor_ref = useRef<HTMLDivElement>(null);
+  const trigger_refs = useRef<Record<WorkspaceToolGroupId, HTMLButtonElement | null>>({
+    workbench: null,
+    quality: null,
+  });
   const [left, set_left] = useState<HTMLDivElement | null>(null);
+  const [open_group, set_open_group] = useState<WorkspaceToolGroupId | null>(null);
+  const [prefilter_field, set_prefilter_field] = useState<ProjectPrefilterSettingKey | null>(null);
   const { docked, animated } = use_tools_docked(workspace_ref);
   const FeaturePage = selected === "agent" ? null : SCREEN_REGISTRY[selected].component;
+  const project_id = project.snapshot.projectId;
+  const project_settings: ProjectSettings = project.snapshot.settings ?? DEFAULT_PROJECT_SETTINGS;
+
+  // 跨入宽态后清空临时浮层开关，使后续缩窄回临界值以下时菜单一并收起。
+  useEffect(() => {
+    if (docked) set_open_group(null);
+  }, [docked]);
+
+  // 切换工程时收起临时菜单与确认框，避免跨工程残留交互。
+  useEffect(() => {
+    set_open_group(null);
+    set_prefilter_field(null);
+  }, [project_id]);
+
+  // 窄态浮层展开期间响应外部点击与 Esc 收起，不干扰宽态常驻卡片。
+  useEffect(() => {
+    if (docked || open_group === null) return;
+
+    const handle_pointer_down = (event: PointerEvent): void => {
+      if (!tools_anchor_ref.current?.contains(event.target as Node)) {
+        set_open_group(null);
+      }
+    };
+    const handle_key_down = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      const trigger = trigger_refs.current[open_group];
+      set_open_group(null);
+      trigger?.focus({ preventScroll: true });
+    };
+
+    document.addEventListener("pointerdown", handle_pointer_down);
+    document.addEventListener("keydown", handle_key_down);
+    return () => {
+      document.removeEventListener("pointerdown", handle_pointer_down);
+      document.removeEventListener("keydown", handle_key_down);
+    };
+  }, [docked, open_group]);
+
+  useWindowDeactivation(() => {
+    if (!docked) set_open_group(null);
+  });
 
   return (
     <div
@@ -124,14 +213,36 @@ export function ProjectWorkspace({
           ref={set_left}
           data-active={selected === "agent"}
         />
-        <div className="project-workspace__tools-anchor">
-          <TranslationToolsPanel
-            snapshot={project.snapshot}
-            selected={selected}
-            docked={docked}
-            on_select={(route_id) => navigate_to_route(route_id)}
-            on_close={() => navigate_to_route("agent")}
-          />
+        <div ref={tools_anchor_ref} className="project-workspace__tools-anchor">
+          {WORKSPACE_TOOL_GROUPS.map((group) => (
+            <WorkspaceToolGroup
+              key={group.id}
+              group={group}
+              snapshot={project.snapshot}
+              settings={project_settings}
+              selected={selected}
+              docked={docked}
+              open={!docked && open_group === group.id}
+              register_trigger={(node) => {
+                trigger_refs.current[group.id] = node;
+              }}
+              on_toggle={() =>
+                set_open_group((current) => (current === group.id ? null : group.id))
+              }
+              on_select_route={(route_id) => {
+                if (!docked) set_open_group(null);
+                navigate_to_route(route_id);
+              }}
+              on_close_route={() => {
+                set_open_group(null);
+                navigate_to_route("agent");
+              }}
+              on_select_prefilter={(field) => {
+                if (!docked) set_open_group(null);
+                set_prefilter_field(field);
+              }}
+            />
+          ))}
         </div>
       </div>
       <div className="project-workspace__content">
@@ -146,91 +257,77 @@ export function ProjectWorkspace({
           </div>
         )}
       </div>
+      {prefilter_field !== null ? (
+        <ProjectPrefilterSettingDialog
+          key={`${project_id}:${prefilter_field}`}
+          projectId={project_id}
+          field={prefilter_field}
+          settings={project_settings}
+          onClose={() => set_prefilter_field(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
-/** 单一翻译功能面板：头部始终保持顶栏标签样式，下方菜单在窄态按需展开、宽态自动向下常驻为功能卡片。 */
-function TranslationToolsPanel({
+/** 工作区同构功能块：头部保持顶栏标签形态，下方卡片在窄态按需浮层展开、宽态纵排常驻。 */
+function WorkspaceToolGroup({
+  group,
   snapshot,
+  settings,
   selected,
   docked,
-  on_select,
-  on_close,
+  open,
+  register_trigger,
+  on_toggle,
+  on_select_route,
+  on_close_route,
+  on_select_prefilter,
 }: {
+  group: WorkspaceToolGroupDefinition;
   snapshot: OpenProjectSnapshot;
+  settings: ProjectSettings;
   selected: RouteId;
   docked: boolean;
-  on_select: (route_id: RouteId) => void;
-  on_close: () => void;
+  open: boolean;
+  register_trigger: (node: HTMLButtonElement | null) => void;
+  on_toggle: () => void;
+  on_select_route: (route_id: RouteId) => void;
+  on_close_route: () => void;
+  on_select_prefilter: (field: ProjectPrefilterSettingKey) => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const panel_ref = useRef<HTMLElement>(null);
-  const trigger_ref = useRef<HTMLButtonElement>(null);
-  const [open, set_open] = useState(false);
-
   const expanded = docked || open;
-  const active_tool = selected === "agent" ? undefined : TRANSLATION_TOOL_BY_ID.get(selected);
-  const HeaderIcon = active_tool?.icon ?? LayoutGrid;
+  const active_route_item =
+    selected === "agent" ? undefined : group.routeItems.find((item) => item.id === selected);
+  const group_label = t(group.title_key);
+  const HeaderIcon = active_route_item?.icon ?? group.icon;
   const header_label =
-    active_tool === undefined
-      ? t("app.workspace.translation_tools")
-      : t(SCREEN_REGISTRY[active_tool.id].title_key);
-
-  // 跨入宽态后清空临时浮层开关，使后续缩窄回临界值以下时菜单一并顺滑向上收起。
-  useEffect(() => {
-    if (docked) set_open(false);
-  }, [docked]);
-
-  // 窄态浮层展开期间响应外部点击与 Esc 收起，不干扰宽态常驻卡片。
-  useEffect(() => {
-    if (docked || !open) return;
-
-    const handle_pointer_down = (event: PointerEvent): void => {
-      if (!panel_ref.current?.contains(event.target as Node)) {
-        set_open(false);
-      }
-    };
-    const handle_key_down = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      set_open(false);
-      trigger_ref.current?.focus({ preventScroll: true });
-    };
-
-    document.addEventListener("pointerdown", handle_pointer_down);
-    document.addEventListener("keydown", handle_key_down);
-    return () => {
-      document.removeEventListener("pointerdown", handle_pointer_down);
-      document.removeEventListener("keydown", handle_key_down);
-    };
-  }, [docked, open]);
-
-  useWindowDeactivation(() => {
-    if (!docked) set_open(false);
-  });
+    active_route_item === undefined
+      ? group_label
+      : t(SCREEN_REGISTRY[active_route_item.id].title_key);
 
   return (
     <nav
-      ref={panel_ref}
       className="project-workspace__tools-panel"
-      aria-label={t("app.workspace.translation_tools")}
+      aria-label={group_label}
+      data-group={group.id}
       data-docked={docked}
       data-expanded={expanded}
     >
       <div
         className="project-workspace__tools-header"
-        data-active={active_tool !== undefined}
-        data-open={(!docked && open) || undefined}
+        data-active={active_route_item !== undefined}
+        data-open={open || undefined}
       >
         {docked ? (
           <div
             className="project-workspace__tools-trigger project-workspace__tools-trigger--static"
-            data-active={active_tool !== undefined}
+            data-active={active_route_item !== undefined}
           >
             <HeaderIcon className="project-workspace__tools-icon" aria-hidden="true" />
             <span className="project-workspace__tools-label">{header_label}</span>
-            {active_tool === undefined && (
+            {active_route_item === undefined && (
               <ChevronDown
                 className="project-workspace__tools-chevron project-workspace__tools-chevron--hidden"
                 aria-hidden="true"
@@ -239,31 +336,28 @@ function TranslationToolsPanel({
           </div>
         ) : (
           <button
-            ref={trigger_ref}
+            ref={register_trigger}
             type="button"
             className="project-workspace__tools-trigger"
-            data-active={active_tool !== undefined}
+            data-active={active_route_item !== undefined}
             data-open={open || undefined}
             aria-expanded={open}
             aria-haspopup="menu"
-            onClick={() => set_open((current) => !current)}
+            onClick={on_toggle}
           >
             <HeaderIcon className="project-workspace__tools-icon" aria-hidden="true" />
             <span className="project-workspace__tools-label">{header_label}</span>
-            {active_tool === undefined && (
+            {active_route_item === undefined && (
               <ChevronDown className="project-workspace__tools-chevron" aria-hidden="true" />
             )}
           </button>
         )}
-        {active_tool !== undefined && (
+        {active_route_item !== undefined && (
           <button
             type="button"
             className="inline-action-button project-workspace__tools-close"
             aria-label={t("app.action.close")}
-            onClick={() => {
-              set_open(false);
-              on_close();
-            }}
+            onClick={on_close_route}
           >
             <X aria-hidden="true" />
           </button>
@@ -281,28 +375,25 @@ function TranslationToolsPanel({
               <div
                 className="project-workspace__tools-list"
                 role={docked ? undefined : "menu"}
-                aria-label={t("app.workspace.translation_tools")}
+                aria-label={group_label}
               >
-                {TRANSLATION_TOOLS.map((tool) => {
-                  const Icon = tool.icon;
-                  const count = tool.count?.(snapshot);
-                  const active = selected === tool.id;
+                {group.routeItems.map((item) => {
+                  const Icon = item.icon;
+                  const count = item.count?.(snapshot);
+                  const active = selected === item.id;
                   return (
                     <button
-                      key={tool.id}
+                      key={item.id}
                       type="button"
                       role={docked ? undefined : "menuitem"}
                       className="project-workspace__tool-item"
                       data-active={active || undefined}
                       aria-current={docked && active ? "page" : undefined}
-                      onClick={() => {
-                        if (!docked) set_open(false);
-                        on_select(tool.id);
-                      }}
+                      onClick={() => on_select_route(item.id)}
                     >
                       <Icon className="project-workspace__tool-icon" aria-hidden="true" />
                       <span className="project-workspace__tool-label">
-                        {t(SCREEN_REGISTRY[tool.id].title_key)}
+                        {t(SCREEN_REGISTRY[item.id].title_key)}
                       </span>
                       {count !== undefined && (
                         <Badge className="project-workspace__tool-count">{count}</Badge>
@@ -310,6 +401,46 @@ function TranslationToolsPanel({
                     </button>
                   );
                 })}
+                {group.settingItems.length > 0 ? (
+                  <>
+                    <div className="project-workspace__tools-divider" role="separator" />
+                    {group.settingItems.map((item) => {
+                      const Icon = item.icon;
+                      const enabled = settings[item.field];
+                      const title = t(`app.project_prefilter.${item.field}.title`);
+                      const state_label = t(enabled ? "app.state.enabled" : "app.state.disabled");
+                      const tooltip_text = t("app.tooltip.value", {
+                        TITLE: title,
+                        VALUE: state_label,
+                      });
+                      return (
+                        <Tooltip key={item.field}>
+                          <TooltipTrigger
+                            render={
+                              <button
+                                type="button"
+                                role={docked ? undefined : "menuitem"}
+                                className="project-workspace__tool-item"
+                                data-prefilter-field={item.field}
+                                onClick={() => on_select_prefilter(item.field)}
+                              >
+                                <Icon className="project-workspace__tool-icon" aria-hidden="true" />
+                                <span className="project-workspace__tool-label">{title}</span>
+                                <Badge
+                                  tone={enabled ? "brand" : "neutral"}
+                                  className="project-workspace__tool-badge"
+                                >
+                                  {state_label}
+                                </Badge>
+                              </button>
+                            }
+                          />
+                          <TooltipContent>{tooltip_text}</TooltipContent>
+                        </Tooltip>
+                      );
+                    })}
+                  </>
+                ) : null}
               </div>
             </div>
           </div>

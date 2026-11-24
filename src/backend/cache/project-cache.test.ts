@@ -113,18 +113,23 @@ function create_cache(options: {
 }
 
 describe("ProjectCache", () => {
-  it("项目语言随提交更新，缓存同步失败后从已提交事实恢复", async () => {
+  it("工程设置随提交更新，缓存同步失败后从已提交事实恢复", async () => {
     const project = "E:/Project/languages.lg";
     const meta = {
       source_language: "EN",
       target_language: "KO",
+      mtool_optimizer_enable: true,
       "project_runtime_revision.project": 0,
     };
     const database = create_database({ meta });
     const cache = create_cache({ database, projectPath: project });
-    expect(cache.languages.readBlock()).toEqual({ source_language: "EN", target_language: "KO" });
+    expect(cache.settings.readBlock()).toMatchObject({
+      target_language: "KO",
+      mtool_optimizer_enable: true,
+    });
 
     meta.target_language = "DE";
+    meta.mtool_optimizer_enable = false;
     meta["project_runtime_revision.project"] = 1;
     const committed = build_project_committed_change(
       database,
@@ -136,12 +141,15 @@ describe("ProjectCache", () => {
       },
       meta,
     );
-    vi.spyOn(cache.languages, "replace").mockImplementationOnce(() => {
-      throw new Error("language sync failed");
+    vi.spyOn(cache.settings, "replace").mockImplementationOnce(() => {
+      throw new Error("settings sync failed");
     });
-    await expect(cache.applyCommittedChange(committed)).rejects.toThrow("language sync failed");
+    await expect(cache.applyCommittedChange(committed)).rejects.toThrow("settings sync failed");
     expect(cache.snapshot().freshness).toBe("fresh");
-    expect(cache.languages.readBlock()).toEqual({ source_language: "EN", target_language: "DE" });
+    expect(cache.settings.readBlock()).toMatchObject({
+      target_language: "DE",
+      mtool_optimizer_enable: false,
+    });
     expect(cache.readSectionRevisions().project).toBe(1);
   });
 

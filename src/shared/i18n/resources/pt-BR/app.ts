@@ -100,10 +100,16 @@ export const pt_br_app = {
     description:
       "Esta janela alternou para a visualização protegida e os detalhes do erro foram gravados nos logs …",
   },
-  project_settings_alignment: {
-    field: {
-      mtool_optimizer_enable: "Otimizador MTool",
-      skip_duplicate_source_text_enable: "Ignorar texto original duplicado",
+  project_prefilter: {
+    mtool_optimizer_enable: {
+      title: "Otimizador MTool",
+      description:
+        "Para textos do MTool, <emphasis>reduz o tempo de tradução e os tokens em até 40%</emphasis>.\nAtivado por padrão.",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "Ignorar texto original duplicado",
+      description:
+        "Entradas com texto idêntico em todo o projeto compartilham <emphasis>uma única tradução</emphasis>.\nAtivado por padrão.",
     },
   },
   close_confirm: {
@@ -173,7 +179,8 @@ export const pt_br_app = {
     projects: "Projetos",
     projects_empty: "Nenhum projeto",
     skills: "Habilidades",
-    translation_tools: "Funções de tradução",
+    workbench: "Bancada",
+    quality: "Qualidade da tradução",
     more: "Mais",
     close_chat: "Fechar conversa",
     close_chat_confirm: "Confirma fechar a conversa …?",

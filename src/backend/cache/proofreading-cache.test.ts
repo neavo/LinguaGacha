@@ -10,6 +10,7 @@ import {
   type ProofreadingSyncInput,
 } from "../../shared/proofreading/proofreading-reader";
 import type { CacheReadPort } from "./cache-types";
+import { DEFAULT_PROJECT_SETTINGS } from "../../domain/project-settings";
 
 import { ProofreadingCache } from "./proofreading-cache";
 import { ItemCache } from "./item-cache";
@@ -78,10 +79,8 @@ function create_cache_read_port(options: {
     prompts: {
       readBlock: create_empty_project_prompts,
     },
-    languages: {
-      readBlock: () => ({
-        ...(options.languages ?? { source_language: "JA", target_language: "ZH" }),
-      }),
+    settings: {
+      readBlock: () => ({ ...DEFAULT_PROJECT_SETTINGS, ...options.languages }),
     },
   };
 }

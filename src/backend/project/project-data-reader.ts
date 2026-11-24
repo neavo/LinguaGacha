@@ -5,7 +5,7 @@ import {
   type QualityRuleSlice,
 } from "../../shared/quality/quality-rule-state";
 import { build_project_file_records, type ProjectFileRecord } from "./project-file-records";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonRecord } from "../../domain/json";
 import { ProjectDatabaseAccess } from "../database/database-operations";
 import { TRANSLATION_PROMPT, type ProjectPrompts } from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
@@ -19,10 +19,7 @@ import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/pro
 import * as AppErrors from "../../shared/error";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { read_project_revision } from "../../domain/project-revision";
-import {
-  read_project_language_settings,
-  type ProjectLanguageSettings,
-} from "../../domain/project-settings";
+import { read_project_settings, type ProjectSettings } from "../../domain/project-settings";
 
 export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
@@ -34,7 +31,7 @@ export interface ProjectDataSnapshot {
   readonly files: Readonly<Record<string, ProjectFileRecord>>;
   readonly quality: QualityRuleBlock;
   readonly prompts: ProjectPrompts;
-  readonly languages: ProjectLanguageSettings; // 项目语言只在事务提交后随快照进入缓存。
+  readonly settings: ProjectSettings; // 工程设置只在事务提交后随快照进入缓存。
   readonly section_revisions: Readonly<Record<ProjectDataSection, number>>;
 }
 
@@ -110,34 +107,22 @@ export class ProjectDataReader {
       files: this.build_files_record_block(project_path),
       quality: this.build_quality_block(project_path, meta),
       prompts: this.build_prompts_block(project_path, meta),
-      languages: read_project_language_settings(meta),
+      settings: read_project_settings(meta),
       section_revisions: this.build_section_revisions(meta),
     };
   }
 
-  /**
-   * manifest 只暴露项目数据读取索引，不预热任何大 section
-   */
-  public build_manifest(project_state: { loaded: boolean; projectPath: string }): JsonRecord {
-    const project_path = project_state.loaded ? project_state.projectPath : "";
-    const meta = project_path === "" ? {} : this.get_all_meta(project_path);
-    const section_revisions = this.build_section_revisions(meta);
-    const counts =
-      project_path === "" ? { files: 0, items: 0 } : this.build_manifest_counts(project_path);
+  /** 从数据库聚合 manifest 的修订与计数，工程快照由组合根补齐。 */
+  public build_manifest(project_path: string): JsonRecord {
+    const section_revisions = this.build_section_revisions(this.get_all_meta(project_path));
     return {
       projectPath: project_path,
-      project: {
-        path: project_state.projectPath,
-        loaded: project_state.loaded,
-        file_count: counts.files,
-        languages:
-          project_path === ""
-            ? null
-            : (read_project_language_settings(meta) as unknown as JsonValue),
-      },
       projectRevision: Math.max(...Object.values(section_revisions), 0),
-      sectionRevisions: section_revisions as unknown as JsonValue,
-      counts,
+      sectionRevisions: section_revisions,
+      counts: {
+        files: this.database.get_asset_count(project_path),
+        items: this.database.get_item_count(project_path),
+      },
     };
   }
 
@@ -231,18 +216,6 @@ export class ProjectDataReader {
       });
     }
     return record;
-  }
-
-  /**
-   * manifest counts 只用于项目页概览，不替代真实 section payload
-   */
-  private build_manifest_counts(project_path: string): { files: number; items: number } {
-    const asset_count = this.database.get_asset_count(project_path);
-    const item_count = this.database.get_item_count(project_path);
-    return {
-      files: asset_count,
-      items: item_count,
-    };
   }
 
   /**

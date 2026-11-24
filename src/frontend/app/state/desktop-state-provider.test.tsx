@@ -70,6 +70,12 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
             pre_replacement: 0,
             post_replacement: 3,
           },
+          settings: {
+            source_language: "EN",
+            target_language: "ZH",
+            mtool_optimizer_enable: false,
+            skip_duplicate_source_text_enable: true,
+          },
         },
       };
     }
@@ -152,6 +158,12 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
       text_preserve: 1,
       pre_replacement: 0,
       post_replacement: 3,
+    });
+    expect(state.active_project?.snapshot.settings).toEqual({
+      source_language: "EN",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
     });
     project_ids = ["first"];
     await act(async () => {

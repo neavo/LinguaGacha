@@ -151,18 +151,15 @@ it("主动移除最近记录后刷新设置", async () => {
   expect(mocks.error).not.toHaveBeenCalled();
 });
 
-it("打开成功将工程路径交给加载流程并反馈设置对齐", async () => {
+it("打开成功将工程路径交给加载流程，不额外触发设置对齐提示", async () => {
   mocks.api.mockResolvedValueOnce({
-    settings_alignment: {
-      settings: { mtool_optimizer_enable: true },
-      changed: { mtool_optimizer_enable: true },
-    },
+    project: { path: "E:/resolved.lg" },
   });
   await act(async () => {
     await flow.open_project("E:/renamed.lg");
   });
-  expect(mocks.loaded).toHaveBeenCalledWith("E:/renamed.lg");
-  expect(mocks.toast).toHaveBeenCalledWith("info", expect.stringContaining("MTool 优化器"));
+  expect(mocks.loaded).toHaveBeenCalledWith("E:/resolved.lg");
+  expect(mocks.toast).not.toHaveBeenCalled();
 });
 
 it("文件窗口选中即加载，选择期间阻止重复打开且不请求预览", async () => {
