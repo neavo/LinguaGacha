@@ -51,10 +51,28 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
       };
     return { ...agent_snapshot, chatId: searchParams.get("projectId") + "-chat" };
   });
-  desktop.api_fetch.mockImplementation(async (route: string) => {
+  desktop.api_fetch.mockImplementation(async (route: string, body?: Record<string, unknown>) => {
     if (route === "/api/settings/app") return { settings: { app_language: "EN" } };
     if (route === "/api/runtime/snapshot")
       return { runtime: { revision: 1, owner: null, projects: {} } };
+    if (route === "/api/session/project/snapshot") {
+      const projectId = String(body?.projectId ?? "first");
+      return {
+        project: {
+          projectId,
+          path: projectId + ".lg",
+          name: projectId,
+          loaded: true,
+          file_count: 2,
+          quality_rule_counts: {
+            glossary: 5,
+            text_preserve: 1,
+            pre_replacement: 0,
+            post_replacement: 3,
+          },
+        },
+      };
+    }
     return { batch_task: empty_batch_task_snapshot() };
   });
   let state!: ReturnType<typeof useDesktopState>;
@@ -117,6 +135,24 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     expect(agent.get_chat_id()).toBe("second-reset");
     await act(async () => state.select_project("first"));
     expect(signal.seq).toBe(0);
+    await act(async () => {
+      emit("project.data_changed", {
+        projectId: "first",
+        projectPath: "first.lg",
+        eventId: "quality-first",
+        source: "test",
+        projectRevision: 2,
+        updatedSections: ["quality"],
+        sectionRevisions: { quality: 2 },
+        qualityStatisticsScope: "all",
+      });
+    });
+    expect(state.active_project?.snapshot.quality_rule_counts).toEqual({
+      glossary: 5,
+      text_preserve: 1,
+      pre_replacement: 0,
+      post_replacement: 3,
+    });
     project_ids = ["first"];
     await act(async () => {
       await state.refresh_projects();

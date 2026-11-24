@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useProjectTabActive } from "@frontend/app/navigation/project-scope-context";
 import { useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import { createQualityRuleApi } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
@@ -31,7 +30,6 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
   reload_quality_rule_snapshot: () => void;
   refresh_quality_rule_snapshot: () => Promise<TSlice>;
 } {
-  const active = useProjectTabActive();
   const api_fetch = useProjectFetch();
   const { read_quality_rule_snapshot } = useMemo(
     () => createQualityRuleApi(api_fetch),
@@ -106,11 +104,11 @@ export function useQualityRuleQuery<TType extends QualityRuleKind, TSlice>(
   }, [on_load_error, refresh_quality_rule_snapshot]);
 
   useEffect(() => {
-    if (!active || !query_enabled) return;
+    if (!query_enabled) return;
     if (loaded_seq_ref.current === change_seq && state_ref.current.status !== "idle") return;
     loaded_seq_ref.current = change_seq;
     reload_quality_rule_snapshot();
-  }, [active, query_enabled, reload_quality_rule_snapshot, change_seq]);
+  }, [query_enabled, reload_quality_rule_snapshot, change_seq]);
 
   useEffect(() => {
     return () => {

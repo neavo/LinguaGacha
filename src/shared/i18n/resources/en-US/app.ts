@@ -171,7 +171,7 @@ export const en_us_app = {
     projects: "Projects",
     projects_empty: "No projects",
     skills: "Skills",
-    quality_rules: "Quality rules",
+    translation_tools: "Translation tools",
     more: "More",
     close_chat: "Close conversation",
     close_chat_confirm: "Confirm closing the conversation …?",

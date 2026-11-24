@@ -167,7 +167,7 @@ export const zh_cn_app = {
     projects: "工程",
     projects_empty: "暂无工程",
     skills: "技能",
-    quality_rules: "质量规则",
+    translation_tools: "翻译功能",
     more: "更多",
     close_chat: "关闭对话",
     close_chat_confirm: "是否确认关闭对话 …?",

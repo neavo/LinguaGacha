@@ -270,6 +270,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
   }
 
   public project_snapshot(project: OpenProject<Agent>): JsonRecord {
+    const quality = project.cache.quality.readBlock();
     return {
       project: {
         projectId: project.id,
@@ -277,6 +278,12 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         loaded: true,
         name: path.basename(project.path),
         file_count: project.cache.files.size(),
+        quality_rule_counts: {
+          glossary: quality.glossary.entries.length,
+          text_preserve: quality.text_preserve.entries.length,
+          pre_replacement: quality.pre_replacement.entries.length,
+          post_replacement: quality.post_replacement.entries.length,
+        },
         languages: project.cache.languages.readBlock(),
       },
     };

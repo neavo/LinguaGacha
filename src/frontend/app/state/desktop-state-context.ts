@@ -7,18 +7,21 @@ import type { ProjectWriteCommitter } from "@frontend/app/state/desktop-project-
 import type { RecentProjectSetting, SettingSnapshot } from "@domain/setting";
 import type { AppLanguage } from "@domain/app-language";
 import type { ProjectLanguageSettings } from "@domain/project-settings";
+import type { QualityRuleKind } from "@domain/quality";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 import type { ProjectChangeSignalSource } from "@frontend/app/state/project-change-signal-store";
 
 type RecentProjectEntry = RecentProjectSetting;
 
 export type SettingsSnapshot = SettingSnapshot;
+export type QualityRuleCounts = Readonly<Record<QualityRuleKind, number>>;
 
 export type ProjectSnapshot = {
   path: string;
   projectId?: string;
   loaded: boolean;
   file_count: number; // 统计工程资产，包含零条目资产。
+  quality_rule_counts?: QualityRuleCounts; // 列表型质量规则条数，供工作区功能菜单直接展示。
   languages: ProjectLanguageSettings | null; // 已加载项目的语言事实，未加载时为 null
 };
 

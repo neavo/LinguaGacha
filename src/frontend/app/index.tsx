@@ -64,11 +64,7 @@ import {
 
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
-const EMPTY_PROJECT_TABS = Object.freeze({
-  tabs: [] as readonly RouteId[],
-  activeTab: "agent" as RouteId,
-});
-const GET_EMPTY_PROJECT_TABS = () => EMPTY_PROJECT_TABS;
+const GET_DEFAULT_PROJECT_ROUTE = (): RouteId => "agent";
 const NOOP_SUBSCRIBE = () => () => {};
 
 /** 根据宿主窗口角色选择 renderer 组合根。 */
@@ -101,11 +97,11 @@ function AppContent(): JSX.Element {
   const shell_info = window.desktopApp.shell;
   // 主窗口持有路由，页面通过共享导航入口提交跳转。
   const [global_route, set_global_route] = useState<RouteId | null>(null);
-  const project_tabs = useSyncExternalStore(
-    active_project?.subscribe_tabs ?? NOOP_SUBSCRIBE,
-    active_project?.get_tabs_snapshot ?? GET_EMPTY_PROJECT_TABS,
+  const project_route = useSyncExternalStore(
+    active_project?.subscribe_route ?? NOOP_SUBSCRIBE,
+    active_project?.get_active_route ?? GET_DEFAULT_PROJECT_ROUTE,
   );
-  const selected_route = global_route ?? project_tabs.activeTab;
+  const selected_route = global_route ?? project_route;
   // 请求与实际导航共同提交，离开目标流程时清除。
   const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
   const [project_attention, set_project_attention] = useState(0);
@@ -164,15 +160,10 @@ function AppContent(): JSX.Element {
     }
     void (async () => {
       const is_global = GLOBAL_ROUTE_IDS.has(route_id);
-      if (
-        (is_global || global_route !== null) &&
-        route_id !== selected_route &&
-        !(await prepare_page_leave(view_scope()))
-      )
-        return;
+      if (route_id !== selected_route && !(await prepare_page_leave(view_scope()))) return;
       if (is_global) set_global_route(route_id);
       else if (active_project) {
-        active_project.select_tab(route_id);
+        active_project.select_route(route_id);
         set_global_route(null);
       }
       set_agent_input_request(request ?? null);
@@ -472,11 +463,7 @@ function AppContent(): JSX.Element {
               ) : active_project ? (
                 <ProjectScopeContext
                   key={active_project.snapshot.projectId}
-                  value={{
-                    projectId: active_project.snapshot.projectId,
-                    tabId: selected_route,
-                    active: true,
-                  }}
+                  value={{ projectId: active_project.snapshot.projectId }}
                 >
                   <ProjectSessionProvider>
                     <ProjectWorkspace project={active_project} selected={selected_route} />

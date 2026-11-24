@@ -168,7 +168,7 @@ export const ko_kr_app = {
     projects: "프로젝트",
     projects_empty: "프로젝트 없음",
     skills: "스킬",
-    quality_rules: "품질 규칙",
+    translation_tools: "번역 기능",
     more: "더 보기",
     close_chat: "대화 닫기",
     close_chat_confirm: "대화를 닫을까요 …?",

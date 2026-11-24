@@ -172,7 +172,7 @@ export const ja_jp_app = {
     projects: "プロジェクト",
     projects_empty: "プロジェクトはありません",
     skills: "スキル",
-    quality_rules: "品質ルール",
+    translation_tools: "翻訳機能",
     more: "その他",
     close_chat: "会話を閉じる",
     close_chat_confirm: "会話を閉じますか …?",

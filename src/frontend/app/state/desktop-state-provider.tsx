@@ -197,7 +197,9 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
         const project = registry.get(event.projectId);
         if (
           project?.apply_event(event) &&
-          event.updatedSections.some((section) => section === "project" || section === "files")
+          event.updatedSections.some(
+            (section) => section === "project" || section === "files" || section === "quality",
+          )
         )
           changed.add(project);
       }

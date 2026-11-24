@@ -329,7 +329,7 @@ describe("Agent 文档标签", () => {
     async function render_in_project(): Promise<void> {
       await act(async () =>
         root.render(
-          <ProjectScopeContext value={{ projectId: "project-1", tabId: "agent", active: true }}>
+          <ProjectScopeContext value={{ projectId: "project-1" }}>
             <AgentPage tabHost={tab_host} />
           </ProjectScopeContext>,
         ),

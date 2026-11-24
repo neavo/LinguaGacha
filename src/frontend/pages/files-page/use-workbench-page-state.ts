@@ -1,4 +1,3 @@
-import { useProjectTabActive } from "@frontend/app/navigation/project-scope-context";
 import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import {
@@ -237,7 +236,6 @@ export type UseWorkbenchPageStateResult = {
 
 /** 文件页拥有项目文件查询、选择状态和文件写入交互。 */
 export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
-  const active = useProjectTabActive();
   const api_fetch = useProjectFetch();
   const { t } = useI18n();
 
@@ -452,7 +450,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   useEffect(() => {
     const previous_seq = previous_workbench_change_seq_ref.current;
 
-    if (!active || !project_snapshot.loaded || workbench_change_seq === null) {
+    if (!project_snapshot.loaded || workbench_change_seq === null) {
       return;
     }
 
@@ -466,7 +464,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
       });
     }
   }, [
-    active,
     project_snapshot.loaded,
     refresh_snapshot,
     report_workbench_cache_error,

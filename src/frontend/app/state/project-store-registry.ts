@@ -18,17 +18,30 @@ import type {
   ProjectChangeApplyResult,
   ProjectChangeEventForState,
 } from "./desktop-project-change-types";
-import type { ProjectSnapshot } from "./desktop-state-context";
+import type { ProjectSnapshot, QualityRuleCounts } from "./desktop-state-context";
 import type { ProjectSessionUiStateKey } from "@frontend/app/session/project-session-ui-state-context";
 
-export type OpenProjectSnapshot = ProjectSnapshot & { projectId: string; name: string };
-export type ProjectTabsSnapshot = Readonly<{
-  tabs: readonly RouteId[];
-  activeTab: RouteId;
-}>;
+export type OpenProjectSnapshot = ProjectSnapshot & {
+  projectId: string;
+  name: string;
+  quality_rule_counts: QualityRuleCounts;
+};
 
 const RECENT_EVENTS = 256;
 type AgentErrorHandler = ConstructorParameters<typeof AgentChatStore>[1];
+
+/** 将后端快照中的列表型质量规则条数规范化为冻结对象，缺失字段统一回落到 0。 */
+function read_quality_rule_counts(value: unknown): QualityRuleCounts {
+  const record = is_json_record(value) ? value : {};
+  const count = (key: keyof QualityRuleCounts): number =>
+    typeof record[key] === "number" && Number.isFinite(record[key]) ? record[key] : 0;
+  return Object.freeze({
+    glossary: count("glossary"),
+    text_preserve: count("text_preserve"),
+    pre_replacement: count("pre_replacement"),
+    post_replacement: count("post_replacement"),
+  });
+}
 
 /** 一个打开周期的任务镜像、缓存失效和页面状态。 */
 export class ProjectStore {
@@ -39,14 +52,22 @@ export class ProjectStore {
   readonly qualityStatistics: ReturnType<typeof createQualityRuleStatisticsStore>;
   translationStats: ProjectTranslationStats | null = null;
   readonly pageUi = new Map<ProjectSessionUiStateKey, unknown>(); // 卸载工作区时保留轻量页面状态。
-  private tabs_snapshot: ProjectTabsSnapshot = Object.freeze({ tabs: [], activeTab: "agent" });
-  private readonly tab_listeners = new Set<() => void>();
+  private active_route: RouteId = "agent";
+  private readonly route_listeners = new Set<() => void>();
   readonly agentChat: AgentChatStore; // 前台卸载后仍接收事件，直到工程关闭。
   private readonly applied = new Set<string>(); // HTTP 写回与 SSE 可能报告同一次提交。
 
   public snapshot: OpenProjectSnapshot;
-  constructor(snapshot: OpenProjectSnapshot, on_agent_error: AgentErrorHandler = () => {}) {
-    this.snapshot = snapshot;
+  constructor(
+    snapshot: Omit<OpenProjectSnapshot, "quality_rule_counts"> & {
+      quality_rule_counts?: QualityRuleCounts;
+    },
+    on_agent_error: AgentErrorHandler = () => {},
+  ) {
+    this.snapshot = {
+      ...snapshot,
+      quality_rule_counts: read_quality_rule_counts(snapshot.quality_rule_counts),
+    };
     this.agentChat = new AgentChatStore(window.localStorage, on_agent_error, snapshot.projectId);
     const request = createProjectFetch(snapshot.projectId);
     this.qualityStatistics = createQualityRuleStatisticsStore((rule_key) =>
@@ -55,31 +76,20 @@ export class ProjectStore {
     this.qualityStatistics.reset(snapshot.path);
   }
 
-  public readonly subscribe_tabs = (listener: () => void): (() => void) => {
-    this.tab_listeners.add(listener);
+  public readonly subscribe_route = (listener: () => void): (() => void) => {
+    this.route_listeners.add(listener);
     return () => {
-      this.tab_listeners.delete(listener);
+      this.route_listeners.delete(listener);
     };
   };
 
-  public readonly get_tabs_snapshot = (): ProjectTabsSnapshot => this.tabs_snapshot;
+  public readonly get_active_route = (): RouteId => this.active_route;
 
-  /** 聚焦已有标签或打开新工程标签，统一通知顶栏与工作区。 */
-  public select_tab(tab: RouteId): void {
-    const has_tab = tab === "agent" || this.tabs_snapshot.tabs.includes(tab);
-    if (has_tab && this.tabs_snapshot.activeTab === tab) return;
-    const tabs = has_tab ? this.tabs_snapshot.tabs : [...this.tabs_snapshot.tabs, tab];
-    this.tabs_snapshot = Object.freeze({ tabs, activeTab: tab });
-    for (const listener of this.tab_listeners) listener();
-  }
-
-  /** 关闭工程标签，若当前激活则平滑回到对话标签。 */
-  public close_tab(tab: RouteId): void {
-    if (!this.tabs_snapshot.tabs.includes(tab)) return;
-    const tabs = this.tabs_snapshot.tabs.filter((candidate) => candidate !== tab);
-    const activeTab = this.tabs_snapshot.activeTab === tab ? "agent" : this.tabs_snapshot.activeTab;
-    this.tabs_snapshot = Object.freeze({ tabs, activeTab });
-    for (const listener of this.tab_listeners) listener();
+  /** 切换工程内当前页面，回到对话时同步关闭已展开的功能页。 */
+  public select_route(route: RouteId): void {
+    if (this.active_route === route) return;
+    this.active_route = route;
+    for (const listener of this.route_listeners) listener();
   }
 
   /** 任务回执可只含公共批次，独立翻译镜像只消费明确携带的快照。 */
@@ -162,6 +172,7 @@ export class ProjectStoreRegistry {
       name: typeof project.name === "string" ? project.name : project.path,
       loaded: true,
       file_count: typeof project.file_count === "number" ? project.file_count : 0,
+      quality_rule_counts: read_quality_rule_counts(project.quality_rule_counts),
       languages: is_json_record(project.languages)
         ? read_project_language_settings(project.languages)
         : null,

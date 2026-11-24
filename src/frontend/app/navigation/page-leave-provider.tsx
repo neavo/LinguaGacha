@@ -24,9 +24,7 @@ export function PageLeaveProvider({ children }: { children: ReactNode }): JSX.El
       scope === undefined ||
       (scope.kind === "global"
         ? candidate.kind === "global"
-        : candidate.kind === "project" &&
-          candidate.projectId === scope.projectId &&
-          (scope.tabId === undefined || scope.tabId === candidate.tabId));
+        : candidate.kind === "project" && candidate.projectId === scope.projectId);
     const editors = [...handlers.current].filter(([, entry]) => matches(entry.scope));
     if (editors.length === 0) return true;
     pending_ref.current = true;

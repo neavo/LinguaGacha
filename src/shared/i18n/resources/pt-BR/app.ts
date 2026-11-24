@@ -173,7 +173,7 @@ export const pt_br_app = {
     projects: "Projetos",
     projects_empty: "Nenhum projeto",
     skills: "Habilidades",
-    quality_rules: "Regras de qualidade",
+    translation_tools: "Funções de tradução",
     more: "Mais",
     close_chat: "Fechar conversa",
     close_chat_confirm: "Confirma fechar a conversa …?",

@@ -1,11 +1,8 @@
 import { createContext, useContext, useCallback } from "react";
 
 import { ProjectScopeContext } from "./project-scope-context";
-import type { RouteId } from "./types";
 
-export type PageLeaveScope =
-  | { kind: "global" }
-  | { kind: "project"; projectId: string; tabId?: RouteId };
+export type PageLeaveScope = { kind: "global" } | { kind: "project"; projectId: string };
 export type BeforePageLeave = () => Promise<boolean>;
 type PageLeaveContextValue = {
   leaving: boolean;
@@ -20,16 +17,12 @@ export function usePageLeave(): PageLeaveContextValue {
   const project = useContext(ProjectScopeContext);
   const register = context?.register_before_leave;
   const projectId = project?.projectId;
-  const tabId = project?.tabId;
   const register_before_leave = useCallback(
     (handler: BeforePageLeave, scope?: PageLeaveScope) => {
       if (!register) throw new Error("PageLeaveProvider is missing.");
-      return register(
-        handler,
-        scope ?? (projectId && tabId ? { kind: "project", projectId, tabId } : undefined),
-      );
+      return register(handler, scope ?? (projectId ? { kind: "project", projectId } : undefined));
     },
-    [register, projectId, tabId],
+    [register, projectId],
   );
   if (context === null) throw new Error("usePageLeave requires PageLeaveProvider");
   return { ...context, register_before_leave };

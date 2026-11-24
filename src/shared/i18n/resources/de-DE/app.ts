@@ -176,7 +176,7 @@ export const de_de_app = {
     projects: "Projekte",
     projects_empty: "Keine Projekte",
     skills: "Skills",
-    quality_rules: "Qualitätsregeln",
+    translation_tools: "Übersetzungsfunktionen",
     more: "Mehr",
     close_chat: "Unterhaltung schließen",
     close_chat_confirm: "Unterhaltung wirklich schließen …?",

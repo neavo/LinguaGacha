@@ -1,4 +1,3 @@
-import { useProjectTabActive } from "@frontend/app/navigation/project-scope-context";
 import type { JSX, ReactNode } from "react";
 import { FileInput, FileOutput, Plus, Trash2 } from "lucide-react";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
@@ -47,15 +46,14 @@ export function QualityRuleCommandBar(props: QualityRuleCommandBarProps): JSX.El
   const entries = props.entry_actions;
   const write_disabled = !props.ready || props.readonly; // 写入限制与导出、预设管理的读取限制独立。
   const delete_disabled = write_disabled || (entries?.selected_entry_count ?? 0) === 0; // 删除还要求已有选中条目
-  const active = useProjectTabActive();
   useActionShortcut({
     action: "create",
-    enabled: active && entries !== undefined && !write_disabled,
+    enabled: entries !== undefined && !write_disabled,
     on_trigger: () => entries?.on_create(),
   });
   useActionShortcut({
     action: "delete",
-    enabled: active && entries !== undefined && !delete_disabled,
+    enabled: entries !== undefined && !delete_disabled,
     on_trigger: () => {
       void entries?.on_delete_selected();
     },

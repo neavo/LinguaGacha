@@ -1,4 +1,3 @@
-import { useProjectTabActive } from "@frontend/app/navigation/project-scope-context";
 import { BrushCleaning, FilePlus2, Trash2, FileInput } from "lucide-react";
 import type { JSX } from "react";
 import { build_batch_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
@@ -49,15 +48,14 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     t,
   });
 
-  const active = useProjectTabActive();
   useActionShortcut({
     action: "create",
-    enabled: active && props.can_edit_files,
+    enabled: props.can_edit_files,
     on_trigger: props.on_add_file,
   });
   useActionShortcut({
     action: "delete",
-    enabled: active && props.can_delete_selected_files,
+    enabled: props.can_delete_selected_files,
     on_trigger: props.on_delete_selected,
   });
 
