@@ -11,7 +11,6 @@ export function DocumentEditorToolbar(props: {
   path: string[];
   confirm_description?: string; // 仅在提供 action 时使用
   status: "saved" | "modified" | "save_failed" | "conflict" | null; // 在途保存也显示已修改。
-  extra?: ReactNode;
   recovery?: ReactNode;
   busy: boolean;
   locked: boolean;
@@ -80,7 +79,6 @@ export function DocumentEditorToolbar(props: {
         }
         hint={
           <span className="document-editor__toolbar-end">
-            {props.extra}
             {props.recovery}
             {props.action ? (
               <Tooltip>

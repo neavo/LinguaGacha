@@ -13,12 +13,6 @@ export const zh_cn_knowledge_page = {
     placeholder: "[在这里输入技能链接]",
     request: "请帮我安装这个技能：{PLACEHOLDER}",
   },
-  knowledge_create: {
-    title: "记录指南",
-    description: "告诉 AGENT 要记录的设定、约定或结论，它会整理成工程知识",
-    placeholder: "[在这里描述要记录的内容]",
-    request: "请帮我记录一条工程知识：{PLACEHOLDER}",
-  },
   editor: {
     save_failed: "保存失败",
     reset: "重置",

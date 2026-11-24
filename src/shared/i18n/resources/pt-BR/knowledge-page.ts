@@ -13,13 +13,6 @@ export const pt_br_knowledge_page = {
     placeholder: "[Insira o link da habilidade aqui]",
     request: "Por favor, instale esta habilidade para mim: {PLACEHOLDER}",
   },
-  knowledge_create: {
-    title: "Guia de registro",
-    description:
-      "Informe ao AGENT as configurações, convenções ou conclusões a registrar, e ele as organizará como conhecimento do projeto",
-    placeholder: "[Descreva aqui o que deve ser registrado]",
-    request: "Por favor, registre isso como conhecimento do projeto: {PLACEHOLDER}",
-  },
   editor: {
     save_failed: "Falha ao salvar",
     reset: "Redefinir",

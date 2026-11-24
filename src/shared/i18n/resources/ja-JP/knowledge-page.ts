@@ -13,13 +13,6 @@ export const ja_jp_knowledge_page = {
     placeholder: "[ここにスキルのリンクを入力]",
     request: "このスキルをインストールしてください：{PLACEHOLDER}",
   },
-  knowledge_create: {
-    title: "記録ガイド",
-    description:
-      "記録したい設定、約束事、結論を AGENT に伝えると、プロジェクトナレッジとして整理します",
-    placeholder: "[ここに記録したい内容を入力]",
-    request: "プロジェクトナレッジとして記録してください：{PLACEHOLDER}",
-  },
   editor: {
     save_failed: "保存失敗",
     reset: "リセット",

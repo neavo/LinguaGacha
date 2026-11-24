@@ -16,11 +16,7 @@ const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   commit: vi.fn(),
   toast: vi.fn(),
-  navigate_to_agent: vi.fn(),
   owner: null as string | null,
-}));
-vi.mock("@frontend/app/navigation/navigation-context", () => ({
-  useAppNavigation: () => ({ navigate_to_agent: mocks.navigate_to_agent }),
 }));
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),

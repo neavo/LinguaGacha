@@ -13,13 +13,6 @@ export const de_de_knowledge_page = {
     placeholder: "[Skill-Link hier eingeben]",
     request: "Bitte installiere diesen Skill für mich: {PLACEHOLDER}",
   },
-  knowledge_create: {
-    title: "Erfassungsanleitung",
-    description:
-      "AGENT die festzuhaltenden Einstellungen, Vereinbarungen oder Erkenntnisse mitteilen, daraus wird Projektwissen angelegt",
-    placeholder: "[Hier beschreiben, was festgehalten werden soll]",
-    request: "Bitte halte dies als Projektwissen fest: {PLACEHOLDER}",
-  },
   editor: {
     save_failed: "Speichern fehlgeschlagen",
     reset: "Zurücksetzen",

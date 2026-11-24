@@ -13,13 +13,6 @@ export const en_us_knowledge_page = {
     placeholder: "[Enter the skill link here]",
     request: "Please install this skill for me: {PLACEHOLDER}",
   },
-  knowledge_create: {
-    title: "Recording guide",
-    description:
-      "Tell AGENT the settings, conventions or conclusions to record, and it will organize them as project knowledge",
-    placeholder: "[Describe what to record here]",
-    request: "Please record this as project knowledge: {PLACEHOLDER}",
-  },
   editor: {
     save_failed: "Save failed",
     reset: "Reset",

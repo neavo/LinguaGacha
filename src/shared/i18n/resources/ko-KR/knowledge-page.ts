@@ -13,12 +13,6 @@ export const ko_kr_knowledge_page = {
     placeholder: "[여기에 스킬 링크 입력]",
     request: "이 스킬을 설치해 주세요: {PLACEHOLDER}",
   },
-  knowledge_create: {
-    title: "기록 안내",
-    description: "기록할 설정, 규칙, 결론을 AGENT에 알려 주면 프로젝트 지식으로 정리합니다",
-    placeholder: "[여기에 기록할 내용 입력]",
-    request: "프로젝트 지식으로 기록해 주세요: {PLACEHOLDER}",
-  },
   editor: {
     save_failed: "저장 실패",
     reset: "초기화",

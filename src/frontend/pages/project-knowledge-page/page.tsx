@@ -1,13 +1,11 @@
 import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
-import { type JSX, useCallback, useEffect, useRef, useState } from "react";
+import { type JSX, useCallback, useEffect, useRef } from "react";
 import { PROJECT_KNOWLEDGE_DOCUMENT, type KnowledgeFile } from "@shared/project-knowledge";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
-import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { Card } from "@frontend/shadcn/card";
-import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
@@ -15,13 +13,10 @@ import { DocumentEditorToolbar } from "@frontend/features/document-editor/docume
 import type { ProjectWriteResult } from "@shared/project-event";
 import { useAutosaveDocument } from "@frontend/features/document-editor/use-autosave-document";
 
-/** 工程知识自动保存，重置、离页保存与记录指南共用同一编辑器。 */
 export function ProjectKnowledgeEditor({ on_back }: { on_back?: () => void } = {}): JSX.Element {
   const { t } = useI18n();
-  const { navigate_to_agent } = useAppNavigation();
   const editor = useProjectKnowledgeEditor();
   const { leaving, register_before_leave } = usePageLeave();
-  const [guide_open, set_guide_open] = useState(false);
   useEffect(() => register_before_leave(editor.flush), [editor.flush, register_before_leave]);
   const locked = editor.locked || editor.busy || editor.loading || leaving;
   return (
@@ -63,16 +58,6 @@ export function ProjectKnowledgeEditor({ on_back }: { on_back?: () => void } = {
                 });
               }
             : undefined
-        }
-        extra={
-          <AppButton
-            size="sm"
-            variant="ghost"
-            disabled={editor.busy || leaving}
-            onClick={() => set_guide_open(true)}
-          >
-            {t("knowledge_page.knowledge_create.title")}
-          </AppButton>
         }
         recovery={
           editor.save_failure === "conflict" && (
@@ -118,24 +103,6 @@ export function ProjectKnowledgeEditor({ on_back }: { on_back?: () => void } = {
       {!editor.file && (
         <AppContentState status={editor.loading ? "loading" : "error"} on_retry={editor.reload} />
       )}
-      <AppActionDialog
-        open={guide_open}
-        description={t("knowledge_page.knowledge_create.description")}
-        onClose={() => set_guide_open(false)}
-        primaryAction={{
-          label: t("app.action.handle_with_agent"),
-          onSelect: () => {
-            const placeholder = t("knowledge_page.knowledge_create.placeholder");
-            const text = t("knowledge_page.knowledge_create.request", { PLACEHOLDER: placeholder });
-            const from = text.indexOf(placeholder);
-            set_guide_open(false);
-            navigate_to_agent({
-              text,
-              selection: { from, to: from + placeholder.length },
-            });
-          },
-        }}
-      />
     </section>
   );
 }
