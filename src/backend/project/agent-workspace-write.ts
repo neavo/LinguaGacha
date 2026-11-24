@@ -7,11 +7,7 @@ import { insert_by_sort } from "./insert-by-sort";
 import { agent_workspace_fingerprint } from "./agent-workspace-fingerprint";
 import { isDeepStrictEqual } from "node:util";
 
-import {
-  create_item,
-  build_project_item_public_record,
-  type ProjectItemPublicRecord,
-} from "../../domain/item";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import { type JsonRecord, type JsonValue } from "../../domain/json";
 import { PROMPT_KINDS, type PromptKind } from "../../domain/prompt";
 import {
@@ -107,7 +103,7 @@ export type AgentWorkspaceIntentBatch = Readonly<{
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
   knowledge: string | null; // 已保存的知识正文，本批不涉及或尚未保存时为 null
-  items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
+  items: readonly ProjectItemPublicRecord[]; // 含目标条目及重复协调所需的同组成员。
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
   prompts: Partial<Record<PromptKind, string | null>>; // 本批涉及的提示词覆盖
   duplicateFilterEnabled: boolean; // 项目持久设置中的重复过滤口径
@@ -166,20 +162,8 @@ export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceInten
   };
 }
 
-/** 把数据库 item 归一为工作区公开字段，并绑定对象事实指纹。 */
-export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
-  return workspace_item_facts(read_item_write_record(item));
-}
-
-/** 存储与公开字段在工作区读取边界转换一次，内部意图只消费已收窄事实。 */
-function read_item_write_record(item: JsonRecord): ProjectItemPublicRecord {
-  return build_project_item_public_record(
-    create_item({ ...item, id: item["item_id"] ?? item["id"] }),
-  );
-}
-
-/** 工作区展示与提交校验共用同一份条目事实。 */
-function workspace_item_facts(item: ProjectItemPublicRecord) {
+/** 已收窄的公共条目直接投影，工作区展示与写入共用同一指纹。 */
+export function project_agent_workspace_item(item: ProjectItemPublicRecord) {
   const row = {
     item_id: item.item_id,
     src: item.src,
@@ -239,10 +223,7 @@ export function resolve_agent_workspace_writes(args: {
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
   const knowledge = resolve_knowledge(args.batch.knowledge, args.current.knowledge);
-  const current_items =
-    args.batch.items.length === 0
-      ? []
-      : args.current.items.map(read_item_write_record).filter((item) => item.item_id > 0);
+  const current_items = args.current.items;
   const item_result = resolve_items(args.batch.items, current_items);
   const item_changes =
     item_result.changes.length === 0
@@ -361,7 +342,7 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "target_missing"));
       continue;
     }
-    const { fp: current_fp } = workspace_item_facts(current);
+    const { fp: current_fp } = project_agent_workspace_item(current);
     if (group.some((intent) => intent.fp !== current_fp)) {
       rejected.push(item_rejection(item_id, "fp_mismatch"));
       continue;
@@ -638,21 +619,24 @@ function resolve_quality_kind(args: {
     });
   }
 
-  const summary = summarize_quality(
-    current,
-    replay.entries,
-    accepted_updates,
-    accepted_creates.length,
-    deletes.size,
+  // 候选和回执共用一次实际变化判断。只有显式排序才比较位置。
+  const before_positions = new Map(current.map((entry, index) => [entry.entry_id, index]));
+  const after_positions = new Map(
+    replay.entries.map((entry, index) => [read_entry_id(entry), index]),
   );
-  const real_update_ids = new Set(
-    [...accepted_updates.values()]
-      .filter((intent) => quality_target_changed(current, replay.entries, intent))
-      .map((intent) => intent.id),
-  );
-  const real_updates = [...accepted_updates.values()].filter((intent) =>
-    real_update_ids.has(intent.id),
-  );
+  const real_updates = [...accepted_updates.values()].filter((intent) => {
+    const before = before_positions.get(intent.id)!;
+    const after = after_positions.get(intent.id)!;
+    return (
+      !isDeepStrictEqual(current[before], replay.entries[after]) ||
+      (intent.sort !== undefined && before !== after)
+    );
+  });
+  const summary = {
+    created: accepted_creates.length,
+    updated: real_updates.length,
+    deleted: deletes.size,
+  };
   const real_summary =
     summary.created === 0 && summary.updated === 0 && summary.deleted === 0 ? null : summary;
   return {
@@ -725,34 +709,6 @@ function replay_quality(args: {
     ) as JsonRecord[],
     createById: create_by_id,
   };
-}
-
-/** 汇总实际新增、删除与发生变化的更新对象。 */
-function summarize_quality(
-  current: JsonRecord[],
-  next: JsonRecord[],
-  updates: ReadonlyMap<string, AgentWorkspaceQualityUpdateIntent>,
-  created: number,
-  deleted: number,
-): AgentWorkspaceQualitySummary {
-  const updated = [...updates.values()].filter((intent) =>
-    quality_target_changed(current, next, intent),
-  ).length;
-  return { created, updated, deleted };
-}
-
-/** 字段变化或显式排序造成的位置变化均计入实际更新。 */
-function quality_target_changed(
-  current: JsonRecord[],
-  next: JsonRecord[],
-  intent: AgentWorkspaceQualityUpdateIntent,
-): boolean {
-  const before_index = current.findIndex((entry) => read_entry_id(entry) === intent.id);
-  const after_index = next.findIndex((entry) => read_entry_id(entry) === intent.id);
-  return (
-    !isDeepStrictEqual(current[before_index], next[after_index]) ||
-    (intent.sort !== undefined && before_index !== after_index)
-  );
 }
 
 /** 只返回新增或扩大的重复组，既有重复事实本身不阻塞无关修改。 */

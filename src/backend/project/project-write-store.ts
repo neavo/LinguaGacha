@@ -782,7 +782,7 @@ export class ProjectWriteStore {
     const items =
       request.batch.items.length === 0
         ? []
-        : this.read_item_scope_records(
+        : this.read_item_write_records(
             database,
             request.projectPath,
             meta,
@@ -1137,27 +1137,18 @@ export class ProjectWriteStore {
       database.update_asset(project_path, write.path, write.content, write.fileType);
   }
 
-  /** 缓存缺失或落后时回读全表，事务内事实始终拥有最终解释权。 */
-  private read_item_scope_records(
-    database: ProjectDatabaseAccess,
-    project: string,
-    meta: JsonRecord,
-    ids: readonly number[],
-  ): JsonRecord[] {
-    const scope = this.cache?.readItemWriteScope(project, ids);
-    return scope != null && scope.revision === get_section_revision(meta, "items")
-      ? database.get_items_by_ids(project, scope.ids)
-      : database.get_all_items(project);
-  }
-
-  /** 事务内读取并归一候选 Item，供局部意图和重复组协调共同使用。 */
+  /** 从事务读取目标条目及同组候选。只在缓存与事务修订一致时采用缓存范围。 */
   private read_item_write_records(
     database: ProjectDatabaseAccess,
     project_path: string,
     meta: JsonRecord,
     ids: readonly number[],
-  ): ProjectItemWriteRecord[] {
-    const raw_items = this.read_item_scope_records(database, project_path, meta, ids);
+  ): ProjectItemPublicRecord[] {
+    const scope = this.cache?.readItemWriteScope(project_path, ids);
+    const raw_items =
+      scope != null && scope.revision === get_section_revision(meta, "items")
+        ? database.get_items_by_ids(project_path, scope.ids)
+        : database.get_all_items(project_path);
     return raw_items.flatMap((value) => {
       const item = create_item(value);
       if (item.id === undefined || item.id <= 0) return [];

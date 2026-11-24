@@ -8,7 +8,7 @@ import {
   push_toast,
   run_modal_progress_toast,
 } from "@frontend/app/feedback/desktop-toast";
-import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
+import { format_project_settings_saved_toast } from "@frontend/app/feedback/project-settings-feedback";
 import { get_language_label_key } from "@frontend/app/locale/language-label";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
@@ -60,7 +60,13 @@ export function AgentLanguageControl(props: {
         });
         push_toast(
           "info",
-          format_project_settings_aligned_toast({ settings: draft, changed_fields, t }),
+          format_project_settings_saved_toast(
+            {
+              ...(changed_fields.source_language ? { source_language: draft.source_language } : {}),
+              ...(changed_fields.target_language ? { target_language: draft.target_language } : {}),
+            },
+            t,
+          ),
         );
         set_draft(null);
       } catch (error) {

@@ -71,7 +71,6 @@ describe("GuiBackendBootstrap 集成", () => {
       await post("/api/session/project/close", scope);
       const reopened = await post("/api/session/project/open", { path: first_path });
       expect(reopened).toMatchObject({ project: { settings } });
-      expect(reopened).not.toHaveProperty("settings_alignment");
     } finally {
       await bootstrap.stop();
     }

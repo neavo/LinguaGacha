@@ -48,8 +48,6 @@ import { ProjectContentService } from "./project-content-service";
 import { adapt_project_change, type ProjectChangePublisher } from "./project-write-event-adapter";
 import { ProjectWriteStore } from "./project-write-store";
 
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
-
 let temp_dir = "";
 
 /**
@@ -79,14 +77,11 @@ async function create_service(
   database: ProjectDatabase;
   service: ProjectContentService;
   runtime_gate: ProjectOperationGate;
-  session_state: ProjectSessionFixture;
   lg_path: string;
 }> {
   const database = new ProjectDatabase("1.0.0");
-  const session_state = new ProjectSessionFixture();
   const lg_path = project_path("demo.lg");
   await database.create_project(lg_path);
-  session_state.mark_loaded(lg_path);
   const publisher =
     project_change_publisher === undefined
       ? create_test_project_change_publisher().publish_project_change
@@ -100,14 +95,13 @@ async function create_service(
       new GameDirectoryOperations(),
       database,
       runtime_gate,
-      session_state.snapshot().projectPath,
+      lg_path,
       write_store,
       { read_app_language: () => "ZH" },
       undefined,
       log_manager,
     ),
     runtime_gate,
-    session_state,
     lg_path,
   };
 }
@@ -121,11 +115,9 @@ function create_log_manager(): Pick<LogManager, "warning"> {
 
 /** 使用真实事件适配器，修订与载荷取自本次提交。 */
 function create_test_project_change_publisher() {
-  const session = new ProjectSessionFixture();
-  void session.mark_loaded(project_path("demo.lg"));
   return {
     publish_project_change: vi.fn((payload: Parameters<typeof adapt_project_change>[1]) =>
-      adapt_project_change(session.snapshot().projectPath, payload),
+      adapt_project_change(project_path("demo.lg"), payload),
     ),
   };
 }
@@ -2448,7 +2440,7 @@ describe("ProjectContentService", () => {
   });
 
   it("预览、导入、缓存查询和工作台命令按准确路径区分空格文件，并保留空资产", async () => {
-    const { database, service, session_state, lg_path } = await create_service();
+    const { database, service, lg_path } = await create_service();
     const settings = {
       source_language: "ALL",
       mtool_optimizer_enable: true,
@@ -2457,12 +2449,11 @@ describe("ProjectContentService", () => {
     await database.transaction(lg_path, (writer) => writer.upsert_meta_entries(lg_path, settings));
     const cache = new ProjectCache({
       projectPath: lg_path,
-      projectId: "fixture",
       database,
       logManager: null,
       workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
     });
-    const summary = new ProjectSummaryService(session_state.snapshot().projectPath, cache);
+    const summary = new ProjectSummaryService(lg_path, cache);
     const source_paths = [" a.json", "a.json", " blank.txt"].map(project_path);
     fs.writeFileSync(source_paths[0]!, JSON.stringify({ "line\nother": "", line: "" }));
     fs.writeFileSync(source_paths[1]!, JSON.stringify({ plain: "" }));

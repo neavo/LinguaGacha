@@ -462,14 +462,11 @@ export class AgentWorkspaceService {
     const { source_language, target_language } = this.options.cache.settings.readBlock();
     const language = { source_language, target_language };
     const baseline = { revisions, language };
-    const current_items = [...this.options.cache.items.readItems()];
-    const snapshot_files = this.options.cache.files
-      .readFileEntries()
-      .sort((a, b) => a.sort_index - b.sort_index)
-      .map((entry) => ({
-        file_path: entry.rel_path,
-        file_type: entry.file_type,
-      }));
+    const current_items = this.options.cache.items.readItems();
+    const snapshot_files = this.options.cache.files.readFileEntries().map((entry) => ({
+      file_path: entry.rel_path,
+      file_type: entry.file_type,
+    }));
     const file_order = new Map(snapshot_files.map((file, i) => [file.file_path, i]));
     current_items.sort(
       (a, b) =>
@@ -757,9 +754,7 @@ export class AgentWorkspaceService {
           knowledge: parsed.batch.knowledge.length
             ? await this.options.database.read_knowledge(projectPath)
             : null,
-          items: parsed.batch.items.length
-            ? (this.options.cache.items.readItems() as unknown as JsonRecord[])
-            : [],
+          items: parsed.batch.items.length > 0 ? this.options.cache.items.readItems() : [],
           quality: Object.fromEntries(
             QUALITY_RULE_KINDS.map((kind) => [kind, quality[kind].entries]),
           ),

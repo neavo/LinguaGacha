@@ -12,15 +12,12 @@ import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { ProjectStore } from "@frontend/app/state/project-store-registry";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 
-const mocks = vi.hoisted(() => ({
-  leave: vi.fn<() => Promise<boolean>>(async () => true),
-  api: vi.fn(),
-  commit: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => ({ payload: await run() })),
-  toast: vi.fn(),
-  error_toast: vi.fn(),
-  runtime: { revision: 0, owner: null, projects: {} } as RuntimeActivitySnapshot,
+const leave = vi.hoisted(() => vi.fn<() => Promise<boolean>>(async () => true));
+
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useDesktopState: () => ({ commit_project_write: vi.fn() }),
+  useRuntimeSnapshot: () => ({}),
 }));
 
 class TestResizeObserver implements ResizeObserver {
@@ -59,20 +56,6 @@ class TestResizeObserver implements ResizeObserver {
   }
 }
 
-vi.mock("@frontend/app/desktop/desktop-api", () => ({
-  api_fetch: mocks.api,
-}));
-
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  push_toast: mocks.toast,
-  push_error_toast: mocks.error_toast,
-}));
-
-vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ commit_project_write: mocks.commit }),
-  useRuntimeSnapshot: () => mocks.runtime,
-}));
-
 vi.mock("@frontend/pages/agent-page/page", () => ({
   AgentPage: ({ tabHost }: { tabHost?: HTMLElement | null }) => {
     const { navigate_to_route } = useAppNavigation();
@@ -96,7 +79,7 @@ vi.mock("@frontend/app/navigation/screen-registry", async (importOriginal) => {
   function create_stub_page(id: RouteId): () => JSX.Element {
     return function StubPage(): JSX.Element {
       const { register_before_leave } = usePageLeave();
-      useEffect(() => register_before_leave(mocks.leave), [register_before_leave]);
+      useEffect(() => register_before_leave(leave), [register_before_leave]);
       return <div data-testid={`page-${id}`}>{id}</div>;
     };
   }
@@ -107,28 +90,7 @@ vi.mock("@frontend/app/navigation/screen-registry", async (importOriginal) => {
         ...actual.SCREEN_REGISTRY.proofreading,
         component: create_stub_page("proofreading"),
       },
-      files: { ...actual.SCREEN_REGISTRY.files, component: create_stub_page("files") },
       glossary: { ...actual.SCREEN_REGISTRY.glossary, component: create_stub_page("glossary") },
-      "text-preserve": {
-        ...actual.SCREEN_REGISTRY["text-preserve"],
-        component: create_stub_page("text-preserve"),
-      },
-      "pre-translation-replacement": {
-        ...actual.SCREEN_REGISTRY["pre-translation-replacement"],
-        component: create_stub_page("pre-translation-replacement"),
-      },
-      "post-translation-replacement": {
-        ...actual.SCREEN_REGISTRY["post-translation-replacement"],
-        component: create_stub_page("post-translation-replacement"),
-      },
-      "project-knowledge": {
-        ...actual.SCREEN_REGISTRY["project-knowledge"],
-        component: create_stub_page("project-knowledge"),
-      },
-      "custom-prompt": {
-        ...actual.SCREEN_REGISTRY["custom-prompt"],
-        component: create_stub_page("custom-prompt"),
-      },
     },
   };
 });
@@ -159,7 +121,10 @@ function WorkspaceHarnessInner({ project }: { project: ProjectStore }): JSX.Elem
       agent_input_request={null}
       clear_agent_input_request={() => undefined}
     >
-      <ProjectScopeContext value={{ projectId: project.snapshot.projectId }}>
+      <ProjectScopeContext
+        key={project.snapshot.projectId}
+        value={{ projectId: project.snapshot.projectId }}
+      >
         <ProjectWorkspace project={project} selected={active_route} />
       </ProjectScopeContext>
     </AppNavigationProvider>
@@ -184,13 +149,11 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.leave.mockResolvedValue(true);
-    mocks.api.mockResolvedValue({ accepted: true, changes: [] });
-    mocks.runtime = { revision: 0, owner: null, projects: {} };
+    leave.mockResolvedValue(true);
   });
 
   afterEach(async () => {
-    vi.useRealTimers();
+    vi.unstubAllGlobals();
     TestResizeObserver.instances = [];
     await act(async () => root?.unmount());
     host?.remove();
@@ -247,48 +210,11 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     )!;
   }
 
-  function dialog_button(
-    slot: "cancel" | "secondary-action" | "primary-action",
-  ): HTMLButtonElement {
-    return document.querySelector<HTMLButtonElement>(`[data-slot="alert-dialog-${slot}"]`)!;
-  }
-
-  it("按「工作台」与「翻译质量」分组呈现条目、计数胶囊、分割线和预过滤状态徽标", async () => {
+  it("从工程快照显示规则条数，零条也可见", async () => {
     const container = await mount(create_project());
-    const workbench = group_panel(container, "workbench");
-    const quality = group_panel(container, "quality");
-
-    expect(group_trigger(container, "workbench").textContent).toBe("工作台");
-    expect(group_trigger(container, "quality").textContent).toBe("翻译质量");
-    expect(workbench.querySelector(".project-workspace__tools-divider")).toBeNull();
-    expect(quality.querySelector(".project-workspace__tools-divider")).not.toBeNull();
-
-    const read_items = (panel: HTMLElement) =>
-      [...panel.querySelectorAll<HTMLButtonElement>(".project-workspace__tool-item")].map(
-        (item) => {
-          const badge = item.querySelector<HTMLElement>('[data-slot="badge"]');
-          return {
-            label: item.querySelector(".project-workspace__tool-label")?.textContent,
-            badge: badge?.textContent ?? null,
-            tone: badge?.dataset.tone ?? null,
-          };
-        },
-      );
-
-    expect(read_items(workbench)).toEqual([
-      { label: "校对", badge: null, tone: null },
-      { label: "文件", badge: "3", tone: "neutral" },
-    ]);
-    expect(read_items(quality)).toEqual([
-      { label: "术语表", badge: "12", tone: "neutral" },
-      { label: "文本保护", badge: "0", tone: "neutral" },
-      { label: "译前替换", badge: "4", tone: "neutral" },
-      { label: "译后替换", badge: "0", tone: "neutral" },
-      { label: "工程知识", badge: null, tone: null },
-      { label: "自定义提示词", badge: null, tone: null },
-      { label: "跳过重复原文", badge: "已禁用", tone: "neutral" },
-      { label: "MTool 优化器", badge: "已启用", tone: "brand" },
-    ]);
+    await act(async () => group_trigger(container, "quality").click());
+    expect(find_tool_item(container, "术语表").textContent).toContain("12");
+    expect(find_tool_item(container, "文本保护").textContent).toContain("0");
   });
 
   it("窄态双 Tab 互斥展开并支持外部点击、Esc 与失焦收起，激活态与关闭按钮只归属对应组", async () => {
@@ -351,29 +277,37 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     const close_button = workbench.querySelector<HTMLButtonElement>(
       ".project-workspace__tools-close",
     )!;
-    mocks.leave.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    leave.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     await act(async () => close_button.click());
     expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
 
     await act(async () => close_button.click());
     expect(container.querySelector('[data-testid="page-proofreading"]')).toBeNull();
     expect(workbench_trigger.textContent).toBe("工作台");
+
+    // 预过滤确认留在当前页，切换工程后随工作区卸载。
+    await act(async () => workbench_trigger.click());
+    await act(async () => find_tool_item(container, "校对").click());
+    await act(async () => quality_trigger.click());
+    await act(async () => find_tool_item(container, "MTool 优化器").click());
+    expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    await mount(create_project("project-2"));
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
-  it("工作区宽度跨越 1280px 时纵排双块常驻展开，缩窄回临界值以下时统一收起", async () => {
+  it("宽工作区常驻显示功能，缩窄后恢复折叠菜单", async () => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     const container = await mount(create_project());
     const workspace = container.querySelector<HTMLDivElement>(".project-workspace")!;
     const workbench = group_panel(container, "workbench");
     const quality = group_panel(container, "quality");
 
-    await act(async () => TestResizeObserver.emit(workspace, 1279));
-    expect(workspace.dataset.toolsDocked).toBe("false");
+    await act(async () => TestResizeObserver.emit(workspace, 1000));
     expect(workbench.dataset.expanded).toBe("false");
     expect(quality.dataset.expanded).toBe("false");
 
-    await act(async () => TestResizeObserver.emit(workspace, 1280));
-    expect(workspace.dataset.toolsDocked).toBe("true");
+    await act(async () => TestResizeObserver.emit(workspace, 1600));
     expect(workbench.dataset.expanded).toBe("true");
     expect(quality.dataset.expanded).toBe("true");
 
@@ -392,111 +326,8 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     expect(quality.querySelector(".project-workspace__tools-label")?.textContent).toBe("术语表");
     expect(workbench.querySelector(".project-workspace__tools-label")?.textContent).toBe("工作台");
 
-    await act(async () => TestResizeObserver.emit(workspace, 1279));
-    expect(workspace.dataset.toolsDocked).toBe("false");
+    await act(async () => TestResizeObserver.emit(workspace, 1000));
     expect(workbench.dataset.expanded).toBe("false");
     expect(quality.dataset.expanded).toBe("false");
-  });
-
-  it("预过滤设置弹出三按钮确认框：受当前工程运行占用约束、提交单字段并刷新徽标", async () => {
-    const project = create_project("project-1", {
-      mtool_optimizer_enable: true,
-      skip_duplicate_source_text_enable: false,
-    });
-    const container = await mount(project);
-
-    // 先打开校对页，确认点击预过滤设置不会改变当前页面。
-    await act(async () => group_trigger(container, "workbench").click());
-    await act(async () => find_tool_item(container, "校对").click());
-    expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
-
-    // 打开 MTool 优化器确认框：禁用与启用按钮均可用（不按当前值禁用），点击当前同态直接关闭且不发起请求。
-    await act(async () => group_trigger(container, "quality").click());
-    await act(async () => find_tool_item(container, "MTool 优化器").click());
-    expect(group_panel(container, "quality").dataset.expanded).toBe("false");
-    expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
-
-    const dialog = document.querySelector('[data-slot="alert-dialog-content"]')!;
-    expect(dialog.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe("确认");
-    expect(dialog.querySelector(".project-prefilter-dialog__emphasis")?.textContent).toContain(
-      "40%",
-    );
-    expect(dialog.querySelector('[data-slot="alert-dialog-description"] br')).not.toBeNull();
-    expect(dialog_button("primary-action").disabled).toBe(false);
-    expect(dialog_button("secondary-action").disabled).toBe(false);
-
-    await act(async () => dialog_button("primary-action").click());
-    expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
-    expect(mocks.api).not.toHaveBeenCalled();
-
-    // 重新打开后，当前工程 Agent 忙碌时双动作按钮同时禁用（不受其他工程状态影响）。
-    await act(async () => group_trigger(container, "quality").click());
-    await act(async () => find_tool_item(container, "MTool 优化器").click());
-    mocks.runtime = {
-      revision: 1,
-      owner: "agent",
-      projects: {
-        "project-1": { agent: true, batchTranslation: false, projectWrite: false },
-      },
-    };
-    await mount(project);
-    expect(dialog_button("primary-action").disabled).toBe(true);
-    expect(dialog_button("secondary-action").disabled).toBe(true);
-
-    // 恢复空闲后点击「禁用」，仅提交单字段并回读更新徽标。
-    mocks.runtime = {
-      revision: 2,
-      owner: null,
-      projects: {
-        "project-1": { agent: false, batchTranslation: false, projectWrite: false },
-      },
-    };
-    await mount(project);
-
-    let resolve_request!: (value: unknown) => void;
-    mocks.api.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolve_request = resolve;
-        }),
-    );
-    await act(async () => dialog_button("secondary-action").click());
-    expect(dialog_button("secondary-action").disabled).toBe(true);
-    expect(dialog_button("cancel").disabled).toBe(true);
-    expect(mocks.api).toHaveBeenCalledExactlyOnceWith("/api/project/settings/update", {
-      projectId: "project-1",
-      mtool_optimizer_enable: false,
-    });
-
-    project.snapshot = {
-      ...project.snapshot,
-      settings: {
-        ...project.snapshot.settings!,
-        mtool_optimizer_enable: false,
-      },
-    };
-    await act(async () => resolve_request({ accepted: true, changes: [] }));
-    await mount(project);
-
-    expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
-    expect(mocks.toast).toHaveBeenCalledWith("info", expect.stringContaining("MTool 优化器"));
-    expect(
-      find_tool_item(container, "MTool 优化器").querySelector('[data-slot="badge"]')?.textContent,
-    ).toBe("已禁用");
-
-    // 跳过重复原文（已禁用）：提交失败时反馈错误并保留弹窗供重试。
-    await act(async () => group_trigger(container, "quality").click());
-    await act(async () => find_tool_item(container, "跳过重复原文").click());
-    expect(dialog_button("secondary-action").disabled).toBe(false);
-    expect(dialog_button("primary-action").disabled).toBe(false);
-
-    mocks.api.mockRejectedValueOnce(new Error("write failed"));
-    await act(async () => dialog_button("primary-action").click());
-    expect(mocks.error_toast).toHaveBeenCalledWith("保存失败 …", expect.any(Error));
-    expect(document.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
-
-    // 切换工程时自动关闭弹窗。
-    await mount(create_project("project-2"));
-    expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 });

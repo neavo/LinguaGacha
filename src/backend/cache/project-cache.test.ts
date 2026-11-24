@@ -104,7 +104,6 @@ function create_cache(options: {
   const projectPath = options.projectPath ?? "E:/Project/demo.lg";
   return new ProjectCache({
     projectPath,
-    projectId: "fixture",
     snapshot: new ProjectDataReader(options.database).read_snapshot(projectPath),
     database: options.database as unknown as ProjectDatabase,
     logManager: options.logManager ?? null,
@@ -145,7 +144,6 @@ describe("ProjectCache", () => {
       throw new Error("settings sync failed");
     });
     await expect(cache.applyCommittedChange(committed)).rejects.toThrow("settings sync failed");
-    expect(cache.snapshot().freshness).toBe("fresh");
     expect(cache.settings.readBlock()).toMatchObject({
       target_language: "DE",
       mtool_optimizer_enable: false,
@@ -162,17 +160,13 @@ describe("ProjectCache", () => {
       throw new Error("install failed");
     });
     await expect(cache.refresh()).rejects.toThrow("install failed");
-    expect(cache.snapshot().freshness).toBe("recoverable_error");
     expect(() => cache.items.readItems()).toThrow(
       expect.objectContaining({ code: "data.committed_sync_failed" }),
     );
-    await cache.refresh();
+    await cache.recover();
     expect(cache.items.readItems()).toEqual(snapshot.items);
     expect(cache.files.readFileEntries()).toEqual(Object.values(snapshot.files));
-    expect(cache.snapshot()).toMatchObject({
-      freshness: "fresh",
-      sectionRevisions: snapshot.section_revisions,
-    });
+    expect(cache.readSectionRevisions()).toEqual(snapshot.section_revisions);
   });
 
   it("热机后缓存当前工程 items、质量块、提示词块和 section revision", async () => {
@@ -187,16 +181,7 @@ describe("ProjectCache", () => {
       }),
     });
 
-    expect(cache.snapshot()).toMatchObject({
-      projectPath: "E:/Project/demo.lg",
-      freshness: "fresh",
-      itemCount: 1,
-      sectionRevisions: {
-        items: 2,
-        quality: 3,
-        prompts: 4,
-      },
-    });
+    expect(cache.readSectionRevisions()).toMatchObject({ items: 2, quality: 3, prompts: 4 });
     expect(cache.items.readItems()).toEqual([
       expect.objectContaining({
         item_id: 1,
@@ -258,17 +243,12 @@ describe("ProjectCache", () => {
       }),
     ).rejects.toThrow("view failed");
 
-    expect(cache.snapshot().freshness).toBe("fresh");
     expect(log_manager.warning).toHaveBeenCalled();
 
     database.get_all_items.mockReturnValue([create_item({ id: 2, src: "こんばんは" })]);
 
     expect(cache.items.readItem(2)).toEqual(expect.objectContaining({ src: "こんばんは" }));
-    expect(cache.snapshot()).toMatchObject({
-      freshness: "fresh",
-      itemCount: 1,
-      sectionRevisions: { items: 2, quality: 3, prompts: 4 },
-    });
+    expect(cache.readSectionRevisions()).toMatchObject({ items: 2, quality: 3, prompts: 4 });
     expect(cache.prompts.readBlock().translation.text).toBe("新提示词");
   });
 
@@ -303,10 +283,6 @@ describe("ProjectCache", () => {
       sectionRevisions: { items: 2 },
     });
 
-    expect(cache.snapshot()).toMatchObject({
-      freshness: "fresh",
-      itemCount: 2,
-    });
     expect(cache.items.readItem(1)).toEqual(expect.objectContaining({ dst: "你好" }));
     expect(cache.items.readItem(2)).toEqual(expect.objectContaining({ src: "こんばんは" }));
     expect(database.get_items_by_ids).toHaveBeenCalledWith("E:/Project/demo.lg", [1]);

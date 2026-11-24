@@ -14,7 +14,6 @@ import type { JsonRecord } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
 
 import { ProjectOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { AppPathService } from "../app/app-path-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import { QualityRuleService } from "./quality-rule-service";
@@ -473,18 +472,16 @@ describe("QualityRuleService", () => {
       env: {},
       platform: process.platform,
     });
-    const session_state = new ProjectSessionFixture();
     const project_event_bus = vi.fn();
     const lg_path = path.join(app_root, "quality.lg");
     const publisher = create_test_project_change_publisher(lg_path);
     await database.create_project(lg_path);
-    session_state.mark_loaded(lg_path);
     const runtime_gate = create_runtime_gate(runtime_owner);
     return {
       service: new QualityRuleService(
         paths,
         new AppSettingService(paths),
-        session_state.snapshot().projectPath,
+        lg_path,
         new ProjectWriteStore(database, project_event_bus, publisher.publish_project_change),
         runtime_gate,
         create_cache(),
@@ -501,9 +498,7 @@ describe("QualityRuleService", () => {
   function create_test_project_change_publisher(lg_path: string) {
     return {
       publish_project_change: vi.fn((payload: ProjectCommittedChange): ProjectChangeEvent => {
-        const session = new ProjectSessionFixture();
-        session.mark_loaded(lg_path);
-        return adapt_project_change(session.snapshot().projectPath, payload)!;
+        return adapt_project_change(lg_path, payload)!;
       }),
     };
   }

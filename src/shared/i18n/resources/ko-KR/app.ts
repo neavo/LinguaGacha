@@ -90,7 +90,7 @@ export const ko_kr_app = {
     import_success: "데이터를 가져왔습니다",
     no_valid_data: "유효한 데이터가 없습니다",
     update_failed: "업데이트에 실패했습니다 …",
-    project_settings_aligned: "현재 설정에 맞춰 프로젝트 설정을 업데이트했습니다",
+    project_settings_saved: "프로젝트 설정을 저장했습니다",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

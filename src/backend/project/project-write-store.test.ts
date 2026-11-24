@@ -1,10 +1,9 @@
 import { AGENT_DOCUMENT_MAX_BYTES } from "../../shared/agent";
 import { project_knowledge_fingerprint } from "./project-knowledge";
 import { adapt_project_change } from "./project-write-event-adapter";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { ItemCache } from "../cache/item-cache";
 import { ProjectDataReader } from "./project-data-reader";
-import { create_item, type Item } from "../../domain/item";
+import { build_project_item_public_record, create_item, type Item } from "../../domain/item";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -921,7 +920,7 @@ describe("ProjectWriteStore", () => {
           {
             line: 1,
             item_id: 1,
-            fp: String(project_agent_workspace_item(item)["fp"]),
+            fp: workspace_item_fp(item),
             update: { dst: "译文", name_dst: "译名", status: "PROCESSED" },
           },
         ],
@@ -1002,7 +1001,7 @@ describe("ProjectWriteStore", () => {
           {
             line: 1,
             item_id: 1,
-            fp: String(project_agent_workspace_item(representative)["fp"]),
+            fp: workspace_item_fp(representative),
             update: { status: "EXCLUDED" },
           },
         ],
@@ -1042,7 +1041,7 @@ describe("ProjectWriteStore", () => {
           {
             line: 1,
             item_id: 1,
-            fp: String(project_agent_workspace_item(item)["fp"]),
+            fp: workspace_item_fp(item),
             update: { dst: "" },
           },
         ],
@@ -1086,9 +1085,7 @@ describe("ProjectWriteStore", () => {
             {
               line: 1,
               item_id: 1,
-              fp: String(
-                project_agent_workspace_item((await read_items(database, project_path))[0]!)["fp"],
-              ),
+              fp: workspace_item_fp((await read_items(database, project_path))[0]!),
               update: { dst: "译文", status: "PROCESSED" },
             },
           ],
@@ -1139,7 +1136,7 @@ describe("ProjectWriteStore", () => {
     const { database, project_path, store } = await create_store("agent-workspace-partial");
     await seed_items(database, project_path);
     const baseline_item = (await read_items(database, project_path))[0]!;
-    const baseline_fp = String(project_agent_workspace_item(baseline_item)["fp"]);
+    const baseline_fp = workspace_item_fp(baseline_item);
     await database.transaction(project_path, (writer) =>
       writer.set_items(project_path, [{ ...baseline_item, dst: "外部译文" }]),
     );
@@ -1211,12 +1208,10 @@ describe("ProjectWriteStore", () => {
     published_changes: ProjectCommittedChange[],
     on_publish?: () => void,
   ): ProjectChangePublisher {
-    const session = new ProjectSessionFixture();
-    void session.mark_loaded(project_path);
     return vi.fn((payload: ProjectCommittedChange) => {
       on_publish?.();
       published_changes.push(payload);
-      return adapt_project_change(session.snapshot().projectPath, payload);
+      return adapt_project_change(project_path, payload);
     });
   }
 
@@ -1324,3 +1319,8 @@ describe("ProjectWriteStore", () => {
     };
   }
 });
+
+/** 测试模拟工作区读取已保存条目后回传指纹。 */
+function workspace_item_fp(stored: unknown): string {
+  return project_agent_workspace_item(build_project_item_public_record(create_item(stored))).fp;
+}

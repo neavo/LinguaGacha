@@ -137,7 +137,7 @@ function use_tools_docked(workspace_ref: RefObject<HTMLDivElement | null>): {
   return { docked, animated };
 }
 
-/** 工程工作区：左侧承载对话与预览标签，右侧双功能块在窄态互斥下拉、宽态纵排常驻。 */
+/** 按工程打开周期挂载，保留对话实例供功能页切回。 */
 export function ProjectWorkspace({
   project,
   selected,
@@ -164,12 +164,6 @@ export function ProjectWorkspace({
   useEffect(() => {
     if (docked) set_open_group(null);
   }, [docked]);
-
-  // 切换工程时收起临时菜单与确认框，避免跨工程残留交互。
-  useEffect(() => {
-    set_open_group(null);
-    set_prefilter_field(null);
-  }, [project_id]);
 
   // 窄态浮层展开期间响应外部点击与 Esc 收起，不干扰宽态常驻卡片。
   useEffect(() => {
@@ -259,10 +253,10 @@ export function ProjectWorkspace({
       </div>
       {prefilter_field !== null ? (
         <ProjectPrefilterSettingDialog
-          key={`${project_id}:${prefilter_field}`}
+          key={prefilter_field}
           projectId={project_id}
           field={prefilter_field}
-          settings={project_settings}
+          enabled={project_settings[prefilter_field]}
           onClose={() => set_prefilter_field(null)}
         />
       ) : null}
@@ -298,14 +292,30 @@ function WorkspaceToolGroup({
 }): JSX.Element {
   const { t } = useI18n();
   const expanded = docked || open;
-  const active_route_item =
-    selected === "agent" ? undefined : group.routeItems.find((item) => item.id === selected);
+  const active_route_item = group.routeItems.find((item) => item.id === selected);
   const group_label = t(group.title_key);
   const HeaderIcon = active_route_item?.icon ?? group.icon;
   const header_label =
     active_route_item === undefined
       ? group_label
       : t(SCREEN_REGISTRY[active_route_item.id].title_key);
+
+  const header_content = (
+    <>
+      <HeaderIcon className="project-workspace__tools-icon" aria-hidden="true" />
+      <span className="project-workspace__tools-label">{header_label}</span>
+      {active_route_item === undefined && (
+        <ChevronDown
+          className={
+            docked
+              ? "project-workspace__tools-chevron project-workspace__tools-chevron--hidden"
+              : "project-workspace__tools-chevron"
+          }
+          aria-hidden="true"
+        />
+      )}
+    </>
+  );
 
   return (
     <nav
@@ -325,14 +335,7 @@ function WorkspaceToolGroup({
             className="project-workspace__tools-trigger project-workspace__tools-trigger--static"
             data-active={active_route_item !== undefined}
           >
-            <HeaderIcon className="project-workspace__tools-icon" aria-hidden="true" />
-            <span className="project-workspace__tools-label">{header_label}</span>
-            {active_route_item === undefined && (
-              <ChevronDown
-                className="project-workspace__tools-chevron project-workspace__tools-chevron--hidden"
-                aria-hidden="true"
-              />
-            )}
+            {header_content}
           </div>
         ) : (
           <button
@@ -345,11 +348,7 @@ function WorkspaceToolGroup({
             aria-haspopup="menu"
             onClick={on_toggle}
           >
-            <HeaderIcon className="project-workspace__tools-icon" aria-hidden="true" />
-            <span className="project-workspace__tools-label">{header_label}</span>
-            {active_route_item === undefined && (
-              <ChevronDown className="project-workspace__tools-chevron" aria-hidden="true" />
-            )}
+            {header_content}
           </button>
         )}
         {active_route_item !== undefined && (

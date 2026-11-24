@@ -23,9 +23,7 @@ export class ProofreadingQueryService {
   private readonly project_path: string; // 查询必须绑定当前 loaded 工程
   private readonly cache: ProofreadingCache; // 完整条目读取、列表计算和窗口身份由校对缓存拥有。
 
-  /**
-   * 注入会话守卫和校对缓存。
-   */
+  /** 绑定工程路径和该工程的校对缓存。 */
   public constructor(options: { projectPath: string; cache: ProofreadingCache }) {
     this.project_path = options.projectPath;
     this.cache = options.cache;
@@ -58,11 +56,6 @@ export class ProofreadingQueryService {
         });
       }
       const result = this.cache.rawItem(item_id);
-      if (result.projectPath !== project_path) {
-        throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "stale_proofreading_project" },
-        });
-      }
       return this.with_revision(result, { item: result.data as unknown as JsonValue });
     }
     if (action === "sync") {

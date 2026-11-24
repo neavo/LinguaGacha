@@ -80,7 +80,7 @@ export class AgentWorkspaceDirectories {
     }
   }
 
-  /** 当前目录优先保留。其余只读取根目录时间，不扫描文件内容。 */
+  /** 保留所有打开工程的对话目录。回收按其余目录的最后使用时间排序。 */
   public async prune(protectedIds: ReadonlySet<string>): Promise<void> {
     try {
       const candidates = this.fs

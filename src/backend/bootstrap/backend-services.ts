@@ -222,7 +222,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       const project_path = default_native_fs.real_path(body.path);
       const opened = this.projects.find(project_path);
       if (opened !== undefined) {
-        if (opened.cache.snapshot().freshness === "recoverable_error") await opened.cache.refresh();
+        await opened.cache.recover();
         return this.project_snapshot(opened);
       }
       const snapshot = await this.lifecycle.load_project(
@@ -324,7 +324,6 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
     const dispose_activity = gate.subscribe(() => this.publish_runtime());
     const cache = new ProjectCache({
       projectPath: project_path,
-      projectId: id,
       snapshot,
       database,
       logManager: this.logManager,

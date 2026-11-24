@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BatchRequestService } from "./batch-request-service";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
 import { RequestRatePool } from "../batch-task/request-rate";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { ProjectOperationGate } from "../runtime-operation-gate";
 import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
 import { default_native_fs } from "../../native/native-fs";
@@ -33,9 +32,8 @@ const response = (): LLMRequestResult => ({
 async function setup(request: LLMClientPort["request"] = async () => response()) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "batch-request-"));
   directories.push(root);
-  const session = new ProjectSessionFixture();
   const gate = new ProjectOperationGate();
-  const tasks = new BatchTaskRuntime(session.snapshot().projectPath, gate);
+  const tasks = new BatchTaskRuntime("request.lg", gate);
   const lease = gate.begin_runtime("agent");
   const settings = {
     models: [

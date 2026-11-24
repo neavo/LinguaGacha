@@ -23,7 +23,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { get_section_revision } from "../../project/project-data-reader";
-import { ProjectSessionFixture } from "../../../test/project-session-fixture";
 import { ProjectOperationGate } from "../../runtime-operation-gate";
 import { BatchTranslationCompletionError, BatchTranslationState } from "../batch-translation-state";
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
@@ -209,10 +208,8 @@ describe("BatchTranslationRunner", () => {
       }),
     );
     await database.transaction(project_path, (writer) => writer.set_items(project_path, originals));
-    const session = new ProjectSessionFixture();
-    session.mark_loaded(project_path);
-    const tasks = new BatchTaskRuntime(session.snapshot().projectPath, new ProjectOperationGate());
-    const runtime = new BatchTranslationState(session.snapshot().projectPath, database, tasks);
+    const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
+    const runtime = new BatchTranslationState(project_path, database, tasks);
     const frames: BatchTranslationSnapshot[] = [];
     tasks.subscribe(async () => {
       const snapshot = await runtime.build_snapshot();
@@ -220,14 +217,13 @@ describe("BatchTranslationRunner", () => {
     });
     const cache = new ProjectCache({
       projectPath: project_path,
-      projectId: "fixture",
       database,
       logManager: null,
       workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
     });
     const publish = vi.fn(() => null);
     const store = new BatchTranslationProjectStore(
-      session.snapshot().projectPath,
+      project_path,
       cache,
       new ProjectWriteStore(database, vi.fn(), publish),
     );
@@ -367,14 +363,9 @@ describe("BatchTranslationRunner", () => {
         ]),
       );
       const original_items = await database.get_all_items(project_path);
-      const session = new ProjectSessionFixture();
-      session.mark_loaded(project_path);
       const reader = database;
-      const tasks = new BatchTaskRuntime(
-        session.snapshot().projectPath,
-        new ProjectOperationGate(),
-      );
-      const runtime = new BatchTranslationState(session.snapshot().projectPath, reader, tasks);
+      const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
+      const runtime = new BatchTranslationState(project_path, reader, tasks);
       const pending_snapshots: number[][] = [];
       tasks.subscribe(async () => {
         const snapshot = await runtime.build_snapshot();
@@ -383,14 +374,13 @@ describe("BatchTranslationRunner", () => {
       });
       const cache = new ProjectCache({
         projectPath: project_path,
-        projectId: "fixture",
         database,
         logManager: null,
         workerClient: { run: vi.fn(), dispose: vi.fn() } as unknown as ComputeWorkerClient,
       });
       const publish_change = vi.fn(() => null);
       const writes = new ProjectWriteStore(database, vi.fn(), publish_change);
-      const store = new BatchTranslationProjectStore(session.snapshot().projectPath, cache, writes);
+      const store = new BatchTranslationProjectStore(project_path, cache, writes);
       const pool = new TranslationWorkerPool({
         builtinRoot: builtin_root,
         execution: { kind: "in_process" },
@@ -1139,16 +1129,10 @@ describe("BatchTranslationRunner", () => {
     listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void = () => undefined,
     read_meta: (() => JsonRecord) | null = null,
   ): { runtime: BatchTranslationState; tasks: BatchTaskRuntime } {
-    const session_state = new ProjectSessionFixture();
-    if (read_meta !== null) {
-      session_state.mark_loaded("E:/Project/batch-translation-state-test.lg");
-    }
-    const tasks = new BatchTaskRuntime(
-      session_state.snapshot().projectPath,
-      new ProjectOperationGate(),
-    );
+    const project_path = read_meta === null ? "" : "E:/Project/batch-translation-state-test.lg";
+    const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
     const runtime = new BatchTranslationState(
-      session_state.snapshot().projectPath,
+      project_path,
       {
         get_all_meta: () => read_meta?.() ?? {},
         get_section_revision: () => 0,

@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { register_post_json_route } from "./api-request";
 import { adapt_project_change } from "../project/project-write-event-adapter";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { create_item, build_project_item_public_record } from "../../domain/item";
 import { describe, expect, it } from "vitest";
 
@@ -31,8 +30,6 @@ describe("ApiStreamHub", () => {
 });
 
 it("同一个提交事件通过 HTTP 与 SSE 编码为相同的轻量通知", async () => {
-  const session = new ProjectSessionFixture();
-  await session.mark_loaded("project.lg");
   const event = adapt_project_change("fixture", {
     projectPath: "project.lg",
     source: "unknown_writer",

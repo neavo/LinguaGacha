@@ -13,7 +13,7 @@ import { create_empty_project_prompts, type ProjectPrompts } from "../../domain/
 import { DEFAULT_PROJECT_SETTINGS, type ProjectSettings } from "../../domain/project-settings";
 import { createProofreadingReader } from "../../shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
-import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types";
+import type { CacheReadPort } from "./cache-types";
 import { FileCache } from "./file-cache";
 import { ItemCache } from "./item-cache";
 import { ProofreadingCache } from "./proofreading-cache";
@@ -51,9 +51,8 @@ class ProjectDataBlockCache<T extends object> {
 export class ProjectCache implements CacheReadPort {
   private readonly database: ProjectDatabase;
   private readonly log_manager: Pick<LogManager, "warning" | "error"> | null; // 恢复失败只记录诊断。
-  private readonly project_path: string;
-  private readonly project_id: string;
-  private freshness: CacheFreshness = "empty"; // 读取前用 freshness 判断是否需要恢复。
+  public readonly projectPath: string;
+  private freshness: "empty" | "fresh" | "recoverable_error" = "empty";
   private section_revisions: ProjectDataSectionRevisions = {}; // 对外暴露的 section revision 快照。
   public readonly items = new ItemCache(() => this.recover_if_needed());
   public readonly files = new FileCache(() => this.recover_if_needed());
@@ -78,14 +77,12 @@ export class ProjectCache implements CacheReadPort {
    */
   public constructor(options: {
     projectPath: string;
-    projectId: string;
     snapshot?: ProjectDataSnapshot;
     database: ProjectDatabase;
     logManager: Pick<LogManager, "warning" | "error"> | null;
     workerClient: ComputeWorkerClient;
   }) {
-    this.project_path = options.projectPath;
-    this.project_id = options.projectId;
+    this.projectPath = options.projectPath;
     this.database = options.database;
     this.log_manager = options.logManager;
     this.proofreading = new ProofreadingCache({
@@ -109,7 +106,7 @@ export class ProjectCache implements CacheReadPort {
     this.prompts.replace(snapshot.prompts);
     this.settings.replace(snapshot.settings);
     this.qualityStatistics.clear();
-    this.proofreading.clearProject();
+    this.proofreading.clear();
     this.section_revisions = { ...snapshot.section_revisions };
     this.freshness = "fresh";
   }
@@ -118,7 +115,7 @@ export class ProjectCache implements CacheReadPort {
    * 将提交结果应用到缓存，失败时等待数据库重建后报告原始错误。
    */
   public async applyCommittedChange(committed: ProjectCommittedChange): Promise<void> {
-    if (committed.projectPath !== this.project_path) return;
+    if (committed.projectPath !== this.projectPath) return;
     try {
       if (committed.items !== undefined) this.items.applyChange(committed.items);
       if (committed.files !== undefined) this.files.replace(committed.files);
@@ -146,7 +143,7 @@ export class ProjectCache implements CacheReadPort {
     ids: readonly number[],
   ): { ids: number[]; revision: number } | null {
     this.recover_if_needed();
-    if (project_path !== this.project_path || this.freshness !== "fresh") return null;
+    if (project_path !== this.projectPath || this.freshness !== "fresh") return null;
     return { ids: this.items.readWriteScope(ids), revision: this.section_revisions.items ?? 0 };
   }
 
@@ -158,24 +155,14 @@ export class ProjectCache implements CacheReadPort {
     return { ...this.section_revisions };
   }
 
-  /**
-   * 返回项目身份、热机世代和 item 数量的轻量快照。
-   */
-  public snapshot(): CacheSnapshot {
-    return {
-      projectPath: this.project_path,
-      projectId: this.project_id,
-      freshness: this.freshness,
-      sectionRevisions: { ...this.section_revisions },
-      itemCount: this.items.size(),
-    };
+  /** 重开时仅修复因提交后同步失败而不可用的缓存。 */
+  public async recover(): Promise<void> {
+    if (this.freshness === "recoverable_error") await this.refresh();
   }
 
-  /**
-   * 从数据库重建所有基础缓存，读取完成后一次安装。
-   */
+  /** 从数据库重建所有基础缓存，读取完成后一次安装。 */
   public async refresh(): Promise<void> {
-    const project_path = this.project_path;
+    const project_path = this.projectPath;
     const snapshot = await this.database.read(project_path, (reader) =>
       new ProjectDataReader(reader).read_snapshot(project_path),
     );

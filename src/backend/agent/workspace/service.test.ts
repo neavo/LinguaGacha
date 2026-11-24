@@ -91,7 +91,7 @@ describe("AgentWorkspaceService", () => {
       rejected: [{ scope: "knowledge", reason: "fp_mismatch" }],
       destroyed: true,
     });
-    fixture.snapshot.sectionRevisions.knowledge = 2;
+    fixture.revisions.knowledge = 2;
     await run_workspace(fixture);
     expect(read_text()).toBe("new");
   });
@@ -231,7 +231,7 @@ describe("AgentWorkspaceService", () => {
           path.join(fixture.workspace_root, AGENT_WORKSPACE_CHANGE_PATHS.files.creates),
           JSON.stringify({ source_path: "uploads/../../bad.txt" }),
         );
-      if (kind === "stale") fixture.snapshot.sectionRevisions.files = 2;
+      if (kind === "stale") fixture.revisions.files = 2;
       const approve = vi.fn();
       const result = await fixture.service.apply_workspace(approve);
       expect(result).toMatchObject({
@@ -676,7 +676,7 @@ describe("AgentWorkspaceService", () => {
     const file = path.join(fixture.workspace_root, "work", "report.md");
     fs.writeFileSync(file, "初稿");
     fixture.pick_save_path.mockImplementationOnce(async () => {
-      fixture.snapshot.sectionRevisions.items = 2;
+      fixture.revisions.items = 2;
       await run_workspace(fixture);
       fs.writeFileSync(file, "定稿");
       return path.join(temp_dir, "saved.md");
@@ -820,7 +820,7 @@ describe("AgentWorkspaceService", () => {
 
     fs.writeFileSync(extra_path, JSON.stringify({ item_id: 1, extra_field: extra }));
     fixture.items.splice(0);
-    fixture.snapshot.sectionRevisions.items = 2;
+    fixture.revisions.items = 2;
     await run_workspace(fixture);
     expect(fs.existsSync(extra_path)).toBe(false);
     expect(read_jsonl(path.join(fixture.active_path(), AGENT_WORKSPACE_PATHS.items))).toEqual([]);
@@ -898,7 +898,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.read_asset_content).toHaveBeenCalledOnce();
     await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledOnce();
-    fixture.snapshot.sectionRevisions.files = 2;
+    fixture.revisions.files = 2;
     await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(2);
     await fixture.service.close();
@@ -930,7 +930,7 @@ describe("AgentWorkspaceService", () => {
     fixture.read_asset_content.mockResolvedValue(await archive("Old"));
     await run_workspace(fixture);
 
-    fixture.snapshot.sectionRevisions.files = 2;
+    fixture.revisions.files = 2;
     fixture.read_asset_content.mockResolvedValue(await archive("New"));
     await run_workspace(fixture);
     const game = path.join(fixture.workspace_root, "sources", file_path);
@@ -938,7 +938,7 @@ describe("AgentWorkspaceService", () => {
     expect(fs.existsSync(path.join(game, "Data/Old.rvdata2.reference.json"))).toBe(false);
     expect(JSON.parse(fs.readFileSync(new_file, "utf8"))).toEqual([]);
 
-    fixture.snapshot.sectionRevisions.files += 1;
+    fixture.revisions.files += 1;
     const write = native.write_file.bind(native);
     const fail = vi.spyOn(native, "write_file").mockImplementation(async (file, ...args) => {
       await write(file, ...args);
@@ -984,7 +984,7 @@ describe("AgentWorkspaceService", () => {
     await run_workspace(fixture);
     expect(fs.existsSync(path.join(fixture.workspace_root, "function_models.json"))).toBe(false);
     expect(fs.existsSync(path.join(fixture.workspace_root, "model_configs.json"))).toBe(false);
-    fixture.snapshot.sectionRevisions.items = 2;
+    fixture.revisions.items = 2;
     await fixture.service.run(VALID_WORKSPACE_RUN, new AbortController().signal);
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
@@ -1030,7 +1030,7 @@ describe("AgentWorkspaceService", () => {
     const previous_path = fixture.active_path();
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
-    fixture.snapshot.sectionRevisions.items = 2;
+    fixture.revisions.items = 2;
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
     await expect(run_workspace(fixture)).rejects.toMatchObject({
@@ -1450,7 +1450,7 @@ describe("AgentWorkspaceService", () => {
     if (query_warnings === undefined) throw new Error("缺少校对查询 fixture");
     fixture.query_warnings.mockImplementationOnce(async () => {
       const result = await query_warnings();
-      fixture.snapshot.sectionRevisions.items = 2;
+      fixture.revisions.items = 2;
       return result;
     });
     const environment_files = fs.readdirSync(fixture.workspace_root);
@@ -1469,7 +1469,7 @@ describe("AgentWorkspaceService", () => {
       AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
     );
     fs.writeFileSync(change_file, "pending");
-    fixture.snapshot.sectionRevisions.items = 2;
+    fixture.revisions.items = 2;
 
     await fixture.service.run(VALID_WORKSPACE_RUN, new AbortController().signal);
     expect(fs.readFileSync(change_file, "utf-8")).toBe("");
@@ -1481,7 +1481,7 @@ describe("AgentWorkspaceService", () => {
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     fixture.languages.target_language = "EN";
-    fixture.snapshot.sectionRevisions.project = 2;
+    fixture.revisions.project = 2;
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
     await expect(run_workspace(fixture)).rejects.toMatchObject({
@@ -1511,13 +1511,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       1,
     ]),
   ) as ProjectDataSectionRevisions;
-  const snapshot = {
-    projectPath: "test.lg",
-    projectId: "1",
-    freshness: "fresh" as const,
-    sectionRevisions: { ...revisions },
-    itemCount: 2,
-  };
+  const projectPath = "test.lg";
   const items = [create_item(1), create_item(2)];
   const item_by_id = new Map(items.map((item) => [item.item_id, item]));
   const quality = create_empty_quality_rule_block();
@@ -1537,8 +1531,9 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     [create_quality_entry("text_preserve")],
   );
   const cache: CacheReadPort = {
+    projectPath,
     items: {
-      readItems: () => items,
+      readItems: () => [...items],
       readItem: (item_id) => item_by_id.get(item_id) ?? null,
     },
     files: {
@@ -1552,8 +1547,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     },
 
     settings: { readBlock: () => ({ ...DEFAULT_PROJECT_SETTINGS, ...languages }) },
-    readSectionRevisions: () => ({ ...snapshot.sectionRevisions }),
-    snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
+    readSectionRevisions: () => ({ ...revisions }),
   };
   const run = vi.fn<AgentWorkspaceRunPort>(async () => workspace_execution());
   const package_sources = {
@@ -1565,7 +1559,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       batch: request.batch,
       current: {
         knowledge: knowledge.stored,
-        items: items as unknown as JsonRecord[],
+        items,
         quality: Object.fromEntries(
           QUALITY_RULE_KINDS.map((kind) => [
             kind,
@@ -1601,8 +1595,8 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   };
   const read_asset_content = vi.fn(async (): Promise<Buffer> => Buffer.from("源文件正文", "utf-8"));
   const query_warnings = vi.fn(async () => ({
-    projectPath: snapshot.projectPath,
-    sectionRevisions: { ...snapshot.sectionRevisions },
+    projectPath,
+    sectionRevisions: { ...revisions },
     data: {
       total_item_count: 1,
       items: [
@@ -1681,7 +1675,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     paths: {
       get_agent_workspace_root_dir: () => workspace_parent,
     },
-    projectPath: snapshot.projectPath,
+    projectPath,
     cache,
     proofreading: { query_warnings },
     database: {
@@ -1711,7 +1705,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     open_directory,
     pick_save_path,
     workspace_root,
-    snapshot,
+    revisions,
     languages,
     query_warnings,
     run,

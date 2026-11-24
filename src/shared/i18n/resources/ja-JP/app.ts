@@ -91,7 +91,7 @@ export const ja_jp_app = {
     import_success: "データをインポートしました",
     no_valid_data: "有効なデータがありません",
     update_failed: "更新できませんでした …",
-    project_settings_aligned: "現在の設定に合わせてプロジェクト設定を更新しました",
+    project_settings_saved: "プロジェクト設定を保存しました",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

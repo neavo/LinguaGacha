@@ -54,7 +54,7 @@ renderer 通过 `window.desktopApp` 使用按用途划分的宿主能力。
 
 ### 事件与恢复
 
-同一路径的工程也可能重新加载。前端用 `projectId` 识别打开周期，按 [身份隔离迟到结果](ARCHITECTURE.md#身份隔离迟到结果) 防止旧请求或迟到事件进入新会话。
+按 [身份隔离迟到结果](ARCHITECTURE.md#身份隔离迟到结果)，工程事件和请求以每次打开分配的 `projectId` 为准。
 
 HTTP 写入结果与 SSE 共用项目事件入口和去重策略：
 

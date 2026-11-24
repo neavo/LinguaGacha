@@ -9,13 +9,11 @@ import { NativePathPolicy } from "../../native/native-path";
 import { ProjectDatabase } from "../database/database-operations";
 import { GlobalOperationGate } from "../runtime-operation-gate";
 import { ProjectDataReader } from "./project-data-reader";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { ProjectTranslationTransferService } from "./project-translation-transfer-service";
 
 let directory = "";
 let database: ProjectDatabase;
 let gate: GlobalOperationGate;
-let session: ProjectSessionFixture;
 
 /** 创建带条目的真实工程，关闭语言过滤让状态只由本例决定。 */
 async function create_project(name: string, items: Record<string, unknown>[]): Promise<string> {
@@ -62,7 +60,6 @@ beforeEach(() => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-translation-transfer-"));
   database = new ProjectDatabase("1.0.0");
   gate = new GlobalOperationGate();
-  session = new ProjectSessionFixture();
 });
 
 afterEach(async () => {
@@ -76,9 +73,7 @@ describe("ProjectTranslationTransferService", () => {
     const source_bytes = fs.readFileSync(source_path);
     const base_bytes = fs.readFileSync(base_path);
     const output_path = path.join(directory, "output.lg");
-    const service = new ProjectTranslationTransferService(database, gate, () =>
-      session.snapshot().loaded ? [session.snapshot().projectPath] : [],
-    );
+    const service = new ProjectTranslationTransferService(database, gate, () => []);
 
     await expect(
       service.apply({ source_path, base_path, output_path, mode: "overwrite" }),
@@ -103,12 +98,11 @@ describe("ProjectTranslationTransferService", () => {
     const source_path = path.join(directory, "source.lg");
     const base_path = path.join(directory, "base.lg");
     const loaded_path = path.join(directory, "Loaded.lg");
-    await session.mark_loaded(loaded_path);
     // 路径冲突在访问文件前判定，按 Windows 规则验证大小写不敏感的比较。
     const service = new ProjectTranslationTransferService(
       database,
       gate,
-      () => (session.snapshot().loaded ? [session.snapshot().projectPath] : []),
+      () => [loaded_path],
       new NativeFs(new NativePathPolicy("win32")),
     );
 
@@ -126,9 +120,7 @@ describe("ProjectTranslationTransferService", () => {
     fs.writeFileSync(output_path, "existing");
 
     await expect(
-      new ProjectTranslationTransferService(database, gate, () =>
-        session.snapshot().loaded ? [session.snapshot().projectPath] : [],
-      ).apply({
+      new ProjectTranslationTransferService(database, gate, () => []).apply({
         source_path,
         base_path,
         output_path,

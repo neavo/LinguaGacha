@@ -20,15 +20,12 @@ const result = () => "done" as const;
 afterEach(() => vi.useRealTimers());
 
 describe("共享批次完成链", () => {
-  it("Agent 翻译只在本工程阻止写入，结束后父对话继续运行", async () => {
+  it("Agent 翻译占用工程写入，结束后父对话继续运行", async () => {
     const { runtime, gate } = setup();
     const agent = gate.begin_runtime("agent");
     const task = runtime.begin_under_agent(agent, new AbortController().signal, "translation");
     expect(gate.get_snapshot()).toMatchObject({ batchTranslation: true, agent: true });
     await expect(gate.run_project_write(() => {})).rejects.toMatchObject({ code: "runtime.busy" });
-    await expect(new ProjectOperationGate().run_project_write(() => "other project")).resolves.toBe(
-      "other project",
-    );
     await runtime.execute(task, async () => "done");
     await task.completion;
     expect(gate.get_snapshot()).toMatchObject({ batchTranslation: false, agent: true });

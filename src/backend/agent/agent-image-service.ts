@@ -9,6 +9,7 @@ import {
 } from "../../shared/agent-image";
 import { AppError } from "../../shared/error";
 import type { SupportedRasterImageMime } from "../../shared/image-formats";
+import { wait_for_operation } from "./wait-for-operation";
 
 export const AGENT_IMAGE_INPUT_MAX_BYTES = 20 * 1024 * 1024;
 export const AGENT_IMAGE_POLICY = Object.freeze({
@@ -53,23 +54,14 @@ export class AgentImageService {
     let operation = this.pending.get(key);
     if (operation === undefined) {
       // 转换归应用拥有，单个调用者取消只结束自身等待，不中断其它消费者。
-      operation = this.convert(bytes, key, policy, this.lifetime.signal);
+      operation = this.convert(bytes, key, policy, this.lifetime.signal).finally(() => {
+        this.pending.delete(key);
+      });
       this.pending.set(key, operation);
-      // 此分支只清理登记，转换失败由返回给调用者的原 `Promise` 传递。
-      void operation
-        .finally(() => {
-          if (this.pending.get(key) === operation) this.pending.delete(key);
-        })
-        .catch(() => undefined);
     }
-    if (signal === undefined) return operation;
-    return await new Promise<AgentImage>((resolve, reject) => {
-      const cancel = (): void => reject(effective_signal.reason);
-      effective_signal.addEventListener("abort", cancel, { once: true });
-      void operation
-        .then(resolve, reject)
-        .finally(() => effective_signal.removeEventListener("abort", cancel));
-    });
+    return await (signal === undefined
+      ? operation
+      : wait_for_operation(operation, effective_signal));
   }
 
   /** 宿主结果通过校验且应用仍在运行时，才写入成功缓存。 */

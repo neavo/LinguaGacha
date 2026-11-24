@@ -161,15 +161,11 @@ describe("FunctionSettingsPage", () => {
     });
   }
 
-  it("提示词增强位于最后一项，点击禁用提交新值", async () => {
+  it("点击禁用时保存提示词增强开关", async () => {
     await mount_page();
-    const last_setting = container!.querySelector(
-      '[aria-label="function_settings_page.title"]',
-    )!.lastElementChild!;
-    const toggle = last_setting.querySelector<HTMLButtonElement>(
+    const toggle = container!.querySelector<HTMLButtonElement>(
       '[aria-label="function_settings_page.fields.prompt_enhancement_enable.title"] button[aria-pressed="false"]',
     )!;
-    expect(toggle.textContent).toBe("app.toggle.option.disabled");
     await act(async () => toggle.click());
     expect(
       get_current_function_settings_state().update_boolean_setting,

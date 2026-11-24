@@ -18,7 +18,6 @@ import { default_native_fs } from "../../native/native-fs";
 import { create_text_resolver } from "../../shared/i18n";
 import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { FileFormatService } from "./file-format-service";
 import {
   TranslationFileGenerationService,
@@ -108,8 +107,6 @@ describe("TranslationFileGenerationService", () => {
         file_type: "TXT",
       }),
     );
-    const session = new ProjectSessionFixture();
-    session.mark_loaded(path.join(temp_dir, "book.lg"));
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
@@ -120,7 +117,7 @@ describe("TranslationFileGenerationService", () => {
         "plain.txt": { content: Buffer.from("保留文本"), file_type: "TXT" },
       }),
       create_setting_service(),
-      session.snapshot().projectPath,
+      path.join(temp_dir, "book.lg"),
       async () => {},
     );
     const generated = await service.generate_staging_files(path.join(temp_dir, "staging"));
@@ -148,9 +145,7 @@ describe("TranslationFileGenerationService", () => {
     expect(items[1]!.status).toBe("DUPLICATED");
   });
   it("仅含写回资产时直接生成报告排除清单，且不创建目录", async () => {
-    const session = new ProjectSessionFixture();
     const project_path = path.join(temp_dir, "agent-only.lg");
-    await session.mark_loaded(project_path);
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
@@ -161,7 +156,7 @@ describe("TranslationFileGenerationService", () => {
         "book.image": { content: Buffer.alloc(0), file_type: "IMAGE" },
       }),
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     for (const generate of [
@@ -180,9 +175,7 @@ describe("TranslationFileGenerationService", () => {
 
   it("生成持有工程独占范围，Agent 暂存生成必须归属当前回合", async () => {
     const gate = new ProjectOperationGate();
-    const session = new ProjectSessionFixture();
     const project_path = path.join(temp_dir, "locked.lg");
-    await session.mark_loaded(project_path);
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const database = create_database([
@@ -200,7 +193,7 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     const pending = service.generate_files({
@@ -232,16 +225,14 @@ describe("TranslationFileGenerationService", () => {
   });
 
   it("空工程在 GUI、CLI 和 Agent 生成时拒绝且不创建目录", async () => {
-    const session = new ProjectSessionFixture();
     const project_path = path.join(temp_dir, "empty.lg");
-    await session.mark_loaded(project_path);
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
       new GameDirectoryOperations(),
       create_database([]),
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     for (const generate of [
@@ -285,15 +276,14 @@ describe("TranslationFileGenerationService", () => {
         status: "PROCESSED",
       }),
     ];
-    const session = new ProjectSessionFixture();
-    await session.mark_loaded(path.join(temp_dir, "mixed.lg"));
+    const project_path = path.join(temp_dir, "mixed.lg");
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
       new GameDirectoryOperations(),
       create_database(items, assets),
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     const mixed = await service.generate_staging_files(path.join(temp_dir, "agent-mixed"));
@@ -321,7 +311,7 @@ describe("TranslationFileGenerationService", () => {
         { "notes.md": assets["notes.md"] },
       ),
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     const mono = await mono_service.generate_staging_files(path.join(temp_dir, "agent-mono"));
@@ -367,8 +357,6 @@ describe("TranslationFileGenerationService", () => {
     );
     const items = await new GenericFormat().read_from_stream(content, "data.generic");
     items[0] = { ...items[0]!, status: "PROCESSED", dst: "你好" };
-    const session = new ProjectSessionFixture();
-    await session.mark_loaded(project_path);
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
@@ -396,7 +384,7 @@ describe("TranslationFileGenerationService", () => {
         },
       ),
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     const gui = await service.generate_files({
@@ -458,8 +446,6 @@ describe("TranslationFileGenerationService", () => {
     const output_directory = path.join(temp_dir, "destination");
     fs.mkdirSync(output_directory);
     fs.writeFileSync(project_path, "project");
-    const session = new ProjectSessionFixture();
-    session.mark_loaded(project_path);
     const database = create_database([
       {
         id: 1,
@@ -478,7 +464,7 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     const text = create_text_resolver("zh-CN");
@@ -568,8 +554,6 @@ describe("TranslationFileGenerationService", () => {
       },
     ];
     const before = structuredClone(items);
-    const session = new ProjectSessionFixture();
-    session.mark_loaded(path.join(temp_dir, "legacy.lg"));
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
@@ -582,7 +566,7 @@ describe("TranslationFileGenerationService", () => {
         "old/sub.srt": { content: Buffer.from(`7\n${time}\n原文\n\n`), file_type: "SRT" },
       }),
       create_setting_service(),
-      session.snapshot().projectPath,
+      path.join(temp_dir, "legacy.lg"),
       async () => {},
     );
     const result = await service.generate_files_to_directory(path.join(temp_dir, "legacy"));
@@ -601,15 +585,13 @@ describe("TranslationFileGenerationService", () => {
       "empty.lrc": { content: Buffer.from("[offset:50]\n[00:01]\n"), file_type: "LRC" },
       "empty.ssa": { content: Buffer.from("[Events]\n"), file_type: "ASS" },
     };
-    const session = new ProjectSessionFixture();
-    session.mark_loaded(path.join(temp_dir, "empty.lg"));
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
       new GameDirectoryOperations(),
       create_database([], assets),
       create_setting_service(),
-      session.snapshot().projectPath,
+      path.join(temp_dir, "empty.lg"),
       async () => {},
     );
     const result = await service.generate_files_to_directory(path.join(temp_dir, "out"));
@@ -620,8 +602,6 @@ describe("TranslationFileGenerationService", () => {
 
   it.each(["译文", ""])("普通译文生成复用已完成正文 %j 并写出 TXT", async (dst) => {
     const project_path = path.join(temp_dir, "demo.lg");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const database = create_database([
       {
         id: 1,
@@ -649,13 +629,13 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service(),
-      session_state.snapshot().projectPath,
+      project_path,
       output_folder_opener,
     );
 
     const result = await service.generate_files({
       expected_section_revisions: { files: 0 },
-      project_path: session_state.require_loaded_project_path(),
+      project_path: project_path,
       output_directory: temp_dir,
     });
     expect(fs.readFileSync(path.join(String(result.output_path), "script.txt"), "utf-8")).toBe(
@@ -669,8 +649,6 @@ describe("TranslationFileGenerationService", () => {
     const patch = path.join(output, "game/custom/a.json");
     fs.mkdirSync(path.dirname(patch), { recursive: true });
     fs.writeFileSync(patch, "installed patch");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(path.join(temp_dir, "game.lg"));
     const content = Buffer.from(await write_zip(new Map([["data/System.json", "{}"]])));
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
@@ -678,7 +656,7 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       create_database([], { "game.zip": { content, file_type: "RPGMAKER_MV_MZ" } }, {}),
       create_setting_service(),
-      session_state.snapshot().projectPath,
+      path.join(temp_dir, "game.lg"),
       async () => {},
     );
     await service.generate_files_to_directory(output);
@@ -687,8 +665,6 @@ describe("TranslationFileGenerationService", () => {
 
   it("译文生成使用项目目标语言，不读取应用设置中的语言", async () => {
     const project_path = path.join(temp_dir, "language.lg");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const content = Buffer.from("WEBVTT\n\n00:00.000 --> 00:02.000\n<lang ja>こんにちは</lang>\n");
     const parsed = await new FileFormatService(new GameDirectoryOperations(), {
       target_language: "ZH",
@@ -709,13 +685,13 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service(),
-      session_state.snapshot().projectPath,
+      project_path,
       vi.fn<OutputFolderOpener>(),
     );
 
     const result = await service.generate_files({
       expected_section_revisions: { files: 0 },
-      project_path: session_state.require_loaded_project_path(),
+      project_path: project_path,
       output_directory: temp_dir,
     });
     expect(fs.readFileSync(path.join(String(result.output_path), "sub.vtt"), "utf-8")).toContain(
@@ -725,8 +701,6 @@ describe("TranslationFileGenerationService", () => {
 
   it("MESSAGEJSON 译文生成只在相同姓名间复用译文", async () => {
     const project_path = path.join(temp_dir, "actors.lg");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const database = create_database(
       [
         {
@@ -782,13 +756,13 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service(),
-      session_state.snapshot().projectPath,
+      project_path,
       vi.fn<OutputFolderOpener>(),
     );
 
     const result = await service.generate_files({
       expected_section_revisions: { files: 0 },
-      project_path: session_state.require_loaded_project_path(),
+      project_path: project_path,
       output_directory: temp_dir,
     });
 
@@ -803,8 +777,6 @@ describe("TranslationFileGenerationService", () => {
 
   it("译文生成时直接写出 Markdown 块中的资源引用", async () => {
     const project_path = path.join(temp_dir, "mixed.lg");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const source = "# 标题\n\n![封面](data:image/png;base64,AAAA)\n";
     const database = create_database(
       [
@@ -837,13 +809,13 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service(),
-      session_state.snapshot().projectPath,
+      project_path,
       vi.fn<OutputFolderOpener>(),
     );
 
     const result = await service.generate_files({
       expected_section_revisions: { files: 0 },
-      project_path: session_state.require_loaded_project_path(),
+      project_path: project_path,
       output_directory: temp_dir,
     });
 
@@ -854,8 +826,6 @@ describe("TranslationFileGenerationService", () => {
 
   it("德语界面使用德语译文生成目录名和日志", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const database = create_database([
       {
         id: 1,
@@ -874,7 +844,7 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service({ app_language: "DE" }),
-      session_state.snapshot().projectPath,
+      project_path,
       vi.fn<OutputFolderOpener>(),
       log_collector,
     );
@@ -891,7 +861,7 @@ describe("TranslationFileGenerationService", () => {
     await expect(
       service.generate_files({
         expected_section_revisions: { files: 0 },
-        project_path: session_state.require_loaded_project_path(),
+        project_path: project_path,
         output_directory: temp_dir,
       }),
     ).resolves.toEqual({
@@ -912,8 +882,6 @@ describe("TranslationFileGenerationService", () => {
 
   it("启用设置后译文生成成功会打开译文输出目录", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const database = create_database([
       {
         id: 1,
@@ -932,13 +900,13 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
-      session_state.snapshot().projectPath,
+      project_path,
       output_folder_opener,
     );
 
     const result = await service.generate_files({
       expected_section_revisions: { files: 0 },
-      project_path: session_state.require_loaded_project_path(),
+      project_path: project_path,
       output_directory: temp_dir,
     });
     expect(output_folder_opener).toHaveBeenCalledExactlyOnceWith(result.output_path);
@@ -947,8 +915,6 @@ describe("TranslationFileGenerationService", () => {
   it("CLI 译文生成写入指定 output-dir 并固定生成 bilingual 子目录", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const output_dir = path.join(temp_dir, "cli-out");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const database = create_database([
       {
         id: 1,
@@ -967,7 +933,7 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
-      session_state.snapshot().projectPath,
+      project_path,
       output_folder_opener,
     );
 
@@ -985,8 +951,6 @@ describe("TranslationFileGenerationService", () => {
 
   it("打开输出目录失败不改变译文生成成功结果并记录诊断日志", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded(project_path);
     const database = create_database([
       {
         id: 1,
@@ -1007,7 +971,7 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
-      session_state.snapshot().projectPath,
+      project_path,
       output_folder_opener,
       log_collector,
     );
@@ -1015,7 +979,7 @@ describe("TranslationFileGenerationService", () => {
     await expect(
       service.generate_files({
         expected_section_revisions: { files: 0 },
-        project_path: session_state.require_loaded_project_path(),
+        project_path: project_path,
         output_directory: temp_dir,
       }),
     ).resolves.toMatchObject({ accepted: true });
@@ -1030,8 +994,6 @@ describe("TranslationFileGenerationService", () => {
     "%s 失败时统一报告译文生成错误并保留一份原始诊断",
     async (entry) => {
       const project_path = path.join(temp_dir, "demo.lg");
-      const session_state = new ProjectSessionFixture();
-      session_state.mark_loaded(project_path);
       const database = create_database(
         [
           {
@@ -1064,7 +1026,7 @@ describe("TranslationFileGenerationService", () => {
         new GameDirectoryOperations(),
         database,
         create_setting_service({ output_folder_open_on_finish: true }),
-        session_state.snapshot().projectPath,
+        project_path,
         vi.fn<OutputFolderOpener>(),
         log_collector,
       );
@@ -1073,7 +1035,7 @@ describe("TranslationFileGenerationService", () => {
         entry === "gui-write"
           ? service.generate_files({
               expected_section_revisions: { files: 0 },
-              project_path: session_state.require_loaded_project_path(),
+              project_path: project_path,
               output_directory: temp_dir,
             })
           : service.generate_staging_files(path.join(temp_dir, "out"));
@@ -1099,8 +1061,7 @@ describe("TranslationFileGenerationService", () => {
   );
 
   it("已有业务错误保留原始错误码和详情", async () => {
-    const session = new ProjectSessionFixture();
-    session.mark_loaded(path.join(temp_dir, "project.lg"));
+    const project_path = path.join(temp_dir, "project.lg");
     const database = create_database([], {
       "book.epub": { content: Buffer.alloc(0), file_type: "EPUB" },
     });
@@ -1114,13 +1075,13 @@ describe("TranslationFileGenerationService", () => {
       new GameDirectoryOperations(),
       database,
       create_setting_service(),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     await expect(
       service.generate_files({
         expected_section_revisions: { files: 0 },
-        project_path: session.require_loaded_project_path(),
+        project_path: project_path,
         output_directory: temp_dir,
       }),
     ).rejects.toBe(error);
@@ -1135,15 +1096,13 @@ it.each(["PROJECT", "FIXED", "MANUAL"] as const)(
     const chosen = path.join(temp_dir, "chosen");
     fs.mkdirSync(fixed);
     fs.mkdirSync(chosen);
-    const session = new ProjectSessionFixture();
-    session.mark_loaded(project_path);
     const service = new TranslationFileGenerationService(
       create_generation_gate(),
       { check_section_revisions: async () => {} },
       new GameDirectoryOperations(),
       create_database([], { "empty.txt": { content: Buffer.alloc(0), file_type: "TXT" } }),
       create_setting_service({ translation_save_mode: mode, translation_fixed_path: fixed }),
-      session.snapshot().projectPath,
+      project_path,
       async () => {},
     );
     const paths = service.read_output_paths();

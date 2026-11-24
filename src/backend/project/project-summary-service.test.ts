@@ -9,7 +9,6 @@ import type { ProjectDataSection } from "../../shared/project-event";
 
 import { ProjectCache } from "../cache/project-cache";
 import { ProjectDatabase } from "../database/database-operations";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
 
@@ -17,10 +16,8 @@ it("工作台同步读取提交缓存，文本提交及空文件删除与修订�
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-summary-cache-"));
   const project = path.join(root, "test.lg");
   const database = new ProjectDatabase("1.0.0");
-  const session = new ProjectSessionFixture();
   const cache = new ProjectCache({
     projectPath: project,
-    projectId: "fixture",
     database,
     logManager: null,
     workerClient: {} as ComputeWorkerClient,
@@ -32,8 +29,7 @@ it("工作台同步读取提交缓存，文本提交及空文件删除与修订�
       writer.set_items(project, [create_item({})]);
     });
     await cache.refresh();
-    await session.mark_loaded(project);
-    const service = new ProjectSummaryService(session.snapshot().projectPath, cache);
+    const service = new ProjectSummaryService(project, cache);
     expect(service.read()).toMatchObject({
       projectPath: project,
       snapshot: {
@@ -196,7 +192,6 @@ describe("ProjectSummaryService", () => {
     } as unknown as ProjectDatabase;
     const cache = new ProjectCache({
       projectPath: "E:/Project/demo.lg",
-      projectId: "fixture",
       database,
       logManager: null,
       workerClient: {
@@ -205,10 +200,8 @@ describe("ProjectSummaryService", () => {
       } as unknown as ComputeWorkerClient,
     });
     await cache.refresh();
-    const session_state = new ProjectSessionFixture();
-    session_state.mark_loaded("E:/Project/demo.lg");
     return {
-      service: new ProjectSummaryService(session_state.snapshot().projectPath, cache),
+      service: new ProjectSummaryService("E:/Project/demo.lg", cache),
     };
   }
 });

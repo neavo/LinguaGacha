@@ -6,31 +6,16 @@ import type { ProjectSettings } from "../../domain/project-settings";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 
 /**
- * CacheFreshness 表示 session 热读缓存是否可直接服务查询。
- */
-export type CacheFreshness = "empty" | "fresh" | "recoverable_error";
-
-/**
- * CacheSnapshot 是跨缓存模块共享的最小项目身份与 revision 快照。
- */
-export type CacheSnapshot = {
-  projectPath: string;
-  projectId: string;
-  freshness: CacheFreshness;
-  sectionRevisions: ProjectDataSectionRevisions;
-  itemCount: number;
-};
-
-/**
  * CacheReadPort 限定视图缓存只能读取项目快照，不能写入底层缓存。
  */
 export interface CacheReadPort {
+  readonly projectPath: string;
   readonly items: {
     readItems(): ProjectItemPublicRecord[];
     readItem(itemId: number): ProjectItemPublicRecord | null;
   };
   readonly files: {
-    readFileEntries(): ProjectFileRecord[];
+    readFileEntries(): ProjectFileRecord[]; // 按工程文件顺序返回独立列表。
   };
   readonly quality: {
     readBlock(): QualityRuleBlock;
@@ -44,5 +29,4 @@ export interface CacheReadPort {
 
   /** 返回与当前缓存数据对应的独立修订快照。 */
   readSectionRevisions(): ProjectDataSectionRevisions;
-  snapshot(): CacheSnapshot;
 }

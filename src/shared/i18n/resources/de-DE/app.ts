@@ -94,7 +94,7 @@ export const de_de_app = {
     import_success: "Daten importiert",
     no_valid_data: "Keine gültigen Daten",
     update_failed: "Aktualisierung fehlgeschlagen …",
-    project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen",
+    project_settings_saved: "Projekteinstellungen gespeichert",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

@@ -55,12 +55,11 @@ import {
 
 const INITIAL_PRESET_REVISION = 1;
 
-/**
- * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
- */
+/** 负责磁盘工程的预览、创建和迁移，由组合根管理打开的工程。 */
 export class ProjectLifecycleService {
   private readonly default_preset_reader: ProjectDefaultPresetReader;
 
+  /** 创建时通过同一入口加载当前应用的默认预设。 */
   public constructor(
     private readonly game_directory_operations: GameDirectoryOperations,
     private readonly database: ProjectDatabase,

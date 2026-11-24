@@ -92,7 +92,7 @@ export const pt_br_app = {
     import_success: "Dados importados com sucesso",
     no_valid_data: "Nenhum dado válido",
     update_failed: "Falha na atualização …",
-    project_settings_aligned: "Configurações do projeto sincronizadas com as configurações atuais",
+    project_settings_saved: "Configurações do projeto salvas",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

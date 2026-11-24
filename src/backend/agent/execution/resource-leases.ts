@@ -5,6 +5,7 @@ import { wait_for_operation } from "../wait-for-operation";
 export class WorkspaceResourceLeases {
   private readonly pending = new Map<WorkspaceResource, Promise<void>>();
 
+  /** 取消等待时归还自己的排队位置，后续请求仍按原顺序取得资源。 */
   public async acquire(resource: WorkspaceResource, signal: AbortSignal): Promise<() => void> {
     signal.throwIfAborted();
     const turn = this.pending.get(resource) ?? Promise.resolve();

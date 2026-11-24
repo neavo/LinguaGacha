@@ -9,14 +9,9 @@ import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixtu
 import { ProjectDatabaseAccess } from "../database/database-operations";
 import { read_zip_fixture, zip_text } from "../../test/zip-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
-import { FileCache } from "../cache/file-cache";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ProjectDataSnapshot } from "./project-data-reader";
-type CacheLifecycleCall = { projectPath: string; snapshot?: ProjectDataSnapshot };
-type CacheLifecycleHandler = (call: CacheLifecycleCall) => void;
 import { DatabaseSync } from "node:sqlite";
 import { ProjectDatabase } from "../database/database-operations";
 import type { MutableJsonRecord } from "../../domain/json";
@@ -29,7 +24,6 @@ import { adapt_project_change } from "./project-write-event-adapter";
 import { ProjectOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
 import { create_item } from "../../domain/item";
-import { DEFAULT_PROJECT_SETTINGS, type ProjectSettings } from "../../domain/project-settings";
 
 type TestProjectDatabase = ProjectDatabase & {
   upsert_meta_entries: ReturnType<typeof vi.fn>;
@@ -47,10 +41,13 @@ describe("ProjectLifecycleService", () => {
     const project = path.join(root, "knowledge.lg");
     const database = new ProjectDatabase("1.0.0");
     try {
-      await create_service({ database, config: { app_language: language } }).create_project_commit({
-        path: project,
-        source_paths: [source],
-      });
+      await create_service({ database, config: { app_language: language } }).create_project_commit(
+        {
+          path: project,
+          source_paths: [source],
+        },
+        signal,
+      );
       const text = await database.read_knowledge(project);
       expect(text).toContain(
         `# ${format_i18n_message(resolve_app_locale(language), "project_knowledge.title")}`,
@@ -60,6 +57,7 @@ describe("ProjectLifecycleService", () => {
       await database.close();
     }
   });
+  const signal = new AbortController().signal;
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
   it("两个入口共用文件、目录和多路径命名规则。根目录与空来源使用空名", async () => {
@@ -122,7 +120,7 @@ describe("ProjectLifecycleService", () => {
     });
     try {
       const project = path.join(root, "new.lg");
-      await service.create_project_commit({ path: project, source_paths: paths }, notify);
+      await service.create_project_commit({ path: project, source_paths: paths }, signal, notify);
       expect(discover).toHaveBeenCalledTimes(1);
       expect(notify).toHaveBeenCalledTimes(games ? 1 : 0);
       expect(await database.get_all_asset_records(project)).toHaveLength(paths.length);
@@ -160,21 +158,27 @@ describe("ProjectLifecycleService", () => {
       ]);
       expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch10.pck", "patch2.pck"]);
       await expect(
-        service.create_project_commit({
-          path: project,
-          source_paths: [game],
-          godot_pack_orders: [{ game_root: game, ordered_pcks: ["game.pck"] }],
-        }),
+        service.create_project_commit(
+          {
+            path: project,
+            source_paths: [game],
+            godot_pack_orders: [{ game_root: game, ordered_pcks: ["game.pck"] }],
+          },
+          signal,
+        ),
       ).rejects.toMatchObject({ code: "request.validation_failed" });
       expect(fs.existsSync(project)).toBe(false);
       expect(fs.existsSync(path.join(game, "backup_lg"))).toBe(false);
-      await service.create_project_commit({
-        path: project,
-        source_paths: [game],
-        godot_pack_orders: [
-          { game_root: game, ordered_pcks: ["game.pck", "patch10.pck", "patch2.pck"] },
-        ],
-      });
+      await service.create_project_commit(
+        {
+          path: project,
+          source_paths: [game],
+          godot_pack_orders: [
+            { game_root: game, ordered_pcks: ["game.pck", "patch10.pck", "patch2.pck"] },
+          ],
+        },
+        signal,
+      );
       expect(fs.readFileSync(path.join(game, "main.gd"), "utf8")).toBe("two");
       expect(await database.get_all_asset_records(project)).toHaveLength(1);
     } finally {
@@ -193,7 +197,7 @@ describe("ProjectLifecycleService", () => {
     const service = create_service({ database });
     try {
       const empty = path.join(root, "empty.lg");
-      await service.create_project_commit({ path: empty, source_paths: [carrier] });
+      await service.create_project_commit({ path: empty, source_paths: [carrier] }, signal);
       expect(await database.get_all_asset_records(empty)).toEqual([]);
       expect(fs.readdirSync(game)).toEqual(["game.pck"]);
       expect(fs.readFileSync(carrier).equals(pack)).toBe(true);
@@ -223,35 +227,30 @@ describe("ProjectLifecycleService", () => {
       ),
     );
     const database = new ProjectDatabase("1.0.0");
-    const snapshots: ProjectDataSnapshot[] = [];
-    const service = create_service({
-      database,
-      project_event_handler: ({ snapshot }) => {
-        if (snapshot) snapshots.push(snapshot);
-      },
-    });
+    const service = create_service({ database });
     try {
       const reads = vi.spyOn(ProjectDatabaseAccess.prototype, "get_all_items");
-      await service.create_project_commit({
-        path: project_path,
-        source_paths: [source, trans, exe],
-      });
+      const { snapshot: created_snapshot } = await service.create_project_commit(
+        {
+          path: project_path,
+          source_paths: [source, trans, exe],
+        },
+        signal,
+      );
       expect(reads).not.toHaveBeenCalled();
-      expect(snapshots[0]?.meta).toMatchObject({
+      expect(created_snapshot.meta).toMatchObject({
         glossary_enable: true,
         "migration.asset_file_type_complete": true,
       });
-      expect(snapshots[0]?.files["game.trans"]).toMatchObject({ game_engine: "kag" });
-      expect(snapshots[0]?.files["game.wolfrpg"]).toMatchObject({ file_type: "WOLFRPG" });
-      expect(snapshots[0]!.items).toEqual(
+      expect(created_snapshot.files["game.trans"]).toMatchObject({ game_engine: "kag" });
+      expect(created_snapshot.files["game.wolfrpg"]).toMatchObject({ file_type: "WOLFRPG" });
+      expect(created_snapshot.items).toEqual(
         expect.arrayContaining([expect.objectContaining({ src: "原文", file_type: "WOLFRPG" })]),
       );
       reads.mockClear();
-      await service.load_project({ path: project_path });
+      const { meta: second_meta, ...loaded } = await service.load_project(project_path, undefined);
       expect(reads).toHaveBeenCalledTimes(1);
-      expect(snapshots).toHaveLength(2);
-      const { meta: first_meta, ...created } = snapshots[0]!;
-      const { meta: second_meta, ...loaded } = snapshots[1]!;
+      const { meta: first_meta, ...created } = created_snapshot;
       expect(loaded).toEqual(created);
       expect(second_meta.translation_extras).toEqual(first_meta.translation_extras);
     } finally {
@@ -259,11 +258,9 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it.each(["create", "load"] as const)("%s 快照准备失败回滚且不发布", async (operation) => {
+  it.each(["create", "load"] as const)("%s 快照准备失败回滚磁盘改动", async (operation) => {
     const project_path = path.join(create_temp_dir(), "rollback.lg");
     const database = new ProjectDatabase("1.0.0");
-    const session_state = create_session_state();
-    const publish = vi.fn();
     try {
       if (operation === "load") {
         await database.create_project(project_path);
@@ -274,14 +271,12 @@ describe("ProjectLifecycleService", () => {
       vi.spyOn(ProjectDatabaseAccess.prototype, "get_rules").mockImplementationOnce(() => {
         throw new Error("snapshot failed");
       });
-      const service = create_service({ database, session_state, project_event_handler: publish });
+      const service = create_service({ database });
       await expect(
         operation === "create"
-          ? service.create_project_commit({ path: project_path, source_paths: [] })
-          : service.load_project({ path: project_path }),
+          ? service.create_project_commit({ path: project_path, source_paths: [] }, signal)
+          : service.load_project(project_path, undefined),
       ).rejects.toThrow("snapshot failed");
-      expect(publish).not.toHaveBeenCalled();
-      expect(session_state.snapshot().loaded).toBe(false);
       if (operation === "create") expect(fs.existsSync(project_path)).toBe(false);
       else
         expect(await database.get_all_meta(project_path)).toMatchObject({ updated_at: "before" });
@@ -316,7 +311,7 @@ describe("ProjectLifecycleService", () => {
       }),
     );
     try {
-      await expect(service.load_project({ path: project_path })).rejects.toMatchObject({
+      await expect(service.load_project(project_path, undefined)).rejects.toMatchObject({
         code: "data.committed_sync_failed",
         public_details: { committed: true, action: "reload_project" },
       });
@@ -326,40 +321,6 @@ describe("ProjectLifecycleService", () => {
       vi.restoreAllMocks();
       await database.close();
     }
-  });
-
-  it("load 发布缓存热机事件并标记会话", async () => {
-    const project_path = write_file(path.join(create_temp_dir(), "demo.lg"));
-    const project_events: Array<Parameters<CacheLifecycleHandler>[0]> = [];
-    const session_state = create_session_state();
-    const service = create_service({
-      database: create_database({
-        meta: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: true },
-      }),
-      session_state,
-      project_event_handler: (event) => {
-        project_events.push(event);
-      },
-    });
-
-    await expect(service.load_project({ path: project_path })).resolves.toEqual({
-      project: {
-        path: project_path,
-        loaded: true,
-        file_count: 0,
-        settings: DEFAULT_PROJECT_SETTINGS,
-      },
-    });
-
-    expect(session_state.snapshot()).toEqual({
-      loaded: true,
-      projectPath: project_path,
-    });
-    expect(project_events).toMatchObject([
-      {
-        projectPath: project_path,
-      },
-    ]);
   });
 
   it.each([true, false])("打开项目在缓存热机前协调同文件重复状态，开关为 %s", async (enabled) => {
@@ -389,26 +350,22 @@ describe("ProjectLifecycleService", () => {
           create_item({ id: 5, src: "同文", file_path: "a.txt", status: "EXCLUDED" }),
         ]);
       });
-      const service = create_service({
-        database,
-        project_event_handler: ({ snapshot }) => {
-          expect(snapshot?.items.map((item) => item.status)).toEqual([
-            "NONE",
-            enabled ? "DUPLICATED" : "NONE",
-            "PROCESSED",
-            "PROCESSED",
-            "EXCLUDED",
-          ]);
-          expect(snapshot?.meta["translation_extras"]).toMatchObject({
-            total_line: enabled ? 3 : 4,
-            processed_line: 2,
-          });
-        },
+      const service = create_service({ database });
+      const snapshot = await service.load_project(project_path, undefined);
+      expect(snapshot.items.map((item) => item.status)).toEqual([
+        "NONE",
+        enabled ? "DUPLICATED" : "NONE",
+        "PROCESSED",
+        "PROCESSED",
+        "EXCLUDED",
+      ]);
+      expect(snapshot.meta["translation_extras"]).toMatchObject({
+        total_line: enabled ? 3 : 4,
+        processed_line: 2,
       });
-      await service.load_project({ path: project_path });
       const items = await database.get_all_items(project_path);
       expect(items.slice(2, 4).map((item) => item.dst)).toEqual(["保留甲", "保留乙"]);
-      await service.load_project({ path: project_path });
+      await service.load_project(project_path, undefined);
       expect(await database.get_all_items(project_path)).toEqual(items);
     } finally {
       await database.close();
@@ -437,17 +394,12 @@ describe("ProjectLifecycleService", () => {
       config: { mtool_optimizer_enable: true, skip_duplicate_source_text_enable: true },
     });
 
-    await expect(service.load_project({ path: project_path })).resolves.toEqual({
-      project: {
-        path: project_path,
-        loaded: true,
-        settings: {
-          source_language: "EN",
-          target_language: "DE",
-          mtool_optimizer_enable: false,
-          skip_duplicate_source_text_enable: false,
-        },
-        file_count: 1,
+    await expect(service.load_project(project_path, undefined)).resolves.toMatchObject({
+      settings: {
+        source_language: "EN",
+        target_language: "DE",
+        mtool_optimizer_enable: false,
+        skip_duplicate_source_text_enable: false,
       },
     });
     expect(database.upsert_meta_entries).not.toHaveBeenCalled();
@@ -462,26 +414,29 @@ describe("ProjectLifecycleService", () => {
     const project_a = path.join(app_root, "a.lg");
     const project_b = path.join(app_root, "b.lg");
     try {
-      await service.create_project_commit({
-        source_paths: [source_path],
-        path: project_a,
-        languages: { source_language: "JA", target_language: "EN" },
-      });
-      await service.create_project_commit({
-        source_paths: [source_path],
-        path: project_b,
-        languages: { source_language: "ALL", target_language: "KO" },
-      });
+      await service.create_project_commit(
+        {
+          source_paths: [source_path],
+          path: project_a,
+          languages: { source_language: "JA", target_language: "EN" },
+        },
+        signal,
+      );
+      await service.create_project_commit(
+        {
+          source_paths: [source_path],
+          path: project_b,
+          languages: { source_language: "ALL", target_language: "KO" },
+        },
+        signal,
+      );
       for (const [project_path, languages] of [
         [project_a, { source_language: "JA", target_language: "EN" }],
         [project_b, { source_language: "ALL", target_language: "KO" }],
         [project_a, { source_language: "JA", target_language: "EN" }],
       ] as const) {
-        await expect(service.load_project({ path: project_path })).resolves.toMatchObject({
-          project: { settings: languages },
-        });
-        await expect(service.get_project_snapshot()).resolves.toMatchObject({
-          project: { path: project_path, settings: languages },
+        await expect(service.load_project(project_path, undefined)).resolves.toMatchObject({
+          settings: languages,
         });
       }
     } finally {
@@ -493,11 +448,14 @@ describe("ProjectLifecycleService", () => {
     const database = create_database();
     const service = create_service({ database });
     await expect(
-      service.create_project_commit({
-        source_paths: [],
-        path: path.join(create_temp_dir(), "invalid.lg"),
-        languages: { source_language: "JA", target_language: "ALL" },
-      }),
+      service.create_project_commit(
+        {
+          source_paths: [],
+          path: path.join(create_temp_dir(), "invalid.lg"),
+          languages: { source_language: "JA", target_language: "ALL" },
+        },
+        signal,
+      ),
     ).rejects.toMatchObject({ code: "request.validation_failed" });
     expect(database.create_project).not.toHaveBeenCalled();
   });
@@ -518,13 +476,16 @@ describe("ProjectLifecycleService", () => {
 
     try {
       await expect(
-        service.create_project_commit({
-          source_paths: [path.dirname(source_path)],
-          path: project_path,
-          languages: { source_language: "JA", target_language: "ZH" },
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [path.dirname(source_path)],
+            path: project_path,
+            languages: { source_language: "JA", target_language: "ZH" },
+          },
+          signal,
+        ),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true },
+        path: project_path,
       });
 
       expect(await database.get_all_asset_records(project_path)).toEqual([
@@ -564,15 +525,15 @@ describe("ProjectLifecycleService", () => {
       });
 
       await expect(
-        service.create_project_commit({
-          source_paths: [path.dirname(source_path)],
-          path: project_path,
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [path.dirname(source_path)],
+            path: project_path,
+          },
+          signal,
+        ),
       ).resolves.toMatchObject({
-        project: {
-          path: resolved_project_path,
-          loaded: true,
-        },
+        path: resolved_project_path,
       });
 
       expect(fs.readFileSync(project_path, "utf-8")).toBe("old-project");
@@ -602,15 +563,15 @@ describe("ProjectLifecycleService", () => {
       });
 
       await expect(
-        service.create_project_commit({
-          source_paths: [path.dirname(source_path)],
-          path: project_path,
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [path.dirname(source_path)],
+            path: project_path,
+          },
+          signal,
+        ),
       ).resolves.toMatchObject({
-        project: {
-          path: resolved_project_path,
-          loaded: true,
-        },
+        path: resolved_project_path,
       });
 
       expect(fs.readFileSync(project_path, "utf-8")).toBe("old-project");
@@ -650,12 +611,15 @@ describe("ProjectLifecycleService", () => {
 
     try {
       await expect(
-        service.create_project_commit({
-          source_paths: [],
-          path: project_path,
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [],
+            path: project_path,
+          },
+          signal,
+        ),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true },
+        path: project_path,
       });
 
       expect(await database.get_rules(project_path, "glossary")).toEqual([
@@ -704,12 +668,15 @@ describe("ProjectLifecycleService", () => {
 
     try {
       await expect(
-        service.create_project_commit({
-          source_paths: [],
-          path: project_path,
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [],
+            path: project_path,
+          },
+          signal,
+        ),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true },
+        path: project_path,
       });
 
       expect(await database.get_all_meta(project_path)).toMatchObject({
@@ -741,11 +708,14 @@ describe("ProjectLifecycleService", () => {
     });
 
     await expect(
-      service.create_project_commit({
-        source_paths: [],
-        path: path.join(app_root, "legacy-payload.lg"),
-        draft: { files: [], items: [] },
-      }),
+      service.create_project_commit(
+        {
+          source_paths: [],
+          path: path.join(app_root, "legacy-payload.lg"),
+          draft: { files: [], items: [] },
+        },
+        signal,
+      ),
     ).rejects.toThrow(expect.objectContaining({ code: "request.validation_failed" }));
   });
 
@@ -769,12 +739,15 @@ describe("ProjectLifecycleService", () => {
 
     try {
       await expect(
-        service.create_project_commit({
-          source_paths: [source_dir],
-          path: project_path,
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [source_dir],
+            path: project_path,
+          },
+          signal,
+        ),
       ).resolves.toMatchObject({
-        project: { path: project_path, loaded: true },
+        path: project_path,
         source_operation: { saved_assets: kind === "json" ? 2 : 1, directory_changes: [] },
       });
 
@@ -812,10 +785,13 @@ describe("ProjectLifecycleService", () => {
     const log_manager = create_log_manager();
     const service = create_service({ app_root, database, log_manager });
     try {
-      const result = await service.create_project_commit({
-        source_paths: [game],
-        path: project_path,
-      });
+      const result = await service.create_project_commit(
+        {
+          source_paths: [game],
+          path: project_path,
+        },
+        signal,
+      );
       expect(result["source_operation"]).toEqual({ saved_assets: 1, directory_changes: [] });
       const archive = await read_zip_fixture(
         (await database.read_asset_content(project_path, "game.rpgmaker"))!,
@@ -888,7 +864,10 @@ describe("ProjectLifecycleService", () => {
     const read_items = async (project: string) =>
       (await database.get_all_items(project)).map(({ id: _id, ...item }) => item);
     try {
-      await lifecycle.create_project_commit({ path: created, source_paths: [game, broken] });
+      await lifecycle.create_project_commit(
+        { path: created, source_paths: [game, broken] },
+        signal,
+      );
       const expected = await read_items(created);
       expect(expected.map((item) => [item.src, item.status])).toEqual([
         ["こんにちは", "NONE"],
@@ -902,7 +881,7 @@ describe("ProjectLifecycleService", () => {
         target_rel_path: record.path,
       }));
       const broken_path = files.find((file) => file.source_path === broken)!.target_rel_path;
-      await lifecycle.create_project_commit({ path: imported, source_paths: [] });
+      await lifecycle.create_project_commit({ path: imported, source_paths: [] }, signal);
       expect(await database.get_all_asset_records(imported)).toEqual([]);
       const request = { files, conflict_action: "replace" };
       await content.import_files({
@@ -967,10 +946,13 @@ describe("ProjectLifecycleService", () => {
 
     try {
       await expect(
-        service.create_project_commit({
-          source_paths: [path.dirname(broken_json)],
-          path: project_path,
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [path.dirname(broken_json)],
+            path: project_path,
+          },
+          signal,
+        ),
       ).resolves.toMatchObject({ source_operation: { saved_assets: 1, directory_changes: [] } });
 
       expect(
@@ -996,10 +978,13 @@ describe("ProjectLifecycleService", () => {
     const service = create_service({ app_root, database, log_manager });
     try {
       await expect(
-        service.create_project_commit({
-          source_paths: [path.dirname(broken)],
-          path: path.join(app_root, "none.lg"),
-        }),
+        service.create_project_commit(
+          {
+            source_paths: [path.dirname(broken)],
+            path: path.join(app_root, "none.lg"),
+          },
+          signal,
+        ),
       ).rejects.toMatchObject({
         code: "file.parse_failed",
         public_details: { source_operation: { saved_assets: 0, directory_changes: [] } },
@@ -1013,51 +998,37 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("高版本打开在业务写入前释放占用并保留当前会话，确认后可重试", async () => {
+  it("高版本工程确认前不写入，确认后可打开", async () => {
     const project_path = path.join(create_temp_dir(), "newer.lg");
     const database = new ProjectDatabase("1.0.0");
-    const session_state = create_session_state({ loaded: true, projectPath: "current.lg" });
-    const project_event_handler = vi.fn();
-    const service = create_service({ database, session_state, project_event_handler });
+    const service = create_service({ database });
     try {
       await database.create_project(project_path);
       await database.transaction(project_path, (writer) =>
         writer.set_meta(project_path, "target_app_version", "2.0.0"),
       );
       const before = fs.readFileSync(project_path);
-      await expect(service.load_project({ path: project_path })).rejects.toMatchObject({
+      await expect(service.load_project(project_path, undefined)).rejects.toMatchObject({
         code: "project.newer_app_version",
         public_details: { target_app_version: "2.0.0", current_app_version: "1.0.0" },
       });
-      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: "current.lg" });
-      expect(project_event_handler).not.toHaveBeenCalled();
       expect(fs.readFileSync(project_path)).toEqual(before);
-      await service.load_project({ path: project_path, confirmed_target_app_version: "2.0.0" });
-      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
+      await service.load_project(project_path, "2.0.0");
       expect((await database.get_all_meta(project_path)).target_app_version).toBe("2.0.0");
     } finally {
       await database.close();
     }
   });
 
-  it("preview 在任务运行时读取另一工程的磁盘概览并保留当前会话", async () => {
+  it("预览从磁盘读取工程概览", async () => {
     const project_path = path.join(create_temp_dir(), "preview.lg");
     const database = new ProjectDatabase("1.0.0");
     await database.create_project(project_path);
-    const session_state = create_session_state({ loaded: true, projectPath: "current.lg" });
-    const project_event_handler = vi.fn();
-    const service = create_service({
-      database,
-      session_state,
-      project_event_handler,
-      task_busy: true,
-    });
+    const service = create_service({ database });
     try {
       expect(await service.get_project_preview({ path: project_path })).toMatchObject({
         preview: { file_paths: [], translation_stats: { total_items: 0 } },
       });
-      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: "current.lg" });
-      expect(project_event_handler).not.toHaveBeenCalled();
     } finally {
       await database.close();
     }
@@ -1081,70 +1052,20 @@ describe("ProjectLifecycleService", () => {
   function create_service(options: {
     app_root?: string;
     database: ProjectDatabase;
-    session_state?: ProjectSessionFixture;
     config?: MutableJsonRecord;
     log_manager?: LogManager & {
       info: ReturnType<typeof vi.fn>;
       error: ReturnType<typeof vi.fn>;
     };
-    project_event_handler?: CacheLifecycleHandler;
-    task_busy?: boolean;
   }) {
     const app_root = options.app_root ?? create_temp_dir();
-    const project_event_handler = options.project_event_handler ?? vi.fn();
-    let settings: ProjectSettings = DEFAULT_PROJECT_SETTINGS;
-    const files = new FileCache();
-    const session = options.session_state ?? create_session_state();
-    const service = new ProjectLifecycleService(
+    return new ProjectLifecycleService(
       new GameDirectoryOperations(),
       options.database,
       create_setting_service(options.config ?? {}),
       new AppPathService({ appRoot: app_root, builtinRoot: path.join(app_root, "builtin") }),
       options.log_manager ?? create_log_manager(),
     );
-    const install = async (projectPath: string, snapshot: ProjectDataSnapshot) => {
-      files.replace(snapshot.files);
-      settings = snapshot.settings;
-      project_event_handler({ projectPath, snapshot });
-      await session.mark_loaded(projectPath);
-      return {
-        project: {
-          path: projectPath,
-          loaded: true,
-          file_count: files.readFileEntries().length,
-          settings,
-        },
-      };
-    };
-    return {
-      get_project_preview: service.get_project_preview.bind(service),
-      get_default_project_name: service.get_default_project_name.bind(service),
-      summarize_source_files: service.summarize_source_files.bind(service),
-      get_project_snapshot: async () => ({
-        project: {
-          path: session.snapshot().projectPath,
-          loaded: session.snapshot().loaded,
-          file_count: files.readFileEntries().length,
-          settings,
-        },
-      }),
-      load_project: async (body: MutableJsonRecord) => {
-        const projectPath = String(body.path);
-        const snapshot = await service.load_project(projectPath, body.confirmed_target_app_version);
-        return await install(projectPath, snapshot);
-      },
-      create_project_commit: async (body: MutableJsonRecord, before_game?: () => void) => {
-        const result = await service.create_project_commit(
-          body,
-          new AbortController().signal,
-          before_game,
-        );
-        return {
-          ...(await install(result.path, result.snapshot)),
-          source_operation: result.source_operation,
-        };
-      },
-    };
   }
 
   // 数据库 fake 只提供无需真实持久化的生命周期场景所需读取面。
@@ -1194,20 +1115,6 @@ describe("ProjectLifecycleService", () => {
       patch_item_translation_fields: vi.fn(),
       close_project,
     } as unknown as TestProjectDatabase;
-  }
-
-  // 会话状态 helper 通过公开方法预置 loaded 快照，避免手写内部字段。
-  function create_session_state(
-    state: { loaded: boolean; projectPath: string } = {
-      loaded: false,
-      projectPath: "",
-    },
-  ): ProjectSessionFixture {
-    const session_state = new ProjectSessionFixture();
-    if (state.loaded) {
-      session_state.mark_loaded(state.projectPath);
-    }
-    return session_state;
   }
 
   // 设置服务 fake 合并项目默认值，确保 create-commit 用例只声明场景差异。

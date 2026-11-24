@@ -90,7 +90,7 @@ export const en_us_app = {
     import_success: "Data imported",
     no_valid_data: "No valid data",
     update_failed: "Update failed …",
-    project_settings_aligned: "Project settings updated from current settings",
+    project_settings_saved: "Project settings saved",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

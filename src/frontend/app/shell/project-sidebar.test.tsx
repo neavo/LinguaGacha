@@ -82,6 +82,12 @@ describe("ProjectSidebar", () => {
       path: "E:/翻译.lg",
       loaded: true,
       file_count: 0,
+      quality_rule_counts: {
+        glossary: 0,
+        text_preserve: 0,
+        pre_replacement: 0,
+        post_replacement: 0,
+      },
       settings: null,
     });
     const second = new ProjectStore({
@@ -107,7 +113,7 @@ describe("ProjectSidebar", () => {
     expect(container.querySelector('[aria-current="page"]')).toBeNull();
   });
 
-  it("标题栏按钮发起新建与打开工程流程", async () => {
+  it("侧栏按钮发起新建与打开工程流程", async () => {
     await render_project_sidebar();
 
     await act(async () => {

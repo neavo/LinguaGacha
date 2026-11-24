@@ -4,7 +4,6 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectOperationGate } from "../runtime-operation-gate";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import { ProjectWriteStore } from "./project-write-store";
 import { ProjectKnowledgeService } from "./project-knowledge-service";
 import { project_knowledge_file } from "./project-knowledge";
@@ -17,23 +16,15 @@ it("工程知识按指纹保存和重置，并仅在实际写入时推进修订"
   const db = new ProjectDatabase("1.0.0");
   try {
     await db.create_project(project);
-    const session = new ProjectSessionFixture();
-    await session.mark_loaded(project);
     const gate = new ProjectOperationGate();
     const writes = new ProjectWriteStore(
       db,
       () => undefined,
-      (change) => adapt_project_change(session.snapshot().projectPath, change),
+      (change) => adapt_project_change(project, change),
     );
     let language: AppLanguage = "EN";
     const settings = { read_app_language: () => language };
-    const service = new ProjectKnowledgeService(
-      db,
-      session.snapshot().projectPath,
-      writes,
-      gate,
-      settings,
-    );
+    const service = new ProjectKnowledgeService(db, project, writes, gate, settings);
     const template = await service.read();
     expect(template).toEqual(project_knowledge_file(null, "en-US"));
     expect(await db.read_knowledge(project)).toBeNull();

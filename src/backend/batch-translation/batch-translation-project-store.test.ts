@@ -11,7 +11,6 @@ import { ProjectCache } from "../cache/project-cache";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectCommittedChangeHandler } from "../project/project-committed-change";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { ProjectSessionFixture } from "../../test/project-session-fixture";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { MutableJsonRecord } from "../../domain/json";
 import { BatchTranslationProjectStore } from "./batch-translation-project-store";
@@ -244,10 +243,8 @@ describe("BatchTranslationProjectStore", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-task-project-store-"));
     const project_path = path.join(directory, "task.lg");
     const database = new ProjectDatabase("1.0.0");
-    const session_state = new ProjectSessionFixture();
     const cache_manager = new ProjectCache({
       projectPath: project_path,
-      projectId: "fixture",
       database,
       logManager: null,
       workerClient: {
@@ -257,7 +254,6 @@ describe("BatchTranslationProjectStore", () => {
     });
     const published_changes: ProjectCommittedChange[] = [];
     await database.create_project(project_path);
-    session_state.mark_loaded(project_path);
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     cleanup_callbacks.push(async () => await database.close());
     const write_store = new ProjectWriteStore(
@@ -273,11 +269,7 @@ describe("BatchTranslationProjectStore", () => {
       database,
       project_path,
       cache_manager,
-      store: new BatchTranslationProjectStore(
-        session_state.snapshot().projectPath,
-        cache_manager,
-        write_store,
-      ),
+      store: new BatchTranslationProjectStore(project_path, cache_manager, write_store),
       published_changes,
     };
   }

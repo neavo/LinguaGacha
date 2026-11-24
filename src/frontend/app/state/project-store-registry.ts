@@ -57,17 +57,11 @@ export class ProjectStore {
   readonly agentChat: AgentChatStore; // 前台卸载后仍接收事件，直到工程关闭。
   private readonly applied = new Set<string>(); // HTTP 写回与 SSE 可能报告同一次提交。
 
-  public snapshot: OpenProjectSnapshot;
-  constructor(
-    snapshot: Omit<OpenProjectSnapshot, "quality_rule_counts"> & {
-      quality_rule_counts?: QualityRuleCounts;
-    },
-    on_agent_error: AgentErrorHandler = () => {},
-  ) {
-    this.snapshot = {
-      ...snapshot,
-      quality_rule_counts: read_quality_rule_counts(snapshot.quality_rule_counts),
-    };
+  public snapshot: OpenProjectSnapshot; // 注册表只替换公共快照，保留订阅中的 Store。
+
+  /** 为本次工程打开周期绑定对话和统计请求。 */
+  constructor(snapshot: OpenProjectSnapshot, on_agent_error: AgentErrorHandler = () => {}) {
+    this.snapshot = snapshot;
     this.agentChat = new AgentChatStore(window.localStorage, on_agent_error, snapshot.projectId);
     const request = createProjectFetch(snapshot.projectId);
     this.qualityStatistics = createQualityRuleStatisticsStore((rule_key) =>
@@ -145,7 +139,6 @@ export class ProjectStoreRegistry {
     return [...this.stores.values()];
   }
 
-  /** 以服务端完整列表为准，关闭的工程退出登记。 */
   /** 只有完整工程列表能决定哪些打开周期已经结束。 */
   public replace(payload: unknown): void {
     if (!is_json_record(payload) || !Array.isArray(payload.projects)) return;

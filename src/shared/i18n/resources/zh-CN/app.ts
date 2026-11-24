@@ -89,7 +89,7 @@ export const zh_cn_app = {
     import_success: "数据已导入",
     no_valid_data: "没有有效数据",
     update_failed: "更新失败 …",
-    project_settings_aligned: "已按当前设置更新工程设置",
+    project_settings_saved: "已保存工程设置",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

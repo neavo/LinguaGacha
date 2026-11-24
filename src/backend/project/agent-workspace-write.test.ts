@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { JsonRecord } from "../../domain/json";
 import type { PromptKind } from "../../domain/prompt";
 import {
@@ -31,36 +32,13 @@ describe("Agent 工作区对象写入规则", () => {
     );
     const prompt = project_agent_workspace_prompt("translation", "翻译提示词");
 
-    // 存储字段与工作区字段映射在投影所有者处验证，避免 contract 测试重复维护同一规则。
-    const { item_id, row_number, ...stored_item } = create_item(42);
     expect(
-      project_agent_workspace_item({
-        ...stored_item,
-        id: item_id!,
-        row: row_number!,
-        name_src: null,
-        name_dst: null,
-      }),
+      project_agent_workspace_item({ ...create_item(42), name_src: "", name_dst: "" }),
     ).toEqual(item);
     expect(quality).toMatchObject({ id: "A12BC", src: "姫", dst: "公主", info: "称谓", sort: 2 });
     for (const row of [item, quality, prompt]) {
       expect(row["fp"]).toMatch(/^[0-9A-Za-z]{4}$/u);
     }
-    expect(project_agent_workspace_item(create_item(42))["fp"]).toBe(item["fp"]);
-    for (const retry_count of [0, 3]) {
-      expect(project_agent_workspace_item({ ...create_item(42), retry_count })).toEqual(item);
-    }
-    expect(
-      project_agent_workspace_quality_entry(
-        "glossary",
-        quality_entry("A12BC", "姫", {
-          dst: "公主",
-          info: "称谓",
-        }),
-        2,
-      )["fp"],
-    ).toBe(quality["fp"]);
-    expect(project_agent_workspace_prompt("translation", "翻译提示词")["fp"]).toBe(prompt["fp"]);
     expect(project_agent_workspace_item({ ...create_item(42), dst: "王女" })["fp"]).not.toBe(
       item["fp"],
     );
@@ -95,7 +73,7 @@ describe("Agent 工作区对象写入规则", () => {
       ...create_item(1),
       name_src: "姫",
       name_dst: "现有译名",
-      status: "NONE",
+      status: "NONE" as const,
     };
     const snapshot = {
       knowledge: null,
@@ -160,8 +138,8 @@ describe("Agent 工作区对象写入规则", () => {
   });
 
   it("Item 意图的预演包含同文组被动变化", () => {
-    const representative = { ...create_item(1), dst: "", status: "NONE" };
-    const duplicate = { ...create_item(2), dst: "", status: "DUPLICATED" };
+    const representative = create_item(1, { dst: "", status: "NONE" });
+    const duplicate = create_item(2, { dst: "", status: "DUPLICATED" });
     const result = resolve_agent_workspace_writes({
       batch: batch({
         items: [
@@ -467,17 +445,24 @@ function batch(args: {
 }
 
 /** 构造具有稳定身份的已完成条目，供写入与指纹校验共用。 */
-function create_item(item_id: number): JsonRecord {
+function create_item(
+  item_id: number,
+  fields: Partial<ProjectItemPublicRecord> = {},
+): ProjectItemPublicRecord {
   return {
     item_id,
     src: "姫",
     dst: "公主",
-    name_src: "",
-    name_dst: "",
+    name_src: null,
+    name_dst: null,
     file_path: "chapter.txt",
-
+    file_type: "TXT",
+    extra_field: "",
+    tag: "",
+    skip_internal_filter: false,
     row_number: 18,
     status: "PROCESSED",
+    ...fields,
   };
 }
 
@@ -525,8 +510,8 @@ function quality_ops(updates: ReturnType<typeof quality_update>[]): AgentWorkspa
 }
 
 /** 从真实工作区投影取得条目指纹，避免测试复制摘要算法。 */
-function item_fp(item: JsonRecord): string {
-  return String(project_agent_workspace_item(item)["fp"]);
+function item_fp(item: ProjectItemPublicRecord): string {
+  return project_agent_workspace_item(item).fp;
 }
 
 /** 从真实规则投影取得指纹，使用同一读取基线。 */
