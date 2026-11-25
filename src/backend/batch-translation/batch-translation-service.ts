@@ -1,3 +1,4 @@
+import type { BatchTaskListSnapshot } from "../../domain/batch-task";
 import type { LogManager } from "../log/log-manager";
 import { create_text_resolver } from "../../shared/i18n";
 import { resolve_app_locale } from "../../domain/app-language";
@@ -41,8 +42,8 @@ export class BatchTranslationService {
     private readonly log: Pick<LogManager, "append">,
   ) {}
   /** 读取当前工程的完整翻译快照。 */
-  public async snapshot(): Promise<BatchTranslationSnapshot> {
-    return await this.runtime.build_snapshot();
+  public snapshot(tasks?: BatchTaskListSnapshot): Promise<BatchTranslationSnapshot> {
+    return this.runtime.build_snapshot(tasks);
   }
   /** 收窄公开请求，返回受理结果与当前快照。 */
   public async start(request: JsonRecord): Promise<MutableJsonRecord> {
@@ -151,9 +152,10 @@ export class BatchTranslationService {
 
   /** 包装 HTTP 与 SSE 共用的快照载荷。 */
   public async get_snapshot(): Promise<MutableJsonRecord> {
+    const batch_tasks = this.runtime.task_list_snapshot();
     return {
-      batch_translation: (await this.snapshot()) as unknown as JsonValue,
-      batch_task: this.runtime.task_snapshot() as unknown as JsonValue,
+      batch_translation: (await this.snapshot(batch_tasks)) as unknown as JsonValue,
+      batch_tasks: batch_tasks as unknown as JsonValue,
     };
   }
   /** 公开入口统一校验目的和范围，拒绝无效 ID，去重后保留首次顺序。 */

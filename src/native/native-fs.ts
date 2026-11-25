@@ -308,18 +308,12 @@ export class NativeFs {
     }
   }
 
-  /**
-   * 同步复制文件或目录，保持迁移场景的目录递归语义集中。
-   */
-  public copy_entry(source_path: string, destination_path: string): void {
-    this.ensure_parent_dir(destination_path);
-    const native_source = this.to_native_path(source_path);
-    const native_destination = this.to_native_path(destination_path);
-    if (fs.statSync(native_source).isDirectory()) {
-      fs.cpSync(native_source, native_destination, { recursive: true });
-      return;
-    }
-    fs.copyFileSync(native_source, native_destination);
+  /** 复制实体文件与目录，跳过链接。Windows 的 cp 会展开目录联接。 */
+  public async copy_dir_async(source_path: string, destination_path: string): Promise<void> {
+    await fs.promises.cp(this.to_native_path(source_path), this.to_native_path(destination_path), {
+      recursive: true,
+      filter: async (source) => !(await fs.promises.lstat(source)).isSymbolicLink(),
+    });
   }
 
   /** 用户文件和目录统一异步删除。Electron 的同步递归删除不能可靠处理 Windows 只读属性。 */

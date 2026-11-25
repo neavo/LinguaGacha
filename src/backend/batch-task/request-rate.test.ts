@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RequestRatePool, RequestRate } from "./request-rate";
+import { RequestRate } from "./request-rate";
 
 describe("RequestRate", () => {
   afterEach(() => vi.useRealTimers());
@@ -30,18 +30,5 @@ describe("RequestRate", () => {
     rate.set_rps_limit(1);
     rate.consume_dispatch_permit(1_250);
     expect(rate.get_dispatch_permit_delay_ms()).toBe(1_000);
-  });
-
-  it("RPM 节奏跨同配置任务保留，修改容量时重新建立时钟", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
-    const pool = new RequestRatePool();
-    const model = { id: "model", threshold: { concurrency_limit: 2, rpm_limit: 60 } };
-    pool.resolve(model).consume_dispatch_permit(0);
-    vi.setSystemTime(250);
-    expect(pool.resolve(model).get_dispatch_permit_delay_ms()).toBe(750);
-    expect(
-      pool.resolve({ ...model, threshold: { rpm_limit: 120 } }).get_dispatch_permit_delay_ms(),
-    ).toBe(0);
   });
 });

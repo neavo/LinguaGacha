@@ -1,8 +1,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { batch_task_metrics, empty_batch_task_snapshot } from "@shared/batch-task";
-import { empty_batch_task_progress, type BatchTaskKind } from "@domain/batch-task";
+import { batch_task_metrics } from "@shared/batch-task";
+import {
+  create_batch_task_snapshot,
+  empty_batch_task_progress,
+  type BatchTaskKind,
+} from "@domain/batch-task";
 import { AgentTaskStatus } from "./agent-task-status";
 
 const task = vi.hoisted(() => ({
@@ -43,7 +47,7 @@ describe("AgentTaskStatus", () => {
   ): Promise<HTMLDivElement> {
     task.metrics = batch_task_metrics(
       {
-        ...empty_batch_task_snapshot(),
+        ...create_batch_task_snapshot("fixture", "translation", "standalone"),
         status,
         kind: task.kind,
         progress:

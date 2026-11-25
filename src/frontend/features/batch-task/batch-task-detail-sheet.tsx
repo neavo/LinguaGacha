@@ -1,10 +1,14 @@
+import "@frontend/widgets/status-mark.css";
 import type { JSX } from "react";
 import { Card } from "@frontend/shadcn/card";
 import { CircleStop } from "lucide-react";
 
 import "./batch-task.css";
 import { Badge } from "@frontend/shadcn/badge";
-import type { BatchTaskDetailDisplay } from "@frontend/features/batch-task/batch-task-display";
+import type {
+  BatchTaskDetailDisplay,
+  BatchTaskSwitcherItem,
+} from "@frontend/features/batch-task/batch-task-display";
 import { BatchTranslationWaveform } from "@frontend/features/batch-task/batch-task-waveform";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -20,11 +24,13 @@ type BatchTaskDetailSheetProps = {
   open: boolean;
   display: BatchTaskDetailDisplay;
   empty_text?: string | undefined;
+  tasks: readonly BatchTaskSwitcherItem[];
+  on_select_task: (run_id: string) => void;
   on_close: () => void;
   on_request_stop_confirmation: () => void;
 };
 
-/** 展示翻译任务详情，停止操作交给所属流程确认。 */
+/** 展示批量任务详情，多批次时顶部提供紧凑切换，停止操作交给所属流程确认。 */
 export function BatchTaskDetailSheet(props: BatchTaskDetailSheetProps): JSX.Element {
   return (
     <Sheet
@@ -42,6 +48,39 @@ export function BatchTaskDetailSheet(props: BatchTaskDetailSheetProps): JSX.Elem
         </SheetHeader>
 
         <div className="batch-translation__sheet-body">
+          {props.tasks.length > 1 ? (
+            <div className="batch-translation__task-switcher">
+              {props.tasks.map((task) => {
+                const active =
+                  task.status === "requested" ||
+                  task.status === "running" ||
+                  task.status === "stopping";
+                return (
+                  <button
+                    key={task.run_id}
+                    type="button"
+                    className="batch-translation__task-tab"
+                    aria-pressed={task.selected}
+                    data-status={task.status}
+                    onClick={() => props.on_select_task(task.run_id)}
+                  >
+                    <span
+                      className={
+                        active
+                          ? "status-mark batch-translation__task-mark status-mark--pulse"
+                          : "status-mark batch-translation__task-mark"
+                      }
+                      aria-hidden="true"
+                    />
+                    <span className="batch-translation__task-label">{task.label}</span>
+                    {task.progress_text ? (
+                      <span className="batch-translation__task-progress">{task.progress_text}</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           {props.empty_text !== undefined ? (
             <p className="text-muted-foreground">{props.empty_text}</p>
           ) : (

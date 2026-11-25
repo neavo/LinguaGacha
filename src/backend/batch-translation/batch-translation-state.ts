@@ -12,7 +12,7 @@ import {
   type BatchTaskProgress,
   type BatchTaskRequestState,
   type BatchTaskResult,
-  type BatchTaskSnapshot,
+  type BatchTaskListSnapshot,
 } from "../../domain/batch-task";
 import {
   BatchTaskRuntime,
@@ -61,38 +61,29 @@ export class BatchTranslationState {
   }
   /** 把当前翻译批次计数投影为翻译业务字段。 */
   public read_run_progress(): BatchTranslationRunProgress | undefined {
-    const task = this.tasks.build_snapshot();
-    return task.kind === "translation" && task.progress !== null
-      ? translation_progress(task.progress)
-      : undefined;
+    const task = this.task_list_snapshot().tasks.find(({ kind }) => kind === "translation");
+    return task?.progress == null ? undefined : translation_progress(task.progress);
   }
   /** 公开快照直接读取共享任务拥有者。 */
-  public task_snapshot(): BatchTaskSnapshot {
+  public task_list_snapshot(): BatchTaskListSnapshot {
     return this.tasks.build_snapshot();
   }
-  /** 固定任务版本后补读工程累计统计。 */
-  public build_snapshot(): Promise<BatchTranslationSnapshot> {
-    return this.translation_snapshot(this.tasks.build_snapshot());
-  }
-  /** 先固定目标和运行计数，避免异步读取混入下一版本。 */
-  private async translation_snapshot(task: BatchTaskSnapshot): Promise<BatchTranslationSnapshot> {
-    const facts =
-      task.kind === "translation" && task.run_id === this.facts?.run_id ? this.facts : null;
-    const active = ["requested", "running", "stopping"].includes(task.status);
+  /** 从同一工程快照读取翻译事实，再补读工程累计统计。 */
+  public async build_snapshot(list = this.task_list_snapshot()): Promise<BatchTranslationSnapshot> {
+    const task = list.tasks.find(({ kind }) => kind === "translation");
+    const facts = task?.run_id === this.facts?.run_id ? this.facts : null;
+    const active = ["requested", "running", "stopping"].includes(task?.status ?? "idle");
     const snapshot = {
-      run_id: facts?.run_id,
-      revision: task.revision,
-      status: task.kind === "request" ? ("idle" as const) : task.status,
-      source: task.kind === "request" ? null : task.source,
+      run_id: task?.run_id,
+      revision: list.revision,
+      status: task?.status ?? ("idle" as const),
+      source: task?.source ?? null,
       operation: facts?.operation,
-      run_progress:
-        task.kind === "translation" && task.progress !== null
-          ? translation_progress(task.progress)
-          : undefined,
-      stop_source: task.stop_source ?? undefined,
+      run_progress: task?.progress == null ? undefined : translation_progress(task.progress),
+      stop_source: task?.stop_source ?? undefined,
       pending_item_ids: active && facts !== null ? [...facts.pending_item_ids] : [],
-      request_in_flight_count: task.kind === "translation" ? task.request_in_flight_count : 0,
-      request_recovery: task.kind === "translation" ? task.request_recovery : null,
+      request_in_flight_count: task?.request_in_flight_count ?? 0,
+      request_recovery: task?.request_recovery ?? null,
     };
     return { ...snapshot, progress: await this.read_progress() };
   }

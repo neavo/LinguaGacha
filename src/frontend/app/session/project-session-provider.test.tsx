@@ -7,6 +7,8 @@ import type { TranslationExportFlow } from "@frontend/features/translation-expor
 import type { BatchTask } from "./batch-task/use-batch-task";
 import { useProjectTranslationStats } from "./project-translation-stats-context";
 import { useTranslationExport } from "./translation-export/translation-export-context";
+import { batch_task_metrics } from "@shared/batch-task";
+import { create_batch_task_snapshot } from "@domain/batch-task";
 import { ProjectSessionProvider } from "./project-session-provider";
 
 const fixture = vi.hoisted(() => ({
@@ -65,6 +67,12 @@ function create_batch_task_fixture(overrides: Partial<BatchTask> = {}): BatchTas
       output_tokens: 0,
       request_in_flight_count: 0,
     },
+    active_task_count: 0,
+    translation_active: false,
+    display_tasks: [],
+    detail_task: null,
+    detail_metrics: batch_task_metrics(null, 0),
+    select_task: vi.fn(),
     task_waveform_history: [],
     task_detail_sheet_open: false,
     task_confirm_state: null,
@@ -269,9 +277,10 @@ describe("ProjectSessionProvider", () => {
   it("任务详情面板随工程会话挂载并共享停止动作", async () => {
     const task = fixture.batch_task!;
     task.task_detail_sheet_open = true;
-    task.task_metrics.active = true;
-    task.task_metrics.total = 10;
-    task.task_metrics.completion_percent = 25;
+    task.detail_task = create_batch_task_snapshot("selected-run", "request", "agent");
+    task.detail_metrics.active = true;
+    task.detail_metrics.total = 10;
+    task.detail_metrics.completion_percent = 25;
     await render_session(<div>Agent 页面</div>);
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     expect(document.body.textContent).toContain("25.00%");
@@ -279,6 +288,9 @@ describe("ProjectSessionProvider", () => {
       button.textContent?.includes("batch_translation.action.stop"),
     );
     await act(async () => stop?.click());
-    expect(task.request_task_action_confirmation).toHaveBeenCalledWith("stop-translation");
+    expect(task.request_task_action_confirmation).toHaveBeenCalledWith(
+      "stop-translation",
+      "selected-run",
+    );
   });
 });

@@ -6,7 +6,7 @@ import type { ProjectTaskInput } from "../project/project-task-input";
 import { ProjectRegistry } from "../project/project-registry";
 import { BatchRequestService } from "../batch-request/batch-request-service";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
-import { RequestRatePool } from "../batch-task/request-rate";
+import { BatchRequestPool } from "../batch-task/batch-request-pool";
 import { ProjectKnowledgeService } from "../project/project-knowledge-service";
 import { GameDirectoryOperations } from "../file/shared/game/game-directory-operations";
 import { configure_python_parser } from "../file/renpy/python-syntax";
@@ -124,7 +124,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
   private readonly publish_event: BackendServicesOptions["publishEvent"]; // 目录应用完成后才通知消费方。
   private readonly game_prepare_worker: GamePrepareWorker;
   private readonly compute_worker_client: ComputeWorkerClient;
-  private readonly request_rate_pool = new RequestRatePool();
+  private readonly request_pool = new BatchRequestPool();
   private readonly game_directory_operations: GameDirectoryOperations;
   private readonly work_unit_worker_pool: TranslationWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
@@ -342,7 +342,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
     const tasks = new BatchTaskRuntime(project_path, gate);
     const translation_runtime = new BatchTranslationState(project_path, database, tasks);
     const runner = new BatchTranslationRunner({
-      ratePool: this.request_rate_pool,
+      requestPool: this.request_pool,
       auth: this.modelAuth,
       llmClient: this.llm_client,
       builtinRoot: paths.get_builtin_root(),
@@ -411,7 +411,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       batchTasks: tasks,
       batchRequests: new BatchRequestService(
         tasks,
-        this.request_rate_pool,
+        this.request_pool,
         this.llm_client,
         this.modelAuth,
         this.logManager,
@@ -422,14 +422,16 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         dispose_task();
       },
     };
-    const dispose_task = tasks.subscribe(async (task) => {
+    const dispose_task = tasks.subscribe(async (batch_tasks, kind) => {
       this.publish_event(BATCH_TASK_SNAPSHOT_EVENT_TOPIC, {
         projectId: id,
-        batch_task: task as unknown as JsonRecord,
-        ...(task.kind === "request"
+        batch_tasks: batch_tasks as unknown as JsonRecord,
+        ...(kind === "request"
           ? {}
           : {
-              batch_translation: (await batchTranslation.snapshot()) as unknown as JsonRecord,
+              batch_translation: (await batchTranslation.snapshot(
+                batch_tasks,
+              )) as unknown as JsonRecord,
             }),
       });
     });
@@ -542,6 +544,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
     } catch (error) {
       errors.push(error);
     }
+    this.request_pool.dispose();
     const worker_results = await Promise.allSettled([
       this.model.dispose(),
       this.work_unit_worker_pool.dispose(),

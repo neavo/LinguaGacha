@@ -1,40 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { batch_task_metrics, empty_batch_task_snapshot } from "@shared/batch-task";
-import { empty_batch_task_progress } from "@domain/batch-task";
+import { batch_task_metrics } from "@shared/batch-task";
+import { create_batch_task_snapshot, empty_batch_task_progress } from "@domain/batch-task";
 import {
+  build_batch_task_switcher_items,
   build_translation_task_detail_display,
   build_batch_task_summary_display,
 } from "./batch-task-display";
 import type { useI18n } from "@frontend/app/locale/locale-context";
 const t: ReturnType<typeof useI18n>["t"] = (key) => key;
 describe("批量任务展示", () => {
-  it.each(["translation", "request", null] as const)("%s 按任务类型展示运行和停止状态", (kind) => {
-    for (const [status, suffix] of [
-      ["requested", kind === null ? "running" : kind + ".running"],
-      ["running", kind === null ? "running" : kind + ".running"],
-      ["stopping", kind === null ? "stopping" : kind + ".stopping"],
-      ["done", "done"],
-      ["stopped", "done"],
-      ["error", "done"],
-      ["idle", "empty"],
-    ] as const) {
-      const metrics = batch_task_metrics(
-        {
-          ...empty_batch_task_snapshot(),
-          kind,
-          status,
-          progress: empty_batch_task_progress(kind === "translation" ? "item" : "request", 1),
-        },
-        0,
-      );
-      const display = build_batch_task_summary_display({ metrics, kind, t });
-      expect(display.status_text).toBe("batch_translation.summary." + suffix);
-    }
-  });
   it("详情按本轮成功与失败计算进度，时间与速度使用同轮数据", () => {
     const metrics = batch_task_metrics(
       {
-        ...empty_batch_task_snapshot(),
+        ...create_batch_task_snapshot("fixture", "translation", "standalone"),
         status: "stopped",
         progress: {
           ...empty_batch_task_progress("item", 4),
@@ -48,11 +26,9 @@ describe("批量任务展示", () => {
     );
     const detail = build_translation_task_detail_display({
       metrics,
-      completion_percent: metrics.completion_percent,
       waveform_history: [],
       t,
     });
-    expect(detail.provider).toBeNull();
     expect(detail.completion_percent_text).toBe("75.00%");
     expect(detail.metric_entries).toContainEqual(
       expect.objectContaining({
@@ -71,28 +47,6 @@ describe("批量任务展示", () => {
     expect(detail.stop_disabled).toBe(true);
   });
 
-  it.each([
-    [999.99, "999.99 T/S"],
-    [1000, "1.00 KT/S"],
-    [1000000, "1.00 MT/S"],
-  ])("速度 %s 在摘要和详情中使用一致的单位", (speed_value, expected) => {
-    const metrics = {
-      ...batch_task_metrics(null, 0),
-      active: true,
-      average_generation_speed: speed_value,
-    };
-    const summary = build_batch_task_summary_display({ metrics, kind: null, t });
-    const detail = build_translation_task_detail_display({
-      metrics,
-      completion_percent: metrics.completion_percent,
-      waveform_history: [],
-      t,
-    });
-    const speed = detail.metric_entries.find((entry) => entry.key === "speed")!;
-    expect(summary.speed_text).toBe(expected);
-    expect(`${speed.value_text} ${speed.unit_text}`).toBe(expected);
-  });
-
   it("停止中保留速度，空闲时收起运行指标", () => {
     const metrics = {
       ...batch_task_metrics(null, 0),
@@ -108,5 +62,74 @@ describe("批量任务展示", () => {
         t,
       }).speed_text,
     ).toBeNull();
+  });
+
+  it("多活跃任务摘要附带数量，切换项为同类多批次追加序号区分", () => {
+    const translation = {
+      ...create_batch_task_snapshot("run-tr", "translation", "standalone"),
+      status: "running" as const,
+      progress: { ...empty_batch_task_progress("item", 4), succeeded: 1 },
+    };
+    const request_a = {
+      ...create_batch_task_snapshot("run-req-1", "request", "agent"),
+      status: "running" as const,
+      progress: { ...empty_batch_task_progress("request", 2), succeeded: 1 },
+    };
+    const request_b = {
+      ...create_batch_task_snapshot("run-req-2", "request", "agent"),
+      status: "done" as const,
+      progress: null,
+    };
+
+    const single_summary = build_batch_task_summary_display({
+      metrics: batch_task_metrics(translation, 10),
+      kind: "translation",
+      active_task_count: 1,
+      t,
+    });
+    expect(single_summary.status_text).toBe("batch_translation.summary.translation.running");
+
+    const multi_summary = build_batch_task_summary_display({
+      metrics: batch_task_metrics(translation, 10),
+      kind: "translation",
+      active_task_count: 2,
+      t,
+    });
+    expect(multi_summary.status_text).toBe("batch_translation.summary.translation.running (2)");
+
+    expect(
+      build_batch_task_switcher_items({
+        tasks: [translation, request_a],
+        selected_run_id: "run-req-1",
+        t,
+      }),
+    ).toEqual([
+      {
+        run_id: "run-tr",
+        label: "batch_translation.kind.translation",
+        progress_text: "25.00%",
+        selected: false,
+        status: "running",
+      },
+      {
+        run_id: "run-req-1",
+        label: "batch_translation.kind.request",
+        progress_text: "50.00%",
+        selected: true,
+        status: "running",
+      },
+    ]);
+
+    expect(
+      build_batch_task_switcher_items({
+        tasks: [translation, request_a, request_b],
+        selected_run_id: "run-tr",
+        t,
+      }).map(({ label, progress_text }) => ({ label, progress_text })),
+    ).toEqual([
+      { label: "batch_translation.kind.translation", progress_text: "25.00%" },
+      { label: "batch_translation.kind.request #1", progress_text: "50.00%" },
+      { label: "batch_translation.kind.request #2", progress_text: null },
+    ]);
   });
 });

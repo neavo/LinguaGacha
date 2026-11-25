@@ -1,4 +1,4 @@
-import { empty_batch_task_snapshot } from "@shared/batch-task";
+import { create_batch_task_snapshot, type BatchTaskSnapshot } from "@domain/batch-task";
 import {
   normalize_batch_translation_progress,
   normalize_batch_translation_run_progress,
@@ -9,6 +9,11 @@ import { type JSX, act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
+import {
+  normalize_batch_translation_snapshot,
+  type BatchTranslationPayload,
+} from "@shared/batch-translation/batch-translation";
 import { useBatchTask } from "@frontend/app/session/batch-task/use-batch-task";
 
 const { api_fetch_mock, push_toast_mock, on_request_export_mock } = vi.hoisted(() => {
@@ -28,8 +33,8 @@ type RuntimeFixture = {
     mtool_optimizer_enable: boolean;
     skip_duplicate_source_text_enable: boolean;
   };
-  sync_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: BatchTranslationSnapshot;
+  requests?: readonly BatchTaskSnapshot[];
   runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
   commit_project_write: ReturnType<typeof vi.fn>;
   refresh_project_state: ReturnType<typeof vi.fn>;
@@ -47,41 +52,59 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
+const active_project = {
+  batch_translation: createBatchTranslationSnapshotStore(),
+  update_task: (payload: BatchTranslationPayload) => {
+    active_project.batch_translation.applySnapshot(normalize_batch_translation_snapshot(payload));
+  },
+};
+
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
-    useDesktopState: () => runtime_fixture.current,
-    useBatchTranslationSnapshot: () => runtime_fixture.current.task_snapshot,
-    useBatchTaskSnapshot: () => {
-      const old = runtime_fixture.current.task_snapshot;
-      const p = old.run_progress ?? old.progress;
-      return {
-        ...empty_batch_task_snapshot(),
-        revision: old.revision,
-        run_id: "test-run",
-        project_path: runtime_fixture.current.project_snapshot.path,
-        status: old.status,
-        kind: "translation",
-        source: old.source,
-        request_in_flight_count: old.request_in_flight_count,
-        progress: {
-          unit: "item",
-          total: p.total_line,
-          succeeded: p.processed_line,
-          failed: old.run_progress?.failed_line ?? 0,
-          start_time: p.start_time,
-          time: p.time,
-          input_tokens: p.total_input_tokens,
-          reasoning_tokens: p.total_reasoning_tokens,
-          output_tokens: p.total_output_tokens,
-          usage_complete: true,
-        },
-      };
-    },
-    useSyncBatchTaskSnapshot: () => runtime_fixture.current.sync_task_snapshot,
+    useDesktopState: () => ({ ...runtime_fixture.current, active_project }),
+    useBatchTranslationSnapshot: () => active_project.batch_translation.getSnapshot(),
+    useBatchTaskSnapshot: () => task_payload().batch_tasks,
     useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
-    useSyncBatchTranslationSnapshot: () => runtime_fixture.current.sync_task_snapshot,
+    useSyncBatchTranslationSnapshot: () => active_project.batch_translation.applySnapshot,
   };
 });
+
+function task_payload() {
+  const { task_snapshot, project_snapshot, requests = [] } = runtime_fixture.current;
+  const { revision, status, source, request_in_flight_count, request_recovery } = task_snapshot;
+  const progress = task_snapshot.run_progress ?? task_snapshot.progress;
+  const translation: BatchTaskSnapshot[] =
+    status === "idle"
+      ? []
+      : [
+          {
+            ...create_batch_task_snapshot("test-run", "translation", source ?? "standalone"),
+            status,
+            request_in_flight_count,
+            request_recovery,
+            progress: {
+              unit: "item",
+              total: progress.total_line,
+              succeeded: progress.processed_line,
+              failed: task_snapshot.run_progress?.failed_line ?? 0,
+              start_time: progress.start_time,
+              time: progress.time,
+              input_tokens: progress.total_input_tokens,
+              reasoning_tokens: progress.total_reasoning_tokens,
+              output_tokens: progress.total_output_tokens,
+              usage_complete: true,
+            },
+          },
+        ];
+  return {
+    batch_tasks: {
+      revision,
+      project_path: project_snapshot.path,
+      tasks: [...translation, ...requests],
+    },
+    batch_translation: task_snapshot,
+  };
+}
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_error_toast: push_toast_mock,
@@ -112,7 +135,6 @@ function create_runtime_fixture(
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
     },
-    sync_task_snapshot: vi.fn(),
     task_snapshot,
     runtime_snapshot: {
       revision: 0,
@@ -175,6 +197,7 @@ describe("useBatchTask", () => {
     root = null;
     latest_state = null;
     runtime_fixture.current = create_runtime_fixture();
+    active_project.batch_translation = createBatchTranslationSnapshotStore();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
     on_request_export_mock.mockReset();
@@ -188,6 +211,11 @@ describe("useBatchTask", () => {
       root = createRoot(container);
     }
 
+    const store = active_project.batch_translation;
+    store.applySnapshot({
+      ...runtime_fixture.current.task_snapshot,
+      revision: store.getSnapshot().revision + 1,
+    });
     await act(async () => {
       root?.render(
         <Probe
@@ -199,6 +227,97 @@ describe("useBatchTask", () => {
     });
   }
 
+  it("Agent 通用请求期间可启动翻译，停止确认固定目标即使详情已切换", async () => {
+    const request: BatchTaskSnapshot = {
+      ...create_batch_task_snapshot("agent-run", "request", "agent"),
+      status: "running",
+    };
+    runtime_fixture.current = create_runtime_fixture();
+    runtime_fixture.current.runtime_snapshot.owner = "agent";
+    runtime_fixture.current.requests = [request];
+    api_fetch_mock.mockImplementation(async () => task_payload());
+    await render_probe();
+    expect(latest_state?.translation_action_blocked).toBe(false);
+    await act(async () => latest_state?.request_start_or_continue_translation());
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/batch-translation/start",
+      expect.objectContaining({ operation: "translate" }),
+    );
+
+    runtime_fixture.current = create_runtime_fixture(create_task_snapshot({ status: "running" }));
+    runtime_fixture.current.requests = [request];
+    await render_probe();
+    expect(latest_state?.active_task_count).toBe(2);
+    expect(latest_state?.translation_action_blocked).toBe(true);
+    await act(async () => latest_state?.select_task("agent-run"));
+    expect(latest_state?.detail_task?.run_id).toBe("agent-run");
+    expect(latest_state?.task_display_snapshot?.run_id).toBe("test-run");
+    await act(async () => {
+      latest_state?.request_task_action_confirmation("stop-translation", "agent-run");
+      latest_state?.select_task("test-run");
+    });
+    expect(latest_state?.detail_task?.run_id).toBe("test-run");
+    await act(async () => latest_state?.confirm_task_action());
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/batch-task/stop", {
+      run_id: "agent-run",
+    });
+  });
+
+  it("并行两项停止其中一项后，另一项继续独立更新进度与波形", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const request_running: BatchTaskSnapshot = {
+      ...create_batch_task_snapshot("req-run", "request", "agent"),
+      status: "running",
+      progress: {
+        unit: "request",
+        total: 4,
+        succeeded: 1,
+        failed: 0,
+        start_time: 8,
+        time: 2,
+        input_tokens: 10,
+        reasoning_tokens: 0,
+        output_tokens: 100,
+        usage_complete: true,
+      },
+    };
+    try {
+      runtime_fixture.current = create_runtime_fixture(
+        create_task_snapshot({
+          status: "running",
+          progress: { total_line: 10, processed_line: 2, total_output_tokens: 50, start_time: 8 },
+        }),
+      );
+      runtime_fixture.current.requests = [request_running];
+      await render_probe();
+
+      await act(async () => vi.advanceTimersByTimeAsync(500));
+      // 停止请求任务，翻译任务继续产出 token 与进度。
+      runtime_fixture.current = create_runtime_fixture(
+        create_task_snapshot({
+          status: "running",
+          progress: {
+            total_line: 10,
+            processed_line: 5,
+            total_output_tokens: 250,
+            start_time: 8,
+          },
+        }),
+      );
+      runtime_fixture.current.requests = [{ ...request_running, status: "stopped" }];
+      await render_probe();
+
+      await act(async () => vi.advanceTimersByTimeAsync(500));
+      await act(async () => latest_state?.select_task("test-run"));
+      expect(latest_state?.detail_task?.run_id).toBe("test-run");
+      expect(latest_state?.detail_metrics.completion_percent).toBe(50);
+      expect(latest_state?.task_waveform_history.some((sample) => sample > 0)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // 固定产品契约：终态、失败数、提示类型、文案键、持久显示与导出次数。
   it.each([
     ["done", 0, "success", "done", false, 1],
@@ -207,9 +326,6 @@ describe("useBatchTask", () => {
   ] as const)(
     "%s / %i 的独立与 Agent 终态反馈",
     async (status, failed_line, kind, message, persistent, export_count) => {
-      api_fetch_mock.mockImplementation(async () => ({
-        batch_translation: runtime_fixture.current.task_snapshot,
-      }));
       for (const source of ["standalone", "agent"] as const) {
         push_toast_mock.mockClear();
         on_request_export_mock.mockClear();
@@ -249,9 +365,6 @@ describe("useBatchTask", () => {
   );
 
   it("局部重翻完成后显示完成反馈并保留导出关闭状态", async () => {
-    api_fetch_mock.mockImplementation(async () => ({
-      batch_translation: runtime_fixture.current.task_snapshot,
-    }));
     for (const item_ids of [[7], []]) {
       runtime_fixture.current = create_runtime_fixture(
         create_task_snapshot({
@@ -285,137 +398,12 @@ describe("useBatchTask", () => {
         progress: { total_line: 2, processed_line: 2, total_output_tokens: 8 },
       }),
     );
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-task/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
     await render_probe();
     await flush_microtasks();
 
     expect(on_request_export_mock).not.toHaveBeenCalled();
     expect(push_toast_mock).not.toHaveBeenCalledWith("success", "batch_translation.feedback.done", {
       persistent: false,
-    });
-  });
-
-  it("停止回包晚于终态时不会把翻译运行态写回停止中", async () => {
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({ status: "stopping", progress: { processed_line: 1, total_line: 2 } }),
-    );
-    const initial_fixture = runtime_fixture.current;
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-task/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
-      if (path === "/api/batch-task/stop") {
-        runtime_fixture.current = create_runtime_fixture(
-          create_task_snapshot({
-            status: "stopped",
-            progress: { processed_line: 1, total_line: 2 },
-          }),
-        );
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    await render_probe();
-    await flush_microtasks();
-    initial_fixture.sync_task_snapshot.mockClear();
-
-    await act(async () => {
-      latest_state?.request_task_action_confirmation("stop-translation");
-    });
-    await flush_microtasks();
-
-    await act(async () => {
-      await latest_state?.confirm_task_action();
-    });
-    await flush_microtasks();
-    await render_probe();
-    await flush_microtasks();
-
-    expect(initial_fixture.sync_task_snapshot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "stopped",
-      }),
-    );
-    expect(initial_fixture.sync_task_snapshot).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "stopping",
-      }),
-    );
-    expect(latest_state?.task_metrics).toMatchObject({
-      active: false,
-      stopping: false,
-    });
-  });
-
-  it("启动回包旧于当前终态时不会绕过运行态 store 改回进行中", async () => {
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        revision: 3,
-        status: "done",
-      }),
-    );
-    const initial_fixture = runtime_fixture.current;
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-task/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
-      if (path === "/api/batch-translation/start") {
-        return {
-          batch_translation: create_task_snapshot({
-            revision: 2,
-            status: "requested",
-          }),
-        };
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    await render_probe();
-    await flush_microtasks();
-    initial_fixture.sync_task_snapshot.mockClear();
-
-    await act(async () => {
-      await latest_state?.request_start_or_continue_translation();
-    });
-    await flush_microtasks();
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-translation/start", {
-      operation: "translate",
-      mode: "new",
-      scope: { kind: "all" },
-    });
-
-    expect(initial_fixture.sync_task_snapshot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        revision: 2,
-        status: "requested",
-      }),
-    );
-    expect(latest_state?.task_display_snapshot).toMatchObject({
-      revision: 3,
-      status: "done",
-    });
-    expect(latest_state?.task_metrics).toMatchObject({
-      active: false,
-      stopping: false,
     });
   });
 
@@ -427,11 +415,6 @@ describe("useBatchTask", () => {
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-task/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
       if (path === "/api/batch-task/stop") {
         runtime_fixture.current = create_runtime_fixture(
           create_task_snapshot({
@@ -439,9 +422,7 @@ describe("useBatchTask", () => {
             progress: { processed_line: 1, total_line: 2, total_output_tokens: 6 },
           }),
         );
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
+        return task_payload();
       }
 
       throw new Error(`未预期的请求：${path}`);
@@ -451,7 +432,7 @@ describe("useBatchTask", () => {
     await flush_microtasks();
 
     await act(async () => {
-      latest_state?.request_task_action_confirmation("stop-translation");
+      latest_state?.request_task_action_confirmation("stop-translation", "test-run");
     });
     await flush_microtasks();
 
@@ -472,11 +453,6 @@ describe("useBatchTask", () => {
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-task/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
       if (path === "/api/batch-task/stop") {
         throw new Error("stop boom");
       }
@@ -488,7 +464,7 @@ describe("useBatchTask", () => {
     await flush_microtasks();
 
     await act(async () => {
-      latest_state?.request_task_action_confirmation("stop-translation");
+      latest_state?.request_task_action_confirmation("stop-translation", "test-run");
     });
     await flush_microtasks();
 
@@ -525,46 +501,6 @@ describe("useBatchTask", () => {
     expect(on_request_export_mock).toHaveBeenCalledOnce();
   });
 
-  it("重翻任务按翻译任务刷新且结束后不再重复刷新", async () => {
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        status: "running",
-        operation: "retranslate",
-        pending_item_ids: [1],
-      }),
-    );
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-task/snapshot") {
-        return {
-          batch_translation: create_task_snapshot({
-            status: "idle",
-            progress: { total_line: 2, processed_line: 1 },
-          }),
-        };
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    await render_probe();
-    await flush_microtasks();
-
-    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-task/snapshot", {});
-
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        status: "done",
-        pending_item_ids: [],
-      }),
-    );
-
-    await render_probe();
-    await flush_microtasks();
-
-    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
-  });
-
   it("translation reset all 成功时应用后端变更并刷新任务快照", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
@@ -580,11 +516,6 @@ describe("useBatchTask", () => {
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/batch-task/snapshot") {
-        return {
-          batch_translation: runtime_fixture.current.task_snapshot,
-        };
-      }
       if (path === "/api/workbench/translation/reset") {
         return {
           accepted: true,

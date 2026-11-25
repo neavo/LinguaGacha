@@ -11,7 +11,7 @@ interface RequestRateOptions {
   rps_limit: number;
 }
 
-/** 仅持有速率时钟；跨任务复用，派发队列和并发由本轮请求调度器拥有。 */
+/** 请求桶跨批次保留的速率时钟。 */
 export class RequestRate {
   private rps_limit: number; // 默认发起速率与令牌容量，由调度器同步当前并发。
   private readonly rpm_permit_interval_ms: number; // 零表示使用默认令牌桶。
@@ -72,30 +72,6 @@ export class RequestRate {
     const refill_tokens = (elapsed_ms / ONE_SECOND_MS) * this.rps_limit;
     this.hidden_rps_tokens = Math.min(this.rps_limit, this.hidden_rps_tokens + refill_tokens);
     this.hidden_rps_refilled_at = current_time;
-  }
-}
-
-/** 同一模型配置跨任务保留 RPM 与默认 RPS 节奏。 */
-export class RequestRatePool {
-  private readonly rates = new Map<string, RequestRate>();
-
-  /** 同一资源和容量复用时钟，配置变化才重新建立启动节奏。 */
-  public resolve(model: RequestModelRecord): RequestRate {
-    const limits = resolve_request_limits(model);
-    const key = JSON.stringify({
-      id: String(model["id"] ?? ""),
-      api_url: String(model["api_url"] ?? ""),
-      model_id: String(model["model_id"] ?? ""),
-      ...limits,
-    });
-    const shared = this.rates.get(key);
-    if (shared !== undefined) return shared;
-    const rate = new RequestRate({
-      rps_limit: limits.concurrency_limit,
-      rpm_limit: limits.rpm_limit,
-    });
-    this.rates.set(key, rate);
-    return rate;
   }
 }
 

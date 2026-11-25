@@ -20,6 +20,7 @@ export function AgentTaskStatus(props: {
   const display = build_batch_task_summary_display({
     metrics,
     kind: task.task_display_snapshot?.kind ?? null,
+    active_task_count: task.active_task_count,
     t,
   });
   if (display.speed_text === null) {

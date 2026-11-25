@@ -1,13 +1,12 @@
 import { AppError } from "../../shared/error";
-import { empty_batch_task_snapshot } from "../../shared/batch-task";
-import { empty_batch_task_progress } from "../../domain/batch-task";
+import { create_batch_task_snapshot, empty_batch_task_progress } from "../../domain/batch-task";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BatchTaskSnapshot } from "../../domain/batch-task";
+import type { BatchTaskSnapshot, BatchTaskSnapshotListener } from "../../domain/batch-task";
 import type { CLICommandName, CLICommandOptions, CLICommandResources } from "../cli-parser";
 import { run_cli_job } from "./cli-job-runner";
 import { build_cli_task_input } from "./cli-task-input";
@@ -303,7 +302,7 @@ describe("run_cli_job", () => {
 function create_backend_services_harness(failures: { unloadFailure?: Error } = {}) {
   const events: string[] = [];
   const created_project_paths: string[] = [];
-  const task_listeners = new Set<(snapshot: Readonly<BatchTaskSnapshot>) => void | Promise<void>>();
+  const task_listeners = new Set<BatchTaskSnapshotListener>();
   let started = false;
   let finish!: (result: {
     status: "done" | "idle" | "error";
@@ -377,7 +376,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     },
     generation: { generate_files_to_directory },
     batchTasks: {
-      subscribe: (listener: (snapshot: Readonly<BatchTaskSnapshot>) => void | Promise<void>) => {
+      subscribe: (listener: BatchTaskSnapshotListener) => {
         events.push("subscribe");
         task_listeners.add(listener);
         return () => {
@@ -421,9 +420,16 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
         throw new Error("任务尚未启动");
       }
       const snapshot = create_task_snapshot(status, progress);
-      await Promise.all([...task_listeners].map(async (listener) => await listener(snapshot)));
-      if (status === "done" || status === "idle" || status === "error")
-        finish({ status, progress: snapshot.progress });
+      await Promise.all(
+        [...task_listeners].map(
+          async (listener) =>
+            await listener(
+              { revision: 1, project_path: "fixture.lg", tasks: [snapshot] },
+              "translation",
+            ),
+        ),
+      );
+      if (status === "done" || status === "error") finish({ status, progress: snapshot.progress });
     },
   };
 }
@@ -446,12 +452,9 @@ function create_task_snapshot(
   status: BatchTaskSnapshot["status"],
   progress: Partial<import("../../domain/batch-translation").BatchTranslationRunProgress> = {},
 ): BatchTaskSnapshot {
-  const snapshot = empty_batch_task_snapshot();
   return {
-    ...snapshot,
-    revision: 1,
+    ...create_batch_task_snapshot("fixture", "translation", "standalone"),
     status,
-    source: status === "idle" ? null : "standalone",
     progress: {
       ...empty_batch_task_progress("item", progress.total_line ?? 0),
       succeeded: progress.processed_line ?? 0,

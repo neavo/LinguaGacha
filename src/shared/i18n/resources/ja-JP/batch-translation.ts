@@ -5,6 +5,7 @@ export const ja_jp_batch_translation = {
     progress: "進捗",
     tooltip: "原文を指定した言語に翻訳します",
   },
+  kind: { translation: "一括翻訳", request: "一括リクエスト" },
   summary: {
     translation: { running: "一括翻訳中", stopping: "一括翻訳を停止中" },
     request: { running: "一括リクエスト中", stopping: "一括リクエストを停止中" },
@@ -34,7 +35,6 @@ export const ja_jp_batch_translation = {
     retry_exhausted: "{count} 件の項目は再試行を繰り返しても成功しなかったため、スキップしました …",
     keys_retry_wait: "API エラー。{seconds} 秒後に自動で再試行します。再試行済み {count} 回 …",
     keys_retry_running: "API エラー。再試行中 …",
-    refresh_failed: "翻訳タスクの状態を更新できませんでした …",
     start_failed: "翻訳タスクを開始できませんでした …",
     stop_failed: "翻訳タスクを停止できませんでした …",
     reset_all_failed: "すべての翻訳をリセットできませんでした …",

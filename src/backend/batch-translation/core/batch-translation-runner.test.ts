@@ -1,5 +1,5 @@
 import { BatchTaskRuntime } from "../../batch-task/batch-task-runtime";
-import { RequestRatePool } from "../../batch-task/request-rate";
+import { BatchRequestPool } from "../../batch-task/batch-request-pool";
 import type { BatchTranslationRunCommand } from "./batch-translation-runner";
 import { ProjectCache } from "../../cache/project-cache";
 import { ProjectDatabase } from "../../database/database-operations";
@@ -69,7 +69,7 @@ describe("BatchTranslationRunner", () => {
     async (preparation_failed) => {
       const { runtime } = create_task_runtime();
       const runner = new BatchTranslationRunner({
-        ratePool: new RequestRatePool(),
+        requestPool: new BatchRequestPool(),
         llmClient: create_unused_llm_client(),
         builtinRoot: create_template_root(),
         taskStore: create_task_store({
@@ -143,7 +143,7 @@ describe("BatchTranslationRunner", () => {
       };
     });
     const runner = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: { request },
       builtinRoot: builtin_root,
       taskRuntime: runtime,
@@ -241,7 +241,7 @@ describe("BatchTranslationRunner", () => {
     try {
       await cache.refresh();
       const runner = new BatchTranslationRunner({
-        ratePool: new RequestRatePool(),
+        requestPool: new BatchRequestPool(),
         builtinRoot: builtin_root,
         taskStore: store,
         taskRuntime: runtime,
@@ -297,7 +297,7 @@ describe("BatchTranslationRunner", () => {
       ? new AppError("data.committed_sync_failed")
       : new Error("transaction failed");
     const runner = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       builtinRoot: create_template_root(),
       taskRuntime: runtime,
       taskStore: create_task_store({
@@ -399,7 +399,7 @@ describe("BatchTranslationRunner", () => {
         await cache.refresh();
         vi.useFakeTimers();
         const runner = new BatchTranslationRunner({
-          ratePool: new RequestRatePool(),
+          requestPool: new BatchRequestPool(),
           builtinRoot: builtin_root,
           taskStore: store,
           taskRuntime: runtime,
@@ -478,7 +478,7 @@ describe("BatchTranslationRunner", () => {
     const done = create_status_waiter("done");
     const { runtime: task_runtime, tasks } = create_task_runtime(done.listener);
     const task_engine = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: create_template_root(),
       taskStore: create_task_store(),
@@ -513,7 +513,7 @@ describe("BatchTranslationRunner", () => {
     );
     await done.promise;
     expect(model_ids).toEqual(["chosen"]);
-    expect(tasks.build_snapshot().config).toMatchObject({
+    expect(tasks.build_snapshot().tasks[0]?.config).toMatchObject({
       model_name: "已选择接入点",
       model_id: "translation-model",
     });
@@ -539,7 +539,7 @@ describe("BatchTranslationRunner", () => {
       }
     });
     const task_engine = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -583,7 +583,7 @@ describe("BatchTranslationRunner", () => {
       }
     });
     const task_engine = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -614,7 +614,7 @@ describe("BatchTranslationRunner", () => {
       throw new AppError("worker.failed");
     });
     const runner = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({ get_translation_items: () => [create_pending_item()] }),
@@ -676,7 +676,7 @@ describe("BatchTranslationRunner", () => {
         };
       });
       const runner = new BatchTranslationRunner({
-        ratePool: new RequestRatePool(),
+        requestPool: new BatchRequestPool(),
         llmClient: { request },
         builtinRoot: builtin_root,
         taskRuntime: runtime,
@@ -790,7 +790,7 @@ describe("BatchTranslationRunner", () => {
       return stream;
     });
     const runner = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       builtinRoot: builtin_root,
       taskRuntime: runtime,
       executorClient: pool,
@@ -863,7 +863,7 @@ describe("BatchTranslationRunner", () => {
     const responses = ["无法对应的合并译文", "甲的完整译文", "乙的译文"];
     try {
       const runner = new BatchTranslationRunner({
-        ratePool: new RequestRatePool(),
+        requestPool: new BatchRequestPool(),
         builtinRoot: builtin_root,
         taskStore: create_task_store({
           get_translation_items: () => [
@@ -935,7 +935,7 @@ describe("BatchTranslationRunner", () => {
     const { runtime: task_runtime } = create_task_runtime(done.listener);
     const run_context = create_run_context(1, 16);
     const task_engine = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -993,7 +993,7 @@ describe("BatchTranslationRunner", () => {
       prompt_enhancement_enable: false,
     });
     const task_engine = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: builtin_root,
       taskStore: create_task_store({
@@ -1033,7 +1033,7 @@ describe("BatchTranslationRunner", () => {
     });
     const { runtime: task_runtime } = create_task_runtime();
     const task_engine = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({

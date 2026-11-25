@@ -14,7 +14,10 @@ import { useProjectChangeSeqForSections } from "@frontend/app/state/project-chan
 import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import { BatchTaskDetailSheet } from "@frontend/features/batch-task/batch-task-detail-sheet";
-import { build_translation_task_detail_display } from "@frontend/features/batch-task/batch-task-display";
+import {
+  build_batch_task_switcher_items,
+  build_translation_task_detail_display,
+} from "@frontend/features/batch-task/batch-task-display";
 import { TranslationExportDialog } from "@frontend/features/translation-export/translation-export-dialog";
 import { useTranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
@@ -123,27 +126,34 @@ function useProjectTranslationStatsSync(): ProjectTranslationStats | null {
 /** 工程级批量翻译详情与危险动作确认共用同一浮层层级。 */
 function BatchTranslationDialogsLayer({ batch_task }: { batch_task: BatchTask }): JSX.Element {
   const { t } = useI18n();
+  const { detail_task, detail_metrics } = batch_task;
+  const tasks = build_batch_task_switcher_items({
+    tasks: batch_task.display_tasks,
+    selected_run_id: detail_task?.run_id ?? null,
+    t,
+  });
   return (
     <>
       <BatchTaskDetailSheet
         empty_text={
-          batch_task.task_metrics.total !== 0 &&
-          (batch_task.task_metrics.active || batch_task.task_display_snapshot !== null)
+          detail_metrics.total !== 0 && (detail_metrics.active || detail_task !== null)
             ? undefined
             : t("batch_translation.summary.empty")
         }
         open={batch_task.task_detail_sheet_open}
         display={build_translation_task_detail_display({
-          config: batch_task.task_display_snapshot?.config ?? undefined,
-          metrics: batch_task.task_metrics,
-          completion_percent: batch_task.task_metrics.completion_percent,
+          config: detail_task?.config ?? undefined,
+          metrics: detail_metrics,
           waveform_history: batch_task.task_waveform_history,
           t,
         })}
+        tasks={tasks}
+        on_select_task={batch_task.select_task}
         on_close={batch_task.close_task_detail_sheet}
-        on_request_stop_confirmation={() =>
-          batch_task.request_task_action_confirmation("stop-translation")
-        }
+        on_request_stop_confirmation={() => {
+          if (detail_task !== null)
+            batch_task.request_task_action_confirmation("stop-translation", detail_task.run_id);
+        }}
       />
       {/* 重置会批量清空译文，需要倒计时防误触，其它任务动作保持即时确认。 */}
       <AppConfirmDialog

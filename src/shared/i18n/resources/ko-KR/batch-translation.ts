@@ -5,6 +5,7 @@ export const ko_kr_batch_translation = {
     progress: "진행률",
     tooltip: "원문을 대상 언어로 번역합니다",
   },
+  kind: { translation: "일괄 번역", request: "일괄 요청" },
   summary: {
     translation: { running: "일괄 번역 중", stopping: "일괄 번역 중지 중" },
     request: { running: "일괄 요청 중", stopping: "일괄 요청 중지 중" },
@@ -34,7 +35,6 @@ export const ko_kr_batch_translation = {
     retry_exhausted: "{count}개 항목은 여러 번 재시도해도 성공하지 못해 건너뛰었습니다 …",
     keys_retry_wait: "API 오류. {seconds}초 후 자동으로 재시도합니다. 지금까지 {count}회 재시도 …",
     keys_retry_running: "API 오류. 재시도 중 …",
-    refresh_failed: "번역 작업 상태를 새로 고치지 못했습니다 …",
     start_failed: "번역 작업을 시작하지 못했습니다 …",
     stop_failed: "번역 작업을 중지하지 못했습니다 …",
     reset_all_failed: "전체 번역을 초기화하지 못했습니다 …",

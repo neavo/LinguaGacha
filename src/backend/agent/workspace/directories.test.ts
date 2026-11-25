@@ -89,3 +89,73 @@ it("路径入口接受既有身份并拒绝越界目录名", () => {
     );
   }
 });
+
+it("同路径和工程移走时复用材料身份并更新认领标记", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-workspace-claim-"));
+  roots.push(root);
+  const directories = new AgentWorkspaceDirectories(
+    path.join(root, "workspace"),
+    new NativeFs(),
+    vi.fn(),
+  );
+  const original = path.join(root, "original.lg");
+  const moved = path.join(root, "moved.lg");
+  fs.writeFileSync(original, "");
+  const id = await directories.create();
+  expect(await directories.claim(id, original, false)).toBe(id);
+  expect(await directories.claim(id, original, false)).toBe(id);
+  fs.renameSync(original, moved);
+  expect(await directories.claim(id, moved, false)).toBe(id);
+  expect(fs.readFileSync(path.join(directories.path(id), ".project-path"), "utf8")).toBe(moved);
+});
+
+it.each([false, true])("现存所有者或在用身份触发副本，inUse=%s", async (in_use) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-workspace-copy-"));
+  roots.push(root);
+  const native = new NativeFs();
+  const directories = new AgentWorkspaceDirectories(path.join(root, "workspace"), native, vi.fn());
+  const id = await directories.create();
+  const source = directories.path(id);
+  const original = path.join(root, "original.lg");
+  const duplicate = path.join(root, "duplicate.lg");
+  if (!in_use) {
+    fs.writeFileSync(original, "");
+    await directories.claim(id, original, false);
+  }
+  for (const name of ["work", "uploads", "sources", "run", "changes"]) {
+    fs.mkdirSync(path.join(source, name));
+    fs.writeFileSync(path.join(source, name, "entry"), name);
+  }
+  fs.writeFileSync(path.join(source, "items.jsonl"), "transient");
+  native.create_directory_link(path.join(source, "sources"), path.join(source, "work", "link"));
+
+  const copy = await directories.claim(id, duplicate, in_use);
+  const destination = directories.path(copy);
+  expect(copy).not.toBe(id);
+  expect(fs.readdirSync(destination).sort()).toEqual([".project-path", "uploads", "work"]);
+  expect(fs.readFileSync(path.join(destination, ".project-path"), "utf8")).toBe(duplicate);
+  expect(fs.readFileSync(path.join(destination, "work", "entry"), "utf8")).toBe("work");
+  expect(fs.readFileSync(path.join(destination, "uploads", "entry"), "utf8")).toBe("uploads");
+  expect(fs.readdirSync(path.join(destination, "work"))).toEqual(["entry"]);
+  fs.writeFileSync(path.join(destination, "work", "entry"), "duplicate only");
+  expect(fs.readFileSync(path.join(source, "work", "entry"), "utf8")).toBe("work");
+});
+
+it("跳过顶层目录链接，拷贝失败时清理已创建的副本并保留原错误", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-workspace-copy-failure-"));
+  roots.push(root);
+  const workspace = path.join(root, "workspace");
+  const native = new NativeFs();
+  const directories = new AgentWorkspaceDirectories(workspace, native, vi.fn());
+  const id = await directories.create();
+  const source = directories.path(id);
+  const duplicate = path.join(root, "duplicate.lg");
+  fs.mkdirSync(path.join(source, "work"));
+  native.create_directory_link(path.join(source, "work"), path.join(source, "uploads"));
+  const copy = await directories.claim(id, duplicate, true);
+  expect(fs.readdirSync(directories.path(copy)).sort()).toEqual([".project-path", "work"]);
+  const failure = new Error("copy failed");
+  vi.spyOn(native, "copy_dir_async").mockRejectedValueOnce(failure);
+  await expect(directories.claim(id, duplicate, true)).rejects.toBe(failure);
+  expect(fs.readdirSync(workspace).sort()).toEqual([copy, id].sort());
+});

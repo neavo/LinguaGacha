@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
-import type { BatchTaskSnapshot } from "@domain/batch-task";
+import { create_batch_task_snapshot, type BatchTaskSnapshot } from "@domain/batch-task";
 import { create_text_resolver } from "@shared/i18n";
 import { LocaleContext } from "@frontend/app/locale/locale-context";
 import { DesktopStateStoresContext } from "@frontend/app/state/desktop-state-context";
@@ -25,12 +25,18 @@ it("恢复提示更新倒计时和次数，恢复与停止解除通知", async (
   const root = createRoot(document.createElement("div"));
   const t = vi.fn(create_text_resolver("zh-CN"));
   // 通过真实快照入口更新，覆盖状态归一和订阅传播。
-  const update = async (patch: Partial<BatchTaskSnapshot>): Promise<void> => {
+  const update = async (
+    patch: Partial<BatchTaskSnapshot>,
+    ...others: BatchTaskSnapshot[]
+  ): Promise<void> => {
+    const current = store.getSnapshot();
+    const task =
+      current.tasks[0] ?? create_batch_task_snapshot("translation", "translation", "standalone");
     await act(async () =>
       store.applySnapshot({
-        ...store.getSnapshot(),
-        revision: store.getSnapshot().revision + 1,
-        ...patch,
+        ...current,
+        revision: current.revision + 1,
+        tasks: [{ ...task, ...patch }, ...others],
       }),
     );
   };
@@ -77,7 +83,14 @@ it("恢复提示更新倒计时和次数，恢复与停止解除通知", async (
       count: "0",
       seconds: "0",
     });
-    await update({ source: "agent", request_recovery: { phase: "retrying" } });
+    await update(
+      {},
+      {
+        ...create_batch_task_snapshot("request", "request", "agent"),
+        status: "running",
+        request_recovery: { phase: "retrying" },
+      },
+    );
     expect(t).toHaveBeenLastCalledWith("batch_translation.feedback.keys_retry_running");
     expect(toast.warning).toHaveBeenLastCalledWith(expect.any(String), options);
     expect(vi.getTimerCount()).toBe(0);

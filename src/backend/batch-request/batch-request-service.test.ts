@@ -1,17 +1,18 @@
 import { create_text_resolver } from "../../shared/i18n";
 import { log_error_from_message } from "../../shared/error";
 import { format_log_content_text, type LogAppendPayload } from "../../shared/log";
-import { read_batch_task_snapshot } from "../../shared/batch-task";
+import { read_batch_task_list_snapshot } from "../../shared/batch-task";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BatchRequestService } from "./batch-request-service";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
-import { RequestRatePool } from "../batch-task/request-rate";
+import { BatchRequestPool } from "../batch-task/batch-request-pool";
 import { ProjectOperationGate } from "../runtime-operation-gate";
 import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
 import { default_native_fs } from "../../native/native-fs";
+import { AgentWorkspaceDirectories } from "../agent/workspace/directories";
 const directories: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -53,7 +54,7 @@ async function setup(request: LLMClientPort["request"] = async () => response())
   const append = vi.fn<(payload: LogAppendPayload) => void>();
   const service = new BatchRequestService(
     tasks,
-    new RequestRatePool(),
+    new BatchRequestPool(),
     { request },
     { bind: () => "session" },
     { append },
@@ -121,27 +122,30 @@ describe("batch request", () => {
     const summary = await f.run();
     expect(summary).toMatchObject({
       status: "done",
+      result_file: `work/batch-requests/${summary.run_id}/result.json`,
       total: 2,
       succeeded: 1,
       failed: 1,
       unfinished: 0,
     });
-    const index = JSON.parse(await fs.readFile(summary.result_file, "utf8"));
+    const result_path = path.join(f.root, summary.result_file);
+    const index = JSON.parse(await fs.readFile(result_path, "utf8"));
     const saved = JSON.parse(
       await fs.readFile(
-        path.resolve(path.dirname(summary.result_file), index.requests[0].result_file),
+        path.resolve(path.dirname(result_path), index.requests[0].result_file),
         "utf8",
       ),
     );
+    expect(index.result_file).toBe(summary.result_file);
     expect(saved).toMatchObject({
       id: "first",
       status: "succeeded",
       response: { format: "messages", text: "ok" },
     });
     expect(
-      read_batch_task_snapshot(
-        JSON.parse(JSON.stringify({ batch_task: f.tasks.build_snapshot() })),
-      ),
+      read_batch_task_list_snapshot(
+        JSON.parse(JSON.stringify({ batch_tasks: f.tasks.build_snapshot() })),
+      ).tasks[0],
     ).toMatchObject({
       kind: "request",
       progress: { total: 2, succeeded: 1, failed: 1 },
@@ -191,10 +195,11 @@ describe("batch request", () => {
     expect(summary).toMatchObject({ succeeded: 1, failed: 1 });
     expect(request).toHaveBeenCalledTimes(2);
     expect(request.mock.calls[0]![0].messages).toEqual(messages);
-    const index = JSON.parse(await fs.readFile(summary.result_file, "utf8"));
+    const result_path = path.join(f.root, summary.result_file);
+    const index = JSON.parse(await fs.readFile(result_path, "utf8"));
     const failed = JSON.parse(
       await fs.readFile(
-        path.resolve(path.dirname(summary.result_file), index.requests[0].result_file),
+        path.resolve(path.dirname(result_path), index.requests[0].result_file),
         "utf8",
       ),
     );
@@ -229,9 +234,10 @@ describe("batch request", () => {
     await f.write_manifest([{ id: "one", input_file: "good.json" }]);
     const summary = await f.run();
     expect(summary).toMatchObject({ failed: 1 });
-    const index = JSON.parse(await fs.readFile(summary.result_file, "utf8"));
+    const result_path = path.join(f.root, summary.result_file);
+    const index = JSON.parse(await fs.readFile(result_path, "utf8"));
     const saved = await fs.readFile(
-      path.resolve(path.dirname(summary.result_file), index.requests[0].result_file),
+      path.resolve(path.dirname(result_path), index.requests[0].result_file),
       "utf8",
     );
     expect(saved).not.toContain("private");
@@ -293,7 +299,8 @@ describe("batch request", () => {
   it.each(["progress", "completion"])("成果发布后 %s 事件失败保留逐项成功", async (event) => {
     const f = await setup();
     await f.write_manifest([{ id: "one", input_file: "good.json" }]);
-    f.tasks.subscribe((snapshot) => {
+    f.tasks.subscribe(({ tasks: [snapshot] }) => {
+      if (snapshot === undefined) return;
       if (event === "completion" ? snapshot.status === "done" : snapshot.progress?.succeeded === 1)
         throw new Error("event failure");
     });
@@ -343,7 +350,8 @@ describe("batch request", () => {
       { id: "two", input_file: "good.json" },
     ]);
     const states: string[] = [];
-    f.tasks.subscribe((snapshot) => {
+    f.tasks.subscribe(({ tasks: [snapshot] }) => {
+      if (snapshot === undefined) return;
       states.push(snapshot.status);
     });
     let settled = false;
@@ -351,7 +359,7 @@ describe("batch request", () => {
       settled = true;
     });
     await started.promise;
-    const run_id = f.tasks.build_snapshot().run_id!;
+    const run_id = f.tasks.build_snapshot().tasks[0]!.run_id;
     await f.tasks.request_stop(run_id);
     expect(settled).toBe(false);
     release.resolve();
@@ -362,7 +370,9 @@ describe("batch request", () => {
       succeeded: 1,
       unfinished: 1,
     });
-    expect(JSON.parse(await fs.readFile(result.result_file, "utf8"))).toMatchObject({
+    expect(
+      JSON.parse(await fs.readFile(path.join(f.root, result.result_file), "utf8")),
+    ).toMatchObject({
       status: "stopped",
       requests: [{ status: "succeeded" }, { status: "unfinished", result_file: null }],
     });
@@ -381,7 +391,7 @@ describe("batch request", () => {
     const write = default_native_fs.write_file.bind(default_native_fs);
     vi.spyOn(default_native_fs, "write_file").mockImplementation(async (file, data) => {
       if (file.endsWith("000001.json.tmp")) {
-        if (stop) await f.tasks.request_stop(f.tasks.build_snapshot().run_id!);
+        if (stop) await f.tasks.request_stop(f.tasks.build_snapshot().tasks[0]!.run_id);
         throw new Error("disk failure");
       }
       await write(file, data);
@@ -389,7 +399,7 @@ describe("batch request", () => {
     await expect(f.run()).rejects.toMatchObject({
       summary: { status: "error", succeeded: 0, unfinished: 1, result_file: expect.any(String) },
     });
-    expect(f.tasks.build_snapshot()).toMatchObject({ status: "error" });
+    expect(f.tasks.build_snapshot().tasks[0]).toMatchObject({ status: "error" });
     const logs = f.append.mock.calls.map(([entry]) => entry);
     expect(logs.at(-2)).toMatchObject({ level: "error" });
     expect(logs.at(-1)).toMatchObject({
@@ -404,6 +414,71 @@ describe("batch request", () => {
     expect(logs.map((entry) => format_log_content_text(entry.content)).join("\n")).toContain(
       "disk failure",
     );
+    await f.tasks.dispose();
+  });
+
+  it("源工程与副本同时打开时，副本按相对结果路径隔离读取且不写回源工作区", async () => {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "batch-request-replica-"));
+    directories.push(temp);
+    const workspace_root = path.join(temp, "workspace");
+    const dirs = new AgentWorkspaceDirectories(workspace_root, default_native_fs, vi.fn());
+    const source_id = await dirs.create();
+    const source_root = dirs.path(source_id);
+    await dirs.claim(source_id, path.join(temp, "source.lg"), false);
+    await fs.writeFile(
+      path.join(source_root, "good.json"),
+      JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+    );
+    await fs.writeFile(
+      path.join(source_root, "manifest.json"),
+      JSON.stringify({ format: "messages", requests: [{ id: "seg-1", input_file: "good.json" }] }),
+    );
+
+    const f = await setup();
+    const summary = await f.service.run(
+      f.lease,
+      new AbortController().signal,
+      source_root,
+      {
+        model: structuredClone(f.settings.models[0]!),
+        config_snapshot: structuredClone(f.settings),
+      },
+      "manifest.json",
+    );
+    expect(summary.result_file).toBe(`work/batch-requests/${summary.run_id}/result.json`);
+
+    // 源工程保持打开（inUse = true）时打开副本，副本获得独立工作区。
+    const replica_id = await dirs.claim(source_id, path.join(temp, "replica.lg"), true);
+    const replica_root = dirs.path(replica_id);
+    expect(replica_id).not.toBe(source_id);
+
+    const replica_index_path = path.join(replica_root, summary.result_file);
+    const replica_index = JSON.parse(await fs.readFile(replica_index_path, "utf8")) as {
+      result_file: string;
+      requests: { id: string; result_file: string }[];
+    };
+    expect(replica_index.result_file).toBe(summary.result_file);
+
+    const replica_item_path = path.resolve(
+      path.dirname(replica_index_path),
+      replica_index.requests[0]!.result_file,
+    );
+    const source_item_path = path.resolve(
+      path.dirname(path.join(source_root, summary.result_file)),
+      replica_index.requests[0]!.result_file,
+    );
+    expect(JSON.parse(await fs.readFile(replica_item_path, "utf8"))).toMatchObject({
+      id: "seg-1",
+      status: "succeeded",
+      response: { text: "ok" },
+    });
+
+    await fs.writeFile(replica_item_path, JSON.stringify({ mutated: true }));
+    expect(JSON.parse(await fs.readFile(source_item_path, "utf8"))).toMatchObject({
+      id: "seg-1",
+      status: "succeeded",
+      response: { text: "ok" },
+    });
     await f.tasks.dispose();
   });
 });

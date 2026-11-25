@@ -1,10 +1,18 @@
 import type { useI18n } from "@frontend/app/locale/locale-context";
-import type { BatchTaskMetrics } from "@shared/batch-task";
-import type { BatchTaskConfig, BatchTaskKind } from "@domain/batch-task";
+import { batch_task_metrics, type BatchTaskMetrics } from "@shared/batch-task";
+import type { BatchTaskConfig, BatchTaskKind, BatchTaskSnapshot } from "@domain/batch-task";
 import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 const METRIC_SCALE = 1000;
 
 export type BatchTaskTone = "neutral" | "success" | "warning";
+
+export type BatchTaskSwitcherItem = {
+  run_id: string;
+  label: string;
+  progress_text?: string | null;
+  selected: boolean;
+  status: BatchTaskSnapshot["status"];
+};
 
 export type BatchTaskMetricEntry = {
   key: string;
@@ -162,10 +170,12 @@ function build_translation_task_metric_entries(
 export function build_batch_task_summary_display({
   metrics,
   kind,
+  active_task_count = 0,
   t,
 }: {
   metrics: BatchTaskMetrics;
   kind: BatchTaskKind | null;
+  active_task_count?: number;
   t: ReturnType<typeof useI18n>["t"];
 }): BatchTaskSummaryDisplay {
   let status_text = t("batch_translation.summary.empty");
@@ -181,14 +191,14 @@ export function build_batch_task_summary_display({
         ? "batch_translation.summary.running"
         : `batch_translation.summary.${kind}.running`,
     );
-  } else if (metrics.total !== 0 && ["done", "stopped", "error"].includes(metrics.status ?? "")) {
+  } else if (metrics.total !== 0 && ["done", "stopped", "error"].includes(metrics.status)) {
     status_text = t("batch_translation.summary.done");
   }
 
   const speed = format_compact_metric_value(metrics.average_generation_speed, "T/S", 2);
 
   return {
-    status_text,
+    status_text: active_task_count > 1 ? `${status_text} (${active_task_count})` : status_text,
     speed_text:
       metrics.active || metrics.stopping ? `${speed.value_text} ${speed.unit_text}` : null,
     tone: resolve_task_tone(metrics),
@@ -202,16 +212,16 @@ export function build_batch_task_summary_display({
 export function build_translation_task_detail_display(args: {
   config?: Pick<BatchTaskConfig, "model_name" | "model_id" | "thinking_level"> | undefined;
   metrics: BatchTaskMetrics;
-  completion_percent: number | null; // 本轮成功与失败都计入已结算进度
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
 }): BatchTaskDetailDisplay {
+  const { completion_percent } = args.metrics;
   return {
     provider: build_translation_provider(args.config, args.t),
     waveform_title: args.t("batch_translation.detail.waveform_title"),
     metrics_title: args.t("batch_translation.detail.metrics_title"),
     completion_percent_text:
-      args.completion_percent === null ? "—" : `${args.completion_percent.toFixed(2)}%`,
+      completion_percent === null ? "—" : `${completion_percent.toFixed(2)}%`,
     percent_tone: resolve_task_tone(args.metrics),
     metric_entries: build_translation_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping
@@ -238,4 +248,28 @@ function build_translation_provider(
         : MODEL_THINKING_LEVEL_LABEL_KEY[config.thinking_level],
     ),
   };
+}
+
+/** 构造详情抽屉的批次切换项，同类多批次追加顺序编号保持可辨识。 */
+export function build_batch_task_switcher_items(args: {
+  tasks: readonly BatchTaskSnapshot[];
+  selected_run_id: string | null;
+  t: ReturnType<typeof useI18n>["t"];
+}): BatchTaskSwitcherItem[] {
+  const counts = new Map<BatchTaskKind, number>();
+  for (const task of args.tasks) counts.set(task.kind, (counts.get(task.kind) ?? 0) + 1);
+  const seen = new Map<BatchTaskKind, number>();
+  return args.tasks.map((task) => {
+    const base_label = args.t(`batch_translation.kind.${task.kind}`);
+    const ordinal = (seen.get(task.kind) ?? 0) + 1;
+    seen.set(task.kind, ordinal);
+    const percent = batch_task_metrics(task, 0).completion_percent;
+    return {
+      run_id: task.run_id,
+      label: (counts.get(task.kind) ?? 0) > 1 ? `${base_label} #${ordinal}` : base_label,
+      progress_text: percent === null ? null : `${percent.toFixed(2)}%`,
+      selected: task.run_id === args.selected_run_id,
+      status: task.status,
+    };
+  });
 }

@@ -5,6 +5,7 @@ export const en_us_batch_translation = {
     progress: "Progress",
     tooltip: "Translate source text into the target language",
   },
+  kind: { translation: "Batch translation", request: "Batch requests" },
   summary: {
     translation: { running: "Batch translating", stopping: "Stopping batch translation" },
     request: { running: "Running batch requests", stopping: "Stopping batch requests" },
@@ -34,7 +35,6 @@ export const en_us_batch_translation = {
     retry_exhausted: "{count} items still failed after repeated retries and were skipped …",
     keys_retry_wait: "API error. Automatic retry in {seconds} seconds. Retried {count} times …",
     keys_retry_running: "API error. Retrying …",
-    refresh_failed: "Failed to refresh the translation task …",
     start_failed: "Failed to start the translation task …",
     stop_failed: "Failed to stop the translation task …",
     reset_all_failed: "Failed to reset all translation progress …",

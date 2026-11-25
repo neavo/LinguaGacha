@@ -1,11 +1,7 @@
 import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import type { BatchTaskSnapshot } from "@domain/batch-task";
-import { batch_task_metrics, read_batch_task_snapshot } from "@shared/batch-task";
-import {
-  useBatchTaskSnapshot,
-  useSyncBatchTaskSnapshot,
-} from "@frontend/app/state/use-desktop-state";
+import { batch_task_metrics } from "@shared/batch-task";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -22,15 +18,12 @@ import {
   useDesktopState,
   useSyncBatchTranslationSnapshot,
   useBatchTranslationSnapshot,
+  useBatchTaskSnapshot,
 } from "@frontend/app/state/use-desktop-state";
-import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
 import type { LocaleKey } from "@shared/i18n";
 import {
-  should_open_translation_export_followup,
-  create_empty_batch_translation_snapshot,
-  type TranslationTaskActionKind,
   type TranslationTaskConfirmState,
   type BatchTranslationPayload,
   normalize_batch_translation_snapshot,
@@ -41,10 +34,14 @@ import {
   create_empty_task_waveform_state,
   has_unsettled_task_waveform_tail,
   TASK_WAVEFORM_SAMPLE_INTERVAL_MS,
+  type BatchTranslationWaveformState,
 } from "@frontend/app/session/batch-task/batch-task-waveform-state";
 
 // 翻译任务写入的诊断名由 renderer 会话拥有，desktop 层只负责提交与互斥。
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
+
+const EMPTY_TASKS: readonly BatchTaskSnapshot[] = [];
+type TaskAction = ["reset-all"] | ["stop-translation", run_id: string];
 
 type BatchTaskOptions = {
   onRequestExport: () => void; // 独立全量翻译自然完成后交给跨路由翻译成果导出流程
@@ -53,6 +50,12 @@ type BatchTaskOptions = {
 export type BatchTask = {
   task_display_snapshot: BatchTaskSnapshot | null;
   task_metrics: ReturnType<typeof batch_task_metrics>;
+  active_task_count: number;
+  translation_active: boolean;
+  display_tasks: readonly BatchTaskSnapshot[];
+  detail_task: BatchTaskSnapshot | null;
+  detail_metrics: ReturnType<typeof batch_task_metrics>;
+  select_task: (run_id: string) => void;
   task_waveform_history: number[];
   task_detail_sheet_open: boolean;
   task_confirm_state: TranslationTaskConfirmState | null;
@@ -60,7 +63,7 @@ export type BatchTask = {
   open_task_detail_sheet: () => void;
   close_task_detail_sheet: () => void;
   request_start_or_continue_translation: () => Promise<void>;
-  request_task_action_confirmation: (kind: TranslationTaskActionKind) => void;
+  request_task_action_confirmation: (...action: TaskAction) => void;
   confirm_task_action: () => Promise<void>;
   close_task_action_confirmation: () => void;
 };
@@ -78,96 +81,77 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
   const sync_task_snapshot = useSyncBatchTranslationSnapshot();
   const task_snapshot = useBatchTranslationSnapshot();
   const batch_task = useBatchTaskSnapshot();
-  const sync_batch_task = useSyncBatchTaskSnapshot();
   const runtime_snapshot = useProjectRuntimeSnapshot();
   const [now_seconds, set_now_seconds] = useState(() => Date.now() / 1000);
-  const [task_waveform_history, set_task_waveform_history] = useState<number[]>([]);
+  const [waveforms, set_waveforms] = useState(
+    () => new Map<string, BatchTranslationWaveformState>(),
+  );
+  const [selected_run_id, select_task] = useState<string | null>(null);
   const [task_detail_sheet_open, set_task_detail_sheet_open] = useState(false);
   const [task_confirm_state, set_task_confirm_state] = useState<TranslationTaskConfirmState | null>(
     null,
   );
-  const previous_project_loaded_ref = useRef(false);
-  const previous_project_path_ref = useRef("");
-  const previous_translation_status_ref = useRef(create_empty_batch_translation_snapshot().status);
-  const translation_waveform_state_ref = useRef(create_empty_task_waveform_state());
-  const task_display_snapshot =
-    batch_task.status === "idle" || batch_task.project_path !== project_snapshot.path
-      ? null
-      : batch_task;
+  const previous_translation_status_ref = useRef<BatchTranslationSnapshot["status"]>("idle");
+  const previous_active_ref = useRef(false); // 新一轮开始时从已结束批次回到活跃任务。
+  const display_tasks =
+    batch_task.project_path === project_snapshot.path ? batch_task.tasks : EMPTY_TASKS;
+  const active_task_count = display_tasks.filter((task) =>
+    is_active_batch_translation_status(task.status),
+  ).length;
+  // 后端列表按活跃任务优先排列，摘要始终跟随第一项。
+  const task_display_snapshot = display_tasks[0] ?? null;
   const task_metrics = batch_task_metrics(task_display_snapshot, now_seconds);
+  const detail_task =
+    display_tasks.find((task) => task.run_id === selected_run_id) ?? task_display_snapshot;
+  const detail_metrics = batch_task_metrics(detail_task, now_seconds);
+  const task_waveform_history =
+    detail_task === null ? [] : (waveforms.get(detail_task.run_id)?.history ?? []);
 
   const translation_dialog_open = task_confirm_state !== null; // 确认框打开期间延后导出提示。
+  const translation_active = runtime_snapshot.owner === "batch_translation";
   const translation_action_blocked =
-    !project_snapshot.loaded || is_runtime_busy(runtime_snapshot) || translation_dialog_open;
-  const can_open_task_detail_sheet = project_snapshot.loaded;
-  const translation_task_active = is_active_batch_translation_status(batch_task.status);
-  const has_unsettled_translation_waveform_tail =
-    has_unsettled_task_waveform_tail(task_waveform_history);
-  const should_animate_translation_waveform =
-    translation_task_active || has_unsettled_translation_waveform_tail;
-
-  const clear_translation_waveform_sampling = useCallback((): void => {
-    translation_waveform_state_ref.current = create_empty_task_waveform_state();
-  }, []);
-
-  const append_translation_waveform_sample = useEffectEvent((): void => {
-    const next_now_seconds = Date.now() / 1000;
-    const next_visual_snapshot = task_display_snapshot;
-    const next_metrics = batch_task_metrics(next_visual_snapshot, next_now_seconds);
-    set_now_seconds(next_now_seconds);
-
-    if (next_visual_snapshot === null) {
-      return;
-    }
-
-    // 波形只消费已归一的累计生成 token，行进度变化不应制造 0 样本或尖峰。
-    const next_waveform_state = advance_task_waveform_state(
-      translation_waveform_state_ref.current,
-      {
-        active: translation_task_active,
-        now_seconds: next_now_seconds,
-        total_generated_tokens: next_metrics.reasoning_tokens + next_metrics.output_tokens,
-      },
+    !project_snapshot.loaded ||
+    translation_active ||
+    runtime_snapshot.owner === "project_write" ||
+    translation_dialog_open;
+  const has_active_task = active_task_count > 0;
+  const should_animate_waveforms =
+    has_active_task ||
+    display_tasks.some((task) =>
+      has_unsettled_task_waveform_tail(waveforms.get(task.run_id)?.history ?? []),
     );
-    translation_waveform_state_ref.current = next_waveform_state;
-    set_task_waveform_history(() => {
-      return next_waveform_state.history;
+
+  const append_waveform_samples = useEffectEvent((): void => {
+    const now_seconds = Date.now() / 1000;
+    set_now_seconds(now_seconds);
+    set_waveforms((previous) => {
+      const next = new Map<string, BatchTranslationWaveformState>();
+      for (const task of display_tasks) {
+        const state = previous.get(task.run_id);
+        const active = is_active_batch_translation_status(task.status);
+        if (!active && state === undefined) continue;
+        // 只采样已结算的生成 Token，行进度变化不产生速度尖峰。
+        const progress = task.progress;
+        next.set(
+          task.run_id,
+          advance_task_waveform_state(state ?? create_empty_task_waveform_state(), {
+            active,
+            now_seconds,
+            total_generated_tokens:
+              (progress?.reasoning_tokens ?? 0) + (progress?.output_tokens ?? 0),
+          }),
+        );
+      }
+      return next;
     });
   });
 
-  const clear_translation_task_state = useCallback((): void => {
-    clear_translation_waveform_sampling();
-    set_task_waveform_history([]);
-    set_task_detail_sheet_open(false);
-    set_task_confirm_state(null);
-  }, [clear_translation_waveform_sampling]);
-
-  const refresh_translation_task_snapshot = useCallback(async (): Promise<void> => {
-    if (!project_snapshot.loaded) {
-      clear_translation_task_state();
-      return;
-    }
-
-    try {
-      const task_payload = await api_fetch<BatchTranslationPayload>("/api/batch-task/snapshot", {});
-      sync_batch_task(read_batch_task_snapshot(task_payload));
-      sync_task_snapshot(normalize_batch_translation_snapshot(task_payload));
-    } catch (error) {
-      push_error_toast(t("batch_translation.feedback.refresh_failed"), error);
-    }
-  }, [
-    clear_translation_task_state,
-    project_snapshot.loaded,
-    sync_task_snapshot,
-    sync_batch_task,
-    t,
-  ]);
-
   const open_task_detail_sheet = useCallback((): void => {
-    if (can_open_task_detail_sheet) {
+    if (project_snapshot.loaded) {
+      select_task(task_display_snapshot?.run_id ?? null);
       set_task_detail_sheet_open(true);
     }
-  }, [can_open_task_detail_sheet]);
+  }, [project_snapshot.loaded, task_display_snapshot?.run_id]);
 
   const close_task_detail_sheet = useCallback((): void => {
     set_task_detail_sheet_open(false);
@@ -192,32 +176,19 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
       );
       const next_snapshot = normalize_batch_translation_snapshot(task_payload);
       sync_task_snapshot(next_snapshot);
-
-      if (!should_continue) {
-        clear_translation_waveform_sampling();
-        set_task_waveform_history([]);
-      }
     } catch (error) {
       push_error_toast(t("batch_translation.feedback.start_failed"), error);
     }
-  }, [
-    sync_task_snapshot,
-    t,
-    translation_action_blocked,
-    task_snapshot.progress,
-    clear_translation_waveform_sampling,
-  ]);
+  }, [sync_task_snapshot, t, translation_action_blocked, task_snapshot.progress, api_fetch]);
 
-  const request_task_action_confirmation = useCallback(
-    (kind: TranslationTaskActionKind): void => {
-      set_task_confirm_state({
-        kind,
-        submitting: false,
-        ...(kind === "stop-translation" ? { run_id: batch_task.run_id ?? "" } : {}),
-      });
-    },
-    [batch_task.run_id],
-  );
+  const request_task_action_confirmation = useCallback((...action: TaskAction): void => {
+    const [kind, run_id] = action;
+    set_task_confirm_state({
+      kind,
+      submitting: false,
+      ...(kind === "stop-translation" ? { run_id } : {}),
+    });
+  }, []);
 
   const close_task_action_confirmation = useCallback((): void => {
     set_task_confirm_state((previous_state) => {
@@ -251,12 +222,10 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
 
     try {
       if (task_confirm_state.kind === "stop-translation") {
-        const task_payload = await api_fetch<BatchTranslationPayload>("/api/batch-task/stop", {
+        const payload = await api_fetch<Record<string, unknown>>("/api/batch-task/stop", {
           run_id: task_confirm_state.run_id,
         });
-        const next_snapshot = normalize_batch_translation_snapshot(task_payload);
-        sync_task_snapshot(next_snapshot);
-        sync_batch_task(read_batch_task_snapshot(task_payload));
+        active_project?.update_task(payload); // 与 SSE 共用本工程的任务镜像写入口。
         set_task_confirm_state(null);
       } else {
         const reset_request = { mode: "all" };
@@ -293,41 +262,30 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
       });
     }
   }, [
+    active_project,
+    api_fetch,
     commit_project_write,
     refresh_batch_translation,
-    sync_task_snapshot,
-    sync_batch_task,
     t,
     task_confirm_state,
   ]);
 
   useEffect(() => {
-    const previous_project_loaded = previous_project_loaded_ref.current;
-    const previous_project_path = previous_project_path_ref.current;
-
-    previous_project_loaded_ref.current = project_snapshot.loaded;
-    previous_project_path_ref.current = project_snapshot.path;
-
-    if (!project_snapshot.loaded) {
-      clear_translation_task_state();
-      return;
-    }
-
-    if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
-      clear_translation_task_state();
-      void refresh_translation_task_snapshot();
-    }
-  }, [
-    clear_translation_task_state,
-    project_snapshot.loaded,
-    project_snapshot.path,
-    refresh_translation_task_snapshot,
-  ]);
+    if (has_active_task && !previous_active_ref.current) select_task(null);
+    previous_active_ref.current = has_active_task;
+  }, [has_active_task]);
 
   useEffect(() => {
-    clear_translation_waveform_sampling();
-    set_task_waveform_history([]);
-  }, [batch_task.run_id, clear_translation_waveform_sampling]);
+    set_waveforms((previous) => {
+      const next = new Map(
+        display_tasks.flatMap(({ run_id }) => {
+          const state = previous.get(run_id);
+          return state === undefined ? [] : [[run_id, state] as const];
+        }),
+      );
+      return next.size === previous.size ? previous : next;
+    });
+  }, [display_tasks]);
 
   useEffect(() => {
     const previous_status = previous_translation_status_ref.current;
@@ -355,12 +313,7 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
       }
     }
 
-    if (
-      !translation_dialog_open &&
-      (active_project
-        ? active_project.batch_translation.takeExportFollowup()
-        : should_open_translation_export_followup(previous_status, task_snapshot))
-    ) {
+    if (!translation_dialog_open && active_project?.batch_translation.takeExportFollowup()) {
       onRequestExport();
     }
   }, [
@@ -373,23 +326,29 @@ export function useBatchTask(options: BatchTaskOptions): BatchTask {
   ]);
 
   useEffect(() => {
-    if (!should_animate_translation_waveform) {
+    if (!should_animate_waveforms) {
       return;
     }
 
-    append_translation_waveform_sample(); // 运行态和收尾态都需要继续推进采样，前者保持连贯，后者负责把尾巴渐渐扫干净
+    append_waveform_samples(); // 运行态和收尾态都需要继续推进采样，前者保持连贯，后者负责把尾巴渐渐扫干净
     const timer_id = window.setInterval(() => {
-      append_translation_waveform_sample();
+      append_waveform_samples();
     }, TASK_WAVEFORM_SAMPLE_INTERVAL_MS);
 
     return () => {
       window.clearInterval(timer_id);
     };
-  }, [should_animate_translation_waveform]);
+  }, [should_animate_waveforms]);
 
   return {
     task_display_snapshot,
     task_metrics,
+    active_task_count,
+    translation_active,
+    display_tasks,
+    detail_task,
+    detail_metrics,
+    select_task,
     task_waveform_history,
     task_detail_sheet_open,
     task_confirm_state,

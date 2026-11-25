@@ -5,8 +5,8 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { batch_task_metrics, empty_batch_task_snapshot } from "@shared/batch-task";
-import { empty_batch_task_progress } from "@domain/batch-task";
+import { batch_task_metrics } from "@shared/batch-task";
+import { create_batch_task_snapshot, empty_batch_task_progress } from "@domain/batch-task";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
 
@@ -22,6 +22,12 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
     batch_task: {
       task_display_snapshot: null,
       task_metrics: batch_task_metrics(null, 0),
+      active_task_count: 0,
+      translation_active: false,
+      display_tasks: [],
+      detail_task: null,
+      detail_metrics: batch_task_metrics(null, 0),
+      select_task: vi.fn(),
       task_waveform_history: [],
       task_detail_sheet_open: false,
       task_confirm_state: null,
@@ -109,9 +115,9 @@ describe("WorkbenchCommandBar", () => {
     );
   });
 
-  it("任务运行时禁用重置，仍可悬停查看用途", async () => {
+  it("翻译运行时禁用重置，仍可悬停查看用途", async () => {
     const props = create_workbench_command_bar_props();
-    props.batch_task.task_metrics.active = true;
+    props.batch_task.translation_action_blocked = true;
     await render_command_bar(props);
     const reset = find_button("app.action.reset");
     expect(reset.disabled).toBe(true);
@@ -124,7 +130,7 @@ describe("WorkbenchCommandBar", () => {
   it("运行摘要使用同一批量任务的类型与完成率", async () => {
     const props = create_workbench_command_bar_props();
     const snapshot = {
-      ...empty_batch_task_snapshot(),
+      ...create_batch_task_snapshot("fixture", "translation", "standalone"),
       kind: "request" as const,
       status: "running" as const,
       progress: { ...empty_batch_task_progress("request", 10), succeeded: 3 },
@@ -133,6 +139,7 @@ describe("WorkbenchCommandBar", () => {
     props.batch_task.task_metrics = batch_task_metrics(snapshot, 0);
     await render_command_bar(props);
 
+    expect(find_button("app.action.reset").disabled).toBe(false);
     expect(find_button("batch_translation.summary.request.running")).toBeDefined();
     expect(container?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe(
       "30",
