@@ -1,4 +1,4 @@
-import type { SourceConfirmations } from "../project-source-formats";
+import type { GodotPackPreview } from "../godot";
 import type { ImportInheritanceMode } from "../translation-inheritance";
 type WorkbenchCommandSection = "files" | "items";
 type WorkbenchSectionRevisions = Record<string, number | undefined>;
@@ -144,9 +144,11 @@ export type WorkbenchImportFileCandidate = {
   conflict: boolean;
 };
 
-export type WorkbenchImportFilesPreview = SourceConfirmations & {
+export type WorkbenchImportFilesPreview = {
   files_revision: number; // 与命名和冲突分类来自同一次数据库读取。
   files: WorkbenchImportFileCandidate[];
+  contains_game: boolean; // 原生游戏会改写游戏目录，界面据此提示完整备份。
+  godot_packs?: readonly GodotPackPreview[];
 };
 
 // 前端只提交预览候选和用户选择，名称与冲突分类由后端拥有。

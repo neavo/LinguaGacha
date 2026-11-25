@@ -211,8 +211,9 @@ export const ko_kr_app = {
     update_available_tooltip: "업데이트 확인 창 열기",
   },
   agent_input: {
+    import_sources:
+      "먼저 다음 경로에서 번역 가능한 내용을 찾아 적절한 형식으로 프로젝트에 추가해 주세요:",
     steps_intro: "다음 단계를 순서대로 실행하세요:",
-    steps_intro_after_instruction: "그런 다음 다음 단계를 순서대로 실행하세요:",
     path_placeholder: "[여기에 파일 경로를 입력하거나 파일을 끌어다 놓으세요]",
     steps: {
       glossary: "용어 추출",

@@ -178,6 +178,24 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
   });
   const { report_state_error } = recovery;
 
+  /** 打开与创建回执已包含权威快照，工程交接无需等待任务列表等补读。 */
+  const apply_project_load = useCallback(
+    (payload: unknown): ProjectStore | undefined => {
+      const project = registry.update(payload);
+      if (project === undefined) return undefined;
+      projects_request.current++; // 更早发起的列表补读可能还未包含刚打开的工程。
+      notify();
+      void refresh_tasks(project).catch((error: unknown) => {
+        report_state_error(error, {
+          source: "state-recovery",
+          context: { reason: "project_load" },
+        });
+      });
+      return project;
+    },
+    [registry, notify, refresh_tasks, report_state_error],
+  );
+
   const apply_changes = useCallback(
     async (result: ProjectWriteResult) => {
       const changed = new Set<ProjectStore>();
@@ -338,6 +356,7 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
           open_projects: registry.values(),
           active_project: store,
           select_project,
+          apply_project_load,
           refresh_projects,
         }}
       >

@@ -224,8 +224,9 @@ export const de_de_app = {
     update_available_tooltip: "Update-Bestätigungsdialog öffnen",
   },
   agent_input: {
+    import_sources:
+      "Erkenne zuerst übersetzbare Inhalte unter den folgenden Pfaden und füge sie in geeigneter Form zum Projekt hinzu:",
     steps_intro: "Führe die Schritte der Reihe nach aus:",
-    steps_intro_after_instruction: "Führe anschließend die Schritte der Reihe nach aus:",
     path_placeholder: "[Dateipfade hier eingeben oder Dateien hierher ziehen]",
     steps: {
       glossary: "Terminologie extrahieren",

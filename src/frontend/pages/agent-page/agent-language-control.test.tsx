@@ -138,6 +138,7 @@ describe("AgentLanguageControl", () => {
     );
     expect(mocks.progress).toHaveBeenCalledOnce();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await render(); // 快照更新由工程状态 Provider 发布。
     expect(trigger().textContent).toBe("英->繁");
     await act(async () => trigger().click());
     await act(async () => button("确认").click());

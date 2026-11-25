@@ -16,13 +16,11 @@ export function useProjectCloseFlow(remove_recent_project: (path: string) => Pro
     projectId: string;
     remove_path: string | undefined;
   } | null>(null);
-  const [closing, set_closing] = useState(false);
-  const can_close = (id: string): boolean => !closing && !is_project_busy(runtime.projects?.[id]);
+  const can_close = (id: string): boolean => !is_project_busy(runtime.projects?.[id]);
 
-  /** 关闭失败保留原确认目标，用户可以在同一弹窗重试。 */
+  /** 应用会话串行提交。运行占用可在等待确认期间变化，提交时重新读取。 */
   async function confirm(): Promise<void> {
     if (target === null || !can_close(target.projectId)) return;
-    set_closing(true);
     try {
       if (!(await prepare_page_leave({ kind: "project", projectId: target.projectId }))) return;
       await api_fetch("/api/session/project/close", { projectId: target.projectId });
@@ -31,12 +29,9 @@ export function useProjectCloseFlow(remove_recent_project: (path: string) => Pro
       await refresh_projects();
     } catch (error) {
       push_error_toast(t("project.close.failed"), error);
-    } finally {
-      set_closing(false);
     }
   }
   return {
-    closing,
     request_close: (id: string, remove_path?: string) => {
       if (can_close(id)) set_target({ projectId: id, remove_path });
     },
@@ -47,7 +42,6 @@ export function useProjectCloseFlow(remove_recent_project: (path: string) => Pro
           ? "project.close.confirm"
           : "app.workspace.remove_confirm",
       ),
-      submitting: closing,
       confirmDisabled: target === null || !can_close(target.projectId),
       onConfirm: confirm,
       onClose: () => set_target(null),

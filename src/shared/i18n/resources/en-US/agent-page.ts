@@ -1,5 +1,4 @@
 export const en_us_agent_page = {
-  project_required: "Please click the button on the left to create or open a project first …",
   document: {
     conversation: "Conversation",
     open: "Open",
@@ -51,7 +50,7 @@ export const en_us_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "Drop files or folders to create a translation project …",
+    no_project_placeholder: "Drop the files or folders you want to translate here …",
     placeholder: "Describe a task, or type @ to select a skill or instruction …",
     edit_assistant_placeholder: "Edit the model response …",
     newline: "New line",

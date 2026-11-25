@@ -36,6 +36,9 @@ export type DesktopStateContextValue = {
   open_projects: readonly import("./project-store-registry").ProjectStore[];
   active_project: import("./project-store-registry").ProjectStore | undefined;
   select_project: (projectId: string) => void;
+  apply_project_load: (
+    payload: unknown,
+  ) => import("./project-store-registry").ProjectStore | undefined;
   refresh_projects: () => Promise<readonly import("./project-store-registry").ProjectStore[]>;
   refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_state: () => Promise<void>;

@@ -2,7 +2,7 @@ import { has_language_body_character } from "../../domain/language";
 import { remove_text_resource_references } from "../text/text-resource-reference";
 import type { ItemNameField } from "../../domain/item";
 import { read_item_source_text_parts, type ItemTextGroup } from "../item-text";
-import { is_game_file_type } from "../project-source-formats";
+import { is_game_file_type } from "../project/project-asset-paths";
 
 /**
  * 正文与可见姓名独立参与候选判断。历史元数据猜测只作用于其他格式的正文，

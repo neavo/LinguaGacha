@@ -1,5 +1,5 @@
 import { GAME_ENGINES } from "../file/shared/game/engines";
-import { is_game_file_type } from "../../shared/project-source-formats";
+import { is_game_file_type } from "../../shared/project/project-asset-paths";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";

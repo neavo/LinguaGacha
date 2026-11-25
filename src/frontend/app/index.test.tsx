@@ -3,6 +3,7 @@ import { act, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { AgentChatSnapshot } from "@shared/agent";
+import { create_text_resolver } from "@shared/i18n";
 import { empty_batch_task_list_snapshot } from "@shared/batch-task";
 import { PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY } from "@frontend/features/project-lifecycle/project-language-preference";
 import {
@@ -100,34 +101,34 @@ it("更新重启等待页面保存，保存失败后允许重试", async () => {
   });
 });
 
-it("空态拖入创建后只在新工程预填一次素材路径，且没有缺工程提醒", async () => {
-  vi.useFakeTimers();
-  const source_path = "E:/sources/story.txt";
-  const project = {
-    projectId: "created-project",
-    path: "E:/sources/Story.lg",
-    name: "Story.lg",
-    loaded: true,
-    file_count: 0,
-  };
-  const agent: AgentChatSnapshot = {
-    chatId: "created-chat",
-    revision: 1,
-    state: "idle",
-    pendingDecision: null,
-    entries: [],
-    skills: [],
-    inputQueue: { paused: false, canSendNow: true, items: [] },
-    doing: null,
-    context: { tokens: null, compactable: false, limits: null },
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    tokenSpeed: null,
-    runOutput: null,
-  };
-  let created = false;
+const project = {
+  projectId: "created-project",
+  path: "E:/sources/Story.lg",
+  name: "Story.lg",
+  loaded: true,
+  file_count: 0,
+};
+const agent: AgentChatSnapshot = {
+  chatId: "created-chat",
+  revision: 1,
+  state: "idle",
+  pendingDecision: null,
+  entries: [],
+  skills: [],
+  inputQueue: { paused: false, canSendNow: true, items: [] },
+  doing: null,
+  context: { tokens: null, compactable: false, limits: null },
+  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  tokenSpeed: null,
+  runOutput: null,
+};
+
+function start_without_project(
+  snapshot: Promise<AgentChatSnapshot> = Promise.resolve(agent),
+): void {
   desktop.api_get.mockImplementation(async (route: string) => {
-    if (route === "/api/session/projects") return { projects: created ? [{ project }] : [] };
-    if (route === `/api/agent/snapshot?projectId=${project.projectId}`) return agent;
+    if (route === "/api/session/projects") return { projects: [] };
+    if (route === `/api/agent/snapshot?projectId=${project.projectId}`) return snapshot;
     return {};
   });
   desktop.api_fetch.mockImplementation(async (route: string) => {
@@ -142,35 +143,147 @@ it("空态拖入创建后只在新工程预填一次素材路径，且没有缺�
       case "/api/session/project/default-name":
         return { project_name: "Story" };
       case "/api/session/project/create":
-        created = true;
         return { project };
+      case "/api/skills/snapshot":
+        return { skills: [] };
       case "/api/batch-task/snapshot":
         return { batch_tasks: empty_batch_task_list_snapshot() };
+      case "/api/agent/message":
+        return { revision: agent.revision, status: "accepted" };
       default:
         return {};
     }
   });
+}
 
-  await render_app({ methods: { getPathForFile: () => source_path } });
+const editor = () => EditorView.findFromDOM(container.querySelector(".cm-editor")!)!;
+const button = (name: string) =>
+  container.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!;
+
+it("无工程发送时落盘空工程，切到全局页后仍会向新会话发送一次", async () => {
+  vi.useFakeTimers();
+  const snapshot = Promise.withResolvers<AgentChatSnapshot>();
+  start_without_project(snapshot.promise);
+  const source_path = "E:/sources/story.png";
+  const pickProjectFilePath = vi.fn(async () => ({ canceled: true, paths: [] }));
+
+  await render_app({ methods: { getPathForFile: () => source_path, pickProjectFilePath } });
   await act(async () => stream.onopen());
   const drop = new Event("drop", { bubbles: true, cancelable: true });
   Object.defineProperty(drop, "dataTransfer", {
-    value: { types: ["Files"], files: [new File(["story"], "story.txt")] },
+    value: { types: ["Files"], files: [new File(["story"], "story.png")] },
   });
   await act(async () => container.querySelector(".cm-content")!.dispatchEvent(drop));
+  const draft = editor().state.doc.toString();
+  expect(draft).toContain(`\n${source_path}\n`);
+  expect(container.querySelector(".agent-attachment")).toBeNull();
+  expect(
+    desktop.api_fetch.mock.calls.some(([route]) => route === "/api/session/project/create"),
+  ).toBe(false);
+  const send = container.querySelector<HTMLButtonElement>(".agent-composer__submit")!;
+  await act(async () => {
+    send.click();
+    send.click();
+    button("打开工程").click(); // 同帧发起的打开和重复发送都受应用会话互斥。
+  });
+  expect(pickProjectFilePath).not.toHaveBeenCalled();
+  expect(desktop.api_fetch).toHaveBeenCalledWith("/api/session/project/default-name", {
+    source_paths: [source_path],
+  });
+  expect(
+    desktop.api_fetch.mock.calls.filter(([route]) => route === "/api/session/project/create"),
+  ).toEqual([
+    [
+      "/api/session/project/create",
+      {
+        path: project.path,
+        source_paths: [],
+        languages: { source_language: "JA", target_language: "ZH" },
+      },
+    ],
+  ]);
+  expect(
+    container.querySelector('.cn-progress-toast-modal-layer[data-visible="true"]'),
+  ).not.toBeNull();
+  await act(async () => vi.advanceTimersByTimeAsync(1499));
+  expect(container.querySelector('[aria-current="page"]')?.textContent ?? "").not.toContain(
+    project.name,
+  );
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(container.querySelector('[aria-current="page"]')?.textContent).toContain(project.name);
+  expect(desktop.api_fetch.mock.calls.some(([route]) => route === "/api/agent/message")).toBe(
+    false,
+  );
+  await act(async () => button("技能").click());
+  await act(async () => snapshot.resolve(agent));
+  const messages = desktop.api_fetch.mock.calls.filter(([route]) => route === "/api/agent/message");
+  expect(messages).toEqual([
+    [
+      "/api/agent/message",
+      expect.objectContaining({
+        projectId: project.projectId,
+        chatId: agent.chatId,
+        text: draft,
+        attachments: [],
+      }),
+    ],
+  ]);
+});
+
+it("侧栏创建空工程，进入 Agent 并选中预置指令的路径占位符", async () => {
+  vi.useFakeTimers();
+  start_without_project();
+  localStorage.setItem(
+    PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY,
+    JSON.stringify({
+      source_language: "EN",
+      target_language: "ZH",
+    }),
+  );
+  const pickProjectSavePath = vi.fn(async () => ({ canceled: false, paths: [project.path] }));
+  await render_app({ methods: { pickProjectSavePath } });
+  await act(async () => button("创建工程").click());
+  expect(pickProjectSavePath).not.toHaveBeenCalled();
   const confirm = document.querySelector<HTMLButtonElement>(
     '[role="dialog"] button[aria-keyshortcuts="Enter"]',
   )!;
   await act(async () => confirm.click());
-  await act(async () => vi.runOnlyPendingTimersAsync());
 
+  expect(pickProjectSavePath).toHaveBeenCalledExactlyOnceWith(
+    expect.stringMatching(/^lg_project_\d{8}_\d{6}\.lg$/u),
+  );
+  expect(desktop.api_fetch).toHaveBeenCalledWith("/api/session/project/create", {
+    path: project.path,
+    source_paths: [],
+    languages: { source_language: "EN", target_language: "ZH" },
+  });
+  await act(async () => vi.advanceTimersByTimeAsync(1500));
   expect(container.querySelector('[aria-current="page"]')?.textContent).toContain(project.name);
-  expect(container.querySelector(".sidebar-projects__header-actions[data-attention]")).toBeNull();
-  const editor = EditorView.findFromDOM(container.querySelector(".cm-editor")!)!;
+  const state = editor().state;
+  const { from, to } = state.selection.main;
+  expect(state.sliceDoc(from, to)).toBe(
+    create_text_resolver("zh-CN")("app.agent_input.path_placeholder"),
+  );
+  expect(desktop.api_fetch.mock.calls.some(([route]) => route === "/api/agent/message")).toBe(
+    false,
+  );
+});
+
+it("无工程时从技能页交给 Agent，保留原草稿并选中预填占位符", async () => {
+  start_without_project();
+  await render_app({});
+  await act(async () => editor().dispatch({ changes: { from: 0, insert: "原草稿" } }));
+  await act(async () => button("技能").click());
+  await act(async () => button("安装指南").click());
+  const action = document.querySelector<HTMLButtonElement>(
+    '[data-slot="alert-dialog-primary-action"]',
+  )!;
+  await act(async () => action.click());
+  const state = editor().state;
+  const { from, to } = state.selection.main;
+  expect(state.doc.toString()).toBe("原草稿\n请帮我安装这个技能：[在这里输入技能链接]");
+  expect(state.sliceDoc(from, to)).toBe("[在这里输入技能链接]");
   expect(
-    editor.state.doc
-      .toString()
-      .split("\n")
-      .filter((line) => line === source_path),
-  ).toHaveLength(1);
+    desktop.api_fetch.mock.calls.some(([route]) => route === "/api/session/project/create"),
+  ).toBe(false);
 });

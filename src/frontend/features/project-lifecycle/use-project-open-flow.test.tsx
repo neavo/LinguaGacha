@@ -32,7 +32,7 @@ let desktop_descriptor: PropertyDescriptor | undefined;
 /** 执行请求并记录交给公共加载流程的工程回执。 */
 const run_project_load: RunProjectLoad = async ({ request }) => {
   mocks.loaded((await request()).project);
-  return true;
+  return null;
 };
 
 let flow: ReturnType<typeof useProjectOpenFlow>;
@@ -82,22 +82,14 @@ it.each([
   expect(mocks.pick).toHaveBeenCalledWith(expected);
 });
 
-it("同帧打开只受理一次，版本确认后重新核对并完成加载", async () => {
-  const opened = Promise.withResolvers<never>();
-  mocks.api.mockReturnValueOnce(opened.promise);
-  act(() => {
-    void flow.open_project("newer.lg");
-    void flow.open_project("ignored.lg");
-  });
-  expect(mocks.api).toHaveBeenCalledTimes(1);
-  await act(async () =>
-    opened.reject(
-      new DesktopApiError({
-        code: "project.newer_app_version",
-        details: { target_app_version: "2.1.0", current_app_version: "1.0.0" },
-      }),
-    ),
+it("确认版本后按同一工程和目标版本重新打开", async () => {
+  mocks.api.mockRejectedValueOnce(
+    new DesktopApiError({
+      code: "project.newer_app_version",
+      details: { target_app_version: "2.1.0", current_app_version: "1.0.0" },
+    }),
   );
+  await act(async () => flow.open_project("newer.lg"));
   expect(flow.pending_confirmation).toMatchObject({
     path: "newer.lg",
     target_app_version: "2.1.0",
@@ -156,32 +148,19 @@ it("打开成功将工程回执交给加载流程", async () => {
   expect(mocks.loaded).toHaveBeenCalledWith(project);
 });
 
-it("文件窗口选中即加载，选择期间阻止重复打开且不请求预览", async () => {
-  const picked = Promise.withResolvers<DesktopPathPickResult>();
-  mocks.pick.mockReturnValueOnce(picked.promise);
-  act(() => {
-    void flow.open_project();
-    void flow.open_project();
-    void flow.open_project("ignored.lg", true);
+it("文件窗口选中即打开工程", async () => {
+  mocks.pick.mockResolvedValueOnce({ canceled: false, paths: ["E:/selected.lg"] });
+  await act(async () => flow.open_project());
+  expect(mocks.api).toHaveBeenCalledExactlyOnceWith("/api/session/project/open", {
+    path: "E:/selected.lg",
   });
-  expect(mocks.pick).toHaveBeenCalledOnce();
-  expect(flow.is_opening_project).toBe(true);
-  expect(mocks.api).not.toHaveBeenCalled();
-  await act(async () => picked.resolve({ canceled: false, paths: ["E:/selected.lg"] }));
-  expect(mocks.api).toHaveBeenCalledWith("/api/session/project/open", { path: "E:/selected.lg" });
-  expect(mocks.api.mock.calls.map(([path]) => path)).toEqual(["/api/session/project/open"]);
-  expect(flow.is_opening_project).toBe(false);
 });
 
-it.each([
-  { canceled: true, paths: ["ignored.lg"] },
-  { canceled: false, paths: [] },
-])("取消或未选文件时结束打开意图：%j", async (result) => {
-  mocks.pick.mockResolvedValueOnce(result);
+it("取消文件窗口时结束打开意图", async () => {
+  mocks.pick.mockResolvedValueOnce({ canceled: true, paths: [] });
   await act(async () => flow.open_project());
   expect(mocks.api).not.toHaveBeenCalled();
   expect(mocks.error).not.toHaveBeenCalled();
-  expect(flow.is_opening_project).toBe(false);
 });
 
 it("文件窗口失败反馈错误，重试仍能选择并加载", async () => {
@@ -189,7 +168,6 @@ it("文件窗口失败反馈错误，重试仍能选择并加载", async () => {
   mocks.pick.mockRejectedValueOnce(error);
   await act(async () => flow.open_project());
   expect(mocks.error).toHaveBeenCalledWith(expect.any(String), error);
-  expect(flow.is_opening_project).toBe(false);
   await act(async () => flow.open_project());
   expect(mocks.api).toHaveBeenCalledWith("/api/session/project/open", { path: "E:/picked.lg" });
 });

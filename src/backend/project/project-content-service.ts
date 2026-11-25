@@ -31,7 +31,7 @@ import { inherit_completed_translations } from "./project-translation-inheritanc
 import type { ProjectFileRecord } from "./project-file-records";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase, type ProjectAssetRecord } from "../database/database-operations";
-import { FileFormatService, read_source_confirmations } from "../file/file-format-service";
+import { FileFormatService } from "../file/file-format-service";
 import {
   SourceFileParsePipeline,
   type SourceFileParseResult,
@@ -528,9 +528,15 @@ export class ProjectContentService {
         asset.path,
       ]),
     );
+    const godot_packs = entries.flatMap(({ source }) =>
+      source.kind === "game" && source.file_type === "GODOT"
+        ? [godot_pack_preview(source.game)]
+        : [],
+    );
     return {
       files_revision: snapshot.files_revision,
-      ...read_source_confirmations(entries),
+      contains_game: entries.some(({ source }) => source.kind === "game"),
+      ...(godot_packs.length > 0 ? { godot_packs } : {}),
       files: entries.map((entry) => {
         const target = normalize_project_asset_path(entry.rel_path);
         const previous = existing.get(target.toLowerCase());

@@ -18,7 +18,6 @@ import { describe, expect, it, vi } from "vitest";
 import { NativeFs } from "../../native/native-fs";
 import { write_zip } from "../../test/zip-fixture";
 import { FileFormatService } from "./file-format-service";
-import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
 import { create_renpy_fixture, compiled_fixture, extract_fixture } from "../../test/renpy-fixture";
 import { read_renpy_metadata } from "./renpy/item";
 import { read_renpy_format_metadata } from "./renpy/profile";
@@ -156,8 +155,10 @@ describe("FileFormatService", () => {
       { target_language: "ZH" },
       native,
     );
-    const result = await service.summarize_source_files([bad, good]);
-    expect(result.source_file_count).toBe(1);
+    const result = await service.with_source_directories([bad, good], (signal) =>
+      service.collect_source_file_entries([bad, good], signal),
+    );
+    expect(result.map(({ source }) => source.kind)).toEqual(["failure", "file"]);
   });
 
   it("已展开游戏的零包预览也检查正式执行前新增的包", async () => {
@@ -166,8 +167,6 @@ describe("FileFormatService", () => {
       service = create_service();
     for (const [name, bytes] of create_godot_fixture())
       native.write_file_sync(path.join(temp.path, name), bytes);
-    const preview = await service.summarize_source_files([temp.path]);
-    expect(preview.godot_packs?.[0]?.external_pcks).toEqual([]);
     native.write_file_sync(
       path.join(temp.path, "extra.pck"),
       godot_pack_fixture(create_godot_fixture()),
@@ -358,35 +357,6 @@ describe("FileFormatService", () => {
     });
   });
 
-  it("源文件摘要按去重后的互斥扩展名统计", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-file-format-service-"),
-    );
-    const service = create_service();
-    const source_a = path.join(temp_dir.path, "source-a");
-    const source_b = path.join(temp_dir.path, "source-b");
-    const first_txt = path.join(source_a, "b.TXT");
-    const ignored = path.join(source_a, "ignore.bin");
-    fs.mkdirSync(path.join(source_a, "nested"), { recursive: true });
-    fs.mkdirSync(source_b, { recursive: true });
-    fs.writeFileSync(first_txt, "text", "utf-8");
-    fs.writeFileSync(path.join(source_a, "nested", "a.md"), "markdown", "utf-8");
-    fs.writeFileSync(ignored, "ignored", "utf-8");
-    fs.writeFileSync(path.join(source_b, "c.json"), "{}", "utf-8");
-    const expected_format_hit_counts = Object.fromEntries(
-      PROJECT_SOURCE_FORMATS.map((format) => [format.id, 0]),
-    );
-    Object.assign(expected_format_hit_counts, { txt: 1, md: 1, json: 1 });
-
-    expect(
-      await service.summarize_source_files(["", source_a, first_txt, ignored, source_b, source_a]),
-    ).toEqual({
-      contains_game: false,
-      source_file_count: 3,
-      format_hit_counts: expected_format_hit_counts,
-    });
-  });
-
   it("收集单文件路径时使用文件名作为工程相对路径", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-file-format-service-"),
@@ -397,7 +367,7 @@ describe("FileFormatService", () => {
     fs.writeFileSync(source_file, "dummy", "utf-8");
 
     expect(await service.collect_source_file_entries([source_file])).toEqual([
-      { source_path: source_file, rel_path: "a.MD", source: { kind: "file", format: "md" } },
+      { source_path: source_file, rel_path: "a.MD", source: { kind: "file" } },
     ]);
   });
 
@@ -434,15 +404,15 @@ describe("FileFormatService", () => {
   });
 });
 
-it("识别失败与正常来源共同进入只读摘要，正式导入重新识别", async () => {
+it("来源发现保留识别失败与正常文件，正式导入重新识别", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-discover-"));
   const source = path.join(temp.path, "bad.exe"),
     text = path.join(temp.path, "ok.txt");
   fs.writeFileSync(source, evb_fixture(new Map()).subarray(0, -1));
   fs.writeFileSync(text, "text");
   const service = new FileFormatService(new GameDirectoryOperations(), { target_language: "ZH" });
-  const summary = await service.summarize_source_files([temp.path]);
-  expect(summary.source_file_count).toBe(1);
+  const sources = await service.collect_source_file_entries([temp.path]);
+  expect(sources.map(({ source }) => source.kind)).toEqual(["failure", "file"]);
   expect(fs.readdirSync(temp.path).sort()).toEqual(["bad.exe", "ok.txt"]);
   fs.writeFileSync(
     source,
@@ -467,7 +437,7 @@ it("识别失败与正常来源共同进入只读摘要，正式导入重新识�
     },
   });
 });
-it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () => {
+it("正式导入先拒绝根目录恢复材料", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-recovery-"));
   const native = new NativeFs();
   native.write_file_sync(path.join(temp.path, "data/System.json"), "{}");
@@ -480,7 +450,6 @@ it("正式导入先拒绝根目录恢复材料，来源摘要只读", async () =
     { target_language: "ZH" },
     native,
   );
-  expect((await service.summarize_source_files([temp.path])).source_file_count).toBe(1);
   const entry = (await service.collect_source_file_entries([temp.path]))[0]!;
   await expect(service.prepare_source(entry)).rejects.toThrow(
     "Unknown game recovery layout: " + path.join(workspace, "rollback"),
@@ -568,7 +537,7 @@ it.each(["read", "existing-read"])("导入 %s 失败保留准备结果并允许�
   );
 });
 
-it("产品门面完成来源摘要、准备、容器、翻译与导出", async () => {
+it("产品门面完成来源识别、准备、容器、翻译与导出", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-godot-product-"));
   const root = path.join(temp.path, "game"),
     native = new NativeFs(),
@@ -579,15 +548,6 @@ it("产品门面完成来源摘要、准备、容器、翻译与导出", async (
     { target_language: "ZH" },
     native,
   );
-  const carrier = path.join(root, "game.pck");
-  const [unsupported] = await service.discover_import_sources([
-    { source_path: carrier, rel_path: "game.pck" },
-  ]);
-  expect(unsupported!.source).toEqual({ kind: "file", format: undefined });
-  expect(await service.summarize_source_files([root])).toMatchObject({
-    source_file_count: 1,
-    format_hit_counts: { godot: 1 },
-  });
   const entry = (await service.collect_source_file_entries([root]))[0]!;
   const container = await service.prepare_source(entry);
   const parsed = await service.parse_asset(entry.rel_path, container.content, entry.file_type);

@@ -26,7 +26,7 @@ import type { NativeFs } from "../../../../native/native-fs";
 import type { Item, ItemStatus } from "../../../../domain/item";
 import { is_json_record } from "../../../../domain/json";
 import { GAME_FONT_EXTENSIONS } from "../../../../shared/game-font";
-import type { GameFileType } from "../../../../shared/project-source-formats";
+import type { GameFileType } from "../../../../shared/project/project-asset-paths";
 import type { GameFiles, GameFormatAdapter } from "./format";
 import type { ReadableFile, ProjectionFailure } from "./readable";
 import {

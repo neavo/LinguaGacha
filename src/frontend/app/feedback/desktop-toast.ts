@@ -91,12 +91,16 @@ export function push_error_toast(
 }
 
 /** 新任务取得唯一进度通知的所有权。 */
-export function push_progress_toast(options: ProgressToastOptions): DesktopToastId {
+export function push_progress_toast(
+  options: ProgressToastOptions,
+  show_immediately = false,
+): DesktopToastId {
   const owner_token = `${PROGRESS_TOAST_SONNER_ID}:${++progress_owner_seed}`;
   // 连续模态任务沿用可见时段，接管时不重新隐藏遮罩。
   let shown_at: number | null = Date.now();
   if (options.presentation === "modal") {
     shown_at = progress_state?.presentation === "modal" ? progress_state.shown_at : null;
+    if (show_immediately && shown_at === null) shown_at = Date.now();
   }
   const state: ProgressToastState = { ...options, owner_token, shown_at };
   write_progress_toast(state);
@@ -154,8 +158,12 @@ export async function run_modal_progress_toast<T>(args: {
   message: string;
   task: () => Promise<T>;
   timeout_ms?: number;
+  show_for_entire_task?: boolean; // 调用方控制任务的进度时长，通知在任务开始和结束时同步展示与关闭。
 }): Promise<T> {
-  const id = push_progress_toast({ message: args.message, presentation: "modal" });
+  const id = push_progress_toast(
+    { message: args.message, presentation: "modal" },
+    args.show_for_entire_task,
+  );
   let timeout_id: ReturnType<typeof setTimeout> | null = null;
   try {
     if (args.timeout_ms === undefined) return await args.task();
@@ -170,6 +178,7 @@ export async function run_modal_progress_toast<T>(args: {
     ]);
   } finally {
     if (timeout_id !== null) clearTimeout(timeout_id);
-    dismiss_toast(id);
+    if (args.show_for_entire_task && progress_state?.owner_token === id) write_progress_toast(null);
+    else dismiss_toast(id);
   }
 }

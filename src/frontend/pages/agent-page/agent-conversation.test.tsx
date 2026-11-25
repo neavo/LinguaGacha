@@ -17,11 +17,18 @@ vi.mock("./use-agent-mention-files", () => ({
 }));
 import type { AgentInputRequest } from "@frontend/app/navigation/types";
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
+import { api_upload } from "@frontend/app/desktop/desktop-api";
 import { uploaded_file } from "../../../test/agent-upload-fixture";
 vi.mock("@frontend/app/session/batch-task/batch-task-session-context", () => ({
   useBatchTaskSession: () => ({ metrics: { kind: null } }),
 }));
-import { act, StrictMode } from "react";
+import { act, StrictMode, useState } from "react";
+import { DEFAULT_PROJECT_LANGUAGE_SETTINGS } from "@domain/project-settings";
+import {
+  read_project_language_preference,
+  PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY,
+} from "@frontend/features/project-lifecycle/project-language-preference";
+import { ProjectStore } from "@frontend/app/state/project-store-registry";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection } from "@codemirror/state";
@@ -234,23 +241,39 @@ import { AgentConversation, EmptyAgentConversation } from "./agent-conversation"
 
 const lifecycle: ProjectLifecycle = {
   busy: false,
-  attention: 0,
-  notify_project_required: vi.fn(),
-  show_create_dialog: vi.fn(),
-  create_from_paths: vi.fn(),
+  request_create: vi.fn(),
+  create_for_agent: vi.fn(async () => null),
   request_open: vi.fn(),
   open_recent_project: vi.fn(),
   remove_recent_project: vi.fn(),
   request_close: vi.fn(),
 };
 
+function EmptyConversation() {
+  const [input_state] = useState(() => ({
+    revision: 0,
+    draft: new AgentInputDraft(null),
+    read_history: () => [],
+    replace_history: () => {},
+  }));
+  const [known_paths] = useState(() => new Set<string>());
+  const [languages, set_languages] = useState(() => DEFAULT_PROJECT_LANGUAGE_SETTINGS);
+  return (
+    <EmptyAgentConversation
+      input_state={input_state}
+      known_paths={known_paths}
+      languages={languages}
+      on_languages_change={set_languages}
+    />
+  );
+}
+
 describe("AgentConversation", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
   beforeEach(() => {
-    vi.mocked(lifecycle.notify_project_required).mockClear();
-    vi.mocked(lifecycle.create_from_paths).mockClear();
+    vi.mocked(lifecycle.create_for_agent).mockReset().mockResolvedValue(null);
     vi.mocked(lifecycle.request_open).mockClear();
     vi.stubGlobal(
       "desktopApp",
@@ -281,6 +304,7 @@ describe("AgentConversation", () => {
     container = null;
     resize_observers.clear();
     vi.unstubAllGlobals();
+    localStorage.removeItem(PROJECT_LANGUAGE_PREFERENCE_STORAGE_KEY);
   });
 
   /** 只替换页面拥有者的公开快照，并复用 root 验证真实状态迁移。 */
@@ -312,7 +336,7 @@ describe("AgentConversation", () => {
     return container;
   }
 
-  it("无工程时素材拖入创建工程，单个工程文件弹出预览确认框", async () => {
+  it("无工程时拖入路径写入正文，已删除的路径失效，单个工程文件仍打开预览", async () => {
     settings_state.save.mockImplementation(async (path) => {
       if (path === "/api/skills/snapshot") return { skills: [] } as never;
       if (path === "/api/session/project/preview") {
@@ -327,7 +351,7 @@ describe("AgentConversation", () => {
       }
       return {};
     });
-    const view = await render_page({}, true, EmptyAgentConversation);
+    const view = await render_page({}, true, EmptyConversation);
     const editor = view.querySelector(".cm-content")!;
     const page = view.querySelector(".agent-page")!;
     function drop(target: Element, files: File[]): void {
@@ -335,15 +359,30 @@ describe("AgentConversation", () => {
       Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files } });
       target.dispatchEvent(event);
     }
+    await act(async () => drop(editor, [new File([], "素材"), new File([], "素材备份")]));
+    expect(lifecycle.create_for_agent).not.toHaveBeenCalled();
+    const input = get_editor(view);
+    const draft = input.state.doc.toString();
+    expect(draft).toContain("\nE:/資料/素材\nE:/資料/素材备份\n");
+    await act(async () => drop(page, [new File([], "追加图片.png")]));
+    expect(input.state.doc.toString()).toBe(`${draft}\nE:/資料/追加图片.png`);
+    expect(view.querySelector(".agent-attachment")).toBeNull();
     await act(async () =>
-      drop(editor, [new File(["正文"], "小说.txt"), new File([], "素材文件夹")]),
+      input.dispatch({
+        changes: {
+          from: 0,
+          to: input.state.doc.length,
+          insert: "E:/資料/素材备份\nE:/未登记/日志.txt",
+        },
+      }),
     );
-    expect(lifecycle.create_from_paths).toHaveBeenCalledExactlyOnceWith([
-      "E:/資料/小说.txt",
-      "E:/資料/素材文件夹",
-    ]);
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(lifecycle.create_for_agent).toHaveBeenCalledExactlyOnceWith({
+      languages: DEFAULT_PROJECT_LANGUAGE_SETTINGS,
+      anchor_paths: ["E:/資料/素材备份"],
+    });
+    expect(input.state.doc.toString()).toBe("E:/資料/素材备份\nE:/未登记/日志.txt");
     await act(async () => drop(page, [new File([], "已有工程.LG")]));
-    expect(lifecycle.create_from_paths).toHaveBeenCalledOnce();
     expect(lifecycle.request_open).not.toHaveBeenCalled();
 
     const dialog = document.querySelector('[data-slot="alert-dialog-content"]')!;
@@ -378,7 +417,7 @@ describe("AgentConversation", () => {
       }
       return { settings: { agent_approval_mode: "auto" } };
     });
-    const view = await render_page({}, true, EmptyAgentConversation);
+    const view = await render_page({}, true, EmptyConversation);
     expect(view.querySelector(".agent-composer__model-trigger")).not.toBeNull();
     expect(view.querySelector(".agent-composer__approval-trigger")).not.toBeNull();
     expect(view.querySelector(".agent-composer__help")).not.toBeNull();
@@ -396,29 +435,106 @@ describe("AgentConversation", () => {
     expect(instructions.every((item) => item.disabled)).toBe(true);
   });
 
-  it("无工程发送和附件共用拦截，草稿保留", async () => {
-    const view = await render_page({}, true, EmptyAgentConversation);
-    const suggestion = view.querySelector<HTMLButtonElement>(".agent-page__suggestion")!;
-    await act(async () => suggestion.click());
-    const draft = view.querySelector(".cm-content")!;
-    const text = draft.textContent;
-    expect(text).toBeTruthy();
-    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
-    expect(draft.textContent).toBe(text);
-    expect(lifecycle.notify_project_required).toHaveBeenCalledOnce();
-    const picker = vi.spyOn(view.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
+  it("无工程时选择与粘贴的附件先暂存，只在建项成功后交接", async () => {
+    const revoke = vi.fn();
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static override createObjectURL = vi.fn(() => "blob:draft-preview");
+        static override revokeObjectURL = revoke;
+      },
+    );
+    const photo = new File(["image"], "screenshot.png");
+    const notes = new File(["notes"], "notes.txt");
+    vi.stubGlobal(
+      "desktopApp",
+      create_desktop_bridge_api_mock({
+        methods: { getPathForFile: (file) => (file === photo ? "" : "E:/資料/notes.txt") },
+      }),
+    );
+    const view = await render_page({}, true, EmptyConversation);
+    const picker = view.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const open_picker = vi.spyOn(picker, "click");
     await act(async () =>
       view.querySelector<HTMLButtonElement>(".agent-composer__file-trigger")!.click(),
     );
-    expect(picker).not.toHaveBeenCalled();
-    picker.mockRestore();
-    const file = new File(["data"], "source.txt");
+    expect(open_picker).toHaveBeenCalledOnce();
+    open_picker.mockRestore();
+    Object.defineProperty(picker, "files", { value: [notes] });
+    await act(async () => picker.dispatchEvent(new Event("change", { bubbles: true })));
     const paste = new Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(paste, "clipboardData", { value: { files: [file], getData: () => "" } });
+    Object.defineProperty(paste, "clipboardData", { value: { files: [photo], getData: () => "" } });
     await act(async () => view.querySelector(".cm-content")!.dispatchEvent(paste));
-    expect(draft.textContent).toBe(text);
-    expect(lifecycle.notify_project_required).toHaveBeenCalledTimes(3);
+    expect(view.querySelector(".agent-attachment img")?.getAttribute("src")).toBe(
+      "blob:draft-preview",
+    );
+
+    const language = get_button_by_label(view, "project.language.title");
+    await act(async () => language.click());
+    await act(async () =>
+      document
+        .querySelector<HTMLButtonElement>(
+          '[role="combobox"][aria-label="app.language_role.source"]',
+        )!
+        .click(),
+    );
+    const english = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(
+      (option) => option.textContent === "app.language.EN",
+    )!;
+    await act(async () => english.click());
+    await act(async () =>
+      document
+        .querySelector<HTMLButtonElement>('[role="dialog"] button[aria-keyshortcuts="Enter"]')!
+        .click(),
+    );
+    expect(read_project_language_preference().source_language).toBe("EN");
+
+    const send = get_button_by_label(view, "agent_page.action.send");
+    vi.mocked(lifecycle.create_for_agent).mockResolvedValueOnce(null);
+    await act(async () => send.click());
+    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
+    expect(lifecycle.create_for_agent).toHaveBeenLastCalledWith({
+      languages: { source_language: "EN", target_language: "ZH" },
+      anchor_paths: ["E:/資料/notes.txt"],
+    });
+
+    const project = new ProjectStore({
+      projectId: "created",
+      name: "notes.lg",
+      path: "E:/資料/notes.lg",
+      loaded: true,
+      file_count: 0,
+      quality_rule_counts: {
+        glossary: 0,
+        text_preserve: 0,
+        pre_replacement: 0,
+        post_replacement: 0,
+      },
+      settings: null,
+    });
+    const handoff = vi.spyOn(project.agentChat, "send_initial_draft").mockResolvedValue();
+    vi.mocked(lifecycle.create_for_agent).mockResolvedValueOnce(project);
+    await act(async () => send.click());
+    expect(handoff).toHaveBeenCalledExactlyOnceWith({ text: "", files: [notes, photo] });
+    expect(view.querySelector(".agent-attachment")).toBeNull();
+    expect(revoke).toHaveBeenCalledWith("blob:draft-preview");
   });
+
+  it("无工程首条消息取消思考确认时保留正文且不建项", async () => {
+    model_thinking_state.available_thinking_levels = ["OFF"];
+    const view = await render_page({}, true, EmptyConversation);
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "执行任务" } }));
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(lifecycle.create_for_agent).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-slot="alert-dialog-content"]')?.textContent).toContain(
+      "agent_page.confirm.thinking_off",
+    );
+    await act(async () => get_portal_cancel_button().click());
+    expect(lifecycle.create_for_agent).not.toHaveBeenCalled();
+    expect(editor.state.doc.toString()).toBe("执行任务");
+  });
+
   it.each(["success", "failure"] as const)(
     "运行中保存审批偏好，%s 后展示已确认设置",
     async (outcome) => {
@@ -1069,7 +1185,7 @@ describe("AgentConversation", () => {
     };
     const input: AgentInputState = {
       ...build_state().input,
-      draft: new AgentInputDraft({
+      draft: new AgentInputDraft(null, {
         text: "",
         attachments: [
           { kind: "response_annotation", selectedText: "需要复核的段落", comment: "检查人称" },
@@ -1483,7 +1599,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     command: null,
     input: {
       revision: 0,
-      draft: new AgentInputDraft(),
+      draft: new AgentInputDraft(api_upload),
       read_history: () => [],
       replace_history: vi.fn(),
     },

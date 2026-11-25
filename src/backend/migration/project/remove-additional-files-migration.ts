@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { is_json_record } from "../../../domain/json";
-import { is_game_file_type } from "../../../shared/project-source-formats";
+import { is_game_file_type } from "../../../shared/project/project-asset-paths";
 import { GAME_ENGINES } from "../../file/shared/game/engines";
 import { read_game_container } from "../../file/shared/game/format";
 import { is_app_error } from "../../../shared/error";

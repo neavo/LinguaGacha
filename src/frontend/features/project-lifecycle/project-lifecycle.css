@@ -1,72 +1,5 @@
 .project-lifecycle {
-  --project-lifecycle-muted: var(--muted-foreground);
   --project-lifecycle-subtitle: var(--muted-foreground);
-  --project-lifecycle-notice: color-mix(in srgb, var(--ui-success) 60%, var(--foreground));
-}
-
-/* 分组保持内容高度，空间不足时由弹窗正文滚动，避免第一组标签压到第二组标题上。 */
-.project-lifecycle__format-group {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.project-lifecycle__format-group:first-of-type {
-  margin-top: 8px;
-}
-
-/* 与 Markdown 提示块同一视觉语言：左侧细线与同色浅底。 */
-.project-lifecycle__notice {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0 0;
-  border-left: 1px solid var(--project-lifecycle-notice);
-  background: color-mix(in srgb, var(--project-lifecycle-notice) 6%, transparent);
-  padding: 10px 12px;
-  line-height: 1.5;
-}
-
-.project-lifecycle__notice svg {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  color: var(--project-lifecycle-notice);
-}
-
-.project-lifecycle__section-title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--ui-font-size-14);
-  line-height: 1.5;
-  letter-spacing: 0;
-  font-weight: 500;
-  color: var(--foreground);
-}
-
-.project-lifecycle__format-tags {
-  display: flex;
-  min-height: 0;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.project-lifecycle__format-tag {
-  max-width: 100%;
-  height: 30px;
-  gap: 8px;
-  padding-block: 4px;
-}
-
-.project-lifecycle__format-extension {
-  color: var(--project-lifecycle-muted);
 }
 
 .project-lifecycle__preview-panel {
@@ -110,15 +43,4 @@
 .project-lifecycle__version-emphasis {
   color: var(--primary);
   overflow-wrap: anywhere;
-}
-
-.project-lifecycle__notice-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.project-lifecycle__section-title svg {
-  width: 14px;
-  height: 14px;
-  color: var(--project-lifecycle-muted);
 }

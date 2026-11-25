@@ -22,13 +22,13 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 describe("AgentComposer", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let draft = new AgentInputDraft();
+  let draft = new AgentInputDraft(null);
   afterEach(async () => {
     if (root) await act(async () => root?.unmount());
     container?.remove();
     container = null;
     root = null;
-    draft = new AgentInputDraft();
+    draft = new AgentInputDraft(null);
     vi.useRealTimers();
   });
 

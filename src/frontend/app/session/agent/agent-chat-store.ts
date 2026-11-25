@@ -185,7 +185,7 @@ export class AgentChatStore {
     this.storage = storage;
     this.projectId = projectId;
     this.api = createAgentApi(projectId);
-    this.draft = new AgentInputDraft(undefined, this.api.upload);
+    this.draft = new AgentInputDraft(this.api.upload);
     this.on_error = on_error;
     this.countdown = new AgentDecisionCountdown(
       () => this.emit("countdown"),
@@ -294,6 +294,7 @@ export class AgentChatStore {
   public dispose(): void {
     this.disconnect();
     this.draft.cancel_uploads();
+    this.set_controls({ transport: "disconnected" });
   }
 
   /** 重置可用性同时取决于会话事实和本地草稿。 */
@@ -619,12 +620,14 @@ export class AgentChatStore {
   /** 命令槽只负责串行提交，回执用于核对事件投影是否追上后端。 */
   private async execute_command(
     command: Exclude<AgentCommand, null>,
-    request: () => Promise<AgentCommandAck>,
+    request: () => Promise<AgentCommandAck | undefined>,
   ): Promise<void> {
     if (this.controls.command !== null) return;
     this.set_controls({ command });
     try {
-      const acknowledgement = normalize_acknowledgement(await request());
+      const result = await request();
+      if (result === undefined) return;
+      const acknowledgement = normalize_acknowledgement(result);
       if (acknowledgement.revision > this.revision)
         await this.restore_snapshot(this.connection_generation);
     } finally {
@@ -655,8 +658,8 @@ export class AgentChatStore {
         chatId: chatId!,
         commandId: crypto.randomUUID(),
         kind,
-        request: structuredClone(request),
-        message: message === null ? null : structuredClone(message),
+        request, // 各入口已生成本次命令的独立载荷。
+        message,
       };
     }
     const pending = this.pending_input;
@@ -720,15 +723,45 @@ export class AgentChatStore {
     if (this.controls.transport === "restoring" || !this.loaded_once) return;
     const normalized = normalize_agent_message_input(message);
     if (normalized === null) return;
-    await this.execute_command("send", () =>
-      this.submit_input(
-        "send",
-        "/api/agent/message",
-        agent_message_request(normalized),
-        normalized,
-      ),
-    );
+    await this.execute_command("send", () => this.submit_message(normalized));
   };
+
+  /** 已确认的首条消息由目标工程持有。发送命令占用期间，输入区只展示交接中的草稿。 */
+  public async send_initial_draft(input: { text: string; files: readonly File[] }): Promise<void> {
+    await this.execute_command("send", async () => {
+      this.draft.write({ text: input.text, attachments: [] });
+      if (!(await this.wait_for_ready())) {
+        // 恢复流程负责连接错误和重试入口，交接只保留可重试的草稿。
+        await this.draft.append(input.files, "failed");
+        return;
+      }
+      const failure = await this.draft.append(input.files);
+      if (failure !== undefined) throw failure.error;
+      // 上传期间可能发生断线。正式提交仍以恢复完成的对话身份为准。
+      if (!(await this.wait_for_ready())) return;
+      const message = normalize_agent_message_input(this.draft.read());
+      if (message === null) throw new AppError("runtime.cancelled");
+      return this.submit_message(message);
+    });
+  }
+
+  /** 恢复期间订阅连接状态，终态或释放后解除监听。 */
+  private wait_for_ready(): Promise<boolean> {
+    if (this.controls.transport !== "restoring")
+      return Promise.resolve(this.controls.transport === "ready");
+    return new Promise((resolve) => {
+      const unsubscribe = this.subscribe_controls(() => {
+        if (this.controls.transport === "restoring") return;
+        unsubscribe();
+        resolve(this.controls.transport === "ready");
+      });
+    });
+  }
+
+  /** 普通发送与建项交接共用受理入口和可重试的命令身份。 */
+  private submit_message(message: AgentMessageInput): Promise<AgentCommandAck> {
+    return this.submit_input("send", "/api/agent/message", agent_message_request(message), message);
+  }
 
   /** 规范替换内容，队列事实由后端事件更新。 */
   private readonly update_queued_message = async (

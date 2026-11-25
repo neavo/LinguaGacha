@@ -215,87 +215,9 @@
 }
 
 .sidebar-projects__header-actions {
-  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
-}
-
-/* 统一聚焦框外扩在双按钮外侧，避免两个按钮各自缩放挤压。 */
-.sidebar-projects__header-actions::before {
-  content: "";
-  position: absolute;
-  inset: -3px -4px;
-  border: 1px solid color-mix(in srgb, var(--primary) 65%, var(--border));
-  border-radius: calc(var(--ui-radius-button) + 2px);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.sidebar-projects__header-actions[data-attention] {
-  animation: sidebar-project-actions-shake 420ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.sidebar-projects__header-actions[data-attention]::before {
-  animation: sidebar-project-actions-focus 850ms ease-out;
-}
-
-.sidebar-projects__header-actions[data-attention] .inline-action-button {
-  animation: sidebar-project-actions-icon 850ms ease-out;
-}
-
-@keyframes sidebar-project-actions-shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-
-  20% {
-    transform: translateX(-3px);
-  }
-
-  45% {
-    transform: translateX(3px);
-  }
-
-  70% {
-    transform: translateX(-1.5px);
-  }
-
-  88% {
-    transform: translateX(0.75px);
-  }
-}
-
-@keyframes sidebar-project-actions-focus {
-  0% {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-
-  16%,
-  62% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  100% {
-    opacity: 0;
-    transform: scale(1);
-  }
-}
-
-@keyframes sidebar-project-actions-icon {
-  0%,
-  100% {
-    color: var(--muted-foreground);
-  }
-
-  16%,
-  62% {
-    color: var(--primary);
-  }
 }
 
 .shell-sidebar__project-scroll {
@@ -397,9 +319,5 @@
   .sidebar-row::before,
   .sidebar-row::after {
     transition: none;
-  }
-
-  .sidebar-projects__header-actions[data-attention] {
-    animation: none;
   }
 }

@@ -445,7 +445,9 @@ describe("AgentMessageEditor", () => {
     const view = await render_editor({ input_state });
     const editor = get_editor(view);
     await set_document(editor, "原草稿", 3);
-    await act(async () => input_state.draft.append([new File(["text"], "notes.txt")]));
+    await act(async () => {
+      void input_state.draft.append([new File(["text"], "notes.txt")]);
+    });
     await dispatch_key(editor.contentDOM, "ArrowUp");
     await act(async () => pending.resolve(uploaded_file("notes", null)));
     await vi.waitFor(() =>
@@ -1200,7 +1202,7 @@ function get_editor(container: HTMLElement): EditorView {
 
 /** 组件测试只模拟草稿与历史读取契约，持久化责任由 Provider 和历史 helper 单独验证。 */
 function create_input_state(history: readonly string[] = []): TestAgentInputState {
-  const draft = new AgentInputDraft();
+  const draft = new AgentInputDraft(image_mocks.upload);
   const session: TestAgentInputState = {
     revision: 0,
     draft,

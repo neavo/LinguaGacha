@@ -1,11 +1,11 @@
 import { createContext, useContext } from "react";
+import type { CreateEmptyProjectOptions } from "@frontend/features/project-lifecycle/use-project-create-flow";
+import type { ProjectStore } from "@frontend/app/state/project-store-registry";
 
 export type ProjectLifecycle = Readonly<{
   busy: boolean;
-  attention: number;
-  notify_project_required: () => void;
-  show_create_dialog: () => void;
-  create_from_paths: (paths: readonly string[]) => void;
+  request_create: () => void;
+  create_for_agent: (options: CreateEmptyProjectOptions) => Promise<ProjectStore | null>;
   request_open: (path?: string) => void;
   open_recent_project: (path: string) => void;
   remove_recent_project: (path: string) => void;

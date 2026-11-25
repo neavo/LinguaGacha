@@ -1,7 +1,8 @@
 import { EmptyAgentConversation } from "@frontend/pages/agent-page/agent-conversation";
 import { ProjectWorkspace } from "./shell/project-workspace";
 import type { ProjectStore } from "./state/project-store-registry";
-import { push_toast } from "./feedback/desktop-toast";
+import { AgentInputDraft } from "./session/agent/agent-input-draft";
+import { read_project_language_preference } from "@frontend/features/project-lifecycle/project-language-preference";
 import { ProjectLifecycleProvider } from "@frontend/app/session/project-lifecycle/project-lifecycle-provider";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
@@ -100,17 +101,27 @@ function AppContent(): JSX.Element {
     active_project?.get_active_route ?? GET_DEFAULT_PROJECT_ROUTE,
   );
   const selected_route = global_route ?? project_route;
-  // 请求随导航提交，只交给目标工程，离开目标流程时清除。
+  // 新建草稿属于主窗口，进入全局页或打开其它工程时仍由窗口持有。
+  const [new_project_input] = useState(() => ({
+    revision: 0,
+    draft: new AgentInputDraft(null),
+    read_history: (): readonly string[] => [],
+    replace_history: () => {},
+  }));
+  const [new_project_paths] = useState(() => new Set<string>());
+  const [new_project_languages, set_new_project_languages] = useState(
+    read_project_language_preference,
+  );
+  // 请求只交给指定工程或无工程草稿，离开目标流程时清除。
   const [pending_agent_input, set_pending_agent_input] = useState<{
-    projectId: string;
+    projectId: string | null;
     request: AgentInputRequest;
   } | null>(null);
   const active_project_id = active_project?.snapshot.projectId;
   const agent_input_request =
-    pending_agent_input !== null && pending_agent_input.projectId === active_project_id
+    pending_agent_input !== null && pending_agent_input.projectId === (active_project_id ?? null)
       ? pending_agent_input.request
       : null;
-  const [project_attention, set_project_attention] = useState(0);
   const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
     phase: "idle",
@@ -152,30 +163,21 @@ function AppContent(): JSX.Element {
     });
   }, []);
 
-  /** 统一提示需先打开工程，并触发侧栏新建/打开按钮的视觉提醒。 */
-  function notify_project_required(): void {
-    push_toast("warning", t("agent_page.project_required"));
-    set_project_attention((count) => count + 1);
-  }
-
   /** 工程内导航沿用发起时的工程身份，离页保存成功后提交。 */
   function handle_select_route(route_id: RouteId, request?: AgentInputRequest): void {
     const is_global = GLOBAL_ROUTE_IDS.has(route_id);
-    if (!is_global && !active_project) {
-      if (request) notify_project_required();
-      else set_global_route(null);
-      return;
-    }
     void (async () => {
       if (route_id !== selected_route && !(await prepare_page_leave(view_scope()))) return;
       if (is_global) {
         set_global_route(route_id);
         set_pending_agent_input(null);
-      } else if (active_project) {
-        active_project.select_route(route_id);
+      } else {
+        active_project?.select_route(route_id);
         set_global_route(null);
         set_pending_agent_input(
-          request ? { projectId: active_project.snapshot.projectId, request } : null,
+          request && (active_project || route_id === "agent")
+            ? { projectId: active_project_id ?? null, request }
+            : null,
         );
       }
     })().catch((error: unknown) => push_error_toast(t("app.feedback.update_failed"), error));
@@ -191,7 +193,7 @@ function AppContent(): JSX.Element {
     show_project(project.snapshot.projectId);
   }
 
-  /** 同步提交前台工程和草稿请求，目标身份来自本次交接。 */
+  /** 预填随前台工程切换一起提交，只交给本次打开的工程。 */
   function show_project(projectId: string, request?: AgentInputRequest): void {
     select_project(projectId);
     set_global_route(null);
@@ -481,7 +483,12 @@ function AppContent(): JSX.Element {
                   </ProjectSessionProvider>
                 </ProjectScopeContext>
               ) : (
-                <EmptyAgentConversation />
+                <EmptyAgentConversation
+                  input_state={new_project_input}
+                  known_paths={new_project_paths}
+                  languages={new_project_languages}
+                  on_languages_change={set_new_project_languages}
+                />
               )
             ) : initial_state_status === "error" ? (
               <AppContentState
@@ -524,8 +531,6 @@ function AppContent(): JSX.Element {
       clear_agent_input_request={() => set_pending_agent_input(null)}
     >
       <ProjectLifecycleProvider
-        attention={project_attention}
-        notify_project_required={notify_project_required}
         before_open={() => prepare_page_leave(view_scope())}
         show_project={show_project}
       >

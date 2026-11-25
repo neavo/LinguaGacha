@@ -10,16 +10,9 @@ export const de_de_project = {
     target_description: "Legt die Sprache des Ausgabetexts fest",
   },
   create: {
-    drop_title: "Klicken oder Quelldatei hierher ziehen",
-    ready_status: "{COUNT} Quelldateien ausgewählt",
-    unavailable: "Die Auswahl enthält keine unterstützten Quelldateien",
     title: "Projekt erstellen",
     loading_toast: "Projekt wird erstellt …",
     success: "Projekt erstellt …",
-    agent_draft: {
-      import:
-        "Erkenne übersetzbare Inhalte unter den folgenden Pfaden und füge sie in geeigneter Form zum Projekt hinzu:",
-    },
     default_preset_loaded: "Standard-Voreinstellungen geladen: {NAMES} …",
     default_presets: {
       glossary: "Glossar",
@@ -28,7 +21,6 @@ export const de_de_project = {
       post_translation_replacement: "Ersetzung nach Übersetzung",
       translation_prompt: "Übersetzungs-Prompt",
     },
-    action: "Projekt erstellen",
   },
   open: {
     title: "Projekt öffnen",
@@ -51,43 +43,5 @@ export const de_de_project = {
     created_at: "Erstellt am",
     updated_at: "Zuletzt aktualisiert",
     progress: "Fortschritt",
-  },
-  formats: {
-    image: "Bilder",
-    media: "Audio und Video",
-    title_tooltip: "Schneller, besser und zuverlässiger",
-    deprecated_tooltip:
-      "Nicht mehr die beste Wahl. Bitte bevorzugt die oben genannten Formate verwenden",
-    empty_project_hint:
-      "Ohne Dateiauswahl auf „{ACTION}“ klicken, dann die Dateien ins AGENT-Eingabefeld ziehen …!",
-    generic: "Generisches Paket",
-    title: "Besonders optimierte Formate",
-    txt: "Nur Text",
-    md: "Markdown",
-    ass: "ASS-Untertitel",
-    ssa: "SSA-Untertitel",
-    lrc: "LRC-Untertitel",
-    srt: "SubRip-Untertitel",
-    vtt: "WebVTT-Untertitel",
-    epub: "EPUB-E-Book",
-    json: "JSON-Spieltext",
-    mtool: "MTool-Spieltext",
-    sextractor: "SExtractor-Spieltext",
-    vntextpatch: "VNTextPatch-Spieltext",
-    godot: "Godot-Spieldateien",
-    action_game_maker: "ACTION GAME MAKER Spieldateien",
-    renpy: "RenPy-Spieldateien",
-    tyrano: "Tyrano-Spieldateien",
-    wolfrpg: "WOLFRPG-Spieldateien",
-    rpgmaker_mv_mz: "RPGMAKER MV/MZ Spieldatei",
-    rpgmaker_rgss: "RPGMAKER XP/VX/VXAce Spieldatei",
-    deprecated_title: "Besonders optimierte Formate (Unterstützung endet bald)",
-    any_format_notice:
-      "Wir unterstützen auch andere Formate für Bilder, Comics, Spiele, E-Books, Audio und Video …!",
-    rpy: "RenPy-Spieltext",
-    xlsx: "XLSX-Spieltext",
-    trans_export: "Translator++ Spieltext",
-    wolf: "Vom offiziellen WOLF-Übersetzungstool exportierter Spieltext",
-    trans: "Translator++ Projektdatei",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_project>;

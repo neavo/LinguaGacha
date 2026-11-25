@@ -2,7 +2,7 @@ import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runti
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import { useState, type JSX } from "react";
 import { Globe2 } from "lucide-react";
-import type { ProjectLanguageKey } from "@domain/project-settings";
+import type { ProjectLanguageSettings } from "@domain/project-settings";
 import {
   push_error_toast,
   push_toast,
@@ -28,61 +28,88 @@ export function AgentLanguageControl(props: {
   const { project_snapshot, commit_project_write, initial_state_status } = useDesktopState();
   const runtime = useProjectRuntimeSnapshot();
   const languages = project_snapshot.loaded ? project_snapshot.settings : null;
-  const [draft, set_draft] = useState<Record<ProjectLanguageKey, string> | null>(null); // 关闭弹窗即释放草稿。
-  const [submitting, set_submitting] = useState(false); // 提交期间锁定选择、确认和关闭。
   const disabled =
     props.locked ||
     props.disconnected ||
     initial_state_status !== "ready" ||
     is_runtime_busy(runtime);
-  // 底部交互收起或工程结束时丢弃未提交草稿，恢复输入后不重新打开旧弹窗。
-  if ((props.locked || languages === null) && draft !== null && !submitting) set_draft(null);
   if (languages === null) return null;
 
-  /** 两种语言合并提交。未修改时只关闭弹窗。 */
-  const confirm = async (): Promise<void> => {
-    if (disabled || submitting || draft === null) return;
+  /** 未改语言时直接关闭确认，原文变更需要等待工程重算预过滤。 */
+  const save = async (draft: ProjectLanguageSettings): Promise<boolean> => {
     const changed_fields = {
       source_language: draft.source_language !== languages.source_language,
       target_language: draft.target_language !== languages.target_language,
     };
-    if (!changed_fields.source_language && !changed_fields.target_language) {
-      set_draft(null);
-      return;
-    }
-    /** 成功后交回工程快照，失败时保留草稿供再次确认。 */
-    const save = async (): Promise<void> => {
-      set_submitting(true);
-      try {
-        await commit_project_write({
-          operation: "project.settings.update",
-          run: () => api_fetch<ProjectWriteResultPayload>("/api/project/settings/update", draft),
+    if (!changed_fields.source_language && !changed_fields.target_language) return true;
+    const write = () =>
+      commit_project_write({
+        operation: "project.settings.update",
+        run: () => api_fetch<ProjectWriteResultPayload>("/api/project/settings/update", draft),
+      });
+    try {
+      if (changed_fields.source_language) {
+        await run_modal_progress_toast({
+          message: t("app.feedback.operation_running"),
+          task: write,
         });
-        push_toast(
-          "info",
-          format_project_settings_saved_toast(
-            {
-              ...(changed_fields.source_language ? { source_language: draft.source_language } : {}),
-              ...(changed_fields.target_language ? { target_language: draft.target_language } : {}),
-            },
-            t,
-          ),
-        );
-        set_draft(null);
-      } catch (error) {
-        push_error_toast(t("app.feedback.save_failed"), error);
-      } finally {
-        set_submitting(false);
+      } else {
+        await write();
       }
-    };
-    // 原文变更会重算预过滤，沿用工程写入的阻断式进度反馈。
-    if (changed_fields.source_language) {
-      await run_modal_progress_toast({ message: t("app.feedback.operation_running"), task: save });
-    } else {
-      await save();
+      push_toast(
+        "info",
+        format_project_settings_saved_toast(
+          {
+            ...(changed_fields.source_language ? { source_language: draft.source_language } : {}),
+            ...(changed_fields.target_language ? { target_language: draft.target_language } : {}),
+          },
+          t,
+        ),
+      );
+      return true;
+    } catch (error) {
+      push_error_toast(t("app.feedback.save_failed"), error);
+      return false;
     }
   };
 
+  return (
+    <AgentLanguageButton
+      languages={languages}
+      locked={props.locked}
+      disabled={disabled}
+      on_confirm={save}
+    />
+  );
+}
+
+/** 语言按钮只持有弹窗内的编辑草稿，确认后由调用方保存语言。 */
+export function AgentLanguageButton({
+  languages,
+  locked,
+  disabled,
+  on_confirm,
+}: {
+  languages: ProjectLanguageSettings;
+  locked: boolean;
+  disabled: boolean;
+  on_confirm: (languages: ProjectLanguageSettings) => boolean | Promise<boolean>;
+}): JSX.Element {
+  const { t } = useI18n();
+  const [draft, set_draft] = useState<ProjectLanguageSettings | null>(null);
+  const [submitting, set_submitting] = useState(false);
+  if (locked && draft !== null && !submitting) set_draft(null); // 输入暂时失去前台时，丢弃未确认的语言。
+
+  /** 保存失败时保留本次选择，供用户在同一弹窗重试。 */
+  async function confirm(): Promise<void> {
+    if (disabled || submitting || draft === null) return;
+    set_submitting(true);
+    try {
+      if (await on_confirm(draft)) set_draft(null);
+    } finally {
+      set_submitting(false);
+    }
+  }
   return (
     <>
       <Tooltip>
@@ -121,11 +148,10 @@ export function AgentLanguageControl(props: {
       </Tooltip>
       {draft !== null ? (
         <ProjectLanguageDialog
-          open
           languages={draft}
           disabled={disabled}
           submitting={submitting}
-          on_change={(field, value) => set_draft({ ...draft, [field]: value })}
+          on_change={set_draft}
           on_confirm={confirm}
           on_close={() => set_draft(null)}
         />
