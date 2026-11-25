@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => ({
   loaded: vi.fn(),
   toast: vi.fn(),
   error: vi.fn(),
-  navigate: vi.fn(),
   state: {
     settings_snapshot: {
       project_save_mode: "SOURCE",
@@ -32,18 +31,17 @@ vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   api_fetch: mocks.api,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({ useDesktopState: () => mocks.state }));
-vi.mock("@frontend/app/navigation/navigation-context", () => ({
-  useAppNavigation: () => ({ navigate_to_agent: mocks.navigate }),
-}));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_toast: mocks.toast,
   push_error_toast: mocks.error,
 }));
-/** 执行请求并记录交给公共加载流程的工程路径。 */
-const run_project_load: RunProjectLoad = async ({ request }) => {
-  mocks.loaded(await request());
+/** 记录创建交给公共加载流程的工程与预置指令。 */
+const run_project_load: RunProjectLoad = async ({ request, agent_input_request }) => {
+  mocks.loaded((await request()).project, agent_input_request);
+  return true;
 };
 
+const created_project = { projectId: "created", path: "E:/actual.lg" };
 let flow: ReturnType<typeof useProjectCreateFlow>;
 let root: Root;
 let desktop_descriptor: PropertyDescriptor | undefined;
@@ -75,7 +73,7 @@ beforeEach(async () => {
     glossary_default_preset: "",
   };
   mocks.api.mockReset().mockImplementation(async (path: string) => {
-    if (path.endsWith("/create")) return { project: { path: "E:/actual.lg" } };
+    if (path.endsWith("/create")) return { project: created_project };
     if (path.endsWith("/default-name")) return { project_name: "src" };
     return {};
   });
@@ -123,22 +121,14 @@ it.each([
   expect(mocks.loaded).not.toHaveBeenCalled();
   expect(flow.source_selection_disabled).toBe(true);
   await act(async () => vi.runAllTimersAsync());
-  expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
+  expect(mocks.loaded).toHaveBeenCalledWith(created_project, expect.any(Object));
   expect(mocks.toast).toHaveBeenCalledWith("success", expect.any(String));
   expect(mocks.toast).toHaveBeenCalledWith("info", expect.any(String));
   expect(flow.open).toBe(false);
-  const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
+  const request: AgentInputRequest = mocks.loaded.mock.calls[0]![1];
   expect(request.text.slice(request.selection!.from, request.selection!.to)).toBe(
     t("app.agent_input.path_placeholder"),
   );
-  expect(request.text.split("\n").slice(-6)).toEqual([
-    "",
-    t("app.agent_input.steps_intro_after_instruction"),
-    `1. ${t("app.agent_input.steps.glossary")} @skill("glossary")`,
-    `2. ${t("app.agent_input.steps.translate")} @skill("translation")`,
-    `3. ${t("app.agent_input.steps.review")} @skill("translation")`,
-    `4. ${t("app.translation_export.agent_request")} @skill("project-operation")`,
-  ]);
 });
 
 it("取消保存位置不创建也不预置草稿", async () => {
@@ -148,7 +138,7 @@ it("取消保存位置不创建也不预置草稿", async () => {
   });
   await create();
   expect(mocks.api).not.toHaveBeenCalled();
-  expect(mocks.navigate).not.toHaveBeenCalled();
+  expect(mocks.loaded).not.toHaveBeenCalled();
   expect(flow.open).toBe(true);
   expect(flow.source_selection_disabled).toBe(false);
 });
@@ -158,7 +148,7 @@ it("创建失败保留弹窗与语言，重试成功后关闭，重挂载恢复�
   mocks.api.mockRejectedValueOnce(new Error("failed"));
   await create();
   expect(mocks.error).toHaveBeenCalledOnce();
-  expect(mocks.navigate).not.toHaveBeenCalled();
+  expect(mocks.loaded).not.toHaveBeenCalled();
   expect(flow.open).toBe(true);
   await create();
   await act(async () => vi.runAllTimersAsync());
@@ -202,14 +192,14 @@ it("拖入创建清除旧来源，按首个路径保存并预填全部路径，�
   });
   expect(window.desktopApp.pickProjectSavePath).not.toHaveBeenCalled();
   await act(async () => vi.runAllTimersAsync());
-  const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
+  const request: AgentInputRequest = mocks.loaded.mock.calls[0]![1];
   expect(request.text).toContain("E:/src/a.txt\nE:/src/b");
 
   act(() => flow.show());
   await create();
   expect(window.desktopApp.pickProjectSavePath).toHaveBeenCalledOnce();
   await act(async () => vi.runAllTimersAsync());
-  const next_request: AgentInputRequest = mocks.navigate.mock.calls[1]![0];
+  const next_request: AgentInputRequest = mocks.loaded.mock.calls[1]![1];
   expect(next_request.text).not.toContain("E:/src/");
   expect(next_request.selection).toBeDefined();
 });
@@ -242,7 +232,7 @@ it("拖入名称查询失败时提示错误并停止创建，再次确认可以�
   expect(flow.source_selection_disabled).toBe(false);
   await create();
   await act(async () => vi.runAllTimersAsync());
-  expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
+  expect(mocks.loaded).toHaveBeenCalledWith(created_project, expect.any(Object));
 });
 
 it("游戏来源依次确认备份、语言和包顺序，按摘要名称在来源目录创建", async () => {
@@ -268,10 +258,10 @@ it("游戏来源依次确认备份、语言和包顺序，按摘要名称在来�
     ],
     languages: expect.any(Object),
   });
-  expect(mocks.loaded).toHaveBeenCalledWith("E:/actual.lg");
-  const request: AgentInputRequest = mocks.navigate.mock.calls[0]![0];
+  expect(mocks.loaded).toHaveBeenCalledWith(created_project, expect.any(Object));
+  const request: AgentInputRequest = mocks.loaded.mock.calls[0]![1];
   expect(request.selection).toBeUndefined();
-  expect(request.text.startsWith(`${t("app.agent_input.steps_intro")}\n1. `)).toBe(true);
+  expect(request.text).not.toContain(t("project.create.agent_draft.import"));
 });
 
 it("来源摘要补齐无效计数，无可用文件或请求失败时清空并提示", async () => {

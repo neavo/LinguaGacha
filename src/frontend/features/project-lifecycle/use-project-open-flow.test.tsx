@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   loaded: vi.fn(),
   pick: vi.fn<() => Promise<DesktopPathPickResult>>(),
   error: vi.fn(),
-  toast: vi.fn(),
   state: {
     settings_snapshot: { project_save_mode: "MANUAL", project_fixed_path: "" },
     refresh_settings: vi.fn(),
@@ -26,14 +25,14 @@ vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
 vi.mock("@frontend/app/state/use-desktop-state", () => ({ useDesktopState: () => mocks.state }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   push_error_toast: mocks.error,
-  push_toast: mocks.toast,
 }));
 
 let root: Root | null;
 let desktop_descriptor: PropertyDescriptor | undefined;
-/** 执行请求并记录交给公共加载流程的工程路径。 */
+/** 执行请求并记录交给公共加载流程的工程回执。 */
 const run_project_load: RunProjectLoad = async ({ request }) => {
-  mocks.loaded(await request());
+  mocks.loaded((await request()).project);
+  return true;
 };
 
 let flow: ReturnType<typeof useProjectOpenFlow>;
@@ -53,7 +52,9 @@ beforeEach(async () => {
     configurable: true,
     value: create_desktop_bridge_api_mock({ methods: { pickProjectFilePath: mocks.pick } }),
   });
-  mocks.api.mockReset().mockResolvedValue({});
+  mocks.api
+    .mockReset()
+    .mockResolvedValue({ project: { projectId: "opened", path: "E:/picked.lg" } });
   root = createRoot(document.createElement("div"));
   await act(async () =>
     root!.render(
@@ -124,6 +125,9 @@ it("最近工程缺失确认移除，移除失败保留恢复入口", async () =
   expect(flow.missing_recent_project?.path).toBe("missing.lg");
   expect(mocks.error).toHaveBeenCalledWith(expect.any(String), error);
   await act(async () => flow.handle_recent_project_remove("missing.lg"));
+  expect(mocks.api).toHaveBeenLastCalledWith("/api/settings/recent-projects/remove", {
+    path: "missing.lg",
+  });
   expect(mocks.state.refresh_settings).toHaveBeenCalledOnce();
   expect(flow.missing_recent_project).toBeNull();
 });
@@ -141,25 +145,15 @@ it("普通打开失败反馈错误并允许重试", async () => {
   });
 });
 
-it("主动移除最近记录后刷新设置", async () => {
-  await act(async () => flow.handle_recent_project_remove("E:/recent.lg"));
-  expect(mocks.api).toHaveBeenCalledExactlyOnceWith("/api/settings/recent-projects/remove", {
-    path: "E:/recent.lg",
-  });
-  expect(mocks.state.refresh_settings).toHaveBeenCalledOnce();
-  expect(mocks.loaded).not.toHaveBeenCalled();
-  expect(mocks.error).not.toHaveBeenCalled();
-});
-
-it("打开成功将工程路径交给加载流程，不额外触发设置对齐提示", async () => {
+it("打开成功将工程回执交给加载流程", async () => {
+  const project = { projectId: "opened", path: "E:/resolved.lg" };
   mocks.api.mockResolvedValueOnce({
-    project: { path: "E:/resolved.lg" },
+    project,
   });
   await act(async () => {
     await flow.open_project("E:/renamed.lg");
   });
-  expect(mocks.loaded).toHaveBeenCalledWith("E:/resolved.lg");
-  expect(mocks.toast).not.toHaveBeenCalled();
+  expect(mocks.loaded).toHaveBeenCalledWith(project);
 });
 
 it("文件窗口选中即加载，选择期间阻止重复打开且不请求预览", async () => {

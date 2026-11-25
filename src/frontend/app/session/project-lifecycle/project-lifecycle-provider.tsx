@@ -1,6 +1,9 @@
 import { type JSX, type ReactNode } from "react";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
-import { useProjectLoad } from "@frontend/features/project-lifecycle/use-project-load";
+import {
+  useProjectLoad,
+  type ShowProject,
+} from "@frontend/features/project-lifecycle/use-project-load";
 import { useProjectCreateFlow } from "@frontend/features/project-lifecycle/use-project-create-flow";
 import { useProjectOpenFlow } from "@frontend/features/project-lifecycle/use-project-open-flow";
 import { useProjectCloseFlow } from "@frontend/features/project-lifecycle/use-project-close-flow";
@@ -8,7 +11,6 @@ import { ProjectCreateDialog } from "@frontend/features/project-lifecycle/projec
 import { ProjectOpenConfirmations } from "@frontend/features/project-lifecycle/project-open-confirmations";
 import { ProjectLifecycleContext } from "./project-lifecycle-context";
 import type { BeforePageLeave } from "@frontend/app/navigation/page-leave-context";
-import type { ProjectStore } from "@frontend/app/state/project-store-registry";
 
 /** 工程切换会卸载入口页面，生命周期流程与全部确认由常驻会话拥有。 */
 export function ProjectLifecycleProvider(props: {
@@ -16,9 +18,9 @@ export function ProjectLifecycleProvider(props: {
   attention: number;
   notify_project_required: () => void;
   before_open: BeforePageLeave;
-  on_open: (project: ProjectStore) => void;
+  show_project: ShowProject;
 }): JSX.Element {
-  const run_project_load = useProjectLoad(props.before_open, props.on_open);
+  const run_project_load = useProjectLoad(props.before_open, props.show_project);
   const create = useProjectCreateFlow(run_project_load);
   const open = useProjectOpenFlow(run_project_load);
   const close = useProjectCloseFlow(open.handle_recent_project_remove);
