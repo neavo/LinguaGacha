@@ -187,7 +187,7 @@
   color: var(--muted-foreground);
 }
 
-.project-workspace__tools-chevron--hidden {
+.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-chevron {
   opacity: 0;
 }
 
@@ -199,7 +199,7 @@
   justify-self: center;
 }
 
-/* 窄态菜单右对齐锚定在各自标签正下方，以 0fr ↔ 1fr 向下展开；四周留出不拦截指针的阴影缓冲带。 */
+/* 窄态菜单以 0fr ↔ 1fr 向下展开，负外边距抵消卡片周围的阴影留白。 */
 .project-workspace__tools-drawer {
   position: absolute;
   top: 100%;
@@ -210,6 +210,12 @@
   grid-template-rows: 0fr;
   opacity: 0;
   pointer-events: none;
+}
+
+/* 抽屉两侧的阴影留白对称，按可见卡片宽度计算居中偏移。 */
+.project-workspace__tools-panel[data-group="workbench"][data-docked="false"]
+  .project-workspace__tools-drawer {
+  right: calc(50% - var(--workspace-tools-card-width) / 2);
 }
 
 .project-workspace__tools-panel[data-expanded="true"] .project-workspace__tools-drawer {
@@ -332,8 +338,13 @@
     transform 200ms var(--workspace-tools-motion-easing);
 }
 
-.project-workspace__tool-item:hover {
+.project-workspace__tool-item:enabled:hover {
   background: var(--accent);
+}
+
+.project-workspace__tool-item:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .project-workspace__tool-item:focus-visible {
@@ -359,7 +370,7 @@
   transition: color 140ms ease;
 }
 
-.project-workspace__tool-item:hover .project-workspace__tool-icon,
+.project-workspace__tool-item:enabled:hover .project-workspace__tool-icon,
 .project-workspace__tool-item[data-active] .project-workspace__tool-icon {
   color: var(--foreground);
 }

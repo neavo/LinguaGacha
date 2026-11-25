@@ -5,15 +5,14 @@ import { format_project_settings_saved_toast } from "@frontend/app/feedback/proj
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { render_rich_text, type RichTextComponentMap } from "@frontend/app/locale/rich-text";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
-import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
 
 type ProjectPrefilterSettingDialogProps = {
-  projectId: string;
   field: ProjectPrefilterSettingKey;
   enabled: boolean;
+  runtimeLocked: boolean;
   onClose: () => void;
 };
 
@@ -23,24 +22,21 @@ const DESCRIPTION_COMPONENT_MAP: RichTextComponentMap = {
   ),
 };
 
-/** 工程预过滤开关确认框：以三按钮表达取消、禁用与启用，并受当前工程运行占用约束。 */
+/** 在当前功能页确认预过滤设置，由工程写入口随设置变更重算条目。 */
 export function ProjectPrefilterSettingDialog({
-  projectId,
   field,
   enabled,
+  runtimeLocked,
   onClose,
 }: ProjectPrefilterSettingDialogProps): JSX.Element {
   const { t } = useI18n();
   const api_fetch = useProjectFetch();
   const { commit_project_write } = useDesktopState();
-  const runtime = useRuntimeSnapshot();
   const [submitting_action, set_submitting_action] = useState<"primary" | "secondary" | null>(null);
-  const runtime_locked = is_project_busy(runtime.projects?.[projectId]);
   const description = t(`app.project_prefilter.${field}.description`);
 
-  /** 提交同值只关闭确认框，实际改动经工程写入口保存并回读。 */
+  /** 选择当前状态时直接关闭，避免为同值占用工程写入。 */
   async function handle_submit(next_enabled: boolean): Promise<void> {
-    if (submitting_action !== null || runtime_locked) return;
     if (next_enabled === enabled) {
       onClose();
       return;
@@ -67,16 +63,17 @@ export function ProjectPrefilterSettingDialog({
     <AppActionDialog
       open
       description={render_rich_text(description, DESCRIPTION_COMPONENT_MAP)}
-      submitting={submitting_action !== null}
-      {...(submitting_action === null ? {} : { submittingAction: submitting_action })}
+      {...(submitting_action === null
+        ? {}
+        : { submitting: true, submittingAction: submitting_action })}
       secondaryAction={{
         label: t("app.toggle.option.disabled"),
-        disabled: runtime_locked,
+        disabled: runtimeLocked,
         onSelect: () => handle_submit(false),
       }}
       primaryAction={{
         label: t("app.toggle.option.enabled"),
-        disabled: runtime_locked,
+        disabled: runtimeLocked,
         onSelect: () => handle_submit(true),
       }}
       onClose={onClose}

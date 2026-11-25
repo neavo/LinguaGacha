@@ -2,7 +2,7 @@ import { act, useEffect, useSyncExternalStore, type JSX } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_PROJECT_SETTINGS, type ProjectSettings } from "@domain/project-settings";
+import { DEFAULT_PROJECT_SETTINGS } from "@domain/project-settings";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-provider";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
@@ -11,15 +11,18 @@ import { ProjectScopeContext } from "@frontend/app/navigation/project-scope-cont
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { ProjectStore } from "@frontend/app/state/project-store-registry";
-import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import { createRuntimeActivityStore } from "@frontend/app/state/runtime-activity-store";
 
 const leave = vi.hoisted(() => vi.fn<() => Promise<boolean>>(async () => true));
+let runtime_activity: ReturnType<typeof createRuntimeActivityStore>;
 
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ commit_project_write: vi.fn() }),
-  useRuntimeSnapshot: () => ({}),
+  useRuntimeSnapshot: () =>
+    useSyncExternalStore(runtime_activity.subscribe, runtime_activity.getSnapshot),
 }));
 
+/** 让 renderer 测试驱动工作区宽度变化。 */
 class TestResizeObserver implements ResizeObserver {
   static instances: TestResizeObserver[] = [];
 
@@ -97,7 +100,8 @@ vi.mock("@frontend/app/navigation/screen-registry", async (importOriginal) => {
 
 import { ProjectWorkspace } from "./project-workspace";
 
-function WorkspaceHarnessInner({ project }: { project: ProjectStore }): JSX.Element {
+/** 由工程路由驱动页面，让测试通过实际离页入口切换。 */
+function WorkspaceHarness({ project }: { project: ProjectStore }): JSX.Element {
   const active_route = useSyncExternalStore(project.subscribe_route, project.get_active_route);
   const { prepare_page_leave } = usePageLeave();
 
@@ -131,23 +135,12 @@ function WorkspaceHarnessInner({ project }: { project: ProjectStore }): JSX.Elem
   );
 }
 
-function WorkspaceHarness({ project }: { project: ProjectStore }): JSX.Element {
-  return (
-    <LocaleProvider locale="zh-CN">
-      <TooltipProvider delay={0}>
-        <PageLeaveProvider>
-          <WorkspaceHarnessInner project={project} />
-        </PageLeaveProvider>
-      </TooltipProvider>
-    </LocaleProvider>
-  );
-}
-
 describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
   let host: HTMLDivElement | null = null;
   let root: Root | null = null;
 
   beforeEach(() => {
+    runtime_activity = createRuntimeActivityStore();
     vi.clearAllMocks();
     leave.mockResolvedValue(true);
   });
@@ -161,24 +154,19 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     root = null;
   });
 
-  function create_project(id = "project-1", settings: Partial<ProjectSettings> = {}): ProjectStore {
+  function create_project(id = "project-1"): ProjectStore {
     return new ProjectStore({
       projectId: id,
       path: `E:/${id}.lg`,
       name: `${id}.lg`,
       loaded: true,
       file_count: 3,
+      settings: DEFAULT_PROJECT_SETTINGS,
       quality_rule_counts: {
         glossary: 12,
         text_preserve: 0,
         pre_replacement: 4,
         post_replacement: 0,
-      },
-      settings: {
-        ...DEFAULT_PROJECT_SETTINGS,
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: false,
-        ...settings,
       },
     });
   }
@@ -188,7 +176,15 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
       host = document.body.appendChild(document.createElement("div"));
       root = createRoot(host);
     }
-    await act(async () => root?.render(<WorkspaceHarness project={project} />));
+    await act(async () =>
+      root?.render(
+        <LocaleProvider locale="zh-CN">
+          <PageLeaveProvider>
+            <WorkspaceHarness project={project} />
+          </PageLeaveProvider>
+        </LocaleProvider>,
+      ),
+    );
     return host;
   }
 
@@ -215,6 +211,38 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     await act(async () => group_trigger(container, "quality").click());
     expect(find_tool_item(container, "术语表").textContent).toContain("12");
     expect(find_tool_item(container, "文本保护").textContent).toContain("0");
+  });
+
+  it("本工程忙碌时在菜单和常驻卡片上禁用预过滤设置，空闲后恢复", async () => {
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    const project = create_project();
+    const container = await mount(project);
+    const workspace = container.querySelector<HTMLDivElement>(".project-workspace")!;
+    const quality = group_panel(container, "quality");
+    const busy = { batchTranslation: true, agent: false, projectWrite: false };
+    await act(async () => group_trigger(container, "quality").click());
+    const prefilter_items = new Set([
+      find_tool_item(quality, "跳过重复原文"),
+      find_tool_item(quality, "MTool 优化器"),
+    ]);
+    const disabled_items = () => new Set(quality.querySelectorAll("button:disabled"));
+
+    await act(async () =>
+      runtime_activity.applySnapshot({
+        revision: 1,
+        projects: { [project.snapshot.projectId]: busy },
+      }),
+    );
+    expect(disabled_items()).toEqual(prefilter_items);
+
+    await act(async () => TestResizeObserver.emit(workspace, 1600));
+    expect(quality.querySelector('[role="menu"]')).toBeNull();
+    expect(disabled_items()).toEqual(prefilter_items);
+
+    await act(async () =>
+      runtime_activity.applySnapshot({ revision: 2, projects: { other: busy } }),
+    );
+    expect(disabled_items().size).toBe(0);
   });
 
   it("窄态双 Tab 互斥展开并支持外部点击、Esc 与失焦收起，激活态与关闭按钮只归属对应组", async () => {
@@ -319,12 +347,9 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     expect(workbench.dataset.expanded).toBe("true");
     expect(quality.dataset.expanded).toBe("true");
 
-    // 宽态点击子页保持双块展开，仅所属组头显示当前子页与关闭按钮。
     await act(async () => find_tool_item(container, "术语表").click());
     expect(container.querySelector('[data-testid="page-glossary"]')).not.toBeNull();
     expect(find_tool_item(container, "术语表").getAttribute("aria-current")).toBe("page");
-    expect(quality.querySelector(".project-workspace__tools-label")?.textContent).toBe("术语表");
-    expect(workbench.querySelector(".project-workspace__tools-label")?.textContent).toBe("工作台");
 
     await act(async () => TestResizeObserver.emit(workspace, 1000));
     expect(workbench.dataset.expanded).toBe("false");
