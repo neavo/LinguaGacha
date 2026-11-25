@@ -128,11 +128,9 @@ export const ko_kr_agent_page = {
     allow_once: "이번 쓰기 허용",
   },
   decision: {
-    paused_remaining: "일시 정지됨 · 남은 시간 {time}",
     remaining: "남은 시간 {time}",
     custom: "사용자 지정",
     custom_placeholder: "답변을 직접 입력하세요 …",
-    cancel: "이 질문 취소",
   },
   compaction: {
     running: "컨텍스트 압축 중",

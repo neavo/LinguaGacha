@@ -124,11 +124,9 @@ export const zh_cn_agent_page = {
     allow_once: "允许本次写入",
   },
   decision: {
-    paused_remaining: "已暂停 · 剩余时间 {time}",
     remaining: "剩余时间 {time}",
     custom: "自定义",
     custom_placeholder: "输入自定义答案 …",
-    cancel: "取消本次提问",
   },
   compaction: {
     running: "正在压缩上下文",

@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import type { AgentDecisionCountdownSnapshot } from "@frontend/app/session/agent/agent-decision-countdown";
 import { ProjectStore } from "@frontend/app/state/project-store-registry";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { build_project_translation_stats } from "@shared/project-translation-stats";
@@ -76,26 +77,8 @@ describe("ProjectSidebar", () => {
   }
 
   it("已打开工程排在最近工程之前，只有工程视图高亮当前工程", async () => {
-    const first = new ProjectStore({
-      projectId: "first",
-      name: "翻译.lg",
-      path: "E:/翻译.lg",
-      loaded: true,
-      file_count: 0,
-      quality_rule_counts: {
-        glossary: 0,
-        text_preserve: 0,
-        pre_replacement: 0,
-        post_replacement: 0,
-      },
-      settings: null,
-    });
-    const second = new ProjectStore({
-      ...first.snapshot,
-      projectId: "second",
-      name: "校对.lg",
-      path: "E:/校对.lg",
-    });
+    const first = opened_project("first", "翻译.lg");
+    const second = opened_project("second", "校对.lg");
     project_state.active_project = first;
     project_state.open_projects = [first, second];
     project_state.settings_snapshot.recent_projects = [recent_project, first.snapshot];
@@ -176,4 +159,56 @@ describe("ProjectSidebar", () => {
       recent_project.name,
     );
   });
+
+  it("后台工程独立显示决策倒计时，结束后恢复状态灯", async () => {
+    const first = opened_project("first", "前台工程.lg");
+    const second = opened_project("second", "后台工程.lg");
+    const set_countdown = attach_countdown_source(second);
+    project_state.active_project = first;
+    project_state.open_projects = [first, second];
+
+    await render_project_sidebar(true);
+    const [foreground, background] = container.querySelectorAll(".sidebar-project-item > button");
+    await act(async () =>
+      set_countdown({ id: "question-bg", remainingSeconds: 240, remainingPercent: 80 }),
+    );
+    expect(foreground?.querySelector(".status-mark")).toBeInstanceOf(HTMLElement);
+    expect(background?.querySelector(".status-mark")).toBeNull();
+    expect(background?.querySelector('.countdown-ring[aria-hidden="true"]')).not.toBeNull();
+    expect(background?.textContent).toBe(second.snapshot.name);
+
+    await act(async () => set_countdown(null));
+    expect(background?.querySelector(".countdown-ring")).toBeNull();
+    expect(background?.querySelector(".status-mark")).not.toBeNull();
+  });
 });
+
+/** 以同一份最小工程数据构造独立会话。 */
+function opened_project(projectId: string, name: string): ProjectStore {
+  return new ProjectStore({
+    projectId,
+    name,
+    path: `E:/${name}`,
+    loaded: true,
+    file_count: 0,
+    quality_rule_counts: { glossary: 0, text_preserve: 0, pre_replacement: 0, post_replacement: 0 },
+    settings: null,
+  });
+}
+
+/** 通过公开倒计时切片契约驱动外部订阅，避免在侧栏测试中耦合 SSE 恢复协议。 */
+function attach_countdown_source(
+  project: ProjectStore,
+): (next: AgentDecisionCountdownSnapshot) => void {
+  let snapshot: AgentDecisionCountdownSnapshot = null;
+  const listeners = new Set<() => void>();
+  vi.spyOn(project.agentChat, "get_countdown").mockImplementation(() => snapshot);
+  vi.spyOn(project.agentChat, "subscribe_countdown").mockImplementation((listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  });
+  return (next) => {
+    snapshot = next;
+    for (const listener of listeners) listener();
+  };
+}

@@ -51,8 +51,8 @@ describe("AgentDecision", () => {
     const on_resolve_question = vi.fn();
     await render_decision(root, question_decision(), on_resolve_question);
     const safe = action(container, "安全范围");
-    expect(safe.querySelector(".agent-decision-progress")).not.toBeNull();
-    expect(action(container, "完整范围").querySelector(".agent-decision-progress")).toBeNull();
+    expect(safe.querySelector(".countdown-ring")).not.toBeNull();
+    expect(action(container, "完整范围").querySelector(".countdown-ring")).toBeNull();
     const region = container.querySelector<HTMLElement>(".agent-decision")!;
     const description = container.querySelector<HTMLElement>(".agent-decision__description")!;
 
@@ -81,7 +81,6 @@ describe("AgentDecision", () => {
     await act(async () => input.blur());
     expect(session.actions.setQuestionFocused).toHaveBeenLastCalledWith("question-1", false);
     expect(confirm.disabled).toBe(true);
-    expect(confirm.getAttribute("aria-keyshortcuts")).toBe("Enter");
     await act(async () => confirm.click());
     expect(on_resolve_question).not.toHaveBeenCalled();
     await enter_custom_text(input, "  按章节处理  ");
@@ -117,14 +116,9 @@ describe("AgentDecision", () => {
   });
 
   it.each<{ label: string; text: string; key: KeyboardEventInit }>([
-    { label: "空文本", text: "", key: { key: "Enter" } },
     { label: "纯空格", text: "   ", key: { key: "Enter" } },
     { label: "输入法选词", text: "按章节处理", key: { key: "Enter", isComposing: true } },
     { label: "Shift+Enter", text: "按章节处理", key: { key: "Enter", shiftKey: true } },
-    { label: "Ctrl+Enter", text: "按章节处理", key: { key: "Enter", ctrlKey: true } },
-    { label: "Alt+Enter", text: "按章节处理", key: { key: "Enter", altKey: true } },
-    { label: "Meta+Enter", text: "按章节处理", key: { key: "Enter", metaKey: true } },
-    { label: "普通按键", text: "按章节处理", key: { key: "a" } },
   ])("自定义输入在 $label 时不提交", async ({ text, key }) => {
     const on_resolve_question = vi.fn();
     await render_decision(root, question_decision(), on_resolve_question);
@@ -136,34 +130,25 @@ describe("AgentDecision", () => {
     if (text.trim() !== "") expect(event.defaultPrevented).toBe(false);
   });
 
-  it("自定义发送按钮的悬停提示显示确认文案与 Enter 键帽", async () => {
-    vi.useFakeTimers();
-    await render_decision(root, question_decision());
-    await enter_custom_text(container.querySelector<HTMLInputElement>("input")!, "按章节处理");
-    const confirm = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.action.confirm"]',
-    )!;
-    await act(async () => {
-      confirm.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      confirm.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    const tooltip = document.querySelector('[role="tooltip"][data-open]');
-    expect(tooltip?.textContent).toContain("app.action.confirm");
-    expect(tooltip?.querySelector("kbd")?.textContent).toBe("Enter");
-  });
+  it.each([question_decision(), write_decision()])(
+    "点击取消提交对应裁决（$kind）",
+    async (decision) => {
+      const resolve = vi.fn();
+      const is_question = decision.kind === "question";
+      await render_decision(
+        root,
+        decision,
+        is_question ? resolve : undefined,
+        is_question ? undefined : resolve,
+      );
+      const cancel = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="app.action.cancel"]',
+      )!;
 
-  it("问题取消提交取消裁决", async () => {
-    const on_resolve_question = vi.fn();
-    await render_decision(root, question_decision(), on_resolve_question);
-    const cancel = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="agent_page.decision.cancel"]',
-    );
-    if (cancel === null) throw new Error("缺少取消按钮");
-
-    await act(async () => cancel.click());
-    expect(on_resolve_question).toHaveBeenCalledWith({ kind: "cancel" });
-  });
+      await act(async () => cancel.click());
+      expect(resolve).toHaveBeenCalledExactlyOnceWith(is_question ? { kind: "cancel" } : "reject");
+    },
+  );
 
   it("写入授权在选项二显示倒计时并提交本次写入权限", async () => {
     const on_resolve_write_approval = vi.fn();
@@ -188,8 +173,7 @@ describe("AgentDecision", () => {
     );
     const actions = [...container.querySelectorAll<HTMLButtonElement>(".agent-decision-action")];
 
-    expect(actions).toHaveLength(2);
-    expect(actions.filter((button) => button.querySelector(".agent-decision-progress"))).toEqual([
+    expect(actions.filter((button) => button.querySelector(".countdown-ring"))).toEqual([
       actions[1],
     ]);
     expect(
@@ -201,55 +185,103 @@ describe("AgentDecision", () => {
     expect(on_resolve_write_approval).toHaveBeenCalledWith("allow_once");
   });
 
-  it.each(["question", "write_approval"] as const)(
-    "%s 默认按钮的已打开提示跟随会话时钟更新",
-    async (kind) => {
-      vi.useFakeTimers();
-      const decision: AgentPendingDecision =
-        kind === "question"
-          ? question_decision()
-          : {
-              kind,
-              id: "write-tooltip",
-              summary: {
-                items: 1,
-                glossary: 0,
-                textPreserve: 0,
-                preReplacement: 0,
-                postReplacement: 0,
-                files: 0,
-                knowledge: 0,
-                prompts: 0,
-              },
-            };
-      await render_decision(root, decision);
-      const button = action(
-        container,
-        kind === "question" ? "安全范围" : "agent_page.approval.allow_once",
-      );
-      await act(async () => {
-        button.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-        button.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-        await vi.advanceTimersByTimeAsync(1);
-      });
-      const tooltip = document.querySelector('[role="tooltip"][data-open]');
-      expect(tooltip?.textContent).toContain("agent_page.decision.remaining:05:00");
-      // Store 发布新快照时，已经打开的浮层直接更新，无需重新悬停。
-      session.countdown = {
-        id: decision.id,
-        remainingSeconds: 299,
-        remainingPercent: 99,
-        paused: false,
-      };
-      await render_decision(root, decision);
-      expect(document.querySelector('[role="tooltip"][data-open]')).toBe(tooltip);
-      expect(tooltip?.textContent).toContain("agent_page.decision.remaining:04:59");
-      session.countdown = { ...session.countdown, paused: true };
-      await render_decision(root, decision);
-      expect(tooltip?.textContent).toContain("agent_page.decision.paused_remaining:04:59");
-    },
-  );
+  it("默认选项打开的提示随倒计时更新", async () => {
+    vi.useFakeTimers();
+    const decision = question_decision();
+    await render_decision(root, decision);
+    const tooltip = await show_tooltip(action(container, "安全范围"));
+    expect(tooltip?.textContent).toContain("agent_page.decision.remaining:05:00");
+
+    session.countdown = { id: decision.id, remainingSeconds: 299, remainingPercent: 99 };
+    await render_decision(root, decision);
+    expect(tooltip?.textContent).toContain("agent_page.decision.remaining:04:59");
+  });
+
+  it("取消按钮悬停提示打开时，按一次 Esc 即拒绝写入", async () => {
+    vi.useFakeTimers();
+    const reject = vi.fn();
+    await render_decision(root, write_decision(), undefined, reject);
+    const cancel = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.action.cancel"]',
+    )!;
+    expect(await show_tooltip(cancel)).not.toBeNull();
+
+    await press_escape(cancel);
+    expect(reject).toHaveBeenCalledExactlyOnceWith("reject");
+  });
+
+  it("自定义输入框的 Esc 先失焦，重新按下才取消提问", async () => {
+    const cancel = vi.fn();
+    await render_decision(root, question_decision(), cancel);
+    const input = container.querySelector<HTMLInputElement>("input")!;
+    await act(async () => input.focus());
+
+    await press_escape(input, { isComposing: true });
+    expect(document.activeElement).toBe(input);
+    await press_escape(input);
+    expect(document.activeElement).not.toBe(input);
+    expect(session.actions.setQuestionFocused).toHaveBeenLastCalledWith("question-1", false);
+    await press_escape(document.body, { repeat: true });
+    expect(cancel).not.toHaveBeenCalled();
+
+    await press_escape();
+    expect(cancel).toHaveBeenCalledExactlyOnceWith({ kind: "cancel" });
+  });
+
+  it("Esc 优先交给打开的浮层，退出中的浮层和收起的抽屉放行", async () => {
+    const cancel = vi.fn();
+    await render_decision(root, question_decision(), cancel);
+    const overlays = document.createElement("div");
+    overlays.innerHTML = `
+      <div><div role="menu"></div></div>
+      <div role="dialog" data-closed></div>
+      <div hidden><div role="listbox"></div></div>
+    `;
+    document.body.append(overlays);
+    try {
+      await press_escape();
+      expect(cancel).not.toHaveBeenCalled();
+
+      overlays.firstElementChild!.setAttribute("inert", "");
+      await press_escape();
+      expect(cancel).toHaveBeenCalledExactlyOnceWith({ kind: "cancel" });
+    } finally {
+      overlays.remove();
+    }
+  });
+
+  it("其他编辑器接收 Esc 时提问保持打开", async () => {
+    const cancel = vi.fn();
+    await render_decision(root, question_decision(), cancel);
+    const editor = document.createElement("div");
+    editor.className = "cm-editor";
+    container.append(editor);
+    await press_escape(editor);
+    expect(cancel).not.toHaveBeenCalled();
+  });
 });
+
+/** 用 Base UI 的实际悬停路径打开 Tooltip，以覆盖它对 Esc 的拦截。 */
+async function show_tooltip(trigger: HTMLElement): Promise<Element | null> {
+  await act(async () => {
+    trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  return document.querySelector('[role="tooltip"][data-open]');
+}
+
+/** 默认从失焦后的页面发出 Esc，仍经过真实捕获与冒泡顺序。 */
+async function press_escape(
+  target: HTMLElement = document.body,
+  options?: KeyboardEventInit,
+): Promise<void> {
+  await act(async () =>
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, ...options }),
+    ),
+  );
+}
 
 /** 通过原生属性写入口绕过 React 的值跟踪，使输入事件触发受控状态更新。 */
 async function enter_custom_text(input: HTMLInputElement, text: string): Promise<void> {
@@ -273,15 +305,32 @@ async function render_decision(
     id: decision.id,
     remainingSeconds: 300,
     remainingPercent: 100,
-    paused: false,
   };
   await act(async () =>
     root.render(
       <TooltipProvider delay={0}>
-        <AgentDecision decision={decision} />
+        <AgentDecision decision={decision} active />
       </TooltipProvider>,
     ),
   );
+}
+
+/** 构造最小写入授权决策。 */
+function write_decision(): AgentPendingDecision {
+  return {
+    kind: "write_approval",
+    id: "apply-1",
+    summary: {
+      items: 2,
+      glossary: 0,
+      textPreserve: 0,
+      preReplacement: 0,
+      postReplacement: 0,
+      files: 1,
+      knowledge: 0,
+      prompts: 0,
+    },
+  };
 }
 
 /** 固定选项与说明共同覆盖问题的提交和标题关联。 */

@@ -31,11 +31,11 @@ describe("AgentDecisionCountdown", () => {
     clock.sync(question, true);
     vi.advanceTimersByTime(1_250);
     clock.set_focused(question.id, true);
-    expect(clock.read()).toMatchObject({ remainingSeconds: 299, paused: true });
+    expect(clock.read()?.remainingSeconds).toBe(299);
     vi.advanceTimersByTime(AGENT_DECISION_TIMEOUT_MS);
     clock.sync(structuredClone(question), true);
     expect(expire).not.toHaveBeenCalled();
-    expect(clock.read()).toMatchObject({ remainingSeconds: 299, paused: true });
+    expect(clock.read()?.remainingSeconds).toBe(299);
     clock.set_focused(question.id, false);
     vi.advanceTimersByTime(AGENT_DECISION_TIMEOUT_MS - 1_251);
     expect(expire).not.toHaveBeenCalled();
@@ -48,16 +48,19 @@ describe("AgentDecisionCountdown", () => {
   it("断线冻结，恢复续计，新问题忽略旧焦点回调，清空释放时钟", () => {
     clock.sync(question, true);
     vi.advanceTimersByTime(60_000);
+    vi.setSystemTime(Date.now() - AGENT_DECISION_TIMEOUT_MS); // 系统时钟回拨不增加余量。
     clock.sync(question, false);
     vi.advanceTimersByTime(AGENT_DECISION_TIMEOUT_MS);
-    expect(clock.read()).toMatchObject({ remainingSeconds: 240, paused: true });
+    expect(clock.read()?.remainingSeconds).toBe(240);
     clock.sync(structuredClone(question), true);
     vi.advanceTimersByTime(1_000);
-    expect(clock.read()).toMatchObject({ remainingSeconds: 239, paused: false });
+    expect(clock.read()?.remainingSeconds).toBe(239);
     const next = { ...question, id: "question-2" };
     clock.sync(next, true);
+    expect(clock.read()).toMatchObject({ id: next.id, remainingSeconds: 300 });
     clock.set_focused(question.id, true);
-    expect(clock.read()).toMatchObject({ id: next.id, remainingSeconds: 300, paused: false });
+    vi.advanceTimersByTime(1_000);
+    expect(clock.read()?.remainingSeconds).toBe(299);
     clock.sync(null, true);
     vi.advanceTimersByTime(AGENT_DECISION_TIMEOUT_MS);
     expect(clock.read()).toBeNull();
@@ -67,9 +70,14 @@ describe("AgentDecisionCountdown", () => {
   it("临界失焦只排队到期动作，手动受理可先结束计时且恢复快照不重试", () => {
     clock.sync(question, true);
     // 模拟浏览器尚未执行到期回调，焦点事件先到达。
-    vi.setSystemTime(Date.now() + AGENT_DECISION_TIMEOUT_MS);
-    clock.set_focused(question.id, true);
-    clock.set_focused(question.id, false);
+    const deadline = performance.now() + AGENT_DECISION_TIMEOUT_MS;
+    const now = vi.spyOn(performance, "now").mockReturnValue(deadline);
+    try {
+      clock.set_focused(question.id, true);
+      clock.set_focused(question.id, false);
+    } finally {
+      now.mockRestore();
+    }
     expect(expire).not.toHaveBeenCalled();
     clock.stop(question.id);
     clock.sync(structuredClone(question), true);

@@ -127,11 +127,9 @@ export const en_us_agent_page = {
     allow_once: "Allow this write",
   },
   decision: {
-    paused_remaining: "Paused · {time} remaining",
     remaining: "{time} remaining",
     custom: "Custom",
     custom_placeholder: "Enter a custom answer …",
-    cancel: "Cancel question",
   },
   compaction: {
     running: "Compacting context",

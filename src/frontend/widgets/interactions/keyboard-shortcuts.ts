@@ -173,7 +173,7 @@ function is_element_inside_dialog(element: Element): boolean {
 }
 
 /** 原生输入、富文本与代码编辑器共同构成文本编辑目标。 */
-function is_element_text_editing_target(element: Element): boolean {
+export function is_element_text_editing_target(element: Element): boolean {
   if (element.closest(".cm-editor") !== null) {
     return true;
   }

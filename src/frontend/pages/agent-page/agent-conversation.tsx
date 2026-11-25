@@ -929,6 +929,8 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
               {input_transition.visible_decision === null ? null : (
                 <AgentDecision
                   decision={input_transition.visible_decision}
+                  // 离场内容仍挂载，只让前台待决卡片响应 Esc。
+                  active={active && pending_decision !== null}
                   title_ref={input_transition.title_ref}
                 />
               )}

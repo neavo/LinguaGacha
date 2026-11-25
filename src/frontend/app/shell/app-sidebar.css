@@ -338,7 +338,8 @@
   font-size: var(--ui-font-size-13);
 }
 
-.sidebar-project-item .status-mark {
+.sidebar-project-item .status-mark,
+.sidebar-project-item .countdown-ring {
   justify-self: center;
 }
 

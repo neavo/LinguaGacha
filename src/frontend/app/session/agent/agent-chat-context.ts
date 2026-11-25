@@ -101,7 +101,7 @@ export function useAgentInput(): AgentInputState {
   return useSyncExternalStore(store.subscribe_input, store.get_input, store.get_input);
 }
 
-/** 倒计时只由决策区域订阅，避免每秒刷新整页会话与时间线。 */
+/** 决策卡片单独订阅倒计时，逐秒更新独立于会话与时间线。 */
 export function useAgentDecisionCountdown(): AgentDecisionCountdownSnapshot {
   const store = use_agent_store();
   return useSyncExternalStore(store.subscribe_countdown, store.get_countdown, store.get_countdown);

@@ -129,11 +129,9 @@ export const pt_br_agent_page = {
     allow_once: "Permitir esta escrita",
   },
   decision: {
-    paused_remaining: "Pausado · {time} restantes",
     remaining: "{time} restantes",
     custom: "Personalizado",
     custom_placeholder: "Digite uma resposta personalizada …",
-    cancel: "Cancelar pergunta",
   },
   compaction: {
     running: "Compactando contexto",

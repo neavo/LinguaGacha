@@ -1,4 +1,4 @@
-import { useState, type JSX, type ReactNode, type RefObject } from "react";
+import { useState, useSyncExternalStore, type JSX, type ReactNode, type RefObject } from "react";
 import {
   Ellipsis,
   FileInput,
@@ -22,10 +22,35 @@ import {
 import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import type { ProjectStore } from "@frontend/app/state/project-store-registry";
+import type { AgentChatStore } from "@frontend/app/session/agent/agent-chat-store";
 import { read_file_paths } from "@frontend/app/desktop/source-paths";
+import { CountdownRing } from "@frontend/widgets/countdown-ring/countdown-ring";
 import { FileDropTarget } from "@frontend/widgets/interactions/file-drop-target";
 import "@frontend/widgets/inline-action-button.css";
 import "@frontend/widgets/status-mark.css";
+
+/** 已打开工程的倒计时逐秒更新，重渲染范围限于状态指示器。 */
+function OpenProjectStatusMark({
+  store,
+  busy,
+}: {
+  store: AgentChatStore;
+  busy: boolean;
+}): JSX.Element {
+  const countdown = useSyncExternalStore(store.subscribe_countdown, store.get_countdown);
+
+  if (countdown !== null) {
+    return <CountdownRing size="sm" remaining_percent={countdown.remainingPercent} aria-hidden />;
+  }
+
+  return (
+    <span
+      className={busy ? "status-mark status-mark--pulse" : "status-mark"}
+      data-status={busy ? "busy" : "open"}
+      aria-hidden="true"
+    />
+  );
+}
 
 /** 最近记录与打开列表来自不同入口，Windows 路径按大小写不敏感的方式比较。 */
 function path_key(file: string): string {
@@ -168,7 +193,6 @@ function ProjectRow({
   const { t } = useI18n();
   const lifecycle = useProjectLifecycle();
   const [menu_open, set_menu_open] = useState(false);
-  const status = project === undefined ? "closed" : busy ? "busy" : "open";
   const projectId = project?.snapshot.projectId;
   const disabled = busy || lifecycle.busy;
   const close_label = t("project.close.action");
@@ -218,11 +242,11 @@ function ProjectRow({
             />
           }
         >
-          <span
-            className={busy ? "status-mark status-mark--pulse" : "status-mark"}
-            data-status={status}
-            aria-hidden="true"
-          />
+          {project === undefined ? (
+            <span className="status-mark" data-status="closed" aria-hidden="true" />
+          ) : (
+            <OpenProjectStatusMark store={project.agentChat} busy={busy} />
+          )}
           <span className="sidebar-row__label">{name}</span>
         </TooltipTrigger>
         <TooltipContent side="right">{path}</TooltipContent>
