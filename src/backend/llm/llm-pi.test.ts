@@ -23,6 +23,7 @@ const create_pi_request = (
   snapshot: Parameters<typeof resolve_one_shot_pi_request>[0],
   messages: Parameters<typeof resolve_one_shot_pi_request>[1],
   signal: AbortSignal,
+  on_effective_model?: Parameters<typeof resolve_one_shot_pi_request>[4],
 ) =>
   resolve_one_shot_pi_request(
     snapshot,
@@ -37,6 +38,7 @@ const create_pi_request = (
       },
       catalog,
     ),
+    on_effective_model,
   );
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
@@ -622,6 +624,57 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("include");
   });
 
+  it.each([
+    { configured: "DEFAULT", override: {}, expected: "DEFAULT" },
+    { configured: "OFF", override: {}, expected: "OFF" },
+    {
+      configured: "HIGH",
+      override: { reasoning: { effort: "low" }, model: "effective-id" },
+      expected: "LOW",
+    },
+    { configured: "HIGH", override: { reasoning: { max_tokens: 1000 } }, expected: "CUSTOM" },
+  ] as const)(
+    "接入点报告 Responses 最终载荷的思考等级 $expected",
+    async ({ configured, override, expected }) => {
+      const report = vi.fn();
+      const request = resolve_request(
+        {
+          api_format: "OpenAIResponses",
+          model_id: "gpt-5.5",
+          thinking: { level: configured },
+          request: { extra_body_custom_enable: true, extra_body: override },
+        },
+        report,
+      );
+      const payload = await capture_payload(request);
+      expect(report).toHaveBeenCalledExactlyOnceWith({
+        model_id: payload["model"],
+        thinking_level: expected,
+      });
+    },
+  );
+
+  it("接入点可以从 Anthropic 自动生成的预算识别实际选用的档位", async () => {
+    const report = vi.fn();
+    const request = resolve_request(
+      {
+        api_format: "Anthropic",
+        model_id: "claude-sonnet-4-5",
+        thinking: { level: "LOW" },
+      },
+      report,
+    );
+    const payload = await capture_payload(request);
+    expect(payload["thinking"]).toMatchObject({
+      type: "enabled",
+      budget_tokens: expect.any(Number),
+    });
+    expect(report).toHaveBeenCalledExactlyOnceWith({
+      model_id: "claude-sonnet-4-5",
+      thinking_level: "LOW",
+    });
+  });
+
   it("GPT Responses 的可用等级启用 Pi reasoning 连续性", async () => {
     const request = resolve_request({
       api_format: "OpenAIResponses",
@@ -1123,7 +1176,10 @@ describe("统一多模态请求", () => {
 });
 
 /** 使用统一模型夹具生成可直接交给 Pi adapter 的 OneShot 请求。 */
-function resolve_request(overrides: JsonRecord): ResolvedRequest {
+function resolve_request(
+  overrides: JsonRecord,
+  on_effective_model?: Parameters<typeof resolve_one_shot_pi_request>[4],
+): ResolvedRequest {
   const snapshot = read_model_request_snapshot(create_model(overrides), TEST_REQUEST_IDENTITY);
   return create_pi_request(
     snapshot,
@@ -1132,6 +1188,7 @@ function resolve_request(overrides: JsonRecord): ResolvedRequest {
       { role: "user", content: " こんにちは " },
     ],
     new AbortController().signal,
+    on_effective_model,
   );
 }
 

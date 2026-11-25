@@ -566,9 +566,6 @@ describe("ProjectContentService", () => {
     expect(
       items.slice(1).every((item) => Number(item["id"]) > 20 && item["file_path"] === "a_2.txt"),
     ).toBe(true);
-    expect((await database.get_all_meta(lg_path))["translation_extras"]).toMatchObject({
-      processed_line: 1,
-    });
     await database.close();
   });
 
@@ -1624,7 +1621,7 @@ describe("ProjectContentService", () => {
     }
   });
 
-  it("文件重置从资产重建目标，保留其他文件和累计统计，并拒绝陈旧修订", async () => {
+  it("文件重置从资产重建目标，保留其他文件，并拒绝陈旧修订", async () => {
     const { database, service, lg_path } = await create_service();
     try {
       await database.transaction(lg_path, (writer) => {
@@ -1646,7 +1643,6 @@ describe("ProjectContentService", () => {
             status: "PROCESSED",
           }),
         ]);
-        writer.set_meta(lg_path, "translation_extras", { total_tokens: 100, time: 12 });
       });
       const before = await database.get_all_items(lg_path);
       await expect(
@@ -1670,12 +1666,6 @@ describe("ProjectContentService", () => {
         dst: "",
         name_src: null,
         status: "NONE",
-      });
-      expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-        total_tokens: 100,
-        time: 12,
-        total_line: 2,
-        processed_line: 1,
       });
       expect(ack.changes[0]).toMatchObject({
         updatedSections: ["items"],
@@ -1795,7 +1785,7 @@ describe("ProjectContentService", () => {
         },
       }),
     },
-  ])("全部重置从 $file 的工程资产恢复自带译文并重建进度", async ({ file, file_type, content }) => {
+  ])("全部重置从 $file 的工程资产恢复自带译文", async ({ file, file_type, content }) => {
     const { database, service, lg_path } = await create_service();
     try {
       const source = project_path(file);
@@ -1847,11 +1837,11 @@ describe("ProjectContentService", () => {
       ]);
       expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
         total_line: 2,
-        processed_line: 1,
-        total_tokens: 0,
-        total_input_tokens: 0,
-        total_output_tokens: 0,
-        time: 0,
+        processed_line: 2,
+        total_tokens: 100,
+        total_input_tokens: 60,
+        total_output_tokens: 40,
+        time: 12,
       });
     } finally {
       await database.close();
@@ -2589,7 +2579,7 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it("工作台 reset-file 按重置后的条目刷新工程进度", async () => {
+  it("工作台 reset-file 发布重置后的条目变更", async () => {
     const { publish_project_change } = create_test_project_change_publisher();
     const { database, service, lg_path } = await create_service(publish_project_change);
     await database.transaction(lg_path, (writer) =>
@@ -2611,10 +2601,9 @@ describe("ProjectContentService", () => {
       expected_section_revisions: { files: 0, items: 0 },
     });
 
-    expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-      processed_line: 0,
-      total_line: 1,
-    });
+    expect(await database.get_all_items(lg_path)).toMatchObject([
+      { src: "新", dst: "", status: "NONE" },
+    ]);
     expect(publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "project_reset_files",

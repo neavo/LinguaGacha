@@ -239,7 +239,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   const api_fetch = useProjectFetch();
   const { t } = useI18n();
 
-  const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
+  const { project_snapshot, commit_project_write } = useDesktopState();
   const project_change_signal = useProjectChangeSignal();
   const runtime_snapshot = useProjectRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
@@ -508,7 +508,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
             return await request(plan.requestBody);
           },
         });
-        await refresh_batch_translation();
         await refresh_snapshot();
         return payload;
       } catch (error) {
@@ -518,7 +517,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         set_is_write_running(false);
       }
     },
-    [commit_project_write, refresh_snapshot, refresh_batch_translation],
+    [commit_project_write, refresh_snapshot],
   );
 
   const import_files_flow = useWorkbenchImportFilesFlow({

@@ -10,9 +10,7 @@ import type { RouteId } from "@frontend/app/navigation/types";
 import { is_json_record } from "@domain/json";
 import { read_project_settings } from "@domain/project-settings";
 import { read_batch_task_list_snapshot } from "@shared/batch-task";
-import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
-import { createBatchTranslationSnapshotStore } from "./batch-translation-snapshot-store";
 import { createProjectChangeSignalStore } from "./project-change-signal-store";
 import type {
   ProjectChangeApplyResult,
@@ -46,7 +44,6 @@ function read_quality_rule_counts(value: unknown): QualityRuleCounts {
 /** 一个打开周期的任务镜像、缓存失效和页面状态。 */
 export class ProjectStore {
   readonly batch_task = createBatchTaskSnapshotStore();
-  readonly batch_translation = createBatchTranslationSnapshotStore();
   readonly projectChange = createProjectChangeSignalStore();
   readonly translationExport = createTranslationExportStore();
   readonly qualityStatistics: ReturnType<typeof createQualityRuleStatisticsStore>;
@@ -86,12 +83,11 @@ export class ProjectStore {
     for (const listener of this.route_listeners) listener();
   }
 
-  /** 任务回执可只含公共批次，独立翻译镜像只消费明确携带的快照。 */
-  public update_task(payload: Record<string, unknown>): void {
-    this.batch_task.applySnapshot(read_batch_task_list_snapshot(payload));
-    if ("batch_translation" in payload)
-      this.batch_translation.applySnapshot(normalize_batch_translation_snapshot(payload));
-  }
+  /** 启停响应和 SSE 都通过当前工程的任务镜像写入口。 */
+  public readonly update_task = (payload: Record<string, unknown>): void => {
+    const accepted_run_id = typeof payload["run_id"] === "string" ? payload["run_id"] : undefined;
+    this.batch_task.applySnapshot(read_batch_task_list_snapshot(payload), accepted_run_id);
+  };
 
   /** 各工程独立消化写回，只发布一次失效信号。 */
   public apply_event(event: ProjectChangeEventForState): boolean {

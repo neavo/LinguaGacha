@@ -1,10 +1,9 @@
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import type { ProofreadingProjectWriteRunner } from "./proofreading-page-state-contract";
 import { useCallback, useState } from "react";
 
 import type { ItemManualStatus } from "@domain/item";
-import type { BatchTranslationSnapshot } from "@domain/batch-translation";
-import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 
 import type { TextResolver } from "@shared/i18n";
 import { PROOFREADING_STATUS_LABEL_KEY_BY_CODE } from "@frontend/features/proofreading/proofreading-label-keys";
@@ -19,11 +18,6 @@ import type {
 } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
-type RetranslateTaskAck = {
-  accepted?: boolean;
-  batch_translation?: Partial<BatchTranslationSnapshot> & Record<string, unknown>;
-};
-
 type UseProofreadingBatchActionsOptions = {
   readonly: boolean;
   is_refreshing: boolean;
@@ -31,7 +25,6 @@ type UseProofreadingBatchActionsOptions = {
   dialog_open: boolean;
   list_revisions: ProjectDataSectionRevisions; // 当前校对列表已经消费的项目、质量和校对事实锁
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingCommandItemSnapshot[]>;
-  sync_task_snapshot: (snapshot: BatchTranslationSnapshot) => void;
   run_project_write: ProofreadingProjectWriteRunner;
   set_is_writing: (next_is_writing: boolean) => void;
   resolve_preferred_row_id: (preferred_row_id?: string | null) => string | null;
@@ -65,6 +58,7 @@ export function useProofreadingBatchActions(
   options: UseProofreadingBatchActionsOptions,
 ): UseProofreadingBatchActionsResult {
   const api_fetch = useProjectFetch();
+  const { active_project } = useDesktopState();
   const {
     readonly,
     is_refreshing,
@@ -72,7 +66,6 @@ export function useProofreadingBatchActions(
     dialog_open,
     list_revisions,
     read_items_by_row_ids,
-    sync_task_snapshot,
     run_project_write,
     set_is_writing,
     resolve_preferred_row_id,
@@ -116,11 +109,11 @@ export function useProofreadingBatchActions(
       remember_preferred_row_id(resolve_preferred_row_id(preferred_row_id));
       set_is_writing(true);
       try {
-        const ack = await api_fetch<RetranslateTaskAck>("/api/batch-translation/start", {
+        const ack = await api_fetch<Record<string, unknown>>("/api/batch-translation/start", {
           operation: "retranslate",
           scope: { kind: "items", item_ids },
         });
-        sync_task_snapshot(normalize_batch_translation_snapshot(ack));
+        active_project?.update_task(ack);
         if (dialog_open) {
           close_edit_dialog();
         }
@@ -131,6 +124,7 @@ export function useProofreadingBatchActions(
       }
     },
     [
+      active_project,
       read_items,
       close_edit_dialog,
       dialog_open,
@@ -138,7 +132,6 @@ export function useProofreadingBatchActions(
       remember_preferred_row_id,
       resolve_preferred_row_id,
       set_is_writing,
-      sync_task_snapshot,
       t,
     ],
   );

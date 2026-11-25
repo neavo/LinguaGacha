@@ -39,10 +39,7 @@ import {
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
-import {
-  compute_project_prefilter_items,
-  build_translation_extras_from_items,
-} from "./project-write-state";
+import { compute_project_prefilter_items } from "./project-write-state";
 import { ProjectDataReader, type ProjectDataSnapshot } from "./project-data-reader";
 import {
   ProjectDefaultPresetReader,
@@ -108,7 +105,7 @@ export class ProjectLifecycleService {
     project_path: string,
     snapshot: ProjectDataSnapshot,
   ): ProjectDataSnapshot {
-    const { meta, items } = snapshot;
+    const { items } = snapshot;
     const changes = coordinate_project_duplicate_statuses(
       items,
       snapshot.settings.skip_duplicate_source_text_enable,
@@ -123,12 +120,7 @@ export class ProjectLifecycleService {
       .filter((item) => statuses.has(item.item_id))
       .map((item) => ({ item_id: item.item_id, next: item }));
     writer.patch_item_translation_fields(project_path, writes);
-    const translation_extras = build_translation_extras_from_items({
-      progress: meta["translation_extras"],
-      items: next_items,
-    });
-    writer.set_meta(project_path, "translation_extras", translation_extras);
-    return { ...snapshot, items: next_items, meta: { ...meta, translation_extras } };
+    return { ...snapshot, items: next_items };
   }
 
   /** 先建立文件，再由组合根装配打开周期。 */
@@ -195,7 +187,6 @@ export class ProjectLifecycleService {
         );
         writer.upsert_meta_entries(project_path, {
           ...project_settings,
-          translation_extras: build_translation_extras_from_items({ items: Object.values(items) }),
           "migration.asset_file_type_complete": true,
         });
         // 预过滤条目已分配身份并通过校验，写库只转换持久字段，提交后缓存可复用同一事实。

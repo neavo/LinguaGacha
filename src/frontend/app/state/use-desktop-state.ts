@@ -24,12 +24,6 @@ function useDesktopStateStores() {
   return stores;
 }
 
-/** 只订阅完整任务快照。 */
-export function useBatchTranslationSnapshot() {
-  const store = useDesktopStateStores().batch_translation;
-  return useSyncExternalStore(store.subscribe, store.getSnapshot);
-}
-
 export function useRuntimeSnapshot() {
   const store = useDesktopStateStores().runtime;
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -39,11 +33,6 @@ export function useRuntimeSnapshot() {
 export function useProjectChangeSignal() {
   const store = useProjectChangeSignalSource();
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
-}
-
-/** 返回 task store 的稳定写入口，供命令 ack 与 SSE 同步。 */
-export function useSyncBatchTranslationSnapshot() {
-  return useDesktopStateStores().batch_translation.applySnapshot;
 }
 
 /** 返回稳定的只读变更源，供生命周期消费者同步处理每次发布。 */

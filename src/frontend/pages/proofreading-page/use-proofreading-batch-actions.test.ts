@@ -2,17 +2,22 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { create_empty_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
+import { empty_batch_task_list_snapshot } from "@shared/batch-task";
 import { useProofreadingBatchActions } from "./use-proofreading-batch-actions";
 
+const update_task = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: vi.fn() }));
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useDesktopState: () => ({ active_project: { update_task } }),
+}));
 
 it.each([false, true])("重翻确认提交稳定身份并完成回执或错误处理：失败 %s", async (failed) => {
-  const snapshot = create_empty_batch_translation_snapshot();
+  const payload = { batch_tasks: empty_batch_task_list_snapshot() };
+  update_task.mockClear();
   const error = new Error("请求失败");
   vi.mocked(api_fetch).mockReset();
   if (failed) vi.mocked(api_fetch).mockRejectedValueOnce(error);
-  else vi.mocked(api_fetch).mockResolvedValueOnce({ batch_translation: snapshot });
+  else vi.mocked(api_fetch).mockResolvedValueOnce(payload);
   const options: Parameters<typeof useProofreadingBatchActions>[0] = {
     readonly: false,
     is_refreshing: false,
@@ -27,7 +32,6 @@ it.each([false, true])("重翻确认提交稳定身份并完成回执或错误�
         status: "PROCESSED",
       })),
     ),
-    sync_task_snapshot: vi.fn(),
     run_project_write: vi.fn(async () => true),
     set_is_writing: vi.fn(),
     resolve_preferred_row_id: () => null,
@@ -61,11 +65,11 @@ it.each([false, true])("重翻确认提交稳定身份并完成回执或错误�
     expect(actions.pending_confirmation).toBeNull();
     expect(options.set_is_writing).toHaveBeenLastCalledWith(false);
     if (failed) {
-      expect(options.sync_task_snapshot).not.toHaveBeenCalled();
+      expect(update_task).not.toHaveBeenCalled();
       expect(options.handle_api_error).toHaveBeenCalledWith(error, expect.any(String));
       expect(options.close_edit_dialog).not.toHaveBeenCalled();
     } else {
-      expect(options.sync_task_snapshot).toHaveBeenCalledWith(snapshot);
+      expect(update_task).toHaveBeenCalledWith(payload);
       expect(options.close_edit_dialog).toHaveBeenCalledOnce();
     }
   } finally {

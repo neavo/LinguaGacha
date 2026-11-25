@@ -5,30 +5,24 @@ import {
   summarize_project_state_for_diagnostics,
   summarize_task_snapshot_for_diagnostics,
 } from "./desktop-diagnostics";
-import type { BatchTranslationSnapshot } from "@domain/batch-translation";
+import { create_batch_task_snapshot } from "@domain/batch-task";
+import { empty_batch_task_list_snapshot } from "@shared/batch-task";
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
 
 /**
  * 构造最小 task snapshot，验证诊断摘要不会携带 extras 大对象。
  */
-function create_task_snapshot(): BatchTranslationSnapshot {
+function create_task_snapshot() {
   return {
+    ...empty_batch_task_list_snapshot(),
     revision: 7,
-    status: "running",
-    source: "standalone",
-    request_in_flight_count: 2,
-    request_recovery: null,
-    progress: {
-      total_line: 20,
-      processed_line: 4,
-      total_tokens: 100,
-      total_output_tokens: 40,
-      total_reasoning_tokens: 0,
-      total_input_tokens: 60,
-      time: 12,
-      start_time: 3,
-    },
-    pending_item_ids: [],
+    tasks: [
+      {
+        ...create_batch_task_snapshot("request", "request", "agent"),
+        status: "running" as const,
+        request_in_flight_count: 2,
+      },
+    ],
   };
 }
 
@@ -71,10 +65,6 @@ describe("desktop state diagnostics", () => {
       runRevision: 7,
       status: "running",
       requestInFlightCount: 2,
-      progress: {
-        totalLine: 20,
-        processedLine: 4,
-      },
     });
 
     expect(summarize_project_change_for_diagnostics(create_project_change())).toMatchObject({

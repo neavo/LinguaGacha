@@ -19,7 +19,7 @@ import type { AgentFilesResponse } from "../../shared/agent-reference";
 import type { AgentImageService } from "./agent-image-service";
 import type { AgentFileAttachment } from "../../shared/agent";
 import { prepare_agent_message, type PreparedAgentMessage } from "./agent-message-input";
-import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-state";
+import { BatchTaskCompletionError } from "../batch-task/batch-task-runtime";
 import type { Model } from "../../domain/model";
 import { create_agent_batch_item_translation_tool } from "./tools/batch-item-translation";
 import { type AssistantMessageEvent } from "@earendil-works/pi-ai";
@@ -1238,7 +1238,7 @@ export class AgentService {
           return result;
         } catch (error) {
           if (
-            error instanceof BatchTranslationCompletionError &&
+            error instanceof BatchTaskCompletionError &&
             this.execution === execution &&
             error.result.stop_source === "user"
           )

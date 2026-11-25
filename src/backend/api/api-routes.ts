@@ -351,13 +351,20 @@ export function register_api_routes(context: ApiRouteContext): void {
     project(body).batchTranslation.start(request_data(body)),
   );
   context.postJson("/api/batch-task/stop", async (body) => {
-    if (typeof body["run_id"] !== "string") throw new AppError("request.validation_failed");
-    const accepted = await project(body).batchTasks.request_stop(body["run_id"]);
-    return { accepted, ...(await project(body).batchTranslation.get_snapshot()) };
+    const ids = body["run_ids"];
+    if (
+      !Array.isArray(ids) ||
+      ids.length === 0 ||
+      !ids.every((id): id is string => typeof id === "string" && id !== "")
+    )
+      throw new AppError("request.validation_failed");
+    const tasks = project(body).batchTasks;
+    const accepted = await tasks.request_stop(ids);
+    return { accepted, batch_tasks: tasks.build_snapshot() };
   });
-  context.postJson("/api/batch-task/snapshot", (body) =>
-    project(body).batchTranslation.get_snapshot(),
-  );
+  context.postJson("/api/batch-task/snapshot", (body) => ({
+    batch_tasks: project(body).batchTasks.build_snapshot(),
+  }));
 }
 
 /** 图片响应禁止嗅探和缓存。直接打开 SVG 时隔离活动内容。 */

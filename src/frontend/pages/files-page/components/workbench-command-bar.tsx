@@ -1,6 +1,5 @@
 import { BrushCleaning, FilePlus2, Trash2, FileInput } from "lucide-react";
 import type { JSX } from "react";
-import { build_batch_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
 
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type { BatchTask } from "@frontend/app/session/batch-task/use-batch-task";
@@ -39,16 +38,9 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const { t } = useI18n();
   const model_selection = useModelSelection();
   const { batch_task } = props;
-  const { task_metrics, task_confirm_state, translation_action_blocked } = batch_task;
+  const { metrics, summary, task_confirm_state, translation_action_blocked } = batch_task;
   const reset_submitting =
     task_confirm_state?.kind === "reset-all" && task_confirm_state.submitting;
-  const summary = build_batch_task_summary_display({
-    metrics: task_metrics,
-    kind: batch_task.task_display_snapshot?.kind ?? null,
-    active_task_count: batch_task.active_task_count,
-    t,
-  });
-
   useActionShortcut({
     action: "create",
     enabled: props.can_edit_files,
@@ -138,7 +130,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
           variant="capsule"
           open_tooltip_on_start={true}
           display={summary}
-          completion_percent={task_metrics.completion_percent}
+          completion_percent={metrics.completion_percent}
           on_open={batch_task.open_task_detail_sheet}
         />
       }

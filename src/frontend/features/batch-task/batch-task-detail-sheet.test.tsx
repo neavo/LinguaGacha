@@ -1,152 +1,103 @@
-import { act, type ComponentProps } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BatchTaskEndpoint } from "@domain/batch-task";
+import { batch_task_metrics, empty_batch_task_list_snapshot } from "@shared/batch-task";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { expect, it, vi } from "vitest";
+import { LocaleContext } from "@frontend/app/locale/locale-context";
+import { create_text_resolver } from "@shared/i18n";
+import { BatchTaskDetailSheet } from "./batch-task-detail-sheet";
 
-import { BatchTaskDetailSheet } from "@frontend/features/batch-task/batch-task-detail-sheet";
-import type { BatchTaskDetailDisplay } from "@frontend/features/batch-task/batch-task-display";
-import { TooltipProvider } from "@frontend/shadcn/tooltip";
-
-const running_display: BatchTaskDetailDisplay = {
-  provider: null,
-  waveform_title: "速度趋势",
-  metrics_title: "任务指标",
-  completion_percent_text: "42%",
-  percent_tone: "warning",
-  metric_entries: [
-    { key: "lines", label: "已处理", value_text: "42", unit_text: "行" },
-    { key: "speed", label: "速度", value_text: "12", unit_text: "行/秒" },
-  ],
-  stop_button_label: "停止任务",
-  stop_disabled: false,
-  waveform_history: [1, 3, 2],
-};
-
-describe("BatchTaskDetailSheet", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-
-  /** 挂载真实侧栏并从 DOM 触发停止动作。 */
-  async function render_sheet(
-    props: {
-      display?: BatchTaskDetailDisplay;
-      tasks?: ComponentProps<typeof BatchTaskDetailSheet>["tasks"];
-      on_select_task?: (run_id: string) => void;
-      on_request_stop_confirmation?: () => void;
-    } = {},
-  ): Promise<void> {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <TooltipProvider>
+it("空闲时保留同一侧栏轮廓，运行时显示共享速度并可请求停止", async () => {
+  const root = createRoot(document.createElement("div"));
+  const stop = vi.fn();
+  const t = create_text_resolver("zh-CN");
+  const metrics = batch_task_metrics(empty_batch_task_list_snapshot(), 0);
+  const primary = {
+    id: "provider",
+    name: "共用接入点",
+    model_id: "model",
+    thinking_level: "LOW",
+  } as const;
+  const secondary = { ...primary, thinking_level: "CUSTOM" } as const;
+  const primary_info = "共用接入点 · model · 低";
+  const secondary_info = "共用接入点 · model · 自定义";
+  const render = (endpoints: readonly BatchTaskEndpoint[], active = endpoints.length > 0) =>
+    act(async () =>
+      root.render(
+        <LocaleContext.Provider value={{ locale: "zh-CN", t }}>
           <BatchTaskDetailSheet
-            open={true}
-            display={props.display ?? running_display}
-            tasks={props.tasks ?? []}
-            on_select_task={props.on_select_task ?? vi.fn()}
-            on_close={vi.fn()}
-            on_request_stop_confirmation={props.on_request_stop_confirmation ?? vi.fn()}
+            open
+            summary={{
+              status_text: active ? "正在处理批量任务" : "无任务",
+              speed_text: active ? "77.00 T/s" : null,
+              tone: active ? "success" : "neutral",
+              detail_tooltip_text: "",
+            }}
+            metrics={{
+              ...metrics,
+              kind: active ? "mixed" : null,
+              endpoints,
+              request_in_flight_count: active ? 4 : 0,
+              average_speed: active ? 24 : 0,
+            }}
+            waveform_history={active ? [77] : []}
+            on_close={() => {}}
+            on_request_stop_confirmation={stop}
           />
-        </TooltipProvider>,
-      );
-    });
-  }
-
-  afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
-
-    container?.remove();
-    container = null;
-    root = null;
-  });
-
-  it("点击停止入口后请求确认", async () => {
-    const on_request_stop_confirmation = vi.fn();
-    await render_sheet({ on_request_stop_confirmation });
-
-    const stop_button = [...document.body.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("停止任务"),
+        </LocaleContext.Provider>,
+      ),
     );
-    expect(stop_button).not.toBeUndefined();
-
-    await act(async () => {
-      stop_button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(on_request_stop_confirmation).toHaveBeenCalledTimes(1);
-  });
-
-  it("单任务不渲染切换栏，多任务展示状态与进度并提交所选运行身份", async () => {
-    await render_sheet({
-      tasks: [{ run_id: "only", label: "批量翻译", selected: true, status: "running" }],
-    });
-    expect(document.querySelectorAll("button[aria-pressed]")).toHaveLength(0);
-
-    await act(async () => {
-      root?.unmount();
-    });
-    container?.remove();
-    container = null;
-    root = null;
-
-    const select = vi.fn();
-    await render_sheet({
-      on_select_task: select,
-      tasks: [
-        {
-          run_id: "translate",
-          label: "批量翻译",
-          progress_text: "42.00%",
-          selected: true,
-          status: "running",
-        },
-        {
-          run_id: "request",
-          label: "批量请求",
-          progress_text: "10.00%",
-          selected: false,
-          status: "stopping",
-        },
-      ],
-    });
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>("button[aria-pressed]")];
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]?.getAttribute("aria-pressed")).toBe("true");
-    expect(buttons[0]?.getAttribute("data-status")).toBe("running");
-    expect(buttons[0]?.textContent).toBe("批量翻译42.00%");
-    expect(buttons[1]?.getAttribute("aria-pressed")).toBe("false");
-    expect(buttons[1]?.getAttribute("data-status")).toBe("stopping");
-    await act(async () => buttons[1]?.click());
-    expect(select).toHaveBeenCalledExactlyOnceWith("request");
-  });
-  it("键盘聚焦接入点时可查看完整配置", async () => {
-    const name = "翻译专用接入点的完整配置名称";
-    const model = "provider/translation-model-long-name";
-    await render_sheet({
-      display: {
-        ...running_display,
-        provider: { label: "接入点", name, model, thinking: "高" },
-      },
-    });
-    const first = document.querySelector<HTMLElement>('[data-slot="tooltip-trigger"]')!;
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
-      first.focus();
-    });
-    await act(async () => {
-      await vi.waitFor(() =>
-        expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull(),
+  vi.useFakeTimers();
+  try {
+    await render([]);
+    const sheet = document.querySelector('[role="dialog"]')!;
+    const stop_button = [...sheet.querySelectorAll("button")].find(
+      (button) => button.textContent === "停止",
+    )!;
+    const title = document.getElementById(sheet.getAttribute("aria-labelledby")!);
+    expect(title?.textContent).toBe("无任务");
+    expect(sheet.textContent).toContain("实时速度0.00 T/s");
+    const statistics = () =>
+      Object.fromEntries(
+        [...sheet.querySelectorAll("dt")].map((term) => [
+          term.textContent,
+          [...(term.nextElementSibling?.children ?? [])].map((item) => item.textContent).join(" "),
+        ]),
       );
+    expect(statistics()).toMatchObject({
+      剩余时间: "00:00:00",
+      平均速度: "0.00 T/s",
+      "输入 Token": "0 T",
+      实时任务数: "0 Task",
     });
-    const tooltip = document.querySelector('[role="tooltip"][data-open]');
-    expect(tooltip?.textContent).toContain(name);
-    expect(tooltip?.textContent).toContain(model);
-    expect(tooltip?.textContent).toContain("高");
-  });
+    expect(sheet.querySelector("canvas")).not.toBeNull();
+    expect(stop_button.disabled).toBe(true);
+
+    await render([primary]);
+    const current_endpoint = () => sheet.querySelector("[title]")?.textContent;
+    expect(current_endpoint()).toBe(primary_info);
+    await render([primary, secondary]);
+    expect(title?.textContent).toBe("正在处理批量任务");
+    expect(sheet.textContent).toContain("77.00 T/s");
+    expect(statistics()).toMatchObject({
+      平均速度: "24.00 T/s",
+      实时任务数: "4 Task",
+    });
+    await act(async () => vi.runOnlyPendingTimersAsync());
+    expect(current_endpoint()).toBe(secondary_info);
+    const endpoint_slot = sheet.querySelector<HTMLElement>("[title]")?.parentElement;
+    await act(async () => endpoint_slot?.focus());
+    await act(async () => vi.runOnlyPendingTimersAsync());
+    expect(current_endpoint()).toBe(secondary_info);
+    await act(async () => endpoint_slot?.blur());
+    await act(async () => vi.runOnlyPendingTimersAsync());
+    expect(current_endpoint()).toBe(primary_info);
+    await render([secondary]);
+    expect(current_endpoint()).toBe(secondary_info);
+    await act(async () => stop_button.click());
+    expect(stop).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => root.unmount());
+    vi.useRealTimers();
+  }
 });

@@ -6,7 +6,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BatchTaskSnapshot, BatchTaskSnapshotListener } from "../../domain/batch-task";
+import type {
+  BatchTaskProgress,
+  BatchTaskSnapshot,
+  BatchTaskSnapshotListener,
+} from "../../domain/batch-task";
 import type { CLICommandName, CLICommandOptions, CLICommandResources } from "../cli-parser";
 import { run_cli_job } from "./cli-job-runner";
 import { build_cli_task_input } from "./cli-task-input";
@@ -124,22 +128,21 @@ describe("run_cli_job", () => {
     expect(harness.generate_files_to_directory).not.toHaveBeenCalled();
 
     await harness.emit_snapshot("running", {
-      total_line: 4,
-      processed_line: 2,
-      failed_line: 1,
+      total: 4,
+      succeeded: 2,
+      failed: 1,
     });
     expect(harness.generate_files_to_directory).not.toHaveBeenCalled();
 
     await harness.emit_snapshot("done", {
-      total_line: 4,
-      processed_line: 3,
-      failed_line: 1,
+      total: 4,
+      succeeded: 3,
+      failed: 1,
     });
     await expect(run_promise).resolves.toBeUndefined();
 
     expect(harness.start_task).toHaveBeenCalledWith({
       operation: "translate",
-      mode: "new",
       scope: { kind: "all" },
     });
     expect(harness.create_project_commit).toHaveBeenCalledWith(
@@ -414,7 +417,7 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     unload_project,
     emit_snapshot: async (
       status: BatchTaskSnapshot["status"],
-      progress: Partial<import("../../domain/batch-translation").BatchTranslationRunProgress> = {},
+      progress: Partial<BatchTaskProgress> = {},
     ): Promise<void> => {
       if (!started) {
         throw new Error("任务尚未启动");
@@ -424,8 +427,18 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
         [...task_listeners].map(
           async (listener) =>
             await listener(
-              { revision: 1, project_path: "fixture.lg", tasks: [snapshot] },
-              "translation",
+              {
+                revision: 1,
+                project_path: "fixture.lg",
+                activity: {
+                  id: "fixture",
+                  start_time: 1,
+                  usage: { input_tokens: 0, reasoning_tokens: 0, output_tokens: 0 },
+                },
+                tasks: [snapshot],
+                last_translation: null,
+              },
+              [snapshot],
             ),
         ),
       );
@@ -450,15 +463,15 @@ async function wait_for_task_start(
 /** 构造独立任务的公开进度快照。 */
 function create_task_snapshot(
   status: BatchTaskSnapshot["status"],
-  progress: Partial<import("../../domain/batch-translation").BatchTranslationRunProgress> = {},
+  progress: Partial<BatchTaskProgress> = {},
 ): BatchTaskSnapshot {
   return {
     ...create_batch_task_snapshot("fixture", "translation", "standalone"),
     status,
     progress: {
-      ...empty_batch_task_progress("item", progress.total_line ?? 0),
-      succeeded: progress.processed_line ?? 0,
-      failed: progress.failed_line ?? 0,
+      ...empty_batch_task_progress("item", progress.total ?? 0),
+      succeeded: progress.succeeded ?? 0,
+      failed: progress.failed ?? 0,
     },
   };
 }

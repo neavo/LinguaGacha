@@ -1,3 +1,4 @@
+import type { EffectiveModelRequest } from "../../domain/model";
 import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
 import { read_json_integer } from "../../domain/json";
 
@@ -55,12 +56,20 @@ export class LLMClient implements LLMClientPort {
   }
 
   /** 在单次请求上下文内附加 HTTP 事实，避免依赖 SDK 的错误文本。 */
-  public request(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
-    return with_http_response_info(() => this.execute(body, signal));
+  public request(
+    body: LLMRequestBody,
+    signal: AbortSignal,
+    on_effective_model?: (model: EffectiveModelRequest) => void,
+  ): Promise<LLMRequestResult> {
+    return with_http_response_info(() => this.execute(body, signal, on_effective_model));
   }
 
   /** 解析模型快照，将取消、总时限和 Pi 终态收敛为请求结果。 */
-  private async execute(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
+  private async execute(
+    body: LLMRequestBody,
+    signal: AbortSignal,
+    on_effective_model?: (model: EffectiveModelRequest) => void,
+  ): Promise<LLMRequestResult> {
     const snapshot = read_model_request_snapshot(body.model, {
       user_agent: this.user_agent,
       session_id: body.run_id,
@@ -94,6 +103,7 @@ export class LLMClient implements LLMClientPort {
         body.messages,
         controller.signal,
         capability,
+        on_effective_model,
       );
       let payload_error: AppError | null = null;
       const on_payload = request.options.onPayload;

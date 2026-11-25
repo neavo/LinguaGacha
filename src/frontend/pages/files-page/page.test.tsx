@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
   },
   task: {
     translation_action_blocked: false,
-    request_start_or_continue_translation: vi.fn(async () => {}),
+    request_start_translation: vi.fn(async () => {}),
   },
   navigate_to_agent: vi.fn(),
 }));
@@ -25,7 +25,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({ navigate_to_agent: state.navigate_to_agent }),
 }));
 vi.mock("@frontend/app/session/batch-task/batch-task-session-context", () => ({
-  useBatchTaskSession: () => ({ batch_task: state.task }),
+  useBatchTaskSession: () => state.task,
 }));
 vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
   useTranslationExport: () => ({}),
@@ -88,13 +88,13 @@ describe("FilesPage translation entry", () => {
     state.workbench.entries[0]!.file_type = file_type;
     await render();
     await click("start");
-    expect(state.task.request_start_or_continue_translation).not.toHaveBeenCalled();
+    expect(state.task.request_start_translation).not.toHaveBeenCalled();
 
     await click("app.action.cancel");
-    expect(state.task.request_start_or_continue_translation).not.toHaveBeenCalled();
+    expect(state.task.request_start_translation).not.toHaveBeenCalled();
     await click("start");
     await click("translate_directly");
-    expect(state.task.request_start_or_continue_translation).toHaveBeenCalledOnce();
+    expect(state.task.request_start_translation).toHaveBeenCalledOnce();
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });
   it.each(["GENERIC", "IMAGE"])(
@@ -109,7 +109,7 @@ describe("FilesPage translation entry", () => {
       expect(state.navigate_to_agent).toHaveBeenCalledExactlyOnceWith({
         text: 'agent_page.empty.suggestions.translate_full_text @skill("translation")',
       });
-      expect(state.task.request_start_or_continue_translation).not.toHaveBeenCalled();
+      expect(state.task.request_start_translation).not.toHaveBeenCalled();
       state.workbench.entries.push({ file_type: "TXT", progress: { total_items: 5 } });
       await render();
       await click("start");

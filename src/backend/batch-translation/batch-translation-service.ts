@@ -1,4 +1,5 @@
-import type { BatchTaskListSnapshot } from "../../domain/batch-task";
+import type { BatchTaskListSnapshot, BatchTaskResult } from "../../domain/batch-task";
+import type { BatchTaskRuntime, BatchTaskRunHandle } from "../batch-task/batch-task-runtime";
 import type { LogManager } from "../log/log-manager";
 import { create_text_resolver } from "../../shared/i18n";
 import { resolve_app_locale } from "../../domain/app-language";
@@ -7,7 +8,6 @@ import type {
   BatchTranslationRunContext,
   BatchTranslationRunCommand,
 } from "./core/batch-translation-runner";
-import type { BatchTranslationState, BatchTranslationRunHandle } from "./batch-translation-state";
 import type { RuntimeLease } from "../runtime-operation-gate";
 import type { AppSettingService } from "../app/app-setting-service";
 import { Model } from "../../domain/model";
@@ -16,19 +16,10 @@ import { build_project_execution_settings } from "../../domain/project-settings"
 import type { CacheReadPort } from "../cache/cache-types";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
 import { AppError } from "../../shared/error";
-import {
-  is_json_record,
-  type JsonRecord,
-  type JsonValue,
-  type MutableJsonRecord,
-} from "../../domain/json";
-import {
-  is_batch_translation_start_mode,
-  resolve_batch_translation_start_mode,
-  type BatchTranslationStartCommand,
-  type AgentBatchTranslationRequest,
-  type BatchTranslationResult,
-  type BatchTranslationSnapshot,
+import { is_json_record, type JsonRecord } from "../../domain/json";
+import type {
+  BatchTranslationStartCommand,
+  AgentBatchTranslationRequest,
 } from "../../domain/batch-translation";
 
 /** 工作台、校对、CLI 和 Agent 共用的批量翻译入口。 */
@@ -36,32 +27,33 @@ export class BatchTranslationService {
   /** 组合翻译执行器、运行态与当前工程会话。 */
   public constructor(
     private readonly runner: BatchTranslationRunner,
-    private readonly runtime: BatchTranslationState,
+    private readonly runtime: BatchTaskRuntime,
     private readonly settings: Pick<AppSettingService, "read_setting">,
     private readonly project_settings: CacheReadPort["settings"], // 已提交的工程设置
     private readonly log: Pick<LogManager, "append">,
   ) {}
-  /** 读取当前工程的完整翻译快照。 */
-  public snapshot(tasks?: BatchTaskListSnapshot): Promise<BatchTranslationSnapshot> {
-    return this.runtime.build_snapshot(tasks);
-  }
   /** 收窄公开请求，返回受理结果与当前快照。 */
-  public async start(request: JsonRecord): Promise<MutableJsonRecord> {
-    await this.start_current_project(this.normalize_command(request));
-    return { accepted: true, batch_translation: (await this.snapshot()) as unknown as JsonValue };
+  public async start(request: JsonRecord): Promise<{
+    accepted: true;
+    run_id: string;
+    batch_tasks: BatchTaskListSnapshot;
+  }> {
+    const handle = await this.start_current_project(this.normalize_command(request));
+    return {
+      accepted: true,
+      run_id: handle.run_id,
+      batch_tasks: this.runtime.build_snapshot(),
+    };
   }
   /** 确认工程后预约独立运行，句柄用于等待完整收尾。 */
   public async start_current_project(
     command: BatchTranslationStartCommand,
-  ): Promise<BatchTranslationRunHandle> {
+  ): Promise<BatchTaskRunHandle> {
     // Runner 在异步生命周期内使用独立命令，调用方后续修改不改变已预约范围。
     const run_command: BatchTranslationRunCommand = {
       operation: command.operation,
-      mode: command.operation === "translate" ? command.mode : "continue",
       ...(command.scope.kind === "items" ? { item_ids: [...command.scope.item_ids] } : {}),
-      ...(command.operation === "translate" && command.mode !== "reset"
-        ? { item_statuses: ["NONE"] }
-        : {}),
+      ...(command.operation === "translate" ? { item_statuses: ["NONE"] } : {}),
     };
     const handle = this.runtime.begin_standalone(run_command.operation);
     return this.execute(handle, run_command);
@@ -72,7 +64,7 @@ export class BatchTranslationService {
     signal: AbortSignal,
     model: Model,
     request: AgentBatchTranslationRequest,
-  ): Promise<BatchTranslationResult> {
+  ): Promise<BatchTaskResult> {
     const { item_ids: ids, item_statuses: statuses } = request;
     if (
       Object.keys(request).some((key) => key !== "item_ids" && key !== "item_statuses") ||
@@ -94,19 +86,18 @@ export class BatchTranslationService {
       operation: item_statuses?.every((status) => status === "NONE") ? "translate" : "retranslate", // 重翻提交同时推进校对修订。
       ...(item_ids === undefined ? {} : { item_ids }),
       ...(item_statuses === undefined ? {} : { item_statuses }),
-      mode: resolve_batch_translation_start_mode(await this.runtime.read_progress()),
     };
-    const handle = this.runtime.begin_under_agent(lease, signal, command.operation);
+    const handle = this.runtime.begin_under_agent(lease, signal, "translation", command.operation);
     return await (
       await this.execute(handle, command, model)
     ).completion;
   }
   /** 完成链包含进度和事件收尾，错误诊断之后统一输出结束提示。 */
   private async execute(
-    handle: BatchTranslationRunHandle,
+    handle: BatchTaskRunHandle,
     command: BatchTranslationRunCommand,
     model?: Model,
-  ): Promise<BatchTranslationRunHandle> {
+  ): Promise<BatchTaskRunHandle> {
     let app_language: unknown;
     const completion = handle.completion
       .catch((error: unknown) => {
@@ -150,22 +141,12 @@ export class BatchTranslationService {
     };
   }
 
-  /** 包装 HTTP 与 SSE 共用的快照载荷。 */
-  public async get_snapshot(): Promise<MutableJsonRecord> {
-    const batch_tasks = this.runtime.task_list_snapshot();
-    return {
-      batch_translation: (await this.snapshot(batch_tasks)) as unknown as JsonValue,
-      batch_tasks: batch_tasks as unknown as JsonValue,
-    };
-  }
   /** 公开入口统一校验目的和范围，拒绝无效 ID，去重后保留首次顺序。 */
   private normalize_command(request: JsonRecord): BatchTranslationStartCommand {
     const operation = request["operation"];
     if (operation !== "translate" && operation !== "retranslate")
       throw new AppError("request.validation_failed");
-    const allowed =
-      operation === "translate" ? ["operation", "mode", "scope"] : ["operation", "scope"];
-    if (Object.keys(request).some((key) => !allowed.includes(key)))
+    if (Object.keys(request).some((key) => key !== "operation" && key !== "scope"))
       throw new AppError("request.validation_failed");
     const raw = request["scope"];
     if (!is_json_record(raw)) throw new AppError("request.validation_failed");
@@ -189,8 +170,6 @@ export class BatchTranslationService {
       if (scope.kind !== "items") throw new AppError("request.validation_failed");
       return { operation, scope };
     }
-    const mode = request["mode"] ?? "new";
-    if (!is_batch_translation_start_mode(mode)) throw new AppError("request.validation_failed");
-    return { operation, mode, scope };
+    return { operation, scope };
   }
 }

@@ -1,3 +1,4 @@
+import { build_batch_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => ({ owner: null }),
 }));
@@ -5,7 +6,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { batch_task_metrics } from "@shared/batch-task";
+import { batch_task_metrics, empty_batch_task_list_snapshot } from "@shared/batch-task";
 import { create_batch_task_snapshot, empty_batch_task_progress } from "@domain/batch-task";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
@@ -16,25 +17,21 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 
 /** 构造命令栏公开契约所需的最小完整状态。 */
 function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCommandBar> {
+  const metrics = batch_task_metrics(empty_batch_task_list_snapshot(), 0);
   return {
     can_start_translation: true,
     on_request_start_translation: vi.fn(),
     batch_task: {
-      task_display_snapshot: null,
-      task_metrics: batch_task_metrics(null, 0),
-      active_task_count: 0,
+      metrics,
+      summary: build_batch_task_summary_display(metrics, 0, (key) => key),
       translation_active: false,
-      display_tasks: [],
-      detail_task: null,
-      detail_metrics: batch_task_metrics(null, 0),
-      select_task: vi.fn(),
       task_waveform_history: [],
       task_detail_sheet_open: false,
       task_confirm_state: null,
       translation_action_blocked: false,
       open_task_detail_sheet: () => {},
       close_task_detail_sheet: () => {},
-      request_start_or_continue_translation: vi.fn(async () => {}),
+      request_start_translation: vi.fn(async () => {}),
       request_task_action_confirmation: vi.fn(),
       confirm_task_action: async () => {},
       close_task_action_confirmation: () => {},
@@ -135,8 +132,18 @@ describe("WorkbenchCommandBar", () => {
       status: "running" as const,
       progress: { ...empty_batch_task_progress("request", 10), succeeded: 3 },
     };
-    props.batch_task.task_display_snapshot = snapshot;
-    props.batch_task.task_metrics = batch_task_metrics(snapshot, 0);
+    props.batch_task.metrics = batch_task_metrics(
+      {
+        ...empty_batch_task_list_snapshot(),
+        tasks: [snapshot],
+      },
+      0,
+    );
+    props.batch_task.summary = build_batch_task_summary_display(
+      props.batch_task.metrics,
+      18,
+      (key) => key,
+    );
     await render_command_bar(props);
 
     expect(find_button("app.action.reset").disabled).toBe(false);

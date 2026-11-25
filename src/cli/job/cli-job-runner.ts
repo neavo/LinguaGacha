@@ -183,14 +183,12 @@ async function start_and_wait_for_translation(
   services: CLIProject,
   reporter: CLIJobStatusReporter,
 ): Promise<void> {
-  const unsubscribe = services.batchTasks.subscribe(({ tasks }, kind) => {
-    if (kind !== "translation") return;
-    const task = tasks.find((snapshot) => snapshot.kind === "translation");
+  const unsubscribe = services.batchTasks.subscribe((_snapshot, changes) => {
+    const task = changes.find((run) => run.kind === "translation");
     if (task !== undefined) return reporter.emit_progress(task);
   });
   try {
     const handle = await services.batchTranslation.start_current_project({
-      mode: "new",
       operation: "translate",
       scope: { kind: "all" },
     });

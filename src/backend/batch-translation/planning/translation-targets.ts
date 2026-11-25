@@ -3,13 +3,12 @@ import type { TextTaskItemRecord } from "../../../shared/text/text-processing";
 import { AppError } from "../../../shared/error";
 import { read_task_item_id, read_task_item_status } from "../translation-item";
 
-/** 保留完整语境和工程顺序，只在执行副本中重置已选目标。 */
+/** 保留完整语境和工程顺序，在执行副本中把选中的目标标为待翻译。 */
 export function prepare_translation_targets(
   items: readonly TextTaskItemRecord[],
   item_ids?: readonly number[],
   item_statuses?: readonly ItemStatus[],
-  reset = false,
-): { items: TextTaskItemRecord[]; target_ids: ReadonlySet<number> } {
+): { items: TextTaskItemRecord[]; target_ids: Set<number> } {
   const selected = item_ids === undefined ? null : new Set(item_ids);
   const statuses = item_statuses === undefined ? null : new Set<string>(item_statuses);
   if (selected !== null) {
@@ -26,7 +25,6 @@ export function prepare_translation_targets(
     target_ids.add(id);
     return {
       ...item,
-      ...(reset ? { dst: "" } : {}),
       status: "NONE",
     };
   });

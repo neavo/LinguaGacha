@@ -1,6 +1,5 @@
 import { NodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { SqliteExecutor } from "@earendil-works/pi-durable/storage/sqlite";
-import { ProjectWriteStore } from "../project/project-write-store";
 import { afterEach, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -63,7 +62,7 @@ it("SDK 与工程并发提交，复制 lg 能恢复对话，重置只清除对�
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const transaction = NodeSqliteDatabase.prototype.transaction;
-    // 在真实 SDK SQL 事务内暂停，确保进度写入与回滚实际交错。
+    // 在真实 SDK SQL 事务内暂停，确保工程写入与回滚实际交错。
     vi.spyOn(NodeSqliteDatabase.prototype, "transaction").mockImplementationOnce(function <T>(
       this: NodeSqliteDatabase,
       callback: (tx: SqliteExecutor) => Promise<T>,
@@ -78,11 +77,9 @@ it("SDK 与工程并发提交，复制 lg 能恢复对话，重置只清除对�
     const sdk_write = store.save_upload("-t75szF5", uploaded_file("rolled-back"));
     const rejected = expect(sdk_write).rejects.toThrow("SDK rollback");
     await entered.promise;
-    const writes = new ProjectWriteStore(database, () => undefined, null);
-    const progress = writes.update_task_progress_meta({
-      projectPath: file,
-      meta: { translation_extras: { processed_line: 123 } },
-    });
+    const metadata_write = database.transaction(file, (writer) =>
+      writer.set_meta(file, "test_marker", 123),
+    );
     let read_finished = false;
     const queued_read = database.get_all_meta(file).then((meta) => {
       read_finished = true;
@@ -98,12 +95,10 @@ it("SDK 与工程并发提交，复制 lg 能恢复对话，重置只清除对�
     expect(read_finished).toBe(false);
     release.resolve();
     await rejected;
-    await progress;
+    await metadata_write;
     expect((await preview).file_paths).toEqual([]);
     expect(await queued_read).not.toHaveProperty("rolled_back");
-    expect(await database.get_all_meta(file)).toHaveProperty("translation_extras", {
-      processed_line: 123,
-    });
+    expect(await database.get_all_meta(file)).toHaveProperty("test_marker", 123);
     expect((await store.read())?.data.uploads).toEqual([]);
     await Promise.all(
       Array.from({ length: 10 }, async (_, i) =>

@@ -111,16 +111,10 @@ describe("ProofreadingService", () => {
     }
   });
 
-  it("同值译文无变化，显式状态确认完成并同步翻译统计", async () => {
+  it("同值译文无变化，显式状态确认完成", async () => {
     const { database, service, lg_path, publisher } = await create_service();
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [create_project_item({ dst: "既有译文", status: "NONE" })]),
-    );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_meta(lg_path, "translation_extras", {
-        total_line: 1,
-        processed_line: 0,
-      }),
     );
 
     await service.apply_item_changes({
@@ -131,9 +125,6 @@ describe("ProofreadingService", () => {
       create_project_item({ dst: "既有译文", status: "NONE" }),
     ]);
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
-    expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-      processed_line: 0,
-    });
     await service.apply_item_changes({
       changes: [{ item_id: 1, dst: "既有译文", status: "PROCESSED" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
@@ -142,10 +133,6 @@ describe("ProofreadingService", () => {
     expect(await database.get_all_items(lg_path)).toEqual([
       create_project_item({ dst: "既有译文", status: "PROCESSED" }),
     ]);
-    expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-      total_line: 1,
-      processed_line: 1,
-    });
   });
 
   it("多行不同译文字段原子提交并只发布一次规范行增量", async () => {
@@ -234,10 +221,6 @@ describe("ProofreadingService", () => {
       expect.objectContaining({ id: 1, status: "PROCESSED" }),
       expect.objectContaining({ id: item_count, status: "PROCESSED" }),
     ]);
-    expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-      total_line: item_count,
-      processed_line: item_count,
-    });
     expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
   });
 
@@ -332,9 +315,6 @@ describe("ProofreadingService", () => {
         status: "PROCESSED",
       }),
     ]);
-    expect(await read_meta(database, lg_path, "translation_extras", null)).toMatchObject({
-      processed_line: 1,
-    });
     expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
@@ -537,7 +517,7 @@ describe("ProofreadingService", () => {
     ]);
   });
 
-  it("清空并重置状态会恢复待翻译代表、协调重复项并同步进度", async () => {
+  it("清空并重置状态会恢复待翻译代表并协调重复项", async () => {
     const { database, service, lg_path, publisher } = await create_service();
     await database.transaction(lg_path, (writer) =>
       writer.set_items(lg_path, [
@@ -550,12 +530,6 @@ describe("ProofreadingService", () => {
         create_project_item({ id: 2, status: "EXCLUDED" }),
       ]),
     );
-    await database.transaction(lg_path, (writer) =>
-      writer.set_meta(lg_path, "translation_extras", {
-        total_line: 1,
-        processed_line: 1,
-      }),
-    );
 
     await service.clear_translations({
       item_ids: [1, 2],
@@ -567,10 +541,6 @@ describe("ProofreadingService", () => {
       create_project_item({ id: 1, dst: "", name_dst: null, status: "NONE" }),
       create_project_item({ id: 2, status: "DUPLICATED" }),
     ]);
-    expect(await read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-      total_line: 1,
-      processed_line: 0,
-    });
     expect(publisher.publish_project_change.mock.calls[0]?.[0]).toMatchObject({
       projectPath: lg_path,
       source: "proofreading_apply_item_changes",
@@ -675,7 +645,6 @@ describe("ProofreadingService", () => {
     expect(await database.get_all_items(lg_path)).toEqual([
       create_project_item({ dst: "旧译文", status: "PROCESSED" }),
     ]);
-    expect(await read_meta(database, lg_path, "translation_extras", null)).toBeNull();
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
@@ -718,7 +687,6 @@ describe("ProofreadingService", () => {
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "data.revision_conflict" }));
 
-    expect(await read_meta(database, lg_path, "translation_extras", null)).toBeNull();
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 

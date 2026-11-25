@@ -31,7 +31,6 @@ type RuntimeFixture = {
     };
   };
   project_change_signal: ProjectChangeSignal;
-  refresh_batch_translation: ReturnType<typeof vi.fn>;
   settings_snapshot: Record<string, unknown>;
   refresh_project_snapshot: ReturnType<typeof vi.fn>;
   runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
@@ -159,7 +158,6 @@ function create_runtime_fixture(): RuntimeFixture {
       },
     },
     project_change_signal: create_project_change_signal(0, { updatedSections: [] }),
-    refresh_batch_translation: vi.fn(async () => {}),
     settings_snapshot: {},
     refresh_project_snapshot: vi.fn(),
     runtime_snapshot: { revision: 0, owner: null },

@@ -5,7 +5,7 @@ import type { ProjectDatabaseAccess } from "../../database/database-operations";
 import { MarkdownV2BlockMigration } from "./markdown-v2-block-migration";
 
 describe("MarkdownV2BlockMigration", () => {
-  it("把 V1 逐行事实迁移为 V2 块并重建派生状态", () => {
+  it("把 V1 逐行事实迁移为 V2 块并保留其它工程数据", () => {
     const data_uri = "data:image/png;base64,AAAA";
     const fixture = create_database(
       [
@@ -81,8 +81,7 @@ describe("MarkdownV2BlockMigration", () => {
     expect(fixture.meta()["translation_extras"]).toMatchObject({
       total_tokens: 42,
       time: 7,
-      processed_line: 2,
-      total_line: 4,
+      processed_line: 99,
     });
 
     expect(fixture.bumped_sections).toEqual([["files", "items"]]);

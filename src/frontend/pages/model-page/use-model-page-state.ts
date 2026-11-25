@@ -22,6 +22,7 @@ import type {
 } from "@frontend/pages/model-page/types";
 import { normalize_model_agent_config } from "@domain/model-agent";
 import {
+  DEFAULT_MODEL_THRESHOLD_CONFIG,
   normalize_model_speed_level,
   MODEL_TYPES,
   Model,
@@ -90,13 +91,6 @@ const MODEL_CATEGORY_META = {
     accent_color: "var(--model-page-accent-anthropic)",
   },
 } as const satisfies Record<ModelType, { description_key: LocaleKey; accent_color: string }>;
-
-const DEFAULT_THRESHOLD_SNAPSHOT: ModelThresholdSnapshot = {
-  input_token_limit: 512,
-  output_token_limit: 4096,
-  rpm_limit: 0,
-  concurrency_limit: 0,
-};
 
 const DEFAULT_GENERATION_SNAPSHOT: ModelGenerationSnapshot = {
   temperature: 0.95,
@@ -175,16 +169,16 @@ function normalize_threshold_snapshot(candidate: unknown): ModelThresholdSnapsho
   return {
     input_token_limit: read_number(
       source.input_token_limit,
-      DEFAULT_THRESHOLD_SNAPSHOT.input_token_limit,
+      DEFAULT_MODEL_THRESHOLD_CONFIG.input_token_limit,
     ),
     output_token_limit: read_number(
       source.output_token_limit,
-      DEFAULT_THRESHOLD_SNAPSHOT.output_token_limit,
+      DEFAULT_MODEL_THRESHOLD_CONFIG.output_token_limit,
     ),
-    rpm_limit: read_number(source.rpm_limit, DEFAULT_THRESHOLD_SNAPSHOT.rpm_limit),
+    rpm_limit: read_number(source.rpm_limit, DEFAULT_MODEL_THRESHOLD_CONFIG.rpm_limit),
     concurrency_limit: read_number(
       source.concurrency_limit,
-      DEFAULT_THRESHOLD_SNAPSHOT.concurrency_limit,
+      DEFAULT_MODEL_THRESHOLD_CONFIG.concurrency_limit,
     ),
   };
 }

@@ -4,7 +4,7 @@ import type { MutableJsonRecord } from "../../../domain/json";
 import { TranslationPlanner } from "./translation-planner";
 
 describe("TranslationPlanner", () => {
-  it("翻译规划按文本 cache key 去重，并在下一次规划复用进程内 token 指标", async () => {
+  it("同一原文只分词一次，下一次规划继续复用计数", async () => {
     const count_items = vi.fn(async (items: readonly string[]) => items.map(() => 1));
     const planner = create_planner(count_items);
     const items = [
@@ -32,25 +32,24 @@ describe("TranslationPlanner", () => {
     expect(count_items.mock.calls[0]?.[0]).toHaveLength(1);
   });
 
-  it("翻译切块在 token 阈值处拆分，并为后续块保留同文件句末前文", async () => {
-    const planner = create_planner(async (items) => items.map(() => 12));
+  it("按默认 Token 阈值切块，同文件无句末标点的条目仍可作为前后文", async () => {
+    const planner = create_planner(async (items) => items.map(() => 300));
     const items = [
-      create_item({ id: 1, src: "前一句。", file_path: "chapter.txt" }),
-      create_item({ id: 2, src: "第二句。", file_path: "chapter.txt" }),
+      create_item({ id: 1, src: "继续游戏", file_path: "chapter.txt" }),
+      create_item({ id: 2, src: "读取存档", file_path: "chapter.txt" }),
+      create_item({ id: 3, src: "退出游戏", file_path: "chapter.txt" }),
     ];
 
     const contexts = await planner.build_translation_plan(
       items,
       { preceding_lines_threshold: 2, following_lines_threshold: 2 },
-      { threshold: { input_token_limit: 6 } },
+      {},
       new AbortController().signal,
     );
 
-    expect(contexts.map((context) => context.items.map((item) => item["id"]))).toEqual([[1], [2]]);
-    expect(contexts[0]?.precedings).toEqual([]);
-    expect(contexts[0]?.followings.map((item) => item.id)).toEqual([2]);
-    expect(contexts[1]?.followings).toEqual([]);
-    expect(contexts[1]?.precedings.map((item) => item["id"])).toEqual([1]);
+    expect(contexts.map((context) => context.items.map((item) => item.id))).toEqual([[1, 2], [3]]);
+    expect(contexts[0]?.followings.map((item) => item.id)).toEqual([3]);
+    expect(contexts[1]?.precedings.map((item) => item.id)).toEqual([1, 2]);
   });
 
   it("指定目标保留范围外前文，前文不进入实际翻译集合", async () => {
@@ -183,7 +182,6 @@ describe("TranslationPlanner", () => {
   describe.each(["precedings", "followings"] as const)("%s 边界", (direction) => {
     it.each([
       { name: "空文本", barrier: { src: " " }, expected: [2] },
-      { name: "非句末", barrier: { src: "未完" }, expected: [2] },
       { name: "异文件", barrier: { file_path: "other.txt" }, expected: [2] },
       {
         name: "跳过异文件",

@@ -1,4 +1,4 @@
-import { Boxes, Brain, SlidersHorizontal, ToolCase } from "lucide-react";
+import { Boxes, SlidersHorizontal, Sparkles, ToolCase } from "lucide-react";
 import type { NavigationGroup, RouteId } from "./types";
 
 export const DEFAULT_ROUTE_ID: RouteId = "agent";
@@ -26,7 +26,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {
     id: "tools",
     items: [
-      { id: "skills", icon: Brain, title_key: "app.workspace.skills" },
+      { id: "skills", icon: Sparkles, title_key: "app.workspace.skills" },
       { id: "toolbox", icon: ToolCase, title_key: "toolbox_page.title" },
     ],
   },

@@ -8,35 +8,24 @@ import type {
   WorkUnitExecutor,
   WorkUnitExecutionResult,
 } from "../protocol/work-unit";
-import type { BatchTranslationState } from "../batch-translation-state";
+import type { BatchTaskRuntime, BatchTaskRunHandle } from "../../batch-task/batch-task-runtime";
+import { empty_batch_task_progress, type BatchTaskProgress } from "../../../domain/batch-task";
+import type { BatchTranslationOperation } from "../../../domain/batch-translation";
 import type { BatchTranslationProjectStore } from "../batch-translation-project-store";
 import type { TranslationPlanner } from "../planning/translation-planner";
-import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-processing";
+import type { TextQualitySnapshot } from "../../../shared/text/text-processing";
 import { AppError } from "../../../shared/error";
 import { prepare_translation_targets } from "../planning/translation-targets";
 
-import type { BatchTranslationRunHandle } from "../batch-translation-state";
-import type {
-  BatchTranslationOperation,
-  BatchTranslationStartMode,
-  BatchTranslationResult,
-} from "../../../domain/batch-translation";
 import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
-import type {
-  BatchTranslationProgress,
-  BatchTranslationRunProgress,
-} from "../../../domain/batch-translation";
 import type { TranslationCommitEntry } from "./translation-pipeline";
 import type { TranslationContext } from "../planning/translation-plan-types";
 import { plan_translation_retry } from "../planning/translation-retry";
-import { resolve_request_limits } from "../../batch-task/request-rate";
 import type { BatchRequestPool, RequestPoolSession } from "../../batch-task/batch-request-pool";
 import { TranslationPipeline } from "./translation-pipeline";
-import { TranslationProgressAccumulator } from "./progress-accumulator";
 import { log_batch_task_start, log_batch_request_failure } from "../../batch-task/batch-task-log";
 import { create_text_resolver, type TextResolver } from "../../../shared/i18n";
 import { resolve_app_locale } from "../../../domain/app-language";
-import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 
 import { read_task_item_status, read_task_item_id } from "../translation-item";
 import type { ItemStatus } from "../../../domain/item";
@@ -44,7 +33,6 @@ import type { ItemStatus } from "../../../domain/item";
 /** 入口已解析状态条件；执行目的仅控制提交副作用。 */
 export type BatchTranslationRunCommand = Readonly<{
   operation: BatchTranslationOperation;
-  mode: BatchTranslationStartMode;
   item_ids?: readonly number[];
   item_statuses?: readonly ItemStatus[];
 }>;
@@ -64,21 +52,11 @@ export interface BatchTranslationRunnerOptions {
   builtinRoot: string; // 用于任务启动日志读取提示词模板，保持宿主与 worker 内置资产根一致
   taskStore: Pick<
     BatchTranslationProjectStore,
-    | "build_quality_snapshot"
-    | "commit_translation_batch"
-    | "get_translation_items"
-    | "update_translation_progress"
+    "build_quality_snapshot" | "commit_translation_batch" | "get_translation_items"
   >; // 任务编排器只依赖项目任务事实的公开能力
   taskRuntime: Pick<
-    BatchTranslationState,
-    | "update_request_state"
-    | "is_current"
-    | "publish_targets"
-    | "publish_progress"
-    | "read_run_progress"
-    | "publish_status"
-    | "publish_config"
-    | "read_progress"
+    BatchTaskRuntime,
+    "update_request_state" | "update_endpoint" | "publish_progress" | "publish_running"
   >; // 任务锁、取消、快照和请求压力的最小能力集合
   llmClient: LLMClientPort; // 共享请求池使用的单次网络请求入口。
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
@@ -118,39 +96,28 @@ export class BatchTranslationRunner {
    * 翻译主流程：冻结筛选目标后共享执行链，执行目的决定提交副作用。
    */
   public async run(
-    handle: BatchTranslationRunHandle,
+    handle: BatchTaskRunHandle,
     command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext,
-  ): Promise<BatchTranslationResult> {
-    let progress = await this.task_runtime.read_progress(); // 工程累计事实，由项目写入口维护。
-    const errors: unknown[] = []; // 按发生顺序收集，首项作为聚合异常的主因。
+  ): Promise<"done" | "stopped"> {
     const retranslate = command.operation === "retranslate";
-    const mode = command.mode;
     try {
       const auth_session = run_context.model.auth_type === "oauth" ? this.auth?.bind() : undefined;
       if (run_context.model.auth_type === "oauth" && auth_session === undefined)
         throw new Error("ChatGPT authentication is not configured");
-      await this.task_runtime.publish_status(handle, "running");
-      await this.task_runtime.publish_config(handle, {
-        model_config_id: run_context.model.id,
-        ...resolve_request_limits(run_context.model),
-        model_name: run_context.model.name,
-        model_id: run_context.model.model_id,
-        thinking_level: run_context.model.thinking.level,
-      });
+      await this.task_runtime.publish_running(handle);
       const t = create_text_resolver(resolve_app_locale(run_context.config_snapshot.app_language));
       const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start(run_context, quality_snapshot, t);
       const items = this.task_store.get_translation_items();
-      const prepared = prepare_translation_targets(
-        items,
-        command.item_ids,
-        command.item_statuses,
-        mode === "reset",
+      const prepared = prepare_translation_targets(items, command.item_ids, command.item_statuses);
+      let run_progress = empty_batch_task_progress("item", prepared.target_ids.size);
+      const pending_ids = retranslate ? prepared.target_ids : undefined;
+      await this.task_runtime.publish_progress(
+        handle,
+        run_progress,
+        pending_ids === undefined ? undefined : [...pending_ids],
       );
-      progress = this.build_translation_progress(mode, items, progress);
-      await this.update_translation_progress_if_current(handle, progress);
-      let run_progress = await this.task_runtime.publish_targets(handle, prepared.target_ids);
       const contexts = await this.task_planner.build_translation_plan(
         prepared.items,
         run_context.config_snapshot,
@@ -169,6 +136,12 @@ export class BatchTranslationRunner {
               model: { ...run_context.model, api_key: key },
             },
             signal,
+            (model) =>
+              this.task_runtime.update_endpoint(handle, {
+                id: run_context.model.id,
+                name: run_context.model.name || model.model_id,
+                ...model,
+              }),
           ),
         on_state: (state) => this.task_runtime.update_request_state(handle, state),
         on_failure: (key_index, error) =>
@@ -191,7 +164,7 @@ export class BatchTranslationRunner {
             handle,
             entries,
             run_progress,
-            retranslate,
+            pending_ids,
           );
         },
       });
@@ -201,46 +174,16 @@ export class BatchTranslationRunner {
         session.close();
       }
     } catch (error) {
-      if (!handle.signal.aborted) {
-        // 服务在完整收尾后统一记录异常。
-        errors.push(error);
-      }
-    } finally {
-      try {
-        // 提交后事件失败也可能已写入数据库，最终统计读取真实已提交事实。
-        progress = TranslationProgressAccumulator.with_elapsed(
-          await this.task_runtime.read_progress(),
-        );
-        await this.update_translation_progress_if_current(handle, progress);
-        const run_progress = this.task_runtime.read_run_progress();
-        // 目标发布前没有本次统计，准备失败不能生成虚假的零目标。
-        if (run_progress !== undefined)
-          await this.task_runtime.publish_progress(
-            handle,
-            [],
-            TranslationProgressAccumulator.with_elapsed(run_progress),
-          );
-      } catch (error) {
-        errors.push(error);
-      }
+      if (!handle.signal.aborted) throw error;
     }
-    if (errors.length > 0)
-      throw errors.length === 1
-        ? errors[0]
-        : new AggregateError(errors, "Batch translation failed.", { cause: errors[0] });
-    const run_progress = this.task_runtime.read_run_progress();
-    return {
-      status: handle.signal.aborted ? "stopped" : "done",
-      progress: { ...progress },
-      ...(run_progress === undefined ? {} : { run_progress }),
-    };
+    return handle.signal.aborted ? "stopped" : "done";
   }
 
   /**
    * 执行翻译 chunk，并把失败条目转换成高优重试上下文
    */
   private async execute_translation_context(
-    handle: BatchTranslationRunHandle,
+    handle: BatchTaskRunHandle,
     context: TranslationContext,
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
@@ -300,50 +243,46 @@ export class BatchTranslationRunner {
     };
   }
 
-  /**
-   * 提交翻译批次并推进持久进度；迟到 run 不允许写入
-   */
+  /** 提交条目后发布本轮进度，用量和耗尽尝试无需写库。 */
   private async commit_translation_entries(
-    handle: BatchTranslationRunHandle,
+    handle: BatchTaskRunHandle,
     entries: TranslationCommitEntry[],
-    run_progress: BatchTranslationRunProgress,
-    affects_proofreading: boolean,
-  ): Promise<BatchTranslationRunProgress> {
-    if (!this.task_runtime.is_current(handle.run_id) || entries.length === 0) {
-      return run_progress;
-    }
+    progress: BatchTaskProgress,
+    pending_ids: Set<number> | undefined,
+  ): Promise<BatchTaskProgress> {
     const items = entries.flatMap((entry) => entry.items);
     const exhausted_item_ids = entries.flatMap((entry) => entry.exhausted_item_ids);
-    const settled_ids = [...items.map(read_task_item_id), ...exhausted_item_ids];
-    let next_progress = await this.task_runtime.read_progress(); // 每次提交从权威累计事实继续。
-    let next_run: BatchTranslationRunProgress = {
-      ...run_progress,
-      processed_line: run_progress.processed_line + items.length,
-      failed_line: run_progress.failed_line + exhausted_item_ids.length,
+    const next = {
+      ...progress,
+      succeeded: progress.succeeded + items.length,
+      failed: progress.failed + exhausted_item_ids.length,
+      time: Math.max(0, Date.now() / 1000 - progress.start_time),
+      usage_complete: false,
     };
     for (const entry of entries) {
-      next_run = TranslationProgressAccumulator.add_tokens(
-        next_run,
-        entry.input_tokens,
-        entry.reasoning_tokens,
-        entry.output_tokens,
-      );
-      next_progress = TranslationProgressAccumulator.add_tokens(
-        next_progress,
-        entry.input_tokens,
-        entry.reasoning_tokens,
-        entry.output_tokens,
-      );
+      next.input_tokens += Math.trunc(entry.input_tokens);
+      next.reasoning_tokens += Math.trunc(entry.reasoning_tokens);
+      next.output_tokens += Math.trunc(entry.output_tokens);
     }
-    next_progress = TranslationProgressAccumulator.with_elapsed(next_progress);
-    next_run = TranslationProgressAccumulator.with_elapsed(next_run);
+    const publish = async () => {
+      if (pending_ids !== undefined) {
+        for (const item of items) pending_ids.delete(read_task_item_id(item));
+        for (const item_id of exhausted_item_ids) pending_ids.delete(item_id);
+      }
+      await this.task_runtime.publish_progress(
+        handle,
+        next,
+        pending_ids === undefined ? undefined : [...pending_ids],
+      );
+    };
     try {
-      await this.task_store.commit_translation_batch(items, next_progress, affects_proofreading);
+      if (items.length > 0)
+        await this.task_store.commit_translation_batch(items, pending_ids !== undefined);
     } catch (error) {
-      // 事务已经提交但事件同步失败时，本轮结果仍然成立；保留原始诊断。
+      // 事务可能已提交，仍发布真实的条目进度并保留原始同步错误。
       if (error instanceof AppError && error.code === "data.committed_sync_failed") {
         try {
-          await this.task_runtime.publish_progress(handle, settled_ids, next_run);
+          await publish();
         } catch (publish_error) {
           throw new AggregateError(
             [error, publish_error],
@@ -354,48 +293,8 @@ export class BatchTranslationRunner {
       }
       throw error;
     }
-    await this.task_runtime.publish_progress(handle, settled_ids, next_run);
-    return next_run;
-  }
-
-  /**
-   * 根据任务模式和当前 item 状态创建翻译进度初始值
-   */
-  private build_translation_progress(
-    mode: string,
-    items: TextTaskItemRecord[],
-    previous_progress: BatchTranslationProgress,
-  ): BatchTranslationProgress {
-    const total_line = items.filter(
-      (item) => !is_task_skipped_item_status(read_task_item_status(item)),
-    ).length;
-    const processed_line = items.filter(
-      (item) => read_task_item_status(item) === "PROCESSED",
-    ).length;
-    const previous =
-      mode === "continue" ? previous_progress : TranslationProgressAccumulator.empty();
-    return {
-      ...previous,
-      total_line,
-      processed_line,
-      start_time:
-        mode === "continue" && previous.time > 0
-          ? Date.now() / 1000 - previous.time
-          : Date.now() / 1000,
-    };
-  }
-
-  /**
-   * 翻译结束时只持久化进度 extras，不额外触发 item patch
-   */
-  private async update_translation_progress_if_current(
-    handle: BatchTranslationRunHandle,
-    progress: BatchTranslationProgress,
-  ): Promise<void> {
-    if (!this.task_runtime.is_current(handle.run_id)) {
-      return;
-    }
-    await this.task_store.update_translation_progress(progress);
+    await publish();
+    return next;
   }
 
   /**

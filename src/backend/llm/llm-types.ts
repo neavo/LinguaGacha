@@ -1,3 +1,4 @@
+import type { EffectiveModelRequest } from "../../domain/model";
 import type { JsonValue } from "../../domain/json";
 import type { LogError } from "../../shared/error";
 
@@ -59,5 +60,9 @@ export interface LLMClientPort {
   /**
    * 发送一次 LLM 请求并返回原始请求事实。
    */
-  request(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult>;
+  request(
+    body: LLMRequestBody,
+    signal: AbortSignal,
+    on_effective_model?: (model: EffectiveModelRequest) => void,
+  ): Promise<LLMRequestResult>;
 }

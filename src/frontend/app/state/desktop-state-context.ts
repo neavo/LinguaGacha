@@ -1,7 +1,5 @@
 import type { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
 import { createContext } from "react";
-import type { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
-import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import type { createRuntimeActivityStore } from "@frontend/app/state/runtime-activity-store";
 import type { ProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import type { RecentProjectSetting, SettingSnapshot } from "@domain/setting";
@@ -44,7 +42,6 @@ export type DesktopStateContextValue = {
   commit_project_write: ProjectWriteCommitter;
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
   refresh_settings: () => Promise<SettingsSnapshot>;
-  refresh_batch_translation: () => Promise<BatchTranslationSnapshot>;
   refresh_runtime: () => Promise<RuntimeActivitySnapshot>;
 };
 
@@ -58,7 +55,6 @@ export type SettingsSnapshotPayload = {
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
 export type DesktopStateStores = {
   batch_task: ReturnType<typeof createBatchTaskSnapshotStore>;
-  batch_translation: ReturnType<typeof createBatchTranslationSnapshotStore>;
   runtime: ReturnType<typeof createRuntimeActivityStore>;
   projectChange: ProjectChangeSignalSource;
 };

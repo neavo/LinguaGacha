@@ -1,4 +1,3 @@
-import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
@@ -46,7 +45,6 @@ it("恢复提示更新倒计时和次数，恢复与停止解除通知", async (
         <DesktopStateStoresContext.Provider
           value={{
             batch_task: store,
-            batch_translation: createBatchTranslationSnapshotStore(),
             runtime: createRuntimeActivityStore(),
             projectChange: createProjectChangeSignalStore(),
           }}

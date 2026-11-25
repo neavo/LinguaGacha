@@ -1,3 +1,6 @@
+import type { EffectiveModelRequest } from "./model";
+import type { BatchTranslationOperation } from "./batch-translation";
+
 /** 全部密钥不可用且没有普通请求在途时的恢复阶段；阶段由调度器决定，前端时钟只更新秒数。 */
 export type BatchTaskRequestRecovery =
   | Readonly<{
@@ -12,52 +15,67 @@ export type BatchTaskRequestState = Readonly<{
   request_recovery: BatchTaskRequestRecovery | null;
 }>;
 
-export const BATCH_TASK_STATUSES = [
-  "idle",
-  "requested",
-  "running",
-  "stopping",
-  "stopped",
-  "done",
-  "error",
-] as const;
-export type BatchTaskStatus = (typeof BATCH_TASK_STATUSES)[number];
+export type BatchTaskStatus = "requested" | "running" | "stopping" | "stopped" | "done" | "error";
 export type BatchTaskStopSource = "user" | "parent" | "shutdown";
 export type BatchTaskKind = "translation" | "request";
-export type BatchTaskConfig = Readonly<{
-  model_config_id: string;
-  model_name: string;
-  model_id: string;
-  thinking_level: import("./model").ModelThinkingLevel | null;
-  concurrency_limit: number;
-  rpm_limit: number;
-}>;
-export type BatchTaskProgress = Readonly<{
-  unit: "item" | "request";
-  total: number;
-  succeeded: number;
-  failed: number;
+export const EMPTY_BATCH_TASK_USAGE = Object.freeze({
+  input_tokens: 0,
+  reasoning_tokens: 0,
+  output_tokens: 0,
+});
+
+export type BatchTaskUsage = Readonly<Record<keyof typeof EMPTY_BATCH_TASK_USAGE, number>>;
+/** 速度统计只使用模型生成的 Token。 */
+export function generated_batch_task_tokens(usage: BatchTaskUsage): number {
+  return usage.reasoning_tokens + usage.output_tokens;
+}
+
+export type BatchTaskEndpoint = EffectiveModelRequest & Readonly<{ id: string; name: string }>;
+
+/** 配置、模型和思考等级共同区分侧栏接入点。 */
+export function batch_task_endpoint_key({
+  id,
+  model_id,
+  thinking_level,
+}: BatchTaskEndpoint): string {
+  return JSON.stringify([id, model_id, thinking_level]);
+}
+export type BatchTaskActivity = Readonly<{
+  id: string;
   start_time: number;
-  time: number;
-  input_tokens: number;
-  reasoning_tokens: number;
-  output_tokens: number;
-  usage_complete: boolean;
+  usage: BatchTaskUsage;
 }>;
+
+export type BatchTaskProgress = BatchTaskUsage &
+  Readonly<{
+    unit: "item" | "request";
+    total: number;
+    succeeded: number;
+    failed: number;
+    start_time: number;
+    time: number;
+    usage_complete: boolean;
+  }>;
 export type BatchTaskSnapshot = BatchTaskRequestState &
   Readonly<{
     run_id: string;
     kind: BatchTaskKind;
     source: "standalone" | "agent";
-    status: Exclude<BatchTaskStatus, "idle">;
+    status: BatchTaskStatus;
     stop_source: BatchTaskStopSource | null;
-    config: BatchTaskConfig | null;
+    endpoint?: BatchTaskEndpoint;
+    translation?: Readonly<{
+      operation: BatchTranslationOperation;
+      pending_item_ids: readonly number[];
+    }>;
     progress: BatchTaskProgress | null;
   }>;
 export type BatchTaskListSnapshot = Readonly<{
   revision: number;
   project_path: string;
+  activity: BatchTaskActivity | null;
   tasks: readonly BatchTaskSnapshot[];
+  last_translation: BatchTranslationCompletion | null;
 }>;
 export type BatchTaskResult = Readonly<{
   run_id: string;
@@ -65,12 +83,19 @@ export type BatchTaskResult = Readonly<{
   stop_source?: BatchTaskStopSource;
   progress: BatchTaskProgress | null;
 }>;
+export type BatchTranslationCompletion = Readonly<{
+  run_id: string;
+  operation: BatchTranslationOperation;
+  status: BatchTaskResult["status"];
+  failed: number;
+}>;
+
 export type BatchTaskSnapshotListener = (
   snapshot: BatchTaskListSnapshot,
-  kind: BatchTaskKind,
+  changes: readonly BatchTaskSnapshot[],
 ) => void | Promise<void>;
 
-/** 批次在受理时只有运行身份与来源，配置和计数由执行者发布。 */
+/** 批次在受理时记录运行身份与来源，目标和计数由执行者发布。 */
 export function create_batch_task_snapshot(
   run_id: string,
   kind: BatchTaskKind,
@@ -82,7 +107,6 @@ export function create_batch_task_snapshot(
     source,
     status: "requested",
     stop_source: null,
-    config: null,
     progress: null,
     request_in_flight_count: 0,
     request_recovery: null,
@@ -101,9 +125,7 @@ export function empty_batch_task_progress(
     failed: 0,
     start_time: Date.now() / 1000,
     time: 0,
-    input_tokens: 0,
-    reasoning_tokens: 0,
-    output_tokens: 0,
+    ...EMPTY_BATCH_TASK_USAGE,
     usage_complete: true,
   };
 }

@@ -1,4 +1,4 @@
-import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+import type { BatchTaskListSnapshot } from "@domain/batch-task";
 
 import {
   normalize_section_array,
@@ -35,29 +35,20 @@ export function summarize_project_state_for_diagnostics(
   };
 }
 
-/**
- * task 诊断只取状态和进度数字，避免把页面展示 extras 写入异常日志。
- */
-export function summarize_task_snapshot_for_diagnostics(
-  snapshot: BatchTranslationSnapshot,
-): LogErrorContext {
+/** 诊断只读取活跃状态与在途请求数。 */
+export function summarize_task_snapshot_for_diagnostics({
+  tasks,
+  revision,
+}: BatchTaskListSnapshot): LogErrorContext {
   return {
-    runRevision: snapshot.revision,
-    status: snapshot.status,
-    requestInFlightCount: snapshot.request_in_flight_count,
-    ...(snapshot.run_progress === undefined
-      ? {}
-      : {
-          runProgress: {
-            totalLine: snapshot.run_progress.total_line,
-            processedLine: snapshot.run_progress.processed_line,
-            failedLine: snapshot.run_progress.failed_line,
-          },
-        }),
-    progress: {
-      totalLine: snapshot.progress.total_line,
-      processedLine: snapshot.progress.processed_line,
-    },
+    runRevision: revision,
+    status:
+      tasks.length === 0
+        ? "idle"
+        : tasks.every((task) => task.status === "stopping")
+          ? "stopping"
+          : "running",
+    requestInFlightCount: tasks.reduce((count, task) => count + task.request_in_flight_count, 0),
   };
 }
 

@@ -30,8 +30,7 @@ import {
 import {
   useDesktopState,
   useProjectChangeSignal,
-  useSyncBatchTranslationSnapshot,
-  useBatchTranslationSnapshot,
+  useBatchTaskSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 
@@ -97,11 +96,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
 
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
-  const { project_snapshot, commit_project_write, refresh_batch_translation } = useDesktopState();
+  const { project_snapshot, commit_project_write } = useDesktopState();
   const project_languages = project_snapshot.settings ?? DEFAULT_PROJECT_LANGUAGE_SETTINGS;
-  const task_snapshot = useBatchTranslationSnapshot();
+  const { tasks } = useBatchTaskSnapshot();
+  const pending_item_ids = tasks.find((task) => task.translation?.operation === "retranslate")
+    ?.translation?.pending_item_ids;
   const runtime_snapshot = useProjectRuntimeSnapshot();
-  const sync_task_snapshot = useSyncBatchTranslationSnapshot();
   const project_change_signal = useProjectChangeSignal();
   const table_ui_state = useProjectSessionTableUiState<
     ProofreadingViewFilterState,
@@ -241,11 +241,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [visible_items]);
   const readonly = is_runtime_busy(runtime_snapshot);
   const retranslating_row_ids = useMemo(
-    () =>
-      task_snapshot.operation === "retranslate"
-        ? task_snapshot.pending_item_ids.map(build_proofreading_row_id)
-        : [],
-    [task_snapshot.operation, task_snapshot.pending_item_ids],
+    () => pending_item_ids?.map(build_proofreading_row_id) ?? [],
+    [pending_item_ids],
   );
   const invalid_regex_message =
     list_view.invalid_regex_message === null
@@ -399,11 +396,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
               args.preferred_row_id ?? active_row_id_ref.current;
           },
         });
-        try {
-          await refresh_batch_translation();
-        } catch (error) {
-          handle_api_error(error, t("app.feedback.refresh_failed"));
-        }
 
         if (args.success_message_builder !== undefined) {
           // 成功数量只消费后端规范化事实，避免候选目标把部分变化或 no-op 计为已变更。
@@ -423,7 +415,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         set_is_writing(false);
       }
     },
-    [api_fetch, commit_project_write, handle_api_error, refresh_batch_translation, t],
+    [api_fetch, commit_project_write, handle_api_error, t],
   );
 
   const resolve_preferred_row_id = useCallback(
@@ -496,7 +488,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     dialog_open: dialog_state.open,
     list_revisions,
     read_items_by_row_ids: read_items_by_row_ids_for_batch,
-    sync_task_snapshot,
     run_project_write,
     set_is_writing,
     resolve_preferred_row_id,

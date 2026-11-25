@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { BatchTranslationWaveform } from "./batch-task-waveform";
+import { BatchTaskWaveform } from "./batch-task-waveform";
 const screen = vi.hoisted(() => ({ ratio: 1 }));
 vi.mock("@frontend/widgets/interactions/use-device-pixel-ratio", () => ({
   useDevicePixelRatio: () => screen.ratio,
@@ -16,12 +16,12 @@ it("历史不变时 DPR 变化仍重建像素缓冲区并重绘", async () => {
   const root = createRoot(container);
   const history = [1, 2, 3];
   try {
-    await act(async () => root.render(<BatchTranslationWaveform history={history} />));
+    await act(async () => root.render(<BatchTaskWaveform history={history} />));
     const canvas = container.querySelector("canvas")!;
     const original = [canvas.width, canvas.height];
     context.fillText.mockClear();
     screen.ratio = 2;
-    await act(async () => root.render(<BatchTranslationWaveform history={history} />));
+    await act(async () => root.render(<BatchTaskWaveform history={history} />));
     expect([canvas.width, canvas.height]).toEqual(original.map((value) => value * 2));
     expect(context.setTransform).toHaveBeenLastCalledWith(2, 0, 0, 2, 0, 0);
     expect(context.fillText).toHaveBeenCalled();

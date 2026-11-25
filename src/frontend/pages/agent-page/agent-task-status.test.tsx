@@ -1,7 +1,11 @@
+import {
+  build_batch_task_summary_display,
+  type BatchTaskSummaryDisplay,
+} from "@frontend/features/batch-task/batch-task-display";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { batch_task_metrics } from "@shared/batch-task";
+import { batch_task_metrics, empty_batch_task_list_snapshot } from "@shared/batch-task";
 import {
   create_batch_task_snapshot,
   empty_batch_task_progress,
@@ -12,6 +16,7 @@ import { AgentTaskStatus } from "./agent-task-status";
 const task = vi.hoisted(() => ({
   kind: "translation" as BatchTaskKind,
   metrics: {} as ReturnType<typeof batch_task_metrics>,
+  summary: {} as BatchTaskSummaryDisplay,
   open: vi.fn(),
 }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
@@ -19,11 +24,9 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 }));
 vi.mock("@frontend/app/session/batch-task/batch-task-session-context", () => ({
   useBatchTaskSession: () => ({
-    batch_task: {
-      task_metrics: task.metrics,
-      task_display_snapshot: { kind: task.kind },
-      open_task_detail_sheet: task.open,
-    },
+    metrics: task.metrics,
+    summary: task.summary,
+    open_task_detail_sheet: task.open,
   }),
 }));
 
@@ -45,23 +48,25 @@ describe("AgentTaskStatus", () => {
     percent: number | null = 80,
     running = true,
   ): Promise<HTMLDivElement> {
+    const run = {
+      ...create_batch_task_snapshot("fixture", task.kind, "standalone"),
+      status: status === "stopped" ? ("running" as const) : status,
+      progress:
+        percent === null
+          ? null
+          : {
+              ...empty_batch_task_progress(task.kind === "translation" ? "item" : "request", 400),
+              succeeded: percent * 4,
+            },
+    };
     task.metrics = batch_task_metrics(
       {
-        ...create_batch_task_snapshot("fixture", "translation", "standalone"),
-        status,
-        kind: task.kind,
-        progress:
-          percent === null
-            ? null
-            : {
-                ...empty_batch_task_progress(task.kind === "translation" ? "item" : "request", 400),
-                start_time: 10,
-                output_tokens: 100,
-                succeeded: percent * 4,
-              },
+        ...empty_batch_task_list_snapshot(),
+        tasks: status === "stopped" ? [] : [run],
       },
-      20,
+      0,
     );
+    task.summary = build_batch_task_summary_display(task.metrics, 10, (key) => key);
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);

@@ -1,3 +1,4 @@
+import { build_batch_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
 import { act, type JSX, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,8 +8,7 @@ import type { TranslationExportFlow } from "@frontend/features/translation-expor
 import type { BatchTask } from "./batch-task/use-batch-task";
 import { useProjectTranslationStats } from "./project-translation-stats-context";
 import { useTranslationExport } from "./translation-export/translation-export-context";
-import { batch_task_metrics } from "@shared/batch-task";
-import { create_batch_task_snapshot } from "@domain/batch-task";
+import { batch_task_metrics, empty_batch_task_list_snapshot } from "@shared/batch-task";
 import { ProjectSessionProvider } from "./project-session-provider";
 
 const fixture = vi.hoisted(() => ({
@@ -51,35 +51,18 @@ vi.mock("@frontend/features/translation-export/translation-export-dialog", () =>
 }));
 
 function create_batch_task_fixture(overrides: Partial<BatchTask> = {}): BatchTask {
+  const metrics = batch_task_metrics(empty_batch_task_list_snapshot(), 0);
   return {
-    task_display_snapshot: null,
-    task_metrics: {
-      status: "idle",
-      total: null,
-      completion_percent: null,
-      active: false,
-      stopping: false,
-      elapsed_seconds: 0,
-      remaining_seconds: 0,
-      average_generation_speed: 0,
-      input_tokens: 0,
-      reasoning_tokens: 0,
-      output_tokens: 0,
-      request_in_flight_count: 0,
-    },
-    active_task_count: 0,
+    metrics,
+    summary: build_batch_task_summary_display(metrics, 0, (key) => key),
     translation_active: false,
-    display_tasks: [],
-    detail_task: null,
-    detail_metrics: batch_task_metrics(null, 0),
-    select_task: vi.fn(),
     task_waveform_history: [],
     task_detail_sheet_open: false,
     task_confirm_state: null,
     translation_action_blocked: false,
     open_task_detail_sheet: vi.fn(),
     close_task_detail_sheet: vi.fn(),
-    request_start_or_continue_translation: vi.fn(async () => {}),
+    request_start_translation: vi.fn(async () => {}),
     request_task_action_confirmation: vi.fn(),
     confirm_task_action: vi.fn(async () => {}),
     close_task_action_confirmation: vi.fn(),
@@ -254,11 +237,14 @@ describe("ProjectSessionProvider", () => {
 
   it.each([
     ["reset-all", true],
-    ["stop-translation", false],
+    ["stop", false],
   ] as const)("批量任务确认弹窗 %s 遵循译文清空倒计时保护", async (kind, delayed) => {
     vi.useFakeTimers();
     const task = fixture.batch_task!;
-    task.task_confirm_state = { kind, submitting: false };
+    task.task_confirm_state =
+      kind === "stop"
+        ? { kind, run_ids: ["fixture"], submitting: false }
+        : { kind, submitting: false };
     await render_session(null);
     const confirm = document.querySelector<HTMLButtonElement>(
       '[data-slot="alert-dialog-primary-action"]',
@@ -277,20 +263,16 @@ describe("ProjectSessionProvider", () => {
   it("任务详情面板随工程会话挂载并共享停止动作", async () => {
     const task = fixture.batch_task!;
     task.task_detail_sheet_open = true;
-    task.detail_task = create_batch_task_snapshot("selected-run", "request", "agent");
-    task.detail_metrics.active = true;
-    task.detail_metrics.total = 10;
-    task.detail_metrics.completion_percent = 25;
+    task.metrics = { ...task.metrics, kind: "request", completion_percent: 25 };
+    task.summary = build_batch_task_summary_display(task.metrics, 18, (key) => key);
     await render_session(<div>Agent 页面</div>);
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     expect(document.body.textContent).toContain("25.00%");
+    expect(document.body.textContent).toContain("18.00 T/s");
     const stop = [...document.body.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("batch_translation.action.stop"),
     );
     await act(async () => stop?.click());
-    expect(task.request_task_action_confirmation).toHaveBeenCalledWith(
-      "stop-translation",
-      "selected-run",
-    );
+    expect(task.request_task_action_confirmation).toHaveBeenCalledWith("stop");
   });
 });

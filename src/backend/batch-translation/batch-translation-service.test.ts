@@ -16,28 +16,17 @@ import { TranslationPlanner } from "./planning/translation-planner";
 import { PlanningWorkerPool } from "./planning/planning-worker-pool";
 import { describe, expect, it, vi } from "vitest";
 import { BatchTranslationService } from "./batch-translation-service";
-import { BatchTranslationState } from "./batch-translation-state";
 import { ProjectOperationGate } from "../runtime-operation-gate";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
-import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { DEFAULT_PROJECT_SETTINGS } from "../../domain/project-settings";
 
 /** 组合真实任务服务与可控协作者，观察启动和停止命令。 */
-function setup(line = 0) {
+function setup() {
   const project_path = "E:/Project/test.lg";
   const gate = new ProjectOperationGate();
   const tasks = new BatchTaskRuntime(project_path, gate);
-  const runtime = new BatchTranslationState(
-    project_path,
-    {
-      get_all_meta: () => ({ translation_extras: { processed_line: line } }),
-    } as unknown as ProjectDatabase,
-    tasks,
-  );
-  const run = vi.fn<BatchTranslationRunner["run"]>(async () => ({
-    status: "done",
-    progress: normalize_batch_translation_progress({ processed_line: line }),
-  }));
+  const runtime = tasks;
+  const run = vi.fn<BatchTranslationRunner["run"]>(async () => "done");
   const append = vi.fn();
   const service = new BatchTranslationService(
     { run } as unknown as BatchTranslationRunner,
@@ -59,7 +48,7 @@ describe("批量翻译服务", () => {
     const { service, runtime, tasks, append } = setup();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    tasks.subscribe(async ({ tasks: [snapshot] }) => {
+    tasks.subscribe(async (_snapshot, [snapshot]) => {
       if (snapshot?.status !== "done") return;
       entered.resolve();
       await release.promise;
@@ -67,7 +56,6 @@ describe("批量翻译服务", () => {
     });
     const handle = await service.start_current_project({
       operation: "translate",
-      mode: "new",
       scope: { kind: "all" },
     });
     try {
@@ -97,7 +85,6 @@ describe("批量翻译服务", () => {
     await expect(
       service.start({
         operation: "translate",
-        mode: "continue",
         scope: { kind: "all" },
         include_errors: true,
       }),
@@ -116,7 +103,6 @@ describe("批量翻译服务", () => {
     await runtime.dispose();
     expect(run.mock.calls[0]?.[1]).toEqual({
       operation: "retranslate",
-      mode: "continue",
       item_ids: [2, 1],
     });
     expect(run.mock.calls[0]?.[2].model.id).toBe("translation");
@@ -133,18 +119,15 @@ describe("批量翻译服务", () => {
     expect(run).not.toHaveBeenCalled();
     await runtime.dispose();
   });
-  it.each([0, 3])("Agent 按当前累计进度 %i 选择模式并等待 completion", async (line) => {
-    const { service, runtime, gate, run } = setup(line);
+  it("Agent 使用本次条件并等待 completion", async () => {
+    const { service, runtime, gate, run } = setup();
     let finish!: () => void;
     const work = new Promise<void>((resolve) => {
       finish = resolve;
     });
     run.mockImplementation(async () => {
       await work;
-      return {
-        status: "done",
-        progress: normalize_batch_translation_progress({ processed_line: line }),
-      };
+      return "done";
     });
     const lease = gate.begin_runtime("agent");
     const completed = vi.fn();
@@ -172,14 +155,13 @@ describe("批量翻译服务", () => {
     expect(run.mock.calls[0]?.[1]).toEqual({
       operation: "translate",
       item_statuses: ["NONE"],
-      mode: line > 0 ? "continue" : "new",
       item_ids: [2],
     });
     await expect(
-      service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
+      service.start({ operation: "translate", scope: { kind: "all" } }),
     ).rejects.toMatchObject({ code: "runtime.busy" });
     finish();
-    expect((await result).progress.processed_line).toBe(line);
+    expect((await result).status).toBe("done");
     expect(gate.get_snapshot().agent).toBe(true);
     gate.finish_runtime(lease);
     await runtime.dispose();
@@ -208,34 +190,25 @@ describe("批量翻译服务", () => {
       ),
     ).rejects.toMatchObject({ code: "request.validation_failed" });
     expect(run).not.toHaveBeenCalled();
-    expect((await runtime.build_snapshot()).status).toBe("idle");
+    expect(runtime.build_snapshot().tasks).toEqual([]);
     gate.finish_runtime(lease);
     await runtime.dispose();
   });
-  it.each([
-    { mode: "new" as const, statuses: ["NONE"] },
-    { mode: "continue" as const, statuses: ["NONE"] },
-    { mode: "reset" as const, statuses: undefined },
-  ])("工作台入口显式转换状态条件 $mode", async ({ mode, statuses }) => {
+  it("工作台普通入口只选择待翻译条目", async () => {
     const { service, runtime, run } = setup();
     const handle = await service.start_current_project({
       operation: "translate",
-      mode,
       scope: { kind: "all" },
     });
     await handle.completion;
-    expect(run.mock.calls[0]?.[1]).toEqual({
-      operation: "translate",
-      mode,
-      ...(statuses === undefined ? {} : { item_statuses: statuses }),
-    });
+    expect(run.mock.calls[0]?.[1]).toEqual({ operation: "translate", item_statuses: ["NONE"] });
     await runtime.dispose();
   });
   it("普通项目写持有互斥时不能启动", async () => {
     const { service, runtime, gate } = setup();
     await gate.run_project_write(async () => {
       await expect(
-        service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
+        service.start({ operation: "translate", scope: { kind: "all" } }),
       ).rejects.toMatchObject({ code: "runtime.busy" });
     });
     await runtime.dispose();
@@ -270,7 +243,7 @@ it.each([
   });
   const gate = new ProjectOperationGate();
   const tasks = new BatchTaskRuntime(project_path, gate);
-  const runtime = new BatchTranslationState(project_path, database, tasks);
+  const runtime = tasks;
   const settings = { read_setting: () => ({}) };
   const cache = new ProjectCache({
     projectPath: project_path,
@@ -314,10 +287,9 @@ it.each([
   const model = Model.from_json({ id: "fake", threshold: { concurrency_limit: 1 } }, "fake");
   try {
     await cache.refresh();
-    const frames: import("../../domain/batch-translation").BatchTranslationSnapshot[] = [];
-    tasks.subscribe(async () => {
-      const snapshot = await runtime.build_snapshot();
-      frames.push(snapshot);
+    const frames: import("../../domain/batch-task").BatchTaskSnapshot[] = [];
+    tasks.subscribe((_snapshot, changes) => {
+      frames.push(...changes);
     });
     const result = await service.run_under_agent(
       lease,
@@ -327,28 +299,24 @@ it.each([
     );
     expect(frames[0]).toMatchObject({
       status: "requested",
-      pending_item_ids: [],
-      run_progress: undefined,
+      translation: { pending_item_ids: [] },
+      progress: null,
     });
-    const prepared = frames.find((frame) => frame.run_progress !== undefined);
+    const prepared = frames.find((frame) => frame.progress !== null);
     expect(prepared).toMatchObject({
-      pending_item_ids: targets,
-      run_progress: { total_line: targets.length, processed_line: 0 },
+      translation: { pending_item_ids: targets },
+      progress: { total: targets.length, succeeded: 0 },
     });
     expect(frames.at(-1)).toMatchObject({
       status: "done",
-      pending_item_ids: [],
-      run_progress: { total_line: targets.length, processed_line: targets.length },
+      translation: { pending_item_ids: [] },
+      progress: { total: targets.length, succeeded: targets.length },
     });
     expect(result).toMatchObject({
       status: "done",
-      run_progress: { total_line: targets.length, processed_line: targets.length },
-      progress: {
-        total_line: targets.includes(2) ? 3 : 2,
-        processed_line: targets.includes(2) ? 2 : 1,
-      },
+      progress: { total: targets.length, succeeded: targets.length },
     });
-    expect(result.progress.total_tokens).toBeGreaterThan(0);
+    expect(result.progress?.output_tokens).toBeGreaterThan(0);
     // Agent 内批量翻译同样采用项目语言作为本轮执行快照。
     expect(execute_unit.mock.calls[0]![0].config_snapshot).toMatchObject({
       source_language: "EN",
@@ -361,9 +329,6 @@ it.each([
     ]);
     const meta = await database.get_all_meta(project_path);
     expect(meta["proofreading_revision.proofreading"]).toBeGreaterThan(0);
-    expect(meta["translation_extras"]).toMatchObject({
-      total_tokens: result.progress.total_tokens,
-    });
     await cache.refresh();
     execute_unit.mockClear();
     frames.length = 0;
@@ -374,8 +339,7 @@ it.each([
       }),
     ).toMatchObject({
       status: "done",
-      run_progress: { total_line: 0, processed_line: 0 },
-      progress: { total_tokens: result.progress.total_tokens },
+      progress: { total: 0, succeeded: 0, output_tokens: 0, input_tokens: 0 },
     });
     // 运行失败连同终态统计和原始原因交给 Agent。
     await expect(
@@ -388,7 +352,7 @@ it.each([
       result: { status: "error" },
     });
     expect(execute_unit).not.toHaveBeenCalled();
-    expect(frames.every((frame) => frame.pending_item_ids.length === 0)).toBe(true);
+    expect(frames.every((frame) => frame.translation?.pending_item_ids.length === 0)).toBe(true);
     expect((await database.get_all_meta(project_path))["proofreading_revision.proofreading"]).toBe(
       meta["proofreading_revision.proofreading"],
     );
@@ -439,6 +403,10 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   await database.transaction(project_path, (writer) =>
     writer.add_asset(project_path, "text.txt", Buffer.from("Hello"), "TXT"),
   );
+  const legacy_stats = { processed_line: 90, total_tokens: 500, time: 120 };
+  await database.transaction(project_path, (writer) =>
+    writer.set_meta(project_path, "translation_extras", legacy_stats),
+  );
   await database.close();
   {
     using raw = new DatabaseSync(project_path);
@@ -472,11 +440,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     workerClient: { run: async () => ({}) } as never,
   });
   const writes = new ProjectWriteStore(database, vi.fn(), () => null);
-  const runtime = new BatchTranslationState(
-    project_path,
-    database,
-    new BatchTaskRuntime(project_path, new ProjectOperationGate()),
-  );
+  const runtime = new BatchTaskRuntime(project_path, new ProjectOperationGate());
   const planning = new PlanningWorkerPool({ execution: { kind: "in_process" } });
   try {
     await cache.refresh();
@@ -535,12 +499,11 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     );
     const handle = await service.start_current_project({
       operation: "translate",
-      mode: "new",
       scope: { kind: "all" },
     });
     expect(await handle.completion).toMatchObject({
       status: "done",
-      progress: { processed_line: 1, total_tokens: 7 },
+      progress: { total: 1, succeeded: 1, input_tokens: 4, reasoning_tokens: 1, output_tokens: 2 },
     });
     expect(await database.get_all_items(project_path)).toEqual([
       expect.objectContaining({ dst: "你好", status: "PROCESSED" }),
@@ -549,6 +512,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
       expect.objectContaining({ entry_id: "HELLO", dst: "你好" }),
     ]);
     expect((await database.read_asset_content(project_path, "text.txt"))?.toString()).toBe("Hello");
+    expect((await database.get_all_meta(project_path))["translation_extras"]).toEqual(legacy_stats);
   } finally {
     await runtime.dispose();
     await planning.dispose();

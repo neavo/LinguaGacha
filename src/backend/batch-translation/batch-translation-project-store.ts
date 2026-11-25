@@ -1,6 +1,3 @@
-import type { BatchTranslationProgress } from "../../domain/batch-translation";
-
-import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import type { CacheReadPort } from "../cache/cache-types";
 import { ProjectWriteStore, type ProjectWriteSectionAck } from "../project/project-write-store";
 import { normalize_translation_item_patches } from "../project/project-write-request";
@@ -42,31 +39,19 @@ export class BatchTranslationProjectStore {
   }
 
   /**
-   * 批次提交包含终态条目或仅用量；项目写入口决定实际变化及其事件。
+   * 提交成功条目，项目写入口决定实际变化及其事件。
    */
   public async commit_translation_batch(
     items: TextTaskItemRecord[],
-    progress_snapshot: BatchTranslationProgress,
     affects_proofreading: boolean,
   ): Promise<ProjectWriteSectionAck> {
     const request = {
       projectPath: this.project_path,
       items: normalize_translation_item_patches(items),
-      translationExtras: { ...progress_snapshot }, // 隔离调用方引用，工程字段由唯一写入口收窄。
     };
     return affects_proofreading
       ? await this.write_store.apply_retranslation_item_patches(request)
       : await this.write_store.apply_translation_item_patches(request);
-  }
-
-  /**
-   * 翻译收尾只持久化进度 extras，避免无变更批次仍触发 item patch
-   */
-  public async update_translation_progress(progress: BatchTranslationProgress): Promise<void> {
-    await this.write_store.update_task_progress_meta({
-      projectPath: this.project_path,
-      meta: { translation_extras: normalize_batch_translation_progress(progress) },
-    });
   }
 
   /** 读取隔离的完整工程事实；目标准备由规划层负责。 */

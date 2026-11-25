@@ -1,15 +1,11 @@
 import { createContext, useContext } from "react";
 import type { BatchTask } from "@frontend/app/session/batch-task/use-batch-task";
 
-export type BatchTaskSessionContextValue = {
-  batch_task: BatchTask; // 常驻监听翻译任务完成意图
-};
+/** 工程工作区内的入口和侧栏共用一个批量任务会话。 */
+export const BatchTaskSessionContext = createContext<BatchTask | null>(null);
 
-// 当前项目的任务交互随应用 session 常驻。
-export const BatchTaskSessionContext = createContext<BatchTaskSessionContextValue | null>(null);
-
-// 统一抛出 Provider 缺失错误，调用方不用重复空值分支。
-export function useBatchTaskSession(): BatchTaskSessionContextValue {
+/** 批量任务入口须挂载在工程会话内。 */
+export function useBatchTaskSession(): BatchTask {
   const context_value = useContext(BatchTaskSessionContext);
   if (context_value === null) {
     throw new Error("useBatchTaskSession must be used inside ProjectSessionProvider.");

@@ -23,9 +23,8 @@ describe("Model", () => {
           extra_headers_custom_enable: 1,
         },
         threshold: {
-          input_token_limit: "1024",
           output_token_limit: "invalid",
-          concurrency_limit: 2,
+          concurrency_limit: "2",
         },
         thinking: { level: "unknown" },
         generation: {
@@ -58,7 +57,7 @@ describe("Model", () => {
         extra_body_custom_enable: false,
       },
       threshold: {
-        input_token_limit: 1024,
+        input_token_limit: 768,
         output_token_limit: 4096,
         rpm_limit: 0,
         concurrency_limit: 2,
