@@ -1,4 +1,3 @@
-import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { AgentInputRequest } from "@frontend/app/navigation/types";
 import {
   format_agent_input_steps,
@@ -27,17 +26,10 @@ import {
   read_project_language_preference,
   save_project_language_preference,
 } from "./project-language-preference";
-import type { RunProjectLoad } from "./use-project-load";
+import type { ProjectLoadPayload, RunProjectLoad } from "./use-project-load";
 /** 已选择的源路径与后端摘要，后端提供默认工程名。 */
 type SelectedSource = ProjectSourceFileSummary & {
   source_paths: string[]; // 创建工程时原样提交的归一化用户选择
-};
-
-/** 新建工程提交后的公开载荷。 */
-type ProjectCreateCommitPayload = {
-  project?: {
-    path?: string;
-  };
 };
 
 type ProjectLanguageDraft = Record<ProjectLanguageKey, string>;
@@ -135,7 +127,6 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
   const { settings_snapshot, refresh_settings } = useDesktopState();
 
   const { t } = useI18n();
-  const { navigate_to_agent } = useAppNavigation();
   const pack_order = useGodotPackOrder();
   const backup_confirm = useGameBackupConfirm();
   const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
@@ -310,18 +301,17 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
       const normalized_output_path = output_path.endsWith(".lg")
         ? output_path
         : `${output_path}.lg`;
-      await run_project_load({
+      // 预置指令随本次新工程交接，对话恢复后再写入输入框。
+      const loaded = await run_project_load({
         message: t("project.create.loading_toast"),
+        agent_input_request: build_agent_draft(t, source_paths.length > 0, import_paths),
         request: async () => {
-          const create_request = api_fetch<ProjectCreateCommitPayload>(
-            "/api/session/project/create",
-            {
-              source_paths,
-              ...(godot_pack_orders.length ? { godot_pack_orders } : {}),
-              path: normalized_output_path,
-              languages,
-            },
-          );
+          const create_request = api_fetch<ProjectLoadPayload>("/api/session/project/create", {
+            source_paths,
+            ...(godot_pack_orders.length ? { godot_pack_orders } : {}),
+            path: normalized_output_path,
+            languages,
+          });
           // 只延长空工程的成功等待，请求失败时立即退出。
           const [create_payload] = await Promise.all([
             create_request,
@@ -329,14 +319,10 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
               ? new Promise<void>((resolve) => setTimeout(resolve, EMPTY_PROJECT_LOADING_MS))
               : undefined,
           ]);
-          const created_project_path =
-            typeof create_payload.project?.path === "string" &&
-            create_payload.project.path.trim() !== ""
-              ? create_payload.project.path
-              : normalized_output_path;
-          return created_project_path;
+          return create_payload;
         },
       });
+      if (!loaded) return;
       set_open(false);
       push_toast("success", t("project.create.success"));
       if (loaded_default_preset_names.length > 0) {
@@ -348,7 +334,6 @@ export function useProjectCreateFlow(run_project_load: RunProjectLoad) {
           ),
         );
       }
-      navigate_to_agent(build_agent_draft(t, source_paths.length > 0, import_paths));
     } catch (error) {
       if (
         selected_source !== null &&

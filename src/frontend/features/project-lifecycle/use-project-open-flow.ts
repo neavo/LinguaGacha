@@ -3,14 +3,11 @@ import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
-import type { RunProjectLoad } from "./use-project-load";
+import type { ProjectLoadPayload, RunProjectLoad } from "./use-project-load";
 import { read_project_version_confirmation, type ProjectOpenRequest } from "@shared/project-open";
 
 type SelectedProject = { path: string; from_recent: boolean }; // 最近记录缺失时提供移除入口。
 type PendingConfirmation = SelectedProject & { target_app_version: string };
-type ProjectOpenPayload = {
-  project?: { path?: string };
-};
 
 /** 工程打开随应用会话常驻，版本确认绑定本次路径。 */
 export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
@@ -49,16 +46,12 @@ export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
       const selected_project = target; // 加载闭包与失败确认使用同一次文件选择。
       await run_project_load({
         message: t("project.open.loading_toast"),
-        request: async () => {
+        request: () => {
           const request: ProjectOpenRequest = {
             path: selected_project.path,
             ...(confirmed_target_app_version === undefined ? {} : { confirmed_target_app_version }),
           };
-          const response = await api_fetch<ProjectOpenPayload>(
-            "/api/session/project/open",
-            request,
-          );
-          return response.project?.path ?? selected_project.path;
+          return api_fetch<ProjectLoadPayload>("/api/session/project/open", request);
         },
       });
     } catch (error) {

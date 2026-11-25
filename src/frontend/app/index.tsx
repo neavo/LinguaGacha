@@ -102,8 +102,16 @@ function AppContent(): JSX.Element {
     active_project?.get_active_route ?? GET_DEFAULT_PROJECT_ROUTE,
   );
   const selected_route = global_route ?? project_route;
-  // 请求与实际导航共同提交，离开目标流程时清除。
-  const [agent_input_request, set_agent_input_request] = useState<AgentInputRequest | null>(null);
+  // 请求随导航提交，只交给目标工程，离开目标流程时清除。
+  const [pending_agent_input, set_pending_agent_input] = useState<{
+    projectId: string;
+    request: AgentInputRequest;
+  } | null>(null);
+  const active_project_id = active_project?.snapshot.projectId;
+  const agent_input_request =
+    pending_agent_input !== null && pending_agent_input.projectId === active_project_id
+      ? pending_agent_input.request
+      : null;
   const [project_attention, set_project_attention] = useState(0);
   const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
@@ -152,39 +160,44 @@ function AppContent(): JSX.Element {
     set_project_attention((count) => count + 1);
   }
 
+  /** 工程内导航沿用发起时的工程身份，离页保存成功后提交。 */
   function handle_select_route(route_id: RouteId, request?: AgentInputRequest): void {
-    if (!GLOBAL_ROUTE_IDS.has(route_id) && !active_project) {
+    const is_global = GLOBAL_ROUTE_IDS.has(route_id);
+    if (!is_global && !active_project) {
       if (request) notify_project_required();
       else set_global_route(null);
       return;
     }
     void (async () => {
-      const is_global = GLOBAL_ROUTE_IDS.has(route_id);
       if (route_id !== selected_route && !(await prepare_page_leave(view_scope()))) return;
-      if (is_global) set_global_route(route_id);
-      else if (active_project) {
+      if (is_global) {
+        set_global_route(route_id);
+        set_pending_agent_input(null);
+      } else if (active_project) {
         active_project.select_route(route_id);
         set_global_route(null);
+        set_pending_agent_input(
+          request ? { projectId: active_project.snapshot.projectId, request } : null,
+        );
       }
-      set_agent_input_request(request ?? null);
     })().catch((error: unknown) => push_error_toast(t("app.feedback.update_failed"), error));
   }
 
-  async function before_switch_to_project(project: ProjectStore): Promise<boolean> {
-    if (active_project !== project || global_route !== null) {
-      return await prepare_page_leave(view_scope());
-    }
-    return true;
-  }
-
+  /** 重选当前工程时直接回到工作区，离开其他页面时先保存。 */
   async function select_open_project(project: ProjectStore): Promise<void> {
-    if (await before_switch_to_project(project)) show_project(project);
+    if (
+      (active_project !== project || global_route !== null) &&
+      !(await prepare_page_leave(view_scope()))
+    )
+      return;
+    show_project(project.snapshot.projectId);
   }
 
-  function show_project(project: ProjectStore): void {
-    select_project(project.snapshot.projectId);
+  /** 同步提交前台工程和草稿请求，目标身份来自本次交接。 */
+  function show_project(projectId: string, request?: AgentInputRequest): void {
+    select_project(projectId);
     set_global_route(null);
-    set_agent_input_request(null);
+    set_pending_agent_input(request ? { projectId, request } : null);
   }
 
   function view_scope() {
@@ -506,17 +519,17 @@ function AppContent(): JSX.Element {
   if (initial_state_status !== "ready") return shell;
   return (
     <AppNavigationProvider
-      project_id={active_project?.snapshot.projectId}
+      project_id={active_project_id}
       selected_route={selected_route}
       navigate_to_route={handle_select_route}
       agent_input_request={agent_input_request}
-      clear_agent_input_request={() => set_agent_input_request(null)}
+      clear_agent_input_request={() => set_pending_agent_input(null)}
     >
       <ProjectLifecycleProvider
         attention={project_attention}
         notify_project_required={notify_project_required}
         before_open={() => prepare_page_leave(view_scope())}
-        on_open={show_project}
+        show_project={show_project}
       >
         <OpenProjectAttention />
         {shell}
