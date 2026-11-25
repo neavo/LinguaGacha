@@ -1052,7 +1052,7 @@ describe("AgentConversation", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("选择期间收起操作区并在恢复后保留草稿、编辑实例和跟随状态", async () => {
+  it("选择期间锁定操作区，Esc 只作用于前台待决卡片，离场后恢复编辑", async () => {
     const pending_write_decision = {
       kind: "write_approval" as const,
       id: "apply-1",
@@ -1077,6 +1077,14 @@ describe("AgentConversation", () => {
       }),
     };
     const send = vi.fn(async () => undefined);
+    const resolveWriteApproval = vi.fn(async () => undefined);
+    const waiting = {
+      input,
+      send,
+      doing: "核验结果",
+      pendingDecision: pending_write_decision,
+      resolveWriteApproval,
+    };
     const view = await render_page({ input, send, doing: "检查章节" });
     const host = view.querySelector<HTMLElement>(".cm-content")!;
     const editor = EditorView.findFromDOM(host)!;
@@ -1084,7 +1092,7 @@ describe("AgentConversation", () => {
       editor.dispatch({ changes: { from: 0, insert: "保留这份草稿" }, selection: { anchor: 3 } });
       host.focus();
     });
-    await render_page({ input, send, doing: "核验结果", pendingDecision: pending_write_decision });
+    await render_page(waiting);
     const body = view.querySelector(".agent-page__composer-slot")!;
     expect(body.hasAttribute("inert")).toBe(true);
     const follow_button = get_button_by_label(view, "agent_page.action.follow_latest");
@@ -1097,7 +1105,26 @@ describe("AgentConversation", () => {
         .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
     expect(send).not.toHaveBeenCalled();
-    await render_page({ input, send, doing: "核验结果", pendingDecision: null });
+    const press_escape = () =>
+      act(async () =>
+        document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+      );
+    await render_page(waiting, false);
+    await press_escape();
+    expect(resolveWriteApproval).not.toHaveBeenCalled();
+    await render_page(waiting);
+
+    // jsdom 没有布局和原生动画，用非零占位让卡片保留到离场完成。
+    const region = view.querySelector(".agent-page__bottom-region")!;
+    vi.spyOn(region, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 720, 120));
+    vi.spyOn(Element.prototype, "animate").mockImplementation(
+      () => ({ cancel: vi.fn() }) as unknown as Animation,
+    );
+    await render_page({ ...waiting, pendingDecision: null });
+    expect(view.querySelector(".agent-decision")).not.toBeNull();
+    await press_escape();
+    expect(resolveWriteApproval).not.toHaveBeenCalled();
+    await act(async () => window.dispatchEvent(new Event("resize")));
     expect(view.querySelector(".agent-doing__text")?.textContent).toBe("核验结果");
     expect(view.querySelector(".agent-doing .agent-status-mark--running")).toBeNull();
     expect(body.hasAttribute("inert")).toBe(false);

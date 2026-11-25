@@ -1,0 +1,74 @@
+.countdown-ring {
+  --countdown-ring-color: var(--primary);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--countdown-ring-size);
+  height: var(--countdown-ring-size);
+  border-radius: var(--ui-radius-pill);
+  isolation: isolate;
+}
+
+.countdown-ring--md {
+  --countdown-ring-size: 24px;
+}
+
+.countdown-ring--sm {
+  --countdown-ring-size: 12px;
+}
+
+.countdown-ring[data-warning="true"] {
+  --countdown-ring-color: var(--ui-warning);
+}
+
+.countdown-ring::before {
+  --status-mark-color: var(--countdown-ring-color);
+
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+  animation: status-mark-pulse 1s ease-out infinite;
+}
+
+.countdown-ring__svg {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  pointer-events: none;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+.countdown-ring__track {
+  stroke: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.countdown-ring__value {
+  stroke: var(--countdown-ring-color);
+  stroke-dasharray: 100;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 1s linear,
+    stroke 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown-ring::before {
+    animation: none;
+    opacity: 0;
+  }
+
+  .countdown-ring__value {
+    transition: none;
+  }
+}

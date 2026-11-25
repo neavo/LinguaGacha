@@ -1407,6 +1407,12 @@
   min-width: 24px;
 }
 
+.agent-decision-icon,
+.agent-decision-action__icon {
+  background: var(--popover);
+  color: var(--muted-foreground);
+}
+
 .agent-decision-icon {
   display: inline-flex;
   width: 24px;
@@ -1415,73 +1421,18 @@
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: var(--ui-radius-pill);
-  background: var(--popover);
   padding: 0;
-  color: var(--muted-foreground);
 }
 
-.agent-decision-icon > .agent-decision-action__arrow,
-.agent-decision-icon > svg:not(.agent-decision-progress) {
+.agent-decision-icon > svg,
+.agent-decision-action__arrow {
   width: 13px;
   height: 13px;
 }
 
-.agent-decision-action__icon {
-  position: relative;
-}
-
-.agent-decision-action__icon--deadline {
-  --agent-decision-deadline-color: var(--primary);
-
-  isolation: isolate;
-  border: 0;
-}
-
-.agent-decision-action__icon--deadline[data-warning="true"] {
-  --agent-decision-deadline-color: var(--ui-warning);
-}
-
-.agent-decision-action__icon--deadline::before {
-  --status-mark-color: var(--agent-decision-deadline-color);
-
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  border-radius: inherit;
-  content: "";
-  pointer-events: none;
-}
-
-.agent-decision-progress {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  width: 24px;
-  height: 24px;
-  overflow: visible;
-  fill: none;
-  pointer-events: none;
-  stroke-width: 1.5;
-  transform: rotate(-90deg);
-  transform-origin: center;
-}
-
-.agent-decision-progress__track {
-  stroke: color-mix(in srgb, var(--border) 82%, transparent);
-}
-
-.agent-decision-progress__value {
-  stroke: var(--agent-decision-deadline-color);
-  stroke-dasharray: 100;
-  stroke-linecap: round;
-  transition:
-    stroke-dashoffset 1s linear,
-    stroke 120ms ease;
-}
-
 .agent-decision-action__arrow {
   position: relative;
-  z-index: 2;
+  z-index: 2; /* 圆环 SVG 上方的箭头。 */
 }
 
 .agent-decision-action:not(:disabled):hover .agent-decision-action__icon,
@@ -1737,23 +1688,13 @@
   user-select: text;
 }
 
-/* 状态点、决定按钮和后台待回复标签共享扩散节奏。 */
+/* 状态点和后台待回复标签共享扩散节奏。 */
 .agent-round-footer[data-running="true"] .agent-round-footer__activity,
-.agent-pages__tab-group:has([data-needs-response])::before,
-.agent-decision-action__icon--deadline::before {
+.agent-pages__tab-group:has([data-needs-response])::before {
   animation: status-mark-pulse 1s ease-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-decision-action__icon--deadline::before {
-    animation: none;
-    opacity: 0;
-  }
-
-  .agent-decision-progress__value {
-    transition: none;
-  }
-
   .agent-pages__tab-group:has([data-needs-response])::before,
   .agent-round-footer[data-running="true"] .agent-round-footer__activity {
     animation: none;

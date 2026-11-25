@@ -129,11 +129,9 @@ export const ja_jp_agent_page = {
     allow_once: "今回の書き込みを許可",
   },
   decision: {
-    paused_remaining: "一時停止中 · 残り {time}",
     remaining: "残り {time}",
     custom: "カスタム",
     custom_placeholder: "回答を入力 …",
-    cancel: "この質問をキャンセル",
   },
   compaction: {
     running: "コンテキストを圧縮中",

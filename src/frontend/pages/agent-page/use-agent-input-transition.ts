@@ -32,7 +32,7 @@ export function useAgentInputTransition(
   const composer_slot_ref = useRef<HTMLDivElement>(null);
   const decision_ref = useRef<HTMLDivElement>(null);
   const title_ref = useRef<HTMLHeadingElement>(null);
-  // 离场期间保留内容与输入锁；完成后释放，避免隐藏的倒计时继续运行。
+  // 离场完成前保留卡片和输入锁，结束后随布局一起恢复输入。
   const [retained_decision, set_retained_decision] = useState(decision);
   const animations_ref = useRef<Animation[]>([]); // 当前过渡统一登记和回收的动画
   const initialized_ref = useRef(false); // 首次挂载与 StrictMode 重放直接恢复布局

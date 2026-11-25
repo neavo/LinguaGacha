@@ -9,10 +9,9 @@ export type AgentDecisionCountdownSnapshot = Readonly<{
   id: string;
   remainingSeconds: number;
   remainingPercent: number;
-  paused: boolean;
 }> | null;
 
-/** Store 持有的单个决策时钟；页面、Tooltip 与自动提交共用同一时间来源。 */
+/** 会话内的决策时钟，统一显示余量与到期裁决。 */
 export class AgentDecisionCountdown {
   private decision: AgentPendingDecision | null = null;
   private remaining_ms = AGENT_DECISION_TIMEOUT_MS; // 暂停时的精确余量，运行时由 deadline 结算
@@ -67,14 +66,14 @@ export class AgentDecisionCountdown {
   private freeze(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    if (this.deadline !== null) this.remaining_ms = Math.max(0, this.deadline - Date.now());
+    if (this.deadline !== null) this.remaining_ms = Math.max(0, this.deadline - performance.now());
     this.deadline = null;
   }
 
-  /** 可交互且输入未聚焦时安排下一帧，其余状态仅发布暂停展示。 */
+  /** 可交互且输入未聚焦时安排下一次更新，暂停时保留剩余时间。 */
   private resume(): void {
     if (this.decision !== null && !this.stopped && this.available && !this.focused) {
-      this.deadline = Date.now() + this.remaining_ms;
+      this.deadline = performance.now() + this.remaining_ms; // 系统时钟调整不改变回答时限。
       // 即使剩余时间为零也异步裁决，失焦处理不会同步抢先提交默认答案。
       this.timer = setTimeout(this.tick, Math.min(COUNTDOWN_REFRESH_MS, this.remaining_ms));
     }
@@ -93,7 +92,7 @@ export class AgentDecisionCountdown {
     }
   };
 
-  /** 同一时刻的重复状态不触发渲染，Tooltip 与进度环共用这份投影。 */
+  /** 快照内容相同时复用引用，避免重复通知订阅者。 */
   private publish(): void {
     const next: AgentDecisionCountdownSnapshot =
       this.decision === null || this.stopped
@@ -102,13 +101,11 @@ export class AgentDecisionCountdown {
             id: this.decision.id,
             remainingSeconds: Math.ceil(this.remaining_ms / 1_000),
             remainingPercent: (this.remaining_ms / AGENT_DECISION_TIMEOUT_MS) * 100,
-            paused: this.focused || !this.available,
           };
     if (
       next?.id === this.snapshot?.id &&
       next?.remainingSeconds === this.snapshot?.remainingSeconds &&
-      next?.remainingPercent === this.snapshot?.remainingPercent &&
-      next?.paused === this.snapshot?.paused
+      next?.remainingPercent === this.snapshot?.remainingPercent
     )
       return;
     this.snapshot = next;

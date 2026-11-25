@@ -1,5 +1,14 @@
 import { badgeVariants } from "@frontend/shadcn/badge-variants";
-import { type JSX, useEffect, useId, useState, type ReactNode, type RefObject } from "react";
+import {
+  type JSX,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
 import type {
   AgentPendingDecision,
@@ -25,9 +34,13 @@ import {
 } from "@frontend/shadcn/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
+import { CountdownRing } from "@frontend/widgets/countdown-ring/countdown-ring";
+import {
+  get_shortcut_aria_keys,
+  is_element_text_editing_target,
+} from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 
-const AGENT_DECISION_WARNING_REMAINING_PERCENT = 25; // 最后四分之一期限切换为警告语义
 const SUMMARY_COUNT_MARKER = "\uE000"; // 不会出现在本地化正文中，为数量保留独立视觉语义
 
 /** 摘要沿业务数据顺序展示，零变化类别不进入用户决定。 */
@@ -49,43 +62,108 @@ const WRITE_DECISIONS = [
 ] as const satisfies readonly (readonly [AgentWriteApprovalDecision, LocaleKey])[];
 
 type QuestionDecision = Extract<AgentPendingDecision, { kind: "question" }>;
-type WriteDecision = Extract<AgentPendingDecision, { kind: "write_approval" }>;
 
-/** 决策区域独立订阅时钟，页面只负责布局与离场生命周期。 */
-export function AgentDecision(props: {
-  decision: AgentPendingDecision;
-  title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
-}): JSX.Element {
-  const countdown = useAgentDecisionCountdown();
-  const actions = useAgentChatActions();
-  // 离场期间保留旧卡片，不把新问题的时钟显示在旧卡片上。
-  const current_countdown = countdown?.id === props.decision.id ? countdown : null;
-  return props.decision.kind === "question" ? (
-    <AgentQuestionDecision
-      key={props.decision.id}
-      decision={props.decision}
-      title_ref={props.title_ref}
-      countdown={current_countdown}
-      on_focus={actions.setQuestionFocused}
-      on_resolve={actions.resolveQuestion}
-    />
-  ) : (
-    <AgentWriteDecision
-      key={props.decision.id}
-      decision={props.decision}
-      title_ref={props.title_ref}
-      countdown={current_countdown}
-      on_resolve={actions.resolveWriteApproval}
-    />
+const OPEN_OVERLAY_SELECTOR =
+  ':is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]):not([data-closed])';
+
+/** 菜单打开时焦点可以留在触发器上，因此按文档查找仍可交互的浮层。 */
+function has_open_overlay(): boolean {
+  for (const overlay of document.querySelectorAll(OPEN_OVERLAY_SELECTOR)) {
+    if (overlay.closest("[inert], [hidden]") === null) return true;
+  }
+  return false;
+}
+
+/** 输入法组字和带修饰键的操作交给当前输入目标。 */
+function is_plain_key(event: KeyboardEvent, key: "Enter" | "Escape"): boolean {
+  return (
+    event.key === key &&
+    !event.isComposing &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
   );
 }
 
-/** 普通问题提供即时固定答案、显式自定义答案和取消入口。 */
-function AgentQuestionDecision(props: {
+/** 决策卡片独立订阅时钟，并统一处理键盘与鼠标取消。 */
+export function AgentDecision({
+  decision,
+  active,
+  title_ref,
+}: {
+  decision: AgentPendingDecision;
+  active: boolean;
+  title_ref?: RefObject<HTMLHeadingElement | null>;
+}): JSX.Element {
+  const { t } = useI18n();
+  const countdown = useAgentDecisionCountdown();
+  const actions = useAgentChatActions();
+  const custom_input_ref = useRef<HTMLInputElement | null>(null);
+  const current_countdown = countdown?.id === decision.id ? countdown : null; // 离场卡片只显示自己的倒计时。
+
+  /** 按卡片类型提交其取消裁决。 */
+  const cancel = (): void => {
+    if (decision.kind === "question") void actions.resolveQuestion({ kind: "cancel" });
+    else void actions.resolveWriteApproval("reject");
+  };
+
+  /** 输入框先失焦，上层浮层与其他编辑器保留各自的 Esc 行为。 */
+  const handle_escape = useEffectEvent((event: KeyboardEvent): void => {
+    if (event.defaultPrevented || event.repeat || !is_plain_key(event, "Escape")) return;
+    if (has_open_overlay()) return;
+    const input = custom_input_ref.current;
+    if (input !== null && event.target === input) {
+      event.preventDefault();
+      input.blur();
+      return;
+    }
+    if (event.target instanceof Element && is_element_text_editing_target(event.target)) return;
+    event.preventDefault();
+    cancel();
+  });
+
+  useEffect(() => {
+    if (!active) return;
+    // 在 Tooltip 拦截 Esc 前处理卡片快捷键。
+    window.addEventListener("keydown", handle_escape, true);
+    return () => window.removeEventListener("keydown", handle_escape, true);
+  }, [active]);
+
+  const heading =
+    decision.kind === "question"
+      ? { title: decision.question.prompt, description: decision.question.description }
+      : {
+          title: t("agent_page.approval.title"),
+          description: <AgentWriteSummary summary={decision.summary} />,
+        };
+
+  return (
+    <AgentDecisionFrame key={decision.id} {...heading} title_ref={title_ref} on_cancel={cancel}>
+      {decision.kind === "question" ? (
+        <AgentQuestionOptions
+          decision={decision}
+          input_ref={custom_input_ref}
+          countdown={current_countdown}
+          on_focus={actions.setQuestionFocused}
+          on_resolve={actions.resolveQuestion}
+        />
+      ) : (
+        <AgentWriteOptions
+          countdown={current_countdown}
+          on_resolve={actions.resolveWriteApproval}
+        />
+      )}
+    </AgentDecisionFrame>
+  );
+}
+
+/** 固定选项立即提交，自定义答案在输入时暂停倒计时。 */
+function AgentQuestionOptions(props: {
   decision: QuestionDecision;
   countdown: AgentDecisionCountdownSnapshot;
   on_focus: (id: string, focused: boolean) => void;
-  title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
+  input_ref: RefObject<HTMLInputElement | null>;
   on_resolve: (response: AgentQuestionResponse) => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -106,109 +184,86 @@ function AgentQuestionDecision(props: {
   };
 
   return (
-    <AgentDecisionFrame
-      title={props.decision.question.prompt}
-      title_ref={props.title_ref}
-      description={props.decision.question.description}
-      on_cancel={() => props.on_resolve({ kind: "cancel" })}
-    >
-      <div className="agent-decision__options">
-        {props.decision.question.options.map((option, index) => (
-          <AgentDecisionAction
-            key={option.id}
-            ordinal={index + 1}
-            label={option.label}
-            countdown={index === AGENT_QUESTION_DEFAULT_OPTION_INDEX ? props.countdown : null}
-            onClick={() => props.on_resolve({ kind: "option", optionId: option.id })}
+    <div className="agent-decision__options">
+      {props.decision.question.options.map((option, index) => (
+        <AgentDecisionAction
+          key={option.id}
+          ordinal={index + 1}
+          label={option.label}
+          countdown={index === AGENT_QUESTION_DEFAULT_OPTION_INDEX ? props.countdown : null}
+          onClick={() => props.on_resolve({ kind: "option", optionId: option.id })}
+        />
+      ))}
+      <div className="agent-decision-custom">
+        <label
+          className={badgeVariants({ className: "agent-decision-badge" })}
+          htmlFor={custom_input_id}
+        >
+          {t("agent_page.decision.custom")}
+        </label>
+        <InputGroup className="agent-decision-custom__field">
+          <InputGroupInput
+            ref={props.input_ref}
+            id={custom_input_id}
+            value={custom_text}
+            placeholder={t("agent_page.decision.custom_placeholder")}
+            onFocus={() => on_focus(id, true)}
+            onBlur={() => on_focus(id, false)}
+            onChange={(event) => set_custom_text(event.target.value)}
+            onKeyDown={(event) => {
+              if (!is_plain_key(event.nativeEvent, "Enter")) return;
+              event.preventDefault();
+              submit_custom_answer();
+            }}
           />
-        ))}
-        <div className="agent-decision-custom">
-          <label
-            className={badgeVariants({ className: "agent-decision-badge" })}
-            htmlFor={custom_input_id}
-          >
-            {t("agent_page.decision.custom")}
-          </label>
-          <InputGroup className="agent-decision-custom__field">
-            <InputGroupInput
-              id={custom_input_id}
-              value={custom_text}
-              placeholder={t("agent_page.decision.custom_placeholder")}
-              onFocus={() => on_focus(id, true)}
-              onBlur={() => on_focus(id, false)}
-              onChange={(event) => set_custom_text(event.target.value)}
-              onKeyDown={(event) => {
-                // 输入法选词优先，仅接管无修饰键的 Enter。
-                if (
-                  event.key !== "Enter" ||
-                  event.nativeEvent.isComposing ||
-                  event.shiftKey ||
-                  event.ctrlKey ||
-                  event.altKey ||
-                  event.metaKey
-                )
-                  return;
-                event.preventDefault();
-                submit_custom_answer();
-              }}
-            />
-            <InputGroupAddon align="inline-end">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <InputGroupButton
-                      className="agent-decision-icon agent-decision-custom__submit"
-                      size="icon-xs"
-                      disabled={!can_submit}
-                      aria-label={t("app.action.confirm")}
-                      aria-keyshortcuts="Enter"
-                      // 保持输入框焦点，点击发送不会先恢复零秒计时。
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={submit_custom_answer}
-                    >
-                      <ArrowRight aria-hidden="true" />
-                    </InputGroupButton>
-                  }
-                />
-                <TooltipContent>
-                  <ShortcutTooltipRow label={t("app.action.confirm")} shortcut="submit" />
-                </TooltipContent>
-              </Tooltip>
-            </InputGroupAddon>
-          </InputGroup>
-        </div>
+          <InputGroupAddon align="inline-end">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <InputGroupButton
+                    className="agent-decision-icon agent-decision-custom__submit"
+                    size="icon-xs"
+                    disabled={!can_submit}
+                    aria-label={t("app.action.confirm")}
+                    aria-keyshortcuts="Enter"
+                    // 保持输入框焦点，点击发送不会先恢复零秒计时。
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={submit_custom_answer}
+                  >
+                    <ArrowRight aria-hidden="true" />
+                  </InputGroupButton>
+                }
+              />
+              <TooltipContent>
+                <ShortcutTooltipRow label={t("app.action.confirm")} shortcut="submit" />
+              </TooltipContent>
+            </Tooltip>
+          </InputGroupAddon>
+        </InputGroup>
       </div>
-    </AgentDecisionFrame>
+    </div>
   );
 }
 
-/** 写入授权展示后端冻结的摘要与当前批次的两种裁决。 */
-function AgentWriteDecision(props: {
-  decision: WriteDecision;
+/** 审批选项提交当前批次的裁决，倒计时只标记默认选项。 */
+function AgentWriteOptions(props: {
   countdown: AgentDecisionCountdownSnapshot;
-  title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
   on_resolve: (decision: AgentWriteApprovalDecision) => void;
 }): JSX.Element {
   const { t } = useI18n();
 
   return (
-    <AgentDecisionFrame
-      title={t("agent_page.approval.title")}
-      title_ref={props.title_ref}
-      description={<AgentWriteSummary summary={props.decision.summary} />}
-    >
-      <div className="agent-decision__options">
-        {WRITE_DECISIONS.map(([value, key], index) => (
-          <AgentDecisionAction
-            key={value}
-            ordinal={index + 1}
-            label={t(key)}
-            countdown={value === AGENT_WRITE_APPROVAL_DEFAULT ? props.countdown : null}
-            onClick={() => props.on_resolve(value)}
-          />
-        ))}
-      </div>
-    </AgentDecisionFrame>
+    <div className="agent-decision__options">
+      {WRITE_DECISIONS.map(([value, key], index) => (
+        <AgentDecisionAction
+          key={value}
+          ordinal={index + 1}
+          label={t(key)}
+          countdown={value === AGENT_WRITE_APPROVAL_DEFAULT ? props.countdown : null}
+          onClick={() => props.on_resolve(value)}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -218,9 +273,10 @@ function AgentDecisionFrame(props: {
   title_ref?: RefObject<HTMLHeadingElement | null> | undefined;
   description?: ReactNode;
   children: ReactNode;
-  on_cancel?: () => void;
+  on_cancel: () => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const cancel_label = t("app.action.cancel");
   const title_id = useId();
   const description_id = useId();
 
@@ -262,18 +318,26 @@ function AgentDecisionFrame(props: {
           )}
         </div>
         <div className="agent-decision__header-actions">
-          {props.on_cancel === undefined ? null : (
-            <AppButton
-              type="button"
-              className="agent-decision-icon agent-decision__cancel"
-              size="icon-xs"
-              variant="ghost"
-              aria-label={t("agent_page.decision.cancel")}
-              onClick={props.on_cancel}
-            >
-              <X aria-hidden="true" />
-            </AppButton>
-          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <AppButton
+                  type="button"
+                  className="agent-decision-icon agent-decision__cancel"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={cancel_label}
+                  aria-keyshortcuts={get_shortcut_aria_keys("cancel")}
+                  onClick={props.on_cancel}
+                >
+                  <X aria-hidden="true" />
+                </AppButton>
+              }
+            />
+            <TooltipContent>
+              <ShortcutTooltipRow label={cancel_label} shortcut="cancel" />
+            </TooltipContent>
+          </Tooltip>
         </div>
       </header>
       <div className="agent-decision__body">{props.children}</div>
@@ -297,14 +361,10 @@ function AgentDecisionAction({
   const remaining_label =
     countdown === null
       ? null
-      : t(
-          countdown.paused
-            ? "agent_page.decision.paused_remaining"
-            : "agent_page.decision.remaining",
-          {
-            time: format_remaining_time(countdown.remainingSeconds),
-          },
-        );
+      : t("agent_page.decision.remaining", {
+          time: format_remaining_time(countdown.remainingSeconds),
+        });
+  const arrow = <ArrowRight className="agent-decision-action__arrow" aria-hidden="true" />;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -314,34 +374,19 @@ function AgentDecisionAction({
           {ordinal}
         </span>
         <span className="agent-decision-action__label">{label}</span>
-        <span
-          className={`agent-decision-icon agent-decision-action__icon${
-            countdown === null ? "" : " agent-decision-action__icon--deadline"
-          }`}
-          data-warning={
-            countdown !== null &&
-            countdown.remainingPercent <= AGENT_DECISION_WARNING_REMAINING_PERCENT
-              ? "true"
-              : undefined
-          }
-          aria-hidden={countdown === null ? "true" : undefined}
-        >
-          {countdown === null ? null : (
-            <svg className="agent-decision-progress" viewBox="0 0 24 24" aria-hidden="true">
-              <circle className="agent-decision-progress__track" cx="12" cy="12" r="10.75" />
-              <circle
-                className="agent-decision-progress__value"
-                cx="12"
-                cy="12"
-                r="10.75"
-                pathLength="100"
-                style={{ strokeDashoffset: 100 - countdown.remainingPercent }}
-              />
-            </svg>
-          )}
-          <ArrowRight className="agent-decision-action__arrow" aria-hidden="true" />
-          {remaining_label === null ? null : <span className="sr-only">{remaining_label}</span>}
-        </span>
+        {countdown === null ? (
+          <span className="agent-decision-icon agent-decision-action__icon" aria-hidden="true">
+            {arrow}
+          </span>
+        ) : (
+          <CountdownRing
+            className="agent-decision-action__icon"
+            remaining_percent={countdown.remainingPercent}
+          >
+            {arrow}
+            <span className="sr-only">{remaining_label}</span>
+          </CountdownRing>
+        )}
       </TooltipTrigger>
       <TooltipContent>
         <span>
