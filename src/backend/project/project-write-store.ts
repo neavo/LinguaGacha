@@ -22,16 +22,7 @@ import {
 } from "../../domain/item";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import {
-  read_json_record,
-  type JsonRecord,
-  type JsonValue,
-  type MutableJsonRecord,
-} from "../../domain/json";
-import {
-  is_task_progress_status,
-  normalize_batch_translation_progress,
-} from "../../domain/batch-translation";
+import { type JsonRecord, type JsonValue, type MutableJsonRecord } from "../../domain/json";
 import { read_project_settings } from "../../domain/project-settings";
 
 import type {
@@ -130,12 +121,6 @@ export type ProjectWriteSectionAck = {
   section_revisions: MutableJsonRecord;
 };
 
-/** 工程计数按事务内前后状态增量更新，与本轮模型用量分开。 */
-type TranslationProgressCounters = {
-  total_line: number;
-  processed_line: number;
-};
-
 /** Agent 预演与事务重算共用的领域结果。 */
 type AgentWorkspaceWriteOutcome = ReturnType<typeof resolve_agent_workspace_writes>;
 
@@ -169,12 +154,10 @@ export class ProjectWriteStore {
   public async apply_translation_item_patches(request: {
     projectPath: string;
     items: TranslationItemPatch[];
-    translationExtras: MutableJsonRecord;
   }): Promise<ProjectWriteSectionAck> {
     return await this.apply_task_item_patches({
       projectPath: request.projectPath,
       items: request.items,
-      translationExtras: request.translationExtras,
       source: "translation_batch_update",
       updatedSections: ["items"],
     });
@@ -186,26 +169,12 @@ export class ProjectWriteStore {
   public async apply_retranslation_item_patches(request: {
     projectPath: string;
     items: TranslationItemPatch[];
-    translationExtras: MutableJsonRecord;
   }): Promise<ProjectWriteSectionAck> {
     return await this.apply_task_item_patches({
       projectPath: request.projectPath,
       items: request.items,
-      translationExtras: request.translationExtras,
       source: "retranslate_items",
       updatedSections: ["items", "proofreading"],
-    });
-  }
-
-  /**
-   * 任务进度 meta 仍经由运行态写入口提交，避免任务层直接碰数据库 workflow。
-   */
-  public async update_task_progress_meta(request: {
-    projectPath: string;
-    meta: MutableJsonRecord;
-  }): Promise<void> {
-    await this.database.transaction(request.projectPath, (writer) => {
-      writer.upsert_meta_entries(request.projectPath, request.meta);
     });
   }
 
@@ -244,19 +213,9 @@ export class ProjectWriteStore {
           duplicate_filter_enabled: this.is_duplicate_filter_enabled(revision_context.meta),
         });
         if (actual_changes.length === 0) return { writes: [], updatedSections: [] };
-        const translation_extras = this.has_translation_status_change(actual_changes)
-          ? this.build_translation_extras_after_status_changes(
-              request.projectPath,
-              revision_context,
-              actual_changes,
-            )
-          : null;
         const writes: ProjectDatabaseWrite[] = [
           (database) => database.patch_item_translation_fields(request.projectPath, actual_changes),
         ];
-        if (translation_extras !== null) {
-          revision_context.pendingMeta["translation_extras"] = translation_extras as JsonValue;
-        }
         this.stage_section_revisions(revision_context);
         return {
           writes,
@@ -385,25 +344,6 @@ export class ProjectWriteStore {
           ];
           assert_source_file_paths(final);
           const renamed = layout.filter((file) => file.path !== file.previous_path);
-          // 写入尚未执行，进度须按事务内基线和本批条目增减量计算。
-          const progress = this.read_translation_progress(context.meta);
-          const counters = this.has_translation_progress_counters(
-            read_json_record(context.meta["translation_extras"]),
-          )
-            ? this.read_translation_progress_counters(progress)
-            : this.get_translation_status_summary(context.database, project);
-          if (removed_paths.length) {
-            const removed = context.database.get_item_status_summary(project, removed_paths);
-            counters.total_line -= Number(removed["total_line"]);
-            counters.processed_line -= Number(removed["processed_line"]);
-          }
-          for (const file of imports)
-            for (const item of file.items) {
-              const added = this.count_translation_status(String(item["status"]));
-              counters.total_line += added.total_line;
-              counters.processed_line += added.processed_line;
-            }
-          context.pendingMeta["translation_extras"] = { ...progress, ...counters } as JsonRecord;
           const sections: ProjectDataSection[] = ["files"];
           if (removed_paths.length || renamed.length || imports.length) sections.push("items");
           const source_writes = this.build_source_record_writes(
@@ -844,14 +784,6 @@ export class ProjectWriteStore {
       writes.push((database) =>
         database.patch_item_translation_fields(project_path, outcome.itemChanges),
       );
-      if (this.has_translation_status_change(outcome.itemChanges)) {
-        const translation_extras = this.build_translation_extras_after_status_changes(
-          project_path,
-          { ...revision_context, sections: updated_sections },
-          outcome.itemChanges,
-        );
-        revision_context.pendingMeta["translation_extras"] = translation_extras as JsonValue;
-      }
     }
     for (const change of outcome.qualityChanges) {
       const storage = resolve_project_quality_rule_storage(change.kind);
@@ -891,12 +823,11 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 批次条目和用量共享事务。仅用量或同值结果只写进度。
+   * 提交真实变化的批次条目并推进受影响的修订。
    */
   private async apply_task_item_patches(request: {
     projectPath: string;
     items: TranslationItemPatch[];
-    translationExtras: MutableJsonRecord;
     source: string;
     updatedSections: ProjectDataSection[];
   }): Promise<ProjectWriteSectionAck> {
@@ -922,18 +853,6 @@ export class ProjectWriteStore {
                   patches,
                 );
           changed_item_ids = actual_changes.map((change) => change.item_id);
-          // 工程计数来自事务内的真实状态变化，本次运行用量由任务入口提供。
-          const counters = this.build_translation_extras_after_status_changes(
-            request.projectPath,
-            revision_context,
-            actual_changes,
-          );
-          const translation_extras = {
-            ...normalize_batch_translation_progress(request.translationExtras),
-            total_line: counters["total_line"],
-            processed_line: counters["processed_line"],
-          };
-          revision_context.pendingMeta["translation_extras"] = translation_extras as JsonValue;
           if (actual_changes.length === 0) return { writes: [], updatedSections: [] };
           this.stage_section_revisions(revision_context);
           return {
@@ -1202,131 +1121,5 @@ export class ProjectWriteStore {
     return changes.some(({ current, next }) => current.dst !== next.dst)
       ? "post_replacement"
       : "none";
-  }
-
-  /** 翻译统计只由状态变化驱动，调用方不再传递派生布尔值。 */
-  private has_translation_status_change(changes: readonly ProjectItemWriteChange[]): boolean {
-    return changes.some(({ current, next }) => current.status !== next.status);
-  }
-
-  /**
-   * 优先沿用可信持久计数。旧项目缺失计数时从数据库摘要补齐，再应用状态增量。
-   */
-  private build_translation_extras_after_status_changes(
-    project_path: string,
-    revision_context: ProjectWriteRevisionContext,
-    changes: readonly ProjectItemWriteChange[],
-  ): Record<string, unknown> {
-    const stored_progress = {
-      ...read_json_record(revision_context.meta["translation_extras"]),
-    };
-    const progress = this.read_translation_progress(revision_context.meta);
-    const counters = this.has_translation_progress_counters(stored_progress)
-      ? this.read_translation_progress_counters(progress)
-      : this.get_translation_status_summary(revision_context.database, project_path);
-    const next_counters = this.apply_translation_status_deltas(counters, changes);
-    return {
-      ...progress,
-      ...next_counters,
-    };
-  }
-
-  /**
-   * 用空闲任务默认值补齐项目内 translation_extras。
-   */
-  private read_translation_progress(meta: JsonRecord): Record<string, unknown> {
-    return normalize_batch_translation_progress(meta["translation_extras"]);
-  }
-
-  /**
-   * 只有两项基础计数都是有限数字时才允许增量维护。
-   */
-  private has_translation_progress_counters(progress: Record<string, unknown>): boolean {
-    return (
-      this.is_finite_number(progress["total_line"]) &&
-      this.is_finite_number(progress["processed_line"])
-    );
-  }
-
-  /**
-   * 将可信翻译进度收窄为非负整数计数。
-   */
-  private read_translation_progress_counters(
-    progress: Record<string, unknown>,
-  ): TranslationProgressCounters {
-    const processed_line = this.read_non_negative_integer(progress["processed_line"]);
-    return {
-      total_line: this.read_non_negative_integer(progress["total_line"]),
-      processed_line,
-    };
-  }
-
-  /**
-   * 旧项目缺少持久计数时从 item 状态聚合一次完整基线。
-   */
-  private get_translation_status_summary(
-    database: ProjectDatabaseAccess,
-    project_path: string,
-  ): TranslationProgressCounters {
-    const summary = {
-      ...read_json_record(database.get_item_status_summary(project_path)),
-    };
-    const processed_line = this.read_non_negative_integer(summary["processed_line"]);
-    return {
-      total_line: this.read_non_negative_integer(summary["total_line"]),
-      processed_line,
-    };
-  }
-
-  /**
-   * 按每个 item 的前后状态调整计数，避免校对保存后全表重算。
-   */
-  private apply_translation_status_deltas(
-    counters: TranslationProgressCounters,
-    changes: readonly ProjectItemWriteChange[],
-  ): TranslationProgressCounters {
-    let total_line = counters.total_line;
-    let processed_line = counters.processed_line;
-    for (const change of changes) {
-      const before = this.count_translation_status(change.current.status);
-      const after = this.count_translation_status(change.next.status);
-      total_line += after.total_line - before.total_line;
-      processed_line += after.processed_line - before.processed_line;
-    }
-    processed_line = Math.max(0, Math.trunc(processed_line));
-    return {
-      total_line: Math.max(0, Math.trunc(total_line)),
-      processed_line,
-    };
-  }
-
-  /**
-   * 将单个状态映射为翻译进度的计数贡献。
-   */
-  private count_translation_status(status: string): TranslationProgressCounters {
-    const is_progress_status = is_task_progress_status(status);
-    const processed_line = status === "PROCESSED" ? 1 : 0;
-    return {
-      total_line: is_progress_status ? 1 : 0,
-      processed_line,
-    };
-  }
-
-  /**
-   * 判断持久进度字段能否作为可信增量基线。
-   */
-  private is_finite_number(value: unknown): boolean {
-    return typeof value === "number" && Number.isFinite(value);
-  }
-
-  /**
-   * 将旧持久计数归一为非负整数，异常值回退到零。
-   */
-  private read_non_negative_integer(value: unknown): number {
-    const number_value = typeof value === "number" ? value : Number(value ?? 0);
-    if (!Number.isFinite(number_value)) {
-      return 0;
-    }
-    return Math.max(0, Math.trunc(number_value));
   }
 }

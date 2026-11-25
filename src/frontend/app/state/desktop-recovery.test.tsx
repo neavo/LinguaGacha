@@ -6,7 +6,6 @@ import {
   useDesktopRecovery,
   type DesktopRecoveryActions,
 } from "@frontend/app/state/desktop-recovery";
-import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 
 // capture renderer error mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const capture_renderer_error_mock = vi.hoisted(() => vi.fn());
@@ -21,7 +20,6 @@ type RecoveryProbeProps = {
   projectLoaded: boolean;
   projectPath: string;
   refreshProjectState: () => Promise<void>;
-  refreshTask: () => Promise<BatchTranslationSnapshot>;
   onActions: (actions: DesktopRecoveryActions) => void;
 };
 
@@ -33,7 +31,6 @@ function RecoveryProbe(props: RecoveryProbeProps): null {
     project_loaded: props.projectLoaded,
     project_path: props.projectPath,
     refresh_project_state: props.refreshProjectState,
-    refresh_batch_translation: props.refreshTask,
   });
 
   useEffect(() => {
@@ -59,14 +56,12 @@ describe("useDesktopRecovery", () => {
     const refresh_project_state = vi.fn(async () => {
       throw new Error("manifest boom");
     });
-    const refresh_batch_translation = vi.fn(async () => ({}) as BatchTranslationSnapshot);
     const actions: { current: DesktopRecoveryActions | null } = { current: null };
 
     await render_probe({
       projectLoaded: true,
       projectPath: "E:/demo/demo.lg",
       refreshProjectState: refresh_project_state,
-      refreshTask: refresh_batch_translation,
       onActions: (next_actions) => {
         actions.current = next_actions;
       },
@@ -108,14 +103,12 @@ describe("useDesktopRecovery", () => {
 
   it("未加载项目时不会发起项目恢复刷新", async () => {
     const refresh_project_state = vi.fn(async () => {});
-    const refresh_batch_translation = vi.fn(async () => ({}) as BatchTranslationSnapshot);
     const actions: { current: DesktopRecoveryActions | null } = { current: null };
 
     await render_probe({
       projectLoaded: false,
       projectPath: "",
       refreshProjectState: refresh_project_state,
-      refreshTask: refresh_batch_translation,
       onActions: (next_actions) => {
         actions.current = next_actions;
       },
@@ -146,14 +139,12 @@ describe("useDesktopRecovery", () => {
           finish_refresh = resolve;
         }),
     );
-    const refresh_batch_translation = vi.fn(async () => ({}) as BatchTranslationSnapshot);
     const actions: { current: DesktopRecoveryActions | null } = { current: null };
 
     await render_probe({
       projectLoaded: true,
       projectPath: "E:/demo/demo.lg",
       refreshProjectState: refresh_project_state,
-      refreshTask: refresh_batch_translation,
       onActions: (next_actions) => {
         actions.current = next_actions;
       },

@@ -1,9 +1,15 @@
 import type { Api, Model as PiModel } from "@earendil-works/pi-ai";
-import { is_json_record } from "../../domain/json";
-import type { ModelSpeedLevel, ModelApiFormat } from "../../domain/model";
+import { is_json_record, read_json_record } from "../../domain/json";
+import type {
+  EffectiveModelRequest,
+  ModelSpeedLevel,
+  ModelApiFormat,
+  ModelThinkingLevel,
+} from "../../domain/model";
 import { MISTRAL_API_BASE_URL } from "../../domain/model-endpoint";
 import { AppError } from "../../shared/error";
 import { apply_chatgpt_payload } from "./chatgpt-request";
+import { resolve_product_thinking_level } from "./model-capability";
 import type { ModelRequestPolicy } from "./llm-overrides";
 import {
   read_custom_number,
@@ -86,6 +92,104 @@ export function apply_request_overrides(
   return snapshot.auth_type === "oauth"
     ? apply_chatgpt_payload(record, snapshot.extra_body)
     : { ...record, ...snapshot.extra_body };
+}
+
+/** 只发布最终载荷里与模型身份及思考控制相关的展示事实。 */
+export function describe_effective_model_request(
+  original: unknown,
+  payload: Record<string, unknown>,
+  model: PiModel<Api>,
+  format: ModelApiFormat,
+  selected_level: ModelThinkingLevel,
+): EffectiveModelRequest {
+  const model_id = typeof payload["model"] === "string" ? payload["model"] : model.id;
+  const { effort, enabled, budget } = read_thinking_controls(payload, format, model.compat);
+  if (enabled === false || budget === 0) return { model_id, thinking_level: "OFF" };
+  if (
+    effort === "THINKING_LEVEL_UNSPECIFIED" ||
+    budget === -1 ||
+    (effort === undefined && enabled === undefined && budget === undefined)
+  )
+    return { model_id, thinking_level: "DEFAULT" };
+
+  const explicit =
+    typeof effort === "string"
+      ? resolve_product_thinking_level(effort, model.thinkingLevelMap)
+      : undefined;
+  if (budget === undefined && explicit !== undefined) return { model_id, thinking_level: explicit };
+
+  // 只有 SDK 生成的预算可以用所选档位解释，用户覆写的预算没有通用档位。
+  const sdk = read_thinking_controls(read_json_record(original), format, model.compat);
+  if (budget !== undefined && budget !== sdk.budget) return { model_id, thinking_level: "CUSTOM" };
+  const unchanged = effort === sdk.effort && enabled === sdk.enabled && budget === sdk.budget;
+  const thinking_level =
+    explicit ?? (unchanged && selected_level !== "DEFAULT" ? selected_level : "CUSTOM");
+  return { model_id, thinking_level };
+}
+
+/** 从供应商载荷读取可见的档位、开关与预算。 */
+function read_thinking_controls(
+  payload: Record<string, unknown>,
+  format: ModelApiFormat,
+  compat: PiCompat,
+): { effort: unknown; enabled: unknown; budget: unknown } {
+  if (format === "Google") {
+    const thinking = read_json_record(read_json_record(payload["config"])["thinkingConfig"]);
+    return {
+      effort: thinking["thinkingLevel"],
+      enabled: undefined,
+      budget: thinking["thinkingBudget"],
+    };
+  }
+  const thinking_value = payload["thinking"];
+  const thinking = read_json_record(thinking_value);
+  const reasoning = read_json_record(payload["reasoning"]);
+  const output = read_json_record(payload["output_config"]);
+  const thinking_type = thinking["type"];
+  const prompt_mode = payload["prompt_mode"] ?? payload["promptMode"];
+  let effort: unknown =
+    reasoning["effort"] ??
+    payload["reasoning_effort"] ??
+    payload["reasoningEffort"] ??
+    output["effort"] ??
+    (typeof thinking_value === "string" ? thinking_value : undefined);
+  let enabled: unknown =
+    payload["enable_thinking"] ??
+    reasoning["enabled"] ??
+    (thinking_type === undefined ? undefined : thinking_type !== "disabled") ??
+    (typeof thinking_value === "boolean" ? thinking_value : undefined) ??
+    (typeof payload["reasoning"] === "boolean" ? payload["reasoning"] : undefined) ??
+    (prompt_mode === "reasoning" ? true : undefined);
+  const budget_field =
+    compat && "thinkingTokenBudgetField" in compat ? compat.thinkingTokenBudgetField : undefined;
+  let budget: unknown =
+    thinking["budget_tokens"] ??
+    reasoning["max_tokens"] ??
+    (budget_field === undefined ? undefined : payload[budget_field]) ??
+    payload["thinking_token_budget"] ??
+    payload["thinking_budget"] ??
+    payload["thinking_budget_tokens"];
+
+  for (const [field, template] of [
+    [
+      "chat_template_kwargs",
+      compat && "chatTemplateKwargs" in compat ? compat.chatTemplateKwargs : undefined,
+    ],
+    [
+      "chat_template_args",
+      compat && "chatTemplateArgs" in compat ? compat.chatTemplateArgs : undefined,
+    ],
+  ] as const) {
+    const values = read_json_record(payload[field]);
+    enabled ??= values["enable_thinking"];
+    for (const [key, value] of Object.entries(template ?? {})) {
+      const variable = read_json_record(value)["$var"];
+      if (variable === "thinking.effort") effort ??= values[key];
+      if (variable === "thinking.enabled") enabled ??= values[key];
+      if (variable === "thinking.budget") budget ??= values[key];
+    }
+  }
+  return { effort, enabled, budget };
 }
 
 /** Pi 的 Mistral onPayload 在转换线上字段之前执行，先去掉会覆盖用户显式字段的 SDK 别名。 */

@@ -118,8 +118,8 @@ it.each([
     source_paths: [],
     languages: expect.any(Object),
   });
-  expect(mocks.loaded).not.toHaveBeenCalled();
   expect(flow.source_selection_disabled).toBe(true);
+  expect(mocks.loaded).not.toHaveBeenCalled();
   await act(async () => vi.runAllTimersAsync());
   expect(mocks.loaded).toHaveBeenCalledWith(created_project, expect.any(Object));
   expect(mocks.toast).toHaveBeenCalledWith("success", expect.any(String));

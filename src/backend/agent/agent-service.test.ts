@@ -14,9 +14,8 @@ import type { LogAppendPayload } from "../../shared/log";
 import { uploaded_file } from "../../test/agent-upload-fixture";
 import { workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
-import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
-import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-state";
+import { BatchTaskCompletionError } from "../batch-task/batch-task-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -3054,7 +3053,7 @@ describe("AgentService", () => {
     fake_agent_state.batch_mode = true;
     const run = vi.fn<
       import("../batch-translation/batch-translation-service").BatchTranslationService["run_under_agent"]
-    >(async () => ({ status: "done", progress: normalize_batch_translation_progress({}) }));
+    >(async () => ({ run_id: "translation", status: "done", progress: null }));
     const { service, select_agent_model, select_batch_translation_model } = await create_service({
       batch_translation: { run_under_agent: run },
     });
@@ -3088,7 +3087,7 @@ describe("AgentService", () => {
     fake_agent_state.batch_mode = true;
     const run = vi.fn<
       import("../batch-translation/batch-translation-service").BatchTranslationService["run_under_agent"]
-    >(async () => ({ status: "done", progress: normalize_batch_translation_progress({}) }));
+    >(async () => ({ run_id: "translation", status: "done", progress: null }));
     const fixture = await create_service({
       batch_translation: { run_under_agent: run },
       catalog: {
@@ -3125,25 +3124,25 @@ describe("AgentService", () => {
       fake_agent_state.batch_mode = true;
       fake_agent_state.batch_retries = 2;
       fake_agent_state.batch_request_on_retry = switch_tool;
-      const progress = {
-        start_time: 0,
-        time: 0,
-        total_line: 2,
-        processed_line: 1,
-        total_tokens: 0,
-        total_input_tokens: 0,
-        total_reasoning_tokens: 0,
-        total_output_tokens: 0,
-      };
       const run = vi.fn(async () => {
         const result = {
+          run_id: "translation",
           status: cleanup_failed ? ("error" as const) : ("stopped" as const),
           stop_source: "user" as const,
-          progress,
-          run_progress: { ...progress, failed_line: 0 },
+          progress: {
+            unit: "item" as const,
+            start_time: 0,
+            time: 0,
+            total: 2,
+            succeeded: 1,
+            failed: 0,
+            input_tokens: 0,
+            reasoning_tokens: 0,
+            output_tokens: 0,
+            usage_complete: false,
+          },
         };
-        if (cleanup_failed)
-          throw new BatchTranslationCompletionError(result, new Error("cleanup failed"));
+        if (cleanup_failed) throw new BatchTaskCompletionError(result, new Error("cleanup failed"));
         return result;
       });
       const { service, log_append } = await create_service({
@@ -3193,7 +3192,7 @@ describe("AgentService", () => {
             },
             error: {
               cause_chain: expect.arrayContaining([
-                expect.objectContaining({ name: "BatchTranslationCompletionError" }),
+                expect.objectContaining({ name: "BatchTaskCompletionError" }),
               ]),
             },
           },
@@ -3389,7 +3388,8 @@ describe("AgentService", () => {
       batchTranslation: batch_translation ?? {
         run_under_agent: async () => ({
           status: "done",
-          progress: normalize_batch_translation_progress({}),
+          run_id: "translation",
+          progress: null,
         }),
       },
       resources: load_agent_resources({

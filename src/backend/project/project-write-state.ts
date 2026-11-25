@@ -1,9 +1,4 @@
 import type { ProjectFileRecord } from "./project-file-records";
-import {
-  normalize_batch_translation_progress,
-  type BatchTranslationProgress,
-  TASK_PROGRESS_STATUSES,
-} from "../../domain/batch-translation";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { ProjectPrefilterSettings } from "../../domain/project-settings";
 
@@ -20,32 +15,6 @@ type ProjectPrefilterInput = ProjectPrefilterSettings & {
   state: ProjectWriteState;
   source_language: string;
 };
-
-/**
- * 按最终 item 状态重建翻译进度 meta。任务生命周期由 BatchTranslationSnapshot 管理。
- */
-export function build_translation_extras_from_items(args: {
-  progress?: unknown; // 旧工程进度只在生成最终统计时归一。
-  items: Iterable<Pick<ProjectItemPublicRecord, "status">>;
-}): BatchTranslationProgress {
-  let processed_line = 0;
-  let total_line = 0;
-
-  for (const item of args.items) {
-    if (item.status === "PROCESSED") {
-      processed_line += 1;
-    }
-    if ((TASK_PROGRESS_STATUSES as readonly string[]).includes(item.status)) {
-      total_line += 1;
-    }
-  }
-
-  return {
-    ...normalize_batch_translation_progress(args.progress),
-    processed_line,
-    total_line,
-  };
-}
 
 /**
  * 将已收窄的条目集合转成按身份索引的独立条目快照。

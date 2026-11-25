@@ -1,7 +1,5 @@
-import {
-  normalize_batch_translation_progress,
-  type BatchTranslationSnapshot,
-} from "@domain/batch-translation";
+import { create_batch_task_snapshot, type BatchTaskListSnapshot } from "@domain/batch-task";
+import { empty_batch_task_list_snapshot, read_batch_task_list_snapshot } from "@shared/batch-task";
 import { type JSX, act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,13 +34,12 @@ type RuntimeFixture = {
     loaded: boolean;
     path: string;
   };
-  task_snapshot: import("@domain/batch-translation").BatchTranslationSnapshot;
+  task_snapshot: BatchTaskListSnapshot;
   runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
-  sync_task_snapshot: ReturnType<typeof vi.fn>;
+  update_task: ReturnType<typeof vi.fn>;
   project_change_signal: ProjectChangeSignal;
   commit_project_write: ReturnType<typeof vi.fn>;
   refresh_project_state: ReturnType<typeof vi.fn>;
-  refresh_batch_translation: ReturnType<typeof vi.fn>;
 };
 
 // 只保留校对页查找意图，避免页面测试依赖真实导航容器。
@@ -173,11 +170,13 @@ const toast_fixture: { current: ToastFixture } = {
 
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
-    useDesktopState: () => ({ ...runtime_fixture.current, active_project: { pageUi: page_ui } }),
+    useDesktopState: () => ({
+      ...runtime_fixture.current,
+      active_project: { pageUi: page_ui, update_task: runtime_fixture.current.update_task },
+    }),
     useProjectChangeSignal: () => runtime_fixture.current.project_change_signal,
-    useBatchTranslationSnapshot: () => runtime_fixture.current.task_snapshot,
+    useBatchTaskSnapshot: () => runtime_fixture.current.task_snapshot,
     useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
-    useSyncBatchTranslationSnapshot: () => runtime_fixture.current.sync_task_snapshot,
   };
 });
 
@@ -279,21 +278,12 @@ function create_runtime_fixture(): RuntimeFixture {
       loaded: true,
       path: "E:/demo/sample.lg",
     },
-    task_snapshot: {
-      revision: 0,
-      status: "idle",
-      source: null,
-      request_in_flight_count: 0,
-      request_recovery: null,
-      progress: normalize_batch_translation_progress({}),
-
-      pending_item_ids: [],
-    },
+    task_snapshot: empty_batch_task_list_snapshot(),
     runtime_snapshot: { revision: 0, owner: null },
-    sync_task_snapshot: vi.fn((snapshot) => {
+    update_task: vi.fn((snapshot: unknown) => {
       runtime_fixture.current = {
         ...runtime_fixture.current,
-        task_snapshot: snapshot,
+        task_snapshot: read_batch_task_list_snapshot(snapshot),
       };
     }),
     project_change_signal: create_project_change_signal(0, { updatedSections: [] }),
@@ -304,7 +294,6 @@ function create_runtime_fixture(): RuntimeFixture {
       return { payload, write_result };
     }),
     refresh_project_state: vi.fn(async () => {}),
-    refresh_batch_translation: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
@@ -767,26 +756,6 @@ describe("useProofreadingPageState", () => {
     });
     expect(latest_state?.dialog_state.open).toBe(false);
     expect(latest_state?.dialog_state.target_row_id).toBeNull();
-  });
-
-  it("保存成功后的统计刷新失败不会阻止关闭编辑弹窗", async () => {
-    await render_hook();
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-    act(() => {
-      latest_state?.update_dialog_draft({ dst: "保存结果" });
-    });
-    const error = new Error("统计刷新失败");
-    runtime_fixture.current.refresh_batch_translation.mockRejectedValueOnce(error);
-    await act(async () => {
-      await latest_state?.save_dialog_entry();
-    });
-    expect(latest_state?.dialog_state.open).toBe(false);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "app.feedback.refresh_failed",
-      error,
-    );
   });
 
   it("内容筛选确认保留搜索条的显式文件意图，空选择和全选分别生效", async () => {
@@ -2685,7 +2654,7 @@ describe("useProofreadingPageState", () => {
 
     const retranslate_deferred = create_deferred<{
       accepted: boolean;
-      batch_translation: Partial<BatchTranslationSnapshot>;
+      batch_tasks: BatchTaskListSnapshot;
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
@@ -2710,16 +2679,24 @@ describe("useProofreadingPageState", () => {
       submitting_action: "retranslate",
     });
 
-    await act(async () => {
-      retranslate_deferred.resolve({
-        accepted: true,
-        batch_translation: {
-          status: "requested",
-          source: "standalone",
-          operation: "retranslate",
-          pending_item_ids: [],
+    const accepted_task = {
+      ...create_batch_task_snapshot("retranslate", "translation", "standalone"),
+      translation: { operation: "retranslate" as const, pending_item_ids: [] },
+    };
+    const payload = {
+      accepted: true,
+      batch_tasks: {
+        ...empty_batch_task_list_snapshot(),
+        activity: {
+          id: accepted_task.run_id,
+          start_time: 0,
+          usage: { input_tokens: 0, reasoning_tokens: 0, output_tokens: 0 },
         },
-      });
+        tasks: [accepted_task],
+      },
+    };
+    await act(async () => {
+      retranslate_deferred.resolve(payload);
       await confirm_promise;
     });
 
@@ -2727,27 +2704,21 @@ describe("useProofreadingPageState", () => {
       operation: "retranslate",
       scope: { kind: "items", item_ids: [2, 1] },
     });
-    expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "requested",
-        operation: "retranslate",
-        pending_item_ids: [],
-      }),
-    );
+    expect(runtime_fixture.current.update_task).toHaveBeenCalledWith(payload);
     expect(latest_state?.retranslating_row_ids).toEqual([]);
     runtime_fixture.current.task_snapshot = {
-      ...runtime_fixture.current.task_snapshot,
-      status: "running",
-      pending_item_ids: [1],
+      ...payload.batch_tasks,
+      tasks: [
+        {
+          ...accepted_task,
+          status: "running",
+          translation: { operation: "retranslate", pending_item_ids: [1] },
+        },
+      ],
     };
     await render_hook();
     expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
-    runtime_fixture.current.task_snapshot = {
-      ...runtime_fixture.current.task_snapshot,
-      status: "done",
-      operation: "retranslate",
-      pending_item_ids: [],
-    };
+    runtime_fixture.current.task_snapshot = empty_batch_task_list_snapshot();
     await render_hook();
     expect(latest_state?.retranslating_row_ids).toEqual([]);
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(

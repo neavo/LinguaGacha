@@ -11,6 +11,7 @@ import { AppContentState } from "@frontend/widgets/app-content-state";
 import {
   type JSX,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -37,10 +38,7 @@ import {
   summarize_task_snapshot_for_diagnostics,
 } from "@frontend/app/state/desktop-diagnostics";
 import { update_renderer_diagnostics_context } from "@frontend/app/diagnostics/renderer-error-reporter";
-import {
-  useDesktopState,
-  useBatchTranslationSnapshot,
-} from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useBatchTaskSnapshot } from "@frontend/app/state/use-desktop-state";
 import { DesktopProgressToast } from "@frontend/app/feedback/desktop-progress-toast";
 import "@frontend/app/shell/app-shell.css";
 import type { AgentInputRequest, RouteId } from "@frontend/app/navigation/types";
@@ -545,19 +543,24 @@ function RendererDiagnosticsSync(props: {
   project_path: string;
   project_session_status: "idle" | "warming" | "ready";
 }): null {
-  const task_snapshot = useBatchTranslationSnapshot();
+  const task_snapshot = useBatchTaskSnapshot();
   const { route, project_loaded, project_path, project_session_status } = props;
-  useEffect(() => {
-    update_renderer_diagnostics_context({
-      route,
-      project: summarize_project_state_for_diagnostics({
+  const project = useMemo(
+    () =>
+      summarize_project_state_for_diagnostics({
         loaded: project_loaded,
         path: project_path,
         sessionStatus: project_session_status,
       }),
+    [project_loaded, project_path, project_session_status],
+  ); // 批量进度高频发布，工程路径只在工程摘要变化时计算哈希。
+  useEffect(() => {
+    update_renderer_diagnostics_context({
+      route,
+      project,
       task: summarize_task_snapshot_for_diagnostics(task_snapshot),
     });
-  }, [project_loaded, project_path, project_session_status, route, task_snapshot]);
+  }, [project, route, task_snapshot]);
   return null;
 }
 

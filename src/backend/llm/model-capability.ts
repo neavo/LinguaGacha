@@ -224,6 +224,23 @@ export function resolve_pi_thinking_level(
     : "off";
 }
 
+/** 把供应商明确发送的档位映射回产品等级。 */
+export function resolve_product_thinking_level(
+  effort: string,
+  map: ThinkingLevelMap | undefined,
+): ModelThinkingLevel | undefined {
+  const value = effort.toLowerCase();
+  if (value === "none" || value === "off") return "OFF";
+  for (const level of MODEL_THINKING_LEVELS) {
+    if (level === "DEFAULT") continue;
+    const pi_level = PRODUCT_TO_PI_LEVEL[level];
+    if (map?.[pi_level]?.toLowerCase() === value) return level;
+  }
+  return MODEL_THINKING_LEVELS.find(
+    (level) => level !== "DEFAULT" && level.toLowerCase() === value,
+  );
+}
+
 /** 模型修正先按名称定位，容量和协议能力在各自消费边界读取。 */
 function match_model_capability_override(configured_id: string): ModelCapabilityOverride | null {
   const canonical_id = match_canonical_model_id(

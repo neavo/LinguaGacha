@@ -1,29 +1,9 @@
-import type { useI18n } from "@frontend/app/locale/locale-context";
-import { batch_task_metrics, type BatchTaskMetrics } from "@shared/batch-task";
-import type { BatchTaskConfig, BatchTaskKind, BatchTaskSnapshot } from "@domain/batch-task";
-import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
-const METRIC_SCALE = 1000;
+import type { TextResolver } from "@shared/i18n";
+import type { BatchTaskMetrics } from "@shared/batch-task";
 
-export type BatchTaskTone = "neutral" | "success" | "warning";
+const METRIC_SCALE = 1_000;
+type BatchTaskTone = "neutral" | "success" | "warning";
 
-export type BatchTaskSwitcherItem = {
-  run_id: string;
-  label: string;
-  progress_text?: string | null;
-  selected: boolean;
-  status: BatchTaskSnapshot["status"];
-};
-
-export type BatchTaskMetricEntry = {
-  key: string;
-  label: string;
-  value_text: string;
-  unit_text: string;
-};
-
-/**
- * 摘要共享运行指标，消费方决定使用胶囊或进度卡片展示。
- */
 export type BatchTaskSummaryDisplay = {
   status_text: string;
   speed_text: string | null;
@@ -31,245 +11,71 @@ export type BatchTaskSummaryDisplay = {
   detail_tooltip_text: string;
 };
 
-/**
- * BatchTaskDetailDisplay 是详情抽屉消费的完整任务展示数据。
- */
-export type BatchTaskDetailDisplay = {
-  provider: BatchTaskProviderDisplay | null;
-  waveform_title: string;
-  metrics_title: string;
-  completion_percent_text: string;
-  percent_tone: BatchTaskTone;
-  metric_entries: BatchTaskMetricEntry[];
-  stop_button_label: string;
-  stop_disabled: boolean;
-  waveform_history: number[];
-};
+/** 数值和量级单位分别返回，侧栏可以分别排版。 */
+function format_quantity(value: number, unit: string, fraction_digits = 0) {
+  if (value < METRIC_SCALE) return { value: value.toFixed(fraction_digits), unit };
+  if (value < METRIC_SCALE ** 2)
+    return { value: (value / METRIC_SCALE).toFixed(2), unit: "K" + unit };
+  return { value: (value / METRIC_SCALE ** 2).toFixed(2), unit: "M" + unit };
+}
 
-/** 接入点的三行文本直接来自本次运行快照。 */
-type BatchTaskProviderDisplay = {
-  label: string;
-  name: string;
-  model: string;
-  thinking: string;
-};
+/** 两处任务入口和波形标题共用速度格式。 */
+export function format_batch_task_speed(speed: number): string {
+  const { value, unit } = format_quantity(speed, "T/s", 2);
+  return value + " " + unit;
+}
 
-/**
- * 将秒数截断并限制为非负值，统一输出 HH:MM:SS。
- */
-function format_duration_value(
-  seconds: number,
-): Pick<BatchTaskMetricEntry, "value_text" | "unit_text"> {
-  const normalized_seconds = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(normalized_seconds / 60 / 60);
-  const minutes = Math.floor((normalized_seconds % (60 * 60)) / 60);
-  const remaining_seconds = normalized_seconds % 60;
+/** 预计和累计时长都用时分秒，超过一天继续累加小时。 */
+function format_duration(seconds: number): string {
+  const time = Math.floor(seconds);
+  return [Math.floor(time / 3600), Math.floor(time / 60) % 60, time % 60]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+}
 
+/** 按侧栏顺序格式化同一份工程统计。 */
+export function build_batch_task_cards(metrics: BatchTaskMetrics, t: TextResolver) {
+  const { usage } = metrics;
+  const entries = [
+    [
+      t("batch_translation.detail.elapsed_time"),
+      { value: format_duration(metrics.elapsed_seconds), unit: "" },
+    ],
+    [
+      t("batch_translation.detail.remaining_time"),
+      { value: format_duration(metrics.remaining_seconds), unit: "" },
+    ],
+    [t("batch_translation.detail.input_tokens"), format_quantity(usage.input_tokens, "T")],
+    [t("batch_translation.detail.reasoning_tokens"), format_quantity(usage.reasoning_tokens, "T")],
+    [t("batch_translation.detail.output_tokens"), format_quantity(usage.output_tokens, "T")],
+    [t("batch_translation.detail.average_speed"), format_quantity(metrics.average_speed, "T/s", 2)],
+    [
+      t("batch_translation.detail.active_requests"),
+      format_quantity(metrics.request_in_flight_count, "Task"),
+    ],
+  ] as const;
+  return entries.map(([label, amount]) => ({
+    label,
+    ...amount,
+  }));
+}
+
+/** 活跃任务按类别选用状态文案，空闲入口省略实时速度。 */
+export function build_batch_task_summary_display(
+  metrics: Pick<BatchTaskMetrics, "kind" | "stopping">,
+  speed: number,
+  t: TextResolver,
+): BatchTaskSummaryDisplay {
+  const { kind, stopping } = metrics;
+  const status = stopping ? "stopping" : "running";
+  const status_key =
+    kind === null
+      ? "batch_translation.summary.empty"
+      : (`batch_translation.summary.${kind}.${status}` as const);
   return {
-    value_text: [hours, minutes, remaining_seconds]
-      .map((part) => {
-        return part.toString().padStart(2, "0");
-      })
-      .join(":"),
-    unit_text: "",
-  };
-}
-
-/**
- * 用 K/M 缩写压缩计数，同时把单位与数值分离给详情布局。
- */
-function format_compact_metric_value(
-  value: number,
-  base_unit: string,
-  base_fraction_digits = 0, // 基础单位下计数取整，速度保留两位；K/M 缩写统一两位
-): Pick<BatchTaskMetricEntry, "value_text" | "unit_text"> {
-  if (value < METRIC_SCALE) {
-    return {
-      value_text: value.toFixed(base_fraction_digits),
-      unit_text: base_unit,
-    };
-  }
-
-  if (value < METRIC_SCALE * METRIC_SCALE) {
-    return {
-      value_text: (value / METRIC_SCALE).toFixed(2),
-      unit_text: `K${base_unit}`,
-    };
-  }
-
-  return {
-    value_text: (value / METRIC_SCALE / METRIC_SCALE).toFixed(2),
-    unit_text: `M${base_unit}`,
-  };
-}
-
-/**
- * 摘要和进度共享停止、运行与空闲的状态色。
- */
-function resolve_task_tone(args: Pick<BatchTaskMetrics, "active" | "stopping">): BatchTaskTone {
-  if (args.stopping) {
-    return "warning";
-  }
-
-  if (args.active) {
-    return "success";
-  }
-
-  return "neutral";
-}
-
-/**
- * 按详情面板的固定顺序投影翻译任务指标。
- */
-function build_translation_task_metric_entries(
-  metrics: BatchTaskMetrics,
-  t: ReturnType<typeof useI18n>["t"],
-): BatchTaskMetricEntry[] {
-  return [
-    {
-      key: "elapsed",
-      label: t("batch_translation.detail.elapsed_time"),
-      ...format_duration_value(metrics.elapsed_seconds),
-    },
-    {
-      key: "remaining-time",
-      label: t("batch_translation.detail.remaining_time"),
-      ...format_duration_value(metrics.remaining_seconds),
-    },
-    {
-      key: "input-tokens",
-      label: t("batch_translation.detail.input_tokens"),
-      ...format_compact_metric_value(metrics.input_tokens, "T"),
-    },
-    {
-      key: "reasoning-tokens",
-      label: t("batch_translation.detail.reasoning_tokens"),
-      ...format_compact_metric_value(metrics.reasoning_tokens, "T"),
-    },
-    {
-      key: "output-tokens",
-      label: t("batch_translation.detail.output_tokens"),
-      ...format_compact_metric_value(metrics.output_tokens, "T"),
-    },
-    {
-      key: "speed",
-      label: t("batch_translation.detail.average_speed"),
-      ...format_compact_metric_value(metrics.average_generation_speed, "T/S", 2),
-    },
-    {
-      key: "active-requests",
-      label: t("batch_translation.detail.active_requests"),
-      ...format_compact_metric_value(metrics.request_in_flight_count, "Task"),
-    },
-  ];
-}
-
-/**
- * 将批量任务运行态投影为命令栏摘要，空闲时不显示历史速度。
- */
-export function build_batch_task_summary_display({
-  metrics,
-  kind,
-  active_task_count = 0,
-  t,
-}: {
-  metrics: BatchTaskMetrics;
-  kind: BatchTaskKind | null;
-  active_task_count?: number;
-  t: ReturnType<typeof useI18n>["t"];
-}): BatchTaskSummaryDisplay {
-  let status_text = t("batch_translation.summary.empty");
-  if (metrics.stopping) {
-    status_text = t(
-      kind === null
-        ? "batch_translation.summary.stopping"
-        : `batch_translation.summary.${kind}.stopping`,
-    );
-  } else if (metrics.active) {
-    status_text = t(
-      kind === null
-        ? "batch_translation.summary.running"
-        : `batch_translation.summary.${kind}.running`,
-    );
-  } else if (metrics.total !== 0 && ["done", "stopped", "error"].includes(metrics.status)) {
-    status_text = t("batch_translation.summary.done");
-  }
-
-  const speed = format_compact_metric_value(metrics.average_generation_speed, "T/S", 2);
-
-  return {
-    status_text: active_task_count > 1 ? `${status_text} (${active_task_count})` : status_text,
-    speed_text:
-      metrics.active || metrics.stopping ? `${speed.value_text} ${speed.unit_text}` : null,
-    tone: resolve_task_tone(metrics),
+    status_text: t(status_key),
+    speed_text: kind === null ? null : format_batch_task_speed(speed),
+    tone: kind === null ? "neutral" : stopping ? "warning" : "success",
     detail_tooltip_text: t("batch_translation.summary.detail_tooltip"),
   };
-}
-
-/**
- * 将翻译任务快照组装成详情面板契约，停止中禁用重复停止。
- */
-export function build_translation_task_detail_display(args: {
-  config?: Pick<BatchTaskConfig, "model_name" | "model_id" | "thinking_level"> | undefined;
-  metrics: BatchTaskMetrics;
-  waveform_history: number[];
-  t: ReturnType<typeof useI18n>["t"];
-}): BatchTaskDetailDisplay {
-  const { completion_percent } = args.metrics;
-  return {
-    provider: build_translation_provider(args.config, args.t),
-    waveform_title: args.t("batch_translation.detail.waveform_title"),
-    metrics_title: args.t("batch_translation.detail.metrics_title"),
-    completion_percent_text:
-      completion_percent === null ? "—" : `${completion_percent.toFixed(2)}%`,
-    percent_tone: resolve_task_tone(args.metrics),
-    metric_entries: build_translation_task_metric_entries(args.metrics, args.t),
-    stop_button_label: args.metrics.stopping
-      ? args.t("batch_translation.summary.stopping")
-      : args.t("batch_translation.action.stop"),
-    stop_disabled: !args.metrics.active || args.metrics.stopping,
-    waveform_history: args.waveform_history,
-  };
-}
-
-/** 当前运行配置直接投影显示；模型重命名与后续设置变化由各自快照隔离。 */
-function build_translation_provider(
-  config: Pick<BatchTaskConfig, "model_name" | "model_id" | "thinking_level"> | undefined,
-  t: ReturnType<typeof useI18n>["t"],
-): BatchTaskProviderDisplay | null {
-  if (config === undefined) return null;
-  return {
-    label: t("batch_translation.detail.provider"),
-    name: config.model_name || config.model_id,
-    model: config.model_id,
-    thinking: t(
-      config.thinking_level === null
-        ? "app.model.thinking_level.default"
-        : MODEL_THINKING_LEVEL_LABEL_KEY[config.thinking_level],
-    ),
-  };
-}
-
-/** 构造详情抽屉的批次切换项，同类多批次追加顺序编号保持可辨识。 */
-export function build_batch_task_switcher_items(args: {
-  tasks: readonly BatchTaskSnapshot[];
-  selected_run_id: string | null;
-  t: ReturnType<typeof useI18n>["t"];
-}): BatchTaskSwitcherItem[] {
-  const counts = new Map<BatchTaskKind, number>();
-  for (const task of args.tasks) counts.set(task.kind, (counts.get(task.kind) ?? 0) + 1);
-  const seen = new Map<BatchTaskKind, number>();
-  return args.tasks.map((task) => {
-    const base_label = args.t(`batch_translation.kind.${task.kind}`);
-    const ordinal = (seen.get(task.kind) ?? 0) + 1;
-    seen.set(task.kind, ordinal);
-    const percent = batch_task_metrics(task, 0).completion_percent;
-    return {
-      run_id: task.run_id,
-      label: (counts.get(task.kind) ?? 0) > 1 ? `${base_label} #${ordinal}` : base_label,
-      progress_text: percent === null ? null : `${percent.toFixed(2)}%`,
-      selected: task.run_id === args.selected_run_id,
-      status: task.status,
-    };
-  });
 }

@@ -4,7 +4,7 @@ import { useBatchTaskSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { dismiss_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 
-const RECOVERY_TOAST_ID = "batch-translation-recovery";
+const RECOVERY_TOAST_ID = "batch-task-recovery";
 const COUNTDOWN_INTERVAL_MS = 1_000;
 
 /** 会话拥有唯一恢复通知，页面切换不重建任务状态，显示时钟不参与请求调度。 */

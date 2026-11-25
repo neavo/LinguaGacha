@@ -6,7 +6,7 @@ import {
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
 } from "../database-migrations";
 
-it.each([false, true])("升级保留原条目和累计用量，协调重复代表且幂等：%s", (enabled) => {
+it.each([false, true])("升级保留原条目和旧统计，协调重复代表且幂等：%s", (enabled) => {
   using db = new DatabaseSync(":memory:");
   run_project_database_migrations(db, "1.0.0", []);
   const originals = [
@@ -66,8 +66,11 @@ it.each([false, true])("升级保留原条目和累计用量，协调重复代�
     ),
   ).toEqual({
     ...usage,
-    total_line: enabled ? 2 : 4,
-    processed_line: 1,
+    total_line: 99,
+    processed_line: 99,
+    error_line: 2,
+    line: 101,
+    failed_line: 9,
   });
   const before = db.prepare("SELECT * FROM meta ORDER BY key").all();
   run_item_error_status_migration(db);
@@ -75,7 +78,7 @@ it.each([false, true])("升级保留原条目和累计用量，协调重复代�
   expect(db.prepare("SELECT * FROM meta ORDER BY key").all()).toEqual(before);
 });
 
-it("已完成早期迁移的工程独立升级，计数写入失败回滚条目和标记后可重试", () => {
+it("已完成早期迁移的工程独立升级，条目迁移失败回滚标记后可重试", () => {
   using db = new DatabaseSync(":memory:");
   run_project_database_migrations(db, "1.0.0");
   const key = PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY;
@@ -92,15 +95,15 @@ it("已完成早期迁移的工程独立升级，计数写入失败回滚条目�
     JSON.stringify({ src: "旧原文", dst: "保留译文", name_dst: "保留译名", status: "ERROR" }),
   );
   db.exec(
-    "CREATE TRIGGER reject_progress BEFORE INSERT ON meta WHEN NEW.key = 'translation_extras' BEGIN SELECT RAISE(ABORT, 'progress failed'); END",
+    "CREATE TRIGGER reject_item BEFORE UPDATE ON items BEGIN SELECT RAISE(ABORT, 'item failed'); END",
   );
   const before = db.prepare("SELECT * FROM items").all();
   const marker = read_marker();
 
-  expect(() => run_project_database_migrations(db, "1.0.0")).toThrow("progress failed");
+  expect(() => run_project_database_migrations(db, "1.0.0")).toThrow("item failed");
   expect(db.prepare("SELECT * FROM items").all()).toEqual(before);
   expect(read_marker()).toEqual(marker);
-  db.exec("DROP TRIGGER reject_progress");
+  db.exec("DROP TRIGGER reject_item");
   run_project_database_migrations(db, "1.0.0");
   expect(JSON.parse(String(db.prepare("SELECT data FROM items").get()!.data))).toEqual({
     src: "旧原文",

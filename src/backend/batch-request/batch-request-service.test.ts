@@ -142,14 +142,9 @@ describe("batch request", () => {
       status: "succeeded",
       response: { format: "messages", text: "ok" },
     });
-    expect(
-      read_batch_task_list_snapshot(
-        JSON.parse(JSON.stringify({ batch_tasks: f.tasks.build_snapshot() })),
-      ).tasks[0],
-    ).toMatchObject({
-      kind: "request",
-      progress: { total: 2, succeeded: 1, failed: 1 },
-    });
+    expect(read_batch_task_list_snapshot({ batch_tasks: f.tasks.build_snapshot() }).tasks).toEqual(
+      [],
+    );
     const logs = f.append.mock.calls.map(([entry]) => entry);
     const results = logs.filter(
       (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
@@ -299,7 +294,7 @@ describe("batch request", () => {
   it.each(["progress", "completion"])("成果发布后 %s 事件失败保留逐项成功", async (event) => {
     const f = await setup();
     await f.write_manifest([{ id: "one", input_file: "good.json" }]);
-    f.tasks.subscribe(({ tasks: [snapshot] }) => {
+    f.tasks.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       if (event === "completion" ? snapshot.status === "done" : snapshot.progress?.succeeded === 1)
         throw new Error("event failure");
@@ -339,7 +334,8 @@ describe("batch request", () => {
     const started = Promise.withResolvers<void>(),
       release = Promise.withResolvers<void>();
     let count = 0;
-    const f = await setup(async (_body, signal) => {
+    const f = await setup(async (_body, signal, report) => {
+      report?.({ model_id: "effective-request", thinking_level: "LOW" });
       if (++count === 1) return response();
       started.resolve();
       await release.promise;
@@ -350,7 +346,7 @@ describe("batch request", () => {
       { id: "two", input_file: "good.json" },
     ]);
     const states: string[] = [];
-    f.tasks.subscribe(({ tasks: [snapshot] }) => {
+    f.tasks.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       states.push(snapshot.status);
     });
@@ -359,8 +355,15 @@ describe("batch request", () => {
       settled = true;
     });
     await started.promise;
-    const run_id = f.tasks.build_snapshot().tasks[0]!.run_id;
-    await f.tasks.request_stop(run_id);
+    const task = f.tasks.build_snapshot().tasks[0]!;
+    expect(task.endpoint).toEqual({
+      id: "fixture",
+      name: "Fixture",
+      model_id: "effective-request",
+      thinking_level: "LOW",
+    });
+    const { run_id } = task;
+    await f.tasks.request_stop([run_id]);
     expect(settled).toBe(false);
     release.resolve();
     const result = await pending;
@@ -379,7 +382,7 @@ describe("batch request", () => {
     expect(states).toContain("stopping");
     expect(states.at(-1)).toBe("stopped");
     const next = f.tasks.begin_under_agent(f.lease, new AbortController().signal, "translation");
-    expect(await f.tasks.request_stop(run_id)).toBe(false);
+    expect(await f.tasks.request_stop([run_id])).toBe(false);
     expect(next.signal.aborted).toBe(false);
     await f.tasks.execute(next, async () => "done");
     await next.completion;
@@ -391,7 +394,7 @@ describe("batch request", () => {
     const write = default_native_fs.write_file.bind(default_native_fs);
     vi.spyOn(default_native_fs, "write_file").mockImplementation(async (file, data) => {
       if (file.endsWith("000001.json.tmp")) {
-        if (stop) await f.tasks.request_stop(f.tasks.build_snapshot().tasks[0]!.run_id);
+        if (stop) await f.tasks.request_stop([f.tasks.build_snapshot().tasks[0]!.run_id]);
         throw new Error("disk failure");
       }
       await write(file, data);
@@ -399,7 +402,7 @@ describe("batch request", () => {
     await expect(f.run()).rejects.toMatchObject({
       summary: { status: "error", succeeded: 0, unfinished: 1, result_file: expect.any(String) },
     });
-    expect(f.tasks.build_snapshot().tasks[0]).toMatchObject({ status: "error" });
+    expect(f.tasks.build_snapshot().tasks).toEqual([]);
     const logs = f.append.mock.calls.map(([entry]) => entry);
     expect(logs.at(-2)).toMatchObject({ level: "error" });
     expect(logs.at(-1)).toMatchObject({

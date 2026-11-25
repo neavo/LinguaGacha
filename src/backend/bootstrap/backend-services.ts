@@ -23,7 +23,6 @@ import { BatchTranslationRunner } from "../batch-translation/core/batch-translat
 import { PlanningWorkerPool } from "../batch-translation/planning/planning-worker-pool";
 import { TranslationPlanner } from "../batch-translation/planning/translation-planner";
 import { BatchTranslationProjectStore } from "../batch-translation/batch-translation-project-store";
-import { BatchTranslationState } from "../batch-translation/batch-translation-state";
 import { BatchTranslationService } from "../batch-translation/batch-translation-service";
 import { TranslationWorkerPool } from "../batch-translation/work-unit/translation-worker-pool";
 import {
@@ -340,21 +339,20 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       cache,
     );
     const tasks = new BatchTaskRuntime(project_path, gate);
-    const translation_runtime = new BatchTranslationState(project_path, database, tasks);
     const runner = new BatchTranslationRunner({
       requestPool: this.request_pool,
       auth: this.modelAuth,
       llmClient: this.llm_client,
       builtinRoot: paths.get_builtin_root(),
       taskStore: new BatchTranslationProjectStore(project_path, cache, writes),
-      taskRuntime: translation_runtime,
+      taskRuntime: tasks,
       executorClient: this.work_unit_worker_pool,
       taskPlanner: new TranslationPlanner({ planningWorkerPool: this.planning_worker_pool }),
       logManager: this.logManager,
     });
     const batchTranslation = new BatchTranslationService(
       runner,
-      translation_runtime,
+      tasks,
       settings,
       cache.settings,
       this.logManager,
@@ -422,17 +420,10 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         dispose_task();
       },
     };
-    const dispose_task = tasks.subscribe(async (batch_tasks, kind) => {
+    const dispose_task = tasks.subscribe((batch_tasks) => {
       this.publish_event(BATCH_TASK_SNAPSHOT_EVENT_TOPIC, {
         projectId: id,
         batch_tasks: batch_tasks as unknown as JsonRecord,
-        ...(kind === "request"
-          ? {}
-          : {
-              batch_translation: (await batchTranslation.snapshot(
-                batch_tasks,
-              )) as unknown as JsonRecord,
-            }),
       });
     });
     try {

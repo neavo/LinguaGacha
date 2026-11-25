@@ -103,7 +103,7 @@ function collect_loaded_default_preset_names(
   });
 }
 
-const EMPTY_PROJECT_LOADING_MS = 3_000; // 空工程创建太快，留出完成的实感。
+const EMPTY_PROJECT_LOADING_MS = 2_000; // 空工程创建太快，留出完成的实感。
 const TRANSLATION_STEPS = [
   { label_key: "app.agent_input.steps.glossary", skill: "glossary" },
   { label_key: "app.agent_input.steps.translate", skill: "translation" },

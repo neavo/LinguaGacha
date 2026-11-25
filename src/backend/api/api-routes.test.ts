@@ -196,6 +196,22 @@ describe("register_api_routes", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
   });
 
+  it("批量任务停止只发送确认的批次，并返回同一工程快照", async () => {
+    const fixture = create_route_fixture();
+    const stop = read_post_handler(fixture.post_json, "/api/batch-task/stop");
+    expect(read_post_handler(fixture.post_json, "/api/batch-task/snapshot")({})).toEqual({
+      batch_tasks: fixture.batch_task_snapshot,
+    });
+    await expect(stop({ run_ids: ["translation", "request"] })).resolves.toEqual({
+      accepted: true,
+      batch_tasks: fixture.batch_task_snapshot,
+    });
+    await expect(stop({ run_ids: ["", 1] })).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+    expect(fixture.stop_tasks).toHaveBeenCalledExactlyOnceWith(["translation", "request"]);
+  });
+
   it("POST 路由把任务与 Agent 命令原样转交组合根", async () => {
     const fixture = create_route_fixture();
     const task = { task_type: "translation" };
@@ -319,6 +335,8 @@ function create_route_fixture() {
   const get = vi.fn();
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
+  const batch_task_snapshot = { revision: 7, activity: null, tasks: [] };
+  const stop_tasks = vi.fn(async () => true);
   const acknowledgement = { revision: 7 };
   const input_command = vi.fn(async () => acknowledgement);
   const input_command_status = vi.fn(() => acknowledgement);
@@ -370,6 +388,7 @@ function create_route_fixture() {
       require: (_projectId: string) => ({
         agent,
         batchTranslation: { start: start_task },
+        batchTasks: { build_snapshot: () => batch_task_snapshot, request_stop: stop_tasks },
         generation: { generate_files },
       }),
     },
@@ -431,6 +450,8 @@ function create_route_fixture() {
     get_default_project_name,
     summarize_source_files,
     start_task,
+    batch_task_snapshot,
+    stop_tasks,
     stop,
     update_settings,
     generate_files,

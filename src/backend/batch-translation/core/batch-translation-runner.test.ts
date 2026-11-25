@@ -1,4 +1,4 @@
-import { BatchTaskRuntime } from "../../batch-task/batch-task-runtime";
+import { BatchTaskRuntime, BatchTaskCompletionError } from "../../batch-task/batch-task-runtime";
 import { BatchRequestPool } from "../../batch-task/batch-request-pool";
 import type { BatchTranslationRunCommand } from "./batch-translation-runner";
 import { ProjectCache } from "../../cache/project-cache";
@@ -24,8 +24,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { get_section_revision } from "../../project/project-data-reader";
 import { ProjectOperationGate } from "../../runtime-operation-gate";
-import { BatchTranslationCompletionError, BatchTranslationState } from "../batch-translation-state";
-import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
+import type { BatchTaskSnapshot } from "../../../domain/batch-task";
 import type {
   TranslationWorkUnit,
   WorkUnitExecutionResult,
@@ -89,7 +88,6 @@ describe("BatchTranslationRunner", () => {
           handle,
           {
             operation: "translate",
-            mode: "new",
             item_statuses: ["NONE"],
           },
           create_run_context(),
@@ -97,22 +95,20 @@ describe("BatchTranslationRunner", () => {
       );
       const settled = await handle.completion.then(
         (result) => ({ result, error: undefined }),
-        (error: BatchTranslationCompletionError) => ({ result: error.result, error }),
+        (error: BatchTaskCompletionError) => ({ result: error.result, error }),
       );
       const result = settled.result;
       const snapshot = await runtime.build_snapshot();
-      expect(snapshot.status).toBe(preparation_failed ? "error" : "done");
+      expect(snapshot.last_translation?.status).toBe(preparation_failed ? "error" : "done");
       if (preparation_failed) {
         expect(settled.error?.cause).toMatchObject({ message: "preparation failed" });
-        expect(snapshot.run_progress).toBeUndefined();
-        expect(result.run_progress).toBeUndefined();
+        expect(result.progress).toBeNull();
       } else {
-        expect(snapshot.run_progress).toMatchObject({
-          total_line: 0,
-          processed_line: 0,
-          failed_line: 0,
+        expect(result.progress).toMatchObject({
+          total: 0,
+          succeeded: 0,
+          failed: 0,
         });
-        expect(result.run_progress).toEqual(snapshot.run_progress);
       }
     },
   );
@@ -123,25 +119,31 @@ describe("BatchTranslationRunner", () => {
       builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
-    const { runtime } = create_task_runtime();
+    const endpoints: NonNullable<BatchTaskSnapshot["endpoint"]>[] = [];
+    const { runtime } = create_task_runtime((snapshot) => {
+      if (snapshot.endpoint !== undefined) endpoints.push(snapshot.endpoint);
+    });
     const items = [1, 2, 3].map((id) => create_pending_item(id, "demo.txt", `原文${id}。`));
     const original = structuredClone(items);
     const committed: MutableJsonRecord[] = [];
-    const request: BatchTranslationRunnerOptions["llmClient"]["request"] = vi.fn(async (body) => {
-      const prompt = String(body.messages[1]?.content);
-      expect(prompt).toContain("原文1。");
-      expect(prompt).toContain("原文3。");
-      expect(prompt.split("```jsonline")[1]).toBe('\n{"id":0,"text":"原文2。"}\n```');
-      return {
-        response_result: '{"id":0,"text":"译文2。"}',
-        response_think: "",
-        input_tokens: 1,
-        reasoning_tokens: 0,
-        output_tokens: 1,
-        cancelled: false,
-        timeout: false,
-      };
-    });
+    const request: BatchTranslationRunnerOptions["llmClient"]["request"] = vi.fn(
+      async (body, _signal, report) => {
+        report?.({ model_id: "effective-translation", thinking_level: "LOW" });
+        const prompt = String(body.messages[1]?.content);
+        expect(prompt).toContain("原文1。");
+        expect(prompt).toContain("原文3。");
+        expect(prompt.split("```jsonline")[1]).toBe('\n{"id":0,"text":"原文2。"}\n```');
+        return {
+          response_result: '{"id":0,"text":"译文2。"}',
+          response_think: "",
+          input_tokens: 1,
+          reasoning_tokens: 0,
+          output_tokens: 1,
+          cancelled: false,
+          timeout: false,
+        };
+      },
+    );
     const runner = new BatchTranslationRunner({
       requestPool: new BatchRequestPool(),
       llmClient: { request },
@@ -163,7 +165,7 @@ describe("BatchTranslationRunner", () => {
       await runtime.execute(handle, () =>
         runner.run(
           handle,
-          { operation: "translate", mode: "continue", item_ids: [2], item_statuses: ["NONE"] },
+          { operation: "translate", item_ids: [2], item_statuses: ["NONE"] },
           create_run_context(1, 512, {
             preceding_lines_threshold: 1,
             following_lines_threshold: 1,
@@ -172,6 +174,10 @@ describe("BatchTranslationRunner", () => {
       );
       await handle.completion;
       expect(request).toHaveBeenCalledTimes(1);
+      expect(endpoints[0]).toMatchObject({
+        model_id: "effective-translation",
+        thinking_level: "LOW",
+      });
       expect(committed.map((item) => [item.id, item.dst])).toEqual([[2, "译文2。"]]);
       expect(items).toEqual(original);
     } finally {
@@ -209,10 +215,10 @@ describe("BatchTranslationRunner", () => {
     );
     await database.transaction(project_path, (writer) => writer.set_items(project_path, originals));
     const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
-    const runtime = new BatchTranslationState(project_path, database, tasks);
-    const frames: BatchTranslationSnapshot[] = [];
-    tasks.subscribe(async () => {
-      const snapshot = await runtime.build_snapshot();
+    const runtime = tasks;
+    const frames: BatchTaskSnapshot[] = [];
+    tasks.subscribe((_snapshot, [snapshot]) => {
+      if (snapshot === undefined) return;
       frames.push(snapshot);
     });
     const cache = new ProjectCache({
@@ -256,7 +262,6 @@ describe("BatchTranslationRunner", () => {
           handle,
           {
             operation: "retranslate",
-            mode: "continue",
             item_ids: originals.map((item) => item.id!),
           },
           create_run_context(),
@@ -264,27 +269,22 @@ describe("BatchTranslationRunner", () => {
       );
       expect(await handle.completion).toMatchObject({
         status: "done",
-        run_progress: {
-          total_line: 7,
-          processed_line: 1,
-          failed_line: 6,
-          total_tokens: execute_unit.mock.calls.length * tokens,
+        progress: {
+          total: 7,
+          succeeded: 1,
+          failed: 6,
+          input_tokens: execute_unit.mock.calls.length * tokens,
         },
-        progress: { total_line: 3, processed_line: 2 },
       });
       expect(await database.get_all_items(project_path)).toEqual(originals);
       expect(publish).not.toHaveBeenCalled();
       expect(frames).toContainEqual(
         expect.objectContaining({
           status: "running",
-          pending_item_ids: [],
-          run_progress: expect.objectContaining({ failed_line: 6, processed_line: 1 }),
+          translation: expect.objectContaining({ pending_item_ids: [] }),
+          progress: expect.objectContaining({ failed: 6, succeeded: 1 }),
         }),
       );
-      const extras = (await database.get_all_meta(project_path))["translation_extras"];
-      expect(extras).not.toHaveProperty("failed_line");
-      expect(extras).not.toHaveProperty("error_line");
-      expect(extras).not.toHaveProperty("line");
     } finally {
       await runtime.dispose();
       await database.close();
@@ -323,20 +323,16 @@ describe("BatchTranslationRunner", () => {
     });
     const handle = runtime.begin_standalone();
     await runtime.execute(handle, () =>
-      runner.run(
-        handle,
-        { operation: "translate", mode: "new", item_statuses: ["NONE"] },
-        create_run_context(),
-      ),
+      runner.run(handle, { operation: "translate", item_statuses: ["NONE"] }, create_run_context()),
     );
     await expect(handle.completion).rejects.toMatchObject({
       cause: failure,
       result: {
         status: "error",
-        run_progress: {
-          total_line: 2,
-          processed_line: committed ? 1 : 0,
-          failed_line: committed ? 1 : 0,
+        progress: {
+          total: 2,
+          succeeded: committed ? 1 : 0,
+          failed: committed ? 1 : 0,
         },
       },
     });
@@ -344,7 +340,7 @@ describe("BatchTranslationRunner", () => {
   });
 
   it.each(["translate", "retranslate"] as const)(
-    "%s 在仅用量落库后继续重试，同值结果也完成本轮目标",
+    "%s 在仅用量结算后继续重试，同值结果也完成本轮目标",
     async (operation) => {
       const retranslate = operation === "retranslate";
       const builtin_root = create_template_root();
@@ -365,12 +361,12 @@ describe("BatchTranslationRunner", () => {
       const original_items = await database.get_all_items(project_path);
       const reader = database;
       const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
-      const runtime = new BatchTranslationState(project_path, reader, tasks);
+      const runtime = tasks;
       const pending_snapshots: number[][] = [];
-      tasks.subscribe(async () => {
-        const snapshot = await runtime.build_snapshot();
-        if (snapshot.status === "running" && snapshot.run_progress?.processed_line === 1)
-          pending_snapshots.push([...snapshot.pending_item_ids]);
+      tasks.subscribe((_snapshot, [snapshot]) => {
+        if (snapshot === undefined) return;
+        if (snapshot.status === "running" && snapshot.progress?.succeeded === 1)
+          pending_snapshots.push([...(snapshot.translation?.pending_item_ids ?? [])]);
       });
       const cache = new ProjectCache({
         projectPath: project_path,
@@ -386,7 +382,7 @@ describe("BatchTranslationRunner", () => {
         execution: { kind: "in_process" },
       });
       let release_retry = (): void => {};
-      // 暂留重试结果，让空条目提交独立通过真实存储边界。
+      // 暂留重试结果，观察仅用量结算时的内存与数据库。
       const retry_response = new Promise<void>((resolve) => {
         release_retry = resolve;
       });
@@ -426,21 +422,22 @@ describe("BatchTranslationRunner", () => {
           },
         });
         const command: BatchTranslationRunCommand = retranslate
-          ? { operation: "retranslate", mode: "continue", item_ids: [1] }
+          ? { operation: "retranslate", item_ids: [1] }
           : {
               operation: "translate",
               item_statuses: ["NONE"],
-              mode: "new",
             };
         const handle = runtime.begin_standalone(command.operation);
         await runtime.execute(handle, () => runner.run(handle, command, create_run_context(4)));
         await retry_started;
         await vi.advanceTimersByTimeAsync(TASK_PIPELINE_COMMIT_INTERVAL_MS);
-        expect(await runtime.build_snapshot()).toMatchObject({
-          status: "running",
-          run_progress: { processed_line: 0, total_tokens: 15 },
-          progress: { processed_line: retranslate ? 1 : 0, total_tokens: 15 },
+        expect(runtime.build_snapshot()).toMatchObject({
+          activity: { usage: { input_tokens: 10, output_tokens: 5 } },
+          tasks: [
+            { status: "running", progress: { succeeded: 0, input_tokens: 10, output_tokens: 5 } },
+          ],
         });
+        expect((await database.get_all_meta(project_path))["translation_extras"]).toBeUndefined();
         expect(await database.get_all_items(project_path)).toEqual(original_items);
         expect(fs.existsSync(project_path + "-wal")).toBe(false);
         expect(fs.existsSync(project_path + "-shm")).toBe(false);
@@ -449,12 +446,12 @@ describe("BatchTranslationRunner", () => {
         expect(get_section_revision(await reader.get_all_meta(project_path), "proofreading")).toBe(
           0,
         );
-        if (retranslate) expect((await runtime.build_snapshot()).pending_item_ids).toEqual([1]);
+        if (retranslate)
+          expect(runtime.build_snapshot().tasks[0]?.translation?.pending_item_ids).toEqual([1]);
         release_retry();
         expect(await handle.completion).toMatchObject({
           status: "done",
-          progress: { processed_line: 1, total_tokens: 42 },
-          run_progress: { processed_line: 1, total_tokens: 42 },
+          progress: { succeeded: 1, input_tokens: 30, output_tokens: 12 },
         });
         expect(attempts).toBe(2);
         expect(await database.get_all_items(project_path)).toEqual([
@@ -473,10 +470,15 @@ describe("BatchTranslationRunner", () => {
     },
   );
 
-  it("Runner 将指定模型传给规划器，并发布同源任务摘要", async () => {
+  it("Runner 将指定模型传给规划器，零请求时省略接入点", async () => {
     const model_ids: string[] = [];
     const done = create_status_waiter("done");
-    const { runtime: task_runtime, tasks } = create_task_runtime(done.listener);
+    const endpoints: NonNullable<BatchTaskSnapshot["endpoint"]>[] = [];
+    const { runtime: task_runtime } = create_task_runtime((snapshot) => {
+      if (snapshot.status === "running" && snapshot.endpoint !== undefined)
+        endpoints.push(snapshot.endpoint);
+      done.listener(snapshot);
+    });
     const task_engine = new BatchTranslationRunner({
       requestPool: new BatchRequestPool(),
       llmClient: create_unused_llm_client(),
@@ -507,77 +509,18 @@ describe("BatchTranslationRunner", () => {
       {
         operation: "translate",
         item_statuses: ["NONE"],
-        mode: "new",
       },
       run_context,
     );
     await done.promise;
     expect(model_ids).toEqual(["chosen"]);
-    expect(tasks.build_snapshot().tasks[0]?.config).toMatchObject({
-      model_name: "已选择接入点",
-      model_id: "translation-model",
-    });
-  });
-
-  it("翻译启动后首次进度快照使用本轮初始进度而不是旧 meta", async () => {
-    let translation_extras: MutableJsonRecord = {
-      total_line: 8,
-      processed_line: 8,
-      total_tokens: 40,
-    };
-    const progress_snapshots: MutableJsonRecord[] = [];
-    const done = create_status_waiter("done");
-    const { runtime: task_runtime, tasks } = create_task_runtime(done.listener, () => ({
-      translation_extras,
-    }));
-    tasks.subscribe(async () => {
-      const snapshot = await task_runtime.build_snapshot();
-      if (snapshot.status === "running") {
-        progress_snapshots.push({
-          ...snapshot.progress,
-        });
-      }
-    });
-    const task_engine = new BatchTranslationRunner({
-      requestPool: new BatchRequestPool(),
-      llmClient: create_unused_llm_client(),
-      builtinRoot: path.join(process.cwd(), "builtin"),
-      taskStore: create_task_store({
-        get_translation_items: () => [],
-        update_translation_progress: async (request: MutableJsonRecord) => {
-          translation_extras = {
-            ...(request as MutableJsonRecord),
-          };
-        },
-      }),
-      taskRuntime: task_runtime,
-      executorClient: create_unused_executor(),
-      taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
-    });
-
-    await start_task(task_engine, task_runtime, {
-      operation: "translate",
-      item_statuses: ["NONE"],
-      mode: "new",
-    });
-    await done.promise;
-
-    expect(progress_snapshots).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          total_line: 0,
-          processed_line: 0,
-          total_tokens: 0,
-        }),
-      ]),
-    );
+    expect(endpoints).toEqual([]);
   });
 
   it("终态 listener 失败时仍释放任务锁", async () => {
     const { runtime: task_runtime, tasks } = create_task_runtime();
-    tasks.subscribe(async () => {
-      const snapshot = await task_runtime.build_snapshot();
+    tasks.subscribe((_snapshot, [snapshot]) => {
+      if (snapshot === undefined) return;
       if (snapshot.status === "done") {
         throw new Error("terminal listener failed");
       }
@@ -599,12 +542,12 @@ describe("BatchTranslationRunner", () => {
     await task_runtime.execute(handle, () =>
       task_engine.run(
         handle,
-        { operation: "translate", item_statuses: ["NONE"], mode: "new" },
+        { operation: "translate", item_statuses: ["NONE"] },
         create_run_context(),
       ),
     );
     await expect(handle.completion).rejects.toMatchObject({ result: { status: "error" } });
-    await expect(task_runtime.build_snapshot()).resolves.toMatchObject({ status: "error" });
+    expect(task_runtime.build_snapshot().last_translation?.status).toBe("error");
   });
 
   it("executor 基础设施失败终止任务且不进入内容切分", async () => {
@@ -626,11 +569,10 @@ describe("BatchTranslationRunner", () => {
     await start_task(runner, runtime, {
       operation: "translate",
       item_statuses: ["NONE"],
-      mode: "new",
     });
     await finished.promise;
     expect(execute).toHaveBeenCalledTimes(1);
-    expect((await runtime.build_snapshot()).status).toBe("error");
+    expect(runtime.build_snapshot().last_translation?.status).toBe("error");
   });
 
   it.each(["recover", "stop"] as const)(
@@ -696,7 +638,6 @@ describe("BatchTranslationRunner", () => {
       try {
         const command: BatchTranslationRunCommand = {
           operation: "retranslate",
-          mode: "continue",
           item_ids: [1, 2, 3, 4],
         };
         const handle = runtime.begin_standalone(command.operation);
@@ -706,16 +647,18 @@ describe("BatchTranslationRunner", () => {
         expect(request).toHaveBeenCalledTimes(6);
         expect(committed).toEqual([]);
         expect(items).toEqual(original);
-        expect((await runtime.build_snapshot()).run_progress).toMatchObject({
-          total_line: 4,
-          failed_line: 0,
+        expect(runtime.build_snapshot().tasks[0]?.progress).toMatchObject({
+          total: 4,
+          failed: 0,
         });
-        expect((await runtime.build_snapshot()).request_recovery).toMatchObject({ retry_count: 4 });
+        expect(runtime.build_snapshot().tasks[0]?.request_recovery).toMatchObject({
+          retry_count: 4,
+        });
         if (action === "recover") {
           recovered = true;
           await vi.advanceTimersByTimeAsync(10_000);
         } else {
-          await tasks.request_stop(handle.run_id);
+          await tasks.request_stop([handle.run_id]);
         }
         await finished.promise;
         expect(await handle.completion).toMatchObject({
@@ -728,19 +671,16 @@ describe("BatchTranslationRunner", () => {
             [3, "PROCESSED"],
             [4, "PROCESSED"],
           ]);
-          expect((await runtime.build_snapshot()).run_progress).toMatchObject({
-            failed_line: 0,
-            total_input_tokens: 9,
+          expect((await handle.completion).progress).toMatchObject({
+            failed: 0,
+            input_tokens: 9,
           });
           expect(execute).toHaveBeenCalledTimes(3);
         } else {
           expect(committed).toEqual([]);
           expect(execute).toHaveBeenCalledTimes(1);
         }
-        expect(await runtime.build_snapshot()).toMatchObject({
-          request_in_flight_count: 0,
-          request_recovery: null,
-        });
+        expect(runtime.build_snapshot().tasks).toEqual([]);
         expect(vi.getTimerCount()).toBe(0);
         expect(items).toEqual(original);
       } finally {
@@ -757,7 +697,7 @@ describe("BatchTranslationRunner", () => {
       builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
-    const recoveries: NonNullable<BatchTranslationSnapshot["request_recovery"]>[] = [];
+    const recoveries: NonNullable<BatchTaskSnapshot["request_recovery"]>[] = [];
     const { runtime } = create_task_runtime((snapshot) => {
       if (snapshot.request_recovery !== null) recoveries.push(snapshot.request_recovery);
     });
@@ -818,7 +758,6 @@ describe("BatchTranslationRunner", () => {
       });
       const command: BatchTranslationRunCommand = {
         operation: "translate",
-        mode: "new",
         item_statuses: ["NONE"],
       };
       const handle = runtime.begin_standalone(command.operation);
@@ -829,13 +768,12 @@ describe("BatchTranslationRunner", () => {
         }),
       );
       await vi.advanceTimersByTimeAsync(10_000);
-      expect(await runtime.build_snapshot()).toMatchObject({
+      expect(await handle.completion).toMatchObject({
         status: "done",
-        request_recovery: null,
-        run_progress: {
-          total_line: 2,
-          processed_line: 1,
-          failed_line: 1,
+        progress: {
+          total: 2,
+          succeeded: 1,
+          failed: 1,
         },
       });
       expect(await handle.completion).toMatchObject({ status: "done" });
@@ -904,7 +842,6 @@ describe("BatchTranslationRunner", () => {
         {
           operation: "translate",
           item_statuses: ["NONE"],
-          mode: "new",
         },
         { ...run_context, model: { ...run_context.model, api_format: "SakuraLLM" } },
       );
@@ -919,9 +856,9 @@ describe("BatchTranslationRunner", () => {
         { id: 1, dst: "甲的完整译文", status: "PROCESSED" },
         { id: 2, dst: "乙的译文", status: "PROCESSED" },
       ]);
-      expect((await runtime.build_snapshot()).run_progress).toMatchObject({
-        processed_line: 2,
-        failed_line: 0,
+      expect(runtime.build_snapshot().last_translation).toMatchObject({
+        status: "done",
+        failed: 0,
       });
     } finally {
       await runtime.dispose();
@@ -975,7 +912,6 @@ describe("BatchTranslationRunner", () => {
       {
         operation: "translate",
         item_statuses: ["NONE"],
-        mode: "new",
       },
       run_context,
     );
@@ -1011,7 +947,6 @@ describe("BatchTranslationRunner", () => {
       {
         operation: "translate",
         item_statuses: ["NONE"],
-        mode: "new",
       },
       run_context,
     );
@@ -1054,7 +989,6 @@ describe("BatchTranslationRunner", () => {
     await start_task(task_engine, task_runtime, {
       operation: "translate",
       item_statuses: ["NONE"],
-      mode: "new",
     });
     await execution_started;
 
@@ -1106,9 +1040,9 @@ describe("BatchTranslationRunner", () => {
   }
 
   /** 通过公开状态事件等待目标终态。 */
-  function create_status_waiter(status: BatchTranslationSnapshot["status"]): {
+  function create_status_waiter(status: BatchTaskSnapshot["status"]): {
     promise: Promise<void>;
-    listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void;
+    listener: (snapshot: Readonly<BatchTaskSnapshot>) => void;
   } {
     let resolve_waiter: () => void = () => undefined;
     const promise = new Promise<void>((resolve) => {
@@ -1124,29 +1058,21 @@ describe("BatchTranslationRunner", () => {
     };
   }
 
-  /** 组合真实运行态与可控 meta，验证任务生命周期和租约释放。 */
-  function create_task_runtime(
-    listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void = () => undefined,
-    read_meta: (() => JsonRecord) | null = null,
-  ): { runtime: BatchTranslationState; tasks: BatchTaskRuntime } {
-    const project_path = read_meta === null ? "" : "E:/Project/batch-translation-state-test.lg";
-    const tasks = new BatchTaskRuntime(project_path, new ProjectOperationGate());
-    const runtime = new BatchTranslationState(
-      project_path,
-      {
-        get_all_meta: () => read_meta?.() ?? {},
-        get_section_revision: () => 0,
-      } as unknown as ProjectDatabase,
-      tasks,
-    );
-    tasks.subscribe(async () => listener(await runtime.build_snapshot()));
-    return { runtime, tasks };
+  function create_task_runtime(listener: (snapshot: BatchTaskSnapshot) => void = () => undefined): {
+    runtime: BatchTaskRuntime;
+    tasks: BatchTaskRuntime;
+  } {
+    const tasks = new BatchTaskRuntime("", new ProjectOperationGate());
+    tasks.subscribe((_snapshot, [change]) => {
+      if (change !== undefined) listener(change);
+    });
+    return { runtime: tasks, tasks };
   }
 
   /** 通过真实运行态预约任务，默认使用独立的执行配置。 */
   async function start_task(
     task_engine: BatchTranslationRunner,
-    task_runtime: BatchTranslationState,
+    task_runtime: BatchTaskRuntime,
     command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext = create_run_context(),
   ): Promise<void> {
@@ -1167,7 +1093,6 @@ describe("BatchTranslationRunner", () => {
 
       get_translation_items: () => [],
 
-      update_translation_progress: async () => undefined,
       ...overrides,
     };
   }

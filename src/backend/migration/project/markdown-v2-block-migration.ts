@@ -5,7 +5,6 @@ import {
   type MarkdownV2Unit,
 } from "../../file/markdown/md-v2-document";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
-import { build_translation_extras_from_items } from "../../project/project-write-state";
 import { replace_project_file_items } from "./project-file-item-replacement";
 
 const LEGACY_MARKDOWN_FILE_TYPE = "MD";
@@ -26,7 +25,7 @@ type LegacyMarkdownItem = {
  * 历史 Markdown Item 按物理行保存，当前 reader/writer 采用 AST 块和格式片段。
  *
  * 生效场景：
- * 打开时识别旧 `MD`，验证连续行号后重建源译文块，迁移重复译文、聚合状态和强制过滤标记，重建统计并推进修订号。
+ * 打开时识别旧 `MD`，验证连续行号后重建源译文块，迁移重复译文、聚合状态和强制过滤标记，并推进修订号。
  * 提交时重读事务当前集合，只替换目标文件。完成后无旧 `MD`，再次打开为空写。
  *
  * 不处理范围：
@@ -49,13 +48,6 @@ export class MarkdownV2BlockMigration {
         for (const file_path of replacements.keys())
           database.set_asset_file_type(project_path, file_path, "MD_V2");
         database.set_items(project_path, next_items);
-        const meta = database.get_all_meta(project_path);
-        database.upsert_meta_entries(project_path, {
-          translation_extras: build_translation_extras_from_items({
-            progress: meta["translation_extras"],
-            items: next_items.map((item) => create_item(item)),
-          }) as JsonValue,
-        });
         database.bump_section_revisions(project_path, ["files", "items"]);
       },
     ];

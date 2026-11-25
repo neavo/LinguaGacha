@@ -6,26 +6,21 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { JsonValue } from "../../domain/json";
 import { ProjectCache } from "../cache/project-cache";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectCommittedChangeHandler } from "../project/project-committed-change";
 import { ProjectWriteStore } from "../project/project-write-store";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import type { MutableJsonRecord } from "../../domain/json";
 import { BatchTranslationProjectStore } from "./batch-translation-project-store";
 
 describe("BatchTranslationProjectStore", () => {
-  const cleanup_callbacks: Array<() => void> = [];
+  const cleanup_callbacks: Array<() => Promise<void>> = [];
 
-  afterEach(() => {
-    vi.useRealTimers();
-    while (cleanup_callbacks.length > 0) {
-      cleanup_callbacks.pop()?.();
-    }
+  afterEach(async () => {
+    for (const cleanup of cleanup_callbacks.splice(0)) await cleanup();
   });
 
-  it("提交翻译结果时写入 items、进度 meta 并发布行级 items 变更", async () => {
+  it("提交翻译结果时写入 items 并发布行级 items 变更", async () => {
     const { database, project_path, store, published_changes } = await create_store();
     await seed_items(database, project_path);
 
@@ -38,11 +33,10 @@ describe("BatchTranslationProjectStore", () => {
           status: "PROCESSED",
         },
       ],
-      create_progress_snapshot({ processed_line: 1 }),
       false,
     );
 
-    expect(await read_items(database, project_path)).toEqual(
+    expect(await database.get_all_items(project_path)).toEqual(
       [
         {
           id: 1,
@@ -66,9 +60,6 @@ describe("BatchTranslationProjectStore", () => {
           row: 8,
         },
       ].map((item) => create_item(item)),
-    );
-    expect((await read_meta(database, project_path))["translation_extras"]).toEqual(
-      create_progress_snapshot({ processed_line: 1 }),
     );
     expect(ack).toEqual({
       changed_item_ids: [1],
@@ -96,11 +87,10 @@ describe("BatchTranslationProjectStore", () => {
           status: "PROCESSED",
         },
       ],
-      create_progress_snapshot({ processed_line: 1 }),
       true,
     );
 
-    const meta = await read_meta(database, project_path);
+    const meta = await database.get_all_meta(project_path);
     expect(meta["proofreading_revision.proofreading"]).toBe(1);
     expect(meta["project_runtime_revision.items"]).toBe(1);
     expect(ack).toEqual({
@@ -115,52 +105,6 @@ describe("BatchTranslationProjectStore", () => {
         items: { mode: "delta", records: [{ item_id: 2 }] },
       },
     ]);
-  });
-
-  it("耗尽批次仅提交用量，工程字段白名单隔离本轮失败数", async () => {
-    const { database, project_path, store, published_changes } = await create_store();
-    await database.transaction(project_path, (writer) =>
-      writer.set_items(
-        project_path,
-        [
-          { id: 1, src: "待重试", dst: "", status: "NONE", file_path: "a.txt" },
-          {
-            id: 2,
-            src: "已完成",
-            dst: "译文",
-            status: "PROCESSED",
-            file_path: "a.txt",
-          },
-        ].map((item) => create_item(item)),
-      ),
-    );
-    const run_progress = {
-      ...create_progress_snapshot({ total_line: 999, total_tokens: 7 }),
-      failed_line: 999,
-    };
-    const ack = await store.commit_translation_batch([], run_progress, false);
-    expect(ack.changed_item_ids).toEqual([]);
-    expect(published_changes).toMatchObject([]);
-    expect((await read_meta(database, project_path))["project_runtime_revision.items"] ?? 0).toBe(
-      0,
-    );
-    expect((await read_meta(database, project_path))["translation_extras"]).toEqual(
-      create_progress_snapshot({
-        total_line: 2,
-        processed_line: 1,
-        total_tokens: 7,
-      }),
-    );
-    await store.commit_translation_batch(
-      [{ item_id: 1, dst: "重试成功", status: "PROCESSED" }],
-      create_progress_snapshot({ total_tokens: 10 }),
-      false,
-    );
-    expect((await read_meta(database, project_path))["translation_extras"]).toMatchObject({
-      total_line: 2,
-      processed_line: 2,
-      total_tokens: 10,
-    });
   });
 
   it("构建任务质量快照时保留工程自定义提示词启用态", async () => {
@@ -185,21 +129,6 @@ describe("BatchTranslationProjectStore", () => {
     });
   });
 
-  it("构建任务质量快照时术语表缺启用 meta 仍按领域默认值启用", async () => {
-    const { cache_manager, database, project_path, store } = await create_store();
-    await database.transaction(project_path, (writer) =>
-      writer.set_rules(project_path, "glossary", [{ entry_id: "hp", src: "HP", dst: "生命值" }]),
-    );
-    await cache_manager.refresh();
-
-    const snapshot = store.build_quality_snapshot();
-
-    expect(snapshot.glossary_enable).toBe(true);
-    expect(snapshot.glossary_entries).toEqual([
-      { entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false },
-    ]);
-  });
-
   it("任务提交等待内部事件完成后再发布公开项目变更", async () => {
     const calls: string[] = [];
     const { database, project_path, store } = await create_store({
@@ -220,7 +149,6 @@ describe("BatchTranslationProjectStore", () => {
           status: "PROCESSED",
         },
       ],
-      create_progress_snapshot({ processed_line: 1 }),
       false,
     );
 
@@ -253,9 +181,11 @@ describe("BatchTranslationProjectStore", () => {
       } as unknown as ComputeWorkerClient,
     });
     const published_changes: ProjectCommittedChange[] = [];
+    cleanup_callbacks.push(async () => {
+      await database.close();
+      fs.rmSync(directory, { recursive: true, force: true });
+    });
     await database.create_project(project_path);
-    cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
-    cleanup_callbacks.push(async () => await database.close());
     const write_store = new ProjectWriteStore(
       database,
       options.on_project_event ?? vi.fn(),
@@ -307,35 +237,5 @@ describe("BatchTranslationProjectStore", () => {
         ].map((item) => create_item(item)),
       ),
     );
-  }
-
-  /** 提供完整进度，场景只覆盖需要变化的统计。 */
-  function create_progress_snapshot(
-    overrides: Partial<import("../../domain/batch-translation").BatchTranslationProgress> = {},
-  ): import("../../domain/batch-translation").BatchTranslationProgress {
-    return {
-      start_time: 10,
-      time: 0,
-      total_line: 2,
-      processed_line: 0,
-      total_tokens: 3,
-      total_input_tokens: 1,
-      total_reasoning_tokens: 0,
-      total_output_tokens: 2,
-      ...overrides,
-    };
-  }
-
-  /** 读取持久条目，核对提交结果。 */
-  async function read_items(database: ProjectDatabase, project_path: string): Promise<JsonValue> {
-    return await database.get_all_items(project_path);
-  }
-
-  /** 读取持久进度与修订，核对写入副作用。 */
-  async function read_meta(
-    database: ProjectDatabase,
-    project_path: string,
-  ): Promise<MutableJsonRecord> {
-    return (await database.get_all_meta(project_path)) as unknown as MutableJsonRecord;
   }
 });

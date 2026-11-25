@@ -12,10 +12,7 @@ import type { ProjectDatabase, ProjectItemTranslationWrite } from "../database/d
 import type { GlobalOperationGate } from "../runtime-operation-gate";
 import { ProjectDataReader } from "./project-data-reader";
 import { inherit_completed_translations } from "./project-translation-inheritance";
-import {
-  build_translation_extras_from_items,
-  compute_project_prefilter_items,
-} from "./project-write-state";
+import { compute_project_prefilter_items } from "./project-write-state";
 
 type TranslationTransferRequest = Readonly<{
   source_path: string; // 迁出工程，提供已完成译文。
@@ -93,14 +90,6 @@ export class ProjectTranslationTransferService {
         });
         await this.database.transaction(output_snapshot, (writer) => {
           writer.patch_item_translation_fields(output_snapshot, patches);
-          writer.set_meta(
-            output_snapshot,
-            "translation_extras",
-            build_translation_extras_from_items({
-              progress: base.meta["translation_extras"],
-              items: Object.values(items),
-            }),
-          );
         });
         const agent_store = this.database.open_agent_store(output_snapshot);
         try {

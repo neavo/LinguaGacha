@@ -19,9 +19,7 @@ import type { AgentInputRequest } from "@frontend/app/navigation/types";
 import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { uploaded_file } from "../../../test/agent-upload-fixture";
 vi.mock("@frontend/app/session/batch-task/batch-task-session-context", () => ({
-  useBatchTaskSession: () => ({
-    batch_task: { task_metrics: { active: false } },
-  }),
+  useBatchTaskSession: () => ({ metrics: { kind: null } }),
 }));
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";

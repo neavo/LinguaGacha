@@ -2,11 +2,8 @@ import { agent_tool_call } from "../../../test/agent-tool-fixture";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import { create_agent_batch_item_translation_tool } from "./batch-item-translation";
-import {
-  normalize_batch_translation_progress,
-  normalize_batch_translation_run_progress,
-} from "../../../domain/batch-translation";
-import { BatchTranslationCompletionError } from "../../batch-translation/batch-translation-state";
+import { empty_batch_task_progress } from "../../../domain/batch-task";
+import { BatchTaskCompletionError } from "../../batch-task/batch-task-runtime";
 import { AppError } from "../../../shared/error";
 
 describe("Agent 条目批量翻译工具", () => {
@@ -17,7 +14,8 @@ describe("Agent 条目批量翻译工具", () => {
     });
     const summary = {
       status: "done" as const,
-      progress: normalize_batch_translation_progress({ processed_line: 2 }),
+      run_id: "translation",
+      progress: null,
     };
     const run = vi.fn(async () => {
       await pending;
@@ -77,17 +75,16 @@ describe("Agent 条目批量翻译工具", () => {
     const summary = {
       status,
       ...(status === "done" ? {} : { stop_source: "user" as const }),
-      progress: normalize_batch_translation_progress({ total_line: 100, processed_line: 80 }),
-      run_progress: normalize_batch_translation_run_progress({
-        total_line: status === "done" ? 8 : 10,
-        processed_line: 6,
-        failed_line: 2,
+      run_id: "translation",
+      progress: {
+        ...empty_batch_task_progress("item", status === "done" ? 8 : 10),
+        succeeded: 6,
+        failed: 2,
         time: 12.5,
-        total_input_tokens: 1000,
-        total_reasoning_tokens: 200,
-        total_output_tokens: 300,
-        total_tokens: 1500,
-      }),
+        input_tokens: 1000,
+        reasoning_tokens: 200,
+        output_tokens: 300,
+      },
     };
     const expected = {
       status,
@@ -110,7 +107,7 @@ describe("Agent 条目批量翻译工具", () => {
       message: "reasoning effort is not supported",
       public_details: { status: 400 },
     });
-    const failure = new BatchTranslationCompletionError(summary, cause);
+    const failure = new BatchTaskCompletionError(summary, cause);
     const tool = create_agent_batch_item_translation_tool(async () => {
       if (status === "error") throw failure;
       return summary;
@@ -142,8 +139,8 @@ describe("Agent 条目批量翻译工具", () => {
   it("已确定零目标返回零计数", async () => {
     const tool = create_agent_batch_item_translation_tool(async () => ({
       status: "done",
-      progress: normalize_batch_translation_progress({ total_line: 100 }),
-      run_progress: normalize_batch_translation_run_progress({}),
+      run_id: "translation",
+      progress: empty_batch_task_progress("item", 0),
     }));
     expect(await tool.execute({ item_ids: [1] }, ...agent_tool_call("batch"))).toMatchObject({
       details: {

@@ -10,6 +10,7 @@ const desktop = vi.hoisted(() => ({
   api_get: vi.fn(),
   api_fetch: vi.fn(),
   open_event_stream: vi.fn(),
+  report_renderer_error: vi.fn(async () => {}),
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => desktop);
 
@@ -17,6 +18,7 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
   const listeners = new Map<string, EventListener>();
   const close = vi.fn();
   let project_ids = ["first", "second"];
+  let current_task_revision = 0;
   desktop.open_event_stream.mockReturnValue({
     addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
     close,
@@ -79,7 +81,13 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
         },
       };
     }
-    return { batch_tasks: empty_batch_task_list_snapshot() };
+    return {
+      batch_tasks: {
+        ...empty_batch_task_list_snapshot(),
+        project_path: String(body?.projectId) + ".lg",
+        revision: current_task_revision,
+      },
+    };
   });
   let state!: ReturnType<typeof useDesktopState>;
   let signal!: ReturnType<typeof useProjectChangeSignal>;
@@ -127,7 +135,11 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
       emit("project.data_changed", change);
       emit("batch_task.snapshot_changed", {
         projectId: "second",
-        batch_tasks: { ...empty_batch_task_list_snapshot(), revision: 2 },
+        batch_tasks: {
+          ...empty_batch_task_list_snapshot(),
+          project_path: "second.lg",
+          revision: 2,
+        },
       });
       emit(AGENT_CHAT_EVENT_TOPIC, {
         projectId: "second",
@@ -145,6 +157,12 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     expect(reads()).toEqual(["first", "second"]);
     expect(state.active_project?.agentChat).toBe(agent);
     expect(agent.get_chat_id()).toBe("second-reset");
+    current_task_revision = 3;
+    await act(async () =>
+      emit("batch_task.snapshot_changed", { projectId: "second", batch_tasks: null }),
+    );
+    expect(reads()).toEqual(["first", "second", "second"]);
+    expect(task.revision).toBe(3);
     await act(async () => state.select_project("first"));
     expect(signal.seq).toBe(0);
     await act(async () => {

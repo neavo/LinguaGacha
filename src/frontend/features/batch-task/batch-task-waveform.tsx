@@ -1,13 +1,10 @@
 import { useDevicePixelRatio } from "@frontend/widgets/interactions/use-device-pixel-ratio";
-import { type JSX, useEffect, useMemo, useRef } from "react";
+import { type JSX, useEffect, useRef } from "react";
 
-import {
-  build_task_waveform_columns,
-  TASK_WAVEFORM_VISIBLE_POINTS,
-} from "@frontend/app/session/batch-task/batch-task-waveform-state";
+import { TASK_WAVEFORM_VISIBLE_POINTS } from "@frontend/app/session/batch-task/batch-task-waveform-state";
 
-type BatchTranslationWaveformProps = {
-  history: number[];
+type BatchTaskWaveformProps = {
+  history: readonly number[];
 };
 
 const WAVEFORM_COLUMN_COUNT = TASK_WAVEFORM_VISIBLE_POINTS;
@@ -19,13 +16,9 @@ const WAVEFORM_CANVAS_WIDTH = WAVEFORM_COLUMN_COUNT * WAVEFORM_COLUMN_STEP_PX;
 const WAVEFORM_CANVAS_HEIGHT = WAVEFORM_ROW_COUNT * WAVEFORM_ROW_STEP_PX;
 
 /** 按设备像素比绘制会话采样的波形，颜色沿用当前主题。 */
-export function BatchTranslationWaveform(props: BatchTranslationWaveformProps): JSX.Element {
+export function BatchTaskWaveform(props: BatchTaskWaveformProps): JSX.Element {
   const device_pixel_ratio = useDevicePixelRatio();
   const canvas_ref = useRef<HTMLCanvasElement | null>(null);
-
-  const column_heights = useMemo(() => {
-    return build_task_waveform_columns(props.history, WAVEFORM_ROW_COUNT);
-  }, [props.history]);
 
   useEffect(() => {
     const canvas_element = canvas_ref.current;
@@ -49,25 +42,27 @@ export function BatchTranslationWaveform(props: BatchTranslationWaveformProps): 
 
     const computed_style = window.getComputedStyle(canvas_element);
     context.fillStyle = computed_style.color || "#6f5d3d";
-    const x_offset = WAVEFORM_CANVAS_WIDTH - column_heights.length * WAVEFORM_COLUMN_STEP_PX;
+    const peak_speed = Math.max(1, ...props.history); // 按可见样本峰值缩放，保留底座一行。
+    const x_offset = WAVEFORM_CANVAS_WIDTH - props.history.length * WAVEFORM_COLUMN_STEP_PX;
     const baseline_y = WAVEFORM_CANVAS_HEIGHT;
 
-    // 为什么：先铺底座字符，能让空样本和低波动样本仍然保留稳定的“监视器”视觉反馈。
+    // 先铺底座，空闲时也有静态波形。
     for (let column_index = 0; column_index < WAVEFORM_COLUMN_COUNT; column_index += 1) {
       const draw_x = column_index * WAVEFORM_COLUMN_STEP_PX + WAVEFORM_COLUMN_STEP_PX / 2;
       context.fillText("▨", draw_x, baseline_y);
     }
 
-    column_heights.forEach((column_height, column_index) => {
+    props.history.forEach((speed, column_index) => {
+      const filled_rows = Math.round(((WAVEFORM_ROW_COUNT - 1) * speed) / peak_speed);
       const draw_x =
         x_offset + column_index * WAVEFORM_COLUMN_STEP_PX + WAVEFORM_COLUMN_STEP_PX / 2;
 
-      for (let row_index = 1; row_index < column_height; row_index += 1) {
+      for (let row_index = 1; row_index <= filled_rows; row_index += 1) {
         const draw_y = WAVEFORM_CANVAS_HEIGHT - row_index * WAVEFORM_ROW_STEP_PX;
         context.fillText("▨", draw_x, draw_y);
       }
     });
-  }, [column_heights, device_pixel_ratio]);
+  }, [props.history, device_pixel_ratio]);
 
   return (
     <div className="batch-translation__waveform">

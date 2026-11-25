@@ -19,7 +19,7 @@ import "@frontend/pages/files-page/files-page.css";
 export function FilesPage(): JSX.Element {
   const { t } = useI18n();
   const { navigate_to_agent } = useAppNavigation();
-  const { batch_task } = useBatchTaskSession();
+  const batch_task = useBatchTaskSession();
   const translation_export = useTranslationExport();
   const workbench_state = useWorkbenchPageState();
   const translation_stats = useProjectTranslationStats();
@@ -101,7 +101,7 @@ export function FilesPage(): JSX.Element {
                   label: t("workbench_page.dialog.start_translation.translate_directly"),
                   onSelect: () => {
                     set_start_dialog_open(false);
-                    void batch_task.request_start_or_continue_translation();
+                    void batch_task.request_start_translation();
                   },
                 }
           }

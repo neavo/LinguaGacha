@@ -42,13 +42,13 @@ describe("共享批次完成链", () => {
       { run_id: translation.run_id, progress: { total: 20 } },
       { run_id: next_request.run_id },
     ]);
-    expect(await runtime.request_stop(request.run_id)).toBe(true);
+    expect(await runtime.request_stop([request.run_id])).toBe(true);
     expect(request.signal.aborted).toBe(true);
     expect(translation.signal.aborted).toBe(false);
     expect(next_request.signal.aborted).toBe(false);
     request_work.resolve(result());
     expect(await request.completion).toMatchObject({ status: "stopped", stop_source: "user" });
-    expect(await runtime.request_stop(request.run_id)).toBe(false);
+    expect(await runtime.request_stop([request.run_id])).toBe(false);
 
     const closing = runtime.dispose();
     expect(translation.signal.aborted).toBe(true);
@@ -58,10 +58,7 @@ describe("共享批次完成链", () => {
     await closing;
     for (const handle of [translation, next_request])
       expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "shutdown" });
-    expect(runtime.build_snapshot().tasks.map((task) => task.run_id)).toEqual([
-      next_request.run_id,
-      translation.run_id,
-    ]);
+    expect(runtime.build_snapshot().tasks).toEqual([]);
     expect(gate.get_snapshot()).toMatchObject({ agent: true, batchTranslation: false });
     gate.finish_runtime(lease);
   });
@@ -79,12 +76,12 @@ describe("共享批次完成链", () => {
     await runtime.dispose();
   });
   it.each(["standalone", "agent"] as const)(
-    "%s 来源保留至终态，新任务替换上一轮终态",
+    "%s 来源随状态变化交付，侧栏快照只保留活跃运行",
     async (source) => {
       const { runtime, gate } = setup();
       const lease = source === "agent" ? gate.begin_runtime("agent") : null;
       const frames: Array<{ status: string; source: string | null }> = [];
-      runtime.subscribe(({ tasks: [snapshot] }) => {
+      runtime.subscribe((_snapshot, [snapshot]) => {
         if (snapshot === undefined) return;
         frames.push({ status: snapshot.status, source: snapshot.source });
       });
@@ -93,7 +90,7 @@ describe("共享批次完成链", () => {
           ? runtime.begin_standalone()
           : runtime.begin_under_agent(lease, new AbortController().signal, "request");
       await runtime.execute(handle, async () => {
-        await runtime.publish_status(handle, "running");
+        await runtime.publish_running(handle);
         return "error";
       });
       await handle.completion;
@@ -102,7 +99,7 @@ describe("共享批次完成链", () => {
         { status: "running", source },
         { status: "error", source },
       ]);
-      expect(runtime.build_snapshot().tasks[0]!).toMatchObject({ source, request_recovery: null });
+      expect(runtime.build_snapshot().tasks).toEqual([]);
       if (lease !== null) gate.finish_runtime(lease);
       const next = runtime.begin_standalone();
       expect(runtime.build_snapshot().tasks[0]!).toMatchObject({
@@ -111,40 +108,73 @@ describe("共享批次完成链", () => {
       });
       await runtime.execute(next, async () => result());
       await next.completion;
-      expect(runtime.build_snapshot().tasks[0]!).toMatchObject({
+      expect(runtime.build_snapshot().last_translation).toMatchObject({
+        run_id: next.run_id,
         status: "done",
-        source: "standalone",
-        request_recovery: null,
       });
       await runtime.dispose();
     },
   );
-  it("本轮配置隔离引用并保留终态，新运行从空配置开始", async () => {
-    const { runtime } = setup();
-    const handle = runtime.begin_standalone();
-    const config = {
-      model_config_id: "fixture",
-      concurrency_limit: 2,
-      rpm_limit: 0,
-      model_name: "翻译模型",
-      model_id: "test-model",
-      thinking_level: "HIGH" as const,
-    };
-    await runtime.execute(handle, async () => {
-      await runtime.publish_config(handle, config);
-      config.model_name = "后来改名";
-      return "done";
+  it("结束的并行批次仍贡献用量，下一轮清零并按确认范围停止", async () => {
+    const { runtime, gate } = setup();
+    const agent = gate.begin_runtime("agent");
+    const parent = new AbortController().signal;
+    const translation = runtime.begin_standalone();
+    const request = runtime.begin_under_agent(agent, parent, "request");
+    const translation_work = deferred<"done">();
+    const request_work = deferred<"done">();
+    await runtime.execute(translation, () => translation_work.promise);
+    await runtime.execute(request, () => request_work.promise);
+    await runtime.publish_progress(translation, {
+      ...empty_batch_task_progress("item", 1),
+      input_tokens: 70,
+      reasoning_tokens: 2,
+      output_tokens: 12,
     });
-    await handle.completion;
-    const snapshot = runtime.build_snapshot().tasks[0]!;
-    expect(snapshot.config?.model_name).toBe("翻译模型");
-    expect(snapshot.config?.thinking_level).toBe("HIGH");
+    await runtime.publish_progress(request, {
+      ...empty_batch_task_progress("request", 1),
+      input_tokens: 30,
+      reasoning_tokens: 8,
+      output_tokens: 9,
+    });
+    const confirmation = runtime.build_snapshot();
+    const activity = {
+      id: translation.run_id,
+      start_time: expect.any(Number),
+      usage: { input_tokens: 100, reasoning_tokens: 10, output_tokens: 21 },
+    };
+    expect(confirmation.activity).toEqual(activity);
+    const later = runtime.begin_under_agent(agent, parent, "request");
+    const later_work = deferred<"done">();
+    await runtime.execute(later, () => later_work.promise);
+    await runtime.request_stop(confirmation.tasks.map((task) => task.run_id));
+    expect([translation.signal.aborted, request.signal.aborted, later.signal.aborted]).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    translation_work.resolve("done");
+    await translation.completion;
+    expect(runtime.build_snapshot()).toMatchObject({
+      activity: confirmation.activity,
+    });
+    request_work.resolve("done");
+    later_work.resolve("done");
+    await Promise.all([request.completion, later.completion]);
+    expect(runtime.build_snapshot()).toMatchObject({
+      activity: null,
+      tasks: [],
+    });
     const next = runtime.begin_standalone();
-    await runtime.publish_config(handle, config);
-    expect(runtime.build_snapshot().tasks[0]!.config).toBeNull();
-    await runtime.execute(next, async () => "done");
-    await next.completion;
+    expect(runtime.build_snapshot()).toMatchObject({
+      activity: {
+        id: next.run_id,
+        start_time: expect.any(Number),
+        usage: { input_tokens: 0, reasoning_tokens: 0, output_tokens: 0 },
+      },
+    });
     await runtime.dispose();
+    gate.finish_runtime(agent);
   });
 
   it("恢复快照隔离输入，取消和新运行拒绝旧恢复状态", async () => {
@@ -154,7 +184,7 @@ describe("共享批次完成链", () => {
     const handle = runtime.begin_standalone();
     try {
       await runtime.execute(handle, () => work.promise);
-      await runtime.publish_status(handle, "running");
+      await runtime.publish_running(handle);
       const recovery = { phase: "waiting" as const, retry_count: 3, retry_at: Date.now() + 60_000 };
       runtime.update_request_state(handle, {
         request_in_flight_count: 0,
@@ -162,7 +192,7 @@ describe("共享批次完成链", () => {
       });
       recovery.retry_count = 99;
       expect(runtime.build_snapshot().tasks[0]!.request_recovery).toMatchObject({ retry_count: 3 });
-      await runtime.request_stop(handle.run_id);
+      await runtime.request_stop([handle.run_id]);
       runtime.update_request_state(handle, {
         request_in_flight_count: 1,
         request_recovery: recovery,
@@ -187,30 +217,44 @@ describe("共享批次完成链", () => {
       await runtime.dispose();
     }
   });
-  it("压力按发布窗口合并，终态清空压力且拒绝旧运行的进度", async () => {
+  it("接入点和压力共用发布窗口，终态清空压力且拒绝旧运行的进度", async () => {
     vi.useFakeTimers();
     const { runtime, gate } = setup();
-    const frames: Array<{ status: string; count: number }> = [];
-    runtime.subscribe(({ tasks: [snapshot] }) => {
+    const frames: Array<{ status: string; count: number; model?: string }> = [];
+    const endpoint = {
+      id: "fixture",
+      name: "测试接入点",
+      model_id: "effective",
+      thinking_level: "LOW" as const,
+    };
+    runtime.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
-      frames.push({ status: snapshot.status, count: snapshot.request_in_flight_count });
+      frames.push({
+        status: snapshot.status,
+        count: snapshot.request_in_flight_count,
+        ...(snapshot.endpoint === undefined ? {} : { model: snapshot.endpoint.model_id }),
+      });
     });
     const work = deferred<ReturnType<typeof result>>();
     const handle = runtime.begin_standalone();
     await runtime.execute(handle, () => work.promise);
     frames.length = 0;
+    runtime.update_endpoint(handle, endpoint);
     runtime.update_request_state(handle, { request_in_flight_count: 1, request_recovery: null });
     runtime.update_request_state(handle, { request_in_flight_count: 2, request_recovery: null });
     await vi.advanceTimersByTimeAsync(BATCH_TASK_REQUEST_STATE_PUBLISH_INTERVAL_MS - 1);
     expect(frames).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(frames).toEqual([{ status: "requested", count: 2 }]);
+    expect(frames).toEqual([{ status: "requested", count: 2, model: "effective" }]);
+    runtime.update_endpoint(handle, endpoint);
+    await vi.advanceTimersByTimeAsync(BATCH_TASK_REQUEST_STATE_PUBLISH_INTERVAL_MS);
+    expect(frames).toHaveLength(1);
     runtime.update_request_state(handle, { request_in_flight_count: 3, request_recovery: null });
     work.resolve(result());
     await handle.completion;
     expect(frames).toEqual([
-      { status: "requested", count: 2 },
-      { status: "done", count: 0 },
+      { status: "requested", count: 2, model: "effective" },
+      { status: "done", count: 0, model: "effective" },
     ]);
     expect(gate.busy).toBe(false);
     const next = runtime.begin_standalone();
@@ -227,20 +271,17 @@ describe("共享批次完成链", () => {
     const work = deferred<ReturnType<typeof result>>();
     const handle = runtime.begin_under_agent(lease, parent.signal, "request");
     await runtime.execute(handle, () => work.promise);
-    expect(await runtime.request_stop(handle.run_id)).toBe(true);
+    expect(await runtime.request_stop([handle.run_id])).toBe(true);
     expect(runtime.build_snapshot().tasks[0]!).toMatchObject({
       status: "stopping",
       stop_source: "user",
     });
-    expect(await runtime.request_stop(handle.run_id)).toBe(false);
+    expect(await runtime.request_stop([handle.run_id])).toBe(false);
     parent.abort();
     work.resolve(result());
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "user" });
-    expect(runtime.build_snapshot().tasks[0]!).toMatchObject({
-      status: "stopped",
-      stop_source: "user",
-    });
-    expect(await runtime.request_stop(handle.run_id)).toBe(false);
+    expect(runtime.build_snapshot().tasks).toEqual([]);
+    expect(await runtime.request_stop([handle.run_id])).toBe(false);
     gate.finish_runtime(lease);
     const next = runtime.begin_standalone();
     expect(runtime.build_snapshot().tasks[0]!.stop_source).toBeNull();
@@ -254,7 +295,7 @@ describe("共享批次完成链", () => {
     const work = deferred<ReturnType<typeof result>>();
     const publishing = deferred<void>();
     const release = deferred<void>();
-    runtime.subscribe(({ tasks: [snapshot] }) => {
+    runtime.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       if (snapshot.status === "requested" && snapshot.request_in_flight_count > 0) {
         publishing.resolve();
@@ -267,7 +308,7 @@ describe("共享批次完成链", () => {
     await vi.advanceTimersByTimeAsync(BATCH_TASK_REQUEST_STATE_PUBLISH_INTERVAL_MS);
     await publishing.promise;
     work.resolve(result());
-    expect(await runtime.request_stop(handle.run_id)).toBe(true);
+    expect(await runtime.request_stop([handle.run_id])).toBe(true);
     release.resolve();
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "user" });
     await runtime.dispose();
@@ -281,23 +322,20 @@ describe("共享批次完成链", () => {
       await work.promise;
       throw failure;
     });
-    await runtime.request_stop(handle.run_id);
+    await runtime.request_stop([handle.run_id]);
     work.resolve(result());
     await expect(handle.completion).rejects.toMatchObject({
       cause: failure,
       result: { status: "error", stop_source: "user" },
     });
-    expect(runtime.build_snapshot().tasks[0]!).toMatchObject({
-      status: "error",
-      stop_source: "user",
-    });
+    expect(runtime.build_snapshot().last_translation?.status).toBe("error");
     await runtime.dispose();
   });
   it("用户在预约发布期间停止，发布失败仍携带停止结果", async () => {
     const { runtime } = setup();
     const release = deferred<void>();
     const failure = new Error("reservation failed");
-    runtime.subscribe(async ({ tasks: [snapshot] }) => {
+    runtime.subscribe(async (_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       if (snapshot.status === "requested") {
         await release.promise;
@@ -307,7 +345,7 @@ describe("共享批次完成链", () => {
     const handle = runtime.begin_standalone();
     const runner = vi.fn(async () => result());
     const execution = runtime.execute(handle, runner);
-    await runtime.request_stop(handle.run_id);
+    await runtime.request_stop([handle.run_id]);
     release.resolve();
     await expect(execution).rejects.toMatchObject({
       cause: failure,
@@ -319,7 +357,7 @@ describe("共享批次完成链", () => {
   it("预约发布失败恢复前置状态并结算 rejection，随后可以启动", async () => {
     const { runtime, gate } = setup();
     const error = new Error("reservation failed");
-    const unsubscribe = runtime.subscribe(({ tasks: [snapshot] }) => {
+    const unsubscribe = runtime.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       if (snapshot.status === "requested") throw error;
     });
@@ -340,7 +378,7 @@ describe("共享批次完成链", () => {
     const { runtime, gate } = setup();
     const work = deferred<ReturnType<typeof result>>();
     const terminal = deferred<void>();
-    const unsubscribe = runtime.subscribe(({ tasks: [snapshot] }) =>
+    const unsubscribe = runtime.subscribe((_snapshot, [snapshot]) =>
       snapshot?.status === "done" ? terminal.promise : undefined,
     );
     const handle = runtime.begin_standalone();
@@ -352,10 +390,12 @@ describe("共享批次完成链", () => {
     await runtime.publish_progress(handle, progress);
     const output = result();
     work.resolve(output);
-    await vi.waitFor(async () => expect(runtime.build_snapshot().tasks[0]!.status).toBe("done"));
+    await vi.waitFor(async () =>
+      expect(runtime.build_snapshot().last_translation?.status).toBe("done"),
+    );
     expect(settled).not.toHaveBeenCalled();
     expect(gate.get_snapshot().batchTranslation).toBe(true);
-    expect(await runtime.request_stop(handle.run_id)).toBe(false);
+    expect(await runtime.request_stop([handle.run_id])).toBe(false);
     terminal.resolve();
     expect(await handle.completion).toMatchObject({ status: "done", progress: { succeeded: 2 } });
     expect(gate.busy).toBe(false);
@@ -373,7 +413,7 @@ describe("共享批次完成链", () => {
     const work = deferred<ReturnType<typeof result>>();
     await runtime.execute(handle, () => work.promise);
     parent.abort();
-    expect(await runtime.request_stop(handle.run_id)).toBe(false);
+    expect(await runtime.request_stop([handle.run_id])).toBe(false);
     expect(handle.signal.aborted).toBe(true);
     work.resolve(result());
     expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "parent" });
@@ -384,7 +424,7 @@ describe("共享批次完成链", () => {
   it("终态订阅失败仍结算并释放 lease", async () => {
     const { runtime, gate } = setup();
     const error = new Error("listener failed");
-    runtime.subscribe(({ tasks: [snapshot] }) => {
+    runtime.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       if (snapshot.status === "done") throw error;
     });
@@ -408,7 +448,7 @@ describe("共享批次完成链", () => {
       cause: error,
       result: { status: "error" },
     });
-    expect(runtime.build_snapshot().tasks[0]!.status).toBe("error");
+    expect(runtime.build_snapshot().last_translation?.status).toBe("error");
     expect(gate.busy).toBe(false);
     await runtime.dispose();
   });
@@ -424,7 +464,7 @@ describe("共享批次完成链", () => {
     const { runtime, gate } = setup();
     const lease = gate.begin_runtime("agent");
     const parent = new AbortController();
-    runtime.subscribe(({ tasks: [snapshot] }) => {
+    runtime.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       if (snapshot.status === "done") parent.abort();
     });
@@ -440,7 +480,7 @@ describe("共享批次完成链", () => {
   it("结果索引发布失败仍发布错误终态", async () => {
     const { runtime, gate } = setup();
     const frames: string[] = [];
-    runtime.subscribe(({ tasks: [snapshot] }) => {
+    runtime.subscribe((_snapshot, [snapshot]) => {
       if (snapshot === undefined) return;
       frames.push(snapshot.status);
     });

@@ -1,5 +1,4 @@
 import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
-import { createBatchTranslationSnapshotStore } from "./batch-translation-snapshot-store";
 import { createProjectChangeSignalStore } from "./project-change-signal-store";
 import {
   type JSX,
@@ -21,7 +20,6 @@ import {
 } from "@domain/app-language";
 import { is_json_record } from "@domain/json";
 import { normalize_setting_snapshot } from "@domain/setting";
-import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import { MODEL_AUTH_CHANGED_EVENT_TOPIC, type ChatGPTAuthSnapshot } from "@shared/model-auth";
 import { MODEL_CATALOG_UPDATED_EVENT_TOPIC } from "@shared/model-catalog";
 import { PROJECT_DATA_SECTIONS, PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project-event";
@@ -47,7 +45,6 @@ const EMPTY_PROJECT: ProjectSnapshot = { path: "", loaded: false, file_count: 0,
 export function DesktopStateProvider({ children }: { children: ReactNode }): JSX.Element {
   const [empty] = useState(() => ({
     batch_task: createBatchTaskSnapshotStore(),
-    batch_translation: createBatchTranslationSnapshotStore(),
     projectChange: createProjectChangeSignalStore(),
   }));
   const [runtime] = useState(createRuntimeActivityStore);
@@ -103,16 +100,12 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
     return runtime.getSnapshot();
   }, [runtime]);
 
-  const refresh_tasks = useCallback(
-    async (project: ProjectStore): Promise<BatchTranslationSnapshot> => {
-      const payload = await api_fetch<Record<string, unknown>>("/api/batch-task/snapshot", {
-        projectId: project.snapshot.projectId,
-      });
-      project.update_task(payload);
-      return project.batch_translation.getSnapshot();
-    },
-    [],
-  );
+  const refresh_tasks = useCallback(async (project: ProjectStore): Promise<void> => {
+    const payload = await api_fetch<Record<string, unknown>>("/api/batch-task/snapshot", {
+      projectId: project.snapshot.projectId,
+    });
+    project.update_task(payload);
+  }, []);
 
   const refresh_projects = useCallback(async () => {
     const token = ++projects_request.current;
@@ -152,10 +145,6 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
     async () => (store ? refresh_snapshot(store) : EMPTY_PROJECT),
     [store, refresh_snapshot],
   );
-  const refresh_batch_translation = useCallback(
-    async () => (store ? refresh_tasks(store) : empty.batch_translation.getSnapshot()),
-    [store, empty, refresh_tasks],
-  );
 
   const refresh_manifest = useCallback(
     async (project: ProjectStore) => {
@@ -186,7 +175,6 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
     project_loaded: project_snapshot.loaded,
     project_path: project_snapshot.path,
     refresh_project_state,
-    refresh_batch_translation,
   });
   const { report_state_error } = recovery;
 
@@ -280,9 +268,16 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
             if (project) await refresh_manifest(project);
           }
         }),
-        "batch_task.snapshot_changed": dispatch((payload) => {
-          if (typeof payload.projectId === "string")
-            registry.get(payload.projectId)?.update_task(payload);
+        "batch_task.snapshot_changed": dispatch(async (payload) => {
+          if (typeof payload.projectId !== "string") return; // 缺少工程身份时由下一帧或重连补读恢复。
+          const project = registry.get(payload.projectId);
+          if (project === undefined) return;
+          try {
+            project.update_task(payload);
+          } catch (error) {
+            report_stream_error(error);
+            await refresh_tasks(project);
+          }
         }),
         "settings.changed": dispatch((payload) => {
           if (is_json_record(payload.settings))
@@ -306,6 +301,7 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
     refresh_projects,
     refresh_runtime,
     refresh_settings,
+    refresh_tasks,
     registry,
     runtime,
   ]);
@@ -338,7 +334,6 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
           commit_project_write,
           update_app_language,
           refresh_settings,
-          refresh_batch_translation,
           refresh_runtime,
           open_projects: registry.values(),
           active_project: store,

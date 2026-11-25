@@ -1,7 +1,11 @@
 import crypto from "node:crypto";
-import { create_batch_task_snapshot } from "../../domain/batch-task";
+import { create_batch_task_snapshot, EMPTY_BATCH_TASK_USAGE } from "../../domain/batch-task";
+import type { BatchTranslationOperation } from "../../domain/batch-translation";
 import type {
-  BatchTaskConfig,
+  BatchTranslationCompletion,
+  BatchTaskActivity,
+  BatchTaskEndpoint,
+  BatchTaskUsage,
   BatchTaskKind,
   BatchTaskListSnapshot,
   BatchTaskProgress,
@@ -26,7 +30,6 @@ type ActiveRun = {
   lease: RuntimeLease | null;
   detach_parent: () => void;
   snapshot: BatchTaskSnapshot;
-  order: number;
   finishing: boolean;
   request_state_timer: ReturnType<typeof setTimeout> | undefined;
   request_state_flush: Promise<void>;
@@ -51,7 +54,8 @@ export class BatchTaskCompletionError extends Error {
 /** 只拥有批次生命周期。业务层负责提交和结果文件收尾。 */
 export class BatchTaskRuntime {
   private readonly active_runs = new Map<string, ActiveRun>();
-  private readonly finished = new Map<BatchTaskKind, Pick<ActiveRun, "snapshot" | "order">>();
+  private activity: BatchTaskActivity | null = null; // 记录先结束的并行批次用量，活跃批次在构造快照时合计。
+  private last_translation: BatchTranslationCompletion | null = null;
   private revision = 0;
   private disposed = false;
   private readonly listeners = new Set<BatchTaskSnapshotListener>();
@@ -70,37 +74,56 @@ export class BatchTaskRuntime {
   }
   /** 复制公开快照，隔离订阅者和调用方持有的引用。 */
   public build_snapshot(): BatchTaskListSnapshot {
-    const active = [...this.active_runs.values()];
-    const finished = [...this.finished.values()]
-      .filter(
-        (run) =>
-          !active.some(
-            (item) => item.snapshot.kind === run.snapshot.kind && item.order > run.order,
-          ),
-      )
-      .sort((a, b) => b.order - a.order);
-    return structuredClone({
+    return structuredClone(this.read_snapshot());
+  }
+
+  /** 活跃批次贡献当前用量，已收尾批次的用量保留到本轮结束。 */
+  private read_snapshot(): BatchTaskListSnapshot {
+    const tasks = [...this.active_runs.values()].map((run) => run.snapshot);
+    const activity = this.activity;
+    return {
       revision: this.revision,
       project_path: this.project_path,
-      tasks: [...active, ...finished].map((run) => run.snapshot),
-    });
+      activity:
+        activity === null
+          ? null
+          : {
+              ...activity,
+              usage: tasks.reduce((usage, task) => add_usage(usage, task.progress), activity.usage),
+            },
+      tasks,
+      last_translation: this.last_translation,
+    };
   }
+
   /** 独立翻译取得工程翻译租约后预约批次。 */
-  public begin_standalone(): BatchTaskRunHandle {
+  public begin_standalone(operation: BatchTranslationOperation = "translate"): BatchTaskRunHandle {
     this.assert_available();
-    return this.reserve("standalone", "translation", this.gate.begin_runtime("batch_translation"));
+    return this.reserve(
+      "standalone",
+      "translation",
+      this.gate.begin_runtime("batch_translation"),
+      operation,
+    );
   }
   /** Agent 翻译与独立翻译争用同一工程租约，通用请求沿用父 Agent 租约。 */
   public begin_under_agent(
     lease: RuntimeLease,
     signal: AbortSignal,
     kind: BatchTaskKind,
+    operation: BatchTranslationOperation = "translate",
   ): BatchTaskRunHandle {
     this.assert_available();
     this.gate.assert_agent_runtime(lease);
     const translation =
       kind === "translation" ? this.gate.begin_runtime("batch_translation") : null;
-    return this.reserve("agent", kind, translation, signal);
+    return this.reserve(
+      "agent",
+      kind,
+      translation,
+      kind === "translation" ? operation : undefined,
+      signal,
+    );
   }
   /** 预约前检查关闭状态。 */
   private assert_available(): void {
@@ -111,6 +134,7 @@ export class BatchTaskRuntime {
     source: "standalone" | "agent",
     kind: BatchTaskKind,
     lease: RuntimeLease | null,
+    operation: BatchTranslationOperation | undefined,
     parent?: AbortSignal,
   ): BatchTaskRunHandle {
     const controller = new AbortController();
@@ -132,8 +156,10 @@ export class BatchTaskRuntime {
       lease,
       resolve,
       reject,
-      snapshot: create_batch_task_snapshot(handle.run_id, kind, source),
-      order: this.revision, // 受理发布随即推进版本，借用版本记录启动顺序。
+      snapshot: {
+        ...create_batch_task_snapshot(handle.run_id, kind, source),
+        ...(operation === undefined ? {} : { translation: { operation, pending_item_ids: [] } }),
+      },
       finishing: false,
       request_state_timer: undefined,
       request_state_flush: Promise.resolve(),
@@ -141,6 +167,11 @@ export class BatchTaskRuntime {
       detach_parent: () => parent?.removeEventListener("abort", abort),
       ready: Promise.resolve(),
       attached: false,
+    };
+    this.activity ??= {
+      id: handle.run_id,
+      start_time: Date.now() / 1000,
+      usage: EMPTY_BATCH_TASK_USAGE,
     };
     this.active_runs.set(handle.run_id, run);
     parent?.addEventListener("abort", abort, { once: true });
@@ -150,25 +181,15 @@ export class BatchTaskRuntime {
       () => this.completions.delete(completion),
       () => this.completions.delete(completion),
     );
-    run.ready = this.publish_snapshot(kind);
+    run.ready = this.publish_snapshot([run]);
     void run.ready.catch(() => undefined); // 原始拒绝由唯一完成链消费。
     return handle;
-  }
-  /** 按运行身份拒绝旧批次的迟到更新。 */
-  public is_current(run_id: string): boolean {
-    return this.active_runs.has(run_id);
-  }
-  /** 固定本轮展示配置，后续设置修改不改变已运行任务。 */
-  public async publish_config(handle: BatchTaskRunHandle, config: BatchTaskConfig): Promise<void> {
-    const run = this.active_runs.get(handle.run_id);
-    if (run === undefined || run.finishing) return;
-    run.snapshot = { ...run.snapshot, config: { ...config } };
-    await this.publish_snapshot(run.snapshot.kind);
   }
   /** 只发布已结算计数，并将发布失败并入完成链。 */
   public async publish_progress(
     handle: BatchTaskRunHandle,
     progress: BatchTaskProgress,
+    pending_item_ids?: readonly number[],
   ): Promise<void> {
     const run = this.active_runs.get(handle.run_id);
     if (run === undefined || run.finishing) return;
@@ -180,24 +201,34 @@ export class BatchTaskRuntime {
     )
       throw new AppError("runtime.internal_invariant");
     this.clear_request_state_timer(run);
-    run.snapshot = { ...run.snapshot, progress: { ...progress } };
-    await this.publish_run(run);
+    run.snapshot = {
+      ...run.snapshot,
+      progress: { ...progress },
+      ...(run.snapshot.translation !== undefined && pending_item_ids !== undefined
+        ? { translation: { ...run.snapshot.translation, pending_item_ids: [...pending_item_ids] } }
+        : {}),
+    };
+    await this.publish_runs([run]);
   }
-  /** 取消优先于运行状态，停止请求的发布错误同样进入完成链。 */
-  public async publish_status(
-    handle: BatchTaskRunHandle,
-    status: "running" | "stopping",
-  ): Promise<void> {
+  /** 尊重准备期间收到的停止请求。 */
+  public async publish_running(handle: BatchTaskRunHandle): Promise<void> {
     const run = this.active_runs.get(handle.run_id);
     if (run === undefined || run.finishing) return;
-    run.snapshot = { ...run.snapshot, status: handle.signal.aborted ? "stopping" : status };
-    await this.publish_run(run);
+    run.snapshot = {
+      ...run.snapshot,
+      status: handle.signal.aborted ? "stopping" : "running",
+    };
+    await this.publish_runs([run]);
   }
-  /** 确认时固定的运行身份只允许停止对应批次。 */
-  public async request_stop(run_id: string): Promise<boolean> {
-    const run = this.active_runs.get(run_id);
-    if (!run || !this.cancel_run(run, "user")) return false;
-    await this.publish_run(run);
+  /** 一次受理确认时锁定的批次，随后发布同一份停止快照。 */
+  public async request_stop(run_ids: readonly string[]): Promise<boolean> {
+    const stopped: ActiveRun[] = [];
+    for (const run_id of run_ids) {
+      const run = this.active_runs.get(run_id);
+      if (run && this.cancel_run(run, "user")) stopped.push(run);
+    }
+    if (stopped.length === 0) return false;
+    await this.publish_runs(stopped);
     return true;
   }
   /** 首次取消决定来源。所有取消入口都尊重已结算的终态。 */
@@ -246,7 +277,6 @@ export class BatchTaskRuntime {
     } catch (error) {
       errors.add(error);
     }
-    const { kind } = run.snapshot;
     try {
       // 终态会清空请求压力，只等待已经开始的发布。
       this.clear_request_state_timer(run);
@@ -281,15 +311,20 @@ export class BatchTaskRuntime {
           progress,
           request_in_flight_count: 0,
           request_recovery: null,
+          ...(run.snapshot.translation === undefined
+            ? {}
+            : {
+                translation: { ...run.snapshot.translation, pending_item_ids: [] },
+              }),
         };
-        this.remember_finished(run);
+        this.remember_translation(run, status);
       }
-      this.active_runs.delete(run.handle.run_id);
-      await this.publish_snapshot(kind);
+      this.remove_run(run);
+      await this.publish_snapshot([run]);
     } catch (error) {
       errors.add(error);
     } finally {
-      this.active_runs.delete(run.handle.run_id);
+      this.remove_run(run);
       run.detach_parent();
       try {
         if (run.lease !== null) this.gate.finish_runtime(run.lease);
@@ -306,7 +341,10 @@ export class BatchTaskRuntime {
     if (errors.size > 0) {
       if (started) {
         run.snapshot = { ...run.snapshot, status: "error" };
-        this.remember_finished(run);
+        if (this.last_translation?.run_id === run.handle.run_id) {
+          this.remember_translation(run, "error");
+          this.revision += 1; // 补读终态时能接收修正后的回执。
+        }
       }
       const first = errors.values().next().value;
       const cause =
@@ -320,12 +358,46 @@ export class BatchTaskRuntime {
       );
     } else run.resolve(result);
   }
-  /** 同类批次并行结算时，保留最近启动的一轮。 */
-  private remember_finished(run: ActiveRun): void {
-    const { kind } = run.snapshot;
-    if ((this.finished.get(kind)?.order ?? -1) <= run.order)
-      this.finished.set(kind, { snapshot: run.snapshot, order: run.order });
+  /** 批次离开后，其已结算用量继续计入尚未完成的本轮。 */
+  private remove_run(run: ActiveRun): void {
+    const activity = this.activity;
+    if (!this.active_runs.delete(run.handle.run_id) || activity === null) return;
+    this.activity =
+      this.active_runs.size === 0
+        ? null
+        : {
+            ...activity,
+            usage: add_usage(activity.usage, run.snapshot.progress),
+          };
   }
+
+  /** 独立翻译回执供当前工程会话交接通知与导出。 */
+  private remember_translation(run: ActiveRun, status: BatchTaskResult["status"]): void {
+    const { translation, source, run_id, progress } = run.snapshot;
+    if (source === "standalone" && translation !== undefined) {
+      this.last_translation = {
+        run_id,
+        operation: translation.operation,
+        status,
+        failed: progress?.failed ?? 0,
+      };
+    }
+  }
+  /** 本轮实际请求首次出现或发生变化时，经同一请求状态窗口发布接入点。 */
+  public update_endpoint(handle: BatchTaskRunHandle, endpoint: BatchTaskEndpoint): void {
+    const run = this.active_runs.get(handle.run_id);
+    if (run === undefined || run.finishing) return;
+    const previous = run.snapshot.endpoint;
+    if (
+      previous?.id === endpoint.id &&
+      previous.model_id === endpoint.model_id &&
+      previous.thinking_level === endpoint.thinking_level
+    )
+      return;
+    run.snapshot = { ...run.snapshot, endpoint: { ...endpoint } };
+    this.schedule_request_snapshot(run);
+  }
+
   /** 请求状态按窗口合并，取消后清空恢复提示。 */
   public update_request_state(handle: BatchTaskRunHandle, state: BatchTaskRequestState): void {
     const run = this.active_runs.get(handle.run_id);
@@ -338,12 +410,17 @@ export class BatchTaskRuntime {
           ? null
           : { ...state.request_recovery },
     };
+    this.schedule_request_snapshot(run);
+  }
+
+  /** 一个窗口内只保留最新的请求压力和接入点。 */
+  private schedule_request_snapshot(run: ActiveRun): void {
     if (run.request_state_timer !== undefined) return;
     run.request_state_timer = setTimeout(() => {
       run.request_state_timer = undefined;
       run.request_state_flush = run.request_state_flush
-        .then(() => this.publish_run(run))
-        .catch(() => undefined); // publish_run 已把原错误交给完成链。
+        .then(() => this.publish_runs([run]))
+        .catch(() => undefined); // publish_runs 已把原错误交给完成链。
     }, BATCH_TASK_REQUEST_STATE_PUBLISH_INTERVAL_MS);
   }
   /** 进度发布或批次收尾已覆盖待发的请求压力。 */
@@ -352,23 +429,26 @@ export class BatchTaskRuntime {
     run.request_state_timer = undefined;
   }
   /** 停止和定时发布可能脱离 runner 调用栈，失败统一汇入批次完成链。 */
-  private async publish_run(run: ActiveRun): Promise<void> {
+  private async publish_runs(runs: readonly ActiveRun[]): Promise<void> {
     try {
-      await this.publish_snapshot(run.snapshot.kind);
+      await this.publish_snapshot(runs);
     } catch (error) {
-      run.errors.add(error);
+      for (const run of runs) run.errors.add(error);
       throw error;
     }
   }
   /** 推进修订并等待所有订阅者，保留各自的发布异常。 */
-  private async publish_snapshot(kind: BatchTaskKind): Promise<void> {
+  private async publish_snapshot(runs: readonly ActiveRun[]): Promise<void> {
     this.revision += 1;
-    const snapshot = this.build_snapshot();
-    // 预约方在同一调用栈内登记业务事实，订阅者随后读取它们。
+    const { snapshot, changes } = structuredClone({
+      snapshot: this.read_snapshot(),
+      changes: runs.map((run) => run.snapshot), // 终态已离开活跃列表，CLI 仍需读取最后一帧。
+    });
+    // 受理方先取得句柄，订阅者随后观察状态。
     await Promise.resolve();
     const results = await Promise.allSettled(
       [...this.listeners].map(async (listener) => {
-        await listener(snapshot, kind);
+        await listener(snapshot, changes);
       }),
     );
     const errors = results
@@ -392,4 +472,14 @@ export class BatchTaskRuntime {
     await Promise.allSettled(this.completions);
     this.listeners.clear();
   }
+}
+
+/** 准备阶段尚无已结算用量。 */
+function add_usage(total: BatchTaskUsage, usage: BatchTaskUsage | null): BatchTaskUsage {
+  if (usage === null) return total;
+  return {
+    input_tokens: total.input_tokens + usage.input_tokens,
+    reasoning_tokens: total.reasoning_tokens + usage.reasoning_tokens,
+    output_tokens: total.output_tokens + usage.output_tokens,
+  };
 }

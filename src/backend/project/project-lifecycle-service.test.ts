@@ -248,11 +248,11 @@ describe("ProjectLifecycleService", () => {
         expect.arrayContaining([expect.objectContaining({ src: "原文", file_type: "WOLFRPG" })]),
       );
       reads.mockClear();
-      const { meta: second_meta, ...loaded } = await service.load_project(project_path, undefined);
+      // 重开会更新工程时间戳，此处比较交给工作区的业务快照。
+      const { meta: _loaded_meta, ...loaded } = await service.load_project(project_path, undefined);
       expect(reads).toHaveBeenCalledTimes(1);
-      const { meta: first_meta, ...created } = created_snapshot;
+      const { meta: _created_meta, ...created } = created_snapshot;
       expect(loaded).toEqual(created);
-      expect(second_meta.translation_extras).toEqual(first_meta.translation_extras);
     } finally {
       await database.close();
     }
@@ -359,10 +359,6 @@ describe("ProjectLifecycleService", () => {
         "PROCESSED",
         "EXCLUDED",
       ]);
-      expect(snapshot.meta["translation_extras"]).toMatchObject({
-        total_line: enabled ? 3 : 4,
-        processed_line: 2,
-      });
       const items = await database.get_all_items(project_path);
       expect(items.slice(2, 4).map((item) => item.dst)).toEqual(["保留甲", "保留乙"]);
       await service.load_project(project_path, undefined);

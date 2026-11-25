@@ -2,7 +2,6 @@ import "@frontend/widgets/status-mark.css";
 import type { JSX } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTaskSession } from "@frontend/app/session/batch-task/batch-task-session-context";
-import { build_batch_task_summary_display } from "@frontend/features/batch-task/batch-task-display";
 import { BatchTaskSummary } from "@frontend/features/batch-task/batch-task-summary";
 import "./agent-task-status.css";
 
@@ -15,15 +14,9 @@ export function AgentTaskStatus(props: {
   running: boolean;
 }): JSX.Element | null {
   const { t } = useI18n();
-  const { batch_task: task } = useBatchTaskSession();
-  const metrics = task.task_metrics;
-  const display = build_batch_task_summary_display({
-    metrics,
-    kind: task.task_display_snapshot?.kind ?? null,
-    active_task_count: task.active_task_count,
-    t,
-  });
-  if (display.speed_text === null) {
+  const task = useBatchTaskSession();
+  const { summary, metrics } = task;
+  if (metrics.kind === null) {
     if (props.doing === null) return null;
     return (
       <div className="agent-doing" role="status">
@@ -43,7 +36,7 @@ export function AgentTaskStatus(props: {
       class_name="agent-translation-status"
       variant="card"
       open_tooltip_on_start={false}
-      display={display}
+      display={summary}
       completion_percent={metrics.completion_percent}
       on_open={task.open_task_detail_sheet}
     />

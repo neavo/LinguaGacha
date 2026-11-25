@@ -235,9 +235,8 @@ export class BatchRequestService {
             config: config_summary,
           });
           log_batch_task_start(this.log, BATCH_REQUEST_LOG_SOURCE, model, t);
-          await this.tasks.publish_config(handle, config_summary);
           await this.tasks.publish_progress(handle, progress);
-          await this.tasks.publish_status(handle, "running");
+          await this.tasks.publish_running(handle);
           const controller = new AbortController(); // 基础设施故障取消同批请求，不改写用户的停止来源。
           const active_signal = AbortSignal.any([handle.signal, controller.signal]);
           const auth_session = config.auth_type === "oauth" ? this.auth.bind() : undefined;
@@ -258,6 +257,12 @@ export class BatchRequestService {
                   ...(auth_session === undefined ? {} : { auth_session }),
                 },
                 request_signal,
+                (model) =>
+                  this.tasks.update_endpoint(handle, {
+                    id: model_config_id,
+                    name: config_summary.model_name || model.model_id,
+                    ...model,
+                  }),
               );
               // 在发布和日志前脱敏所有字符串，JSON replacer 不会破坏转义或响应结构。
               const result = JSON.parse(JSON.stringify(received, redact)) as LLMRequestResult;

@@ -86,6 +86,10 @@ export type ModelSelection = {
 };
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
+export type EffectiveModelRequest = Readonly<{
+  model_id: string;
+  thinking_level: ModelThinkingLevel | "CUSTOM";
+}>;
 
 /** 协议决定复制目标分类；没有自定义分类的协议不支持复制。 */
 const CUSTOM_MODEL_TYPE_BY_API_FORMAT = {
@@ -126,12 +130,13 @@ const MODEL_TYPE_SET = new Set<ModelType>(MODEL_TYPES);
 const MODEL_API_FORMAT_SET = new Set<ModelApiFormat>(MODEL_API_FORMATS);
 const MODEL_THINKING_LEVEL_SET = new Set<ModelThinkingLevel>(MODEL_THINKING_LEVELS);
 
-const DEFAULT_THRESHOLD_CONFIG: ModelThresholdConfig = {
-  input_token_limit: 512,
+/** 模型解析、设置界面和任务规划共用的阈值默认值。 */
+export const DEFAULT_MODEL_THRESHOLD_CONFIG: Readonly<ModelThresholdConfig> = Object.freeze({
+  input_token_limit: 768,
   output_token_limit: 4096,
   rpm_limit: 0,
   concurrency_limit: 0,
-};
+});
 
 const DEFAULT_THINKING_CONFIG: ModelThinkingConfig = {
   level: "OFF",
@@ -330,16 +335,19 @@ export class Model {
     return {
       input_token_limit: read_json_model_number(
         record["input_token_limit"],
-        DEFAULT_THRESHOLD_CONFIG.input_token_limit,
+        DEFAULT_MODEL_THRESHOLD_CONFIG.input_token_limit,
       ),
       output_token_limit: read_json_model_number(
         record["output_token_limit"],
-        DEFAULT_THRESHOLD_CONFIG.output_token_limit,
+        DEFAULT_MODEL_THRESHOLD_CONFIG.output_token_limit,
       ),
-      rpm_limit: read_json_model_number(record["rpm_limit"], DEFAULT_THRESHOLD_CONFIG.rpm_limit),
+      rpm_limit: read_json_model_number(
+        record["rpm_limit"],
+        DEFAULT_MODEL_THRESHOLD_CONFIG.rpm_limit,
+      ),
       concurrency_limit: read_json_model_number(
         record["concurrency_limit"],
-        DEFAULT_THRESHOLD_CONFIG.concurrency_limit,
+        DEFAULT_MODEL_THRESHOLD_CONFIG.concurrency_limit,
       ),
     };
   }

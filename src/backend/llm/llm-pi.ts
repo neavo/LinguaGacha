@@ -16,6 +16,7 @@ import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.l
 import type { OpenAICompletionsOptions } from "@earendil-works/pi-ai/api/openai-completions";
 import type { AnthropicOptions } from "@earendil-works/pi-ai/api/anthropic-messages";
 
+import type { EffectiveModelRequest } from "../../domain/model";
 import { MISTRAL_API_ORIGIN } from "../../domain/model-endpoint";
 import { AppError } from "../../shared/error";
 import {
@@ -23,7 +24,7 @@ import {
   resolve_one_shot_generation_options,
   type ModelRequestSnapshot,
 } from "./llm-request";
-import { apply_request_overrides } from "./llm-payload";
+import { apply_request_overrides, describe_effective_model_request } from "./llm-payload";
 import type { LLMMessage } from "./llm-types";
 import { apply_message_content } from "./llm-content";
 import { resolve_pi_thinking_level, type ResolvedModelCapability } from "./model-capability";
@@ -125,6 +126,7 @@ export function resolve_one_shot_pi_request(
   messages: LLMMessage[],
   signal: AbortSignal,
   capability: ResolvedModelCapability,
+  on_effective_model?: (model: EffectiveModelRequest) => void,
 ): {
   model: PiModel<PiApi>;
   context: Context;
@@ -191,6 +193,15 @@ export function resolve_one_shot_pi_request(
           public_details: { field: "messages" },
           diagnostic_context: { reason: "request_too_large" },
         });
+      on_effective_model?.(
+        describe_effective_model_request(
+          payload,
+          result,
+          active_model,
+          snapshot.api_format,
+          resolved.thinkingLevel === "off" ? "DEFAULT" : snapshot.thinking_level,
+        ),
+      );
       return result;
     },
   };

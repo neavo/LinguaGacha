@@ -3,11 +3,11 @@ import { normalize_context_lines_threshold } from "../../../domain/setting";
 import crypto from "node:crypto";
 import { read_item_source_text_parts } from "../../../shared/item-text";
 
-import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 import { read_json_integer, read_json_record, type MutableJsonRecord } from "../../../domain/json";
+import { DEFAULT_MODEL_THRESHOLD_CONFIG } from "../../../domain/model";
 import { project_text_resource_references } from "../../../shared/text/text-resource-reference";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
-import { build_token_count_cache_key, TokenCountCache } from "./token-count-cache";
+import { TokenCountCache } from "./token-count-cache";
 import type { TranslationContext } from "./translation-plan-types";
 import { AppError } from "../../../shared/error";
 import { read_task_item_id, read_task_item_status } from "../translation-item";
@@ -18,17 +18,22 @@ type TranslationTokenMetric = Readonly<{
   line_count: number;
 }>;
 
-const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
+const MIN_INPUT_TOKEN_LIMIT = 16;
 const PLANNING_YIELD_EVERY_ITEMS = 1024; // 规划扫描分批让出事件循环，避免大项目启动阶段长时间无响应。
 
-const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // 选取前后文时，仅接纳以这些标点结尾的条目。
+const CONTEXT_SKIPPED_STATUSES = new Set([
+  "EXCLUDED",
+  "RULE_SKIPPED",
+  "LANGUAGE_SKIPPED",
+  "DUPLICATED",
+]);
 
 /**
  * TranslationPlanner 是后台任务初始规划器：它复用进程内 token 缓存，并把精确计数交给 planning worker。
  */
 export class TranslationPlanner {
   private readonly planning_worker_pool: Pick<PlanningWorkerPool, "count_items">; // 只做纯计算，不接触数据库和事件。
-  private readonly token_cache = new TokenCountCache(); // 进程内计算指标缓存，随 BackendServices 生命周期释放。
+  private readonly token_cache = new TokenCountCache(); // 在同一工程的批次间复用计数。
 
   /**
    * 注入 planning worker，规划缓存由 planner 自己持有。
@@ -47,7 +52,14 @@ export class TranslationPlanner {
     signal: AbortSignal,
     target_ids?: ReadonlySet<number>,
   ): Promise<TranslationContext[]> {
-    const threshold = this.get_input_token_limit(model, DEFAULT_INPUT_TOKEN_LIMIT);
+    const threshold = read_json_record(model["threshold"]);
+    const input_token_limit = Math.max(
+      MIN_INPUT_TOKEN_LIMIT,
+      read_json_integer(
+        threshold["input_token_limit"],
+        DEFAULT_MODEL_THRESHOLD_CONFIG.input_token_limit,
+      ),
+    );
     const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // Sakura 专用提示词仅消费本批正文，不使用额外前后文。
     const metrics = await this.resolve_item_metrics(
       target_ids === undefined
@@ -58,7 +70,7 @@ export class TranslationPlanner {
     const chunks = await this.generate_item_chunks(
       items,
       metrics,
-      threshold,
+      input_token_limit,
       is_sakura ? 0 : normalize_context_lines_threshold(config["preceding_lines_threshold"]),
       is_sakura ? 0 : normalize_context_lines_threshold(config["following_lines_threshold"]),
       signal,
@@ -160,13 +172,7 @@ export class TranslationPlanner {
     signal: AbortSignal,
   ): Promise<Map<number, TranslationTokenMetric>> {
     const metrics = new Map<number, TranslationTokenMetric>();
-    const missing = new Map<
-      string,
-      {
-        text: string;
-        targets: Array<{ item_id: number; line_count: number }>;
-      }
-    >(); // 仅缺失文本保存回填位置，同文条目共用一次计数。
+    const missing = new Map<string, Array<{ item_id: number; line_count: number }>>(); // 同文条目共用一次计数。
     const seen_item_ids = new Set<number>();
     for (const [index, item] of items.entries()) {
       this.throw_if_aborted(signal);
@@ -182,41 +188,33 @@ export class TranslationPlanner {
           count + part.text.split(/\r?\n/).filter((line) => line.trim() !== "").length,
         0,
       );
-      const key = build_token_count_cache_key(text);
-      const token_count = this.token_cache.get(key);
-      if (token_count !== undefined) {
-        metrics.set(item_id, { token_count, line_count });
-      } else {
-        let pending = missing.get(key);
-        if (pending === undefined) {
-          pending = { text, targets: [] };
-          missing.set(key, pending);
-        }
-        pending.targets.push({ item_id, line_count });
+      const pending = missing.get(text);
+      if (pending !== undefined) pending.push({ item_id, line_count });
+      else {
+        const token_count = this.token_cache.get(text);
+        if (token_count === undefined) missing.set(text, [{ item_id, line_count }]);
+        else metrics.set(item_id, { token_count, line_count });
       }
       if (index > 0 && index % PLANNING_YIELD_EVERY_ITEMS === 0) {
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
     if (missing.size === 0) return metrics;
-    const results = await this.planning_worker_pool.count_items(
-      [...missing.values()].map((pending) => pending.text),
-      signal,
-    );
+    const results = await this.planning_worker_pool.count_items([...missing.keys()], signal);
     this.throw_if_aborted(signal);
     let index = 0;
-    for (const [key, pending] of missing) {
+    for (const [text, pending] of missing) {
       const token_count = results[index++];
       if (token_count === undefined) throw new AppError("runtime.internal_invariant");
-      this.token_cache.set(key, token_count);
-      for (const { item_id, line_count } of pending.targets) {
+      this.token_cache.set(text, token_count);
+      for (const { item_id, line_count } of pending) {
         metrics.set(item_id, { token_count, line_count });
       }
     }
     return metrics;
   }
 
-  /** 前后文共用边界，扫描期间定期让出事件循环以响应取消。 */
+  /** 在同文件内取相邻前后文，空原文中断扫描。扫描期间定期让出事件循环。 */
   private async scan_context(
     items: TextTaskItemRecord[],
     start: number,
@@ -236,21 +234,12 @@ export class TranslationPlanner {
       const item = items[index]!;
       // 文件边界优先于跳过状态，避免跨过异文件的已过滤条目。
       if (String(item.file_path ?? "") !== file_path) break;
-      if (is_task_skipped_item_status(read_task_item_status(item))) continue;
-      const src = String(item.src ?? "").trim();
-      if (src === "" || !END_LINE_PUNCTUATION.has(src.at(-1) ?? "")) break;
+      if (CONTEXT_SKIPPED_STATUSES.has(read_task_item_status(item))) continue;
+      if (String(item.src ?? "").trim() === "") break;
       result.push(item);
       if (result.length >= limit) break;
     }
     return direction === -1 ? result.reverse() : result;
-  }
-
-  /**
-   * 输入 token 阈值读取集中处理，保护模型配置缺字段场景。
-   */
-  private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
-    const threshold = read_json_record(model["threshold"]);
-    return Math.max(16, read_json_integer(threshold["input_token_limit"], fallback));
   }
 
   /**

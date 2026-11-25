@@ -45,13 +45,6 @@ describe("翻译目标准备", () => {
     expect(items[1]?.status).toBe("PROCESSED");
   });
 
-  it("重置只清空执行副本中选中条目的译文", () => {
-    const result = prepare_translation_targets(items, [2], undefined, true);
-    expect(result.items[1]).toMatchObject({ status: "NONE", dst: "" });
-    expect(result.items[3]).toEqual(items[3]);
-    expect(items[1]).toMatchObject({ status: "PROCESSED", dst: "原有译文" });
-  });
-
   it("失效 ID 即使被状态条件排除也使整个请求失败", () => {
     expect(() => prepare_translation_targets(items, [3, 99], ["NONE"])).toThrow();
   });

@@ -243,13 +243,6 @@ export class ProjectDatabaseAccess {
     return this.with_project_connection(project_path, (db) => this.read_item_count(db));
   }
 
-  /** 通过 SQL 聚合条目状态，供进度统计读取。 */
-  public get_item_status_summary(project_path: string, file_paths?: readonly string[]): JsonRecord {
-    return this.with_project_connection(project_path, (db) =>
-      this.read_item_status_summary(db, file_paths),
-    );
-  }
-
   /** 按请求 id 顺序回查存在的条目，并去重请求。 */
   public get_items_by_ids(project_path: string, item_ids: number[]): JsonRecord[] {
     return this.with_project_connection(project_path, (db) => this.read_items_by_ids(db, item_ids));
@@ -532,31 +525,6 @@ export class ProjectDatabaseAccess {
   private read_item_count(db: DatabaseSync): number {
     const row = db.prepare("SELECT COUNT(*) AS count FROM items").get();
     return row === undefined ? 0 : row_number(row, "count");
-  }
-
-  /**
-   * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
-   */
-  private read_item_status_summary(db: DatabaseSync, file_paths?: readonly string[]): JsonRecord {
-    const row = db
-      .prepare(
-        `SELECT
-           COALESCE(SUM(CASE WHEN status IN ('NONE', 'PROCESSED') THEN 1 ELSE 0 END), 0)
-             AS total_line,
-           COALESCE(SUM(CASE WHEN status = 'PROCESSED' THEN 1 ELSE 0 END), 0)
-             AS processed_line
-         FROM (
-           SELECT json_extract(data, '$.status') AS status
-           FROM items
-           ${file_paths === undefined ? "" : "WHERE json_extract(data, '$.file_path') IN (SELECT value FROM json_each(?))"}
-         )`,
-      )
-      .get(...(file_paths === undefined ? [] : [JSON.stringify(file_paths)]));
-    const processed_line = row === undefined ? 0 : row_number(row, "processed_line");
-    return {
-      total_line: row === undefined ? 0 : row_number(row, "total_line"),
-      processed_line,
-    };
   }
 
   /**

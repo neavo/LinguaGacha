@@ -4,7 +4,6 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -14,24 +13,16 @@ import { useProjectChangeSeqForSections } from "@frontend/app/state/project-chan
 import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import { BatchTaskDetailSheet } from "@frontend/features/batch-task/batch-task-detail-sheet";
-import {
-  build_batch_task_switcher_items,
-  build_translation_task_detail_display,
-} from "@frontend/features/batch-task/batch-task-display";
 import { TranslationExportDialog } from "@frontend/features/translation-export/translation-export-dialog";
 import { useTranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
-import type { TranslationTaskConfirmState } from "@shared/batch-translation/batch-translation";
 import type { ProjectDataSection } from "@shared/project-event";
 import type {
   ProjectTranslationStats,
   ProjectTranslationStatsResponse,
 } from "@shared/project-translation-stats";
 import { BatchTaskRecoveryToast } from "./batch-task/batch-task-recovery-toast";
-import {
-  type BatchTaskSessionContextValue,
-  BatchTaskSessionContext,
-} from "./batch-task/batch-task-session-context";
+import { BatchTaskSessionContext } from "./batch-task/batch-task-session-context";
 import { type BatchTask, useBatchTask } from "./batch-task/use-batch-task";
 import { ProjectTranslationStatsContext } from "./project-translation-stats-context";
 import { TranslationExportContext } from "./translation-export/translation-export-context";
@@ -40,7 +31,7 @@ const STATS_SECTIONS: readonly ProjectDataSection[] = ["project", "items"];
 
 /** 将翻译任务动作收口为确认框可见文案。 */
 function resolve_translation_task_confirm_description(
-  state: TranslationTaskConfirmState | null,
+  state: BatchTask["task_confirm_state"],
   t: ReturnType<typeof useI18n>["t"],
 ): string {
   if (state === null) return "";
@@ -123,37 +114,19 @@ function useProjectTranslationStatsSync(): ProjectTranslationStats | null {
   return ready && snapshot?.path === project_path ? snapshot.stats : null;
 }
 
-/** 工程级批量翻译详情与危险动作确认共用同一浮层层级。 */
-function BatchTranslationDialogsLayer({ batch_task }: { batch_task: BatchTask }): JSX.Element {
+/** 工程级批量任务详情与危险动作确认共用同一浮层层级。 */
+function BatchTaskDialogsLayer({ batch_task }: { batch_task: BatchTask }): JSX.Element {
   const { t } = useI18n();
-  const { detail_task, detail_metrics } = batch_task;
-  const tasks = build_batch_task_switcher_items({
-    tasks: batch_task.display_tasks,
-    selected_run_id: detail_task?.run_id ?? null,
-    t,
-  });
+  const { summary, metrics } = batch_task;
   return (
     <>
       <BatchTaskDetailSheet
-        empty_text={
-          detail_metrics.total !== 0 && (detail_metrics.active || detail_task !== null)
-            ? undefined
-            : t("batch_translation.summary.empty")
-        }
         open={batch_task.task_detail_sheet_open}
-        display={build_translation_task_detail_display({
-          config: detail_task?.config ?? undefined,
-          metrics: detail_metrics,
-          waveform_history: batch_task.task_waveform_history,
-          t,
-        })}
-        tasks={tasks}
-        on_select_task={batch_task.select_task}
+        summary={summary}
+        metrics={metrics}
+        waveform_history={batch_task.task_waveform_history}
         on_close={batch_task.close_task_detail_sheet}
-        on_request_stop_confirmation={() => {
-          if (detail_task !== null)
-            batch_task.request_task_action_confirmation("stop-translation", detail_task.run_id);
-        }}
+        on_request_stop_confirmation={() => batch_task.request_task_action_confirmation("stop")}
       />
       {/* 重置会批量清空译文，需要倒计时防误触，其它任务动作保持即时确认。 */}
       <AppConfirmDialog
@@ -173,19 +146,15 @@ export function ProjectSessionProvider(props: { children: ReactNode }): JSX.Elem
   const stats = useProjectTranslationStatsSync();
   const translation_export = useTranslationExportFlow();
   const batch_task = useBatchTask({ onRequestExport: translation_export.request_export });
-  const batch_task_context = useMemo<BatchTaskSessionContextValue>(
-    () => ({ batch_task }),
-    [batch_task],
-  );
 
   return (
     <TranslationExportContext.Provider value={translation_export}>
       <ProjectTranslationStatsContext.Provider value={stats}>
-        <BatchTaskSessionContext.Provider value={batch_task_context}>
+        <BatchTaskSessionContext.Provider value={batch_task}>
           {props.children}
           <TranslationExportDialog {...translation_export} />
           <BatchTaskRecoveryToast />
-          <BatchTranslationDialogsLayer batch_task={batch_task} />
+          <BatchTaskDialogsLayer batch_task={batch_task} />
         </BatchTaskSessionContext.Provider>
       </ProjectTranslationStatsContext.Provider>
     </TranslationExportContext.Provider>

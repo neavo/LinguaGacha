@@ -59,10 +59,7 @@ import {
   read_project_settings,
 } from "../../domain/project-settings";
 import type { ProjectWriteResult } from "../../shared/project-event";
-import {
-  build_translation_extras_from_items,
-  compute_project_prefilter_items,
-} from "./project-write-state";
+import { compute_project_prefilter_items } from "./project-write-state";
 
 import * as AppErrors from "../../shared/error";
 
@@ -812,13 +809,7 @@ export class ProjectContentService {
         source: PROJECT_SETTINGS_UPDATE_SOURCE,
         updatedSections: ["project", "items"],
         items: build_project_item_persistent_records(items),
-        meta: {
-          ...settings,
-          translation_extras: build_translation_extras_from_items({
-            progress: meta["translation_extras"],
-            items: Object.values(items),
-          }),
-        },
+        meta: settings,
       });
     });
   }
@@ -1061,13 +1052,9 @@ export class ProjectContentService {
       state: { files: snapshot.files, items: this.public_item_record(reset_items) },
       ...settings,
     });
-    // 预过滤以文件为界，合并未重建条目后再统计整个工程的进度。
+    // 预过滤以文件为界，原样保留未重建的条目。
     for (const item of snapshot.public_items_by_id.values())
       if (!assets.has(item.file_path)) items[String(item.item_id)] = item;
-    const translation_extras = build_translation_extras_from_items({
-      progress: command.source === "translation_reset" ? undefined : meta["translation_extras"],
-      items: Object.values(items),
-    });
     signal?.throwIfAborted(); // 重建与预过滤完成后，取消仍须阻止重置事务开始。
     return await this.write_store.replace_project_items({
       projectPath: project_path,
@@ -1080,7 +1067,6 @@ export class ProjectContentService {
       source: command.source,
       updatedSections: ["items"],
       items: build_project_item_persistent_records(items),
-      meta: { translation_extras },
     });
   }
 

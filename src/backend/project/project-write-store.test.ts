@@ -148,9 +148,7 @@ describe("ProjectWriteStore", () => {
     expect(await database.get_all_items(project_path)).toMatchObject([
       { id: 7, file_path: "folder/book.txt" },
     ]);
-    expect(await database.get_all_meta(project_path)).toMatchObject({
-      translation_extras: { total_line: 1, processed_line: 1 },
-    });
+    expect(await database.get_all_meta(project_path)).toMatchObject({});
     expect(await database.read_asset_content(project_path, "folder/book.txt")).toEqual(
       Buffer.from(bytes),
     );
@@ -332,7 +330,6 @@ describe("ProjectWriteStore", () => {
     const first = await store.apply_translation_item_patches({
       projectPath: project_path,
       items: [{ item_id: 1, patch: { status: "EXCLUDED" } }],
-      translationExtras: {},
     });
     expect(first).toEqual({ changed_item_ids: [1, 2], section_revisions: { items: 1 } });
     expect(all).not.toHaveBeenCalled();
@@ -346,7 +343,6 @@ describe("ProjectWriteStore", () => {
     const second = await store.apply_translation_item_patches({
       projectPath: project_path,
       items: [{ item_id: 2, patch: { status: "EXCLUDED" } }],
-      translationExtras: {},
     });
     expect(second).toEqual({ changed_item_ids: [2, 3], section_revisions: { items: 2 } });
     expect((await database.get_items_by_ids(project_path, [3]))[0]).toMatchObject({
@@ -370,7 +366,6 @@ describe("ProjectWriteStore", () => {
           },
         },
       ],
-      translationExtras: { processed_line: 1, total_line: 1 },
     });
 
     expect(ack).toEqual({
@@ -393,7 +388,6 @@ describe("ProjectWriteStore", () => {
       ].map((item) => create_item(item)),
     );
     expect(await read_meta(database, project_path)).toMatchObject({
-      translation_extras: { processed_line: 1, total_line: 1 },
       "project_runtime_revision.items": 1,
     });
     expect(published_changes).toMatchObject([
@@ -413,7 +407,6 @@ describe("ProjectWriteStore", () => {
       store.apply_translation_item_patches({
         projectPath: project_path,
         items: [{ item_id: 99, patch: { dst: "不存在" } }],
-        translationExtras: {},
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "runtime.internal_invariant" }));
   });
@@ -441,7 +434,7 @@ describe("ProjectWriteStore", () => {
     expect(result.changes[0]?.items).toEqual({ mode: "delta", changedIds: [1] });
   });
 
-  it("人工 Item 变化会推进 proofreading revision 并更新翻译统计", async () => {
+  it("人工 Item 变化推进 proofreading revision，旧统计保持原样", async () => {
     const { database, project_path, store, published_changes } = await create_store("proofreading");
     await seed_items(database, project_path);
     await database.transaction(project_path, (writer) =>
@@ -474,10 +467,7 @@ describe("ProjectWriteStore", () => {
     expect(await read_meta(database, project_path)).toMatchObject({
       "project_runtime_revision.items": 1,
       "proofreading_revision.proofreading": 1,
-      translation_extras: expect.objectContaining({
-        total_line: 1,
-        processed_line: 1,
-      }),
+      translation_extras: { total_line: 1, processed_line: 0 },
     });
     expect(published_changes.at(-1)).toMatchObject({
       source: "proofreading_apply_item_changes",
@@ -499,11 +489,6 @@ describe("ProjectWriteStore", () => {
           patch: { dst: "任务译文", status: "PROCESSED" },
         },
       ],
-      translationExtras: {
-        total_line: 1,
-        processed_line: 1,
-        total_tokens: 10,
-      },
     });
 
     expect(ack.changed_item_ids).toEqual([1, 2]);
@@ -516,11 +501,6 @@ describe("ProjectWriteStore", () => {
       { id: 1, status: "DUPLICATED" },
       { id: 2, status: "PROCESSED" },
     ]);
-    expect((await read_meta(database, project_path)).translation_extras).toMatchObject({
-      total_line: 1,
-      processed_line: 1,
-      total_tokens: 10,
-    });
     expect(published_changes.at(-1)).toMatchObject({
       items: { mode: "delta", records: [{ item_id: 1 }, { item_id: 2 }] },
     });
