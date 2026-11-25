@@ -91,9 +91,6 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/session/project/default-name", (body) =>
     lifecycle.get_default_project_name(body),
   );
-  context.postJson("/api/session/source-files/summary", (body) =>
-    lifecycle.summarize_source_files(body),
-  );
   context.postJson("/api/session/project/open", (body) => services.open_project(body));
   context.postJson("/api/session/project/create", (body) => services.create_project(body));
 

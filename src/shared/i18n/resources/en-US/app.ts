@@ -214,8 +214,9 @@ export const en_us_app = {
     update_available_tooltip: "Open the update confirmation dialog",
   },
   agent_input: {
+    import_sources:
+      "First, identify translatable content from the following paths and add it to the project in a suitable form:",
     steps_intro: "Execute the steps in order:",
-    steps_intro_after_instruction: "Then execute the steps in order:",
     path_placeholder: "[Enter file paths here or drag files here]",
     steps: {
       glossary: "Extract terminology",

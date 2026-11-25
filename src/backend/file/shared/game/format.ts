@@ -1,7 +1,6 @@
 import type { GameDirectoryOperations } from "./game-directory-operations";
 import { write_game_directory } from "./directory";
 import { validate_game_path, assert_game_path_spellings } from "../../source-file-paths";
-import type { GameFileType } from "../../../../shared/project-source-formats";
 import path from "node:path";
 import JSZip from "jszip";
 import type { NativeFs } from "../../../../native/native-fs";
@@ -14,6 +13,7 @@ import type {
 
 import { read_zip_members } from "../zip-members";
 import {
+  type GameFileType,
   assert_source_file_paths,
   ProjectAssetPathIndex,
   source_file_output_path,

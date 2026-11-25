@@ -63,7 +63,6 @@ const POST_PATHS = new Set([
   "/api/session/project/snapshot",
   "/api/session/project/close",
   "/api/session/project/preview",
-  "/api/session/source-files/summary",
   "/api/session/project/default-name",
   "/api/session/project/open",
   "/api/session/project/create",
@@ -280,20 +279,6 @@ describe("register_api_routes", () => {
     });
   });
 
-  it("来源摘要与默认名称路由将路径原样转交生命周期服务", () => {
-    const fixture = create_route_fixture();
-    const request = { source_paths: ["E:/source"] };
-
-    expect(read_post_handler(fixture.post_json, "/api/session/source-files/summary")(request)).toBe(
-      fixture.source_file_summary,
-    );
-    expect(fixture.summarize_source_files).toHaveBeenCalledWith(request);
-    expect(
-      read_post_handler(fixture.post_json, "/api/session/project/default-name")(request),
-    ).toEqual({ project_name: "source" });
-    expect(fixture.get_default_project_name).toHaveBeenCalledWith(request);
-  });
-
   it("应用设置响应提供快照与空工程回执", () => {
     const fixture = create_route_fixture();
 
@@ -353,9 +338,6 @@ function create_route_fixture() {
   const generate_files = vi.fn();
   const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
   const copy_model = vi.fn();
-  const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
-  const summarize_source_files = vi.fn(() => source_file_summary);
-  const get_default_project_name = vi.fn(() => ({ project_name: "source" }));
   const agent = {
     read_snapshot: vi.fn(async () => ({
       revision: 0,
@@ -383,7 +365,7 @@ function create_route_fixture() {
   const services = {
     modelCatalog: { get_snapshot: () => catalog_snapshot },
     app: { metadata: {}, settings: { update_app_settings: update_settings } },
-    lifecycle: { summarize_source_files, get_default_project_name },
+    lifecycle: {},
     projects: {
       require: (_projectId: string) => ({
         agent,
@@ -446,9 +428,6 @@ function create_route_fixture() {
     resolve_write_approval,
     reorder_queued_messages,
     update_queued_message,
-    source_file_summary,
-    get_default_project_name,
-    summarize_source_files,
     start_task,
     batch_task_snapshot,
     stop_tasks,

@@ -34,6 +34,7 @@ import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "./agent-input-history";
 const desktop_api_mocks = vi.hoisted(() => ({
   api_get: vi.fn(),
   api_fetch: vi.fn(),
+  api_upload: vi.fn(),
   open_event_stream: vi.fn(),
 }));
 
@@ -185,7 +186,102 @@ describe("AgentChatStore", () => {
       revision: event_source.current_revision,
       status: "accepted",
     }));
+    desktop_api_mocks.api_upload.mockReset();
     desktop_api_mocks.open_event_stream.mockReset().mockReturnValue(event_source);
+  });
+
+  it("首条消息在新工程快照就绪后上传并提交给该工程", async () => {
+    const snapshot = Promise.withResolvers<AgentChatSnapshot>();
+    const upload = Promise.withResolvers<ReturnType<typeof uploaded_file>>();
+    desktop_api_mocks.api_get.mockReturnValueOnce(snapshot.promise);
+    desktop_api_mocks.api_upload.mockReturnValueOnce(upload.promise);
+    const file = new File(["text"], "notes.txt");
+    const store = new AgentChatStore(window.localStorage, vi.fn(), "new-project");
+    store.connect();
+    try {
+      const sent = store.send_initial_draft({ text: "请阅读附件", files: [file] });
+      expect(store.get_controls()).toMatchObject({ command: "send", transport: "restoring" });
+      await Promise.resolve(); // 上传队列能开始执行，工程快照仍在等待。
+      expect(desktop_api_mocks.api_upload).not.toHaveBeenCalled();
+      snapshot.resolve(agent_snapshot({ entries: [] }));
+      await vi.waitFor(() => expect(desktop_api_mocks.api_upload).toHaveBeenCalledOnce());
+      expect(desktop_api_mocks.api_upload).toHaveBeenCalledWith(
+        "/api/agent/uploads?name=notes.txt&projectId=new-project",
+        file,
+        expect.any(AbortSignal),
+      );
+      expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
+      upload.resolve(uploaded_file("notes", null));
+      await sent;
+      expect(desktop_api_mocks.api_fetch).toHaveBeenCalledExactlyOnceWith(
+        "/api/agent/message",
+        expect.objectContaining({
+          projectId: "new-project",
+          chatId: store.get_chat_id(),
+          text: "请阅读附件",
+          attachments: [{ kind: "file", uploadId: "notes" }],
+        }),
+      );
+      expect(store.get_input().draft.read()).toEqual({ text: "", attachments: [] });
+    } finally {
+      store.dispose();
+    }
+  });
+
+  it("首条消息上传部分失败时保留成功项和可重试占位", async () => {
+    const store = new AgentChatStore(window.localStorage, vi.fn());
+    store.connect();
+    try {
+      const first = uploaded_file("notes", null);
+      desktop_api_mocks.api_upload
+        .mockResolvedValueOnce(first)
+        .mockRejectedValueOnce(new Error("upload offline"));
+      await expect(
+        store.send_initial_draft({
+          text: "参考原稿",
+          files: [new File([], "notes.txt"), new File([], "reference.txt")],
+        }),
+      ).rejects.toThrow("upload offline");
+      const draft = store.get_input().draft;
+      expect(draft.read()).toEqual({
+        text: "参考原稿",
+        attachments: [first, expect.objectContaining({ kind: "upload", status: "failed" })],
+      });
+      expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
+    } finally {
+      store.dispose();
+    }
+  });
+
+  it("首次快照恢复失败时保留原文件，恢复后原位重试", async () => {
+    const error = new Error("snapshot offline");
+    desktop_api_mocks.api_get.mockRejectedValueOnce(error);
+    const on_error = vi.fn();
+    const store = new AgentChatStore(window.localStorage, on_error);
+    const file = new File([], "notes.txt");
+    store.connect();
+    try {
+      await store.send_initial_draft({ text: "参考原稿", files: [file] });
+      expect(on_error).toHaveBeenCalledExactlyOnceWith(error, "restore");
+      expect(desktop_api_mocks.api_upload).not.toHaveBeenCalled();
+      const draft = store.get_input().draft;
+      expect(draft.read().text).toBe("参考原稿");
+      const failed = draft.read().attachments[0]!;
+      if (failed.kind !== "upload") throw new Error("missing failed upload");
+      const uploaded = uploaded_file("notes", null);
+      desktop_api_mocks.api_upload.mockResolvedValueOnce(uploaded);
+      store.actions.reconnect();
+      await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      draft.retry(failed.id);
+      await vi.waitFor(() => expect(draft.read().attachments).toEqual([uploaded]));
+      expect(desktop_api_mocks.api_upload).toHaveBeenCalledWith(
+        expect.any(String),
+        file,
+        expect.any(AbortSignal),
+      );
+    } finally {
+      store.dispose();
+    }
   });
 
   it("发送结果未知时重试沿用命令身份，重建 Store 只查询已受理结果", async () => {

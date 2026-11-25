@@ -40,10 +40,6 @@ it.each([
     const files = file_type === "GODOT" ? ["game.pck"] : ["Game.ini", "Game.rgss3a"];
     for (const name of files) {
       const input = path.join(root, name);
-      expect((await discover_source(input, native)).source).toEqual({
-        kind: "file",
-        format: undefined,
-      });
       expect(await discover_sources([input], native)).toEqual([]);
     }
   }
@@ -148,7 +144,7 @@ it("发现目录保留入口名称和文件名空格，过滤空输入并去重"
   fs.mkdirSync(left_dir, { recursive: true });
   fs.mkdirSync(right_dir, { recursive: true });
   fs.writeFileSync(path.join(left_dir, "script.txt"), "左", "utf-8");
-  fs.writeFileSync(path.join(right_dir, "script.txt"), "右", "utf-8");
+  fs.writeFileSync(path.join(right_dir, "script.JSON"), "右", "utf-8");
   fs.writeFileSync(path.join(right_dir, "ignored.bin"), "x", "utf-8");
   fs.writeFileSync(path.join(left_dir, " script.txt"), "文件名含空格");
 
@@ -156,5 +152,5 @@ it("发现目录保留入口名称和文件名空格，过滤空输入并去重"
     (await discover_sources([left_dir, left_dir, "", "  ", right_dir], new NativeFs())).map(
       (entry) => entry.rel_path.replace(/\\/gu, "/"),
     ),
-  ).toEqual(["left/ script.txt", "left/script.txt", "right/script.txt"]);
+  ).toEqual(["left/ script.txt", "left/script.txt", "right/script.JSON"]);
 });

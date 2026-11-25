@@ -113,6 +113,7 @@ type AgentEditorState = { has_content: boolean; uploads_pending: boolean };
 type AgentMessageEditorProps = {
   ref?: Ref<AgentMessageEditorHandle> | undefined;
   on_drop_files?: ((files: readonly File[]) => void) | undefined;
+  on_paths_inserted?: ((paths: readonly string[]) => void) | undefined;
   presentation?: "composer" | "inline" | undefined;
   role?: "user" | "assistant" | undefined;
   read_only: boolean;
@@ -120,7 +121,6 @@ type AgentMessageEditorProps = {
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[] | undefined;
   input_state: AgentInputState;
-  before_attach?: (() => boolean) | undefined; // 附件入口的前置检查，页面拖放另由 `on_drop_files` 分流。
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: (() => void) | undefined;
   /** 编辑器提供文件与指令入口，消费方统一排列动作并决定提交权限。 */
@@ -250,9 +250,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         variant="ghost"
         className="agent-composer__file-trigger"
         disabled={!can_append_files}
-        onClick={() => {
-          if (props.before_attach?.() !== false) file_input_ref.current?.click();
-        }}
+        onClick={() => file_input_ref.current?.click()}
       >
         <Paperclip aria-hidden="true" />
         <span>{t("agent_page.action.add_file")}</span>
@@ -536,12 +534,6 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     draft.write({ ...draft.read(), attachments });
   }, []);
 
-  /** 文件选择与粘贴继续沿用附件权限。 */
-  const append_files = (files: Iterable<File>): void => {
-    if (props.before_attach?.() === false) return;
-    insert_files(files, true);
-  };
-
   /** 一次事务替换选区并插入独立路径行，保留草稿已有附件。 */
   const insert_files = (files: Iterable<File>, allow_uploads: boolean): void => {
     const view = view_ref.current;
@@ -567,9 +559,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         changes: { from, to, insert: text },
         selection: EditorSelection.cursor(from + text.length),
       });
+      props.on_paths_inserted?.(paths);
       view.focus();
     }
-    if (uploads.length > 0) props.input_state.draft.append(uploads);
+    if (uploads.length > 0) void props.input_state.draft.append(uploads);
     if (skipped.length > 0)
       push_toast("warning", t("agent_page.error.invalid_file_path"), {
         description: skipped.join("\n"),
@@ -582,7 +575,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   drop_files_ref.current = (files) => {
     if (!can_append_files) return;
     if (props.on_drop_files) props.on_drop_files(Array.from(files));
-    else if (props.before_attach?.() !== false) drop_files(Array.from(files));
+    else drop_files(Array.from(files));
   };
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
@@ -652,8 +645,8 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     if (draft.attachments.some((attachment) => attachment.kind === "upload")) return;
     props.on_submit({
       text: draft.text.trim(),
-      attachments: structuredClone(
-        draft.attachments.filter((attachment) => attachment.kind !== "upload"),
+      attachments: draft.attachments.filter(
+        (attachment) => attachment.kind !== "upload" && attachment.kind !== "staged_file",
       ),
     });
   };
@@ -670,7 +663,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       onPaste={(event) => {
         if (event.clipboardData.files.length === 0) return;
         event.preventDefault();
-        append_files(event.clipboardData.files);
+        insert_files(event.clipboardData.files, true);
       }}
     >
       {props.on_drop_files === undefined ? (
@@ -738,7 +731,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         multiple
         tabIndex={-1}
         onChange={(event) => {
-          append_files(event.currentTarget.files ?? []);
+          insert_files(event.currentTarget.files ?? [], true);
           event.currentTarget.value = "";
         }}
       />

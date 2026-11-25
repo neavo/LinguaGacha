@@ -1,6 +1,6 @@
 import { GAME_ENGINES } from "../../file/shared/game/engines";
-import { is_game_file_type } from "../../../shared/project-source-formats";
 import {
+  is_game_file_type,
   normalize_project_asset_path,
   ProjectAssetPathIndex,
 } from "../../../shared/project/project-asset-paths";

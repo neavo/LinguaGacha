@@ -2,24 +2,34 @@ import { is_preparation_path, GameSourceConflictError } from "./source-file-path
 import { GAME_ASSET_EXTENSIONS } from "../../shared/project/project-asset-paths";
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
-import {
-  PROJECT_SOURCE_FORMATS,
-  type ProjectSourceFormatId,
-} from "../../shared/project-source-formats";
+import type { ItemFileType } from "../../domain/item";
 import type { ProjectSourceFileEntry } from "./file-format-types";
 import { GAME_ENGINES, type GameSource } from "./shared/game/engines";
 
 export type SourceIdentity =
-  | Readonly<{ kind: "file"; format: ProjectSourceFormatId | undefined }>
+  | Readonly<{ kind: "file" }>
   | GameSource
   | Readonly<{ kind: "failure"; error: unknown }>;
 export type DiscoveredSource = ProjectSourceFileEntry & Readonly<{ source: SourceIdentity }>;
-const FORMATS = new Map<string, ProjectSourceFormatId>(
-  PROJECT_SOURCE_FORMATS.filter((format) => format.source_kind === "file").map((format) => [
-    format.extension,
-    format.id,
-  ]),
-);
+
+/** 目录发现和原稿解析共用扩展名。JSON 与 XLSX 的具体格式由内容决定。 */
+export const SOURCE_FILE_TYPES: ReadonlyMap<string, ItemFileType | null> = new Map([
+  [".txt", "TXT"],
+  [".md", "MD_V2"],
+  [".ass", "ASS"],
+  [".ssa", "ASS"],
+  [".srt", "SRT"],
+  [".vtt", "VTT"],
+  [".lrc", "LRC"],
+  [".epub", "EPUB"],
+  [".rpy", "RENPY_RPY"],
+  [".trans", "TRANS"],
+  [".generic", "GENERIC"],
+  [".media", "MEDIA"],
+  [".image", "IMAGE"],
+  [".json", null],
+  [".xlsx", null],
+]);
 
 /** 显式选择检查候选祖先，递归扫描只检查当前目录，按保留名称停止下探。 */
 function find_managed_directory(
@@ -89,7 +99,7 @@ async function read_source(
     return {
       source_path,
       rel_path,
-      source: { kind: "file", format: FORMATS.get(path.extname(source_path).toLowerCase()) },
+      source: { kind: "file" },
     };
   } catch (error) {
     signal?.throwIfAborted();
@@ -161,7 +171,7 @@ export async function discover_sources(
         return;
       }
       if (entry.source.kind === "file") {
-        if (!entry.source.format) return;
+        if (!SOURCE_FILE_TYPES.has(path.extname(source_path).toLowerCase())) return;
         entry.rel_path = fs.stat(source_root).isDirectory()
           ? path.relative(path.dirname(source_root), source_path)
           : path.basename(source_path);

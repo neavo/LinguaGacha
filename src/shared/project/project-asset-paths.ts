@@ -1,8 +1,7 @@
 import { AppError } from "../error";
-import { is_game_file_type, type GameFileType } from "../project-source-formats";
 import { is_portable_file_name } from "../utils/file-name";
 
-/** 来源命名与输出校验共用后缀，来源入口格式由 `PROJECT_SOURCE_FORMATS` 维护。 */
+/** 游戏资产类型和后缀共用目录，来源命名与输出校验使用同一身份。 */
 export const GAME_ASSET_EXTENSIONS = Object.freeze({
   RENPY: ".renpy",
   GODOT: ".godot",
@@ -10,7 +9,13 @@ export const GAME_ASSET_EXTENSIONS = Object.freeze({
   RPGMAKER_RGSS: ".rpgmaker",
   WOLFRPG: ".wolfrpg",
   TYRANO: ".tyrano",
-} satisfies Record<GameFileType, string>);
+});
+export type GameFileType = keyof typeof GAME_ASSET_EXTENSIONS;
+
+/** 游戏资产使用独占的译文输出目录，由资产类型判断。 */
+export function is_game_file_type(type: string | undefined): type is GameFileType {
+  return type !== undefined && Object.hasOwn(GAME_ASSET_EXTENSIONS, type);
+}
 
 /** 从规范资产路径取最后一个扩展名。名称首位的点不作为扩展名分隔符。 */
 export function project_asset_extension(file: string): string {

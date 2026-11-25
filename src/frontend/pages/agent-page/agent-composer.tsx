@@ -26,6 +26,7 @@ type AgentComposerProps = {
   placeholder: string;
   ref?: Ref<AgentComposerHandle>;
   on_drop_files?: (files: readonly File[]) => void;
+  on_paths_inserted?: (paths: readonly string[]) => void;
   locked?: boolean;
   language_control: ReactNode;
   skills: readonly AgentSkillSnapshot[];
@@ -43,7 +44,6 @@ type AgentComposerProps = {
   approval_disabled: boolean;
   model_selection: ModelSelectionController;
   input_state: AgentInputState;
-  before_attach?: (() => boolean) | undefined;
   on_send: (message: AgentMessageInput) => void;
   on_agent_model_select: (change: ModelSelectionInput) => boolean;
   on_approval_mode_change: (approval_mode: AgentApprovalMode) => void;
@@ -76,12 +76,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       placeholder={props.placeholder}
       ref={props.ref}
       on_drop_files={props.on_drop_files}
+      on_paths_inserted={props.on_paths_inserted}
       read_only={editor_read_only}
       skills={props.skills}
       instructions={props.instructions}
       input_state={props.input_state}
       on_submit={props.on_send}
-      before_attach={props.before_attach}
       render_actions={({ has_content, uploads_pending }, add_file, open_instructions) => {
         const continuing_queue = props.can_continue_queue && !running && !locked;
         // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。

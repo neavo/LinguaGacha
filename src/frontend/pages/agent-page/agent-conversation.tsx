@@ -1,15 +1,25 @@
-import { read_file_paths } from "@frontend/app/desktop/source-paths";
+import { normalize_source_paths, read_file_paths } from "@frontend/app/desktop/source-paths";
 import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import { ProjectOpenPreviewDialog } from "@frontend/features/project-lifecycle/project-open-preview-dialog";
-import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
+import type { AgentDraft, AgentStagedFile } from "@frontend/app/session/agent/agent-input-draft";
+import { save_project_language_preference } from "@frontend/features/project-lifecycle/project-language-preference";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { FileDropTarget } from "@frontend/widgets/interactions/file-drop-target";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import type { AgentApprovalMode } from "@domain/setting";
+import type { ProjectLanguageSettings } from "@domain/project-settings";
 import { format_agent_reference } from "@shared/agent-reference";
 import type { AgentSkillsSnapshot } from "@shared/agent-skills";
-import { type JSX, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type JSX,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowDownToLine,
   BookA,
@@ -42,7 +52,10 @@ import {
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
-import { format_agent_path_request } from "@frontend/app/navigation/agent-input-steps";
+import {
+  format_agent_path_request,
+  format_agent_translation_request,
+} from "@frontend/app/navigation/agent-input-steps";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { get_shortcut_aria_keys } from "@frontend/widgets/interactions/keyboard-shortcuts";
@@ -57,9 +70,10 @@ import {
   useAgentChatActions,
   useAgentSkills,
   useAgentTimeline,
+  type AgentInputState,
 } from "@frontend/app/session/agent/agent-chat-context";
 import { AgentDecision } from "./agent-decision";
-import { AgentLanguageControl } from "./agent-language-control";
+import { AgentLanguageButton, AgentLanguageControl } from "./agent-language-control";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
@@ -219,8 +233,53 @@ function build_agent_instructions(options: {
   ];
 }
 
-/** 无工程时复用完整输入底栏、应用级配置与 `@` 技能目录，草稿随页面结束。 */
-export function EmptyAgentConversation(): JSX.Element {
+/** 只警告支持思考且明确关闭思考的模型。 */
+function should_confirm_thinking_off(model: ReturnType<typeof read_selected_model>): boolean {
+  return model?.thinking_level === "OFF" && model.available_thinking_levels.includes("OFF");
+}
+
+/** 预填请求只交给编辑器一次，锁定时等待解锁，选区由编辑器事务应用。 */
+function useAgentInputRequest(
+  composer_ref: RefObject<AgentComposerHandle | null>,
+  enabled: boolean,
+) {
+  const { agent_input_request, clear_agent_input_request } = useAppNavigation();
+  const consumed = useRef<typeof agent_input_request>(null); // 跳过 StrictMode 重放的同一次请求。
+  useEffect(() => {
+    const request = agent_input_request;
+    if (!enabled || request === null || consumed.current === request) return;
+    if (!composer_ref.current?.append_draft(request.text, request.selection)) return;
+    consumed.current = request;
+    clear_agent_input_request();
+  }, [agent_input_request, clear_agent_input_request, composer_ref, enabled]);
+}
+
+/** 用仍在正文或暂存附件中的已知路径定位保存目录，不从自由文本推测路径。 */
+function collect_effective_anchor_paths(
+  draft: AgentDraft,
+  known_paths: ReadonlySet<string>,
+  staged_files: readonly AgentStagedFile[],
+): string[] {
+  // 编辑器将路径逐行录入。匹配完整路径行，避免把已删除的路径当成另一个路径的前缀命中。
+  const paths_in_text = draft.text.split("\n").filter((line) => known_paths.has(line));
+  return normalize_source_paths([
+    ...paths_in_text,
+    ...staged_files.flatMap(({ sourcePath }) => (sourcePath === null ? [] : [sourcePath])),
+  ]);
+}
+
+/** 无工程时编辑主窗口草稿，发送后交给新工程所属的 AgentChatStore。 */
+export function EmptyAgentConversation({
+  input_state,
+  known_paths,
+  languages,
+  on_languages_change,
+}: {
+  input_state: AgentInputState;
+  known_paths: Set<string>;
+  languages: ProjectLanguageSettings;
+  on_languages_change: (languages: ProjectLanguageSettings) => void;
+}): JSX.Element {
   const { t } = useI18n();
   const lifecycle = useProjectLifecycle();
   const model_selection = useModelSelection();
@@ -229,12 +288,9 @@ export function EmptyAgentConversation(): JSX.Element {
   const composer_ref = useRef<AgentComposerHandle>(null);
   const [dropped_project, set_dropped_project] = useState<string | null>(null);
   const [skills, set_skills] = useState<readonly AgentSkillSnapshot[]>([]);
-  const [input_state] = useState(() => ({
-    revision: 0,
-    draft: new AgentInputDraft(),
-    read_history: (): readonly string[] => [],
-    replace_history: () => {},
-  }));
+  const [confirm_thinking_off, set_confirm_thinking_off] = useState(false);
+  const locked = lifecycle.busy || confirm_thinking_off || dropped_project !== null;
+  useAgentInputRequest(composer_ref, !locked);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -256,27 +312,54 @@ export function EmptyAgentConversation(): JSX.Element {
     return () => controller.abort();
   }, []);
 
-  /** 空态保留用户输入，通过唯一生命周期提醒入口同步 Toast 与侧栏按钮动效。 */
-  function require_project(): false {
-    lifecycle.notify_project_required();
-    return false;
+  /** 页面可能随建项卸载，首条消息交给目标 Store 后才释放窗口草稿。 */
+  async function create_and_send(): Promise<void> {
+    const draft = input_state.draft.read();
+    const staged_files = draft.attachments.filter(
+      (attachment) => attachment.kind === "staged_file",
+    );
+    const project = await lifecycle.create_for_agent({
+      languages,
+      anchor_paths: collect_effective_anchor_paths(draft, known_paths, staged_files),
+    });
+    if (project === null) return;
+    const sending = project.agentChat.send_initial_draft({
+      text: draft.text.trim(),
+      files: staged_files.map(({ file }) => file),
+    });
+    input_state.draft.clear();
+    known_paths.clear();
+    try {
+      await sending;
+    } catch (error) {
+      push_error_toast(t("agent_page.error.send"), error);
+    }
   }
 
-  const file_drop_enabled = !lifecycle.busy && dropped_project === null;
-  /** 单个工程文件进入预览确认，其余素材进入创建工程流程。 */
+  /** 单个工程文件进入打开预览，翻译素材以路径进入待建项草稿。 */
   function handle_file_drop(files: readonly File[]): void {
-    if (!file_drop_enabled || files.length === 0) return;
+    if (locked || files.length === 0) return;
     const { paths, skipped } = read_file_paths(files);
+    const path = paths[0];
+    if (files.length === 1 && path?.toLowerCase().endsWith(".lg")) {
+      set_dropped_project(path);
+      return;
+    }
+    const source_paths = normalize_source_paths(paths);
+    if (source_paths.length > 0) {
+      const text =
+        input_state.draft.read().text.trim() === ""
+          ? format_agent_translation_request(t, source_paths).text
+          : source_paths.join("\n");
+      if (composer_ref.current?.append_draft(text)) {
+        for (const path of source_paths) known_paths.add(path);
+      }
+    }
     if (skipped.length > 0) {
       push_toast("warning", t("agent_page.error.invalid_file_path"), {
         description: skipped.join("\n"),
       });
-      return;
     }
-    const first = paths[0];
-    if (first === undefined) return;
-    if (paths.length === 1 && first.toLowerCase().endsWith(".lg")) set_dropped_project(first);
-    else lifecycle.create_from_paths(paths);
   }
 
   const instructions = build_agent_instructions({
@@ -293,7 +376,7 @@ export function EmptyAgentConversation(): JSX.Element {
     <div ref={page_ref} className="agent-page">
       <FileDropTarget
         target_ref={page_ref}
-        enabled={file_drop_enabled}
+        enabled={!locked}
         label={t("app.drop.release")}
         on_files={handle_file_drop}
       />
@@ -317,9 +400,21 @@ export function EmptyAgentConversation(): JSX.Element {
               <AgentComposer
                 ref={composer_ref}
                 placeholder={t("agent_page.input.no_project_placeholder")}
-                language_control={null}
-                before_attach={require_project}
+                locked={locked}
+                language_control={
+                  <AgentLanguageButton
+                    languages={languages}
+                    locked={locked}
+                    disabled={locked}
+                    on_confirm={(next) => {
+                      on_languages_change(next);
+                      save_project_language_preference(next);
+                      return true;
+                    }}
+                  />
+                }
                 on_drop_files={handle_file_drop}
+                on_paths_inserted={(paths) => paths.forEach((path) => known_paths.add(path))}
                 skills={skills}
                 instructions={instructions}
                 state="idle"
@@ -335,7 +430,13 @@ export function EmptyAgentConversation(): JSX.Element {
                 approval_disabled={approval.updating}
                 model_selection={model_selection}
                 input_state={input_state}
-                on_send={require_project}
+                on_send={() => {
+                  if (should_confirm_thinking_off(read_selected_model(model_selection, "agent"))) {
+                    set_confirm_thinking_off(true);
+                  } else {
+                    void create_and_send();
+                  }
+                }}
                 on_agent_model_select={(change) => {
                   void model_selection.select_model({ target: "agent", ...change });
                   return false;
@@ -347,6 +448,15 @@ export function EmptyAgentConversation(): JSX.Element {
           </div>
         </div>
       </div>
+      <AppConfirmDialog
+        open={confirm_thinking_off}
+        description={t("agent_page.confirm.thinking_off")}
+        onConfirm={() => {
+          set_confirm_thinking_off(false);
+          void create_and_send();
+        }}
+        onClose={() => set_confirm_thinking_off(false)}
+      />
     </div>
   );
 }
@@ -409,8 +519,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const { inputQueue } = useAgentQueue();
   const { skills } = useAgentSkills();
   const input = useAgentInput();
-  const { agent_input_request, clear_agent_input_request } = useAppNavigation();
-  const consumed_input_request = useRef<typeof agent_input_request>(null); // `StrictMode` 重放副作用时跳过已消费请求。
+  const lifecycle = useProjectLifecycle();
   const agent_actions = useAgentChatActions();
   const model_selection = useModelSelection();
   const { project_snapshot } = useDesktopState();
@@ -516,12 +625,10 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const selected_agent_model = read_selected_model(model_selection, "agent");
   // 公开时间线出现条目才表示用户已经开始当前对话。隐藏会话种子不参与 UI 判断。
   const conversation_started = timeline.entryIds.length > 0;
-  /** 只警告支持思考且明确关闭思考的模型，不把能力缺失误报为用户选择。 */
   const thinking_off_confirmation_required =
     !can_continue_queue &&
     !conversation_started &&
-    selected_agent_model?.thinking_level === "OFF" &&
-    selected_agent_model.available_thinking_levels.includes("OFF");
+    should_confirm_thinking_off(selected_agent_model);
 
   /** 页面内所有普通发送共用同一条实际提交出口，确认框只延迟调用它。 */
   const send_message = useCallback(
@@ -753,28 +860,12 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const pending_decision = controls.pendingDecision;
   const input_transition = useAgentInputTransition(pending_decision, composer_ref, active);
 
-  // 会话就绪后尝试写入，编辑器统一判断输入锁。锁状态变化时重新尝试。
-  useEffect(() => {
-    const request = agent_input_request;
-    if (
-      !active ||
-      !request ||
-      consumed_input_request.current === request ||
-      controls.transport !== "ready"
-    )
-      return;
-    if (!composer_ref.current?.append_draft(request.text, request.selection)) return;
-    consumed_input_request.current = request;
-    clear_agent_input_request();
-  }, [
-    active,
-    agent_input_request,
-    clear_agent_input_request,
-    controls.transport,
-    active_inline_edit,
-    input_transition.locked,
-    controls.command,
-  ]);
+  const composer_locked =
+    !active || lifecycle.busy || active_inline_edit !== null || input_transition.locked;
+  useAgentInputRequest(
+    composer_ref,
+    !composer_locked && controls.transport === "ready" && controls.command === null,
+  );
 
   const follow_latest_label = t("agent_page.action.follow_latest");
   const follow_latest_status = t("app.tooltip.value", {
@@ -812,8 +903,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     unavailable_reason !== null ||
     active_inline_edit !== null;
 
-  const file_drop_enabled =
-    active && active_inline_edit === null && !input_transition.locked && controls.command === null;
+  const file_drop_enabled = !composer_locked && controls.command === null;
   /** 页面和编辑器都可接入文件，编辑器入口也遵循会话输入状态。 */
   function handle_file_drop(files: readonly File[]): void {
     if (file_drop_enabled && files.length > 0) composer_ref.current?.drop_files(files);
@@ -944,13 +1034,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 placeholder={t("agent_page.input.placeholder")}
                 language_control={
                   <AgentLanguageControl
-                    locked={!active || active_inline_edit !== null || input_transition.locked}
+                    locked={composer_locked}
                     disconnected={unavailable_reason === "disconnected"}
                   />
                 }
                 ref={composer_ref}
                 on_drop_files={handle_file_drop}
-                locked={!active || active_inline_edit !== null || input_transition.locked}
+                locked={composer_locked}
                 skills={skills}
                 instructions={instructions}
                 state={controls.state}

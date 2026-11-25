@@ -216,8 +216,9 @@ export const pt_br_app = {
     update_available_tooltip: "Abrir janela de confirmação de atualização",
   },
   agent_input: {
+    import_sources:
+      "Primeiro, identifique o conteúdo traduzível dos seguintes caminhos e adicione-o ao projeto em um formato adequado:",
     steps_intro: "Execute as etapas em ordem:",
-    steps_intro_after_instruction: "Em seguida, execute as etapas em ordem:",
     path_placeholder: "[Insira os caminhos dos arquivos aqui ou arraste arquivos]",
     steps: {
       glossary: "Extrair termos",

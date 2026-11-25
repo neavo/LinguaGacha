@@ -243,7 +243,7 @@ describe("SourceFileParsePipeline", () => {
         source_path: source_file,
         rel_path: "nested/target.txt",
         file_type: "TXT",
-        source: { kind: "file", format: "txt" },
+        source: { kind: "file" },
       },
     ]);
 

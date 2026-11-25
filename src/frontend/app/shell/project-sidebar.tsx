@@ -86,11 +86,7 @@ export function ProjectSidebar({
       <div className="sidebar-projects__header">
         <span className="sidebar-projects__title">{t("app.workspace.projects")}</span>
         {/* 每次引导都重建按钮容器，重新播放提示动画。 */}
-        <div
-          key={lifecycle.attention}
-          className="sidebar-projects__header-actions"
-          data-attention={lifecycle.attention > 0 || undefined}
-        >
+        <div className="sidebar-projects__header-actions">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -100,7 +96,7 @@ export function ProjectSidebar({
                     className="inline-action-button"
                     aria-label={t("project.create.title")}
                     disabled={lifecycle.busy}
-                    onClick={lifecycle.show_create_dialog}
+                    onClick={lifecycle.request_create}
                   >
                     <FilePlus aria-hidden="true" />
                   </button>

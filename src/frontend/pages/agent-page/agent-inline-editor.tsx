@@ -45,7 +45,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
   const { t } = useI18n();
 
   const composer_ref = useRef<AgentMessageEditorHandle | null>(null);
-  const [draft] = useState(() => new AgentInputDraft(props.target.message, upload));
+  const [draft] = useState(() => new AgentInputDraft(upload, props.target.message));
   // 保存只锁定当前编辑器，普通 Composer 和 Agent Chat 不参与这段瞬时状态。
   const [status, set_status] = useState<"idle" | "saving">("idle");
 

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -13,25 +13,20 @@ type PendingConfirmation = SelectedProject & { target_app_version: string };
 export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
   const { t } = useI18n();
   const { settings_snapshot, refresh_settings } = useDesktopState();
-  const [is_opening_project, set_is_opening_project] = useState(false);
   const [pending_confirmation, set_pending_confirmation] = useState<PendingConfirmation | null>(
     null,
   );
   const [missing_recent_project, set_missing_recent_project] = useState<SelectedProject | null>(
     null,
   );
-  const opening = useRef(false); // 文件选择与加载共用互斥，防止重复调起系统窗口。
-  /** 未传路径时选择文件，选中后与最近工程、版本确认共用加载流程。 */
+  /** 应用会话串行调起选择器和打开请求，版本确认仍使用本次选择。 */
   async function open_project(
     path?: string,
     from_recent = false,
     confirmed_target_app_version?: string,
   ): Promise<void> {
-    if (opening.current) return;
     let target: SelectedProject | null = path === undefined ? null : { path, from_recent };
-    opening.current = true;
     set_pending_confirmation(null);
-    set_is_opening_project(true);
     try {
       if (target === null) {
         const result = await window.desktopApp.pickProjectFilePath(
@@ -69,9 +64,6 @@ export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
         }
       }
       push_error_toast(t("app.feedback.load_failed"), error);
-    } finally {
-      opening.current = false;
-      set_is_opening_project(false);
     }
   }
 
@@ -87,7 +79,6 @@ export function useProjectOpenFlow(run_project_load: RunProjectLoad) {
   }
 
   return {
-    is_opening_project,
     pending_confirmation,
     missing_recent_project,
     handle_recent_project_remove,

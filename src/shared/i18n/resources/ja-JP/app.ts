@@ -219,8 +219,9 @@ export const ja_jp_app = {
     update_available_tooltip: "更新の確認画面を開く",
   },
   agent_input: {
+    import_sources:
+      "まず、以下のパスから翻訳可能な内容を識別し、適切な形式でプロジェクトに追加してください：",
     steps_intro: "次の手順を順番に実行してください：",
-    steps_intro_after_instruction: "その後、次の手順を順番に実行してください：",
     path_placeholder: "[ここにファイルパスを入力するか、ファイルをドラッグしてください]",
     steps: {
       glossary: "用語を抽出",

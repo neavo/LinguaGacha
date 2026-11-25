@@ -30,7 +30,6 @@ import {
 } from "../../domain/item";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import {
-  DEFAULT_PROJECT_LANGUAGE_SETTINGS,
   DEFAULT_PROJECT_SETTINGS,
   parse_project_language_patch,
   type ProjectLanguageSettings,
@@ -38,7 +37,6 @@ import {
 } from "../../domain/project-settings";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
-import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
 import { compute_project_prefilter_items } from "./project-write-state";
 import { ProjectDataReader, type ProjectDataSnapshot } from "./project-data-reader";
 import {
@@ -356,24 +354,12 @@ export class ProjectLifecycleService {
   }
 
   /** AGENT 创建只需要名称，避免为命名扫描或解析待导入来源。 */
-  public get_default_project_name(
-    body: JsonRecord,
-  ): Pick<ProjectSourceFileSummary, "project_name"> {
+  public get_default_project_name(body: JsonRecord): { project_name: string } {
     return {
       project_name: this.build_default_project_name(
         this.normalize_source_paths(body["source_paths"]),
       ),
     };
-  }
-
-  /** 汇总可导入文件计数与格式，命名与 AGENT 拖入创建共用同一规则。 */
-  public async summarize_source_files(body: JsonRecord): Promise<ProjectSourceFileSummary> {
-    const source_paths = this.normalize_source_paths(body["source_paths"]);
-    // 来源摘要只统计格式命中，项目语言尚未选择时使用默认值。
-    const summary = await this.create_format_service(
-      DEFAULT_PROJECT_LANGUAGE_SETTINGS,
-    ).summarize_source_files(source_paths);
-    return { ...summary, project_name: this.build_default_project_name(source_paths) };
   }
 
   /** 默认名由能判断文件类型的后端生成，落盘后只以 `.lg` 文件名为工程名。 */

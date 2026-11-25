@@ -60,17 +60,18 @@ describe("ProjectLifecycleService", () => {
   const signal = new AbortController().signal;
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
-  it("两个入口共用文件、目录和多路径命名规则。根目录与空来源使用空名", async () => {
+  it("默认工程名支持文件、目录和多路径，根目录与空来源使用空名", () => {
     const root = create_temp_dir();
     const folder = path.join(root, "Game.v1.2");
     fs.mkdirSync(folder);
     const file = write_file(path.join(folder, "novel.part.txt"), "原文");
-    const second = write_file(path.join(folder, "second.txt"), "原文");
+    const second = write_file(path.join(folder, "second.custom"), "原文");
     const service = create_service({ database: create_database() });
     for (const [source_paths, expected] of [
       [[file], "novel.part"],
       [[folder], "Game.v1.2"],
       [[file, second], "Game.v1.2"],
+      [[second, second], "second"],
       [
         [
           path.join(path.parse(root).root, "missing-a.txt"),
@@ -80,24 +81,10 @@ describe("ProjectLifecycleService", () => {
       ],
       [[], ""],
     ] as const) {
-      expect(
-        (await service.summarize_source_files({ source_paths: [...source_paths] })).project_name,
-      ).toBe(expected);
       expect(service.get_default_project_name({ source_paths: [...source_paths] })).toEqual({
         project_name: expected,
       });
     }
-  });
-
-  it("AGENT 命名先去重，接受待处理格式且不扫描来源", () => {
-    const root = create_temp_dir();
-    const file = write_file(path.join(root, "source.custom"), "待处理内容");
-    const summarize = vi.spyOn(FileFormatService.prototype, "summarize_source_files");
-    const service = create_service({ database: create_database() });
-    expect(service.get_default_project_name({ source_paths: [file, file] })).toEqual({
-      project_name: "source",
-    });
-    expect(summarize).not.toHaveBeenCalled();
   });
 
   it.each([false, true])("正式创建只发现一次，游戏通知先于本批全部准备：%s", async (games) => {
@@ -132,7 +119,7 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("新建来源摘要只读，确认顺序传到准备，错误顺序不创建工程", async () => {
+  it("确认顺序传到准备，错误顺序不创建工程", async () => {
     const root = create_temp_dir(),
       game = path.join(root, "ordered"),
       project = path.join(root, "ordered.lg");
@@ -149,14 +136,6 @@ describe("ProjectLifecycleService", () => {
     const database = new ProjectDatabase("1.0.0"),
       service = create_service({ database });
     try {
-      expect((await service.summarize_source_files({ source_paths: [game] })).godot_packs).toEqual([
-        {
-          game_root: game,
-          game_name: "ordered",
-          external_pcks: ["game.pck", "patch2.pck", "patch10.pck"],
-        },
-      ]);
-      expect(fs.readdirSync(game).sort()).toEqual(["game.pck", "patch10.pck", "patch2.pck"]);
       await expect(
         service.create_project_commit(
           {

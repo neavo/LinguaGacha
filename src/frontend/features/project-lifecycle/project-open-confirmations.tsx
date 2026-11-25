@@ -8,6 +8,7 @@ import "./project-lifecycle.css";
 /** 文件选择与最近工程共用版本和缺失确认，由常驻流程持有。 */
 export function ProjectOpenConfirmations(props: {
   flow: ReturnType<typeof useProjectOpenFlow>;
+  on_confirm: () => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
   const flow = props.flow;
@@ -32,8 +33,7 @@ export function ProjectOpenConfirmations(props: {
                 },
               )
         }
-        submitting={flow.is_opening_project}
-        onConfirm={flow.confirm_open}
+        onConfirm={props.on_confirm}
         onClose={flow.cancel_confirmation}
       />
       <AppConfirmDialog

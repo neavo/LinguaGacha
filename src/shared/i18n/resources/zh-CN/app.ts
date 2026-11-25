@@ -210,8 +210,8 @@ export const zh_cn_app = {
     update_available_tooltip: "打开更新确认框",
   },
   agent_input: {
+    import_sources: "请先从以下路径中识别可翻译内容并以合适的形式添加到工程中：",
     steps_intro: "按顺序执行步骤：",
-    steps_intro_after_instruction: "然后按顺序执行步骤：",
     path_placeholder: "[在此输入文件路径或者将文件拖到这里]",
     steps: {
       glossary: "提取术语",

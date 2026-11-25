@@ -59,6 +59,7 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
       {props.attachments.map((attachment, index) => {
         const annotation = attachment.kind === "response_annotation";
         const image = attachment.kind === "file" && attachment.imageMimeType !== null;
+        const staged = attachment.kind === "staged_file";
         const file_path =
           attachment.kind === "file"
             ? attachment.path.split("/").map(encodeURIComponent).join("/")
@@ -89,6 +90,8 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
                 <MessageSquareQuote aria-hidden="true" />
               ) : image ? (
                 <AgentUploadImage file={attachment} />
+              ) : staged && resolve_workspace_image_mime(attachment.name) !== null ? (
+                <StagedLocalImage file={attachment.file} />
               ) : pending && attachment.status === "uploading" ? (
                 <LoaderCircle className="animate-spin" aria-hidden="true" />
               ) : pending ? (
@@ -113,6 +116,8 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
             >
               {content}
             </AgentFileTrigger>
+          ) : staged ? (
+            <span className="agent-attachment__body">{content}</span>
           ) : (
             <button
               type="button"
@@ -132,11 +137,12 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
               {content}
             </button>
           );
-        const key = pending
-          ? attachment.id
-          : attachment.kind === "file"
-            ? attachment.uploadId
-            : index;
+        const key =
+          pending || staged
+            ? attachment.id
+            : attachment.kind === "file"
+              ? attachment.uploadId
+              : index;
         const block = (
           <div className="agent-attachment" key={key}>
             <Tooltip disabled={open}>
@@ -222,6 +228,18 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
     </div>
   );
 }
+
+/** 暂存附件来自本机，不经过工程上传接口。 */
+function StagedLocalImage({ file }: { file: File }): JSX.Element {
+  const [url, set_url] = useState<string>();
+  useEffect(() => {
+    const preview = URL.createObjectURL(file);
+    set_url(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [file]);
+  return <img src={url} alt="" decoding="async" />;
+}
+
 /** 后端字节通过 API 读取，页面只渲染 CSP 已允许的 Blob URL。 */
 function AgentUploadImage({ file }: { file: AgentFileAttachment }): JSX.Element {
   const { blob: api_blob } = useAgentApi();

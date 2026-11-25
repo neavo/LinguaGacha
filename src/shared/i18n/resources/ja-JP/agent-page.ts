@@ -1,7 +1,6 @@
 import type { zh_cn_agent_page } from "../zh-CN/agent-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_agent_page = {
-  project_required: "まず左側のボタンをクリックして、プロジェクトを作成または開いてください …",
   document: {
     conversation: "会話",
     open: "開く",
@@ -53,7 +52,7 @@ export const ja_jp_agent_page = {
     },
   },
   input: {
-    no_project_placeholder: "翻訳するファイルやフォルダーをドロップしてプロジェクトを作成 …",
+    no_project_placeholder: "翻訳したいファイルやフォルダーをここにドロップ …",
     placeholder: "タスクを入力するか、@ でスキルや指示を選択 …",
     edit_assistant_placeholder: "モデルの返信を編集 …",
     newline: "改行",

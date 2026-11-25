@@ -31,10 +31,8 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
 
 const lifecycle: ProjectLifecycle = {
   busy: false,
-  attention: 0,
-  notify_project_required: vi.fn(),
-  show_create_dialog: vi.fn(),
-  create_from_paths: vi.fn(),
+  request_create: vi.fn(),
+  create_for_agent: vi.fn(async () => null),
   request_open: vi.fn(),
   open_recent_project: vi.fn(),
   remove_recent_project: vi.fn(),
@@ -104,7 +102,7 @@ describe("ProjectSidebar", () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="打开工程"]')!.click();
     });
 
-    expect(lifecycle.show_create_dialog).toHaveBeenCalledOnce();
+    expect(lifecycle.request_create).toHaveBeenCalledOnce();
     expect(lifecycle.request_open).toHaveBeenCalledOnce();
   });
 
