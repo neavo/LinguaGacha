@@ -9,7 +9,6 @@ export type BatchTaskRequestRecovery =
 
 export type BatchTaskRequestState = Readonly<{
   request_in_flight_count: number;
-  request_concurrency_limit?: number;
   request_recovery: BatchTaskRequestRecovery | null;
 }>;
 
@@ -47,23 +46,48 @@ export type BatchTaskProgress = Readonly<{
 }>;
 export type BatchTaskSnapshot = BatchTaskRequestState &
   Readonly<{
-    revision: number;
-    run_id: string | null;
-    project_path: string;
-    kind: BatchTaskKind | null;
-    source: "standalone" | "agent" | null;
-    status: BatchTaskStatus;
+    run_id: string;
+    kind: BatchTaskKind;
+    source: "standalone" | "agent";
+    status: Exclude<BatchTaskStatus, "idle">;
     stop_source: BatchTaskStopSource | null;
     config: BatchTaskConfig | null;
     progress: BatchTaskProgress | null;
   }>;
+export type BatchTaskListSnapshot = Readonly<{
+  revision: number;
+  project_path: string;
+  tasks: readonly BatchTaskSnapshot[];
+}>;
 export type BatchTaskResult = Readonly<{
   run_id: string;
   status: "done" | "stopped" | "error";
   stop_source?: BatchTaskStopSource;
   progress: BatchTaskProgress | null;
 }>;
-export type BatchTaskSnapshotListener = (snapshot: BatchTaskSnapshot) => void | Promise<void>;
+export type BatchTaskSnapshotListener = (
+  snapshot: BatchTaskListSnapshot,
+  kind: BatchTaskKind,
+) => void | Promise<void>;
+
+/** 批次在受理时只有运行身份与来源，配置和计数由执行者发布。 */
+export function create_batch_task_snapshot(
+  run_id: string,
+  kind: BatchTaskKind,
+  source: BatchTaskSnapshot["source"],
+): BatchTaskSnapshot {
+  return {
+    run_id,
+    kind,
+    source,
+    status: "requested",
+    stop_source: null,
+    config: null,
+    progress: null,
+    request_in_flight_count: 0,
+    request_recovery: null,
+  };
+}
 
 /** 未知目标使用 null，已知零目标仍有独立进度。 */
 export function empty_batch_task_progress(

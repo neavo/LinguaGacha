@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DesktopStateProvider } from "./desktop-state-provider";
 import { useDesktopState, useProjectChangeSignal, useBatchTaskSnapshot } from "./use-desktop-state";
-import { empty_batch_task_snapshot } from "@shared/batch-task";
+import { empty_batch_task_list_snapshot } from "@shared/batch-task";
 import { AGENT_CHAT_EVENT_TOPIC, type AgentChatSnapshot } from "@shared/agent";
 
 const desktop = vi.hoisted(() => ({
@@ -79,7 +79,7 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
         },
       };
     }
-    return { batch_task: empty_batch_task_snapshot() };
+    return { batch_tasks: empty_batch_task_list_snapshot() };
   });
   let state!: ReturnType<typeof useDesktopState>;
   let signal!: ReturnType<typeof useProjectChangeSignal>;
@@ -105,6 +105,11 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     expect(state.settings_snapshot.app_language).toBe("EN");
     expect(state.project_snapshot.projectId).toBe("first");
     expect(desktop.open_event_stream).toHaveBeenCalledOnce();
+    const reads = () =>
+      desktop.api_fetch.mock.calls
+        .filter(([route]) => route === "/api/batch-task/snapshot")
+        .map(([, body]) => body?.projectId);
+    expect(reads()).toEqual(["first", "second"]);
     const agent = state.open_projects[1]!.agentChat;
 
     const change = {
@@ -122,7 +127,7 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
       emit("project.data_changed", change);
       emit("batch_task.snapshot_changed", {
         projectId: "second",
-        batch_task: { ...empty_batch_task_snapshot(), revision: 2 },
+        batch_tasks: { ...empty_batch_task_list_snapshot(), revision: 2 },
       });
       emit(AGENT_CHAT_EVENT_TOPIC, {
         projectId: "second",
@@ -137,6 +142,7 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     expect(signal.seq).toBe(1);
     expect(signal.results[0]?.eventId).toBe("only-second");
     expect(task.revision).toBe(2);
+    expect(reads()).toEqual(["first", "second"]);
     expect(state.active_project?.agentChat).toBe(agent);
     expect(agent.get_chat_id()).toBe("second-reset");
     await act(async () => state.select_project("first"));

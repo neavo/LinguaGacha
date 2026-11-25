@@ -29,8 +29,8 @@ import type {
 import type { TranslationCommitEntry } from "./translation-pipeline";
 import type { TranslationContext } from "../planning/translation-plan-types";
 import { plan_translation_retry } from "../planning/translation-retry";
-import { resolve_request_limits, type RequestRatePool } from "../../batch-task/request-rate";
-import { RequestScheduler } from "../../batch-task/request-scheduler";
+import { resolve_request_limits } from "../../batch-task/request-rate";
+import type { BatchRequestPool, RequestPoolSession } from "../../batch-task/batch-request-pool";
 import { TranslationPipeline } from "./translation-pipeline";
 import { TranslationProgressAccumulator } from "./progress-accumulator";
 import { log_batch_task_start, log_batch_request_failure } from "../../batch-task/batch-task-log";
@@ -59,7 +59,7 @@ export type BatchTranslationRunContext = Readonly<{
  * BatchTranslationRunner 依赖由 BackendServices 注入，保证后台任务只通过固定端口读写工程事实
  */
 export interface BatchTranslationRunnerOptions {
-  ratePool: RequestRatePool;
+  requestPool: BatchRequestPool;
   auth?: Pick<ChatGPTAuthService, "bind">;
   builtinRoot: string; // 用于任务启动日志读取提示词模板，保持宿主与 worker 内置资产根一致
   taskStore: Pick<
@@ -80,7 +80,7 @@ export interface BatchTranslationRunnerOptions {
     | "publish_config"
     | "read_progress"
   >; // 任务锁、取消、快照和请求压力的最小能力集合
-  llmClient: LLMClientPort; // 每轮请求调度器使用的单次网络请求入口。
+  llmClient: LLMClientPort; // 共享请求池使用的单次网络请求入口。
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
   taskPlanner: Pick<TranslationPlanner, "build_translation_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
   logManager: Pick<LogManager, "append">; // 启动、请求诊断与 worker 结果共用写入口。
@@ -97,13 +97,13 @@ export class BatchTranslationRunner {
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 初始切块与 token 缓存复用入口。
   private readonly log_manager: Pick<LogManager, "append">; // 主线程统一写入 worker 结果与请求诊断。
-  private readonly rate_pool: RequestRatePool; // 同一模型资源跨任务复用速率时钟。
-  private readonly llm_client: BatchTranslationRunnerOptions["llmClient"]; // 父线程真实请求入口，由本轮调度器统一派发。
+  private readonly request_pool: BatchRequestPool;
+  private readonly llm_client: BatchTranslationRunnerOptions["llmClient"]; // 父线程真实请求入口，由共享请求池统一派发。
   /**
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
   public constructor(options: BatchTranslationRunnerOptions) {
-    this.rate_pool = options.ratePool;
+    this.request_pool = options.requestPool;
     this.builtin_root = options.builtinRoot;
     this.task_store = options.taskStore;
     this.task_runtime = options.taskRuntime;
@@ -158,8 +158,7 @@ export class BatchTranslationRunner {
         handle.signal,
         prepared.target_ids,
       );
-      const rate = this.rate_pool.resolve(run_context.model);
-      const request_scheduler = new RequestScheduler({
+      const session = this.request_pool.open_session({
         model: run_context.model,
         timeout_ms: read_request_timeout_ms(run_context.config_snapshot),
         dispatch: (body: LLMRequestBody, key, signal) =>
@@ -171,13 +170,12 @@ export class BatchTranslationRunner {
             },
             signal,
           ),
-        rate,
         on_state: (state) => this.task_runtime.update_request_state(handle, state),
         on_failure: (key_index, error) =>
           log_batch_request_failure(this.log_manager, "engine", key_index, error, t),
       });
       const pipeline = new TranslationPipeline({
-        read_concurrency_limit: () => request_scheduler.read_concurrency_limit(),
+        read_concurrency_limit: () => session.read_concurrency_limit(),
         signal: handle.signal,
         execute: (context, signal) =>
           this.execute_translation_context(
@@ -185,7 +183,7 @@ export class BatchTranslationRunner {
             context,
             run_context,
             quality_snapshot,
-            request_scheduler,
+            session,
             signal,
           ),
         commit: async (entries) => {
@@ -197,7 +195,11 @@ export class BatchTranslationRunner {
           );
         },
       });
-      await pipeline.run(contexts);
+      try {
+        await pipeline.run(contexts);
+      } finally {
+        session.close();
+      }
     } catch (error) {
       if (!handle.signal.aborted) {
         // 服务在完整收尾后统一记录异常。
@@ -242,7 +244,7 @@ export class BatchTranslationRunner {
     context: TranslationContext,
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
-    request_scheduler: RequestScheduler<LLMRequestBody, LLMRequestResult>,
+    session: RequestPoolSession<LLMRequestBody, LLMRequestResult>,
     signal: AbortSignal,
   ) {
     const result = await this.executor_client.execute_unit(
@@ -260,7 +262,7 @@ export class BatchTranslationRunner {
         },
       },
       signal,
-      request_scheduler,
+      session,
     );
     for (const entry of result.logs) this.log_manager.append({ ...entry, source: "engine-worker" });
     return this.build_translation_worker_result(context, result);

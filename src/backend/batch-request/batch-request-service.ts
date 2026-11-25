@@ -28,8 +28,8 @@ import type {
   LLMRequestResult,
 } from "../llm/llm-types";
 import { BatchTaskRuntime, BatchTaskCompletionError } from "../batch-task/batch-task-runtime";
-import { RequestRatePool, resolve_request_limits } from "../batch-task/request-rate";
-import { RequestScheduler } from "../batch-task/request-scheduler";
+import { resolve_request_limits } from "../batch-task/request-rate";
+import type { BatchRequestPool } from "../batch-task/batch-request-pool";
 
 const BATCH_REQUEST_LOG_SOURCE = "batch-request";
 
@@ -142,10 +142,10 @@ async function publish_json(file: string, value: unknown): Promise<void> {
 }
 /** 通用请求只拥有工作区成果，批次生命周期和网络恢复均使用共享服务。 */
 export class BatchRequestService {
-  /** 注入唯一运行态、速率池与统一请求入口。 */
+  /** 注入工程运行态、共享请求池与统一请求入口。 */
   public constructor(
     private readonly tasks: BatchTaskRuntime,
-    private readonly rates: RequestRatePool,
+    private readonly request_pool: BatchRequestPool,
     private readonly client: LLMClientPort,
     private readonly auth: Pick<ChatGPTAuthService, "bind">,
     private readonly log: Pick<LogManager, "append">,
@@ -192,8 +192,9 @@ export class BatchRequestService {
     }
     signal.throwIfAborted();
     const handle = this.tasks.begin_under_agent(lease, signal, "request");
-    const directory = path.join(root, "work", "batch-requests", handle.run_id);
-    const result_file = path.join(directory, "result.json");
+    const result_file = path.posix.join("work", "batch-requests", handle.run_id, "result.json");
+    const result_path = path.join(root, result_file);
+    const directory = path.dirname(result_path);
     const indexes: ResultIndex[] = manifest.requests.map((entry) => ({
       id: entry.id,
       status: "unfinished",
@@ -240,12 +241,11 @@ export class BatchRequestService {
           const controller = new AbortController(); // 基础设施故障取消同批请求，不改写用户的停止来源。
           const active_signal = AbortSignal.any([handle.signal, controller.signal]);
           const auth_session = config.auth_type === "oauth" ? this.auth.bind() : undefined;
-          const scheduler = new RequestScheduler<
+          const session = this.request_pool.open_session<
             { id: string; payload: JsonRecord },
             RequestResult
           >({
             model,
-            rate: this.rates.resolve(model),
             timeout_ms: read_request_timeout_ms(settings),
             dispatch: async ({ id, payload }, key, request_signal) => {
               const received = await this.client.request(
@@ -283,7 +283,7 @@ export class BatchRequestService {
                 ...(rejected ? { retryable: false } : {}),
               };
             },
-            fail_batch: (result) => !result.item_failure,
+            is_item_failure: (result) => result.item_failure,
             on_attempt: (result) => {
               progress = {
                 ...progress,
@@ -345,7 +345,7 @@ export class BatchRequestService {
               }
               if (active_signal.aborted) return;
               if (payload !== undefined) {
-                result = await scheduler.request({ id: entry.id, payload }, active_signal);
+                result = await session.request({ id: entry.id, payload }, active_signal);
                 if (result.cancelled || active_signal.aborted) return;
                 error =
                   result.request_error?.message ??
@@ -398,7 +398,7 @@ export class BatchRequestService {
             while ((next < indexes.length || pending.size > 0) && !active_signal.aborted) {
               while (
                 next < indexes.length &&
-                pending.size < scheduler.read_concurrency_limit() &&
+                pending.size < session.read_concurrency_limit() &&
                 !active_signal.aborted
               ) {
                 const work = run_one(next++);
@@ -413,7 +413,7 @@ export class BatchRequestService {
           } catch {
             controller.abort(); // 失败请求保留在 pending 中，统一等待后读取原始异常。
           }
-          const settled = await Promise.allSettled(pending);
+          const settled = await Promise.allSettled(pending).finally(session.close);
           const errors = new Set(
             settled.flatMap((result) => {
               if (result.status !== "rejected") return [];
@@ -441,7 +441,7 @@ export class BatchRequestService {
         },
         async (result) => {
           if (directory_ready)
-            await publish_json(result_file, { ...summary(result), requests: indexes });
+            await publish_json(result_path, { ...summary(result), requests: indexes });
         },
       );
       const result = await handle.completion;

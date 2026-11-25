@@ -4,6 +4,7 @@ import { AppError } from "../../../shared/error";
 import type { NativeFs } from "../../../native/native-fs";
 
 export const AGENT_WORKSPACE_LIMIT = 64;
+const PERSISTENT_WORKSPACE_DIRS = ["work", "uploads"] as const;
 // 回收覆盖历史 Base64url、Base62 与新生成的 Base36 目录，独立于身份读取约束。
 const CHAT_DIRECTORY_PATTERN = /^[A-Za-z0-9_-]{8}$/u;
 
@@ -44,17 +45,25 @@ export class AgentWorkspaceDirectories {
     const ownerFile = ".project-path";
     const marker = path.join(source, ownerFile);
     const owner = this.fs.exists(marker) ? this.fs.read_text_file(marker) : undefined;
-    const different =
-      owner !== undefined &&
-      this.fs.to_identity_path(owner) !== this.fs.to_identity_path(projectPath);
-    if (!inUse && (!different || !this.fs.exists(owner!))) {
+    // 打开的工程仍持有会话目录，即使它的工程文件已移走。
+    const can_reuse =
+      !inUse &&
+      (owner === undefined ||
+        this.fs.to_identity_path(owner) === this.fs.to_identity_path(projectPath) ||
+        !this.fs.exists(owner));
+    if (can_reuse) {
       if (owner !== projectPath) await this.fs.write_file(marker, projectPath);
       return id;
     }
     const copy = await this.create();
+    const destination = this.path(copy);
     try {
-      if (this.fs.exists(source)) this.fs.copy_entry(source, this.path(copy));
-      await this.fs.write_file(path.join(this.path(copy), ownerFile), projectPath);
+      for (const name of PERSISTENT_WORKSPACE_DIRS) {
+        const directory = path.join(source, name);
+        if (this.fs.exists(directory) && this.fs.lstat(directory).isDirectory())
+          await this.fs.copy_dir_async(directory, path.join(destination, name));
+      }
+      await this.fs.write_file(path.join(destination, ownerFile), projectPath);
       return copy;
     } catch (error) {
       await this.remove(copy);

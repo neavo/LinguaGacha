@@ -9,7 +9,7 @@ import type { ProjectTranslationStats } from "@shared/project-translation-stats"
 import type { RouteId } from "@frontend/app/navigation/types";
 import { is_json_record } from "@domain/json";
 import { read_project_settings } from "@domain/project-settings";
-import { read_batch_task_snapshot } from "@shared/batch-task";
+import { read_batch_task_list_snapshot } from "@shared/batch-task";
 import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import { createBatchTaskSnapshotStore } from "./batch-task-snapshot-store";
 import { createBatchTranslationSnapshotStore } from "./batch-translation-snapshot-store";
@@ -88,7 +88,7 @@ export class ProjectStore {
 
   /** 任务回执可只含公共批次，独立翻译镜像只消费明确携带的快照。 */
   public update_task(payload: Record<string, unknown>): void {
-    this.batch_task.applySnapshot(read_batch_task_snapshot(payload));
+    this.batch_task.applySnapshot(read_batch_task_list_snapshot(payload));
     if ("batch_translation" in payload)
       this.batch_translation.applySnapshot(normalize_batch_translation_snapshot(payload));
   }

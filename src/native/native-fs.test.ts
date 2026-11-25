@@ -73,6 +73,12 @@ it("Electron 主进程、后端线程与 Node 子进程把 ASAR 档案按普通�
       await assert.rejects(native.write_file(path.join(copy, 'nested', 'blocked.txt'), 'blocked'));
       assert.deepEqual(native.read_file(copy), native.read_file(${JSON.stringify(archive)}));
       assert.deepEqual((await discover_sources([root], native)).map(x => x.source_path), [file]);
+      const material = path.join(root, 'app.asar');
+      const material_copy = path.join(root, 'material-copy');
+      native.create_directory_link(path.join(material, 'nested'), path.join(material, 'linked'));
+      await native.copy_dir_async(material, material_copy);
+      assert.equal(native.read_text_file(path.join(material_copy, 'nested', 'story.txt')), 'story');
+      assert.deepEqual(native.read_dir_names(material_copy), ['nested']);
       if (isMainThread) {
         await new Promise((resolve,reject) => new Worker(__filename).on('error',reject).on('exit',code => code === 0 ? resolve() : reject(new Error('worker exit '+code))));
         console.log('real-fs-ok');

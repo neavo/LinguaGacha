@@ -1,37 +1,41 @@
 import { is_model_thinking_level } from "../domain/model";
-import type { BatchTaskSnapshot } from "../domain/batch-task";
+import type { BatchTaskListSnapshot, BatchTaskSnapshot } from "../domain/batch-task";
 import { BATCH_TASK_STATUSES } from "../domain/batch-task";
 import { is_json_record } from "../domain/json";
-/** 无活动批次和未确定目标均有明确的空值。 */
-export function empty_batch_task_snapshot(): BatchTaskSnapshot {
-  return {
-    revision: 0,
-    run_id: null,
-    project_path: "",
-    kind: null,
-    source: null,
-    status: "idle",
-    stop_source: null,
-    config: null,
-    progress: null,
-    request_in_flight_count: 0,
-    request_recovery: null,
-  };
+
+export function empty_batch_task_list_snapshot(): BatchTaskListSnapshot {
+  return { revision: 0, project_path: "", tasks: [] };
 }
-/** 传输只接收完整任务事实，拒绝非数值进度和不一致的结算总量。 */
-export function read_batch_task_snapshot(payload: unknown): BatchTaskSnapshot {
-  if (!is_json_record(payload) || !is_json_record(payload["batch_task"]))
-    return empty_batch_task_snapshot();
-  const raw = payload["batch_task"];
+
+/** 验证列表头及任务记录。写入前端镜像时由镜像复制。 */
+export function read_batch_task_list_snapshot(payload: unknown): BatchTaskListSnapshot {
+  const raw = is_json_record(payload) ? payload["batch_tasks"] : undefined;
   if (
-    !BATCH_TASK_STATUSES.includes(raw["status"] as BatchTaskSnapshot["status"]) ||
+    !is_json_record(raw) ||
     typeof raw["revision"] !== "number" ||
     !Number.isSafeInteger(raw["revision"]) ||
     raw["revision"] < 0 ||
     typeof raw["project_path"] !== "string" ||
-    (raw["run_id"] !== null && typeof raw["run_id"] !== "string") ||
-    ![null, "translation", "request"].includes(raw["kind"] as string | null) ||
-    ![null, "standalone", "agent"].includes(raw["source"] as string | null) ||
+    !Array.isArray(raw["tasks"])
+  )
+    throw new Error("Invalid batch task list snapshot.");
+  return {
+    revision: raw["revision"],
+    project_path: raw["project_path"],
+    tasks: raw["tasks"].map(read_batch_task),
+  };
+}
+
+/** 传输只接收完整任务事实，拒绝非数值进度和不一致的结算总量。 */
+function read_batch_task(raw: unknown): BatchTaskSnapshot {
+  if (
+    !is_json_record(raw) ||
+    raw["status"] === "idle" ||
+    !BATCH_TASK_STATUSES.includes(raw["status"] as BatchTaskSnapshot["status"]) ||
+    typeof raw["run_id"] !== "string" ||
+    raw["run_id"] === "" ||
+    !["translation", "request"].includes(raw["kind"] as string) ||
+    !["standalone", "agent"].includes(raw["source"] as string) ||
     ![null, "user", "parent", "shutdown"].includes(raw["stop_source"] as string | null) ||
     typeof raw["request_in_flight_count"] !== "number" ||
     !Number.isSafeInteger(raw["request_in_flight_count"]) ||
@@ -74,6 +78,7 @@ export function read_batch_task_snapshot(payload: unknown): BatchTaskSnapshot {
     progress !== null &&
     (!is_json_record(progress) ||
       !["item", "request"].includes(String(progress["unit"])) ||
+      typeof progress["usage_complete"] !== "boolean" ||
       [
         "total",
         "succeeded",
@@ -92,7 +97,7 @@ export function read_batch_task_snapshot(payload: unknown): BatchTaskSnapshot {
       Number(progress["succeeded"]) + Number(progress["failed"]) > Number(progress["total"]))
   )
     throw new Error("Invalid batch task progress.");
-  return structuredClone(raw) as unknown as BatchTaskSnapshot;
+  return raw as unknown as BatchTaskSnapshot;
 }
 
 /** 本轮目标决定百分比和预计剩余时间，工程累计统计不参与。 */

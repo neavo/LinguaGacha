@@ -5,6 +5,7 @@ export const de_de_batch_translation = {
     progress: "Fortschritt",
     tooltip: "Ausgangstext in die Zielsprache übersetzen",
   },
+  kind: { translation: "Stapelübersetzung", request: "Stapelanfragen" },
   summary: {
     translation: {
       running: "Stapelübersetzung läuft",
@@ -40,7 +41,6 @@ export const de_de_batch_translation = {
     keys_retry_wait:
       "API-Fehler. Automatischer Neuversuch in {seconds} Sekunden. Bisher {count} Neuversuche …",
     keys_retry_running: "API-Fehler. Erneuter Versuch läuft …",
-    refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe …",
     start_failed: "Fehler beim Starten der Übersetzungsaufgabe …",
     stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe …",
     reset_all_failed: "Fehler beim Zurücksetzen des gesamten Übersetzungsfortschritts …",

@@ -1,6 +1,6 @@
 import { create_text_resolver } from "../../shared/i18n";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
-import { RequestRatePool } from "../batch-task/request-rate";
+import { BatchRequestPool } from "../batch-task/batch-request-pool";
 import { create_item } from "../../domain/item";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { Model } from "../../domain/model";
@@ -59,8 +59,8 @@ describe("批量翻译服务", () => {
     const { service, runtime, tasks, append } = setup();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    tasks.subscribe(async (snapshot) => {
-      if (snapshot.status !== "done") return;
+    tasks.subscribe(async ({ tasks: [snapshot] }) => {
+      if (snapshot?.status !== "done") return;
       entered.resolve();
       await release.promise;
       if (fail) throw new Error("publication failed");
@@ -294,7 +294,7 @@ it.each([
     }),
   );
   const runner = new BatchTranslationRunner({
-    ratePool: new RequestRatePool(),
+    requestPool: new BatchRequestPool(),
     builtinRoot: path.join(process.cwd(), "builtin"),
     taskStore: new BatchTranslationProjectStore(project_path, cache, writes),
     taskRuntime: runtime,
@@ -492,7 +492,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     );
     expect(cache.prompts.readBlock()).not.toHaveProperty("analysis");
     const runner = new BatchTranslationRunner({
-      ratePool: new RequestRatePool(),
+      requestPool: new BatchRequestPool(),
       llmClient: {
         request: async () => {
           throw new Error("Unexpected LLM request");

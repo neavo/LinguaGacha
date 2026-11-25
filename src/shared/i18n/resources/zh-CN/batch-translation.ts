@@ -3,6 +3,7 @@ export const zh_cn_batch_translation = {
     progress: "进度",
     tooltip: "将原文翻译为目标语言",
   },
+  kind: { translation: "批量翻译", request: "批量请求" },
   summary: {
     translation: { running: "正在批量翻译", stopping: "正在停止批量翻译" },
     request: { running: "正在批量请求", stopping: "正在停止批量请求" },
@@ -32,7 +33,6 @@ export const zh_cn_batch_translation = {
     retry_exhausted: "{count} 个条目多次重试后仍未成功，已跳过 …",
     keys_retry_wait: "接口报错，{seconds} 秒后将自动重试，已重试 {count} 次 …",
     keys_retry_running: "接口报错，正在重试 …",
-    refresh_failed: "翻译任务状态刷新失败 …",
     start_failed: "启动翻译任务失败 …",
     stop_failed: "停止翻译任务失败 …",
     reset_all_failed: "重置全部翻译失败 …",

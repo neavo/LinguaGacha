@@ -45,6 +45,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const summary = build_batch_task_summary_display({
     metrics: task_metrics,
     kind: batch_task.task_display_snapshot?.kind ?? null,
+    active_task_count: batch_task.active_task_count,
     t,
   });
 
@@ -66,7 +67,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         <>
           <CommandBarGroup>
             <WorkbenchTranslationMenu
-              active={task_metrics.active}
+              active={batch_task.translation_active}
               workbench_stats={props.translation_stats}
               disabled={translation_action_blocked}
               model_selection={model_selection}
@@ -82,7 +83,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
                   <AppButton
                     variant="ghost"
                     size="toolbar"
-                    disabled={task_metrics.active || translation_action_blocked}
+                    disabled={translation_action_blocked}
                     onClick={() => batch_task.request_task_action_confirmation("reset-all")}
                   >
                     {reset_submitting ? (

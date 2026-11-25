@@ -6,6 +6,7 @@ export const pt_br_batch_translation = {
     progress: "Progresso",
     tooltip: "Traduzir o texto original para o idioma de destino",
   },
+  kind: { translation: "Tradução em lote", request: "Solicitações em lote" },
   summary: {
     translation: { running: "Tradução em lote em andamento", stopping: "Parando tradução em lote" },
     request: {
@@ -39,7 +40,6 @@ export const pt_br_batch_translation = {
     keys_retry_wait:
       "Erro de API. Nova tentativa automática em {seconds} segundos. Tentativas: {count} …",
     keys_retry_running: "Erro de API. Tentando novamente …",
-    refresh_failed: "Falha ao atualizar a tarefa de tradução …",
     start_failed: "Falha ao iniciar a tarefa de tradução …",
     stop_failed: "Falha ao interromper a tarefa de tradução …",
     reset_all_failed: "Falha ao redefinir todo o progresso de tradução …",
