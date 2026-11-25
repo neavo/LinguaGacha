@@ -27,15 +27,16 @@ import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
 import type { OpenProjectSnapshot, ProjectStore } from "@frontend/app/state/project-store-registry";
+import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { AgentPage } from "@frontend/pages/agent-page/page";
 import { Badge } from "@frontend/shadcn/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { ProjectPrefilterSettingDialog } from "./project-prefilter-setting-dialog";
 import "@frontend/widgets/inline-action-button.css";
 import "./project-workspace.css";
 
-// 工作区宽于该阈值时将右侧双功能块常驻纵排为 240px 卡片，同时保留不少于 1024px 的主内容基线宽度。
+// 工作区达到该宽度才为常驻卡片预留空间，保证主内容的宽度基线。
 const TOOLS_DOCK_MIN_WIDTH = 1280;
 
 type WorkspaceToolGroupId = "workbench" | "quality";
@@ -118,13 +119,10 @@ function use_tools_docked(workspace_ref: RefObject<HTMLDivElement | null>): {
       set_docked(width >= TOOLS_DOCK_MIN_WIDTH);
     };
 
-    apply_width(node.getBoundingClientRect().width || node.clientWidth);
+    apply_width(node.getBoundingClientRect().width);
     const frame_id = requestAnimationFrame(() => set_animated(true));
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries.at(-1);
-      const width =
-        entry?.contentRect.width || node.getBoundingClientRect().width || node.clientWidth;
-      apply_width(width);
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) apply_width(entry.contentRect.width);
     });
     observer.observe(node);
 
@@ -157,7 +155,9 @@ export function ProjectWorkspace({
   const [prefilter_field, set_prefilter_field] = useState<ProjectPrefilterSettingKey | null>(null);
   const { docked, animated } = use_tools_docked(workspace_ref);
   const FeaturePage = selected === "agent" ? null : SCREEN_REGISTRY[selected].component;
-  const project_id = project.snapshot.projectId;
+  const { projects } = useRuntimeSnapshot();
+  // 确认框打开期间也会收到工程占用变化，入口和提交动作共用同一判断。
+  const prefilter_locked = is_project_busy(projects?.[project.snapshot.projectId]);
   const project_settings: ProjectSettings = project.snapshot.settings ?? DEFAULT_PROJECT_SETTINGS;
 
   // 跨入宽态后清空临时浮层开关，使后续缩窄回临界值以下时菜单一并收起。
@@ -214,6 +214,7 @@ export function ProjectWorkspace({
               group={group}
               snapshot={project.snapshot}
               settings={project_settings}
+              prefilter_locked={prefilter_locked}
               selected={selected}
               docked={docked}
               open={!docked && open_group === group.id}
@@ -254,9 +255,9 @@ export function ProjectWorkspace({
       {prefilter_field !== null ? (
         <ProjectPrefilterSettingDialog
           key={prefilter_field}
-          projectId={project_id}
           field={prefilter_field}
           enabled={project_settings[prefilter_field]}
+          runtimeLocked={prefilter_locked}
           onClose={() => set_prefilter_field(null)}
         />
       ) : null}
@@ -269,6 +270,7 @@ function WorkspaceToolGroup({
   group,
   snapshot,
   settings,
+  prefilter_locked,
   selected,
   docked,
   open,
@@ -281,6 +283,7 @@ function WorkspaceToolGroup({
   group: WorkspaceToolGroupDefinition;
   snapshot: OpenProjectSnapshot;
   settings: ProjectSettings;
+  prefilter_locked: boolean;
   selected: RouteId;
   docked: boolean;
   open: boolean;
@@ -305,14 +308,7 @@ function WorkspaceToolGroup({
       <HeaderIcon className="project-workspace__tools-icon" aria-hidden="true" />
       <span className="project-workspace__tools-label">{header_label}</span>
       {active_route_item === undefined && (
-        <ChevronDown
-          className={
-            docked
-              ? "project-workspace__tools-chevron project-workspace__tools-chevron--hidden"
-              : "project-workspace__tools-chevron"
-          }
-          aria-hidden="true"
-        />
+        <ChevronDown className="project-workspace__tools-chevron" aria-hidden="true" />
       )}
     </>
   );
@@ -406,36 +402,26 @@ function WorkspaceToolGroup({
                     {group.settingItems.map((item) => {
                       const Icon = item.icon;
                       const enabled = settings[item.field];
-                      const title = t(`app.project_prefilter.${item.field}.title`);
-                      const state_label = t(enabled ? "app.state.enabled" : "app.state.disabled");
-                      const tooltip_text = t("app.tooltip.value", {
-                        TITLE: title,
-                        VALUE: state_label,
-                      });
                       return (
-                        <Tooltip key={item.field}>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                role={docked ? undefined : "menuitem"}
-                                className="project-workspace__tool-item"
-                                data-prefilter-field={item.field}
-                                onClick={() => on_select_prefilter(item.field)}
-                              >
-                                <Icon className="project-workspace__tool-icon" aria-hidden="true" />
-                                <span className="project-workspace__tool-label">{title}</span>
-                                <Badge
-                                  tone={enabled ? "brand" : "neutral"}
-                                  className="project-workspace__tool-badge"
-                                >
-                                  {state_label}
-                                </Badge>
-                              </button>
-                            }
-                          />
-                          <TooltipContent>{tooltip_text}</TooltipContent>
-                        </Tooltip>
+                        <button
+                          key={item.field}
+                          type="button"
+                          role={docked ? undefined : "menuitem"}
+                          className="project-workspace__tool-item"
+                          disabled={prefilter_locked}
+                          onClick={() => on_select_prefilter(item.field)}
+                        >
+                          <Icon className="project-workspace__tool-icon" aria-hidden="true" />
+                          <span className="project-workspace__tool-label">
+                            {t(`app.project_prefilter.${item.field}.title`)}
+                          </span>
+                          <Badge
+                            tone={enabled ? "brand" : "neutral"}
+                            className="project-workspace__tool-badge"
+                          >
+                            {t(enabled ? "app.state.enabled" : "app.state.disabled")}
+                          </Badge>
+                        </button>
                       );
                     })}
                   </>
