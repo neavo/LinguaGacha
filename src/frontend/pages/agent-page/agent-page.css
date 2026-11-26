@@ -1036,6 +1036,35 @@
   padding: 6px var(--agent-composer-padding-inline-end, 6px) 5px 12px;
 }
 
+.agent-composer:focus-within {
+  border-color: var(--primary);
+}
+
+.agent-composer:not(.agent-composer--inline):hover::after {
+  --agent-composer-highlight-colors: #00778f, #008fbd 26%, #6546e8 52%, #c029a5 76%, transparent;
+
+  content: "";
+  position: absolute;
+  inset: calc(
+    -1 * var(--agent-operation-surface-border-width)
+  ); /* 伪元素与表单的外边框共用坐标原点。 */
+  padding: var(--agent-operation-surface-border-width);
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    180px circle at var(--agent-composer-highlight-position),
+    var(--agent-composer-highlight-colors)
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+.dark .agent-composer:not(.agent-composer--inline):hover::after {
+  --agent-composer-highlight-colors: #f0fcff, #48e5ff 26%, #8171ff 52%, #f15ce2 76%, transparent;
+}
+
 .agent-inline-editor {
   width: 100%;
   min-width: 0;
@@ -1178,10 +1207,6 @@
   100% {
     transform: translateX(120%);
   }
-}
-
-.agent-composer:focus-within {
-  border-color: var(--primary);
 }
 
 .agent-annotation-panel {
