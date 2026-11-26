@@ -1612,11 +1612,12 @@ describe("AgentService", () => {
   });
 
   it("恢复失败轮次时保留公开工具历史，并直接从工具结果继续原轮次", async () => {
-    const { service } = await create_service();
+    const { service, runtime_gate } = await create_service();
     fake_agent_state.mode = "tools_error";
     await service.send_message({ text: "原任务", attachments: [] });
     await wait_for_idle(service);
     const failed_entries = service.get_snapshot().entries;
+    const first_round_start = runtime_gate.get_snapshot().lastAgentRoundStartedAt;
     const failed_user = failed_entries.find((entry) => entry.kind === "user_message");
     const failed_assistant = failed_entries.findLast(
       (entry) => entry.kind === "assistant_message" && entry.status === "error",
@@ -1638,6 +1639,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
 
     const snapshot = service.get_snapshot();
+    expect(runtime_gate.get_snapshot().lastAgentRoundStartedAt).toBe(first_round_start);
     expect(snapshot.entries.filter((entry) => entry.kind === "user_message")).toEqual([
       expect.objectContaining({ id: failed_user.id, text: "原任务", status: "success" }),
     ]);
@@ -2884,16 +2886,25 @@ describe("AgentService", () => {
   });
 
   it("轮次失败后自动用队首继续，接续也失败时保留剩余队列", async () => {
-    const { service } = await create_service();
+    const { service, runtime_gate } = await create_service();
+    const publish_activity = vi.fn();
+    runtime_gate.subscribe(publish_activity);
     fake_agent_state.mode = "tools_error";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "第一轮", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    const first_round_start = runtime_gate.get_snapshot().lastAgentRoundStartedAt;
     await service.send_message({ text: "第二轮", attachments: [] });
     await service.send_message({ text: "第三轮", attachments: [] });
+    expect(runtime_gate.get_snapshot().lastAgentRoundStartedAt).toBe(first_round_start);
     fake_agent_state.hold_tool_execution = false;
     fake_agent_state.release_tool_execution?.();
     await wait_for_idle(service);
+    const second_round_start = runtime_gate.get_snapshot().lastAgentRoundStartedAt;
+    expect(second_round_start).toBeGreaterThan(first_round_start!);
+    expect(publish_activity).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: true, lastAgentRoundStartedAt: second_round_start }),
+    );
     expect(service.get_snapshot().inputQueue).toMatchObject({
       paused: true,
       items: [{ text: "第三轮" }],
@@ -2941,8 +2952,8 @@ describe("AgentService", () => {
     const selected = service.get_snapshot().inputQueue.items[1]!;
     await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
 
-    const owners: (string | null)[] = [];
-    runtime_gate.subscribe(({ agent }) => owners.push(agent ? "agent" : null));
+    const agent_occupancy: boolean[] = [];
+    runtime_gate.subscribe(({ agent }) => agent_occupancy.push(agent));
     const command = {
       chatId: service.get_snapshot().chatId,
       commandId: "interrupt-selected",
@@ -2969,7 +2980,8 @@ describe("AgentService", () => {
     await expect(service.input_command("queue_send", command)).resolves.toMatchObject({
       status: "accepted",
     });
-    expect(owners).toEqual([null]);
+    expect(agent_occupancy.at(-1)).toBe(false);
+    expect(agent_occupancy.slice(0, -1)).not.toContain(false);
     expect(service.get_snapshot().inputQueue.items).toEqual([]);
     expect(fake_agent_state.prompts).toEqual(["第一轮", "插队消息", "普通队列"]);
     expect(

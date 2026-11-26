@@ -8,15 +8,22 @@ describe("runtime-activity-store", () => {
     const listener = vi.fn();
     store.subscribe(listener);
 
-    store.applySnapshot({ revision: 2, owner: "agent" });
-    store.applySnapshot({ revision: 1, owner: null });
-
-    expect(store.getSnapshot()).toEqual({
+    const latest = {
       revision: 2,
       owner: "agent",
-      global: { modelTest: false },
-      projects: {},
-    });
+      projects: {
+        project: {
+          agent: true,
+          batchTranslation: false,
+          projectWrite: false,
+          lastAgentRoundStartedAt: 20,
+        },
+      },
+    };
+    store.applySnapshot(latest);
+    store.applySnapshot({ revision: 1, owner: null });
+
+    expect(store.getSnapshot()).toMatchObject(latest);
     expect(listener).toHaveBeenCalledOnce();
   });
 });

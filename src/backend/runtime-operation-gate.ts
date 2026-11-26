@@ -9,13 +9,14 @@ export type RuntimeLease = Readonly<{ owner: ProjectRuntime | "model_test" }>;
 export class ProjectOperationGate {
   private readonly lifetime = new AbortController();
   private agent: RuntimeLease | null = null;
+  private last_agent_round_started_at: number | undefined;
   private translation: RuntimeLease | null = null;
   private write: Promise<void> | null = null; // 工程关闭等待在途写入完成。
   private readonly listeners = new Set<(snapshot: ProjectActivity) => void>();
 
   constructor(private readonly check_global: (operation: ProjectOperation) => void = () => {}) {}
 
-  /** 只有占用变更需要广播运行快照。 */
+  /** 工程运行活动变化时广播快照。 */
   public subscribe(listener: (snapshot: ProjectActivity) => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -29,12 +30,22 @@ export class ProjectOperationGate {
     for (const listener of this.listeners) listener(snapshot);
   }
 
+  /** 租约结束后仍保留最近轮次，供侧栏在补读后恢复顺序。 */
   public get_snapshot(): ProjectActivity {
+    const lastAgentRoundStartedAt = this.last_agent_round_started_at;
     return {
       batchTranslation: this.translation !== null,
       agent: this.agent !== null,
       projectWrite: this.write !== null,
+      ...(lastAgentRoundStartedAt === undefined ? {} : { lastAgentRoundStartedAt }),
     };
+  }
+
+  /** 队列接续共用租约，新轮次受理后仍需发布工程活跃时间。 */
+  public update_agent_round_started_at(started_at: number | undefined): void {
+    if (this.last_agent_round_started_at === started_at) return;
+    this.last_agent_round_started_at = started_at;
+    this.changed();
   }
 
   public get busy(): boolean {

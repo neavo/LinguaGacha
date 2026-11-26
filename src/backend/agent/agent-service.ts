@@ -508,6 +508,7 @@ export class AgentService {
   /** 只有 SDK 历史已清空，才释放旧材料目录并创建空对话。 */
   private async open_reset_chat(old: AgentChatRecord | null): Promise<void> {
     this.record = null;
+    this.runtime_gate.update_agent_round_started_at(undefined);
     if (old !== null) {
       this.options.protectedChatIds.delete(old.id);
       await this.options.directories.remove(old.id);
@@ -1016,7 +1017,7 @@ export class AgentService {
     return this.submit_round(chat, execution, message, prepared, options);
   }
 
-  /** 显式发送、修订与 FIFO 共用轮次初始化，速度与恢复额度随新轮次重置。 */
+  /** 显式发送、修订与队列接续共用新轮次入口，受理成功后更新工程活跃时间。 */
   private async submit_round(
     chat: AgentChat,
     execution: AgentExecution,
@@ -1028,7 +1029,9 @@ export class AgentService {
     this.token_speed.reset();
     this.token_speed_updated_at = null;
     this.token_speed_snapshot = null;
-    return chat.submit(message, prepared, execution, "round", options);
+    const submission = await chat.submit(message, prepared, execution, "round", options);
+    this.runtime_gate.update_agent_round_started_at(performance.now());
+    return submission;
   }
   /** 结算当前轮次后才安排下一轮，连续失败只自动接续一次。 */
   private async drive(
