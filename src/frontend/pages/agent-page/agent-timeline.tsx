@@ -145,6 +145,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): ReactNode {
     <>
       <AgentMessageFrame
         role="user"
+        round_id={props.roundId}
         actions={
           ended && user_editor === null ? (
             <AgentMessageActions
@@ -270,11 +271,15 @@ const AgentRoundItem = memo(function AgentRoundItem(
 /** 消息容器统一拥有角色对齐与操作归属，工具和轮次状态不进入该结构。 */
 function AgentMessageFrame(props: {
   role: "user" | "assistant";
+  round_id?: string | undefined;
   actions: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className={`agent-message-frame agent-message-frame--${props.role}`}>
+    <div
+      className={`agent-message-frame agent-message-frame--${props.role}`}
+      data-agent-round-id={props.round_id}
+    >
       {props.children}
       {props.actions}
     </div>

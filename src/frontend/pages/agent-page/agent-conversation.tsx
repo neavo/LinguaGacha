@@ -80,6 +80,7 @@ import { AgentInputQueue } from "./agent-input-queue";
 import { type AgentMentionInstruction } from "./agent-mention";
 import { AgentTaskStatus } from "./agent-task-status";
 import { AgentStarPrompt } from "./agent-star-prompt";
+import { AgentRoundNavigator } from "./agent-round-navigator";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
 import { useAgentInputTransition } from "./use-agent-input-transition";
@@ -125,6 +126,7 @@ const EMPTY_USAGE: AgentUsageSnapshot = Object.freeze({
   cacheWrite: 0,
 });
 const NOOP_STOP = async (): Promise<void> => {};
+const AGENT_ROUND_JUMP_TOP_OFFSET_PX = 24; // 与消息流顶内边距齐平，跳转后保留呼吸距
 
 /** 审批偏好属于应用设置，空态与已打开工程共用同一条写入链路。 */
 function useAgentApprovalMode() {
@@ -548,6 +550,36 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     activate_conversation_follow(conversation_ref.current);
   }, [activate_conversation_follow, deactivate_conversation_follow, follow_latest]);
 
+  /** 跳转到指定回合前先退出跟随态，避免流式尺寸变化把视口拉回底部。 */
+  const jump_to_round = useCallback(
+    (round_id: string): void => {
+      const conversation = conversation_ref.current;
+      if (conversation === null) return;
+      deactivate_conversation_follow();
+      const target = [...conversation.querySelectorAll<HTMLElement>("[data-agent-round-id]")].find(
+        (element) => element.dataset.agentRoundId === round_id,
+      );
+      if (target === undefined) return;
+      const top = Math.max(
+        0,
+        target.getBoundingClientRect().top -
+          conversation.getBoundingClientRect().top +
+          conversation.scrollTop -
+          AGENT_ROUND_JUMP_TOP_OFFSET_PX,
+      );
+      const reduced_motion =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (typeof conversation.scrollTo === "function") {
+        conversation.scrollTo({ top, behavior: reduced_motion ? "auto" : "smooth" });
+      } else {
+        conversation.scrollTop = top;
+      }
+    },
+    [deactivate_conversation_follow],
+  );
+
   useActionShortcut({
     action: "follow_latest",
     enabled: active,
@@ -947,6 +979,13 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
           )}
         </div>
       </section>
+      {conversation_started ? (
+        <AgentRoundNavigator
+          active={active}
+          conversation_ref={conversation_ref}
+          on_jump={jump_to_round}
+        />
+      ) : null}
 
       <div ref={input_transition.region_ref} className="agent-page__bottom-region">
         <div ref={input_transition.area_ref} className="agent-page__input-area">
