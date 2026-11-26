@@ -445,7 +445,7 @@ it("旧独立姓名和旧动态表达式保留候选身份及人工导出资格"
     extra_field: {
       renpy: {
         internal_file_path: "game/characters.rpyc",
-        digest: original.digest,
+        digest: sha256(bytes),
         key: candidate.key,
         usage: "display",
       },

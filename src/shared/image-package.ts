@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
-import { is_portable_file_name } from "./utils/file-name";
+import { is_portable_relative_path } from "./utils/file-name";
 import { GENERIC_ITEM_SCHEMA } from "./generic-package";
 import { IMAGE_FONT_SIZE_SCHEMA } from "./image-font-size";
 import { resolve_raster_image_extension } from "./image-formats";
@@ -136,13 +136,6 @@ export type ImageRecord = Static<typeof IMAGE_RECORD_SCHEMA>;
 
 const IMAGE_PAGE_MAX_PIXELS = 100_000_000; // 限制单页解码与掩码内存。
 
-/** 包内路径跨平台保存，Schema 之外拒绝越界与 Windows 路径别名。 */
-function read_image_member_path(value: string): string {
-  const normalized = value.replace(/\\/gu, "/");
-  if (!normalized.split("/").every(is_portable_file_name)) throw new Error("Invalid image path");
-  return normalized;
-}
-
 /** 读取图片包条目并拒绝领域外字段。 */
 export function read_image_records(value: unknown): ImageRecord[] {
   if (!Check(IMAGE_RECORDS_SCHEMA, value)) throw new Error("Invalid image records");
@@ -159,17 +152,17 @@ export function read_image_book(value: unknown, records: readonly ImageRecord[])
     if (pageIds.has(page.pageId) || page.width * page.height > IMAGE_PAGE_MAX_PIXELS)
       throw new Error("Invalid image page");
     pageIds.add(page.pageId);
-    const relativePath = read_image_member_path(page.relativePath);
+    const relativePath = page.relativePath;
     const relativeKey = relativePath.toLocaleLowerCase("en-US");
     if (
-      relativePath !== page.relativePath ||
+      !is_portable_relative_path(relativePath) ||
       !resolve_raster_image_extension(relativePath) ||
       relativePaths.has(relativeKey)
     )
       throw new Error("Invalid or duplicate image relative path");
     relativePaths.add(relativeKey);
     if (
-      read_image_member_path(page.original) !== page.original ||
+      !is_portable_relative_path(page.original) ||
       !/^originals\/[^/]+$/u.test(page.original) ||
       !resolve_raster_image_extension(page.original)
     )

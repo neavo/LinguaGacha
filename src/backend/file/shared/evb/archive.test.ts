@@ -69,7 +69,7 @@ it.each([
 ])("EVB 架构 %s 旧布局 %s 提取保留原始载荷", async (x64, legacy) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-evb-"));
   const files = new Map([
-    ["www/data/System.json", Buffer.from('{"gameTitle":"原稿"}')],
+    ["www/.tmp/System.json", Buffer.from('{"gameTitle":"原稿"}')],
     ["空文件", Buffer.alloc(0)],
   ]);
   const original = evb_fixture(files, x64, legacy ? "7_80" : "10_70");
@@ -90,34 +90,37 @@ it.each([
   }
 });
 
-it.each(["path", "truncated", "unknown", "duplicate"])("拒绝损坏 EVB：%s", async (kind) => {
-  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-evb-bad-"));
-  let bytes = evb_fixture(
-    new Map(
-      kind === "duplicate"
-        ? [
-            ["safe.txt", Buffer.from("a")],
-            ["SAFE.TXT", Buffer.from("b")],
-          ]
-        : [["safe.txt", Buffer.from("a")]],
-    ),
-  );
-  if (kind === "path")
-    Buffer.from("../x.txt", "utf16le").copy(
-      bytes,
-      bytes.indexOf(Buffer.from("safe.txt", "utf16le")),
+it.each(["path", "reserved", "truncated", "unknown", "duplicate"])(
+  "拒绝损坏 EVB：%s",
+  async (kind) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-evb-bad-"));
+    let bytes = evb_fixture(
+      new Map(
+        kind === "duplicate"
+          ? [
+              ["safe.txt", Buffer.from("a")],
+              ["SAFE.TXT", Buffer.from("b")],
+            ]
+          : [[kind === "reserved" ? ".TMP/file" : "safe.txt", Buffer.from("a")]],
+      ),
     );
-  if (kind === "truncated") bytes = bytes.subarray(0, bytes.length - 1);
-  if (kind === "unknown") bytes.fill(0, 1024, 1150);
-  const source = path.join(temp.path, "bad.exe");
-  fs.writeFileSync(source, bytes);
-  const handle = await new NativeFs().open_file(source, "r");
-  try {
-    await expect(read_evb(handle)).rejects.toThrow();
-  } finally {
-    await handle.close();
-  }
-});
+    if (kind === "path")
+      Buffer.from("../x.txt", "utf16le").copy(
+        bytes,
+        bytes.indexOf(Buffer.from("safe.txt", "utf16le")),
+      );
+    if (kind === "truncated") bytes = bytes.subarray(0, bytes.length - 1);
+    if (kind === "unknown") bytes.fill(0, 1024, 1150);
+    const source = path.join(temp.path, "bad.exe");
+    fs.writeFileSync(source, bytes);
+    const handle = await new NativeFs().open_file(source, "r");
+    try {
+      await expect(read_evb(handle)).rejects.toThrow();
+    } finally {
+      await handle.close();
+    }
+  },
+);
 
 it.each([false, true])("压缩块表省略尾部字段 %s 时仍核对解码总长度", async (short_table) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-evb-block-"));

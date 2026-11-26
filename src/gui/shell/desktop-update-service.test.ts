@@ -34,7 +34,7 @@ describe("DesktopUpdateService", () => {
         latest_version: "1.2.4",
         release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
         windows_zip_urls: {
-          x64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+          x64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_build_v1.2.4_Windows_x64.zip",
           arm64:
             "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_arm64.zip",
         },
@@ -60,6 +60,25 @@ describe("DesktopUpdateService", () => {
     expect(fs.readFileSync(expected_zip_path, "utf-8")).toBe("hello update");
     expect(fs.existsSync(`${expected_zip_path}.download`)).toBe(false);
     expect(progress_values.at(-1)).toBe(100);
+  });
+
+  it("版本号无法用作单段名称时拒绝下载", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-update-version-"));
+    const fetch = vi.fn();
+    const service = create_service(temp.path, { fetch });
+    await expect(
+      service.download_release(
+        {
+          request_id: "download-1",
+          latest_version: "1.2.4/other",
+          release_url: "release",
+          windows_zip_urls: { x64: "zip-url" },
+        },
+        () => {},
+      ),
+    ).rejects.toThrow("Invalid update version.");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(fs.readdirSync(temp.path)).toEqual([]);
   });
 
   it("非 Windows、unsupported arch、缺当前架构 zip 或应用目录不可写时返回发布页回退结果", async () => {

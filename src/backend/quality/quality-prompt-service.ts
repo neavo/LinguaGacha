@@ -1,7 +1,11 @@
 import path from "node:path";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import { resolve_preset_file, type AppPathService } from "../app/app-path-service";
+import {
+  resolve_new_user_preset_file,
+  resolve_preset_file,
+  type AppPathService,
+} from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { ProjectDatabase } from "../database/database-operations";
@@ -15,7 +19,6 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import { fill_translation_output_format_placeholder } from "../../shared/text/translation-output-format";
-import { validate_file_name } from "../../shared/utils/file-name";
 
 /**
  * 工程提示词查询、写入、模板与预设文件操作。
@@ -259,9 +262,12 @@ export class QualityPromptService {
 
   /** 验证新名称可跨平台写入，已有预设沿用等价的磁盘文件名。 */
   private resolve_user_preset_path(name: string): string {
-    const trimmed = name.trim();
-    validate_file_name(trimmed);
-    return this.resolve_prompt_preset_file(`user:${trimmed}.txt`).file_path;
+    return resolve_new_user_preset_file(
+      name,
+      TRANSLATION_PROMPT.preset_extension,
+      this.paths.get_prompt_user_preset_dir(),
+      this.native_fs,
+    ).file_path;
   }
 
   /** 读取文本并去掉 BOM 与首尾空白。 */

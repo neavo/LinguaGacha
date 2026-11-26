@@ -7,7 +7,7 @@ import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
 
 type WorkbenchDialogsProps = {
   dialog_state: WorkbenchDialogState;
-  entries: readonly WorkbenchFileEntry[]; // 改名按当前文件集合就地校验
+  entries: readonly WorkbenchFileEntry[]; // 确认改名目标仍在当前列表。
   on_confirm: () => void;
   on_rename: (new_rel_path: string) => void;
   on_secondary: () => void;
@@ -70,8 +70,7 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element | nu
     return entry === undefined ? null : (
       <WorkbenchRenameDialog
         key={entry.rel_path}
-        entry={entry}
-        entries={props.entries}
+        rel_path={entry.rel_path}
         submitting={props.dialog_state.submitting}
         on_submit={props.on_rename}
         on_close={props.on_close}

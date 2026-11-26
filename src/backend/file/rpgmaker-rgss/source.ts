@@ -1,7 +1,6 @@
-import { GameSourceConflictError, sort_game_paths } from "../source-file-paths";
+import { GameSourceConflictError, sort_game_paths, validate_game_path } from "../source-file-paths";
 import path from "node:path";
 import type { NativeFs } from "../../../native/native-fs";
-import { validate_zip_member_path } from "../shared/zip-members";
 import { read_text } from "./value";
 import type { GameFiles } from "../shared/game/format";
 import { read_rgss_archive_version } from "./archive";
@@ -104,7 +103,8 @@ function read_ini_value(ini: string, key: string): string | null {
 export function script_path(content: Uint8Array, version: RGSSVersion): string {
   const configured = read_ini_value(decode_ini(content), "Scripts");
   if (configured) {
-    const name = validate_zip_member_path(configured.replaceAll("\\", "/"));
+    const name = configured.replaceAll("\\", "/");
+    validate_game_path(name);
     if (path.extname(name).toLowerCase() !== RGSS_VERSIONS[version])
       throw new Error("Inconsistent RGSS script version");
     return name;

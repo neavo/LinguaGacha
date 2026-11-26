@@ -5,7 +5,7 @@ import type { NativeFs } from "../../../native/native-fs";
 import {
   assert_game_path_spellings,
   assert_regular_path,
-  validate_game_path,
+  validate_game_segment,
 } from "../source-file-paths";
 import { copy_range, read_bytes, type BinaryFileHandle } from "./binary";
 
@@ -38,8 +38,8 @@ export function read_asar(archive: string, fs: NativeFs): Map<string, AsarMember
     assert(is_json_record(directory), "Invalid ASAR directory: " + (prefix || archive));
     for (const [name, entry] of Object.entries(directory)) {
       const member = prefix ? prefix + "/" + name : name;
-      assert(!name.includes("/") && is_json_record(entry), "Invalid ASAR entry: " + member);
-      validate_game_path(member);
+      assert(is_json_record(entry), "Invalid ASAR entry: " + member);
+      validate_game_segment(name, prefix === "");
       names.push(member);
       if ("files" in entry) {
         walk(entry["files"], member);

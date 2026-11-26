@@ -20,6 +20,23 @@ import { QualityRuleService } from "./quality-rule-service";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 
 describe("QualityRuleService", () => {
+  it("保存和重命名用户预设时拒绝不可移植的名称", () => {
+    const { service } = create_service();
+    const rule_type = "glossary";
+    const { item } = service.save_rule_preset({ rule_type, name: "old", entries: [] });
+    const invalid_name = expect.objectContaining({
+      code: "request.validation_failed",
+    });
+
+    expect(() => service.save_rule_preset({ rule_type, name: "bad?", entries: [] })).toThrow(
+      invalid_name,
+    );
+    expect(() =>
+      service.rename_rule_preset({ rule_type, virtual_id: item.virtual_id, new_name: "CON" }),
+    ).toThrow(invalid_name);
+    expect(service.list_rule_presets({ rule_type }).user_presets).toEqual([item]);
+  });
+
   it("用户预设删除等待磁盘完成，内置预设继续拒绝删除", async () => {
     const { service } = create_service();
     service.save_rule_preset({ rule_type: "glossary", name: "delete-fixture", entries: [] });

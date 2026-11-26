@@ -1,5 +1,5 @@
 import { AppError } from "../error";
-import { is_portable_file_name } from "../utils/file-name";
+import { is_portable_relative_path } from "../utils/file-name";
 
 /** 游戏资产类型和后缀共用目录，来源命名与输出校验使用同一身份。 */
 export const GAME_ASSET_EXTENSIONS = Object.freeze({
@@ -94,7 +94,7 @@ export function source_file_output_path(file: string, file_type?: string): strin
       diagnostic_context: { reason: "invalid_game_asset_path", path: file },
     });
   const output = normalized.slice(0, -extension.length);
-  if (!output.split("/").every(is_portable_file_name))
+  if (!is_portable_relative_path(output))
     throw new AppError("file.invalid_structure", {
       message: `Invalid game output directory name "${output}": names must not contain reserved characters, end with a dot or space, or use a reserved device name.`,
       public_details: { file: output },
@@ -135,7 +135,8 @@ export class SourceFilePathIndex {
     if (conflict !== null)
       throw new AppError("request.validation_failed", {
         message: `"${file}" conflicts with an existing file or directory at "${conflict}".`,
-        diagnostic_context: { reason: "asset_path_conflict", path: file, conflict },
+        public_details: { conflict },
+        diagnostic_context: { reason: "asset_path_conflict", path: file },
       });
     this.reserve(file, file_type);
   }

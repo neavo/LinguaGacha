@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { SkillEntryNameDialog } from "./skill-entry-name-dialog";
 import type { AgentSkillFileChange, AgentSkillFileEntry } from "@shared/agent-skills";
@@ -166,7 +166,8 @@ export function SkillFileTree(props: Props): JSX.Element {
     const root = entry.path === "";
     const directory = entry.kind === "directory";
     const open = root || expanded.has(entry.path);
-    const editable = !root && !props.readonly && entry.path !== AGENT_SKILL_MAIN_FILE;
+    const has_file_actions = !root && entry.path !== AGENT_SKILL_MAIN_FILE;
+    const editable = has_file_actions && !disabled;
     const label = root ? "/" : entry.path.split("/").at(-1)!;
     return (
       <div
@@ -185,10 +186,10 @@ export function SkillFileTree(props: Props): JSX.Element {
                 className="skill-tree__select"
                 disabled={props.busy}
                 aria-expanded={directory && !root ? open : undefined}
-                draggable={editable && !disabled}
+                draggable={editable}
                 onFocus={() => set_selected(entry.path)}
                 onDragStart={(event) => {
-                  if (!editable || disabled) {
+                  if (!editable) {
                     event.preventDefault();
                     return;
                   }
@@ -230,28 +231,32 @@ export function SkillFileTree(props: Props): JSX.Element {
           />
           <TooltipContent>{`/${entry.path}`}</TooltipContent>
         </Tooltip>
-        {editable && (
+        {has_file_actions && (
           <div className="skill-tree__actions">
             {actions.map((operation) => (
               <Tooltip key={operation}>
                 <TooltipTrigger
                   render={
-                    <button
-                      type="button"
-                      className="inline-action-button skill-tree__action"
-                      aria-label={t(`knowledge_page.editor.${operation}`)}
-                      disabled={props.busy}
-                      onClick={() => start(operation, entry)}
-                    >
-                      {operation === "rename" ? (
-                        <Pencil aria-hidden="true" />
-                      ) : (
-                        <Trash2 aria-hidden="true" />
-                      )}
-                    </button>
+                    <TooltipTarget>
+                      <button
+                        type="button"
+                        className="inline-action-button skill-tree__action"
+                        aria-label={t(`knowledge_page.editor.${operation}`)}
+                        disabled={disabled}
+                        onClick={() => start(operation, entry)}
+                      >
+                        {operation === "rename" ? (
+                          <Pencil aria-hidden="true" />
+                        ) : (
+                          <Trash2 aria-hidden="true" />
+                        )}
+                      </button>
+                    </TooltipTarget>
                   }
                 />
-                <TooltipContent>{t(`knowledge_page.editor.${operation}`)}</TooltipContent>
+                <TooltipContent side="right">
+                  {t(`knowledge_page.editor.${operation}`)}
+                </TooltipContent>
               </Tooltip>
             ))}
           </div>
@@ -278,23 +283,22 @@ export function SkillFileTree(props: Props): JSX.Element {
     <>
       <div className="skill-tree__toolbar">
         <span className="skill-tree__title">{t("knowledge_page.editor.files")}</span>
-        {!props.readonly &&
-          (["create_file", "create_directory"] as const).map((operation) => (
-            <Tooltip key={operation}>
-              <TooltipTrigger render={<span className="inline-flex" />}>
-                <AppButton
-                  variant="ghost"
-                  size="icon-sm"
-                  disabled={props.busy}
-                  aria-label={t(`knowledge_page.editor.${operation}`)}
-                  onClick={() => create(operation)}
-                >
-                  {operation === "create_file" ? <FilePlus2 /> : <FolderPlus />}
-                </AppButton>
-              </TooltipTrigger>
-              <TooltipContent>{t(`knowledge_page.editor.${operation}`)}</TooltipContent>
-            </Tooltip>
-          ))}
+        {(["create_file", "create_directory"] as const).map((operation) => (
+          <Tooltip key={operation}>
+            <TooltipTrigger render={<TooltipTarget />}>
+              <AppButton
+                variant="ghost"
+                size="icon-sm"
+                disabled={disabled}
+                aria-label={t(`knowledge_page.editor.${operation}`)}
+                onClick={() => create(operation)}
+              >
+                {operation === "create_file" ? <FilePlus2 /> : <FolderPlus />}
+              </AppButton>
+            </TooltipTrigger>
+            <TooltipContent>{t(`knowledge_page.editor.${operation}`)}</TooltipContent>
+          </Tooltip>
+        ))}
       </div>
       <nav
         className="skill-tree__scroll"

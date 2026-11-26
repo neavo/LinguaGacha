@@ -552,4 +552,24 @@ describe("useCustomPromptPageState", () => {
     expect(latest_state?.confirm_state).toEqual({ kind: null });
     expect(latest_state?.preset_input_state.open).toBe(false);
   });
+
+  it("非法名称即使匹配已有预设，也停留在输入框", async () => {
+    install_prompt_api({
+      user_presets: [{ name: "bad?", virtual_id: "user:bad?.txt", type: "user" }],
+    });
+    await render_hook();
+    await act(async () => latest_state?.open_preset_menu());
+    await act(async () => latest_state?.request_save_preset());
+    await act(async () => latest_state?.update_preset_input_value("bad?"));
+    vi.mocked(api_fetch).mockClear();
+    await act(async () => latest_state?.submit_preset_input());
+
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
+      "warning",
+      "app.feedback.invalid_file_name",
+    );
+    expect(latest_state?.preset_input_state).toMatchObject({ open: true, value: "bad?" });
+    expect(latest_state?.confirm_state.kind).toBeNull();
+    expect(api_fetch).not.toHaveBeenCalled();
+  });
 });

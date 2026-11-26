@@ -6,7 +6,7 @@ import { type JSX, act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import type { ProjectItemPublicRecord } from "@domain/item";
 import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 
@@ -108,12 +108,11 @@ vi.mock("@frontend/app/locale/locale-context", () => {
   };
 });
 
-vi.mock("@frontend/app/desktop/desktop-api", () => {
-  return {
-    api_fetch: vi.fn(),
-    report_renderer_error: vi.fn(async () => undefined),
-  };
-});
+vi.mock("@frontend/app/desktop/desktop-api", async (load) => ({
+  ...(await load<typeof import("@frontend/app/desktop/desktop-api")>()),
+  api_fetch: vi.fn(),
+  report_renderer_error: vi.fn(async () => undefined),
+}));
 
 /** 模拟后端分区变更信号。 */
 function create_project_change_signal(
@@ -531,25 +530,27 @@ describe("useWorkbenchPageState", () => {
     );
   });
 
-  it("文件改名失败保留弹窗，重试提交原路径与新路径", async () => {
+  it("文件改名遇到占用时提示冲突并保留弹窗以供重试", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: { getState: () => create_project_store_state({}) },
     };
-    const error = new Error("Target file was not found in the current workbench.");
     enqueue_api_response("/api/workbench/file/rename", () => {
-      throw error;
+      throw new DesktopApiError({
+        code: "request.validation_failed",
+        details: { conflict: "other.txt" },
+      });
     });
     enqueue_api_response("/api/workbench/file/rename", create_project_write_result());
     await render_hook();
     act(() => latest_state?.request_rename_file("old.txt"));
     await act(async () => {
-      await latest_state?.confirm_rename_file("new.txt");
+      await latest_state?.confirm_rename_file("other.txt");
     });
     expect(latest_state?.dialog_state).toMatchObject({ kind: "rename-file", submitting: false });
     expect(toast_fixture.current.push_toast).toHaveBeenCalledExactlyOnceWith(
-      "app.feedback.operation_failed",
-      error,
+      "warning",
+      "workbench_page.dialog.rename.exists",
     );
     await act(async () => {
       await latest_state?.confirm_rename_file("new.txt");

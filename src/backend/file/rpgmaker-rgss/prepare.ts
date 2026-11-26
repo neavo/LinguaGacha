@@ -8,7 +8,7 @@ import {
   type SourceDiagnostic,
   type GamePreparation,
 } from "../shared/game/preparation";
-import { assert_regular_path, validate_game_path } from "../source-file-paths";
+import { assert_regular_path } from "../source-file-paths";
 
 /** 解包循环只写暂存目录，正式目录事务由调用者持有。 */
 export async function stage_rgss_source(
@@ -27,7 +27,6 @@ export async function stage_rgss_source(
     const diagnostics: SourceDiagnostic[] = [];
     for (const member of members) {
       signal?.throwIfAborted();
-      validate_game_path(member.name);
       if (member.name.toLowerCase() === archive.toLowerCase())
         throw new Error("RGSS member conflicts with archive");
       assert_regular_path(path.join(root, member.name), fs);

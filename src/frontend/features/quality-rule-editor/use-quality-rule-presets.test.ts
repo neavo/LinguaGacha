@@ -113,3 +113,29 @@ it("未就绪时不能保存临时空内容为预设", async () => {
   await act(async () => current.submit_preset_input());
   expect(mocks.api).not.toHaveBeenCalled();
 });
+
+it("非法名称即使匹配已有预设，也停留在输入框", async () => {
+  mocks.api.mockResolvedValueOnce({
+    builtin_presets: [],
+    user_presets: [
+      { name: "CON", file_name: "CON.json", virtual_id: "user:CON.json", type: "user" },
+    ],
+  });
+  let current!: ReturnType<typeof useQualityRulePresets<"glossary">>;
+  function Probe() {
+    current = useQualityRulePresets("glossary", [], true);
+    return null;
+  }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(createElement(Probe)));
+  await act(async () => current.open_preset_menu());
+  await act(async () => current.request_save_preset());
+  await act(async () => current.update_preset_input_value("CON"));
+  mocks.api.mockClear();
+  await act(async () => current.submit_preset_input());
+
+  expect(mocks.toast).toHaveBeenCalledExactlyOnceWith("warning", "app.feedback.invalid_file_name");
+  expect(current.preset_input_state).toMatchObject({ open: true, value: "CON" });
+  expect(current.confirm_state.open).toBe(false);
+  expect(mocks.api).not.toHaveBeenCalled();
+});

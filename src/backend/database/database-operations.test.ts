@@ -526,6 +526,18 @@ describe("ProjectDatabase", () => {
     expect(fs.existsSync(missing_output)).toBe(false);
   });
 
+  it("重命名保留遗留 WAL 中已提交的数据", async () => {
+    const { database, lg_path } = await create_database_project("rename-clean");
+    const source_path = create_crashed_project(lg_path, "rename-crashed.lg");
+    const target_path = project_path("renamed.lg");
+
+    await database.rename_project_file(source_path, target_path);
+
+    expect(await read_meta(database, target_path, "wal_probe", null)).toBe("wal");
+    expect(fs.existsSync(source_path)).toBe(false);
+    expect(has_project_sidecar(source_path)).toBe(false);
+  });
+
   it("替换失败时被覆盖工程连同遗留 WAL 原样归位，成功后新工程不重放旧 WAL", async () => {
     const { lg_path } = await create_database_project("replace-old");
     const target_path = create_crashed_project(lg_path, "replace-target.lg");

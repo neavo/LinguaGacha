@@ -137,10 +137,15 @@ describe("技能文件树", () => {
     expect(change).toHaveBeenCalledExactlyOnceWith({ operation: "delete", path: "note.md" });
     expect(open).not.toHaveBeenCalled();
     await render(true);
-    expect(
-      host.querySelector(`[aria-label="${t("knowledge_page.editor.create_file")}"]`),
-    ).toBeNull();
-    expect(host.querySelector(`[aria-label="${t("knowledge_page.editor.rename")}"]`)).toBeNull();
+    for (const operation of ["create_file", "create_directory", "rename", "delete"] as const) {
+      const button = host.querySelector<HTMLButtonElement>(
+        `button[aria-label="${t(`knowledge_page.editor.${operation}`)}"]`,
+      );
+      expect(button?.disabled).toBe(true);
+    }
+    for (const name of ["/", "SKILL.md"]) {
+      expect(entry_button(name).parentElement?.querySelectorAll("button")).toHaveLength(1);
+    }
     await act(async () => entry_button("note.md").click());
     expect(open).toHaveBeenCalledExactlyOnceWith("note.md");
   });

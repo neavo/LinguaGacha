@@ -21,7 +21,8 @@ export const RENPY_SCRIPT_MEMBER = /^game\/.*\.rpym?c$/u; // 版本文件与元�
 
 /** 跨成员保留的纯值摘要。完整编译图、代码上下文和写回坐标随成员释放。 */
 export type RenpySummary = Readonly<
-  Pick<RenpyScript, "digest" | "strings" | "warnings" | "names"> & {
+  Pick<RenpyScript, "strings" | "warnings" | "names"> & {
+    digest: string; // 导入时记录原始字节摘要，供导出验证持久化条目。
     candidates: readonly Pick<RenpyCandidate, "key" | "text" | "usage">[];
   }
 >;
@@ -83,6 +84,7 @@ export async function read_scripts(
         ok: true,
         script: {
           ...script,
+          digest: member_digest(member.bytes),
           candidates: script.candidates.map(({ key, text, usage }) => ({ key, text, usage })),
         },
       });

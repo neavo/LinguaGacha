@@ -36,8 +36,6 @@ export const ja_jp_workbench_page = {
     },
     rename: {
       exists: "同じ名前のファイルまたはフォルダーが既に存在します",
-      invalid_name:
-        '名前は空にできず、\\ / : * ? " < > | を含めることも、ドットで終わることもできません',
     },
     reset: {
       description: "選択したファイルと、そのすべての翻訳項目をリセットしますか …?",

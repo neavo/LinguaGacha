@@ -1,7 +1,7 @@
 import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import { validate_zip_member_path } from "../shared/zip-members";
+import { validate_game_path } from "../source-file-paths";
 import {
   read_bytes,
   write_bytes,
@@ -71,9 +71,8 @@ export async function read_rgss_archive(
       name_bytes[i] = name_bytes[i]! ^ (version === 1 ? key & 255 : (key >>> ((i % 4) * 8)) & 255);
       if (version === 1) key = next_key(key);
     }
-    const name = validate_zip_member_path(
-      new TextDecoder("utf-8", { fatal: true }).decode(name_bytes),
-    );
+    const name = new TextDecoder("utf-8", { fatal: true }).decode(name_bytes).replaceAll("\\", "/");
+    validate_game_path(name);
     if (!names.has(name)) paths.add(name);
     names.add(name);
     const member_size = version === 1 ? await integer() : size;

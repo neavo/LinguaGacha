@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { validate_zip_member_path } from "../shared/zip-members";
 import type { RubyPath } from "./value";
 import type { RubyLocation } from "./ruby";
 
@@ -66,14 +65,13 @@ export function read_rgss_metadata(extra: Item["extra_field"]): RGSSMetadata {
   const value = read_json_record(read_json_record(extra)["rpgmaker_rgss"]);
   if (
     typeof value["internal_file_path"] !== "string" ||
+    value["internal_file_path"] === "" ||
     typeof value["usage"] !== "string" ||
     !["field", "block", "archive", "ruby"].includes(
       String(read_json_record(value["location"])["kind"]),
     )
   )
     throw new Error("Invalid RGSS metadata");
-  if (validate_zip_member_path(value["internal_file_path"]) !== value["internal_file_path"])
-    throw new Error("Noncanonical RGSS path");
   const location = read_json_record(value["location"]);
   if (location["kind"] === "ruby") {
     validate_container(location["container"]);

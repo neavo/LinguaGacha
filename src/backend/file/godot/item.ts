@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { validate_game_path } from "../source-file-paths";
 
 /** 坐标绑定固化原稿，代码用途只决定默认状态，人工放行仍可写回。 */
 export type GodotLocation =
@@ -29,8 +28,10 @@ const LOCATION_FIELDS = {
 /** 持久化元数据先检查形状，写回时再对照原稿验证实际目标与原文。 */
 export function read_godot_metadata(extra: Item["extra_field"]): GodotMetadata {
   const value = read_json_record(read_json_record(extra)["godot"]);
-  assert(typeof value["internal_file_path"] === "string", "Invalid Godot internal path");
-  validate_game_path(value["internal_file_path"]);
+  assert(
+    typeof value["internal_file_path"] === "string" && value["internal_file_path"] !== "",
+    "Invalid Godot internal path",
+  );
   assert(value["usage"] === "text" || value["usage"] === "code", "Invalid Godot usage");
   const location = read_json_record(value["location"]),
     kind = location["kind"];

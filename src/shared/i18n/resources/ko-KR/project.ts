@@ -30,6 +30,7 @@ export const ko_kr_project = {
       "이 파일의 대상 앱 버전은 <emphasis>v{VERSION}</emphasis>입니다. 이전 버전의 앱으로 열면 데이터가 손상될 수 있습니다. 계속 여시겠습니까 …?",
     missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요 …?",
   },
+  rename: "프로젝트 이름 변경",
   close: {
     action: "프로젝트 닫기",
     confirm: "현재 프로젝트를 닫을까요 …?",

@@ -2,31 +2,23 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
-import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
+import { create_text_resolver } from "@shared/i18n";
 import { WorkbenchRenameDialog } from "./workbench-rename-dialog";
 
-/** 文件身份决定名称冲突，进度与排序不参与改名校验。 */
-function entry(rel_path: string, file_type = "TXT"): WorkbenchFileEntry {
-  return {
-    rel_path,
-    file_type,
-    sort_index: 0,
-    progress: {
-      total_items: 0,
-      completed_count: 0,
-      skipped_count: 0,
-      pending_count: 0,
-      completion_percent: 0,
-    },
-  };
-}
+const toast = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: toast }));
+
+const t = create_text_resolver("zh-CN");
 
 describe("工作台改名弹窗", () => {
   let root: Root;
   let host: HTMLDivElement;
   const submit = vi.fn();
+  const close = vi.fn();
   beforeEach(() => {
     submit.mockReset();
+    close.mockReset();
+    toast.mockReset();
     host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
   });
@@ -34,75 +26,58 @@ describe("工作台改名弹窗", () => {
     await act(async () => root.unmount());
     host.remove();
   });
-  /** 挂载目标文件与当前文件集合。 */
-  async function render(target: WorkbenchFileEntry, others: WorkbenchFileEntry[] = []) {
+  /** 挂载指定路径的改名弹窗。 */
+  async function render(rel_path: string) {
     await act(async () =>
       root.render(
         <LocaleProvider locale="zh-CN">
           <WorkbenchRenameDialog
-            entry={target}
-            entries={[target, ...others]}
+            rel_path={rel_path}
             submitting={false}
             on_submit={submit}
-            on_close={vi.fn()}
+            on_close={close}
           />
         </LocaleProvider>,
       ),
     );
   }
-  /** 输入主干后读取确认按钮与就地提示。 */
-  async function enter(value: string) {
+  /** 输入主干，再像用户一样点击确认。 */
+  async function confirm_name(value: string) {
     const input = document.querySelector("input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     const confirm = [...document.querySelectorAll("button")].find((button) =>
-      button.textContent?.startsWith("确认"),
+      button.textContent?.startsWith(t("app.action.confirm")),
     )!;
-    return {
-      confirm,
-      issue: document.querySelector(".workbench-page__rename-issue")?.textContent ?? null,
-    };
+    await act(async () => confirm.click());
   }
 
   it("主干去除首尾空白，保留内部空格、目录与扩展名提交", async () => {
-    await render(entry(" book/chapter.txt"));
+    await render(" book/chapter.txt");
     expect(document.querySelector("input")?.value).toBe("chapter");
-    const { confirm, issue } = await enter("　 第一 章  ");
-    expect(issue).toBeNull();
-    expect(document.querySelector("input")?.value).toBe("　 第一 章  ");
-    await act(async () => confirm.click());
+    await confirm_name("　 第一 章  ");
     expect(submit).toHaveBeenCalledExactlyOnceWith(" book/第一 章.txt");
   });
 
-  it.each([
-    ["chapter", null],
-    [" chapter ", null],
-    ["", "名称不能为空"],
-    ["a/b", "名称不能为空"],
-    ["a?", "名称不能为空"],
-    ["CON", "名称不能为空"],
-    [" ", "名称不能为空"],
-    ["name.", "名称不能为空"],
-    ["Other", "已存在同名"],
-    [" Other ", "已存在同名"],
-  ])("主干 %j 禁止提交并就地提示 %j", async (stem, expected) => {
-    await render(entry("chapter.txt"), [entry("other.txt")]);
-    const { confirm, issue } = await enter(stem);
-    expect(confirm.disabled).toBe(true);
-    if (expected === null) expect(issue).toBeNull();
-    else expect(issue).toContain(expected);
+  it("名称未变时直接关闭", async () => {
+    await render("chapter.txt");
+    await confirm_name(" chapter ");
+    expect(close).toHaveBeenCalledOnce();
+    expect(submit).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it.each([
-    [".env", "TXT", "x.env", "名称不能为空"],
-    ["game.renpy", "RENPY", "other", "已存在同名"],
-    ["game.renpy", "RENPY", "name.", "名称不能为空"],
-  ])("拒绝格式或输出目录无效的改名 %#", async (file, type, stem, expected) => {
-    await render(entry(file, type), [entry("other/readme.txt")]);
-    const { confirm, issue } = await enter(stem);
-    expect(confirm.disabled).toBe(true);
-    expect(issue).toContain(expected);
+    [".env", "x.env"],
+    ["game.renpy", "name."],
+  ])("提交时拒绝改变扩展名或产生非法主干 %s → %s", async (file, stem) => {
+    await render(file);
+    await confirm_name(stem);
+    expect(toast).toHaveBeenCalledWith("warning", t("app.feedback.invalid_file_name"));
+    expect(submit).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(document.querySelector("input")?.value).toBe(stem);
   });
 });

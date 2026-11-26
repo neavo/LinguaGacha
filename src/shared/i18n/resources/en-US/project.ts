@@ -52,6 +52,7 @@ export const en_us_project = {
       "This file targets app version <emphasis>v{VERSION}</emphasis>. Opening it with an older app version may corrupt data. Do you confirm that you want to continue …?",
     missing_file_description: "The project file is invalid. Remove it from the list …?",
   },
+  rename: "Rename Project",
   close: {
     action: "Close",
     confirm: "Confirm closing the current project …?",

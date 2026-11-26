@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore, type JSX, type ReactNode, type RefObject } from "react";
+import { useState, useSyncExternalStore, type JSX, type RefObject } from "react";
 import {
   Ellipsis,
   FileInput,
@@ -6,6 +6,7 @@ import {
   FolderOpen,
   ListX,
   PackageOpen,
+  Pencil,
   SquarePower,
 } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -191,36 +192,12 @@ function ProjectRow({
   const [menu_open, set_menu_open] = useState(false);
   const projectId = project?.snapshot.projectId;
   const disabled = busy || lifecycle.busy;
-  const close_label = t("project.close.action");
-  const remove_label = t("app.workspace.remove_recent");
-  const reveal_label = t("app.workspace.reveal_path");
 
   /** 未打开的最近工程也可直接定位磁盘文件。 */
   function reveal(): void {
     void window.desktopApp.revealPath(path).catch((error: unknown) => {
       push_error_toast(t("app.feedback.activate_link"), error);
     });
-  }
-
-  /** 空闲菜单项文字自解释，仅在繁忙禁用时通过 Tooltip 说明原因。 */
-  function project_action(icon: ReactNode, label: string, on_click: () => void): JSX.Element {
-    const item = (
-      <AppDropdownMenuItem
-        disabled={disabled}
-        className={busy ? "sidebar-project-item__menu-action" : undefined}
-        onClick={on_click}
-      >
-        {icon}
-        {label}
-      </AppDropdownMenuItem>
-    );
-    if (!busy) return item;
-    return (
-      <Tooltip>
-        <TooltipTrigger render={item} />
-        <TooltipContent>{t("app.workspace.close_busy")}</TooltipContent>
-      </Tooltip>
-    );
   }
 
   return (
@@ -268,18 +245,36 @@ function ProjectRow({
             <TooltipContent side="right">{t("app.workspace.more")}</TooltipContent>
           </Tooltip>
           <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-            {projectId !== undefined &&
-              project_action(<SquarePower aria-hidden="true" />, close_label, () =>
-                lifecycle.request_close(projectId),
-              )}
-            {project_action(<ListX aria-hidden="true" />, remove_label, () =>
-              projectId === undefined
-                ? lifecycle.remove_recent_project(path)
-                : lifecycle.request_close(projectId, path),
-            )}
+            <AppDropdownMenuItem
+              disabled={disabled || projectId === undefined}
+              onClick={() => {
+                if (projectId !== undefined) lifecycle.request_close(projectId);
+              }}
+            >
+              <SquarePower aria-hidden="true" />
+              {t("project.close.action")}
+            </AppDropdownMenuItem>
+            <AppDropdownMenuItem
+              disabled={disabled}
+              onClick={() =>
+                projectId === undefined
+                  ? lifecycle.remove_recent_project(path)
+                  : lifecycle.request_close(projectId, path)
+              }
+            >
+              <ListX aria-hidden="true" />
+              {t("app.workspace.remove_recent")}
+            </AppDropdownMenuItem>
+            <AppDropdownMenuItem
+              disabled={lifecycle.busy || projectId !== undefined}
+              onClick={() => lifecycle.request_rename(path, name)}
+            >
+              <Pencil aria-hidden="true" />
+              {t("project.rename")}
+            </AppDropdownMenuItem>
             <AppDropdownMenuItem onClick={reveal}>
               <FolderOpen aria-hidden="true" />
-              {reveal_label}
+              {t("app.workspace.reveal_path")}
             </AppDropdownMenuItem>
           </AppDropdownMenuContent>
         </AppDropdownMenu>

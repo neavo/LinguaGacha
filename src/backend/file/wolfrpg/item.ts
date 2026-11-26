@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import type { WolfDocument } from "./binary";
 import { create_item, type Item, type ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { validate_game_path } from "../source-file-paths";
 
 /** 全部坐标是固化原稿中的零基物理索引，事件 ID 只用于显示。 */
 export type WolfLocation =
@@ -52,8 +51,10 @@ const LOCATION_FIELDS = {
 /** 持久化输入按种类和完整字段集合验证，不接受行号或字节偏移定位。 */
 export function read_wolf_metadata(extra: Item["extra_field"]): WolfMetadata {
   const value = read_json_record(read_json_record(extra)["wolfrpg"]);
-  assert(typeof value["internal_file_path"] === "string", "Invalid WOLF internal path");
-  validate_game_path(value["internal_file_path"]);
+  assert(
+    typeof value["internal_file_path"] === "string" && value["internal_file_path"] !== "",
+    "Invalid WOLF internal path",
+  );
   assert(value["usage"] === "text" || value["usage"] === "metadata", "Invalid WOLF usage");
   const location = read_json_record(value["location"]),
     kind = location["kind"];

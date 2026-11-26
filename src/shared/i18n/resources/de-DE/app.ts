@@ -69,6 +69,7 @@ export const de_de_app = {
     select_folder: "Ordner auswählen",
   },
   feedback: {
+    invalid_file_name: "Der Dateiname enthält unzulässige Zeichen …",
     activate_link: "Der Link konnte nicht verarbeitet werden …",
     load_failed: "Laden fehlgeschlagen …",
     refresh_failed: "Aktualisieren fehlgeschlagen …",

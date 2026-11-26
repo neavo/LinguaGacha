@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import type { NativeFs } from "../../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../../shared/project/project-asset-paths";
-import { assert_game_path_spellings, validate_game_path } from "../../source-file-paths";
+import { assert_game_path_spellings, validate_game_segment } from "../../source-file-paths";
 import {
   read_pe,
   validate_evb_layout,
@@ -128,10 +128,7 @@ async function read_members(
     let name = String.fromCharCode(...units);
     const kind = (await bytes(position++, 1))[0];
     if (depth === 0 && kind === 3 && name === "%DEFAULT FOLDER%") name = "";
-    else {
-      assert(!/[\\/]/u.test(name), "Invalid EVB component");
-      validate_game_path(name);
-    }
+    else validate_game_segment(name, parent === "");
     const full = [parent, name].filter(Boolean).join("/");
     assert(kind !== 3 || !names.has(full.toLowerCase()), "Duplicate EVB directory");
     names.add(full.toLowerCase());
@@ -147,7 +144,6 @@ async function read_members(
         stored = await u32(position + (legacy ? 41 : 49));
       const offset = legacy ? position + 49 : data;
       assert(offset >= section.raw && offset + stored <= end, "EVB member outside section");
-      validate_game_path(full);
       assert(!directories.has(full.toLowerCase()), "EVB file conflicts with directory");
       if (!file_names.has(full)) paths.add(full);
       file_names.add(full);

@@ -30,6 +30,7 @@ export const ja_jp_project = {
       "このファイルの対象アプリバージョンは <emphasis>v{VERSION}</emphasis> です。古いバージョンで開くとデータが破損する可能性があります。続けて開きますか …?",
     missing_file_description: "プロジェクトファイルが利用できません。一覧から削除しますか …?",
   },
+  rename: "プロジェクト名を変更",
   close: {
     action: "プロジェクトを閉じる",
     confirm: "現在のプロジェクトを閉じますか …?",

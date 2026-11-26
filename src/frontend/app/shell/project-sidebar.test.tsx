@@ -6,7 +6,9 @@ import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import type { AgentDecisionCountdownSnapshot } from "@frontend/app/session/agent/agent-decision-countdown";
 import { ProjectStore } from "@frontend/app/state/project-store-registry";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import { create_text_resolver } from "@shared/i18n";
 import { build_project_translation_stats } from "@shared/project-translation-stats";
+import type { ProjectActivity } from "@shared/runtime-activity";
 import {
   ProjectLifecycleContext,
   type ProjectLifecycle,
@@ -23,10 +25,11 @@ const project_state = vi.hoisted(() => ({
   open_projects: [] as ProjectStore[],
   active_project: undefined as ProjectStore | undefined,
   settings_snapshot: { recent_projects: [] as { path: string; name: string }[] },
+  activity: {} as Record<string, ProjectActivity>,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => project_state,
-  useRuntimeSnapshot: () => ({}),
+  useRuntimeSnapshot: () => ({ projects: project_state.activity }),
 }));
 
 const lifecycle: ProjectLifecycle = {
@@ -37,6 +40,7 @@ const lifecycle: ProjectLifecycle = {
   open_recent_project: vi.fn(),
   remove_recent_project: vi.fn(),
   request_close: vi.fn(),
+  request_rename: vi.fn(),
 };
 
 const recent_project = { path: "E:/最近.lg", name: "最近.lg" };
@@ -57,6 +61,7 @@ describe("ProjectSidebar", () => {
     project_state.open_projects = [];
     project_state.active_project = undefined;
     project_state.settings_snapshot.recent_projects = [];
+    project_state.activity = {};
     vi.resetAllMocks();
   });
 
@@ -73,6 +78,43 @@ describe("ProjectSidebar", () => {
       );
     });
   }
+
+  async function open_project_menu(row: number): Promise<HTMLElement[]> {
+    const trigger = container.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"]')[
+      row
+    ]!;
+    await act(async () => trigger.click());
+    return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  }
+
+  it.each([
+    ["打开空闲", true, false, [false, false, true, false]],
+    ["打开忙碌", true, true, [true, true, true, false]],
+    ["关闭", false, false, [true, false, false, false]],
+  ])("工程菜单在%s时保留四个操作", async (_label, opened, busy, disabled) => {
+    if (opened) project_state.open_projects = [opened_project("first", "翻译.lg")];
+    else project_state.settings_snapshot.recent_projects = [recent_project];
+    if (busy)
+      project_state.activity.first = { agent: true, batchTranslation: false, projectWrite: false };
+
+    await render_project_sidebar();
+    const items = await open_project_menu(0);
+    const t = create_text_resolver("zh-CN");
+    expect(items.map((item) => item.textContent)).toEqual([
+      t("project.close.action"),
+      t("app.workspace.remove_recent"),
+      t("project.rename"),
+      t("app.workspace.reveal_path"),
+    ]);
+    expect(items.map((item) => item.getAttribute("aria-disabled") === "true")).toEqual(disabled);
+    if (!opened) {
+      await act(async () => items[2]!.click());
+      expect(lifecycle.request_rename).toHaveBeenCalledWith(
+        recent_project.path,
+        recent_project.name,
+      );
+    }
+  });
 
   it("已打开工程排在最近工程之前，只有工程视图高亮当前工程", async () => {
     const first = opened_project("first", "翻译.lg");

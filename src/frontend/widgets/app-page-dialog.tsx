@@ -1,4 +1,4 @@
-import { useRef, type JSX, type ReactNode } from "react";
+import { useRef, type JSX, type ReactNode, type RefObject } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
 import { useI18n } from "@frontend/app/locale/locale-context";
@@ -27,6 +27,7 @@ type AppPageDialogPrimaryAction = {
 type AppPageDialogProps = {
   open: boolean;
   title: string;
+  initialFocus?: RefObject<HTMLElement | null>;
   size?: AppPageDialogSize;
   onClose: () => void | Promise<void>;
   dismissBehavior?: AppPageDialogDismissBehavior; // `escape-only` 禁止点击遮罩关闭，保护编辑中的草稿
@@ -102,7 +103,9 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
         <DialogPrimitive.Popup
           ref={popup_ref}
           // 回车提交的弹窗聚焦自身，避免默认聚焦首个按钮后回车落到该按钮。已自动聚焦的输入框不受影响。
-          initialFocus={primary_action?.shortcut === "submit" ? popup_ref : undefined}
+          initialFocus={
+            props.initialFocus ?? (primary_action?.shortcut === "submit" ? popup_ref : undefined)
+          }
           data-slot="dialog-content"
           onKeyDown={(event) => {
             if (

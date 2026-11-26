@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { validate_game_path } from "../source-file-paths";
 import type { RenpyUsage } from "./usage";
 
 export type RenpyMetadata = {
@@ -13,8 +12,10 @@ export type RenpyMetadata = {
 /** 在持久化边界收窄条目身份，实际原文与目标由导出入口校验。 */
 export function read_renpy_metadata(extra: Item["extra_field"]): RenpyMetadata {
   const value = read_json_record(read_json_record(extra)["renpy"]);
-  assert(typeof value["internal_file_path"] === "string", "Invalid Ren'Py member");
-  validate_game_path(value["internal_file_path"]);
+  assert(
+    typeof value["internal_file_path"] === "string" && value["internal_file_path"] !== "",
+    "Invalid Ren'Py member",
+  );
   assert(
     typeof value["digest"] === "string" && /^[a-f0-9]{64}$/u.test(value["digest"]),
     "Invalid Ren'Py digest",
