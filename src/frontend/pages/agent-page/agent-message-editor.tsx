@@ -12,6 +12,7 @@ import {
   useState,
   useSyncExternalStore,
   type Ref,
+  type RefObject,
   type ReactNode,
 } from "react";
 import { FileText, Paperclip, Sparkles, SquareSlash } from "lucide-react";
@@ -235,6 +236,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     (candidate) => candidate.kind === "instruction",
   );
   const editor_read_only = props.read_only;
+  useAgentComposerHighlight(form_ref, !inline && !editor_read_only);
   const menu_open =
     !assistant_editing && mention_query !== null && !editor_read_only && !menu_suppressed;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
@@ -859,6 +861,65 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     );
     return true;
   }
+}
+
+const COMPOSER_HIGHLIGHT_POSITION = "--agent-composer-highlight-position";
+const COMPOSER_HIGHLIGHT_DISABLED = "(prefers-reduced-motion: reduce), (forced-colors: active)";
+
+/** 高光属于表单，由 CSS 读取位置，指针移动无需重渲染编辑器。 */
+function useAgentComposerHighlight(
+  form_ref: RefObject<HTMLFormElement | null>,
+  enabled: boolean,
+): void {
+  useEffect(() => {
+    const form = form_ref.current;
+    if (!enabled || form === null) return;
+
+    const preference = window.matchMedia(COMPOSER_HIGHLIGHT_DISABLED);
+    const listeners = new AbortController();
+    const options = { signal: listeners.signal };
+    let frame: number | null = null; // 同一帧只读取一次表单位置，使用最近的指针坐标。
+    let client_x = 0;
+    let client_y = 0;
+
+    const clear = (): void => {
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+        frame = null;
+      }
+      form.style.removeProperty(COMPOSER_HIGHLIGHT_POSITION);
+    };
+
+    const update = (): void => {
+      frame = null;
+      const { left, top, right, bottom } = form.getBoundingClientRect();
+      // 候选菜单仍是表单子节点，但可以显示在边框之外。
+      if (client_x < left || client_x >= right || client_y < top || client_y >= bottom) {
+        clear();
+        return;
+      }
+      form.style.setProperty(
+        COMPOSER_HIGHLIGHT_POSITION,
+        `${client_x - left}px ${client_y - top}px`,
+      );
+    };
+
+    const move = (event: PointerEvent): void => {
+      if (event.pointerType !== "mouse" || preference.matches) return;
+      client_x = event.clientX;
+      client_y = event.clientY;
+      frame ??= window.requestAnimationFrame(update);
+    };
+
+    form.addEventListener("pointermove", move, { ...options, passive: true });
+    form.addEventListener("pointerleave", clear, options);
+    form.addEventListener("pointercancel", clear, options);
+    preference.addEventListener("change", clear, options);
+    return () => {
+      listeners.abort();
+      clear();
+    };
+  }, [enabled, form_ref]);
 }
 
 /** 视觉顶部由 CodeMirror 判断，原生覆盖软换行。 */

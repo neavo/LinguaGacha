@@ -127,6 +127,44 @@ describe("AgentMessageEditor", () => {
     vi.unstubAllGlobals();
   });
 
+  it("鼠标高光按帧跟随主输入，离开或切换原位编辑后清除", async () => {
+    const view = await render_editor();
+    const form = view.querySelector("form")!;
+    const footer = form.querySelector(".agent-composer__footer")!;
+    const bounds = vi
+      .spyOn(form, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(100, 200, 400, 150));
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+    const position = () => form.style.getPropertyValue("--agent-composer-highlight-position");
+    const move = (clientX: number, clientY: number) =>
+      footer.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse", clientX, clientY }),
+      );
+
+    move(150, 220);
+    move(180, 230);
+    vi.advanceTimersToNextFrame();
+    expect(position()).toBe("80px 30px");
+    expect(bounds).toHaveBeenCalledOnce();
+
+    move(180, 190);
+    vi.advanceTimersToNextFrame();
+    expect(position()).toBe("");
+
+    move(140, 230);
+    form.dispatchEvent(new PointerEvent("pointerleave"));
+    vi.advanceTimersToNextFrame();
+    expect(position()).toBe("");
+
+    move(180, 230);
+    vi.advanceTimersToNextFrame();
+
+    await render_editor({ presentation: "inline" });
+    move(180, 230);
+    vi.advanceTimersToNextFrame();
+    expect(position()).toBe("");
+  });
+
   it("技能列表变化保持引用块、编辑器和撤销历史", async () => {
     const view = await render_editor();
     const editor = get_editor(view);
