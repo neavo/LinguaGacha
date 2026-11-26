@@ -1,0 +1,13 @@
+# 让 `oxfmt` 检查的文件在各平台检出时使用 LF。
+*.cjs text=auto eol=lf
+*.css text=auto eol=lf
+*.cts text=auto eol=lf
+*.html text=auto eol=lf
+*.js text=auto eol=lf
+*.json text=auto eol=lf
+*.jsonc text=auto eol=lf
+*.jsx text=auto eol=lf
+*.mjs text=auto eol=lf
+*.mts text=auto eol=lf
+*.ts text=auto eol=lf
+*.tsx text=auto eol=lf

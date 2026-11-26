@@ -62,7 +62,7 @@ it.runIf(process.env.LINGUAGACHA_MEDIA_SOURCE)(
     await npm.run(['install', '--save-exact', \`ffmpeg-static-electron-v5-\${process.platform}-\${process.arch}@5.2.5\`, ${JSON.stringify(`onnxruntime-node@${ORT_VERSION}`)}]);
     const installedOrt = JSON.parse(await fs.readFile(ortPackage, 'utf8')).version;
     assert.equal(installedOrt, ${JSON.stringify(ORT_VERSION)});
-    await uv.run(['add', 'kaldi-native-fbank==1.23.1', 'numpy==2.5.5', 'opencv-python-headless==5.1.0.95', 'pyclipper==1.4.0']);
+    await uv.run(['add', 'kaldi-native-fbank==1.23.3', 'numpy==2.5.5', 'opencv-python-headless==5.1.0.95', 'pyclipper==1.4.0']);
     await media.prepare_models();
     const info = await media.inspect(source);
     const run = async device => {
