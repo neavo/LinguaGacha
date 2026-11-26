@@ -2,5 +2,5 @@ import { zh_cn_post_translation_replacement_page } from "../zh-CN/post-translati
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_post_translation_replacement_page = {
-  title: "Post-translation",
+  title: "Post-replacement",
 } satisfies LocaleMessageSchema<typeof zh_cn_post_translation_replacement_page>;

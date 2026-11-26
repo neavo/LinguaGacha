@@ -130,13 +130,13 @@ export const ko_kr_app = {
   },
   toggle: {
     option: {
-      disabled: "미사용",
-      enabled: "사용",
+      disabled: "OFF",
+      enabled: "ON",
     },
   },
   state: {
-    disabled: "사용 안 함",
-    enabled: "사용 중",
+    disabled: "OFF",
+    enabled: "ON",
   },
   editor: {
     line_wrap: "자동 줄 바꿈",

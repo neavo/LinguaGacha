@@ -2,9 +2,9 @@ import { zh_cn_text_preserve_page } from "../zh-CN/text-preserve-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const pt_br_text_preserve_page = {
-  title: "Preservação de texto",
+  title: "Proteção de texto",
   mode: {
-    label: "Modo de preservação de texto",
+    label: "Modo de proteção de texto",
     content_html:
       "Preserva trechos de texto como fragmentos de código, caracteres de controle e tags de estilo que não devem ser traduzidos, evitando traduções incorretas" +
       "<br>" +
@@ -31,6 +31,6 @@ export const pt_br_text_preserve_page = {
   feedback: {
     unknown_error: "A operação falhou. Tente novamente mais tarde …",
     mode_refresh_pending:
-      "O modo de preservação de texto foi atualizado e o cache de revisão ainda está sendo atualizado. Verifique novamente em breve …",
+      "O modo de proteção de texto foi atualizado e o cache de revisão ainda está sendo atualizado. Verifique novamente em breve …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>;

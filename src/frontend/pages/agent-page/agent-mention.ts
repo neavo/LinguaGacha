@@ -13,7 +13,7 @@ export type AgentMentionInstruction = Readonly<{
   icon: LucideIcon;
   title: string;
   description: string;
-  disabled: boolean;
+  disabled?: boolean;
   execute: () => void;
 }>;
 

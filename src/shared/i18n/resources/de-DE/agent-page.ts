@@ -19,7 +19,7 @@ export const de_de_agent_page = {
     translation_description:
       "Modell für Stapelübersetzungen. Das Hauptmodell entscheidet, wann es eingesetzt wird.",
     media_description:
-      "Modell für Audio- und Videoerkennung. Das Hauptmodell entscheidet, wann es eingesetzt wird.\n<emphasis>Bitte beachten Sie, dass die meisten Modelle keine Audio- und Videoeingaben unterstützen. Empfohlen werden gemini und doubao-seed-lite.</emphasis>",
+      "Modell für Audio- und Videoerkennung. Das Hauptmodell entscheidet, wann es eingesetzt wird.\n<emphasis>Nur wenige Modelle unterstützen Audio- und Videoeingaben, darunter gemini und doubao-seed-lite.</emphasis>",
     follow: "Hauptmodell folgen",
   },
   title: "AGENT",

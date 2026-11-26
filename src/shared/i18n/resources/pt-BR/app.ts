@@ -107,7 +107,7 @@ export const pt_br_app = {
         "Para textos do MTool, <emphasis>reduz o tempo de tradução e os tokens em até 40%</emphasis>.\nAtivado por padrão.",
     },
     skip_duplicate_source_text_enable: {
-      title: "Ignorar texto original duplicado",
+      title: "Ignorar duplicados",
       description:
         "Entradas com texto idêntico em todo o projeto compartilham <emphasis>uma única tradução</emphasis>.\nAtivado por padrão.",
     },
@@ -135,13 +135,13 @@ export const pt_br_app = {
   },
   toggle: {
     option: {
-      disabled: "NÃO",
-      enabled: "SIM",
+      disabled: "OFF",
+      enabled: "ON",
     },
   },
   state: {
-    disabled: "Desativado",
-    enabled: "Ativado",
+    disabled: "OFF",
+    enabled: "ON",
   },
   editor: {
     line_wrap: "Quebra automática de linha",
@@ -180,7 +180,7 @@ export const pt_br_app = {
     projects_empty: "Nenhum projeto",
     skills: "Habilidades",
     workbench: "Bancada",
-    quality: "Qualidade da tradução",
+    quality: "Qualidade",
     more: "Mais",
     close_chat: "Fechar conversa",
     close_chat_confirm: "Confirma fechar a conversa …?",

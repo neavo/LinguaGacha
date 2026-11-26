@@ -75,16 +75,15 @@
 .project-workspace[data-tools-docked="true"] .project-workspace__tools-anchor {
   position: absolute;
   top: 8px;
-  /* 左右外扩 8px 与底部 16px 承接常驻卡片阴影，避免极端高度滚动时被裁切。 */
-  right: calc(var(--ui-page-pad-x) - 8px);
+  right: var(--ui-page-pad-x);
   flex-direction: column;
   align-items: stretch;
   gap: 16px;
   box-sizing: border-box;
-  width: calc(var(--workspace-tools-card-width) + 16px);
+  width: var(--workspace-tools-card-width);
   height: auto;
   max-height: calc(100vh - var(--titlebar-height, 40px) - 16px);
-  padding: 0 8px 16px;
+  padding: 0 0 16px;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -175,12 +174,8 @@
   flex-shrink: 0;
 }
 
-.project-workspace__tools-label {
-  min-width: 0;
-  overflow: hidden;
+.project-workspace__tools-trigger .project-workspace__tool-label {
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .project-workspace__tools-chevron {
@@ -276,12 +271,8 @@
 }
 
 .project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-card {
-  background: var(--ui-card-default-surface);
-  box-shadow: var(--ui-card-default-shadow);
-}
-
-.project-workspace__tools-panel[data-docked="true"] .project-workspace__tools-card::after {
-  border-color: var(--ui-card-default-border);
+  background: var(--card);
+  box-shadow: none;
 }
 
 .project-workspace__tools-list {
@@ -344,7 +335,7 @@
 
 .project-workspace__tool-item:disabled {
   opacity: 0.5;
-  cursor: default;
+  pointer-events: none; /* 由外层 TooltipTarget 接收悬停。 */
 }
 
 .project-workspace__tool-item:focus-visible {
@@ -381,12 +372,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.project-workspace__tool-count,
-.project-workspace__tool-badge {
-  margin-left: 8px;
-  flex-shrink: 0;
 }
 
 .project-prefilter-dialog__emphasis {

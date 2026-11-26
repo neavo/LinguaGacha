@@ -12,6 +12,7 @@ import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { ProjectStore } from "@frontend/app/state/project-store-registry";
 import { createRuntimeActivityStore } from "@frontend/app/state/runtime-activity-store";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 const leave = vi.hoisted(() => vi.fn<() => Promise<boolean>>(async () => true));
 let runtime_activity: ReturnType<typeof createRuntimeActivityStore>;
@@ -179,9 +180,11 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     await act(async () =>
       root?.render(
         <LocaleProvider locale="zh-CN">
-          <PageLeaveProvider>
-            <WorkspaceHarness project={project} />
-          </PageLeaveProvider>
+          <TooltipProvider>
+            <PageLeaveProvider>
+              <WorkspaceHarness project={project} />
+            </PageLeaveProvider>
+          </TooltipProvider>
         </LocaleProvider>,
       ),
     );
@@ -221,11 +224,11 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     const quality = group_panel(container, "quality");
     const busy = { batchTranslation: true, agent: false, projectWrite: false };
     await act(async () => group_trigger(container, "quality").click());
-    const prefilter_items = new Set([
-      find_tool_item(quality, "跳过重复原文"),
-      find_tool_item(quality, "MTool 优化器"),
-    ]);
-    const disabled_items = () => new Set(quality.querySelectorAll("button:disabled"));
+    const disabled_labels = () =>
+      [...quality.querySelectorAll("button:disabled .project-workspace__tool-label")].map(
+        (label) => label.textContent,
+      );
+    const prefilter_labels = ["跳过重复原文", "MTool 优化器"];
 
     await act(async () =>
       runtime_activity.applySnapshot({
@@ -233,16 +236,16 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
         projects: { [project.snapshot.projectId]: busy },
       }),
     );
-    expect(disabled_items()).toEqual(prefilter_items);
+    expect(disabled_labels()).toEqual(prefilter_labels);
 
     await act(async () => TestResizeObserver.emit(workspace, 1600));
     expect(quality.querySelector('[role="menu"]')).toBeNull();
-    expect(disabled_items()).toEqual(prefilter_items);
+    expect(disabled_labels()).toEqual(prefilter_labels);
 
     await act(async () =>
       runtime_activity.applySnapshot({ revision: 2, projects: { other: busy } }),
     );
-    expect(disabled_items().size).toBe(0);
+    expect(disabled_labels()).toEqual([]);
   });
 
   it("窄态双 Tab 互斥展开并支持外部点击、Esc 与失焦收起，激活态与关闭按钮只归属对应组", async () => {
@@ -354,5 +357,53 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     await act(async () => TestResizeObserver.emit(workspace, 1000));
     expect(workbench.dataset.expanded).toBe("false");
     expect(quality.dataset.expanded).toBe("false");
+  });
+
+  it("禁用的预过滤项仅在标题截断时显示完整标题提示", async () => {
+    vi.useFakeTimers();
+    try {
+      const project = create_project();
+      const container = await mount(project);
+      await act(async () => group_trigger(container, "quality").click());
+
+      await act(async () =>
+        runtime_activity.applySnapshot({
+          revision: 1,
+          projects: {
+            [project.snapshot.projectId]: {
+              batchTranslation: true,
+              agent: false,
+              projectWrite: false,
+            },
+          },
+        }),
+      );
+      const title = "跳过重复原文";
+      const item = find_tool_item(container, title);
+      const label = item.querySelector(".project-workspace__tool-label")!;
+      const trigger = item.parentElement!; // 原生禁用按钮由外层承接悬停。
+      const tooltip = () => document.querySelector('[role="tooltip"][data-open]');
+      const hover = (clientX: number) =>
+        act(async () => {
+          trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, clientX }));
+          trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX }));
+          vi.runAllTimers();
+        });
+
+      // jsdom 不计算布局，直接模拟标题刚好放下与实际截断两种情况。
+      Object.defineProperty(label, "clientWidth", { value: 84 });
+      Object.defineProperty(label, "scrollWidth", { configurable: true, value: 84 });
+      await hover(10);
+      expect(tooltip()).toBeNull();
+      await act(async () =>
+        trigger.dispatchEvent(new MouseEvent("mouseleave", { relatedTarget: document.body })),
+      );
+
+      Object.defineProperty(label, "scrollWidth", { value: 160 });
+      await hover(20);
+      expect(tooltip()?.textContent).toBe(title);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

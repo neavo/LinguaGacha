@@ -2,9 +2,9 @@ import { zh_cn_text_preserve_page } from "../zh-CN/text-preserve-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_text_preserve_page = {
-  title: "Text preserve",
+  title: "Text protection",
   mode: {
-    label: "Text preserve mode",
+    label: "Text protection mode",
     content_html:
       "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation" +
       "<br>" +
@@ -31,6 +31,6 @@ export const en_us_text_preserve_page = {
   feedback: {
     unknown_error: "The operation failed. Please try again later …",
     mode_refresh_pending:
-      "The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly …",
+      "The text protection mode was updated, and the proofreading cache is still refreshing. Please check again shortly …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>;

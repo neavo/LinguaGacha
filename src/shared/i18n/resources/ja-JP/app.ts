@@ -134,13 +134,13 @@ export const ja_jp_app = {
   },
   toggle: {
     option: {
-      disabled: "無効",
-      enabled: "有効",
+      disabled: "OFF",
+      enabled: "ON",
     },
   },
   state: {
-    disabled: "無効",
-    enabled: "有効",
+    disabled: "OFF",
+    enabled: "ON",
   },
   editor: {
     line_wrap: "自動折り返し",

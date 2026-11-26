@@ -49,13 +49,7 @@
 .toolbox-page__separator {
   margin-inline: 16px;
   width: auto;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--border) 50%, transparent) 10%,
-    color-mix(in srgb, var(--border) 50%, transparent) 90%,
-    transparent
-  );
+  background: var(--ui-table-divider-soft);
 }
 
 .toolbox-page__card-content {

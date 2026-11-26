@@ -2,5 +2,5 @@ import { zh_cn_post_translation_replacement_page } from "../zh-CN/post-translati
 import type { LocaleMessageSchema } from "../../types";
 
 export const pt_br_post_translation_replacement_page = {
-  title: "Pós-tradução",
+  title: "Pós-substituição",
 } satisfies LocaleMessageSchema<typeof zh_cn_post_translation_replacement_page>;

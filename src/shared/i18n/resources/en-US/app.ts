@@ -105,7 +105,7 @@ export const en_us_app = {
         "For MTool text, <emphasis>cuts translation time and tokens by up to 40%</emphasis>.\nEnabled by default.",
     },
     skip_duplicate_source_text_enable: {
-      title: "Skip duplicate source text",
+      title: "Skip duplicates",
       description:
         "Entries with identical text across the project share <emphasis>one translation</emphasis>.\nEnabled by default.",
     },
@@ -138,8 +138,8 @@ export const en_us_app = {
     },
   },
   state: {
-    disabled: "Disabled",
-    enabled: "Enabled",
+    disabled: "OFF",
+    enabled: "ON",
   },
   editor: {
     line_wrap: "Line wrapping",
@@ -178,7 +178,7 @@ export const en_us_app = {
     projects_empty: "No projects",
     skills: "Skills",
     workbench: "Workbench",
-    quality: "Translation Quality",
+    quality: "Quality",
     more: "More",
     close_chat: "Close conversation",
     close_chat_confirm: "Confirm closing the conversation …?",

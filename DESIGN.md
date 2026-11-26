@@ -90,7 +90,6 @@ spacing:
   boundary: "1px"
   selection-rail: "3px"
   card-padding: "16px"
-  panel-padding: "24px"
   page-gap: "16px"
   dense-section-gap: "12px"
   dense-list-gap: "8px"
@@ -164,17 +163,12 @@ components:
     height: "20px"
     padding: "0px 8px"
   card-default:
-    backgroundColor: "var(--ui-card-default-surface)"
+    backgroundColor: "{colors.card}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     padding: "{spacing.card-padding}"
-  card-panel:
-    backgroundColor: "var(--ui-card-panel-surface)"
-    textColor: "{colors.foreground}"
-    rounded: "{rounded.card}"
-    padding: "{spacing.panel-padding}"
   card-table:
-    backgroundColor: "var(--ui-card-table-surface)"
+    backgroundColor: "{colors.card}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     padding: "0"
@@ -202,7 +196,7 @@ components:
     height: "{spacing.app-table-row-height}"
     padding: "0 12px"
   command-bar:
-    backgroundColor: "var(--ui-card-toolbar-surface)"
+    backgroundColor: "{colors.card}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     height: "{spacing.toolbar-height}"
@@ -345,25 +339,9 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 ## Elevation & Depth
 
-LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻壳层先靠背景、边框与分割线建立深度，卡片只获得环境式轻抬；Agent 工具、思考、上下文压缩和失败恢复等行内过程依靠弱色面、细边界与状态标记分层，不额外浮起。明显阴影与模糊只属于弹层、拖放和模态反馈。暗色主题使用更深、更集中于黑色的阴影，但不改变层级语义。
+常驻工作面与 Agent 行内过程依靠色面、细边界和分割线分层。投射阴影用于弹窗、浮层和拖拽反馈，复用 `--ui-shadow-overlay` 随主题调整。
 
 Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay`，Select、Dropdown、Context Menu 与 Popover 使用 `--ui-layer-popover`，通用及编辑器 Tooltip 使用 `--ui-layer-tooltip`，阻断式进度遮罩与反馈使用 `--ui-layer-blocking-overlay` / `--ui-layer-blocking-feedback`。层级关系固定为 `overlay < popover < tooltip < blocking`；页面不得复制高层级数字，子元素的局部 `z-index` 也不承担跨 Portal 排序。
-
-### Shadow Vocabulary
-
-- **默认卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent), 0 14px 28px -24px color-mix(in srgb, var(--foreground) 16%, transparent)`): 普通卡片和轻量容器。
-- **面板卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent), 0 18px 32px -24px color-mix(in srgb, var(--foreground) 18%, transparent)`): 承载较多配置内容的面板。
-- **表格卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent), 0 10px 20px -24px color-mix(in srgb, var(--foreground) 12%, transparent)`): 数据表容器和表头。
-- **工具栏卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent), 0 12px 24px -24px color-mix(in srgb, var(--foreground) 16%, transparent)`): 命令栏、搜索栏和紧凑操作组。
-- **覆盖层阴影** (`0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent)`): 弹窗、浮层和暂时盖过工作区的界面。
-
-### Named Rules
-
-**The Quiet Lift Rule.** 阴影必须轻，主要表达层级和状态，不能承担装饰。
-
-**The Border First Rule.** 常驻层级优先用 1px 描边和色面区分，只有交互、拖拽或覆盖层才增加明显阴影。
-
-**The Inline Process Rule.** 行内系统过程保持贴合信息流；只有打开工具详情、引用菜单或模态内容时才提升到覆盖层。
 
 ## Shapes
 
@@ -388,7 +366,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Hover / Focus:** hover 轻微改变当前语义面；按钮预留 1px 边框，focus-visible 把边框切换为 ring；非弹出型按钮 active 下压 1px。
 - **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
 - **Variant Surfaces:** outline 浅色态使用 background 底色与 border 边界，暗色态使用 input 的 30% 混色面；ghost 保持透明默认面，link 使用主色文字与悬停下划线。前置 token 表记录浅色默认态，主题混色与交互状态由当前控件及配套设计数据承接。
-- **State Tooltips:** 控件 Tooltip 使用完整的本地化“标题 · 当前值”，中点只分隔标题与当前值；布尔选项显示“启用 / 禁用”，布尔状态显示“已启用 / 已禁用”；布尔切换控件的可访问名称保持稳定，并由 `aria-pressed` 表达开关状态。
+- 状态 Tooltip 使用本地化的「标题 · 当前值」。布尔开关保留稳定的可访问名称，通过 `aria-pressed` 表达状态。中文区分布尔选项与当前状态的措辞，其余语言统一使用大写 `ON / OFF`。
 
 ### Shortcuts
 
@@ -418,11 +396,8 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Cards / Containers
 
-- **Corner Style:** `default`、`panel`、`table`、`toolbar` 和 `group` 共用 4px 小圆角。
-- **Background:** 独立内容面与嵌入分组使用各自的全局 surface token，暗色主题沿用相同职责。
-- **Shadow Strategy:** 独立内容面使用 Elevation & Depth 中的低阴影，`group` 使用 `--border` 描边且无阴影；只有可交互卡片获得 hover、active 与 focus-visible 反馈。
-- **Border:** 1px 伪元素描边；hover 仅把边框少量混入主色。
-- **Internal Padding:** `default` 与 `group` 的内容插槽为 16px，`panel` 为 24px，`table` 和 `toolbar` 把 padding 让给内部结构。直接传入子内容时由消费方设置布局与间距。
+- 独立内容面使用 `--card`，嵌入分组使用 `--ui-group-surface`。
+- 直接传入子内容时，消费方负责间距。表格和工具栏由内部布局控制边距。
 
 ### Inputs / Fields
 

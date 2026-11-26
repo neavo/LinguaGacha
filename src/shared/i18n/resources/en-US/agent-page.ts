@@ -19,7 +19,7 @@ export const en_us_agent_page = {
     translation_description:
       "Model used for batch translation. The main model decides when to use it.",
     media_description:
-      "Model used for audio and video recognition. The main model decides when to use it.\n<emphasis>Please note that most models do not support audio and video input. gemini and doubao-seed-lite are recommended.</emphasis>",
+      "Model used for audio and video. The main model decides when to use it.\n<emphasis>Most models don't support audio or video input, so try gemini or doubao-seed-lite.</emphasis>",
     follow: "Follow main model",
   },
   title: "AGENT",

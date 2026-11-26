@@ -455,7 +455,7 @@
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-card);
-  background: var(--ui-card-default-surface);
+  background: var(--card);
   list-style: none;
 }
 
@@ -514,12 +514,12 @@
 .proofreading-page__context-field {
   min-width: 0;
   padding: 8px 104px 10px 12px;
-  background: color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%);
+  background: color-mix(in srgb, var(--muted) 24%, var(--card) 76%);
 }
 
 .proofreading-page__context-field--translation {
   border-left: 1px solid var(--border);
-  background: color-mix(in srgb, var(--primary) 5%, var(--ui-card-default-surface) 95%);
+  background: color-mix(in srgb, var(--primary) 5%, var(--card) 95%);
 }
 
 .proofreading-page__context-item[aria-current="true"] .proofreading-page__context-field {

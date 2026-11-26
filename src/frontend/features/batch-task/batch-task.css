@@ -38,17 +38,7 @@
   height: 100%;
   max-width: min(520px, 100vw);
   gap: 0;
-  background:
-    radial-gradient(
-      circle at top left,
-      color-mix(in srgb, var(--card) 78%, transparent),
-      transparent 22%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--background) 92%, var(--card)) 0%,
-      var(--background) 100%
-    );
+  background: var(--background);
 }
 
 .batch-translation__sheet-body {
@@ -100,8 +90,6 @@
 }
 
 .batch-translation__metric {
-  --card-radius-current: calc(var(--ui-radius-card) + 2px);
-
   display: grid;
   grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
   min-width: 0;

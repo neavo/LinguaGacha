@@ -109,7 +109,7 @@ export const de_de_app = {
         "Für MTool-Text <emphasis>reduziert dies die Übersetzungszeit und Token um bis zu 40%</emphasis>.\nStandardmäßig aktiviert.",
     },
     skip_duplicate_source_text_enable: {
-      title: "Doppelten Ausgangstext überspringen",
+      title: "Duplikate überspringen",
       description:
         "Einträge mit identischem Text im gesamten Projekt teilen <emphasis>eine Übersetzung</emphasis>.\nStandardmäßig aktiviert.",
     },
@@ -138,13 +138,13 @@ export const de_de_app = {
   },
   toggle: {
     option: {
-      disabled: "AUS",
-      enabled: "AN",
+      disabled: "OFF",
+      enabled: "ON",
     },
   },
   state: {
-    disabled: "Deaktiviert",
-    enabled: "Aktiviert",
+    disabled: "OFF",
+    enabled: "ON",
   },
   editor: {
     line_wrap: "Zeilenumbruch",
@@ -183,7 +183,7 @@ export const de_de_app = {
     projects_empty: "Keine Projekte",
     skills: "Skills",
     workbench: "Arbeitsbereich",
-    quality: "Übersetzungsqualität",
+    quality: "Qualität",
     more: "Mehr",
     close_chat: "Unterhaltung schließen",
     close_chat_confirm: "Unterhaltung wirklich schließen …?",
