@@ -395,7 +395,7 @@ describe("AgentConversation", () => {
     expect(lifecycle.request_open).toHaveBeenCalledExactlyOnceWith("E:/資料/已有工程.LG");
   });
 
-  it("无工程时保留应用级底栏工具、技能补全和禁用态宿主指令", async () => {
+  it("无工程时保留底栏工具和技能补全，四条宿主指令中仅压缩禁用", async () => {
     settings_state.save.mockImplementation(async (path) => {
       if (path === "/api/skills/snapshot") {
         return {
@@ -431,8 +431,13 @@ describe("AgentConversation", () => {
     expect(skills.map((item) => item.querySelector("strong")?.textContent)).toEqual([
       "translation",
     ]);
-    expect(instructions.length).toBeGreaterThan(0);
-    expect(instructions.every((item) => item.disabled)).toBe(true);
+    expect(instructions.map((item) => item.querySelector("strong")?.textContent)).toEqual([
+      "agent_page.mention.instructions.compact_context.title",
+      "agent_page.mention.instructions.update_file.title",
+      "game_font_page.title",
+      "app.translation_export.action",
+    ]);
+    expect(instructions.map((item) => item.disabled)).toEqual([true, false, false, false]);
   });
 
   it("无工程时选择与粘贴的附件先暂存，只在建项成功后交接", async () => {
@@ -784,14 +789,15 @@ describe("AgentConversation", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 
-  it("从 mention 菜单选择压缩指令后立即执行且不发送消息", async () => {
+  it("当前会话可压缩且空闲时，菜单指令直接执行压缩", async () => {
     const compactContext = vi.fn(async () => undefined);
     const send = vi.fn(async () => undefined);
-    const view = await render_page({
+    const options: Partial<AgentPageState> = {
       context: { tokens: 64_000, compactable: true, limits: null },
       compactContext,
       send,
-    });
+    };
+    const view = await render_page({ ...options, state: "running" });
     const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
     if (editor === null) throw new Error("缺少 Composer");
     await act(async () =>
@@ -805,14 +811,19 @@ describe("AgentConversation", () => {
     );
     if (instruction === null) throw new Error("缺少压缩指令");
 
+    expect(instruction.disabled).toBe(true);
+    await render_page({ ...options, context: { tokens: 0, compactable: false, limits: null } });
+    expect(instruction.disabled).toBe(true);
+
+    await render_page(options);
     await act(async () => instruction.click());
     expect(editor.state.doc.toString()).toBe("");
     expect(compactContext).toHaveBeenCalledOnce();
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("从 mention 菜单选择导出翻译成果指令后保留输入并追加导出草稿", async () => {
-    const view = await render_page({});
+  it("无工程时选择导出翻译成果指令，保留输入并追加导出草稿", async () => {
+    const view = await render_page({}, true, EmptyConversation);
     const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
     if (editor === null) throw new Error("缺少 Composer");
     await act(async () =>
@@ -865,34 +876,6 @@ describe("AgentConversation", () => {
     expect(editor.state.sliceDoc(from, to)).toBe("app.agent_input.path_placeholder");
     expect(send).not.toHaveBeenCalled();
   });
-
-  it.each(["batch_translation", "model_test"] as const)(
-    "%s 占用时暂停额外 Agent 执行入口",
-    async (owner) => {
-      const view = await render_page({
-        context: { tokens: 1_000, compactable: false, limits: null },
-      });
-      const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
-      if (editor === null) throw new Error("缺少 Composer");
-      await act(async () =>
-        editor.dispatch({
-          changes: { from: 0, insert: "@compact" },
-          selection: EditorSelection.cursor(8),
-        }),
-      );
-      const idle_instruction = view.querySelector<HTMLButtonElement>(
-        '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
-      );
-      expect(idle_instruction?.disabled).toBe(true);
-
-      runtime_state.current = { revision: 1, owner };
-      await render_page({ context: { tokens: 1_000, compactable: false, limits: null } });
-      const busy_instruction = view.querySelector<HTMLButtonElement>(
-        '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
-      );
-      expect(busy_instruction?.disabled).toBe(true);
-    },
-  );
 
   it("恢复失败时显示单一重试入口并重新连接", async () => {
     const reconnect = vi.fn();

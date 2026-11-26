@@ -2,7 +2,7 @@ import { zh_cn_toolbox_page } from "../zh-CN/toolbox-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_toolbox_page = {
-  title: "Werkzeugkasten",
+  title: "Schatztruhe",
   entries: {
     game_font: {
       description: "Godot · RenPy · Tyrano · WOLFRPG · RPGMAKER MV/MZ",

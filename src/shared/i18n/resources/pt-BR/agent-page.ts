@@ -19,7 +19,7 @@ export const pt_br_agent_page = {
     translation_description:
       "Modelo usado para tradução em lote. O modelo principal decide quando usá-lo.",
     media_description:
-      "Modelo usado para reconhecimento de áudio e vídeo. O modelo principal decide quando usá-lo.\n<emphasis>Observe que a maioria dos modelos não aceita entradas de áudio e vídeo. Recomendamos gemini e doubao-seed-lite.</emphasis>",
+      "Modelo usado para reconhecimento de áudio e vídeo. O modelo principal decide quando usá-lo.\n<emphasis>Poucos modelos aceitam entradas de áudio e vídeo, por isso recomendamos gemini ou doubao-seed-lite.</emphasis>",
     follow: "Seguir modelo principal",
   },
   title: "AGENT",
@@ -111,7 +111,7 @@ export const pt_br_agent_page = {
     manual: "Aprovação manual",
     auto: "Aprovação automática",
     manual_short: "Manual",
-    auto_short: "Automático",
+    auto_short: "Auto",
     tooltip: "Modo de aprovação de permissão de escrita",
     title: "Escrevendo dados do projeto",
     summary: {

@@ -2,7 +2,7 @@ import { zh_cn_toolbox_page } from "../zh-CN/toolbox-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ja_jp_toolbox_page = {
-  title: "ツールボックス",
+  title: "宝箱",
   entries: {
     game_font: {
       description: "Godot · RenPy · Tyrano · WOLFRPG · RPGMAKER MV/MZ",

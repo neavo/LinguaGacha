@@ -4,7 +4,7 @@ import { useRender } from "@base-ui/react/use-render";
 
 import { cn } from "@frontend/shadcn/classnames";
 
-type CardVariant = "default" | "panel" | "table" | "toolbar" | "group";
+type CardVariant = "default" | "table" | "toolbar" | "group";
 
 /** 统一容器表面，通过 `render` 保留消费方的元素语义。 */
 function Card({
@@ -13,7 +13,7 @@ function Card({
   render,
   ...props
 }: useRender.ComponentProps<"section"> & { variant?: CardVariant }) {
-  // 交互标记由公开事件/语义属性推导，供卡片 hover 与按下反馈共用。
+  // 根据公开事件和语义属性选择可交互卡片的边框与焦点反馈。
   const is_interactive =
     props.onClick !== undefined ||
     props.onKeyDown !== undefined ||
@@ -29,10 +29,7 @@ function Card({
         "data-slot": "card",
         "data-variant": variant,
         "data-interactive": is_interactive ? "true" : undefined,
-        className: cn(
-          "card-surface rounded-[var(--card-radius-current)] text-card-foreground",
-          className,
-        ),
+        className: cn("rounded-[var(--ui-radius-card)] text-card-foreground", className),
       } as React.ComponentProps<"section">,
       props,
     ),

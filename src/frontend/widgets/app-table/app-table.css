@@ -1,14 +1,5 @@
 .app-table {
-  --app-table-header-bg: color-mix(
-    in srgb,
-    var(--ui-card-default-surface) 88%,
-    var(--ui-card-table-surface) 12%
-  );
-  --app-table-header-border: color-mix(
-    in srgb,
-    var(--ui-card-default-border) 82%,
-    var(--border) 18%
-  );
+  --app-table-header-bg: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
   --app-table-header-divider: color-mix(in srgb, var(--ui-table-divider) 86%, var(--border) 14%);
   --app-table-column-divider: color-mix(in srgb, var(--ui-table-divider-soft) 74%, transparent);
   --app-table-zebra: color-mix(in srgb, var(--accent) 30%, transparent);
@@ -16,7 +7,6 @@
   --app-table-selected: color-mix(in srgb, var(--ui-table-selected) 94%, var(--accent) 6%);
   --app-table-selection-rail: var(--sidebar-primary);
   --app-table-selection-box: color-mix(in srgb, var(--primary) 18%, transparent);
-  --app-table-selected-gap-fill: var(--ui-card-default-surface);
   --app-table-hover-state-inset-block: 0px;
   --app-table-selected-state-inset-block: 1px;
   --app-table-row-height: 36px;
@@ -27,19 +17,13 @@
 }
 
 .dark .app-table {
-  --app-table-header-bg: color-mix(
-    in srgb,
-    var(--ui-card-default-surface) 82%,
-    var(--ui-card-table-surface) 18%
-  );
-  --app-table-header-border: color-mix(in srgb, var(--ui-card-default-border) 86%, white 14%);
+  --app-table-header-bg: color-mix(in srgb, var(--card) 90%, var(--background) 10%);
   --app-table-header-divider: color-mix(in srgb, var(--ui-table-divider) 78%, white 2%);
   --app-table-column-divider: color-mix(in srgb, var(--ui-table-divider-soft) 88%, white 4%);
   --app-table-zebra: color-mix(in srgb, white 5%, transparent);
   --app-table-hover: color-mix(in srgb, var(--ui-table-hover) 88%, white 12%);
   --app-table-selected: color-mix(in srgb, var(--ui-table-selected) 82%, white 18%);
   --app-table-selection-box: color-mix(in srgb, var(--primary) 24%, transparent);
-  --app-table-selected-gap-fill: color-mix(in srgb, var(--ui-card-default-surface) 92%, white 8%);
 }
 
 .app-table__head-wrap {
@@ -49,14 +33,13 @@
   padding-right: var(--app-table-scrollbar-width); /* 与表体滚动条实际宽度一致，保持列线对齐 */
   border-radius: var(--ui-radius-card) var(--ui-radius-card) 0 0;
   background: var(--app-table-header-bg);
-  box-shadow: var(--ui-card-default-shadow);
 }
 
 .app-table__head-wrap::after {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid var(--app-table-header-border);
+  border: 1px solid var(--border);
   border-bottom-color: var(--app-table-header-divider);
   border-radius: inherit;
   pointer-events: none;
@@ -83,7 +66,6 @@
   border-collapse: separate;
   border-spacing: 0;
   --table-row-height-current: var(--app-table-row-height);
-  --table-header-bg-current: var(--app-table-header-bg);
   --table-hover-current: var(--app-table-hover);
   --table-selected-current: var(--app-table-selected);
 }
@@ -283,7 +265,7 @@
   > .app-table__row[data-dragging="true"]
   > [data-slot="table-cell"] {
   --app-table-cell-state: var(--table-selected-current);
-  --app-table-cell-state-gap-fill: var(--app-table-selected-gap-fill);
+  --app-table-cell-state-gap-fill: var(--card);
   --app-table-cell-state-inset-block: var(--app-table-selected-state-inset-block);
 }
 
@@ -293,7 +275,7 @@
   > .app-table__row[data-active="true"]
   > [data-slot="table-cell"] {
   --app-table-cell-state: color-mix(in srgb, var(--table-selected-current) 84%, var(--primary) 16%);
-  --app-table-cell-state-gap-fill: var(--app-table-selected-gap-fill);
+  --app-table-cell-state-gap-fill: var(--card);
   --app-table-cell-state-inset-block: var(--app-table-selected-state-inset-block);
 }
 
@@ -425,10 +407,11 @@
 }
 
 .app-table__drag-overlay {
-  background: var(--ui-card-table-surface);
+  border: 1px solid var(--border);
+  background: var(--card);
   overflow: hidden;
   border-radius: var(--ui-radius-card);
-  box-shadow: var(--ui-card-default-shadow);
+  box-shadow: var(--ui-shadow-overlay);
 }
 
 .app-table__table--overlay {

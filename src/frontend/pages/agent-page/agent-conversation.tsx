@@ -156,49 +156,32 @@ function useAgentApprovalMode() {
   };
 }
 
-/** 主 Composer 的宿主指令目录，空态与会话态共用同一结构与文案。 */
+/** 压缩直接执行会话命令，其余指令在空态与会话态都可预置草稿。 */
 function build_agent_instructions(options: {
   t: ReturnType<typeof useI18n>["t"];
-  loaded: boolean;
-  file_count: number;
-  compact_available: boolean;
-  compact_unnecessary: boolean;
+  compactable: boolean | null; // 没有空闲会话时为 null，无法判断是否需要压缩。
   append_draft: (text: string, selection?: { from: number; to: number }) => void;
   on_compact: () => void;
 }): readonly AgentMentionInstruction[] {
-  const { t, loaded } = options;
+  const { t } = options;
   return [
-    {
-      // 翻译成果导出只要求工程中有文件。
-      id: "export_translation",
-      icon: FileOutput,
-      title: t("app.translation_export.action"),
-      description: t("agent_page.mention.instructions.export_translation.description"),
-      disabled: !loaded || options.file_count === 0,
-      execute: () =>
-        options.append_draft(
-          `${t("app.translation_export.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
-        ),
-    },
     {
       id: "compact_context",
       icon: Shrink,
       title: t("agent_page.mention.instructions.compact_context.title"),
       description: t(
-        options.compact_unnecessary
+        options.compactable === false
           ? "agent_page.mention.instructions.compact_context.unnecessary"
           : "agent_page.mention.instructions.compact_context.description",
       ),
-      disabled: !loaded || !options.compact_available,
+      disabled: options.compactable !== true,
       execute: options.on_compact,
     },
     {
-      // 只预置草稿，流程由技能决定，不受会话空闲约束。
       id: "update_file",
       icon: FileDiff,
       title: t("agent_page.mention.instructions.update_file.title"),
       description: t("agent_page.mention.instructions.update_file.description"),
-      disabled: !loaded,
       execute: () => {
         const request = format_agent_path_request(
           t,
@@ -209,12 +192,10 @@ function build_agent_instructions(options: {
       },
     },
     {
-      // 只预置草稿，流程由引擎技能决定，不受会话空闲约束。
       id: "change_game_font",
       icon: Type,
       title: t("game_font_page.title"),
       description: t("agent_page.mention.instructions.change_game_font.description"),
-      disabled: !loaded,
       execute: () => {
         const request = format_agent_path_request(
           t,
@@ -229,6 +210,16 @@ function build_agent_instructions(options: {
         );
         options.append_draft(request.text, request.selection);
       },
+    },
+    {
+      id: "export_translation",
+      icon: FileOutput,
+      title: t("app.translation_export.action"),
+      description: t("agent_page.mention.instructions.export_translation.description"),
+      execute: () =>
+        options.append_draft(
+          `${t("app.translation_export.agent_request")} ${format_agent_reference({ kind: "skill", name: "project-operation" })}`,
+        ),
     },
   ];
 }
@@ -364,10 +355,7 @@ export function EmptyAgentConversation({
 
   const instructions = build_agent_instructions({
     t,
-    loaded: false,
-    file_count: 0,
-    compact_available: false,
-    compact_unnecessary: false,
+    compactable: null,
     append_draft: (text, selection) => composer_ref.current?.append_draft(text, selection),
     on_compact: () => {},
   });
@@ -522,7 +510,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const lifecycle = useProjectLifecycle();
   const agent_actions = useAgentChatActions();
   const model_selection = useModelSelection();
-  const { project_snapshot } = useDesktopState();
   const approval = useAgentApprovalMode();
   const page_ref = useRef<HTMLDivElement | null>(null);
   const conversation_ref = useRef<HTMLElement | null>(null);
@@ -570,10 +557,10 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const workspace_apply_running = timeline.workspaceApplyRunning;
   const agent_restoring = controls.transport === "restoring";
   const compacting = timeline.compacting;
-  // 宿主指令只在会话已恢复、命令已收束且共享运行时空闲时开放。可压缩性直接采用后端事实。
-  const instruction_ready =
-    controls.transport === "ready" && controls.state === "idle" && controls.command === null;
-  const compact_available = instruction_ready && controls.context.compactable;
+  const compactable =
+    controls.transport === "ready" && controls.state === "idle" && controls.command === null
+      ? controls.context.compactable
+      : null;
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
   const unavailable_reason =
@@ -689,11 +676,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   }, [agent_actions, show_command_error]);
   const instructions = build_agent_instructions({
     t,
-    loaded: true,
-    file_count: project_snapshot.file_count,
-    compact_available,
-    // 会话忙碌时禁用原因不在可压缩性，沿用功能说明。
-    compact_unnecessary: instruction_ready && !controls.context.compactable,
+    compactable,
     append_draft: (text, selection) => composer_ref.current?.append_draft(text, selection),
     on_compact: compact_context,
   });
@@ -943,7 +926,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
           ) : (
             <AgentTimeline
               active={active}
-              compact_available={compact_available}
+              compact_available={compactable === true}
               on_compact={compact_context}
               follow_reset_revision={follow_reset_revision}
               on_continue={is_running || compacting ? undefined : continue_latest_round}

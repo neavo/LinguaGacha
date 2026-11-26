@@ -26,14 +26,13 @@
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, white 22%);
+  border: 1px solid var(--border);
   border-radius: var(--ui-radius-card);
   background: color-mix(in srgb, var(--muted) 52%, var(--popover) 48%);
   cursor: help;
   transition:
     border-color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 180ms ease;
+    background-color 180ms ease;
 }
 
 .custom-prompt-page__readonly-strip:hover,

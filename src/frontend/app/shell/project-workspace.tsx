@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   BadgeCheck,
   BetweenVerticalEnd,
@@ -31,6 +40,7 @@ import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { AgentPage } from "@frontend/pages/agent-page/page";
 import { Badge } from "@frontend/shadcn/badge";
+import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { ProjectPrefilterSettingDialog } from "./project-prefilter-setting-dialog";
 import "@frontend/widgets/inline-action-button.css";
@@ -306,7 +316,7 @@ function WorkspaceToolGroup({
   const header_content = (
     <>
       <HeaderIcon className="project-workspace__tools-icon" aria-hidden="true" />
-      <span className="project-workspace__tools-label">{header_label}</span>
+      <span className="project-workspace__tool-label">{header_label}</span>
       {active_route_item === undefined && (
         <ChevronDown className="project-workspace__tools-chevron" aria-hidden="true" />
       )}
@@ -326,27 +336,34 @@ function WorkspaceToolGroup({
         data-active={active_route_item !== undefined}
         data-open={open || undefined}
       >
-        {docked ? (
-          <div
-            className="project-workspace__tools-trigger project-workspace__tools-trigger--static"
-            data-active={active_route_item !== undefined}
-          >
-            {header_content}
-          </div>
-        ) : (
-          <button
-            ref={register_trigger}
-            type="button"
-            className="project-workspace__tools-trigger"
-            data-active={active_route_item !== undefined}
-            data-open={open || undefined}
-            aria-expanded={open}
-            aria-haspopup="menu"
-            onClick={on_toggle}
-          >
-            {header_content}
-          </button>
-        )}
+        <WorkspaceLabelTooltip
+          label={header_label}
+          side="bottom"
+          disabled={open}
+          trigger={
+            docked ? (
+              <div
+                className="project-workspace__tools-trigger project-workspace__tools-trigger--static"
+                data-active={active_route_item !== undefined}
+              >
+                {header_content}
+              </div>
+            ) : (
+              <button
+                ref={register_trigger}
+                type="button"
+                className="project-workspace__tools-trigger"
+                data-active={active_route_item !== undefined}
+                data-open={open || undefined}
+                aria-expanded={open}
+                aria-haspopup="menu"
+                onClick={on_toggle}
+              >
+                {header_content}
+              </button>
+            )
+          }
+        />
         {active_route_item !== undefined && (
           <button
             type="button"
@@ -373,55 +390,38 @@ function WorkspaceToolGroup({
                 aria-label={group_label}
               >
                 {group.routeItems.map((item) => {
-                  const Icon = item.icon;
                   const count = item.count?.(snapshot);
-                  const active = selected === item.id;
                   return (
-                    <button
+                    <WorkspaceToolItem
                       key={item.id}
-                      type="button"
-                      role={docked ? undefined : "menuitem"}
-                      className="project-workspace__tool-item"
-                      data-active={active || undefined}
-                      aria-current={docked && active ? "page" : undefined}
-                      onClick={() => on_select_route(item.id)}
+                      icon={item.icon}
+                      label={t(SCREEN_REGISTRY[item.id].title_key)}
+                      docked={docked}
+                      active={selected === item.id}
+                      on_click={() => on_select_route(item.id)}
                     >
-                      <Icon className="project-workspace__tool-icon" aria-hidden="true" />
-                      <span className="project-workspace__tool-label">
-                        {t(SCREEN_REGISTRY[item.id].title_key)}
-                      </span>
-                      {count !== undefined && (
-                        <Badge className="project-workspace__tool-count">{count}</Badge>
-                      )}
-                    </button>
+                      {count !== undefined && <Badge>{count}</Badge>}
+                    </WorkspaceToolItem>
                   );
                 })}
                 {group.settingItems.length > 0 ? (
                   <>
                     <div className="project-workspace__tools-divider" role="separator" />
                     {group.settingItems.map((item) => {
-                      const Icon = item.icon;
                       const enabled = settings[item.field];
                       return (
-                        <button
+                        <WorkspaceToolItem
                           key={item.field}
-                          type="button"
-                          role={docked ? undefined : "menuitem"}
-                          className="project-workspace__tool-item"
+                          icon={item.icon}
+                          label={t(`app.project_prefilter.${item.field}.title`)}
+                          docked={docked}
                           disabled={prefilter_locked}
-                          onClick={() => on_select_prefilter(item.field)}
+                          on_click={() => on_select_prefilter(item.field)}
                         >
-                          <Icon className="project-workspace__tool-icon" aria-hidden="true" />
-                          <span className="project-workspace__tool-label">
-                            {t(`app.project_prefilter.${item.field}.title`)}
-                          </span>
-                          <Badge
-                            tone={enabled ? "brand" : "neutral"}
-                            className="project-workspace__tool-badge"
-                          >
+                          <Badge tone={enabled ? "brand" : "neutral"}>
                             {t(enabled ? "app.state.enabled" : "app.state.disabled")}
                           </Badge>
-                        </button>
+                        </WorkspaceToolItem>
                       );
                     })}
                   </>
@@ -432,5 +432,74 @@ function WorkspaceToolGroup({
         </div>
       </div>
     </nav>
+  );
+}
+
+/** 路由和预过滤共用行布局，保留窄态菜单语义与宽态当前页标记。 */
+function WorkspaceToolItem({
+  icon: Icon,
+  label,
+  docked,
+  active = false,
+  disabled,
+  children,
+  on_click,
+}: {
+  icon: LucideIcon;
+  label: string;
+  docked: boolean;
+  active?: boolean;
+  disabled?: boolean;
+  children?: ReactNode;
+  on_click: () => void;
+}): JSX.Element {
+  const button = (
+    <button
+      type="button"
+      role={docked ? undefined : "menuitem"}
+      className="project-workspace__tool-item"
+      data-active={active || undefined}
+      aria-current={docked && active ? "page" : undefined}
+      disabled={disabled}
+      onClick={on_click}
+    >
+      <Icon className="project-workspace__tool-icon" aria-hidden="true" />
+      <span className="project-workspace__tool-label">{label}</span>
+      {children}
+    </button>
+  );
+  // 可禁用的设置项始终保留外层触发器，工程忙闲切换时复用同一悬停锚点。
+  return (
+    <WorkspaceLabelTooltip
+      label={label}
+      trigger={disabled === undefined ? button : <TooltipTarget>{button}</TooltipTarget>}
+    />
+  );
+}
+
+/** 打开提示时读取标签的实际宽度，涵盖窗口、语言与徽标宽度变化。 */
+function WorkspaceLabelTooltip({
+  label,
+  side = "left",
+  disabled,
+  trigger,
+}: {
+  label: string;
+  side?: "bottom" | "left";
+  disabled?: boolean;
+  trigger: ReactElement;
+}): JSX.Element {
+  return (
+    <Tooltip
+      disabled={disabled}
+      onOpenChange={(open, event) => {
+        if (!open) return;
+        const text = event.trigger?.querySelector<HTMLElement>(".project-workspace__tool-label");
+        if (!text || text.scrollWidth <= text.clientWidth) event.cancel();
+      }}
+    >
+      <TooltipTrigger render={trigger} />
+      <TooltipContent side={side}>{label}</TooltipContent>
+    </Tooltip>
   );
 }
