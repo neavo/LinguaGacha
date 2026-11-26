@@ -1,681 +1,313 @@
-import {
-  createAssistantMessageEventStream,
-  type AssistantMessage,
-  type AssistantMessageEventStream,
-  type ProviderStreams,
-  type StreamOptions,
-} from "@earendil-works/pi-ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import { createServer } from "node:http";
+import { afterEach, expect, it, vi } from "vitest";
+import type { JsonRecord } from "../../domain/json";
+import { create_pi_model_catalog_fixture } from "../../test/pi-model-catalog-fixture";
+import { ProxyHttpClient } from "../network/proxy-http-client";
+import { listen } from "../network/proxy-test-support";
 import { LLMClient } from "./llm-client";
-import { read_builtin_pi_models } from "./pi-model-catalog";
-import type { LLMRequestBody, LLMRequestResult } from "./llm-types";
-import { record_http_response_info } from "../network/http-response-info";
+import type { LLMRequestBody } from "./llm-types";
 
-const api_mocks = vi.hoisted(() => ({
-  openai: vi.fn<ProviderStreams["stream"]>(),
-  responses: vi.fn<ProviderStreams["stream"]>(),
-  anthropic: vi.fn<ProviderStreams["stream"]>(),
-  google: vi.fn<ProviderStreams["stream"]>(),
-  streamSimple: vi.fn<ProviderStreams["streamSimple"]>(),
-}));
+const catalog = create_pi_model_catalog_fixture([]);
+const userAgent = "LinguaGacha/test";
+const client = new LLMClient({ userAgent, catalog });
+const cleanups: Array<() => Promise<void>> = [];
 
-vi.mock("@earendil-works/pi-ai/api/openai-completions.lazy", () => ({
-  openAICompletionsApi: () => ({
-    stream: api_mocks.openai,
-    streamSimple: api_mocks.streamSimple,
-  }),
-}));
-vi.mock("@earendil-works/pi-ai/api/openai-responses.lazy", () => ({
-  openAIResponsesApi: () => ({
-    stream: api_mocks.responses,
-    streamSimple: api_mocks.streamSimple,
-  }),
-}));
-vi.mock("@earendil-works/pi-ai/api/anthropic-messages.lazy", () => ({
-  anthropicMessagesApi: () => ({
-    stream: api_mocks.anthropic,
-    streamSimple: api_mocks.streamSimple,
-  }),
-}));
-vi.mock("@earendil-works/pi-ai/api/google-generative-ai.lazy", () => ({
-  googleGenerativeAIApi: () => ({
-    stream: api_mocks.google,
-    streamSimple: api_mocks.streamSimple,
-  }),
-}));
-
-const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
-
-beforeEach(() => {
-  api_mocks.openai.mockReset();
-  api_mocks.responses.mockReset();
-  api_mocks.anthropic.mockReset();
-  api_mocks.google.mockReset();
-  api_mocks.streamSimple.mockReset();
+afterEach(async () => {
+  vi.useRealTimers();
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-describe("LLMClient", () => {
-  it("OAuth 每次派发使用当前凭据并沿用任务绑定的会话", async () => {
-    const auth = {
-      bind: vi.fn(() => "current-session"),
-      resolve: vi
-        .fn()
-        .mockResolvedValueOnce({ apiKey: "token-one" })
-        .mockResolvedValueOnce({ apiKey: "token-two" }),
-    };
-    const client = new LLMClient({
-      userAgent: TEST_USER_AGENT,
-      catalog: { read_models: read_builtin_pi_models },
-      auth,
-    });
-    api_mocks.responses.mockImplementation(() =>
-      completed_stream(create_message({ content: [{ type: "text", text: "ok" }] })),
-    );
-    const body = {
-      ...create_body({
-        auth_type: "oauth",
-        api_format: "OpenAIResponses",
-        api_url: "https://api.openai.com/v1",
-      }),
-      auth_session: "bound-session",
-    };
-    const signal = new AbortController().signal;
-    for (let attempt = 0; attempt < 2; attempt += 1)
-      expect((await client.request(body, signal)).response_result).toBe("ok");
-    expect(auth.bind).not.toHaveBeenCalled();
-    expect(auth.resolve.mock.calls.map(([session]) => session)).toEqual([
-      "bound-session",
-      "bound-session",
-    ]);
-    expect(api_mocks.responses.mock.calls.map(([, , options]) => options?.apiKey)).toEqual([
-      "token-one",
-      "token-two",
-    ]);
+it("OAuth 沿用任务绑定账户，每次派发重新读取凭据", async () => {
+  const resolve = vi
+    .fn<(session_id: string) => Promise<{ apiKey: string }>>()
+    .mockResolvedValueOnce({ apiKey: "token-one" })
+    .mockResolvedValueOnce({ apiKey: "token-two" });
+  const auth_client = new LLMClient({
+    userAgent,
+    catalog,
+    auth: { bind: () => "other-session", resolve },
   });
-  it.each([
-    {
-      usage: {
-        input: "invalid",
-        cacheRead: NaN,
-        cacheWrite: -2,
-        output: Infinity,
-        reasoning: undefined,
-      },
-      expected: { input_tokens: 0, reasoning_tokens: 0, output_tokens: 0 },
-    },
-    {
-      usage: { input: 1.9, cacheRead: 0, cacheWrite: 0, output: 4, reasoning: 8 },
-      expected: { input_tokens: 1, reasoning_tokens: 4, output_tokens: 0 },
-    },
-  ])("供应商用量在客户端归一为有限非负整数：$usage", async ({ usage, expected }) => {
-    api_mocks.openai.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          content: [{ type: "text", text: "有效译文" }],
-          // 真实接口可能违背 SDK 的声明类型，归一必须发生在跨 worker 之前。
-          usage: { ...create_usage(), ...usage } as unknown as AssistantMessage["usage"],
-        }),
-      ),
-    );
-    await expect(
-      create_client().request(create_body(), new AbortController().signal),
-    ).resolves.toMatchObject({
-      ...expected,
-      response_result: "有效译文",
-      cancelled: false,
-      timeout: false,
-    });
-  });
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    sse({ type: "response.completed", response: { id: "fixture", status: "completed" } }),
+  );
+  vi.stubGlobal("fetch", fetch);
 
-  it.each([true, false])(
-    "真实适配器保留已知计数，SDK 补零不代表完整用量：%s",
-    async (has_usage) => {
-      const { openAICompletionsApi } = await vi.importActual<
-        typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
-      >("@earendil-works/pi-ai/api/openai-completions.lazy");
-      api_mocks.openai.mockImplementationOnce(openAICompletionsApi().stream);
-      // 替代 HTTP 响应，保留 SDK 对供应商原始字段的解析。
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response(
-          `data: ${JSON.stringify({
-            id: "test",
-            object: "chat.completion.chunk",
-            created: 0,
-            model: "gpt-5-mini",
-            choices: [
-              {
-                index: 0,
-                delta: { role: "assistant", content: "有效译文" },
-                finish_reason: "stop",
-              },
-            ],
-            ...(has_usage
-              ? {
-                  usage: {
-                    prompt_tokens: "10",
-                    completion_tokens: "8",
-                    prompt_tokens_details: { cached_tokens: "2", cache_write_tokens: "3" },
-                    completion_tokens_details: { reasoning_tokens: "3" },
-                  },
-                }
-              : {}),
-          })}\n\ndata: [DONE]\n\n`,
-          { headers: { "Content-Type": "text/event-stream" } },
-        ),
-      );
-      await expect(
-        create_client().request(create_body(), new AbortController().signal),
-      ).resolves.toEqual(
-        create_result({
-          response_result: "有效译文",
-          usage_complete: false,
-          input_tokens: has_usage ? 10 : 0,
-          reasoning_tokens: has_usage ? 3 : 0,
-          output_tokens: has_usage ? 5 : 0,
-        }),
-      );
+  const body = {
+    ...request_body({
+      api_format: "OpenAIResponses",
+      api_url: "https://api.openai.com/v1",
+      auth_type: "oauth",
+    }),
+    auth_session: "bound-session",
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await auth_client.request(body, new AbortController().signal);
+    expect(result.request_error).toBeUndefined();
+  }
+  expect(resolve.mock.calls.map(([session]) => session)).toEqual([
+    "bound-session",
+    "bound-session",
+  ]);
+  expect(
+    fetch.mock.calls.map(([input, init]) => new Request(input, init).headers.get("authorization")),
+  ).toEqual(["Bearer token-one", "Bearer token-two"]);
+});
+
+it.each([
+  [
+    "OpenAIResponses",
+    "incomplete.content_filter",
+    [
+      {
+        type: "response.incomplete",
+        response: {
+          id: "fixture",
+          status: "incomplete",
+          incomplete_details: { reason: "content_filter" },
+        },
+      },
+    ],
+  ],
+  [
+    "Anthropic",
+    "refusal",
+    [
+      {
+        type: "message_start",
+        message: { id: "fixture", usage: { input_tokens: 1, output_tokens: 0 } },
+      },
+      { type: "message_delta", delta: { stop_reason: "refusal" }, usage: { output_tokens: 0 } },
+      { type: "message_stop" },
+    ],
+  ],
+] as const)("%s 将供应商的明确拒绝归为内容失败", async (api_format, rawStopReason, events) => {
+  vi.stubGlobal("fetch", async () => sse(...events));
+  const result = await client.request(request_body({ api_format }), new AbortController().signal);
+  expect(result.response_error).toMatchObject({ context: { rawStopReason } });
+  expect(result.request_error).toBeUndefined();
+});
+
+it.each([
+  { usage: undefined, expected: { input_tokens: 0, reasoning_tokens: 0, output_tokens: 0 } },
+  { usage: "3", expected: { input_tokens: 10, reasoning_tokens: 3, output_tokens: 5 } },
+  { usage: "12", expected: { input_tokens: 10, reasoning_tokens: 8, output_tokens: 0 } },
+])("归一真实用量并区分 SDK 补零（思考计数 $usage）", async ({ usage, expected }) => {
+  vi.stubGlobal("fetch", async () =>
+    completion(
+      "stop",
+      { content: "  第一行\n第二行  ", reasoning_content: " 推理 " },
+      usage === undefined
+        ? undefined
+        : {
+            prompt_tokens: "10",
+            completion_tokens: "8",
+            prompt_tokens_details: { cached_tokens: "2", cache_write_tokens: "3" },
+            completion_tokens_details: { reasoning_tokens: usage },
+          },
+    ),
+  );
+  await expect(client.request(request_body(), new AbortController().signal)).resolves.toMatchObject(
+    {
+      ...expected,
+      response_think: "推理",
+      response_result: "第一行\n第二行",
+      usage_complete: false,
     },
   );
+});
 
-  it("SDK 错误归一后仍保留 HTTP 响应的重试事实", async () => {
-    api_mocks.openai.mockImplementation(() => {
-      record_http_response_info(
-        new Response(null, { status: 429, headers: { "Retry-After": "90" } }),
-      );
-      throw new Error("rate limited");
-    });
-    await expect(
-      create_client().request(create_body(), new AbortController().signal),
-    ).resolves.toMatchObject({
-      http_status: 429,
-      retry_after_ms: 90_000,
-      http_received_at: expect.any(Number),
-      request_error: expect.any(Object),
-    });
+it("非法扩展头在派发前归一为请求错误", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  const body = request_body({
+    request: { extra_headers_custom_enable: true, extra_headers: { "invalid header": "value" } },
   });
-  it("非法扩展头在实际 adapter 边界归一为请求错误", async () => {
-    const { openAICompletionsApi } = await vi.importActual<
-      typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
-    >("@earendil-works/pi-ai/api/openai-completions.lazy");
-    api_mocks.openai.mockImplementationOnce(openAICompletionsApi().stream);
-    const body = create_body({
-      request: { extra_headers_custom_enable: true, extra_headers: { "invalid header": "value" } },
-    });
-    await expect(
-      create_client().request(body, new AbortController().signal),
-    ).resolves.toMatchObject({
-      cancelled: false,
-      timeout: false,
-      request_error: expect.any(Object),
-    });
-  });
+  const result = await client.request(body, new AbortController().signal);
+  expect(result.request_error).toBeDefined();
+  expect(fetch).not.toHaveBeenCalled();
+});
 
-  it("通过 Pi stream 返回正文、思考和 OpenAI token 口径", async () => {
-    api_mocks.openai.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          content: [
-            { type: "thinking", thinking: " 推理 " },
-            { type: "text", text: " 你好 " },
-          ],
-          usage: create_usage({ input: 10, output: 7, cacheRead: 2, cacheWrite: 3 }),
-        }),
+it("正常终态的空正文交由调用方校验", async () => {
+  vi.stubGlobal("fetch", async () => completion("stop", {}));
+  const result = await client.request(request_body(), new AbortController().signal);
+  expect(result.response_result).toBe("");
+  expect(result.request_error).toBeUndefined();
+  expect(result.response_error).toBeUndefined();
+});
+
+it.each(["length", "tool_calls", "content_filter"] as const)(
+  "%s 丢弃部分正文并保留内容失败的用量",
+  async (reason) => {
+    vi.stubGlobal("fetch", async () =>
+      completion(
+        reason,
+        {
+          content: "部分正文",
+          ...(reason === "tool_calls"
+            ? {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call-1",
+                    type: "function",
+                    function: { name: "unexpected", arguments: "{}" },
+                  },
+                ],
+              }
+            : {}),
+        },
+        { prompt_tokens: 4, completion_tokens: 5 },
       ),
     );
-    const client = create_client();
-
-    const body = create_body({ api_url: "https://opencode.ai/zen/go/v1" });
-    const result = await client.request(body, new AbortController().signal);
-
-    expect(result).toEqual(
-      create_result({
-        response_think: "推理",
-        response_result: "你好",
-        input_tokens: 15,
-        output_tokens: 7,
-      }),
-    );
-    expect(api_mocks.openai).toHaveBeenCalledTimes(1);
-    const options = api_mocks.openai.mock.calls[0]?.[2];
-    expect(options).toMatchObject({
-      maxRetries: 0,
-      cacheRetention: "none",
-      headers: { "x-opencode-session": body.run_id },
-    });
-    expect(options).not.toHaveProperty("timeoutMs");
-  });
-
-  it.each([
-    ["Anthropic", "anthropic"],
-    ["Google", "google"],
-  ] as const)("统一拆分 %s 的输入、思考和输出 token", async (api_format, mock_name) => {
-    api_mocks.streamSimple.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          provider: mock_name,
-          api: api_format === "Google" ? "google-generative-ai" : "anthropic-messages",
-          content: [{ type: "text", text: "你好" }],
-          usage: create_usage({ input: 10, output: 7, cacheRead: 2, reasoning: 2 }),
-        }),
-      ),
-    );
-    const client = create_client();
-
-    const result = await client.request(
-      create_body({
-        api_format,
-        model_id: api_format === "Google" ? "gemini-2.5-flash" : "claude-sonnet-4-5",
-      }),
-      new AbortController().signal,
-    );
-
+    const result = await client.request(request_body(), new AbortController().signal);
     expect(result).toMatchObject({
-      input_tokens: 12,
-      reasoning_tokens: 2,
-      output_tokens: 5,
-    });
-  });
-
-  it("Responses completed 返回正文与 OpenAI token 口径", async () => {
-    api_mocks.responses.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          api: "openai-responses",
-          content: [{ type: "text", text: "你好" }],
-          rawStopReason: "completed",
-          usage: create_usage({ input: 10, output: 7, cacheRead: 2, cacheWrite: 3 }),
-        }),
-      ),
-    );
-    const client = create_client();
-
-    const result = await client.request(
-      create_body({ api_format: "OpenAIResponses" }),
-      new AbortController().signal,
-    );
-
-    expect(result).toMatchObject({ response_result: "你好", input_tokens: 15, output_tokens: 7 });
-  });
-
-  it.each([
-    ["length", "length"],
-    ["toolUse", "tool_calls"],
-  ] as const)("把 %s 终态交给内容处理并保留用量", async (stopReason, rawStopReason) => {
-    api_mocks.openai.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          content: [
-            { type: "thinking", thinking: "推理" },
-            { type: "text", text: "部分正文" },
-          ],
-          rawStopReason,
-          stopReason,
-          usage: create_usage({ input: 4, output: 5 }),
-        }),
-      ),
-    );
-    const client = create_client();
-
-    const result = await client.request(create_body(), new AbortController().signal);
-
-    expect(result).toMatchObject({
-      response_think: "推理",
       response_result: "",
       input_tokens: 4,
       output_tokens: 5,
-      response_error: {
-        context: { rawStopReason, stopReason },
-      },
+      response_error: { context: { rawStopReason: reason } },
     });
-    expect(result).not.toHaveProperty("request_error");
-  });
+    expect(result.request_error).toBeUndefined();
+  },
+);
 
-  it("正常终止但没有正文时把空结果交给消费方校验", async () => {
-    api_mocks.openai.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          rawStopReason: "stop",
-          usage: create_usage({ input: 4 }),
-        }),
-      ),
-    );
-    const client = create_client();
-
-    const result = await client.request(create_body(), new AbortController().signal);
-
-    expect(result).toMatchObject({
-      response_result: "",
-      input_tokens: 4,
-      timeout: false,
-    });
-    expect(result).not.toHaveProperty("request_error");
-    expect(result).not.toHaveProperty("response_error");
-  });
-
-  it.each([
-    ["OpenAI", "openai-completions", "content_filter"],
-    ["SakuraLLM", "openai-completions", "content_filter"],
-    ["OpenAIResponses", "openai-responses", "incomplete.content_filter"],
-    ["Anthropic", "anthropic-messages", "refusal"],
-    ["Anthropic", "anthropic-messages", "sensitive"],
-    ["Google", "google-generative-ai", "SAFETY"],
-    ["Google", "google-generative-ai", "RECITATION"],
-    ["Google", "google-generative-ai", "BLOCKLIST"],
-    ["Google", "google-generative-ai", "PROHIBITED_CONTENT"],
-    ["Google", "google-generative-ai", "SPII"],
-    ["Google", "google-vertex", "SAFETY"],
-    ["Google", "google-vertex", "RECITATION"],
-    ["Google", "google-vertex", "BLOCKLIST"],
-    ["Google", "google-vertex", "PROHIBITED_CONTENT"],
-    ["Google", "google-vertex", "SPII"],
-  ] as const)("%s/%s/%s 内容拒绝进入内容重试并保留用量", async (api_format, api, rawStopReason) => {
-    const stream = () =>
-      completed_stream(
-        create_message({
-          api,
-          rawStopReason,
-          stopReason: "error",
-          errorMessage: "供应商拒绝内容",
-          content: [{ type: "text", text: "部分正文" }],
-          usage: create_usage({ input: 4, cacheRead: 2, output: 5, reasoning: 2 }),
-        }),
-      );
-    api_mocks.openai.mockImplementation(stream);
-    api_mocks.responses.mockImplementation(stream);
-    api_mocks.streamSimple.mockImplementation(stream);
-
-    const result = await create_client().request(
-      create_body({ api_format }),
-      new AbortController().signal,
-    );
-
-    expect(result).toEqual(
-      create_result({
-        input_tokens: 6,
-        reasoning_tokens: 2,
-        output_tokens: 3,
-        response_error: {
-          message: "供应商拒绝内容",
-          context: {
-            api,
-            stopReason: "error",
-            rawStopReason,
-            api_format,
-            model_id: "gpt-5-mini",
-            run_id: "run-1",
-            work_unit_id: "unit-1",
-          },
-        },
-      }),
-    );
-  });
-
-  it("内容拒绝缺少供应商说明时仍携带原始终态", async () => {
-    api_mocks.openai.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          rawStopReason: "content_filter",
-          stopReason: "error",
-        }),
-      ),
-    );
-    const result = await create_client().request(create_body(), new AbortController().signal);
-    expect(result.response_error).toMatchObject({
-      message: expect.stringMatching(/\S/u),
-      context: { rawStopReason: "content_filter" },
-    });
-    expect(result).not.toHaveProperty("request_error");
-  });
-
-  it.each([
-    ["openai-completions", "network_error", "error"],
-    ["openai-completions", "unknown", "error"],
-    ["openai-completions", undefined, "error"],
-    ["openai-responses", "failed", "error"],
-    ["openai-responses", "incomplete", "error"],
-    ["google-generative-ai", "OTHER", "error"],
-    ["google-generative-ai", "safety", "error"],
-    ["google-generative-ai", "content_filter", "error"],
-    ["unknown-api", "content_filter", "error"],
-    ["openai-completions", undefined, "aborted"],
-    ["openai-completions", undefined, "pending"],
-  ] as const)("%s/%s/%s 请求错误保留诊断并丢弃部分结果", async (api, rawStopReason, stopReason) => {
-    api_mocks.openai.mockImplementation(() =>
-      completed_stream(
-        create_message({
-          content: [{ type: "text", text: "部分正文" }],
-          api,
-          ...(rawStopReason === undefined ? {} : { rawStopReason }),
-          stopReason,
-          errorMessage: "供应商爆炸",
-        }),
-      ),
-    );
-    const client = create_client();
-
-    const result = await client.request(create_body(), new AbortController().signal);
-
-    expect(result).toMatchObject(
-      create_result({
-        request_error: {
-          name: "Error",
-          message: "供应商爆炸",
-          context: {
-            api,
-            stopReason,
-            ...(rawStopReason === undefined ? {} : { rawStopReason }),
-            api_format: "OpenAI",
-            model_id: "gpt-5-mini",
-            run_id: "run-1",
-            work_unit_id: "unit-1",
-          },
-        },
-      }),
-    );
-    expect(result).not.toHaveProperty("response_error");
-  });
-
-  it("外部取消优先于内容拒绝并丢弃部分结果", async () => {
-    const controller = new AbortController();
-    api_mocks.openai.mockImplementation((_model, _context, options) =>
-      abortable_stream(options, "部分正文", {
-        stopReason: "error",
-        rawStopReason: "content_filter",
-      }),
-    );
-    const client = create_client();
-
-    const request = client.request(create_body(), controller.signal);
-    controller.abort();
-
-    expect(await request).toEqual(create_result({ cancelled: true }));
-  });
-
-  it("请求开始前已取消时不启动 Pi stream", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const client = create_client();
-
-    const result = await client.request(create_body(), controller.signal);
-
-    expect(result).toEqual(create_result({ cancelled: true }));
-    expect(api_mocks.openai).not.toHaveBeenCalled();
-  });
-
-  it("总时限优先于内容拒绝并丢弃部分结果", async () => {
-    vi.useFakeTimers();
-    api_mocks.openai.mockImplementation((_model, _context, options) =>
-      abortable_stream(options, "部分正文", {
-        stopReason: "error",
-        rawStopReason: "content_filter",
-      }),
-    );
-    const client = create_client();
-
-    const request = client.request(
-      create_body({}, { request_timeout: 1 }),
-      new AbortController().signal,
-    );
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    expect(await request).toEqual(create_result({ timeout: true }));
-  });
-
-  it("timeout 与外部取消同时出现时保持 timeout 优先", async () => {
-    vi.useFakeTimers();
-    const external = new AbortController();
-    const controlled = createAssistantMessageEventStream();
-    api_mocks.openai.mockReturnValue(controlled);
-    const client = create_client();
-
-    const request = client.request(create_body({}, { request_timeout: 1 }), external.signal);
-    external.abort();
-    await vi.advanceTimersByTimeAsync(1_000);
-    controlled.push({
-      type: "error",
-      reason: "aborted",
-      error: create_message({ stopReason: "aborted", errorMessage: "aborted" }),
-    });
-
-    expect(await request).toEqual(create_result({ timeout: true }));
-  });
-
-  it("Sakura 成功正文保留原始纯文本", async () => {
-    api_mocks.openai.mockImplementation(() =>
-      completed_stream(create_message({ content: [{ type: "text", text: " 第一行 \n 第二行 " }] })),
-    );
-    const client = create_client();
-
-    const result = await client.request(
-      create_body({ api_format: "SakuraLLM" }),
-      new AbortController().signal,
-    );
-
-    expect(result.response_result).toBe("第一行 \n 第二行");
+it.each([
+  ["https://generativelanguage.googleapis.com/v1", "SAFETY", "response_error"],
+  ["https://aiplatform.googleapis.com/v1", "BLOCKLIST", "response_error"],
+  ["https://generativelanguage.googleapis.com/v1", "OTHER", "request_error"],
+] as const)("Google %s 的提示词拦截 %s 进入 %s", async (api_url, blockReason, channel) => {
+  vi.stubGlobal("fetch", async () => sse({ promptFeedback: { blockReason } }));
+  const body = request_body({ api_format: "Google", api_url });
+  const { request_error, response_error } = await client.request(
+    body,
+    new AbortController().signal,
+  );
+  expect({ request_error, response_error }).toEqual({
+    [channel]: expect.objectContaining({ message: expect.stringContaining(blockReason) }),
   });
 });
 
-/** 所有用例共用固定 User-Agent，供应商 transport 由 Backend 进程统一安装。 */
-function create_client(): LLMClient {
-  return new LLMClient({
-    userAgent: TEST_USER_AGENT,
-    catalog: { read_models: read_builtin_pi_models },
+it.each(["OpenAI", "OpenAIResponses", "Anthropic"] as const)(
+  "%s 把 HTTP 日期转换为调度器使用的等待时长",
+  async (api_format) => {
+    const retry_at = new Date(Date.now() + 90_000).toUTCString();
+    vi.stubGlobal("fetch", async () =>
+      Response.json(error_body(429), { status: 429, headers: { "retry-after": retry_at } }),
+    );
+    const result = await client.request(request_body({ api_format }), new AbortController().signal);
+    expect(result).toMatchObject({ http_status: 429, request_error: expect.any(Object) });
+    expect(result.retry_after_ms).toBe(Date.parse(retry_at) - result.http_received_at!);
+  },
+);
+
+it("Google 并行请求经应用代理保留原始响应头和各自的 HTTP 状态", async () => {
+  const root = await listen(
+    createServer((request, response) => {
+      request.resume();
+      if (request.url?.startsWith("/disconnect")) {
+        request.socket.destroy();
+        return;
+      }
+      const limited = request.url?.startsWith("/limited");
+      const status = limited ? 429 : 401;
+      response.writeHead(status, {
+        "content-type": "application/json",
+        "retry-after": limited ? "90" : "1.5",
+      });
+      response.end(JSON.stringify(error_body(status)));
+    }),
+    cleanups,
+  );
+  const proxy = new ProxyHttpClient({ resolveProxy: async () => "DIRECT" });
+  proxy.install_as_global_fetch();
+  cleanups.push(() => proxy.dispose());
+
+  const [limited, unauthorized, disconnected] = await Promise.all(
+    ["limited", "unauthorized", "disconnect"].map((route) =>
+      client.request(
+        request_body({ api_format: "Google", api_url: root + "/" + route + "/v1" }),
+        new AbortController().signal,
+      ),
+    ),
+  );
+  expect(limited).toMatchObject({
+    http_status: 429,
+    retry_after_ms: 90_000,
+    request_error: expect.any(Object),
   });
-}
+  expect(unauthorized).toMatchObject({ http_status: 401, request_error: expect.any(Object) });
+  expect(unauthorized).not.toHaveProperty("retry_after_ms");
+  expect(disconnected).not.toHaveProperty("http_status");
+  expect(disconnected?.request_error).toBeDefined();
+});
 
-/** 用 Pi 公开事件流构造确定的成功或 provider-error 终态。 */
-function completed_stream(message: AssistantMessage): AssistantMessageEventStream {
-  const stream = createAssistantMessageEventStream();
-  if (
-    message.stopReason === "error" ||
-    message.stopReason === "aborted" ||
-    message.stopReason === "pending"
-  ) {
-    stream.push({
-      type: "error",
-      reason: message.stopReason === "aborted" ? "aborted" : "error",
-      error: message,
-    });
-  } else {
-    stream.push({ type: "done", reason: message.stopReason, message });
-  }
-  return stream;
-}
+it("已取消的请求不会派发", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  const controller = new AbortController();
+  controller.abort();
+  const result = await client.request(request_body(), controller.signal);
+  expect(result.cancelled).toBe(true);
+  expect(fetch).not.toHaveBeenCalled();
+});
 
-/** 模拟只在 AbortSignal 到达后结束的远端流，用于取消和超时分支。 */
-function abortable_stream(
-  options: StreamOptions | undefined,
-  partial_text = "",
-  terminal: Partial<AssistantMessage> = {},
-): AssistantMessageEventStream {
-  const stream = createAssistantMessageEventStream();
-  if (partial_text !== "") {
-    stream.push({
-      type: "text_delta",
-      contentIndex: 0,
-      delta: partial_text,
-      partial: create_message({ content: [{ type: "text", text: partial_text }] }),
-    });
-  }
-  const abort = (): void => {
-    stream.push({
-      type: "error",
-      reason: "aborted",
-      error: create_message({ stopReason: "aborted", errorMessage: "请求已中止", ...terminal }),
-    });
-  };
-  if (options?.signal?.aborted) abort();
-  else options?.signal?.addEventListener("abort", abort, { once: true });
-  return stream;
-}
+it.each([
+  { cancel: true, timeout: false },
+  { cancel: false, timeout: true },
+  { cancel: true, timeout: true },
+])("外部取消 $cancel 和总时限 $timeout 在迟到的失败前结算", async ({ cancel, timeout }) => {
+  vi.useFakeTimers();
+  const external = new AbortController();
+  const dispatched = Promise.withResolvers<AbortSignal>();
+  const response = Promise.withResolvers<Response>();
+  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+    dispatched.resolve(new Request(input, init).signal);
+    return response.promise;
+  });
+  const pending = client.request(request_body({}, 1), external.signal);
+  const signal = await dispatched.promise;
+  if (cancel) external.abort();
+  if (timeout) await vi.advanceTimersByTimeAsync(1_000);
+  expect(signal.aborted).toBe(true);
+  response.resolve(completion("content_filter", { content: "迟到的部分正文" }));
 
-/** 构造 Pi 的完整终态消息，场景只覆盖被验证的事实。 */
-function create_message(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
+  const result = await pending;
+  expect(result).toMatchObject({ timeout, cancelled: !timeout, response_result: "" });
+  expect(result.request_error).toBeUndefined();
+  expect(result.response_error).toBeUndefined();
+});
+
+/** 默认模型只用来走正式请求入口，各场景只覆盖关心的字段。 */
+function request_body(model: JsonRecord = {}, timeout = 5): LLMRequestBody {
   return {
-    role: "assistant",
-    content: [],
-    api: "openai-completions",
-    provider: "openai",
-    model: "gpt-5-mini",
-    usage: create_usage(),
-    stopReason: "stop",
-    timestamp: 0,
-    ...overrides,
-  };
-}
-
-/** 构造供应商 usage，验证缓存与思考用量归一。 */
-function create_usage(
-  overrides: Partial<AssistantMessage["usage"]> = {},
-): AssistantMessage["usage"] {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    ...overrides,
-  };
-}
-
-/** 固定单次请求上下文，隔离模型配置对场景的影响。 */
-function create_body(
-  model_overrides: JsonRecord = {},
-  config_snapshot: JsonValue = { request_timeout: 120 },
-): LLMRequestBody {
-  return {
-    run_id: "run-1",
-    work_unit_id: "unit-1",
+    run_id: "run",
+    work_unit_id: "unit",
     model: {
       api_format: "OpenAI",
-      api_key: "key",
       api_url: "https://example.com/v1",
-      generation: {},
-      model_id: "gpt-5-mini",
-      request: {},
-      thinking: { level: "OFF" },
-      threshold: { output_token_limit: 4096 },
-      ...model_overrides,
+      api_key: "key",
+      model_id: "fixture",
+      ...model,
     },
-    config_snapshot,
-    messages: [{ role: "user", content: "こんにちは" }],
+    config_snapshot: { request_timeout: timeout },
+    messages: [{ role: "user", content: "测试" }],
   };
 }
 
-/** 构造完整客户端结果用于对比取消与失败分支。 */
-function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
-  return {
-    response_think: "",
-    response_result: "",
-    input_tokens: 0,
-    reasoning_tokens: 0,
-    output_tokens: 0,
-    cancelled: false,
-    timeout: false,
-    usage_complete: false,
-    ...overrides,
-  };
+/** 用供应商原始帧驱动 Pi，避免由测试预先替 SDK 解释终态。 */
+function completion(reason: string, delta: JsonRecord, usage?: JsonRecord): Response {
+  return sse({ choices: [{ index: 0, delta, finish_reason: reason }], usage });
+}
+
+function sse(...events: Array<{ type?: string; [field: string]: unknown }>): Response {
+  const body = events
+    .map((event) => {
+      const name = event.type === undefined ? "" : "event: " + event.type + "\n";
+      return name + "data: " + JSON.stringify(event) + "\n\n";
+    })
+    .join("");
+  return new Response(body, { headers: { "content-type": "text/event-stream" } });
+}
+
+function error_body(status: number) {
+  return { error: { message: "请求失败", code: status, type: "api_error" } };
 }

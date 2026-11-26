@@ -6,12 +6,9 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { list_available_models } from "../llm/provider-model-list";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
-import {
-  adjust_model_thinking_level,
-  resolve_model_capability,
-  type PiCatalogModel,
-} from "../llm/model-capability";
+import { adjust_model_thinking_level, resolve_model_capability } from "../llm/model-capability";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
+import type { PiModelIndex } from "../llm/pi-model-index";
 import type { LLMClientPort, LLMTextMessage, LLMRequestResult } from "../llm/llm-types";
 import { collect_api_keys, read_model_request_snapshot } from "../llm/llm-request";
 import {
@@ -104,7 +101,7 @@ export class ModelService {
 
   /** 目录候选在运行租约空闲后，以同一次同步写租约归一配置并切换有效目录。 */
   public async apply_catalog(
-    models: readonly PiCatalogModel[],
+    catalog: PiModelIndex,
     commit: () => void,
     signal: AbortSignal,
     publish: () => void,
@@ -116,7 +113,7 @@ export class ModelService {
           signal.throwIfAborted();
           const config = this.app_setting_service.read_setting();
           const previous = read_config_model_records(config);
-          const updated = previous.map((model) => this.normalize_model(model, models));
+          const updated = previous.map((model) => this.normalize_model(model, catalog));
           if (JSON.stringify(updated) !== JSON.stringify(previous)) {
             config["models"] = updated as unknown as JsonValue;
             this.app_setting_service.save_setting(config);
@@ -212,7 +209,7 @@ export class ModelService {
         const model = models[index]!; // 查找成功保证对象存在，输入等级已在上方收窄。
         const capability = resolve_model_capability(
           Model.from_json(model, model_id),
-          this.catalog.read_models(),
+          this.catalog.read(),
         );
         if (!capability.available_thinking_levels.includes(level)) {
           throw new AppErrors.AppError("request.validation_failed", {
@@ -382,8 +379,8 @@ export class ModelService {
         ? [
             ...new Map(
               this.catalog
-                .read_models()
-                .filter(
+                .read()
+                .models.filter(
                   (entry) =>
                     entry.api === "google-vertex" &&
                     (entry.input === undefined || entry.input.includes("text")),
@@ -785,7 +782,7 @@ export class ModelService {
    * 归一模型对象并同步能力派生字段；已有 ID 不重新取 UUID，避免初始化消耗新增模型的确定 ID。
    * 思考等级在这里统一修正，保证快照与持久化模型不会暴露当前模型不支持的值。
    */
-  private normalize_model(model: JsonRecord, catalog = this.catalog.read_models()): JsonRecord {
+  private normalize_model(model: JsonRecord, catalog = this.catalog.read()): JsonRecord {
     const existing_id = String(model["id"] ?? "").trim();
     const fallback_id = existing_id === "" ? crypto.randomUUID() : existing_id;
     const normalized = Model.from_json(model, fallback_id);
@@ -913,9 +910,10 @@ export class ModelService {
     config: JsonRecord,
     presets: ReadonlyMap<string, JsonRecord>,
   ): JsonRecord {
+    const catalog = this.catalog.read();
     const models = read_config_model_records(config).map((model) => {
       const normalized = Model.from_json(model, String(model["id"] ?? ""));
-      const capability = resolve_model_capability(normalized, this.catalog.read_models());
+      const capability = resolve_model_capability(normalized, catalog);
       return {
         ...normalized.to_json(),
         can_reset: this.find_preset_model(model, presets) !== undefined,
@@ -931,11 +929,12 @@ export class ModelService {
 
   /** 生成任务入口需要的窄快照，只公开模型选择与直接控制所需的非敏感配置。 */
   private build_selection_snapshot(config: JsonRecord): ModelSelectionSnapshot {
+    const catalog = this.catalog.read();
     return {
       model_selection: normalize_model_selection(config["model_selection"]),
       models: read_config_model_records(config).map((model) => {
         const normalized = Model.from_json(model, String(model["id"] ?? ""));
-        const capability = resolve_model_capability(normalized, this.catalog.read_models());
+        const capability = resolve_model_capability(normalized, catalog);
         return {
           id: normalized.id,
           type: normalized.type,

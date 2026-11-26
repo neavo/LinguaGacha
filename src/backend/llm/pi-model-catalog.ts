@@ -5,7 +5,7 @@ import { ThinkingLevelMapSchema } from "@earendil-works/pi-ai/providers/model-sc
 import { CompatSchemasByApi } from "@earendil-works/pi-ai/providers/compat-schema";
 import type { TSchema } from "typebox";
 
-import type { PiCatalogModel } from "./model-capability";
+import { create_pi_model_index, type PiCatalogModel, type PiModelIndex } from "./pi-model-index";
 import {
   getBuiltinModelDataGeneratedAt,
   getBuiltinModels,
@@ -21,7 +21,7 @@ const THINKING_LEVEL_MAP_CHECK = Compile(ThinkingLevelMapSchema as TSchema);
 const COMPAT_CHECKS = new Map<TSchema, ReturnType<typeof Compile>>(); // 共用 Schema 的协议复用检查器。
 
 /** 消费方只能读取当前目录，更新由组合根编排。 */
-export type PiModelCatalogReader = Pick<PiModelCatalog, "read_models">;
+export type PiModelCatalogReader = Pick<PiModelCatalog, "read">;
 type ProviderEntry = { modified: number; etag?: string; models: PiCatalogModel[] };
 const CATALOG_VERSION = 2; // 地址参与模板匹配，旧缓存缺少该事实，按可重建缓存失效。
 type CatalogCache = { version: typeof CATALOG_VERSION; providers: Record<string, ProviderEntry> };
@@ -43,7 +43,7 @@ export class PiModelCatalog {
   private readonly generated_at = getBuiltinModelDataGeneratedAt() ?? 0; // 缓存和远端数据取得覆盖优先级的时间下限。
   private readonly file_path: string; // 用户数据目录中的供应商覆盖缓存路径。
   private cache: CatalogCache = { version: CATALOG_VERSION, providers: {} }; // 保存远端数据及条件请求凭据。
-  private models: readonly PiCatalogModel[]; // 当前请求可见的完整能力快照。
+  private index: PiModelIndex; // 当前请求可见的完整能力快照。
   private revision = 0; // 当前实例成功应用能力更新的次数。
   private readonly instance_id = crypto.randomUUID(); // 区分后端重启前后的目录通知。
   private readonly started_at = Math.round((performance.timeOrigin + performance.now()) * 1000); // 微秒启动时间，用于判断通知所属实例的新旧。
@@ -67,12 +67,12 @@ export class PiModelCatalog {
         targets: CATALOG_DIAGNOSTIC_TARGETS,
       });
     }
-    this.models = this.merge(this.cache);
+    this.index = create_pi_model_index(this.merge(this.cache));
   }
 
   /** 返回当前有效快照，调用方在本次同步能力解析中使用同一份数据。 */
-  public read_models(): readonly PiCatalogModel[] {
-    return this.models;
+  public read(): PiModelIndex {
+    return this.index;
   }
 
   /** 为首次连接、重连和更新事件提供同一份通知标记。 */
@@ -82,11 +82,7 @@ export class PiModelCatalog {
 
   /** 组合根每次启动调用一次，供应商失败时沿用上次成功数据。 */
   public async check(
-    apply: (
-      models: readonly PiCatalogModel[],
-      commit: () => void,
-      signal: AbortSignal,
-    ) => Promise<void>,
+    apply: (index: PiModelIndex, commit: () => void, signal: AbortSignal) => Promise<void>,
   ): Promise<void> {
     const controller = new AbortController();
     const fetch_controller = new AbortController();
@@ -134,17 +130,18 @@ export class PiModelCatalog {
       if (!updated) return;
       // 缓存经原路径写入，保留用户设置的文件链接。
       this.native_fs.write_file_sync(this.file_path, JSON.stringify(next));
-      const candidate = this.merge(next);
-      if (same_models(candidate, this.models)) {
+      const models = this.merge(next);
+      if (same_models(models, this.index.models)) {
         this.cache = next;
         return;
       }
+      const candidate = create_pi_model_index(models);
       await apply(
         candidate,
         () => {
           if (controller.signal.aborted) throw new Error("Pi catalog update cancelled");
           this.cache = next;
-          this.models = candidate;
+          this.index = candidate;
           this.revision += 1;
         },
         controller.signal,

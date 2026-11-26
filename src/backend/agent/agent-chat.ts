@@ -563,10 +563,10 @@ export class AgentChat {
     await this.flush();
   }
   /** 同一提交记录 SDK 受理与产品事实；事务外才取得可等待的句柄。 */
-  private async admit(
+  private async commit_input(
     conversation: Conversation,
     execution: AgentExecution,
-    submit: (tx: Tx, state: AgentChatData) => Promise<SubmissionId>,
+    admit: (tx: Tx, state: AgentChatData) => Promise<SubmissionId>,
     change?: ((state: AgentChatData) => void) | undefined,
   ): Promise<Submission> {
     const { commandId } = execution;
@@ -575,7 +575,7 @@ export class AgentChat {
       execution.controller.signal.throwIfAborted();
       const state = await tx.doc(AgentChatDoc, this.options.documentKey, null);
       // SDK 受理先读取回执与历史边界，必须在事务首次表写入之前调用。
-      const id = await submit(tx, state);
+      const id = await admit(tx, state);
       change?.(state);
       if (commandId !== undefined) accept_input_command(state, commandId, conversation.id);
       return id;
@@ -600,7 +600,7 @@ export class AgentChat {
     if (delivery === "round") execution.roundId = requestId;
     if (execution.roundId === null) throw new Error("Agent execution has no round");
     const input: AgentInputRecord = { roundId: execution.roundId, message, delivery };
-    const submission = await this.admit(
+    const submission = await this.commit_input(
       conversation,
       execution,
       async (tx, state) => {
@@ -614,7 +614,7 @@ export class AgentChat {
             averageTokensPerSecond: null,
           };
         }
-        const id = await conversation.submit(tx, {
+        const id = await conversation.admit(tx, {
           type: "input",
           content: [{ type: "text", text: prepared.text }, ...prepared.images],
           requestId,
@@ -654,10 +654,10 @@ export class AgentChat {
         change,
       });
     }
-    return this.admit(
+    return this.commit_input(
       conversation,
       execution,
-      (tx) => conversation.submit(tx, { type: "continue" }),
+      (tx) => conversation.admit(tx, { type: "continue" }),
       change,
     );
   }

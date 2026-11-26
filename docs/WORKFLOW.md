@@ -316,7 +316,7 @@ npm 直接依赖使用 `^` 范围，Pi 同仓库包使用精确版本。其它�
 |应用入口与合并后的 SDK|[index.test.ts](../src/index.test.ts) 的仓库外 ASAR 集成测试|
 |部署后的工作区执行|仓库外 Electron bootstrap 集成测试|
 
-升级到 Pi Durable `1.6` 前备份 `.lg`。回退到 `1.5` 时使用备份，因为 `1.5` 无法恢复 `pi.tool` v4 和 `pi.generation` v3 任务记录。
+从 Pi Durable `1.5` 升到 `1.6` 前备份 `.lg`。回退时使用该备份，`1.5` 无法恢复 `pi.tool` v4 和 `pi.generation` v3。
 
 ### 发行包运行验证
 

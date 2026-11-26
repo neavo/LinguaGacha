@@ -11,13 +11,13 @@ import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import type { LLMClientPort } from "../llm/llm-types";
-import { read_builtin_pi_models } from "../llm/pi-model-catalog";
-import type { PiCatalogModel } from "../llm/model-capability";
+import { create_pi_model_index, type PiCatalogModel } from "../llm/pi-model-index";
+import { create_pi_model_catalog_fixture } from "../../test/pi-model-catalog-fixture";
 import { GlobalOperationGate } from "../runtime-operation-gate";
 import { read_config_model_records } from "./model-config-resolver";
 import { ModelService } from "./model-service";
 
-const catalog = { read_models: read_builtin_pi_models };
+const catalog = create_pi_model_catalog_fixture();
 
 /** 配置校验与旧值修正使用自有能力，避免供应商目录更新改变测试前提。 */
 const LEVEL_CATALOG: PiCatalogModel[] = [
@@ -98,7 +98,7 @@ describe("ModelService 配置管理", () => {
           { ...vertex, api: "google-generative-ai", id: "developer-only" },
         ]
       : [];
-    const read_models = vi.spyOn(catalog, "read_models").mockReturnValue(catalog_models);
+    const read = vi.spyOn(catalog, "read").mockReturnValue(create_pi_model_index(catalog_models));
     const { service, process_fetch } = await create_model_service([
       create_model({
         id: "vertex",
@@ -112,7 +112,7 @@ describe("ModelService 配置管理", () => {
       models: has_models ? [{ id: vertex.id, name: vertex.name }] : [],
     });
     expect(process_fetch).not.toHaveBeenCalled();
-    read_models.mockRestore();
+    read.mockRestore();
   });
 
   it("远端模型列表使用统一解析的根地址", async () => {
@@ -137,8 +137,12 @@ describe("ModelService 配置管理", () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({ thinking: { level: "HIGH" } }),
     ]);
-    const candidate = read_builtin_pi_models().map((model) =>
-      model.id === "gpt-5-mini" ? { ...model, reasoning: false } : model,
+    const candidate = create_pi_model_index(
+      catalog
+        .read()
+        .models.map((model) =>
+          model.id === "gpt-5-mini" ? { ...model, reasoning: false } : model,
+        ),
     );
     vi.spyOn(app_setting_service, "save_setting").mockImplementation(() => {
       throw new Error("disk failed");
@@ -373,7 +377,7 @@ describe("ModelService 配置管理", () => {
     { target: "translation", model_id: "a", thinking_level: "UNKNOWN" },
     { target: "translation", model_id: "a", thinking_level: "MAX" },
   ])("非法组合在保存前拒绝：%j", async (request) => {
-    vi.spyOn(catalog, "read_models").mockReturnValue(LEVEL_CATALOG);
+    vi.spyOn(catalog, "read").mockReturnValue(create_pi_model_index(LEVEL_CATALOG));
     const { service, app_setting_service } = await create_model_service([
       create_model({ id: "a", type: "CUSTOM_OPENAI", model_id: "low-only" }),
     ]);
@@ -455,7 +459,7 @@ describe("ModelService 配置管理", () => {
   ])(
     "$api_format $model_id 首次读取旧配置时持久化失效思考等级的修正",
     async ({ model_id, api_format, level, expected_level }) => {
-      vi.spyOn(catalog, "read_models").mockReturnValue(LEVEL_CATALOG);
+      vi.spyOn(catalog, "read").mockReturnValue(create_pi_model_index(LEVEL_CATALOG));
       const { service, app_setting_service } = await create_model_service([
         create_model({
           api_format,
@@ -1163,7 +1167,7 @@ describe("ModelService 配置管理", () => {
     service.select_model({ target: "agent", model_id: "active", thinking_level: "DEFAULT" });
     service.update_model({ model_id: "active", patch: { model_id: "unknown-model" } });
     await service.apply_catalog(
-      [],
+      create_pi_model_index([]),
       () => {},
       new AbortController().signal,
       () => {},

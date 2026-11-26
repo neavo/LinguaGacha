@@ -3,7 +3,6 @@ import { gzipSync } from "node:zlib";
 import { afterEach, expect, it, vi } from "vitest";
 import { Request, Response, Headers, FormData } from "undici";
 import { ProxyHttpClient } from "./proxy-http-client";
-import { with_http_response_info } from "./http-response-info";
 import { to_log_error } from "../../shared/error/log-error";
 import { listen } from "./proxy-test-support";
 
@@ -148,7 +147,7 @@ it("后端禁止跳转，工作区遵循 Request 和调用选项", async () => {
   expect(received).toEqual(["/redirect", "/redirect", "/redirect", "/end", "/redirect"]);
 });
 
-it("真实响应保留状态、重试时间和解压后的响应流", async () => {
+it("解压真实响应流并保留状态和响应头", async () => {
   const root = await listen(
     createServer((_request, response) => {
       response.writeHead(429, { "Retry-After": "90", "Content-Encoding": "gzip" });
@@ -157,15 +156,10 @@ it("真实响应保留状态、重试时间和解压后的响应流", async () =
     cleanups,
   );
   const transport = client();
-  const result = await with_http_response_info(async () => ({
-    body: await (await transport.fetch(root)).text(),
-  }));
-  expect(result).toMatchObject({
-    body: "limited",
-    http_status: 429,
-    retry_after_ms: 90_000,
-    http_received_at: expect.any(Number),
-  });
+  const response = await transport.fetch(root);
+  expect(response.status).toBe(429);
+  expect(response.headers.get("retry-after")).toBe("90");
+  expect(await response.text()).toBe("limited");
 });
 
 it("路由失败通过 fetch cause 和日志快照保留原始原因", async () => {

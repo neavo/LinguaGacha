@@ -5,15 +5,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import { Model, type ModelApiFormat } from "../../domain/model";
-import { resolve_model_capability, type PiCatalogModel } from "../llm/model-capability";
-import { read_builtin_pi_models } from "../llm/pi-model-catalog";
+import { resolve_model_capability } from "../llm/model-capability";
+import { create_pi_model_index, type PiCatalogModel } from "../llm/pi-model-index";
+import { create_pi_model_catalog_fixture } from "../../test/pi-model-catalog-fixture";
 import {
   register_agent_model,
   resolve_agent_batch_model,
   resolve_agent_model,
 } from "./agent-model";
 
-const catalog = { read_models: read_builtin_pi_models };
+const catalog = create_pi_model_catalog_fixture();
+const empty_catalog = create_pi_model_catalog_fixture([]);
 
 const api_mocks = vi.hoisted(() => ({
   streamSimple: vi.fn<ProviderStreams["streamSimple"]>(() => ({}) as never),
@@ -41,7 +43,7 @@ describe("Agent 批量模型", () => {
         api_key: "first-key\nsecond-key",
       }),
       TEST_REQUEST_IDENTITY,
-      { read_models: () => [] },
+      empty_catalog,
     );
     const resource = "projects/demo/locations/global/publishers/google/models/gemini-fixture";
     expect(resolved.model).toMatchObject({
@@ -111,23 +113,15 @@ describe("Agent 批量模型", () => {
         models: [agent_model.to_json()],
       };
       const original = structuredClone(config);
+      const index = create_pi_model_index([catalog_model(off)]);
 
-      for (const usage of ["agent", "batch_translation", "media"] as const) {
-        const result = resolve_agent_batch_model(
-          config,
-          agent_model,
-          usage,
-          [catalog_model(off)],
-          downgrade,
-        );
-
-        expect(result.to_json()).toEqual({
-          ...agent_model.to_json(),
-          thinking: { level: expected },
-        });
-        expect(agent_model.thinking.level).toBe(current);
-        expect(config).toEqual(original);
-      }
+      const result = resolve_agent_batch_model(config, agent_model, "agent", index, downgrade);
+      expect(result.to_json()).toEqual({
+        ...agent_model.to_json(),
+        thinking: { level: expected },
+      });
+      expect(agent_model.thinking.level).toBe(current);
+      expect(config).toEqual(original);
     },
   );
 
@@ -146,7 +140,7 @@ describe("Agent 批量模型", () => {
         },
         models: [{ ...agent_model.to_json(), thinking: { level: "HIGH" } }],
       };
-      const models: PiCatalogModel[] = [
+      const index = create_pi_model_index([
         {
           id: "fixture-model",
           api: "openai-completions",
@@ -156,19 +150,21 @@ describe("Agent 批量模型", () => {
           contextWindow: 128_000,
           maxTokens: 16_000,
         },
-      ];
-      expect(resolve_agent_batch_model(config, agent_model, usage, [], true)).toEqual(agent_model);
+      ]);
+      expect(
+        resolve_agent_batch_model(config, agent_model, usage, empty_catalog.read(), true),
+      ).toEqual(agent_model);
       config.model_selection[usage === "media" ? "agent_media" : "agent_batch_translation"] = "a";
-      const fixed = resolve_agent_batch_model(config, agent_model, usage, models, true);
+      const fixed = resolve_agent_batch_model(config, agent_model, usage, index, true);
       expect(fixed.thinking.level).toBe("OFF");
       expect(
-        resolve_agent_batch_model(config, agent_model, usage, models, false).thinking.level,
+        resolve_agent_batch_model(config, agent_model, usage, index, false).thinking.level,
       ).toBe("HIGH");
       config.model_selection[usage === "media" ? "agent_media" : "agent_batch_translation"] =
         "missing";
-      expect(() => resolve_agent_batch_model(config, agent_model, usage, [], true)).toThrow(
-        expect.objectContaining({ code: "model.not_found" }),
-      );
+      expect(() =>
+        resolve_agent_batch_model(config, agent_model, usage, empty_catalog.read(), true),
+      ).toThrow(expect.objectContaining({ code: "model.not_found" }));
     },
   );
 });
@@ -492,7 +488,7 @@ describe("Agent 模型注册", () => {
     const config = { api_format: "OpenAIResponses", model_id: "deepseek-flash" };
     const { agent_limits } = resolve_model_capability(
       Model.from_json(config, "active"),
-      catalog.read_models(),
+      catalog.read(),
     );
     const resolved = register_agent_model(
       runtime,

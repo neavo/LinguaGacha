@@ -1,7 +1,7 @@
 import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { PiCatalogModel } from "./model-capability";
+import type { PiModelIndex } from "./pi-model-index";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const builtin = vi.hoisted(() => ({
@@ -85,8 +85,8 @@ describe("PiModelCatalog", () => {
     expect(apply).toHaveBeenCalledOnce();
     expect(
       new PiModelCatalog(paths, { warning })
-        .read_models()
-        .find((model) => model.provider === "alpha"),
+        .read()
+        .models.find((model) => model.provider === "alpha"),
     ).toMatchObject({ name: "Vertex fixture", input: ["text", "image"] });
     vi.stubGlobal(
       "fetch",
@@ -106,7 +106,7 @@ describe("PiModelCatalog", () => {
       commit();
     });
     expect(apply).toHaveBeenCalledTimes(2);
-    expect(catalog.read_models().find((model) => model.provider === "alpha")).toMatchObject({
+    expect(catalog.read().models.find((model) => model.provider === "alpha")).toMatchObject({
       name: "Vertex fixture",
       input: ["image"],
     });
@@ -128,11 +128,11 @@ describe("PiModelCatalog", () => {
       ),
     );
     await catalog.check(async (_models, commit) => commit());
-    const model = catalog.read_models().find((model) => model.provider === "alpha")!;
+    const model = catalog.read().models.find((model) => model.provider === "alpha")!;
     expect(model.compat).toEqual(compat);
     expect(model.thinkingLevelMap).toEqual(thinkingLevelMap);
     expect(warning).not.toHaveBeenCalled();
-    expect(new PiModelCatalog(paths, { warning }).read_models()).toEqual(catalog.read_models());
+    expect(new PiModelCatalog(paths, { warning }).read().models).toEqual(catalog.read().models);
   });
 
   it.each([
@@ -152,7 +152,7 @@ describe("PiModelCatalog", () => {
     const apply = vi.fn();
     await catalog.check(apply);
     expect(apply).not.toHaveBeenCalled();
-    expect(catalog.read_models()).toContainEqual(builtin.alpha);
+    expect(catalog.read().models).toContainEqual(builtin.alpha);
     expect(warning).toHaveBeenCalledOnce();
   });
 
@@ -166,7 +166,7 @@ describe("PiModelCatalog", () => {
       ),
     );
     await catalog.check(async (_models, commit) => commit());
-    expect(catalog.read_models().find((model) => model.provider === "alpha")).toMatchObject(
+    expect(catalog.read().models.find((model) => model.provider === "alpha")).toMatchObject(
       changes,
     );
   });
@@ -183,7 +183,7 @@ describe("PiModelCatalog", () => {
           : new Response(null, { status: 304 }),
       ),
     );
-    const apply = vi.fn(async (_models: readonly PiCatalogModel[], commit: () => void) => commit());
+    const apply = vi.fn(async (_index: PiModelIndex, commit: () => void) => commit());
     await catalog.check(apply);
     expect(warning).not.toHaveBeenCalled();
     expect(apply).not.toHaveBeenCalled();
@@ -210,7 +210,7 @@ describe("PiModelCatalog", () => {
       expect.stringContaining("/gamma"),
       expect.objectContaining({ headers: { "If-None-Match": '"empty"' } }),
     ]);
-    expect(restarted.read_models()).toEqual([builtin.alpha, builtin.beta, added]);
+    expect(restarted.read().models).toEqual([builtin.alpha, builtin.beta, added]);
     expect(apply).toHaveBeenCalledOnce();
     expect(warning).not.toHaveBeenCalled();
   });
@@ -230,7 +230,7 @@ describe("PiModelCatalog", () => {
     await mkdir(path.dirname(file_path), { recursive: true });
     await writeFile(file_path, JSON.stringify(previous));
     const catalog = new PiModelCatalog(paths, { warning });
-    expect(catalog.read_models()).toEqual([overridden, other, added]);
+    expect(catalog.read().models).toEqual([overridden, other, added]);
 
     const newer = "Tue, 02 Jun 2026 00:00:00 GMT";
     vi.stubGlobal(
@@ -241,16 +241,16 @@ describe("PiModelCatalog", () => {
           : new Response(null, { status: 304 }),
       ),
     );
-    const apply = vi.fn(async (_models: readonly PiCatalogModel[], commit: () => void) => commit());
+    const apply = vi.fn(async (_index: PiModelIndex, commit: () => void) => commit());
     await catalog.check(apply);
-    expect(catalog.read_models()).toEqual([builtin.alpha, other]);
+    expect(catalog.read().models).toEqual([builtin.alpha, other]);
     expect(apply).toHaveBeenCalledOnce();
     const cached = JSON.parse(await readFile(file_path, "utf8"));
     expect(cached.providers.alpha).toEqual({ modified: Date.parse(newer), models: [] });
     expect(cached.providers.beta).toEqual(previous.providers.beta);
 
     const restarted = new PiModelCatalog(paths, { warning });
-    expect(restarted.read_models()).toEqual([builtin.alpha, other]);
+    expect(restarted.read().models).toEqual([builtin.alpha, other]);
     const fetch_unchanged = vi.fn(
       async (_url: string, _options: RequestInit) => new Response(null, { status: 304 }),
     );
@@ -261,7 +261,7 @@ describe("PiModelCatalog", () => {
       expect.stringContaining("/alpha"),
       expect.objectContaining({ headers: { "If-Modified-Since": newer } }),
     ]);
-    expect(restarted.read_models()).toEqual([builtin.alpha, other]);
+    expect(restarted.read().models).toEqual([builtin.alpha, other]);
     expect(apply).not.toHaveBeenCalled();
     expect(JSON.parse(await readFile(file_path, "utf8"))).toEqual(cached);
     expect(warning).not.toHaveBeenCalled();
@@ -285,16 +285,19 @@ describe("PiModelCatalog", () => {
             : new Response("{bad json", { status: 200, headers: { "Last-Modified": modified } }),
       ),
     );
-    let applied: readonly PiCatalogModel[] = [];
-    await catalog.check(async (models, commit) => {
-      applied = models;
+    let before_commit: number | undefined;
+    let candidate_window: number | undefined;
+    await catalog.check(async (index, commit) => {
+      before_commit = catalog.read().match_models(builtin.alpha.id)[0]?.contextWindow;
+      candidate_window = index.match_models(builtin.alpha.id)[0]?.contextWindow;
       commit();
     });
-    expect(applied.find((model) => model.provider === "alpha")).toMatchObject({
-      reasoning: true,
-      contextWindow: 300,
-    });
-    expect(applied.find((model) => model.provider === "beta")?.contextWindow).toBe(200);
+    expect(before_commit).toBe(builtin.alpha.contextWindow);
+    expect(candidate_window).toBe(300);
+    expect(catalog.read().match_models(builtin.alpha.id)).toMatchObject([
+      { reasoning: true, contextWindow: 300 },
+    ]);
+    expect(catalog.read().match_models(builtin.beta.id)).toEqual([builtin.beta]);
     expect(catalog.get_snapshot().revision).toBe(1);
     for (const provider of ["beta", "gamma"])
       expect(warning).toHaveBeenCalledWith(expect.any(String), {
@@ -306,7 +309,7 @@ describe("PiModelCatalog", () => {
     expect(await readFile(target_path, "utf8")).toBe(await readFile(file_path, "utf8"));
 
     const offline = new PiModelCatalog(paths, { warning: vi.fn() });
-    expect(offline.read_models().find((model) => model.provider === "alpha")?.contextWindow).toBe(
+    expect(offline.read().models.find((model) => model.provider === "alpha")?.contextWindow).toBe(
       300,
     );
     const fetch = vi.fn(async (url: string, options: RequestInit) => {
@@ -327,7 +330,7 @@ describe("PiModelCatalog", () => {
     await mkdir(path.dirname(file_path), { recursive: true });
     await writeFile(file_path, "{bad json");
     const warning = vi.fn();
-    expect(new PiModelCatalog(paths, { warning }).read_models()[0]?.contextWindow).toBe(100);
+    expect(new PiModelCatalog(paths, { warning }).read().models[0]?.contextWindow).toBe(100);
     expect(warning).toHaveBeenCalledWith(expect.any(String), {
       error: expect.any(Error),
       targets: { console: false, window: false },
@@ -345,7 +348,7 @@ describe("PiModelCatalog", () => {
         },
       }),
     );
-    expect(new PiModelCatalog(paths, { warning: vi.fn() }).read_models()[0]?.contextWindow).toBe(
+    expect(new PiModelCatalog(paths, { warning: vi.fn() }).read().models[0]?.contextWindow).toBe(
       100,
     );
 
@@ -378,7 +381,7 @@ describe("PiModelCatalog", () => {
     await cached.check(async () => {
       apply();
     });
-    expect(cached.read_models().find((model) => model.provider === "alpha")?.contextWindow).toBe(
+    expect(cached.read().models.find((model) => model.provider === "alpha")?.contextWindow).toBe(
       300,
     );
     expect(apply).not.toHaveBeenCalled();
@@ -452,7 +455,7 @@ describe("PiModelCatalog", () => {
     await invalid.check(async () => {
       apply();
     });
-    expect(invalid.read_models().find((model) => model.provider === "alpha")?.contextWindow).toBe(
+    expect(invalid.read().models.find((model) => model.provider === "alpha")?.contextWindow).toBe(
       100,
     );
     expect(warning).toHaveBeenCalled();
@@ -499,13 +502,13 @@ describe("PiModelCatalog", () => {
               }),
         ),
       );
-      const apply = vi.fn(async (_models: readonly PiCatalogModel[], commit: () => void) => {
+      const apply = vi.fn(async (_index: PiModelIndex, commit: () => void) => {
         commit();
       });
       const checking = catalog.check(apply);
       await vi.runAllTimersAsync();
       await checking;
-      expect(catalog.read_models().find((model) => model.provider === "alpha")?.contextWindow).toBe(
+      expect(catalog.read().models.find((model) => model.provider === "alpha")?.contextWindow).toBe(
         300,
       );
       expect(apply).toHaveBeenCalledOnce();
@@ -531,8 +534,8 @@ describe("PiModelCatalog", () => {
     expect(apply).toHaveBeenCalledOnce();
     expect(
       new PiModelCatalog(paths, { warning: vi.fn() })
-        .read_models()
-        .find((model) => model.provider === "alpha")?.baseUrl,
+        .read()
+        .models.find((model) => model.provider === "alpha")?.baseUrl,
     ).toBe("https://new.example/v1");
   });
 
@@ -556,7 +559,7 @@ describe("PiModelCatalog", () => {
     const fetch_mock = vi.fn(async () => new Response(null, { status: 304 }));
     vi.stubGlobal("fetch", fetch_mock);
     await catalog.check(async (_models, commit) => commit());
-    expect(catalog.read_models().find((model) => model.provider === "alpha")?.baseUrl).toBe(
+    expect(catalog.read().models.find((model) => model.provider === "alpha")?.baseUrl).toBe(
       builtin.alpha.baseUrl,
     );
     expect(fetch_mock.mock.calls).toEqual(
@@ -587,7 +590,7 @@ describe("PiModelCatalog", () => {
       }),
     );
     const catalog = new PiModelCatalog(paths, { warning });
-    expect(catalog.read_models()).toEqual([builtin.alpha, { ...builtin.beta, contextWindow: 300 }]);
+    expect(catalog.read().models).toEqual([builtin.alpha, { ...builtin.beta, contextWindow: 300 }]);
     for (const provider of ["alpha", "gamma"])
       expect(warning).toHaveBeenCalledWith(expect.any(String), {
         error: expect.any(Error),
@@ -609,7 +612,7 @@ describe("PiModelCatalog", () => {
     );
     const apply = vi.fn();
     await catalog.check(apply);
-    expect(catalog.read_models()).toEqual([builtin.alpha, builtin.beta]);
+    expect(catalog.read().models).toEqual([builtin.alpha, builtin.beta]);
     expect(catalog.get_snapshot().revision).toBe(0);
     expect(warning).toHaveBeenCalledWith(expect.any(String), {
       error: expect.any(Error),

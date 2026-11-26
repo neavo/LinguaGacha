@@ -1197,7 +1197,7 @@ export class AgentService {
           config_snapshot,
           this.model_config!,
           input.model_usage,
-          this.catalog.read_models(),
+          this.catalog.read(),
           input.thinking_downgrade === true,
         );
         try {
@@ -1232,7 +1232,7 @@ export class AgentService {
           this.settings.read_setting(),
           this.model_config!,
           "batch_translation",
-          this.catalog.read_models(),
+          this.catalog.read(),
           thinking_downgrade,
         );
         try {

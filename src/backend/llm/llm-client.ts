@@ -1,6 +1,6 @@
 import type { EffectiveModelRequest } from "../../domain/model";
 import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
-import { read_json_integer } from "../../domain/json";
+import { is_json_record, read_json_integer } from "../../domain/json";
 
 import { to_log_error, type LogError } from "../../shared/error";
 import {
@@ -13,7 +13,6 @@ import { resolve_model_capability } from "./model-capability";
 import type { PiModelCatalogReader } from "./pi-model-catalog";
 import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
-import { with_http_response_info } from "../network/http-response-info";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
 import { AppError } from "../../shared/error";
 import { observe_chatgpt_request } from "./chatgpt-request";
@@ -31,6 +30,14 @@ const GOOGLE_CONTENT_REFUSAL_REASONS = [
   "PROHIBITED_CONTENT",
   "SPII",
 ] as const;
+const GOOGLE_PROMPT_BLOCK_REASONS: ReadonlySet<string> = new Set([
+  "SAFETY",
+  "BLOCKLIST",
+  "PROHIBITED_CONTENT",
+  "IMAGE_SAFETY",
+  "MODEL_ARMOR",
+  "JAILBREAK",
+]);
 // SDK 将内容拒绝与网络故障都归为 `error`，原始原因必须按协议识别。
 const CONTENT_REFUSAL_REASONS: Readonly<
   Partial<Record<AssistantMessage["api"], readonly string[]>>
@@ -55,26 +62,36 @@ export class LLMClient implements LLMClientPort {
     this.auth = options.auth;
   }
 
-  /** 在单次请求上下文内附加 HTTP 事实，避免依赖 SDK 的错误文本。 */
-  public request(
+  /** 只汇总本次推理的 HTTP 事实，供批量调度器判断密钥冷却。 */
+  public async request(
     body: LLMRequestBody,
     signal: AbortSignal,
     on_effective_model?: (model: EffectiveModelRequest) => void,
   ): Promise<LLMRequestResult> {
-    return with_http_response_info(() => this.execute(body, signal, on_effective_model));
+    const base_fetch = globalThis.fetch;
+    let http_response: HttpResponseInfo | undefined;
+    const request_fetch: typeof fetch = async (input, init) => {
+      const response = await base_fetch(input, init);
+      http_response = read_http_response(response);
+      return response;
+    };
+    const result = await this.execute(body, signal, request_fetch, on_effective_model);
+    return { ...result, ...http_response };
   }
 
   /** 解析模型快照，将取消、总时限和 Pi 终态收敛为请求结果。 */
   private async execute(
     body: LLMRequestBody,
     signal: AbortSignal,
+    request_fetch: typeof fetch,
     on_effective_model?: (model: EffectiveModelRequest) => void,
   ): Promise<LLMRequestResult> {
     const snapshot = read_model_request_snapshot(body.model, {
       user_agent: this.user_agent,
       session_id: body.run_id,
     });
-    const controller = new AbortController();
+    const deadline = new AbortController();
+    const request_signal = AbortSignal.any([signal, deadline.signal]);
     const capability = resolve_model_capability(
       {
         api_format: snapshot.api_format,
@@ -82,18 +99,9 @@ export class LLMClient implements LLMClientPort {
         model_id: snapshot.model_id,
         agent: DEFAULT_MODEL_AGENT_CONFIG,
       },
-      this.catalog.read_models(),
+      this.catalog.read(),
     );
-    // 外部信号记录用户取消，独立超时标记保留同时发生时的结果优先级。
-    let timeout = false;
-    const timer = setTimeout(() => {
-      timeout = true;
-      controller.abort();
-    }, read_request_timeout_ms(body.config_snapshot));
-    const abort_listener = (): void => {
-      controller.abort();
-    };
-    signal.addEventListener("abort", abort_listener, { once: true });
+    const timer = setTimeout(() => deadline.abort(), read_request_timeout_ms(body.config_snapshot));
     try {
       if (signal.aborted) {
         return empty_llm_result({ cancelled: true });
@@ -101,10 +109,17 @@ export class LLMClient implements LLMClientPort {
       const request = resolve_one_shot_pi_request(
         snapshot,
         body.messages,
-        controller.signal,
+        request_signal,
         capability,
         on_effective_model,
       );
+      request.options.fetch = request_fetch;
+      let prompt_blocked = false;
+      if (request.model.api === "google-generative-ai" || request.model.api === "google-vertex") {
+        request.options.onProviderStreamEvent = (event) => {
+          prompt_blocked ||= is_google_prompt_block(event);
+        };
+      }
       let payload_error: AppError | null = null;
       const on_payload = request.options.onPayload;
       request.options.onPayload = async (payload, model) => {
@@ -115,21 +130,19 @@ export class LLMClient implements LLMClientPort {
           throw error;
         }
       };
-      const observation = snapshot.auth_type === "oauth" ? observe_chatgpt_request() : null;
-      if (snapshot.auth_type === "oauth") {
+      const observation =
+        snapshot.auth_type === "oauth" ? observe_chatgpt_request(request_fetch) : null;
+      if (observation !== null) {
         if (this.auth === undefined) throw new AppError("model.auth_required");
-        const auth = await this.auth.resolve(
-          body.auth_session ?? this.auth.bind(),
-          controller.signal,
-        );
+        const auth = await this.auth.resolve(body.auth_session ?? this.auth.bind(), request_signal);
         if (auth.apiKey === undefined) throw new AppError("model.auth_required");
         request.options.apiKey = auth.apiKey;
-        Object.assign(request.options, observation!.options);
+        Object.assign(request.options, observation.options);
       }
       const message = await request
         .stream(request.model, request.context, request.options)
         .result();
-      if (timeout) return empty_llm_result({ timeout: true });
+      if (deadline.signal.aborted) return empty_llm_result({ timeout: true }); // 同时取消时以总时限为准
       if (signal.aborted) return empty_llm_result({ cancelled: true });
       if (payload_error !== null)
         return empty_llm_result({
@@ -143,9 +156,9 @@ export class LLMClient implements LLMClientPort {
           retryable: failure.retryable,
         });
 
-      return normalize_pi_result(snapshot, message, body);
+      return normalize_pi_result(snapshot, message, body, prompt_blocked);
     } catch (error) {
-      if (timeout) return empty_llm_result({ timeout: true });
+      if (deadline.signal.aborted) return empty_llm_result({ timeout: true });
       if (signal.aborted) return empty_llm_result({ cancelled: true });
       return empty_llm_result({
         request_error: build_llm_error(error, snapshot, body),
@@ -156,9 +169,36 @@ export class LLMClient implements LLMClientPort {
       });
     } finally {
       clearTimeout(timer);
-      signal.removeEventListener("abort", abort_listener);
     }
   }
+}
+
+type HttpResponseInfo = Pick<
+  LLMRequestResult,
+  "http_status" | "http_received_at" | "retry_after_ms"
+>;
+
+/** 每个响应整体替换上一次的事实，冷却时间从收到该响应时算起。 */
+function read_http_response(response: Response): HttpResponseInfo {
+  const received_at = Date.now();
+  const raw = response.headers.get("retry-after")?.trim() ?? "";
+  const delay = /^\d+$/.test(raw)
+    ? Number(raw) * 1000
+    : /^(?:[A-Za-z]{3,9}, |[A-Za-z]{3} )/.test(raw)
+      ? Date.parse(raw) - received_at
+      : NaN;
+  return {
+    http_status: response.status,
+    http_received_at: received_at,
+    ...(Number.isFinite(delay) && delay > 0 ? { retry_after_ms: delay } : {}),
+  };
+}
+
+/** Google 可以只返回提示词拦截信息，此时 Pi 没有候选终止原因。 */
+function is_google_prompt_block(event: unknown): boolean {
+  if (!is_json_record(event) || !is_json_record(event["promptFeedback"])) return false;
+  const reason = event["promptFeedback"]["blockReason"];
+  return typeof reason === "string" && GOOGLE_PROMPT_BLOCK_REASONS.has(reason);
 }
 
 /** 明确的内容拒绝进入内容处理，其余 Pi 请求失败继续交由调度器恢复。 */
@@ -166,8 +206,9 @@ function normalize_pi_result(
   snapshot: ModelRequestSnapshot,
   message: AssistantMessage,
   body: LLMRequestBody,
+  prompt_blocked: boolean,
 ): LLMRequestResult {
-  const finish_error = read_finish_error(message);
+  const finish_error = read_finish_error(message, prompt_blocked);
   if (
     finish_error === undefined &&
     (message.stopReason === "error" ||
@@ -230,11 +271,13 @@ function read_usage_tokens(value: unknown): number {
 }
 
 /** 只识别协议内的明确拒绝值，宽泛或未知原因保留请求失败语义。 */
-function read_finish_error(message: AssistantMessage): string | undefined {
-  if (
-    message.rawStopReason !== undefined &&
-    CONTENT_REFUSAL_REASONS[message.api]?.includes(message.rawStopReason)
-  ) {
+function read_finish_error(message: AssistantMessage, prompt_blocked: boolean): string | undefined {
+  const reason = message.rawStopReason;
+  const refused =
+    reason === undefined
+      ? prompt_blocked && message.stopReason === "error"
+      : CONTENT_REFUSAL_REASONS[message.api]?.includes(reason);
+  if (refused) {
     return message.errorMessage ?? "供应商拒绝生成当前内容。";
   }
   if (message.stopReason === "length") {

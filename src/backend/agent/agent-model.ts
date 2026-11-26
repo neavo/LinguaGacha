@@ -15,7 +15,8 @@ import {
   type ModelRequestIdentity,
 } from "../llm/llm-request";
 import { apply_request_overrides } from "../llm/llm-payload";
-import { resolve_model_capability, type PiCatalogModel } from "../llm/model-capability";
+import { resolve_model_capability } from "../llm/model-capability";
+import type { PiModelIndex } from "../llm/pi-model-index";
 import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
 import { resolve_pi_model, type PiApi } from "../llm/llm-pi";
 import type { ChatGPTAuthService } from "../auth/chatgpt-auth-service";
@@ -49,7 +50,7 @@ export function resolve_agent_batch_model(
   config: JsonRecord,
   agent_model: Model,
   usage: AgentModelUsage,
-  catalog: readonly PiCatalogModel[],
+  catalog: PiModelIndex,
   thinking_downgrade: boolean,
 ): Model {
   const model = resolve_agent_model(config, agent_model, usage);
@@ -78,7 +79,7 @@ export function register_agent_model(
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.AppError("model.not_found");
   const configured_model = Model.from_json(raw_model, String(raw_model["id"] ?? ""));
-  const capability = resolve_model_capability(configured_model, catalog.read_models());
+  const capability = resolve_model_capability(configured_model, catalog.read());
   const snapshot = read_model_request_snapshot(raw_model, { user_agent: identity.user_agent });
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
   const configured_name = String(raw_model["name"] ?? "").trim();
