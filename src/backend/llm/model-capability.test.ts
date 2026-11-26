@@ -3,12 +3,11 @@ import { describe, expect, it } from "vitest";
 import { Model, type ModelApiFormat } from "../../domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
-  type PiCatalogModel,
   adjust_model_thinking_level,
-  match_pi_catalog_models,
   resolve_model_capability,
   resolve_pi_thinking_level,
 } from "./model-capability";
+import { create_pi_model_index, type PiCatalogModel } from "./pi-model-index";
 
 describe("统一模型能力", () => {
   it("Vertex 优先使用对应模板，项目资源只用模型身份匹配规格", () => {
@@ -35,7 +34,9 @@ describe("统一模型能力", () => {
       ),
       api_url: "https://aiplatform.googleapis.com/v1",
     };
-    expect(resolve_model_capability(model, [developer, vertex, misleading])).toMatchObject({
+    expect(
+      resolve_model_capability(model, create_pi_model_index([developer, vertex, misleading])),
+    ).toMatchObject({
       reasoning: true,
       context_window: vertex.contextWindow,
     });
@@ -46,16 +47,16 @@ describe("统一模型能力", () => {
           api_url: "https://generativelanguage.googleapis.com",
           model_id: "fixture-model",
         },
-        [vertex, developer],
+        create_pi_model_index([vertex, developer]),
       ),
     ).toMatchObject({ reasoning: false });
-    expect(resolve_model_capability(model, [developer])).toMatchObject({
+    expect(resolve_model_capability(model, create_pi_model_index([developer]))).toMatchObject({
       reasoning: false,
       context_window: developer.contextWindow,
     });
   });
   it("容量聚合后应用产品输出上限，思考能力独立按协议解析", () => {
-    const catalog: PiCatalogModel[] = [
+    const catalog = create_pi_model_index([
       {
         ...create_catalog_model("small-model"),
         contextWindow: 128_000,
@@ -65,7 +66,7 @@ describe("统一模型能力", () => {
       { ...create_catalog_model("catalog-model"), contextWindow: 600_000, maxTokens: 8_000 },
       { ...create_catalog_model("small-window"), contextWindow: 128_000, maxTokens: 96_000 },
       { ...create_catalog_model("large-window"), contextWindow: 1_000_000, maxTokens: 256_000 },
-    ];
+    ]);
     expect(
       resolve_model_capability(
         create_model("OpenAIResponses", "vendor/catalog-model:fast"),
@@ -139,7 +140,7 @@ describe("统一模型能力", () => {
       for (const catalog of [[], [restricted]]) {
         const capability = resolve_model_capability(
           create_model(api_format, "deepseek-v4.1-flash"),
-          catalog,
+          create_pi_model_index(catalog),
         );
 
         expect(capability.available_thinking_levels).toEqual([
@@ -161,7 +162,7 @@ describe("统一模型能力", () => {
       max_output_tokens: requested_max_output_tokens,
     });
 
-    expect(resolve_model_capability(model, [])).toMatchObject({
+    expect(resolve_model_capability(model, create_pi_model_index([]))).toMatchObject({
       agent_config: { context_window },
       agent_limits: {
         context_window,
@@ -171,13 +172,13 @@ describe("统一模型能力", () => {
   });
 
   it("开关型思考按当前协议投影等级和历史要求", () => {
-    const catalog: PiCatalogModel[] = [
+    const catalog = create_pi_model_index([
       {
         ...create_catalog_model("toggle-model"),
         api: "openai-completions",
         compat: { thinkingFormat: "deepseek", requiresReasoningContentOnAssistantMessages: true },
       },
-    ];
+    ]);
     const completions = resolve_model_capability(create_model("OpenAI", "toggle-model"), catalog);
     expect(completions.available_thinking_levels).toEqual(["DEFAULT", "OFF", "LOW"]);
     expect(completions.compat).toMatchObject({
@@ -248,38 +249,29 @@ describe("统一模型能力", () => {
       },
       "test",
     );
-    expect(resolve_model_capability(model, [router, hosted]).compat).toEqual(hosted.compat);
+    expect(resolve_model_capability(model, create_pi_model_index([router, hosted])).compat).toEqual(
+      hosted.compat,
+    );
     const relay = Model.from_json(
       { ...model.to_json(), api_url: "https://relay.example/v1" },
       "test",
     );
-    expect(resolve_model_capability(relay, [hosted, router]).compat).toEqual(model_compat);
+    expect(resolve_model_capability(relay, create_pi_model_index([hosted, router])).compat).toEqual(
+      model_compat,
+    );
     const other_path = Model.from_json(
       { ...model.to_json(), api_url: "https://hosted.example/other/v1" },
       "test",
     );
-    expect(resolve_model_capability(other_path, [hosted, router]).compat).toEqual(model_compat);
     expect(
-      resolve_model_capability(model, [router, { ...hosted, api: "openai-responses" }]).compat,
+      resolve_model_capability(other_path, create_pi_model_index([hosted, router])).compat,
     ).toEqual(model_compat);
-  });
-
-  it("精确匹配优先，否则选择最长且唯一的分隔变种", () => {
-    const catalog = [
-      create_catalog_model("gpt-5.6"),
-      create_catalog_model("gpt-5.6-luna"),
-      create_catalog_model("model-alpha"),
-      create_catalog_model("model-bravo"),
-    ];
-
-    expect(match_pi_catalog_models("GPT-5.6", catalog).map((model) => model.id)).toEqual([
-      "gpt-5.6",
-    ]);
     expect(
-      match_pi_catalog_models("vendor/gpt-5.6-luna-fast", catalog).map((model) => model.id),
-    ).toEqual(["gpt-5.6-luna"]);
-    expect(match_pi_catalog_models("gpt-5.60", catalog)).toEqual([]);
-    expect(match_pi_catalog_models("model-alpha+model-bravo", catalog)).toEqual([]);
+      resolve_model_capability(
+        model,
+        create_pi_model_index([router, { ...hosted, api: "openai-responses" }]),
+      ).compat,
+    ).toEqual(model_compat);
   });
 
   it("目录乱序或新增托管平台同名记录不改变可信模板，原厂同协议记录优先", () => {
@@ -307,14 +299,18 @@ describe("统一模型能力", () => {
     };
     for (const catalog of [[aggregated], [hosted, aggregated], [aggregated, hosted]]) {
       expect(
-        resolve_model_capability(create_model("OpenAIResponses", "shared-model"), catalog)
-          .available_thinking_levels,
+        resolve_model_capability(
+          create_model("OpenAIResponses", "shared-model"),
+          create_pi_model_index(catalog),
+        ).available_thinking_levels,
       ).toEqual(["DEFAULT", "LOW", "HIGH", "MAX"]);
     }
     const catalog: PiCatalogModel[] = [hosted, aggregated, native];
     expect(
-      resolve_model_capability(create_model("OpenAIResponses", "shared-model"), catalog)
-        .available_thinking_levels,
+      resolve_model_capability(
+        create_model("OpenAIResponses", "shared-model"),
+        create_pi_model_index(catalog),
+      ).available_thinking_levels,
     ).toEqual(["DEFAULT", "HIGH"]);
   });
 
@@ -327,8 +323,10 @@ describe("统一模型能力", () => {
     };
     const catalog: PiCatalogModel[] = [create_catalog_model("shared-model"), exact];
     expect(
-      resolve_model_capability(create_model("OpenAI", "shared-model"), catalog)
-        .available_thinking_levels,
+      resolve_model_capability(
+        create_model("OpenAI", "shared-model"),
+        create_pi_model_index(catalog),
+      ).available_thinking_levels,
     ).toEqual(["DEFAULT", "HIGH"]);
     const first = { ...exact, provider: "unknown-one" };
     const second = { ...exact, provider: "unknown-two", reasoning: false };
@@ -337,14 +335,16 @@ describe("统一模型能力", () => {
       [second, first],
     ]) {
       expect(
-        resolve_model_capability(create_model("OpenAI", "shared-model"), catalog)
-          .available_thinking_levels,
+        resolve_model_capability(
+          create_model("OpenAI", "shared-model"),
+          create_pi_model_index(catalog),
+        ).available_thinking_levels,
       ).toEqual(["DEFAULT"]);
     }
   });
 
   it("局部模型修正保留同协议目录字段，跨协议仅沿用等级", () => {
-    const catalog: PiCatalogModel[] = [
+    const catalog = create_pi_model_index([
       {
         ...create_catalog_model("grok-4.6"),
         provider: "xai",
@@ -356,7 +356,7 @@ describe("统一模型能力", () => {
         },
         thinkingLevelMap: { off: null, low: "low", max: "max" },
       },
-    ];
+    ]);
     expect(
       resolve_model_capability(create_model("OpenAI", "grok-4.6"), catalog).compat,
     ).toMatchObject({
@@ -397,7 +397,10 @@ describe("统一模型能力", () => {
       },
       "official",
     );
-    const borrowed = resolve_model_capability(official_model, [third_party, mistral_chat]);
+    const borrowed = resolve_model_capability(
+      official_model,
+      create_pi_model_index([third_party, mistral_chat]),
+    );
     expect(borrowed.available_thinking_levels).toEqual(["DEFAULT", "LOW", "MEDIUM", "HIGH"]);
     expect(borrowed.compat).toBeUndefined();
 
@@ -408,8 +411,10 @@ describe("统一模型能力", () => {
       thinkingLevelMap: { off: "none", minimal: null, low: null, medium: null, high: "high" },
     };
     expect(
-      resolve_model_capability(official_model, [mistral_chat, native_responses])
-        .available_thinking_levels,
+      resolve_model_capability(
+        official_model,
+        create_pi_model_index([mistral_chat, native_responses]),
+      ).available_thinking_levels,
     ).toEqual(["DEFAULT", "OFF", "HIGH"]);
 
     // 非官方中转不会跨协议借用 mistral-conversations。
@@ -421,15 +426,16 @@ describe("统一模型能力", () => {
       },
       "relay",
     );
-    expect(resolve_model_capability(relay_model, [mistral_chat]).available_thinking_levels).toEqual(
-      ["DEFAULT"],
-    );
+    expect(
+      resolve_model_capability(relay_model, create_pi_model_index([mistral_chat]))
+        .available_thinking_levels,
+    ).toEqual(["DEFAULT"]);
   });
 });
 
 /** 以默认用户配置观察公开能力结果。 */
 function resolve_capability(api_format: ModelApiFormat, model_id: string) {
-  return resolve_model_capability(create_model(api_format, model_id), []);
+  return resolve_model_capability(create_model(api_format, model_id), create_pi_model_index([]));
 }
 
 /** 构造能力解析输入，自动容量与显式容量使用同一归一入口。 */

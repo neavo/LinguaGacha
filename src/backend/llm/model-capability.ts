@@ -28,11 +28,12 @@ import {
   resolve_model_endpoint,
   type ResolvedModelEndpoint,
 } from "../../domain/model-endpoint";
-import {
-  MODEL_CAPABILITY_OVERRIDES,
-  type ModelCapabilityOverride,
-  type ModelRequestPolicy,
-} from "./llm-overrides";
+import { MODEL_CAPABILITY_OVERRIDES, type ModelRequestPolicy } from "./llm-overrides";
+import { match_model_id, type PiCatalogModel, type PiModelIndex } from "./pi-model-index";
+
+const MODEL_OVERRIDES_BY_ID = new Map(
+  MODEL_CAPABILITY_OVERRIDES.map((override) => [override.model_id.toLowerCase(), override]),
+);
 
 /** 模型容量规格缺失时的安全运行容量；不据模型名猜测规格。 */
 const FALLBACK_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
@@ -76,22 +77,6 @@ const MODEL_PROVIDER_ORDER = [
   "baseten",
   "nvidia",
 ] as const;
-
-/** 目录只提供能力事实，请求身份、价格与输入类型由各自消费方决定。 */
-export type PiCatalogModel = Readonly<
-  Pick<
-    PiModel<Api>,
-    | "id"
-    | "baseUrl"
-    | "provider"
-    | "api"
-    | "reasoning"
-    | "contextWindow"
-    | "maxTokens"
-    | "thinkingLevelMap"
-    | "compat"
-  > & { name?: string; input?: readonly ("text" | "image")[] }
->;
 
 /** 请求入口共用的能力快照，产品请求策略与 SDK 兼容字段分别消费。 */
 export type ResolvedModelCapability = Readonly<{
@@ -139,15 +124,15 @@ const MODEL_COMPAT_FIELDS = [
  */
 export function resolve_model_capability(
   model: ModelCapabilityInput,
-  catalog: readonly PiCatalogModel[],
+  catalog: PiModelIndex,
 ): ResolvedModelCapability {
   const endpoint = resolve_model_endpoint(model.api_url, model.api_format, model.model_id);
   const model_id = endpoint.model_id;
-  const matches = match_pi_catalog_models(model_id, catalog);
+  const matches = catalog.match_models(model_id);
   const api_order = resolve_pi_api_order(endpoint.api);
   const selection = select_pi_thinking_template(model.api_format, endpoint, matches, api_order);
   const pi_template = selection?.model;
-  const app_override = match_model_capability_override(model_id);
+  const app_override = match_model_id(model_id, MODEL_OVERRIDES_BY_ID);
   const protocol_override = app_override?.protocols[model.api_format];
   const reasoning = protocol_override?.reasoning ?? pi_template?.reasoning === true;
   const thinking_level_map =
@@ -184,18 +169,6 @@ export function resolve_model_capability(
     ...(compat === undefined ? {} : { compat }),
     ...(protocol_override?.request === undefined ? {} : { request: protocol_override.request }),
   };
-}
-
-/** 精确项优先；否则取配置 ID 中具有分隔边界的最长且唯一 canonical ID。 */
-export function match_pi_catalog_models(
-  configured_id: string,
-  catalog: readonly PiCatalogModel[],
-): PiCatalogModel[] {
-  const canonical_id = match_canonical_model_id(
-    configured_id,
-    catalog.map((model) => model.id),
-  );
-  return catalog.filter((model) => model.id.toLowerCase() === canonical_id);
 }
 
 /** 配置归一化时修正失效等级；请求阶段不再隐式调整等级。 */
@@ -239,52 +212,6 @@ export function resolve_product_thinking_level(
   return MODEL_THINKING_LEVELS.find(
     (level) => level !== "DEFAULT" && level.toLowerCase() === value,
   );
-}
-
-/** 模型修正先按名称定位，容量和协议能力在各自消费边界读取。 */
-function match_model_capability_override(configured_id: string): ModelCapabilityOverride | null {
-  const canonical_id = match_canonical_model_id(
-    configured_id,
-    MODEL_CAPABILITY_OVERRIDES.map((override) => override.model_id),
-  );
-  return (
-    MODEL_CAPABILITY_OVERRIDES.find(
-      (override) => override.model_id.toLowerCase() === canonical_id,
-    ) ?? null
-  );
-}
-
-/** 两种事实来源共用名称选择规则；重复目录记录保留给调用方聚合。 */
-function match_canonical_model_id(
-  configured_id: string,
-  model_ids: readonly string[],
-): string | null {
-  const normalized_id = configured_id.trim().toLowerCase();
-  const canonical_ids = model_ids.map((model_id) => model_id.toLowerCase());
-  if (canonical_ids.includes(normalized_id)) return normalized_id;
-  const candidates = canonical_ids.filter((model_id) =>
-    contains_canonical_id(normalized_id, model_id),
-  );
-  const longest_length = Math.max(0, ...candidates.map((model_id) => model_id.length));
-  const longest_ids = new Set(candidates.filter((model_id) => model_id.length === longest_length));
-  return longest_ids.size === 1 ? (longest_ids.values().next().value ?? null) : null;
-}
-
-/** 只在 canonical ID 的字母数字边界匹配，避免把短模型名误配到更长 ID。 */
-function contains_canonical_id(configured_id: string, canonical_id: string): boolean {
-  let offset = configured_id.indexOf(canonical_id);
-  while (offset >= 0) {
-    const before = configured_id[offset - 1];
-    const after = configured_id[offset + canonical_id.length];
-    if (!is_model_id_word_character(before) && !is_model_id_word_character(after)) return true;
-    offset = configured_id.indexOf(canonical_id, offset + 1);
-  }
-  return false;
-}
-
-/** 字母数字属于模型名，其他字符构成名称匹配边界。 */
-function is_model_id_word_character(value: string | undefined): boolean {
-  return value !== undefined && /[a-z0-9]/u.test(value);
 }
 
 /** 完整请求身份优先，按协议与供应商顺序回退，选出一条完整思考模板。 */

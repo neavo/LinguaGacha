@@ -5,7 +5,6 @@ import {
   Headers as UndiciHeaders,
   FormData as UndiciFormData,
 } from "undici";
-import { record_http_response_info } from "./http-response-info";
 import { ProxyDispatcher } from "./proxy-dispatcher";
 import type { ProxyResolver } from "./proxy-route";
 
@@ -41,13 +40,11 @@ export class ProxyHttpClient {
   /** 重定向和取消遵循 Undici 请求语义，后端入口额外禁止自动重定向。 */
   public readonly fetch: typeof globalThis.fetch = async (input, init) => {
     if (this.disposal !== null) throw new Error("Proxy HTTP client is disposed.");
-    const response = (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
+    return undici_fetch(input as Parameters<typeof undici_fetch>[0], {
       ...(init as Parameters<typeof undici_fetch>[1]),
       dispatcher: this.dispatcher,
       ...(this.redirects === "error" ? { redirect: "error" as const } : {}),
-    })) as unknown as Response;
-    record_http_response_info(response);
-    return response;
+    }) as unknown as Promise<Response>;
   };
 
   /** Backend 线程只有一个普通 HTTP transport，第三方 SDK 也从同一全局入口取用。 */

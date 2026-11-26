@@ -11,7 +11,6 @@ import {
 import type { JsonRecord } from "../../domain/json";
 import type { AppPathService } from "../app/app-path-service";
 import type { GlobalOperationGate } from "../runtime-operation-gate";
-import { without_http_response_info } from "../network/http-response-info";
 import { create_provider_error } from "../network/provider-error";
 import { ChatGPTCredentialStore } from "./chatgpt-credential-store";
 import {
@@ -75,11 +74,9 @@ export class ChatGPTAuthService {
   /** 每次真实请求解析 token；单个调用者取消不撤销共享刷新和轮换凭据保存。 */
   public async resolve(session_id: string, signal?: AbortSignal): Promise<ModelAuth> {
     signal?.throwIfAborted();
-    const operation = without_http_response_info(() => this.resolve_credential(session_id)).finally(
-      () => {
-        this.resolving.delete(operation);
-      },
-    );
+    const operation = this.resolve_credential(session_id).finally(() => {
+      this.resolving.delete(operation);
+    });
     this.resolving.add(operation);
     try {
       const result =

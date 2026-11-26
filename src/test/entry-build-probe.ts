@@ -3,6 +3,7 @@ import { Model } from "../domain/model";
 import { read_model_request_snapshot } from "../backend/llm/llm-request";
 import { resolve_one_shot_pi_request } from "../backend/llm/llm-pi";
 import { resolve_model_capability } from "../backend/llm/model-capability";
+import { create_pi_model_index } from "../backend/llm/pi-model-index";
 
 type ResponseFixture = {
   format: string;
@@ -76,6 +77,7 @@ const responses: ResponseFixture[] = [
   },
 ];
 
+const catalog = create_pi_model_index([]);
 for (const fixture of responses) {
   const model = Model.from_json(
     {
@@ -92,7 +94,7 @@ for (const fixture of responses) {
     snapshot,
     [{ role: "user", content: "ping" }],
     new AbortController().signal,
-    resolve_model_capability(model, []),
+    resolve_model_capability(model, catalog),
   );
   // 夹具在独立进程执行，fetch 替换随进程退出释放。
   globalThis.fetch = async () =>

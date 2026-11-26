@@ -497,8 +497,8 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
   /** GUI 启动后检查一次。CLI 使用已加载缓存。 */
   public start_model_catalog_check(): void {
     if (this.catalog_check !== null) return;
-    this.catalog_check = this.modelCatalog.check((models, commit, signal) =>
-      this.model.apply_catalog(models, commit, signal, () =>
+    this.catalog_check = this.modelCatalog.check((catalog, commit, signal) =>
+      this.model.apply_catalog(catalog, commit, signal, () =>
         this.publish_event(MODEL_CATALOG_UPDATED_EVENT_TOPIC, this.modelCatalog.get_snapshot()),
       ),
     );

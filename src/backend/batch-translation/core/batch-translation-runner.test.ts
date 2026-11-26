@@ -45,7 +45,7 @@ import {
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
 import { LLMClient } from "../../llm/llm-client";
-import { read_builtin_pi_models } from "../../llm/pi-model-catalog";
+import { create_pi_model_catalog_fixture } from "../../../test/pi-model-catalog-fixture";
 
 const api_mocks = vi.hoisted(() => ({ stream: vi.fn<ProviderStreams["stream"]>() }));
 vi.mock("@earendil-works/pi-ai/api/openai-completions.lazy", () => ({
@@ -691,7 +691,6 @@ describe("BatchTranslationRunner", () => {
   );
 
   it("内容拒绝有限耗尽后继续提交后续单元，期间不等待密钥恢复", async () => {
-    vi.useFakeTimers();
     const builtin_root = create_template_root();
     const pool = new TranslationWorkerPool({
       builtinRoot: builtin_root,
@@ -738,7 +737,7 @@ describe("BatchTranslationRunner", () => {
       logManager: create_log_manager(),
       llmClient: new LLMClient({
         userAgent: "LinguaGacha/test",
-        catalog: { read_models: read_builtin_pi_models },
+        catalog: create_pi_model_catalog_fixture([]),
       }),
       taskStore: create_task_store({
         get_translation_items: () => [
@@ -767,7 +766,6 @@ describe("BatchTranslationRunner", () => {
           model: { ...context.model, api_format: "OpenAI", model_id: "gpt-5-mini", api_key: "key" },
         }),
       );
-      await vi.advanceTimersByTimeAsync(10_000);
       expect(await handle.completion).toMatchObject({
         status: "done",
         progress: {
@@ -776,10 +774,8 @@ describe("BatchTranslationRunner", () => {
           failed: 1,
         },
       });
-      expect(await handle.completion).toMatchObject({ status: "done" });
       expect(recoveries).toEqual([]);
       expect(committed).toMatchObject([{ id: 2, dst: "有效译文", status: "PROCESSED" }]);
-      expect(vi.getTimerCount()).toBe(0);
     } finally {
       await runtime.dispose();
       await pool.dispose();

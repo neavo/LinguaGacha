@@ -41,7 +41,21 @@ import type { JsonRecord } from "../../domain/json";
 import type { AgentChatChange, AgentChatEvent } from "../../shared/agent";
 import * as workspace_tools from "./tools/workspace-run";
 import { ProjectOperationGate, GlobalOperationGate } from "../runtime-operation-gate";
-import { read_builtin_pi_models, type PiModelCatalogReader } from "../llm/pi-model-catalog";
+import type { PiModelCatalogReader } from "../llm/pi-model-catalog";
+import { create_pi_model_catalog_fixture } from "../../test/pi-model-catalog-fixture";
+
+const builtin_catalog = create_pi_model_catalog_fixture();
+const next_model_catalog = create_pi_model_catalog_fixture([
+  {
+    id: "next-model",
+    api: "openai-completions",
+    provider: "openai",
+    baseUrl: "https://example.test/v1",
+    reasoning: true,
+    contextWindow: 128_000,
+    maxTokens: 16_000,
+  },
+]);
 
 /** 集中保存模型定义与公开快照的共同 skill 身份，避免协议断言复制语言矩阵。 */
 const skill_test_fixture = vi.hoisted(() => {
@@ -2983,19 +2997,7 @@ describe("AgentService", () => {
       });
     const f = await create_service({
       batch_requests: { run },
-      catalog: {
-        read_models: () => [
-          {
-            id: "next-model",
-            api: "openai-completions",
-            provider: "openai",
-            baseUrl: "https://example.test/v1",
-            reasoning: true,
-            contextWindow: 128000,
-            maxTokens: 16000,
-          },
-        ],
-      },
+      catalog: next_model_catalog,
     });
     f.select_agent_model("next");
     await f.service.send_message({ text: "识别", attachments: [] });
@@ -3090,19 +3092,7 @@ describe("AgentService", () => {
     >(async () => ({ run_id: "translation", status: "done", progress: null }));
     const fixture = await create_service({
       batch_translation: { run_under_agent: run },
-      catalog: {
-        read_models: () => [
-          {
-            id: "next-model",
-            api: "openai-completions",
-            provider: "openai",
-            baseUrl: "https://example.test/v1",
-            reasoning: true,
-            contextWindow: 128_000,
-            maxTokens: 16_000,
-          },
-        ],
-      },
+      catalog: next_model_catalog,
     });
     fixture.select_agent_model("next");
 
@@ -3252,7 +3242,7 @@ describe("AgentService", () => {
         originalHeight: 1,
       }),
     },
-    catalog = { read_models: read_builtin_pi_models },
+    catalog = builtin_catalog,
   }: {
     batch_requests?: Parameters<typeof AgentService.open>[0]["batchRequests"];
     batch_translation?: Parameters<typeof AgentService.open>[0]["batchTranslation"];

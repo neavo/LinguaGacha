@@ -12,12 +12,13 @@ import { is_json_record, type JsonRecord } from "../../domain/json";
 import { Model as ConfiguredModel } from "../../domain/model";
 import { read_model_request_snapshot } from "./llm-request";
 import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
-import { resolve_model_capability, type PiCatalogModel } from "./model-capability";
+import { resolve_model_capability } from "./model-capability";
 import { read_builtin_pi_models } from "./pi-model-catalog";
+import { create_pi_model_index, type PiCatalogModel } from "./pi-model-index";
 import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 import { build_model_request_url } from "../../domain/model-endpoint";
 
-const catalog = read_builtin_pi_models();
+const catalog = create_pi_model_index(read_builtin_pi_models());
 /** 通过内置目录验证能力解析与真实适配器的请求契约。 */
 const create_pi_request = (
   snapshot: Parameters<typeof resolve_one_shot_pi_request>[0],
@@ -95,17 +96,20 @@ describe("pi-ai 请求适配", () => {
       model_id,
       thinking: { level: "HIGH" },
     });
-    const capability = resolve_model_capability(ConfiguredModel.from_json(configured, "fixture"), [
-      {
-        id: "gemini-2.5-flash",
-        api: "google-vertex",
-        provider: "google-vertex",
-        baseUrl: "https://aiplatform.googleapis.com/v1",
-        reasoning: true,
-        contextWindow: 1_000_000,
-        maxTokens: 65_536,
-      },
-    ]);
+    const capability = resolve_model_capability(
+      ConfiguredModel.from_json(configured, "fixture"),
+      create_pi_model_index([
+        {
+          id: "gemini-2.5-flash",
+          api: "google-vertex",
+          provider: "google-vertex",
+          baseUrl: "https://aiplatform.googleapis.com/v1",
+          reasoning: true,
+          contextWindow: 1_000_000,
+          maxTokens: 65_536,
+        },
+      ]),
+    );
     const request = resolve_one_shot_pi_request(
       read_model_request_snapshot(configured, TEST_REQUEST_IDENTITY),
       [{ role: "user", content: "ping" }],
@@ -594,7 +598,10 @@ describe("pi-ai 请求适配", () => {
       [{ role: "user", content: "ping" }],
       new AbortController().signal,
       {
-        ...resolve_model_capability(ConfiguredModel.from_json(configured, "fixture"), []),
+        ...resolve_model_capability(
+          ConfiguredModel.from_json(configured, "fixture"),
+          create_pi_model_index([]),
+        ),
         compat: { supportsStrictMode: false },
       },
     );
@@ -931,7 +938,7 @@ describe("真实适配器的产品参数", () => {
       read_model_request_snapshot(configured.to_json(), TEST_REQUEST_IDENTITY),
       [{ role: "user", content: "Hello" }],
       new AbortController().signal,
-      resolve_model_capability(configured, []),
+      resolve_model_capability(configured, create_pi_model_index([])),
     );
     const payload = await capture_payload(request);
     expect(payload.service_tier).toBe("priority");
@@ -951,7 +958,7 @@ describe("真实适配器的产品参数", () => {
       "test",
     );
     const capability = {
-      ...resolve_model_capability(configured, []),
+      ...resolve_model_capability(configured, create_pi_model_index([])),
       reasoning: true,
       available_thinking_levels: ["DEFAULT", "OFF", "HIGH"] as const,
       compat,
@@ -1009,7 +1016,7 @@ describe("真实适配器的产品参数", () => {
         read_model_request_snapshot(configured.to_json(), TEST_REQUEST_IDENTITY),
         [{ role: "user", content: "Hello" }],
         new AbortController().signal,
-        resolve_model_capability(configured, records),
+        resolve_model_capability(configured, create_pi_model_index(records)),
       );
       const payload = await capture_payload(request);
       if (api_url.includes("nvidia.com")) expect(payload).not.toHaveProperty("reasoning");
@@ -1052,7 +1059,10 @@ describe.each(["OpenAIResponses", "Anthropic"] as const)("%s 会话内 effort", 
       read_model_request_snapshot(configured, TEST_REQUEST_IDENTITY),
       [{ role: "user", content: "继续" }],
       new AbortController().signal,
-      resolve_model_capability(ConfiguredModel.from_json(configured, "test"), [record]),
+      resolve_model_capability(
+        ConfiguredModel.from_json(configured, "test"),
+        create_pi_model_index([record]),
+      ),
     );
     const payload = await capture_payload(
       request,
