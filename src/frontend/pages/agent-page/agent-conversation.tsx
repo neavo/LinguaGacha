@@ -1030,9 +1030,10 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 />
               </div>
             ) : null}
-            {controls.exportedRoundId === null ? null : (
-              <AgentStarPrompt key={controls.exportedRoundId} round_id={controls.exportedRoundId} />
-            )}
+            {/* 恢复快照可能直接换到新的导出轮次，按轮次重新挂载提醒。 */}
+            {controls.exportedRoundId !== null ? (
+              <AgentStarPrompt key={controls.exportedRoundId} />
+            ) : null}
             {follow_latest_control}
           </div>
 
