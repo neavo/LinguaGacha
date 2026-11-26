@@ -70,6 +70,12 @@ export function ProjectSidebar({
   const { t } = useI18n();
   const { settings_snapshot, open_projects, active_project } = useDesktopState();
   const { projects } = useRuntimeSnapshot();
+  // 未开始过新轮次的工程排在最后，同序时沿用打开顺序。
+  const ordered_open_projects = open_projects.toSorted(
+    (left, right) =>
+      (projects?.[right.snapshot.projectId]?.lastAgentRoundStartedAt ?? -1) -
+      (projects?.[left.snapshot.projectId]?.lastAgentRoundStartedAt ?? -1),
+  );
   const lifecycle = useProjectLifecycle();
   const [opening_path, set_opening_path] = useState<string | null>(null);
   const paths = new Set(open_projects.map(({ snapshot }) => path_key(snapshot.path))); // 重复路径保留已打开项。
@@ -86,7 +92,6 @@ export function ProjectSidebar({
       <hr className="sidebar-group-separator" />
       <div className="sidebar-projects__header">
         <span className="sidebar-projects__title">{t("app.workspace.projects")}</span>
-        {/* 每次引导都重建按钮容器，重新播放提示动画。 */}
         <div className="sidebar-projects__header-actions">
           <Tooltip>
             <TooltipTrigger
@@ -129,7 +134,7 @@ export function ProjectSidebar({
       <div className="shell-sidebar__project-scroll">
         {has_projects ? (
           <ul className="sidebar-group">
-            {open_projects.map((project) => (
+            {ordered_open_projects.map((project) => (
               <ProjectRow
                 key={path_key(project.snapshot.path)}
                 name={project.snapshot.name}

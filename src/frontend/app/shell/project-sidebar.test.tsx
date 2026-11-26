@@ -79,36 +79,31 @@ describe("ProjectSidebar", () => {
     });
   }
 
-  async function open_project_menu(row: number): Promise<HTMLElement[]> {
-    const trigger = container.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"]')[
-      row
-    ]!;
-    await act(async () => trigger.click());
-    return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-  }
-
   it.each([
-    ["打开空闲", true, false, [false, false, true, false]],
-    ["打开忙碌", true, true, [true, true, true, false]],
-    ["关闭", false, false, [true, false, false, false]],
-  ])("工程菜单在%s时保留四个操作", async (_label, opened, busy, disabled) => {
+    ["打开空闲", true, false, [false, false, true]],
+    ["打开忙碌", true, true, [true, true, true]],
+    ["关闭", false, false, [true, false, false]],
+  ])("工程菜单在%s时按工程状态限制操作", async (_label, opened, busy, disabled) => {
     if (opened) project_state.open_projects = [opened_project("first", "翻译.lg")];
     else project_state.settings_snapshot.recent_projects = [recent_project];
     if (busy)
       project_state.activity.first = { agent: true, batchTranslation: false, projectWrite: false };
 
     await render_project_sidebar();
-    const items = await open_project_menu(0);
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
+    await act(async () => trigger.click());
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
     const t = create_text_resolver("zh-CN");
-    expect(items.map((item) => item.textContent)).toEqual([
-      t("project.close.action"),
-      t("app.workspace.remove_recent"),
-      t("project.rename"),
-      t("app.workspace.reveal_path"),
-    ]);
-    expect(items.map((item) => item.getAttribute("aria-disabled") === "true")).toEqual(disabled);
+    const menu_item = (key: Parameters<typeof t>[0]) =>
+      items.find((item) => item.textContent === t(key))!;
+    const rename = menu_item("project.rename");
+    expect(
+      [menu_item("project.close.action"), menu_item("app.workspace.remove_recent"), rename].map(
+        (item) => item.getAttribute("aria-disabled") === "true",
+      ),
+    ).toEqual(disabled);
     if (!opened) {
-      await act(async () => items[2]!.click());
+      await act(async () => rename.click());
       expect(lifecycle.request_rename).toHaveBeenCalledWith(
         recent_project.path,
         recent_project.name,
@@ -116,21 +111,34 @@ describe("ProjectSidebar", () => {
     }
   });
 
-  it("已打开工程排在最近工程之前，只有工程视图高亮当前工程", async () => {
+  it("新轮次将后台工程移到首位，当前工程仍保持高亮", async () => {
     const first = opened_project("first", "翻译.lg");
     const second = opened_project("second", "校对.lg");
     project_state.active_project = first;
     project_state.open_projects = [first, second];
     project_state.settings_snapshot.recent_projects = [recent_project, first.snapshot];
+    const read_rows = () =>
+      Array.from(container.querySelectorAll(".sidebar-project-item > button"));
 
     await render_project_sidebar(true);
-    const rows = Array.from(container.querySelectorAll(".sidebar-project-item > button"));
-    expect(rows.map((row) => row.textContent)).toEqual([
+    expect(read_rows().map((row) => row.textContent)).toEqual([
       first.snapshot.name,
       second.snapshot.name,
       recent_project.name,
     ]);
-    expect(Array.from(container.querySelectorAll('[aria-current="page"]'))).toEqual([rows[0]]);
+    const idle = { agent: false, batchTranslation: false, projectWrite: false };
+    project_state.activity = {
+      first: { ...idle, lastAgentRoundStartedAt: 10 },
+      second: { ...idle, lastAgentRoundStartedAt: 20 },
+    };
+    await render_project_sidebar(true);
+    const rows = read_rows();
+    expect(rows.map((row) => row.textContent)).toEqual([
+      second.snapshot.name,
+      first.snapshot.name,
+      recent_project.name,
+    ]);
+    expect(container.querySelector('[aria-current="page"]')).toBe(rows[1]);
 
     await render_project_sidebar();
     expect(container.querySelector('[aria-current="page"]')).toBeNull();

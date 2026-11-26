@@ -37,7 +37,7 @@ renderer 通过 `window.desktopApp` 使用按用途划分的宿主能力。
 
 |状态|拥有者|保留范围|
 |---|---|---|
-|设置、全局运行占用与事件编排|`DesktopStateProvider`|主窗口会话|
+|设置、运行活动与事件编排|`DesktopStateProvider`|主窗口会话|
 |工程身份、批量快照、变化信号、统计、导出流程、筛选与当前工程路由|`ProjectStoreRegistry`|按 `projectId` 保留，关闭工程时释放|
 |工程生命周期确认|应用会话|跨页面保留|
 |批量详情的临时面板与速度采样|当前工程工作区|随当前工作区挂载，批量运行继续更新工程 Store|

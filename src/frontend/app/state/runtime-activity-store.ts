@@ -6,7 +6,7 @@ const DEFAULT_RUNTIME_ACTIVITY_SNAPSHOT: RuntimeActivitySnapshot = {
   owner: null,
 };
 
-/** 将 HTTP / SSE 不可信载荷收窄为 renderer 唯一运行占用形状。 */
+/** HTTP 补读和 SSE 使用相同的工程运行活动形状。 */
 function normalize_runtime_activity_snapshot(value: unknown): RuntimeActivitySnapshot {
   const runtime = is_json_record(value) ? value : {};
   const revision = runtime["revision"];
@@ -15,10 +15,12 @@ function normalize_runtime_activity_snapshot(value: unknown): RuntimeActivitySna
   if (is_json_record(runtime.projects)) {
     for (const [id, project] of Object.entries(runtime.projects)) {
       if (!is_json_record(project)) continue;
+      const { lastAgentRoundStartedAt } = project;
       projects[id] = {
         batchTranslation: project.batchTranslation === true,
         agent: project.agent === true,
         projectWrite: project.projectWrite === true,
+        ...(typeof lastAgentRoundStartedAt === "number" ? { lastAgentRoundStartedAt } : {}),
       };
     }
   }
@@ -39,7 +41,7 @@ function normalize_runtime_activity_snapshot(value: unknown): RuntimeActivitySna
   };
 }
 
-/** 创建 renderer 内的运行占用镜像，并用后端 revision 抵御 HTTP / SSE 乱序。 */
+/** 保存最新运行活动，旧修订的补读无法覆盖已收到的新快照。 */
 export function createRuntimeActivityStore(): {
   getSnapshot: () => RuntimeActivitySnapshot;
   subscribe: (listener: () => void) => () => void;
