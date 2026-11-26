@@ -17,6 +17,7 @@ import type {
   DesktopUpdateLaunchRequest,
 } from "../bridge/bridge-types";
 import { random_id } from "../../shared/utils/identifier";
+import { is_portable_file_name } from "../../shared/utils/file-name";
 
 const BERSERKER_EXECUTABLE_NAME = "berserker.exe";
 const DOWNLOAD_TEMP_SUFFIX = ".download";
@@ -88,8 +89,7 @@ export class DesktopUpdateService {
     }
 
     const version_dir = this.get_version_dir(request.latest_version);
-    const zip_file_name = resolve_zip_file_name(
-      download_target.zip_url,
+    const zip_file_name = build_windows_release_zip_name(
       request.latest_version,
       download_target.arch,
     );
@@ -215,6 +215,9 @@ export class DesktopUpdateService {
    * 把 release 版本映射到独立下载目录。
    */
   private get_version_dir(version: string): string {
+    // IPC 传入的版本同时组成下载目录和包名，必须是单段名称。
+    if (typeof version !== "string" || !is_portable_file_name(version))
+      throw new Error("Invalid update version.");
     return path.join(this.update_root_dir, `${UPDATE_VERSION_DIR_PREFIX}${version}`);
   }
 }
@@ -322,39 +325,6 @@ async function can_write_directory(directory: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * 从下载 URL 解析安全 zip 文件名，异常时使用稳定兜底名称。
- */
-function resolve_zip_file_name(
-  zip_url: string,
-  latest_version: string,
-  arch: WindowsReleaseArch,
-): string {
-  try {
-    const url = new URL(zip_url);
-    const file_name = path.basename(decodeURIComponent(url.pathname)).trim();
-    if (is_safe_zip_file_name(file_name)) {
-      return file_name;
-    }
-  } catch {
-    // 下面使用稳定文件名兜底。
-  }
-
-  return build_windows_release_zip_name(latest_version, arch);
-}
-
-/**
- * 判断文件名是否能安全落到版本目录内。
- */
-function is_safe_zip_file_name(file_name: string): boolean {
-  return (
-    file_name !== "" &&
-    !file_name.includes("/") &&
-    !file_name.includes("\\") &&
-    file_name.endsWith(".zip")
-  );
 }
 
 /**

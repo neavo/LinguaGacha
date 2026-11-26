@@ -66,6 +66,7 @@ export const ko_kr_app = {
     select_folder: "폴더 선택",
   },
   feedback: {
+    invalid_file_name: "파일 이름에 사용할 수 없는 문자가 포함되어 있습니다 …",
     activate_link: "링크를 처리하지 못했습니다 …",
     load_failed: "불러오기 실패 …",
     refresh_failed: "새로 고침 실패 …",

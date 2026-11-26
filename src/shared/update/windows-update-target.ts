@@ -24,7 +24,7 @@ export function normalize_windows_release_arch(value: unknown): WindowsReleaseAr
 }
 
 /**
- * 生成 Windows release zip 的权威文件名，用于下载兜底名和本地启动校验。
+ * 生成 Windows release zip 的权威文件名，用于选择资产、下载落盘和本地启动校验。
  */
 export function build_windows_release_zip_name(version: string, arch: WindowsReleaseArch): string {
   return `LinguaGacha_v${version}_Windows_${arch}.zip`;

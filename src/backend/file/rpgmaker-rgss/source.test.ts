@@ -62,12 +62,14 @@ it.each(["read", "decode", "header", "missing"])("RGSS %s 失败保留候选与�
   expect(fs.existsSync(path.join(root, "backup"))).toBe(false);
 });
 
-it.each(["../Scripts.rvdata2", "C:\\Scripts.rvdata2", "Data/Scripts.rxdata"])(
-  "拒绝配置中的越界路径和版本冲突：%s",
-  (value) => {
-    expect(() => script_path(Buffer.from("[Game]\nScripts=" + value), "ace")).toThrow();
-  },
-);
+it.each([
+  "../Scripts.rvdata2",
+  "C:\\Scripts.rvdata2",
+  ".TMP/Scripts.rvdata2",
+  "Data/Scripts.rxdata",
+])("拒绝配置中的非法路径和版本冲突：%s", (value) => {
+  expect(() => script_path(Buffer.from("[Game]\nScripts=" + value), "ace")).toThrow();
+});
 it("容器按当前系统确定代际，附带旧代际资源仍可保留", async () => {
   const { members: files } = await read_game_container(
     await write_zip(

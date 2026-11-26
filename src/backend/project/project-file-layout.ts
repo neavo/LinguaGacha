@@ -4,7 +4,7 @@ import {
   normalize_project_asset_path,
   project_asset_extension,
 } from "../../shared/project/project-asset-paths";
-import { is_portable_file_name } from "../../shared/utils/file-name";
+import { is_portable_relative_path } from "../../shared/utils/file-name";
 import { insert_by_sort } from "./insert-by-sort";
 
 /** 更新只调整资产身份与位置，内容变化通过独立替换操作完成。 */
@@ -42,7 +42,15 @@ export function resolve_project_file_layout(
           message: `Renaming "${file.path}" to "${target}" would change the file extension.`,
           public_details: { file_path: file.path },
         });
-      if (!target.split("/").every(is_portable_file_name))
+      const basename_start = target.lastIndexOf("/") + 1;
+      const target_dir = target.slice(0, basename_start);
+      const previous_dir = file.path.slice(0, file.path.lastIndexOf("/") + 1);
+      // 同目录改名只创建文件名，导入时接受的已有目录名仍可使用。
+      if (
+        !is_portable_relative_path(
+          previous_dir === target_dir ? target.slice(basename_start) : target,
+        )
+      )
         throw new AppError("request.validation_failed", {
           message: `Invalid file name in "${target}": names must not contain reserved characters, end with a dot or space, or use a reserved device name.`,
           public_details: { file_path: file.path },

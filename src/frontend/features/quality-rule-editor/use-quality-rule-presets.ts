@@ -3,6 +3,7 @@ import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { QualityRule } from "@domain/quality";
 import type { QualityRulePresets } from "@shared/quality/quality-rule-api";
+import { is_portable_file_name } from "@shared/utils/file-name";
 import type { QualityRuleKind, QualityRuleEntryByKind } from "@domain/quality";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
@@ -203,6 +204,10 @@ export function useQualityRulePresets<K extends QualityRuleKind>(
     const name = preset_input_state.value.trim();
     if (name === "") {
       push_toast("warning", t("preset_editor.feedback.name_required"));
+      return;
+    }
+    if (!is_portable_file_name(name)) {
+      push_toast("warning", t("app.feedback.invalid_file_name"));
       return;
     }
     const duplicate = has_casefold_duplicate_preset(

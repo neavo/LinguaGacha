@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { default_native_fs } from "../../native/native-fs";
 import { AppError } from "../../shared/error";
+import { validate_file_name } from "../../shared/utils/file-name";
+import { PROJECT_FILE_EXTENSION } from "../../shared/project/project-file";
+import type { SettingsSnapshotResponse } from "../../shared/settings";
 import type { ProjectTaskInput } from "../project/project-task-input";
 import { ProjectRegistry } from "../project/project-registry";
 import { BatchRequestService } from "../batch-request/batch-request-service";
@@ -309,6 +312,52 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       if (project.gate.busy) throw new AppError("runtime.busy");
       await this.dispose_project(project);
       return this.list_projects();
+    });
+  }
+
+  /** 文件与最近记录一同提交。设置写入失败时恢复原文件名。 */
+  public rename_project(body: JsonRecord): Promise<SettingsSnapshotResponse> {
+    return this.globalGate.run_lifecycle(async () => {
+      const { path: recent_path, new_name } = body;
+      if (typeof recent_path !== "string" || recent_path === "")
+        throw new AppError("request.validation_failed", { public_details: { field: "path" } });
+      if (typeof new_name !== "string")
+        throw new AppError("request.validation_failed", { public_details: { field: "new_name" } });
+      validate_file_name(new_name, { field: "new_name" });
+      const { database, appSettingService: settings } = this.options;
+      if (!settings.has_recent_project(recent_path) || !default_native_fs.exists(recent_path))
+        throw new AppError("project.not_found");
+      const project_path = default_native_fs.real_path(recent_path);
+      if (this.projects.find(project_path) !== undefined) throw new AppError("runtime.busy");
+      if (
+        path.extname(project_path).toLowerCase() !== PROJECT_FILE_EXTENSION ||
+        !default_native_fs.stat(project_path).isFile()
+      )
+        throw new AppError("request.validation_failed", { public_details: { field: "path" } });
+      const target_path = path.join(path.dirname(project_path), new_name + PROJECT_FILE_EXTENSION);
+      if (target_path === project_path)
+        return settings.replace_recent_project_path(recent_path, recent_path);
+
+      await database.rename_project_file(project_path, target_path);
+      let response: SettingsSnapshotResponse;
+      try {
+        // 数据库队列等待期间，最近记录可能被移除。设置服务按提交时的列表更新。
+        response = settings.replace_recent_project_path(recent_path, target_path);
+      } catch (error) {
+        try {
+          await database.rename_project_file(target_path, project_path);
+        } catch (cleanup) {
+          throw new AppError("data.committed_sync_failed", {
+            message: `The project was renamed, but its recent entry could not be updated. Project file: ${target_path}`,
+            cause: new AggregateError([error, cleanup], "Project rename rollback failed."),
+            public_details: { committed: true, path: target_path },
+          });
+        }
+        if (error instanceof AppError) throw error;
+        throw new AppError("file.io_failed", { cause: error });
+      }
+      settings.publish_settings_changed(["recent_projects"]);
+      return response;
     });
   }
 

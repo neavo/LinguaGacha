@@ -47,6 +47,7 @@ export const zh_cn_project = {
       "此文件对应的应用版本为 <emphasis>v{VERSION}</emphasis>，使用低版本应用打开可能导致数据损坏，是否确认继续打开 …?",
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",
   },
+  rename: "修改工程名称",
   close: {
     action: "关闭工程",
     confirm: "是否确认关闭当前工程 …?",

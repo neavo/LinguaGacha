@@ -34,7 +34,6 @@ export const zh_cn_workbench_page = {
     },
     rename: {
       exists: "已存在同名文件或文件夹",
-      invalid_name: '名称不能为空，不能包含 \\ / : * ? " < > |，也不能以点结尾',
     },
     reset: {
       description: "是否确认重置所选文件及其所有翻译条目 …?",

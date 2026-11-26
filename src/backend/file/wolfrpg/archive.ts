@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 import type { NativeFs } from "../../../native/native-fs";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import { assert_game_path_spellings, validate_game_path } from "../source-file-paths";
+import { assert_game_path_spellings, validate_game_segment } from "../source-file-paths";
 import {
   BINARY_COMPUTE_STEP_BYTES,
   BINARY_IO_CHUNK_BYTES,
@@ -86,10 +86,6 @@ export async function read_wolf_archive(
       "Invalid WOLF name bounds",
     );
     const text = new TextDecoder("shift-jis", { fatal: true }).decode(bytes.subarray(start, end));
-    assert(
-      text && text !== "." && text !== ".." && !/[\\/:]/u.test(text),
-      "Invalid WOLF member name",
-    );
     return { text, upper: bytes.subarray(offset + 4, upper_end) };
   };
   const members: WolfArchiveMember[] = [],
@@ -123,7 +119,7 @@ export async function read_wolf_archive(
       const at = file_table + first + i * FILE_RECORD_BYTES;
       const entry = name(u64(at)),
         filename = folder + entry.text;
-      validate_game_path(filename);
+      validate_game_segment(entry.text, folder === "");
       assert(
         members.length + directories.length < MAX_MEMBERS,
         "Excessive WOLF members: " + filename,

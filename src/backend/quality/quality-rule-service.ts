@@ -16,6 +16,7 @@ import type { CacheReadPort } from "../cache/cache-types";
 import {
   AppPathService,
   find_existing_preset_path,
+  resolve_new_user_preset_file,
   resolve_preset_file,
 } from "../app/app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -192,9 +193,13 @@ export class QualityRuleService {
    */
   public save_rule_preset(request: JsonRecord): QualityRulePresetSaveResponse {
     const rule = QualityRule.from_json(request["rule_type"]);
-    const name = this.normalize_preset_name(String(request["name"] ?? ""));
+    const { file_path } = resolve_new_user_preset_file(
+      String(request["name"] ?? ""),
+      ".json",
+      this.paths.get_quality_rule_user_preset_dir(rule.preset_directory),
+      this.native_fs,
+    );
     const entries = this.normalize_rule_entries(rule.kind, request["entries"]);
-    const { file_path } = this.resolve_rule_preset_file(rule.preset_directory, `user:${name}.json`);
     const directory = path.dirname(file_path);
     this.native_fs.make_dir(directory);
     const preset_entries = entries.map((entry) => {
@@ -219,13 +224,12 @@ export class QualityRuleService {
     const current = this.resolve_rule_preset_file(rule.preset_directory, id);
     if (current.source !== "user") throw new AppErrors.AppError("request.validation_failed");
     const directory = this.paths.get_quality_rule_user_preset_dir(rule.preset_directory);
-    const next_id = `user:${this.normalize_preset_name(String(request["new_name"] ?? ""))}.json`;
-    const next = resolve_preset_file({
-      virtual_id: next_id,
-      extension: ".json",
-      builtin_directory: directory,
-      user_directory: directory,
-    });
+    const next = resolve_new_user_preset_file(
+      String(request["new_name"] ?? ""),
+      ".json",
+      directory,
+    );
+    const next_id = `user:${next.file_name}`;
     if (id === next_id) return this.preset_change_snapshot(rule.kind);
     const existing_path = find_existing_preset_path(next.file_path, this.native_fs);
     if (
@@ -419,17 +423,6 @@ export class QualityRuleService {
       },
       this.native_fs,
     );
-  }
-
-  /**
-   * 归一预设显示名，保持文件名和 UI 文案一致
-   */
-  private normalize_preset_name(name: string): string {
-    const normalized_name = name.trim().normalize("NFC");
-    if (normalized_name === "") {
-      throw new AppErrors.AppError("request.validation_failed");
-    }
-    return normalized_name;
   }
 
   /**

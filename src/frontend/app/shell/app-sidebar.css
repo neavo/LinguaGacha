@@ -300,10 +300,6 @@
   opacity: 1;
 }
 
-.sidebar-project-item__menu-action[data-disabled] {
-  pointer-events: auto;
-}
-
 @media (hover: none) {
   .sidebar-project-item .sidebar-row::after,
   .sidebar-project-item__actions {

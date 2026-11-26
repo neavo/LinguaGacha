@@ -216,16 +216,24 @@ export class GameFormat {
             this.adapter.has_metadata,
           );
           const asset_items = groups.get(file.path) ?? [];
-          for (const item of asset_items)
-            if (!input.has(this.adapter.internal_path(item)))
+          const member_items = new Map<string, Item[]>(); // 逐成员写回复用校验时读出的成员键。
+          for (const item of asset_items) {
+            const name = this.adapter.internal_path(item);
+            // 条目路径是成员键，写回前须精确匹配已校验的容器清单。
+            if (!input.has(name))
               throw new AppError("file.invalid_structure", { public_details: { file: file.path } });
+            if (this.adapter.scope === "asset") continue;
+            const group = member_items.get(name) ?? [];
+            group.push(item);
+            member_items.set(name, group);
+          }
           const outputs =
             this.adapter.scope === "asset"
               ? this.adapter.export_files(input, asset_items, signal)
               : this.render_members(
                   await this.adapter.create_members(input),
                   members,
-                  asset_items,
+                  member_items,
                   signal,
                 );
           await write_game_directory(
@@ -249,22 +257,15 @@ export class GameFormat {
   private async *render_members(
     handler: GameMemberHandler,
     members: GameFiles,
-    items: readonly Item[],
+    items: ReadonlyMap<string, readonly Item[]>,
     signal: AbortSignal,
   ): AsyncGenerator<GameOutput> {
-    const group = new Map<string, Item[]>();
-    for (const item of items) {
-      const internal = this.adapter.internal_path(item);
-      const entries = group.get(internal) ?? [];
-      entries.push(item);
-      group.set(internal, entries);
-    }
     for (const [name, member] of members) {
       signal.throwIfAborted();
       const content = await member.async("uint8array");
       yield {
         name,
-        bytes: await handler.render(content, name, group.get(name) ?? []),
+        bytes: await handler.render(content, name, items.get(name) ?? []),
         kind: "original",
       };
     }

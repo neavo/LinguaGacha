@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import type { Item, ItemStatus } from "../../../domain/item";
 import { read_json_record } from "../../../domain/json";
-import { validate_game_path } from "../source-file-paths";
 
 /** 只有 `text` 默认翻译。姓名可能是角色或语音查找键，参数与代码可能是程序引用。 */
 const TYRANO_USAGES = ["text", "name", "parameter", "code"] as const;
@@ -24,8 +23,10 @@ export type TyranoMetadata = Readonly<{
 /** 持久化边界只检查形状，写回时再对照固化原稿验证范围与原文。 */
 export function read_tyrano_metadata(extra: Item["extra_field"]): TyranoMetadata {
   const value = read_json_record(read_json_record(extra)["tyrano"]);
-  assert(typeof value["internal_file_path"] === "string", "Invalid Tyrano member");
-  validate_game_path(value["internal_file_path"]);
+  assert(
+    typeof value["internal_file_path"] === "string" && value["internal_file_path"] !== "",
+    "Invalid Tyrano member",
+  );
   assert(TYRANO_USAGES.includes(value["usage"] as TyranoUsage), "Invalid Tyrano usage");
   const location = read_json_record(value["location"]);
   assert(

@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import JSZip from "jszip";
 
-import { read_zip_members, validate_zip_member_path } from "../../file/shared/zip-members";
+import { read_zip_members } from "../../file/shared/zip-members";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
+import { is_portable_relative_path } from "../../../shared/utils/file-name";
 import { default_native_fs as fs } from "../../../native/native-fs";
 
 /** 旧包只经过容器校验并原子展开，领域 skill 决定如何解释成员。 */
@@ -69,7 +70,7 @@ function collect_files(root: string, directory = root): Array<{ member: string; 
     if (entry.isDirectory()) files.push(...collect_files(root, file));
     else if (entry.isFile()) {
       const member = path.relative(root, file).split(path.sep).join("/");
-      if (validate_zip_member_path(member) !== member) throw new Error("Invalid package path");
+      if (!is_portable_relative_path(member)) throw new Error("Invalid package path: " + member);
       files.push({ member, path: file });
     } else throw new Error(`Unsupported package member: ${entry.name}`);
   }

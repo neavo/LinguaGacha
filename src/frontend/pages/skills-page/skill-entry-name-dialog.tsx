@@ -1,8 +1,9 @@
-import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { type JSX, useState } from "react";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Input } from "@frontend/shadcn/input";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
+import { is_portable_file_name } from "@shared/utils/file-name";
 
 type Props = {
   operation: "create_file" | "create_directory" | "rename";
@@ -17,18 +18,20 @@ type Props = {
 export function SkillEntryNameDialog(props: Props): JSX.Element {
   const { t } = useI18n();
   const [name, set_name] = useState(props.initial_name);
+  const trimmed_name = name.trim();
   const disabled = props.busy || props.readonly;
   const title = t(`knowledge_page.editor.${props.operation}`);
   /** 校验名称并补全文件后缀，命令成功后关闭弹窗。 */
-  async function submit() {
-    if (disabled || !name.trim()) return;
+  async function submit(): Promise<void> {
     // 在补后缀之前拒绝路径与末尾点，避免将非法输入变成另一个合法名称。
-    if (/[/\\]/.test(name) || /[. ]$/.test(name)) {
-      push_error_toast(t("app.feedback.save_failed"), t("app.feedback.validation_failed"));
+    if (!is_portable_file_name(trimmed_name)) {
+      push_toast("warning", t("app.feedback.invalid_file_name"));
       return;
     }
     const final_name =
-      props.operation === "create_file" && !name.includes(".") ? `${name}.md` : name;
+      props.operation === "create_file" && !trimmed_name.includes(".")
+        ? `${trimmed_name}.md`
+        : trimmed_name;
     if (await props.on_submit(final_name)) props.on_close();
   }
   return (
@@ -41,7 +44,7 @@ export function SkillEntryNameDialog(props: Props): JSX.Element {
       primaryAction={{
         label: t("app.action.confirm"),
         shortcut: "submit",
-        disabled: props.readonly || !name.trim(),
+        disabled: props.readonly || trimmed_name === "",
         onSelect: submit,
       }}
     >

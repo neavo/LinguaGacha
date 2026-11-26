@@ -68,6 +68,7 @@ export const pt_br_app = {
     select_folder: "Selecionar pasta",
   },
   feedback: {
+    invalid_file_name: "O nome do arquivo contém caracteres inválidos …",
     activate_link: "Falha ao processar o link …",
     load_failed: "Falha ao carregar …",
     refresh_failed: "Falha ao atualizar …",

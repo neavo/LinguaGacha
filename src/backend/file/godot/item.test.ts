@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { godot_default_status, read_godot_metadata } from "./item";
 
-it("元数据默认用途与坐标收窄，非法路径或不完整定位拒绝消费", () => {
+it("元数据收窄用途和坐标，要求成员键非空", () => {
   const godot = {
     internal_file_path: "main.gdc",
     usage: "code",
@@ -17,7 +17,7 @@ it("元数据默认用途与坐标收窄，非法路径或不完整定位拒绝�
     }).location.kind,
   ).toBe("scene_value");
   for (const invalid of [
-    { ...godot, internal_file_path: "../a" },
+    { ...godot, internal_file_path: "" },
     { ...godot, usage: "other" },
     { ...godot, location: { kind: "gd", start: 1, end: 0 } },
     { ...godot, location: { kind: "scene", node: 0 } },

@@ -75,7 +75,7 @@ async function* export_renpy(
   const { bytes: metadata_bytes, metadata } = await read_metadata(input);
   const { old_substitutions, common, scripts_incomplete } = metadata;
   const python2 = metadata.python_major === 2;
-  const common_digest = member_digest(metadata_bytes);
+  let common_digest: string | undefined; // 有已完成的公共条目时才验证元数据摘要。
   const members = [...input].filter(([name]) => name !== GAME_METADATA_MEMBER);
   const groups = new Map<string, { item: Item; location: RenpyMetadata }[]>();
   const commons: Item[] = [];
@@ -89,7 +89,7 @@ async function* export_renpy(
     seen.add(key);
     if (file === GAME_METADATA_MEMBER) {
       assert(
-        location.digest === common_digest &&
+        location.digest === (common_digest ??= member_digest(metadata_bytes)) &&
           location.key === item.src &&
           common?.includes(item.src),
         "Ren'Py common original changed",

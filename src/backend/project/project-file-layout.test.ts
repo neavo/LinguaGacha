@@ -30,6 +30,7 @@ it.each([
 });
 it.each([
   ["notes.txt", "TXT", "renamed.txt"],
+  ["chapter:1/notes.txt", "TXT", "chapter:1/renamed.txt"],
   ["game.zip", "GODOT", "other.zip"],
   ["game.godot", "GODOT", "folder/other.godot"],
 ])("改名保留扩展名 %#", (file, file_type, target) => {
@@ -48,6 +49,7 @@ it.each([
   [".env", "x.env"],
   ["notes.txt", "a:b.txt"],
   ["notes.txt", "CON.txt"],
+  ["notes.txt", "chapter:1/renamed.txt"],
 ])("拒绝改变扩展名或跨平台非法的名称：%s → %s", (file, target) => {
   expect(() =>
     resolve_project_file_layout(
@@ -68,7 +70,7 @@ it.each(["other.txt", "folder.txt"])("改名冲突说明占用的路径：%s", (
   ).toThrow(
     expect.objectContaining({
       code: "request.validation_failed",
-      message: expect.stringContaining(target),
+      public_details: expect.objectContaining({ conflict: target }),
     }),
   );
 });

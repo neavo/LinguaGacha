@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { AppError } from "../../../shared/error";
 import { ProjectAssetPathIndex } from "../../../shared/project/project-asset-paths";
-import { is_portable_file_name } from "../../../shared/utils/file-name";
+import { is_portable_relative_path } from "../../../shared/utils/file-name";
 
 /** 落盘前校验完整清单，成员字节按需读取，避免同时解压整包。 */
 export async function read_zip_members(
@@ -17,7 +17,8 @@ export async function read_zip_members(
     const names = new Set<string>(); // 文件和显式目录共用名称空间，大小写归一后比较。
     for (const entry of Object.values(zip.files)) {
       const raw = entry.unsafeOriginalName ?? entry.name;
-      const name = validate_zip_member_path(entry.dir ? raw.replace(/\/$/u, "") : raw);
+      const name = entry.dir ? raw.replace(/\/$/u, "") : raw;
+      if (!is_portable_relative_path(name)) throw new Error("Invalid ZIP path: " + raw);
       const key = name.toLowerCase();
       if (name + (entry.dir ? "/" : "") !== entry.name || names.has(key))
         throw new Error("Duplicate or noncanonical ZIP path");
@@ -39,12 +40,4 @@ export async function read_zip_members(
   } catch (cause) {
     throw new AppError("file.invalid_structure", { cause, public_details: { file } });
   }
-}
-
-/** 内部路径跨平台保存，拒绝越界和 Windows 路径别名。 */
-export function validate_zip_member_path(value: string): string {
-  const normalized = value.replace(/\\/gu, "/");
-  if (!normalized.split("/").every(is_portable_file_name))
-    throw new AppError("file.invalid_structure", { public_details: { file: value } });
-  return normalized;
 }

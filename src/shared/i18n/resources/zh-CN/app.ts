@@ -65,6 +65,7 @@ export const zh_cn_app = {
     select_folder: "选择文件夹",
   },
   feedback: {
+    invalid_file_name: "文件名中包含非法的字符 …",
     activate_link: "处理链接失败 …",
     load_failed: "加载失败 …",
     refresh_failed: "刷新失败 …",

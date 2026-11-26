@@ -23,7 +23,8 @@ export type {
 const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite 的 FULL 物理回收模式。
 const SQLITE_BUSY_TIMEOUT_MS = 5000; // 版本查询与 WAL 配置均受等待上限约束。
 const SQLITE_WAL_SUFFIX = "-wal";
-const PROJECT_FILE_SUFFIXES = ["", SQLITE_WAL_SUFFIX, "-shm"] as const; // 替换和删除同时处理主文件、WAL 与共享索引。
+const SQLITE_SIDECAR_SUFFIXES = [SQLITE_WAL_SUFFIX, "-shm"] as const; // WAL 与 SQLite 共享内存索引。
+const PROJECT_FILE_SUFFIXES = ["", ...SQLITE_SIDECAR_SUFFIXES] as const; // 替换和删除同时处理主文件、WAL 与共享索引。
 /**
  * `write` 启用写入。`query` 在调用方确认前禁止写入。
  * `read_only` 关闭时不会合并 WAL，也不会清理自己创建的副文件。
@@ -159,6 +160,60 @@ export class ProjectDatabase {
       );
     });
   }
+
+  /** 已关闭的工程也可能留有 WAL。读取一次并让 SQLite 在最后一个连接关闭时收尾。 */
+  public rename_project_file(source_path: string, target_path: string): Promise<void> {
+    return this.schedule(source_path, async () => {
+      const record = this.connection_records.get(this.native_fs.to_identity_path(source_path));
+      if (record) this.close_connection_record(record);
+      if (SQLITE_SIDECAR_SUFFIXES.some((suffix) => this.native_fs.exists(source_path + suffix))) {
+        await this.execute_connection(
+          source_path,
+          async ({ db }) => {
+            db.prepare("PRAGMA schema_version").get();
+          },
+          false,
+          "query",
+        );
+        if (SQLITE_SIDECAR_SUFFIXES.some((suffix) => this.native_fs.exists(source_path + suffix)))
+          throw new AppErrors.AppError("database.busy");
+      }
+      if (SQLITE_SIDECAR_SUFFIXES.some((suffix) => this.native_fs.exists(target_path + suffix)))
+        throw new AppErrors.AppError("project.already_exists");
+      this.rename_project_file_entry(source_path, target_path);
+    });
+  }
+
+  /** 大小写变更可指向同一目录项，其余改名先排他占用空目标。 */
+  private rename_project_file_entry(source_path: string, target_path: string): void {
+    let reserved = false;
+    try {
+      if (this.native_fs.exists(target_path)) {
+        if (
+          this.native_fs.lstat(target_path).isSymbolicLink() ||
+          this.native_fs.real_path(target_path) !== this.native_fs.real_path(source_path)
+        )
+          throw new AppErrors.AppError("project.already_exists");
+      } else {
+        this.native_fs.create_file_exclusive(target_path);
+        reserved = true;
+      }
+      this.native_fs.rename(source_path, target_path);
+    } catch (cause) {
+      if (reserved) {
+        try {
+          this.native_fs.unlink(target_path);
+        } catch (cleanup) {
+          throw database_cleanup_error(cause, cleanup);
+        }
+      }
+      if (AppErrors.is_app_error(cause)) throw cause;
+      if (cause instanceof Error && "code" in cause && cause.code === "EEXIST")
+        throw new AppErrors.AppError("project.already_exists", { cause });
+      throw new AppErrors.AppError("file.io_failed", { cause });
+    }
+  }
+
   /** 替换失败时恢复旧工程及其 WAL。备份清理失败按已提交错误报告。 */
   public replace_project_file(source_path: string, target_path: string): Promise<void> {
     return this.schedule(target_path, async () => {

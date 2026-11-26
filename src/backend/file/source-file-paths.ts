@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { NativeFs } from "../../native/native-fs";
-import { validate_zip_member_path } from "./shared/zip-members";
+import { is_portable_file_name, is_portable_relative_path } from "../../shared/utils/file-name";
 
 const LEGACY_GAME_BACKUP_DIRECTORY = "backup_lg"; // 旧版本生成的备份目录，见 `is_preparation_path`。
 export const GAME_WORKSPACE_DIRECTORY = ".tmp";
@@ -23,8 +23,15 @@ export function is_preparation_path(name: string): boolean {
 
 /** 准备目录和旧版备份名称保留给提交层，归档不能占用它们。 */
 export function validate_game_path(name: string): void {
-  if (validate_zip_member_path(name) !== name) throw new Error("Noncanonical game path: " + name);
+  if (!is_portable_relative_path(name)) throw new Error("Invalid game path: " + name);
   if (is_preparation_path(name))
+    throw new Error("Member conflicts with preparation files: " + name);
+}
+
+/** 树形归档逐段检查，准备目录只占用顶层名称。 */
+export function validate_game_segment(name: string, top_level: boolean): void {
+  if (!is_portable_file_name(name)) throw new Error("Invalid game path segment: " + name);
+  if (top_level && is_preparation_path(name))
     throw new Error("Member conflicts with preparation files: " + name);
 }
 

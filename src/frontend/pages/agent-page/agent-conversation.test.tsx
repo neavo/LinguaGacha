@@ -239,6 +239,7 @@ const lifecycle: ProjectLifecycle = {
   open_recent_project: vi.fn(),
   remove_recent_project: vi.fn(),
   request_close: vi.fn(),
+  request_rename: vi.fn(),
 };
 
 function EmptyConversation() {

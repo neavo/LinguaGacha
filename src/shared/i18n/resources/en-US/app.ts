@@ -66,6 +66,7 @@ export const en_us_app = {
     select_folder: "Select folder",
   },
   feedback: {
+    invalid_file_name: "The file name contains invalid characters …",
     activate_link: "Failed to process the link …",
     load_failed: "Load failed …",
     refresh_failed: "Refresh failed …",

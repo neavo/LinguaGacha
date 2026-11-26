@@ -51,6 +51,7 @@ export const pt_br_project = {
       "Este arquivo foi criado para a versão do aplicativo <emphasis>v{VERSION}</emphasis>. Abri-lo com uma versão mais antiga pode corromper dados. Confirma que deseja continuar …?",
     missing_file_description: "O arquivo de projeto é inválido. Deseja removê-lo da lista …?",
   },
+  rename: "Renomear projeto",
   close: {
     action: "Fechar",
     confirm: "Confirma o fechamento do projeto atual …?",

@@ -39,8 +39,6 @@ export const de_de_workbench_page = {
     },
     rename: {
       exists: "Eine Datei oder ein Ordner mit diesem Namen existiert bereits",
-      invalid_name:
-        'Der Name darf nicht leer sein, kein \\ / : * ? " < > | enthalten und nicht mit einem Punkt enden',
     },
     reset: {
       description:

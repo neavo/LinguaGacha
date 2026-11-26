@@ -1,5 +1,6 @@
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import { random_id } from "../../shared/utils/identifier";
+import { validate_file_name } from "../../shared/utils/file-name";
 import os from "node:os";
 import path from "node:path";
 import * as AppErrors from "../../shared/error";
@@ -45,6 +46,7 @@ export function resolve_preset_file(
   if (
     !has_valid_part_count ||
     (source !== "builtin" && source !== "user") ||
+    file_name.includes("\0") ||
     path.win32.basename(file_name) !== file_name || // 同时识别两种路径分隔符和盘符。
     !file_name.toLowerCase().endsWith(options.extension)
   ) {
@@ -56,6 +58,23 @@ export function resolve_preset_file(
     ? (find_existing_preset_path(candidate, native_fs) ?? candidate)
     : candidate;
   return { source, file_name, file_path };
+}
+
+/** 新预设的主干先规范并校验，再定位目标。传入文件系统可复用已有的等价拼写。 */
+export function resolve_new_user_preset_file(
+  name: string,
+  extension: ".json" | ".txt",
+  directory: string,
+  native_fs?: NativeFs,
+): { file_name: string; file_path: string } {
+  const stem = name.trim().normalize("NFC");
+  validate_file_name(stem);
+  const file_name = stem + extension;
+  const candidate = path.join(directory, file_name);
+  const file_path = native_fs
+    ? (find_existing_preset_path(candidate, native_fs) ?? candidate)
+    : candidate;
+  return { file_name, file_path };
 }
 
 /** 规范路径缺失时才扫描原目录，兼容磁盘保留的等价文件名。 */

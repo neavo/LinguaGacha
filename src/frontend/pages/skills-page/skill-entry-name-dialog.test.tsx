@@ -2,11 +2,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import { create_text_resolver } from "@shared/i18n";
 import { SkillEntryNameDialog } from "./skill-entry-name-dialog";
 
 const toast = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  push_error_toast: toast,
   push_toast: toast,
 }));
 
@@ -62,7 +62,7 @@ describe("技能名称弹窗", () => {
     );
   }
   it.each([
-    ["create_file", "说明", "说明.md"],
+    ["create_file", " 说明 ", "说明.md"],
     ["create_file", "script.py", "script.py"],
     ["create_file", ".env", ".env"],
     ["create_directory", "references", "references"],
@@ -77,9 +77,12 @@ describe("技能名称弹窗", () => {
     await render();
     await enter("说明", true);
     expect(submit).not.toHaveBeenCalled();
-    await enter("说明.");
+    await enter("CON");
     expect(submit).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalledOnce();
+    expect(toast).toHaveBeenCalledWith(
+      "warning",
+      create_text_resolver("zh-CN")("app.feedback.invalid_file_name"),
+    );
     submit.mockResolvedValueOnce(false);
     await enter("说明");
     expect(close).not.toHaveBeenCalled();

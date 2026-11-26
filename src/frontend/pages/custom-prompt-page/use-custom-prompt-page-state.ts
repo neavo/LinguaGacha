@@ -2,6 +2,7 @@ import { api_fetch as global_fetch } from "@frontend/app/desktop/desktop-api";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { TRANSLATION_PROMPT } from "@domain/prompt";
+import { is_portable_file_name } from "@shared/utils/file-name";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
@@ -321,6 +322,10 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
     const name = preset_input_state.value.trim();
     if (name === "") {
       push_toast("warning", t("preset_editor.feedback.name_required"));
+      return;
+    }
+    if (!is_portable_file_name(name)) {
+      push_toast("warning", t("app.feedback.invalid_file_name"));
       return;
     }
 

@@ -67,6 +67,7 @@ export const ja_jp_app = {
     select_folder: "フォルダーを選択",
   },
   feedback: {
+    invalid_file_name: "ファイル名に使用できない文字が含まれています …",
     activate_link: "リンクを処理できませんでした …",
     load_failed: "読み込みに失敗しました …",
     refresh_failed: "更新に失敗しました …",

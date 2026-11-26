@@ -32,6 +32,7 @@ export const de_de_project = {
       "Diese Datei ist für App-Version <emphasis>v{VERSION}</emphasis> vorgesehen. Das Öffnen mit einer älteren App-Version kann Daten beschädigen. Trotzdem öffnen …?",
     missing_file_description: "Die Projektdatei ist ungültig. Aus der Liste entfernen …?",
   },
+  rename: "Projekt umbenennen",
   close: {
     action: "Schließen",
     confirm: "Aktuelles Projekt wirklich schließen …?",

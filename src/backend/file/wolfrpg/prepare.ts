@@ -102,12 +102,13 @@ export async function stage_wolf_source(
         );
       }
       opened.push(handle);
+      // 归档已校验成员路径，只需检查从散装目录引入的输出前缀。
+      validate_game_path(source.output_prefix);
       directories.add(source.output_prefix);
       for (const directory of archive.directories)
         directories.add(source.output_prefix + "/" + directory);
       for (const member of archive.members) {
         const name = source.output_prefix + "/" + member.name;
-        validate_game_path(name);
         if (!selected.has(name)) archive_targets.add(name);
         selected.set(name, { archive, member });
         assert_regular_path(path.join(game.root, name), fs);

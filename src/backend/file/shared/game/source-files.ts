@@ -94,12 +94,7 @@ export function collect_game_source_files(
         files.set(name, path.join(root, name));
   }
   for (const name of roots) collect(name);
-  if (prepared) {
-    for (const [name, target] of prepared.files) {
-      validate_game_path(name);
-      files.set(name, target);
-    }
-  }
+  if (prepared) for (const [name, target] of prepared.files) files.set(name, target);
   const data = new Map<string, Uint8Array>();
   const captured = new Map<string, Uint8Array>(); // 选择器先读取的 RGSS 配置与最终原稿共用同一份字节。
   const verified = new Set<string>(); // 本次读取阶段只读，共同祖先只核对一次。

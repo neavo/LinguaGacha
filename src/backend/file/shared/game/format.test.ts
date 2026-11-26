@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { NativeFs } from "../../../../native/native-fs";
+import { create_item } from "../../../../domain/item";
 import { create_rpgmaker_mv_mz_adapter } from "../../rpgmaker-mv-mz/rpgmaker-format";
 import { GameFormat, read_game_container, GAME_FILES_MEMBER, GAME_METADATA_MEMBER } from "./format";
 
@@ -203,6 +204,36 @@ it("游戏 解析通过共享容器入口拒绝越界成员", async () => {
   await expect(format.read_from_stream(bytes, "game.zip")).rejects.toMatchObject({
     code: "file.invalid_structure",
   });
+});
+
+it("导出要求条目准确匹配原稿中的成员键", async () => {
+  using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-game-member-key-"));
+  const format = new GameFormat(
+    new GameDirectoryOperations(),
+    create_rpgmaker_mv_mz_adapter(),
+    new NativeFs(),
+  );
+  const file = { path: "game.rpgmaker", file_type: "RPGMAKER_MV_MZ" } as const;
+  const bytes = await write_zip(new Map([["data/System.json", "{}"]]));
+  const item = create_item({
+    file_path: file.path,
+    file_type: file.file_type,
+    extra_field: {
+      rpgmaker_mv_mz: {
+        internal_file_path: "data/system.json",
+        usage: "text",
+        location: { kind: "field" },
+      },
+    },
+  });
+  await expect(
+    format.write_to_path([item], {
+      paths: { translated_path: temp.path, bilingual_path: temp.path },
+      source_files: [file],
+      asset_reader: () => Buffer.from(bytes),
+    }),
+  ).rejects.toMatchObject({ code: "file.invalid_structure", public_details: { file: file.path } });
+  expect(fs.readdirSync(temp.path)).toEqual([]);
 });
 
 it("成员解析失败保留异常链与堆栈", async () => {

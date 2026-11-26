@@ -202,6 +202,23 @@ export class Setting {
     });
   }
 
+  /** 改名保留原记录的位置和访问时间。记录已被移除时返回 `null`。 */
+  public with_recent_project_path_changed(
+    previous_path: string,
+    next_path: string,
+  ): Setting | null {
+    const items = this.read_recent_projects();
+    const index = items.findIndex(({ path }) => path === previous_path);
+    if (index < 0) return null;
+    if (previous_path === next_path) return this;
+    const updated_items = items.flatMap((item, item_index) => {
+      if (item_index === index)
+        return [{ ...item, path: next_path, name: build_recent_project_display_name(next_path) }];
+      return item.path === previous_path || item.path === next_path ? [] : [item];
+    });
+    return new Setting({ ...this.data, recent_projects: updated_items as unknown as JsonValue });
+  }
+
   /**
    * 读取最近项目列表，兼容旧设置中的缺失字段
    */

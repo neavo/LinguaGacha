@@ -76,6 +76,95 @@ describe("GuiBackendBootstrap 集成", () => {
     }
   });
 
+  it("关闭工程改名后可重开，冲突和设置写入失败保留原工程", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-project-rename-"));
+    const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+    try {
+      const { apiBaseUrl } = await bootstrap.start();
+      async function post(route: string, body: object) {
+        const response = await fetch(apiBaseUrl + route, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return response.json();
+      }
+      const {
+        data: { project },
+      } = await post("/api/session/project/create", {
+        path: path.join(temp.path, "original.lg"),
+        source_paths: [],
+        languages: { target_language: "JA" },
+      });
+      const original_path: string = project.path;
+      const rename = (new_name: string, project_path = original_path) =>
+        post("/api/session/project/rename", { path: project_path, new_name });
+      await post("/api/settings/recent-projects/add", { path: original_path });
+      const occupied_path = path.join(path.dirname(original_path), "occupied.lg");
+      fs.writeFileSync(occupied_path, "existing");
+      const {
+        data: { settings },
+      } = await post("/api/settings/recent-projects/add", {
+        path: occupied_path,
+      });
+      const original_records = settings.recent_projects;
+      const config_path = path.join(temp.path, "userdata", "config.json");
+      const original_config = fs.readFileSync(config_path, "utf8");
+      expect(await rename("renamed")).toMatchObject({ ok: false, error: { code: "runtime.busy" } });
+      await post("/api/session/project/close", { projectId: project.projectId });
+      expect(await rename("bad/name")).toMatchObject({
+        ok: false,
+        error: {
+          code: "request.validation_failed",
+          details: { field: "new_name" },
+        },
+      });
+      expect(await rename("occupied")).toMatchObject({
+        ok: false,
+        error: { code: "project.already_exists" },
+      });
+      expect(fs.readFileSync(occupied_path, "utf8")).toBe("existing");
+
+      const renamed_path = path.join(path.dirname(original_path), "renamed.lg");
+      vi.spyOn(NativeFs.prototype, "write_file_atomic").mockImplementationOnce(() => {
+        throw new Error("Cannot save recent projects.");
+      });
+      // 原样提交不写配置，故障留给下一次实际改名。
+      expect(await rename("original")).toMatchObject({ ok: true });
+      expect(await rename("renamed")).toMatchObject({
+        ok: false,
+        error: { code: "file.io_failed" },
+      });
+      expect(fs.existsSync(original_path)).toBe(true);
+      expect(fs.existsSync(renamed_path)).toBe(false);
+      expect(fs.readFileSync(config_path, "utf8")).toBe(original_config);
+
+      expect(await rename("renamed")).toMatchObject({
+        ok: true,
+        data: {
+          settings: {
+            recent_projects: [
+              original_records[0],
+              { ...original_records[1], path: renamed_path, name: "renamed.lg" },
+            ],
+          },
+        },
+      });
+      expect(fs.existsSync(original_path)).toBe(false);
+      const final_path = path.join(path.dirname(original_path), "RENAMED.lg");
+      expect(await rename("RENAMED", renamed_path)).toMatchObject({ ok: true });
+      const names = fs.readdirSync(path.dirname(original_path));
+      expect(names).toContain("RENAMED.lg");
+      expect(names).not.toContain("renamed.lg");
+      expect(await post("/api/session/project/open", { path: final_path })).toMatchObject({
+        ok: true,
+        data: { project: { path: final_path, settings: project.settings } },
+      });
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+
   it("工程副本隔离工作区，重置更换对话身份，关闭重开保留新对话", async () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-multi-project-"));
     const bootstrap = new GuiBackendBootstrap(create_options(temp.path));

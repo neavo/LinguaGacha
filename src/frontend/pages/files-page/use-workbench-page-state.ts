@@ -1,4 +1,5 @@
 import { useProjectRuntimeSnapshot } from "@frontend/app/state/use-project-runtime";
+import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { useProjectFetch } from "@frontend/app/state/use-project-fetch";
 import {
   push_error_toast,
@@ -621,7 +622,13 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
       });
       set_dialog_state(close_dialog_state());
     } catch (error) {
-      push_error_toast(t("app.feedback.operation_failed"), error);
+      if (
+        error instanceof DesktopApiError &&
+        error.code === "request.validation_failed" &&
+        typeof error.details.conflict === "string"
+      )
+        push_toast("warning", t("workbench_page.dialog.rename.exists"));
+      else push_error_toast(t("app.feedback.operation_failed"), error);
       set_dialog_submitting(false);
     }
   }

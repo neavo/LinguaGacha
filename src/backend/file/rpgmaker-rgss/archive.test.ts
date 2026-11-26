@@ -70,13 +70,19 @@ it.each([1, 3] as const)("v%s 按成员读取，跨分块解密并保留 Unicode
   }
 });
 
-it.each([1, 3] as const)("v%s 拒绝截断、路径越界、大小写重复和文件目录重叠", async (version) => {
+it.each([1, 3] as const)("v%s 拒绝截断、非法路径、大小写重复和文件目录重叠", async (version) => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rgss-invalid-"));
   const invalid = [
     rgss_archive_fixture(version, new Map([["ok", Buffer.from("content")]])).subarray(0, -1),
-    ...[["../escape"], ["/absolute"], ["NUL.txt"], ["Data/A", "data/a"], ["Data", "Data/A"]].map(
-      (names) =>
-        rgss_archive_fixture(version, new Map(names.map((name) => [name, Buffer.from("x")]))),
+    ...[
+      ["../escape"],
+      ["/absolute"],
+      ["NUL.txt"],
+      [".TMP/file"],
+      ["Data/A", "data/a"],
+      ["Data", "Data/A"],
+    ].map((names) =>
+      rgss_archive_fixture(version, new Map(names.map((name) => [name, Buffer.from("x")]))),
     ),
   ];
   if (version === 3) {

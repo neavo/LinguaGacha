@@ -37,8 +37,6 @@ export const pt_br_workbench_page = {
     },
     rename: {
       exists: "Já existe um arquivo ou pasta com esse nome",
-      invalid_name:
-        'O nome não pode estar vazio, conter \\ / : * ? " < > |, nem terminar com ponto',
     },
     reset: {
       description:

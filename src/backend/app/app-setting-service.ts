@@ -112,6 +112,25 @@ export class AppSettingService {
     return { settings: setting.to_snapshot() };
   }
 
+  /** 只有最近工程列表中的路径可以通过侧栏改名。 */
+  public has_recent_project(project_path: string): boolean {
+    return this.read_setting_entity()
+      .read_recent_projects()
+      .some(({ path }) => path === project_path);
+  }
+
+  /** 按最新设置替换记录。调用方在工程文件与设置均已落盘后广播。 */
+  public replace_recent_project_path(
+    previous_path: string,
+    next_path: string,
+  ): SettingsSnapshotResponse {
+    const current = this.read_setting_entity();
+    const setting = current.with_recent_project_path_changed(previous_path, next_path);
+    if (setting === null) throw new AppError("project.not_found");
+    if (setting !== current) this.save_setting(setting.to_json());
+    return { settings: setting.to_snapshot() };
+  }
+
   /**
    * 读取完整设置对象副本，业务服务不能直接触碰 config.json。
    */
@@ -129,7 +148,7 @@ export class AppSettingService {
   public save_setting(setting: JsonRecord): void {
     const config_path = this.paths.get_config_path();
     const normalized_setting = Setting.from_json(setting);
-    default_native_fs.write_file_sync(
+    default_native_fs.write_file_atomic(
       config_path,
       JsonTool.stringifyStrict(normalized_setting.to_json(), { indent: 4 }),
     );

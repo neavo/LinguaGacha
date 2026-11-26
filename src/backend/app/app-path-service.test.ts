@@ -138,6 +138,7 @@ describe("resolve_preset_file", () => {
     "builtin:folder\\demo.txt",
     "builtin:/demo.txt",
     "builtin:C:\\demo.txt",
+    "builtin:demo\0.txt",
     "external:demo.txt",
     "builtin:demo.json",
   ])("拒绝逃逸、绝对路径、未知来源或错误扩展名：%s", (virtual_id) => {

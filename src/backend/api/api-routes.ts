@@ -87,6 +87,7 @@ export function register_api_routes(context: ApiRouteContext): void {
     services.project_snapshot(project(body)),
   );
   context.postJson("/api/session/project/close", (body) => services.close_project(body.projectId));
+  context.postJson("/api/session/project/rename", (body) => services.rename_project(body));
   context.postJson("/api/session/project/preview", (body) => lifecycle.get_project_preview(body));
   context.postJson("/api/session/project/default-name", (body) =>
     lifecycle.get_default_project_name(body),

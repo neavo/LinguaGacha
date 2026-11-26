@@ -11,7 +11,7 @@ import {
   type PythonFacts,
 } from "./python-syntax";
 import { LEGACY_DISPLAY_CALLS, string_usage, type RenpyUsage } from "./usage";
-import { member_digest, type RenpyMember } from "./member";
+import type { RenpyMember } from "./member";
 import {
   node_value as value,
   node_children as children,
@@ -56,7 +56,6 @@ export type RenpyString = {
   text: string;
 };
 export type RenpyScript = {
-  digest: string;
   candidates: RenpyCandidate[];
   strings: RenpyString[];
   warnings: RenpyWarning[]; // 解释遗漏原因，正常的默认排除项不产生警告。
@@ -554,7 +553,6 @@ export async function extract_script(
       dialogue_names.set(dialogue.key, name.key);
   }
   return {
-    digest: member_digest(member.bytes),
     candidates: grouped,
     strings,
     warnings,
