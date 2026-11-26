@@ -22,7 +22,7 @@ export const NPM_DEPENDENCIES = [
   "onnxruntime-node@1.30.0",
 ];
 export const PIP_DEPENDENCIES = [
-  "kaldi-native-fbank==1.23.1",
+  "kaldi-native-fbank==1.23.3",
   "numpy==2.5.5",
   "opencv-python-headless==5.1.0.95",
   "pyclipper==1.4.0",

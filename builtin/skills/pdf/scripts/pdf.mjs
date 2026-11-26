@@ -10,7 +10,7 @@ export const NPM_DEPENDENCIES = Object.freeze([
   "katex@0.16.47", // 与 @streamdown/math 使用的 KaTeX 渲染器同版本。
   "entities@9.0.0",
   "unist-util-visit@5.2.0",
-  "remark-github-blockquote-alert@2.1.0",
+  "remark-github-blockquote-alert@2.1.1",
   "@streamdown/cjk@1.0.5",
   "@streamdown/math@1.0.4",
 ]);
