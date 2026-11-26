@@ -60,6 +60,7 @@ const DESKTOP_ERROR_MESSAGES: Record<DesktopLocalErrorCode, string> = {
   network_failed: "The network request failed.",
 };
 
+export const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest";
 
 /**

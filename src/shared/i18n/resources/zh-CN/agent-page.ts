@@ -193,4 +193,11 @@ export const zh_cn_agent_page = {
     runtime_busy: "其它任务正在运行",
     settling: "正在结束当前任务",
   },
+  star_prompt: {
+    action: "✨ 帮我点星啦 ( •̀ ᗜ •́ )つ✮",
+    description:
+      "你的小星星 ✨ 对于 LinguaGacha 来说很重要 …!\n要是觉得还称手，请在 GitHub 项目主页点亮 Star …!",
+    never_remind: "不再提醒",
+    open_github: "跳转到 GitHub",
+  },
 } as const;

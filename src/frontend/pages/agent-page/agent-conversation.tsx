@@ -79,6 +79,7 @@ import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-ed
 import { AgentInputQueue } from "./agent-input-queue";
 import { type AgentMentionInstruction } from "./agent-mention";
 import { AgentTaskStatus } from "./agent-task-status";
+import { AgentStarPrompt } from "./agent-star-prompt";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
 import { useAgentInputTransition } from "./use-agent-input-transition";
@@ -990,6 +991,9 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                 />
               </div>
             ) : null}
+            {controls.exportedRoundId === null ? null : (
+              <AgentStarPrompt key={controls.exportedRoundId} round_id={controls.exportedRoundId} />
+            )}
             {follow_latest_control}
           </div>
 

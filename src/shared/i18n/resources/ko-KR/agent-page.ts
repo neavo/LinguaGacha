@@ -201,4 +201,11 @@ export const ko_kr_agent_page = {
     runtime_busy: "다른 작업이 실행 중입니다",
     settling: "현재 작업 종료 중",
   },
+  star_prompt: {
+    action: "✨ 별 눌러줘요 ( •̀ ᗜ •́ )つ✮",
+    description:
+      "여러분의 작은 별 ✨ 은 LinguaGacha 에게 아주 소중해요 …!\n쓸만하다고 느끼셨다면 GitHub 프로젝트 페이지에서 Star 를 눌러주세요 …!",
+    never_remind: "다시 보지 않기",
+    open_github: "GitHub로 이동",
+  },
 } satisfies LocaleMessageSchema<typeof zh_cn_agent_page>;

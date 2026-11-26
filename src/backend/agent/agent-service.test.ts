@@ -3205,6 +3205,39 @@ describe("AgentService", () => {
     },
   );
 
+  it("导出轮次成功收尾后才发布，下一次运行清空提醒", async () => {
+    const { service, workspace, publish } = await create_service();
+    vi.mocked(workspace.run).mockImplementation(async (input) => {
+      input.onFilesGenerated?.();
+      return { images: [], execution: workspace_execution({ items: [] }) };
+    });
+
+    fake_agent_state.mode = "tools_error";
+    await service.send_message({ text: "导出并失败", attachments: [] });
+    await wait_for_idle(service);
+    expect(change_calls(publish).some(([, change]) => change.type === "exported_round")).toBe(
+      false,
+    );
+
+    fake_agent_state.mode = "tools";
+    await service.send_message({ text: "导出翻译成果", attachments: [] });
+    await wait_for_idle(service);
+    const exported_round = service
+      .get_snapshot()
+      .entries.findLast((entry) => entry.kind === "user_message" && entry.delivery === "round");
+    expect(service.get_snapshot().exportedRoundId).toBe(exported_round?.id);
+
+    fake_agent_state.mode = "success";
+    await service.send_message({ text: "继续聊点别的", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().exportedRoundId).toBeNull();
+    expect(
+      change_calls(publish).flatMap(([, change]) =>
+        change.type === "exported_round" ? [change.exportedRoundId] : [],
+      ),
+    ).toEqual([exported_round?.id, null]);
+  });
+
   /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentChat 仍走生产实现。 */
   async function create_service({
     batch_translation,

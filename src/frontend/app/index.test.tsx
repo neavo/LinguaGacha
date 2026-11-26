@@ -121,6 +121,7 @@ const agent: AgentChatSnapshot = {
   usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   tokenSpeed: null,
   runOutput: null,
+  exportedRoundId: null,
 };
 
 function start_without_project(

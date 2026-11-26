@@ -45,6 +45,7 @@ import {
 } from "./paths";
 import { AgentWorkspaceRunError } from "./runtime/runner";
 import type { PackageSource } from "../package-source";
+import type { TranslationFileGenerationResult } from "../../../shared/translation-generation";
 import {
   AGENT_WORKSPACE_RUN_ROOT,
   AGENT_WORKSPACE_WORK_ROOT,
@@ -804,6 +805,30 @@ describe("AgentWorkspaceService", () => {
     }
     await run_workspace(fixture);
     expect(fixture.active_path()).toBe(active_path);
+  });
+
+  it("只报告生成成功的成果，脚本随后的失败不撤销报告", async () => {
+    const fixture = await create_fixture(temp_dir);
+    const onFilesGenerated = vi.fn();
+    const script_failure = new Error("script failed");
+    fixture.generate_staging_files.mockResolvedValueOnce({
+      accepted: true,
+      output_path: "translated",
+      bilingual_output_path: "bilingual",
+      excluded_files: [],
+    });
+    fixture.run.mockImplementationOnce(async ({ generateFiles }) => {
+      await generateFiles!();
+      await expect(generateFiles!()).rejects.toThrow("Unexpected generation");
+      throw script_failure;
+    });
+    await expect(
+      fixture.service.run(
+        { ...VALID_WORKSPACE_RUN, onFilesGenerated },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ cause: script_failure });
+    expect(onFilesGenerated).toHaveBeenCalledOnce();
   });
 
   it("快照仅提供公开条目，重建时清除历史扩展数据投影", async () => {
@@ -1661,14 +1686,15 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       },
     }),
   );
+  const generate_staging_files = vi.fn(async (): Promise<TranslationFileGenerationResult> => {
+    throw new Error("Unexpected generation");
+  });
   const service = new AgentWorkspaceService({
     generation: {
       read_output_paths: () => {
         throw new Error("Unexpected output paths");
       },
-      generate_staging_files: async () => {
-        throw new Error("Unexpected generation");
-      },
+      generate_staging_files,
     },
     files: { inspect_sources, apply_file_changes },
     images: { prepare: prepare_image },
@@ -1700,6 +1726,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   await service.activate_chat("test0001", [], async () => {});
   return {
     service,
+    generate_staging_files,
     cache,
     prepare_image,
     open_directory,

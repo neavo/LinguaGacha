@@ -119,6 +119,7 @@ export type AgentWorkspaceRunInput = Readonly<{
   timeoutMs: number;
   doing?: AgentWorkspaceRunRequest["doing"];
   output?: (output: AgentProcessOutputTail) => void;
+  onFilesGenerated?: () => void; // 生成成功即通知本轮，即使脚本后续步骤失败。
 }>;
 
 type ActiveAgentWorkspace = {
@@ -645,6 +646,7 @@ export class AgentWorkspaceService {
             await this.native_fs.remove_async(path.join(this.root_path, filename), { force: true });
           }
           const imageTextHost = this.options.imageTextHost;
+          const generate_files = create_file_generator(this.root_path, this.options.generation);
           const execution = await this.options.run(
             {
               workspacePath: this.root_path,
@@ -664,7 +666,11 @@ export class AgentWorkspaceService {
                 );
                 return result.map((entry, index) => ({ ...entry, source_path: sources[index]! }));
               },
-              generateFiles: create_file_generator(this.root_path, this.options.generation),
+              generateFiles: async () => {
+                const result = await generate_files();
+                request.onFilesGenerated?.();
+                return result;
+              },
               ...(imageTextHost && {
                 renderImageText: create_image_text_renderer({
                   root: this.root_path,

@@ -206,4 +206,11 @@ export const en_us_agent_page = {
     runtime_busy: "Another task is running",
     settling: "Finishing the current task",
   },
+  star_prompt: {
+    action: "✨ Star me! ( •̀ ᗜ •́ )つ✮",
+    description:
+      "Your little star ✨ means a lot to LinguaGacha …!\nIf it felt handy, please light up a Star on the GitHub project page …!",
+    never_remind: "Don't remind again",
+    open_github: "Go to GitHub",
+  },
 } as const;
