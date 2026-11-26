@@ -251,25 +251,11 @@ const preview = await image.render({
 
 ### 3. 补做轮廓填字与封包
 
-纯色消字在复杂网点或彩色背景上出现原字残留、残损或断裂（报告提示 `erase_failed` 或目视残字）时执行。
+目视发现残字、补丁破损，或报告出现 `erase_failed` 时，可对目标区域补做轮廓填字作为降级措施，此模式用笔画周围的背景色填补笔画，在网点与纹理处需复核接缝：
 
-- `prepareAndPack` 传入 `update` 时继续使用包内已有掩码，消字仍限定在原扫描范围内，不会扩展或改动可写区。
-- 本分支仅修复消字质量，无法为排版腾出空间，排版放不下（`layout_no_fit`）或字号不佳时转入「字号与排版微调」。
-
-1. **指定目标区域**：复用同次扫描，修复区域标记为 `{ pageId, regionId, contour: true }`。
-2. **一步准备并封包**：
-   ```js
-   const result = await image.prepareAndPack(
-     scanDir,
-     targets,
-     'work/image/contour-fix',
-     'work/image/contour-fix.image',
-     { update: preparedDir, device },
-   );
-   ```
-   - `update` 传入最新一次成功的准备目录（包含连体气泡纠错或前一次补做产出的目录）。
-   - 若仅重做封包，直接对已成功的准备目录调用 `image.pack`。
-3. **提交更新**：按 `files.replaces` 提交资产替换，传入受影响页的 `pageIds` 选页成图复核消字质量。
+1. 复用同次扫描，将目标标记为 `{ pageId, regionId, contour: true }`。
+2. 调用 `prepareAndPack`，将最新成功的准备目录传给 `update`，以沿用包内排版掩码与原扫描范围，遇到 `layout_no_fit` 或字号问题时转入「字号与排版微调」。
+3. 通过 `files.replaces` 替换资产，传入受影响的 `pageIds` 选页成图复核。
 
 ### 4. 字号与排版微调
 
