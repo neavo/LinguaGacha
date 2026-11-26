@@ -1792,6 +1792,128 @@
   outline: none;
 }
 
+.agent-round-nav {
+  position: absolute;
+  /* 锚定整页稳定高度，不随底部消息队列、进度条或输入框增高而跳动。 */
+  top: max(120px, 40%);
+  /* 相对 .agent-page 的 padding-box 贴齐工作区左缘，不受宽态对称左内边距与过渡动画影响。 */
+  left: 8px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(-50%);
+}
+
+.agent-round-nav__item {
+  display: grid;
+  width: 20px;
+  height: 14px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-round-nav__item:focus-visible {
+  outline: none;
+}
+
+.agent-round-nav__dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ui-radius-pill);
+  background: color-mix(in srgb, var(--muted-foreground) 44%, transparent);
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.agent-round-nav__item[data-active="true"] .agent-round-nav__dot {
+  background: var(--primary);
+  transform: scale(1.15);
+}
+
+.agent-round-nav__item:hover .agent-round-nav__dot,
+.agent-round-nav__item[data-popup-open] .agent-round-nav__dot,
+.agent-round-nav__item:focus-visible .agent-round-nav__dot {
+  background: var(--primary);
+  transform: scale(1.4);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.agent-round-nav__item:focus-visible .agent-round-nav__dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 38%, transparent);
+}
+
+.agent-round-nav__tooltip {
+  box-sizing: border-box;
+  width: min(320px, var(--available-width));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 10px 12px;
+  box-shadow: var(--ui-shadow-overlay);
+  transform-origin: var(--transform-origin);
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.agent-round-nav__tooltip[data-starting-style],
+.agent-round-nav__tooltip[data-ending-style] {
+  opacity: 0;
+  transform: translateX(-4px) scale(0.98);
+}
+
+.agent-round-nav__preview {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-round-nav__user,
+.agent-round-nav__assistant {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  -webkit-box-orient: vertical;
+  /* 允许长路径/无空格长串在末行剩余空间内直接断行，避免整串被推到裁切行留下半行空白。 */
+  word-break: break-all;
+  text-overflow: ellipsis;
+}
+
+.agent-round-nav__user {
+  -webkit-line-clamp: 2;
+  color: var(--foreground);
+  font-size: var(--ui-font-size-13);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.agent-round-nav__user[data-empty="true"] {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.agent-round-nav__assistant {
+  -webkit-line-clamp: 3;
+  color: var(--muted-foreground);
+  font-size: var(--ui-font-size-12);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.agent-round-nav__assistant[data-empty="true"] {
+  opacity: 0.78;
+}
+
 .agent-page__messages,
 .agent-message__user-text,
 .agent-thinking-entry,
@@ -1828,7 +1950,9 @@
   .agent-page__suggestion,
   .agent-page__suggestion-icon,
   .agent-star-prompt,
-  .agent-composer {
+  .agent-composer,
+  .agent-round-nav__dot,
+  .agent-round-nav__tooltip {
     transition: none;
   }
 }
