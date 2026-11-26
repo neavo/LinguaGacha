@@ -170,15 +170,7 @@ vi.mock("@frontend/app/session/agent/agent-chat-context", async (original) => ({
     entryIds: read_test_timeline().round(id),
     latestAssistantId: read_test_timeline().latest_assistant(id),
   }),
-  useAgentControls: () => ({
-    state: page_state.current.state,
-    doing: page_state.current.doing,
-    pendingDecision: page_state.current.pendingDecision,
-    context: page_state.current.context,
-    usage: page_state.current.usage,
-    transport: page_state.current.transport,
-    command: page_state.current.command,
-  }),
+  useAgentControls: (): AgentControlsSlice => page_state.current,
   useAgentQueue: () => ({ inputQueue: page_state.current.inputQueue }),
   useAgentSkills: () => ({ skills: page_state.current.skills }),
   useAgentInput: () => page_state.current.input,
@@ -1533,6 +1525,21 @@ describe("AgentConversation", () => {
       text: "新排队消息",
       attachments: [],
     });
+  });
+
+  it("导出后显示点星胶囊，换到新导出轮次时关闭上一轮弹窗", async () => {
+    const view = await render_page();
+    const prompt = () => view.querySelector<HTMLButtonElement>(".agent-star-prompt");
+    const dialog = () => document.querySelector('[data-slot="alert-dialog-content"][data-open]');
+    expect(prompt()).toBeNull();
+
+    await render_page({ exportedRoundId: "first-export" });
+    await act(async () => prompt()!.click());
+    expect(dialog()).not.toBeNull();
+
+    await render_page({ exportedRoundId: "next-export" });
+    expect(prompt()).not.toBeNull();
+    expect(dialog()).toBeNull();
   });
 
   it("完整轮次只在最后回复提供分叉，取消不提交，失败保留弹窗", async () => {

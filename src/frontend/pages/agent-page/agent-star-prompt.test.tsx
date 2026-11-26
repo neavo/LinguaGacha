@@ -3,28 +3,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GITHUB_REPOSITORY_URL } from "@frontend/app/desktop/desktop-api";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 import { AgentStarPrompt } from "./agent-star-prompt";
-
-const open_external_url = vi.hoisted(() => vi.fn(async () => undefined));
-const page_ui = vi.hoisted(() => new Map<string, unknown>());
-
-vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
-  ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
-  open_external_url,
-}));
-
-vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ active_project: { pageUi: page_ui } }),
-}));
 
 describe("AgentStarPrompt", () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
-    page_ui.clear();
-    window.localStorage.clear();
-    open_external_url.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -32,40 +18,42 @@ describe("AgentStarPrompt", () => {
 
   afterEach(() => {
     act(() => root.unmount());
-    container.remove();
     window.localStorage.clear();
   });
 
-  /** 像对话页面一样按轮次挂载，传入 `null` 模拟离开工程。 */
-  function render_prompt(round_id: string | null): void {
+  function render_prompt(): void {
     act(() => {
       root.render(
         <LocaleProvider locale="zh-CN">
-          {round_id === null ? null : <AgentStarPrompt key={round_id} round_id={round_id} />}
+          <AgentStarPrompt />
         </LocaleProvider>,
       );
     });
   }
 
-  it("取消后切回工程仍收起同一轮，下次完成导出仍可提醒", () => {
-    render_prompt("round-1");
-    act(() => container.querySelector("button")!.click());
+  it("取消后保留原胶囊，可以再次打开弹窗", () => {
+    render_prompt();
+    const prompt = container.querySelector("button")!;
+    act(() => prompt.click());
     act(() =>
       document.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]')!.click(),
     );
-    expect(container.querySelector("button")).toBeNull();
-    render_prompt(null);
-    render_prompt("round-1");
-    expect(container.querySelector("button")).toBeNull();
-    render_prompt("round-2");
-    expect(container.querySelector("button")).not.toBeNull();
+    expect(container.querySelector("button")).toBe(prompt);
+    expect(document.querySelector('[data-slot="alert-dialog-content"][data-open]')).toBeNull();
+    act(() => prompt.click());
+    expect(document.querySelector('[data-slot="alert-dialog-content"][data-open]')).not.toBeNull();
   });
 
   it.each([
     ["不再提醒", "secondary", []],
     ["跳转到 GitHub", "primary", [[GITHUB_REPOSITORY_URL]]],
-  ] as const)("%s后，其他工程的导出也不会再提醒", async (_label, action, links) => {
-    render_prompt("round-1");
+  ] as const)("「%s」立即隐藏胶囊，重新挂载仍不再提醒", async (_label, action, links) => {
+    const open_external_url = vi.fn(async () => undefined);
+    vi.stubGlobal(
+      "desktopApp",
+      create_desktop_bridge_api_mock({ methods: { openExternalUrl: open_external_url } }),
+    );
+    render_prompt();
     act(() => container.querySelector("button")!.click());
     await act(async () =>
       document
@@ -74,8 +62,8 @@ describe("AgentStarPrompt", () => {
     );
     expect(open_external_url.mock.calls).toEqual(links);
     expect(container.querySelector("button")).toBeNull();
-    page_ui.clear();
-    render_prompt("round-2");
+    act(() => root.render(null));
+    render_prompt();
     expect(container.querySelector("button")).toBeNull();
   });
 });

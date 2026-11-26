@@ -1121,7 +1121,7 @@
   color: var(--primary);
 }
 
-/* 点星胶囊贴齐状态区左侧，右侧预留跟随按钮宽度，空闲时与跟随按钮同行零增高。 */
+/* 空闲时与跟随按钮共用状态行，保持输入区高度稳定。 */
 .agent-star-prompt {
   position: relative;
   align-self: flex-start;
@@ -1141,27 +1141,30 @@
   white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
-  animation: agent-star-prompt-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition:
-    background-color 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease,
-    transform 100ms ease;
 }
 
-.agent-star-prompt::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    105deg,
-    transparent 24%,
-    color-mix(in srgb, var(--primary) 22%, transparent) 50%,
-    transparent 76%
-  );
-  transform: translateX(-120%);
-  pointer-events: none;
-  animation: agent-star-prompt-sheen 2.4s cubic-bezier(0.22, 1, 0.36, 1) 450ms 2;
+@media (prefers-reduced-motion: no-preference) {
+  .agent-star-prompt {
+    animation: agent-star-prompt-enter 250ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+      background-color 140ms ease,
+      border-color 140ms ease,
+      color 140ms ease,
+      transform 100ms ease;
+  }
+
+  .agent-star-prompt::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 24%,
+      color-mix(in srgb, var(--primary) 22%, transparent) 50%,
+      transparent 76%
+    );
+    animation: agent-star-prompt-sheen 3s cubic-bezier(0.22, 1, 0.36, 1) 500ms infinite backwards; /* 等待期间沿用起始位置。 */
+  }
 }
 
 .agent-star-prompt__label {
@@ -1203,7 +1206,8 @@
     transform: translateX(-120%);
   }
 
-  45%,
+  /* 每轮约 1 秒扫过，其余时间将高光留在胶囊外。 */
+  33.333%,
   100% {
     transform: translateX(120%);
   }
@@ -1936,11 +1940,6 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-mark-color) 35%, transparent);
   }
 
-  .agent-star-prompt,
-  .agent-star-prompt::after {
-    animation: none;
-  }
-
   .agent-page,
   .agent-thinking-entry__toggle::before,
   .agent-thinking-entry__toggle,
@@ -1949,7 +1948,6 @@
   .agent-decision-action,
   .agent-page__suggestion,
   .agent-page__suggestion-icon,
-  .agent-star-prompt,
   .agent-composer,
   .agent-round-nav__dot,
   .agent-round-nav__tooltip {
