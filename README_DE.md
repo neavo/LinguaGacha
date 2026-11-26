@@ -3,10 +3,10 @@
 <p align='center'>All-in-One-Übersetzungs-AGENT Harness · Ein Klick · Hohe Qualität · Alle Formate</p>
 <p align='center'>Comics Spiele Audio &amp; Video E-Books · PDF EPUB ASMR MANGA COMIC RPGGAME GALGAME</p>
 
-## README 🌍
+## 🌍 README
 - [ [中文](./README.md) | [English](./README_EN.md) | [日本語](./README_JA.md) | [한국어](./README_KO.md) | [Deutsch](./README_DE.md) | [Português](./README_PT.md) ]
 
-## Überblick 📢
+## 📢 Überblick
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), ein auf Übersetzung spezialisiertes `AGENT Harness` der nächsten Generation
 - `Ein Klick`
   - Vollautomatische Übersetzung zwischen verschiedenen Sprachen per Knopfdruck
@@ -15,21 +15,21 @@
   - Freie Ausgabe ohne Einschränkungen
   - Feinabstimmung für jede Art von Inhalt für bestmögliche Übersetzungsqualität
   - Intelligente Terminologieverwaltung und Korrektur passen die Formulierungen in einem kurzen Dialog an Ihre Vorlieben an
-- `Alle Formate, darunter die folgenden Beispiele`
-  - Audio & Video - `ASMR`, `Anime`, `Filme & Serien`, `Motion Comics` und mehr
+- `Alle Formate, darunter die folgenden Beispiele:`
+  - Audio & Video - `ASMR`, `Anime`, `Filme & Serien`, `Motion Comics`
   - Bilder & Comics - `Manga`, `US-Comics`, `Schwarz-Weiß`, `Farbe`, `horizontaler Text` und `vertikaler Text`
-  - Untertitel & E-Books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc` und weitere Formate
-  - Game-Engines & Datendateien - `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON` und mehr
+  - Untertitel & E-Books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`
+  - Game-Engines & Datendateien - `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`
 
-> <img width="1600" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
+> <img width="1600" alt="Helles Design" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/light.jpg" />
 
-> <img width="1600" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
+> <img width="1600" alt="Dunkles Design" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/dark.jpg" />
 
 > [!IMPORTANT]
 > - Wenn Sie ein mit [LinguaGacha](https://github.com/neavo/LinguaGacha) übersetztes Werk veröffentlichen, müssen Sie [LinguaGacha](https://github.com/neavo/LinguaGacha) an gut sichtbarer Stelle nennen!
 > - Der Autor behält sich alle Rechte vor. Der Quellcode dient ausschließlich der Veranschaulichung. Integration, Änderung, Verbreitung, Weiterverkauf und Weiterentwicklung sind in jeder Form untersagt!
 
-## Ergebnisvorschau (vollautomatisch übersetzt, ohne manuelle Eingriffe) ✨
+## ✨ Ergebnisvorschau (vollautomatisch übersetzt, ohne manuelle Eingriffe)
 <table>
   <tbody>
     <tr><td><details open><summary><b>🗯️ Comics</b></summary><br><img width="1280" alt="Bilder" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/image.jpg" /></details></td></tr>
@@ -40,7 +40,7 @@
   </tbody>
 </table>
 
-## Erste Schritte 🛸
+## 🛸 Erste Schritte
 - Laden Sie die Anwendung von der [Release-Seite](https://github.com/neavo/LinguaGacha/releases) herunter
   - Windows:
     - Laden Sie je nach CPU-Typ `*_Windows_x64.zip` oder `*_Windows_arm64.zip` herunter
@@ -61,10 +61,10 @@
 - Besorgen Sie sich Zugang zu einer zuverlässigen KI-Modellschnittstelle, zum Beispiel [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]
 - Starten Sie die Anwendung, erstellen Sie ein Projekt, ziehen Sie die `zu übersetzenden Dateien` in das `AGENT`-Eingabefeld und drücken Sie die Eingabetaste!
 
-## Anleitungen 📝
+## 📝 Anleitungen
 - **Einstieg**
   - [Grundlagen-Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈 Schritt für Schritt erklärt, für Einsteiger empfohlen`
-  - [Modellverwaltung](https://github.com/neavo/LinguaGacha/wiki/ModelManagement)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek)　　[Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)　　[FAQ](https://github.com/neavo/LinguaGacha/wiki/FAQ)
+  - [Modellverwaltung](https://github.com/neavo/LinguaGacha/wiki/ModelManagement)　　[DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek)　　[Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/SupportedFileFormat)
 - **Funktionen**
   - [AGENT](https://github.com/neavo/LinguaGacha/wiki/Agent)　　[Korrekturlesen](https://github.com/neavo/LinguaGacha/wiki/Proofreading)　　[Glossar](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[Textschutz](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[Textersetzung](https://github.com/neavo/LinguaGacha/wiki/Replacement)
   - [Benutzerdefinierte Prompts](https://github.com/neavo/LinguaGacha/wiki/CustomPrompt)　　[Labor](https://github.com/neavo/LinguaGacha/wiki/Laboratory)　　[Funktionseinstellungen](https://github.com/neavo/LinguaGacha/wiki/Settings)　　[MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)　　[Erweiterte Funktionen](https://github.com/neavo/LinguaGacha/wiki/AdvancedFeatures)
@@ -78,21 +78,21 @@
   - [Bewährte Vorgehensweisen für hochwertige Übersetzungen von RPGMAKER-Spielen](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
-## Neueste Updates 📅
-- 20261123 v0.142.3
-  - Verbesserte Ergebnisse bei `RP` und `Schreiben`
-  - Korrekturen und Verbesserungen [#1123](../../issues/1123) [#1124](../../issues/1124)
+## 📅 Neueste Updates
+- 20261126 v0.143.0
+  - Mehrere Projekte können gleichzeitig geöffnet werden [#1127](../../issues/1127)
+  - Die Übersetzungsqualität für Comics (Bilder) wurde verbessert [#1130](../../issues/1130)
+  - Fehlerbehebungen und Verbesserungen [#1131](../../issues/1131) [#1132](../../issues/1132) [#1133](../../issues/1133) [#1134](../../issues/1134)
 
-- 20261120 v0.142.2
-  - Übersetzung transparenter `Bilder` hinzugefügt [#1120](../../pull/1120)
-  - Textsatz bei der Übersetzung von `Bildern (Comics)` deutlich verbessert [#1116](../../pull/1116)
-  - Fehlerbehebungen und Verbesserungen [#1117](../../issues/1117) [#1118](../../issues/1118) [#1119](../../issues/1119)
+## ❓ FAQ
 
-- 20261119 v0.142.1
-  - Übersetzung von `Bildern (Comics)` hinzugefügt [#1109](../../pull/1109)
-  - Fehlerbehebungen und Verbesserungen [#1111](../../issues/1111) [#1112](../../issues/1112)
+- Kann ich ohne `AGENT` übersetzen\
+  Integrierte Formate wie Textdateien und Untertitel lassen sich im `Arbeitsbereich` oder über die Befehlszeile im Stapel übersetzen. [Anleitung](https://github.com/neavo/LinguaGacha/wiki/FAQ#-可以不使用-agent-翻译吗)
 
-## Probleme melden 😥
+- Kann ich vorhandene Übersetzungen nach einem Spiel- oder Dateiupdate behalten\
+  Wähle im bestehenden Projekt in `AGENT` die Option `Dateien aktualisieren`, um abgeschlossene Übersetzungen zu behalten. Übersetze anschließend neue oder geänderte Inhalte. [Anleitung](https://github.com/neavo/LinguaGacha/wiki/FAQ#-游戏或文件更新后能保留已有译文吗)
+
+## 😥 Probleme melden
 - Laufzeitprotokolle werden unter anderem im Ordner `log` im Stammverzeichnis der Anwendung gespeichert
 - Fügen Sie diese Protokolldateien bitte Ihrer Fehlermeldung bei
 - Sie können auch unseren Gruppen beitreten, um sich auszutauschen und Feedback zu geben
