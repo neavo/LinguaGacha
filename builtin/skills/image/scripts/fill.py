@@ -7,29 +7,27 @@ import math
 
 import cv2
 import numpy as np
+from repair import ellipse, fill_holes
 
 INSET_RATIO, INSET_MIN, INSET_MAX = 0.008, 2, 6
 COLOR_BIN, COLOR_DISTANCE, FILL_COVERAGE = 8, 12, 0.80
 TRANSPARENT_ALPHA_MAX, VISIBLE_TEXT_ALPHA = 16, 32
+CONTOUR_RING_RADII = (4, 8)  # 优先取邻近底色，近环被文字占满时扩大取样范围。
 TRANSITION_WIDTH = 1.0
 TRANSITION_DISTANCE = 0.5 + TRANSITION_WIDTH
 CONTEXT_BORDER = math.ceil(TRANSITION_DISTANCE)
 
 
 def inset_selection(mask):
-    """填充外轮廓内部孔洞并向内收缩，避免内部文字或装饰在选区中留下空洞。"""
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    filled = np.zeros_like(mask)
-    cv2.drawContours(filled, contours, -1, 255, cv2.FILLED)
+    """填满文字与装饰留下的孔洞，再从气泡边缘内缩。"""
+    filled = fill_holes(mask)
     _, _, w, h = cv2.boundingRect(filled)
     inset = max(INSET_MIN, min(INSET_MAX, round(min(w, h) * INSET_RATIO)))
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (2 * inset + 1, 2 * inset + 1)
-    )
-    return cv2.erode(filled, kernel, iterations=1)
+    return cv2.erode(filled, ellipse(inset))
 
 
 def _median_color(pixels):
+    """把颜色中位数舍入到原图像素格式。"""
     return np.median(pixels, axis=0).round().astype(np.uint8)
 
 
@@ -97,6 +95,20 @@ def analyze_background(image, selection, text_mask):
     if image.shape[2] == 4 and not opaque_only:
         rgb = _text_background_color(image, selected, text_mask, rgb)
     return "fill" if use_fill else "lama", rgb, target, opaque_only
+
+
+def sample_ring_color(image, mask, excluded, fallback, *, opaque_only=False):
+    """避开 OCR 框，依次尝试近环、外环和组背景色。"""
+    background = (mask == 0) & (excluded == 0)
+    if opaque_only:
+        background &= image[:, :, 3] == 255
+    for radius in CONTOUR_RING_RADII:
+        ring = cv2.dilate(mask, ellipse(radius)) > 0
+        pixels = image[ring & background]
+        if len(pixels):
+            _, color = _cluster_background(pixels)
+            return color
+    return fallback
 
 
 def render_fill(image, mask, color):

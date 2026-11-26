@@ -3,13 +3,22 @@
 import cv2
 import numpy as np
 
-DARK_MAX, WHITE_MIN, WHITE_SPREAD = 150, 220, 30  # 黑字上限与白描边范围。
+DARK_MAX, WHITE_MIN, WHITE_SPREAD = 150, 220, 30  # 深字上限与浅描边范围。
 COMPONENT_AREA_RATIO = 0.0005  # 按文字框短边过滤孤立噪点。
-TEXT_PADDING_RATIO, HALO_RATIO, EDGE_RATIO = (
-    0.04,
-    0.12,
-    0.025,
-)  # 描边邻域、框外余量与最终外扩。
+HALO_RATIO, HALO_MAX = 0.12, 12  # 大字的描边搜索仍需贴近笔画。
+SMALL_TEXT_MAX, SMALL_TEXT_EDGE, DEFAULT_EDGE = 16, 2, 3  # 小字附近常有紧贴的边线。
+POLARITY_RING_RATIO, POLARITY_RING_MIN, POLARITY_RING_MAX = 0.25, 2, 8
+POLARITY_PERCENTILE, POLARITY_CONTRAST_MARGIN, BACKGROUND_MIN_SAMPLES = 8, 12, 8
+TAIL_ASPECT_MIN, TAIL_EXTENSION_RATIO, TAIL_EXTENSION_MIN, TAIL_EXTENSION_MAX = (
+    1.2,
+    0.45,
+    3,
+    24,
+)
+TAIL_CONNECTED_AREA_RATIO = 1.5  # 连通尾笔面积上限，防止沿画框线稿一路蔓延。
+TAIL_DOT_AREA_RATIO, TAIL_DOT_SPAN_RATIO, TAIL_DOT_DISTANCE_RATIO = 0.15, 0.6, 0.35
+TAIL_DOT_MIN_SPAN, TAIL_DOT_RING_RADIUS, TAIL_DOT_MIN_SAMPLES = 4, 2, 4
+TAIL_DOT_BG_TOLERANCE, TAIL_DOT_BG_COVERAGE = 32, 0.8  # 小点周围应以本行底色为主。
 CONTEXT_RATIO, CONTEXT_MIN, INPUT_EDGE, STRIDE = (
     0.35,
     64,
@@ -33,46 +42,151 @@ def fill_holes(mask):
     return result
 
 
+def _is_light_line(ink, background, fallback):
+    """比较框内两端亮度与框外背景的反差，区分同一区内的深字和浅字。"""
+    if len(background) < BACKGROUND_MIN_SAMPLES:
+        return fallback
+    dark, bright = np.percentile(ink, [POLARITY_PERCENTILE, 100 - POLARITY_PERCENTILE])
+    contrast = (bright + dark) - 2 * np.median(background)
+    return contrast > 0 if abs(contrast) > POLARITY_CONTRAST_MARGIN else fallback
+
+
+def _reading_extension_polygon(polygon, extension):
+    """沿 OCR 框长边延伸两端，近方形框缺少可靠的阅读方向。"""
+    points = polygon.astype(np.float32)
+    e0, e1 = points[1] - points[0], points[3] - points[0]
+    len0, len1 = float(np.linalg.norm(e0)), float(np.linalg.norm(e1))
+    short, long = min(len0, len1), max(len0, len1)
+    if short <= 0 or long < short * TAIL_ASPECT_MIN:
+        return None
+    extended = points.copy()
+    if len0 >= len1:
+        axis = e0 / len0 * extension
+        extended[[0, 3]] -= axis
+        extended[[1, 2]] += axis
+    else:
+        axis = e1 / len1 * extension
+        extended[[0, 1]] -= axis
+        extended[[2, 3]] += axis
+    return np.rint(extended).astype(np.int32)
+
+
+def _collect_reading_tail(crop, seeds, box, keep, ring, polygon, short, minimum):
+    """补回框尾的连通笔画和底色一致的小标点。"""
+    extension = min(
+        TAIL_EXTENSION_MAX, max(TAIL_EXTENSION_MIN, round(short * TAIL_EXTENSION_RATIO))
+    )
+    extended_poly = _reading_extension_polygon(polygon, extension)
+    accepted = np.zeros_like(box)
+    if extended_poly is None:
+        return accepted
+    extended_box = np.zeros_like(box)
+    cv2.fillConvexPoly(extended_box, extended_poly, 255)
+    tail = seeds & (extended_box > 0) & (box == 0)
+    if not np.any(tail):
+        return accepted
+
+    # 一次标记区分与框内笔画连通的成分和孤立小点。
+    ink = keep | tail
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(ink.astype(np.uint8))
+    touching = np.zeros(count, bool)
+    touching[labels[keep]] = True
+    tail_sizes = np.bincount(labels[tail], minlength=count)
+    connected_max = max(minimum * 2, round(short * short * TAIL_CONNECTED_AREA_RATIO))
+    accepted[tail & (touching & (tail_sizes <= connected_max))[labels]] = 255
+    dot_area_max = max(minimum + 1, round(short * short * TAIL_DOT_AREA_RATIO))
+    dots = np.flatnonzero(
+        ~touching & (tail_sizes >= minimum) & (tail_sizes <= dot_area_max)
+    )
+    background = crop[ring]
+    if not len(dots) or len(background) < BACKGROUND_MIN_SAMPLES:
+        return accepted
+
+    # 小点需要紧贴框尾，且周围大部分像素与本行底色接近。
+    background_color = np.median(background, axis=0)
+    span = max(TAIL_DOT_MIN_SPAN, round(short * TAIL_DOT_SPAN_RATIO))
+    distance = max(TAIL_DOT_MIN_SPAN, round(short * TAIL_DOT_DISTANCE_RATIO))
+    near_box = cv2.dilate(box, ellipse(distance)) > 0
+    radius = TAIL_DOT_RING_RADIUS
+    kernel = ellipse(radius)
+    for label in dots:
+        x, y, w, h, _ = stats[label]
+        if max(w, h) > span:
+            continue
+        region = np.s_[
+            max(0, y - radius) : y + h + radius, max(0, x - radius) : x + w + radius
+        ]
+        dot = labels[region] == label
+        if not np.any(dot & near_box[region]):
+            continue
+        local_ring = (cv2.dilate(dot.astype(np.uint8), kernel) > 0) & ~ink[region]
+        around = crop[region][local_ring]
+        if len(around) >= TAIL_DOT_MIN_SAMPLES:
+            matches = (
+                np.max(np.abs(around - background_color), axis=1)
+                <= TAIL_DOT_BG_TOLERANCE
+            )
+            if np.mean(matches) >= TAIL_DOT_BG_COVERAGE:
+                accepted[region][dot] = 255
+    return accepted
+
+
 def text_mask(image, selection, boxes, origin, light_text=False):
-    """在区域内提取笔画，原图坐标的文字框只平移一次。"""
+    """按 OCR 行提取笔画和描边，无可修复笔画时返回 None。"""
     x, y, w, h = cv2.boundingRect(selection)
     crop = image[y : y + h, x : x + w]
-    if light_text:
-        crop = cv2.bitwise_not(crop)
     selected = selection[y : y + h, x : x + w]
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    white = (gray >= WHITE_MIN) & (
-        np.ptp(crop.astype(np.int16), axis=2) <= WHITE_SPREAD
-    )
-    strokes = np.zeros_like(gray)
+    writable = selected > 0
+    luma = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    inverted = 255 - luma
+    neutral = np.ptp(crop, axis=2) <= WHITE_SPREAD  # 反相只改变亮度方向，通道跨度相同。
+    strokes = np.zeros_like(luma)
     offset = np.array([origin[0] + x, origin[1] + y], np.int32)
     for points in boxes:
         polygon = np.asarray(points, np.int32) - offset
-        box = np.zeros_like(gray)
+        box = np.zeros_like(luma)
         cv2.fillConvexPoly(box, polygon, 255)
-        support = (box > 0) & (selected > 0)
+        support = (box > 0) & writable
         if np.count_nonzero(support) < 4:
             continue
         short = min(cv2.minAreaRect(polygon)[1])
+        ring_radius = min(
+            POLARITY_RING_MAX,
+            max(POLARITY_RING_MIN, round(short * POLARITY_RING_RATIO)),
+        )
+        ring = (cv2.dilate(box, ellipse(ring_radius)) > 0) & (box == 0)
+        is_light = _is_light_line(luma[support], luma[ring], light_text)
+        gray = inverted if is_light else luma  # 阈值与描边规则统一按深色笔画处理。
         threshold, _ = cv2.threshold(
             gray[support].reshape(-1, 1), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )
-        seeds = ((gray <= min(DARK_MAX, threshold)) & support).astype(np.uint8) * 255
-        count, labels, stats, _ = cv2.connectedComponentsWithStats(seeds)
+        seeds = (gray <= min(DARK_MAX, threshold)) & writable
+        _, labels, stats, _ = cv2.connectedComponentsWithStats(
+            (seeds & support).astype(np.uint8)
+        )
         minimum = max(2, round(short * short * COMPONENT_AREA_RATIO))
-        keep = np.zeros_like(seeds)
-        for label in range(1, count):
-            if stats[label, cv2.CC_STAT_AREA] >= minimum:
-                keep[labels == label] = 255
-        nearby = cv2.dilate(keep, ellipse(max(1, round(short * HALO_RATIO)))) > 0
-        ink = fill_holes(keep | ((nearby & white).astype(np.uint8) * 255))
-        ink = cv2.dilate(ink, ellipse(max(1, round(short * EDGE_RATIO))))
-        limit = cv2.dilate(box, ellipse(max(1, round(short * TEXT_PADDING_RATIO))))
+        valid = stats[:, cv2.CC_STAT_AREA] >= minimum
+        valid[0] = False
+        keep = valid[labels]
+        if not np.any(keep):
+            continue
+        tail = _collect_reading_tail(
+            crop, seeds, box, keep, ring, polygon, short, minimum
+        )
+        ink = (keep.astype(np.uint8) * 255) | tail
+        halo_radius = min(HALO_MAX, max(1, round(short * HALO_RATIO)))
+        nearby = cv2.dilate(ink, ellipse(halo_radius)) > 0
+        ink[nearby & neutral & (gray >= WHITE_MIN)] = 255
+        edge_radius = SMALL_TEXT_EDGE if short <= SMALL_TEXT_MAX else DEFAULT_EDGE
+        # 先闭合抗锯齿边缘，再填字形内部的孔洞，最后裁掉框外背景。
+        ink = fill_holes(cv2.dilate(ink, ellipse(edge_radius)))
+        limit = cv2.dilate(box | tail, ellipse(edge_radius + 1))
         strokes |= ink & limit
+    strokes = fill_holes(strokes) & selected
+    if not np.any(strokes):
+        return None
     result = np.zeros_like(selection)
-    result[y : y + h, x : x + w] = fill_holes(strokes) & selected
-    if not np.any(result):
-        raise ValueError("Empty repair mask")
+    result[y : y + h, x : x + w] = strokes
     return result
 
 

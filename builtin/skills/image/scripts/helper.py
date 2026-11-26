@@ -279,16 +279,22 @@ def recognize_text(image, box, channel):
 
 
 def box_metrics(box):
-    """返回轴对齐范围与最小外接矩形的横、竖边长度。"""
+    """返回 OCR 框的轴对齐范围和按倾角区分的横、竖边长。"""
     points = np.asarray(box, np.float32)
     xs, ys = points[:, 0], points[:, 1]
+    e0, e1 = points[1] - points[0], points[3] - points[0]
+    len0, len1 = float(np.linalg.norm(e0)), float(np.linalg.norm(e1))
+    # 按 x 排序的首边可能落在竖边，方向由边的倾角决定。
+    width, height = (
+        (len0, len1) if abs(float(e0[0])) >= abs(float(e0[1])) else (len1, len0)
+    )
     return (
         float(xs.min()),
         float(ys.min()),
         float(xs.max()),
         float(ys.max()),
-        float(np.linalg.norm(points[0] - points[1])),
-        float(np.linalg.norm(points[0] - points[3])),
+        width,
+        height,
     )
 
 
@@ -301,10 +307,11 @@ def interval_overlap(a0, a1, b0, b1):
 
 
 def text_angle(box):
-    """把 OCR 框的反向边折到同一角度，供相邻文字比较。"""
-    edge = np.asarray(box, np.float32)[1] - np.asarray(box, np.float32)[0]
-    angle = math.degrees(math.atan2(float(edge[1]), float(edge[0]))) % 180
-    return min(angle, 180 - angle)
+    """返回 OCR 框长轴在 [0, 180) 内的无向倾角。"""
+    points = np.asarray(box, np.float32)
+    e0, e1 = points[1] - points[0], points[3] - points[0]
+    edge = e0 if np.linalg.norm(e0) >= np.linalg.norm(e1) else e1
+    return math.degrees(math.atan2(float(edge[1]), float(edge[0]))) % 180
 
 
 def adjacent_text(left, right):
@@ -312,10 +319,8 @@ def adjacent_text(left, right):
     lx0, ly0, lx1, ly1, lw, lh = box_metrics(left["box"])
     rx0, ry0, rx1, ry1, rw, rh = box_metrics(right["box"])
     left_vertical, right_vertical = lh > lw * 1.5, rh > rw * 1.5
-    if (
-        left_vertical != right_vertical
-        or abs(text_angle(left["box"]) - text_angle(right["box"])) > 15
-    ):
+    angle = abs(text_angle(left["box"]) - text_angle(right["box"]))
+    if left_vertical != right_vertical or min(angle, 180 - angle) > 15:
         return False
     short_left, short_right = min(lw, lh), min(rw, rh)
     if max(short_left, short_right) > max(1.0, min(short_left, short_right)) * 2:
@@ -361,10 +366,10 @@ def group_unframed(records):
 
 def text_direction(records):
     """横竖排票数相同时沿用漫画竖排顺序。"""
-    vertical = sum(
-        box_metrics(record["box"])[5] > box_metrics(record["box"])[4] * 1.5
-        for record in records
-    )
+    vertical = 0
+    for record in records:
+        *_, width, height = box_metrics(record["box"])
+        vertical += height > width * 1.5
     return "vertical-rl" if vertical * 2 >= len(records) else "horizontal-tb"
 
 
@@ -650,7 +655,7 @@ def _prepare_group(
     output,
     page_id,
     occupied,
-    expanded,
+    nearby,
     writing,
     channel,
     variants,
@@ -672,7 +677,7 @@ def _prepare_group(
     origin = (left, top)
     group = np.s_[top : y + h + border, left : x + w + border]
     image = original[group]
-    occupied, expanded, writing = occupied[group], expanded[group], writing[group]
+    occupied, nearby, writing = occupied[group], nearby[group], writing[group]
     shape = image.shape[:2]
     selection = np.zeros(shape, np.uint8)
     blocks = []
@@ -715,10 +720,10 @@ def _prepare_group(
             area[crop] = (
                 _read_packaged_area(previous, page_id, region) & part_area[crop]
             )
+            # 旧包的排版区可能覆盖当前扫描中归给其他区的原字。
+            area[(occupied != 0) & (occupied != index)] = 0
         # 笔画邻域只分给一块，局部重做与本次选字无关。
-        local = np.where(
-            (occupied == index) | ((occupied == 0) & (expanded == index)), area, 0
-        )
+        local = np.where(nearby == index, area, 0)
         if not np.any(local):
             raise ValueError(f"No writable text pixels in {rid}")
         blocks.append((candidate, pick, box, local, area))
@@ -757,12 +762,10 @@ def _prepare_group(
             masks[rid] = (mask, "fill")
             continue
         boxes = [line["box"] for line in candidate["lines"]]
-        try:
-            stroke = repair.text_mask(
-                stroke_image, local, boxes, origin, light_text=dark_background
-            )
-        except ValueError:
-            stroke = None
+        # 笔画和框尾可越过固定邻域，最终写回仍受区域掩码约束。
+        stroke = repair.text_mask(
+            stroke_image, part_area, boxes, origin, light_text=dark_background
+        )
         if pick.get("contour"):
             masks[rid] = (local if stroke is None else stroke, "contour")
         elif stroke is not None:
@@ -804,11 +807,15 @@ def _prepare_group(
         if rid in masks:
             mask, method = masks[rid]
             if method == "contour":
-                tone = 0 if dark_background else 255
-                repaired[mask > 0, :3] = tone
-                if image.shape[2] == 4:
-                    repaired[mask > 0, 3] = target[3]
-                background_color = [tone] * 3
+                # 全透明底已单独处理，此处用组背景填补环带缺少样本的情况。
+                sampled = fill.sample_ring_color(
+                    image, mask, occupied, target, opaque_only=opaque_only
+                )
+                repaired[mask > 0] = sampled
+                if (
+                    image.shape[2] == 3 or opaque_only
+                ):  # 半透明底沿用按原字反推的参考色。
+                    background_color = sampled[:3][::-1].tolist()
             patch = _save_patch(
                 output,
                 page_id,
@@ -998,6 +1005,50 @@ def _repartition_group(root, page, group, correction):
     return corrected, selected
 
 
+def _build_text_ownership(shape, candidates):
+    """返回实框归属和包含实框的邻域归属。同级取最近，等距沿用扫描顺序。"""
+    height, width = shape
+    owners = np.zeros(shape, np.int32)
+    priorities = np.zeros(shape, np.uint8)
+    distances = np.full(shape, np.inf, np.float32)
+    box_priority = 2  # 实框优先于所有邻域，同为实框或邻域时气泡优先。
+    margin_kernel = repair.ellipse(TEXT_MARGIN)
+
+    for index, candidate in enumerate(candidates, 1):
+        candidate["index"] = index
+        priority = 2 if candidate["kind"] == "bubble" else 1
+        boxes = np.asarray([line["box"] for line in candidate["lines"]], np.int32)
+        core_boxes = np.asarray(
+            [line["coreBox"] for line in candidate["lines"]], np.int32
+        )
+        x, y, w, h = cv2.boundingRect(boxes.reshape(-1, 2))
+        x0, y0 = max(0, x - TEXT_MARGIN), max(0, y - TEXT_MARGIN)
+        x1, y1 = min(width, x + w + TEXT_MARGIN), min(height, y + h + TEXT_MARGIN)
+        crop = np.s_[y0:y1, x0:x1]
+        crop_shape = (y1 - y0, x1 - x0)
+        offset = np.array([x0, y0], np.int32)
+        box_mask = _box_mask(crop_shape, boxes - offset)
+        core_mask = _box_mask(crop_shape, core_boxes - offset)
+        inside = box_mask > 0
+        # 核心框用于解决 OCR 扩框重叠。邻域距离则从扩框边缘算起。
+        dist_to_core = cv2.distanceTransform(
+            (core_mask == 0).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+        )
+        distance = cv2.distanceTransform(
+            (~inside).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+        )
+        distance[inside] = dist_to_core[inside]
+        rank = priority + inside.astype(np.uint8) * box_priority
+        take = (cv2.dilate(box_mask, margin_kernel) > 0) & (
+            (rank > priorities[crop])
+            | ((rank == priorities[crop]) & (distance < distances[crop]))
+        )
+        owners[crop][take] = index
+        priorities[crop][take] = rank[take]
+        distances[crop][take] = distance[take]
+    return np.where(priorities > box_priority, owners, 0), owners
+
+
 def prepare(args, channel):
     """从扫描结果准备封包条目、消字补丁与排版掩码。"""
     root, output = Path(args["root"]), Path(args["output"])
@@ -1048,12 +1099,7 @@ def prepare(args, channel):
         )
         inference = inference_image(original)
         shape = original.shape[:2]
-        occupied = np.zeros(shape, np.float32)  # 原字框的像素归属。
-        for index, candidate in enumerate(candidates, 1):
-            candidate["index"] = index
-            for line in candidate["lines"]:
-                cv2.fillConvexPoly(occupied, np.asarray(line["box"], np.int32), index)
-        expanded = cv2.dilate(occupied, repair.ellipse(TEXT_MARGIN))
+        occupied, nearby = _build_text_ownership(shape, candidates)
         writing = np.zeros(shape, bool)
         previous_layout = (
             (previous, previous_pages[page_id]) if previous_pages else None
@@ -1083,7 +1129,7 @@ def prepare(args, channel):
                 output,
                 page_id,
                 occupied,
-                expanded,
+                nearby,
                 writing,
                 channel,
                 args.get("variants", True),
