@@ -78,6 +78,7 @@ export type AgentControlsSlice = Readonly<{
   state: AgentChatStatus;
   doing: string | null; // 模型维护的任务阶段
   pendingDecision: AgentPendingDecision | null;
+  exportedRoundId: string | null;
   context: AgentContextSnapshot;
   usage: AgentUsageSnapshot;
   transport: AgentTransportState;
@@ -128,6 +129,7 @@ const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
   doing: null,
   pendingDecision: null,
+  exportedRoundId: null,
   context: { tokens: null, compactable: false, limits: null },
   usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   transport: "restoring",
@@ -387,6 +389,7 @@ export class AgentChatStore {
       next.state === this.controls.state &&
       next.doing === this.controls.doing &&
       next.pendingDecision === this.controls.pendingDecision &&
+      next.exportedRoundId === this.controls.exportedRoundId &&
       next.context.tokens === this.controls.context.tokens &&
       next.context.compactable === this.controls.context.compactable &&
       next.context.limits?.context_window === this.controls.context.limits?.context_window &&
@@ -505,6 +508,7 @@ export class AgentChatStore {
         state: snapshot.state,
         doing: snapshot.doing,
         pendingDecision: snapshot.pendingDecision,
+        exportedRoundId: snapshot.exportedRoundId,
         context: snapshot.context,
         usage: snapshot.usage,
       };
@@ -591,6 +595,9 @@ export class AgentChatStore {
         break;
       case "run_output":
         this.set_run_output(change.runOutput);
+        break;
+      case "exported_round":
+        this.set_controls({ exportedRoundId: change.exportedRoundId });
         break;
       case "chat_status":
         this.set_controls({ state: change.state });
@@ -956,6 +963,7 @@ function normalize_snapshot(value: unknown): AgentChatSnapshot {
   const doing = normalize_doing(record["doing"]);
   const token_speed = normalize_token_speed(record["tokenSpeed"]);
   const run_output = normalize_run_output(record["runOutput"]);
+  const exported_round_id = normalize_exported_round_id(record["exportedRoundId"]);
   const context = normalize_context(record["context"]);
   const usage = normalize_usage(record["usage"]);
   if (
@@ -965,7 +973,8 @@ function normalize_snapshot(value: unknown): AgentChatSnapshot {
     context === null ||
     usage === null ||
     token_speed === undefined ||
-    run_output === undefined
+    run_output === undefined ||
+    exported_round_id === undefined
   ) {
     throw new TypeError("Agent snapshot is invalid.");
   }
@@ -982,6 +991,7 @@ function normalize_snapshot(value: unknown): AgentChatSnapshot {
     usage,
     tokenSpeed: token_speed,
     runOutput: run_output,
+    exportedRoundId: exported_round_id,
   };
 }
 
@@ -1034,6 +1044,12 @@ function normalize_agent_change(value: unknown): AgentChatChange | null {
       const run_output = normalize_run_output(record["runOutput"]);
       return run_output === undefined ? null : { type: "run_output", runOutput: run_output };
     }
+    case "exported_round": {
+      const exported_round_id = normalize_exported_round_id(record["exportedRoundId"]);
+      return exported_round_id === undefined
+        ? null
+        : { type: "exported_round", exportedRoundId: exported_round_id };
+    }
     case "context": {
       const context = normalize_context(record["context"]);
       return context === null ? null : { type: "context", context };
@@ -1064,6 +1080,12 @@ function normalize_token_speed(value: unknown): AgentTokenSpeedSnapshot | undefi
     speed >= 0
     ? { roundId: round_id, tokensPerSecond: speed }
     : undefined;
+}
+
+/** 快照与增量共用导出轮次契约，`undefined` 表示载荷无效。 */
+function normalize_exported_round_id(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 /** 运行输出必须带条目身份和三段文本。`null` 表示无运行输出，`undefined` 表示载荷无效。 */

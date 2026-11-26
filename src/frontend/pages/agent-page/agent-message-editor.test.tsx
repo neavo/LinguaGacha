@@ -1096,6 +1096,7 @@ describe("AgentMessageEditor", () => {
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       tokenSpeed: null,
       runOutput: null,
+      exportedRoundId: null,
     };
     chat_mocks.api_get.mockReset().mockResolvedValue(snapshot);
     chat_mocks.api_fetch.mockReset().mockResolvedValue({ revision: 0, status: "accepted" });

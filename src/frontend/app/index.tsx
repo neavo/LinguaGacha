@@ -31,6 +31,7 @@ import { ProjectSessionProvider } from "@frontend/app/session/project-session-pr
 import {
   api_fetch,
   check_github_release_update,
+  GITHUB_REPOSITORY_URL,
   open_external_url,
   type GithubReleaseUpdate,
 } from "@frontend/app/desktop/desktop-api";
@@ -62,7 +63,6 @@ import {
 } from "@domain/app-language";
 
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
-const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 const GET_DEFAULT_PROJECT_ROUTE = (): RouteId => "agent";
 const NOOP_SUBSCRIBE = () => () => {};
 

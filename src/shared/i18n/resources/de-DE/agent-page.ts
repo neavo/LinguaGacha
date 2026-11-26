@@ -212,4 +212,11 @@ export const de_de_agent_page = {
     runtime_busy: "Eine andere Aufgabe wird ausgeführt",
     settling: "Aktuelle Aufgabe wird beendet",
   },
+  star_prompt: {
+    action: "✨ Gib mir einen Stern! ( •̀ ᗜ •́ )つ✮",
+    description:
+      "Dein kleiner Stern ✨ bedeutet LinguaGacha sehr viel …!\nWenn es hilfreich war, gib dem Projekt doch einen Star auf GitHub …!",
+    never_remind: "Nicht mehr erinnern",
+    open_github: "Zu GitHub",
+  },
 } as const;

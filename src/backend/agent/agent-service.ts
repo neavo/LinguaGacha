@@ -125,6 +125,7 @@ type AgentChatFields = Pick<
   | "usage"
   | "tokenSpeed"
   | "runOutput"
+  | "exportedRoundId"
 >;
 
 /** 占用完成后才能取消，命令则等待新轮次受理。 */
@@ -179,6 +180,7 @@ export class AgentService {
   private token_speed_snapshot: AgentTokenSpeedSnapshot = null;
   private token_speed_updated_at: number | null = null;
   private run_output: AgentRunOutputSnapshot = null; // 冻结值，只在执行期间存在，不进入条目
+  private exported_round_id: string | null = null; // 本次运行最后一轮成功且包含导出时记录，收尾后公开。
   private readonly store: AgentChatStorage;
   private record: AgentChatRecord | null = null;
   private resetting: Promise<void> | null = null; // 快照和关闭等待新旧对话交接。
@@ -386,6 +388,7 @@ export class AgentService {
       usage: chat?.usage ?? EMPTY_AGENT_USAGE,
       tokenSpeed: this.token_speed_snapshot,
       runOutput: this.run_output,
+      exportedRoundId: this.run === null ? this.exported_round_id : null,
     };
   }
   /** 协调器同步清除决定并发布事件，回执指向浮层关闭后的修订。 */
@@ -893,6 +896,7 @@ export class AgentService {
       interrupt: null,
     };
     this.run = run;
+    this.exported_round_id = null;
     return run;
   }
   /** 命令在受理后返回，运行结算覆盖预检、后台执行和清理。 */
@@ -1073,11 +1077,16 @@ export class AgentService {
           ? await chat.change_queue((queue) => queue.begin_next())
           : null);
       if (
-        next === null ||
         this.chat !== chat ||
         (execution.controller.signal.aborted && execution.stop_reason !== "queue_send")
       )
         return;
+      // 自动接续队列时不产生中间提醒，只考虑本次运行的最后一轮。
+      if (next === null) {
+        if (status === "success" && execution.filesExported)
+          this.exported_round_id = execution.roundId;
+        return;
+      }
 
       const following = chat.begin_execution(
         execution.lease,
@@ -1279,6 +1288,9 @@ export class AgentService {
                   this.run_output = Object.freeze({ entryId: entry_id, ...tail });
                   this.publish_snapshot();
                 },
+                onFilesGenerated: () => {
+                  execution.filesExported = true;
+                },
               },
               signal,
             );
@@ -1349,6 +1361,8 @@ export class AgentService {
         changes.push({ type: "token_speed", tokenSpeed: fields.tokenSpeed });
       if (!isDeepStrictEqual(fields.runOutput, previous.runOutput))
         changes.push({ type: "run_output", runOutput: fields.runOutput });
+      if (fields.exportedRoundId !== previous.exportedRoundId)
+        changes.push({ type: "exported_round", exportedRoundId: fields.exportedRoundId });
       for (const entry of timeline?.entries ?? []) changes.push({ type: "entry_upsert", entry });
       if (fields.state !== previous.state)
         changes.push({ type: "chat_status", state: fields.state });
@@ -1442,6 +1456,7 @@ export class AgentService {
     this.token_speed.reset();
     this.token_speed_snapshot = null;
     this.run_output = null;
+    this.exported_round_id = null;
     try {
       await run?.settlement;
     } finally {

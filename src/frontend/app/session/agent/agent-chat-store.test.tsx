@@ -383,16 +383,24 @@ describe("AgentChatStore", () => {
   });
 
   it("同一批次先更新正文与控制事实，再一次通知各自读者", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({ exportedRoundId: "previous-round" }),
+    );
     const store = new AgentChatStore(window.localStorage, vi.fn());
     store.connect();
     try {
       await vi.waitFor(() => expect(store.get_controls().transport).toBe("ready"));
+      expect(store.get_controls().exportedRoundId).toBe("previous-round");
       const observed = vi.fn(() => {
         expect(store.timeline.entry("assistant-1")).toMatchObject({
           status: "success",
           parts: [{ text: "已完成" }],
         });
-        expect(store.get_controls()).toMatchObject({ state: "idle", doing: "完成" });
+        expect(store.get_controls()).toMatchObject({
+          state: "idle",
+          doing: "完成",
+          exportedRoundId: "completed-round",
+        });
       });
       store.timeline.subscribe_entry("assistant-1", observed);
       const controlsChanged = vi.fn();
@@ -404,6 +412,7 @@ describe("AgentChatStore", () => {
           { type: "chat_status", state: "running" },
           { type: "chat_status", state: "idle" },
           { type: "doing", doing: "完成" },
+          { type: "exported_round", exportedRoundId: "completed-round" },
         ],
       });
       expect(observed).toHaveBeenCalledOnce();
@@ -1237,6 +1246,7 @@ describe("AgentChatStore", () => {
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
       runOutput: null,
+      exportedRoundId: null,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       skills: [
         TEST_SKILLS[0],
@@ -1534,6 +1544,7 @@ describe("AgentChatStore", () => {
       context: { tokens: null, compactable: false, limits: null },
       tokenSpeed: null,
       runOutput: null,
+      exportedRoundId: null,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     let latest!: ReturnType<typeof useAgentChat>;
@@ -2207,6 +2218,7 @@ function agent_snapshot(overrides: Partial<AgentChatSnapshot> = {}): AgentChatSn
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     tokenSpeed: null,
     runOutput: null,
+    exportedRoundId: null,
     ...overrides,
   };
 }

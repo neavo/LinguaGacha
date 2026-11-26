@@ -1569,6 +1569,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   return {
     state: "idle",
     pendingDecision: null,
+    exportedRoundId: null,
     entries: [
       user_entry("user-1", "开始", "success", 0, 1),
       assistant_entry("assistant-1", "**变更方案**", "success", 1),

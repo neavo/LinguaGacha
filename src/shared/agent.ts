@@ -249,6 +249,7 @@ export type AgentChatSnapshot = JsonRecord & {
   usage: AgentUsageSnapshot;
   tokenSpeed: AgentTokenSpeedSnapshot;
   runOutput: AgentRunOutputSnapshot;
+  exportedRoundId: string | null; // 运行收尾后的导出轮次，开始新运行或重置时清空。
 };
 
 /** 写命令只确认后端受理到的事件边界，公开事实继续由事件同步。 */
@@ -275,6 +276,7 @@ export type AgentChatChange = JsonRecord &
     | { type: "doing"; doing: string | null }
     | { type: "token_speed"; tokenSpeed: AgentTokenSpeedSnapshot }
     | { type: "run_output"; runOutput: AgentRunOutputSnapshot }
+    | { type: "exported_round"; exportedRoundId: string | null }
     | { type: "context"; context: AgentContextSnapshot }
     | { type: "usage"; usage: AgentUsageSnapshot }
   );

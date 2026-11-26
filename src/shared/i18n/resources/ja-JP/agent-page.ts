@@ -203,4 +203,11 @@ export const ja_jp_agent_page = {
     runtime_busy: "別のタスクが実行中です",
     settling: "現在のタスクを終了中",
   },
+  star_prompt: {
+    action: "✨ スターをちょうだい ( •̀ ᗜ •́ )つ✮",
+    description:
+      "あなたの小さなスター ✨ は LinguaGacha にとってとても大切です …!\n使いやすいと感じたら、GitHub プロジェクトページで Star を点けてね …!",
+    never_remind: "今後表示しない",
+    open_github: "GitHub へ移動",
+  },
 } satisfies LocaleMessageSchema<typeof zh_cn_agent_page>;

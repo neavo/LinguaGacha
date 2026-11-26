@@ -208,4 +208,11 @@ export const pt_br_agent_page = {
     runtime_busy: "Outra tarefa está em execução",
     settling: "Finalizando a tarefa atual",
   },
+  star_prompt: {
+    action: "✨ Dê uma estrela! ( •̀ ᗜ •́ )つ✮",
+    description:
+      "Sua estrelinha ✨ é muito importante para o LinguaGacha …!\nSe achou útil, acenda uma Star na página do projeto no GitHub …!",
+    never_remind: "Não lembrar novamente",
+    open_github: "Ir para o GitHub",
+  },
 } as const;

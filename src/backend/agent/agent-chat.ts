@@ -143,6 +143,7 @@ export type AgentExecution = {
   recoveryUsed: boolean;
   recoveryTask: TaskId | null;
   batchStopped: boolean; // 用户停止任一批量工具后，本轮拒绝从两个入口再次启动。
+  filesExported: boolean; // 本轮至少一次 `generateFiles()` 已成功生成暂存成果。
 };
 
 type ChatOptions = {
@@ -391,6 +392,7 @@ export class AgentChat {
       recoveryUsed: false,
       recoveryTask: null,
       batchStopped: false,
+      filesExported: false,
     };
     this.execution = execution;
     return execution;

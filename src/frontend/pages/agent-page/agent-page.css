@@ -1092,6 +1092,94 @@
   color: var(--primary);
 }
 
+/* 点星胶囊贴齐状态区左侧，右侧预留跟随按钮宽度，空闲时与跟随按钮同行零增高。 */
+.agent-star-prompt {
+  position: relative;
+  align-self: flex-start;
+  display: inline-flex;
+  max-width: calc(100% - var(--agent-status-side-rail) - 8px);
+  height: var(--agent-status-row-height);
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 36%, var(--border));
+  border-radius: var(--ui-radius-pill);
+  background: color-mix(in srgb, var(--primary) 10%, var(--popover));
+  color: color-mix(in srgb, var(--primary) 78%, var(--foreground));
+  font: inherit;
+  font-size: var(--ui-font-size-12);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  animation: agent-star-prompt-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 100ms ease;
+}
+
+.agent-star-prompt::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 24%,
+    color-mix(in srgb, var(--primary) 22%, transparent) 50%,
+    transparent 76%
+  );
+  transform: translateX(-120%);
+  pointer-events: none;
+  animation: agent-star-prompt-sheen 2.4s cubic-bezier(0.22, 1, 0.36, 1) 450ms 2;
+}
+
+.agent-star-prompt__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-star-prompt:hover {
+  border-color: color-mix(in srgb, var(--primary) 54%, var(--border));
+  background: color-mix(in srgb, var(--primary) 16%, var(--popover));
+  color: var(--foreground);
+}
+
+.agent-star-prompt:active {
+  transform: translateY(1px);
+}
+
+.agent-star-prompt:focus-visible {
+  border-color: var(--ring);
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+@keyframes agent-star-prompt-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes agent-star-prompt-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  45%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
 .agent-composer:focus-within {
   border-color: var(--primary);
 }
@@ -1701,6 +1789,11 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-mark-color) 35%, transparent);
   }
 
+  .agent-star-prompt,
+  .agent-star-prompt::after {
+    animation: none;
+  }
+
   .agent-page,
   .agent-thinking-entry__toggle::before,
   .agent-thinking-entry__toggle,
@@ -1709,6 +1802,7 @@
   .agent-decision-action,
   .agent-page__suggestion,
   .agent-page__suggestion-icon,
+  .agent-star-prompt,
   .agent-composer {
     transition: none;
   }

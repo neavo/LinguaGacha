@@ -36,6 +36,7 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     tokenSpeed: null,
     runOutput: null,
+    exportedRoundId: null,
   };
   desktop.api_get.mockImplementation(async (route: string) => {
     const { pathname, searchParams } = new URL(route, "http://localhost");
