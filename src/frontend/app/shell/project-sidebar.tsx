@@ -265,7 +265,7 @@ function ProjectRow({
                 />
               }
             />
-            <TooltipContent>{t("app.workspace.more")}</TooltipContent>
+            <TooltipContent side="right">{t("app.workspace.more")}</TooltipContent>
           </Tooltip>
           <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
             {projectId !== undefined &&
