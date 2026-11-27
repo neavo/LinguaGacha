@@ -2,7 +2,7 @@ import { log_batch_task_start, log_batch_request_failure } from "../batch-task/b
 import { build_batch_request_result_log } from "./batch-request-log";
 import { create_text_resolver } from "../../shared/i18n";
 import { resolve_app_locale } from "../../domain/app-language";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import { AppError } from "../../shared/error";
 import path from "node:path";
 import { Type } from "typebox";
@@ -148,7 +148,7 @@ export class BatchRequestService {
     private readonly request_pool: BatchRequestPool,
     private readonly client: LLMClientPort,
     private readonly auth: Pick<ChatGPTAuthService, "bind">,
-    private readonly log: Pick<LogManager, "append">,
+    private readonly log: Pick<LogWriter, "scope">,
   ) {}
   /** 固定配置并校验清单，再有界派发请求和发布结果。 */
   public async run(
@@ -157,6 +157,7 @@ export class BatchRequestService {
     root: string,
     execution: BatchRequestConfig,
     request_file: string,
+    chat_id: string,
   ): Promise<BatchRequestSummary> {
     signal.throwIfAborted();
     const { model, config_snapshot: settings } = execution;
@@ -192,6 +193,7 @@ export class BatchRequestService {
     }
     signal.throwIfAborted();
     const handle = this.tasks.begin_under_agent(lease, signal, "request");
+    const run_log = this.log.scope({ chat_id, run_id: handle.run_id });
     const result_file = path.posix.join("work", "batch-requests", handle.run_id, "result.json");
     const result_path = path.join(root, result_file);
     const directory = path.dirname(result_path);
@@ -234,7 +236,7 @@ export class BatchRequestService {
             ...manifest,
             config: config_summary,
           });
-          log_batch_task_start(this.log, BATCH_REQUEST_LOG_SOURCE, model, t);
+          log_batch_task_start(run_log, BATCH_REQUEST_LOG_SOURCE, model, t);
           await this.tasks.publish_progress(handle, progress);
           await this.tasks.publish_running(handle);
           const controller = new AbortController(); // 基础设施故障取消同批请求，不改写用户的停止来源。
@@ -300,7 +302,7 @@ export class BatchRequestService {
             },
             on_state: (state) => this.tasks.update_request_state(handle, state),
             on_failure: (key_index, error) =>
-              log_batch_request_failure(this.log, BATCH_REQUEST_LOG_SOURCE, key_index, error, t),
+              log_batch_request_failure(run_log, BATCH_REQUEST_LOG_SOURCE, key_index, error, t),
           });
           /** 单项正文错误单独结算，文件发布错误交给整批收尾。 */
           const run_one = async (index: number) => {
@@ -312,11 +314,10 @@ export class BatchRequestService {
             let input_error: unknown;
             /** 每项只记录一次结果，完整响应保存在成果文件中。 */
             const log_result = (failure: string | null, cause?: unknown) =>
-              this.log.append({
+              run_log.append({
                 source: BATCH_REQUEST_LOG_SOURCE,
                 level: failure === null ? "info" : "error",
                 content: build_batch_request_result_log({
-                  run_id: handle.run_id,
                   request_id: entry.id,
                   started_at,
                   payload,
@@ -453,7 +454,7 @@ export class BatchRequestService {
       return summary(result);
     } catch (error) {
       if (error instanceof BatchTaskCompletionError) {
-        this.log.append({
+        run_log.append({
           source: BATCH_REQUEST_LOG_SOURCE,
           level: "error",
           content: t("app.log.request_failed", {
@@ -465,7 +466,7 @@ export class BatchRequestService {
       }
       throw error;
     } finally {
-      this.log.append({
+      run_log.append({
         source: BATCH_REQUEST_LOG_SOURCE,
         level: "info",
         content: t("app.log.batch_request_ended"),

@@ -2,19 +2,13 @@ import path from "node:path";
 
 import { resolve_preset_file, type AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
-import { NativeFs } from "../../native/native-fs";
+import type { NativeFs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
-import type { JsonValue } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
-import {
-  QualityRule,
-  type QualityRuleEntry,
-  type QualityRuleKind,
-  type TextPreserveMode,
-} from "../../domain/quality";
+import { QualityRule, type QualityRuleEntry } from "../../domain/quality";
 import { create_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import type {
   ProjectPromptInput,
@@ -23,124 +17,57 @@ import type {
 } from "./project-task-input";
 import { build_project_quality_rule_input } from "./project-task-input";
 
-// 文本保护默认 mode 的权威在质量规则领域模型，初始化器只消费该项目事实默认值。
-const DEFAULT_TEXT_PRESERVE_MODE = QualityRule.from_json("text_preserve").default_mode;
-// 领域模型不承载日志展示名，初始化器只保留这层面向日志的映射。
-const QUALITY_DEFAULT_PRESET_DISPLAY_NAMES: Record<QualityRuleKind, string> = {
-  glossary: "术语表",
-  text_preserve: "文本保护",
-  pre_replacement: "译前替换",
-  post_replacement: "译后替换",
-};
-
-/**
- * 默认预设读取结果是显式项目输入，不携带数据库写闭包。
- */
-export type ProjectDefaultPresetInput = ProjectTaskInput & {
-  text_preserve_mode: TextPreserveMode;
-  loaded_names: string[];
-};
-
-/**
- * 新建工程默认预设读取器只负责解析文件，数据库写入仍由项目生命周期拥有。
- */
+/** 将应用设置选中的默认预设读成新建工程的规则和提示词。 */
 export class ProjectDefaultPresetReader {
-  private readonly app_setting_service: AppSettingService; // 提供用户选择的默认预设虚拟 ID
-  private readonly paths: AppPathService; // 统一解析内置 / 用户预设目录
-  private readonly log_manager: LogManager; // 只记录预设加载诊断，不扩大公开响应
-  private readonly native_fs: NativeFs; // 读取预设文件的唯一磁盘入口
-
-  /**
-   * 构造时固定路径、设置和日志依赖，保持生命周期服务只负责装配。
-   */
+  /** 预设目录由应用路径服务统一定位。 */
   public constructor(
-    app_setting_service: AppSettingService,
-    paths: AppPathService,
-    log_manager: LogManager,
-    native_fs: NativeFs,
-  ) {
-    this.app_setting_service = app_setting_service;
-    this.paths = paths;
-    this.log_manager = log_manager;
-    this.native_fs = native_fs;
-  }
+    private readonly app_setting_service: Pick<AppSettingService, "read_setting">,
+    private readonly paths: AppPathService,
+    private readonly native_fs: NativeFs,
+  ) {}
 
   /**
    * 读取新建工程默认预设，单个预设失败只记录日志并继续创建。
    */
-  public read(): ProjectDefaultPresetInput {
+  public read(log: Pick<LogWriter, "warning">): ProjectTaskInput {
     const config = this.app_setting_service.read_setting();
     const quality_rules: ProjectQualityRuleInput[] = [];
     let translation_prompt: ProjectPromptInput | null = null;
-    const loaded_names: string[] = [];
 
     // 质量规则从领域模型派生目录与设置 key，输出只保留公开 kind 和领域值。
     for (const rule of QualityRule.all()) {
-      const virtual_id = this.string_value(config[rule.default_preset_setting_key]);
+      const virtual_id = String(config[rule.default_preset_setting_key] ?? "");
       if (virtual_id === "") {
         continue;
       }
       try {
         const entries = this.read_quality_rule_preset(rule, virtual_id);
         quality_rules.push(build_project_quality_rule_input(rule, entries, true));
-        loaded_names.push(QUALITY_DEFAULT_PRESET_DISPLAY_NAMES[rule.kind]);
       } catch (error) {
-        this.log_non_blocking_warning(
-          t_main_log("app.diagnostic.default_preset.quality_rule_load_failed"),
+        log.warning(t_main_log("app.diagnostic.default_preset.quality_rule_load_failed"), {
+          source: "project-lifecycle",
           error,
-          {
-            preset_directory: rule.preset_directory,
-            virtual_id,
-          },
-        );
+          context: { preset_directory: rule.preset_directory, virtual_id },
+        });
       }
     }
 
-    // 提示词默认预设与质量规则走同一容错策略，单项失败不阻断工程创建。
-    {
-      const prompt = TRANSLATION_PROMPT;
-      const virtual_id = this.string_value(config[prompt.default_preset_setting_key]);
-      if (virtual_id !== "")
-        try {
-          const text = this.read_prompt_preset(virtual_id);
-          translation_prompt = { text, enabled: true };
-          loaded_names.push("翻译提示词");
-        } catch (error) {
-          this.log_non_blocking_warning(
-            t_main_log("app.diagnostic.default_preset.prompt_load_failed"),
-            error,
-            {
-              prompt_kind: prompt.store_key,
-              virtual_id,
-            },
-          );
-        }
+    const prompt_id = String(config[TRANSLATION_PROMPT.default_preset_setting_key] ?? "");
+    if (prompt_id !== "") {
+      try {
+        translation_prompt = { text: this.read_prompt_preset(prompt_id), enabled: true };
+      } catch (error) {
+        log.warning(t_main_log("app.diagnostic.default_preset.prompt_load_failed"), {
+          source: "project-lifecycle",
+          error,
+          context: { prompt_kind: TRANSLATION_PROMPT.store_key, virtual_id: prompt_id },
+        });
+      }
     }
-
-    return {
-      text_preserve_mode: DEFAULT_TEXT_PRESERVE_MODE,
-      quality_rules,
-      translation_prompt,
-      loaded_names,
-    };
+    return { quality_rules, translation_prompt };
   }
 
-  /**
-   * 记录成功加载的默认预设名；为空时不写日志，避免制造噪声。
-   */
-  public log_loaded_names(loaded_names: string[]): void {
-    if (loaded_names.length === 0) {
-      return;
-    }
-    this.log_manager.info(
-      t_main_log("app.log.default_preset_loaded", { NAMES: loaded_names.join(" | ") }),
-      {
-        source: "project-lifecycle",
-      },
-    );
-  }
-
-  /** 读取质量规则预设；任一非法条目由调用方现有 warning/skip 分支整体跳过。 */
+  /** 任一条目无效时，由调用方记录告警并跳过整份预设。 */
   private read_quality_rule_preset(rule: QualityRule, virtual_id: string): QualityRuleEntry[] {
     const { file_path: preset_path } = resolve_preset_file(
       {
@@ -177,27 +104,5 @@ export class ProjectDefaultPresetReader {
       this.native_fs,
     );
     return this.native_fs.read_text_file(file_path).trim();
-  }
-
-  /**
-   * 记录不阻断当前主流程的预设加载错误，保留上下文供日志窗口排查。
-   */
-  private log_non_blocking_warning(
-    message: string,
-    error: unknown,
-    context: Record<string, unknown>,
-  ): void {
-    this.log_manager.warning(message, {
-      source: "project-lifecycle",
-      error,
-      context,
-    });
-  }
-
-  /**
-   * 从未知值读取字符串，保持 null / undefined 统一为空串。
-   */
-  private string_value(value: JsonValue | undefined): string {
-    return typeof value === "string" ? value : String(value ?? "");
   }
 }

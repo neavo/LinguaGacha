@@ -27,6 +27,8 @@ import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/qualit
 import * as AppErrors from "../../../shared/error";
 import { type ProjectDataSectionRevisions } from "../../../shared/project-event";
 import { NativeFs } from "../../../native/native-fs";
+import { LogWriter } from "../../log/log-manager";
+import type { LogAppendPayload } from "../../../shared/log";
 import type { CacheReadPort } from "../../cache/cache-types";
 import { DEFAULT_PROJECT_SETTINGS } from "../../../domain/project-settings";
 import type { ProjectWriteStore } from "../../project/project-write-store";
@@ -69,6 +71,24 @@ describe("AgentWorkspaceService", () => {
   afterEach(() => {
     fs.rmSync(temp_dir, { recursive: true, force: true });
     vi.restoreAllMocks();
+  });
+
+  it("工作区目录告警随当前对话切换归属", async () => {
+    const native_fs = new NativeFs();
+    vi.spyOn(native_fs, "touch_directory").mockRejectedValue(new Error("touch failed"));
+    const { service, log_append, projectPath } = await create_fixture(temp_dir, native_fs);
+    await service.activate_chat("test0002", [], async () => {});
+    expect(log_append.mock.calls.map(([record]) => record)).toMatchObject([
+      {
+        scope: { project_path: projectPath, chat_id: "test0001" },
+        error: { message: "touch failed" },
+      },
+      {
+        scope: { project_path: projectPath, chat_id: "test0002" },
+        error: { message: "touch failed" },
+      },
+    ]);
+    await service.close();
   });
 
   it("知识投影与元数据共用指纹，知识修订刷新正文，旧指纹按漂移拒绝", async () => {
@@ -1689,6 +1709,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const generate_staging_files = vi.fn(async (): Promise<TranslationFileGenerationResult> => {
     throw new Error("Unexpected generation");
   });
+  const log_append = vi.fn<(record: LogAppendPayload) => void>();
   const service = new AgentWorkspaceService({
     generation: {
       read_output_paths: () => {
@@ -1716,7 +1737,7 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     },
     knowledge: { read: async () => project_knowledge_file(knowledge.stored, "zh-CN") },
     writeStore: { apply_agent_workspace_changes: write_store },
-    logManager: { warning: vi.fn() },
+    logManager: new LogWriter(log_append).scope({ project_path: projectPath }),
     run,
     packageSources: package_sources,
     openDirectory: open_directory,
@@ -1726,6 +1747,8 @@ async function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   await service.activate_chat("test0001", [], async () => {});
   return {
     service,
+    log_append,
+    projectPath,
     generate_staging_files,
     cache,
     prepare_image,

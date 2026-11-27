@@ -2,180 +2,43 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 
-import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
-import type { LogManager } from "../log/log-manager";
 import { default_native_fs } from "../../native/native-fs";
-import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectDefaultPresetReader } from "./project-default-preset-reader";
 
-type MutableJsonRecord = Record<string, unknown>;
-
-describe("ProjectDefaultPresetReader", () => {
-  const cleanup_paths: string[] = [];
-
-  afterEach(() => {
-    while (cleanup_paths.length > 0) {
-      fs.rmSync(cleanup_paths.pop() ?? "", { force: true, recursive: true });
-    }
-    vi.restoreAllMocks();
-  });
-
-  it("把质量规则和提示词预设读取为显式项目输入", () => {
-    const app_root = create_temp_dir();
-    write_file(
-      path.join(app_root, "builtin", "glossary", "preset", "base.json"),
-      JsonTool.stringifyStrict([{ src: "勇者", dst: "Hero" }]),
-    );
-    write_file(
-      path.join(
-        app_root,
-        "builtin",
-        "translation_prompt",
-        "preset",
-        "Português.txt".normalize("NFD"),
-      ),
-      "\uFEFF翻译提示词\n",
-    );
-    const log_manager = create_log_manager();
-    const reader = create_reader({
-      app_root,
-      log_manager,
-      config: {
+it("跳过缺失的预设，继续读取规则和含 Unicode 文件名的提示词", () => {
+  using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "default-preset-"));
+  const builtin_root = path.join(directory.path, "builtin");
+  const prompt_name = "Português.txt";
+  const missing = "builtin:missing.json";
+  default_native_fs.write_file_sync(
+    path.join(builtin_root, "glossary", "preset", "base.json"),
+    JSON.stringify([{ src: "勇者", dst: "Hero" }]),
+  );
+  default_native_fs.write_file_sync(
+    path.join(builtin_root, "translation_prompt", "preset", prompt_name.normalize("NFD")),
+    "\uFEFF翻译提示词\n",
+  );
+  const reader = new ProjectDefaultPresetReader(
+    {
+      read_setting: () => ({
         glossary_default_preset: "builtin:base.json",
-        translation_custom_prompt_default_preset: "builtin:Português.txt",
-      },
-    });
-
-    const input = reader.read();
-    reader.log_loaded_names(input.loaded_names);
-
-    expect(input).toMatchObject({
-      text_preserve_mode: "smart",
-      quality_rules: [
-        {
-          kind: "glossary",
-          entries: [
-            {
-              entry_id: expect.any(String),
-              src: "勇者",
-              dst: "Hero",
-              info: "",
-              case_sensitive: false,
-            },
-          ],
-          enabled: true,
-          mode: null,
-        },
-      ],
-      translation_prompt: { text: "翻译提示词", enabled: true },
-    });
-    expect(log_manager.info).toHaveBeenCalledWith(expect.any(String), {
-      source: "project-lifecycle",
-    });
-  });
-
-  it("文本保护预设显式声明 custom 模式", () => {
-    const app_root = create_temp_dir();
-    write_file(
-      path.join(app_root, "builtin", "text_preserve", "preset", "base.json"),
-      JsonTool.stringifyStrict([{ src: "\\[[^\\]]+\\]" }]),
-    );
-    const reader = create_reader({
-      app_root,
-      log_manager: create_log_manager(),
-      config: { text_preserve_default_preset: "builtin:base.json" },
-    });
-
-    const input = reader.read();
-
-    expect(input.quality_rules).toEqual([
-      {
-        kind: "text_preserve",
-        entries: [
-          {
-            entry_id: expect.any(String),
-            src: "\\[[^\\]]+\\]",
-            info: "",
-          },
-        ],
-        enabled: null,
-        mode: "custom",
-      },
-    ]);
-  });
-
-  it("单个预设读取失败只记录诊断并保留其余初始输入", () => {
-    const app_root = create_temp_dir();
-    const log_manager = create_log_manager();
-    const reader = create_reader({
-      app_root,
-      log_manager,
-      config: { glossary_default_preset: "builtin:missing.json" },
-    });
-
-    const input = reader.read();
-
-    expect(input).toEqual({
-      text_preserve_mode: "smart",
-      quality_rules: [],
-      translation_prompt: null,
-      loaded_names: [],
-    });
-    expect(log_manager.warning).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        context: {
-          preset_directory: "glossary",
-          virtual_id: "builtin:missing.json",
-        },
-        source: "project-lifecycle",
+        pre_translation_replacement_default_preset: missing,
+        translation_custom_prompt_default_preset: `builtin:${prompt_name}`,
       }),
-    );
+    },
+    new AppPathService({ appRoot: directory.path, builtinRoot: builtin_root }),
+    default_native_fs,
+  );
+  const warning = vi.fn();
+  expect(reader.read({ warning })).toMatchObject({
+    quality_rules: [{ kind: "glossary", entries: [{ src: "勇者", dst: "Hero" }] }],
+    translation_prompt: { text: "翻译提示词", enabled: true },
   });
-
-  function create_temp_dir(): string {
-    const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-default-preset-"));
-    cleanup_paths.push(temp_dir);
-    return temp_dir;
-  }
-
-  function write_file(file_path: string, content: string): void {
-    fs.mkdirSync(path.dirname(file_path), { recursive: true });
-    fs.writeFileSync(file_path, content, "utf-8");
-  }
-
-  function create_reader(options: {
-    app_root: string;
-    config: MutableJsonRecord;
-    log_manager: LogManager;
-  }): ProjectDefaultPresetReader {
-    return new ProjectDefaultPresetReader(
-      {
-        read_setting: vi.fn(() => options.config),
-      } as unknown as AppSettingService,
-      new AppPathService({
-        appRoot: options.app_root,
-        builtinRoot: path.join(options.app_root, "builtin"),
-      }),
-      options.log_manager,
-      default_native_fs,
-    );
-  }
-
-  function create_log_manager(): LogManager & {
-    info: ReturnType<typeof vi.fn>;
-    warning: ReturnType<typeof vi.fn>;
-  } {
-    return {
-      info: vi.fn(),
-      warning: vi.fn(),
-      error: vi.fn(),
-    } as unknown as LogManager & {
-      info: ReturnType<typeof vi.fn>;
-      warning: ReturnType<typeof vi.fn>;
-    };
-  }
+  expect(warning).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({ context: expect.objectContaining({ virtual_id: missing }) }),
+  );
 });

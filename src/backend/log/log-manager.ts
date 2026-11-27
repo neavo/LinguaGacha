@@ -3,10 +3,12 @@ import { format_console_log } from "./log-console-formatter";
 import { LogFileStore } from "./log-file-store";
 import {
   format_log_content_text,
+  normalize_log_scope,
   type LogAppendPayload,
   type LogFileRecord,
   type LogLevel,
   type LogContent,
+  type LogScope,
   type LogTargets,
 } from "../../shared/log";
 import { sanitize_log_error_context, to_log_error } from "../../shared/error";
@@ -15,6 +17,7 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
 
 // 创建时间与输出可见性在唯一写入口补齐。
 type NormalizedLogAppendPayload = Omit<LogFileRecord, "created_at" | "window">;
+type LogMessagePayload = Omit<LogAppendPayload, "level" | "content">;
 
 export interface LogManagerOptions {
   logDir: string;
@@ -24,8 +27,54 @@ export interface LogManagerOptions {
   nativeFs?: NativeFs;
 }
 
+/** 绑定日志归属，并把记录交给同一个写入方。 */
+export class LogWriter {
+  /** 写入方拥有输出资源，归属随当前写入器实例固定。 */
+  public constructor(
+    private readonly write: (payload: LogAppendPayload) => void,
+    private readonly bound_scope?: LogScope,
+  ) {}
+
+  /** 每次绑定都复用根写入方，归属层级不会形成调用链。 */
+  public scope(patch: LogScope): LogWriter {
+    return new LogWriter(this.write, this.merge_scope(patch));
+  }
+
+  /** 单条日志可覆盖已有归属，空值沿用继承的标识。 */
+  public append({ scope: patch, ...payload }: LogAppendPayload): void {
+    const scope = this.merge_scope(patch);
+    this.write(scope === undefined ? payload : { ...payload, scope });
+  }
+
+  public debug(message: string, payload: LogMessagePayload = {}): void {
+    this.append({ ...payload, level: "debug", content: message });
+  }
+
+  public info(message: string, payload: LogMessagePayload = {}): void {
+    this.append({ ...payload, level: "info", content: message });
+  }
+
+  public warning(message: string, payload: LogMessagePayload = {}): void {
+    this.append({ ...payload, level: "warning", content: message });
+  }
+
+  public error(message: LogContent, payload: LogMessagePayload = {}): void {
+    this.append({ ...payload, level: "error", content: message });
+  }
+
+  public fatal(message: string, payload: LogMessagePayload = {}): void {
+    this.append({ ...payload, level: "fatal", content: message });
+  }
+
+  /** 绑定和单次写入共用覆盖规则。 */
+  private merge_scope(patch: LogScope | undefined): LogScope | undefined {
+    const scope = normalize_log_scope(patch);
+    return scope === undefined ? this.bound_scope : { ...this.bound_scope, ...scope };
+  }
+}
+
 /** 业务唯一写入口；完整正文及查询归文件存储，控制台只是即时文本输出。 */
-export class LogManager {
+export class LogManager extends LogWriter {
   public readonly files: LogFileStore;
   private readonly targets: LogTargets;
   private readonly now: () => Date;
@@ -34,41 +83,15 @@ export class LogManager {
 
   /** 组装日志目录与输出依赖，资源生命周期由调用方管理。 */
   public constructor(options: LogManagerOptions) {
+    super((payload) => this.write_record(payload));
     this.files = new LogFileStore(options.logDir, options.nativeFs ?? default_native_fs);
     this.targets = { console: true, window: true, ...options.targets };
     this.now = options.now ?? (() => new Date());
     this.console_writer = options.consoleWriter ?? default_console_writer;
   }
-  /** 将调试正文送入统一写入口。 */
-  public debug(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "debug", content: message });
-  }
-
-  /** 将信息正文送入统一写入口。 */
-  public info(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "info", content: message });
-  }
-
-  /** 将警告正文送入统一写入口。 */
-  public warning(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "warning", content: message });
-  }
-
-  /** 将错误正文送入统一写入口。 */
-  public error(
-    message: LogContent,
-    payload: Omit<LogAppendPayload, "level" | "content"> = {},
-  ): void {
-    this.append({ ...payload, level: "error", content: message });
-  }
-
-  /** 同步追加致命错误正文，供退出前诊断使用。 */
-  public fatal(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "fatal", content: message });
-  }
 
   /** 正文同步追加完成才写索引；控制台与窗口均从同一正文消费。 */
-  public append(payload: LogAppendPayload): void {
+  private write_record(payload: LogAppendPayload): void {
     if (this.closed) {
       default_console_writer(
         t_main_log("app.log.system_closed_dropped", {
@@ -104,22 +127,23 @@ export class LogManager {
   /** 在持久化前收窄原始异常和上下文。 */
   private normalize_payload(payload: LogAppendPayload): NormalizedLogAppendPayload {
     // 同步序列化完成后才返回，正文引用不存入状态，也不跨异步边界。
-    const content = payload.content;
-    const source = payload.source ?? "electron-main";
+    const { scope } = payload;
+    const record = {
+      level: payload.level,
+      source: payload.source ?? "electron-main",
+      ...(scope === undefined ? {} : { scope }),
+      content: payload.content,
+    };
     if (payload.error !== undefined) {
       return {
-        level: payload.level,
-        content,
-        source,
+        ...record,
         error: to_log_error(payload.error, payload.context ?? {}),
       };
     }
     const context =
       payload.context === undefined ? undefined : sanitize_log_error_context(payload.context);
     return {
-      level: payload.level,
-      content,
-      source,
+      ...record,
       ...(context === undefined || Object.keys(context).length === 0 ? {} : { context }),
     };
   }
@@ -131,7 +155,7 @@ function default_console_writer(text: string, level: LogLevel): void {
 }
 
 /** 按本地日期生成每日文件标识。 */
-export function format_log_date_key(date: Date): string {
+function format_log_date_key(date: Date): string {
   const year = date.getFullYear().toString().padStart(4, "0");
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const day = date.getDate().toString().padStart(2, "0");

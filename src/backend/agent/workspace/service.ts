@@ -55,7 +55,7 @@ import { NativeFs, default_native_fs } from "../../../native/native-fs";
 import type { AppPathService } from "../../app/app-path-service";
 import type { CacheReadPort } from "../../cache/cache-types";
 import type { ProjectOperationGate } from "../../runtime-operation-gate";
-import type { LogManager } from "../../log/log-manager";
+import type { LogWriter } from "../../log/log-manager";
 import type { ProjectDatabase } from "../../database/database-operations";
 import type { ProofreadingQueryService } from "../../proofreading/proofreading-query-service";
 import type { ProjectWriteStore } from "../../project/project-write-store";
@@ -146,6 +146,12 @@ export class AgentWorkspaceService {
   private chat_id: string | null = null; // 当前目录归属，关闭期间解除绑定
   private readonly directories: AgentWorkspaceDirectories;
 
+  /** 工作区服务可跨对话复用，告警归属于操作所在的当前对话。 */
+  private get log(): Pick<LogWriter, "warning"> {
+    const log = this.options.logManager;
+    return this.chat_id === null ? log : log.scope({ chat_id: this.chat_id });
+  }
+
   /** 文件入口只取得当前激活会话的上传登记。 */
   public get uploads(): AgentUploadStore {
     if (this.upload_store === null) throw new AppErrors.AppError("project.not_loaded");
@@ -194,7 +200,7 @@ export class AgentWorkspaceService {
       runtimeGate: Pick<ProjectOperationGate, "run_agent_project_write">;
       files: Pick<ProjectContentService, "inspect_sources" | "apply_file_changes">;
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
-      logManager: Pick<LogManager, "warning">;
+      logManager: Pick<LogWriter, "warning" | "scope">;
       run: AgentWorkspaceRunPort;
       packageSources: Pick<AgentPackageSources, "resolve">;
       generation: Pick<
@@ -212,7 +218,7 @@ export class AgentWorkspaceService {
       options.paths.get_agent_workspace_root_dir(),
       this.native_fs,
       (error) =>
-        options.logManager.warning("Agent 工作区目录操作失败。", {
+        this.log.warning("Agent 工作区目录操作失败。", {
           source: "agent_workspace",
           error,
         }),
@@ -635,7 +641,7 @@ export class AgentWorkspaceService {
             : watch_agent_process_output(this.root_path, logs, request.output, watch.signal).catch(
                 (error: unknown) =>
                   // 观察只服务界面，失败不能让执行失败。
-                  this.options.logManager.warning("Agent 执行输出观察失败。", {
+                  this.log.warning("Agent 执行输出观察失败。", {
                     source: "agent_workspace",
                     error,
                   }),
@@ -1000,7 +1006,7 @@ export class AgentWorkspaceService {
       readAsset: (file_path) =>
         this.options.database.read_asset_content(this.options.projectPath, file_path),
       report: (asset, diagnostic) =>
-        this.options.logManager.warning("Agent 原稿准备未完成。", {
+        this.log.warning("Agent 原稿准备未完成。", {
           source: "agent_workspace",
           context: { asset, ...diagnostic },
         }),

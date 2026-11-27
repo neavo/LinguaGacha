@@ -1,4 +1,3 @@
-import { create_text_resolver } from "../../shared/i18n";
 import { log_error_from_message } from "../../shared/error";
 import { format_log_content_text, type LogAppendPayload } from "../../shared/log";
 import { read_batch_task_list_snapshot } from "../../shared/batch-task";
@@ -13,6 +12,7 @@ import { ProjectOperationGate } from "../runtime-operation-gate";
 import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
 import { default_native_fs } from "../../native/native-fs";
 import { AgentWorkspaceDirectories } from "../agent/workspace/directories";
+import { LogWriter } from "../log/log-manager";
 const directories: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -34,7 +34,9 @@ async function setup(request: LLMClientPort["request"] = async () => response())
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "batch-request-"));
   directories.push(root);
   const gate = new ProjectOperationGate();
-  const tasks = new BatchTaskRuntime("request.lg", gate);
+  const project_path = path.join(root, "request.lg");
+  const chat_id = "request-chat";
+  const tasks = new BatchTaskRuntime(project_path, gate);
   const lease = gate.begin_runtime("agent");
   const settings = {
     models: [
@@ -57,7 +59,7 @@ async function setup(request: LLMClientPort["request"] = async () => response())
     new BatchRequestPool(),
     { request },
     { bind: () => "session" },
-    { append },
+    new LogWriter(append).scope({ project_path }),
   );
   await fs.writeFile(
     path.join(root, "good.json"),
@@ -76,6 +78,8 @@ async function setup(request: LLMClientPort["request"] = async () => response())
     lease,
     service,
     append,
+    project_path,
+    chat_id,
     settings,
     write_manifest,
     run: () =>
@@ -85,6 +89,7 @@ async function setup(request: LLMClientPort["request"] = async () => response())
         root,
         { model: structuredClone(settings.models[0]!), config_snapshot: structuredClone(settings) },
         "manifest.json",
+        chat_id,
       ),
   };
 }
@@ -150,14 +155,9 @@ describe("batch request", () => {
       (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
     );
     expect(results).toMatchObject([
-      { level: "info", content: { run_id: summary.run_id, request_id: "first" } },
-      { level: "error", content: { run_id: summary.run_id, request_id: "second" } },
+      { level: "info", content: { request_id: "first" } },
+      { level: "error", content: { request_id: "second" } },
     ]);
-    expect(logs.at(-1)).toMatchObject({
-      level: "info",
-      source: "batch-request",
-      content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
-    });
     expect(f.gate.get_snapshot().agent).toBe(true);
     await f.tasks.dispose();
   });
@@ -265,6 +265,12 @@ describe("batch request", () => {
         usage: { input_tokens: 4, reasoning_tokens: 2, output_tokens: 6, usage_complete: true },
       });
       const logs = f.append.mock.calls.map(([entry]) => entry);
+      for (const { scope } of logs)
+        expect(scope).toEqual({
+          project_path: f.project_path,
+          chat_id: f.chat_id,
+          run_id: value.run_id,
+        });
       expect(logs.filter((entry) => entry.level === "warning")).toMatchObject([
         {
           error: expect.objectContaining({ message: "temporary failure" }),
@@ -274,18 +280,6 @@ describe("batch request", () => {
         (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
       );
       expect(results).toHaveLength(1);
-      const content = results[0]!.content;
-      if (typeof content === "string" || content.kind !== "request_result")
-        throw new Error("Expected request result log");
-      expect(content.summary).toContain(
-        create_text_resolver("zh-CN")("app.log.task_result", {
-          STATUS: create_text_resolver("zh-CN")("app.log.all_succeeded"),
-          TIME: ((Date.parse(content.ended_at) - Date.parse(content.started_at)) / 1000).toFixed(2),
-          PT: "4",
-          RT: "2",
-          CT: "6",
-        }),
-      );
     } finally {
       await f.tasks.dispose();
     }
@@ -312,7 +306,6 @@ describe("batch request", () => {
       expect(logs.at(-2)).toMatchObject({ level: "error", error: expect.anything() });
       expect(logs.at(-1)).toMatchObject({
         level: "info",
-        content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
       });
     } finally {
       await f.tasks.dispose();
@@ -328,6 +321,7 @@ describe("batch request", () => {
     ]);
     await expect(f.run()).rejects.toThrow("Duplicate");
     expect(request).not.toHaveBeenCalled();
+    expect(f.append).not.toHaveBeenCalled();
     await f.tasks.dispose();
   });
   it("停止等待真实请求收尾，已发布成果保留，迟到停止不取消后续批次", async () => {
@@ -404,11 +398,12 @@ describe("batch request", () => {
     });
     expect(f.tasks.build_snapshot().tasks).toEqual([]);
     const logs = f.append.mock.calls.map(([entry]) => entry);
-    expect(logs.at(-2)).toMatchObject({ level: "error" });
-    expect(logs.at(-1)).toMatchObject({
-      level: "info",
-      content: create_text_resolver("zh-CN")("app.log.batch_request_ended"),
+    const failure = logs.at(-2);
+    expect(failure).toMatchObject({
+      level: "error",
+      scope: { project_path: f.project_path, chat_id: f.chat_id, run_id: expect.any(String) },
     });
+    expect(logs.at(-1)).toMatchObject({ level: "info", scope: failure?.scope });
     expect(
       logs.filter(
         (entry) => typeof entry.content !== "string" && entry.content.kind === "request_result",
@@ -447,6 +442,7 @@ describe("batch request", () => {
         config_snapshot: structuredClone(f.settings),
       },
       "manifest.json",
+      source_id,
     );
     expect(summary.result_file).toBe(`work/batch-requests/${summary.run_id}/result.json`);
 

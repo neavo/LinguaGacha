@@ -10,7 +10,7 @@ import type { EntryRecord } from "@earendil-works/pi-durable";
 import { is_json_record, type JsonValue } from "../../domain/json";
 import type { AgentAssistantMessagePart } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import { project_assistant_message_parts, read_agent_tool_result_status } from "./agent-message";
 
 export type AgentStopReason = "user" | "queue_send" | "reset" | "project_change" | "shutdown";
@@ -133,7 +133,7 @@ export class AgentRuntimeLog {
 
   /** 共用应用日志写入口，记录器只拥有执行关联状态。 */
   public constructor(
-    private readonly log_manager: Pick<LogManager, "append">,
+    private readonly log_manager: Pick<LogWriter, "append">,
     private readonly chat_id: string,
   ) {}
 

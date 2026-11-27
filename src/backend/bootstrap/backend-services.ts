@@ -32,7 +32,7 @@ import {
   TranslationFileGenerationService,
   type OutputFolderOpener,
 } from "../file/translation-file-generation-service";
-import { LogManager } from "../log/log-manager";
+import type { LogManager, LogWriter } from "../log/log-manager";
 import { LLMClient } from "../llm/llm-client";
 import { PiModelCatalog } from "../llm/pi-model-catalog";
 import { ModelService } from "../model/model-service";
@@ -96,6 +96,7 @@ type ProjectAgentLifecycle = {
 export type OpenProject<Agent extends ProjectAgentLifecycle = ProjectAgentLifecycle> = {
   id: string;
   path: string;
+  log: LogWriter;
   gate: ProjectOperationGate;
   cache: ProjectCache;
   writes: ProjectWriteStore;
@@ -367,6 +368,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
     snapshot: ProjectDataSnapshot,
   ): Promise<OpenProject<Agent>> {
     const id = randomUUID();
+    const project_log = this.logManager.scope({ project_path });
     const { database, paths, appSettingService: settings, openOutputFolder } = this.options;
     const gate = new ProjectOperationGate((owner) => this.globalGate.check_project(owner));
     const dispose_activity = gate.subscribe(() => this.publish_runtime());
@@ -374,7 +376,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       projectPath: project_path,
       snapshot,
       database,
-      logManager: this.logManager,
+      logManager: project_log,
       workerClient: this.compute_worker_client,
     });
     const writes = new ProjectWriteStore(
@@ -397,18 +399,18 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
       taskRuntime: tasks,
       executorClient: this.work_unit_worker_pool,
       taskPlanner: new TranslationPlanner({ planningWorkerPool: this.planning_worker_pool }),
-      logManager: this.logManager,
     });
     const batchTranslation = new BatchTranslationService(
       runner,
       tasks,
       settings,
       cache.settings,
-      this.logManager,
+      project_log,
     );
     const project: OpenProject<Agent> = {
       id,
       path: project_path,
+      log: project_log,
       gate,
       cache,
       writes,
@@ -422,7 +424,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         writes,
         settings,
         undefined,
-        this.logManager,
+        project_log,
         this.game_prepare_worker.run,
       ),
       proofreading: {
@@ -453,7 +455,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         settings,
         project_path,
         openOutputFolder,
-        this.logManager,
+        project_log,
       ),
       batchTasks: tasks,
       batchRequests: new BatchRequestService(
@@ -461,7 +463,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
         this.request_pool,
         this.llm_client,
         this.modelAuth,
-        this.logManager,
+        project_log,
       ),
       batchTranslation,
       unsubscribe: () => {

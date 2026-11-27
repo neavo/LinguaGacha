@@ -2,7 +2,7 @@ import { ProjectDataReader } from "../project/project-data-reader";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase, ProjectDatabaseAccess } from "../database/database-operations";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
   evaluateProofreadingSlice,
@@ -97,7 +97,7 @@ function create_worker(): ComputeWorkerClient & { run: ReturnType<typeof vi.fn> 
 /** 用真实缓存组合根串联数据库替身与评估器。 */
 function create_cache(options: {
   database: ProjectDatabaseAccess;
-  logManager?: Pick<LogManager, "warning" | "error"> | null;
+  logManager?: Pick<LogWriter, "warning"> | null;
   worker?: ComputeWorkerClient;
   projectPath?: string;
 }): ProjectCache {
@@ -210,7 +210,7 @@ describe("ProjectCache", () => {
     const database = create_database({
       items: [create_item()],
     });
-    const log_manager = { warning: vi.fn(), error: vi.fn() };
+    const log_manager = { warning: vi.fn() };
     const cache = create_cache({ database, logManager: log_manager });
     const meta = {
       "project_runtime_revision.items": 2,

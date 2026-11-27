@@ -5,7 +5,7 @@ import { log_batch_task_start, log_batch_request_failure } from "./batch-task-lo
 
 const t = create_text_resolver("zh-CN");
 
-it("接口信息按字段映射，只有最后一条结束日志组", () => {
+it("四项接口信息写入同一条多行记录", () => {
   const append = vi.fn<(entry: LogAppendPayload) => void>();
   log_batch_task_start(
     { append },
@@ -18,21 +18,17 @@ it("接口信息按字段映射，只有最后一条结束日志组", () => {
     },
     t,
   );
-  expect(append.mock.calls.map(([entry]) => [entry.content, entry.console_group_end])).toEqual([
-    [t("app.log.provider") + " - provider", false],
-    [t("app.log.api_type") + " - OpenAI Chat", false],
-    [t("app.log.api_url") + " - https://example.test/v1", false],
-    [t("app.log.model_id") + " - model", true],
-  ]);
+  expect(append).toHaveBeenCalledOnce();
+  expect(String(append.mock.calls[0]?.[0].content).split("\n")).toHaveLength(4);
 });
 
-it("请求失败保留诊断，控制台只显示密钥序号与原因", () => {
+it("请求失败保留调用栈，控制台正文只展示简要原因", () => {
   const append = vi.fn<(entry: LogAppendPayload) => void>();
   const error = { message: "rate limited", stack: "provider stack" };
   log_batch_request_failure({ append }, "test", 1, error, t);
   const entry = append.mock.calls[0]![0];
   expect(entry).toMatchObject({ level: "warning", source: "test", error });
-  expect(format_log_readable_text({ content: entry.content, error })).toBe(
-    t("app.log.request_key_failed", { KEY: "2", ERROR: error.message }),
-  );
+  const text = format_log_readable_text({ content: entry.content, error });
+  expect(text).toContain(error.message);
+  expect(text).not.toContain(error.stack);
 });

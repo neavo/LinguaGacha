@@ -20,7 +20,9 @@ import {
   SourceFileParsePipeline,
   type SourceFileProjectDraft,
 } from "../file/source-file-parse-pipeline";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
+import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import { build_project_open_writes } from "../migration/project-migrations";
 import {
   build_project_item_persistent_records,
@@ -39,16 +41,21 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import { compute_project_prefilter_items } from "./project-write-state";
 import { ProjectDataReader, type ProjectDataSnapshot } from "./project-data-reader";
-import {
-  ProjectDefaultPresetReader,
-  type ProjectDefaultPresetInput,
-} from "./project-default-preset-reader";
+import { ProjectDefaultPresetReader } from "./project-default-preset-reader";
 import {
   resolve_project_prompt_storage,
   resolve_project_quality_rule_storage,
+  type ProjectTaskInput,
 } from "./project-task-input";
 
 const INITIAL_PRESET_REVISION = 1;
+const DEFAULT_TEXT_PRESERVE_MODE = QualityRule.from_json("text_preserve").default_mode;
+const QUALITY_PRESET_NAMES: Record<QualityRuleKind, string> = {
+  glossary: "术语表",
+  text_preserve: "文本保护",
+  pre_replacement: "译前替换",
+  post_replacement: "译后替换",
+};
 
 /** 负责磁盘工程的预览、创建和迁移，由组合根管理打开的工程。 */
 export class ProjectLifecycleService {
@@ -60,14 +67,13 @@ export class ProjectLifecycleService {
     private readonly database: ProjectDatabase,
     private readonly app_setting_service: AppSettingService,
     paths: AppPathService,
-    private readonly log_manager: LogManager,
+    private readonly log_manager: Pick<LogWriter, "scope">,
     private readonly native_fs: NativeFs = default_native_fs,
     private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
     this.default_preset_reader = new ProjectDefaultPresetReader(
       app_setting_service,
       paths,
-      log_manager,
       native_fs,
     );
   }
@@ -132,6 +138,9 @@ export class ProjectLifecycleService {
     this.assert_no_legacy_create_commit_fields(body);
     const source_paths = this.normalize_source_paths(body["source_paths"]);
     const project_settings = this.read_create_project_settings(body["languages"]);
+    const project_log = this.log_manager.scope({
+      project_path: this.resolve_create_log_path(project_path),
+    });
     // 后端重新解析源文件得到的唯一可信新建草稿。
     const format_service = this.create_format_service(project_settings);
     const parsed_draft = await format_service.with_source_directories(
@@ -150,14 +159,19 @@ export class ProjectLifecycleService {
       },
       signal,
     );
-    this.log_create_commit_parse_diagnostics(parsed_draft);
+    log_source_file_diagnostics({
+      failures: parsed_draft.failures,
+      warnings: parsed_draft.warnings,
+      log_manager: project_log,
+      source: "project-lifecycle",
+    });
     let saved_assets = 0;
     try {
       signal.throwIfAborted();
       this.assert_create_commit_has_importable_files(parsed_draft);
       // 将可信草稿转成持久项目事实的唯一计算结果。
       const items = this.prefilter_create_project_items(parsed_draft, project_settings);
-      const default_preset_input = this.default_preset_reader.read();
+      const default_preset_input = this.default_preset_reader.read(project_log);
       let snapshot!: ProjectDataSnapshot; // 初始化事务同步产出，失败时数据库入口抛错并清理新文件。
 
       await this.database.create_project(project_path, (writer) => {
@@ -195,7 +209,18 @@ export class ProjectLifecycleService {
       });
 
       saved_assets = parsed_draft.files.length; // 激活失败仍由外层回执保留已经提交的资产数量。
-      this.default_preset_reader.log_loaded_names(default_preset_input.loaded_names);
+      // 只记录已经随新工程提交的预设。
+      const loaded_names = default_preset_input.quality_rules.map(
+        ({ kind }) => QUALITY_PRESET_NAMES[kind],
+      );
+      if (default_preset_input.translation_prompt !== null) loaded_names.push("翻译提示词");
+      if (loaded_names.length > 0)
+        project_log.info(
+          t_main_log("app.log.default_preset_loaded", { NAMES: loaded_names.join(" | ") }),
+          {
+            source: "project-lifecycle",
+          },
+        );
       return {
         path: project_path,
         snapshot,
@@ -216,10 +241,10 @@ export class ProjectLifecycleService {
   private write_default_presets(
     writer: ProjectDatabaseAccess,
     project_path: string,
-    input: ProjectDefaultPresetInput,
+    input: ProjectTaskInput,
   ): void {
     writer.set_meta(project_path, "glossary_enable", true);
-    writer.set_meta(project_path, "text_preserve_mode", input.text_preserve_mode);
+    writer.set_meta(project_path, "text_preserve_mode", DEFAULT_TEXT_PRESERVE_MODE);
     for (const rule of input.quality_rules) {
       const storage = resolve_project_quality_rule_storage(rule.kind);
       writer.set_rules(project_path, storage.database_type, rule.entries as unknown as JsonValue[]);
@@ -281,16 +306,6 @@ export class ProjectLifecycleService {
     }
     throw new AppErrors.AppError("file.parse_failed", {
       diagnostic_context: { reason: "all_source_files_parse_failed" },
-    });
-  }
-
-  /** 新建工程诊断逐条记录来源失败与未提取脚本的位置。 */
-  private log_create_commit_parse_diagnostics(draft: SourceFileProjectDraft): void {
-    log_source_file_diagnostics({
-      failures: draft.failures,
-      warnings: draft.warnings,
-      log_manager: this.log_manager,
-      source: "project-lifecycle",
     });
   }
 
@@ -404,6 +419,18 @@ export class ProjectLifecycleService {
       );
     }
     return sequence_path;
+  }
+
+  /** 新文件可能连父目录都尚未创建，沿最近的现存目录解析真实路径。 */
+  private resolve_create_log_path(project_path: string): string {
+    const absolute = path.resolve(project_path);
+    let directory = path.dirname(absolute);
+    while (!this.native_fs.exists(directory)) {
+      const parent = path.dirname(directory);
+      if (parent === directory) return absolute;
+      directory = parent;
+    }
+    return path.join(this.native_fs.real_path(directory), path.relative(directory, absolute));
   }
 
   /**

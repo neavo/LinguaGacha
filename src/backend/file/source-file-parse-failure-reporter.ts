@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { SourceFileParseWarning } from "./file-format-types";
 
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import * as AppErrors from "../../shared/error";
 import { read_source_operation_result } from "../../shared/source-operation";
 
@@ -40,7 +40,7 @@ export function source_operation_error(
 export function log_source_file_diagnostics(args: {
   failures: readonly SourceFileFailure[];
   warnings: readonly SourceFileParseWarning[];
-  log_manager: Pick<LogManager, "warning"> | null;
+  log_manager: Pick<LogWriter, "warning"> | null;
   source: string;
 }): void {
   const { log_manager, source } = args;

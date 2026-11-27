@@ -84,7 +84,6 @@ describe("LogDetailView", () => {
   it("请求结果共用摘要和段落，省略翻译对照", () => {
     const view = render_detail({
       kind: "request_result",
-      run_id: "run",
       request_id: "one",
       started_at: "start",
       ended_at: "end",

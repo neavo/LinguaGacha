@@ -1,6 +1,6 @@
 import type { BatchTaskListSnapshot, BatchTaskResult } from "../../domain/batch-task";
 import type { BatchTaskRuntime, BatchTaskRunHandle } from "../batch-task/batch-task-runtime";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import { create_text_resolver } from "../../shared/i18n";
 import { resolve_app_locale } from "../../domain/app-language";
 import type {
@@ -26,11 +26,11 @@ import type {
 export class BatchTranslationService {
   /** 组合翻译执行器、运行态与当前工程会话。 */
   public constructor(
-    private readonly runner: BatchTranslationRunner,
+    private readonly runner: Pick<BatchTranslationRunner, "run">,
     private readonly runtime: BatchTaskRuntime,
     private readonly settings: Pick<AppSettingService, "read_setting">,
     private readonly project_settings: CacheReadPort["settings"], // 已提交的工程设置
-    private readonly log: Pick<LogManager, "append">,
+    private readonly log: Pick<LogWriter, "scope">,
   ) {}
   /** 收窄公开请求，返回受理结果与当前快照。 */
   public async start(request: JsonRecord): Promise<{
@@ -64,6 +64,7 @@ export class BatchTranslationService {
     signal: AbortSignal,
     model: Model,
     request: AgentBatchTranslationRequest,
+    chat_id: string,
   ): Promise<BatchTaskResult> {
     const { item_ids: ids, item_statuses: statuses } = request;
     if (
@@ -89,19 +90,23 @@ export class BatchTranslationService {
     };
     const handle = this.runtime.begin_under_agent(lease, signal, "translation", command.operation);
     return await (
-      await this.execute(handle, command, model)
+      await this.execute(handle, command, { model, chat_id })
     ).completion;
   }
   /** 完成链包含进度和事件收尾，错误诊断之后统一输出结束提示。 */
   private async execute(
     handle: BatchTaskRunHandle,
     command: BatchTranslationRunCommand,
-    model?: Model,
+    agent?: Readonly<{ model: Model; chat_id: string }>,
   ): Promise<BatchTaskRunHandle> {
+    const run_log = this.log.scope({
+      run_id: handle.run_id,
+      ...(agent === undefined ? {} : { chat_id: agent.chat_id }),
+    });
     let app_language: unknown;
     const completion = handle.completion
       .catch((error: unknown) => {
-        this.log.append({
+        run_log.append({
           level: "error",
           source: "engine",
           content:
@@ -112,7 +117,7 @@ export class BatchTranslationService {
       })
       .finally(() => {
         const t = create_text_resolver(resolve_app_locale(app_language));
-        this.log.append({
+        run_log.append({
           level: "info",
           source: "engine",
           content: t("app.log.batch_translation_ended"),
@@ -120,9 +125,9 @@ export class BatchTranslationService {
       });
     void completion.catch(() => undefined); // 独立入口只返回受理，调用方可稍后等待完成。
     await this.runtime.execute(handle, () => {
-      const context = this.read_run_context(model);
+      const context = this.read_run_context(agent?.model);
       app_language = context.config_snapshot.app_language;
-      return this.runner.run(handle, command, context);
+      return this.runner.run(handle, command, context, run_log);
     });
     return Object.freeze({ ...handle, completion });
   }

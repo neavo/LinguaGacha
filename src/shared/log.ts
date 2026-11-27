@@ -48,7 +48,7 @@ export type LogResultContent = {
   ended_at: string;
 } & (
   | { kind: "translation_result"; pairs: LogTranslationPair[] }
-  | { kind: "request_result"; run_id: string; request_id: string }
+  | { kind: "request_result"; request_id: string }
 );
 
 /** 日志正文的跨进程判别联合；文件保存完整结构，控制台和列表消费纯文本投影。 */
@@ -58,11 +58,19 @@ export type LogContent =
   | (JsonRecord & { kind: "agent" })
   | LogResultContent;
 
+/** 跨模块排查使用的稳定归属，与单条日志的上下文及异常独立。 */
+export interface LogScope {
+  readonly project_path?: string; // 工程文件的规范路径
+  readonly chat_id?: string; // Agent 对话及其工作区、批量子任务
+  readonly run_id?: string; // 仅表示 BatchTaskRuntime 创建的批次
+}
+
 /** 文件与详情共用的日志事实，查询身份和输出显隐由各自边界补齐。 */
 export interface LogRecord {
   created_at: string; // ISO 创建时间
   level: LogLevel; // 日志等级
   source: string; // 产生日志的模块或任务源
+  scope?: LogScope;
   content: LogContent; // 完整结构化正文，通过详情接口按需读取
   error?: LogError; // Error 的可序列化边界快照
   context?: Record<string, unknown>; // 额外结构化上下文
@@ -84,6 +92,7 @@ export interface LogAppendPayload {
   level: LogLevel; // 写入等级
   content: LogContent; // 单一日志正文事实，输出目标按需投影为纯文本
   source?: string; // 产生日志的模块或任务源
+  scope?: LogScope;
   error?: unknown; // 进程内可传原始 Error，跨边界只传 LogError 快照
   context?: Record<string, unknown>; // 额外结构化上下文
   targets?: Partial<LogTargets>; // 单次写入的输出目标覆盖
@@ -125,6 +134,19 @@ export function normalize_log_level(value: unknown): LogLevel {
   return is_log_level(value) ? value : "info";
 }
 
+/** 写入与读取共用归属格式，只保留已知的非空字符串标识。 */
+export function normalize_log_scope(value: unknown): LogScope | undefined {
+  const record = read_record(value);
+  if (record === null) return undefined;
+  const { project_path, chat_id, run_id } = record;
+  const scope = {
+    ...(typeof project_path === "string" && project_path !== "" ? { project_path } : {}),
+    ...(typeof chat_id === "string" && chat_id !== "" ? { chat_id } : {}),
+    ...(typeof run_id === "string" && run_id !== "" ? { run_id } : {}),
+  };
+  return Object.keys(scope).length === 0 ? undefined : scope;
+}
+
 /** 文件与 HTTP 详情共用正文校验，保持生产者、存储和显示的单一契约。 */
 export function read_log_content(value: unknown): LogContent | null {
   if (typeof value === "string") return value;
@@ -137,8 +159,8 @@ export function read_log_content(value: unknown): LogContent | null {
     case "text":
       return typeof content["text"] === "string" ? { kind: "text", text: content["text"] } : null;
     case "agent":
-      // Agent 正文只按 JSON 展示；事件字段由后端生产者约束，不在读取端重复定义。
-      return structuredClone(content) as JsonRecord & { kind: "agent" };
+      // 调用方拥有刚反序列化的对象；Agent 事件字段由生产者约束。
+      return content as JsonRecord & { kind: "agent" };
     case "translation_result":
     case "request_result": {
       const summary = read_string_array(content["summary"]);
@@ -154,10 +176,9 @@ export function read_log_content(value: unknown): LogContent | null {
         return null;
       const common = { summary, sections, started_at, ended_at };
       if (content["kind"] === "request_result") {
-        const run_id = content["run_id"];
         const request_id = content["request_id"];
-        return typeof run_id === "string" && typeof request_id === "string"
-          ? { kind: "request_result", ...common, run_id, request_id }
+        return typeof request_id === "string"
+          ? { kind: "request_result", ...common, request_id }
           : null;
       }
       const pairs = read_translation_pairs(content["pairs"]);
