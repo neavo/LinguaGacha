@@ -11,6 +11,7 @@ import { once } from "node:events";
 import { AgentToolError } from "./tool-definition";
 import { AppError } from "../../shared/error";
 import type { LogAppendPayload } from "../../shared/log";
+import { LogWriter } from "../log/log-manager";
 import { uploaded_file } from "../../test/agent-upload-fixture";
 import { workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
@@ -1377,6 +1378,10 @@ describe("AgentService", () => {
     await service.send_message({ text: "非法查询", attachments: [] });
     await wait_for_idle(service);
 
+    expect(log_append.mock.calls[0]?.[0].scope).toEqual({
+      project_path: "test.lg",
+      chat_id: service.get_snapshot().chatId,
+    });
     const records = log_append.mock.calls
       .map(([payload]) => payload.content as AgentLogContent)
       .filter((record) => record.event === "tool_start" || record.event === "tool_end");
@@ -3014,6 +3019,7 @@ describe("AgentService", () => {
     f.select_agent_model("next");
     await f.service.send_message({ text: "识别", attachments: [] });
     await wait_for_idle(f.service);
+    expect(run.mock.calls[0]?.[5]).toBe(f.service.get_snapshot().chatId);
     expect(run.mock.calls[0]![3].model).toMatchObject({
       thinking: { level: "HIGH" },
     });
@@ -3088,6 +3094,7 @@ describe("AgentService", () => {
             },
       ),
       { item_statuses: ["NONE"] },
+      service.get_snapshot().chatId,
     );
     expect(service.get_snapshot().pendingDecision).toBeNull();
     select_agent_model("next");
@@ -3437,7 +3444,7 @@ describe("AgentService", () => {
       settings,
       userAgent: "LinguaGacha/Test",
       runtimeGate: runtime_gate,
-      logManager: { append: log_append },
+      logManager: new LogWriter(log_append).scope({ project_path: "test.lg" }),
       publish: (topic, payload) => {
         if (topic === "agent.chat_event") publish(topic, payload);
       },

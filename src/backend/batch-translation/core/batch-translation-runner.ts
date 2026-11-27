@@ -1,7 +1,7 @@
 import { read_request_timeout_ms } from "../../llm/llm-request";
 import type { LLMRequestBody, LLMRequestResult, LLMClientPort } from "../../llm/llm-types";
 import type { ChatGPTAuthService } from "../../auth/chatgpt-auth-service";
-import type { LogManager } from "../../log/log-manager";
+import type { LogWriter } from "../../log/log-manager";
 import type { ProjectExecutionSettings } from "../../../domain/project-settings";
 import type {
   TranslationModelSnapshot,
@@ -61,7 +61,6 @@ export interface BatchTranslationRunnerOptions {
   llmClient: LLMClientPort; // 共享请求池使用的单次网络请求入口。
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
   taskPlanner: Pick<TranslationPlanner, "build_translation_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
-  logManager: Pick<LogManager, "append">; // 启动、请求诊断与 worker 结果共用写入口。
 }
 
 /**
@@ -74,7 +73,6 @@ export class BatchTranslationRunner {
   private readonly task_runtime: BatchTranslationRunnerOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 初始切块与 token 缓存复用入口。
-  private readonly log_manager: Pick<LogManager, "append">; // 主线程统一写入 worker 结果与请求诊断。
   private readonly request_pool: BatchRequestPool;
   private readonly llm_client: BatchTranslationRunnerOptions["llmClient"]; // 父线程真实请求入口，由共享请求池统一派发。
   /**
@@ -89,7 +87,6 @@ export class BatchTranslationRunner {
     this.llm_client = options.llmClient;
     this.auth = options.auth;
     this.task_planner = options.taskPlanner;
-    this.log_manager = options.logManager;
   }
 
   /**
@@ -99,6 +96,7 @@ export class BatchTranslationRunner {
     handle: BatchTaskRunHandle,
     command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext,
+    log: Pick<LogWriter, "append">,
   ): Promise<"done" | "stopped"> {
     const retranslate = command.operation === "retranslate";
     try {
@@ -108,7 +106,7 @@ export class BatchTranslationRunner {
       await this.task_runtime.publish_running(handle);
       const t = create_text_resolver(resolve_app_locale(run_context.config_snapshot.app_language));
       const quality_snapshot = this.task_store.build_quality_snapshot();
-      this.log_task_run_start(run_context, quality_snapshot, t);
+      this.log_task_run_start(log, run_context, quality_snapshot, t);
       const items = this.task_store.get_translation_items();
       const prepared = prepare_translation_targets(items, command.item_ids, command.item_statuses);
       let run_progress = empty_batch_task_progress("item", prepared.target_ids.size);
@@ -145,7 +143,7 @@ export class BatchTranslationRunner {
           ),
         on_state: (state) => this.task_runtime.update_request_state(handle, state),
         on_failure: (key_index, error) =>
-          log_batch_request_failure(this.log_manager, "engine", key_index, error, t),
+          log_batch_request_failure(log, "engine", key_index, error, t),
       });
       const pipeline = new TranslationPipeline({
         read_concurrency_limit: () => session.read_concurrency_limit(),
@@ -158,6 +156,7 @@ export class BatchTranslationRunner {
             quality_snapshot,
             session,
             signal,
+            log,
           ),
         commit: async (entries) => {
           run_progress = await this.commit_translation_entries(
@@ -189,6 +188,7 @@ export class BatchTranslationRunner {
     quality_snapshot: TextQualitySnapshot,
     session: RequestPoolSession<LLMRequestBody, LLMRequestResult>,
     signal: AbortSignal,
+    log: Pick<LogWriter, "append">,
   ) {
     const result = await this.executor_client.execute_unit(
       {
@@ -207,7 +207,7 @@ export class BatchTranslationRunner {
       signal,
       session,
     );
-    for (const entry of result.logs) this.log_manager.append({ ...entry, source: "engine-worker" });
+    for (const entry of result.logs) log.append({ ...entry, source: "engine-worker" });
     return this.build_translation_worker_result(context, result);
   }
 
@@ -301,6 +301,7 @@ export class BatchTranslationRunner {
    * 按本轮快照输出主提示词，Sakura 复用实际请求的系统指令。
    */
   private log_task_run_start(
+    log: Pick<LogWriter, "append">,
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
     t: TextResolver,
@@ -315,8 +316,8 @@ export class BatchTranslationRunner {
       run_context.model.api_format === "SakuraLLM"
         ? builder.generate_prompt_sakura("").messages[0]!.content
         : builder.build_main();
-    log_batch_task_start(this.log_manager, "engine", run_context.model, t);
+    log_batch_task_start(log, "engine", run_context.model, t);
     if (prompt_text.trim() !== "")
-      this.log_manager.append({ level: "info", source: "engine", content: prompt_text.trim() });
+      log.append({ level: "info", source: "engine", content: prompt_text.trim() });
   }
 }

@@ -49,7 +49,7 @@ import * as AppErrors from "../../shared/error";
 import { format_i18n_message } from "../../shared/i18n";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import type { AgentWorkspaceDirectories } from "./workspace/directories";
 import type { ProjectOperationGate } from "../runtime-operation-gate";
 import { AgentDecisionCoordinator } from "./agent-decision";
@@ -109,7 +109,7 @@ type AgentServiceOptions = {
   runtimeGate: ProjectOperationGate;
   workspace: AgentWorkspacePort;
   images: Pick<AgentImageService, "prepare">;
-  logManager: Pick<LogManager, "append">;
+  logManager: Pick<LogWriter, "scope">;
   publish: (topic: string, payload: Readonly<Record<string, JsonSnapshot>>) => void; // SSE 同步序列化，只读消费该值。
 };
 
@@ -1158,7 +1158,8 @@ export class AgentService {
   private async create_chat(documentKey: string): Promise<AgentChat> {
     const resources = this.resources;
     const models = createModels();
-    const log = new AgentRuntimeLog(this.log_manager, this.chat_id);
+    const chat_id = this.chat_id; // 工具和运行日志固定使用创建时的对话身份。
+    const log = new AgentRuntimeLog(this.log_manager.scope({ chat_id }), chat_id);
     const chat = await AgentChat.open({
       documentKey,
       storage: await this.store.open_storage(),
@@ -1166,7 +1167,7 @@ export class AgentService {
       cwd: this.workspace.root_path,
       models,
       seed: resources.chatSeed,
-      tools: this.create_tools(),
+      tools: this.create_tools(chat_id),
       continueText: () => this.read_continue_text(),
       systemPrompt: () => {
         const override = this.settings.read_setting().agent_personality;
@@ -1187,7 +1188,7 @@ export class AgentService {
     return chat;
   }
   /** 产品工具复用后端服务与当前租约，统一经过错误和参数边界。 */
-  private create_tools() {
+  private create_tools(chat_id: string) {
     return [
       create_agent_batch_llm_request_tool(async (input, signal) => {
         const execution = this.require_execution();
@@ -1210,6 +1211,7 @@ export class AgentService {
             this.workspace.root_path,
             { model: model.to_json(), config_snapshot },
             input.request_file,
+            chat_id,
           );
           if (this.execution === execution && result.stop_source === "user")
             execution.batchStopped = true;
@@ -1244,6 +1246,7 @@ export class AgentService {
             signal,
             model,
             request,
+            chat_id,
           );
           if (this.execution === execution && result.stop_source === "user")
             execution.batchStopped = true;

@@ -1,6 +1,6 @@
 import { AppError } from "../../shared/error";
 import type { ProjectDatabase } from "../database/database-operations";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import {
   ProjectDataReader,
   create_empty_quality_rule_block,
@@ -50,7 +50,7 @@ class ProjectDataBlockCache<T extends object> {
  */
 export class ProjectCache implements CacheReadPort {
   private readonly database: ProjectDatabase;
-  private readonly log_manager: Pick<LogManager, "warning" | "error"> | null; // 恢复失败只记录诊断。
+  private readonly log_manager: Pick<LogWriter, "warning"> | null; // 恢复失败只记录诊断。
   public readonly projectPath: string;
   private freshness: "empty" | "fresh" | "recoverable_error" = "empty";
   private section_revisions: ProjectDataSectionRevisions = {}; // 对外暴露的 section revision 快照。
@@ -79,7 +79,7 @@ export class ProjectCache implements CacheReadPort {
     projectPath: string;
     snapshot?: ProjectDataSnapshot;
     database: ProjectDatabase;
-    logManager: Pick<LogManager, "warning" | "error"> | null;
+    logManager: Pick<LogWriter, "warning"> | null;
     workerClient: ComputeWorkerClient;
   }) {
     this.projectPath = options.projectPath;
@@ -191,7 +191,6 @@ export class ProjectCache implements CacheReadPort {
       context: {
         sections: event.updatedSections,
         change_source: event.source,
-        project_path: event.projectPath,
       },
     });
   }

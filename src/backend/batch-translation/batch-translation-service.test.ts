@@ -1,4 +1,3 @@
-import { create_text_resolver } from "../../shared/i18n";
 import { BatchTaskRuntime } from "../batch-task/batch-task-runtime";
 import { BatchRequestPool } from "../batch-task/batch-request-pool";
 import { create_item } from "../../domain/item";
@@ -19,17 +18,20 @@ import { BatchTranslationService } from "./batch-translation-service";
 import { ProjectOperationGate } from "../runtime-operation-gate";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
 import { DEFAULT_PROJECT_SETTINGS } from "../../domain/project-settings";
+import { LogManager, LogWriter } from "../log/log-manager";
+import type { LogAppendPayload, LogFileRecord } from "../../shared/log";
+
+const PROJECT_PATH = "E:/Project/test.lg";
 
 /** 组合真实任务服务与可控协作者，观察启动和停止命令。 */
-function setup() {
-  const project_path = "E:/Project/test.lg";
+function setup(project_path = PROJECT_PATH, log?: LogWriter) {
   const gate = new ProjectOperationGate();
   const tasks = new BatchTaskRuntime(project_path, gate);
   const runtime = tasks;
   const run = vi.fn<BatchTranslationRunner["run"]>(async () => "done");
-  const append = vi.fn();
+  const append = vi.fn<(record: LogAppendPayload) => void>();
   const service = new BatchTranslationService(
-    { run } as unknown as BatchTranslationRunner,
+    { run },
     runtime,
     {
       read_setting: () => ({
@@ -38,7 +40,7 @@ function setup() {
       }),
     },
     { readBlock: () => DEFAULT_PROJECT_SETTINGS },
-    { append },
+    (log ?? new LogWriter(append)).scope({ project_path }),
   );
   return { service, runtime, gate, run, append, tasks };
 }
@@ -64,19 +66,65 @@ describe("批量翻译服务", () => {
       release.resolve();
       if (fail) await expect(handle.completion).rejects.toThrow();
       else await expect(handle.completion).resolves.toMatchObject({ status: "done" });
-      expect(append.mock.calls.at(-1)?.[0]).toMatchObject({
-        level: "info",
-        content: create_text_resolver("zh-CN")("app.log.batch_translation_ended"),
-      });
-      if (fail)
-        expect(append.mock.calls[0]?.[0]).toMatchObject({
-          level: "error",
-          error: expect.anything(),
-        });
+      const scope = { project_path: PROJECT_PATH, run_id: handle.run_id };
+      expect(append.mock.calls.map(([record]) => record)).toMatchObject(
+        fail
+          ? [
+              { level: "error", scope },
+              { level: "info", scope },
+            ]
+          : [{ level: "info", scope }],
+      );
     } finally {
       release.resolve();
       await runtime.dispose();
       await handle.completion.catch(() => undefined);
+    }
+  });
+
+  it("并发工程共享同一个正文文件，各自的记录归属完整", async () => {
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "concurrent-translation-"));
+    const log = new LogManager({ logDir: directory.path, targets: { console: false } });
+    const project_paths = ["a.lg", "b.lg"].map((name) => path.join(directory.path, name));
+    const runs = project_paths.map((project_path) => setup(project_path, log));
+    const finish = Promise.withResolvers<"done">();
+    for (const { run } of runs) {
+      run.mockImplementation((_handle, _command, _context, run_log) => {
+        run_log.append({ level: "info", content: "翻译执行中" });
+        return finish.promise;
+      });
+    }
+    try {
+      const handles = await Promise.all(
+        runs.map(({ service }) =>
+          service.start_current_project({
+            operation: "translate",
+            scope: { kind: "all" },
+          }),
+        ),
+      );
+      expect(runs.every(({ run }) => run.mock.calls.length === 1)).toBe(true);
+      finish.resolve("done");
+      await Promise.all(handles.map(({ completion }) => completion));
+      const [date] = log.files.list_dates();
+      const records = fs
+        .readFileSync(path.join(directory.path, `app.${date}.jsonl`), "utf8")
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line) as LogFileRecord);
+      expect(records).toHaveLength(4);
+      for (const [index, project_path] of project_paths.entries()) {
+        const scope = { project_path, run_id: handles[index]!.run_id };
+        expect(
+          records
+            .filter((record) => record.scope?.project_path === project_path)
+            .map((record) => record.scope),
+        ).toEqual([scope, scope]);
+      }
+    } finally {
+      finish.resolve("done");
+      await Promise.all(runs.map(({ runtime }) => runtime.dispose()));
+      await log.shutdown();
     }
   });
 
@@ -120,12 +168,13 @@ describe("批量翻译服务", () => {
     await runtime.dispose();
   });
   it("Agent 使用本次条件并等待 completion", async () => {
-    const { service, runtime, gate, run } = setup();
+    const { service, runtime, gate, run, append } = setup();
     let finish!: () => void;
     const work = new Promise<void>((resolve) => {
       finish = resolve;
     });
-    run.mockImplementation(async () => {
+    run.mockImplementation(async (_handle, _command, _context, log) => {
+      log.append({ level: "info", content: "翻译执行中" });
       await work;
       return "done";
     });
@@ -136,10 +185,16 @@ describe("批量翻译服务", () => {
       "agent",
     );
     const result = service
-      .run_under_agent(lease, new AbortController().signal, inherited, {
-        item_ids: [2],
-        item_statuses: ["NONE"],
-      })
+      .run_under_agent(
+        lease,
+        new AbortController().signal,
+        inherited,
+        {
+          item_ids: [2],
+          item_statuses: ["NONE"],
+        },
+        "agent-chat",
+      )
       .then((value) => {
         completed();
         return value;
@@ -161,7 +216,10 @@ describe("批量翻译服务", () => {
       service.start({ operation: "translate", scope: { kind: "all" } }),
     ).rejects.toMatchObject({ code: "runtime.busy" });
     finish();
-    expect((await result).status).toBe("done");
+    const { status, run_id } = await result;
+    expect(status).toBe("done");
+    const scope = { project_path: PROJECT_PATH, chat_id: "agent-chat", run_id };
+    expect(append.mock.calls.map(([record]) => record.scope)).toEqual([scope, scope]);
     expect(gate.get_snapshot().agent).toBe(true);
     gate.finish_runtime(lease);
     await runtime.dispose();
@@ -187,6 +245,7 @@ describe("批量翻译服务", () => {
         new AbortController().signal,
         Model.from_json({ id: "agent" }, "agent"),
         request as unknown as import("../../domain/batch-translation").AgentBatchTranslationRequest,
+        "agent-chat",
       ),
     ).rejects.toMatchObject({ code: "request.validation_failed" });
     expect(run).not.toHaveBeenCalled();
@@ -273,17 +332,21 @@ it.each([
     taskRuntime: runtime,
     taskPlanner: new TranslationPlanner({ planningWorkerPool: planning }),
     executorClient: { execute_unit },
-    logManager: { append: vi.fn() },
     llmClient: {
       request: async () => {
         throw new Error("Unexpected LLM request");
       },
     },
   });
-  const service = new BatchTranslationService(runner, runtime, settings, cache.settings, {
-    append: vi.fn(),
-  });
+  const service = new BatchTranslationService(
+    runner,
+    runtime,
+    settings,
+    cache.settings,
+    new LogWriter(() => {}),
+  );
   const lease = gate.begin_runtime("agent");
+  const chat_id = "agent-chat";
   const model = Model.from_json({ id: "fake", threshold: { concurrency_limit: 1 } }, "fake");
   try {
     await cache.refresh();
@@ -296,6 +359,7 @@ it.each([
       new AbortController().signal,
       model,
       request,
+      chat_id,
     );
     expect(frames[0]).toMatchObject({
       status: "requested",
@@ -333,20 +397,32 @@ it.each([
     execute_unit.mockClear();
     frames.length = 0;
     expect(
-      await service.run_under_agent(lease, new AbortController().signal, model, {
-        item_ids: [1, 2],
-        item_statuses: ["NONE"],
-      }),
+      await service.run_under_agent(
+        lease,
+        new AbortController().signal,
+        model,
+        {
+          item_ids: [1, 2],
+          item_statuses: ["NONE"],
+        },
+        chat_id,
+      ),
     ).toMatchObject({
       status: "done",
       progress: { total: 0, succeeded: 0, output_tokens: 0, input_tokens: 0 },
     });
     // 运行失败连同终态统计和原始原因交给 Agent。
     await expect(
-      service.run_under_agent(lease, new AbortController().signal, model, {
-        item_ids: [3, 99],
-        item_statuses: ["NONE"],
-      }),
+      service.run_under_agent(
+        lease,
+        new AbortController().signal,
+        model,
+        {
+          item_ids: [3, 99],
+          item_statuses: ["NONE"],
+        },
+        chat_id,
+      ),
     ).rejects.toMatchObject({
       cause: expect.objectContaining({ code: "request.validation_failed" }),
       result: { status: "error" },
@@ -483,7 +559,6 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
           logs: [],
         }),
       },
-      logManager: { append: vi.fn() },
     });
     const service = new BatchTranslationService(
       runner,
@@ -495,7 +570,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         }),
       },
       cache.settings,
-      { append: vi.fn() },
+      new LogWriter(() => {}),
     );
     const handle = await service.start_current_project({
       operation: "translate",

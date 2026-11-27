@@ -3,6 +3,7 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { normalize_backend_api_base_url } from "@shared/backend-api";
 import {
   normalize_log_level,
+  normalize_log_scope,
   read_log_content,
   type LogDetail,
   type LogEntry,
@@ -358,6 +359,7 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
     return null;
   }
 
+  const scope = normalize_log_scope(detail["scope"]);
   return {
     id: detail["id"],
     date: detail["date"],
@@ -366,6 +368,7 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
     created_at: detail["created_at"],
     level: normalize_log_level(detail["level"]),
     source: detail["source"],
+    ...(scope === undefined ? {} : { scope }),
     content,
     ...(typeof detail["error"] === "object" &&
     detail["error"] !== null &&

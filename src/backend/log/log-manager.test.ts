@@ -78,6 +78,49 @@ describe("LogManager", () => {
     manager.info("关闭后");
     expect(fs.readFileSync(file, "utf8")).toBe(before);
   });
+
+  it("异常归属独立落盘，详情兼容无归属记录", async () => {
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-scope-"));
+    const date = "20260913";
+    const file = path.join(directory.path, `app.${date}.jsonl`);
+    const log = new LogManager({
+      logDir: directory.path,
+      now: () => new Date(2026, 8, 13),
+      targets: { console: false },
+    });
+    try {
+      log.info("全局日志", { scope: { run_id: "" } });
+      const scope = { project_path: "project.lg", chat_id: "chat", run_id: "run" };
+      const project = log.scope({ project_path: scope.project_path });
+      project
+        .scope({ chat_id: scope.chat_id })
+        .scope({ run_id: "parent" })
+        .error("失败", {
+          scope: { run_id: scope.run_id, chat_id: "" },
+          context: { attempt: 2 },
+          error: new Error("boom"),
+        });
+      project.scope({ chat_id: "" }).info("工程日志");
+
+      const records = fs
+        .readFileSync(file, "utf8")
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(records[0]).not.toHaveProperty("scope");
+      expect(records[1].scope).toEqual(scope);
+      expect(records[1].error.context).toEqual({ attempt: 2 });
+      expect(records[2].scope).toEqual({ project_path: scope.project_path });
+      const { entries } = await log.files.read_page({ date, direction: "latest" });
+      const [global, failure] = await Promise.all(
+        entries.slice(0, 2).map(({ id, revision }) => log.files.read_detail(id, revision)),
+      );
+      expect(global?.content).toBe("全局日志");
+      expect(failure?.scope).toEqual(scope);
+    } finally {
+      await log.shutdown();
+    }
+  });
 });
 
 it("可读错误正文在控制台与摘要保持一致，详情保留异常", async () => {

@@ -12,7 +12,7 @@ import path from "node:path";
 import type { JsonRecord } from "../../domain/json";
 
 import type { ProjectDatabase } from "../database/database-operations";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import { AppSettingService } from "../app/app-setting-service";
 import { FileFormatService } from "./file-format-service";
 import { type Item, create_item } from "../../domain/item";
@@ -26,11 +26,6 @@ import { create_text_resolver, format_i18n_message, type LocaleKey } from "../..
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { GeneratedFilePaths } from "./file-format-types";
 import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
-
-/**
- * 译文生成层只依赖日志的公开 info/error 能力，避免把完整 LogManager 生命周期传进文件域
- */
-type FileGenerationLogManager = Pick<LogManager, "info" | "error">;
 
 const FILE_GENERATION_LOG_SOURCE = "translation-generation"; // 各入口共用日志来源，便于按文件域筛选。
 
@@ -59,7 +54,7 @@ export class TranslationFileGenerationService {
     private readonly app_setting_service: AppSettingService, // 译文生成格式和完成后动作
     private readonly project_path: string, // 当前 .lg 工程身份
     private readonly output_folder_opener: OutputFolderOpener, // 宿主打开目录的副作用
-    private readonly log_manager?: FileGenerationLogManager, // 译文生成诊断
+    private readonly log_manager?: Pick<LogWriter, "info" | "error">, // 译文生成诊断
     private readonly native_fs: NativeFs = default_native_fs, // 目录检查与文件写盘
   ) {}
 

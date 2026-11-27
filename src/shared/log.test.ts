@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { format_log_readable_text, normalize_log_level, read_log_content } from "./log";
+import {
+  format_log_readable_text,
+  normalize_log_level,
+  normalize_log_scope,
+  read_log_content,
+} from "./log";
+
+it("归属只读取非空字符串字段", () => {
+  expect(normalize_log_scope(["project.lg"])).toBeUndefined();
+  expect(normalize_log_scope({ project_path: "", chat_id: null })).toBeUndefined();
+  expect(
+    normalize_log_scope({
+      project_path: "project.lg",
+      chat_id: "chat",
+      run_id: 1,
+      project_id: "ignored",
+    }),
+  ).toEqual({ project_path: "project.lg", chat_id: "chat" });
+});
 
 describe("log 基础模型", () => {
   it("规范化日志等级", () => {
@@ -69,7 +87,6 @@ describe("log 基础模型", () => {
   it("请求结果缺少身份或公共段落无效时拒绝", () => {
     const content = {
       kind: "request_result",
-      run_id: "run",
       request_id: "one",
       summary: [],
       sections: [],
@@ -77,6 +94,7 @@ describe("log 基础模型", () => {
       ended_at: "end",
     };
     expect(read_log_content(content)).toEqual(content);
+    expect(read_log_content({ ...content, run_id: "old-run" })).toEqual(content);
     expect(read_log_content({ ...content, request_id: undefined })).toBeNull();
     expect(read_log_content({ ...content, sections: [{ title: "响应", text: 1 }] })).toBeNull();
   });

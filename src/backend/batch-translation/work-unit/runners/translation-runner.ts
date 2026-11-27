@@ -46,7 +46,7 @@ import type { LogError } from "../../../../shared/error";
 /** 根据公开 work-unit 载荷重建的 worker 本地不可变请求信封。 */
 interface TranslationWorkUnitRequest {
   run_id: string; // Isolates one task run across worker messages.
-  work_unit_id: string; // Identifies this chunk in logs and diagnostics.
+  work_unit_id: string; // 在 worker 消息与 LLM 请求间标识同一翻译分块。
   model: TranslationWorkUnit["model"]; // Frozen model snapshot selected by the BatchTranslationRunner.
   config_snapshot: TranslationWorkUnit["config_snapshot"]; // Frozen processing and locale settings.
   quality_snapshot: TextQualitySnapshot; // Frozen text rules shared by prompt and pipelines.

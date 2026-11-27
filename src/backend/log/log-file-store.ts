@@ -6,6 +6,7 @@ import { AppError, normalize_log_error } from "../../shared/error";
 import {
   format_log_content_text,
   normalize_log_level,
+  normalize_log_scope,
   read_log_content,
   LOG_PAGE_SIZE,
   LOG_WINDOW_MESSAGE_PREVIEW_LENGTH,
@@ -38,8 +39,9 @@ type IndexState = {
   size: number; // 当前索引文件的字节数
   revision: string; // 索引建立时的内容代次，读取期间保持快照身份
 };
+type FileStamp = Readonly<{ key: string; size: number }>; // 同一次 stat 提供变更检测与字节位置。
 type SourceState = {
-  stamp: string | null; // 最近观察或自身写入后的文件状态，null 表示缺失
+  stamp: FileStamp | null; // 最近观察或自身写入后的文件状态，null 表示缺失
   revision: string; // 正文编辑或索引失效后更换的内容代次
   append_ready: boolean; // 本次文件状态已完成追加前的尾行检查
 };
@@ -80,23 +82,22 @@ export class LogFileStore {
   }
 
   /** 同时识别文件替换和等字节长度的编辑。 */
-  private stamp(date: string): string | null {
-    const file = this.file(date);
+  private stamp(file: string): FileStamp | null {
     if (!this.fs.exists(file)) return null;
-    const stat = this.fs.stat(file);
-    return [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(":");
+    const { dev, ino, size, mtimeMs, ctimeMs } = this.fs.stat(file);
+    return { key: [dev, ino, size, mtimeMs, ctimeMs].join(":"), size };
   }
 
   /** 自身追加更新已知状态；未知变化一律视为编辑，不能根据长度增长猜测为追加。 */
-  private check_source(date: string): string {
-    const stamp = this.stamp(date);
+  private check_source(date: string, file = this.file(date)): SourceState {
+    const stamp = this.stamp(file);
     let source = this.sources.get(date);
-    if (source === undefined || source.stamp !== stamp) {
+    if (source === undefined || source.stamp?.key !== stamp?.key) {
       source = { stamp, revision: randomUUID(), append_ready: false };
       this.sources.set(date, source);
       this.states.delete(date);
     }
-    return source.revision;
+    return source;
   }
 
   /** 已由 check_source 建立日期状态；索引失效也使在途游标过期。 */
@@ -108,13 +109,16 @@ export class LogFileStore {
   /** 正文同步追加后记录自身文件状态，外部保存不会被随后的追加掩盖。 */
   public append(date: string, record: LogFileRecord): void {
     const file = this.file(date);
-    this.check_source(date);
-    const source = this.sources.get(date)!;
+    const source = this.check_source(date, file);
     try {
+      let offset = source.stamp?.size ?? 0;
       if (!source.append_ready) {
-        if (this.fs.exists(file)) {
+        if (source.stamp !== null) {
           const last = this.fs.read_last_byte(file);
-          if (last !== null && last !== LF) this.fs.append_text_file(file, "\n");
+          if (last !== null && last !== LF) {
+            this.fs.append_text_file(file, "\n");
+            offset += 1; // 补齐断行后，新记录从下一个字节开始。
+          }
         } else {
           this.fs.write_file_sync(this.file(date, true), "");
           this.states.set(date, {
@@ -122,15 +126,14 @@ export class LogFileStore {
             end: 0,
             scanned: 0,
             size: 0,
-            revision: this.sources.get(date)!.revision,
+            revision: source.revision,
           });
         }
         source.append_ready = true;
       }
-      const offset = this.size(file);
       const text = `${JSON.stringify(record)}\n`;
       this.fs.append_text_file(file, text);
-      source.stamp = this.stamp(date);
+      source.stamp = this.stamp(file);
       const state = this.states.get(date);
       if (state !== undefined && !this.repairs.has(date) && state.end === offset) {
         try {
@@ -253,14 +256,14 @@ export class LogFileStore {
 
   /** 同日期查询共享恢复任务，只复用与文件状态匹配的索引。 */
   private async ensure_index(date: string): Promise<void> {
-    this.check_source(date);
+    const source = this.check_source(date);
     const pending = this.repairs.get(date);
     if (pending !== undefined) return pending;
     const state = this.states.get(date);
     if (
       state !== undefined &&
       state.size === this.size(this.file(date, true)) &&
-      state.scanned === this.size(this.file(date))
+      state.scanned === (source.stamp?.size ?? 0)
     )
       return;
     if (state !== undefined) this.invalidate(date);
@@ -278,7 +281,7 @@ export class LogFileStore {
     try {
       // 外部编辑重建整个索引；自身追加只续扫本轮快照之后的尾部。
       while (true) {
-        const revision = this.check_source(date);
+        const { revision } = this.check_source(date);
         this.fs.write_file_sync(this.file(date, true), "");
         this.states.set(date, { line: 0, end: 0, scanned: 0, size: 0, revision });
         let restart = false;
@@ -296,11 +299,13 @@ export class LogFileStore {
               this.report(new Error(`Invalid log record at ${date}:${String(number)}`));
             this.write_index(date, this.index_record(record, number, line.start, line.end));
           }
-          if (restart || this.check_source(date) !== revision) {
+          if (restart) break;
+          const source = this.check_source(date);
+          if (source.revision !== revision) {
             restart = true;
             break;
           }
-          if (this.size(this.file(date)) === end) {
+          if ((source.stamp?.size ?? 0) === end) {
             this.states.get(date)!.scanned = end;
             break;
           }
@@ -358,7 +363,7 @@ export class LogFileStore {
     try {
       const page = await this.read_date_page(request);
       if (!this.fs.exists(this.file(date))) return empty_page("expired");
-      if (page.after !== null && page.after.revision !== this.check_source(date))
+      if (page.after !== null && page.after.revision !== this.check_source(date).revision)
         return empty_page("cursor_invalid");
       return page;
     } catch (error) {
@@ -435,7 +440,10 @@ export class LogFileStore {
       if (indexed?.record.entry === undefined) return null;
       const offset = indexed.record.entry.offset;
       const bytes = await this.fs.read_range(file, offset, indexed.record.end - offset);
-      if (this.check_source(date) !== revision || bytes.indexOf(LF) !== bytes.length - 1)
+      if (
+        this.check_source(date, file).revision !== revision ||
+        bytes.indexOf(LF) !== bytes.length - 1
+      )
         return null;
       const record = read_record(bytes);
       if (record === null || record.window === false) return null;
@@ -502,17 +510,20 @@ function read_record(bytes: Buffer): LogFileRecord | null {
   const value = read_object(bytes);
   if (value === null) return null;
   const content = read_log_content(value.content);
+  const level = normalize_log_level(value.level);
   if (
     content === null ||
     typeof value.created_at !== "string" ||
     typeof value.source !== "string" ||
-    value.level !== normalize_log_level(value.level)
+    value.level !== level
   )
     return null;
+  const scope = normalize_log_scope(value.scope);
   return {
     created_at: value.created_at,
     source: value.source,
-    level: normalize_log_level(value.level),
+    level,
+    ...(scope === undefined ? {} : { scope }),
     content,
     ...(value.window === false ? { window: false as const } : {}),
     ...(value.error === undefined

@@ -132,6 +132,7 @@ describe("desktop-api", () => {
               created_at: "2026-04-26T00:00:00.000+00:00",
               level: "error",
               source: "engine-worker",
+              scope: { project_path: "test.lg", run_id: "batch" },
               content: {
                 kind: "translation_result",
                 started_at: "2026-09-13T00:00:00.000Z",
@@ -160,6 +161,7 @@ describe("desktop-api", () => {
       id: "20260913:1",
       level: "error",
       source: "engine-worker",
+      scope: { project_path: "test.lg", run_id: "batch" },
       content: {
         kind: "translation_result",
         started_at: "2026-09-13T00:00:00.000Z",

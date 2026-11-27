@@ -184,7 +184,7 @@ export class GuiBackendBootstrap {
             writeStore: project.writes,
             files: project.content,
             generation: project.generation,
-            logManager: resources.logManager,
+            logManager: project.log,
             run: runner.run.bind(runner),
             packageSources: package_sources,
             imageTextHost: this.options.imageTextHost,
@@ -192,7 +192,7 @@ export class GuiBackendBootstrap {
             openDirectory: this.options.openDirectory,
             pickSavePath: this.options.pickSavePath,
           }),
-          logManager: resources.logManager,
+          logManager: project.log,
           publish: (topic, payload) => event_stream.publish(topic, payload),
         });
       resources.settings.set_stream_publisher(event_stream);

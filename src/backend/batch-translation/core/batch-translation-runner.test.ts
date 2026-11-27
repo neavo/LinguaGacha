@@ -1,5 +1,6 @@
 import { BatchTaskRuntime, BatchTaskCompletionError } from "../../batch-task/batch-task-runtime";
 import { BatchRequestPool } from "../../batch-task/batch-request-pool";
+import { LogWriter } from "../../log/log-manager";
 import type { BatchTranslationRunCommand } from "./batch-translation-runner";
 import { ProjectCache } from "../../cache/project-cache";
 import { ProjectDatabase } from "../../database/database-operations";
@@ -37,7 +38,7 @@ import {
 } from "./batch-translation-runner";
 import { TranslationPlanner } from "../planning/translation-planner";
 import { AppError } from "../../../shared/error";
-import { format_log_content_text } from "../../../shared/log";
+import { format_log_content_text, type LogAppendPayload } from "../../../shared/log";
 import type { JsonRecord, MutableJsonRecord } from "../../../domain/json";
 import {
   createAssistantMessageEventStream,
@@ -48,6 +49,7 @@ import { LLMClient } from "../../llm/llm-client";
 import { create_pi_model_catalog_fixture } from "../../../test/pi-model-catalog-fixture";
 
 const api_mocks = vi.hoisted(() => ({ stream: vi.fn<ProviderStreams["stream"]>() }));
+const discard_logs: Pick<LogWriter, "append"> = { append: () => {} };
 vi.mock("@earendil-works/pi-ai/api/openai-completions.lazy", () => ({
   openAICompletionsApi: () => ({ stream: api_mocks.stream, streamSimple: api_mocks.stream }),
 }));
@@ -80,7 +82,6 @@ describe("BatchTranslationRunner", () => {
         taskRuntime: runtime,
         executorClient: create_unused_executor(),
         taskPlanner: create_test_task_planner(),
-        logManager: create_log_manager(),
       });
       const handle = runtime.begin_standalone("translate");
       await runtime.execute(handle, () =>
@@ -91,6 +92,7 @@ describe("BatchTranslationRunner", () => {
             item_statuses: ["NONE"],
           },
           create_run_context(),
+          discard_logs,
         ),
       );
       const settled = await handle.completion.then(
@@ -151,7 +153,6 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: runtime,
       executorClient: pool,
       taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
       taskStore: create_task_store({
         get_translation_items: () => items,
         commit_translation_batch: async (updated) => {
@@ -170,6 +171,7 @@ describe("BatchTranslationRunner", () => {
             preceding_lines_threshold: 1,
             following_lines_threshold: 1,
           }),
+          discard_logs,
         ),
       );
       await handle.completion;
@@ -254,7 +256,6 @@ describe("BatchTranslationRunner", () => {
         llmClient: create_unused_llm_client(),
         executorClient: { execute_unit },
         taskPlanner: create_test_task_planner(),
-        logManager: create_log_manager(),
       });
       const handle = runtime.begin_standalone("retranslate");
       await runtime.execute(handle, () =>
@@ -265,6 +266,7 @@ describe("BatchTranslationRunner", () => {
             item_ids: originals.map((item) => item.id!),
           },
           create_run_context(),
+          discard_logs,
         ),
       );
       expect(await handle.completion).toMatchObject({
@@ -319,11 +321,15 @@ describe("BatchTranslationRunner", () => {
           ),
       },
       taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
     });
     const handle = runtime.begin_standalone();
     await runtime.execute(handle, () =>
-      runner.run(handle, { operation: "translate", item_statuses: ["NONE"] }, create_run_context()),
+      runner.run(
+        handle,
+        { operation: "translate", item_statuses: ["NONE"] },
+        create_run_context(),
+        discard_logs,
+      ),
     );
     await expect(handle.completion).rejects.toMatchObject({
       cause: failure,
@@ -401,7 +407,6 @@ describe("BatchTranslationRunner", () => {
           taskRuntime: runtime,
           executorClient: pool,
           taskPlanner: create_test_task_planner(),
-          logManager: create_log_manager(),
           llmClient: {
             request: async () => {
               const first = ++attempts === 1;
@@ -428,7 +433,9 @@ describe("BatchTranslationRunner", () => {
               item_statuses: ["NONE"],
             };
         const handle = runtime.begin_standalone(command.operation);
-        await runtime.execute(handle, () => runner.run(handle, command, create_run_context(4)));
+        await runtime.execute(handle, () =>
+          runner.run(handle, command, create_run_context(4), discard_logs),
+        );
         await retry_started;
         await vi.advanceTimersByTimeAsync(TASK_PIPELINE_COMMIT_INTERVAL_MS);
         expect(runtime.build_snapshot()).toMatchObject({
@@ -486,7 +493,6 @@ describe("BatchTranslationRunner", () => {
       taskStore: create_task_store(),
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
-      logManager: create_log_manager(),
       taskPlanner: {
         build_translation_plan: async (_items, _config, model) => {
           model_ids.push(String(model.id));
@@ -535,7 +541,6 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
     });
 
     const handle = task_runtime.begin_standalone();
@@ -544,6 +549,7 @@ describe("BatchTranslationRunner", () => {
         handle,
         { operation: "translate", item_statuses: ["NONE"] },
         create_run_context(),
+        discard_logs,
       ),
     );
     await expect(handle.completion).rejects.toMatchObject({ result: { status: "error" } });
@@ -564,7 +570,6 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: runtime,
       executorClient: { execute_unit: execute },
       taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
     });
     await start_task(runner, runtime, {
       operation: "translate",
@@ -624,7 +629,6 @@ describe("BatchTranslationRunner", () => {
         taskRuntime: runtime,
         executorClient: pool,
         taskPlanner: create_test_task_planner(),
-        logManager: create_log_manager(),
         taskStore: create_task_store({
           get_translation_items: () => items,
           commit_translation_batch: async (items) => {
@@ -635,13 +639,16 @@ describe("BatchTranslationRunner", () => {
       });
       const base_context = create_run_context(1);
       const context = { ...base_context, model: { ...base_context.model, api_key: "A\nB" } };
+      const append = vi.fn<(record: LogAppendPayload) => void>();
       try {
         const command: BatchTranslationRunCommand = {
           operation: "retranslate",
           item_ids: [1, 2, 3, 4],
         };
         const handle = runtime.begin_standalone(command.operation);
-        await runtime.execute(handle, () => runner.run(handle, command, context));
+        const scope = { run_id: handle.run_id };
+        const log = new LogWriter(append).scope(scope);
+        await runtime.execute(handle, () => runner.run(handle, command, context, log));
         await first_request;
         await vi.advanceTimersByTimeAsync(100_000);
         expect(request).toHaveBeenCalledTimes(6);
@@ -654,6 +661,13 @@ describe("BatchTranslationRunner", () => {
         expect(runtime.build_snapshot().tasks[0]?.request_recovery).toMatchObject({
           retry_count: 4,
         });
+        expect(append).toHaveBeenCalledWith(
+          expect.objectContaining({
+            level: "warning",
+            scope,
+            error: expect.objectContaining({ message: "网络故障" }),
+          }),
+        );
         if (action === "recover") {
           recovered = true;
           await vi.advanceTimersByTimeAsync(10_000);
@@ -676,6 +690,13 @@ describe("BatchTranslationRunner", () => {
             input_tokens: 9,
           });
           expect(execute).toHaveBeenCalledTimes(3);
+          expect(append).toHaveBeenCalledWith(
+            expect.objectContaining({
+              source: "engine-worker",
+              scope,
+              content: expect.objectContaining({ kind: "translation_result" }),
+            }),
+          );
         } else {
           expect(committed).toEqual([]);
           expect(execute).toHaveBeenCalledTimes(1);
@@ -734,7 +755,6 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: runtime,
       executorClient: pool,
       taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
       llmClient: new LLMClient({
         userAgent: "LinguaGacha/test",
         catalog: create_pi_model_catalog_fixture([]),
@@ -761,10 +781,20 @@ describe("BatchTranslationRunner", () => {
       };
       const handle = runtime.begin_standalone(command.operation);
       await runtime.execute(handle, () =>
-        runner.run(handle, command, {
-          ...context,
-          model: { ...context.model, api_format: "OpenAI", model_id: "gpt-5-mini", api_key: "key" },
-        }),
+        runner.run(
+          handle,
+          command,
+          {
+            ...context,
+            model: {
+              ...context.model,
+              api_format: "OpenAI",
+              model_id: "gpt-5-mini",
+              api_key: "key",
+            },
+          },
+          discard_logs,
+        ),
       );
       expect(await handle.completion).toMatchObject({
         status: "done",
@@ -815,7 +845,6 @@ describe("BatchTranslationRunner", () => {
         taskRuntime: runtime,
         executorClient: pool,
         taskPlanner: create_test_task_planner(16),
-        logManager: create_log_manager(),
         llmClient: {
           request: async (body) => {
             const response_result = responses[prompts.length] ?? "";
@@ -899,7 +928,6 @@ describe("BatchTranslationRunner", () => {
         },
       },
       taskPlanner: create_test_task_planner(1),
-      logManager: create_log_manager(),
     });
 
     await start_task(
@@ -934,7 +962,6 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(logs),
     });
 
     await start_task(
@@ -945,6 +972,7 @@ describe("BatchTranslationRunner", () => {
         item_statuses: ["NONE"],
       },
       run_context,
+      { append: ({ content }) => logs.push(format_log_content_text(content)) },
     );
     await done.promise;
 
@@ -979,7 +1007,6 @@ describe("BatchTranslationRunner", () => {
         },
       },
       taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
     });
 
     await start_task(task_engine, task_runtime, {
@@ -1071,9 +1098,10 @@ describe("BatchTranslationRunner", () => {
     task_runtime: BatchTaskRuntime,
     command: BatchTranslationRunCommand,
     run_context: BatchTranslationRunContext = create_run_context(),
+    log: Pick<LogWriter, "append"> = discard_logs,
   ): Promise<void> {
     const handle = task_runtime.begin_standalone(command.operation);
-    await task_runtime.execute(handle, () => task_engine.run(handle, command, run_context));
+    await task_runtime.execute(handle, () => task_engine.run(handle, command, run_context, log));
   }
 
   /**
@@ -1161,16 +1189,6 @@ describe("BatchTranslationRunner", () => {
       fs.writeFileSync(path.join(template_dir, file_name), content, "utf-8");
     }
     return builtin_root;
-  }
-
-  /** 收集结构化日志的公开文本投影。 */
-  function create_log_manager(logs: string[] = []): BatchTranslationRunnerOptions["logManager"] {
-    return {
-      append: (payload) => {
-        logs.push(format_log_content_text(payload.content));
-        return null;
-      },
-    };
   }
 });
 

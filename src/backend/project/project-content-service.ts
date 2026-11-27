@@ -37,7 +37,7 @@ import {
   type SourceFileParseResult,
   type SourceFileParsedDraft,
 } from "../file/source-file-parse-pipeline";
-import type { LogManager } from "../log/log-manager";
+import type { LogWriter } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectWriteStore, type ProjectAssetWrite } from "./project-write-store";
 import {
@@ -101,7 +101,7 @@ export class ProjectContentService {
 
   private readonly native_fs: NativeFs; // 来源解析使用宿主文件 IO，.lg 写入仍归 ProjectDatabase。
 
-  private readonly log_manager: Pick<LogManager, "warning"> | null; // 记录批量文件解析失败明细，不影响事务边界
+  private readonly log_manager: Pick<LogWriter, "warning"> | null; // 记录批量文件解析失败明细，不影响事务边界
 
   /**
    * 注入 database、互斥门闩和会话状态，保持写库边界可测试
@@ -114,7 +114,7 @@ export class ProjectContentService {
     write_store: ProjectWriteStore,
     private readonly app_settings: Pick<AppSettingService, "read_app_language">,
     native_fs: NativeFs = default_native_fs,
-    log_manager: Pick<LogManager, "warning"> | null = null,
+    log_manager: Pick<LogWriter, "warning"> | null = null,
     private readonly game_prepare_execution?: GamePrepareExecution,
   ) {
     this.database = database;

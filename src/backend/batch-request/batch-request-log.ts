@@ -19,14 +19,13 @@ function message_text(content: unknown): string {
 
 /** 服务提供已经结算的事实，正文组织不接管批次状态或文件发布。 */
 export function build_batch_request_result_log(input: {
-  run_id: string;
   request_id: string;
   started_at: number;
   payload: JsonRecord | undefined;
   result: (LLMRequestFacts & { response: JsonRecord | null }) | undefined;
   error: string | null;
   t: TextResolver;
-}): LogResultContent {
+}): Extract<LogResultContent, { kind: "request_result" }> {
   const { t, result } = input;
   const ended_at = Date.now();
   const sections: LogTextSection[] = [];
@@ -48,7 +47,6 @@ export function build_batch_request_result_log(input: {
   }
   return {
     kind: "request_result",
-    run_id: input.run_id,
     request_id: input.request_id,
     started_at: new Date(input.started_at).toISOString(),
     ended_at: new Date(ended_at).toISOString(),

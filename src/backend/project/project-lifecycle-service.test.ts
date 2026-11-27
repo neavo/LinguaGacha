@@ -15,7 +15,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ProjectDatabase } from "../database/database-operations";
 import type { MutableJsonRecord } from "../../domain/json";
-import type { LogManager } from "../log/log-manager";
+import { LogWriter } from "../log/log-manager";
+import type { LogAppendPayload } from "../../shared/log";
 import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
@@ -560,7 +561,10 @@ describe("ProjectLifecycleService", () => {
 
   it("create-commit 将默认预设内容、启用态和 revision 写入新工程", async () => {
     const app_root = create_temp_dir();
-    const project_path = path.join(app_root, "created-with-presets.lg");
+    const project_directory = fs.mkdtempSync(path.join(app_root, "projects-"));
+    const project_alias = path.join(app_root, "projects-link");
+    fs.symlinkSync(project_directory, project_alias, "junction");
+    const project_path = path.join(project_alias, "nested", "created-with-presets.lg");
     write_file(
       path.join(app_root, "builtin", "glossary", "preset", "base.json"),
       '[{"src":"魔力","dst":"Mana"}]',
@@ -574,9 +578,11 @@ describe("ProjectLifecycleService", () => {
       "翻译提示词",
     );
     const database = new ProjectDatabase("1.0.0");
+    const log_manager = create_log_manager();
     const service = create_service({
       app_root,
       database,
+      log_manager,
       config: {
         glossary_default_preset: "builtin:base.json",
         text_preserve_default_preset: "builtin:base.json",
@@ -622,6 +628,13 @@ describe("ProjectLifecycleService", () => {
         "quality_rule_revision.text_preserve": 1,
         "quality_prompt_revision.translation": 1,
       });
+      expect(log_manager.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: "info",
+          source: "project-lifecycle",
+          scope: { project_path: fs.realpathSync.native(project_path) },
+        }),
+      );
     } finally {
       await database.close();
     }
@@ -660,9 +673,9 @@ describe("ProjectLifecycleService", () => {
       expect(await database.get_all_meta(project_path)).not.toHaveProperty(
         "quality_rule_revision.glossary",
       );
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.any(String),
+      expect(log_manager.record).toHaveBeenCalledWith(
         expect.objectContaining({
+          level: "warning",
           context: expect.objectContaining({
             preset_directory: "glossary",
             virtual_id: "builtin:missing.json",
@@ -736,9 +749,9 @@ describe("ProjectLifecycleService", () => {
           file_type: "TXT",
         },
       ]);
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.stringContaining(path.basename(broken_json)),
+      expect(log_manager.record).toHaveBeenCalledWith(
         expect.objectContaining({
+          level: "warning",
           source: "project-lifecycle",
           error: expect.anything(),
           context: expect.objectContaining({ source_path: broken_json }),
@@ -776,9 +789,9 @@ describe("ProjectLifecycleService", () => {
         { path: "game.rpgmaker", file_type: "RPGMAKER_MV_MZ" },
       ]);
       expect(await database.get_all_items(project_path)).toEqual([]);
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.stringContaining("bad.js"),
+      expect(log_manager.record).toHaveBeenCalledWith(
         expect.objectContaining({
+          level: "warning",
           context: {
             warning: expect.objectContaining({
               code: "script_syntax_error",
@@ -935,9 +948,8 @@ describe("ProjectLifecycleService", () => {
           await database.read_asset_content(project_path, path.join("source", "broken.json"))
         )?.toString(),
       ).toBe("{");
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ source: "project-lifecycle" }),
+      expect(log_manager.record).toHaveBeenCalledWith(
+        expect.objectContaining({ level: "warning", source: "project-lifecycle" }),
       );
     } finally {
       await database.close();
@@ -964,9 +976,11 @@ describe("ProjectLifecycleService", () => {
         code: "file.parse_failed",
         public_details: { source_operation: { saved_assets: 0, directory_changes: [] } },
       });
-      expect(log_manager.warning).toHaveBeenCalledWith(
-        expect.stringContaining("broken.exe"),
-        expect.objectContaining({ source: "project-lifecycle" }),
+      expect(log_manager.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: "warning",
+          context: expect.objectContaining({ source_path: broken }),
+        }),
       );
     } finally {
       await database.close();
@@ -1028,10 +1042,7 @@ describe("ProjectLifecycleService", () => {
     app_root?: string;
     database: ProjectDatabase;
     config?: MutableJsonRecord;
-    log_manager?: LogManager & {
-      info: ReturnType<typeof vi.fn>;
-      error: ReturnType<typeof vi.fn>;
-    };
+    log_manager?: ReturnType<typeof create_log_manager>;
   }) {
     const app_root = options.app_root ?? create_temp_dir();
     return new ProjectLifecycleService(
@@ -1103,16 +1114,9 @@ describe("ProjectLifecycleService", () => {
     } as unknown as AppSettingService;
   }
 
-  // 日志 fake 用于断言生命周期诊断，不参与业务状态计算。
+  /** 捕获真实归属绑定后的写入内容。 */
   function create_log_manager() {
-    return {
-      info: vi.fn(),
-      error: vi.fn(),
-      warning: vi.fn(),
-    } as unknown as LogManager & {
-      info: ReturnType<typeof vi.fn>;
-      error: ReturnType<typeof vi.fn>;
-      warning: ReturnType<typeof vi.fn>;
-    };
+    const record = vi.fn<(payload: LogAppendPayload) => void>();
+    return Object.assign(new LogWriter(record), { record });
   }
 });

@@ -68,17 +68,16 @@ describe("LogFileStore", () => {
     await store.close();
   });
 
-  it("等字节替换和跨重启编辑都重建摘要，不根据文件长度猜测为追加", async () => {
+  it("等长编辑后立即追加和跨重启编辑都重建摘要", async () => {
     using dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-replace-"));
     const body = path.join(dir.path, `app.${DATE}.jsonl`);
     const store = new LogFileStore(dir.path, new NativeFs());
     store.append(DATE, record("alpha"));
     const before = await store.read_page({ date: DATE, direction: "latest" });
-    const bytes = fs.statSync(body).size;
     fs.writeFileSync(body, fs.readFileSync(body, "utf8").replace("alpha", "bravo"));
+    store.append(DATE, record("尾部追加"));
     const after = await store.read_page({ date: DATE, direction: "latest" });
-    expect(fs.statSync(body).size).toBe(bytes);
-    expect(after.entries[0]?.message_preview).toBe("bravo");
+    expect(after.entries.map((entry) => entry.message_preview)).toEqual(["bravo", "尾部追加"]);
     expect(after.after?.revision).not.toBe(before.after?.revision);
     await store.close();
     fs.writeFileSync(body, fs.readFileSync(body, "utf8").replace("bravo", "delta"));
