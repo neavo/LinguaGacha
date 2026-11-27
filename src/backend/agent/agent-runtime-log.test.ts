@@ -39,12 +39,7 @@ describe("AgentRuntimeLog", () => {
     const log = new AgentRuntimeLog({ append }, "chat-test");
     log.begin_run("round", "prompt");
     for (const level of ["debug", "info", "warning", "error", "fatal"] as const) {
-      log.handle_event({
-        type: "tool_execution_start",
-        toolCallId: level,
-        toolName: "fixture_tool",
-        args: {},
-      });
+      log.record_tool_start({ id: level, name: "fixture_tool", arguments: {} }, Date.now());
       log.record_tool_diagnostic(TOOL_RESULT_RECORD.byTaskId, {
         toolCallId: level,
         toolName: "fixture_tool",
@@ -91,12 +86,10 @@ describe("AgentRuntimeLog", () => {
       const details = { text: '正文 "引号"\n'.repeat(2_000), items: input.items };
       const expected = structuredClone(details);
       log.begin_run("round", "prompt");
-      log.handle_event({
-        type: "tool_execution_start",
-        toolCallId: "call",
-        toolName: "fixture_tool",
-        args: input,
-      });
+      log.record_tool_start(
+        { id: "call", name: "fixture_tool", arguments: input },
+        Date.parse("2026-09-13T00:00:01.875Z"),
+      );
       input.query = "修改后的输入";
       vi.setSystemTime("2026-09-13T00:00:02.000Z");
       const result = agent_tool_result(details);
@@ -105,7 +98,6 @@ describe("AgentRuntimeLog", () => {
         details,
         durationMs: 125,
       });
-      log.record_tool_result(TOOL_RESULT_RECORD, message);
       log.record_tool_result(TOOL_RESULT_RECORD, message);
       details.text = "修改后的结果";
       log.finish_run("success");
@@ -121,7 +113,7 @@ describe("AgentRuntimeLog", () => {
       expect(records[2].content).toMatchObject({
         event: "tool_end",
         status: "success",
-        started_at: "2026-09-13T00:00:00.000Z",
+        started_at: "2026-09-13T00:00:01.875Z",
         ended_at: "2026-09-13T00:00:02.000Z",
         duration_ms: 125,
       });
@@ -140,12 +132,12 @@ describe("AgentRuntimeLog", () => {
 
   it("独有 details 和不相同的 JSON 文本完整保留", () => {
     const output = {
-      content: [{ type: "text", text: "网页正文" }],
+      content: [{ type: "text" as const, text: "网页正文" }],
       details: { provider: "fixture", truncated: true },
     };
     expect(normalize_agent_tool_log_output(output)).toEqual({ kind: "content", ...output });
     const formatted = {
-      content: [{ type: "text", text: '{ "value": 1 }' }],
+      content: [{ type: "text" as const, text: '{ "value": 1 }' }],
       details: { value: 1 },
     };
     expect(normalize_agent_tool_log_output(formatted)).toEqual({ kind: "content", ...formatted });
@@ -225,12 +217,7 @@ describe("AgentRuntimeLog", () => {
   it("取消使用 SDK 诊断和原执行停止来源，不补造执行耗时", () => {
     const { log, records } = create_log();
     log.begin_run("round", "prompt");
-    log.handle_event({
-      type: "tool_execution_start",
-      toolCallId: "call",
-      toolName: "fixture_tool",
-      args: {},
-    });
+    log.record_tool_start({ id: "call", name: "fixture_tool", arguments: {} }, Date.now());
     log.record_tool_diagnostic(TOOL_RESULT_RECORD.byTaskId, {
       toolCallId: "call",
       toolName: "fixture_tool",
@@ -253,12 +240,7 @@ describe("AgentRuntimeLog", () => {
     const append = vi.fn<(payload: LogAppendPayload) => void>();
     const log = new AgentRuntimeLog({ append }, "chat-test");
     log.begin_run("round", "prompt");
-    log.handle_event({
-      type: "tool_execution_start",
-      toolCallId: "call",
-      toolName: "fixture_tool",
-      args: {},
-    });
+    log.record_tool_start({ id: "call", name: "fixture_tool", arguments: {} }, Date.now());
     const failure = new Error("工具故障", { cause: new Error("原始原因") });
     log.record_tool_diagnostic(7, {
       toolCallId: "call",

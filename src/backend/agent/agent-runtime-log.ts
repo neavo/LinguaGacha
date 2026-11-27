@@ -4,10 +4,12 @@ import {
   uuidv7,
   type Message,
   type AssistantMessage,
+  type ToolCall,
   type ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import type { EntryRecord } from "@earendil-works/pi-durable";
-import { is_json_record, type JsonValue } from "../../domain/json";
+import { copyJson } from "@earendil-works/chord/json";
+import type { JsonValue } from "../../domain/json";
 import type { AgentAssistantMessagePart } from "../../shared/agent";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { LogWriter } from "../log/log-manager";
@@ -23,13 +25,12 @@ type AgentLogEnd = {
 };
 
 /** 日志消费已经观察到的执行事实，独立于 SDK 的公开事件适配与界面终态。 */
-export type AgentLogInput =
+type AgentLogInput =
   | { type: "message_start" | "message_end"; message: Message; stop_reason?: AgentStopReason }
   | {
       type: "message_update";
       message: AssistantMessage;
     }
-  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
   | { type: "compaction_start"; reason: string; task_id: number }
   | ({
       type: "compaction_end";
@@ -186,6 +187,22 @@ export class AgentRuntimeLog {
     );
   }
 
+  /** 用 SDK 已提交的起点配对结果，并在待写期间持有输入快照。 */
+  public record_tool_start(
+    call: Pick<ToolCall, "id" | "name" | "arguments">,
+    startedAt: number,
+  ): void {
+    const started_at = new Date(startedAt).toISOString();
+    this.tool_start_times.set(call.id, started_at);
+    this.append({
+      event: "tool_start",
+      tool_call_id: call.id,
+      tool_name: call.name,
+      input: copyJson(call.arguments),
+      started_at,
+    });
+  }
+
   /** 捕获时固定原始异常和停止来源，等待 SDK 提交回执关联。 */
   public record_tool_diagnostic(task_id: number, diagnostic: AgentToolLogDiagnostic): void {
     this.tool_diagnostics.set(task_id, {
@@ -194,7 +211,7 @@ export class AgentRuntimeLog {
     });
   }
 
-  /** 所有工具终态从已提交结果结算，包括未进入执行体的校验失败和取消。 */
+  /** 已记录启动的工具用 SDK 结果结算，含执行前的校验失败。 */
   public record_tool_result(
     record: Pick<EntryRecord, "byTaskId" | "data">,
     message: ToolResultMessage,
@@ -204,7 +221,7 @@ export class AgentRuntimeLog {
       record.byTaskId === undefined ? undefined : this.tool_diagnostics.get(record.byTaskId);
     if (record.byTaskId !== undefined) this.tool_diagnostics.delete(record.byTaskId);
     const started_at = this.tool_start_times.get(message.toolCallId);
-    if (started_at === undefined) return; // 恢复时可能只观察到旧任务回执，不补造本次执行。
+    if (started_at === undefined) return; // 未启动的调用和只回放结果的历史任务没有执行日志。
     this.tool_start_times.delete(message.toolCallId);
     const status = read_agent_tool_result_status(record, message);
     const stopped_by = diagnostic?.stop_reason ?? stop_reason;
@@ -295,18 +312,6 @@ export class AgentRuntimeLog {
           );
         }
         break;
-      case "tool_execution_start": {
-        const started_at = new Date().toISOString();
-        this.tool_start_times.set(event.toolCallId, started_at);
-        this.append({
-          event: "tool_start",
-          tool_call_id: event.toolCallId,
-          tool_name: event.toolName,
-          input: json_snapshot(event.args),
-          started_at,
-        });
-        break;
-      }
       case "compaction_start": {
         const started_at = new Date().toISOString();
         this.compaction_start_times.set(event.task_id, started_at);
@@ -360,12 +365,13 @@ export class AgentRuntimeLog {
       ...(diagnostics?.length
         ? {
             // 供应商错误与自由格式详情可能回显请求，只展开已知的输入转换元数据。
-            diagnostics: json_snapshot(
+            diagnostics: copyJson(
               diagnostics.map(({ type, timestamp, details }) =>
                 type === "openai_input_transformations"
                   ? { type, timestamp, details }
                   : { type, timestamp },
               ),
+              { omitUndefinedProperties: true },
             ),
           }
         : {}),
@@ -427,34 +433,22 @@ export class AgentRuntimeLog {
   }
 }
 
-/** 只去掉 agent_tool_result 的可逐字重建副本；网页等独有 details 仍完整保留。 */
-export function normalize_agent_tool_log_output(result: {
-  content: readonly unknown[];
-  details?: unknown;
-}): AgentToolLogOutput {
-  // 文本块保留原文，图片块仅保留媒体类型，避免诊断日志复制图片字节。
-  const content = json_snapshot(
-    result.content.map((part) => {
-      if (is_json_record(part) && part["type"] === "image")
-        return { type: "image", mimeType: part["mimeType"] };
-      return part;
-    }),
-  ) as JsonValue[];
-  const details = result.details === undefined ? undefined : json_snapshot(result.details);
-  const first = content[0];
+/** 可逐字重建的工具正文只存一份，独有 details 和文本原样保留，图片只存媒体类型。 */
+export function normalize_agent_tool_log_output(
+  result: Pick<ToolResultMessage, "content" | "details">,
+): AgentToolLogOutput {
+  const details = result.details === undefined ? undefined : copyJson(result.details);
+  const first = result.content[0];
   if (
-    content.length === 1 &&
-    is_json_record(first) &&
-    first["type"] === "text" &&
+    result.content.length === 1 &&
+    first?.type === "text" &&
     Object.keys(first).length === 2 &&
     details !== undefined &&
-    first["text"] === JsonTool.stringifyStrict(details)
+    first.text === JsonTool.stringifyStrict(details)
   )
     return { kind: "json", value: details };
+  const content = result.content.map<JsonValue>((part) =>
+    part.type === "image" ? { type: "image", mimeType: part.mimeType } : { ...part },
+  );
   return { kind: "content", content, ...(details === undefined ? {} : { details }) };
-}
-
-/** 输入与结果是 SDK JSON 载荷，序列化同时冻结引用，完整正文不经过诊断裁剪。 */
-function json_snapshot(value: unknown): JsonValue {
-  return JsonTool.parseStrict<JsonValue>(JsonTool.stringifyStrict(value));
 }

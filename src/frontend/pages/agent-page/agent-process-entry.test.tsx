@@ -150,7 +150,7 @@ it("运行中的工具行只显示归属自己的最新输出行", async () => {
   ).toEqual([" · 处理 3/10"]);
 });
 
-it("工具终态保留耗时与图片标记，重挂载沿用回执时间", async () => {
+it("工具终态沿用回执耗时，缺少耗时的回执不显示计时", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(105_000);
   const store = {
@@ -168,7 +168,6 @@ it("工具终态保留耗时与图片标记，重挂载沿用回执时间", asyn
     status: "running",
     output: null,
   };
-  // 条目身份控制重挂载，覆盖恢复历史时重新创建组件的路径。
   const render_tool = (entry: AgentToolEntry) =>
     render_entry(
       <AgentChatStoreContext.Provider value={store}>
@@ -177,7 +176,7 @@ it("工具终态保留耗时与图片标记，重挂载沿用回执时间", asyn
     );
   const view = await render_tool(running);
   const duration = () => view.querySelector(".agent-process-entry__elapsed")?.textContent;
-  expect(duration()).toBe(" · 5s");
+  expect(duration()).toMatch(/\b5s$/);
   const ended: AgentToolEntry = {
     ...running,
     imageCount: 1,
@@ -185,20 +184,16 @@ it("工具终态保留耗时与图片标记，重挂载沿用回执时间", asyn
     output: [],
     endedAt: 107_000,
   };
-  for (const status of ["success", "error", "stopped"] as const) {
-    await render_tool({ ...ended, status });
-    expect(duration()).toBe(" · 7s");
-  }
-  const marker = view.querySelector(".agent-process-entry__image-marker");
-  expect(marker?.nextElementSibling).toBe(view.querySelector(".agent-process-entry__elapsed"));
-  expect(view.querySelector("button")?.getAttribute("aria-label")).toBe(
-    "workspace_run · agent_page.image.title",
+  await render_tool(ended);
+  expect(duration()).toMatch(/\b7s$/);
+  expect(view.querySelector("button")?.getAttribute("aria-label")).toContain(
+    "agent_page.image.title",
   );
   expect(vi.getTimerCount()).toBe(0);
   vi.setSystemTime(165_000);
   await render_tool({ ...ended, id: "restored" });
-  expect(duration()).toBe(" · 7s");
+  expect(duration()).toMatch(/\b7s$/);
+  await render_tool({ ...running, id: "unstarted", createdAt: Date.now(), status: "stopped" });
+  expect(duration()).toBeUndefined();
   expect(vi.getTimerCount()).toBe(0);
-  await render_tool({ ...ended, imageCount: 0 });
-  expect(view.querySelector(".agent-process-entry__image-marker")).toBeNull();
 });

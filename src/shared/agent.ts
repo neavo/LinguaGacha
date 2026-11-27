@@ -166,8 +166,8 @@ type AgentToolEntryBase = JsonRecord & {
   toolName: string;
   input: string;
   imageCount: number; // 未提交回执或无图时为 0。
-  createdAt: number;
-  endedAt: number | null; // 由已持久化工具回执的时间戳投影，运行中为 null。
+  createdAt: number; // 工具执行起点，缺少实测耗时时取回执时间戳。
+  endedAt: number | null; // 实测执行区间的终点，运行中或缺少实测耗时时为 null。
 };
 
 /** 工具终帧按顺序保留文本块原文。数组为空表示没有文本输出，块间排版由前端负责。 */

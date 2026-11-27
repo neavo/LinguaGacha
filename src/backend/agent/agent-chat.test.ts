@@ -1,3 +1,4 @@
+import { addAbortListener } from "node:events";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -189,6 +190,89 @@ it("工具等待投影刷新完成后执行，并能立即读取自己的公开�
   expect(entry_id).toBeDefined();
   expect(chat.entries).toContainEqual(expect.objectContaining({ id: entry_id, kind: "tool_call" }));
 });
+
+it.each(["success", "stopped"] as const)(
+  "串行工具按实际启动公开并记录日志（%s）",
+  async (status) => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const tool = define_agent_tool({
+      name: "sequential_fixture",
+      description: "测试串行调用",
+      parameters: Type.Object({}),
+      executionMode: "sequential",
+      execute: async (_params, api, context) => {
+        if (api.callId === "first") {
+          const signal = context.abortSignal!;
+          using _listener = addAbortListener(signal, () => release.reject(signal.reason));
+          started.resolve();
+          await release.promise;
+        }
+        return agent_tool_result({});
+      },
+    });
+    const { chat, provider, append } = await create_chat(undefined, { tools: [tool] });
+    const tool_entries = () => chat.entries.filter((entry) => entry.kind === "tool_call");
+    const tool_logs = () =>
+      append.mock.calls
+        .map(([payload]) => payload.content as AgentLogContent)
+        .filter((record) => record.event === "tool_start" || record.event === "tool_end");
+    provider.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(tool.name, {}, { id: "first" }),
+          fauxToolCall(tool.name, {}, { id: "second" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("完成"),
+    ]);
+    const running = talk(chat, "依次调用");
+    try {
+      await Promise.race([started.promise, running]);
+      expect(tool_entries()).toMatchObject([{ status: "running", endedAt: null }]);
+      expect(tool_logs()).toMatchObject([
+        {
+          event: "tool_start",
+          tool_call_id: "first",
+          started_at: new Date(tool_entries()[0]!.createdAt).toISOString(),
+        },
+      ]);
+      if (status === "stopped") {
+        chat.execution!.stop_reason = "user";
+        chat.execution!.controller.abort();
+        await chat.stop();
+      }
+    } finally {
+      release.resolve();
+      await running;
+    }
+
+    const logs = tool_logs();
+    const first_end = {
+      event: "tool_end",
+      tool_call_id: "first",
+      status,
+      duration_ms: expect.any(Number),
+    };
+    expect(logs).toMatchObject(
+      status === "success"
+        ? [
+            { event: "tool_start", tool_call_id: "first" },
+            first_end,
+            { event: "tool_start", tool_call_id: "second" },
+            { event: "tool_end", tool_call_id: "second", status },
+          ]
+        : [{ event: "tool_start", tool_call_id: "first" }, first_end],
+    );
+    const first_result = logs.find((record) => record.event === "tool_end")!;
+    const ended_at = Date.parse(first_result.ended_at);
+    expect(tool_entries()).toMatchObject([
+      { status, endedAt: ended_at, createdAt: ended_at - first_result.duration_ms! },
+      { status, endedAt: status === "success" ? expect.any(Number) : null },
+    ]);
+  },
+);
 
 it("异步投影失败保留错误并拒绝陈旧成功回执", async () => {
   const { chat } = await create_chat();
@@ -464,7 +548,11 @@ async function talk(chat: AgentChat, text: string) {
     "round",
   );
   await chat.run(input, execution);
-  await chat.finish_round(execution, "success", null);
+  await chat.finish_round(
+    execution,
+    execution.controller.signal.aborted ? "stopped" : "success",
+    null,
+  );
   chat.execution = null;
   return execution;
 }

@@ -1,16 +1,19 @@
 import { isDeepStrictEqual } from "node:util";
 import type { AssistantMessage, ImageContent } from "@earendil-works/pi-ai";
-import type {
-  CommitPublication,
-  ConversationRecord,
-  EntryRecord,
-  LiveState,
-  SubmissionRecord,
-  TaskRecord,
-  UsageState,
+import {
+  ToolTask,
+  type CommitPublication,
+  type ConversationRecord,
+  type EntryId,
+  type EntryRecord,
+  type LiveState,
+  type SubmissionRecord,
+  type TaskRecord,
+  type ToolTaskInput,
+  type UsageState,
 } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord/json";
-import type { AgentEntry, AgentUsageSnapshot } from "../../shared/agent";
+import type { AgentEntry, AgentToolEntry, AgentUsageSnapshot } from "../../shared/agent";
 import { SUPPORTED_RASTER_IMAGE_MIMES } from "../../shared/image-formats";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
@@ -27,8 +30,20 @@ export const assistant_entry_id = (task: number | undefined, entry: number): str
 const UNCOMMITTED_ENTRY_ORDER = Number.MAX_SAFE_INTEGER; // 尚无 SDK 条目身份的正文暂居轮次末尾
 
 type TaskRecordValue = TaskRecord<JsonValue, JsonValue, JsonValue>;
-type Row = { order: number; entry: AgentEntry };
+type Row = { order: number; rank: number; entry: AgentEntry };
+type ToolCallMeta = {
+  recordId: EntryId;
+  rank: number;
+  entry: Pick<AgentToolEntry, "kind" | "id" | "toolName" | "input">;
+};
+type StartedToolTask = Readonly<{
+  assistant: EntryId;
+  callId: string;
+  startedAt: number;
+}>;
 export type AgentTimelineChange = { replace: boolean; entries: AgentEntry[] };
+
+const compare_row = (a: Row, b: Row): number => a.order - b.order || a.rank - b.rank;
 
 /** 可重建的公开投影。原始事实和查询索引只在这里保存，正文更新不扫描历史。 */
 export class AgentChatView {
@@ -45,12 +60,13 @@ export class AgentChatView {
   private readonly rows = new Map<string, Row>();
   private readonly inputSubmissions = new Map<number, SubmissionRecord>(); // 旧历史通过条目身份定位原提交回执
   private readonly compactionSubmissions = new Map<number, number>(); // 写入回执身份到压缩任务身份。
-  private readonly calls = new Map<string, string>(); // 工具调用身份到公开条目的查询索引
+  private readonly toolCalls = new Map<string, ToolCallMeta>(); // 只索引可见的助手记录，以原记录身份配对
+  private readonly activeToolTasks = new Map<number, StartedToolTask>(); // 跨分支保留尚未结算的首次启动事实
   private readonly toolImages = new Map<string, readonly Readonly<ImageContent>[]>(); // 已提交工具回执的可见图片索引
   private readonly userRecords = new Map<string, EntryRecord>(); // 轮次状态变化时定位原用户消息
   private readonly changed = new Map<string, AgentEntry>(); // 尚未发布的条目，同一身份只保留最新值
   private readonly pendingRecords = new Set<number>();
-  private readonly pendingTasks = new Set<number>();
+  private readonly pendingCompactions = new Set<number>();
   private readonly totals = new Map<number, AgentUsageSnapshot>(); // 各分支已计入的用量，历史修订继续保留累计消耗
   private order: string[] = [];
   private currentRound: string | undefined; // 按历史顺序推进的当前产品轮次
@@ -80,8 +96,9 @@ export class AgentChatView {
       .sort((a, b) => a.id - b.id);
   }
 
-  /** 同步提交监听器只记录失效范围，后续刷新在提交线外运行。 */
-  public observe(publication: CommitPublication): void {
+  /** 索引已提交事实并交付本批首次工具启动，后续刷新在提交线外运行。 */
+  public observe(publication: CommitPublication): StartedToolTask[] {
+    const startedTools: StartedToolTask[] = [];
     for (const change of publication.changes) {
       if (change.type === "entry") {
         this.records.set(change.value.id, change.value);
@@ -92,11 +109,23 @@ export class AgentChatView {
         this.submissions.set(change.value.id, change.value);
         this.index_input_submission(change.value);
         const taskId = this.compactionSubmissions.get(change.value.id);
-        if (taskId !== undefined) this.pendingTasks.add(taskId);
+        if (taskId !== undefined) this.pendingCompactions.add(taskId);
       } else if (change.type === "task" && change.value.kind === "pi.compaction") {
         this.compactions.set(change.value.id, change.value);
         this.index_compaction_submission(change.value);
-        this.pendingTasks.add(change.value.id);
+        this.pendingCompactions.add(change.value.id);
+      } else if (change.type === "task" && change.value.kind === ToolTask.definition.name) {
+        const { id, startedAt, state } = change.value;
+        if (state.status === "terminal") {
+          this.activeToolTasks.delete(id);
+          continue;
+        }
+        if (startedAt === undefined || this.activeToolTasks.has(id)) continue;
+        const input = change.value.input as ToolTaskInput; // 固定的 SDK 任务类型拥有输入契约。
+        if (input.kind !== "model") continue;
+        const task = { assistant: input.assistant, callId: input.callId, startedAt };
+        this.activeToolTasks.set(id, task);
+        startedTools.push(task);
       } else if (
         change.type === "document" &&
         change.kind === "change" &&
@@ -106,6 +135,7 @@ export class AgentChatView {
         this.pendingUsages.set(change.conversationId, change.value as UsageState);
       }
     }
+    return startedTools;
   }
 
   /** 旧用户条目通过输入回执查找产品轮次。 */
@@ -163,6 +193,7 @@ export class AgentChatView {
         const record = this.records.get(id)!;
         if (this.visible(record.conversationId, id)) this.read_record(record);
       }
+      this.read_active_tools();
       if (previous.rounds !== state.rounds) {
         for (const [id, round] of Object.entries(state.rounds)) {
           if (round === previous.rounds[id]) continue;
@@ -173,12 +204,13 @@ export class AgentChatView {
       // 时间元数据独立提交时也更新对应条目，覆盖刷新期间新任务到达的情况。
       if (previous.compactionStartedAt !== state.compactionStartedAt) {
         for (const [id, startedAt] of Object.entries(state.compactionStartedAt)) {
-          if (startedAt !== previous.compactionStartedAt[id]) this.pendingTasks.add(Number(id));
+          if (startedAt !== previous.compactionStartedAt[id])
+            this.pendingCompactions.add(Number(id));
         }
       }
-      for (const id of this.pendingTasks) {
+      for (const id of this.pendingCompactions) {
         const task = this.compactions.get(id)!;
-        if (this.visible(task.conversationId, id)) this.read_task(task);
+        if (this.visible(task.conversationId, id)) this.read_compaction(task);
       }
       if (this.liveChanged || previous.rounds !== state.rounds) this.read_live(this.live, stopping);
     }
@@ -195,7 +227,7 @@ export class AgentChatView {
       this.totals.set(id, total);
     }
     this.pendingRecords.clear();
-    this.pendingTasks.clear();
+    this.pendingCompactions.clear();
     this.pendingUsages.clear();
     this.liveChanged = false;
   }
@@ -204,7 +236,7 @@ export class AgentChatView {
   private reset(state: Readonly<AgentChatData>): void {
     this.state = state;
     this.rows.clear();
-    this.calls.clear();
+    this.toolCalls.clear();
     this.toolImages.clear();
     this.userRecords.clear();
     this.changed.clear();
@@ -216,21 +248,22 @@ export class AgentChatView {
     this.restoring = true;
     try {
       for (const record of this.branch_records()) this.read_record(record);
+      this.read_active_tools();
       for (const task of this.compactions.values()) {
-        if (this.visible(task.conversationId, task.id)) this.read_task(task);
+        if (this.visible(task.conversationId, task.id)) this.read_compaction(task);
       }
       this.read_live(this.live);
     } finally {
       this.restoring = false;
     }
-    this.order = [...this.rows.keys()].sort(
-      (a, b) => this.rows.get(a)!.order - this.rows.get(b)!.order,
-    );
+    this.order = [...this.rows.keys()];
+    this.sort_order();
   }
 
-  /** 按工具调用身份查找公开条目，投影尚未处理该调用时返回 `undefined`。 */
+  /** 工具已实际启动或收到结果后，才有可公开查询的条目。 */
   public tool_entry_id(callId: string): string | undefined {
-    return this.calls.get(callId);
+    const id = this.toolCalls.get(callId)?.entry.id;
+    return id !== undefined && this.rows.has(id) ? id : undefined;
   }
 
   /** 读取当前公开分支上工具条目的可见图片，分支切换或无图时返回 `undefined`。 */
@@ -247,32 +280,38 @@ export class AgentChatView {
   }
 
   /** 同一身份原位更新，删除或非尾部顺序变化要求发布完整快照。 */
-  private put(entry: AgentEntry, order: number): void {
+  private put(entry: AgentEntry, order: number, rank = 0): void {
+    const row = { entry, order, rank };
     const previous = this.rows.get(entry.id);
-    if (previous?.order === order && isDeepStrictEqual(previous.entry, entry)) return;
-    this.rows.set(entry.id, { entry, order });
+    const moved = previous !== undefined && compare_row(previous, row) !== 0;
+    if (previous !== undefined && !moved && isDeepStrictEqual(previous.entry, entry)) return;
+    this.rows.set(entry.id, row);
     if (this.restoring) return;
     if (previous === undefined) {
       const last = this.order.at(-1);
-      if (last === undefined || this.rows.get(last)!.order <= order) this.order.push(entry.id);
-      else {
-        this.order.push(entry.id);
-        this.order.sort((a, b) => this.rows.get(a)!.order - this.rows.get(b)!.order);
+      this.order.push(entry.id);
+      if (last !== undefined && compare_row(this.rows.get(last)!, row) > 0) {
+        this.sort_order();
         this.replace = true;
       }
-    } else if (previous.order !== order) {
+    } else if (moved) {
       const index = this.order.indexOf(entry.id);
       const before = this.order[index - 1];
       const after = this.order[index + 1];
       if (
-        (before !== undefined && this.rows.get(before)!.order > order) ||
-        (after !== undefined && this.rows.get(after)!.order < order)
+        (before !== undefined && compare_row(this.rows.get(before)!, row) > 0) ||
+        (after !== undefined && compare_row(this.rows.get(after)!, row) < 0)
       ) {
-        this.order.sort((a, b) => this.rows.get(a)!.order - this.rows.get(b)!.order);
+        this.sort_order();
         this.replace = true;
       }
     }
     this.changed.set(entry.id, entry);
+  }
+
+  /** 插入、条目移位和分支重建沿用同一顺序。 */
+  private sort_order(): void {
+    this.order.sort((a, b) => compare_row(this.rows.get(a)!, this.rows.get(b)!));
   }
 
   /** 移除已撤回的临时正文，并让前端重新取得完整顺序。 */
@@ -345,53 +384,70 @@ export class AgentChatView {
           );
         }
         if (parts === null) this.remove(id);
-        for (const call of read_agent_tool_calls(message)) {
-          const id = `tool:${record.id}:${call.id}`;
-          this.calls.set(call.id, id);
-          this.toolImages.delete(id);
-          this.put(
-            {
+        for (const [index, call] of read_agent_tool_calls(message).entries()) {
+          this.toolCalls.set(call.id, {
+            recordId: record.id,
+            rank: index + 1, // 同一助手条目先排正文，工具按声明顺序排列。
+            entry: {
               kind: "tool_call",
-              id,
+              id: `tool:${record.id}:${call.id}`,
               toolName: call.name,
               input: JsonTool.stringifyStrict(call.arguments),
-              status: "running",
-              output: null,
-              imageCount: 0,
-              createdAt: message.timestamp,
-              endedAt: null,
             },
-            record.id,
-          );
+          });
         }
       } else if (message.role === "toolResult") {
-        const id = this.calls.get(message.toolCallId);
-        const row = id === undefined ? undefined : this.rows.get(id);
-        if (row?.entry.kind !== "tool_call") continue;
+        const call = this.toolCalls.get(message.toolCallId);
+        if (call === undefined) continue;
         const images = message.content.filter(
           (part): part is ImageContent =>
             part.type === "image" &&
             part.data.length > 0 &&
             SUPPORTED_RASTER_IMAGE_MIMES.has(part.mimeType),
         );
-        if (images.length > 0) this.toolImages.set(row.entry.id, images);
-        else this.toolImages.delete(row.entry.id);
+        if (images.length > 0) this.toolImages.set(call.entry.id, images);
+        const duration = message.durationMs;
+        const timed = duration !== undefined && Number.isFinite(duration) && duration >= 0;
         this.put(
           {
-            ...row.entry,
+            ...call.entry,
             status: read_agent_tool_result_status(record, message),
-            endedAt: message.timestamp,
+            createdAt: timed
+              ? Math.max(0, Math.round(message.timestamp - duration))
+              : message.timestamp,
+            endedAt: timed ? message.timestamp : null,
             output: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
             imageCount: images.length,
           },
-          row.order,
+          call.recordId,
+          call.rank,
         );
       }
     }
   }
 
+  /** 先读可见历史，再补上已启动且尚无公开条目的工具。 */
+  private read_active_tools(): void {
+    for (const task of this.activeToolTasks.values()) {
+      const call = this.toolCalls.get(task.callId);
+      if (call?.recordId !== task.assistant || this.rows.has(call.entry.id)) continue;
+      this.put(
+        {
+          ...call.entry,
+          status: "running",
+          output: null,
+          imageCount: 0,
+          createdAt: task.startedAt,
+          endedAt: null,
+        },
+        call.recordId,
+        call.rank,
+      );
+    }
+  }
+
   /** 选择切点时隐藏运行块，确认摘要范围后公开，失败保留诊断条目。 */
-  private read_task(task: TaskRecordValue): void {
+  private read_compaction(task: TaskRecordValue): void {
     const { status } = read_agent_compaction_result(task, this.submissions);
     const startedAt = this.state.compactionStartedAt[task.id];
     const id = `compaction:${task.id}`;

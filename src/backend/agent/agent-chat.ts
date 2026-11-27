@@ -986,7 +986,7 @@ export class AgentChat {
     return this.closing;
   }
 
-  /** 只消费已落盘的条目与回执，观察回调内不进入 SDK 会话队列。 */
+  /** 同步接收 SDK 提交，投影刷新与日志写入在回调外执行。 */
   private observe_commit(publication: CommitPublication): void {
     // 整批文档先接收，后续状态判断不依赖提交内各类 change 的排列顺序。
     for (const change of publication.changes) {
@@ -1016,19 +1016,17 @@ export class AgentChat {
       )
         this.observe_compaction(change.value);
     }
-    this.view.observe(publication);
+    for (const task of this.view.observe(publication)) {
+      const message = this.view.records
+        .get(task.assistant)
+        ?.model?.find((message) => message.role === "assistant");
+      const call =
+        message && read_agent_tool_calls(message).find((call) => call.id === task.callId);
+      if (call !== undefined) this.log.record_tool_start(call, task.startedAt);
+    }
     for (const change of publication.changes) {
       if (change.type === "entry") {
         for (const message of change.value.model ?? []) {
-          if (message.role === "assistant")
-            for (const call of read_agent_tool_calls(message)) {
-              this.log.handle_event({
-                type: "tool_execution_start",
-                toolCallId: call.id,
-                toolName: call.name,
-                args: call.arguments,
-              });
-            }
           // 工具结果是日志终态的唯一入口，校验失败和取消也由 SDK 回执封口。
           if (message.role === "toolResult")
             this.log.record_tool_result(
