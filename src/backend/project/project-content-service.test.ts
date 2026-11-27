@@ -136,7 +136,6 @@ function create_public_item(overrides: JsonRecord = {}): JsonRecord {
     file_type: "TXT",
     file_path: "a.txt",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }
@@ -942,59 +941,6 @@ describe("ProjectContentService", () => {
       await database.close();
     }
   });
-  it("TRANS 替换在引擎变更或移除后仍继承译文", async () => {
-    const { database, service, lg_path } = await create_service();
-    const source = project_path("game.trans");
-    try {
-      for (const [engine, expected_translation] of [
-        ["kag", ""],
-        ["wolf", "译文"],
-        [undefined, "译文"],
-      ] as const) {
-        fs.writeFileSync(
-          source,
-          JSON.stringify({
-            project: {
-              gameEngine: engine,
-              files: { chapter: { data: [["こんにちは", ""]] } },
-            },
-          }),
-        );
-        await service.import_files({
-          files: [{ source_path: source, target_rel_path: "game.trans" }],
-          conflict_action: "replace",
-          inheritance_mode: "inherit",
-          expected_section_revisions: await database.read(lg_path, (access) =>
-            new ProjectDataReader(access).build_section_revisions(access.get_all_meta(lg_path)),
-          ),
-        });
-        expect(
-          (
-            await database.read(lg_path, (access) =>
-              new ProjectDataReader(access).build_files_record_block(lg_path),
-            )
-          )["game.trans"],
-        ).toMatchObject({
-          file_type: "TRANS",
-          game_engine: engine ?? "",
-        });
-        const items = await database.get_all_items(lg_path);
-        expect(items).toMatchObject([
-          { dst: expected_translation, status: expected_translation === "" ? "NONE" : "PROCESSED" },
-        ]);
-        // 下一次替换以已完成条目为候选，引擎变化不影响继承。
-        await database.transaction(lg_path, (writer) =>
-          writer.set_items(
-            lg_path,
-            items.map((item) => ({ ...item, dst: "译文", status: "PROCESSED" })),
-          ),
-        );
-      }
-    } finally {
-      await database.close();
-    }
-  });
-
   it("同批同名游戏只分配一次，已有 game_2 保持不变且提交沿用预览名称", async () => {
     const { database, service, lg_path } = await create_service();
     try {
@@ -1183,18 +1129,18 @@ describe("ProjectContentService", () => {
       }
     },
   );
-  it("导入预览只发现候选，损坏内容留到正式提交时报告", async () => {
+  it("导入预览和提交都排除不支持的来源，损坏 JSON 仍保留底稿", async () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-import-preview-"));
     const source = path.join(temp.path, "script.txt");
     const broken = path.join(temp.path, "broken.json");
-    const ignored = path.join(temp.path, "ignored.bin");
+    const retired = ["ignored.xlsx", "ignored.trans"].map((file) => path.join(temp.path, file));
     fs.writeFileSync(source, "原文");
     fs.writeFileSync(broken, "{");
-    fs.writeFileSync(ignored, "ignored");
-    const { database, service } = await create_service();
+    for (const file of retired) fs.writeFileSync(file, "ignored");
+    const { database, service, lg_path } = await create_service();
     try {
       const preview = await service.preview_import_files({
-        source_paths: [source, broken, ignored],
+        source_paths: [source, broken, ...retired],
       });
       expect(preview).toEqual({
         files_revision: 0,
@@ -1204,12 +1150,18 @@ describe("ProjectContentService", () => {
           { source_path: broken, target_rel_path: "broken.json", conflict: false },
         ],
       });
-      const result = await service.import_files({
-        files: preview.files!,
+      await service.import_files({
+        files: [
+          ...preview.files!,
+          ...retired.map((file) => ({ source_path: file, target_rel_path: path.basename(file) })),
+        ],
         conflict_action: "replace",
         expected_section_revisions: { files: 0, items: 0 },
       });
-      expect(result.source_operation).toEqual({ saved_assets: 2, directory_changes: [] });
+      expect((await database.get_all_asset_records(lg_path)).map((asset) => asset.path)).toEqual([
+        "script.txt",
+        "broken.json",
+      ]);
     } finally {
       await database.close();
     }
@@ -1763,29 +1715,10 @@ describe("ProjectContentService", () => {
     await database.close();
   });
 
-  it.each([
-    {
-      file: "source.json",
-      file_type: "KVJSON",
-      content: JSON.stringify({ 翻訳済みの文章: "源文件译文", 未翻訳の文章: "" }),
-    },
-    {
-      file: "source.trans",
-      file_type: "TRANS",
-      content: JSON.stringify({
-        project: {
-          files: {
-            chapter: {
-              data: [
-                ["翻訳済みの文章", "源文件译文"],
-                ["未翻訳の文章", ""],
-              ],
-            },
-          },
-        },
-      }),
-    },
-  ])("全部重置从 $file 的工程资产恢复自带译文", async ({ file, file_type, content }) => {
+  it("全部重置从工程内的 KVJSON 资产恢复自带译文", async () => {
+    const file = "source.json";
+    const file_type = "KVJSON";
+    const content = JSON.stringify({ 翻訳済みの文章: "源文件译文", 未翻訳の文章: "" });
     const { database, service, lg_path } = await create_service();
     try {
       const source = project_path(file);

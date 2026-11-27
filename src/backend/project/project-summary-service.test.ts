@@ -96,7 +96,6 @@ function create_item(overrides: JsonRecord): JsonRecord {
     file_type: "TXT",
     file_path: "script.txt",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }

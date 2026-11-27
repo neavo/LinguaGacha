@@ -388,7 +388,6 @@ export class ProjectContentService {
         rel_path: file.rel_path,
         file_type: file.file_type,
         sort_index,
-        ...(file.game_engine === undefined ? {} : { game_engine: file.game_engine }),
       };
       for (const item of file.parsed_items) {
         id += 1;

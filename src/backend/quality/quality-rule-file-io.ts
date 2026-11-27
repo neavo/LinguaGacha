@@ -1,5 +1,4 @@
-import ExcelJS from "exceljs";
-import { read_workbook, cell_text, write_cell } from "../file/shared/spreadsheet";
+import ExcelJS, { type CellValue, type Worksheet } from "exceljs";
 
 import type { JsonRecord } from "../../domain/json";
 import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/native-fs";
@@ -47,16 +46,29 @@ export async function export_quality_rule_entries_to_files(
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("rules");
   sheet.columns = RULE_COLUMNS.map(() => ({ width: RULE_COLUMN_WIDTH }));
-  RULE_COLUMNS.forEach((label, index) => write_cell(sheet, 1, index + 1, label, RULE_FONT_SIZE));
+  RULE_COLUMNS.forEach((label, index) => write_rule_cell(sheet, 1, index + 1, label));
   export_entries.forEach((entry, index) =>
     RULE_COLUMNS.forEach((key, column) =>
-      write_cell(sheet, index + 2, column + 1, entry[key] as string | boolean, RULE_FONT_SIZE),
+      write_rule_cell(sheet, index + 2, column + 1, entry[key] as string | boolean),
     ),
   );
   native_fs.write_file_sync(
     `${base_path}.xlsx`,
     normalize_native_file_bytes(await workbook.xlsx.writeBuffer()),
   );
+}
+
+/** 外部规则的公式样文本需要按字符串写出，供用户打开或再次导入。 */
+function write_rule_cell(
+  sheet: Worksheet,
+  row: number,
+  column: number,
+  value: string | boolean,
+): void {
+  const cell = sheet.getCell(row, column);
+  cell.value = typeof value === "string" && value.startsWith("=") ? "'" + value : value;
+  cell.font = { size: RULE_FONT_SIZE };
+  cell.alignment = { wrapText: true, vertical: "middle", horizontal: "left" };
 }
 
 /**
@@ -119,7 +131,11 @@ async function load_quality_rule_entries_from_xlsx(
   file_path: string,
   native_fs: NativeFs,
 ): Promise<QualityRuleFileEntry[]> {
-  const workbook = await read_workbook(native_fs.read_file(file_path));
+  const workbook = new ExcelJS.Workbook();
+  // ExcelJS 的 Buffer 声明与当前 Node 类型存在差异。
+  await workbook.xlsx.load(
+    native_fs.read_file(file_path) as unknown as Parameters<typeof workbook.xlsx.load>[0],
+  );
   const sheet = workbook.worksheets[0];
   const result: QualityRuleFileEntry[] = [];
   sheet?.eachRow((row) => {
@@ -137,6 +153,16 @@ async function load_quality_rule_entries_from_xlsx(
     });
   });
   return result;
+}
+
+/** 公式读取缓存值，链接和富文本读取用户看到的文字。 */
+function cell_text(value: CellValue): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object" && "text" in value) return value.text;
+  if (typeof value === "object" && "richText" in value)
+    return value.richText.map((part) => part.text).join("");
+  if (typeof value === "object" && "result" in value) return String(value.result ?? "");
+  return String(value);
 }
 
 /**
@@ -197,7 +223,7 @@ function push_normalized_rule(result: unknown[], entry: QualityRuleFileEntry): v
 /** JSON 数组只投影外部可维护字段，字段值留给具体规则边界校验。 */
 function project_external_rule_fields(entry: QualityRuleFileEntry): QualityRuleFileEntry {
   const result: QualityRuleFileEntry = {};
-  for (const key of ["src", "dst", "info", "regex", "case_sensitive"] as const) {
+  for (const key of RULE_COLUMNS) {
     if (Object.hasOwn(entry, key)) {
       result[key] = entry[key]!; // 自有 JSON 字段的值不会是 undefined。
     }

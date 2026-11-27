@@ -190,12 +190,6 @@ describe("ProjectLifecycleService", () => {
     const root = create_temp_dir();
     const project_path = path.join(root, "current.lg");
     const source = write_file(path.join(root, "source.txt"), "こんにちは\nこんにちは");
-    const trans = write_file(
-      path.join(root, "game.trans"),
-      JSON.stringify({
-        project: { gameEngine: "kag", files: { chapter: { data: [["こんにちは", ""]] } } },
-      }),
-    );
     const game = path.join(root, "game");
     const exe = write_file(path.join(game, "GamePro.exe"));
     fs.writeFileSync(path.join(game, "dialogue.json"), "{");
@@ -213,7 +207,7 @@ describe("ProjectLifecycleService", () => {
       const { snapshot: created_snapshot } = await service.create_project_commit(
         {
           path: project_path,
-          source_paths: [source, trans, exe],
+          source_paths: [source, exe],
         },
         signal,
       );
@@ -222,7 +216,6 @@ describe("ProjectLifecycleService", () => {
         glossary_enable: true,
         "migration.asset_file_type_complete": true,
       });
-      expect(created_snapshot.files["game.trans"]).toMatchObject({ game_engine: "kag" });
       expect(created_snapshot.files["game.wolfrpg"]).toMatchObject({ file_type: "WOLFRPG" });
       expect(created_snapshot.items).toEqual(
         expect.arrayContaining([expect.objectContaining({ src: "原文", file_type: "WOLFRPG" })]),

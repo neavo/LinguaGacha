@@ -22,7 +22,6 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
     file_type: "TXT",
     file_path: "",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }

@@ -64,7 +64,6 @@ function create_item(): ProjectItemPublicRecord {
     file_type: "TXT",
     file_path: "script.txt",
     status: "PROCESSED",
-    skip_internal_filter: false,
   };
 }
 

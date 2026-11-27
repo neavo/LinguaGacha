@@ -15,7 +15,6 @@ describe("MarkdownV2BlockMigration", () => {
         legacy_item(4, 3, "段落第二行", {
           dst: "Second",
           status: "PROCESSED",
-          skip_internal_filter: true,
         }),
         legacy_item(5, 4, "", { status: "EXCLUDED" }),
         legacy_item(6, 5, "```ts", { status: "EXCLUDED" }),
@@ -59,7 +58,6 @@ describe("MarkdownV2BlockMigration", () => {
         dst: "First\nSecond",
         row: 2,
         status: "PROCESSED",
-        skip_internal_filter: true,
       }),
       expect.objectContaining({
         id: 6,
@@ -190,7 +188,6 @@ function legacy_item(
     file_path: "demo.md",
     text_type: "MD",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }

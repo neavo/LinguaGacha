@@ -19,20 +19,14 @@ import {
 it("普通原稿按资产相对路径保留原始字节", async () => {
   using root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-sources-"));
   const bytes = Buffer.from([0, 128, 255, 254, 65, 0]);
-  const files = ["TXT", "PDF", "XLSX", "WOLFXLSX"].map((file_type) => ({
-    file_path: `资料/文件.${file_type.toLowerCase()}`,
-    file_type,
-  }));
+  const file = { file_path: "资料/文件.txt", file_type: "TXT" };
   await write_agent_workspace_sources({
     nativeFs: new NativeFs(),
     sourceRoot: path.join(root.path, "sources"),
-    files,
+    files: [file],
     readAsset: () => bytes,
   });
-  for (const file of files)
-    expect(fs.readFileSync(path.join(root.path, "sources", file.file_path)).equals(bytes)).toBe(
-      true,
-    );
+  expect(fs.readFileSync(path.join(root.path, "sources", file.file_path))).toEqual(bytes);
 });
 
 it.each([

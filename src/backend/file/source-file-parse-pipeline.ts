@@ -23,7 +23,6 @@ export type SourceFileAsset = Readonly<{
 export type SourceFileParsedDraft = {
   rel_path: string;
   file_type: ItemFileType; // 解析器提供文件身份，零条目字幕也保留类型
-  game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
   content: Uint8Array;
   image?: {
     book: import("../../shared/image-package").ImageBook;
@@ -158,7 +157,6 @@ export class SourceFileParsePipeline {
       draft.file_type = parsed.file_type;
       draft.parsed_items = parsed.items;
       if (parsed.image) draft.image = parsed.image;
-      if (parsed.game_engine !== undefined) draft.game_engine = parsed.game_engine;
       return {
         draft,
         warnings: parsed.warnings ?? [],

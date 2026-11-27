@@ -89,11 +89,11 @@ it("显式选择不包含新增文件，清空选择和空候选保持为空", (
 
 it("容器按完整身份隔离同名内部目录，未分组与内部文件均参与父级选择", () => {
   const candidates: ProofreadingFile[] = [
-    { file_path: "a.trans", internal_file_path: "data/Actors.json", count: 2 },
-    { file_path: "a.trans", internal_file_path: "data/Map.json", count: 1 },
-    { file_path: "a.trans", internal_file_path: null, count: 1 },
-    { file_path: "b.trans", internal_file_path: "data/Actors.json", count: 4 },
-    { file_path: "a.trans/data/Actors.json", internal_file_path: null, count: 1 },
+    { file_path: "a.epub", internal_file_path: "data/Actors.json", count: 2 },
+    { file_path: "a.epub", internal_file_path: "data/Map.json", count: 1 },
+    { file_path: "a.epub", internal_file_path: null, count: 1 },
+    { file_path: "b.epub", internal_file_path: "data/Actors.json", count: 4 },
+    { file_path: "a.epub/data/Actors.json", internal_file_path: null, count: 1 },
   ];
   const selection: ProofreadingFileSelection = { mode: "selected", values: [candidates[0]!] };
   const tree = build_proofreading_file_tree(candidates, selection, "未分组");

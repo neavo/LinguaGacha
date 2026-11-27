@@ -149,7 +149,7 @@ console.log(JSON.stringify(result, null, 2));
 |---|---|---|
 |宿主直接导出双语|`TXT`、`EPUB`、`ASS`、`SRT`、`VTT`、`LRC`|调用 `generateFiles()` 自动生成|
 |Agent 按技能导出双语|格式技能明确提供双语产物的资产|通过 `writeback.input_path` 由对应格式技能在写回阶段生成|
-|不导出双语|其余全部资产（原生游戏、`MD`、`JSON`、`XLSX`、`TRANS`、`RENPY` 及未声明双语能力的 `.generic` 资产）|仅交付单语|
+|不导出双语|其余全部资产（原生游戏、`MD`、`JSON`、`RENPY` 及未声明双语能力的 `.generic` 资产）|仅交付单语|
 
 1. 按系统指令「格式技能」加载全部资产对应的格式技能。
 2. `counts.items_with_warnings` 大于零，且用户本次尚未决定是否审校、本对话也未完成审校时，用 `ask_user` 询问。第一项为直接导出，第二项为先审校再导出。选择审校时加载 `translation`。完成审校后继续。

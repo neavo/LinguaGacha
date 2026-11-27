@@ -6,7 +6,6 @@ import type { Item } from "../../../domain/item";
  *
  * - 单值类（TXT、Markdown、ASS、SRT、MESSAGEJSON、EPUB）：未完成时使用 `src`。
  *   格式负责表达空正文，EPUB 书名与目录等受限位置回源。
- * - KV 类（XLSX、WOLFXLSX、TRANS）：仅完成结果覆盖目标，未完成时保留源译文及其结构。
  * - KV 带回退类（RENPY、MTool KVJSON）：未完成时保留源资产非空译文，空占位回退 `src`。
  *
  * `DUPLICATED` 在生成服务中先复用同组已完成结果，只修改生成对象。

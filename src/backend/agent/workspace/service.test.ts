@@ -1787,7 +1787,6 @@ function create_item(item_id: number): ProjectItemPublicRecord {
     file_type: "TXT",
     file_path: "script.txt",
     status: "NONE",
-    skip_internal_filter: false,
   };
 }
 

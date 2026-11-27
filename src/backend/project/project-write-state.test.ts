@@ -20,7 +20,6 @@ function create_item(
     file_type: "TXT",
     file_path: "script.txt",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }
@@ -123,14 +122,13 @@ describe("compute_project_prefilter_items", () => {
     expect(result["3"]?.status).toBe("RULE_SKIPPED");
   });
 
-  it("强制翻译条目绕过规则和语言过滤并保留运行态字段", () => {
+  it("已完成条目保留译文和状态", () => {
     const result = compute_project_prefilter_items({
       state: create_state([
         create_item(1, {
           src: "",
           dst: "保留",
           status: "PROCESSED",
-          skip_internal_filter: true,
         }),
       ]),
       source_language: "JA",
@@ -141,7 +139,6 @@ describe("compute_project_prefilter_items", () => {
     expect(result["1"]).toMatchObject({
       dst: "保留",
       status: "PROCESSED",
-      skip_internal_filter: true,
     });
   });
 
@@ -150,7 +147,7 @@ describe("compute_project_prefilter_items", () => {
       state: create_state([
         create_item(1, {
           src: "格式内部字段",
-          file_type: "WOLFXLSX",
+          file_type: "WOLFRPG",
           status: "RULE_SKIPPED",
           name_src: "姓名",
         }),

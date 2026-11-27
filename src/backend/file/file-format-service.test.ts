@@ -11,7 +11,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import iconv from "iconv-lite";
-import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -298,18 +297,6 @@ describe("FileFormatService", () => {
       .map((entry) => entry.rel_path.replaceAll("\\", "/"));
     expect(paths).toEqual(["game_3/readme.txt", "game_3/sub/note.txt", "game.zip"]);
   });
-  it.each(["XLSX", "WOLFXLSX"] as const)("XLSX 分发保留 %s 的解析身份", async (file_type) => {
-    const bytes = await spreadsheet_fixture(
-      file_type === "WOLFXLSX"
-        ? { A1: "code", B1: "flag", C1: "type", D1: "info", F2: "正文" }
-        : { A1: "正文", B1: "译文" },
-    );
-    const result = await create_service().parse_asset("book.xlsx", bytes);
-    expect(result).toMatchObject({
-      items: [expect.objectContaining({ src: "正文", file_type })],
-    });
-  });
-
   it("按扩展名分发解析器，并保持 JSON 的 KV 优先与 MESSAGE fallback", async () => {
     const service = create_service();
 

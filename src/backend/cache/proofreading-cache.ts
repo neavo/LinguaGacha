@@ -261,14 +261,6 @@ export class ProofreadingCache {
       processingConfig: {
         source_language,
         target_language,
-        file_contexts: Object.fromEntries(
-          this.cache.files
-            .readFileEntries()
-            .map((file) => [
-              file.rel_path,
-              { file_type: file.file_type, game_engine: file.game_engine },
-            ]),
-        ),
       },
     };
   }
@@ -295,13 +287,9 @@ export class ProofreadingCache {
   private read_internal_file_path(item: ProjectItemPublicRecord): string | null {
     if (is_game_file_type(item.file_type))
       return GAME_ENGINES[item.file_type].read_metadata(item.extra_field).internal_file_path;
-    const extra = read_json_record(item["extra_field"]);
-    const value =
-      item["file_type"] === "TRANS"
-        ? read_json_record(extra["trans_ref"])["file_key"]
-        : item["file_type"] === "EPUB"
-          ? read_json_record(extra["epub"])["doc_path"]
-          : null;
+    if (item.file_type !== "EPUB") return null;
+    const extra = read_json_record(item.extra_field);
+    const value = read_json_record(extra["epub"])["doc_path"];
     return typeof value === "string" && value !== "" ? value : null;
   }
 }

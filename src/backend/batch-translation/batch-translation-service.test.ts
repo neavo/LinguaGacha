@@ -456,7 +456,6 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         name_dst: null,
         extra_field: "",
         tag: "",
-        skip_internal_filter: false,
         status: "NONE",
         file_path: "text.txt",
         file_type: "TXT",

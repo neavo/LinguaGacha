@@ -1,5 +1,3 @@
-import { JsonTool } from "../../shared/utils/json-tool";
-import { read_json_record } from "../../domain/json";
 import {
   type QualityRuleBlock,
   type QualityRuleSlice,
@@ -130,16 +128,7 @@ export class ProjectDataReader {
   public build_files_record_block(project_path: string): Record<string, ProjectFileRecord> {
     const asset_records =
       project_path === "" ? [] : this.database.get_all_asset_records(project_path);
-    const files = build_project_file_records(asset_records);
-    for (const file of Object.values(files)) {
-      if (file.file_type !== "TRANS") continue;
-      const bytes = this.database.read_asset_content(project_path, file.rel_path);
-      if (bytes !== null) {
-        const root = read_json_record(JsonTool.parseStrict(bytes));
-        file.game_engine = String(read_json_record(root["project"])["gameEngine"] ?? "");
-      }
-    }
-    return files;
+    return build_project_file_records(asset_records);
   }
 
   /**

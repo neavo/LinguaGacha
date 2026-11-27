@@ -1,24 +1,19 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import ExcelJS from "exceljs";
 import { expect, it } from "vitest";
 import { ProjectDatabase } from "../../database/database-operations";
 import { empty_asset_file_type_migration } from "./empty-asset-file-type-migration";
 
-it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成标记一起回滚", async () => {
+it("零条目旧 JSON 从原稿识别一次，身份与完成标记一起回滚", async () => {
   using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-asset-migration-"));
   const project = path.join(temp.path, "old.lg");
-  const workbook = new ExcelJS.Workbook();
-  workbook.addWorksheet("Sheet1").addRow(["code", "flag", "type", "info"]);
-  const xlsx = new Uint8Array(await workbook.xlsx.writeBuffer());
   const database = new ProjectDatabase("1.0.0");
   try {
     await database.create_project(project, (database) => {
       database.add_asset(project, "object.json", Buffer.from("{}"), "NONE");
       database.add_asset(project, "array.json", Buffer.from("[]"), "NONE");
       database.add_asset(project, "broken.json", Buffer.from("{"), "NONE");
-      database.add_asset(project, "wolf.xlsx", xlsx, "NONE");
     });
     const context = {
       project_path: project,
@@ -43,11 +38,7 @@ it("零条目旧 JSON 和 WOLF 工作簿从原稿识别一次，身份与完成�
       "KVJSON",
       "MESSAGEJSON",
       "NONE",
-      "WOLFXLSX",
     ]);
-    expect(
-      (await database.read_asset_content(project, "wolf.xlsx"))!.equals(Buffer.from(xlsx)),
-    ).toBe(true);
     expect(
       await empty_asset_file_type_migration({
         ...context,

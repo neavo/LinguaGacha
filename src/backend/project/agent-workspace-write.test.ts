@@ -459,7 +459,6 @@ function create_item(
     file_type: "TXT",
     extra_field: "",
     tag: "",
-    skip_internal_filter: false,
     row_number: 18,
     status: "PROCESSED",
     ...fields,

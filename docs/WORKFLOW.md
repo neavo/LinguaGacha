@@ -22,7 +22,7 @@
 |数据库、迁移与 IO|[数据库](../src/backend/database/)、[迁移](../src/backend/migration/)、[平台 IO](../src/native/)|
 |翻译与计算|[批量翻译](../src/backend/batch-translation/)、[计算线程](../src/backend/worker/)|
 |模型与请求|[LLM](../src/backend/llm/)、[网络](../src/backend/network/)|
-|旧 PDF 迁移与宿主打印|[静态封存](../src/backend/migration/project/legacy-pdf-to-generic-migration.ts)、[打印宿主](../src/native/pdf-host.ts)|
+|旧资产迁移与 PDF 打印|[PDF 封存](../src/backend/migration/project/legacy-pdf-to-generic-migration.ts)、[XLSX 和 TRANS 转换](../src/backend/migration/project/legacy-xlsx-trans-to-generic-migration.ts)、[打印宿主](../src/native/pdf-host.ts)|
 
 ### Agent 与前端
 

@@ -17,7 +17,6 @@ type LegacyMarkdownItem = {
   row: number;
   file_path: string;
   status: ItemStatus;
-  skip_internal_filter: boolean;
 };
 
 /**
@@ -111,7 +110,6 @@ export class MarkdownV2BlockMigration {
       row,
       file_path,
       status,
-      skip_internal_filter: record["skip_internal_filter"] === true,
     };
   }
 
@@ -174,7 +172,6 @@ export class MarkdownV2BlockMigration {
         file_type: "MD_V2",
         file_path: items[0]!.file_path,
         status: this.aggregate_status(unit, covered_items),
-        skip_internal_filter: covered_items.some((item) => item.skip_internal_filter),
         extra_field: {
           markdown: {
             before: unit.before,

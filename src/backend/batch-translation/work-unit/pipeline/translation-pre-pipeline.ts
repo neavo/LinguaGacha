@@ -65,10 +65,7 @@ export class TranslationPrePipeline {
   ): TranslationPrePipelineContext {
     const candidates = read_item_translation_candidates(item);
     const source_text = String(item.src ?? "");
-    const text_type = resolve_text_rule_type(
-      item,
-      this.quality_snapshot.file_contexts?.[item.file_path ?? ""],
-    );
+    const text_type = resolve_text_rule_type(item);
     let preserve_rule = this.preserve_rules.get(text_type);
     if (preserve_rule === undefined) {
       preserve_rule = build_text_preserve_rule({

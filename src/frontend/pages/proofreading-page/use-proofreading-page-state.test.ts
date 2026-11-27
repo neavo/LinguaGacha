@@ -93,7 +93,6 @@ function create_project_item(overrides: Partial<ProjectItemPublicRecord>): Proje
     file_type: "TXT",
     file_path: "",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }

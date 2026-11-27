@@ -82,7 +82,6 @@ function create_project_item(overrides: JsonRecord = {}): JsonRecord {
     tag: "",
     file_type: "TXT",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }

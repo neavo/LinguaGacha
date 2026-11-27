@@ -43,9 +43,7 @@ import { AppError, is_app_error } from "../../shared/error";
 import { decode_text_content } from "../../shared/utils/text-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { JsonValue } from "../../domain/json";
-import { TRANSFormat } from "./trans/trans-format";
 import { TXTFormat } from "./txt/txt-format";
-import { XLSXFormat } from "./xlsx/xlsx-format";
 import { EPUBFormat } from "./epub/epub-format";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {
@@ -76,8 +74,6 @@ export class FileFormatService {
   private readonly lrc: LRCFormat;
   private readonly kvjson: KVJSONFormat;
   private readonly messagejson: MESSAGEJSONFormat;
-  private readonly xlsx: XLSXFormat;
-  private readonly trans: TRANSFormat;
   private readonly renpy_rpy: RenpyRpyFormat;
   private readonly epub: EPUBFormat;
   private readonly games: Record<GameFileType, GameFormat>;
@@ -106,14 +102,12 @@ export class FileFormatService {
     this.lrc = new LRCFormat();
     this.kvjson = new KVJSONFormat();
     this.messagejson = new MESSAGEJSONFormat();
-    this.xlsx = new XLSXFormat();
-    this.trans = new TRANSFormat();
     this.renpy_rpy = new RenpyRpyFormat();
     this.epub = new EPUBFormat(config);
   }
 
   /**
-   * 保存身份优先分发，新来源的 JSON 和 XLSX 按内容识别。
+   * 保存身份优先分发，新来源的 JSON 按内容识别。
    */
   public async parse_asset(
     rel_path: string,
@@ -159,16 +153,6 @@ export class FileFormatService {
               : [],
       };
     }
-    if (type === "TRANS")
-      return { file_type: type, ...this.trans.read_from_stream(content, rel_path) };
-    if (type === "XLSX" || type === "WOLFXLSX" || (type === undefined && extension === ".xlsx"))
-      return {
-        ...(await this.xlsx.read_asset(
-          content,
-          rel_path,
-          file_type === "XLSX" || file_type === "WOLFXLSX" ? file_type : undefined,
-        )),
-      };
     if (type === "IMAGE")
       return { file_type: "IMAGE", ...(await this.image.read(content, rel_path)) };
     const formats = {
@@ -230,6 +214,10 @@ export class FileFormatService {
     for (const entry of entries) {
       const resolved = await discover_source(entry.source_path, this.native_fs, signal);
       const file_type = entry.file_type ?? resolved.file_type;
+      // 正式提交与预览使用同一来源格式范围，避免直接提交时把未知文件保存为 NONE。
+      const unsupported_file =
+        resolved.source.kind === "file" &&
+        !SOURCE_FILE_TYPES.has(path.extname(resolved.source_path).toLowerCase());
       // 游戏容器只能由同一引擎的来源形成，身份不符时来源无法交付目标资产的原稿。
       const mismatched =
         resolved.source.kind !== "failure" &&
@@ -239,7 +227,7 @@ export class FileFormatService {
         ...resolved,
         rel_path: entry.rel_path,
         file_type,
-        ...(mismatched && {
+        ...((mismatched || unsupported_file) && {
           source: {
             kind: "failure",
             error: new AppError("file.invalid_structure", {
@@ -497,8 +485,6 @@ export class FileFormatService {
         }
       }
     }
-    await this.xlsx.write_to_path(items, paths, asset_reader);
-    await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy_rpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);
     if (failures.length === 1) throw failures[0];

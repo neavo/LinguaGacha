@@ -180,10 +180,7 @@ export function evaluateProofreadingItem(args: {
   if (PROOFREADING_SKIPPED_WARNING_STATUSES.has(item.status) || !has_item_translation_text(item)) {
     return { warnings, glossary_applications: [] };
   }
-  const text_type = resolve_text_rule_type(
-    item,
-    args.processingConfig.file_contexts?.[item.file_path],
-  );
+  const text_type = resolve_text_rule_type(item);
   const sample_rule_cache_key = `${text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;
   let sample_rule = args.sample_rule_cache.get(sample_rule_cache_key);
   if (sample_rule === undefined) {

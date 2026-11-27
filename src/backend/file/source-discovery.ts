@@ -12,7 +12,7 @@ export type SourceIdentity =
   | Readonly<{ kind: "failure"; error: unknown }>;
 export type DiscoveredSource = ProjectSourceFileEntry & Readonly<{ source: SourceIdentity }>;
 
-/** 目录发现和原稿解析共用扩展名。JSON 与 XLSX 的具体格式由内容决定。 */
+/** 目录发现和原稿解析共用扩展名。JSON 的具体格式由内容决定。 */
 export const SOURCE_FILE_TYPES: ReadonlyMap<string, ItemFileType | null> = new Map([
   [".txt", "TXT"],
   [".md", "MD_V2"],
@@ -23,12 +23,10 @@ export const SOURCE_FILE_TYPES: ReadonlyMap<string, ItemFileType | null> = new M
   [".lrc", "LRC"],
   [".epub", "EPUB"],
   [".rpy", "RENPY_RPY"],
-  [".trans", "TRANS"],
   [".generic", "GENERIC"],
   [".media", "MEDIA"],
   [".image", "IMAGE"],
   [".json", null],
-  [".xlsx", null],
 ]);
 
 /** 显式选择检查候选祖先，递归扫描只检查当前目录，按保留名称停止下探。 */

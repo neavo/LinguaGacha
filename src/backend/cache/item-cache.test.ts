@@ -138,7 +138,6 @@ function create_item(
     file_type: "TXT",
     file_path: "",
     status: "NONE",
-    skip_internal_filter: false,
     ...overrides,
   };
 }

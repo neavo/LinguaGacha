@@ -995,14 +995,14 @@ it("内部文件筛选统一列表、统计与批量行范围，并隔离容器�
     upsertItems: [
       create_item({
         item_id: 3,
-        file_path: "a.trans",
+        file_path: "a.epub",
         internal_file_path: "data/Map.json",
         dst: "",
         row_number: 3,
       }),
       create_item({
         item_id: 1,
-        file_path: "a.trans",
+        file_path: "a.epub",
         internal_file_path: "data/Actors.json",
         src: "HP",
         dst: "HP",
@@ -1010,22 +1010,22 @@ it("内部文件筛选统一列表、统计与批量行范围，并隔离容器�
       }),
       create_item({
         item_id: 2,
-        file_path: "b.trans",
+        file_path: "b.epub",
         internal_file_path: "data/Actors.json",
         src: "HP",
         dst: "HP",
         status: "PROCESSED",
       }),
-      create_item({ item_id: 4, file_path: "a.trans", dst: "", row_number: 4 }),
+      create_item({ item_id: 4, file_path: "a.epub", dst: "", row_number: 4 }),
     ],
   };
   const sync = sync_full(reader, input);
   expect(sync.defaultFilters.files).toEqual({ mode: "default" });
   expect(sync.files).toEqual([
-    { file_path: "a.trans", internal_file_path: "data/Actors.json", count: 1 },
-    { file_path: "a.trans", internal_file_path: "data/Map.json", count: 1 },
-    { file_path: "a.trans", internal_file_path: null, count: 1 },
-    { file_path: "b.trans", internal_file_path: "data/Actors.json", count: 1 },
+    { file_path: "a.epub", internal_file_path: "data/Actors.json", count: 1 },
+    { file_path: "a.epub", internal_file_path: "data/Map.json", count: 1 },
+    { file_path: "a.epub", internal_file_path: null, count: 1 },
+    { file_path: "b.epub", internal_file_path: "data/Actors.json", count: 1 },
   ]);
   const query: ProofreadingListViewQuery = {
     filters: { ...sync.defaultFilters, files: { mode: "selected", values: [sync.files[0]!] } },
@@ -1044,7 +1044,7 @@ it("内部文件筛选统一列表、统计与批量行范围，并隔离容器�
     reader
       .read_warning_page({
         warning_types: ["GLOSSARY"],
-        file_paths: ["a.trans"],
+        file_paths: ["a.epub"],
         keywords: [],
         scope: "all",
         offset: 0,
@@ -1058,7 +1058,7 @@ it("内部文件筛选统一列表、统计与批量行范围，并隔离容器�
         ...query,
         filters: {
           ...query.filters,
-          files: { mode: "selected", values: [{ file_path: "a.trans", internal_file_path: null }] },
+          files: { mode: "selected", values: [{ file_path: "a.epub", internal_file_path: null }] },
         },
       })
       .window_rows.map((row) => row.row_id),
@@ -1070,7 +1070,7 @@ it("内部文件筛选统一列表、统计与批量行范围，并隔离容器�
         ...query.filters,
         files: {
           mode: "selected",
-          values: [{ file_path: "a.trans", internal_file_path: "missing" }],
+          values: [{ file_path: "a.epub", internal_file_path: "missing" }],
         },
       },
     }).row_count,

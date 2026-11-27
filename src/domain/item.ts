@@ -25,12 +25,9 @@ export const ITEM_FILE_TYPES = [
   "VTT",
   "LRC",
   "EPUB",
-  "XLSX",
-  "WOLFXLSX",
   "WOLFRPG",
   "RENPY_RPY",
   "RENPY",
-  "TRANS",
   "RPGMAKER_MV_MZ",
   "RPGMAKER_RGSS",
   "GODOT",
@@ -54,7 +51,6 @@ const ITEM_BUSINESS_SCHEMA = Type.Object({
   file_type: Type.Enum(ITEM_FILE_TYPES), // 解析来源格式，决定导出处理器。
   file_path: Type.String(), // 工程内相对路径，对应原始资产。
   status: Type.Enum(ITEM_STATUSES), // 条目处理状态，用于统计和译文生成。
-  skip_internal_filter: Type.Boolean(), // 本条目是否跳过规则和语言过滤。
 });
 /** 格式解析尚未分配身份，迁移也可使用临时身份。 */
 const ITEM_SCHEMA = Type.Object({
@@ -109,7 +105,6 @@ const DEFAULT_ITEM: Omit<Item, "id"> = {
   file_type: "NONE",
   file_path: "",
   status: "NONE",
-  skip_internal_filter: false,
 };
 /** 格式输入与历史 JSON 在此补齐字段，已收窄的内部条目直接传递。 */
 export function create_item(payload: unknown = {}): Item {
@@ -128,7 +123,6 @@ export function create_item(payload: unknown = {}): Item {
     file_type,
     file_path: String(record["file_path"] ?? DEFAULT_ITEM.file_path),
     status: normalize_item_status(record["status"]),
-    skip_internal_filter: record["skip_internal_filter"] === true,
   };
 }
 /** 字段名转换只发生在公开与存储边界。 */

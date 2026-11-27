@@ -216,13 +216,13 @@ it("容器默认折叠，子文件独立选择产生半选，同名内部目录�
   const root = createRoot(container);
   const files = [
     {
-      file_path: "a.trans",
+      file_path: "a.epub",
       internal_file_path: "data/Actors.json",
       count: 2,
     },
-    { file_path: "a.trans", internal_file_path: "data/Map.json", count: 3 },
+    { file_path: "a.epub", internal_file_path: "data/Map.json", count: 3 },
     {
-      file_path: "b.trans",
+      file_path: "b.epub",
       internal_file_path: "data/Actors.json",
       count: 1,
     },
@@ -247,8 +247,8 @@ it("容器默认折叠，子文件独立选择产生半选，同名内部目录�
   try {
     await act(async () => root.render(<Probe />));
     await act(async () => container.querySelector("button")!.click());
-    const first = toggle(document, "a.trans");
-    const second = toggle(document, "b.trans");
+    const first = toggle(document, "a.epub");
+    const second = toggle(document, "b.epub");
     expect(first.getAttribute("aria-expanded")).toBe("false");
     expect(document.querySelector('input[aria-label="Actors.json"]')).toBeNull();
     await act(async () => first.click());
@@ -258,10 +258,10 @@ it("容器默认折叠，子文件独立选择产生半选，同名内部目录�
     );
     expect(selected).toEqual({
       mode: "selected",
-      values: [{ file_path: "a.trans", internal_file_path: "data/Actors.json" }],
+      values: [{ file_path: "a.epub", internal_file_path: "data/Actors.json" }],
     });
     expect(
-      document.querySelector<HTMLInputElement>('input[aria-label="a.trans"]')!.indeterminate,
+      document.querySelector<HTMLInputElement>('input[aria-label="a.epub"]')!.indeterminate,
     ).toBe(true);
     expect(first.querySelector('[data-slot="badge"]')?.textContent).toBe("1/2");
     await act(async () => second.click());
@@ -273,13 +273,13 @@ it("容器默认折叠，子文件独立选择产生半选，同名内部目录�
     expect(toggle(document, "data").getAttribute("aria-expanded")).toBe("true");
     await act(async () => first.click());
     await act(async () =>
-      document.querySelector<HTMLInputElement>('input[aria-label="a.trans"]')!.click(),
+      document.querySelector<HTMLInputElement>('input[aria-label="a.epub"]')!.click(),
     );
     expect(selected).toEqual({
       mode: "selected",
       values: [
-        { file_path: "a.trans", internal_file_path: "data/Actors.json" },
-        { file_path: "a.trans", internal_file_path: "data/Map.json" },
+        { file_path: "a.epub", internal_file_path: "data/Actors.json" },
+        { file_path: "a.epub", internal_file_path: "data/Map.json" },
       ],
     });
     expect(first.getAttribute("aria-expanded")).toBe("false");
@@ -294,7 +294,7 @@ it("大目录只挂载视口附近行，滚动后选择仍覆盖未挂载的叶�
   document.body.append(container);
   const root = createRoot(container);
   const files = Array.from({ length: 200 }, (_, index) => ({
-    file_path: "game.trans",
+    file_path: "game.epub",
     internal_file_path: `Map${index}.json`,
     count: 1,
   }));
@@ -317,7 +317,7 @@ it("大目录只挂载视口附近行，滚动后选择仍覆盖未挂载的叶�
     await act(async () => root.render(<Probe />));
     await act(async () => container.querySelector("button")!.click());
     await act(async () =>
-      document.querySelector<HTMLButtonElement>('button[aria-label="game.trans"]')!.click(),
+      document.querySelector<HTMLButtonElement>('button[aria-label="game.epub"]')!.click(),
     );
     expect(document.querySelectorAll(".proofreading-page__file-row").length).toBeLessThan(
       files.length,
@@ -335,11 +335,11 @@ it("大目录只挂载视口附近行，滚动后选择仍覆盖未挂载的叶�
     if (selected.value.mode !== "selected") throw new Error("未形成显式选择");
     expect(selected.value.values).toHaveLength(files.length - 1);
     expect(selected.value.values).toContainEqual({
-      file_path: "game.trans",
+      file_path: "game.epub",
       internal_file_path: "Map0.json",
     });
     expect(selected.value.values).not.toContainEqual({
-      file_path: "game.trans",
+      file_path: "game.epub",
       internal_file_path: "Map199.json",
     });
   } finally {

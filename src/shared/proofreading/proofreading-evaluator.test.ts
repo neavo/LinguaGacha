@@ -7,7 +7,6 @@ import {
 } from "./proofreading-evaluator";
 import type { ItemNameField } from "../../domain/item";
 import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../domain/language";
-import type { TextProcessingConfig } from "../text/text-processing";
 
 /** 默认禁用可选规则，各用例只开启影响当前判断的质量配置。 */
 function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapshot {
@@ -30,7 +29,6 @@ function evaluate(args: {
   name_src?: ItemNameField;
   name_dst?: ItemNameField;
   fileType?: string;
-  processingConfig?: Partial<TextProcessingConfig>;
 }) {
   const quality = args.quality ?? create_quality();
   return evaluateProofreadingItem({
@@ -51,7 +49,6 @@ function evaluate(args: {
     processingConfig: {
       source_language: args.sourceLanguage,
       target_language: args.targetLanguage ?? "ZH",
-      ...args.processingConfig,
     },
     sample_rule_cache: new Map(),
   });
@@ -81,7 +78,7 @@ describe("proofreading-evaluator", () => {
         dst: `你好 ${interpolation}`,
         sourceLanguage: "EN",
         quality,
-        processingConfig: { file_contexts: { "chapter.txt": { file_type: "RENPY_RPY" } } },
+        fileType: "RENPY_RPY",
       }).warnings,
     ).toEqual(warnings);
   });

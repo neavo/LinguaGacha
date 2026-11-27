@@ -44,7 +44,6 @@ export type FileFormatReadResult = {
     records: import("../../shared/image-package").ImageRecord[];
   };
   file_type: ItemFileType;
-  game_engine?: string; // TRANS 原稿的引擎上下文，供文本规则计算。
   warnings?: SourceFileParseWarning[];
 };
 

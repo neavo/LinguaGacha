@@ -226,14 +226,14 @@ describe("TranslationPostPipeline", () => {
         pre_replacement_entries: [{ src: "①", dst: "<Q>1", regex: false, case_sensitive: true }],
       }),
     );
-    const context = pre.process_item({ src: "①", text_type: "TXT", skip_internal_filter: true });
+    const context = pre.process_item({ src: "甲①", text_type: "TXT" });
 
-    expect(process_text(post, context, ["<Q>1"])).toBe("<Q>①");
+    expect(process_text(post, context, ["译<Q>1"])).toBe("译<Q>①");
   });
 
   it("行数不一致时不执行缺少逐行证据的自动恢复", () => {
     const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
-    const context = pre.process_item({ src: "①\n②", text_type: "TXT", skip_internal_filter: true });
+    const context = pre.process_item({ src: "甲①\n乙②", text_type: "TXT" });
 
     const result = post.process_item(context, { request_id: 0, text_dst: "1", actor_dst: null });
 

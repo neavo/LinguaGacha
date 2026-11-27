@@ -157,7 +157,6 @@ describe("ProjectDataReader", () => {
         tag: "line",
         file_type: "TXT",
         status: "NONE",
-        skip_internal_filter: false,
       },
     ]);
     const service = new ProjectDataReader(
@@ -180,7 +179,6 @@ describe("ProjectDataReader", () => {
         name_src: "Alice",
         extra_field: { note: "keep" },
         tag: "line",
-        skip_internal_filter: false,
       },
     ]);
     expect(get_items_by_ids).toHaveBeenCalledWith("E:/demo/demo.lg", [2, 3]);

@@ -60,7 +60,7 @@ export function compute_project_prefilter_items(
   }
 
   for (const item of items) {
-    if (item.status !== "NONE" || item.skip_internal_filter) {
+    if (item.status !== "NONE") {
       continue;
     }
     const candidates = read_item_translation_candidates(item);

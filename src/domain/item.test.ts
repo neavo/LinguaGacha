@@ -85,7 +85,6 @@ describe("条目数据契约", () => {
       file_type: "NONE",
       file_path: "script.json",
       status: "NONE",
-      skip_internal_filter: false,
     });
     expect(build_project_item_public_record(item)).not.toHaveProperty("retry_count");
   });

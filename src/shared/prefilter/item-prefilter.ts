@@ -12,15 +12,12 @@ export function read_item_translation_candidates(item: {
   src?: string;
   name_src?: ItemNameField;
   file_type?: string;
-  skip_internal_filter?: boolean;
 }): ItemTextGroup {
   const guess_metadata = !is_game_file_type(item.file_type);
-  return read_item_source_text_parts(item).filter(
-    (part) =>
-      item.skip_internal_filter === true ||
-      (part.field === "src" && guess_metadata
-        ? !should_skip_by_rule_prefilter(part.text)
-        : has_translatable_text(part.text)),
+  return read_item_source_text_parts(item).filter((part) =>
+    part.field === "src" && guess_metadata
+      ? !should_skip_by_rule_prefilter(part.text)
+      : has_translatable_text(part.text),
   );
 }
 

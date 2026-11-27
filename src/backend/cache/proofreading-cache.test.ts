@@ -32,7 +32,6 @@ function create_cache_item(
     file_type: "TXT",
     file_path: "script.txt",
     status: "PROCESSED",
-    skip_internal_filter: false,
     ...overrides,
   };
 }
@@ -243,15 +242,10 @@ describe("ProofreadingCache", () => {
   });
 
   it.each<{
-    file_type: "TRANS" | "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG" | "GODOT";
+    file_type: "EPUB" | "RPGMAKER_MV_MZ" | "RPGMAKER_RGSS" | "WOLFRPG" | "GODOT";
     extra_field: ProjectItemPublicRecord["extra_field"];
     internal_file_path: string;
   }>([
-    {
-      file_type: "TRANS",
-      extra_field: { trans_ref: { file_key: "data/Actors.json", row_index: 0 } },
-      internal_file_path: "data/Actors.json",
-    },
     {
       file_type: "RPGMAKER_MV_MZ",
       extra_field: {
@@ -307,7 +301,7 @@ describe("ProofreadingCache", () => {
       const worker = create_worker();
       const items = [
         create_cache_item({
-          file_path: "game.trans",
+          file_path: "game.epub",
           file_type,
           src: "A",
           dst: "甲",
@@ -316,7 +310,7 @@ describe("ProofreadingCache", () => {
       ];
       const cache_port = create_cache_read_port({ items });
       cache_port.files.readFileEntries = () => [
-        { rel_path: "game.trans", file_type, sort_index: 0 },
+        { rel_path: "game.epub", file_type, sort_index: 0 },
       ];
       const cache = new ProofreadingCache({
         cache: cache_port,
@@ -334,7 +328,7 @@ describe("ProofreadingCache", () => {
         is_regex: false,
         sort_state: null,
       });
-      expect(sync.data.files).toEqual([{ file_path: "game.trans", internal_file_path, count: 1 }]);
+      expect(sync.data.files).toEqual([{ file_path: "game.epub", internal_file_path, count: 1 }]);
       expect(view.data.window_rows[0]).toMatchObject({ internal_file_path });
       expect(rows.data[0]).toMatchObject({
         item_id: 1,

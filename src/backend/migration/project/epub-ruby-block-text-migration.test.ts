@@ -104,7 +104,6 @@ describe("EpubRubyBlockTextMigration", () => {
       tag: "OPS/chapter.xhtml",
       row: 1,
       status: "PROCESSED",
-      skip_internal_filter: true,
       extra_field: {
         epub: {
           mode: "slot_per_line",
@@ -129,7 +128,6 @@ describe("EpubRubyBlockTextMigration", () => {
         dst: "汉",
         row: 1,
         status: "PROCESSED",
-        skip_internal_filter: true,
         extra_field: { epub: expect.objectContaining({ mode: "block_text" }) },
       }),
     ]);

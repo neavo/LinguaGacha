@@ -2,19 +2,14 @@ import { has_language_character } from "../../domain/language";
 import { scan_renpy_boundaries } from "./renpy-boundaries";
 
 export type TextRuleType = "NONE" | "MD" | "KAG" | "WOLF" | "RENPY" | "RPGMAKER" | "GODOT";
-export type TextFileContext = Readonly<{ file_type: string; game_engine?: string | undefined }>;
 
-/** 文件上下文属于文件，规则类别只在文本处理时计算。 */
-export function resolve_text_rule_type(
-  item: { src?: string; file_type?: string },
-  file?: TextFileContext,
-): TextRuleType {
-  switch (file?.file_type ?? item.file_type) {
+/** 文本处理时按条目格式和原文计算规则类别。 */
+export function resolve_text_rule_type(item: { src?: string; file_type?: string }): TextRuleType {
+  switch (item.file_type) {
     case "RPGMAKER_MV_MZ":
     case "RPGMAKER_RGSS":
       return "RPGMAKER";
     case "WOLFRPG":
-    case "WOLFXLSX":
       return "WOLF";
     case "GODOT":
       return "GODOT";
@@ -25,20 +20,8 @@ export function resolve_text_rule_type(
       return "KAG";
     case "MD_V2":
       return "MD";
-    case "XLSX":
     case "KVJSON":
       return infer_item_text_type_from_source(item.src ?? "");
-    case "TRANS": {
-      const engine = file?.game_engine?.toLowerCase();
-      if (engine === "kag" || engine === "vntrans") return "KAG";
-      if (engine === "wolf" || engine === "wolfrpg") return "WOLF";
-      if (engine === "renpy") return "RENPY";
-      return ["2k", "2k3", "rmjdb", "rmxp", "rmvx", "rmvxace", "rmmv", "rmmz"].includes(
-        engine ?? "",
-      )
-        ? "RPGMAKER"
-        : "NONE";
-    }
     default:
       return "NONE";
   }
