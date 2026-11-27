@@ -1,4 +1,5 @@
 {
+  "userManageable": false,
   "order": 200,
   "displayDescriptions": {
     "zh-CN": "基于 AI 智能，翻译和审校文本",

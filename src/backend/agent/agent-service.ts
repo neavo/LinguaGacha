@@ -44,6 +44,7 @@ import {
   type AgentQueuedInput,
   type AgentChatChange,
   type AgentChatSnapshot,
+  type AgentSkillSnapshot,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
 import { format_i18n_message } from "../../shared/i18n";
@@ -97,7 +98,10 @@ type AgentServiceOptions = {
   protectedChatIds: Set<string>;
   resources: LoadedAgentResources;
   auth?: ChatGPTAuthService;
-  skills: Pick<AgentSkillsService, "get_current" | "subscribe" | "refresh">;
+  skills: Pick<
+    AgentSkillsService,
+    "get_current" | "get_reference_skills" | "subscribe" | "refresh"
+  >;
   catalog: PiModelCatalogReader;
   batchRequests: Pick<BatchRequestService, "run">;
   batchTranslation: Pick<
@@ -118,7 +122,6 @@ type AgentChatFields = Pick<
   | "chatId"
   | "state"
   | "pendingDecision"
-  | "skills"
   | "inputQueue"
   | "doing"
   | "context"
@@ -126,7 +129,7 @@ type AgentChatFields = Pick<
   | "tokenSpeed"
   | "runOutput"
   | "exportedRoundId"
->;
+> & { readonly skills: readonly AgentSkillSnapshot[] };
 
 /** 占用完成后才能取消，命令则等待新轮次受理。 */
 type QueuedInterrupt = {
@@ -201,7 +204,6 @@ export class AgentService {
   private revision = 0;
   private disposed = false;
   private publishedFields: AgentChatFields | null = null; // 上一批已发布的控制字段，用于抑制重复通知
-  private skill_snapshot: AgentChatFields["skills"]; // 随技能目录的变更通知更新。
   private queueSnapshot?: {
     source: AgentChat["state"]["queue"] | undefined;
     canSendNow: boolean;
@@ -222,13 +224,7 @@ export class AgentService {
     this.batch_requests = options.batchRequests;
     this.settings = options.settings;
     this.skills = options.skills;
-    this.skill_snapshot = this.read_skill_snapshot();
-    this.unsubscribe_skills = this.skills.subscribe(() => {
-      this.skill_snapshot = this.read_skill_snapshot();
-      if (!this.disposed && this.chat !== null) {
-        this.publish_snapshot();
-      }
-    });
+    this.unsubscribe_skills = this.skills.subscribe(() => this.publish_snapshot());
     this.user_agent = options.userAgent;
     this.runtime_gate = options.runtimeGate;
     this.workspace = options.workspace;
@@ -331,14 +327,6 @@ export class AgentService {
     return { chatId, files };
   }
 
-  /** 只投影界面可见技能，模型请求直接读取技能目录。 */
-  private read_skill_snapshot(): AgentChatFields["skills"] {
-    return this.skills
-      .get_current()
-      .filter(({ visible }) => visible)
-      .map(({ name, displayDescriptions }) => ({ name, displayDescriptions }));
-  }
-
   /** 队列内容由提交快照替换，即时发送资格也可能随运行状态独立变化。 */
   private get_queue_snapshot(): AgentChatFields["inputQueue"] {
     const source = this.chat?.state.queue;
@@ -361,8 +349,10 @@ export class AgentService {
   /** 快照由相同的提交事实投影，调用者只能取得独立值。 */
   public get_snapshot(): AgentChatSnapshot {
     this.assert_available();
+    const { skills, ...fields } = this.read_fields();
     return structuredClone({
-      ...this.read_fields(),
+      ...fields,
+      skills: [...skills],
       revision: this.revision,
       entries: this.chat?.entries ?? [],
     });
@@ -381,7 +371,7 @@ export class AgentService {
       chatId: this.chat_id,
       state: this.state,
       pendingDecision: this.decisions.read_pending(),
-      skills: this.skill_snapshot,
+      skills: this.skills.get_reference_skills(),
       inputQueue: this.get_queue_snapshot(),
       doing: chat?.state.doing ?? null,
       context: chat?.context ?? EMPTY_AGENT_CONTEXT,
@@ -1381,8 +1371,8 @@ export class AgentService {
         changes.push({ type: "context", context: fields.context });
       if (!isDeepStrictEqual(fields.usage, previous.usage))
         changes.push({ type: "usage", usage: fields.usage });
-      if (!isDeepStrictEqual(fields.skills, previous.skills))
-        changes.push({ type: "skills_changed", skills: fields.skills });
+      if (fields.skills !== previous.skills)
+        changes.push({ type: "skills_changed", skills: [...fields.skills] });
       if (changes.length > 0) {
         this.revision++;
         this.publish(AGENT_CHAT_EVENT_TOPIC, {

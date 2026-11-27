@@ -147,6 +147,8 @@ function start_without_project(
         return { project };
       case "/api/skills/snapshot":
         return { skills: [] };
+      case "/api/agent/skills":
+        return [];
       case "/api/batch-task/snapshot":
         return { batch_tasks: empty_batch_task_list_snapshot() };
       case "/api/agent/message":

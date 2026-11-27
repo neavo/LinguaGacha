@@ -2,9 +2,6 @@ export const zh_cn_knowledge_page = {
   builtin: "内置技能",
   user: "用户技能",
   knowledge: "工程知识",
-  empty: {
-    user: "暂无用户技能",
-  },
   readonly: "只读",
   personality_description: "智能助手的角色设定",
   install: {

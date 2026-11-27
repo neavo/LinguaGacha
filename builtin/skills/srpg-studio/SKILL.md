@@ -1,6 +1,6 @@
 ---
 name: srpg-studio
-description: 翻译、审校、分析、修改 SRPG Studio 游戏前必须加载。
+description: 翻译、审校、分析、修改 SRPG Studio 游戏前必须加载
 ---
 
 内置解析器不识别 SRPG Studio 游戏，游戏本体文本经 `generic-package` 封装为 `.generic` 通用包进入工程。本技能提供 SRPG Studio 在各阶段的方法。

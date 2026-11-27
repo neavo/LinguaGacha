@@ -1,6 +1,7 @@
 import { type JSX, useEffect, useRef, useState } from "react";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
+import { BadgeHelp } from "lucide-react";
 import type {
   AgentSkillEntry,
   AgentSkillIdentity,
@@ -13,7 +14,9 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { Card } from "@frontend/shadcn/card";
+import { Badge } from "@frontend/shadcn/badge";
 import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppButton } from "@frontend/widgets/app-button";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { useReorder } from "@frontend/widgets/interactions/use-reorder";
@@ -21,12 +24,7 @@ import {
   SORTABLE_OPTIONS,
   SORTABLE_PROVIDER_OPTIONS,
 } from "@frontend/widgets/interactions/sortable";
-import {
-  type DocumentListGroupHelp,
-  DocumentListGroup,
-  DocumentListRow,
-  type DocumentListRowProps,
-} from "./document-list";
+import { DocumentListGroup, DocumentListRow, type DocumentListRowProps } from "./document-list";
 import { PersonalityEditor } from "./personality-editor";
 import { SkillEditor } from "./skill-editor";
 import "./skills-page.css";
@@ -72,17 +70,12 @@ function SkillsList({
   });
   const by_name = new Map(user.map((skill) => [skill.name, skill]));
   const pending = state.pending || reorder.pending;
-  const install_help: DocumentListGroupHelp = {
-    label: t("knowledge_page.install.title"),
-    on_click: () => set_guide_open(true),
-  };
 
   /** 两个来源的技能共用打开与开关规则，用户分组另外绑定排序。 */
   function skill_row(skill: AgentSkillEntry): DocumentListRowProps {
     return {
       name: skill.name,
       description: skill.displayDescriptions[locale],
-      readonly_label: skill.source === "builtin" ? t("knowledge_page.readonly") : undefined,
       open_disabled: pending,
       on_open: () => on_open({ kind: "skill", skill: { source: skill.source, name: skill.name } }),
       action: (
@@ -90,10 +83,7 @@ function SkillsList({
           aria_label={skill.name}
           value={skill.enabled}
           disabled={pending || locked}
-          on_value_change={(enabled) => {
-            if (enabled !== skill.enabled)
-              void state.set_enabled(skill.source, skill.name, enabled);
-          }}
+          on_value_change={(enabled) => void state.set_enabled(skill.source, skill.name, enabled)}
         />
       ),
     };
@@ -104,39 +94,47 @@ function SkillsList({
       className="knowledge-page page-shell page-shell--full"
       aria-busy={state.status === "loading"}
     >
-      <DocumentListGroup title={t("knowledge_page.builtin")}>
-        <Card render={<ul />} className="document-list__rows">
-          <DocumentListRow
-            name="personality"
-            description={t("knowledge_page.personality_description")}
-            open_disabled={pending || state.status !== "ready"}
-            on_open={() => on_open({ kind: "personality" })}
-          />
-          {builtin.map((skill) => (
-            <DocumentListRow key={skill.name} {...skill_row(skill)} />
-          ))}
-        </Card>
-      </DocumentListGroup>
       <DocumentListGroup
         title={t("knowledge_page.user")}
-        help={install_help}
-        empty={
-          state.status === "ready" && user.length === 0 ? t("knowledge_page.empty.user") : undefined
+        action={
+          <AppButton
+            variant="ghost"
+            size="icon-xs"
+            aria-label={t("knowledge_page.install.title")}
+            onClick={() => set_guide_open(true)}
+          >
+            <BadgeHelp aria-hidden="true" />
+          </AppButton>
         }
       >
-        {reorder.ordered_ids.length > 0 && (
-          <DragDropProvider {...SORTABLE_PROVIDER_OPTIONS} {...reorder.events}>
-            <Card render={<ul />} className="document-list__rows">
-              {reorder.ordered_ids.map((name, index) => (
-                <SortableSkillRow
-                  key={name}
-                  {...skill_row(by_name.get(name)!)}
-                  index={index}
-                  sort_disabled={pending || locked}
-                />
-              ))}
-            </Card>
-          </DragDropProvider>
+        <DragDropProvider {...SORTABLE_PROVIDER_OPTIONS} {...reorder.events}>
+          <Card render={<ul />} className="document-list__rows">
+            <DocumentListRow
+              name="personality"
+              description={t("knowledge_page.personality_description")}
+              on_open={() => on_open({ kind: "personality" })}
+            />
+            {reorder.ordered_ids.map((name, index) => (
+              <SortableSkillRow
+                key={name}
+                {...skill_row(by_name.get(name)!)}
+                index={index}
+                sort_disabled={pending || locked}
+              />
+            ))}
+          </Card>
+        </DragDropProvider>
+      </DocumentListGroup>
+      <DocumentListGroup
+        title={t("knowledge_page.builtin")}
+        action={<Badge>{t("knowledge_page.readonly")}</Badge>}
+      >
+        {builtin.length > 0 && (
+          <Card render={<ul />} className="document-list__rows">
+            {builtin.map((skill) => (
+              <DocumentListRow key={skill.name} {...skill_row(skill)} />
+            ))}
+          </Card>
         )}
       </DocumentListGroup>
       <AppActionDialog
@@ -202,7 +200,6 @@ function useSkillsState(active: boolean) {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      reading.current?.abort();
     };
   }, []);
 

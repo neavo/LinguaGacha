@@ -1,6 +1,6 @@
 ---
 name: epub
-description: 翻译、审校、分析、修改 EPUB 文件前必须加载。
+description: 翻译、审校、分析、修改 EPUB 文件前必须加载
 ---
 
 本技能用于阅读 EPUB 原稿结构、补充语境，以及按需生成工程外独立文件。

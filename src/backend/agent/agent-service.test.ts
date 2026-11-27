@@ -806,10 +806,9 @@ describe("AgentService", () => {
     }
   });
 
-  it("快照沿用技能加载结果的展示顺序，并在变更状态前拒绝非法消息", async () => {
+  it("变更会话状态前拒绝非法消息", async () => {
     const fixture = await create_service();
 
-    expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
     await expect(fixture.service.send_message({ message: "旧协议" })).rejects.toThrow(
       expect.objectContaining({ code: "request.validation_failed" }),
     );

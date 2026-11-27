@@ -2,9 +2,6 @@ export const de_de_knowledge_page = {
   builtin: "Integrierte Skills",
   user: "Benutzer-Skills",
   knowledge: "Projektwissen",
-  empty: {
-    user: "Keine Benutzer-Skills",
-  },
   readonly: "Schreibgeschützt",
   personality_description: "Persönlichkeitseinstellungen des intelligenten Assistenten",
   install: {

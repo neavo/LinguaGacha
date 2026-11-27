@@ -1,6 +1,6 @@
 ---
 name: bakin
-description: 翻译、审校、分析、修改 RPG Developer Bakin 游戏前必须加载。
+description: 翻译、审校、分析、修改 RPG Developer Bakin 游戏前必须加载
 ---
 
 内置解析器不识别 Bakin 游戏，文本都经 `generic-package` 封装为 `.generic` 通用包进入工程。本技能提供 Bakin 在各阶段的方法。

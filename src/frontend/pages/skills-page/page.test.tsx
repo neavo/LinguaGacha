@@ -35,6 +35,11 @@ vi.mock("./skill-editor", () => ({
     </button>
   ),
 }));
+vi.mock("./personality-editor", () => ({
+  PersonalityEditor: ({ on_back }: { on_back: () => void }) => (
+    <button onClick={on_back}>返回角色设定列表</button>
+  ),
+}));
 
 /** 使用测试自有技能覆盖同名来源，避免依赖动态内置资源。 */
 function skill(name: string, source: "builtin" | "user"): AgentSkillEntry {
@@ -83,7 +88,7 @@ describe("知识页面的技能分组", () => {
     );
   }
 
-  it("读取中不显示空态，读取完成且无用户技能时才显示", async () => {
+  it("用户组始终保留角色设定入口，技能列表加载中也能打开独立编辑器", async () => {
     let resolve!: (snapshot: { skills: AgentSkillEntry[] }) => void;
     mocks.api.mockImplementation(
       () =>
@@ -96,51 +101,36 @@ describe("知识页面的技能分组", () => {
     const personality = container.querySelector<HTMLButtonElement>(
       '.document-list__open[aria-label="personality"]',
     )!;
-    expect(personality.disabled).toBe(true);
-    expect(container.querySelector(".document-list__empty")).toBeNull();
+    await act(async () => personality.click());
+    const back = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "返回角色设定列表",
+    )!;
+    await act(async () => back.click());
     await act(async () => resolve({ skills: [] }));
-    expect(container.querySelector(".document-list__empty")).not.toBeNull();
-    expect(container.querySelector('.document-list__open[aria-label="personality"]')).toBe(
-      personality,
-    );
-    expect(personality.disabled).toBe(false);
+    expect(personality.closest("ul")?.children).toHaveLength(1);
   });
 
-  it.each(["install"] as const)(
-    "%s 指南可取消，前往 Agent 时携带完整请求和占位选区",
-    async (guide) => {
-      mocks.api.mockResolvedValue({ skills: [] });
-      await render();
-      const help = container.querySelector<HTMLButtonElement>(
-        `button[aria-label="${zh_cn_knowledge_page[guide].title}"]`,
+  it("安装指南可取消，前往 Agent 时携带请求和占位选区", async () => {
+    mocks.api.mockResolvedValue({ skills: [] });
+    await render();
+    const guide = zh_cn_knowledge_page.install;
+    const help = container.querySelector<HTMLButtonElement>(`button[aria-label="${guide.title}"]`)!;
+    /** 查找弹窗显示的操作按钮。 */
+    const action = (text: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
+        (button) => button.textContent?.startsWith(text),
       )!;
-      await act(async () => help.click());
-      const dialog = document.querySelector('[role="alertdialog"]')!;
-      expect(dialog.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe("确认");
-      expect(dialog.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
-        zh_cn_knowledge_page[guide].description,
-      );
-      /** 通过弹窗中的可见动作文字查找按钮。 */
-      const action = (text: string) =>
-        [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
-          (button) => button.textContent?.startsWith(text),
-        )!;
-      await act(async () => action("取消").click());
-      expect(mocks.navigate_to_agent).not.toHaveBeenCalled();
-      await act(async () => help.click());
-      await act(async () => action("由 AGENT 处理").click());
-      const request = mocks.navigate_to_agent.mock.calls[0]![0];
-      expect(request.text).toBe(
-        zh_cn_knowledge_page[guide].request.replace(
-          "{PLACEHOLDER}",
-          zh_cn_knowledge_page[guide].placeholder,
-        ),
-      );
-      expect(request.text.slice(request.selection.from, request.selection.to)).toBe(
-        zh_cn_knowledge_page[guide].placeholder,
-      );
-    },
-  );
+    await act(async () => help.click());
+    await act(async () => action("取消").click());
+    expect(mocks.navigate_to_agent).not.toHaveBeenCalled();
+    await act(async () => help.click());
+    await act(async () => action("由 AGENT 处理").click());
+    const request = mocks.navigate_to_agent.mock.calls[0]![0];
+    expect(request.text).toBe(guide.request.replace("{PLACEHOLDER}", guide.placeholder));
+    expect(request.text.slice(request.selection.from, request.selection.to)).toBe(
+      guide.placeholder,
+    );
+  });
 
   it("Agent 占用时禁用开关和拖拽但保留详情入口", async () => {
     mocks.owner = "agent";
@@ -160,7 +150,7 @@ describe("知识页面的技能分组", () => {
   });
 
   it.each(["builtin", "user"] as const)(
-    "%s 技能条目进入对应详情，把手点击不导航",
+    "%s 技能有开关并可打开详情，只有用户包可拖拽",
     async (source) => {
       mocks.api.mockResolvedValue({ skills: [skill("sample", source)] });
       await render();
@@ -171,6 +161,7 @@ describe("知识页面的技能分组", () => {
       const handle = entry
         .closest(".document-list__row")!
         .querySelector<HTMLButtonElement>(".document-list__handle")!;
+      expect(handle.disabled).toBe(source === "builtin");
       await act(async () => handle.click());
       expect(list.hidden).toBe(false);
       await act(async () => entry.click());
@@ -211,42 +202,39 @@ describe("知识页面的技能分组", () => {
       },
     );
     await render();
-    const rows = [...container.querySelectorAll<HTMLElement>(".document-list__row")].filter((row) =>
-      row.querySelector(
-        '.document-list__open[aria-label="custom"], .document-list__open[aria-label="another"]',
-      ),
-    );
-    expect(rows[0]?.querySelector<HTMLButtonElement>(".document-list__handle")?.disabled).toBe(
-      true,
-    );
-    expect(rows[1]?.querySelector<HTMLButtonElement>(".document-list__handle")?.disabled).toBe(
-      false,
-    );
-    expect(rows[2]?.querySelector<HTMLButtonElement>(".document-list__handle")?.disabled).toBe(
-      false,
-    );
-    const builtin_toggle = rows[0]?.querySelector(
+    const [user, builtin] = container.querySelectorAll<HTMLElement>("section.document-list");
+    expect(user?.getAttribute("aria-label")).toBe(zh_cn_knowledge_page.user);
+    expect(builtin?.getAttribute("aria-label")).toBe(zh_cn_knowledge_page.builtin);
+    const names = (group: HTMLElement) =>
+      [...group.querySelectorAll("h3")].map((heading) => heading.textContent);
+    expect(names(user!)).toEqual(["personality", "custom", "another"]);
+    expect(names(builtin!)).toEqual(["custom"]);
+    expect(user?.querySelector<HTMLButtonElement>(".document-list__handle")?.disabled).toBe(true);
+    const badges = container.querySelectorAll('[data-slot="badge"]');
+    expect(badges).toHaveLength(1);
+    expect(builtin?.querySelector('.document-list__header [data-slot="badge"]')).toBe(badges[0]);
+    expect(badges[0]?.textContent).toBe(zh_cn_knowledge_page.readonly);
+    const builtin_toggle = builtin!.querySelector(
       '.document-list__actions button[aria-pressed="false"]',
-    );
-    const toggle = rows[1]?.querySelector<HTMLButtonElement>(
+    )!;
+    const toggle = user!.querySelector<HTMLButtonElement>(
       '.document-list__actions button[aria-pressed="false"]',
-    );
+    )!;
     hold_read = true;
     mocks.settings = {};
     await render();
-    await act(async () => toggle?.click());
+    await act(async () => toggle.click());
     expect(container.querySelector<HTMLElement>(".knowledge-page__list")?.hidden).toBe(false);
     expect(mocks.api).toHaveBeenCalledWith("/api/skills/enabled", {
       source: "user",
       name: "custom",
       enabled: false,
     });
-    expect(mocks.toast).not.toHaveBeenCalled();
     await act(async () => finish());
     await act(async () => finish_read());
     expect(mocks.toast).not.toHaveBeenCalled();
-    expect(toggle?.getAttribute("aria-pressed")).toBe("true");
-    expect(builtin_toggle?.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(builtin_toggle.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("保存失败保留原状态并显示错误", async () => {

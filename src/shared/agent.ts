@@ -14,7 +14,7 @@ export type AgentWorkspaceLinkResult = Readonly<{ status: "saved" | "opened" | "
 /** skill 展示描述是按应用支持语言补全的 UI 值，不参与模型能力判断。 */
 export type AgentSkillDisplayDescriptions = JsonRecord & Record<Locale, string>;
 
-/** 启动期 skill 清单只公开能力选择所需的稳定名称与 UI 描述。 */
+/** 可引用技能仅公开补全所需的稳定名称与 UI 描述。 */
 export type AgentSkillSnapshot = JsonRecord & {
   name: string;
   displayDescriptions: AgentSkillDisplayDescriptions;

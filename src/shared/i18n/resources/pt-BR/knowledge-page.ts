@@ -2,9 +2,6 @@ export const pt_br_knowledge_page = {
   builtin: "Habilidades integradas",
   user: "Habilidades do usuário",
   knowledge: "Conhecimento do projeto",
-  empty: {
-    user: "Nenhuma habilidade do usuário",
-  },
   readonly: "Somente leitura",
   personality_description: "Configurações de personalidade do assistente inteligente",
   install: {

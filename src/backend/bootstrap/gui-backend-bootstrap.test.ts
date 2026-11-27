@@ -2,6 +2,7 @@ import { font_fixture } from "../../test/font-fixture";
 import { create_godot_fixture, godot_pack_fixture } from "../../test/godot-fixture";
 import { GameFormat } from "../file/shared/game/format";
 import { read_json_record } from "../../domain/json";
+import type { AgentSkillSnapshot } from "../../shared/agent";
 import { png_fixture, encrypted_media, MEDIA_KEY } from "../../test/media-fixture";
 import { NativeFs } from "../../native/native-fs";
 import { Model } from "../../domain/model";
@@ -404,7 +405,7 @@ describe("GuiBackendBootstrap 集成", () => {
     15000,
   );
 
-  it("技能管理在无工程时可用，空白对话立即采用开关和排序", async () => {
+  it("技能管理在无工程时可用，有无工程的补全共用同名选择、启停和排序", async () => {
     using temporary = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-skills-gateway-"));
     const app_root = temporary.path;
     const options = create_options(app_root);
@@ -414,9 +415,15 @@ describe("GuiBackendBootstrap 集成", () => {
       fs.mkdirSync(directory, { recursive: true });
       fs.writeFileSync(
         path.join(directory, "SKILL.md"),
-        `---\nname: ${name}\ndescription: Fixture skill\n---\nBody`,
+        `---\nname: ${name}\ndescription: User skill\n---\nBody`,
       );
     }
+    const builtin = path.join(paths.get_agent_builtin_skill_dir(), "first");
+    fs.mkdirSync(builtin, { recursive: true });
+    fs.writeFileSync(
+      path.join(builtin, "SKILL.md"),
+      "---\nname: first\ndescription: Built-in skill\n---\nBody",
+    );
     const bootstrap = new GuiBackendBootstrap(options);
     try {
       const { apiBaseUrl } = await bootstrap.start();
@@ -430,33 +437,32 @@ describe("GuiBackendBootstrap 集成", () => {
         expect(response.ok).toBe(true);
         return response.json();
       };
-      await expect(post("/api/skills/snapshot")).resolves.toMatchObject({
-        data: { skills: expect.any(Array) },
-      });
+      const management = await post("/api/skills/snapshot");
+      expect(management.data.skills).toContainEqual(
+        expect.objectContaining({ name: "second", source: "user", enabled: true }),
+      );
+      const no_project = await post("/api/agent/skills");
+      expect(no_project.data).toMatchObject([
+        { name: "first", displayDescriptions: { "en-US": "User skill" } },
+        { name: "second" },
+      ]);
       const { data: created } = await post("/api/session/project/create", {
         path: path.join(app_root, "skills.lg"),
         source_paths: [],
       });
       const projectId = created.project.projectId;
       /** 从会话公开快照观察生效时机。 */
-      const names = async (): Promise<string[]> => {
+      const project_skills = async (): Promise<AgentSkillSnapshot[]> => {
         const response = await fetch(`${apiBaseUrl}/api/agent/snapshot?projectId=${projectId}`);
-        const payload = (await response.json()) as { data: { skills: { name: string }[] } };
-        return payload.data.skills.map((skill) => skill.name);
+        const payload = (await response.json()) as { data: { skills: AgentSkillSnapshot[] } };
+        return payload.data.skills;
       };
-      expect(await names()).toEqual(["first", "second"]);
+      const names = async () => (await project_skills()).map((skill) => skill.name);
+      expect(await project_skills()).toEqual(no_project.data);
       await post("/api/skills/reorder", { names: ["second", "first"] });
       expect(await names()).toEqual(["second", "first"]);
       await post("/api/skills/enabled", { source: "user", name: "second", enabled: false });
       expect(await names()).toEqual(["first"]);
-      await expect(post("/api/skills/snapshot")).resolves.toMatchObject({
-        data: {
-          skills: [
-            { name: "second", enabled: false },
-            { name: "first", enabled: true },
-          ],
-        },
-      });
       await post("/api/agent/reset", { projectId });
       expect(await names()).toEqual(["first"]);
       await post("/api/skills/enabled", { source: "user", name: "second", enabled: true });
@@ -484,7 +490,6 @@ describe("GuiBackendBootstrap 集成", () => {
           "utf8",
         ),
       ).toBe("Reference\n");
-      expect(await names()).toEqual(["second", "first"]);
       const main = await post("/api/skills/file/read", { ...skill, path: "SKILL.md" });
       await post("/api/skills/file/save", {
         ...skill,
@@ -492,7 +497,13 @@ describe("GuiBackendBootstrap 集成", () => {
         revision: main.data.revision,
         document: { ...main.data.document, name: "renamed", description: "Updated fixture" },
       });
-      expect(await names()).toEqual(["second", "renamed"]);
+      const after_rename = await project_skills();
+      expect(after_rename).toMatchObject([
+        { name: "first", displayDescriptions: { "en-US": "Built-in skill" } },
+        { name: "second" },
+        { name: "renamed" },
+      ]);
+      await expect(post("/api/agent/skills")).resolves.toMatchObject({ data: after_rename });
       const personality = await post("/api/agent/personality/read");
       const customized = await post("/api/agent/personality/save", {
         revision: personality.data.revision,
@@ -505,7 +516,7 @@ describe("GuiBackendBootstrap 集成", () => {
       });
       expect(reset.data.body).toBe("Test personality.");
       await post("/api/skills/delete", { source: "user", name: "renamed" });
-      expect(await names()).toEqual(["second"]);
+      expect(await names()).toEqual(["first", "second"]);
     } finally {
       await bootstrap.stop();
     }

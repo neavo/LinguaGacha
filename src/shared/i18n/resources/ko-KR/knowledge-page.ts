@@ -2,9 +2,6 @@ export const ko_kr_knowledge_page = {
   builtin: "기본 스킬",
   user: "사용자 스킬",
   knowledge: "프로젝트 지식",
-  empty: {
-    user: "사용자 스킬 없음",
-  },
   readonly: "읽기 전용",
   personality_description: "지능형 어시스턴트의 역할 설정",
   install: {

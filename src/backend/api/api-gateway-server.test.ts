@@ -322,16 +322,7 @@ describe("ApiGatewayServer", () => {
     const gateway = new ApiGatewayServer({
       backendServices: { dispose } as unknown as BackendServices<AgentService>,
       personalityService: { read: vi.fn(), save: vi.fn() },
-      skillsService: {
-        delete: vi.fn(),
-        snapshot: vi.fn(),
-        set_enabled: vi.fn(),
-        tree: vi.fn(),
-        read_file: vi.fn(),
-        save_file: vi.fn(),
-        change_file: vi.fn(),
-        reorder: vi.fn(),
-      },
+      skillsService: stub_skills_service(),
       eventStream: new ApiStreamHub(),
     });
 
@@ -377,16 +368,7 @@ describe("ApiGatewayServer", () => {
     const gateway = new ApiGatewayServer({
       backendServices: backend_services,
       personalityService: { read: vi.fn(), save: vi.fn() },
-      skillsService: {
-        delete: vi.fn(),
-        snapshot: vi.fn(),
-        set_enabled: vi.fn(),
-        tree: vi.fn(),
-        read_file: vi.fn(),
-        save_file: vi.fn(),
-        change_file: vi.fn(),
-        reorder: vi.fn(),
-      },
+      skillsService: stub_skills_service(),
       eventStream: new ApiStreamHub(),
     });
     cleanup_callbacks.push(
@@ -395,6 +377,21 @@ describe("ApiGatewayServer", () => {
       () => gateway.stop(),
     );
     return { gateway, backend_services };
+  }
+
+  /** 网关生命周期用例只需要注册技能路由。 */
+  function stub_skills_service() {
+    return {
+      delete: vi.fn(),
+      snapshot: vi.fn(),
+      read_reference_skills: vi.fn(),
+      set_enabled: vi.fn(),
+      tree: vi.fn(),
+      read_file: vi.fn(),
+      save_file: vi.fn(),
+      change_file: vi.fn(),
+      reorder: vi.fn(),
+    };
   }
 
   /** 通过真实工程注册与 HTTP 路由验证传输，文件由测试端提供已知字节。 */

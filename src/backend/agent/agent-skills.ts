@@ -18,7 +18,7 @@ import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 
 type AgentSkillUi = {
-  visible: boolean; // 是否进入公开能力列表并接受用户 marker，不改变模型自主调用或读取权限
+  visible: boolean; // 是否进入用户的技能引用补全。
   order?: number; // 内置展示顺序，缺失时按名称追加；用户顺序由应用偏好拥有
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
@@ -46,6 +46,7 @@ export type AgentSkillPaths = Pick<
 export type AgentSkillPackage = {
   definition: AgentSkillDefinition; // 会话读取所需的包与元数据。
   source: AgentSkillSource; // 偏好身份与同名覆盖优先级。
+  userManageable: boolean; // 不可管理的内置包保留运行时名称，独立于用户偏好。
 };
 
 /** 扫描技能并按偏好选择每个名称的启用来源。 */
@@ -65,12 +66,13 @@ export function select_agent_skills(
   settings: AgentSkillSettings,
 ): AgentSkillDefinition[] {
   const selected = new Map<string, AgentSkillPackage>(); // 每个名称只绑定一个启用包。
-  // 先过滤关闭项，再由用户包覆盖内置包。关闭用户包后回退到内置包。
+  // 不可管理的内置包保留名称，其余按启停偏好和用户包优先级选择。
   for (const item of packages) {
-    if (item.definition.visible && settings.disabled[item.source].includes(item.definition.name))
-      continue;
-    if (!selected.has(item.definition.name) || item.source === "user")
-      selected.set(item.definition.name, item);
+    const { name } = item.definition;
+    if (item.userManageable && settings.disabled[item.source].includes(name)) continue;
+    const current = selected.get(name);
+    if (!current || !item.userManageable || (current.userManageable && item.source === "user"))
+      selected.set(name, item);
   }
   return sort_agent_skill_packages([...selected.values()], settings).map((item) => item.definition);
 }
@@ -116,9 +118,11 @@ export function scan_agent_skills(
         disableModelInvocation,
         filePath: filePath.replaceAll("\\", "/"),
       };
+      const { userManageable, ...ui } = load_skill_ui(skill, log_manager, native_fs);
       skills.push({
         source,
-        definition: { ...skill, ...load_skill_ui(skill, log_manager, native_fs) },
+        definition: { ...skill, ...ui },
+        userManageable: source === "user" || userManageable,
       });
     }
   }
@@ -264,15 +268,16 @@ function escape_agent_skill_xml(value: string): string {
 }
 
 /**
- * 同目录 ui.json 定义公开可调用性、顺序与描述；缺失或整份无效时统一回退默认 UI 配置。
+ * 同目录 ui.json 定义用户管理、补全可见性、顺序和描述。缺失或无效时回退到默认值。
  */
 function load_skill_ui(
   skill: Pick<AgentSkillDefinition, "description" | "filePath">,
   log_manager: AgentSkillLog,
   native_fs: AgentSkillNativeFs,
-): AgentSkillUi {
-  const fallback: AgentSkillUi = {
+): AgentSkillUi & Pick<AgentSkillPackage, "userManageable"> {
+  const fallback = {
     visible: true,
+    userManageable: true,
     displayDescriptions: Object.fromEntries(
       LOCALES.map((locale) => [locale, skill.description]),
     ) as AgentSkillDisplayDescriptions,
@@ -299,6 +304,7 @@ function load_skill_ui(
     return fallback;
   }
   const visible = parsed["visible"];
+  const user_manageable = parsed["userManageable"];
   const order = parsed["order"];
   const descriptions = parsed["displayDescriptions"];
   const description_record = is_json_record(descriptions) ? descriptions : null;
@@ -306,9 +312,14 @@ function load_skill_ui(
   if (
     Object.keys(parsed).length === 0 ||
     Object.keys(parsed).some(
-      (key) => key !== "visible" && key !== "order" && key !== "displayDescriptions",
+      (key) =>
+        key !== "visible" &&
+        key !== "userManageable" &&
+        key !== "order" &&
+        key !== "displayDescriptions",
     ) ||
     (visible !== undefined && typeof visible !== "boolean") ||
+    (user_manageable !== undefined && typeof user_manageable !== "boolean") ||
     (order !== undefined &&
       (typeof order !== "number" || !Number.isSafeInteger(order) || order < 0)) ||
     (descriptions !== undefined && description_record === null) ||
@@ -330,6 +341,7 @@ function load_skill_ui(
   }
   return {
     visible: visible !== false,
+    userManageable: user_manageable !== false,
     ...(typeof order === "number" ? { order } : {}),
     displayDescriptions: display_descriptions,
   };

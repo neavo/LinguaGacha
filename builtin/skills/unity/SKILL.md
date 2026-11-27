@@ -1,6 +1,6 @@
 ---
 name: unity
-description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必须加载。
+description: 翻译、审校、分析、修改 Unity 或 Naninovel 游戏前必须加载
 ---
 
 内置解析器不识别 Unity 游戏，资源中的文本都经 `generic-package` 封装为 `.generic` 通用包进入工程。本技能提供 Unity 资源在各阶段的定位、解析与写回方法。

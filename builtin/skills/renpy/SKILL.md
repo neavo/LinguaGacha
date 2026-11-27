@@ -1,6 +1,6 @@
 ---
 name: renpy
-description: 翻译、审校、分析、修改 RenPy 游戏前必须加载。
+description: 翻译、审校、分析、修改 RenPy 游戏前必须加载
 ---
 
 内置解析器识别 Ren'Py 游戏，每个游戏导入为一个工程资产。本技能提供 Ren'Py 在各阶段的方法。

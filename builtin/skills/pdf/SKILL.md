@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: 翻译、审校、分析、修改 PDF 文件（含 `.generic` 通用包）前必须加载。
+description: 翻译、审校、分析、修改 PDF 文件前必须加载
 ---
 
 内置解析器不识别 PDF，原稿经 `generic-package` 封装为 `.generic` 资产进入工程。处理 PDF 通用包时同时加载 `generic-package`。

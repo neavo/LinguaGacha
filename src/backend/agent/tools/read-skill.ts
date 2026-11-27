@@ -4,11 +4,12 @@ import { Type } from "typebox";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 
 import { default_native_fs } from "../../../native/native-fs";
+import { AGENT_SKILL_MAIN_FILE } from "../../../shared/agent-skills";
 import { agent_skill_base_url, type AgentSkillDefinition } from "../agent-skills";
 import { define_agent_tool, AgentToolError, agent_tool_result } from "../tool-definition";
 
-const DEFAULT_SKILL_RESOURCE_PATH = "SKILL.md";
 const SKILL_RESOURCE_PATH_INVALID = "skill.resource_path_invalid";
+const SKILL_UNAVAILABLE = "skill.unavailable";
 const SKILL_RESOURCE_NOT_FOUND = "skill.resource_not_found";
 
 /** 按当前名称定位技能包，每次调用读取当前磁盘内容。 */
@@ -32,7 +33,7 @@ export function create_agent_read_skill_tool(
         }),
         path: Type.Optional(
           Type.String({
-            description: `技能包内的相对文件路径，使用 / 分隔，省略时读取 ${DEFAULT_SKILL_RESOURCE_PATH}。`,
+            description: `技能包内的相对文件路径，使用 / 分隔，省略时读取 ${AGENT_SKILL_MAIN_FILE}。`,
           }),
         ),
       },
@@ -41,12 +42,12 @@ export function create_agent_read_skill_tool(
     execute: async (params, _api, context) => {
       const signal = context.abortSignal;
       signal?.throwIfAborted();
-      const resource_path = params.path ?? DEFAULT_SKILL_RESOURCE_PATH;
+      const resource_path = params.path ?? AGENT_SKILL_MAIN_FILE;
       const failure = (code: string, cause?: unknown) =>
         new AgentToolError({ code, name: params.name, path: resource_path }, cause);
       if (!is_skill_resource_path(resource_path)) throw failure(SKILL_RESOURCE_PATH_INVALID);
       const skill = get_skills().find((candidate) => candidate.name === params.name);
-      if (skill === undefined) throw failure(SKILL_RESOURCE_NOT_FOUND);
+      if (skill === undefined) throw failure(SKILL_UNAVAILABLE);
       const target = path.resolve(path.dirname(skill.filePath), ...resource_path.split("/"));
       let content: string;
       try {

@@ -52,6 +52,7 @@ export function register_api_routes(context: ApiRouteContext): void {
 
   context.postJson("/api/agent/personality/read", () => context.personality.read());
   context.postJson("/api/agent/personality/save", (body) => context.personality.save(body));
+  context.postJson("/api/agent/skills", () => context.skills.read_reference_skills());
   context.postJson("/api/skills/delete", (body) => context.skills.delete(body));
   context.postJson("/api/skills/snapshot", () => context.skills.snapshot());
   context.postJson("/api/skills/enabled", (body) => context.skills.set_enabled(body));

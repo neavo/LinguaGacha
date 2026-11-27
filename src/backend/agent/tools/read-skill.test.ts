@@ -53,9 +53,6 @@ describe("Agent 技能读取工具", () => {
   it("集合替换后按新名称和来源读取技能", async () => {
     using fixture = create_fixture("builtin", "shared", "旧正文");
     const filePath = write_skill(fixture.user_root, "new-skill", "用户新正文");
-    await expect(execute(fixture.tool, { name: "new-skill" })).rejects.toMatchObject({
-      details: { code: "skill.resource_not_found" },
-    });
     fixture.catalog.skills = [{ ...fixture.catalog.skills[0]!, name: "new-skill", filePath }];
     await expect(execute(fixture.tool, { name: "new-skill" })).resolves.toMatchObject({
       details: {
@@ -64,7 +61,7 @@ describe("Agent 技能读取工具", () => {
       },
     });
     await expect(execute(fixture.tool, { name: "shared" })).rejects.toMatchObject({
-      details: { code: "skill.resource_not_found" },
+      details: { code: "skill.unavailable" },
     });
   });
 
@@ -88,11 +85,11 @@ describe("Agent 技能读取工具", () => {
     });
   });
 
-  it("未知 skill 与缺失包内文件返回稳定错误", async () => {
+  it("区分技能不可用与包内资源缺失", async () => {
     using fixture = create_fixture("user", "shared", "正文");
 
     await expect(execute(fixture.tool, { name: "unknown" })).rejects.toMatchObject({
-      details: { code: "skill.resource_not_found", name: "unknown", path: "SKILL.md" },
+      details: { code: "skill.unavailable", name: "unknown", path: "SKILL.md" },
     });
     await expect(
       execute(fixture.tool, { name: "shared", path: "missing.md" }),

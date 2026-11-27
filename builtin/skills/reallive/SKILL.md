@@ -1,6 +1,6 @@
 ---
 name: reallive
-description: 翻译、审校、分析、修改 RealLive 游戏前必须加载。
+description: 翻译、审校、分析、修改 RealLive 游戏前必须加载
 ---
 
 内置解析器不识别 RealLive 游戏，文本都经 `generic-package` 封装为 `.generic` 通用包进入工程。本技能提供 RealLive 在各阶段的方法。
