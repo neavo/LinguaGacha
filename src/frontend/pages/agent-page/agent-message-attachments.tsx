@@ -8,7 +8,10 @@ import type {
   AgentMessageAttachment,
   AgentResponseAnnotationAttachment,
 } from "@shared/agent";
-import { resolve_agent_text_format } from "@shared/agent-workspace-file";
+import {
+  encode_agent_workspace_path,
+  resolve_agent_text_format,
+} from "@shared/agent-workspace-file";
 import { resolve_workspace_image_mime } from "@shared/image-formats";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -61,9 +64,7 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
         const image = attachment.kind === "file" && attachment.imageMimeType !== null;
         const staged = attachment.kind === "staged_file";
         const file_path =
-          attachment.kind === "file"
-            ? attachment.path.split("/").map(encodeURIComponent).join("/")
-            : null;
+          attachment.kind === "file" ? encode_agent_workspace_path(attachment.path) : null;
         const pending = attachment.kind === "upload";
         const name = annotation ? attachment.selectedText : attachment.name;
         const open = selected_attachment === attachment;

@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
 import {
   is_agent_file_href,
   resolve_agent_text_format,
   resolve_agent_file_href,
+  local_path_to_file_url,
+  encode_agent_workspace_path,
 } from "./agent-workspace-file";
 
 describe("Agent 文件链接", () => {
+  it.each([
+    ["E:\\My Game#1\\中文 a%20b.md", true],
+    ["\\\\server\\share\\子目录\\a%#.md", true],
+    ["/Users/a/My #1/中文 a%20b?.md", false],
+  ] as const)("本机路径 %s 在文件 URL 中无损往返", (path, windows) => {
+    expect(fileURLToPath(local_path_to_file_url(path)!, { windows })).toBe(path);
+  });
+
+  it("保留根路径，拒绝相对本机路径并按段编码上传路径", () => {
+    expect(local_path_to_file_url("E:/")).toBe("file:///E:/");
+    expect(local_path_to_file_url("/")).toBe("file:///");
+    expect(local_path_to_file_url("E:\\Games\\Demo\\")).toBe("file:///E:/Games/Demo");
+    expect(local_path_to_file_url("\\\\host#other\\share\\a.md")).toBeNull();
+    expect(local_path_to_file_url("relative/foo.txt")).toBeNull();
+    expect(encode_agent_workspace_path("uploads/a #%.md")).toBe("uploads/a%20%23%25.md");
+  });
   it("外部文档按 URL 解析相对文件与锚点，工作区文档可引用绝对文件 URL", () => {
     const document = "file:///D:/Output/reports/check.md";
     expect(resolve_agent_file_href("./a%20b.png", document)).toBe(

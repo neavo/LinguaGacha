@@ -25,8 +25,6 @@ type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling" | "disco
 type AgentComposerProps = {
   placeholder: string;
   ref?: Ref<AgentComposerHandle>;
-  on_drop_files?: (files: readonly File[]) => void;
-  on_paths_inserted?: (paths: readonly string[]) => void;
   locked?: boolean;
   language_control: ReactNode;
   skills: readonly AgentSkillSnapshot[];
@@ -75,8 +73,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     <AgentMessageEditor
       placeholder={props.placeholder}
       ref={props.ref}
-      on_drop_files={props.on_drop_files}
-      on_paths_inserted={props.on_paths_inserted}
+      page_handles_file_drop
       read_only={editor_read_only}
       skills={props.skills}
       instructions={props.instructions}

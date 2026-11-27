@@ -24,6 +24,7 @@ import {
   type Tooltip,
   type ViewUpdate,
 } from "@codemirror/view";
+import "./app-editor.css";
 
 export type AppEditorSyntax = "plain" | "markdown" | "json" | "typescript";
 type AppCodeTokenKind =
@@ -335,44 +336,54 @@ function resolve_hovered_app_text_marks(
 export function create_app_editor_text_mark_hover_extension(marks_ref: {
   current: readonly AppTextMark[];
 }): Extension {
+  return create_app_editor_text_hover_extension((_view, pos, side) => {
+    const hovered_marks = resolve_hovered_app_text_marks(marks_ref.current, pos, side);
+    const text = resolve_segment_tooltip(hovered_marks);
+    return text === undefined
+      ? null
+      : {
+          from: Math.min(...hovered_marks.map((mark) => mark.start)),
+          to: Math.max(...hovered_marks.map((mark) => mark.end)),
+          text,
+        };
+  });
+}
+
+/** 编辑器共用应用样式的悬浮提示，调用方只解析命中的正文范围和提示内容。 */
+export function create_app_editor_text_hover_extension(
+  read_hover: (
+    view: EditorView,
+    pos: number,
+    side: -1 | 1,
+  ) => {
+    from: number;
+    to: number;
+    text: string;
+  } | null,
+  options?: Parameters<typeof hoverTooltip>[1],
+): Extension {
   return [
     tooltips({
       parent: document.body,
       position: "fixed",
     }),
     hoverTooltip((view, pos, side): Tooltip | null => {
-      void view;
-      const hovered_marks = resolve_hovered_app_text_marks(marks_ref.current, pos, side);
-
-      if (hovered_marks.length === 0) {
-        return null;
-      }
-
-      const tooltip = resolve_segment_tooltip(hovered_marks);
-      if (tooltip === undefined) {
-        return null;
-      }
-
-      const tooltip_start = Math.min(...hovered_marks.map((mark) => mark.start));
-      const tooltip_end = Math.max(...hovered_marks.map((mark) => mark.end));
-
+      const hover = read_hover(view, pos, side);
+      if (hover === null) return null;
       return {
-        pos: tooltip_start,
-        end: tooltip_end,
+        pos: hover.from,
+        end: hover.to,
         above: true,
         create() {
           const dom = document.createElement("div");
-          dom.className = "app-text-mark-tooltip";
-
-          const copy = document.createElement("div");
-          copy.className = "app-text-mark-tooltip__copy";
-          copy.textContent = tooltip;
-          dom.append(copy);
+          dom.className = "app-editor-text-tooltip";
+          dom.setAttribute("role", "tooltip");
+          dom.textContent = hover.text;
 
           return { dom };
         },
       };
-    }),
+    }, options),
   ];
 }
 

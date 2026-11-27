@@ -24,7 +24,16 @@ import type {
 } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
-import { find_agent_reference_ranges, type AgentReferenceRange } from "@shared/agent-reference";
+import {
+  find_agent_reference_ranges,
+  format_agent_reference_parts,
+  resolve_agent_reference_labels,
+  type AgentReference,
+  type AgentReferenceRange,
+} from "@shared/agent-reference";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { AgentFileTrigger } from "./agent-file-trigger";
+import { resolve_agent_reference_file } from "./use-agent-file-action";
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import {
@@ -431,18 +440,70 @@ function render_agent_mention_text(
   ranges: readonly AgentReferenceRange[],
 ): ReactNode[] {
   const content: ReactNode[] = [];
+  const labels = resolve_agent_reference_labels(ranges);
   let cursor = 0;
-  for (const range of ranges) {
+  for (const [index, range] of ranges.entries()) {
     if (range.from > cursor) content.push(text.slice(cursor, range.from));
     content.push(
-      <span className="agent-mention-token" key={`${range.from.toString()}:${range.marker}`}>
-        <span>{range.marker}</span>
-      </span>,
+      <AgentMentionToken
+        key={`${range.from.toString()}:${range.marker}`}
+        reference={range.reference}
+        label={labels[index]!}
+      />,
     );
     cursor = range.to;
   }
   if (cursor < text.length) content.push(text.slice(cursor));
   return content;
+}
+
+/** 文件块显示带类型的短名称，完整路径用于提示和文件动作。 */
+function AgentMentionToken({
+  reference,
+  label,
+}: {
+  reference: AgentReference;
+  label: string;
+}): JSX.Element {
+  if (reference.kind === "skill")
+    return (
+      <span className="agent-mention-token">
+        <span>{label}</span>
+      </span>
+    );
+  const [prefix, value, suffix] = format_agent_reference_parts({ ...reference, path: label });
+  const text = (
+    <>
+      {prefix}
+      <span>{value}</span>
+      {suffix}
+    </>
+  );
+  const target = resolve_agent_reference_file(reference);
+  return (
+    <Tooltip>
+      {target === null ? (
+        <TooltipTrigger render={<span className="agent-mention-token" />}>{text}</TooltipTrigger>
+      ) : (
+        <AgentFileTrigger
+          {...target}
+          render={
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  className="agent-mention-token agent-mention-token--interactive"
+                />
+              }
+            />
+          }
+        >
+          {text}
+        </AgentFileTrigger>
+      )}
+      <TooltipContent>{reference.path}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 /** 按供应商顺序展示正文和思考，助手条目统一声明批注范围。 */

@@ -1,4 +1,8 @@
-import { normalize_source_paths, read_file_paths } from "@frontend/app/desktop/source-paths";
+import {
+  normalize_source_paths,
+  read_file_path,
+  read_file_paths,
+} from "@frontend/app/desktop/source-paths";
 import { useProjectLifecycle } from "@frontend/app/session/project-lifecycle/project-lifecycle-context";
 import { ProjectOpenPreviewDialog } from "@frontend/features/project-lifecycle/project-open-preview-dialog";
 import type { AgentDraft, AgentStagedFile } from "@frontend/app/session/agent/agent-input-draft";
@@ -9,7 +13,9 @@ import { AppContentState } from "@frontend/widgets/app-content-state";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import type { AgentApprovalMode } from "@domain/setting";
 import type { ProjectLanguageSettings } from "@domain/project-settings";
-import { format_agent_reference } from "@shared/agent-reference";
+import { find_agent_reference_ranges, format_agent_reference } from "@shared/agent-reference";
+import { local_path_to_file_url } from "@shared/agent-workspace-file";
+import { PROJECT_FILE_EXTENSION } from "@shared/project/project-file";
 import type { AgentSkillsSnapshot } from "@shared/agent-skills";
 import {
   type JSX,
@@ -248,29 +254,37 @@ function useAgentInputRequest(
   }, [agent_input_request, clear_agent_input_request, composer_ref, enabled]);
 }
 
-/** 用仍在正文或暂存附件中的已知路径定位保存目录，不从自由文本推测路径。 */
+/** 建项保存目录取自当前正文中的本机绝对路径和暂存图片。 */
 function collect_effective_anchor_paths(
   draft: AgentDraft,
-  known_paths: ReadonlySet<string>,
   staged_files: readonly AgentStagedFile[],
 ): string[] {
-  // 编辑器将路径逐行录入。匹配完整路径行，避免把已删除的路径当成另一个路径的前缀命中。
-  const paths_in_text = draft.text.split("\n").filter((line) => known_paths.has(line));
+  const paths_in_text = find_agent_reference_ranges(draft.text).flatMap(({ reference }) =>
+    reference.kind === "file" && local_path_to_file_url(reference.path) !== null
+      ? [reference.path]
+      : [],
+  );
   return normalize_source_paths([
     ...paths_in_text,
     ...staged_files.flatMap(({ sourcePath }) => (sourcePath === null ? [] : [sourcePath])),
   ]);
 }
 
+/** 系统拖放提供本机文件名，只有单个工程文件需要在分流前读取路径。 */
+function read_dropped_project(files: readonly File[]): string | null {
+  const [file] = files;
+  return files.length === 1 && file?.name.toLowerCase().endsWith(PROJECT_FILE_EXTENSION)
+    ? read_file_path(file)
+    : null;
+}
+
 /** 无工程时编辑主窗口草稿，发送后交给新工程所属的 AgentChatStore。 */
 export function EmptyAgentConversation({
   input_state,
-  known_paths,
   languages,
   on_languages_change,
 }: {
   input_state: AgentInputState;
-  known_paths: Set<string>;
   languages: ProjectLanguageSettings;
   on_languages_change: (languages: ProjectLanguageSettings) => void;
 }): JSX.Element {
@@ -314,7 +328,7 @@ export function EmptyAgentConversation({
     );
     const project = await lifecycle.create_for_agent({
       languages,
-      anchor_paths: collect_effective_anchor_paths(draft, known_paths, staged_files),
+      anchor_paths: collect_effective_anchor_paths(draft, staged_files),
     });
     if (project === null) return;
     const sending = project.agentChat.send_initial_draft({
@@ -322,7 +336,6 @@ export function EmptyAgentConversation({
       files: staged_files.map(({ file }) => file),
     });
     input_state.draft.clear();
-    known_paths.clear();
     try {
       await sending;
     } catch (error) {
@@ -332,21 +345,18 @@ export function EmptyAgentConversation({
 
   /** 单个工程文件进入打开预览，翻译素材以路径进入待建项草稿。 */
   function handle_file_drop(files: readonly File[]): void {
-    if (locked || files.length === 0) return;
-    const { paths, skipped } = read_file_paths(files);
-    const path = paths[0];
-    if (files.length === 1 && path?.toLowerCase().endsWith(".lg")) {
-      set_dropped_project(path);
+    const project = read_dropped_project(files);
+    if (project !== null) {
+      set_dropped_project(project);
       return;
     }
+    const { paths, skipped } = read_file_paths(files);
     const source_paths = normalize_source_paths(paths);
     if (source_paths.length > 0) {
-      const text =
-        input_state.draft.read().text.trim() === ""
-          ? format_agent_translation_request(t, source_paths).text
-          : source_paths.join("\n");
-      if (composer_ref.current?.append_draft(text)) {
-        for (const path of source_paths) known_paths.add(path);
+      if (input_state.draft.read().text.trim() === "") {
+        composer_ref.current?.append_draft(format_agent_translation_request(t, source_paths).text);
+      } else {
+        composer_ref.current?.insert_file_references(source_paths);
       }
     }
     if (skipped.length > 0) {
@@ -404,8 +414,6 @@ export function EmptyAgentConversation({
                     }}
                   />
                 }
-                on_drop_files={handle_file_drop}
-                on_paths_inserted={(paths) => paths.forEach((path) => known_paths.add(path))}
                 skills={skills}
                 instructions={instructions}
                 state="idle"
@@ -518,6 +526,7 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const conversation_ref = useRef<HTMLElement | null>(null);
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
   const composer_ref = useRef<AgentComposerHandle | null>(null);
+  const [dropped_project, set_dropped_project] = useState<string | null>(null);
   const {
     following: follow_latest,
     follow_content: follow_conversation_content,
@@ -877,7 +886,11 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
   const input_transition = useAgentInputTransition(pending_decision, composer_ref, active);
 
   const composer_locked =
-    !active || lifecycle.busy || active_inline_edit !== null || input_transition.locked;
+    !active ||
+    lifecycle.busy ||
+    active_inline_edit !== null ||
+    input_transition.locked ||
+    dropped_project !== null;
   useAgentInputRequest(
     composer_ref,
     !composer_locked && controls.transport === "ready" && controls.command === null,
@@ -920,9 +933,14 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
     active_inline_edit !== null;
 
   const file_drop_enabled = !composer_locked && controls.command === null;
-  /** 页面和编辑器都可接入文件，编辑器入口也遵循会话输入状态。 */
+  /** 整个对话页先识别工程文件，其它文件交给主输入。 */
   function handle_file_drop(files: readonly File[]): void {
-    if (file_drop_enabled && files.length > 0) composer_ref.current?.drop_files(files);
+    const project = read_dropped_project(files);
+    if (project !== null) {
+      set_dropped_project(project);
+    } else {
+      composer_ref.current?.insert_files(files);
+    }
   }
 
   return (
@@ -933,6 +951,12 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
         enabled={file_drop_enabled}
         on_files={handle_file_drop}
       />
+      {dropped_project !== null ? (
+        <ProjectOpenPreviewDialog
+          path={dropped_project}
+          on_close={() => set_dropped_project(null)}
+        />
+      ) : null}
       <section
         ref={conversation_ref}
         className="agent-page__conversation"
@@ -1066,7 +1090,6 @@ export function AgentConversation({ active = true }: { active?: boolean }): JSX.
                   />
                 }
                 ref={composer_ref}
-                on_drop_files={handle_file_drop}
                 locked={composer_locked}
                 skills={skills}
                 instructions={instructions}

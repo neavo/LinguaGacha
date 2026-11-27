@@ -1318,6 +1318,7 @@
 }
 
 .agent-composer__input .cm-content {
+  min-width: 0; /* 让不可拆开的引用块在输入区内截断。 */
   min-height: 64px;
   padding: 6px 2px 3px;
   caret-color: var(--primary);
@@ -1653,7 +1654,7 @@
   flex: 0 0 auto;
 }
 
-/* 外层提供真实文本基线，裁切只由内层文本承接。 */
+/* 外层保持语法前后缀，只有内层文本参与省略。 */
 .agent-mention-token {
   display: inline-flex;
   max-width: 100%;
@@ -1664,13 +1665,34 @@
   font-size: 0.92em;
   font-weight: 500;
   vertical-align: baseline;
+  white-space: nowrap;
 }
 
 .agent-mention-token > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+button.agent-mention-token {
+  border: 0;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.agent-mention-token--interactive {
+  cursor: pointer;
+}
+
+.agent-mention-token--interactive:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--primary) 18%, var(--muted));
+}
+
+.agent-composer__file-menu-anchor {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
 .agent-message--user[data-mention-only="true"] .agent-message__user-text {

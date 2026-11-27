@@ -1,5 +1,5 @@
 import type { api_upload } from "@frontend/app/desktop/desktop-api";
-import { read_file_paths } from "@frontend/app/desktop/source-paths";
+import { read_file_path } from "@frontend/app/desktop/source-paths";
 import type { AgentFileAttachment, AgentMessageAttachment, AgentMessageInput } from "@shared/agent";
 
 export type AgentPendingUpload = {
@@ -74,7 +74,7 @@ export class AgentInputDraft {
       const id = crypto.randomUUID();
       const { name, size } = file;
       if (this.upload === null) {
-        const sourcePath = read_file_paths([file]).paths[0] ?? null;
+        const sourcePath = read_file_path(file);
         additions.push({ kind: "staged_file", id, name, size, file, sourcePath });
       } else {
         this.tasks.set(id, { file, controller: new AbortController() });

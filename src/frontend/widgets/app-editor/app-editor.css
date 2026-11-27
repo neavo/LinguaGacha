@@ -244,29 +244,23 @@
   text-decoration-color: color-mix(in srgb, var(--ui-warning) 84%, var(--foreground) 16%);
 }
 
-.cm-tooltip:has(.app-text-mark-tooltip) {
+.cm-tooltip:has(.app-editor-text-tooltip) {
   border: none;
   background: transparent;
   box-shadow: none;
   z-index: var(--ui-layer-tooltip);
 }
 
-.app-text-mark-tooltip {
-  display: inline-flex;
+.app-editor-text-tooltip {
+  display: inline-block;
   max-width: min(320px, calc(100vw - 64px));
-  align-items: center;
-  gap: 6px;
   border-radius: 6px;
+  padding: 6px 12px;
   background: var(--foreground);
   color: var(--background);
   box-shadow: 0 10px 28px color-mix(in srgb, black 14%, transparent);
-}
-
-.app-text-mark-tooltip__copy {
-  padding: 6px 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: inherit;
   font-size: var(--ui-font-size-12);
   line-height: 1.5;
 }

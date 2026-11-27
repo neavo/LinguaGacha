@@ -86,7 +86,7 @@ describe("AgentMessageAttachments", () => {
     }
   });
 
-  it("普通草稿文件使用另存为，移除按钮不触发文件动作", async () => {
+  it("普通草稿文件直接另存，移除按钮不触发文件动作", async () => {
     const on_remove = vi.fn();
     const file = {
       ...uploaded_file("document", null),
@@ -114,7 +114,7 @@ describe("AgentMessageAttachments", () => {
     ]);
     expect(files.api).not.toHaveBeenCalled();
     await act(async () => items[0]!.click());
-    expect(files.api).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
+    expect(files.api).toHaveBeenCalledExactlyOnceWith("/api/agent/workspace/activate-path", {
       path: file.path,
       chatId: "session",
     });

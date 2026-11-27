@@ -19,7 +19,11 @@ import { Shrink } from "lucide-react";
 import { deleteCharBackward, undo } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { type AgentMessageAttachment, type AgentChatSnapshot } from "@shared/agent";
+import {
+  AGENT_MESSAGE_IMAGE_LIMIT,
+  type AgentMessageAttachment,
+  type AgentChatSnapshot,
+} from "@shared/agent";
 import type { AgentInputState } from "@frontend/app/session/agent/agent-chat-context";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
@@ -634,42 +638,6 @@ describe("AgentMessageEditor", () => {
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
   });
 
-  it.each([undefined, "inline"] as const)(
-    "正文拖入文本文件只上传到所属草稿，展示模式 %s",
-    async (presentation) => {
-      const input_state = create_input_state();
-      const view = await render_editor({ input_state, presentation });
-      const editor = get_editor(view);
-      await set_document(editor, "原有正文", 2);
-      const selection = editor.state.selection.toJSON();
-      const read_text = vi
-        .spyOn(FileReader.prototype, "readAsText")
-        .mockImplementation(() => undefined);
-      const outer_drop = vi.fn();
-      view.addEventListener("drop", outer_drop);
-      try {
-        const file = new File(["不能插入的文件内容"], "notes.txt", { type: "text/plain" });
-        const enter = new DragEvent("dragenter", { bubbles: true, cancelable: true });
-        Object.defineProperty(enter, "dataTransfer", { value: { types: ["Files"] } });
-        await act(async () => editor.contentDOM.dispatchEvent(enter));
-        expect(view.querySelector('[data-active="true"]')).not.toBeNull();
-        const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
-        Object.defineProperty(drop, "dataTransfer", { value: { types: ["Files"], files: [file] } });
-        await act(async () => editor.contentDOM.dispatchEvent(drop));
-        expect(read_text).not.toHaveBeenCalled();
-        expect(editor.state.doc.toString()).toBe("原有正文");
-        expect(editor.state.selection.toJSON()).toEqual(selection);
-        expect(input_state.draft.read().attachments).toEqual([uploaded_file("webp-notes.txt")]);
-        expect(image_mocks.upload).toHaveBeenCalledOnce();
-        expect(outer_drop).not.toHaveBeenCalled();
-        expect(view.querySelector('[data-active="true"]')).toBeNull();
-      } finally {
-        read_text.mockRestore();
-        view.removeEventListener("drop", outer_drop);
-      }
-    },
-  );
-
   it("正文文件拖放读取最新权限，助手编辑也不读取文件文本", async () => {
     const input_state = create_input_state();
     const view = await render_editor({ input_state });
@@ -766,102 +734,149 @@ describe("AgentMessageEditor", () => {
     ]);
   });
 
-  it.each(["paste", "picker"] as const)(
-    "%s 将图片和文本上传，其余路径逐行插入选区并支持撤销",
-    async (source) => {
-      const input_state = create_input_state();
-      const view = await render_editor({ input_state });
-      const editor = get_editor(view);
-      await set_document(editor, "前文替换后文", 2);
-      await act(async () => editor.dispatch({ selection: EditorSelection.range(2, 4) }));
-      const files = [
-        new File([], "photo.PNG"),
-        new File([], "notes.JSON", { type: "application/octet-stream" }),
-        new File([], "book.pdf"),
-        new File([], "archive file"),
-      ];
-      file_mocks.path.mockImplementation((file) => `E:\\资料\\${file.name}`);
-      await add_files(view, files, source);
-      const text = "前文\nE:\\资料\\book.pdf\nE:\\资料\\archive file\n后文";
-      expect(editor.state.doc.toString()).toBe(text);
-      expect(input_state.draft.read()).toEqual({
-        text,
-        attachments: image_attachments("webp-photo.PNG", "webp-notes.JSON"),
-      });
-      expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
-      expect(image_mocks.upload.mock.calls.map((call) => (call[1] as File).name)).toEqual([
-        "photo.PNG",
-        "notes.JSON",
-      ]);
-      expect(file_mocks.toast).not.toHaveBeenCalled();
-      await act(async () => {
-        undo(editor);
-      });
-      expect(editor.state.doc.toString()).toBe("前文替换后文");
-    },
-  );
-
-  it.each(["drop", "editor-drop"] as const)(
-    "%s 混合文件全部录入路径，替换选区并保留附件",
-    async (source) => {
-      const input_state = create_input_state();
-      input_state.draft.write({ text: "前文替换后文", attachments: image_attachments("existing") });
-      const view = await render_editor({ input_state });
-      const editor = get_editor(view);
-      await act(async () => editor.dispatch({ selection: EditorSelection.range(2, 4) }));
-      file_mocks.path.mockImplementation((file) =>
-        file.name === "missing.zip" ? "" : `E:/${file.name}`,
-      );
-      image_mocks.upload.mockClear();
-      await add_files(
-        view,
-        [new File([], "photo.PNG"), new File([], "book.pdf"), new File([], "missing.zip")],
-        source,
-      );
-      expect(input_state.draft.read()).toEqual({
-        text: "前文\nE:/photo.PNG\nE:/book.pdf\n后文",
-        attachments: image_attachments("existing"),
-      });
-      expect(image_mocks.upload).not.toHaveBeenCalled();
-      expect(file_mocks.toast).toHaveBeenCalledExactlyOnceWith(
-        "warning",
-        "agent_page.error.invalid_file_path",
-        { description: "missing.zip" },
-      );
-      await act(async () => {
-        undo(editor);
-      });
-      expect(editor.state.doc.toString()).toBe("前文替换后文");
-    },
-  );
-
-  it("多个无路径文件只提示一次，同时保留可上传文件与可用路径", async () => {
+  it.each(["paste", "picker"] as const)("%s 只上传图片，其余路径在选区插入引用", async (source) => {
     const input_state = create_input_state();
     const view = await render_editor({ input_state });
-    file_mocks.path
-      .mockReturnValueOnce("")
-      .mockReturnValueOnce("")
-      .mockReturnValueOnce("E:/book.pdf");
+    const editor = get_editor(view);
+    await set_document(editor, "前文替换后文", 2);
+    await act(async () => editor.dispatch({ selection: EditorSelection.range(2, 4) }));
+    const files = [
+      new File([], "photo.PNG"),
+      new File([], "notes.JSON", { type: "application/octet-stream" }),
+      new File([], "archive file"),
+    ];
+    file_mocks.path.mockImplementation((file) => `E:\\资料\\${file.name}`);
+    await add_files(view, files, source);
+    expect(input_state.draft.read()).toEqual({
+      text: '前文 @file("E:\\\\资料\\\\notes.JSON") @file("E:\\\\资料\\\\archive file") 后文',
+      attachments: image_attachments("webp-photo.PNG"),
+    });
+  });
+
+  it("正文拖放保留已有附件、合并路径告警，撤销只还原引用改写", async () => {
+    const input_state = create_input_state();
+    input_state.draft.write({ text: "前文替换后文", attachments: image_attachments("existing") });
+    const view = await render_editor({ input_state, presentation: "inline" });
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ selection: EditorSelection.range(2, 4) }));
+    file_mocks.path.mockImplementation(({ name }) =>
+      name.startsWith("virtual") ? "" : `E:/${name}`,
+    );
     await add_files(
       view,
       [
         new File([], "virtual.zip"),
         new File([], "virtual.docx"),
-        new File([], "book.pdf"),
-        new File([], "notes.txt"),
+        new File(["原稿内容"], "notes.txt", { type: "text/plain" }),
+        new File([], "image.png"),
       ],
-      "paste",
+      "editor-drop",
     );
     expect(input_state.draft.read()).toEqual({
-      text: "E:/book.pdf",
-      attachments: image_attachments("webp-notes.txt"),
+      text: '前文 @file("E:/notes.txt") 后文',
+      attachments: image_attachments("existing", "webp-image.png"),
     });
     expect(file_mocks.toast).toHaveBeenCalledExactlyOnceWith(
       "warning",
       "agent_page.error.invalid_file_path",
       { description: "virtual.zip\nvirtual.docx" },
     );
-    expect(image_mocks.upload).toHaveBeenCalledOnce();
+    await act(async () => undo(editor));
+    expect(input_state.draft.read()).toEqual({
+      text: "前文替换后文",
+      attachments: image_attachments("existing", "webp-image.png"),
+    });
+  });
+
+  it("超出草稿图片上限时整批本机图片转为引用，保留无路径图片", async () => {
+    const existing = image_attachments(
+      ...Array.from(
+        { length: AGENT_MESSAGE_IMAGE_LIMIT - 1 },
+        (_, index) => `page-${index.toString()}.png`,
+      ),
+    );
+    const input_state = create_input_state();
+    input_state.draft.write({ text: "", attachments: existing });
+    const view = await render_editor({ input_state });
+    file_mocks.path.mockImplementation(({ name }) =>
+      name === "screenshot.png" ? "" : `E:/原稿/${name}`,
+    );
+    await add_files(view, [new File([], "new-page.png"), new File([], "screenshot.png")], "paste");
+    expect(input_state.draft.read()).toEqual({
+      text: '@file("E:/原稿/new-page.png") ',
+      attachments: [...existing, ...image_attachments("webp-screenshot.png")],
+    });
+  });
+
+  it("相邻文件块提示各自的完整路径，改写路径关闭旧提示", async () => {
+    const view = await render_editor();
+    const editor = get_editor(view);
+    const before = '@file("E:/原稿/b.txt")@workspace_file("';
+    await set_document(editor, `${before}章节/a.txt")`, 0);
+    const token = view.querySelectorAll(".agent-mention-token")[1]!;
+    expect(token.textContent).toBe('@workspace_file("a.txt")');
+    const tooltip = () => document.body.querySelector('[role="tooltip"]');
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        token.querySelector("span")!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+        await vi.runOnlyPendingTimersAsync();
+      });
+      expect(tooltip()?.textContent).toBe("章节/a.txt");
+      await act(async () =>
+        editor.dispatch({
+          changes: { from: before.length, to: before.length + 2, insert: "新章" },
+        }),
+      );
+      expect(tooltip()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("只读时仍可打开本机引用，有选区时交还原生右键菜单", async () => {
+    const revealPath = vi.fn(async () => undefined);
+    vi.stubGlobal("desktopApp", create_desktop_bridge_api_mock({ methods: { revealPath } }));
+    const marker = '@file("E:/原稿/a.txt")';
+    const input_state = create_input_state();
+    input_state.draft.write({ text: marker, attachments: [] });
+    const view = await render_editor({ input_state, read_only: true });
+    const editor = get_editor(view);
+    const token = editor.contentDOM.querySelector<HTMLElement>(".agent-mention-token")!;
+    const mouse = (type: string, clientX: number, button = 0) =>
+      new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX,
+        button,
+        detail: 1,
+      });
+    await act(async () => {
+      token.dispatchEvent(mouse("mousedown", 5));
+      token.dispatchEvent(mouse("mouseup", 35));
+      token.dispatchEvent(mouse("click", 35));
+    });
+    expect(revealPath).not.toHaveBeenCalled();
+    await act(async () => {
+      token.dispatchEvent(mouse("mousedown", 5));
+      token.dispatchEvent(mouse("mouseup", 5));
+      token.dispatchEvent(mouse("click", 5));
+    });
+    expect(revealPath).toHaveBeenCalledExactlyOnceWith("E:/原稿/a.txt");
+    await act(async () => editor.dispatch({ selection: EditorSelection.range(0, marker.length) }));
+    const selected = mouse("contextmenu", 5, 2);
+    await act(async () => token.dispatchEvent(selected));
+    expect(selected.defaultPrevented).toBe(false);
+
+    await act(async () => editor.dispatch({ selection: EditorSelection.cursor(marker.length) }));
+    const unselected = mouse("contextmenu", 5, 2);
+    await act(async () => token.dispatchEvent(unselected));
+    expect(unselected.defaultPrevented).toBe(true);
+    const reveal = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === "app.workspace.reveal_path",
+    );
+    await act(async () => reveal!.click());
+    expect(revealPath).toHaveBeenCalledTimes(2);
   });
 
   it("文件选择返回时遵循当前编辑锁", async () => {
@@ -1328,7 +1343,7 @@ async function dispatch_key(
 async function add_files(
   view: HTMLElement,
   files: File[],
-  source: "drop" | "editor-drop" | "paste" | "picker",
+  source: "editor-drop" | "paste" | "picker",
 ): Promise<void> {
   await act(async () => {
     if (source === "picker") {

@@ -108,7 +108,6 @@ function AppContent(): JSX.Element {
     read_history: (): readonly string[] => [],
     replace_history: () => {},
   }));
-  const [new_project_paths] = useState(() => new Set<string>());
   const [new_project_languages, set_new_project_languages] = useState(
     read_project_language_preference,
   );
@@ -485,7 +484,6 @@ function AppContent(): JSX.Element {
               ) : (
                 <EmptyAgentConversation
                   input_state={new_project_input}
-                  known_paths={new_project_paths}
                   languages={new_project_languages}
                   on_languages_change={set_new_project_languages}
                 />
