@@ -11,6 +11,7 @@ import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fix
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -77,19 +78,12 @@ describe("GuiBackendBootstrap 集成", () => {
     }
   });
 
-  it("关闭工程改名后可重开，冲突和设置写入失败保留原工程", async () => {
+  it("按最近路径改名只接受关闭工程，保留最近记录位置并可重开", async () => {
     using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-project-rename-"));
     const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
     try {
       const { apiBaseUrl } = await bootstrap.start();
-      async function post(route: string, body: object) {
-        const response = await fetch(apiBaseUrl + route, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        return response.json();
-      }
+      const post = project_api(apiBaseUrl);
       const {
         data: { project },
       } = await post("/api/session/project/create", {
@@ -98,19 +92,15 @@ describe("GuiBackendBootstrap 集成", () => {
         languages: { target_language: "JA" },
       });
       const original_path: string = project.path;
-      const rename = (new_name: string, project_path = original_path) =>
-        post("/api/session/project/rename", { path: project_path, new_name });
+      const rename = (new_name: string) =>
+        post("/api/session/project/rename", { path: original_path, new_name });
       await post("/api/settings/recent-projects/add", { path: original_path });
-      const occupied_path = path.join(path.dirname(original_path), "occupied.lg");
-      fs.writeFileSync(occupied_path, "existing");
       const {
         data: { settings },
       } = await post("/api/settings/recent-projects/add", {
-        path: occupied_path,
+        path: path.join(path.dirname(original_path), "another.lg"),
       });
       const original_records = settings.recent_projects;
-      const config_path = path.join(temp.path, "userdata", "config.json");
-      const original_config = fs.readFileSync(config_path, "utf8");
       expect(await rename("renamed")).toMatchObject({ ok: false, error: { code: "runtime.busy" } });
       await post("/api/session/project/close", { projectId: project.projectId });
       expect(await rename("bad/name")).toMatchObject({
@@ -120,26 +110,7 @@ describe("GuiBackendBootstrap 集成", () => {
           details: { field: "new_name" },
         },
       });
-      expect(await rename("occupied")).toMatchObject({
-        ok: false,
-        error: { code: "project.already_exists" },
-      });
-      expect(fs.readFileSync(occupied_path, "utf8")).toBe("existing");
-
       const renamed_path = path.join(path.dirname(original_path), "renamed.lg");
-      vi.spyOn(NativeFs.prototype, "write_file_atomic").mockImplementationOnce(() => {
-        throw new Error("Cannot save recent projects.");
-      });
-      // 原样提交不写配置，故障留给下一次实际改名。
-      expect(await rename("original")).toMatchObject({ ok: true });
-      expect(await rename("renamed")).toMatchObject({
-        ok: false,
-        error: { code: "file.io_failed" },
-      });
-      expect(fs.existsSync(original_path)).toBe(true);
-      expect(fs.existsSync(renamed_path)).toBe(false);
-      expect(fs.readFileSync(config_path, "utf8")).toBe(original_config);
-
       expect(await rename("renamed")).toMatchObject({
         ok: true,
         data: {
@@ -151,16 +122,161 @@ describe("GuiBackendBootstrap 集成", () => {
           },
         },
       });
-      expect(fs.existsSync(original_path)).toBe(false);
-      const final_path = path.join(path.dirname(original_path), "RENAMED.lg");
-      expect(await rename("RENAMED", renamed_path)).toMatchObject({ ok: true });
-      const names = fs.readdirSync(path.dirname(original_path));
-      expect(names).toContain("RENAMED.lg");
-      expect(names).not.toContain("renamed.lg");
-      expect(await post("/api/session/project/open", { path: final_path })).toMatchObject({
+      expect(await post("/api/session/project/open", { path: renamed_path })).toMatchObject({
         ok: true,
-        data: { project: { path: final_path, settings: project.settings } },
+        data: { project: { settings: project.settings } },
       });
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+
+  it("已打开工程改名保留对话材料和活跃时间，并直接重开已确认的高版本工程", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rename-open-"));
+    const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+    try {
+      const { apiBaseUrl, backendServices: services } = await bootstrap.start();
+      const post = project_api(apiBaseUrl);
+      const { data } = await post("/api/session/project/create", {
+        path: path.join(temp.path, "original.lg"),
+        source_paths: [],
+      });
+      const original_path: string = data.project.path;
+      await post("/api/session/project/close", { projectId: data.project.projectId });
+      const version = "99.0.0";
+      {
+        using db = new DatabaseSync(original_path);
+        db.prepare("UPDATE meta SET value = ? WHERE key = 'target_app_version'").run(
+          JSON.stringify(version),
+        );
+      }
+      const opened = await post("/api/session/project/open", {
+        path: original_path,
+        confirmed_target_app_version: version,
+      });
+      const project = services.projects.require(opened.data.project.projectId);
+      await post("/api/settings/recent-projects/add", { path: project.path });
+      project.gate.update_agent_round_started_at(42);
+      const snapshot = async (id: string) =>
+        (await fetch(`${apiBaseUrl}/api/agent/snapshot?projectId=${id}`)).json();
+      const {
+        data: { chatId },
+      } = await snapshot(project.id);
+      const workspace = path.join(services.app.paths.get_agent_workspace_root_dir(), chatId);
+      const work = path.join(workspace, "work", "proof.md");
+      fs.writeFileSync(work, "workspace");
+      const upload = await fetch(
+        `${apiBaseUrl}/api/agent/uploads?name=proof.txt&projectId=${project.id}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: "attachment",
+        },
+      );
+      expect(upload.ok).toBe(true);
+      const { data: attachment } = await upload.json();
+
+      const renamed_path = path.join(path.dirname(original_path), "renamed.lg");
+      const renamed = await post("/api/session/project/rename", {
+        projectId: project.id,
+        new_name: "renamed",
+      });
+      expect(renamed).toMatchObject({
+        ok: true,
+        data: {
+          project: { path: renamed_path, name: "renamed.lg" },
+          settings: { recent_projects: [{ path: renamed_path, name: "renamed.lg" }] },
+        },
+      });
+      const renamed_id: string = renamed.data.project.projectId;
+      expect(await snapshot(project.id)).toMatchObject({ error: { code: "project.not_loaded" } });
+      expect(await snapshot(renamed_id)).toMatchObject({ data: { chatId } });
+      expect(fs.existsSync(original_path)).toBe(false);
+      expect(fs.readFileSync(work, "utf8")).toBe("workspace");
+      const downloaded = await fetch(
+        `${apiBaseUrl}/api/agent/uploads/${attachment.uploadId}?projectId=${renamed_id}`,
+      );
+      expect(await downloaded.text()).toBe("attachment");
+      expect(await post("/api/runtime/snapshot", {})).toMatchObject({
+        data: { runtime: { projects: { [renamed_id]: { lastAgentRoundStartedAt: 42 } } } },
+      });
+
+      await post("/api/settings/recent-projects/remove", { path: renamed_path });
+      const final_path = path.join(path.dirname(original_path), "RENAMED.lg");
+      expect(
+        await post("/api/session/project/rename", {
+          projectId: renamed_id,
+          new_name: "RENAMED",
+        }),
+      ).toMatchObject({
+        ok: true,
+        data: {
+          project: { path: final_path, name: "RENAMED.lg" },
+          settings: { recent_projects: [] },
+        },
+      });
+      expect(fs.readdirSync(path.dirname(original_path))).toContain("RENAMED.lg");
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+
+  it("已打开工程按预检、提交与重装阶段处理失败", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-rename-recovery-"));
+    const bootstrap = new GuiBackendBootstrap(create_options(temp.path));
+    try {
+      const { apiBaseUrl, backendServices: services } = await bootstrap.start();
+      const post = project_api(apiBaseUrl);
+      const { data } = await post("/api/session/project/create", {
+        path: path.join(temp.path, "original.lg"),
+        source_paths: [],
+      });
+      const project = services.projects.require(data.project.projectId);
+      await post("/api/settings/recent-projects/add", { path: project.path });
+      const endpoint = "/api/session/project/rename";
+      const rename = (new_name: string) => post(endpoint, { projectId: project.id, new_name });
+      for (const target of [{}, { projectId: project.id, path: project.path }]) {
+        expect(await post(endpoint, { ...target, new_name: "renamed" })).toMatchObject({
+          error: { code: "request.validation_failed" },
+        });
+      }
+      expect(await rename("original")).toMatchObject({
+        data: { project: { projectId: project.id } },
+      });
+      const occupied = path.join(path.dirname(project.path), "occupied.lg");
+      fs.writeFileSync(occupied, "occupied");
+      expect(await rename("occupied")).toMatchObject({ error: { code: "project.already_exists" } });
+      expect(services.list_projects()).toMatchObject({
+        projects: [{ project: { projectId: project.id } }],
+      });
+      const lease = project.gate.begin_runtime("agent");
+      try {
+        expect(await rename("renamed")).toMatchObject({ error: { code: "runtime.busy" } });
+      } finally {
+        project.gate.finish_runtime(lease);
+      }
+
+      vi.spyOn(NativeFs.prototype, "write_file_atomic").mockImplementationOnce(() => {
+        throw new Error("Cannot update the recent path.");
+      });
+      expect(await rename("renamed")).toMatchObject({ error: { code: "file.io_failed" } });
+      expect(fs.existsSync(project.path)).toBe(true);
+      const target_path = path.join(path.dirname(project.path), "renamed.lg");
+      expect(fs.existsSync(target_path)).toBe(false);
+      expect(services.app.settings.has_recent_project(project.path)).toBe(true);
+
+      const restored = services.projects.find(project.path)!;
+      expect(restored.id).not.toBe(project.id);
+      vi.spyOn(services, "openAgent").mockRejectedValueOnce(new Error("Cannot restore Agent."));
+      expect(await post(endpoint, { projectId: restored.id, new_name: "renamed" })).toMatchObject({
+        error: {
+          code: "data.committed_sync_failed",
+          details: { committed: true, path: target_path, action: "reload_project" },
+        },
+      });
+      expect(services.list_projects()).toEqual({ projects: [] });
+      expect(fs.existsSync(target_path)).toBe(true);
+      expect(services.app.settings.has_recent_project(target_path)).toBe(true);
     } finally {
       await bootstrap.stop();
     }
@@ -522,62 +638,68 @@ describe("GuiBackendBootstrap 集成", () => {
     }
   });
 
-  it("关闭 Gateway 时取消流式上传并清理半成品", async ({ onTestFinished }) => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-file-upload-"));
-    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");
-    onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
-    const bootstrap = new GuiBackendBootstrap(create_options(app_root));
-    try {
-      const { apiBaseUrl } = await bootstrap.start();
-      const source = path.join(app_root, "source.txt");
-      fs.writeFileSync(source, "source");
-      const created = await fetch(`${apiBaseUrl}/api/session/project/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+  it.for(["关闭 Gateway", "工程改名"])(
+    "%s时取消流式上传并清理半成品",
+    async (operation, { onTestFinished }) => {
+      const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-file-upload-"));
+      onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
+      const bootstrap = new GuiBackendBootstrap(create_options(app_root));
+      try {
+        const { apiBaseUrl, backendServices: services } = await bootstrap.start();
+        const post = project_api(apiBaseUrl);
+        const created = await post("/api/session/project/create", {
           path: path.join(app_root, "test.lg"),
-          source_paths: [source],
-          languages: { source_language: "EN", target_language: "ZH" },
-        }),
-      });
-      const created_payload = await created.json();
-      expect(created_payload).toMatchObject({ ok: true });
-      const projectId = created_payload.data.project.projectId;
-      const agent_snapshot = await fetch(`${apiBaseUrl}/api/agent/snapshot?projectId=${projectId}`);
-      const { chatId } = (await agent_snapshot.json()).data;
-      const paths = new AppPathService({
-        appRoot: app_root,
-        builtinRoot: path.join(app_root, "builtin"),
-      });
-      const uploads = path.join(paths.get_agent_workspace_root_dir(), chatId, "uploads");
-      const pending = new Promise<void>((resolve) => {
-        const request = http.request(
-          `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin&projectId=${projectId}`,
-          { method: "POST", headers: { "Content-Type": "application/octet-stream" } },
-          (response) => {
-            response.resume();
-            response.on("end", resolve);
-          },
-        );
-        request.on("error", () => resolve());
-        request.write(Buffer.from([0, 255, 1]));
-        onTestFinished(() => {
-          request.destroy();
+          source_paths: [],
         });
-      });
-      await vi.waitFor(() =>
-        expect(
-          fs.existsSync(uploads) && fs.readdirSync(uploads).some((name) => name.endsWith(".part")),
-        ).toBe(true),
-      );
-      await bootstrap.stop();
-      await pending;
-      expect(fs.readdirSync(uploads)).toEqual([]);
-      expect(bootstrap.isStopped()).toBe(true);
-    } finally {
-      await bootstrap.stop();
-    }
-  });
+        expect(created).toMatchObject({ ok: true });
+        const projectId = created.data.project.projectId;
+        const agent_snapshot = await fetch(
+          `${apiBaseUrl}/api/agent/snapshot?projectId=${projectId}`,
+        );
+        const { chatId } = (await agent_snapshot.json()).data;
+        const uploads = path.join(
+          services.app.paths.get_agent_workspace_root_dir(),
+          chatId,
+          "uploads",
+        );
+        const pending = new Promise<void>((resolve) => {
+          const request = http.request(
+            `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin&projectId=${projectId}`,
+            { method: "POST", headers: { "Content-Type": "application/octet-stream" } },
+            (response) => {
+              response.resume();
+              response.on("end", resolve);
+            },
+          );
+          request.on("error", () => resolve());
+          request.write(Buffer.from([0, 255, 1]));
+          onTestFinished(() => {
+            request.destroy();
+          });
+        });
+        await vi.waitFor(() =>
+          expect(
+            fs.existsSync(uploads) &&
+              fs.readdirSync(uploads).some((name) => name.endsWith(".part")),
+          ).toBe(true),
+        );
+        if (operation === "工程改名") {
+          expect(
+            await post("/api/session/project/rename", { projectId, new_name: "renamed" }),
+          ).toMatchObject({
+            ok: true,
+          });
+        } else {
+          await bootstrap.stop();
+          expect(bootstrap.isStopped()).toBe(true);
+        }
+        await pending;
+        expect(fs.readdirSync(uploads)).toEqual([]);
+      } finally {
+        await bootstrap.stop();
+      }
+    },
+  );
   it("关闭真实 Gateway 时取消在途接口测试并完成请求排空", async ({ onTestFinished }) => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-gateway-model-test-"));
     onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
@@ -807,6 +929,17 @@ describe("GuiBackendBootstrap 集成", () => {
     }
   });
 });
+
+function project_api(base_url: string) {
+  return async (route: string, body: object) => {
+    const response = await fetch(base_url + route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return response.json();
+  };
+}
 
 /** 用测试自有资源启动真实服务，避免动态内置技能影响生命周期验证。 */
 function create_options(app_root: string) {

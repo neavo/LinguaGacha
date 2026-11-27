@@ -1,6 +1,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
+import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { DesktopStateProvider } from "./desktop-state-provider";
 import { useDesktopState, useProjectChangeSignal, useBatchTaskSnapshot } from "./use-desktop-state";
 import { empty_batch_task_list_snapshot } from "@shared/batch-task";
@@ -12,7 +13,26 @@ const desktop = vi.hoisted(() => ({
   open_event_stream: vi.fn(),
   report_renderer_error: vi.fn(async () => {}),
 }));
-vi.mock("@frontend/app/desktop/desktop-api", () => desktop);
+vi.mock("@frontend/app/desktop/desktop-api", async (load) => ({
+  ...(await load<typeof import("@frontend/app/desktop/desktop-api")>()),
+  ...desktop,
+}));
+
+const agent_snapshot: AgentChatSnapshot = {
+  chatId: "second-chat",
+  revision: 1,
+  state: "idle",
+  pendingDecision: null,
+  entries: [],
+  skills: [],
+  inputQueue: { paused: false, canSendNow: false, items: [] },
+  doing: null,
+  context: { tokens: null, compactable: false, limits: null },
+  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  tokenSpeed: null,
+  runOutput: null,
+  exportedRoundId: null,
+};
 
 it("按打开周期接收后台工程事件，切换时恢复原工程的任务和变更", async () => {
   const listeners = new Map<string, EventListener>();
@@ -23,21 +43,6 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
     close,
   });
-  const agent_snapshot: AgentChatSnapshot = {
-    chatId: "second-chat",
-    revision: 1,
-    state: "idle",
-    pendingDecision: null,
-    entries: [],
-    skills: [],
-    inputQueue: { paused: false, canSendNow: false, items: [] },
-    doing: null,
-    context: { tokens: null, compactable: false, limits: null },
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    tokenSpeed: null,
-    runOutput: null,
-    exportedRoundId: null,
-  };
   desktop.api_get.mockImplementation(async (route: string) => {
     const { pathname, searchParams } = new URL(route, "http://localhost");
     if (pathname === "/api/session/projects")
@@ -205,4 +210,131 @@ it("按打开周期接收后台工程事件，切换时恢复原工程的任务�
     await act(async () => root.unmount());
   }
   expect(close).toHaveBeenCalledOnce();
+});
+
+it("改名回执原位交接工程，失败时补读实际打开周期与最近记录", async () => {
+  const source = Object.assign(new EventTarget(), { close: vi.fn(), onopen: () => {} });
+  desktop.open_event_stream.mockReturnValue(source);
+  let ids = ["first", "second", "third"];
+  let recent_projects: { path: string }[] = [];
+  const project_payload = (projectId: string) => ({
+    project: { projectId, path: projectId + ".lg" },
+  });
+  desktop.api_get.mockImplementation(async (route: string) =>
+    route === "/api/session/projects" ? { projects: ids.map(project_payload) } : agent_snapshot,
+  );
+  const pending = Promise.withResolvers<object>();
+  const late_collision = new DesktopApiError({ code: "project.already_exists" });
+  desktop.api_fetch.mockImplementation(
+    async (route: string, body?: { projectId?: string; path?: string }) => {
+      if (route === "/api/session/project/rename") {
+        if (body?.path === "recent.lg")
+          return { settings: { recent_projects: [{ path: "new-name.lg" }] } };
+        if (body?.projectId === "second") return pending.promise;
+        if (body?.projectId === "first-renamed") throw late_collision;
+        return { ...project_payload("first-renamed"), settings: { recent_projects: [] } };
+      }
+      if (route === "/api/settings/app") return { settings: { recent_projects } };
+      if (route === "/api/batch-task/snapshot") {
+        if (body?.projectId === "first-restored") throw new Error("Task snapshot unavailable");
+        return { batch_tasks: empty_batch_task_list_snapshot() };
+      }
+      return {};
+    },
+  );
+
+  let state!: ReturnType<typeof useDesktopState>;
+  function Probe(): null {
+    state = useDesktopState();
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () =>
+      root.render(
+        <DesktopStateProvider>
+          <Probe />
+        </DesktopStateProvider>,
+      ),
+    );
+    await act(async () => source.onopen());
+    const [first, second] = state.open_projects;
+    const draft = second!.agentChat.get_input().draft;
+    const file = {
+      kind: "file" as const,
+      uploadId: "completed",
+      name: "proof.txt",
+      path: "uploads/proof.txt",
+      size: 5,
+      imageMimeType: null,
+    };
+    second!.select_route("files");
+    draft.write({
+      text: "草稿",
+      attachments: [
+        file,
+        { kind: "upload", id: "pending", name: "in-progress.txt", size: 3, status: "uploading" },
+      ],
+    });
+
+    let rename!: Promise<void>;
+    let refresh!: ReturnType<typeof state.refresh_projects>;
+    await act(async () => {
+      rename = state.rename_project({ projectId: "second" }, "second-renamed");
+      ids = ["first", "third"]; // 模拟后端已关停旧周期，尚未登记新周期。
+      refresh = state.refresh_projects();
+    });
+    expect(state.open_projects[1]).toBe(second);
+    await act(async () => {
+      ids = ["first", "third", "second-renamed"];
+      pending.resolve({
+        ...project_payload("second-renamed"),
+        settings: {
+          recent_projects: [{ path: "second-renamed.lg", name: "second-renamed.lg" }],
+        },
+      });
+      await Promise.all([rename, refresh]);
+    });
+    expect(desktop.api_fetch).toHaveBeenCalledWith("/api/session/project/rename", {
+      projectId: "second",
+      new_name: "second-renamed",
+    });
+    expect(state.open_projects.map(({ snapshot }) => snapshot.projectId)).toEqual([
+      "first",
+      "second-renamed",
+      "third",
+    ]);
+    expect(state.active_project).toBe(first);
+    const renamed = state.open_projects[1]!;
+    expect(renamed.get_active_route()).toBe("files");
+    expect(renamed.agentChat.get_input().draft.read()).toEqual({
+      text: "草稿",
+      attachments: [file],
+    });
+    expect(second!.agentChat.get_controls().transport).toBe("disconnected");
+    expect(state.settings_snapshot.recent_projects[0]?.path).toBe("second-renamed.lg");
+
+    first!.select_route("files");
+    await act(async () => state.rename_project({ projectId: "first" }, "first-renamed"));
+    expect(state.active_project?.snapshot.projectId).toBe("first-renamed");
+    expect(state.active_project?.get_active_route()).toBe("files");
+
+    // 后端关闭旧周期后才遇到撞名，错误码和关停前撞名相同。
+    ids = ["third", "second-renamed", "first-restored"];
+    recent_projects = [{ path: "first.lg" }];
+    await act(async () => {
+      await expect(state.rename_project({ projectId: "first-renamed" }, "occupied")).rejects.toBe(
+        late_collision,
+      );
+    });
+    expect(new Set(state.open_projects.map(({ snapshot }) => snapshot.projectId))).toEqual(
+      new Set(ids),
+    );
+    expect(state.settings_snapshot.recent_projects[0]?.path).toBe("first.lg");
+
+    await act(async () => state.rename_project({ path: "recent.lg" }, "new-name"));
+    expect(state.settings_snapshot.recent_projects[0]?.path).toBe("new-name.lg");
+  } finally {
+    await act(async () => root.unmount());
+  }
 });

@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
+import { api_fetch, api_get, DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { subscribe_desktop_events } from "@frontend/app/desktop/desktop-events";
 import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { create_text_resolver } from "@shared/i18n";
@@ -35,6 +35,7 @@ import { type ProjectStore, ProjectStoreRegistry } from "./project-store-registr
 import {
   DesktopStateContext,
   DesktopStateStoresContext,
+  type ProjectRenameTarget,
   type ProjectSnapshot,
   type SettingsSnapshotPayload,
 } from "./desktop-state-context";
@@ -71,6 +72,7 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
   const [language_updating, set_language_updating] = useState(false);
   const initial_request = useRef(0);
   const projects_request = useRef(0);
+  const pending_project_rename = useRef<Promise<void> | null>(null);
   useEffect(
     () => () => {
       projects_request.current++;
@@ -108,6 +110,9 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
   }, []);
 
   const refresh_projects = useCallback(async () => {
+    // 等改名交接保住旧 Store 的草稿。改名错误由操作发起方反馈。
+    const rename = pending_project_rename.current;
+    if (rename !== null) await rename.catch(() => {});
     const token = ++projects_request.current;
     const payload = await api_get<unknown>("/api/session/projects");
     if (token !== projects_request.current) return registry.values();
@@ -178,22 +183,90 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
   });
   const { report_state_error } = recovery;
 
-  /** 打开与创建回执已包含权威快照，工程交接无需等待任务列表等补读。 */
-  const apply_project_load = useCallback(
-    (payload: unknown): ProjectStore | undefined => {
-      const project = registry.update(payload);
-      if (project === undefined) return undefined;
-      projects_request.current++; // 更早发起的列表补读可能还未包含刚打开的工程。
+  /** 生命周期回执已包含权威快照，任务列表可稍后补读。 */
+  const publish_project_receipt = useCallback(
+    (project: ProjectStore, reason: "project_load" | "project_rename") => {
       notify();
       void refresh_tasks(project).catch((error: unknown) => {
         report_state_error(error, {
           source: "state-recovery",
-          context: { reason: "project_load" },
+          context: { reason },
         });
       });
+    },
+    [notify, refresh_tasks, report_state_error],
+  );
+
+  const apply_project_load = useCallback(
+    (payload: unknown): ProjectStore | undefined => {
+      const project = registry.update(payload);
+      if (project !== undefined) {
+        projects_request.current++; // 旧列表可能还未包含新工程。
+        publish_project_receipt(project, "project_load");
+      }
       return project;
     },
-    [registry, notify, refresh_tasks, report_state_error],
+    [registry, publish_project_receipt],
+  );
+
+  /** 写入回执交接打开周期，写入结果不确定时补读工程和设置。 */
+  const rename_project = useCallback(
+    async (target: ProjectRenameTarget, new_name: string): Promise<void> => {
+      const request = api_fetch<SettingsSnapshotPayload>("/api/session/project/rename", {
+        ...target,
+        new_name,
+      });
+      if (!("projectId" in target)) {
+        apply_settings_snapshot(await request);
+        return;
+      }
+
+      const { projectId } = target;
+      projects_request.current++; // 使已在途的旧工程列表失效。
+      const pending = request
+        .then((response) => {
+          const project = registry.replace_renamed_project(projectId, response);
+          if (project === undefined) throw new TypeError("Invalid project rename response.");
+          set_active_id((current) =>
+            current === projectId ? project.snapshot.projectId : current,
+          );
+          publish_project_receipt(project, "project_rename");
+          apply_settings_snapshot(response);
+        })
+        .finally(() => {
+          pending_project_rename.current = null;
+        });
+      pending_project_rename.current = pending;
+      try {
+        await pending;
+      } catch (error) {
+        if (
+          !(
+            error instanceof DesktopApiError &&
+            (error.code === "runtime.busy" || error.code === "request.validation_failed")
+          )
+        ) {
+          // 撞名也可能发生在关停之后。让列表决定旧打开周期是否仍有效。
+          const results = await Promise.allSettled([refresh_projects(), refresh_settings()]);
+          for (const result of results) {
+            if (result.status === "rejected")
+              report_state_error(result.reason, {
+                source: "state-recovery",
+                context: { reason: "project_rename" },
+              });
+          }
+        }
+        throw error;
+      }
+    },
+    [
+      registry,
+      publish_project_receipt,
+      apply_settings_snapshot,
+      refresh_projects,
+      refresh_settings,
+      report_state_error,
+    ],
   );
 
   const apply_changes = useCallback(
@@ -357,6 +430,7 @@ export function DesktopStateProvider({ children }: { children: ReactNode }): JSX
           active_project: store,
           select_project,
           apply_project_load,
+          rename_project,
           refresh_projects,
         }}
       >

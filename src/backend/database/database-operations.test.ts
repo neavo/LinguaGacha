@@ -538,6 +538,25 @@ describe("ProjectDatabase", () => {
     expect(has_project_sidecar(source_path)).toBe(false);
   });
 
+  it("改名预检区分目标副文件与源工程自己的 WAL", async () => {
+    const { database, lg_path } = await create_database_project("rename-source");
+    for (const suffix of ["-wal", "-shm"]) {
+      const target = project_path(`occupied${suffix}.lg`);
+      fs.writeFileSync(target + suffix, "occupied");
+      expect(() => database.check_rename_project_target(lg_path, target)).toThrow(
+        expect.objectContaining({ code: "project.already_exists" }),
+      );
+    }
+    if (process.platform === "win32") {
+      const source = create_crashed_project(lg_path, "rename-wal.lg");
+      const target = project_path("RENAME-WAL.lg");
+      expect(fs.existsSync(source + "-wal")).toBe(true);
+      expect(() => database.check_rename_project_target(source, target)).not.toThrow();
+      await database.rename_project_file(source, target);
+      expect(await read_meta(database, target, "wal_probe", null)).toBe("wal");
+    }
+  });
+
   it("替换失败时被覆盖工程连同遗留 WAL 原样归位，成功后新工程不重放旧 WAL", async () => {
     const { lg_path } = await create_database_project("replace-old");
     const target_path = create_crashed_project(lg_path, "replace-target.lg");

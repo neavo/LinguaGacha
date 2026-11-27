@@ -271,8 +271,10 @@ function ProjectRow({
               {t("app.workspace.remove_recent")}
             </AppDropdownMenuItem>
             <AppDropdownMenuItem
-              disabled={lifecycle.busy || projectId !== undefined}
-              onClick={() => lifecycle.request_rename(path, name)}
+              disabled={disabled}
+              onClick={() =>
+                lifecycle.request_rename(projectId === undefined ? { path } : { projectId }, name)
+              }
             >
               <Pencil aria-hidden="true" />
               {t("project.rename")}

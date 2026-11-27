@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { CreateEmptyProjectOptions } from "@frontend/features/project-lifecycle/use-project-create-flow";
 import type { ProjectStore } from "@frontend/app/state/project-store-registry";
+import type { ProjectRenameTarget } from "@frontend/app/state/desktop-state-context";
 
 export type ProjectLifecycle = Readonly<{
   busy: boolean;
@@ -10,7 +11,7 @@ export type ProjectLifecycle = Readonly<{
   open_recent_project: (path: string) => void;
   remove_recent_project: (path: string) => void;
   request_close: (projectId: string, remove_path?: string) => void;
-  request_rename: (path: string, name: string) => void;
+  request_rename: (target: ProjectRenameTarget, name: string) => void;
 }>;
 
 export const ProjectLifecycleContext = createContext<ProjectLifecycle | null>(null);

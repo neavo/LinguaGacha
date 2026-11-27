@@ -262,7 +262,7 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
     };
   }
 
-  public project_snapshot(project: OpenProject<Agent>): JsonRecord {
+  public project_snapshot(project: OpenProject<Agent>): { project: JsonRecord } {
     const quality = project.cache.quality.readBlock();
     return {
       project: {
@@ -316,61 +316,155 @@ export class BackendServices<Agent extends ProjectAgentLifecycle = ProjectAgentL
     });
   }
 
-  /** 文件与最近记录一同提交。设置写入失败时恢复原文件名。 */
-  public rename_project(body: JsonRecord): Promise<SettingsSnapshotResponse> {
+  /** 已打开工程改名结束旧打开周期。文件与最近记录一同提交。 */
+  public rename_project(
+    body: JsonRecord,
+  ): Promise<SettingsSnapshotResponse & { project?: JsonRecord }> {
     return this.globalGate.run_lifecycle(async () => {
-      const { path: recent_path, new_name } = body;
-      if (typeof recent_path !== "string" || recent_path === "")
-        throw new AppError("request.validation_failed", { public_details: { field: "path" } });
+      if (Object.hasOwn(body, "projectId") === Object.hasOwn(body, "path"))
+        throw new AppError("request.validation_failed");
+      const { projectId, path: requested_path, new_name } = body;
       if (typeof new_name !== "string")
         throw new AppError("request.validation_failed", { public_details: { field: "new_name" } });
       validate_file_name(new_name, { field: "new_name" });
-      const { database, appSettingService: settings } = this.options;
-      if (!settings.has_recent_project(recent_path) || !default_native_fs.exists(recent_path))
-        throw new AppError("project.not_found");
-      const project_path = default_native_fs.real_path(recent_path);
-      if (this.projects.find(project_path) !== undefined) throw new AppError("runtime.busy");
+
+      const { appSettingService: settings } = this.options;
+      const project = Object.hasOwn(body, "projectId")
+        ? this.projects.require(projectId)
+        : undefined;
+      let recent_path: string;
+      if (project !== undefined) {
+        if (project.gate.busy) throw new AppError("runtime.busy");
+        recent_path = project.path;
+      } else {
+        if (typeof requested_path !== "string" || requested_path === "")
+          throw new AppError("request.validation_failed", { public_details: { field: "path" } });
+        if (!settings.has_recent_project(requested_path)) throw new AppError("project.not_found");
+        recent_path = requested_path;
+      }
+      if (!default_native_fs.exists(recent_path)) throw new AppError("project.not_found");
+      const project_path = project?.path ?? default_native_fs.real_path(recent_path);
+      if (project === undefined && this.projects.find(project_path) !== undefined)
+        throw new AppError("runtime.busy");
       if (
         path.extname(project_path).toLowerCase() !== PROJECT_FILE_EXTENSION ||
         !default_native_fs.stat(project_path).isFile()
       )
         throw new AppError("request.validation_failed", { public_details: { field: "path" } });
-      const target_path = path.join(path.dirname(project_path), new_name + PROJECT_FILE_EXTENSION);
-      if (target_path === project_path)
-        return settings.replace_recent_project_path(recent_path, recent_path);
 
-      await database.rename_project_file(project_path, target_path);
-      let response: SettingsSnapshotResponse;
-      try {
-        // 数据库队列等待期间，最近记录可能被移除。设置服务按提交时的列表更新。
-        response = settings.replace_recent_project_path(recent_path, target_path);
-      } catch (error) {
-        try {
-          await database.rename_project_file(target_path, project_path);
-        } catch (cleanup) {
-          throw new AppError("data.committed_sync_failed", {
-            message: `The project was renamed, but its recent entry could not be updated. Project file: ${target_path}`,
-            cause: new AggregateError([error, cleanup], "Project rename rollback failed."),
-            public_details: { committed: true, path: target_path },
-          });
-        }
-        if (error instanceof AppError) throw error;
-        throw new AppError("file.io_failed", { cause: error });
-      }
-      settings.publish_settings_changed(["recent_projects"]);
-      return response;
+      const target_path = path.join(path.dirname(project_path), new_name + PROJECT_FILE_EXTENSION);
+      const renamed =
+        target_path === project_path
+          ? project
+          : await this.commit_project_rename(project, { project_path, recent_path, target_path });
+      return {
+        ...settings.read_settings_snapshot(),
+        ...(renamed === undefined ? {} : this.project_snapshot(renamed)),
+      };
     });
+  }
+
+  /** 改名和最近记录一同提交，提交后才重建打开周期。 */
+  private async commit_project_rename(
+    project: OpenProject<Agent> | undefined,
+    {
+      project_path,
+      recent_path,
+      target_path,
+    }: { project_path: string; recent_path: string; target_path: string },
+  ): Promise<OpenProject<Agent> | undefined> {
+    const { database, appSettingService: settings } = this.options;
+    if (project !== undefined) {
+      const target = this.projects.find(target_path);
+      if (target !== undefined && target !== project) throw new AppError("project.already_exists");
+      database.check_rename_project_target(project_path, target_path);
+    }
+
+    try {
+      if (project !== undefined) await this.dispose_project(project);
+      await database.rename_project_file(project_path, target_path);
+    } catch (error) {
+      return this.restore_project_after_rename_failure(project, error);
+    }
+
+    let next_path = target_path;
+    let recent_changed: boolean;
+    try {
+      if (project !== undefined) next_path = default_native_fs.real_path(target_path);
+      recent_changed = settings.replace_recent_project_path(recent_path, next_path, {
+        requireExisting: project === undefined, // 已打开工程的身份由打开周期提供。
+      });
+    } catch (error) {
+      try {
+        await database.rename_project_file(next_path, project_path);
+      } catch (cleanup) {
+        throw new AppError("data.committed_sync_failed", {
+          message: `The project was renamed, but its recent entry could not be updated. Project file: ${next_path}`,
+          cause: new AggregateError([error, cleanup], "Project rename rollback failed."),
+          public_details: { committed: true, path: next_path },
+        });
+      }
+      return this.restore_project_after_rename_failure(
+        project,
+        error instanceof AppError ? error : new AppError("file.io_failed", { cause: error }),
+      );
+    }
+
+    try {
+      if (project !== undefined) return await this.reopen_renamed_project(project, next_path);
+    } catch (cause) {
+      throw new AppError("data.committed_sync_failed", {
+        cause,
+        public_details: { committed: true, path: next_path, action: "reload_project" },
+      });
+    } finally {
+      if (recent_changed) settings.publish_settings_changed(["recent_projects"]);
+    }
+  }
+
+  /** 文件仍在原路径时尽量恢复打开工程，并保留本次操作的失败原因。 */
+  private async restore_project_after_rename_failure(
+    project: OpenProject<Agent> | undefined,
+    error: unknown,
+  ): Promise<never> {
+    if (project !== undefined) {
+      try {
+        await this.reopen_renamed_project(project, project.path);
+      } catch (cleanup) {
+        throw new AggregateError([error, cleanup], "Project rename and reopen failed.", {
+          cause: error,
+        });
+      }
+    }
+    throw error;
+  }
+
+  /** 旧周期已完成版本确认与迁移，直接读取已准备的工程。 */
+  private async reopen_renamed_project(
+    previous: OpenProject<Agent>,
+    project_path: string,
+  ): Promise<OpenProject<Agent>> {
+    const snapshot = await this.options.database.read(project_path, (reader) =>
+      new ProjectDataReader(reader).read_snapshot(project_path),
+    );
+    return this.install_project(
+      project_path,
+      snapshot,
+      previous.gate.get_snapshot().lastAgentRoundStartedAt,
+    );
   }
 
   /** 先完成工程持有的服务装配，再对外登记新的打开周期。 */
   private async install_project(
     project_path: string,
     snapshot: ProjectDataSnapshot,
+    last_agent_round_started_at?: number,
   ): Promise<OpenProject<Agent>> {
     const id = randomUUID();
     const project_log = this.logManager.scope({ project_path });
     const { database, paths, appSettingService: settings, openOutputFolder } = this.options;
     const gate = new ProjectOperationGate((owner) => this.globalGate.check_project(owner));
+    gate.update_agent_round_started_at(last_agent_round_started_at); // 首次公开快照保留侧栏排序依据。
     const dispose_activity = gate.subscribe(() => this.publish_runtime());
     const cache = new ProjectCache({
       projectPath: project_path,
