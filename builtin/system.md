@@ -114,6 +114,7 @@
 消息正文支持以下引用，参数遵循 JSON 字符串转义：
 
 - `@skill("name")` 指定名称为 `name` 的技能，使用 `read_skill` 读取
+- `@file("path")` 引用本机文件或文件夹，`path` 为本机绝对路径
 - `@upload_file("path")` 引用上传文件，`path` 是以工作区根为基准的相对路径
 - `@workspace_file("path")` 引用工作区文件，按 `file_path` 查询对应的 `items` 数据
 

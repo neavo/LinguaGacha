@@ -148,10 +148,30 @@ describe("AgentTimeline", () => {
     return JSON.parse(get_tool_dialog_text() ?? "");
   }
 
-  it("历史消息中的有效引用无需技能列表即可显示成块", async () => {
-    const text = '@skill("missing")';
+  it("历史消息展开同名引用，文件菜单复制原路径", async () => {
+    const text =
+      '@file("E:/原稿/a.md") @workspace_file("章节/a.md") @upload_file("uploads/ref.png")';
     const view = await render_timeline([user_entry("user-1", text, "success", 0, 1)]);
-    expect(view.querySelector(".agent-mention-token")?.textContent).toBe(text);
+    const tokens = [...view.querySelectorAll<HTMLElement>(".agent-mention-token")];
+    expect(tokens.map(({ textContent }) => textContent)).toEqual([
+      '@file("原稿/a.md")',
+      '@workspace_file("章节/a.md")',
+      '@upload_file("ref.png")',
+    ]);
+    await act(async () =>
+      tokens[0]!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          button: 2,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    await act(async () =>
+      items.find((item) => item.textContent === "agent_page.link.copy")!.click(),
+    );
+    expect(write_clipboard).toHaveBeenLastCalledWith("E:/原稿/a.md");
   });
 
   it("steer user 显示在当前轮次中但不建立轮次操作或尾标", async () => {
@@ -306,8 +326,9 @@ describe("AgentTimeline", () => {
   });
 
   it("输入与输出正文都可复制并显示完成反馈", async () => {
+    const input = '输入正文 @file("E:/原稿/a.md") @skill("missing")';
     const view = await render_timeline([
-      user_entry("user-copy", "输入正文", "success", 0, 2_000),
+      user_entry("user-copy", input, "success", 0, 2_000),
       assistant_entry("assistant-copy", "输出正文", "success", 1_000),
     ]);
     const copy_buttons = [
@@ -317,7 +338,7 @@ describe("AgentTimeline", () => {
 
     await act(async () => copy_buttons[0]?.click());
     await vi.waitFor(() => expect(copy_buttons[0]?.textContent).toBe("agent_page.action.copied"));
-    expect(write_clipboard).toHaveBeenCalledWith("输入正文");
+    expect(write_clipboard).toHaveBeenCalledWith(input);
 
     await act(async () => copy_buttons[1]?.click());
     await vi.waitFor(() => expect(copy_buttons[1]?.textContent).toBe("agent_page.action.copied"));

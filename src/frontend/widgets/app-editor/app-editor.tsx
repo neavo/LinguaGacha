@@ -38,7 +38,6 @@ import {
   resolve_app_editor_theme_extensions,
   set_app_editor_text_marks_effect,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
-import "@frontend/widgets/app-editor/app-editor.css";
 
 type AppEditorVariant = "document" | "field" | "viewer";
 

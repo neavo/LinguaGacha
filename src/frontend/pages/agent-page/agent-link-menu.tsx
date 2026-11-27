@@ -1,5 +1,4 @@
 import { useState, type ComponentProps, type JSX, type ReactNode } from "react";
-import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   AppContextMenu,
@@ -7,6 +6,7 @@ import {
   AppContextMenuItem,
   AppContextMenuTrigger,
 } from "@frontend/widgets/app-context-menu";
+import { useAgentCopyText } from "./use-agent-file-action";
 
 type AgentLinkMenuProps = {
   trigger: ComponentProps<typeof AppContextMenuTrigger>;
@@ -25,15 +25,7 @@ export function AgentLinkMenu({
   const { t } = useI18n();
   const [menu, set_menu] = useState({ has_target: true, selected_text: "" });
 
-  /** 菜单关闭后通过统一通知确认剪贴板写入结果。 */
-  const copy = async (text: string): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(text);
-      push_toast("success", t("agent_page.action.copied"));
-    } catch (error) {
-      push_error_toast(t("app.feedback.copy_failed"), error);
-    }
-  };
+  const copy = useAgentCopyText();
 
   return (
     <AppContextMenu

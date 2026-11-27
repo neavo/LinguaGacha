@@ -1,6 +1,16 @@
-import { find_agent_reference_ranges } from "@shared/agent-reference";
-import { SUPPORTED_RASTER_IMAGE_EXTENSIONS } from "@shared/image-formats";
-import { read_file_paths } from "@frontend/app/desktop/source-paths";
+import {
+  find_agent_reference_ranges,
+  format_agent_reference,
+  format_agent_reference_parts,
+  resolve_agent_reference_labels,
+  type AgentReferenceRange,
+} from "@shared/agent-reference";
+import { resolve_raster_image_extension } from "@shared/image-formats";
+import {
+  normalize_source_paths,
+  read_file_path,
+  read_file_paths,
+} from "@frontend/app/desktop/source-paths";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
@@ -38,6 +48,7 @@ import {
 } from "@codemirror/view";
 
 import {
+  AGENT_MESSAGE_IMAGE_LIMIT,
   type AgentMessageInput,
   type AgentResponseAnnotationAttachment,
   type AgentSkillSnapshot,
@@ -47,6 +58,7 @@ import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
+  create_app_editor_text_hover_extension,
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
@@ -59,37 +71,18 @@ import {
 import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-input-draft";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { FileDropTarget } from "@frontend/widgets/interactions/file-drop-target";
-
-/** 编辑器按扩展名选择上传附件。 */
-const AGENT_UPLOAD_EXTENSIONS: readonly string[] = Object.freeze([
-  ...SUPPORTED_RASTER_IMAGE_EXTENSIONS,
-  "txt",
-  "json",
-  "jsonl",
-  "md",
-  "markdown",
-  "ini",
-  "csv",
-  "tsv",
-  "yaml",
-  "yml",
-  "toml",
-  "xml",
-  "log",
-  "srt",
-  "ass",
-  "ssa",
-  "vtt",
-  "po",
-  "pot",
-  "lrc",
-]);
-
-/** 上传判定沿用扩展名，拖放批次和文件选择共用同一规则。 */
-function can_upload_file(file: File): boolean {
-  const extension = file.name.includes(".") ? file.name.split(".").at(-1)!.toLowerCase() : "";
-  return AGENT_UPLOAD_EXTENSIONS.includes(extension);
-}
+import {
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuItem,
+  AppDropdownMenuTrigger,
+} from "@frontend/widgets/app-dropdown-menu";
+import {
+  resolve_agent_reference_file,
+  useAgentCopyText,
+  useAgentFileAction,
+  type AgentFileTarget,
+} from "./use-agent-file-action";
 
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
@@ -105,7 +98,8 @@ type InstructionTrigger = Readonly<{ from: number; at: number; text: string }>;
 export type AgentMessageEditorHandle = {
   append_draft: (text: string, selection?: Readonly<{ from: number; to: number }>) => boolean;
   add_response_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
-  drop_files: (files: readonly File[]) => void;
+  insert_files: (files: readonly File[]) => void;
+  insert_file_references: (paths: readonly string[]) => void;
   focus: () => void;
 };
 
@@ -113,8 +107,7 @@ type AgentEditorState = { has_content: boolean; uploads_pending: boolean };
 
 type AgentMessageEditorProps = {
   ref?: Ref<AgentMessageEditorHandle> | undefined;
-  on_drop_files?: ((files: readonly File[]) => void) | undefined;
-  on_paths_inserted?: ((paths: readonly string[]) => void) | undefined;
+  page_handles_file_drop?: boolean; // 主对话在整页接收文件，原位编辑在输入区接收。
   presentation?: "composer" | "inline" | undefined;
   role?: "user" | "assistant" | undefined;
   read_only: boolean;
@@ -149,6 +142,8 @@ const input_state_sync_annotations = [Transaction.addToHistory.of(false)];
 const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
+const mention_file_nodes = new WeakMap<HTMLElement, AgentFileTarget>(); // 点击只读挂载在块上的文件目标。
+const FILE_CLICK_MAX_DISTANCE_PX = 4; // 区分点击和从文件块开始的拖选。
 
 // 引用块只依赖正文，技能列表仅影响候选菜单。
 const mention_tokens_field = StateField.define<DecorationSet>({
@@ -158,7 +153,7 @@ const mention_tokens_field = StateField.define<DecorationSet>({
       ? create_mention_token_decorations(transaction.newDoc.toString())
       : tokens;
   },
-  /** 同一装饰范围同时拥有绘制与整块光标导航语义。 */
+  /** 绘制与光标导航共用引用块范围。 */
   provide(field) {
     return [
       EditorView.decorations.from(field),
@@ -211,6 +206,15 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   const uploads_pending = draft_attachments.some((attachment) => attachment.kind === "upload");
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
+  const [file_menu, set_file_menu] = useState<{
+    x: number;
+    y: number;
+    target: AgentFileTarget;
+  } | null>(null);
+  const file_action = useAgentFileAction();
+  const copy_file_path = useAgentCopyText();
+  const file_action_ref = useRef(file_action);
+  file_action_ref.current = file_action; // 现有 CodeMirror 实例读取最新工程上下文。
 
   const mention_query_text = mention_query?.text;
   const file_query = useAgentMentionFiles(
@@ -272,8 +276,6 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       </AppButton>
     ) : null,
   );
-  // CodeMirror 扩展只创建一次，通过 ref 调用当前文件分流入口。
-  const drop_files_ref = useRef<(files: Iterable<File>) => void>(() => undefined);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_state.revision;
@@ -287,6 +289,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   useEffect(() => {
     const host = host_ref.current;
     if (host === null) return;
+    let file_press: { node: HTMLElement; x: number; y: number } | null = null;
     // 光标查询变化才更新候选菜单，正文与附件直接订阅共享草稿。
     const update_mention_query = (state: EditorState): void => {
       const query = find_mention_query(state);
@@ -311,22 +314,49 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
             ),
             placeholder_compartment.of(placeholder(placeholder_text)),
             mention_tokens_field,
+            create_app_editor_text_hover_extension(read_mention_hover, { hideOnChange: true }),
             drawSelection(),
             history(),
             EditorView.lineWrapping,
             EditorView.domEventHandlers({
               blur: () => set_menu_suppressed(true),
               keydown: (event) => event.key === "Enter" && event.isComposing,
-              drop: (event) => {
-                const transfer = event.dataTransfer;
-                if (transfer === null || !Array.from(transfer.types).includes("Files"))
+              mousedown: (event) => {
+                const node = find_mention_file_node(event);
+                file_press =
+                  event.button === 0 && node !== null
+                    ? { node, x: event.clientX, y: event.clientY }
+                    : null;
+                return false; // 让 CodeMirror 照常处理光标和拖选。
+              },
+              click: (event, view) => {
+                const press = file_press;
+                file_press = null;
+                if (
+                  event.button !== 0 ||
+                  press === null ||
+                  press.node !== find_mention_file_node(event) ||
+                  !view.state.selection.main.empty ||
+                  Math.hypot(event.clientX - press.x, event.clientY - press.y) >
+                    FILE_CLICK_MAX_DISTANCE_PX
+                )
                   return false;
-                // 在 CodeMirror 读取文本文件前消费事件，交给统一文件入口。
-                event.preventDefault();
-                event.stopPropagation();
-                drop_files_ref.current(transfer.files);
+                const target = mention_file_nodes.get(press.node);
+                if (target === undefined || !file_action_ref.current.can_open(target)) return false;
+                void file_action_ref.current.run(target);
                 return true;
               },
+              contextmenu: (event, view) => {
+                const node = find_mention_file_node(event);
+                // 选区的编辑命令由 Electron 原生菜单承接。
+                if (node === null || !view.state.selection.main.empty) return false;
+                const target = mention_file_nodes.get(node);
+                if (target === undefined || !file_action_ref.current.can_open(target)) return false;
+                set_file_menu({ x: event.clientX, y: event.clientY, target });
+                return true;
+              },
+              // 跳过 CodeMirror 的文件读取，让事件冒泡到所在区域的 FileDropTarget。
+              drop: (event) => event.dataTransfer?.types.includes("Files") ?? false,
             }),
             keymap.of([
               {
@@ -536,48 +566,53 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     draft.write({ ...draft.read(), attachments });
   }, []);
 
-  /** 一次事务替换选区并插入独立路径行，保留草稿已有附件。 */
-  const insert_files = (files: Iterable<File>, allow_uploads: boolean): void => {
+  /** 一次事务替换选区，文件块可与普通正文并排。 */
+  const insert_file_references = (paths: readonly string[]): void => {
     const view = view_ref.current;
-    if (!can_append_files || view === null) return;
-    const uploads: File[] = [];
-    const path_files: File[] = [];
+    if (!can_append_files || view === null || paths.length === 0) return;
+    const { from, to } = view.state.selection.main;
+    const before = from > 0 && !/\s/u.test(view.state.sliceDoc(from - 1, from)) ? " " : "";
+    const after = /\s/u.test(view.state.sliceDoc(to, to + 1)) ? "" : " ";
+    const markers = paths.map((path) => format_agent_reference({ kind: "file", path }));
+    const text = before + markers.join(" ") + after;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: EditorSelection.cursor(from + text.length),
+    });
+    view.focus();
+  };
+
+  /** 超限批次的本机图片保留原始目录，虚拟图片继续作为附件。 */
+  const insert_files = (files: Iterable<File>): void => {
+    if (!can_append_files || view_ref.current === null) return;
+    let images: File[] = [];
+    const other_files: File[] = [];
     for (const file of files) {
-      if (allow_uploads && can_upload_file(file)) {
-        uploads.push(file);
-        continue;
-      }
-      path_files.push(file);
+      (resolve_raster_image_extension(file.name) === null ? other_files : images).push(file);
     }
-    const { paths, skipped } = read_file_paths(path_files);
-    if (paths.length > 0) {
-      const { from, to } = view.state.selection.main;
-      // 路径独占一行，选区两侧已有换行时直接复用。
-      const before = from > 0 && view.state.sliceDoc(from - 1, from) !== "\n" ? "\n" : "";
-      const after =
-        to < view.state.doc.length && view.state.sliceDoc(to, to + 1) !== "\n" ? "\n" : "";
-      const text = before + paths.join("\n") + after;
-      view.dispatch({
-        changes: { from, to, insert: text },
-        selection: EditorSelection.cursor(from + text.length),
+    // 从权威草稿读取，连续输入在 React 重绘前也会计入上传占位。
+    const existing_image_count = props.input_state.draft.read().attachments.filter((attachment) => {
+      if (attachment.kind === "file") return attachment.imageMimeType !== null;
+      return (
+        (attachment.kind === "staged_file" || attachment.kind === "upload") &&
+        resolve_raster_image_extension(attachment.name) !== null
+      );
+    }).length;
+    const { paths, skipped } = read_file_paths(other_files);
+    if (existing_image_count + images.length > AGENT_MESSAGE_IMAGE_LIMIT) {
+      images = images.filter((image) => {
+        const path = read_file_path(image);
+        if (path === null) return true;
+        paths.push(path);
+        return false;
       });
-      props.on_paths_inserted?.(paths);
-      view.focus();
     }
-    if (uploads.length > 0) void props.input_state.draft.append(uploads);
+    insert_file_references(normalize_source_paths(paths));
+    if (images.length > 0) void props.input_state.draft.append(images);
     if (skipped.length > 0)
       push_toast("warning", t("agent_page.error.invalid_file_path"), {
         description: skipped.join("\n"),
       });
-  };
-  /** 拖放整批上传或整批录入路径，避免混合动作。 */
-  const drop_files = (files: readonly File[]): void => {
-    insert_files(files, files.every(can_upload_file));
-  };
-  drop_files_ref.current = (files) => {
-    if (!can_append_files) return;
-    if (props.on_drop_files) props.on_drop_files(Array.from(files));
-    else drop_files(Array.from(files));
   };
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
@@ -602,7 +637,8 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   };
 
   useImperativeHandle(props.ref, () => ({
-    drop_files,
+    insert_files,
+    insert_file_references,
     /** 预置指令只追加正文。编辑锁阻止写入时返回 `false`，供解锁后重试。 */
     append_draft(text, selection) {
       const view = view_ref.current;
@@ -665,17 +701,17 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       onPaste={(event) => {
         if (event.clipboardData.files.length === 0) return;
         event.preventDefault();
-        insert_files(event.clipboardData.files, true);
+        insert_files(event.clipboardData.files);
       }}
     >
-      {props.on_drop_files === undefined ? (
+      {props.page_handles_file_drop ? null : (
         <FileDropTarget
           label={t("app.drop.release")}
           target_ref={form_ref}
           enabled={can_append_files}
-          on_files={(files) => drop_files_ref.current(files)}
+          on_files={insert_files}
         />
-      ) : null}
+      )}
       {menu_open && (
         <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
           {menu_groups.map((group) => {
@@ -726,6 +762,41 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       <div className="agent-composer__editor">
         <div ref={host_ref} className="agent-composer__input" />
       </div>
+      <AppDropdownMenu
+        open={file_menu !== null}
+        onOpenChange={(open) => {
+          if (!open) set_file_menu(null);
+        }}
+      >
+        <AppDropdownMenuTrigger
+          render={<span />}
+          nativeButton={false}
+          aria-hidden
+          tabIndex={-1}
+          className="agent-composer__file-menu-anchor"
+          style={{ left: file_menu?.x, top: file_menu?.y }}
+        />
+        {file_menu !== null ? (
+          <AppDropdownMenuContent
+            align="start"
+            matchTriggerWidth={false}
+            finalFocus={() => view_ref.current?.contentDOM}
+          >
+            {file_action.menu_items(file_menu.target).map(({ label, run }) => (
+              <AppDropdownMenuItem key={label} onClick={run}>
+                {t(label)}
+              </AppDropdownMenuItem>
+            ))}
+            <AppDropdownMenuItem
+              onClick={() =>
+                void copy_file_path(file_menu.target.source?.path ?? file_menu.target.path)
+              }
+            >
+              {t("agent_page.link.copy")}
+            </AppDropdownMenuItem>
+          </AppDropdownMenuContent>
+        ) : null}
+      </AppDropdownMenu>
       <input
         ref={file_input_ref}
         className="agent-composer__file-input"
@@ -733,7 +804,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         multiple
         tabIndex={-1}
         onChange={(event) => {
-          insert_files(event.currentTarget.files ?? [], true);
+          insert_files(event.currentTarget.files ?? []);
           event.currentTarget.value = "";
         }}
       />
@@ -958,10 +1029,12 @@ function find_mention_query(state: EditorState): MentionQuery | null {
 
 /** 把完整引用投影成原子视觉块，底层文档仍保留完整稳定协议。 */
 function create_mention_token_decorations(text: string): DecorationSet {
+  const ranges = find_agent_reference_ranges(text);
+  const labels = resolve_agent_reference_labels(ranges);
   return Decoration.set(
-    find_agent_reference_ranges(text).map((range) =>
+    ranges.map((range, index) =>
       Decoration.replace({
-        widget: new MentionTokenWidget(range.marker),
+        widget: new MentionTokenWidget(range, labels[index]!),
         inclusive: false,
       }).range(range.from, range.to),
     ),
@@ -969,20 +1042,59 @@ function create_mention_token_decorations(text: string): DecorationSet {
   );
 }
 
+/** CodeMirror 从块起点报告悬停，按指针一侧找到对应的装饰范围。 */
+function read_mention_hover(view: EditorView, pos: number, side: -1 | 1) {
+  const point = side < 0 ? pos - 1 : pos;
+  const token = view.state.field(mention_tokens_field).iter(point);
+  if (token.value !== null && token.to === point) token.next(); // 相邻块共用边界，跳过已结束的块。
+  const widget = token.value?.spec.widget;
+  if (token.from > point || !(widget instanceof MentionTokenWidget) || widget.path === null)
+    return null;
+  return { from: token.from, to: token.to, text: widget.path };
+}
+
+/** 文件名在引用块的内层节点，按外层节点取得文件动作。 */
+function find_mention_file_node(event: MouseEvent): HTMLElement | null {
+  return event.target instanceof Element
+    ? event.target.closest<HTMLElement>(".agent-mention-token--interactive")
+    : null;
+}
+
 /** 引用块把光标限制在完整标记两侧。 */
 class MentionTokenWidget extends WidgetType {
   private static readonly CURSOR_GAP_PX = 1;
-  private readonly marker: string;
+  private readonly file: AgentFileTarget | null;
+  private readonly range: AgentReferenceRange;
+  private readonly label: string;
 
-  /** marker 既是显示文本，也是底层纯文本协议的原始值。 */
-  public constructor(marker: string) {
+  /** 文件目标随装饰创建，鼠标事件复用该目标。 */
+  public constructor(range: AgentReferenceRange, label: string) {
     super();
-    this.marker = marker;
+    this.range = range;
+    this.label = label;
+    this.file = resolve_agent_reference_file(range.reference);
   }
 
-  /** 相同 marker 复用既有 DOM，避免普通编辑事务造成视觉闪动。 */
+  /** 同名文件可改变旧块的标签，因此标签也参与 DOM 复用。 */
   public override eq(widget: WidgetType): boolean {
-    return widget instanceof MentionTokenWidget && widget.marker === this.marker;
+    return (
+      widget instanceof MentionTokenWidget &&
+      widget.range.marker === this.range.marker &&
+      widget.label === this.label
+    );
+  }
+
+  /** 文件块只把点击和菜单所需事件交给编辑器。 */
+  public override ignoreEvent(event: Event): boolean {
+    return (
+      this.file === null ||
+      (event.type !== "mousedown" && event.type !== "click" && event.type !== "contextmenu")
+    );
+  }
+
+  /** 悬浮提示使用原始文件路径。 */
+  public get path(): string | null {
+    return this.range.reference.kind === "skill" ? null : this.range.reference.path;
   }
 
   /** 创建与时间线共用样式的紧凑块。 */
@@ -990,8 +1102,22 @@ class MentionTokenWidget extends WidgetType {
     const token = document.createElement("span");
     const text = document.createElement("span");
     token.className = "agent-mention-token";
-    text.textContent = this.marker;
-    token.append(text);
+    const { reference } = this.range;
+    if (reference.kind === "skill") {
+      text.textContent = this.label;
+      token.append(text);
+    } else {
+      const [prefix, value, suffix] = format_agent_reference_parts({
+        ...reference,
+        path: this.label,
+      });
+      text.textContent = value;
+      token.append(prefix, text, suffix);
+    }
+    if (this.file !== null) {
+      token.classList.add("agent-mention-token--interactive");
+      mention_file_nodes.set(token, this.file);
+    }
     return token;
   }
 

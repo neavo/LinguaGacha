@@ -31,8 +31,9 @@ export function format_agent_path_request(
   suffix = "",
 ): AgentInputRequest {
   const placeholder = t("app.agent_input.path_placeholder");
+  const references = paths.map((path) => format_agent_reference({ kind: "file", path })).join("\n");
   return {
-    text: `${prompt}\n${paths.join("\n") || placeholder}${suffix ? `\n\n${suffix}` : ""}`,
+    text: `${prompt}\n${references || placeholder}${suffix ? `\n\n${suffix}` : ""}`,
     ...(paths.length === 0 && {
       selection: { from: prompt.length + 1, to: prompt.length + 1 + placeholder.length },
     }),

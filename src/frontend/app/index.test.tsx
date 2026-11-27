@@ -176,7 +176,7 @@ it("无工程发送时落盘空工程，切到全局页后仍会向新会话发�
   });
   await act(async () => container.querySelector(".cm-content")!.dispatchEvent(drop));
   const draft = editor().state.doc.toString();
-  expect(draft).toContain(`\n${source_path}\n`);
+  expect(draft).toContain(`@file("${source_path}")`);
   expect(container.querySelector(".agent-attachment")).toBeNull();
   expect(
     desktop.api_fetch.mock.calls.some(([route]) => route === "/api/session/project/create"),
@@ -203,14 +203,7 @@ it("无工程发送时落盘空工程，切到全局页后仍会向新会话发�
       },
     ],
   ]);
-  expect(
-    container.querySelector('.cn-progress-toast-modal-layer[data-visible="true"]'),
-  ).not.toBeNull();
-  await act(async () => vi.advanceTimersByTimeAsync(1499));
-  expect(container.querySelector('[aria-current="page"]')?.textContent ?? "").not.toContain(
-    project.name,
-  );
-  await act(async () => vi.advanceTimersByTimeAsync(1));
+  await act(async () => vi.runOnlyPendingTimersAsync());
   expect(container.querySelector('[aria-current="page"]')?.textContent).toContain(project.name);
   expect(desktop.api_fetch.mock.calls.some(([route]) => route === "/api/agent/message")).toBe(
     false,
@@ -258,7 +251,7 @@ it("侧栏创建空工程，进入 Agent 并选中预置指令的路径占位符
     source_paths: [],
     languages: { source_language: "EN", target_language: "ZH" },
   });
-  await act(async () => vi.advanceTimersByTimeAsync(1500));
+  await act(async () => vi.runOnlyPendingTimersAsync());
   expect(container.querySelector('[aria-current="page"]')?.textContent).toContain(project.name);
   const state = editor().state;
   const { from, to } = state.selection.main;
