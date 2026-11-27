@@ -1,4 +1,5 @@
 {
+  "userManageable": false,
   "order": 300,
   "displayDescriptions": {
     "zh-CN": "基于 AI 智能，提取和检查术语规则",

@@ -18,7 +18,7 @@ export function is_agent_skill_name(value: unknown): value is string {
 
 export type AgentSkillSource = "builtin" | "user";
 
-/** 每个来源的同名技能只展示首个有效包，开关由来源和名称共同标识。 */
+/** 每个来源的同名技能只展示首个有效包，启停偏好由来源和名称共同标识。 */
 export type AgentSkillEntry = {
   name: string;
   source: AgentSkillSource;

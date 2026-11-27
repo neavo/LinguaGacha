@@ -1,6 +1,6 @@
 ---
 name: rpgmaker
-description: 翻译、审校、分析、修改 RPGMAKER（XP、VX、VX Ace、MV、MZ）游戏前必须加载。
+description: 翻译、审校、分析、修改 RPGMAKER（XP、VX、VX Ace、MV、MZ）游戏前必须加载
 ---
 
 内置解析器识别 RPGMAKER 游戏，每个游戏导入为一个工程资产。本技能提供 RPGMAKER 在各阶段的方法。

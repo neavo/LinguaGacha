@@ -1,5 +1,6 @@
 import type { GlobalOperationGate } from "../runtime-operation-gate";
-import { AGENT_SKILL_MAIN_FILE } from "../../shared/agent-skills";
+import { AGENT_SKILL_MAIN_FILE, normalize_agent_skill_text } from "../../shared/agent-skills";
+import type { AgentSkillSnapshot } from "../../shared/agent";
 import { normalize_agent_skill_settings } from "../../domain/agent-skill-settings";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -21,7 +22,6 @@ import {
   change_skill_file,
 } from "./agent-skill-files";
 import { write_agent_skill_document } from "./agent-skill-document";
-import { normalize_agent_skill_text } from "../../shared/agent-skills";
 import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import {
@@ -50,11 +50,25 @@ export class AgentSkillsService {
 
   private pending: Promise<unknown> = Promise.resolve(); // 技能修改、查询共用顺序，改名期间不暴露半成品。
   private current: readonly AgentSkillDefinition[] = []; // 当前可用集合，由管理操作和显式扫描原子替换。
+  private reference_skills: readonly AgentSkillSnapshot[] = []; // 所有会话共用，内容有变化时才替换。
   private readonly listeners = new Set<() => void>(); // 当前集合变化时通知所有对话。
 
   /** 返回当前只读集合。 */
   public get_current(): readonly AgentSkillDefinition[] {
     return this.current;
+  }
+
+  /** 返回可供所有会话共享的补全快照。 */
+  public get_reference_skills(): readonly AgentSkillSnapshot[] {
+    return this.reference_skills;
+  }
+
+  /** 无工程会话打开时重新扫描，以便补全反映最新磁盘与偏好。 */
+  public read_reference_skills(): Promise<readonly AgentSkillSnapshot[]> {
+    return this.serial(() => {
+      this.refresh_current();
+      return this.get_reference_skills();
+    });
   }
 
   /** 注册集合变更通知，调用方在关闭时取消订阅。 */
@@ -92,6 +106,11 @@ export class AgentSkillsService {
         }),
       ),
     );
+    const references = this.current
+      .filter(({ visible }) => visible)
+      .map(({ name, displayDescriptions }) => Object.freeze({ name, displayDescriptions }));
+    if (!isDeepStrictEqual(this.reference_skills, references))
+      this.reference_skills = Object.freeze(references);
     for (const listener of this.listeners) listener();
   }
 
@@ -280,12 +299,7 @@ export class AgentSkillsService {
       throw new AppError("request.validation_failed");
     const skill: AgentSkillIdentity = { source: request.source, name: request.name };
     const packages = scan_agent_skills(this.paths, this.log);
-    const selected = packages.find(
-      (item) =>
-        item.source === skill.source &&
-        item.definition.name === skill.name &&
-        item.definition.visible,
-    );
+    const selected = find_manageable_skill(packages, skill);
     if (!selected) throw new AppError("file.not_found");
     // 来源入口可以经过目录链接，后续命令统一使用确认过的真实技能包路径。
     const root = fs.real_path(path.dirname(selected.definition.filePath));
@@ -303,7 +317,7 @@ export class AgentSkillsService {
     return this.serial(() => this.update_snapshot(scan_agent_skills(this.paths, this.log)));
   }
 
-  /** 只修改指定来源的公开技能，保留同名另一来源的偏好。 */
+  /** 只修改指定来源的可管理技能，保留同名另一来源的偏好。 */
   public set_enabled(request: JsonRecord): Promise<AgentSkillsSnapshot> {
     return this.write(() => {
       const packages = scan_agent_skills(this.paths, this.log);
@@ -312,10 +326,7 @@ export class AgentSkillsService {
         (source !== "builtin" && source !== "user") ||
         typeof name !== "string" ||
         typeof enabled !== "boolean" ||
-        !packages.some(
-          (item) =>
-            item.source === source && item.definition.name === name && item.definition.visible,
-        )
+        !find_manageable_skill(packages, { source, name })
       ) {
         throw new AppError("request.validation_failed");
       }
@@ -343,7 +354,7 @@ export class AgentSkillsService {
       const packages = scan_agent_skills(this.paths, this.log);
       const names = request.names;
       const current = packages
-        .filter((item) => item.source === "user" && item.definition.visible)
+        .filter((item) => item.source === "user")
         .map((item) => item.definition.name);
       if (
         !Array.isArray(names) ||
@@ -371,22 +382,34 @@ export class AgentSkillsService {
     const preferences = normalize_agent_skill_settings(this.settings.read_setting().agent_skills);
     this.update_current(select_agent_skills(packages, preferences));
     return {
-      skills: sort_agent_skill_packages(packages, preferences)
-        .filter((item) => item.definition.visible)
-        .map((item) => ({
-          name: item.definition.name,
-          source: item.source,
-          displayDescriptions: { ...item.definition.displayDescriptions },
-          enabled: !preferences.disabled[item.source].includes(item.definition.name),
-        })),
+      skills: sort_agent_skill_packages(
+        packages.filter((item) => item.userManageable),
+        preferences,
+      ).map(({ definition, source }) => ({
+        name: definition.name,
+        source,
+        displayDescriptions: { ...definition.displayDescriptions },
+        enabled: !preferences.disabled[source].includes(definition.name),
+      })),
     };
   }
 }
 
-/** GUI Gateway 仅消费技能管理公开命令。 */
+/** 详情和启停采用与技能页相同的管理权限。 */
+function find_manageable_skill(
+  packages: readonly AgentSkillPackage[],
+  { source, name }: AgentSkillIdentity,
+): AgentSkillPackage | undefined {
+  return packages.find(
+    (item) => item.userManageable && item.source === source && item.definition.name === name,
+  );
+}
+
+/** GUI Gateway 的技能查询和管理命令。 */
 export type AgentSkillsApi = Pick<
   AgentSkillsService,
   | "snapshot"
+  | "read_reference_skills"
   | "set_enabled"
   | "reorder"
   | "tree"

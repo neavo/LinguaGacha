@@ -5,6 +5,7 @@ import { GlobalOperationGate, ProjectOperationGate } from "../runtime-operation-
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
@@ -35,8 +36,13 @@ function fixture() {
     service,
     publish,
     log,
-    /** 生成测试自有技能包和可选隐藏元数据。 */
-    write(source: "builtin" | "user", folder: string, name: string, hidden = false) {
+    /** 生成测试自有技能包和可选界面元数据。 */
+    write(
+      source: "builtin" | "user",
+      folder: string,
+      name: string,
+      ui?: { visible?: boolean; userManageable?: boolean },
+    ) {
       const base =
         source === "builtin"
           ? paths.get_agent_builtin_skill_dir()
@@ -47,7 +53,7 @@ function fixture() {
         path.join(directory, "SKILL.md"),
         `---\nname: ${name}\ndescription: ${name} description\n---\nBody`,
       );
-      if (hidden) fs.writeFileSync(path.join(directory, "ui.json"), '{"visible":false}');
+      if (ui) fs.writeFileSync(path.join(directory, "ui.json"), JSON.stringify(ui));
     },
   };
 }
@@ -413,26 +419,30 @@ describe("技能管理", () => {
     });
   });
 
-  it("保存开关与排序，隐藏技能继续加载，新技能追加到末尾", async () => {
+  it("隐藏技能可启停并继续隐于补全，用户技能可排序和管理", async () => {
     using f = fixture();
-    f.write("builtin", "hidden", "hidden", true);
+    f.write("builtin", "hidden", "hidden", { visible: false });
     f.write("builtin", "built", "built");
     f.write("user", "alpha", "alpha");
     f.write("user", "beta", "beta");
-    await f.service.reorder({ names: ["beta", "alpha"] });
+    f.write("user", "hidden-user", "hidden-user", { visible: false });
+    await f.service.reorder({ names: ["beta", "hidden-user", "alpha"] });
     await f.service.set_enabled({ source: "user", name: "beta", enabled: false });
+    await f.service.set_enabled({ source: "builtin", name: "hidden", enabled: false });
+    const skill = { source: "user", name: "hidden-user" };
+    await f.service.set_enabled({ ...skill, enabled: false });
     expect((await f.service.snapshot()).skills.map((skill) => [skill.name, skill.enabled])).toEqual(
       [
         ["built", true],
+        ["hidden", false],
         ["beta", false],
+        ["hidden-user", false],
         ["alpha", true],
       ],
     );
-    expect(f.service.get_current().map((skill) => skill.name)).toEqual([
-      "built",
-      "hidden",
-      "alpha",
-    ]);
+    expect(f.service.get_current().map((skill) => skill.name)).toEqual(["built", "alpha"]);
+    await f.service.set_enabled({ source: "builtin", name: "hidden", enabled: true });
+    await f.service.set_enabled({ ...skill, enabled: true });
     await f.service.set_enabled({ source: "user", name: "beta", enabled: true });
     f.write("user", "aardvark", "aardvark");
     await f.service.refresh();
@@ -440,22 +450,55 @@ describe("技能管理", () => {
       "built",
       "hidden",
       "beta",
+      "hidden-user",
+      "alpha",
+      "aardvark",
+    ]);
+    expect((await f.service.read_reference_skills()).map(({ name }) => name)).toEqual([
+      "built",
+      "beta",
       "alpha",
       "aardvark",
     ]);
     const reopened = new AppSettingService(f.paths);
     expect(reopened.read_setting().agent_skills).toEqual({
       disabled: { builtin: [], user: [] },
-      user_order: ["beta", "alpha"],
+      user_order: ["beta", "hidden-user", "alpha"],
     });
     expect(f.publish).toHaveBeenCalledWith(
       "settings.changed",
       expect.objectContaining({ keys: ["agent_skills"] }),
     );
-    await expect(
-      f.service.set_enabled({ source: "builtin", name: "hidden", enabled: false }),
-    ).rejects.toMatchObject({
+    await expect(f.service.tree(skill)).resolves.toMatchObject({
+      entries: [{ path: "SKILL.md", kind: "file" }],
+    });
+  });
+
+  it("不可管理的内置包保留运行时名称并忽略旧停用偏好", async () => {
+    using f = fixture();
+    const name = "runtime-guide";
+    f.write("builtin", name, name, { visible: false, userManageable: false });
+    f.write("user", name, name, { userManageable: false });
+    f.settings.save_setting({
+      ...f.settings.read_setting(),
+      agent_skills: { disabled: { builtin: [name], user: [] }, user_order: [] },
+    });
+    const snapshot = await f.service.snapshot();
+    expect(snapshot.skills.map(({ source, enabled }) => ({ source, enabled }))).toEqual([
+      { source: "user", enabled: true },
+    ]);
+    const builtin = { source: "builtin", name };
+    await expect(f.service.tree(builtin)).rejects.toMatchObject({ code: "file.not_found" });
+    await expect(f.service.set_enabled({ ...builtin, enabled: false })).rejects.toMatchObject({
       code: "request.validation_failed",
+    });
+    await expect(f.service.read_reference_skills()).resolves.toEqual([]);
+    const tool = create_agent_read_skill_tool(() => f.service.get_current());
+    const base_url = pathToFileURL(
+      path.join(f.paths.get_agent_builtin_skill_dir(), name) + path.sep,
+    );
+    await expect(tool.execute({ name }, ...agent_tool_call("read"))).resolves.toMatchObject({
+      details: { name, base_url: base_url.href, content: expect.stringContaining("Body") },
     });
   });
 

@@ -17,16 +17,9 @@
 .document-list__header > button {
   color: var(--muted-foreground);
 }
-/* 空态占一行条目的高度，数据出现时外框不跳动。 */
-.document-list__empty {
-  align-items: center;
-  justify-content: center;
-  min-height: 60px;
-  margin: 0;
-  padding: 8px 10px;
-  color: var(--muted-foreground);
-  font-size: var(--ui-font-size-13);
-  text-align: center;
+.document-list__header > [data-slot="badge"] {
+  flex-shrink: 0;
+  margin-inline-start: 8px;
 }
 /* 每组一个外框、行间分隔线，区别于设置页的独立选项卡片。 */
 .document-list__rows {
@@ -101,9 +94,6 @@
 }
 
 .document-list__heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
@@ -136,14 +126,6 @@
   font-size: var(--ui-font-size-12);
   line-height: 1.5;
   user-select: none;
-}
-
-.document-list__heading > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.document-list__heading > [data-slot="badge"] {
-  flex-shrink: 0;
 }
 
 .document-list__row:not(:has(.document-list__description)) {

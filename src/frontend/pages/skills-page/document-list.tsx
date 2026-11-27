@@ -1,43 +1,23 @@
 import type { JSX, ReactNode, Ref } from "react";
-import { BadgeHelp, GripVertical } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-context";
-import { Badge } from "@frontend/shadcn/badge";
-import { Card } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import "./document-list.css";
 
-export type DocumentListGroupHelp = { label: string; on_click: () => void };
-
-/** 一组同类条目，空态文案由调用方在读取完成后传入。 */
+/** 两组技能共用分组语义和标题布局，标题旁的内容由页面决定。 */
 export function DocumentListGroup(props: {
   title: string;
-  help?: DocumentListGroupHelp;
-  busy?: boolean;
-  empty?: string | undefined;
-  children?: ReactNode;
+  action: ReactNode;
+  children: ReactNode;
 }): JSX.Element {
   return (
-    <section className="document-list" aria-label={props.title} aria-busy={props.busy}>
+    <section className="document-list" aria-label={props.title}>
       <div className="document-list__header">
         <h2>{props.title}</h2>
-        {props.help && (
-          <AppButton
-            variant="ghost"
-            size="icon-xs"
-            aria-label={props.help.label}
-            onClick={props.help.on_click}
-          >
-            <BadgeHelp aria-hidden="true" />
-          </AppButton>
-        )}
+        {props.action}
       </div>
       {props.children}
-      {props.empty !== undefined && (
-        <Card render={<p />} className="document-list__empty">
-          {props.empty}
-        </Card>
-      )}
     </section>
   );
 }
@@ -45,8 +25,7 @@ export function DocumentListGroup(props: {
 export type DocumentListRowProps = {
   name: string;
   description?: string | undefined;
-  readonly_label?: string | undefined;
-  open_disabled: boolean;
+  open_disabled?: boolean;
   on_open: () => void;
   action?: ReactNode;
   sort?: {
@@ -91,10 +70,7 @@ export function DocumentListRow(props: DocumentListRowProps): JSX.Element {
         </TooltipTrigger>
         <TooltipContent>{drag_label}</TooltipContent>
       </Tooltip>
-      <h3 className="document-list__heading">
-        <span>{props.name}</span>
-        {props.readonly_label && <Badge tone="neutral">{props.readonly_label}</Badge>}
-      </h3>
+      <h3 className="document-list__heading">{props.name}</h3>
       {props.action && <div className="document-list__actions">{props.action}</div>}
       {props.description && <p className="document-list__description">{props.description}</p>}
     </li>

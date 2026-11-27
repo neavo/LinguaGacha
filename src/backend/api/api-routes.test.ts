@@ -28,6 +28,7 @@ const POST_PATHS = new Set([
   "/api/models/auth/logout",
   "/api/agent/personality/read",
   "/api/agent/personality/save",
+  "/api/agent/skills",
   "/api/skills/delete",
   "/api/skills/snapshot",
   "/api/skills/enabled",
@@ -62,6 +63,7 @@ const POST_PATHS = new Set([
   "/api/session/project/manifest",
   "/api/session/project/snapshot",
   "/api/session/project/close",
+  "/api/session/project/rename",
   "/api/session/project/preview",
   "/api/session/project/default-name",
   "/api/session/project/open",
@@ -398,6 +400,7 @@ function create_route_fixture() {
     skills: {
       delete: vi.fn(),
       snapshot: vi.fn(),
+      read_reference_skills: vi.fn(),
       set_enabled: vi.fn(),
       tree: vi.fn(),
       read_file: vi.fn(),

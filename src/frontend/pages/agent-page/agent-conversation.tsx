@@ -16,7 +16,6 @@ import type { ProjectLanguageSettings } from "@domain/project-settings";
 import { find_agent_reference_ranges, format_agent_reference } from "@shared/agent-reference";
 import { local_path_to_file_url } from "@shared/agent-workspace-file";
 import { PROJECT_FILE_EXTENSION } from "@shared/project/project-file";
-import type { AgentSkillsSnapshot } from "@shared/agent-skills";
 import {
   type JSX,
   type RefObject,
@@ -302,17 +301,9 @@ export function EmptyAgentConversation({
 
   useEffect(() => {
     const controller = new AbortController();
-    void api_fetch<AgentSkillsSnapshot>("/api/skills/snapshot", {}, controller.signal)
-      .then((snapshot) => {
-        if (controller.signal.aborted) return;
-        const seen = new Set<string>();
-        const enabled: AgentSkillSnapshot[] = [];
-        for (const skill of snapshot.skills) {
-          if (!skill.enabled || seen.has(skill.name)) continue;
-          seen.add(skill.name);
-          enabled.push({ name: skill.name, displayDescriptions: skill.displayDescriptions });
-        }
-        set_skills(enabled);
+    void api_fetch<AgentSkillSnapshot[]>("/api/agent/skills", {}, controller.signal)
+      .then((skills) => {
+        if (!controller.signal.aborted) set_skills(skills);
       })
       .catch(() => {
         // 空态技能列表属于输入补全增强，加载失败静默降级为空菜单。

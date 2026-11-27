@@ -2,9 +2,6 @@ export const ja_jp_knowledge_page = {
   builtin: "内蔵スキル",
   user: "ユーザースキル",
   knowledge: "プロジェクトナレッジ",
-  empty: {
-    user: "ユーザースキルはありません",
-  },
   readonly: "読み取り専用",
   personality_description: "アシスタントのキャラクター設定",
   install: {

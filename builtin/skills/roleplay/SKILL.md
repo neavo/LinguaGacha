@@ -1,6 +1,6 @@
 ---
 name: roleplay
-description: 仅当用户明确提及本技能或要求进行角色扮演时使用。
+description: 仅当用户明确提及本技能或要求进行角色扮演时使用
 ---
 
 # 故事角色扮演

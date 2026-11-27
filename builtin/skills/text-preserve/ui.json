@@ -1,4 +1,5 @@
 {
+  "userManageable": false,
   "order": 400,
   "displayDescriptions": {
     "zh-CN": "基于 AI 智能，提取和检查文本保护规则",

@@ -1,6 +1,6 @@
 ---
 name: godot
-description: 翻译、审校、分析、修改 Godot 或 ACTION GAME MAKER 游戏前必须加载。
+description: 翻译、审校、分析、修改 Godot 或 ACTION GAME MAKER 游戏前必须加载
 ---
 
 内置解析器识别 Godot 游戏，每个游戏导入为一个工程资产。ACTION GAME MAKER 基于 Godot 二次开发，按本技能处理。本技能提供 Godot 在各阶段的方法。

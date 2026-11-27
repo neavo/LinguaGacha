@@ -44,6 +44,7 @@ import {
   type AgentAssistantMessageParts,
   type AgentEntryStatus,
   type AgentEntry,
+  type AgentSkillSnapshot,
 } from "@shared/agent";
 import type {
   AgentControlsSlice,
@@ -79,9 +80,11 @@ const settings_state = vi.hoisted(() => ({
   },
   save: vi.fn<(path: string, body: Record<string, unknown>) => Promise<SettingsSnapshotPayload>>(),
 }));
+const read_reference_skills = vi.hoisted(() => vi.fn<() => Promise<AgentSkillSnapshot[]>>());
 vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
   ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
-  api_fetch: settings_state.save,
+  api_fetch: (path: string, body: Record<string, unknown>) =>
+    path === "/api/agent/skills" ? read_reference_skills() : settings_state.save(path, body),
   api_blob: async () => new Blob([], { type: "image/png" }),
   api_upload: async (_path: string, file: File) => uploaded_file(`webp-${file.name}`),
 }));
@@ -221,6 +224,7 @@ vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
 }));
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
+    locale: "zh-CN",
     t: (key: string, params?: Record<string, string>) =>
       params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
@@ -278,9 +282,8 @@ describe("AgentConversation", () => {
     push_toast.mockReset();
     settings_state.snapshot = { agent_approval_mode: "manual" };
     settings_state.save.mockReset();
-    settings_state.save.mockImplementation(async (path) =>
-      path === "/api/skills/snapshot" ? ({ skills: [] } as never) : {},
-    );
+    settings_state.save.mockResolvedValue({});
+    read_reference_skills.mockReset().mockResolvedValue([]);
     navigation.agent_input_request = null;
     navigation.clear_agent_input_request.mockReset();
     model_thinking_state.thinking_level = "OFF";
@@ -354,7 +357,6 @@ describe("AgentConversation", () => {
     "对话页拖入单个工程文件预览并锁定输入 %s",
     async (Conversation) => {
       settings_state.save.mockImplementation(async (path) => {
-        if (path === "/api/skills/snapshot") return { skills: [] } as never;
         if (path === "/api/session/project/preview") {
           return {
             preview: {
@@ -385,27 +387,19 @@ describe("AgentConversation", () => {
   );
 
   it("无工程时保留底栏工具和技能补全，四条宿主指令中仅压缩禁用", async () => {
-    settings_state.save.mockImplementation(async (path) => {
-      if (path === "/api/skills/snapshot") {
-        return {
-          skills: [
-            {
-              name: "translation",
-              source: "builtin",
-              displayDescriptions: { "zh-CN": "翻译技能" },
-              enabled: true,
-            },
-            {
-              name: "disabled-skill",
-              source: "user",
-              displayDescriptions: { "zh-CN": "已停用" },
-              enabled: false,
-            },
-          ],
-        } as never;
-      }
-      return { settings: { agent_approval_mode: "auto" } };
-    });
+    read_reference_skills.mockResolvedValue([
+      {
+        name: "translation",
+        displayDescriptions: {
+          "zh-CN": "用户翻译技能",
+          "en-US": "User translation skill",
+          "de-DE": "Übersetzungsskill des Benutzers",
+          "ja-JP": "ユーザー翻訳スキル",
+          "ko-KR": "사용자 번역 스킬",
+          "pt-BR": "Habilidade de tradução do usuário",
+        },
+      },
+    ]);
     const view = await render_page({}, true, EmptyConversation);
     expect(view.querySelector(".agent-composer__model-trigger")).not.toBeNull();
     expect(view.querySelector(".agent-composer__approval-trigger")).not.toBeNull();
@@ -420,6 +414,7 @@ describe("AgentConversation", () => {
     expect(skills.map((item) => item.querySelector("strong")?.textContent)).toEqual([
       "translation",
     ]);
+    expect(skills[0]?.textContent).toContain("用户翻译技能");
     expect(instructions.map((item) => item.querySelector("strong")?.textContent)).toEqual([
       "agent_page.mention.instructions.compact_context.title",
       "agent_page.mention.instructions.update_file.title",
