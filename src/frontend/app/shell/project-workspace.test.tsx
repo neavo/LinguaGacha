@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PROJECT_SETTINGS } from "@domain/project-settings";
+import type { ProjectTranslationStats } from "@shared/project-translation-stats";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-provider";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
@@ -10,6 +11,7 @@ import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { ProjectScopeContext } from "@frontend/app/navigation/project-scope-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import type { RouteId } from "@frontend/app/navigation/types";
+import { ProjectTranslationStatsContext } from "@frontend/app/session/project-translation-stats-context";
 import { ProjectStore } from "@frontend/app/state/project-store-registry";
 import { createRuntimeActivityStore } from "@frontend/app/state/runtime-activity-store";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
@@ -137,6 +139,13 @@ function WorkspaceHarness({ project }: { project: ProjectStore }): JSX.Element {
 }
 
 describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
+  const partial_stats: ProjectTranslationStats = {
+    total_items: 25,
+    skipped_count: 1,
+    completed_count: 8,
+    pending_count: 16,
+    completion_percent: 36,
+  };
   let host: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -172,7 +181,10 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     });
   }
 
-  async function mount(project: ProjectStore): Promise<HTMLDivElement> {
+  async function mount(
+    project: ProjectStore,
+    translation_stats: ProjectTranslationStats | null = null,
+  ): Promise<HTMLDivElement> {
     if (host === null) {
       host = document.body.appendChild(document.createElement("div"));
       root = createRoot(host);
@@ -182,7 +194,9 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
         <LocaleProvider locale="zh-CN">
           <TooltipProvider>
             <PageLeaveProvider>
-              <WorkspaceHarness project={project} />
+              <ProjectTranslationStatsContext value={translation_stats}>
+                <WorkspaceHarness project={project} />
+              </ProjectTranslationStatsContext>
             </PageLeaveProvider>
           </TooltipProvider>
         </LocaleProvider>,
@@ -208,6 +222,60 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
       (item) => item.querySelector(".project-workspace__tool-label")?.textContent === label,
     )!;
   }
+
+  it("校对菜单收到工程进度后共用行焦点、悬停提示与导航", async () => {
+    const project = create_project();
+    const container = await mount(project);
+    const workbench = group_panel(container, "workbench");
+    const trigger = group_trigger(container, "workbench");
+    await act(async () => trigger.click());
+    const item = find_tool_item(workbench, "校对");
+    expect(item.querySelector(".app-badge")).toBeNull();
+
+    await mount(project, partial_stats);
+    const badge = item.querySelector<HTMLElement>(".app-badge")!;
+    await act(async () => {
+      item.focus();
+      badge.focus();
+    });
+    expect(document.activeElement).toBe(item);
+    await act(async () => item.blur());
+
+    const label = item.querySelector(".project-workspace__tool-label")!;
+    Object.defineProperty(label, "clientWidth", { value: 20 });
+    Object.defineProperty(label, "scrollWidth", { value: 40 });
+
+    const open_tooltip_texts = () =>
+      Array.from(
+        document.querySelectorAll('[role="tooltip"][data-open]'),
+        (tip) => tip.textContent,
+      );
+    const progress_tip = expect.stringContaining(String(partial_stats.total_items));
+
+    // jsdom 需要先派发冒泡的 mouseover，再派发各触发器的 mouseenter。
+    const enter_badge = async (from: Element): Promise<void> => {
+      await act(async () => {
+        badge.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: from }));
+        if (from === document.body)
+          item.dispatchEvent(new MouseEvent("mouseenter", { relatedTarget: from }));
+        badge.dispatchEvent(new MouseEvent("mouseenter", { relatedTarget: from }));
+      });
+    };
+    await enter_badge(document.body);
+    expect(open_tooltip_texts()).toEqual([progress_tip]);
+
+    await act(async () => {
+      badge.dispatchEvent(new MouseEvent("mouseleave", { relatedTarget: label }));
+      label.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: badge }));
+    });
+    expect(open_tooltip_texts()).toEqual([label.textContent]);
+    await enter_badge(label);
+    expect(open_tooltip_texts()).toEqual([progress_tip]);
+
+    await act(async () => badge.click());
+    expect(container.querySelector('[data-testid="page-proofreading"]')).not.toBeNull();
+    expect(trigger.querySelector(".app-badge")).toBeNull();
+  });
 
   it("从工程快照显示规则条数，零条也可见", async () => {
     const container = await mount(create_project());
@@ -329,7 +397,7 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
 
   it("宽工作区常驻显示功能，缩窄后恢复折叠菜单", async () => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
-    const container = await mount(create_project());
+    const container = await mount(create_project(), partial_stats);
     const workspace = container.querySelector<HTMLDivElement>(".project-workspace")!;
     const workbench = group_panel(container, "workbench");
     const quality = group_panel(container, "quality");
@@ -341,6 +409,7 @@ describe("ProjectWorkspace 双功能块与预过滤确认框", () => {
     await act(async () => TestResizeObserver.emit(workspace, 1600));
     expect(workbench.dataset.expanded).toBe("true");
     expect(quality.dataset.expanded).toBe("true");
+    expect(find_tool_item(workbench, "校对").querySelector(".app-badge")).not.toBeNull();
 
     // 宽态下外部点击与失焦不收起常驻卡片。
     await act(async () => {

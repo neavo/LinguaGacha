@@ -35,9 +35,11 @@ import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { AgentChatStoreContext } from "@frontend/app/session/agent/agent-chat-context";
+import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import type { OpenProjectSnapshot, ProjectStore } from "@frontend/app/state/project-store-registry";
 import { is_project_busy } from "@frontend/app/state/runtime-activity-store";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
 import { AgentPage } from "@frontend/pages/agent-page/page";
 import { Badge } from "@frontend/shadcn/badge";
 import { Tooltip, TooltipContent, TooltipTarget, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -54,7 +56,7 @@ type WorkspaceToolGroupId = "workbench" | "quality";
 type WorkspaceToolRouteItem = Readonly<{
   id: RouteId;
   icon: LucideIcon;
-  count?: (snapshot: OpenProjectSnapshot) => number;
+  badge?: ReactNode;
 }>;
 
 type WorkspaceToolSettingItem = Readonly<{
@@ -70,47 +72,53 @@ type WorkspaceToolGroupDefinition = Readonly<{
   settingItems: readonly WorkspaceToolSettingItem[];
 }>;
 
-const WORKSPACE_TOOL_GROUPS: readonly WorkspaceToolGroupDefinition[] = [
-  {
-    id: "workbench",
-    title_key: "app.workspace.workbench",
-    icon: LayoutGrid,
-    routeItems: [
-      { id: "proofreading", icon: BookOpenCheck },
-      { id: "files", icon: LayoutDashboard, count: (snapshot) => snapshot.file_count },
-    ],
-    settingItems: [],
-  },
-  {
-    id: "quality",
-    title_key: "app.workspace.quality",
-    icon: BadgeCheck,
-    routeItems: [
-      { id: "glossary", icon: BookA, count: (snapshot) => snapshot.quality_rule_counts.glossary },
-      {
-        id: "text-preserve",
-        icon: ShieldCheck,
-        count: (snapshot) => snapshot.quality_rule_counts.text_preserve,
-      },
-      {
-        id: "pre-translation-replacement",
-        icon: BetweenVerticalStart,
-        count: (snapshot) => snapshot.quality_rule_counts.pre_replacement,
-      },
-      {
-        id: "post-translation-replacement",
-        icon: BetweenVerticalEnd,
-        count: (snapshot) => snapshot.quality_rule_counts.post_replacement,
-      },
-      { id: "project-knowledge", icon: NotebookText },
-      { id: "custom-prompt", icon: FilePenLine },
-    ],
-    settingItems: [
-      { field: "skip_duplicate_source_text_enable", icon: CopyMinus },
-      { field: "mtool_optimizer_enable", icon: Zap },
-    ],
-  },
-];
+/** 在组装菜单时填入快照计数，让两种布局只负责展示。 */
+function get_workspace_tool_groups({
+  file_count,
+  quality_rule_counts,
+}: OpenProjectSnapshot): readonly WorkspaceToolGroupDefinition[] {
+  return [
+    {
+      id: "workbench",
+      title_key: "app.workspace.workbench",
+      icon: LayoutGrid,
+      routeItems: [
+        { id: "proofreading", icon: BookOpenCheck, badge: <ProofreadingProgressBadge /> },
+        { id: "files", icon: LayoutDashboard, badge: <Badge>{file_count}</Badge> },
+      ],
+      settingItems: [],
+    },
+    {
+      id: "quality",
+      title_key: "app.workspace.quality",
+      icon: BadgeCheck,
+      routeItems: [
+        { id: "glossary", icon: BookA, badge: <Badge>{quality_rule_counts.glossary}</Badge> },
+        {
+          id: "text-preserve",
+          icon: ShieldCheck,
+          badge: <Badge>{quality_rule_counts.text_preserve}</Badge>,
+        },
+        {
+          id: "pre-translation-replacement",
+          icon: BetweenVerticalStart,
+          badge: <Badge>{quality_rule_counts.pre_replacement}</Badge>,
+        },
+        {
+          id: "post-translation-replacement",
+          icon: BetweenVerticalEnd,
+          badge: <Badge>{quality_rule_counts.post_replacement}</Badge>,
+        },
+        { id: "project-knowledge", icon: NotebookText },
+        { id: "custom-prompt", icon: FilePenLine },
+      ],
+      settingItems: [
+        { field: "skip_duplicate_source_text_enable", icon: CopyMinus },
+        { field: "mtool_optimizer_enable", icon: Zap },
+      ],
+    },
+  ];
+}
 
 /** 按工作区自身宽度决定功能块是否常驻展开；首帧同步定态，避免切换工程时重放过渡动画。 */
 function use_tools_docked(workspace_ref: RefObject<HTMLDivElement | null>): {
@@ -218,11 +226,10 @@ export function ProjectWorkspace({
           data-active={selected === "agent"}
         />
         <div ref={tools_anchor_ref} className="project-workspace__tools-anchor">
-          {WORKSPACE_TOOL_GROUPS.map((group) => (
+          {get_workspace_tool_groups(project.snapshot).map((group) => (
             <WorkspaceToolGroup
               key={group.id}
               group={group}
-              snapshot={project.snapshot}
               settings={project_settings}
               prefilter_locked={prefilter_locked}
               selected={selected}
@@ -278,7 +285,6 @@ export function ProjectWorkspace({
 /** 工作区同构功能块：头部保持顶栏标签形态，下方卡片在窄态按需浮层展开、宽态纵排常驻。 */
 function WorkspaceToolGroup({
   group,
-  snapshot,
   settings,
   prefilter_locked,
   selected,
@@ -291,7 +297,6 @@ function WorkspaceToolGroup({
   on_select_prefilter,
 }: {
   group: WorkspaceToolGroupDefinition;
-  snapshot: OpenProjectSnapshot;
   settings: ProjectSettings;
   prefilter_locked: boolean;
   selected: RouteId;
@@ -389,21 +394,18 @@ function WorkspaceToolGroup({
                 role={docked ? undefined : "menu"}
                 aria-label={group_label}
               >
-                {group.routeItems.map((item) => {
-                  const count = item.count?.(snapshot);
-                  return (
-                    <WorkspaceToolItem
-                      key={item.id}
-                      icon={item.icon}
-                      label={t(SCREEN_REGISTRY[item.id].title_key)}
-                      docked={docked}
-                      active={selected === item.id}
-                      on_click={() => on_select_route(item.id)}
-                    >
-                      {count !== undefined && <Badge>{count}</Badge>}
-                    </WorkspaceToolItem>
-                  );
-                })}
+                {group.routeItems.map((item) => (
+                  <WorkspaceToolItem
+                    key={item.id}
+                    icon={item.icon}
+                    label={t(SCREEN_REGISTRY[item.id].title_key)}
+                    docked={docked}
+                    active={selected === item.id}
+                    on_click={() => on_select_route(item.id)}
+                  >
+                    {item.badge}
+                  </WorkspaceToolItem>
+                ))}
                 {group.settingItems.length > 0 ? (
                   <>
                     <div className="project-workspace__tools-divider" role="separator" />
@@ -433,6 +435,13 @@ function WorkspaceToolGroup({
       </div>
     </nav>
   );
+}
+
+/** 将高频工程统计的订阅收在胶囊内，避免带动工作区和当前页面重渲染。 */
+function ProofreadingProgressBadge(): JSX.Element | null {
+  const stats = useProjectTranslationStats();
+  if (stats === null) return null;
+  return <TranslationProgressBadge progress={stats} />;
 }
 
 /** 路由和预过滤共用行布局，保留窄态菜单语义与宽态当前页标记。 */
