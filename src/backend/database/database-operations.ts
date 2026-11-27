@@ -178,23 +178,42 @@ export class ProjectDatabase {
         if (SQLITE_SIDECAR_SUFFIXES.some((suffix) => this.native_fs.exists(source_path + suffix)))
           throw new AppErrors.AppError("database.busy");
       }
-      if (SQLITE_SIDECAR_SUFFIXES.some((suffix) => this.native_fs.exists(target_path + suffix)))
-        throw new AppErrors.AppError("project.already_exists");
       this.rename_project_file_entry(source_path, target_path);
     });
+  }
+
+  /** 关闭前和实际改名共用预检。同一目录项的 WAL 归源工程，由关闭流程收尾。 */
+  public check_rename_project_target(
+    source_path: string,
+    target_path: string,
+  ): "same_file" | "vacant" {
+    const read_entry = (file_path: string) => {
+      try {
+        return this.native_fs.lstat(file_path);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+        throw new AppErrors.AppError("file.io_failed", { cause: error });
+      }
+    };
+    const target = read_entry(target_path);
+    if (target !== undefined) {
+      if (
+        !target.isSymbolicLink() &&
+        this.native_fs.real_path(target_path) === this.native_fs.real_path(source_path)
+      )
+        return "same_file";
+      throw new AppErrors.AppError("project.already_exists");
+    }
+    if (SQLITE_SIDECAR_SUFFIXES.some((suffix) => read_entry(target_path + suffix) !== undefined))
+      throw new AppErrors.AppError("project.already_exists");
+    return "vacant";
   }
 
   /** 大小写变更可指向同一目录项，其余改名先排他占用空目标。 */
   private rename_project_file_entry(source_path: string, target_path: string): void {
     let reserved = false;
     try {
-      if (this.native_fs.exists(target_path)) {
-        if (
-          this.native_fs.lstat(target_path).isSymbolicLink() ||
-          this.native_fs.real_path(target_path) !== this.native_fs.real_path(source_path)
-        )
-          throw new AppErrors.AppError("project.already_exists");
-      } else {
+      if (this.check_rename_project_target(source_path, target_path) === "vacant") {
         this.native_fs.create_file_exclusive(target_path);
         reserved = true;
       }

@@ -1,44 +1,107 @@
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
-import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
-import { push_error_toast, push_toast } from "@frontend/app/feedback/desktop-toast";
+import { beforeEach, expect, it, vi } from "vitest";
+import { push_error_toast } from "@frontend/app/feedback/desktop-toast";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import { usePageLeave, type BeforePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
+import type { ProjectRenameTarget } from "@frontend/app/state/desktop-state-context";
 import { create_text_resolver } from "@shared/i18n";
+import type { ProjectActivity } from "@shared/runtime-activity";
 import { useProjectLifecycle } from "./project-lifecycle-context";
 import { ProjectLifecycleProvider } from "./project-lifecycle-provider";
 
-const apply_settings_snapshot = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/desktop/desktop-api", async (load) => ({
-  ...(await load<typeof import("@frontend/app/desktop/desktop-api")>()),
-  api_fetch: vi.fn(),
+const desktop = vi.hoisted(() => ({
+  rename_project: vi.fn(),
+  open_projects: [] as Array<{ snapshot: { projectId: string } }>,
+  projects: {} as Record<string, ProjectActivity>,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ apply_settings_snapshot }),
-  useRuntimeSnapshot: () => ({}),
+  useDesktopState: () => desktop,
+  useRuntimeSnapshot: () => ({ projects: desktop.projects }),
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", async (load) => ({
   ...(await load<typeof import("@frontend/app/feedback/desktop-toast")>()),
   push_error_toast: vi.fn(),
-  push_toast: vi.fn(),
 }));
 
-it("工程改名验证主干，写入失败保留输入，重试成功后应用设置快照", async () => {
-  const t = create_text_resolver("zh-CN");
-  const path = "E:/最近.lg";
+const t = create_text_resolver("zh-CN");
+
+beforeEach(() => {
+  desktop.rename_project.mockReset();
+  desktop.open_projects = [];
+  desktop.projects = {};
+});
+
+it("最近工程改名校验并提交文件名主干", async () => {
+  const target = { path: "E:/最近.lg" };
+  const dialog = rename_dialog(target);
+  try {
+    await dialog.open();
+    await dialog.change_name("不/合法");
+    await dialog.confirm();
+    expect(desktop.rename_project).not.toHaveBeenCalled();
+
+    await dialog.change_name(" 改名 ");
+    await dialog.confirm();
+    expect(desktop.rename_project).toHaveBeenCalledWith(target, "改名");
+    expect(dialog.read()).toBeNull();
+  } finally {
+    await dialog.dispose();
+  }
+});
+
+it("已打开工程只在空闲且页面保存成功时提交，确认框随打开周期失效", async () => {
+  const target = { projectId: "open-project" };
+  const save = vi.fn<BeforePageLeave>().mockResolvedValueOnce(false).mockResolvedValue(true);
+  const dialog = rename_dialog(target, save);
+  desktop.open_projects = [{ snapshot: target }];
+  try {
+    await dialog.open();
+    await dialog.change_name("新名");
+    desktop.projects = {
+      [target.projectId]: { agent: true, batchTranslation: false, projectWrite: false },
+    };
+    await dialog.render();
+    expect(dialog.confirm_button().disabled).toBe(true);
+
+    desktop.projects = {};
+    await dialog.render();
+    await dialog.confirm();
+    expect(save).toHaveBeenCalled();
+    expect(desktop.rename_project).not.toHaveBeenCalled();
+
+    const failure = new Error("Target is occupied");
+    desktop.rename_project.mockRejectedValueOnce(failure);
+    await dialog.confirm();
+    expect(desktop.rename_project).toHaveBeenCalledWith(target, "新名");
+    expect(push_error_toast).toHaveBeenCalledWith(t("app.feedback.rename_failed"), failure);
+    expect(dialog.read()?.querySelector("input")?.value).toBe("新名");
+
+    desktop.open_projects = []; // 状态层补读发现旧周期已结束。
+    await dialog.render();
+    expect(dialog.read()).toBeNull();
+  } finally {
+    await dialog.dispose();
+  }
+});
+
+/** 用同一真实确认框验证最近工程与打开工程。 */
+function rename_dialog(target: ProjectRenameTarget, save?: BeforePageLeave) {
   const host = document.body.appendChild(document.createElement("div"));
   const root = createRoot(host);
   function RenameButton() {
     const { request_rename } = useProjectLifecycle();
-    return <button onClick={() => request_rename(path, "最近.lg")}>{t("project.rename")}</button>;
+    const { register_before_leave } = usePageLeave();
+    useEffect(() => {
+      if (save && "projectId" in target)
+        return register_before_leave(save, { kind: "project", projectId: target.projectId });
+    }, [register_before_leave, save, target]);
+    return <button onClick={() => request_rename(target, "原名.lg")}>{t("project.rename")}</button>;
   }
 
-  try {
-    const error = new DesktopApiError({ code: "project.already_exists" });
-    const snapshot = { settings: { recent_projects: [{ path: "E:/改名.lg", name: "改名.lg" }] } };
-    vi.mocked(api_fetch).mockRejectedValueOnce(error).mockResolvedValueOnce(snapshot);
-    await act(async () => {
+  const render = () =>
+    act(async () =>
       root.render(
         <LocaleProvider locale="zh-CN">
           <PageLeaveProvider>
@@ -47,48 +110,34 @@ it("工程改名验证主干，写入失败保留输入，重试成功后应用�
             </ProjectLifecycleProvider>
           </PageLeaveProvider>
         </LocaleProvider>,
-      );
-    });
-    await act(async () => host.querySelector("button")!.click());
-    const dialog = document.querySelector('[role="dialog"]')!;
-    const input = dialog.querySelector("input")!;
-    const confirm = [...dialog.querySelectorAll("button")].find((button) =>
+      ),
+    );
+  const read = () => document.querySelector('[role="dialog"]');
+  const confirm_button = () =>
+    [...read()!.querySelectorAll("button")].find((button) =>
       button.textContent?.startsWith(t("app.action.confirm")),
     )!;
-    expect(input.value).toBe("最近");
-    expect(dialog.textContent).toContain(".lg");
-    await vi.waitFor(() => {
-      expect(document.activeElement).toBe(input);
-      expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length]);
-    });
-
-    /** 输入与确认分属两个用户事件。 */
-    async function submit(name: string): Promise<void> {
-      await act(async () => {
+  return {
+    render,
+    read,
+    confirm_button,
+    async open() {
+      await render();
+      await act(async () => host.querySelector("button")!.click());
+    },
+    change_name: (name: string) =>
+      act(async () => {
+        const input = read()!.querySelector("input")!;
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
           input,
           name,
         );
         input.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      await act(async () => confirm.click());
-    }
-
-    await submit("不/合法");
-    expect(push_toast).toHaveBeenCalledWith("warning", t("app.feedback.invalid_file_name"));
-    expect(api_fetch).not.toHaveBeenCalled();
-    await submit("已占用");
-    expect(push_error_toast).toHaveBeenCalledWith(t("app.feedback.rename_failed"), error);
-    expect(document.querySelector('[role="dialog"] input')).toHaveProperty("value", "已占用");
-    await submit(" 改名 ");
-    expect(api_fetch).toHaveBeenLastCalledWith("/api/session/project/rename", {
-      path,
-      new_name: "改名",
-    });
-    expect(apply_settings_snapshot).toHaveBeenCalledWith(snapshot);
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-  } finally {
-    await act(async () => root.unmount());
-    host.remove();
-  }
-});
+      }),
+    confirm: () => act(async () => confirm_button().click()),
+    async dispose() {
+      await act(async () => root.unmount());
+      host.remove();
+    },
+  };
+}

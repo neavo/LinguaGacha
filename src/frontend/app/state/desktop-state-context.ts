@@ -25,6 +25,9 @@ export type ProjectSnapshot = {
 
 export type ProjectSessionStatus = "idle" | "warming" | "ready";
 
+/** 打开的工程使用周期身份，最近工程使用路径。 */
+export type ProjectRenameTarget = { projectId: string } | { path: string };
+
 export type DesktopStateContextValue = {
   initial_state_status: "loading" | "ready" | "error";
   load_initial_state: () => Promise<void>;
@@ -39,6 +42,7 @@ export type DesktopStateContextValue = {
   apply_project_load: (
     payload: unknown,
   ) => import("./project-store-registry").ProjectStore | undefined;
+  rename_project: (target: ProjectRenameTarget, new_name: string) => Promise<void>;
   refresh_projects: () => Promise<readonly import("./project-store-registry").ProjectStore[]>;
   refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_state: () => Promise<void>;

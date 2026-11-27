@@ -41,6 +41,22 @@ function read_quality_rule_counts(value: unknown): QualityRuleCounts {
   });
 }
 
+/** 单工程回执和工程列表使用同一快照形状。 */
+function read_open_project_snapshot(payload: unknown): OpenProjectSnapshot | undefined {
+  if (!is_json_record(payload) || !is_json_record(payload.project)) return;
+  const { project } = payload;
+  if (typeof project.projectId !== "string" || typeof project.path !== "string") return;
+  return {
+    projectId: project.projectId,
+    path: project.path,
+    name: typeof project.name === "string" ? project.name : project.path,
+    loaded: true,
+    file_count: typeof project.file_count === "number" ? project.file_count : 0,
+    quality_rule_counts: read_quality_rule_counts(project.quality_rule_counts),
+    settings: is_json_record(project.settings) ? read_project_settings(project.settings) : null,
+  };
+}
+
 /** 一个打开周期的任务镜像、缓存失效和页面状态。 */
 export class ProjectStore {
   readonly batch_task = createBatchTaskSnapshotStore();
@@ -115,7 +131,7 @@ export class ProjectStore {
 
 /** 工程列表刷新时保留仍处于同一打开周期的 Store。 */
 export class ProjectStoreRegistry {
-  private readonly stores = new Map<string, ProjectStore>();
+  private stores = new Map<string, ProjectStore>();
   private readonly on_agent_error: AgentErrorHandler;
 
   constructor(on_agent_error: AgentErrorHandler) {
@@ -152,18 +168,33 @@ export class ProjectStoreRegistry {
 
   /** 单工程补读只更新公共快照，页面和高频 Store 继续使用原实例。 */
   public update(payload: unknown): ProjectStore | undefined {
-    if (!is_json_record(payload) || !is_json_record(payload.project)) return;
-    const { project } = payload;
-    if (typeof project.projectId !== "string" || typeof project.path !== "string") return;
-    const snapshot: OpenProjectSnapshot = {
-      projectId: project.projectId,
-      path: project.path,
-      name: typeof project.name === "string" ? project.name : project.path,
-      loaded: true,
-      file_count: typeof project.file_count === "number" ? project.file_count : 0,
-      quality_rule_counts: read_quality_rule_counts(project.quality_rule_counts),
-      settings: is_json_record(project.settings) ? read_project_settings(project.settings) : null,
-    };
+    const snapshot = read_open_project_snapshot(payload);
+    if (snapshot !== undefined) return this.apply_snapshot(snapshot);
+  }
+
+  /** 改名沿用列表位置和用户输入。缓存及上传任务归旧周期释放。 */
+  public replace_renamed_project(previous_id: string, payload: unknown): ProjectStore | undefined {
+    const snapshot = read_open_project_snapshot(payload);
+    if (snapshot === undefined) return;
+    const previous = this.stores.get(previous_id);
+    if (previous === undefined || snapshot.projectId === previous_id)
+      return this.apply_snapshot(snapshot);
+
+    const store = new ProjectStore(snapshot, this.on_agent_error);
+    store.select_route(previous.get_active_route());
+    previous.agentChat.dispose(); // 清除在途上传，剩余草稿可交给新周期。
+    store.agentChat.get_input().draft.write(previous.agentChat.get_input().draft.read());
+    this.stores = new Map(
+      [...this.stores].map(([id, current]) =>
+        id === previous_id ? [snapshot.projectId, store] : [id, current],
+      ),
+    );
+    store.agentChat.connect();
+    return store;
+  }
+
+  /** 同一周期只刷新快照，首次登记才建立 Agent 连接。 */
+  private apply_snapshot(snapshot: OpenProjectSnapshot): ProjectStore {
     const previous = this.stores.get(snapshot.projectId);
     if (previous !== undefined) {
       previous.snapshot = snapshot;

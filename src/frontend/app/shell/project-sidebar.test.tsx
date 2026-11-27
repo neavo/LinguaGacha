@@ -80,7 +80,7 @@ describe("ProjectSidebar", () => {
   }
 
   it.each([
-    ["打开空闲", true, false, [false, false, true]],
+    ["打开空闲", true, false, [false, false, false]],
     ["打开忙碌", true, true, [true, true, true]],
     ["关闭", false, false, [true, false, false]],
   ])("工程菜单在%s时按工程状态限制操作", async (_label, opened, busy, disabled) => {
@@ -102,11 +102,12 @@ describe("ProjectSidebar", () => {
         (item) => item.getAttribute("aria-disabled") === "true",
       ),
     ).toEqual(disabled);
-    if (!opened) {
+    if (!busy) {
+      const project = project_state.open_projects[0]?.snapshot ?? recent_project;
       await act(async () => rename.click());
       expect(lifecycle.request_rename).toHaveBeenCalledWith(
-        recent_project.path,
-        recent_project.name,
+        opened ? { projectId: "first" } : { path: project.path },
+        project.name,
       );
     }
   });

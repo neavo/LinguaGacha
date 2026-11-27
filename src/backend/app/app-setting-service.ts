@@ -112,23 +112,30 @@ export class AppSettingService {
     return { settings: setting.to_snapshot() };
   }
 
-  /** 只有最近工程列表中的路径可以通过侧栏改名。 */
+  /** 按路径改名需要最近记录提供工程身份。 */
   public has_recent_project(project_path: string): boolean {
     return this.read_setting_entity()
       .read_recent_projects()
       .some(({ path }) => path === project_path);
   }
 
-  /** 按最新设置替换记录。调用方在工程文件与设置均已落盘后广播。 */
+  /** 按提交时的设置替换最近记录，返回是否需要广播。 */
   public replace_recent_project_path(
     previous_path: string,
     next_path: string,
-  ): SettingsSnapshotResponse {
+    options: { requireExisting: boolean },
+  ): boolean {
     const current = this.read_setting_entity();
-    const setting = current.with_recent_project_path_changed(previous_path, next_path);
-    if (setting === null) throw new AppError("project.not_found");
-    if (setting !== current) this.save_setting(setting.to_json());
-    return { settings: setting.to_snapshot() };
+    const next = current.with_recent_project_path_changed(previous_path, next_path);
+    if (next === null && options.requireExisting) throw new AppError("project.not_found");
+    if (next === null || next === current) return false;
+    this.save_setting(next.to_json());
+    return true;
+  }
+
+  /** 读取持久设置的 UI 快照，原样提交时无需写入配置。 */
+  public read_settings_snapshot(): SettingsSnapshotResponse {
+    return { settings: this.read_setting_entity().to_snapshot() };
   }
 
   /**
