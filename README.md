@@ -10,16 +10,16 @@
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，翻译特化的次世代 `AGENT Harness`
 - `一键`
   - 各语言全自动一键互译
-  - 全自动翻译，无需人工介入
+  - 全自动翻译和审校，无需人工介入
 - `高质量`
   - 无限制自由输出
   - 不同内容细致调教，确保最佳质量
-  - 智能术语与审校，简单对话就可以让行文措辞对齐你的喜好
+  - 智能术语与审校，简单对话，让行文措辞对齐你的喜好
 - `全格式，包括但是不限于：`
   - 音频与视频 - `ASMR` `动画` `影视剧` `动态漫画`
   - 图片与漫画 - `日漫` `美漫` `黑白` `彩色` `横排` `竖排`
   - 字幕与电子书 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc`
-  - 游戏引擎与数据文件 - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON`
+  - 游戏与数据文件 - `MTool` `Godot` `RenPy` `Tyrano` `Kirikiri` `Galgame` `WOLFRPG` `RPGMAKER` `SRPG Studio`
 
 > <img width="1600" alt="亮色" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/light.jpg" />
 
@@ -79,6 +79,10 @@
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍
 
 ## 📅 近期更新
+- 20261127 v0.143.1
+  - 新增格式技能 `SRPG Studio` [#1139](../../issues/1139)
+  - 修复与改进 [#1136](../../issues/1136) [#1137](../../issues/1137) [#1138](../../issues/1138) [#1140](../../issues/1140) [#1141](../../issues/1141) [#1142](../../issues/1142)
+
 - 20261126 v0.143.0
   - 支持同时打开多个工程 [#1127](../../issues/1127)
   - 优化漫画（图片）翻译的效果 [#1130](../../issues/1130)

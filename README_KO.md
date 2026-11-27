@@ -10,16 +10,16 @@
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), 번역에 특화된 차세대 `AGENT Harness`
 - `원클릭`
   - 다양한 언어 간 전자동 원클릭 상호 번역
-  - 사람의 개입 없이 전자동으로 번역
+  - 사람의 개입 없이 전자동으로 번역 및 검수
 - `고품질`
   - 제한 없이 자유롭게 출력
   - 콘텐츠 유형별로 세밀하게 조정해 최상의 번역 품질 제공
-  - 스마트 용어 관리와 검수로 간단한 대화만으로 문체와 표현을 취향에 맞게 조정
+  - 스마트 용어 관리와 검수를 통해 간단한 대화로 문체와 표현을 취향에 맞게 조정
 - `전 형식(아래는 지원 예시의 일부)`
   - 오디오 및 동영상 - `ASMR` `애니메이션` `영화 및 드라마` `모션 코믹스`
   - 이미지 및 만화 - `일본 만화` `미국 만화` `흑백` `컬러` `가로쓰기` `세로쓰기`
   - 자막 및 전자책 - `.txt` `.md` `.epub` `.pdf` `.srt` `.ass` `.ssa` `.vtt` `.lrc`
-  - 게임 엔진 및 데이터 파일 - `Godot` `RenPy` `Tyrano` `WOLFRPG` `RPGMAKER` `KV-JSON` `Message-JSON`
+  - 게임 및 데이터 파일 - `MTool` `Godot` `RenPy` `Tyrano` `Kirikiri` `Galgame` `WOLFRPG` `RPGMAKER` `SRPG Studio`
 
 > <img width="1600" alt="라이트 테마" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/light.jpg" />
 
@@ -79,6 +79,10 @@
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다
 
 ## 📅 최근 업데이트
+- 20261127 v0.143.1
+  - `SRPG Studio` 형식 스킬 추가 [#1139](../../issues/1139)
+  - 수정 및 개선 [#1136](../../issues/1136) [#1137](../../issues/1137) [#1138](../../issues/1138) [#1140](../../issues/1140) [#1141](../../issues/1141) [#1142](../../issues/1142)
+
 - 20261126 v0.143.0
   - 여러 프로젝트를 동시에 열 수 있도록 지원 [#1127](../../issues/1127)
   - 만화(이미지) 번역 품질 개선 [#1130](../../issues/1130)

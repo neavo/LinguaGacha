@@ -10,16 +10,16 @@
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), ein auf Übersetzung spezialisiertes `AGENT Harness` der nächsten Generation
 - `Ein Klick`
   - Vollautomatische Übersetzung zwischen verschiedenen Sprachen per Knopfdruck
-  - Vollautomatische Übersetzung ohne manuelle Eingriffe
+  - Vollautomatische Übersetzung und Korrektur ohne manuelle Eingriffe
 - `Hohe Qualität`
   - Freie Ausgabe ohne Einschränkungen
   - Feinabstimmung für jede Art von Inhalt für bestmögliche Übersetzungsqualität
-  - Intelligente Terminologieverwaltung und Korrektur passen die Formulierungen in einem kurzen Dialog an Ihre Vorlieben an
+  - Mit intelligenter Terminologieverwaltung und Korrektur können Sie die Formulierungen in einem kurzen Dialog an Ihre Vorlieben anpassen
 - `Alle Formate, darunter die folgenden Beispiele:`
   - Audio & Video - `ASMR`, `Anime`, `Filme & Serien`, `Motion Comics`
   - Bilder & Comics - `Manga`, `US-Comics`, `Schwarz-Weiß`, `Farbe`, `horizontaler Text` und `vertikaler Text`
   - Untertitel & E-Books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`
-  - Game-Engines & Datendateien - `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`
+  - Spiele & Datendateien - `MTool`, `Godot`, `RenPy`, `Tyrano`, `Kirikiri`, `Galgame`, `WOLFRPG`, `RPGMAKER`, `SRPG Studio`
 
 > <img width="1600" alt="Helles Design" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/light.jpg" />
 
@@ -79,6 +79,10 @@
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## 📅 Neueste Updates
+- 20261127 v0.143.1
+  - Format-Skill für `SRPG Studio` hinzugefügt [#1139](../../issues/1139)
+  - Fehlerbehebungen und Verbesserungen [#1136](../../issues/1136) [#1137](../../issues/1137) [#1138](../../issues/1138) [#1140](../../issues/1140) [#1141](../../issues/1141) [#1142](../../issues/1142)
+
 - 20261126 v0.143.0
   - Mehrere Projekte können gleichzeitig geöffnet werden [#1127](../../issues/1127)
   - Die Übersetzungsqualität für Comics (Bilder) wurde verbessert [#1130](../../issues/1130)

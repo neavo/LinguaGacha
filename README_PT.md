@@ -13,16 +13,16 @@
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), um `AGENT Harness` de nova geração especializado em tradução
 - `Um Clique`
   - Tradução totalmente automática entre vários idiomas com apenas um clique
-  - Tradução totalmente automática, sem intervenção humana
+  - Tradução e revisão totalmente automáticas, sem intervenção humana
 - `Alta Qualidade`
   - Exportação livre, sem restrições
   - Ajustes precisos para cada tipo de conteúdo, com foco na melhor qualidade de tradução
-  - O gerenciamento inteligente de termos e a revisão permitem ajustar o estilo e a escolha das palavras às suas preferências com uma conversa simples
+  - Com o gerenciamento inteligente de termos e a revisão, você pode ajustar a escolha das palavras às suas preferências com uma conversa simples
 - `Todos os Formatos, incluindo, entre outros:`
   - Áudio e Vídeo - `ASMR`, `Anime`, `Filmes e Séries`, `Motion Comics`
   - Imagens e Quadrinhos - `Mangás`, `Quadrinhos americanos`, `Preto e branco`, `Colorido`, `Texto horizontal` e `Texto vertical`
   - Legendas e E-books - `.txt`, `.md`, `.epub`, `.pdf`, `.srt`, `.ass`, `.ssa`, `.vtt`, `.lrc`
-  - Engines de Jogos e Arquivos de Dados - `Godot`, `RenPy`, `Tyrano`, `WOLFRPG`, `RPGMAKER`, `KV-JSON`, `Message-JSON`
+  - Jogos e Arquivos de Dados - `MTool`, `Godot`, `RenPy`, `Tyrano`, `Kirikiri`, `Galgame`, `WOLFRPG`, `RPGMAKER`, `SRPG Studio`
 
 > <img width="1600" alt="Tema claro" src="https://raw.githubusercontent.com/wiki/neavo/LinguaGacha/assets/light.jpg" />
 
@@ -82,6 +82,10 @@
 - Mais detalhes sobre cada recurso podem ser encontrados na [Wiki](https://github.com/neavo/LinguaGacha/wiki)
 
 ## 📅 Atualizações Recentes
+- 20261127 v0.143.1
+  - Adicionada a habilidade de formato `SRPG Studio` [#1139](../../issues/1139)
+  - Correções e melhorias [#1136](../../issues/1136) [#1137](../../issues/1137) [#1138](../../issues/1138) [#1140](../../issues/1140) [#1141](../../issues/1141) [#1142](../../issues/1142)
+
 - 20261126 v0.143.0
   - Adicionado suporte para abrir vários projetos ao mesmo tempo [#1127](../../issues/1127)
   - Melhorada a qualidade da tradução de quadrinhos (imagens) [#1130](../../issues/1130)
