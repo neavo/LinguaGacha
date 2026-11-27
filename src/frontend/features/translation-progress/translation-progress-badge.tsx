@@ -6,13 +6,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 
 type TranslationProgressBadgeProps = {
   progress: ProjectTranslationStats;
-  tabIndex?: number;
+  tabIndex?: number; // 文件表格显式指定焦点顺序，导航按钮内的胶囊省略此属性。
 };
 
-/** 工作台提示使用后端同一份文件统计。 */
+/** 展示完成率，提示内容按条目状态列出统计。 */
 export function TranslationProgressBadge({
   progress,
-  tabIndex = 0,
+  tabIndex,
 }: TranslationProgressBadgeProps): JSX.Element {
   const { t } = useI18n();
   const entries = [

@@ -6,12 +6,8 @@ import { WorkbenchFileTable } from "./workbench-file-table";
 import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
-// 观察进度单位和计数，让提示措辞可以独立修改。
 vi.mock("@frontend/app/locale/locale-context", () => ({
-  useI18n: () => ({
-    t: (key: string, values?: Record<string, string>) =>
-      values ? JSON.stringify({ key, ...values }) : key,
-  }),
+  useI18n: () => ({ t: (key: string) => key }),
 }));
 
 // 接入测试直接提供可见行，布局与虚拟化由通用表格测试验证。
